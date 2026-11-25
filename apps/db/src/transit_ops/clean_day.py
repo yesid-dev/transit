@@ -5,7 +5,7 @@ from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
-from functools import cache, lru_cache
+from functools import cache
 from pathlib import Path
 from struct import Struct
 from tempfile import TemporaryDirectory
@@ -32,14 +32,12 @@ from transit_ops.clean_day_realtime import (
 )
 from transit_ops.core.models import SourceFormat
 from transit_ops.gold.vehicle_instance_rule import (
-    EARLY_START_MAX_LEAD_SECONDS,
     SANITY_DELAY_SECONDS,
     TripInstance,
     VehicleDescriptor,
-    accepted_instance,
-    resolve_vehicle_capture,
 )
-from transit_ops.gtfs.types import parse_gtfs_date, parse_gtfs_service_time, validate_wgs84_position
+from transit_ops.gtfs.trip_identity import reported_service_date, resolve_trip_instance
+from transit_ops.gtfs.types import validate_wgs84_position
 from transit_ops.providers.formats import decode_gtfs_rt
 from transit_ops.providers.schedule import ScheduledStop
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
@@ -197,9 +195,7 @@ class NearbyVisits:
     second: int = -1
     readings: dict[int, int] = field(default_factory=dict)
 
-    def record(
-        self, stop: NearbyStop, second: int, previous: GPSFix | None, origin: int
-    ) -> None:
+    def record(self, stop: NearbyStop, second: int, previous: GPSFix | None, origin: int) -> None:
         if stop.sequence < self.sequence or second <= self.second:
             return
         if stop.sequence == origin:
@@ -479,52 +475,6 @@ def _predicted_time(
     return None
 
 
-@lru_cache(maxsize=32)
-def _reported_service_date(value: str) -> date | None:
-    try:
-        return parse_gtfs_date(value, field_name="trip start_date")
-    except ValueError:
-        return None
-
-
-def _service_date(
-    descriptor: TripDescriptor,
-    published: datetime,
-    candidates: tuple[TripInstance, ...],
-    reported: date | None,
-    *,
-    advance_notice: bool,
-) -> date | None:
-    if descriptor.start_time:
-        try:
-            seconds = parse_gtfs_service_time(
-                descriptor.start_time, field_name="trip start_time"
-            ).total_seconds
-        except ValueError:
-            return None
-        candidates = tuple(c for c in candidates if c.first_departure_seconds == seconds)
-    evidence = VehicleDescriptor(reported, descriptor.start_time)
-    resolved = resolve_vehicle_capture(published, candidates, evidence)
-    accepted = accepted_instance(resolved)
-    if accepted is None and not resolved and advance_notice:
-        # Advance trip updates can be posted before a vehicle could be present.
-        # A removal can also arrive after the trip. Require a named schedule
-        # instance in both cases, with no conflicting in-window instance.
-        return next(
-            (
-                c.service_date
-                for c in candidates
-                if c.service_date == reported
-                and (
-                    descriptor.schedule_relationship in _REMOVED
-                    or published < c.start_utc - timedelta(seconds=EARLY_START_MAX_LEAD_SECONDS)
-                )
-            ),
-            None,
-        )
-    return None if accepted is None else accepted.service_date
-
-
 def _covered_span(intervals: list[CoveredInterval], start: datetime, end: datetime) -> bool:
     index = bisect_right(intervals, start, key=lambda interval: interval.start_utc) - 1
     return index >= 0 and intervals[index].end_utc >= end
@@ -563,8 +513,17 @@ def _segment_run(
         elif observed > MAX_SEGMENT_RUN_MULTIPLE * scheduled:
             exclusion = "excessive_observed_run"
     return (
-        *identity, start.stop_id, end.stop_id, from_sequence, to_sequence,
-        observed_from, observed_to, observed, scheduled, from_basis, to_basis,
+        *identity,
+        start.stop_id,
+        end.stop_id,
+        from_sequence,
+        to_sequence,
+        observed_from,
+        observed_to,
+        observed,
+        scheduled,
+        from_basis,
+        to_basis,
         _timestamp(start.departure if start.departure is not None else start.arrival),
         exclusion,
     )
@@ -885,11 +844,18 @@ def _build_clean_day(
         )
 
     def trip_date(desc: TripDescriptor, stamp: int, is_update: bool) -> date | None:
-        reported = _reported_service_date(desc.start_date) if desc.start_date else None
+        reported = reported_service_date(desc.start_date) if desc.start_date else None
         candidates = candidates_for(desc.trip_id)
         published = datetime.fromtimestamp(stamp, UTC)
         if candidates:
-            return _service_date(desc, published, candidates, reported, advance_notice=is_update)
+            accepted, _ = resolve_trip_instance(
+                published,
+                candidates,
+                VehicleDescriptor(reported, desc.start_time),
+                advance_notice=is_update,
+                removed=desc.schedule_relationship in _REMOVED,
+            )
+            return None if accepted is None else accepted.service_date
         # Unknown IDs cannot override a dated schedule instance. Some feeds mark
         # true additions as SCHEDULED, so also require a matching local date.
         if desc.schedule_relationship != TripDescriptor.SCHEDULED:
@@ -976,7 +942,8 @@ def _build_clean_day(
                     trip_id = desc.trip_id if desc.schedule_relationship not in _REMOVED else ""
                     candidates.fixes[live.vehicle.id] = GPSFix(trip_id, dated, stamp, *coords)
                     if previous is not None and (previous.trip_id, previous.service_date) == (
-                        trip_id, dated
+                        trip_id,
+                        dated,
                     ):
                         previous_fix = previous
             if (

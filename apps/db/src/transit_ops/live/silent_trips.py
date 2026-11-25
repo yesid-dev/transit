@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from transit_ops.live.trip_instances import REMOVED_TRIPS, LiveTripInstances, position_publication
 from transit_ops.providers.schedule import service_day_start
 
 REPORT_WINDOW_SECONDS = 90
@@ -35,35 +36,21 @@ def count_silent_trips(
     zone: ZoneInfo,
     days: Mapping[date, tuple[TripSpan, ...]],
     *,
-    reports: Iterable[tuple[str, str | None]],
-    cancellations: Iterable[tuple[str, str | None]],
+    reports: Iterable[tuple[str, date]],
+    cancellations: Iterable[tuple[str, date]],
 ) -> dict[str, object]:
-    running: defaultdict[str, list[tuple[str, TripSpan, float]]] = defaultdict(list)
+    reported = set(reports)
+    cancelled = set(cancellations)
+    silent_by_route: Counter[str] = Counter()
+    scheduled = cancelled_now = 0
     for day, trips in days.items():
         elapsed = (now - service_day_start(day, zone)).total_seconds()
-        day_id = day.strftime("%Y%m%d")
         for trip in trips:
-            if trip.first <= elapsed < trip.last:
-                running[trip.trip_id].append((day_id, trip, elapsed))
-
-    def match(rows: Iterable[tuple[str, str | None]]) -> set[tuple[str, str]]:
-        matched: set[tuple[str, str]] = set()
-        for trip_id, day in rows:
-            candidates = running.get(trip_id, [])
-            if day is None and len(candidates) == 1:
-                day = candidates[0][0]
-            if day is not None and any(service_day == day for service_day, _, _ in candidates):
-                matched.add((trip_id, day))
-        return matched
-
-    reported = match(reports)
-    cancelled = match(cancellations)
-    silent_by_route: Counter[str] = Counter()
-    scheduled = 0
-    for trip_id, instances in running.items():
-        for day, trip, elapsed in instances:
-            key = (trip_id, day)
+            if not trip.first <= elapsed < trip.last:
+                continue
+            key = (trip.trip_id, day)
             if key in cancelled:
+                cancelled_now += 1
                 continue
             scheduled += 1
             if elapsed >= trip.first + START_GRACE_SECONDS and key not in reported:
@@ -71,7 +58,7 @@ def count_silent_trips(
     return {
         "scheduled_now": scheduled,
         "non_responding": silent_by_route.total(),
-        "cancelled_now": len(cancelled),
+        "cancelled_now": cancelled_now,
         "non_responding_by_route": [
             {"route_id": line, "count": count} for line, count in sorted(silent_by_route.items())
         ],
@@ -94,11 +81,11 @@ class TripReporting:
 
     def __init__(self, source_lag_seconds: int):
         self.window = REPORT_WINDOW_SECONDS + source_lag_seconds
-        self.reports: dict[tuple[str, str | None], datetime] = {}
+        self.reports: dict[tuple[str, date], datetime] = {}
 
     def observe(
-        self, snapshot: Mapping[str, Any], now: datetime
-    ) -> tuple[set[tuple[str, str | None]], set[tuple[str, str | None]]] | None:
+        self, snapshot: Mapping[str, Any], now: datetime, instances: LiveTripInstances
+    ) -> tuple[set[tuple[str, date]], set[tuple[str, date]]] | None:
         feeds = list(snapshot["feeds"].values())
         movement = [
             feed for feed in feeds if feed["family"] in ("vehicle_positions", "trip_updates")
@@ -114,23 +101,27 @@ class TripReporting:
             if (now - stamp).total_seconds() < self.window
         }
         for vehicle in vehicles:
-            if not (trip := vehicle["trip_id"]):
+            if not vehicle["trip_id"]:
                 continue
             stamp = (
                 datetime.fromisoformat(vehicle["observed_at"])
                 if vehicle["observed_at"]
                 else captured
             )
-            key = (trip, vehicle["start_date"])
             if -5 <= (now - stamp).total_seconds() < self.window:
-                self.reports[key] = max(stamp, self.reports.get(key, stamp))
+                instance, _ = instances.resolve(vehicle, captured)
+                if instance is not None:
+                    key = (instance.trip_id, instance.service_date)
+                    published = position_publication(vehicle, captured)
+                    self.reports[key] = max(published, self.reports.get(key, published))
         if not any(vehicle["trip_id"] for vehicle in vehicles) or not all(
             feed_is_fresh(feed, now) for feed in movement
         ):
             return None
         cancelled = {
-            (row["trip_id"], row["start_date"])
+            (instance.trip_id, instance.service_date)
             for row in snapshot["trip_updates"] or ()
-            if row["relationship"] in (3, 7)  # GTFS-RT CANCELED and DELETED
+            if row["relationship"] in REMOVED_TRIPS
+            if (instance := instances.resolve(row, now, update=True)[0]) is not None
         }
         return set(self.reports), cancelled

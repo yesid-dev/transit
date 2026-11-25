@@ -12,6 +12,7 @@ from transit_ops.core.models import ProviderManifest
 from transit_ops.ingestion.storage import LocalBronzeStorage
 from transit_ops.live.playback import LivePublisher
 from transit_ops.live.silent_trips import TripReporting, TripSpan, count_silent_trips
+from transit_ops.live.trip_instances import LiveTripInstances
 from transit_ops.live.trip_schedule import LiveTripSchedule
 
 ZONE = ZoneInfo("America/Toronto")
@@ -38,12 +39,12 @@ def test_silent_trips_uses_trip_identity_and_start_and_end_grace():
         ZONE,
         {DAY: trips},
         reports=[
-            ("reporting", None),
-            ("reporting", None),
-            ("unmatched", None),
-            ("other-day", "20261123"),
+            ("reporting", DAY),
+            ("reporting", DAY),
+            ("unmatched", DAY),
+            ("other-day", DAY - timedelta(days=1)),
         ],
-        cancellations=[("cancelled", "20261124"), ("silent", "20261123")],
+        cancellations=[("cancelled", DAY), ("silent", DAY - timedelta(days=1))],
     )
     assert counts == {
         "scheduled_now": 5,
@@ -68,19 +69,27 @@ def test_silent_trips_uses_trip_identity_and_start_and_end_grace():
 def test_uses_elapsed_service_clock(instant, day, trip):
     now = datetime.fromisoformat(instant)
     counts = count_silent_trips(
-        now, ZONE, {day: (trip,)}, reports=[("other", None)], cancellations=[]
+        now, ZONE, {day: (trip,)}, reports=[("other", day)], cancellations=[]
     )
     assert counts["scheduled_now"] == counts["non_responding"] == 1
 
 
 def test_dated_reports_do_not_hide_another_service_days_trip():
     now = datetime(2026, 11, 25, 5, 45, tzinfo=UTC)
+    trips = {DAY: (span("t", 86400, 90000),), date(2026, 11, 25): (span("t", 0, 3600),)}
+    instances = LiveTripInstances({day: {"t": values[0]} for day, values in trips.items()}, ZONE)
+    unhinted = position("t", now)
+    assert instances.resolve(unhinted, now) == (None, True)
+    dated = {**unhinted, "start_date": "20261124", "start_time": "24:00:00"}
+    reports, cancellations = TripReporting(0).observe(
+        snapshot(now, unhinted, dated), now, instances
+    )
     counts = count_silent_trips(
         now,
         ZONE,
-        {DAY: (span("t", 86400, 90000),), date(2026, 11, 25): (span("t", 0, 3600),)},
-        reports=[("t", "20261124"), ("t", None)],
-        cancellations=[],
+        trips,
+        reports=reports,
+        cancellations=cancellations,
     )
     assert counts["scheduled_now"] == 2
     assert counts["non_responding"] == 1
@@ -114,19 +123,41 @@ def snapshot(now, *vehicles):
 
 def test_report_window_retains_omitted_trips_and_expires_them():
     reporting = TripReporting(source_lag_seconds=0)
-    assert reporting.observe(snapshot(NOON, position("a")), NOON) == ({("a", None)}, set())
+    instances = LiveTripInstances({DAY: {trip: span(trip) for trip in ("a", "b")}}, ZONE)
+    assert reporting.observe(snapshot(NOON, position("a")), NOON, instances) == (
+        {("a", DAY)},
+        set(),
+    )
     later = NOON + timedelta(seconds=89)
     newer = snapshot(later, position("b", later))
-    assert reporting.observe(newer, later) == ({("a", None), ("b", None)}, set())
-    assert reporting.observe(newer, later + timedelta(seconds=1)) == ({("b", None)}, set())
-    assert reporting.observe(snapshot(later, position(None, later)), later) is None
+    assert reporting.observe(newer, later, instances) == ({("a", DAY), ("b", DAY)}, set())
+    assert reporting.observe(newer, later + timedelta(seconds=1), instances) == (
+        {("b", DAY)},
+        set(),
+    )
+    assert reporting.observe(snapshot(later, position(None, later)), later, instances) is None
 
 
 def test_source_lag_allows_fresh_position_at_declared_delay():
     reporting = TripReporting(source_lag_seconds=60)
     old = position("a", NOON - timedelta(seconds=149))
     expired = position("b", NOON - timedelta(seconds=150))
-    assert reporting.observe(snapshot(NOON, old, expired), NOON) == ({("a", None)}, set())
+    instances = LiveTripInstances({DAY: {trip: span(trip) for trip in ("a", "b")}}, ZONE)
+    assert reporting.observe(snapshot(NOON, old, expired), NOON, instances) == ({("a", DAY)}, set())
+
+
+@pytest.mark.parametrize("hint", ["20261124", "20261125"])
+def test_midnight_reports_and_cancellations_resolve_to_the_running_service_day(hint):
+    now = datetime(2026, 11, 25, 5, 30, tzinfo=UTC)
+    trips = {DAY: (span("t", 87000, 90300), span("cancelled", 87000, 90300))}
+    instances = LiveTripInstances({DAY: {trip.trip_id: trip for trip in trips[DAY]}}, ZONE)
+    rows = snapshot(now, {**position("t", now), "start_date": hint})
+    rows["trip_updates"] = [{"trip_id": "cancelled", "start_date": hint, "relationship": 3}]
+    reports, cancellations = TripReporting(0).observe(rows, now, instances)
+    assert reports == {("t", DAY)}
+    assert cancellations == {("cancelled", DAY)}
+    counts = count_silent_trips(now, ZONE, trips, reports=reports, cancellations=cancellations)
+    assert (counts["scheduled_now"], counts["non_responding"], counts["cancelled_now"]) == (1, 0, 1)
 
 
 def install_edition(raw_root, city):

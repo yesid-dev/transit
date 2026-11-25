@@ -6,9 +6,9 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from transit_ops.gtfs.types import parse_gtfs_service_time
+from transit_ops.gold.vehicle_instance_rule import SANITY_DELAY_SECONDS
+from transit_ops.live.trip_instances import LiveTripInstances
 from transit_ops.live.trip_schedule import DaySchedule, Stop
-from transit_ops.providers.schedule import service_day_start
 
 type Row = dict[str, Any]
 type Identity = tuple[date, str]
@@ -51,7 +51,7 @@ def _delay_for_stop(
         predicted = stop[field]
         if delay is None and predicted is not None and scheduled is not None:
             delay = feed_delay if feed_delay is not None else predicted - (anchor + scheduled)
-        updated[f"{field}_delay"] = delay
+        updated[f"{field}_delay"] = _bounded_delay(delay)
     return updated
 
 
@@ -80,6 +80,10 @@ def last_prediction_time(stop: Row) -> int | None:
 def _expired(stop: Row, expiry: float) -> bool:
     stamp = last_prediction_time(stop)
     return stamp is not None and stamp < expiry
+
+
+def _bounded_delay(delay: int | None) -> int | None:
+    return delay if delay is not None and abs(delay) <= SANITY_DELAY_SECONDS else None
 
 
 def _stop_delay(stop: Row, feed_delay: int | None) -> int | None:
@@ -149,44 +153,25 @@ def reconcile_delays(
     *,
     update_window: int,
     coverage: Counter[str] | None = None,
+    instances: LiveTripInstances | None = None,
+    positions_captured: datetime | None = None,
 ) -> tuple[list[Row] | None, list[Row] | None]:
     """Enrich current scheduled reports; retain unmatched positions and absolute ETAs."""
     instant = now.timestamp()
     expiry = instant - update_window
-    anchors = {day: int(service_day_start(day, zone).timestamp()) for day in days}
-    day_codes = {day: day.strftime("%Y%m%d") for day in days}
-
-    def candidates(row: Row) -> list[Identity]:
-        trip = row.get("trip_id")
-        if not trip:
-            return []
-        date_hint, time_hint = row.get("start_date"), row.get("start_time")
-        try:
-            first = (
-                parse_gtfs_service_time(time_hint, field_name="start_time").total_seconds
-                if time_hint
-                else None
-            )
-        except ValueError:
-            return []
-        matches = []
-        for day, schedule in days.items():
-            span = schedule.trips.get(trip)
-            if span is None or (date_hint and date_hint != day_codes[day]):
-                continue
-            if first is not None and first != span.first:
-                continue
-            elapsed = instant - anchors[day]
-            # A dated prediction can describe an upcoming trip. Unhinted IDs
-            # must identify a single trip near its scheduled running interval.
-            if date_hint or span.first - 3600 <= elapsed < span.last + 3600:
-                matches.append((day, trip))
-        return matches
+    instances = instances or LiveTripInstances(
+        {day: item.trips for day, item in days.items()}, zone
+    )
+    anchors = {day: int(anchor.timestamp()) for day, anchor in instances.anchors.items()}
 
     identities = []
     for row in updates or []:
-        matches = candidates(row) if update_window and row["relationship"] == 0 else []
-        identities.append(matches[0] if len(matches) == 1 else None)
+        instance = (
+            instances.resolve(row, now, update=True)[0]
+            if update_window and row["relationship"] == 0
+            else None
+        )
+        identities.append((instance.service_date, instance.trip_id) if instance else None)
     occurrences = Counter(key for key in identities if key is not None)
     requested = defaultdict(set)
     for (day, trip), count in occurrences.items():
@@ -209,7 +194,7 @@ def reconcile_delays(
         selected = _first_prediction(usable, instant)
         delay = None
         if selected is not None:
-            delay = row["delay"]
+            delay = _bounded_delay(row["delay"])
             if delay is None:
                 delay = selected["arrival_delay"]
                 if delay is None:
@@ -217,12 +202,16 @@ def reconcile_delays(
         if key is not None and occurrences[key] == 1:
             matched[key] = {
                 "matched": usable,
-                "delay": row["delay"],
+                "delay": _bounded_delay(row["delay"]),
                 "skipped": [stop["sequence"] for stop in raw_stops if stop["relationship"] == 1],
             }
         projected.append(
             {
-                **{field: value for field, value in row.items() if field != "observed_at"},
+                **{
+                    field: value
+                    for field, value in row.items()
+                    if field not in {"observed_at", "_published_at"}
+                },
                 "stops": stops,
                 "delay": delay,
             }
@@ -230,16 +219,17 @@ def reconcile_delays(
 
     positions = []
     for vehicle in vehicles or []:
-        matches = candidates(vehicle)
+        instance, ambiguous = instances.resolve(vehicle, positions_captured or now)
+        key = (instance.service_date, instance.trip_id) if instance else None
         delay = None
-        if not matches:
-            reason = "no_schedule"
-        elif len(matches) > 1 or occurrences[matches[0]] > 1:
+        if ambiguous or (key is not None and occurrences[key] > 1):
             reason = "ambiguous"
-        elif (report := matched.get(matches[0])) is None:
+        elif key is None:
+            reason = "no_schedule"
+        elif (report := matched.get(key)) is None:
             reason = "no_update"
         else:
-            day, trip = matches[0]
+            day, trip = key
             delay, reason = _vehicle_delay(vehicle, report, calls[day][trip], instant, expiry)
         if coverage is not None and vehicle.get("trip_id"):
             coverage[reason] += 1
