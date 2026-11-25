@@ -70,9 +70,6 @@
 	"lib/features/vehicles/VehicleDetailRecord.svelte": {
 		"border-t": 1
 	},
-	"lib/components/layout/ListingHeaderStats.svelte": {
-		"border-top:": 1
-	},
 	"lib/components/schedule/ScheduleTable.svelte": {
 		"border-bottom:": 2,
 		"border-top:": 1

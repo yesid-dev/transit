@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
 import { installLineRecordFixtures, lineRecordFixture } from './line-record-fixtures.mjs';
-import { finderEngine, linesFixtureRoutes } from './finder-engine.mjs';
+import { finderEngine, linesFixtureRoutes, stopsFixture } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
@@ -584,6 +584,25 @@ const server = createServer((request, response) => {
 			).values(),
 		);
 		const editionStops = new Map(stops.stops.map((stop) => [stop.id, stop]));
+		if (kind === 'schedule-index' && request.headers['x-transit-fixture-scope'] === 'stops') {
+			for (const stop of stopsFixture(city)) editionStops.set(stop.id, stop);
+		}
+		if (
+			kind === 'schedule-index' &&
+			request.headers['x-transit-fixture-scope'] === 'stops-volume'
+		) {
+			for (let i = 0; i < 8630; i++) {
+				const id = `volume-stop-${String(i).padStart(4, '0')}`;
+				editionStops.set(id, {
+					id,
+					name: `Volume stop ${i}`,
+					code: String(70000 + i),
+					lat: 45.5,
+					lon: -73.6,
+					routes: ['24'],
+				});
+			}
+		}
 		if (kind === 'schedule-index' && process.env.TRANSIT_E2E_DEPARTURE_NAMED === '1') {
 			for (const { id, name, code } of departureCaptureStops) {
 				editionStops.set(id, { id, name, code, lat: 45.5, lon: -73.6, routes: ['24'] });

@@ -1,32 +1,15 @@
 import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
-import type { AffectedAlertsCopy, SurfaceHeadCopy } from '#lib/components/surface/index.ts';
+import type { AffectedAlertsCopy } from '#lib/components/surface/index.ts';
 import { articleCopy } from '#lib/components/layout/articleCopy.ts';
 
 export const indexCopy = defineCopy({
 	fr: {
-		kicker: 'Arrêts',
 		heading: 'Arrêts',
-		lede: 'Trouvez un arrêt par son nom ou par le code inscrit sur son panneau, ou choisissez une ligne pour voir ses arrêts dans l’ordre. Chaque rangée montre le dernier bilan hebdomadaire de l’arrêt.',
-		searchPlaceholder: 'Nom ou code d’arrêt…',
-		filterLabel: 'Filtrer cette liste',
-		controlsLabel: 'Filtres',
-		listLabel: 'Arrêts de ce réseau',
 		lineLabel: 'Filtrer par ligne',
 		linePlaceholder: 'Numéro ou nom de ligne…',
 		lineClear: 'Effacer le filtre de ligne',
 		lineEmpty: 'Aucune ligne ne correspond.',
 		noLineStops: 'Aucune liste d’arrêts publiée pour cette ligne.',
-		orderLabel: 'Ordre',
-		orderName: 'Nom',
-		orderMatch: 'Meilleure correspondance',
-		orderLine: 'Ordre du parcours',
-		orderNear: 'Le plus proche d’abord',
-		orderLate: 'Classement publié',
-		orderUnavailable:
-			'Cet ordre demande un bilan hebdomadaire à jour. Les arrêts restent dans leur ordre habituel.',
-		orderContext: (dates: string) =>
-			`Classement publié ${dates}, selon les relevés à plus de 5 minutes de retard. Des positions voisines ne montrent pas forcément une différence nette.`,
-		nearLabel: 'Autres façons de trouver un arrêt',
 		nearMe: 'Arrêts près de moi',
 		nearAddress: 'Près d’une adresse',
 		nearAsking: 'Recherche de votre position…',
@@ -38,70 +21,17 @@ export const indexCopy = defineCopy({
 		nearUnavailable: 'Votre position n’est pas disponible dans ce navigateur.',
 		nearInsecure: 'La localisation exige une page sécurisée (https).',
 		nearNone: 'Aucun arrêt à moins de 1 km de votre position.',
-		counts: (shown: string, matching: string, total: string) =>
-			`${shown} arrêts affichés sur ${matching} correspondants, ${total} dans ce réseau.`,
-		lineCounts: (shown: string, matching: string, line: string) =>
-			`${shown} arrêts affichés sur ${matching} de la ligne ${line}.`,
-		nearCounts: (shown: string, matching: string) =>
-			`${shown} arrêts affichés sur ${matching} à moins de 1 km.`,
-		showMore: (n: string) => `Afficher ${n} arrêts de plus`,
-		showMoreLast: 'Afficher le dernier arrêt',
 		noMatch: (query: string) => `Aucun arrêt ne correspond à « ${query} ».`,
 		noMatchFilters: 'Aucun arrêt ne correspond à ces filtres.',
 		clearFilters: 'Effacer les filtres',
-		rangeUnsupported:
-			'Cette liste montre toujours la dernière semaine publiée. Ouvrez le bilan d’un arrêt pour une autre période.',
-		row: {
-			code: (code: string) => `Code ${code}`,
-			lines: (count: number, list: string) => `${count === 1 ? 'Ligne' : 'Lignes'} ${list}`,
-			towards: (headsign: string) => `Vers ${headsign}`,
-			distance: (metres: string) => `${metres} m`,
-			lateLabel: 'retard > 5 min',
-			noShare: 'Aucune part',
-			state: {
-				failed: 'Le bilan hebdomadaire n’a pas pu être lu',
-				unpublished: 'Aucun bilan hebdomadaire publié',
-				notCurrent: 'Aucun bilan hebdomadaire à jour',
-				notListed: 'Absent du bilan de cette semaine',
-				tooFew: 'Trop peu de relevés cette semaine',
-				noLiveData: 'Aucune donnée en direct pour ses lignes',
-				notMeasured: 'Non mesuré cette semaine',
-			},
-			figureLabel: (pct: string, dates: string) =>
-				`${pct} des relevés à plus de 5 minutes de retard, ${dates}`,
-			basis: (readings: string) => `${readings} relevés`,
-		},
-		previewHeading: 'Arrêt choisi',
-		previewAction: 'Aperçu',
-		previewStop: (name: string) => `Aperçu de l’arrêt ${name}`,
-		backToResults: 'Retour aux résultats',
-		copyFallback: 'Copiez ce lien :',
-		citeFallback: 'Copiez ce texte :',
 	},
 	en: {
-		kicker: 'Stops',
 		heading: 'Stops',
-		lede: 'Find a stop by its name or the code on its sign, or choose a line to see its stops in order. Each row shows the stop’s latest weekly record.',
-		searchPlaceholder: 'Stop name or code…',
-		filterLabel: 'Filter this list',
-		controlsLabel: 'Filters',
-		listLabel: 'Stops in this network',
 		lineLabel: 'Filter by line',
 		linePlaceholder: 'Line number or name…',
 		lineClear: 'Clear line filter',
 		lineEmpty: 'No lines match.',
 		noLineStops: 'No published stop list for this line.',
-		orderLabel: 'Order',
-		orderName: 'Name',
-		orderMatch: 'Best match',
-		orderLine: 'Order along the line',
-		orderNear: 'Nearest first',
-		orderLate: 'Published ranking',
-		orderUnavailable:
-			'This order needs a current weekly record. The stops stay in their usual order.',
-		orderContext: (dates) =>
-			`Published ranking for ${dates}, by readings more than 5 minutes late. Nearby positions do not necessarily show a clear difference.`,
-		nearLabel: 'Other ways to find a stop',
 		nearMe: 'Stops near me',
 		nearAddress: 'Near an address',
 		nearAsking: 'Finding your location…',
@@ -113,46 +43,11 @@ export const indexCopy = defineCopy({
 		nearUnavailable: 'Your location is not available in this browser.',
 		nearInsecure: 'Location needs a secure (https) page.',
 		nearNone: 'No stop is within 1 km of your location.',
-		counts: (shown, matching, total) =>
-			`Showing ${shown} of ${matching} matching stops, ${total} in this network.`,
-		lineCounts: (shown, matching, line) => `Showing ${shown} of ${matching} stops on line ${line}.`,
-		nearCounts: (shown, matching) => `Showing ${shown} of ${matching} stops within 1 km.`,
-		showMore: (n) => `Show ${n} more stops`,
-		showMoreLast: 'Show the last stop',
 		noMatch: (query) => `No stop matches “${query}”.`,
 		noMatchFilters: 'No stop matches these filters.',
 		clearFilters: 'Clear filters',
-		rangeUnsupported:
-			'This list always shows the latest published week. Open a stop’s record for another period.',
-		row: {
-			code: (code) => `Code ${code}`,
-			lines: (count, list) => `${count === 1 ? 'Line' : 'Lines'} ${list}`,
-			towards: (headsign) => `Towards ${headsign}`,
-			distance: (metres) => `${metres} m`,
-			lateLabel: '> 5 min late',
-			noShare: 'No share',
-			state: {
-				failed: 'The weekly record could not be read',
-				unpublished: 'No weekly record published yet',
-				notCurrent: 'No current weekly record',
-				notListed: 'Not in this week’s record',
-				tooFew: 'Too few readings this week',
-				noLiveData: 'No live data for its lines this week',
-				notMeasured: 'Not measured this week',
-			},
-			figureLabel: (pct, dates) => `${pct} of readings more than 5 minutes late, ${dates}`,
-			basis: (readings) => `${readings} readings`,
-		},
-		previewHeading: 'Selected stop',
-		previewAction: 'Preview',
-		previewStop: (name) => `Preview stop ${name}`,
-		backToResults: 'Back to results',
-		copyFallback: 'Copy this link:',
-		citeFallback: 'Copy this text:',
 	},
-}) satisfies Readonly<Record<Locale, SurfaceHeadCopy>>;
-
-export type StopsIndexCopy = (typeof indexCopy)[Locale];
+});
 
 export const detailCopy = defineCopy({
 	fr: {

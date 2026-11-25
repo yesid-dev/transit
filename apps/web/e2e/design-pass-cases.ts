@@ -51,6 +51,7 @@ const ottawa: Screen[] = [
 	'line-live',
 	'line-record',
 	'lines',
+	'stops',
 	'map-live',
 	'map-record-stops',
 	'network-health',
@@ -87,6 +88,7 @@ const french: Screen[] = [
 	'data-health',
 	'data-health-live',
 	'lines',
+	'stops',
 	'how-we-measure',
 ];
 
@@ -98,6 +100,7 @@ export const designPassCases = [
 	['alerts-live', 'octranspo', 'fr'] as const,
 	['overview', 'octranspo', 'fr'] as const,
 	['lines', 'octranspo', 'fr'] as const,
+	['stops', 'octranspo', 'fr'] as const,
 	['overview-live', 'octranspo', 'fr'] as const,
 	['line-live', 'octranspo', 'fr'] as const,
 	['stop-record', 'octranspo', 'fr'] as const,
@@ -126,7 +129,7 @@ export const designPassCases = [
 						? ['2026-11-18', '2026-11-20']
 						: screen === 'departure'
 							? ['2026-11-16', '2026-11-20']
-							: screen === 'lines'
+							: screen === 'lines' || screen === 'stops'
 								? ['2026-11-04', '2026-11-10']
 								: ['2026-11-08', '2026-11-14'];
 	url.searchParams.set('recordFrom', from);

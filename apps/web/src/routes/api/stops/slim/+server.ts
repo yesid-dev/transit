@@ -2,6 +2,10 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { toSlimStop } from '#lib/v1/repositories/stopsSlim.ts';
 import { getCityCatalog, getScheduleEdition } from '#lib/server/engine.ts';
+import { loadStopsRecord } from '#lib/server/finderRecord.ts';
+import { frameClock } from '#lib/site/frameState.ts';
+import { finderCells } from '#lib/features/record/finderText.ts';
+import { stopReading, type NearbyStop } from '#lib/features/stops/stopListing.ts';
 
 export const prerender = false;
 
@@ -18,6 +22,23 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		const city = requested[0] || (await getCityCatalog(visitorIp)).default_provider;
 		const edition = await getScheduleEdition(city, visitorIp);
 		if (!edition) return json({ error: 'stops_index_unavailable' }, { status: 503 });
+		if (url.searchParams.get('details') === 'record') {
+			// Nearby ordering runs in the browser. This edition is shared by every visitor.
+			const record = loadStopsRecord(url, city, request, frameClock(null));
+			const cells = finderCells((await record?.punctuality) ?? null, 'stop');
+			const codes = new Map(edition.routes.map(({ id, short }) => [id, short]));
+			const stops = edition.stops.map((stop): NearbyStop => {
+				const routeIds = stop.routes ?? [];
+				const cell = cells.get(stop.id);
+				return {
+					...toSlimStop(stop),
+					routeIds,
+					lineCodes: routeIds.map((id) => codes.get(id) ?? id),
+					...(cell ? { reading: stopReading(cell) } : {}),
+				};
+			});
+			return json({ generated_utc: `${edition.date}T00:00:00Z`, stops });
+		}
 		return json(
 			{
 				generated_utc: `${edition.date}T00:00:00Z`,
