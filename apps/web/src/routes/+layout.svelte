@@ -119,7 +119,6 @@
 	const isFullBleed = $derived(seoPath === '/map');
 	const dataIndependentRoute = $derived(isDataIndependentRoute(seoPath));
 
-
 	const mainLabel = $derived(mainLandmarkLabel(seoPath));
 
 	const v1 = $derived(data.v1);
