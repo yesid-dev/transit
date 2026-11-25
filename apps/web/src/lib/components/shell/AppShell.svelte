@@ -182,9 +182,17 @@
 	.streaming-main:has(:global([data-record-pending])) {
 		min-block-size: calc(100dvh - var(--app-frame-header-height) + var(--space-card-gap));
 	}
-	/* On a short result the footer enters the viewport with the result's geometry. */
+	/* Bound the hidden paint even if a reading below the viewport is still pending. */
 	.app-shell-root:has(.streaming-main :global([data-record-pending])) .streaming-footer {
-		visibility: hidden;
+		animation: reveal-streaming-footer 10s step-end;
+	}
+	@keyframes reveal-streaming-footer {
+		from {
+			visibility: hidden;
+		}
+		to {
+			visibility: visible;
+		}
 	}
 	@media print {
 		.streaming-main:has(:global([data-record-pending])) {

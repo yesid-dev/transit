@@ -10,7 +10,11 @@ type Shift = { at: number; value: number; nodes: string[] };
 type ShiftEntry = PerformanceEntry & {
 	hadRecentInput: boolean;
 	value: number;
-	sources: { node: Node | null }[];
+	sources: {
+		node: Node | null;
+		previousRect: DOMRectReadOnly;
+		currentRect: DOMRectReadOnly;
+	}[];
 };
 type ShiftWindow = Window & { steadyShifts: Shift[] };
 
@@ -123,15 +127,16 @@ for (const { screen, href } of designPassCases.filter(
 								shifts.push({
 									at: Math.round(entry.startTime),
 									value: entry.value,
-									nodes: entry.sources.flatMap(({ node }) => {
+									nodes: entry.sources.flatMap(({ node, previousRect, currentRect }) => {
 										const element = node instanceof Element ? node : node?.parentElement;
 										if (!element) return [];
 										const section = element.closest('[id], [data-slot]');
-										return [
-											section?.id
-												? `${element.tagName} #${section.id}`
-												: `${element.tagName} [${section?.getAttribute('data-slot') ?? ''}]`,
-										];
+										const label = section?.id
+											? `${element.tagName} #${section.id}`
+											: `${element.tagName} [${section?.getAttribute('data-slot') ?? ''}]`;
+										const dx = Math.round(currentRect.x - previousRect.x);
+										const dy = Math.round(currentRect.y - previousRect.y);
+										return [`${label} (Δx ${dx}px, Δy ${dy}px)`];
 									}),
 								});
 							}
@@ -182,6 +187,7 @@ for (const { screen, href } of designPassCases.filter(
 					await page.waitForLoadState('domcontentloaded');
 					await expect(page.locator('html[data-hydrated]')).toBeAttached();
 					await expect(page.locator('main [data-record-pending]')).toHaveCount(0);
+					await expect(page.getByRole('contentinfo').getByRole('link').first()).toBeVisible();
 					await settled(page);
 					const scores = async (phase: string) => {
 						const entries = await page.evaluate(() =>
@@ -207,3 +213,38 @@ for (const { screen, href } of designPassCases.filter(
 				});
 			}
 }
+
+test('steady footer is keyboard reachable after ten seconds while the engine is still held @layout', async ({
+	page,
+	request,
+}) => {
+	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+	const fixture = encodeURIComponent('steady:stm:2026-10-13:2026-11-01');
+	const host = `http://127.0.0.1:${port}/__overview`;
+	const hold = `${host}/hold?fixture=${fixture}`;
+	expect((await request.post(hold)).ok()).toBe(true);
+	try {
+		await page.setViewportSize({ width: 390, height: 900 });
+		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
+		await page.goto('/alerts?provider=stm&recordFrom=2026-10-13&recordTo=2026-11-01', {
+			waitUntil: 'commit',
+		});
+		await expect
+			.poll(async () => (await (await request.get(hold)).json()).waiting)
+			.toBeGreaterThan(0);
+		const footer = page.getByRole('contentinfo');
+		await expect(footer).toHaveCount(0);
+		const endTime = await page.getByTestId('footer').evaluate((element) => {
+			const [animation] = element.parentElement!.getAnimations();
+			return animation?.effect?.getComputedTiming().endTime;
+		});
+		expect(endTime).toBe(10_000);
+		const link = footer.getByRole('link').first();
+		await expect(link).toBeVisible({ timeout: 12_000 });
+		expect((await (await request.get(hold)).json()).waiting).toBeGreaterThan(0);
+		await link.focus();
+		await expect(link).toBeFocused();
+	} finally {
+		expect((await request.post(`${host}/release?fixture=${fixture}`)).ok()).toBe(true);
+	}
+});

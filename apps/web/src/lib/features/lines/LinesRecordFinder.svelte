@@ -116,6 +116,7 @@
 	let delivery = $state.raw<FinderResult | null>(null);
 	let timingPending = $state(true);
 	let tripsPending = $state(true);
+	const initialTiming = $derived(timingPending && punctuality === null);
 	let readingCity: string | null = null;
 	const pendingText = $derived(t('Calculating…', 'Calcul en cours…'));
 	$effect(() => {
@@ -462,8 +463,12 @@
 	<RecordGroup><ScreenTitle {title} {subtitle} /></RecordGroup>
 	<div class="min-w-0" data-slot="screen-content">
 		<RecordGroup density="compact">
-			<div data-slot="screen-answer">
-				{#if timingPending}
+			<div
+				class:invisible={timingPending && !initialTiming}
+				inert={timingPending && !initialTiming}
+				data-slot="screen-answer"
+			>
+				{#if initialTiming}
 					<RecordSkeleton shape="answer" />
 				{:else if spread !== null}
 					<RecordAnswer
@@ -486,8 +491,8 @@
 				{/if}
 			</div>
 
-			<div id="line-performance" class:contents={timingPending}>
-				{#if timingPending}
+			<div id="line-performance" class:contents={initialTiming}>
+				{#if initialTiming}
 					<RecordCard title={measuredTitle} {stamp}>
 						{#key record.punctuality}<RecordPending
 								shape="listing"
@@ -520,7 +525,9 @@
 						{:else if timingAnswer}
 							<p>{t('No measured lines.', 'Aucune ligne mesurée.')}</p>
 						{/if}
-						{#if tripsPending}
+						{#if timingPending}
+							{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
+						{:else if tripsPending}
 							{#key record.trips}<RecordPending
 									shape={measured.length ? undefined : 'table'}
 									{locale}
@@ -532,7 +539,7 @@
 			</div>
 
 			<div id="lines-without-live-data">
-				{#if !timingPending}
+				{#if !initialTiming}
 					<RecordCard title={noLiveTitle} interactive={scheduleOnly.length > 0}>
 						{#if scheduleOnly.length}
 							<p class="mb-2">
@@ -568,7 +575,7 @@
 				{/if}
 			</div>
 
-			{#if !timingPending}
+			{#if !initialTiming}
 				<RecordCard
 					title={excludedTitle}
 					{stamp}
