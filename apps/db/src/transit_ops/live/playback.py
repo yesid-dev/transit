@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import sqlite3
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -12,7 +13,8 @@ from datetime import UTC, datetime, timedelta
 from hashlib import md5
 from math import isfinite
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from typing import Any, cast
 
 from botocore.exceptions import BotoCoreError, ClientError
 from google.transit.gtfs_realtime_pb2 import FeedHeader, FeedMessage
@@ -26,10 +28,17 @@ from transit_ops.clean_day_inputs import (
 from transit_ops.clean_day_realtime import DayCapture, read_capture, vehicle_reading
 from transit_ops.core.models import ProviderManifest
 from transit_ops.ingestion.storage import BronzeStorage, LocalBronzeStorage, S3BronzeStorage
-from transit_ops.live.silent_trips import UNMEASURED, TripReporting, count_silent_trips
+from transit_ops.live.silent_trips import (
+    UNMEASURED,
+    TripReporting,
+    count_silent_trips,
+    feed_is_fresh,
+)
+from transit_ops.live.trip_delays import reconcile_delays
 from transit_ops.live.trip_partitions import encode, trip_partitions
-from transit_ops.live.trip_schedule import LiveTripSchedule
+from transit_ops.live.trip_schedule import DAY_OFFSETS, MAX_SERVICE_SECONDS, LiveTripSchedule
 from transit_ops.providers.alert_record import AlertRecord
+from transit_ops.providers.schedule import service_day_start
 
 LOGGER = logging.getLogger(__name__)
 NAME = re.compile(r"(\d{8}T\d{12}Z)__([a-f0-9]{12})__[^/]+\.(?:pb|json)")
@@ -100,6 +109,7 @@ def _vehicles(
                 if "occupancy" not in hidden
                 else None,
                 "observed_at": _iso(observed),
+                "delay": None,
             }
         )
     return rows
@@ -140,53 +150,12 @@ def _trip_updates(message: FeedMessage, captured: datetime) -> list[dict[str, ob
                 "start_date": trip.start_date or None,
                 "start_time": trip.start_time or None,
                 "relationship": trip.schedule_relationship,
+                "observed_at": update.timestamp or None,
                 "delay": update.delay if update.HasField("delay") else None,
                 "stops": stops,
             }
         )
     return rows
-
-
-def _with_vehicle_delays(
-    vehicles: list[dict[str, object]] | None,
-    updates: list[dict[str, object]] | None,
-) -> list[dict[str, object]] | None:
-    if vehicles is None:
-        return None
-    by_trip: dict[str, list[dict[str, object]]] = {}
-    for update in updates or []:
-        by_trip.setdefault(str(update["trip_id"]), []).append(update)
-    result = []
-    for vehicle in vehicles:
-        matches = [
-            update
-            for update in by_trip.get(str(vehicle["trip_id"]), [])
-            if all(
-                not vehicle[field] or not update[field] or vehicle[field] == update[field]
-                for field in ("start_date", "start_time")
-            )
-        ]
-        delay = None
-        if len(matches) == 1:
-            update = matches[0]
-            delay = update["delay"]
-            stops = update["stops"]
-            assert isinstance(stops, list)
-            for stop in stops:
-                if vehicle["stop_sequence"] is not None:
-                    matched = stop["sequence"] == vehicle["stop_sequence"]
-                else:
-                    matched = (
-                        vehicle["stop_id"] is not None and stop["stop_id"] == vehicle["stop_id"]
-                    )
-                if matched:
-                    for field in ("departure_delay", "arrival_delay"):
-                        if stop[field] is not None:
-                            delay = stop[field]
-                            break
-                    break
-        result.append({**vehicle, "delay": delay})
-    return result
 
 
 def _alerts(records: tuple[AlertRecord, ...], now: datetime) -> list[dict[str, object]]:
@@ -344,10 +313,6 @@ class LivePublisher:
                 rows = observed.rows
                 projected = _alerts(rows, now) if isinstance(rows, tuple) else rows
                 data[family] = [*(data[family] or []), *projected]
-        data["vehicle_positions"] = _with_vehicle_delays(
-            data["vehicle_positions"],
-            data["trip_updates"],
-        )
         return {
             "version": 1,
             "city": city,
@@ -366,8 +331,13 @@ class LivePublisher:
     ) -> None:
         if not self.manifest.public.enabled or not self.manifest.provider.is_active:
             raise ValueError("Live publication requires an active public city")
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            schedule = LiveTripSchedule(self.manifest, self.raw, self.prefix, executor)
+        with (
+            TemporaryDirectory(prefix="transit-live-schedule-") as workspace,
+            ThreadPoolExecutor(max_workers=1) as executor,
+        ):
+            schedule = LiveTripSchedule(
+                self.manifest, self.raw, self.prefix, executor, Path(workspace)
+            )
             self._run(destination, prefix, schedule, once=once, require_captures=require_captures)
 
     def _run(
@@ -399,18 +369,11 @@ class LivePublisher:
                         not feed["captured_at"] or feed["read_failed"] for feed in movement
                     ):
                         raise ValueError("No complete movement capture for dry check")
-                counts = UNMEASURED
-                # The installer's capture-only check keeps its existing work and deadline.
-                if (
-                    not require_captures
-                    and (evidence := reporting.observe(snapshot, now)) is not None
-                ):
-                    if (trips := schedule.at(now, wait=once)) is not None:
-                        reports, cancellations = evidence
-                        counts = count_silent_trips(
-                            now, schedule.zone, trips, reports=reports, cancellations=cancellations
-                        )
-                snapshot = {**snapshot, **counts}
+                snapshot = (
+                    {**snapshot, **UNMEASURED}
+                    if require_captures
+                    else _scheduled_snapshot(snapshot, schedule, reporting, now, wait=once)
+                )
                 if snapshot != previous:
                     document = {
                         key: value for key, value in snapshot.items() if key != "trip_updates"
@@ -450,6 +413,81 @@ class LivePublisher:
             if once:
                 return
             time.sleep(MOTION_POLL_SECONDS)
+
+
+def _scheduled_snapshot(
+    snapshot: dict[str, object],
+    schedule: LiveTripSchedule,
+    reporting: TripReporting,
+    now: datetime,
+    *,
+    wait: bool,
+) -> dict[str, object]:
+    vehicles = cast(list[dict[str, Any]] | None, snapshot["vehicle_positions"])
+    updates = cast(list[dict[str, Any]] | None, snapshot["trip_updates"])
+    if vehicles is None and updates is None:
+        return {**snapshot, **UNMEASURED}
+    loaded = schedule.at(now, wait=wait)
+    today = now.astimezone(schedule.zone).date()
+    candidate_days = [today + timedelta(days=offset) for offset in DAY_OFFSETS]
+    active_days = [
+        day
+        for day in candidate_days
+        if 0 <= (now - service_day_start(day, schedule.zone)).total_seconds() < MAX_SERVICE_SECONDS
+    ]
+    days = {
+        day: item
+        for day, item in loaded.items()
+        if item is not None
+        and (
+            day == today
+            or -3600
+            <= (now - service_day_start(day, schedule.zone)).total_seconds()
+            < MAX_SERVICE_SECONDS + 3600
+        )
+    }
+    if today not in days:
+        days = {}
+    trip_feed = next(
+        (
+            feed
+            for feed in cast(dict[str, dict[str, Any]], snapshot["feeds"]).values()
+            if feed["family"] == "trip_updates"
+        ),
+        None,
+    )
+    freshness = (
+        trip_feed["fresh_for_seconds"] + trip_feed["source_lag_seconds"]
+        if trip_feed is not None and feed_is_fresh(trip_feed, now)
+        else 0
+    )
+    try:
+        projected_vehicles, projected_updates = reconcile_delays(
+            vehicles, updates, days, schedule.zone, now, update_window=freshness
+        )
+    except (OSError, sqlite3.Error) as error:
+        LOGGER.warning("Live scheduled calls unavailable (%s)", type(error).__name__)
+        days = {}
+        projected_vehicles, projected_updates = reconcile_delays(
+            vehicles, updates, days, schedule.zone, now, update_window=0
+        )
+    counts = UNMEASURED
+    evidence = reporting.observe(snapshot, now)
+    if evidence is not None and all(day in days for day in active_days):
+        reports, cancellations = evidence
+        counts = count_silent_trips(
+            now,
+            schedule.zone,
+            {day: tuple(days[day].trips.values()) for day in active_days},
+            reports=reports,
+            cancellations=cancellations,
+        )
+    return {
+        **snapshot,
+        **counts,
+        "vehicle_positions": projected_vehicles,
+        "trip_updates": projected_updates,
+    }
 
 
 def _publish_trip_scopes(

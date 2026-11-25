@@ -200,6 +200,12 @@ first five minutes, with no grace after arrival. A fresh matching position
 is one reported within 90 seconds plus the declared source lag. The counts are
 null when the schedule, fresh movement feeds or vehicle trip IDs are unavailable.
 
+The city answer and `GET /v2/{city}/live-trips` use the same dated schedule
+to resolve vehicle and stop delays. A delay uses a fresh feed delay when
+supplied, or an absolute prediction minus the scheduled arrival or departure
+for that same stop. Unmatched, skipped and stale readings have no delay.
+On time is from one minute early through five minutes late, inclusive.
+
 ## Analytics
 
 The production site counts visits and a few named interactions with cookieless

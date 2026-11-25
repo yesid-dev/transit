@@ -78,7 +78,7 @@ export const livePort = {
 		return captureVehicles(await read(ctx), now());
 	},
 	async trips(ctx?: AdapterCtx) {
-		return captureTrips(await scopedTrips(ctx));
+		return captureTrips(await scopedTrips(ctx), now());
 	},
 	async stopDepartures(ctx?: AdapterCtx) {
 		return captureDepartures(await scopedTrips(ctx), now());

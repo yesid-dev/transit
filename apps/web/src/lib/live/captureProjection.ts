@@ -77,12 +77,15 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 	};
 }
 
-function stopEta(stop: CaptureTripReport['trip_updates'][number]['stops'][number]) {
+function stopEta(
+	stop: CaptureTripReport['trip_updates'][number]['stops'][number],
+	usableDelay: boolean,
+) {
 	const seconds = stop.departure ?? stop.arrival;
-	if (!stop.stop_id || seconds == null || seconds > 8.64e12 || stop.relationship === 1) {
+	if (!stop.stop_id || seconds == null || seconds > 8.64e12 || [1, 2].includes(stop.relationship)) {
 		return null;
 	}
-	const delay = stop.departure_delay ?? stop.arrival_delay;
+	const delay = usableDelay ? (stop.departure == null ? stop.arrival_delay : stop.departure_delay) : null;
 	return {
 		stop: stop.stop_id,
 		eta_utc: new Date(seconds * 1000).toISOString(),
@@ -91,8 +94,9 @@ function stopEta(stop: CaptureTripReport['trip_updates'][number]['stops'][number
 	};
 }
 
-export function captureTrips(report: CaptureTripReport) {
+export function captureTrips(report: CaptureTripReport, now: number) {
 	const feed = report.feed;
+	const usableDelay = feedState(feed, now) === 'live';
 	const captured = feed.captured_at;
 	if (!captured) throw new Error('Trip updates unavailable');
 	const payload = LiveTripsFileSchema.parse({
@@ -103,21 +107,21 @@ export function captureTrips(report: CaptureTripReport) {
 				update.trip_id,
 				{
 					route: update.route_id,
-					status: classifyDelay(update.delay),
-					delay_min: minute(update.delay),
+					status: classifyDelay(usableDelay ? update.delay : null),
+					delay_min: minute(usableDelay ? update.delay : null),
 					stops: update.stops.flatMap((stop) => {
-						const eta = stopEta(stop);
+						const eta = stopEta(stop, usableDelay);
 						return eta ? [eta] : [];
 					}),
 				},
 			]),
 		),
 	});
-	return { ...payload, captureFeed: feed, captureRevision: JSON.stringify(feed) };
+	return { ...payload, captureFeed: feed, captureRevision: JSON.stringify([feed, usableDelay]) };
 }
 
 export function captureDepartures(report: CaptureTripReport, now: number) {
-	const trips = captureTrips(report);
+	const trips = captureTrips(report, now);
 	const stops = new Map<
 		string,
 		{

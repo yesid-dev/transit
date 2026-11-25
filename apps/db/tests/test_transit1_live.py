@@ -60,7 +60,7 @@ def test_live_projection_retains_measurements_and_uses_the_previous_utc_day(tmp_
         VehiclePosition.EMPTY,
     )
     assert row["bearing"] is None
-    assert row["delay"] == 0
+    assert row["delay"] is None
     assert snapshot["trip_updates"][0]["stops"][0]["departure_delay"] == 0
     assert snapshot["alerts"] is None
     assert snapshot["feeds"]["i3_alerts"]["captured_at"] is None

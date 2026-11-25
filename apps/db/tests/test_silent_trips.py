@@ -149,9 +149,9 @@ def install_edition(raw_root, city):
         )
         archive.writestr(
             "stop_times.txt",
-            "trip_id,stop_sequence,arrival_time,departure_time\n"
+            "trip_id,stop_sequence,stop_id,arrival_time,departure_time\n"
             + "".join(
-                f"{trip},10,13:00:00,13:05:00\n{trip},1,11:55:00,12:00:00\n"
+                f"{trip},10,end,13:00:00,13:05:00\n{trip},1,start,11:55:00,12:00:00\n"
                 for trip, _, _ in trip_rows
             ),
         )
@@ -210,10 +210,36 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
     raw = LocalBronzeStorage("local", tmp_path)
     if edition:
         install_edition(tmp_path, city)
-    observed = snapshot(NOON, position("reporting" if identified else None))
+    reporting_vehicle = {
+        **position("reporting" if identified else None),
+        "route_id": "A",
+        "stop_id": "end",
+        "stop_sequence": 10,
+    }
+    observed = snapshot(NOON, reporting_vehicle)
     observed["feeds"]["trips"] = {**position_feed(NOON), "family": "trip_updates"}
     observed["trip_updates"] = [
         {"trip_id": "cancelled", "start_date": "20261124", "relationship": 3},
+        {
+            "trip_id": "reporting",
+            "start_date": "20261124",
+            "route_id": "A",
+            "direction_id": None,
+            "start_time": None,
+            "relationship": 0,
+            "delay": None,
+            "stops": [
+                {
+                    "sequence": 10,
+                    "stop_id": "end",
+                    "arrival": int(datetime(2026, 11, 24, 18, 5, 1, tzinfo=UTC).timestamp()),
+                    "departure": None,
+                    "arrival_delay": None,
+                    "departure_delay": None,
+                    "relationship": 0,
+                }
+            ],
+        },
     ]
     observed["city"] = city
     publisher = LivePublisher(manifest, raw)
@@ -229,6 +255,12 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
     publisher.run(dest, "", once=True)
     published = json.loads(dest.read_bytes(f"live/v2/{city}.json"))
     assert "trip_updates" not in published
+    scoped_index = json.loads(dest.read_bytes(f"live/v2/{city}/trips.json"))
+    packed = dest.read_bytes(f"live/v2/{city}/trips.bin")
+    start, length = scoped_index["ranges"]["trip:reporting"]
+    update = json.loads(packed[start : start + length])
+    assert update["stops"][0]["arrival_delay"] == (301 if edition else None)
+    assert published["vehicle_positions"][0]["delay"] == (301 if edition and identified else None)
     counts = {
         key: published[key]
         for key in ("scheduled_now", "non_responding", "cancelled_now", "non_responding_by_route")
@@ -241,7 +273,11 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
             "non_responding_by_route": [{"route_id": "B", "count": 1}],
         }
         with ThreadPoolExecutor(max_workers=1) as executor:
-            schedule = LiveTripSchedule(manifest, raw, "", executor)
-            assert schedule.at(NOON + timedelta(days=7), wait=True) is None
+            workspace = tmp_path / "schedule"
+            workspace.mkdir()
+            schedule = LiveTripSchedule(manifest, raw, "", executor, workspace)
+            assert all(
+                value is None for value in schedule.at(NOON + timedelta(days=7), wait=True).values()
+            )
     else:
         assert all(value is None for value in counts.values())

@@ -27,6 +27,7 @@ class TripSpan:
     route_id: str
     first: int
     last: int
+    direction_id: int | None = None
 
 
 def count_silent_trips(
@@ -77,7 +78,7 @@ def count_silent_trips(
     }
 
 
-def _fresh(feed: dict[str, Any], now: datetime) -> bool:
+def feed_is_fresh(feed: dict[str, Any], now: datetime) -> bool:
     captured = feed["captured_at"]
     if not captured or feed["read_failed"]:
         return False
@@ -104,7 +105,7 @@ class TripReporting:
         ]
         positions = [feed for feed in movement if feed["family"] == "vehicle_positions"]
         vehicles = snapshot["vehicle_positions"] or ()
-        if not positions or not all(_fresh(feed, now) for feed in positions):
+        if not positions or not all(feed_is_fresh(feed, now) for feed in positions):
             return None
         captured = min(datetime.fromisoformat(feed["captured_at"]) for feed in positions)
         self.reports = {
@@ -124,7 +125,7 @@ class TripReporting:
             if -5 <= (now - stamp).total_seconds() < self.window:
                 self.reports[key] = max(stamp, self.reports.get(key, stamp))
         if not any(vehicle["trip_id"] for vehicle in vehicles) or not all(
-            _fresh(feed, now) for feed in movement
+            feed_is_fresh(feed, now) for feed in movement
         ):
             return None
         cancelled = {
