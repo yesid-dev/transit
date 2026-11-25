@@ -47,7 +47,7 @@
 		return () => live?.stop();
 	});
 
-	const pulse = $derived(selectLivePulse(live?.network ?? null));
+	const pulse = $derived(selectLivePulse(live?.network ?? null, locale));
 	const health = $derived(live?.familyStates.network.health);
 	const alertHealth = $derived(live?.familyStates.alerts.health);
 	const stale = (health: LiveFamilyState['health'] | undefined) =>
@@ -78,7 +78,13 @@
 	const reporting = $derived(
 		reading(pulse?.reporting, live?.familyStates.network, networkAvailable),
 	);
-	const silent = $derived(reading(pulse?.silent, live?.familyStates.network, networkAvailable));
+	const silent = $derived(
+		reading(
+			pulse?.silentReading ? pulse.silent : null,
+			live?.familyStates.network,
+			networkAvailable,
+		),
+	);
 	const alerts = $derived(
 		reading(live?.alerts?.alerts.length, live?.familyStates.alerts, alertsAvailable),
 	);
@@ -149,7 +155,14 @@
 	<dl class="mt-3 grid gap-2">
 		<div class="flex flex-wrap items-baseline justify-between gap-x-2">
 			<dt>{t.silent}</dt>
-			<dd aria-busy={silent.kind === 'pending'}>{@render readingValue(silent)}</dd>
+			<dd aria-busy={silent.kind === 'pending'}>
+				{#if silent.kind === 'value' && pulse?.silentReading}
+					<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
+					<span class="text-muted-foreground">{pulse.silentReading.detail}</span>
+				{:else}
+					{@render readingValue(silent)}
+				{/if}
+			</dd>
 		</div>
 		<div class="flex flex-wrap items-baseline justify-between gap-x-2">
 			<dt>{t.alerts}</dt>

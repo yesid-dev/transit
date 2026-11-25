@@ -112,7 +112,10 @@ describe('capture-backed Live projection', () => {
 			non_responding_by_route: [],
 			cancelled_now: 2,
 		});
-		expect(selectLivePulse(measured, 'en')?.silentReading).toBe('0 of 1,306 trips scheduled now');
+		expect(selectLivePulse(measured, 'en')?.silentReading).toEqual({
+			value: '0',
+			detail: 'of 1,306 trips scheduled now',
+		});
 		expect(selectLivePulse(old, 'en')?.silentReading).toBeUndefined();
 		expect(captureNetwork({ ...current, scheduled_now: null }, now).non_responding).toBeNull();
 		expect(captureNetwork(current, now + 60_000).scheduled_now).toBeNull();
