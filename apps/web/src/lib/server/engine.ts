@@ -151,7 +151,13 @@ function engineFetch(
 	const headers = new Headers();
 	if (proxy && visitorIp) headers.set('x-transit-visitor-ip', visitorIp);
 	// The loopback test binding lets a fixture opt in to holding its own request.
-	if (!proxy && fixtureScope && question.parameters.measure === 'alert_counts')
+	if (
+		!proxy &&
+		fixtureScope &&
+		(question.parameters.measure === 'alert_counts' ||
+			fixtureScope === 'overview-stream' ||
+			fixtureScope === 'overview-stop-ranking')
+	)
 		headers.set('x-transit-fixture-scope', fixtureScope);
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
 	return proxy ? proxy.fetch(request) : fetch(request);
@@ -213,11 +219,21 @@ function periodQuery<T>(
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
-	return query(measureQuestion(measure, period), measureAnswer, period.visitorIp);
+	return query(
+		measureQuestion(measure, period),
+		measureAnswer,
+		period.visitorIp,
+		period.fixtureScope,
+	);
 }
 
 export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
-	return query(overviewRankingQuestion(kind, period), rankingAnswer, period.visitorIp);
+	return query(
+		overviewRankingQuestion(kind, period),
+		rankingAnswer,
+		period.visitorIp,
+		period.fixtureScope,
+	);
 }
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));

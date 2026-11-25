@@ -15,7 +15,12 @@ export const load: PageServerLoad = async ({ url, parent, request, locals }) => 
 	if (!period) return { record: null, liveRecord: null };
 
 	const visitorIp = request.headers.get('cf-connecting-ip');
-	const questions = overviewSelection({ ...period, city, visitorIp });
+	const questions = overviewSelection({
+		...period,
+		city,
+		visitorIp,
+		fixtureScope: request.headers.get('x-transit-fixture-scope'),
+	});
 	const punctuality = getMeasure(...questions.punctuality);
 	if (mode === 'live') return { record: null, liveRecord: { period, punctuality } };
 	const stops = getRanking(...questions.stops);

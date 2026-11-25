@@ -115,7 +115,11 @@ test('a client period change streams the shell before the engine answers', async
 	page,
 	request,
 }, info) => {
-	await page.goto(recordHref);
+	// The unscoped comparison uses the same dates the navigation will hold.
+	await page.goto('/?provider=stm&frameMode=record&recordFrom=2026-11-17&recordTo=2026-11-23');
+	const comparison = page.getByText('Against the 7 days before', { exact: true }).locator('..');
+	await expect(comparison.getByText('Not measured', { exact: true })).toBeVisible();
+	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'overview-stream' });
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	await (await openFrameControls(page)).getByRole('button', { name: 'Choose other dates' }).click();
 	const dialog = page.getByRole('dialog', { name: 'Period', exact: true });
@@ -277,6 +281,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	page,
 	request,
 }) => {
+	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'overview-stop-ranking' });
 	await page.goto('/?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15', {
 		waitUntil: 'commit',
 	});

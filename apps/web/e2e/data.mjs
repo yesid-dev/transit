@@ -680,7 +680,7 @@ const server = createServer((request, response) => {
 										? finderEngine(url)
 										: dailyFixture
 											? departureDailyEngine(url, dailyMessageHold)
-											: overviewEngine(url);
+											: overviewEngine(url, scope);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);

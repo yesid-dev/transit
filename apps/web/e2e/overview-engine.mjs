@@ -9,7 +9,7 @@ export const overviewNamedLines =
 			]
 		: [];
 
-export function overviewEngine(url) {
+export function overviewEngine(url, scope) {
 	const from = url.searchParams.get('from');
 	const to = url.searchParams.get('to');
 	const city = url.searchParams.get('city');
@@ -18,7 +18,7 @@ export function overviewEngine(url) {
 	const window = `${from}/${to}`;
 	if (window === '2026-11-12/2026-11-18' || window === '2026-11-05/2026-11-11')
 		return { status: 503, body: {} };
-	const hold = window === '2026-11-10/2026-11-16' ? 'overview-stream' : false;
+	const hold = scope === 'overview-stream' && window === '2026-11-10/2026-11-16' ? scope : false;
 	const measured = ['2026-11-01', '2026-11-08', '2026-11-09'].includes(from);
 	const days = measured
 		? Array.from({ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 }, (_, i) =>
@@ -58,7 +58,11 @@ export function overviewEngine(url) {
 				}))
 			: [];
 		return {
-			hold: hold || (kind === 'stop' && from === '2026-11-09' ? 'overview-stop-ranking' : false),
+			hold:
+				hold ||
+				(scope === 'overview-stop-ranking' && kind === 'stop' && from === '2026-11-09'
+					? scope
+					: false),
 			body: {
 				measure,
 				kind,
