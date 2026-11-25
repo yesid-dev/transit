@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 import { designPassCases } from './design-pass-cases';
@@ -38,6 +39,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				page.locator('#daily [data-slot="chart-line-series"][data-reference]'),
 			).toBeAttached();
 		}
+		if (screen === 'download') {
+			await expect(page.locator('[data-slot="record-card"]').first()).toBeVisible();
+		}
 		if (screen.startsWith('map-')) {
 			// The app exposes the live map and makes the poster inert at this handoff.
 			// Later source updates can make MapLibre's loaded() false again.
@@ -57,7 +61,10 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
 		const { report, focusSequences } = await measureDesignPass(page, {
 			countShadowRings:
-				screen.startsWith('overview') || screen === 'stop-record' || screen === 'how-we-measure',
+				screen.startsWith('overview') ||
+				screen === 'stop-record' ||
+				screen === 'how-we-measure' ||
+				screen === 'download',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
@@ -76,5 +83,19 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		);
 		await expect(page.getByRole('main')).not.toContainText(machineUnits);
 		expectDesignPass(screen, key, report);
+		if (screen === 'download') {
+			for (const theme of ['light', 'dark'] as const) {
+				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
+				await page.reload();
+				await expect(page.locator('[data-slot="screen-answer"]')).toBeVisible();
+				const { violations } = await new AxeBuilder({ page })
+					.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+					.analyze();
+				expect(
+					violations.map(({ id, nodes }) => ({ id, targets: nodes.map(({ target }) => target) })),
+					theme,
+				).toEqual([]);
+			}
+		}
 	});
 }

@@ -13,6 +13,9 @@ import { alertsEngine } from './alerts-engine.mjs';
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 const methodCatalog = read('method-catalog.json');
 const cleanTableHealth = JSON.parse(read('clean-table-health.json'));
+const downloadLicences = JSON.parse(
+	read('../../data-proxy/test/fixtures/download-licences.golden.json'),
+);
 // STM serves the listed feeds; OC Transpo serves a manifest, provenance and a passing pipeline gate.
 // Every unlisted v1 path is a 404.
 const files = Object.fromEntries(
@@ -314,6 +317,55 @@ const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
 	const url = new URL(request.url, 'http://127.0.0.1');
+	const download = /^\/v2\/([a-z0-9_-]+)\/download$/.exec(url.pathname);
+	if (download) {
+		const city = download[1];
+		const licence = downloadLicences.licences[city];
+		const date = url.searchParams.get('date') ?? downloadLicences.date;
+		if (!licence) return response.writeHead(404).end();
+		if (date === '2026-11-01') return response.writeHead(502).end();
+		const status = date === '2026-11-07' ? 'missing' : 'complete';
+		const prefix = `/v2/${city}/download/${date}`;
+		const alerts_not_tracked = city === 'octranspo';
+		const names = [
+			'scheduled_stop_times',
+			'trip_days',
+			'stop_events',
+			'vehicle_positions',
+			'alerts',
+			'feed_polls',
+			'prediction_samples',
+			'segment_runs',
+		];
+		const files = names
+			.filter((name) => name !== 'alerts' || !alerts_not_tracked)
+			.map((name, i) => ({
+				name: name + '.parquet',
+				byte_size: (i + 1) * 679_805,
+				sha256: 'a'.repeat(64),
+				url: `${prefix}/${name}.parquet?version=12`,
+			}));
+		return response.writeHead(200, { 'content-type': 'application/json' }).end(
+			JSON.stringify({
+				city,
+				service_date: date,
+				cleaning_version: '12',
+				status,
+				alerts_not_tracked,
+				files: status === 'complete' ? files : [],
+				readme_url: status === 'complete' ? `${prefix}/README.txt?version=12` : null,
+				licence: {
+					...licence,
+					changes: Object.fromEntries(
+						Object.entries(licence.changes).map(([lang, text]) => [
+							lang,
+							text.replace(downloadLicences.date, date),
+						]),
+					),
+				},
+			}),
+		);
+	}
 	if (url.pathname === '/v2/how-we-measure' && !url.search) {
 		response.writeHead(200, { 'content-type': 'application/json' }).end(methodCatalog);
 		return;

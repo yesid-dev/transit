@@ -5,7 +5,7 @@ const today = '2026-11-22';
 const state = (href: string) => frameControlsState(new URL(href, 'https://transit.test'), today);
 
 describe('frame control state', () => {
-	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/repeat-offenders'])(
+	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/repeat-offenders', '/fr/download'])(
 		'shows Record when a live link opens the record-only %s',
 		(path) =>
 			expect(state(path + '?frameMode=live')).toMatchObject({ mode: 'record', recordOnly: true }),

@@ -7,19 +7,24 @@
 		plate,
 		stopCode,
 		back,
+		compact = false,
 	}: {
 		title: string;
 		subtitle?: string;
 		plate?: string;
 		stopCode?: string;
 		back?: { href: string; label: string };
+		compact?: boolean;
 	} = $props();
 </script>
 
 <header class="flex min-w-0 flex-wrap items-start justify-between gap-3">
 	<hgroup class="min-w-0" class:inline-plate={stopCode}>
 		{#if stopCode}<span class="stop-code" aria-hidden="true">{stopCode}</span>{/if}
-		<h1 class="flex flex-wrap items-center gap-2 wrap-break-word text-title font-bold">
+		<h1
+			class="flex flex-wrap items-center gap-2 wrap-break-word text-title font-bold"
+			class:compact
+		>
 			{#if plate}<RoutePlate code={plate} size="lg" />{/if}
 			{title}
 		</h1>
@@ -55,6 +60,10 @@
 			grid-column: 1;
 		}
 	}
+	.compact {
+		font-size: clamp(1.25rem, 8vi, var(--text-title));
+	}
+
 	.record-link {
 		display: inline-flex;
 		align-items: center;

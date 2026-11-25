@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/svelte';
+import { render, screen, within } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
-import { downloadTables } from '#lib/features/record/downloadTables.ts';
+import { downloadLayouts, downloadTables } from '#lib/features/record/downloadTables.ts';
 import Page from './+page.svelte';
 
 const { language } = vi.hoisted(() => ({ language: { value: 'en' as 'en' | 'fr' } }));
@@ -38,7 +38,7 @@ const cases = [
 ] as const;
 
 it.each(cases)(
-	'renders the %s download page for cleaning version %s with date selection, file and licence',
+	'renders the %s download page for cleaning version %s with a confirmed file and licence',
 	async (locale, version) => {
 		language.value = locale;
 		const city = { city: 'Ottawa', operator: 'OC Transpo' };
@@ -48,30 +48,63 @@ it.each(cases)(
 			props: {
 				data: {
 					providerId: 'octranspo',
-					providers: [{ id: 'octranspo', labels: { en: city, fr: city } }],
-					date: day,
-					invalidDate: false,
+					city,
+					period: { from: '2026-11-19', to: day, preset: null },
+					window: { from: '2026-11-19', to: day, page: 0, lastPage: 0 },
+					methods: null,
 					listing: Promise.resolve({
-						kind: 'answer' as const,
-						answer: {
-							city: 'octranspo',
-							service_date: day,
-							cleaning_version: version,
-							status: 'complete' as const,
-							files: [{ name: filename, byte_size: 500, sha256: '1'.repeat(64), url: file }],
-							readme_url: `${downloadPath}/README.txt?version=${version}`,
-							alerts_not_tracked: true,
-							licence,
-						},
+						unavailable: false,
+						busy: false,
+						listings: [
+							{
+								city: 'octranspo',
+								service_date: day,
+								cleaning_version: version,
+								status: 'complete' as const,
+								files: [{ name: filename, byte_size: 4800000, sha256: '1'.repeat(64), url: file }],
+								readme_url: `${downloadPath}/README.txt?version=${version}`,
+								alerts_not_tracked: true,
+								licence,
+							},
+							{
+								city: 'octranspo',
+								service_date: '2026-11-19',
+								cleaning_version: version,
+								status: 'missing' as const,
+								files: [],
+								readme_url: null,
+								alerts_not_tracked: true,
+								licence,
+							},
+						],
 					}),
 				},
 			},
 		});
-		expect(await screen.findByRole('link', { name: filename })).toHaveAttribute('href', file);
-		expect(screen.getByRole('link', { name: attribution[locale] })).toHaveAttribute('href', source);
-		expect(screen.getByLabelText(locale === 'en' ? 'Service date' : 'Date de service')).toHaveValue(
-			day,
+		const chosen = version === '12' ? downloadLayouts.segment_runs : downloadLayouts.stop_events;
+		const card = await screen.findByRole('article', { name: chosen[locale] });
+		within(card)
+			.getByText(locale === 'en' ? 'See the layout and files' : 'Voir la structure et les fichiers')
+			.click();
+		expect(await screen.findByRole('link', { name: new RegExp(filename) })).toHaveAttribute(
+			'href',
+			file,
 		);
+		expect(screen.getByRole('link', { name: attribution[locale] })).toHaveAttribute('href', source);
+		expect(screen.queryByRole('combobox')).toBeNull();
+		expect(
+			screen
+				.getAllByText(locale === 'en' ? /4\.8 MB/ : /4,8\sMo/)
+				.every((node) => node.checkVisibility()),
+		).toBe(true);
+		expect(screen.queryByRole('link', { name: /19 Nov|19 nov/ })).toBeNull();
+		expect(
+			within(card).getByRole('list', {
+				name: locale === 'en' ? 'Dates without files' : 'Dates sans fichier',
+			}),
+		).toHaveTextContent(locale === 'en' ? /19 Nov.*Missing/i : /19 nov.*Manquant/i);
+		expect(card.querySelector('[data-record-state="not_measured"]')).toBeVisible();
+		expect(screen.getByText(licence.changes[locale])).toBeVisible();
 		expect(
 			screen.getByText(
 				locale === 'en'
@@ -88,3 +121,59 @@ it.each(cases)(
 		}
 	},
 );
+
+it.each([
+	['en', 0, 'files cover these dates: 8 clean tables, one file for each of the 7 days.'],
+	['fr', 0, 'fichiers couvrent ces dates : 8 tables nettoyées, un fichier par jour sur 7 jours.'],
+	['en', 3, 'files cover these dates; 3 are missing, see the cards.'],
+	['fr', 3, 'fichiers couvrent ces dates ; il en manque 3, consultez les fiches.'],
+] as const)('describes the %s grid with %i missing files', async (locale, missing, sentence) => {
+	language.value = locale;
+	const dates = [
+		'2026-11-14',
+		'2026-11-15',
+		'2026-11-16',
+		'2026-11-17',
+		'2026-11-18',
+		'2026-11-19',
+		day,
+	];
+	const period = { from: dates[0], to: day, preset: null };
+	const { container } = render(Page, {
+		props: {
+			data: {
+				providerId: 'stm',
+				city: null,
+				period,
+				window: { ...period, page: 0, lastPage: 0 },
+				methods: null,
+				listing: Promise.resolve({
+					unavailable: false,
+					busy: false,
+					listings: dates.map((date, i) => ({
+						city: 'stm',
+						service_date: date,
+						cleaning_version: '12',
+						status: 'complete' as const,
+						files: Object.keys(downloadLayouts)
+							.slice(i === 0 ? missing : 0)
+							.map((table) => ({
+								name: table + '.parquet',
+								byte_size: 4800000,
+								sha256: '1'.repeat(64),
+								url: `https://data.yesid.dev/v2/stm/download/${date}/${table}.parquet?version=12`,
+							})),
+						readme_url: null,
+						alerts_not_tracked: false,
+						licence,
+					})),
+				}),
+			},
+		},
+	});
+	expect(await screen.findByText(sentence)).toBeVisible();
+	expect(container.querySelector('[data-slot="screen-answer"]')).toHaveTextContent(
+		String(56 - missing),
+	);
+	expect(container.querySelectorAll('article [data-record-state]')).toHaveLength(missing);
+});

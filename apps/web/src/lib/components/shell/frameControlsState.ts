@@ -75,7 +75,8 @@ export const frameCopy = {
 
 export function frameControlsState(url: URL, today: string) {
 	const path = delocalizePath(url.pathname).replace(/\/$/, '') || '/';
-	const recordOnly = isRankingPath(path) || ['/lines', '/stops', '/receipt'].includes(path);
+	const recordOnly =
+		isRankingPath(path) || ['/lines', '/stops', '/receipt', '/download'].includes(path);
 	const line = /^\/lines\/[^/]+$/.test(path);
 	const stop = /^\/stop\/[^/]+$/.test(path);
 	const map = path === '/map';
