@@ -1,3 +1,4 @@
+import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 import { expect, test } from '@playwright/test';
 import { textDefects } from './layout-helpers';
 
@@ -173,9 +174,11 @@ test('changes dates, class, measure and list while keeping the ranking URL share
 	await page.getByRole('radio', { name: 'Vehicles', exact: true }).click();
 	await expect(page).toHaveURL(/repeat-offenders.*kind=vehicle/);
 	await expect(page.getByText('24.39 per 100 h')).toBeVisible();
-	await page.getByRole('button', { name: /^Period/ }).click();
+	await (await openFrameControls(page)).getByRole('button', { name: 'Choose other dates' }).click();
 	await page.getByLabel('From', { exact: true }).fill('2026-11-10');
 	await page.getByRole('button', { name: 'Show these dates' }).click();
+	await expect(page.getByRole('dialog', { name: 'Period', exact: true })).toBeHidden();
+	await closeCompactFrameControls(page);
 	await expect(page.getByText('Not tracked', { exact: true })).toBeVisible();
 });
 
@@ -191,9 +194,7 @@ test('a slow ranking streams patience and completes without reloading', async ({
 	);
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.getByRole('heading', { name: 'Hotspots', exact: true })).toBeVisible();
-	await expect(
-		page.getByText('Still working on this. You can wait or come back later.'),
-	).toBeVisible();
+	await expect(page.getByText('These records take longer')).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect(
 		(

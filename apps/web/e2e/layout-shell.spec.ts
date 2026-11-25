@@ -107,15 +107,27 @@ async function pillDividerGaps(page: Page) {
 			if (['absolute', 'fixed'].includes(getComputedStyle(element).position)) return false;
 			return element.getBoundingClientRect().width > 0.5;
 		};
-		const neighbour = (element: Element, step: 'previous' | 'next') => {
-			for (
-				let node = element[step === 'previous' ? 'previousElementSibling' : 'nextElementSibling'];
-				node;
-				node = node[step === 'previous' ? 'previousElementSibling' : 'nextElementSibling']
-			)
-				if (shown(node)) return node;
+		type Direction = 'previous' | 'next';
+		const boundary = (element: Element, step: Direction): HTMLElement | null => {
+			if (shown(element)) return element;
+			if (getComputedStyle(element).display !== 'contents') return null;
+			const children = Array.from(element.children);
+			if (step === 'previous') children.reverse();
+			for (const child of children) {
+				const candidate = boundary(child, step);
+				if (candidate) return candidate;
+			}
 			return null;
 		};
+		const neighbour = (element: Element, step: Direction) => {
+			const sibling = step === 'next' ? 'nextElementSibling' : 'previousElementSibling';
+			for (let node = element[sibling]; node; node = node[sibling]) {
+				const candidate = boundary(node, step);
+				if (candidate) return candidate;
+			}
+			return null;
+		};
+
 		const pill = document.querySelector('[data-testid="nav-pill"]')!;
 		return [...pill.querySelectorAll('.nav-divider, .product-brand-divider')]
 			.filter(shown)
@@ -147,6 +159,21 @@ for (const locale of ['en', 'fr'] as const)
 			await pillFits(pill);
 			await singleLine(pill.locator('[data-slot="product-brand-name"]'));
 
+			if (width >= 1024) {
+				// The kit places the city visually before moving its DOM node into desktop Tab order.
+				await expect
+					.poll(() =>
+						pill
+							.locator('[data-slot="site-header-network"]')
+							.evaluate(
+								(city) =>
+									getComputedStyle(city).position === 'absolute' ||
+									city.nextElementSibling?.classList.contains('nav-trailing') === true,
+							),
+					)
+					.toBe(true);
+			}
+
 			// Every `|` keeps the same space on both sides, whatever tier supplies it. Below 360px the
 			// kit draws no navbar divider at all, so 320px has nothing to measure.
 			const gaps = await pillDividerGaps(page);
@@ -166,8 +193,7 @@ for (const locale of ['en', 'fr'] as const)
 			for (const control of [theme, language, menu]) await targetFits(control, page);
 			await expect(language).toHaveAccessibleName(new RegExp(copy.names[locale]));
 			const refresh = pill.getByRole('button', { name: copy.refresh, exact: true });
-			if (width < 600) await expect(refresh).toBeHidden();
-			else await targetFits(refresh, page);
+			await expect(refresh).toHaveCount(0);
 			if (width < 1024) {
 				const search = pill.getByRole('button', { name: copy.searchAria.all, exact: true });
 				await targetFits(search, page);
@@ -187,7 +213,7 @@ for (const locale of ['en', 'fr'] as const)
 			);
 			await pillFits(pill);
 			await singleLine(pill.locator('[data-slot="product-brand-name"]'));
-			await targetFits(refresh, page);
+			await expect(refresh).toHaveCount(0);
 			await expect(
 				pill.getByRole('button', { name: copy.searchAria.all, exact: true }),
 			).toBeHidden();

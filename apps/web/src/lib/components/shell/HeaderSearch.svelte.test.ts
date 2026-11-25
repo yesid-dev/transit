@@ -35,7 +35,7 @@ function show(
 	const list = searchTransit({ surface: 'list', query, scope }, { routes, stops, vehicles: [] });
 	const url = new URL(at, 'https://transit.local');
 	const view = render(HeaderSearch, {
-		props: { locale, providerId: 'stm', url, scope, list, query },
+		props: { locale, providerId: 'stm', url, list, query },
 	});
 	return { ...view, input: view.getByRole('combobox', { name: /^(Search|Rechercher)/ }) };
 }
@@ -168,7 +168,7 @@ it('says nothing about matches while the indexes load', () => {
 			locale: 'en',
 			providerId: 'stm',
 			url: new URL('https://transit.local/'),
-			scope: 'all',
+
 			list,
 			query: 'zzz',
 		},
@@ -192,7 +192,7 @@ it.each([
 			const list = searchTransit({ surface: 'list', query: 'van' }, { routes, stops: null });
 			const url = new URL('https://transit.local/');
 			const view = render(HeaderSearch, {
-				props: { locale, providerId: 'stm', url, scope: 'all', list, query: 'van' },
+				props: { locale, providerId: 'stm', url, list, query: 'van' },
 			});
 			await vi.advanceTimersByTimeAsync(500);
 			expect(view.getByRole('status').textContent).toBe(said);

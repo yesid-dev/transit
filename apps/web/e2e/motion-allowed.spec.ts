@@ -126,7 +126,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			page,
 		}) => {
 			await page.emulateMedia({ reducedMotion });
-			await page.goto(localizeHref('/', locale, provider));
+			await page.goto(localizeHref('/status?frameMode=live', locale, provider));
 			await page.waitForLoadState('networkidle');
 			await expectIdle(page);
 			let release!: () => void;

@@ -56,7 +56,6 @@ function open(query = 'van') {
 				locale: 'en',
 				providerId: 'stm',
 				url: new URL('https://transit.local/'),
-				scope: 'all',
 				list,
 				query,
 				label: 'Search the network',

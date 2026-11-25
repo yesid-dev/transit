@@ -1,3 +1,4 @@
+import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 import { expect, test } from '@playwright/test';
 
 test.beforeEach(({ browserName }, info) => {
@@ -72,9 +73,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 		timeout: 10_000,
 	});
 	await expect(main.getByText(/L3/)).toBeVisible();
-	await expect(
-		main.getByText('Still working on this. You can wait or come back later.'),
-	).toBeVisible();
+	await expect(main.getByText('These records take longer')).toBeVisible();
 	await main.getByText('Cite', { exact: true }).click();
 	await expect(main.getByText(/Method v2|Méthode v2/).first()).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
@@ -83,9 +82,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	);
 	expect(release.status()).toBe(204);
 	await expect(main.getByText('S3', { exact: true })).toBeVisible();
-	await expect(
-		main.getByText('Still working on this. You can wait or come back later.'),
-	).toHaveCount(0);
+	await expect(main.getByText('These records take longer')).toHaveCount(0);
 });
 
 test('Live and Record show the same punctuality for the same week (OV1)', async ({ page }) => {
@@ -96,7 +93,8 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 		.getByText(/8 to 14 Nov 2026, 81\.2% of observed stop events/);
 	await expect(reading).toBeVisible();
 	const recordReading = await reading.innerText();
-	await page.getByRole('radio', { name: 'Live now' }).click();
+	await (await openFrameControls(page)).getByRole('radio', { name: 'Live now' }).click();
+	await closeCompactFrameControls(page);
 	await expect(page).toHaveURL(/frameMode=live/);
 	await expect(main.getByRole('region', { name: 'Record for the selected period' })).toContainText(
 		recordReading,
@@ -110,17 +108,20 @@ test('changing the custom period reloads Record and Live now still opens the exi
 	const main = page.getByRole('main');
 	const punctuality = main.getByRole('region', { name: 'On-time performance' });
 	await expect(punctuality.getByText(/8 to 14 Nov 2026/)).toBeVisible();
-	await page.getByRole('button', { name: /^Period/ }).click();
-	const dialog = page.getByRole('dialog');
+	await (await openFrameControls(page)).getByRole('button', { name: 'Choose other dates' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Period', exact: true });
 	await dialog.getByLabel('From', { exact: true }).fill('2026-11-08');
 	await dialog.getByLabel('To', { exact: true }).fill('2026-11-08');
 	await dialog.getByRole('button', { name: 'Show these dates' }).click();
+	await expect(dialog).toBeHidden();
+	await closeCompactFrameControls(page);
 	await expect(punctuality.getByText(/8 Nov 2026/)).toBeVisible();
 	await expect(page).toHaveURL(/recordTo=2026-11-08/);
 	await expect(main.getByRole('region', { name: 'Same weekday last week' })).toContainText(
 		'1 Nov 2026',
 	);
-	await page.getByRole('radio', { name: 'Live now' }).click();
+	await (await openFrameControls(page)).getByRole('radio', { name: 'Live now' }).click();
+	await closeCompactFrameControls(page);
 	await expect(main.getByText(/how the Montréal · STM network actually runs/)).toBeVisible();
 	await expect(main.getByRole('navigation', { name: 'Explore everything' })).toBeVisible();
 	await page.goBack();

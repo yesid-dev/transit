@@ -54,7 +54,7 @@
 		<h2 id={`${section}-title`}>{title}</h2>
 		{@render controls?.()}
 		{#await answer}
-			{#key answer}<RecordPending {locale} />{/key}
+			{#key answer}<RecordPending {locale} {answer} />{/key}
 		{:then result}
 			{#if result.kind === 'answer'}
 				{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
@@ -72,6 +72,8 @@
 				{#if printable}<p class="report-citation">
 						{citation(result.answer, result.lastGood)}
 					</p>{/if}
+			{:else if result.kind === 'busy'}
+				<RecordPending {locale} busy />
 			{:else}
 				<StateNotice presentation="frameless" title={recordConnection[result.kind][locale]} />
 			{/if}

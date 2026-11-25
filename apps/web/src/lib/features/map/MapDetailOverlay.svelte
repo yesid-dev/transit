@@ -164,7 +164,7 @@
 <style>
 	.map-detail-overlay {
 		position: absolute;
-		inset-block: 0;
+		inset-block: 0 var(--map-source-clearance, 0px);
 		right: 0;
 		z-index: var(--z-map-detail-panel, 32);
 		display: flex;

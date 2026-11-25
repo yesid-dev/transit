@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button } from '@yesid/ui/button';
 	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
 	import { onMount, untrack } from 'svelte';
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -124,10 +125,19 @@
 			{/if}
 			<p class="reserve" aria-hidden="true" data-reserve={stampReserve}></p>
 		</div>
-		<button type="button" class="live-refresh" onclick={refresh} disabled={!live}>
-			<RefreshIcon size={16} strokeWidth={1.8} aria-hidden="true" />
-			{t.refresh}
-		</button>
+		<div class="min-h-11">
+			{#if !failed && presentation}<Button
+					type="button"
+					variant="outline"
+					size="cta-sm"
+					class="min-h-11"
+					onclick={refresh}
+					disabled={!live}
+				>
+					<RefreshIcon size={16} strokeWidth={1.8} aria-hidden="true" />
+					{t.refresh}
+				</Button>{/if}
+		</div>
 	</div>
 	<div class="slot live-result" data-failed={result?.kind === 'failed'}>
 		<p aria-live="polite">
@@ -208,33 +218,6 @@
 	}
 	.live-absent {
 		color: var(--secondary-foreground);
-	}
-	.live-refresh {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		min-height: 44px;
-		padding: 0 0.25rem;
-		color: var(--primary);
-		font: inherit;
-		font-weight: 600;
-		background: none;
-		border: 0;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-	}
-	.live-refresh:hover {
-		text-decoration: underline;
-		text-underline-offset: 0.2em;
-	}
-	.live-refresh:focus-visible {
-		outline: 2px solid var(--primary);
-		outline-offset: 2px;
-	}
-	.live-refresh:disabled {
-		color: var(--muted-foreground);
-		cursor: default;
-		text-decoration: none;
 	}
 	.live-result {
 		font-size: var(--text-small);

@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { expectAccessible } from '@yesid/config/playwright';
-import { networkReliabilityCopy } from '../src/lib/features/network/reliability/network-reliability.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 
@@ -187,15 +186,15 @@ for (const locale of PUBLISHED_LOCALES) {
 				const page = await context.newPage();
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 				await page.goto(localizeHref('/network?frameMode=live', locale));
-				const pill = page.locator('.surface-rail-pill');
+				await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
+				const pill = page.locator('.surface-rail-pill:visible');
+				await expect(pill).toHaveCount(1);
 				const sheet = page.getByRole('dialog', {
-					name: networkReliabilityCopy[locale].viewControlsLabel,
+					name: locale === 'fr' ? 'Commandes' : 'Controls',
 					exact: true,
 				});
-				await expect(async () => {
-					if (!(await sheet.isVisible())) await pill.tap();
-					await expect(sheet).toBeVisible({ timeout: 1000 });
-				}).toPass();
+				await pill.tap();
+				await expect(sheet).toBeVisible();
 				await expect(sheet.locator('[data-slot="surface-rail"]')).toBeVisible();
 				await expect(sheet.locator('[data-slot="sheet-header"]')).toHaveCount(0);
 				const motion = await sheet.evaluate((element) => {
@@ -206,7 +205,10 @@ for (const locale of PUBLISHED_LOCALES) {
 					expect(motion.animation).toBe('none');
 					expect(motion.transition).toBe('none');
 				} else expect(motion.animation).not.toBe('none');
-				const segment = sheet.getByRole('radio', { disabled: false }).first();
+				const segment = sheet
+					.locator('[data-slot="grain-picker"]')
+					.getByRole('radio', { disabled: false })
+					.first();
 				await segment.tap();
 				await expect(segment).toHaveAttribute('aria-checked', 'true');
 				await page.keyboard.press('Tab');

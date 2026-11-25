@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import CalendarIcon from '@lucide/svelte/icons/calendar';
 	import InfoIcon from '@lucide/svelte/icons/info';
 	import { StatusDot } from '@yesid/ui/brand';
@@ -106,12 +107,17 @@
 				{#each column.lines as key (key)}
 					{@const text = shown[key]}
 					{@const held = holds(key)}
-					{#if text || held.length > 0}<p>
+					{#if text || held.length > 0}<p data-slot="health-reading">
 							{#each held as hold (hold)}<span aria-hidden="true">{hold}</span>{/each}<span
 								>{text ?? ''}</span
 							>
 						</p>{/if}
 				{/each}
+				{#if column.key === 'live' && provider}
+					<div class="min-h-11">
+						{#if live && shown.live}<RefreshButton {locale} />{/if}
+					</div>
+				{/if}
 			</section>
 		{/each}
 	</div>

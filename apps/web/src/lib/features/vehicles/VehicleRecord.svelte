@@ -61,7 +61,7 @@
 			<h2 id={`${section}-title`}>{heading}</h2>
 			{#if section === 'punctuality'}<p>{assignmentCaution[locale]}</p>{/if}
 			{#await answer}
-				{#key answer}<RecordPending {locale} />{/key}
+				{#key answer}<RecordPending {locale} {answer} />{/key}
 			{:then result}
 				{@const message = recordMessage(result, locale)}
 				{#if result.kind === 'answer'}
@@ -195,6 +195,8 @@
 						csv={links.csv}
 						citation={`Transit. ${title}. ${heading}. ${data.period ? dateRange(data.period, locale) : ''}. ${methodEvidence(reading.evidence, locale)} ${links.share}`}
 					/>
+				{:else if result.kind === 'busy'}
+					<RecordPending {locale} busy />
 				{:else if message}
 					<StateNotice presentation="frameless" title={message} />
 				{/if}

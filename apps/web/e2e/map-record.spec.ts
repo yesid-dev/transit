@@ -73,8 +73,16 @@ for (const locale of ['en', 'fr'] as const) {
 		).toHaveAttribute('href', /\/lines\/24.*direction=0.*recordTo=2026-11-21/);
 		expect(received.every((params) => params.get('from') === '2026-11-18')).toBe(true);
 		expect(received.every((params) => params.get('city') === 'stm')).toBe(true);
-		await page.getByRole('button', { name: fr ? /^Période/ : /^Period/ }).click();
-		await page.getByRole('button', { name: fr ? 'Hier' : 'Yesterday', exact: true }).click();
+		const phone = page.viewportSize()!.width < 1024;
+		if (phone) {
+			await page
+				.getByRole('button', {
+					name: fr ? /^Commandes.*Ouvrir les commandes/ : /^Controls.*Open controls/,
+				})
+				.click();
+		}
+		await page.getByRole('radio', { name: fr ? 'Hier' : 'Yesterday', exact: true }).click();
+		if (phone) await page.keyboard.press('Escape');
 		await expect.poll(() => received.at(-1)?.get('from')).toBe('2026-11-22');
 		expect(received.at(-1)?.get('line')).toBe('24');
 		await line.selectOption('');

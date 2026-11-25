@@ -78,13 +78,15 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 	});
 	await expect(page.getByRole('region', { name: 'The answer' })).toContainText('12.5');
 	const messages = page.getByRole('region', { name: 'Agency messages' });
-	await expect(messages.getByRole('status')).toHaveText(
-		'Still working on this. You can wait or come back later.',
-	);
+	await expect(messages.getByText('Calculating…', { exact: true })).toBeVisible();
+	const patience = page.locator('[data-slot="record-patience"]').getByRole('status');
+	await expect(patience).toHaveCount(1);
+	await expect(patience).toContainText('These records take longer');
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const release = await request.post(
 		`http://127.0.0.1:${dataPort}/__overview/release?fixture=alerts-${date}`,
 	);
 	expect(release.status()).toBe(204);
 	await expect(messages.getByRole('heading', { name: 'Detour on line 24' })).toBeVisible();
+	await expect(patience).toContainText('Answered');
 });

@@ -90,8 +90,11 @@ test('homepage ground follows window scrolling and reverses without moving the t
 		}),
 	).toContain('linear-gradient');
 	const root = page.locator('#main');
-	await root.focus();
-	// Focus scrolls the main into view and hides the ground again.
+	const skip = page.getByRole('link', { name: 'Skip to content', exact: true });
+	await skip.focus();
+	await skip.press('Enter');
+	// The skip link moves focus and scrolls to the start of the frame's main landmark.
+	await expect(root).toBeFocused();
 	await expect(props).toHaveAttribute('data-state', 'hidden');
 	await Promise.all([
 		page.evaluate(
@@ -483,7 +486,7 @@ test('the Stop Record header clears the frame and gives its back link a full tar
 	await expect(title).toBeVisible();
 	await expect(main.locator('[data-slot="article-header"] canvas')).toHaveCount(0);
 	await page.evaluate(() => document.fonts.ready);
-	const chrome = (await page.locator('[data-slot="app-frame-controls"]').boundingBox())!;
+	const chrome = (await page.locator('[data-slot="app-frame-header"]').boundingBox())!;
 	const back = (await link.boundingBox())!;
 	const heading = (await title.boundingBox())!;
 	expect(back.y).toBeGreaterThanOrEqual(chrome.y + chrome.height);

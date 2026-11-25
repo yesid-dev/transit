@@ -63,7 +63,7 @@
 </script>
 
 <Surface>
-	<div class="grid min-w-0 gap-4">
+	<div class="grid min-w-0 gap-4 lg:gap-3">
 		<header class="grid gap-2">
 			<a class="inline-flex min-h-11 w-fit items-center" href={back}>
 				{t('All lines', 'Toutes les lignes')}
@@ -115,11 +115,13 @@
 						</a>
 					{/if}
 					{#await answer}
-						{#key answer}<RecordPending {locale} />{/key}
+						{#key answer}<RecordPending {locale} {answer} />{/key}
 					{:then result}
 						{@const message = recordMessage(result, locale)}
 						{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{#if message && (section !== 'waiting' || result.kind !== 'answer')}
+						{#if result.kind === 'busy'}
+							<RecordPending {locale} busy />
+						{:else if message && (section !== 'waiting' || result.kind !== 'answer')}
 							<StateNotice presentation="frameless" title={message} />
 						{/if}
 						{#if result.kind === 'answer'}

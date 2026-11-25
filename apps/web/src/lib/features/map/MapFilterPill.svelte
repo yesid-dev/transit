@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
 	import { untrack, type Snippet } from 'svelte';
-	import { ChevronToggle } from '@yesid/ui/brand';
+	import ListFilterIcon from '@lucide/svelte/icons/list-filter';
 	import * as Sheet from '@yesid/ui/sheet';
 	import { desktop } from '@yesid/ui/state';
 	import type { FilterStore } from '#lib/filters/index.ts';
@@ -70,12 +70,13 @@
 				type="button"
 				class="map-filter-pill"
 				aria-expanded={drawerOpen}
-				>{#snippet child({ props })}<Button {...props} variant="ghost" size="sm">
-						<span class="map-filter-pill-dot" data-active={activeCount > 0}></span>
-						<span class="map-filter-pill-name">{t.controlsTitle}</span>
-						<span class="map-filter-pill-counter" data-empty={activeCount === 0}>{activeCount}</span
-						>
-						<ChevronToggle open={drawerOpen} size="sm" direction="down" />
+				aria-label={t.activeFilters(activeCount)}
+				title={t.mapFilters}
+				>{#snippet child({ props })}<Button {...props} variant="ghost" size="icon-tap">
+						<ListFilterIcon aria-hidden="true" />
+						{#if activeCount > 0}<span class="map-filter-pill-counter" aria-hidden="true"
+								>{activeCount}</span
+							>{/if}
 					</Button>{/snippet}</Sheet.Trigger
 			>
 		</div>
@@ -86,6 +87,7 @@
 		modal={false}
 		interactOutsideBehavior="close"
 		showCloseButton={false}
+		portalProps={{ to: pillBtn?.closest<HTMLElement>('[data-slot="app-shell"]') ?? 'body' }}
 		class="m6b-controls-drawer inset-x-auto top-auto h-auto w-auto max-w-none gap-0 overflow-y-auto rounded-lg border p-0"
 		data-m6b-controls-drawer=""
 		data-testid="map-filter-drawer"
@@ -99,7 +101,7 @@
 			tabindex={-1}
 			data-testid="map-filter-drawer-title"
 		>
-			{t.controlsTitle}
+			{t.mapFilters}
 		</Sheet.Title>
 
 		<div class="map-filter-drawer-controls">
@@ -119,8 +121,8 @@
 <style>
 	.map-filter-pill-container {
 		position: fixed;
-		bottom: var(--map-mobile-control-bottom);
-		left: 0.75rem;
+		bottom: var(--map-touch-row-bottom);
+		left: calc(1.25rem + var(--size-tap-min));
 		transform: none;
 		z-index: var(--z-sheet);
 	}
@@ -130,8 +132,9 @@
 		align-items: center;
 		gap: 0.5rem;
 		min-height: 44px;
-		max-width: calc(100vw - 2rem);
-		padding: 0.625rem 1rem 0.625rem 0.875rem;
+		inline-size: var(--size-tap-min);
+		block-size: var(--size-tap-min);
+		padding: 0;
 		font-family: var(--font-mono);
 		font-size: var(--text-caption);
 		font-weight: 600;
@@ -141,7 +144,7 @@
 		white-space: nowrap;
 		background: color-mix(in srgb, var(--card) 92%, transparent);
 		border: 1px solid color-mix(in srgb, var(--border) 80%, var(--primary) 20%);
-		border-radius: var(--radius-sm);
+		border-radius: var(--radius-pill);
 		box-shadow: var(--shadow-card);
 		-webkit-backdrop-filter: blur(var(--glass-blur-sm));
 		backdrop-filter: blur(var(--glass-blur-sm));
@@ -154,42 +157,18 @@
 	.map-filter-pill-container :global(.map-filter-pill[aria-expanded='true']) {
 		border-color: color-mix(in srgb, var(--primary) 55%, transparent);
 	}
-	.map-filter-pill-dot {
-		width: 0.5rem;
-		height: 0.5rem;
-		flex: none;
-		border-radius: var(--radius-sm);
-		background: var(--primary);
-		transition: box-shadow var(--duration-fast) var(--ease-default);
-	}
-	.map-filter-pill-dot[data-active='true'] {
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
-	}
-	.map-filter-pill-name {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
 	.map-filter-pill-counter {
-		display: inline-grid;
-		place-items: center;
-		min-width: 1.4rem;
-		height: 1.4rem;
-		padding: 0 0.375rem;
-		font-variant-numeric: tabular-nums;
+		position: absolute;
+		inset-block-start: 0;
+		inset-inline-end: 0;
+		min-inline-size: 1.25em;
+		padding-inline: 0.2em;
 		color: var(--primary-foreground);
 		background: var(--primary);
-		border-radius: var(--radius-sm);
-		flex-shrink: 0;
-		transition:
-			color var(--duration-fast) var(--ease-default),
-			background-color var(--duration-fast) var(--ease-default);
-	}
-	.map-filter-pill-counter[data-empty='true'] {
-		color: var(--muted-foreground);
-		background: color-mix(in srgb, var(--muted) 70%, transparent);
-		box-shadow: inset 0 0 0 1px var(--border-subtle);
+		border-radius: var(--radius-pill);
+		font-size: var(--text-micro);
+		line-height: 1.25;
+		text-align: center;
 	}
 
 	:global([data-m6b-controls-drawer][data-slot='sheet-content']) {
@@ -199,7 +178,7 @@
 				var(--map-controls-drawer-gap)
 		);
 		--map-controls-drawer-bottom: calc(
-			1rem + env(safe-area-inset-bottom, 0px) + 88px + var(--map-controls-drawer-gap) * 2
+			var(--map-touch-row-bottom, 4.375rem) + var(--size-tap-min) + var(--map-controls-drawer-gap)
 		);
 		top: auto;
 		left: 0.75rem;
@@ -276,7 +255,6 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.map-filter-pill-container :global(.map-filter-pill),
-		.map-filter-pill-dot,
 		.map-filter-pill-counter,
 		:global([data-m6b-controls-drawer][data-slot='sheet-content']),
 		:global([data-m6b-controls-drawer][data-slot='sheet-content'][data-state='open']),

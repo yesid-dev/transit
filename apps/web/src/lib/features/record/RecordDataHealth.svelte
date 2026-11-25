@@ -78,7 +78,7 @@
 				>
 					<h2 id="table-health-heading">{dailyTitle}</h2>
 					{#await record.health}
-						{#key record.health}<RecordPending {locale} />{/key}
+						{#key record.health}<RecordPending {locale} answer={record.health} />{/key}
 					{:then result}
 						{#if result.kind !== 'answer'}
 							<p>{recordConnection[result.kind][locale]}</p>
@@ -131,7 +131,7 @@
 						{t('Method versions in force', 'Versions des méthodes en vigueur')}
 					</h2>
 					{#await record.methods}
-						{#key record.methods}<RecordPending {locale} />{/key}
+						{#key record.methods}<RecordPending {locale} answer={record.methods} />{/key}
 					{:then result}
 						{#if result.kind !== 'answer'}
 							<p>{recordConnection[result.kind][locale]}</p>

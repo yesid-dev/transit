@@ -112,7 +112,7 @@ for (const locale of ['en', 'fr'] as const)
 				}
 				if (state === 'fresh' && path === `/lines/${line}` && page.viewportSize()!.width < 1024) {
 					// The Record heading starts below the actual frame controls.
-					const pill = await page.locator('[data-slot="app-frame-controls"]').boundingBox();
+					const pill = await page.locator('[data-slot="app-frame-header"]').boundingBox();
 					const heading = page.getByRole('main').getByRole('heading', { level: 1 });
 					expect(pill!.y + pill!.height).toBeLessThanOrEqual(
 						(await heading.first().boundingBox())!.y,
@@ -189,7 +189,7 @@ for (const locale of ['en', 'fr'] as const)
 				waitUntil: 'networkidle',
 			});
 			await page.evaluate(() => document.fonts.ready);
-			const header = page.locator('[data-slot="app-frame-controls"]');
+			const header = page.locator('[data-slot="app-frame-header"]');
 			const { city, operator } = provider.labels[locale];
 			const fullName = `${city} · ${operator}`;
 			const network = header.locator('[data-slot="network-picker"]');
@@ -203,7 +203,7 @@ for (const locale of ['en', 'fr'] as const)
 			for (const width of viewport.width < 600 ? [360, 390] : [viewport.width]) {
 				await page.setViewportSize({ ...viewport, width });
 				await expect(label).toBeVisible();
-				await expect(label).toHaveText(width < 600 ? operator : fullName);
+				await expect(label).toHaveText(width < 1024 ? operator : fullName);
 				await expect
 					.poll(() => label.evaluate((el) => el.scrollWidth - el.clientWidth))
 					.toBeLessThanOrEqual(0);

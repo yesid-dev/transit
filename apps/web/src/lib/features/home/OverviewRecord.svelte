@@ -46,11 +46,13 @@
 
 {#snippet reading(promise: Measure, period: DateWindow)}
 	{#await promise}
-		{#key promise}<RecordPending {locale} />{/key}
+		{#key promise}<RecordPending {locale} answer={promise} />{/key}
 	{:then result}
 		{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 		{#if result.kind === 'answer' && result.answer.state === 'measured'}
 			<p>{measureText(result, period, locale)}</p>
+		{:else if result.kind === 'busy'}
+			<RecordPending {locale} busy />
 		{:else}
 			<StateNotice presentation="frameless" title={measureText(result, period, locale)} />
 		{/if}
@@ -75,7 +77,7 @@
 		<section aria-labelledby={`${id}-punctuality`}>
 			<h2 id={`${id}-punctuality`}>{fr ? 'Ponctualité' : 'On-time performance'}</h2>
 			{#await record.punctuality}
-				{#key record.punctuality}<RecordPending {locale} />{/key}
+				{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
 			{:then current}
 				{#if current.kind === 'answer' && current.answer.state === 'measured'}
 					{@const answer = current.answer}
@@ -103,6 +105,8 @@
 							: 'The early share counts observed stop events more than a minute early.'}
 					</p>
 					{#if basis}<p>{basis}</p>{/if}
+				{:else if current.kind === 'busy'}
+					<RecordPending {locale} busy />
 				{:else}
 					{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 					<StateNotice
@@ -134,7 +138,7 @@
 						: 'Previous period'}
 			</h2>
 			{#await record.baseline}
-				{#key record.baseline}<RecordPending {locale} />{/key}
+				{#key record.baseline}<RecordPending {locale} answer={record.baseline} />{/key}
 			{:then baseline}
 				{#if baseline.kind === 'answer' && baseline.answer.state !== 'measured'}
 					<p>{dateRange(record.previous, locale)}</p>
@@ -144,6 +148,8 @@
 					{@const basis = timingBasis(baseline.answer.evidence.counts, locale)}
 					<p>{measureText(baseline, record.previous, locale)}</p>
 					{#if basis}<p>{basis}</p>{/if}
+				{:else if baseline.kind === 'busy'}
+					<RecordPending {locale} busy />
 				{:else}
 					<StateNotice
 						presentation="frameless"

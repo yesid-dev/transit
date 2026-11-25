@@ -32,8 +32,17 @@ describe('app frame URL state', () => {
 		['28-days', '2026-10-25', '2026-11-21'],
 		['this-month', '2026-11-01', '2026-11-22'],
 		['last-month', '2026-10-13', '2026-10-31'],
+		['12-months', '2026-10-13', '2026-11-21'],
 	] as const)('resolves %s against calendar boundaries', (preset, from, to) => {
 		expect(presetPeriod(preset, today)).toEqual({ from, to, preset });
+	});
+
+	it('uses calendar months and the resolved dates remain pinned in a copied URL', () => {
+		const period = presetPeriod('12-months', '2027-11-22');
+		expect(period).toEqual({ preset: '12-months', from: '2026-11-22', to: '2027-11-21' });
+		const href = frameHref(url('/fr/lines?provider=octranspo'), { mode: 'record', period });
+		expect(parseFrameState(url(href).searchParams, '2028-01-01').period).toEqual(period);
+		expect(url(href).searchParams.get('provider')).toBe('octranspo');
 	});
 
 	it('offers only presets that fit within the record', () => {

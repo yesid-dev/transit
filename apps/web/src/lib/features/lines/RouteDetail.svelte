@@ -259,182 +259,191 @@
 		{:else}
 			<ResourceBoundary resource={route} lang={locale}>
 				{#snippet children(file)}
-					<ArticleSectionStack class="route-live-grid">
-						{#key id}
-							<CollapsibleSection
-								title={viewCopy.live}
-								subtitle={viewCopy.changing}
-								headerVariant="article-summary"
-								index={0}
-								anchor="line-detail-profile"
-							>
-								<div class="route-live-summary">
-									<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
-									<Button
-										variant="outline"
-										class="min-h-11"
-										onclick={() => live.refresh({ force: true })}>{viewCopy.refresh}</Button
-									>
-									{#if presentation.notice.kind !== 'none'}<p role="status">
-											{presentation.notice.message}
-											{presentation.notice.body}
-										</p>{/if}
-									<p class="route-reporting">
-										<MaybeValue
-											value={live.familyStates.vehicles.health.retained
-												? viewCopy.reporting(roster.length)
-												: null}
-											reason={liveAbsenceReason('vehicle-delay', {
-												familyStates: live.familyStates,
-											})}
-											{locale}
-										/>
-									</p>
-									<a class="route-record-link" href={recordHref}>{viewCopy.record}</a>
-									<RecordCopyButton
-										label={viewCopy.copyLive}
-										done={viewCopy.copied}
-										fallbackLabel={viewCopy.copyFallback}
-										text={shareUrl}
-									/>
-									{#if !providerHasAlerts(v1.provider)}<p>
-											{viewCopy.alertsUnavailable}
-										</p>{:else if !currentAlertReport}<p>
-											{viewCopy.alertsUnknown}
-										</p>{:else if routeAlerts.length === 0}<p>{viewCopy.noAlerts}</p>{/if}
-									<AffectedAlerts
-										{timeZone}
-										alerts={routeAlerts}
-										{locale}
-										copy={t.alerts}
-										testId="route-alerts"
-									/>
-									{#if providerHasAlerts(v1.provider) && routeAlerts.length > 0 && live.familyStates.alerts.health.ageSeconds != null}
-										<p class="route-alerts-age">
-											<FreshnessStamp
-												variant="live"
-												subject="alerts"
-												presentation={feedPresentation(live.familyStates.alerts, locale, timeZone)}
+					<div class="route-live-content">
+						<ArticleSectionStack class="route-live-grid">
+							{#key id}
+								<CollapsibleSection
+									title={viewCopy.live}
+									subtitle={viewCopy.changing}
+									headerVariant="article-summary"
+									index={0}
+									anchor="line-detail-profile"
+								>
+									<div class="route-live-summary">
+										<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
+										<Button
+											variant="outline"
+											class="min-h-11"
+											onclick={() => live.refresh({ force: true })}>{viewCopy.refresh}</Button
+										>
+										{#if presentation.notice.kind !== 'none'}<p role="status">
+												{presentation.notice.message}
+												{presentation.notice.body}
+											</p>{/if}
+										<p class="route-reporting">
+											<MaybeValue
+												value={live.familyStates.vehicles.health.retained
+													? viewCopy.reporting(roster.length)
+													: null}
+												reason={liveAbsenceReason('vehicle-delay', {
+													familyStates: live.familyStates,
+												})}
 												{locale}
 											/>
 										</p>
-									{/if}
-								</div>
-							</CollapsibleSection>
-
-							{#if hasListColumn}
-								<CollapsibleSection
-									title={viewCopy.roster}
-									subtitle={viewCopy.offset}
-									headerVariant="article-summary"
-									index={1}
-									anchor="line-detail-live"
-								>
-									<div class="route-aside">
-										{#if roster.length > 0}
-											<div class="route-roster" data-testid="route-roster">
-												<p class="route-band-definition">{viewCopy.bands}</p>
-												<div class="route-section-head">
-													<SectionHeading level={2} overline={t.roster.heading} />
-													<span class="route-roster-count">{t.roster.count(roster.length)}</span>
-												</div>
-												<ul class="route-roster-list" aria-label={t.roster.listLabel}>
-													{#each roster as bus (bus.id)}
-														{@const unknownStatusAndDelay =
-															bus.status === 'unknown' && bus.delay_min == null}
-														<li class="route-roster-item">
-															{#snippet rosterRow()}
-																<div class="route-roster-reading">
-																	<strong>{t.roster.busLabel(bus.id)}</strong>
-																	<StatusBadge
-																		status={bus.status}
-																		label={STATUS_LABELS[locale][bus.status]}
-																		mode={unknownStatusAndDelay ? 'dot' : 'legend'}
-																		aria-hidden={unknownStatusAndDelay || undefined}
-																		size="sm"
-																	/>
-																	<span class="route-roster-delay"
-																		><MaybeValue
-																			value={minuteReading(bus.delay_min, locale, true)}
-																			reason={liveAbsenceReason('vehicle-delay', {
-																				familyStates: live.familyStates,
-																				notReporting:
-																					notReporting(
-																						bus,
-																						clock.serverNow,
-																						liveTimingFor(manifest).staleCutoffS,
-																					) != null,
-																			})}
-																			variant="row"
-																			{locale}
-																		/></span
-																	>
-																	{#if bus.next_stop != null}<span
-																			class="route-roster-next"
-																			title={t.roster.nextStop(
-																				route.data?.directions
-																					?.flatMap((d) => d.stops ?? [])
-																					.find((s) => s.id === bus.next_stop)?.name ??
-																					bus.next_stop,
-																			)}
-																			>{t.roster.nextStop(
-																				route.data?.directions
-																					?.flatMap((d) => d.stops ?? [])
-																					.find((s) => s.id === bus.next_stop)?.name ??
-																					bus.next_stop,
-																			)}</span
-																		>{/if}
-																</div>
-															{/snippet}
-															{#if bus.trip}
-																<a class="route-roster-link" href={tripHref(bus.trip)}>
-																	{@render rosterRow()}
-																	<span class="sr-only">{t.roster.viewTrip}</span>
-																	<ChevronRightIcon
-																		size={14}
-																		strokeWidth={2.4}
-																		aria-hidden="true"
-																	/>
-																</a>
-															{:else}
-																<div class="route-roster-link route-roster-link--static">
-																	{@render rosterRow()}
-																</div>
-															{/if}
-															<MapDrilldownLink
-																href={localizeHref(mapHrefFor({ vehicle: bus.id }, locale), locale)}
-																label={t.roster.mapAction}
-																context={t.roster.viewBusOnMap(bus.id)}
-															/>
-														</li>
-													{/each}
-												</ul>
-											</div>
+										<a class="route-record-link" href={recordHref}>{viewCopy.record}</a>
+										<RecordCopyButton
+											label={viewCopy.copyLive}
+											done={viewCopy.copied}
+											fallbackLabel={viewCopy.copyFallback}
+											text={shareUrl}
+										/>
+										{#if !providerHasAlerts(v1.provider)}<p>
+												{viewCopy.alertsUnavailable}
+											</p>{:else if !currentAlertReport}<p>
+												{viewCopy.alertsUnknown}
+											</p>{:else if routeAlerts.length === 0}<p>{viewCopy.noAlerts}</p>{/if}
+										<AffectedAlerts
+											{timeZone}
+											alerts={routeAlerts}
+											{locale}
+											copy={t.alerts}
+											testId="route-alerts"
+										/>
+										{#if providerHasAlerts(v1.provider) && routeAlerts.length > 0 && live.familyStates.alerts.health.ageSeconds != null}
+											<p class="route-alerts-age">
+												<FreshnessStamp
+													variant="live"
+													subject="alerts"
+													presentation={feedPresentation(
+														live.familyStates.alerts,
+														locale,
+														timeZone,
+													)}
+													{locale}
+												/>
+											</p>
 										{/if}
 									</div>
 								</CollapsibleSection>
-							{/if}
-							<CollapsibleSection
-								title={viewCopy.predictions}
-								headerVariant="article-summary"
-								index={2}
-								anchor="line-detail-directions"
-							>
-								<div class="route-section">
-									{#if showAbsenceNote}
-										<EdgeState
-											variant="empty"
-											lang={locale}
-											layout="mobile"
-											emptyReason={absenceReason}
-											class="route-absence-note"
-										/>
-									{/if}
-									<LineDirections directions={file.directions} {predictions} {...l10n} copy={t} />
-								</div>
-							</CollapsibleSection>
-						{/key}
-					</ArticleSectionStack>
+
+								{#if hasListColumn}
+									<CollapsibleSection
+										title={viewCopy.roster}
+										subtitle={viewCopy.offset}
+										headerVariant="article-summary"
+										index={1}
+										anchor="line-detail-live"
+									>
+										<div class="route-aside">
+											{#if roster.length > 0}
+												<div class="route-roster" data-testid="route-roster">
+													<p class="route-band-definition">{viewCopy.bands}</p>
+													<div class="route-section-head">
+														<SectionHeading level={2} overline={t.roster.heading} />
+														<span class="route-roster-count">{t.roster.count(roster.length)}</span>
+													</div>
+													<ul class="route-roster-list" aria-label={t.roster.listLabel}>
+														{#each roster as bus (bus.id)}
+															{@const unknownStatusAndDelay =
+																bus.status === 'unknown' && bus.delay_min == null}
+															<li class="route-roster-item">
+																{#snippet rosterRow()}
+																	<div class="route-roster-reading">
+																		<strong>{t.roster.busLabel(bus.id)}</strong>
+																		<StatusBadge
+																			status={bus.status}
+																			label={STATUS_LABELS[locale][bus.status]}
+																			mode={unknownStatusAndDelay ? 'dot' : 'legend'}
+																			aria-hidden={unknownStatusAndDelay || undefined}
+																			size="sm"
+																		/>
+																		<span class="route-roster-delay"
+																			><MaybeValue
+																				value={minuteReading(bus.delay_min, locale, true)}
+																				reason={liveAbsenceReason('vehicle-delay', {
+																					familyStates: live.familyStates,
+																					notReporting:
+																						notReporting(
+																							bus,
+																							clock.serverNow,
+																							liveTimingFor(manifest).staleCutoffS,
+																						) != null,
+																				})}
+																				variant="row"
+																				{locale}
+																			/></span
+																		>
+																		{#if bus.next_stop != null}<span
+																				class="route-roster-next"
+																				title={t.roster.nextStop(
+																					route.data?.directions
+																						?.flatMap((d) => d.stops ?? [])
+																						.find((s) => s.id === bus.next_stop)?.name ??
+																						bus.next_stop,
+																				)}
+																				>{t.roster.nextStop(
+																					route.data?.directions
+																						?.flatMap((d) => d.stops ?? [])
+																						.find((s) => s.id === bus.next_stop)?.name ??
+																						bus.next_stop,
+																				)}</span
+																			>{/if}
+																	</div>
+																{/snippet}
+																{#if bus.trip}
+																	<a class="route-roster-link" href={tripHref(bus.trip)}>
+																		{@render rosterRow()}
+																		<span class="sr-only">{t.roster.viewTrip}</span>
+																		<ChevronRightIcon
+																			size={14}
+																			strokeWidth={2.4}
+																			aria-hidden="true"
+																		/>
+																	</a>
+																{:else}
+																	<div class="route-roster-link route-roster-link--static">
+																		{@render rosterRow()}
+																	</div>
+																{/if}
+																<MapDrilldownLink
+																	href={localizeHref(
+																		mapHrefFor({ vehicle: bus.id }, locale),
+																		locale,
+																	)}
+																	label={t.roster.mapAction}
+																	context={t.roster.viewBusOnMap(bus.id)}
+																/>
+															</li>
+														{/each}
+													</ul>
+												</div>
+											{/if}
+										</div>
+									</CollapsibleSection>
+								{/if}
+								<CollapsibleSection
+									title={viewCopy.predictions}
+									headerVariant="article-summary"
+									index={2}
+									anchor="line-detail-directions"
+								>
+									<div class="route-section">
+										{#if showAbsenceNote}
+											<EdgeState
+												variant="empty"
+												lang={locale}
+												layout="mobile"
+												emptyReason={absenceReason}
+												class="route-absence-note"
+											/>
+										{/if}
+										<LineDirections directions={file.directions} {predictions} {...l10n} copy={t} />
+									</div>
+								</CollapsibleSection>
+							{/key}
+						</ArticleSectionStack>
+					</div>
 				{/snippet}
 			</ResourceBoundary>
 		{/if}
@@ -442,17 +451,22 @@
 </EntityDetail>
 
 <style>
+	.route-live-content {
+		container: live-line / inline-size;
+	}
 	@media (min-width: 72rem) {
-		:global(.article-section-stack.route-live-grid[data-slot='article-section-stack']) {
-			display: grid;
-			grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-			align-items: start;
-		}
-		:global(.route-live-grid > [data-toc='line-detail-profile']) {
-			grid-column: 1 / -1;
-		}
-		:global(.route-live-grid > [data-toc='line-detail-directions']) {
-			grid-column: 2;
+		@container live-line (min-width: 44rem) {
+			:global(.article-section-stack.route-live-grid[data-slot='article-section-stack']) {
+				display: grid;
+				grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+				align-items: start;
+			}
+			:global(.route-live-grid > [data-toc='line-detail-profile']) {
+				grid-column: 1 / -1;
+			}
+			:global(.route-live-grid > [data-toc='line-detail-directions']) {
+				grid-column: 2;
+			}
 		}
 	}
 	.route-reporting {

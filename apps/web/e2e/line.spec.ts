@@ -115,7 +115,12 @@ for (const locale of PUBLISHED_LOCALES) {
 				const predictionsBox = await panel
 					.locator('[data-toc="line-detail-directions"]')
 					.boundingBox();
-				expect(rosterBox!.x + rosterBox!.width).toBeLessThanOrEqual(predictionsBox!.x);
+				const available = (await panel.locator('.route-live-content').boundingBox())!.width;
+				if (available >= 44 * 16) {
+					expect(rosterBox!.x + rosterBox!.width).toBeLessThanOrEqual(predictionsBox!.x);
+				} else {
+					expect(rosterBox!.y + rosterBox!.height).toBeLessThanOrEqual(predictionsBox!.y);
+				}
 			}
 			const destination = panel.getByRole('combobox', { name: 'Destination' });
 			await expect(destination).toHaveValue('0');

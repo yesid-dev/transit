@@ -25,7 +25,7 @@
 	import { Button } from '@yesid/ui/button';
 	import * as Sheet from '@yesid/ui/sheet';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import type { ChromeSearchScope, SearchList } from '#lib/search/transitSearch.ts';
+	import type { SearchList } from '#lib/search/transitSearch.ts';
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import HeaderSearch from './HeaderSearch.svelte';
 	import { headerSearchCopy } from './headerSearch.copy.ts';
@@ -35,7 +35,6 @@
 		providerId: string;
 		/** The URL the reader sees, including shallow view changes. */
 		url: URL;
-		scope: ChromeSearchScope;
 		list: SearchList;
 		presentation?: LivePresentation | null;
 		query?: string;
@@ -47,7 +46,6 @@
 		locale,
 		providerId,
 		url,
-		scope,
 		list,
 		presentation = null,
 		query = $bindable(''),
@@ -196,7 +194,6 @@
 				{locale}
 				{providerId}
 				{url}
-				{scope}
 				{list}
 				{presentation}
 				sheet={{ dismiss, follow }}

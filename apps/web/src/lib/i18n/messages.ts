@@ -10,7 +10,7 @@ export const navPillCopy = defineCopy({
 		searchPlaceholder: {
 			route: 'Rechercher une ligne…',
 			stop: 'Rechercher un arrêt…',
-			all: 'Ligne, arrêt, adresse…',
+			all: 'Ligne, arrêt, véhicule',
 		},
 		searchAria: {
 			route: 'Rechercher une ligne',
@@ -41,7 +41,7 @@ export const navPillCopy = defineCopy({
 		searchPlaceholder: {
 			route: 'Search a line…',
 			stop: 'Search a stop…',
-			all: 'Search a line, stop, or address…',
+			all: 'Line, stop, vehicle',
 		},
 		searchAria: { route: 'Search a line', stop: 'Search a stop', all: 'Search the network' },
 

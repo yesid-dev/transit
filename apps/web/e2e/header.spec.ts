@@ -192,7 +192,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		}
 
 		// Check the visible trigger content, including the kit's decorative chevron when present.
-		const scope = page.locator('[data-slot="app-frame-controls"]');
+		const scope = page.locator('[data-slot="site-header-network"]');
 		const control = scope.getByRole('combobox', { name: copy.network });
 		const box = (await control.boundingBox())!;
 		const trigger = scope.locator('label', {
@@ -211,13 +211,16 @@ for (const locale of PUBLISHED_LOCALES) {
 test('the kit network and custom date controls update the frame route', async ({ page }) => {
 	await page.goto('/privacy?provider=stm');
 	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
-	const controls = page.locator('[data-slot="app-frame-controls"]');
+	const controls = page.locator('[data-slot="site-header-network"]');
 	const network = controls.locator('[data-slot="network-picker"]').getByRole('combobox');
 	await expect(network).toHaveValue('stm');
 	await network.selectOption('octranspo');
 	await expect(page).toHaveURL((url) => url.searchParams.get('provider') === 'octranspo');
 	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
-	await controls.getByRole('button', { name: /^Period/ }).click();
+	if (page.viewportSize()!.width < 1024) {
+		await page.getByRole('button', { name: /^Controls.*Open controls/ }).click();
+	}
+	await page.getByRole('button', { name: 'Choose other dates', exact: true }).click();
 	const dialog = page.getByRole('dialog', { name: 'Period', exact: true });
 	const dates = dialog.locator('[data-slot="date-range-picker"]');
 	await dates.getByLabel('From', { exact: true }).fill('2026-10-20');

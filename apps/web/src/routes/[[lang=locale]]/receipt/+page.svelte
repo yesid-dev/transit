@@ -276,8 +276,10 @@
 		:global(
 			body:has(.daily-report)
 				:is(
-					[data-slot='app-shell-chrome'],
-					[data-slot='frame-nav'],
+					[data-slot='app-frame-chrome'],
+					[data-slot='surface-rail'],
+					[data-slot='surface-rail-mobile'],
+					[data-slot='record-patience'],
 					[data-slot='footer'],
 					[data-report-controls]
 				)
@@ -286,13 +288,7 @@
 		}
 		:global(
 			body:has(.daily-report)
-				:is(
-					[data-slot='app-shell'],
-					[data-slot='app-shell-row'],
-					[data-slot='map-stage'],
-					#main-flow,
-					#main
-				)
+				:is([data-slot='app-shell'], [data-slot='app-frame'], .app-frame-body, #main-flow, #main)
 		) {
 			display: block;
 			min-height: 0;

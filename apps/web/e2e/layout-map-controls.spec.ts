@@ -49,8 +49,8 @@ for (const locale of ['en', 'fr'])
 			const controls = (await page.getByTestId('map-filter-pill').boundingBox())!;
 			expect(button.width).toBeGreaterThanOrEqual(44);
 			expect(button.height).toBeGreaterThanOrEqual(44);
-			expect(Math.abs(button.x - controls.x)).toBeLessThanOrEqual(1);
-			expect(controls.y - button.y - button.height).toBeCloseTo(10, 0);
+			expect(controls.x - button.x - button.width).toBeCloseTo(8, 0);
+			expect(Math.abs(controls.y - button.y)).toBeLessThanOrEqual(1);
 			for (const other of await page
 				.locator('.map-near-toggle, [data-slot="map-north"], .maplibregl-ctrl-attrib')
 				.all()) {

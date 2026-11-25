@@ -71,7 +71,7 @@ for (const { name, path, section } of pages)
 								.toBe(true);
 							const before = await frame(page);
 							const gap = await page
-								.locator('[data-slot="app-frame-controls"]')
+								.locator('[data-slot="app-frame-header"]')
 								.evaluate((element) => {
 									const heading = document.querySelector('main h1')!;
 									return (

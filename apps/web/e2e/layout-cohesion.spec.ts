@@ -13,7 +13,7 @@ const shots = fileURLToPath(new URL('../../../.cache/cohesion/after/', import.me
 mkdirSync(shots, { recursive: true });
 const recordClearance = (page: Page) =>
 	page.evaluate(() => {
-		const controls = document.querySelector('[data-slot="app-frame-controls"]')!;
+		const controls = document.querySelector('[data-slot="app-frame-header"]')!;
 		const title = document.querySelector('main h1')!;
 		return controls.getBoundingClientRect().bottom <= title.getBoundingClientRect().top;
 	});

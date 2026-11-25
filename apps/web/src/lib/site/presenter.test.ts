@@ -9,6 +9,7 @@ import {
 	delayReading,
 	directionLabel,
 	fileSize,
+	longDate,
 	methodEvidence,
 	minuteReading,
 	registryUnitText,
@@ -19,6 +20,13 @@ import {
 } from './presenter.ts';
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
+
+it.each([
+	['en', '13 October 2026'],
+	['fr', '13 octobre 2026'],
+] as const)('writes the full day-first date in %s', (locale, expected) => {
+	expect(longDate('2026-10-13', locale)).toBe(expected);
+});
 
 it.each([
 	['en', '5.9 min late', '1 min early', 'On schedule', 'Delay unknown', '+5.9 min'],

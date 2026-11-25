@@ -7,7 +7,11 @@
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
-	import { onMount, tick, untrack } from 'svelte';
+	import { getContext, onMount, tick, untrack } from 'svelte';
+	import {
+		mapPanelOpenContext,
+		mapRecordSourceDateContext,
+	} from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
@@ -265,6 +269,13 @@
 	});
 	const isRecordLayer = $derived(recordLayer !== 'live');
 	let recordSourceDate = $state<string | null>(null);
+	const publishRecordSourceDate = getContext<((date: string | null) => void) | undefined>(
+		mapRecordSourceDateContext,
+	);
+	$effect(() => {
+		publishRecordSourceDate?.(isRecordLayer ? recordSourceDate : null);
+		return () => publishRecordSourceDate?.(null);
+	});
 	const datedMapNotice = $derived(
 		datedProviderAttribution(
 			v1.provider,
@@ -403,6 +414,11 @@
 	let pendingViewHint: MapViewHint | null = null;
 	let ingestedViewHint = false;
 	const reportsOpen = $derived(desktop.current ? reportsPaneOpen : viewMode === 'reports');
+	const reportPanelOpen = getContext<((open: boolean) => void) | undefined>(mapPanelOpenContext);
+	$effect(() => {
+		reportPanelOpen?.(reportsOpen || detailOpen);
+		return () => reportPanelOpen?.(false);
+	});
 	const viewSwitchValue = $derived<'map' | 'reports'>(reportsOpen ? 'reports' : 'map');
 	const reportsCopy = $derived(mapReportsCopy(locale));
 	const providerName = $derived(
@@ -1116,7 +1132,9 @@
 		background: var(--background);
 		--app-right-detail-offset: var(--size-detail-panel);
 		--map-detail-offset: 0rem;
-		--map-mobile-control-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+		--map-mobile-control-bottom: calc(
+			1rem + env(safe-area-inset-bottom, 0px) + var(--map-source-clearance, 0px)
+		);
 		--map-north-clearance: calc(
 			var(--map-mobile-control-bottom) + 2.75rem + 0.75rem + 1.75rem + 0.75rem + 2.75rem + 0.75rem
 		);

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { StampPresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
+	import { desktop } from '@yesid/ui/state';
+	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import FreshnessStamp from '#lib/components/surface/FreshnessStamp.svelte';
 
 	interface Props {
@@ -21,10 +23,14 @@
 		data-not-responding={presentation.ageLabel ? 'true' : undefined}
 	>
 		<FreshnessStamp variant="live" {presentation} {locale} />
+		{#if (placement === 'floating') === desktop.current}<RefreshButton {locale} />{/if}
 	</div>
 {/if}
 
 <style>
+	.map-freshness :global(.refresh-control) {
+		pointer-events: auto;
+	}
 	.map-freshness[data-placement='head'] {
 		display: none;
 	}
@@ -36,6 +42,7 @@
 		right: calc(var(--map-detail-offset, 0rem) + 1rem);
 		display: inline-flex;
 		align-items: center;
+		gap: 0.25rem;
 		padding: 0.375rem 0.75rem 0.375rem 0.75rem;
 		background: color-mix(in srgb, var(--card) 86%, transparent);
 		border: 1px solid color-mix(in srgb, var(--border) 80%, var(--primary) 20%);

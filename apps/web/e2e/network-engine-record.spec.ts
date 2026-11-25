@@ -70,8 +70,8 @@ test('a slow Network measure does not hold back the other sections', async ({ pa
 	const polls = page.getByRole('region', { name: 'Feed check success' });
 	await expect(polls).toContainText('20 / 25');
 	const predictions = page.getByRole('region', { name: 'Arrival prediction accuracy' });
-	await expect(predictions.getByRole('status')).toHaveText(
-		'Still working on this. You can wait or come back later.',
+	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
+		'These records take longer',
 	);
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const release = await request.post(

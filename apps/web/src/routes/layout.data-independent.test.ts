@@ -518,9 +518,9 @@ describe('root layout data-independent legal routes', () => {
 
 	it('commits the root shell from a locked map to a rendered document', async () => {
 		const view = renderWithoutV1('/map', 'en');
-		const main = view.container.querySelector<HTMLElement>('[data-slot="app-shell"]');
-		expect(main).toHaveClass('overflow-hidden');
-		expect(main).not.toHaveClass('overflow-y-auto');
+		const frame = view.container.querySelector<HTMLElement>('[data-slot="app-frame"]');
+		expect(frame).toHaveClass('full-viewport');
+		expect(view.container.querySelector('#main-flow')).toHaveClass('map-flow');
 		const simulator = new KitNavigationSimulator({
 			publishPage: (href) => harness.setPath(new URL(href).pathname),
 			publishNavigating: () => {},
@@ -540,8 +540,8 @@ describe('root layout data-independent legal routes', () => {
 		await expect(accepted.navigation.complete).resolves.toBeUndefined();
 
 		expect(view.container.querySelector('#page-scroller')).toBeNull();
-		expect(main).toHaveClass('min-h-dvh');
-		expect(main).not.toHaveClass('overflow-hidden');
+		expect(frame).not.toHaveClass('full-viewport');
+		expect(view.container.querySelector('#main-flow')).toHaveClass('page-flow');
 		expect(view.getByTestId('legal-child')).toBeInTheDocument();
 		expect(harness.runViewTransition).toHaveBeenCalledWith(accepted.navigation);
 	});

@@ -9,7 +9,13 @@
 <script lang="ts">
 	import { setPageTitleContext, resolvePageTitle } from '#lib/seo/pageTitle.ts';
 	const clientTitle = setPageTitleContext();
-	import { datedProviderAttribution, providerAttribution } from '#lib/i18n/providerAttribution.ts';
+	import { publishedNetwork } from '#lib/site/providerDisplay.ts';
+	import { providerSourceAttribution } from '#lib/i18n/providerAttribution.ts';
+	import { setContext } from 'svelte';
+	import {
+		mapPanelOpenContext,
+		mapRecordSourceDateContext,
+	} from '#lib/site/mapRecordSourceDate.ts';
 	import { liveSourceDate } from '#lib/live/sourceDate.ts';
 	import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 	import { setLineDirectory } from '#lib/site/transitDisplayContext.ts';
@@ -122,27 +128,46 @@
 
 	const v1 = $derived(data.v1);
 	setV1Context(() => v1 ?? undefined);
-	const datedNotice = $derived(
-		dataIndependentRoute ||
-			(!v1 && !data.recordSourceDate) ||
-			!data.provider?.download_licence?.source_date_required
-			? null
-			: datedProviderAttribution(
-					data.provider,
-					locale,
-					v1 ? liveSourceDate(v1.manifest.provider) : null,
-				),
+	const legalRoute = $derived(FOOTER_INFO_NAV.some((item) => item.href === seoPath));
+	const recordMap = $derived(
+		isFullBleed &&
+			['stops', 'corridors'].includes(currentMirrorUrl().searchParams.get('mapLayer') ?? ''),
+	);
+	let mapRecordSourceDate = $state<string | null>(null);
+	let mapCreditHeight = $state(0);
+	let mapPanelOpen = $state(false);
+	setContext(mapPanelOpenContext, (open: boolean) => {
+		mapPanelOpen = open;
+	});
+	setContext(mapRecordSourceDateContext, (date: string | null) => {
+		mapRecordSourceDate = date;
+	});
+	const footerWords = $derived(footerCopy[locale]);
+	const footerSeparator = ' ';
+	const footerAgency = $derived(
+		data.provider?.labels[locale].operator ??
+			v1?.manifest.display_name ??
+			publishedNetwork(data.providerId)?.labels[locale].operator ??
+			footerWords.providerFallback,
+	);
+	const fallbackAttribution = $derived(
+		v1
+			? {
+					provider: v1.manifest.provider,
+					attribution: v1.manifest.attribution,
+				}
+			: undefined,
 	);
 	const footerAttribution = $derived(
-		dataIndependentRoute
+		legalRoute
 			? legalCopy[locale].footerAttribution
-			: v1
-				? providerAttribution(v1.manifest.provider, v1.manifest.attribution, locale)
-				: undefined,
+			: providerSourceAttribution(
+					data.provider,
+					locale,
+					recordMap ? mapRecordSourceDate : v1 ? liveSourceDate(v1.manifest.provider) : null,
+					fallbackAttribution,
+				),
 	);
-	const footerProviderName = $derived(dataIndependentRoute ? undefined : v1?.manifest.display_name);
-	const footer = $derived(footerCopy[locale]);
-	const footerAgency = $derived(footerProviderName ?? footer.providerFallback);
 	const footerGroups = $derived(
 		[
 			...NAV_GROUPS.map((group) => ({
@@ -151,7 +176,7 @@
 					alerts: data.provider ? providerHasAlerts(data.provider) : null,
 				}).filter((item) => item.group === group.key),
 			})),
-			{ label: footer.infoLabel, links: FOOTER_INFO_NAV, testId: 'footer-info' },
+			{ label: footerWords.infoLabel, links: FOOTER_INFO_NAV, testId: 'footer-info' },
 		].map((group) => ({
 			...group,
 			links: [
@@ -339,6 +364,9 @@
 		if (!to || type === 'enter' || type === 'popstate') return;
 		if (from?.url.pathname !== to.url.pathname || from.url.hash !== to.url.hash) {
 			resetMainScroll(to.url.hash);
+			if (from?.url.pathname !== to.url.pathname && !to.url.hash) {
+				document.getElementById('main')?.focus({ preventScroll: true });
+			}
 		}
 	});
 
@@ -382,6 +410,8 @@
 	<AppShell
 		{navigation}
 		fullViewport={isFullBleed}
+		{mapCreditHeight}
+		mobileControlsVisible={!isFullBleed || !mapPanelOpen}
 		{locale}
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
@@ -390,87 +420,129 @@
 		discoveryError={data.discoveryError}
 		bind:search={topSearch}
 		{searchList}
-		{searchScope}
+		mainLabel={mainLabel?.[locale]}
 	>
 		{#snippet main()}
-			<div class="flex w-full flex-col {isFullBleed ? 'h-full overflow-hidden' : ''}">
-				<div
-					id="main-flow"
-					style:overflow-anchor={seoPath === '/' && !isOverviewRecord ? 'none' : undefined}
-					class="flex flex-col {isFullBleed ? 'h-full' : 'min-h-full shrink-0'}"
-					data-lenis-prevent={isFullBleed || undefined}
-				>
-					<main
-						id="main"
-						tabindex="-1"
-						aria-label={mainLabel?.[locale]}
-						class={isFullBleed ? 'min-h-0 grow' : 'grow shrink-0 basis-auto'}
-					>
-						{#if data.loadSnapshots && !v1 && !dataIndependentRoute}
-							<div
-								class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6"
-							>
-								<p>{data.provider?.labels[locale].city ?? data.providerId}</p>
-								<EdgeState
-									variant="error-v1"
-									lang={locale}
-									layout={edgeLayout}
-									onRetry={retryBoot}
-									class="w-full"
-								/>
-							</div>
-						{:else}
-							{@render children?.()}
-						{/if}
-					</main>
-					{#if !isFullBleed}
-						{#if seoPath === '/' && !isOverviewRecord}
-							{#key page.url.pathname}
-								<div
-									bind:this={constructionEdge}
-									class="construction-anchor"
-									aria-hidden="true"
-								></div>
-								<div
-									class="home-construction-floor"
-									style="--ground-progress:{constructionProgress}"
-								>
-									<ConstructionProps
-										layout="spread"
-										floodlight
-										revealAt={constructionEdge}
-										bind:progress={constructionProgress}
-									/>
-								</div>
-							{/key}
-						{/if}
-						<SiteFooter edge="hazard" tagline={footer.tagline(footerAgency)} groups={footerGroups}>
-							{#snippet brand()}
-								<BrandCluster productHref={localizeHref('/', locale, data.providerId)} />
-							{/snippet}
-							{#snippet statusStart()}
-								<p class="footer-honesty m-0 text-center sm:text-left">
-									{#if datedNotice && data.recordSourceDate}
-										{#await data.recordSourceDate}
-											<span>{datedNotice}</span>
-										{:then date}
-											<span>{datedProviderAttribution(data.provider, locale, date)}</span>
-										{/await}
-									{:else if datedNotice || footerAttribution}
-										<span>{datedNotice ?? footerAttribution}</span>
-									{/if}
-									<span class="footer-disclaimer">{footer.disclaimer(footerAgency)}</span>
-								</p>
-							{/snippet}
-						</SiteFooter>
-					{/if}
-				</div>
+			<div
+				id="main-flow"
+				style:overflow-anchor={seoPath === '/' && !isOverviewRecord ? 'none' : undefined}
+				class="flex w-full flex-col {isFullBleed ? 'map-flow h-full overflow-hidden' : 'page-flow'}"
+			>
+				{#if data.loadSnapshots && !v1 && !dataIndependentRoute}
+					<div class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6">
+						<p>{data.provider?.labels[locale].city ?? data.providerId}</p>
+						<EdgeState
+							variant="error-v1"
+							lang={locale}
+							layout={edgeLayout}
+							onRetry={retryBoot}
+							class="w-full"
+						/>
+					</div>
+				{:else}
+					{@render children?.()}
+				{/if}
 			</div>
+		{/snippet}
+		{#snippet footer()}
+			{#if isFullBleed}
+				<footer
+					class="map-source-footer border-t bg-card px-3 py-2 text-center text-xs text-muted-foreground"
+					data-slot="map-source-footer"
+					bind:clientHeight={mapCreditHeight}
+				>
+					{#if footerAttribution}<span data-slot="source-credit">{footerAttribution}</span
+						>{footerSeparator}{/if}
+					<span class="footer-disclaimer" data-slot="agency-disclaimer"
+						>{footerWords.disclaimer(footerAgency)}</span
+					>
+				</footer>
+			{:else}
+				{#if seoPath === '/' && !isOverviewRecord}
+					{#key page.url.pathname}
+						<div bind:this={constructionEdge} class="construction-anchor" aria-hidden="true"></div>
+						<div class="home-construction-floor" style="--ground-progress:{constructionProgress}">
+							<ConstructionProps
+								layout="spread"
+								floodlight
+								revealAt={constructionEdge}
+								bind:progress={constructionProgress}
+							/>
+						</div>
+					{/key}
+				{/if}
+				{#snippet legalStatus()}
+					<p class="m-0 text-center sm:text-left" data-slot="legal-footer-status">
+						<span>{footerAttribution}</span>{footerSeparator}
+						<span class="footer-disclaimer" data-slot="agency-disclaimer"
+							>{footerWords.disclaimer(footerAgency)}</span
+						>
+					</p>
+				{/snippet}
+				<SiteFooter
+					edge="hazard"
+					tagline={footerWords.tagline}
+					groups={footerGroups}
+					statusStart={legalRoute ? legalStatus : undefined}
+				>
+					{#snippet brand()}
+						<BrandCluster productHref={localizeHref('/', locale, data.providerId)} />
+						{#if !legalRoute}
+							<p class="mt-2 text-xs text-muted-foreground">
+								{#if footerAttribution}
+									<span data-slot="source-credit">
+										{#if data.provider?.download_licence?.source_date_required && data.recordSourceDate}
+											{#await data.recordSourceDate}
+												{footerAttribution}
+											{:then date}
+												{providerSourceAttribution(
+													data.provider,
+													locale,
+													date,
+													fallbackAttribution,
+												)}
+											{/await}
+										{:else}
+											{footerAttribution}
+										{/if}
+									</span>{footerSeparator}
+								{/if}
+								<span class="footer-disclaimer" data-slot="agency-disclaimer"
+									>{footerWords.disclaimer(footerAgency)}</span
+								>
+							</p>
+						{/if}
+					{/snippet}
+				</SiteFooter>
+			{/if}
 		{/snippet}
 	</AppShell>
 </SiteRoot>
 
 <style>
+	/* The map camera uses viewport coordinates independently of the reading frame. */
+	.map-flow {
+		position: fixed;
+		inset: 0;
+		--chrome-offset: calc(
+			var(--app-frame-chrome-height, var(--nav-clearance)) + var(--app-frame-paired, 0) * 1rem
+		);
+		--app-left-rail-offset: calc(var(--app-frame-paired, 0) * (min(17rem, 36vw) + 1rem));
+	}
+	.map-source-footer {
+		position: fixed;
+		inset-inline: 0;
+		inset-block-end: 0;
+		z-index: var(--z-content);
+		pointer-events: none;
+	}
+	@media (min-width: 1024px) {
+		.page-flow {
+			--space-page-x: var(--space-card-gap);
+			--detail-column-gap: var(--space-card-gap);
+			--layout-control-rail-width: min(16rem, 25%);
+		}
+	}
 	.home-construction-floor {
 		position: relative;
 		height: calc(240px * var(--ground-progress, 1));
@@ -487,11 +559,6 @@
 		.home-construction-floor {
 			height: calc(100px * var(--ground-progress, 1));
 		}
-	}
-	.footer-honesty {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
 	}
 	.footer-disclaimer {
 		color: var(--secondary-foreground);

@@ -26,8 +26,6 @@ for (const locale of PUBLISHED_LOCALES) {
 	const trigger = (page: Page) => page.getByRole('button', { name, exact: true });
 	const sheet = (page: Page) => page.getByRole('dialog', { name: words.sheetTitle });
 	const home = localizeHref('/', locale, 'stm');
-	// On a line page the field and its button are named for lines.
-	const onLine = navPillCopy[locale].searchAria.route;
 	const start = localizeHref(`/lines/${other.id}`, locale, 'stm');
 	const row = new RegExp(`^${literal(`${words.kind.route} ${heading(line)}`)}`);
 	const entries = (page: Page) => page.evaluate(() => history.length);
@@ -47,15 +45,14 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		await expect(title).toHaveText(heading(other));
 		const length = await entries(page);
-		const field = await openSheet(page, onLine);
+		const field = await openSheet(page);
 		// Modal: the header and the page behind the sheet are inert.
-		await expect(page.locator('[data-slot="app-shell-row"]')).toHaveAttribute('inert', '');
-		await expect(page.locator('[data-slot="app-shell-chrome"]')).toHaveAttribute('inert', '');
+		await expect(page.locator('[data-slot="app-frame"]')).toHaveAttribute('inert', '');
 		await field.fill(line.long);
 		await sheet(page).getByRole('option', { name: row }).click();
 		await expect(title).toHaveText(heading(line));
 		await expect(sheet(page)).toBeHidden();
-		await expect(page.locator('[data-slot="app-shell-row"]')).not.toHaveAttribute('inert');
+		await expect(page.locator('[data-slot="app-frame"]')).not.toHaveAttribute('inert');
 		expect(await entries(page)).toBe(length + 1);
 		// One Back shows the page the search began on, not only its URL.
 		await page.goBack();
@@ -86,11 +83,11 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		const title = page.getByRole('heading', { level: 1 });
-		const field = sheet(page).getByRole('combobox', { name: onLine });
+		const field = sheet(page).getByRole('combobox', { name });
 		await page.goto(start);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const length = await entries(page);
-		await (await openSheet(page, onLine)).fill(line.long);
+		await (await openSheet(page)).fill(line.long);
 		await page.goBack();
 		await expect(sheet(page)).toBeHidden();
 		await page.goForward();
@@ -98,7 +95,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(field).toHaveValue(line.long);
 		await sheet(page).getByRole('button', { name: words.closeSheet, exact: true }).click();
 		await expect(sheet(page)).toBeHidden();
-		await expect(page.getByRole('button', { name: onLine, exact: true })).toBeFocused();
+		await expect(page.getByRole('button', { name, exact: true })).toBeFocused();
 		await page.goForward();
 		await expect(field).toBeFocused();
 		// The full name is an exact match, so it is highlighted and Enter opens it.
@@ -129,7 +126,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		// Let the restored entry reach the sheet before checking that nothing opened.
 		await page.evaluate(() => new Promise((done) => setTimeout(done, 500)));
 		await expect(sheet(page)).toBeHidden();
-		await expect(page.locator('[data-slot="app-shell-row"]')).not.toHaveAttribute('inert');
+		await expect(page.locator('[data-slot="app-frame"]')).not.toHaveAttribute('inert');
 		await expect(page.getByRole('combobox', { name })).toBeVisible();
 	});
 }

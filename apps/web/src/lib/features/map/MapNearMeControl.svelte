@@ -283,7 +283,7 @@
 		z-index: var(--z-map-overlay);
 		top: auto;
 		right: calc(var(--map-detail-offset, 0rem) + 1rem);
-		bottom: 1rem;
+		bottom: var(--map-mobile-control-bottom, 1rem);
 		left: auto;
 		transform: none;
 		display: grid;
