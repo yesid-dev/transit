@@ -1,12 +1,14 @@
 import asyncio
 import json
 import shutil
+from datetime import date
 from pathlib import Path
 
 import pytest
 from test_engine import _build_store, http
 
 from transit_engine.cities import UnknownCity, city_catalog, public_declaration
+from transit_engine.health import data_health
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
@@ -113,6 +115,29 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     (tmp_path / "default-city.txt").write_text("hidden\n", encoding="utf8")
     with pytest.raises(RuntimeError, match="default city must be a public provider"):
         city_catalog()
+
+
+def test_private_city_remains_hidden_with_a_complete_clean_day(tmp_path: Path) -> None:
+    day = date(2026, 11, 25)
+    store = _build_store(tmp_path, cleaning_version=9, trips_by_day={day: ()}, city="sto")
+    assert data_health(store, "sto", day, day)["days"][0]["status"] == "present"
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=10)
+    status, _, body = asyncio.run(http(app, "/cities"))
+    assert status == 200
+    assert {city["id"] for city in json.loads(body)["providers"]} == {"stm", "octranspo"}
+    for route, query in (
+        ("search-index", "city=sto"),
+        ("schedule-index", "city=sto"),
+        ("schedule-map", "city=sto"),
+        ("data-health", f"city=sto&from={day}&to={day}"),
+        ("measure", f"city=sto&from={day}&to={day}&measure=on_time"),
+        ("ranking", f"city=sto&from={day}&to={day}&measure=on_time&kind=line"),
+    ):
+        status, _, body = asyncio.run(
+            http(app, f"/{route}", query, headers=((b"x-transit-require-public-city", b"1"),))
+        )
+        assert status == 400, route
+        assert json.loads(body) == {"message": "unknown city"}
 
 
 def test_record_through_tracks_the_latest_complete_edition_after_a_mirror_copy(

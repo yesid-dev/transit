@@ -93,6 +93,30 @@ test("keeps the live edge cache independent of engine revision and availability"
   assert.equal(f.saved.size, 0);
 });
 
+test("private live objects and cached answers are as inaccessible as unknown cities", async (t) => {
+  const f = fixture(t);
+  const stored = '{"city":"private-city"}';
+  const get = stubLiveStorage(t, f.env, () => new Response(stored, {
+    headers: { "content-length": String(Buffer.byteLength(stored)) },
+  }));
+  for (const path of ["/live", "/live-trips?trip=t1"]) {
+    for (const bound of [false, true]) {
+      const requestFor = (city) => new Request(`https://data.yesid.dev/v2/${city}${path}`);
+      const handler = bound ? serveBoundQuestion : worker.fetch;
+      const fetch = (city) => handler(requestFor(city), f.env, { waitUntil() {} }, new Set(["demo", "other-city"]));
+      const key = requestFor("private-city").url.replace("/v2/", "/__transit_question_cache/v2/live/");
+      f.answers.set(key, { response: Response.json({ city: "private-city" }), expiresAt: Infinity });
+      const unknown = await fetch("unknown");
+      const hidden = await fetch("private-city");
+      assert.equal(hidden.status, 404);
+      assert.equal(hidden.status, unknown.status);
+      assert.deepEqual([...hidden.headers], [...unknown.headers]);
+      assert.equal(await hidden.text(), await unknown.text());
+    }
+  }
+  assert.equal(get.mock.callCount(), 0);
+});
+
 test("reads only the ranges for a live scope and rejects mixed publications", async (t) => {
   const f = fixture(t);
   const first = [{ trip_id: "t1", route_id: "a/b", stops: [{ stop_id: "s" }, { stop_id: "other" }] }];
@@ -275,7 +299,7 @@ function fixture(t, respond = () => Response.json(ANSWER, {
     const response = await handler(new Request(`https://data.yesid.dev${path}`, {
       method,
       headers: { origin: "https://transit1.yesid.dev", ...headers },
-    }), env, { waitUntil: (task) => tasks.push(task) });
+    }), env, { waitUntil: (task) => tasks.push(task) }, new Set(["demo", "other-city"]));
     await Promise.all(tasks);
     return response;
   }

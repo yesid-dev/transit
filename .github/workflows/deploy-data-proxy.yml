@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "apps/data-proxy/**"
+      - "apps/db/config/providers/**"
       - ".bun-version"
       - ".nvmrc"
       - ".github/actions/setup/action.yml"

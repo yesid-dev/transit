@@ -51,6 +51,7 @@ it.each([
 	['provider=stm', 'stm'],
 	['provider=octranspo', 'octranspo'],
 	['provider=unknown', 'stm'],
+	['provider=sto', 'stm'],
 	['provider=', 'stm'],
 	['provider=stm&provider=octranspo', 'stm'],
 ])('keeps explicit provider policy above location for %s', (query, expected) => {

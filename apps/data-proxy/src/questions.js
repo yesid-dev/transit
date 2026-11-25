@@ -148,13 +148,13 @@ async function remember(cache, key, ttl, body, contentType) {
   await cache.put(key, answer);
 }
 
-export function serveQuestion(request, env, ctx) {
-  return answerQuestion(request, env, ctx, request.headers.get("cf-connecting-ip"));
+export function serveQuestion(request, env, ctx, publicCities) {
+  return answerQuestion(request, env, ctx, publicCities, request.headers.get("cf-connecting-ip"));
 }
 
-export function serveBoundQuestion(request, env, ctx) {
+export function serveBoundQuestion(request, env, ctx, publicCities) {
   const deadline = Number(request.headers.get("x-transit-record-deadline"));
-  return answerQuestion(request, env, ctx, request.headers.get("x-transit-visitor-ip"),
+  return answerQuestion(request, env, ctx, publicCities, request.headers.get("x-transit-visitor-ip"),
     deadline > Date.now() ? Math.min(deadline, Date.now() + MAX_RECORD_BUDGET_MS) : undefined);
 }
 
@@ -222,7 +222,7 @@ async function serveLive(env, ctx, origin, question, visitorIp) {
   }
 }
 
-async function answerQuestion(request, env, ctx, visitorIp, deadline) {
+async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadline) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {
     return new Response(null, {
@@ -240,6 +240,7 @@ async function answerQuestion(request, env, ctx, visitorIp, deadline) {
   }
   if (!question) return message(404, "not found");
   if (question.route === "live" || question.route === "live-trips") {
+    if (!publicCities?.has(question.city)) return message(404, "not found");
     return serveLive(env, ctx, url.origin, question, visitorIp);
   }
 

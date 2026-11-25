@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import worker from "../src/worker.js";
+import workerSource from "../src/worker.js";
+
+const publicCities = new Set(["stm", "octranspo"]);
+const worker = { fetch: (request, env, ctx) => workerSource.fetch(request, env, ctx, publicCities) };
 
 const BASE = "https://transit.yesid.dev";
 
@@ -156,6 +159,28 @@ test("v2 basemap exposes only the public tile archive and supports a byte range"
   assert.equal(await result.text(), "P".repeat(16));
   const invalid = await worker.fetch(new Request(url.replace("montreal.pmtiles", "%2fmanifest.json")), makeEnv());
   assert.equal(invalid.status, 404);
+});
+
+test("a private city's basemap is hidden even when both storage locations contain it", async (t) => {
+  const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+  const publicTile = env.SNAPSHOTS.objects.get("v1/stm/static/basemap/montreal.pmtiles");
+  env.SNAPSHOTS.objects.set("v1/private-city/static/basemap/map.pmtiles", publicTile);
+  const legacy = t.mock.method(env.SNAPSHOTS, "get");
+  const clean = t.mock.method(globalThis, "fetch", () => new Response("TILE", {
+    status: 206,
+    headers: { ...partialMetadata, "content-range": "bytes 0-3/200" },
+  }));
+  const requestFor = (city) => new Request(`https://data.yesid.dev/v2/${city}/basemap/map.pmtiles`, {
+    headers: { range: "bytes=0-3" },
+  });
+  const unknown = await worker.fetch(requestFor("unknown"), env);
+  const hidden = await worker.fetch(requestFor("private-city"), env);
+  assert.equal(hidden.status, 404);
+  assert.equal(hidden.status, unknown.status);
+  assert.deepEqual([...hidden.headers], [...unknown.headers]);
+  assert.equal(await hidden.text(), await unknown.text());
+  assert.equal(clean.mock.callCount(), 0);
+  assert.equal(legacy.mock.callCount(), 0);
 });
 
 test("v2 basemap replays the same responses before and after the clean copy", async (t) => {
