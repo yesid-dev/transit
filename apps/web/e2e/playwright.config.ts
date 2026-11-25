@@ -105,10 +105,10 @@ export default defineConfig({
 						fullyParallel: true,
 						testMatch: /layout.*\.spec\.ts/,
 						testIgnore: [
-							// The design-pass spec owns a full viewport matrix in Chromium.
+							// These specs own their viewport matrices in Chromium.
 							...(browserName === 'chromium' && width === 1440 && colorScheme === 'light'
 								? []
-								: [/layout-design-pass\.spec\.ts/]),
+								: [/layout-(?:design-pass|steady-first-screen)\.spec\.ts/]),
 							// Route lifecycle depends on the engine, not viewport or theme.
 							...(width === 1440 && colorScheme === 'light'
 								? []

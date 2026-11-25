@@ -43,12 +43,15 @@
 	});
 </script>
 
-{#if refreshed?.seed === capture}
-	{@render children(refreshed.snapshot, refreshed.receivedAt, true)}
-{:else}
-	{#await capture}
+{#await capture}
+	<div class="contents" data-record-pending>
 		{@render pending()}
-	{:then snapshot}
-		{@render children(snapshot, captureClock ?? Date.now(), false)}
-	{/await}
-{/if}
+	</div>
+{:then snapshot}
+	{@const latest = refreshed?.seed === capture ? refreshed : undefined}
+	{@render children(
+		latest ? latest.snapshot : snapshot,
+		latest?.receivedAt ?? captureClock ?? Date.now(),
+		latest !== undefined,
+	)}
+{/await}

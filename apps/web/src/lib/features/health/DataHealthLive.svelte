@@ -248,7 +248,7 @@
 	<div data-slot="screen-content">
 		<LiveCapture {capture} {city}>
 			{#snippet pending()}
-				<RecordGroup
+				<RecordGroup waiting="facts"
 					><div data-slot="screen-answer">
 						<p role="status">{t('Checking live feeds…', 'Vérification des flux en direct…')}</p>
 					</div></RecordGroup

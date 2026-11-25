@@ -207,7 +207,11 @@
 		/>
 	{:else}
 		{#await punctualityAnswer}
-			{#key punctualityAnswer}<RecordPending {locale} answer={punctualityAnswer} />{/key}
+			{#key punctualityAnswer}<RecordPending
+					shape="answer"
+					{locale}
+					answer={punctualityAnswer}
+				/>{/key}
 		{:then result}
 			{#if result.kind === 'answer' && 'value' in result.answer}
 				{@const answer = result.answer}
@@ -253,7 +257,11 @@
 			<DashboardGrid gutter={false} minTile="20rem">
 				<RecordCard title={bands} {stamp}>
 					{#await punctualityAnswer}
-						{#key punctualityAnswer}<RecordPending {locale} answer={punctualityAnswer} />{/key}
+						{#key punctualityAnswer}<RecordPending
+								shape="bands"
+								{locale}
+								answer={punctualityAnswer}
+							/>{/key}
 					{:then result}
 						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 							<RecordChart
@@ -273,7 +281,11 @@
 					<div id="directions" class="mt-3 grid gap-2">
 						<h3 class="font-semibold">{title('directions')}</h3>
 						{#await directionsAnswer}
-							{#key directionsAnswer}<RecordPending {locale} answer={directionsAnswer} />{/key}
+							{#key directionsAnswer}<RecordPending
+									shape="table"
+									{locale}
+									answer={directionsAnswer}
+								/>{/key}
 						{:then result}
 							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 								<FactList leading={false}>

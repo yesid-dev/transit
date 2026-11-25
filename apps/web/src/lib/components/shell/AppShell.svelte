@@ -120,6 +120,10 @@
 	{/each}
 {/snippet}
 
+{#snippet streamingFooter()}
+	<div class="streaming-footer">{@render footer?.()}</div>
+{/snippet}
+
 <div
 	class="app-shell-root circuit-grid bg-background text-foreground"
 	data-full-viewport={fullViewport}
@@ -129,7 +133,7 @@
 >
 	<AppFrame
 		{header}
-		{footer}
+		footer={footer && !fullViewport ? streamingFooter : footer}
 		{fullViewport}
 		{mainLabel}
 		controlsRail={frame.showRail
@@ -164,14 +168,29 @@
 		{:else if fullViewport}
 			{@render main()}
 		{:else}
-			<RecordPatience {locale} period={frame.period} scope={url.pathname + url.search}>
-				{@render main()}
-			</RecordPatience>
+			<div class="streaming-main">
+				<RecordPatience {locale} period={frame.period} scope={url.pathname + url.search}>
+					{@render main()}
+				</RecordPatience>
+			</div>
 		{/if}
 	</AppFrame>
 </div>
 
 <style>
+	/* The content slot inherits AppFrame's measured header height (including its SSR fallback). */
+	.streaming-main:has(:global([data-record-pending])) {
+		min-block-size: calc(100dvh - var(--app-frame-header-height) + var(--space-card-gap));
+	}
+	/* On a short result the footer enters the viewport with the result's geometry. */
+	.app-shell-root:has(.streaming-main :global([data-record-pending])) .streaming-footer {
+		visibility: hidden;
+	}
+	@media print {
+		.streaming-main:has(:global([data-record-pending])) {
+			min-block-size: 0;
+		}
+	}
 	/* The paired reading rail and the page surface share the card gutter. */
 	@media (min-width: 64rem) {
 		.app-shell-root[data-full-viewport='false']

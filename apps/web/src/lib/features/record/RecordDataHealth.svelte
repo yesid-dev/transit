@@ -23,6 +23,7 @@
 	import RecordDataTable, { type RecordTableRow } from './RecordDataTable.svelte';
 	import RecordEvidenceLine from './RecordEvidenceLine.svelte';
 	import RecordPending from './RecordPending.svelte';
+	import RecordSkeleton from './RecordSkeleton.svelte';
 	import ScreenTitle from './ScreenTitle.svelte';
 	import StateMark from './StateMark.svelte';
 	import { recordSectionLinks } from './recordLinks.ts';
@@ -177,7 +178,11 @@
 			<div class="table-days-answer" data-slot="screen-answer">
 				{#if record}
 					{#await record.health}
-						{#key record.health}<RecordPending {locale} answer={record.health} />{/key}
+						{#key record.health}<RecordPending
+								shape="answer"
+								{locale}
+								answer={record.health}
+							/>{/key}
 					{:then result}
 						{#if result.kind === 'busy'}<RecordPending {locale} busy />
 						{:else if result.kind !== 'answer'}
@@ -233,7 +238,9 @@
 			{#if record}
 				<section id="table-health" class="min-w-0">
 					<RecordCard interactive title={dailyTitle} {stamp}>
-						{#await record.health then result}
+						{#await record.health}
+							<RecordSkeleton shape="table" />
+						{:then result}
 							{#if result.kind === 'answer'}
 								{@const display = grid(result.answer)}
 								{#if display.from && display.to && display.rows.length}

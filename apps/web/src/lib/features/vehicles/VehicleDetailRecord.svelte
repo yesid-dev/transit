@@ -206,7 +206,7 @@
 	{#await service.answer}
 		<RecordGroup
 			><div data-slot="screen-answer">
-				<RecordPending {locale} answer={service.answer} />
+				<RecordPending shape="answer" {locale} answer={service.answer} />
 			</div></RecordGroup
 		>
 	{:then result}
