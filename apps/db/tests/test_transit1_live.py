@@ -65,11 +65,18 @@ def test_live_projection_retains_measurements_and_uses_the_previous_utc_day(tmp_
     assert snapshot["alerts"] is None
     assert snapshot["feeds"]["i3_alerts"]["captured_at"] is None
     assert snapshot["feeds"]["vehicle_positions"]["captured_at"] == captured.isoformat()
+    assert snapshot["feeds"]["vehicle_positions"]["bytes"] == len(vehicles.SerializeToString())
+    assert snapshot["feeds"]["trip_updates"]["bytes"] == len(updates.SerializeToString())
+    assert snapshot["feeds"]["vehicle_positions"]["expected_every_seconds"] == (
+        publisher.manifest.feeds["vehicle_positions"].refresh_interval_seconds
+    )
 
 
 def test_observed_empty_feed_and_corrupt_successor_keep_distinct_states(tmp_path):
     publisher = LivePublisher(declaration_for("stm"), LocalBronzeStorage("local", tmp_path))
-    assert publisher.poll(NOW)["vehicle_positions"] is None
+    unavailable = publisher.poll(NOW)
+    assert unavailable["vehicle_positions"] is None
+    assert unavailable["feeds"]["vehicle_positions"]["bytes"] is None
     first = NOW + timedelta(seconds=20)
     capture(tmp_path, "vehicle_positions", message(), first)
     assert publisher.poll(first)["vehicle_positions"] == []
@@ -81,6 +88,7 @@ def test_observed_empty_feed_and_corrupt_successor_keep_distinct_states(tmp_path
     feed = snapshot["feeds"]["vehicle_positions"]
     assert feed["captured_at"] == first.isoformat()
     assert feed["read_failed"] is True
+    assert feed["bytes"] == len(message().SerializeToString())
 
 
 def test_local_destination_replaces_only_the_city_snapshot(tmp_path):

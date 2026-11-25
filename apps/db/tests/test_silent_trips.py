@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
@@ -11,7 +12,12 @@ import pytest
 from transit_ops.core.models import ProviderManifest
 from transit_ops.ingestion.storage import LocalBronzeStorage
 from transit_ops.live.playback import LivePublisher
-from transit_ops.live.silent_trips import TripReporting, TripSpan, count_silent_trips
+from transit_ops.live.silent_trips import (
+    SILENT_TRIP_LIMIT,
+    TripReporting,
+    TripSpan,
+    count_silent_trips,
+)
 from transit_ops.live.trip_instances import LiveTripInstances
 from transit_ops.live.trip_schedule import LiveTripSchedule
 
@@ -46,12 +52,13 @@ def test_silent_trips_uses_trip_identity_and_start_and_end_grace():
         ],
         cancellations=[("cancelled", DAY), ("silent", DAY - timedelta(days=1))],
     )
-    assert counts == {
+    assert {key: value for key, value in counts.items() if key != "silent_trips"} == {
         "scheduled_now": 5,
         "non_responding": 3,
         "cancelled_now": 1,
         "non_responding_by_route": [{"route_id": "1", "count": 3}],
     }
+    assert Counter(row["route_id"] for row in counts["silent_trips"]) == {"1": 3}
 
 
 @pytest.mark.parametrize(
@@ -72,6 +79,10 @@ def test_uses_elapsed_service_clock(instant, day, trip):
         now, ZONE, {day: (trip,)}, reports=[("other", day)], cancellations=[]
     )
     assert counts["scheduled_now"] == counts["non_responding"] == 1
+    assert counts["silent_trips"][0]["departure"] == {
+        "service_seconds": trip.first,
+        "local_time": "01:00",
+    }
 
 
 def test_dated_reports_do_not_hide_another_service_days_trip():
@@ -153,14 +164,72 @@ def test_midnight_reports_and_cancellations_resolve_to_the_running_service_day(h
     instances = LiveTripInstances({DAY: {trip.trip_id: trip for trip in trips[DAY]}}, ZONE)
     rows = snapshot(now, {**position("t", now), "start_date": hint})
     rows["trip_updates"] = [{"trip_id": "cancelled", "start_date": hint, "relationship": 3}]
-    reports, cancellations = TripReporting(0).observe(rows, now, instances)
+    reporting = TripReporting(0)
+    reports, cancellations = reporting.observe(rows, now, instances)
     assert reports == {("t", DAY)}
     assert cancellations == {("cancelled", DAY)}
+    assert reporting.last_positions == {("t", DAY): now}
     counts = count_silent_trips(now, ZONE, trips, reports=reports, cancellations=cancellations)
     assert (counts["scheduled_now"], counts["non_responding"], counts["cancelled_now"]) == (1, 0, 1)
 
 
-def install_edition(raw_root, city):
+def test_silent_rows_keep_last_same_day_position_after_reporting_window():
+    reporting = TripReporting(source_lag_seconds=0)
+    trips = (
+        span("seen", line="A"),
+        span("never-seen", first=12 * 3600 + 600, line="B"),
+    )
+    instances = LiveTripInstances({DAY: {trip.trip_id: trip for trip in trips}}, ZONE)
+    reporting.observe(snapshot(NOON, position("seen")), NOON, instances)
+    later = NOON + timedelta(minutes=6)
+    reports, cancellations = reporting.observe(
+        snapshot(later, position("unmatched", later)), later, instances
+    )
+    measured = count_silent_trips(
+        later,
+        ZONE,
+        {DAY: trips},
+        reports=reports,
+        cancellations=cancellations,
+        history={**reporting.last_positions, ("never-seen", DAY - timedelta(days=1)): NOON},
+    )
+    assert measured["silent_trips"] == [
+        {
+            "trip_id": "never-seen",
+            "route_id": "B",
+            "direction_id": None,
+            "departure": {"service_seconds": 43800, "local_time": "12:10"},
+            "silent_since": None,
+            "silent_for_seconds": 660,
+        },
+        {
+            "trip_id": "seen",
+            "route_id": "A",
+            "direction_id": None,
+            "departure": {"service_seconds": 43200, "local_time": "12:00"},
+            "silent_since": NOON.isoformat(),
+            "silent_for_seconds": 360,
+        },
+    ]
+    assert measured["non_responding_by_route"] == [
+        {"route_id": "A", "count": 1},
+        {"route_id": "B", "count": 1},
+    ]
+
+
+def test_silent_list_caps_only_the_detail_rows():
+    trips = tuple(span(f"{i:03}", line="B") for i in range(SILENT_TRIP_LIMIT + 1))
+    measured = count_silent_trips(NOON, ZONE, {DAY: trips}, reports=[], cancellations=[])
+    assert measured["non_responding"] == SILENT_TRIP_LIMIT + 1
+    assert measured["non_responding_by_route"] == [
+        {"route_id": "B", "count": SILENT_TRIP_LIMIT + 1}
+    ]
+    assert [row["trip_id"] for row in measured["silent_trips"]] == [
+        f"{i:03}" for i in range(SILENT_TRIP_LIMIT)
+    ]
+
+
+def install_edition(raw_root, city, *, pinned=True):
     path = raw_root / "archive" / "v1" / "schedules" / city
     path.mkdir(parents=True)
     data = BytesIO()
@@ -198,6 +267,11 @@ def install_edition(raw_root, city):
         )
     body = data.getvalue()
     digest = sha256(body).hexdigest()
+    if not pinned:
+        original = raw_root / city / "static_schedule" / "ingested_at_utc=2026-11-23"
+        original.mkdir(parents=True)
+        (original / f"20261123T170000000000Z__{digest[:12]}__static_schedule.zip").write_bytes(body)
+        return len(body)
     (path / f"{digest}.zip").write_bytes(body)
     (path / "editions.json").write_text(
         json.dumps(
@@ -210,6 +284,7 @@ def install_edition(raw_root, city):
         ),
         encoding="utf-8",
     )
+    return len(body)
 
 
 @pytest.mark.parametrize(("edition", "identified"), [(True, True), (False, True), (True, False)])
@@ -240,7 +315,7 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
     city = manifest.provider.provider_id
     raw = LocalBronzeStorage("local", tmp_path)
     if edition:
-        install_edition(tmp_path, city)
+        archive_size = install_edition(tmp_path, city, pinned=not identified)
     reporting_vehicle = {
         **position("reporting" if identified else None),
         "route_id": "A",
@@ -286,6 +361,15 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
     publisher.run(dest, "", once=True)
     published = json.loads(dest.read_bytes(f"live/v2/{city}.json"))
     assert "trip_updates" not in published
+    assert published["schedule"] == (
+        {
+            "captured_at": "2026-11-23T17:00:00+00:00" if identified else None,
+            "effective_date": "2026-11-23",
+            "bytes": archive_size,
+        }
+        if edition
+        else None
+    )
     scoped_index = json.loads(dest.read_bytes(f"live/v2/{city}/trips.json"))
     packed = dest.read_bytes(f"live/v2/{city}/trips.bin")
     start, length = scoped_index["ranges"]["trip:reporting"]
@@ -307,6 +391,7 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
             "cancelled_now": 1,
             "non_responding_by_route": [{"route_id": "B", "count": 1}],
         }
+        assert [row["trip_id"] for row in published["silent_trips"]] == ["silent"]
         with ThreadPoolExecutor(max_workers=1) as executor:
             workspace = tmp_path / "schedule"
             workspace.mkdir()
@@ -316,3 +401,4 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
             )
     else:
         assert all(value is None for value in counts.values())
+        assert published["silent_trips"] is None

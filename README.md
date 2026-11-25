@@ -199,6 +199,14 @@ declared without live data. A trip becomes eligible to be silent after its
 first five minutes, with no grace after arrival. A fresh matching position
 is one reported within 90 seconds plus the declared source lag. The counts are
 null when the schedule, fresh movement feeds or vehicle trip IDs are unavailable.
+The optional `silent_trips` list contains up to 100 trips with the longest
+silence first, with GTFS departure seconds and the local clock time. Each row
+uses the last position stamp the publisher saw for that service day, or the
+first departure to calculate the elapsed silence when that stamp is unknown.
+City and line counts cover the full set. Each feed reports its declared
+`expected_every_seconds` and the last capture's `bytes`. The top-level
+`schedule` reports the in-force edition's capture time, effective date and
+ZIP bytes when known.
 
 The city answer and `GET /v2/{city}/live-trips` use the same dated schedule
 to resolve vehicle and stop delays. A delay uses a fresh feed delay when

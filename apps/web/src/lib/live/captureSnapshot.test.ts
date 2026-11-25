@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
 	captureDepartures,
 	captureNetwork,
@@ -85,6 +86,54 @@ const scoped = captureTripScopeSchema.parse({
 });
 
 describe('capture-backed Live projection', () => {
+	it('projects optional silent rows and evidence while the prior reader drops added facts', () => {
+		const current = {
+			...snapshot,
+			scheduled_now: 20,
+			non_responding: 1,
+			feeds: {
+				...snapshot.feeds,
+				positions: { ...snapshot.feeds.positions, expected_every_seconds: 20, bytes: 1280 },
+			},
+			schedule: { captured_at: null, effective_date: '2026-11-23', bytes: 123456 },
+			silent_trips: [
+				{
+					trip_id: 'silent',
+					route_id: '24',
+					direction_id: 0,
+					departure: { service_seconds: 90000, local_time: '01:00' },
+					silent_since: null,
+					silent_for_seconds: 900,
+				},
+			],
+		};
+		const previousReader = captureSnapshotSchema
+			.omit({ schedule: true, silent_trips: true })
+			.extend({
+				feeds: z.record(
+					z.string(),
+					captureTripScopeSchema.shape.feed.omit({
+						expected_every_seconds: true,
+						bytes: true,
+					}),
+				),
+			});
+		const { schedule, silent_trips, ...previous } = current;
+		expect(previousReader.parse(current)).toEqual({ ...previous, feeds: snapshot.feeds });
+		const measured = captureNetwork(captureSnapshotSchema.parse(current), now);
+		expect(measured).toMatchObject({ silent_trips, schedule });
+		expect(measured.captureFeed).toMatchObject({ expected_every_seconds: 20, bytes: 1280 });
+		expect(captureNetwork(previousReader.parse(current), now)).toMatchObject({
+			silent_trips: null,
+			schedule: null,
+			non_responding: 1,
+		});
+		expect(captureNetwork(current, now + 60_000)).toMatchObject({ silent_trips: null, schedule });
+		expect(
+			captureNetwork({ ...current, silent_trips: [], non_responding: 0 }, now).silent_trips,
+		).toEqual([]);
+	});
+
 	it('accepts both publisher versions and preserves the measured pair, including zero', () => {
 		const current = {
 			...snapshot,
