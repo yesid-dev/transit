@@ -19,19 +19,14 @@
 	} = $props();
 </script>
 
-<div
-	{id}
-	class={['fact relative', detail && 'py-2']}
-	class:has-detail={!!detail}
-	data-slot="fact-row"
->
-	<dt>
+<div {id} class="fact relative" class:has-detail={!!detail} data-slot="fact-row">
+	<dt class="py-2 print:py-0">
 		<div class="fact-stroke">
 			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
 		</div>
 		{label}
 	</dt>
-	<dd class="tabular-nums" aria-busy={busy}>
+	<dd class={['tabular-nums', detail && 'py-2 print:py-0']} aria-busy={busy}>
 		{#if emphasis}
 			<strong class="font-heading text-heading font-extrabold">{@render children()}</strong>
 		{:else}
@@ -44,7 +39,7 @@
 <style>
 	.fact {
 		display: grid;
-		grid-template-columns: fit-content(40%) minmax(0, 1fr);
+		grid-template-columns: minmax(0, 1fr) auto;
 		min-block-size: 2.75rem;
 		align-items: center;
 		gap: 0.25em 1em;
@@ -54,7 +49,7 @@
 		display: var(--fact-leading, block);
 	}
 	dt {
-		min-inline-size: min-content;
+		min-inline-size: 0;
 		overflow-wrap: normal;
 		word-break: normal;
 	}

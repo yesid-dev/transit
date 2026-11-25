@@ -14,6 +14,7 @@ import { recordMapFixture } from './map-record-fixture';
 import { measureDesignPass, setWidth } from './design-pass-measure';
 import { expectDesignPass } from './design-pass-debt';
 import { openFrameControls } from './frame-controls';
+import { textDefects } from './layout-helpers';
 
 const time = Date.parse('2026-11-23T16:00:00Z');
 const unobstructedCapture = '[data-slot="app-frame-chrome"] { visibility: hidden !important; }';
@@ -161,6 +162,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		}
 		if (screen.startsWith('overview')) {
 			await expect(page.locator('[data-slot="record-ranking"] tbody tr')).toHaveCount(6);
+			await expect(page.locator('[data-slot="record-ranking"] thead th')).toHaveCount(4);
 			await expect(page.locator('[data-slot="chart-line-series"]')).toBeVisible();
 		}
 		if (health) {
@@ -372,6 +374,92 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		expectDesignPass(screen, key, report);
 	});
 }
+
+for (const screen of ['daily', 'overview-live'] as const) {
+	test(`${screen} fact labels clear their strokes at normal and enlarged text @layout`, async ({
+		page,
+	}) => {
+		const fixture = designPassCases.find(({ key }) => key === `${screen}/stm/en`)!;
+		await page.goto(fixture.href);
+		const labels = page.locator('main [data-slot="fact-row"] > dt');
+		await expect(labels.first()).toBeVisible();
+		for (const scale of [100, 200]) {
+			await page.addStyleTag({ content: `html { font-size: ${scale}%; }` });
+			for (const width of [320, 390, 1440]) {
+				await setWidth(page, width);
+				const overlapping = await labels.evaluateAll((terms) =>
+					terms.flatMap((term) => {
+						const node = [...term.childNodes].find(
+							(child) => child.nodeType === Node.TEXT_NODE && child.textContent?.trim(),
+						);
+						if (!node) return [];
+						const range = document.createRange();
+						range.selectNodeContents(node);
+						const label = range.getBoundingClientRect();
+						const above = term.querySelector('.hand-drawn-line');
+						const below = term.parentElement?.nextElementSibling?.querySelector('.hand-drawn-line');
+						const overlapsAbove =
+							above?.getClientRects().length && label.top < above.getBoundingClientRect().bottom;
+						const overlapsBelow =
+							below?.getClientRects().length && label.bottom > below.getBoundingClientRect().top;
+						return overlapsAbove || overlapsBelow ? [node.textContent?.trim()] : [];
+					}),
+				);
+				expect(overlapping, `${width}px at ${scale}%`).toEqual([]);
+			}
+		}
+	});
+}
+
+test('Overview Live late lines keep the plate, linked name and value together @layout', async ({
+	page,
+}) => {
+	const fixture = designPassCases.find(({ key }) => key === 'overview-live/stm/en')!;
+	await page.clock.setFixedTime(time);
+	await page.route(captureUrl, (route) =>
+		route.fulfill({
+			json: captureFixture(time, {
+				city: 'stm',
+				vehicle_positions: [
+					captureVehicle(time, { delay: 360 }),
+					captureVehicle(time, {
+						id: 'report-40062',
+						vehicle_id: '40062',
+						route_id: '80',
+						delay: 420,
+					}),
+				],
+			}),
+		}),
+	);
+	await page.goto(fixture.href);
+	const table = page.getByRole('table', { name: 'Lines with the most vehicles late now' });
+	await expect(table.locator('tbody tr')).toHaveCount(2);
+	await expect(table.getByRole('columnheader')).toHaveText(['Line', 'Late']);
+	const row = table.locator('tbody tr').first();
+	for (const { width, theme } of [
+		{ width: 1440, theme: 'light' },
+		{ width: 390, theme: 'dark' },
+	]) {
+		await setWidth(page, width);
+		await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
+		await page.reload();
+		await expect(row).toBeVisible();
+		const plate = (await row.locator('[data-slot="route-plate"]').boundingBox())!;
+		const name = (await row.getByRole('link').locator('.name-label').boundingBox())!;
+		const value = (await row.getByRole('cell').boundingBox())!;
+		expect(name.x).toBeGreaterThanOrEqual(plate.x + plate.width);
+		expect(value.x).toBeGreaterThan(name.x);
+		const evidence = process.env.TRANSIT_COHESION_B_EVIDENCE;
+		if (evidence)
+			await table.screenshot({
+				path: join(evidence, `overview-live-late-lines-${width}-${theme}.png`),
+			});
+	}
+	await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+	await expect(page.locator('html')).toHaveCSS('font-size', '32px');
+	expect(await textDefects(page)).toEqual([]);
+});
 
 test('Overview card edge responds to hover and keyboard focus', async ({ page }) => {
 	const overview = designPassCases.find(({ key }) => key === 'overview/stm/en')!;

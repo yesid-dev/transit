@@ -6,6 +6,7 @@
 		label: string;
 		href?: string;
 		plate?: { code: string; scheduleOnly?: boolean };
+		code?: { text: string; outline?: boolean };
 		detail?: string;
 	};
 
@@ -78,7 +79,9 @@
 		},
 		...columns,
 	]);
-	const plates = $derived(rows.some(({ plate }) => plate !== undefined));
+	const plates = $derived(
+		rows.some(({ plate, code }) => plate !== undefined || code !== undefined),
+	);
 	const page = $derived(pageSize ?? (sort || rows.length > 20 ? 20 : undefined));
 	const number = $derived(intl.number(locale));
 	const sortBy = $derived(locale === 'fr' ? 'Trier par' : 'Sort by');
@@ -105,9 +108,11 @@
 	{#if rowHeading}
 		{@render rowHeading(row)}
 	{:else if page && !row.href}
-		<div class="inline-flex min-h-11 items-center"><RecordTableName {row} {plates} /></div>
+		<div class="inline-flex min-h-11 items-center">
+			<RecordTableName {row} {plates} columnCount={allColumns.length} />
+		</div>
 	{:else}
-		<RecordTableName {row} {plates} />
+		<RecordTableName {row} {plates} columnCount={allColumns.length} />
 	{/if}
 {/snippet}
 {#if sort?.choices}

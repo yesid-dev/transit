@@ -183,7 +183,7 @@
 					label: line.name ?? line.label,
 					plate: { code: line.number ?? row.id },
 					href: link('/lines/' + encodeURIComponent(row.id), true),
-					late: recordRatio(row.late, countedUnit(row.total, 'vehicle', locale), locale),
+					late: recordRatio(row.late, tally(row.total, locale), locale),
 				};
 			})}
 			columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}

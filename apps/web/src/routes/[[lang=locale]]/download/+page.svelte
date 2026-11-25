@@ -124,14 +124,18 @@
 </script>
 
 {#snippet disclosure(label: string, content: Snippet, id?: string)}
-	<Collapsible.Root {id} open={!!id && mounted && page.url.hash === `#${id}`}>
+	<Collapsible.Root {id} class="@container" open={!!id && mounted && page.url.hash === `#${id}`}>
 		<Collapsible.Trigger>
 			{#snippet child({ props })}
 				<button
 					{...props}
-					class="flex min-h-11 min-w-11 max-w-full flex-wrap items-center gap-x-2 text-start text-primary underline"
+					class="grid min-h-11 min-w-11 max-w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 py-2 text-start text-primary underline @max-[9rem]:gap-x-1 @max-[9rem]:text-small"
 				>
-					<ChevronToggle open={props['aria-expanded'] === 'true'} size="sm" />
+					<ChevronToggle
+						open={props['aria-expanded'] === 'true'}
+						size="sm"
+						class="mt-1 @max-[9rem]:size-3"
+					/>
 					<span class="[overflow-wrap:normal]">{label}</span>
 				</button>
 			{/snippet}

@@ -2,13 +2,18 @@
 	import { RoutePlate } from '@yesid/ui/brand';
 	import type { RecordTableRow } from './RecordDataTable.svelte';
 
-	let { row, plates = false }: { row: RecordTableRow; plates?: boolean } = $props();
+	let { row, plates, columnCount }: { row: RecordTableRow; plates: boolean; columnCount: number } =
+		$props();
+	const hasTrack = $derived(plates || !!row.plate || !!row.code);
 </script>
 
 {#snippet contents()}
-	{#if plates || row.plate}
+	{#if hasTrack}
 		<span class="plate">
-			{#if row.plate}<RoutePlate {...row.plate} />{/if}
+			{#if row.plate}<RoutePlate {...row.plate} />
+			{:else if row.code}<span class="font-mono text-sm" class:outlined={row.code.outline}
+					>{row.code.text}</span
+				>{/if}
 		</span>
 	{/if}
 	<span class="name-label">{row.label}</span>
@@ -18,14 +23,21 @@
 {#if row.href}
 	<a
 		class="name-cell"
-		class:with-plate={plates || row.plate}
+		class:with-plate={hasTrack}
 		class:schedule-only={row.plate?.scheduleOnly}
+		data-many-columns={columnCount > 2 || undefined}
 		href={row.href}
 	>
 		{@render contents()}
 	</a>
 {:else}
-	<div class="name-cell" class:with-plate={plates || row.plate}>{@render contents()}</div>
+	<div
+		class="name-cell"
+		class:with-plate={hasTrack}
+		data-many-columns={columnCount > 2 || undefined}
+	>
+		{@render contents()}
+	</div>
 {/if}
 
 <style>
@@ -38,10 +50,23 @@
 	.with-plate {
 		grid-template-columns: 3.75em minmax(0, 1fr);
 	}
+	.with-plate:not([data-many-columns]) {
+		grid-template-columns: minmax(min-content, min(3.75em, 31%)) minmax(0, 1fr);
+	}
 	.plate {
 		grid-column: 1;
 		grid-row: 1 / span 2;
 		align-self: center;
+	}
+	.name-cell:not([data-many-columns]) .plate {
+		align-self: start;
+		white-space: nowrap;
+	}
+	.outlined {
+		display: inline-block;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding-inline: 0.25em;
 	}
 	.name-label,
 	.detail {
@@ -49,33 +74,38 @@
 		min-inline-size: 0;
 		overflow-wrap: normal;
 	}
+	.name-cell:not([data-many-columns]) .detail {
+		font-size: var(--text-small);
+		font-weight: 400;
+		line-height: 1.35;
+	}
 	@container (inline-size <= 18rem) {
-		.name-cell.with-plate {
+		.name-cell.with-plate[data-many-columns] {
 			grid-template-columns: minmax(0, 1fr);
 		}
-		.name-cell.with-plate .plate {
+		.name-cell.with-plate[data-many-columns] .plate {
 			grid-row: 1;
 		}
 	}
 	@container (28rem < inline-size <= 46rem) {
-		.name-cell.with-plate:not(.schedule-only) {
+		.name-cell.with-plate[data-many-columns]:not(.schedule-only) {
 			grid-template-columns: minmax(min-content, 1fr);
 		}
-		.name-cell.with-plate:not(.schedule-only) .plate {
+		.name-cell.with-plate[data-many-columns]:not(.schedule-only) .plate {
 			grid-row: 1;
 		}
-		.name-cell.with-plate:not(.schedule-only) :is(.name-label, .detail) {
+		.name-cell.with-plate[data-many-columns]:not(.schedule-only) :is(.name-label, .detail) {
 			font-size: var(--text-caption);
 		}
 	}
 	@media (max-width: 40rem) {
-		.plate {
+		.name-cell[data-many-columns] .plate {
 			grid-row: 1;
 		}
-		.detail {
+		.name-cell[data-many-columns] .detail {
 			grid-column: 1 / -1;
 		}
-		.schedule-only {
+		.schedule-only[data-many-columns] {
 			grid-template-columns: minmax(0, 1fr);
 		}
 	}

@@ -36,7 +36,10 @@
 	const title = $derived(
 		kind === 'line' ? (locale === 'fr' ? 'Lignes' : 'Lines') : locale === 'fr' ? 'Arrêts' : 'Stops',
 	);
-	type Row = RecordTableRow & { code: string; sample: string; share: string };
+	const rowHeader = $derived(
+		kind === 'line' ? (locale === 'fr' ? 'Ligne' : 'Line') : locale === 'fr' ? 'Arrêt' : 'Stop',
+	);
+	type Row = RecordTableRow & { share: string };
 
 	function rankRows(answer: RankingAnswer, stops: ScheduleEdition['stops']): Row[] {
 		return answer.rows.slice(0, 3).map((row) => {
@@ -49,38 +52,33 @@
 					line?.name ??
 					line?.label ??
 					(stop ? stopDisplayName(stop.name) : stopNameFallback(row.id, locale)),
-				code: stop?.code || row.id,
+				code:
+					kind === 'stop' ? { text: stop?.code || row.id, outline: outlineStopCode } : undefined,
 				plate: line ? { code: line.number ?? row.id } : undefined,
 				href: link((kind === 'line' ? '/lines/' : '/stop/') + encodeURIComponent(row.id)),
-				sample: countedUnit(row.sample, 'event', locale) + (coverage ? ` · ${coverage}` : ''),
+				detail: countedUnit(row.sample, 'event', locale) + (coverage ? ` · ${coverage}` : ''),
 				share: formatShare?.(row.value) ?? percent(row.value, locale),
 			};
 		});
 	}
 </script>
 
-{#snippet stopHeading(row: Row)}
-	<div class="flex flex-wrap items-center gap-x-2">
-		<span class="font-mono text-sm" class:stop-code={outlineStopCode}>{row.code}</span>
-		<a class="inline-flex min-h-11 min-w-11 items-center text-primary underline" href={row.href}
-			>{row.label}</a
-		>
-	</div>
-{/snippet}
-{#snippet sample(row: Row)}{row.sample}{/snippet}
 {#snippet share(row: Row)}{row.share}{/snippet}
 {#snippet rows(answer: RankingAnswer, stops: ScheduleEdition['stops'] = [])}
 	<RecordDataTable
 		{locale}
 		title={heading ?? title}
-		rowHeader={title}
+		{rowHeader}
 		rows={rankRows(answer, stops)}
 		columns={[
-			{ key: 'share', header: overviewCopy[locale].onTime, numeric: true, cell: share },
-			{ key: 'sample', header: overviewCopy[locale].counted, cell: sample },
+			{
+				key: 'share',
+				header: overviewCopy[locale].onTime.replaceAll(' ', '\u00a0'),
+				numeric: true,
+				cell: share,
+			},
 		]}
 		value="share"
-		rowHeading={kind === 'stop' ? stopHeading : undefined}
 	/>
 	{#if answer.coverage_note}<p>{answer.coverage_note[locale]}</p>{/if}
 {/snippet}
@@ -108,12 +106,3 @@
 		{/if}
 	{/await}
 </div>
-
-<style>
-	.stop-code {
-		display: inline-block;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding-inline: 0.25em;
-	}
-</style>

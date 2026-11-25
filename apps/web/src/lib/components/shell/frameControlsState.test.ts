@@ -8,7 +8,12 @@ const state = (href: string) => frameControlsState(new URL(href, 'https://transi
 describe('frame control state', () => {
 	it('shows the View hint on the updated screens in both modes', () => {
 		expect(state('/?frameMode=live')).toMatchObject({ mode: 'live', showViewHint: true });
-		expect(state('/fr/receipt')).toMatchObject({ mode: 'record', showViewHint: true });
+		expect(state('/fr/network?frameMode=record')).toMatchObject({
+			mode: 'record',
+			showViewHint: true,
+		});
+		expect(state('/fr/receipt')).toMatchObject({ mode: 'record', showViewHint: false });
+		expect(state('/download')).toMatchObject({ mode: 'record', showViewHint: false });
 		expect(state('/lines/24')).toMatchObject({ showViewHint: false });
 	});
 

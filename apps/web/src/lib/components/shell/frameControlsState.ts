@@ -121,7 +121,7 @@ export function frameControlsState(url: URL, clock: FrameClock) {
 		mode,
 		showRail: !['/roadmap', '/privacy', '/terms', '/accessibility'].includes(path),
 		showViewHint:
-			['/', '/network', '/status', '/receipt', '/download', '/metrics'].includes(path) ||
+			['/', '/network', '/status', '/metrics'].includes(path) ||
 			path.startsWith('/departure/') ||
 			(mode === 'record' && path.startsWith('/vehicle/')),
 		recordOnly,

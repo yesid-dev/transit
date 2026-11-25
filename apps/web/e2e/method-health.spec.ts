@@ -40,7 +40,7 @@ for (const locale of ['en', 'fr'] as const) {
 					name: fr ? 'Ce que ce bilan n’est pas' : 'What this record is not',
 				})
 				.getByRole('list'),
-		).toHaveCSS('list-style-position', 'inside');
+		).toHaveCSS('list-style-position', 'outside');
 	});
 
 	test(`Download keeps the CSV column names findable in ${locale}`, async ({ page }) => {
