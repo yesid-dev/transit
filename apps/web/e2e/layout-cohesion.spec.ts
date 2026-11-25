@@ -8,7 +8,6 @@ const read = (name: string) =>
 const epoch = Date.parse(read('departures').generated_utc);
 const line = read('routes-index').routes[0].id;
 const stop = Object.keys(read('departures').stops)[0];
-const trip = Object.keys(read('trips').trips)[0];
 const shots = fileURLToPath(new URL('../../../.cache/cohesion/after/', import.meta.url));
 mkdirSync(shots, { recursive: true });
 const recordClearance = (page: Page) =>
@@ -56,7 +55,6 @@ for (const provider of ['stm', 'octranspo'])
 					for (const [kind, path] of [
 						['line', '/lines/' + line],
 						['stop', '/stop/' + stop],
-						['trip', '/trip/' + trip],
 					]) {
 						await page.goto((locale === 'fr' ? '/fr' : '') + path + '?provider=' + provider, {
 							waitUntil: 'networkidle',

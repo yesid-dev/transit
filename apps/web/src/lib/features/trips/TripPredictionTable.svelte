@@ -94,7 +94,8 @@
 		display: flex;
 		min-height: 2.75rem;
 		align-items: center;
-		color: var(--foreground);
+		color: var(--primary);
+		text-decoration: underline;
 		text-underline-offset: 0.2em;
 	}
 	.trip-stop-name {
@@ -107,11 +108,6 @@
 		font-variant-numeric: tabular-nums;
 		overflow-wrap: normal;
 		word-break: normal;
-	}
-	:global(.trip-prediction-table .trip-predictions :is(th, td)) {
-		overflow-wrap: normal;
-		word-break: normal;
-		white-space: normal;
 	}
 	.trip-stop-link:focus-visible {
 		outline: 2px solid var(--ring);

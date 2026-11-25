@@ -97,9 +97,11 @@ for (const locale of PUBLISHED_LOCALES) {
 			captureTripReport(
 				'stm',
 				report.generated_utc,
-				report.stops['T6-HUB'].map((row) =>
-					captureTrip(row.trip, row.route, [{ ...row, stop: 'T6-HUB' }]),
-				),
+				report.stops['T6-HUB'].map((row) => ({
+					...captureTrip(row.trip, row.route, [{ ...row, stop: 'T6-HUB' }]),
+					direction_id: 0,
+					start_time: '07:00:00',
+				})),
 			),
 		);
 		for (const width of [320, 390, 768, 1280]) {

@@ -115,7 +115,9 @@ for (const width of [390, 1440]) {
 						: 'On time, 4 min behind the timetable',
 				}),
 			).toBeVisible();
-			await expect(main.getByRole('link', { name: /T1/ })).toHaveAttribute('href', /trip\/T1/);
+			await expect(
+				main.getByRole('button', { name: fr ? 'Voir les prévisions' : 'View predictions' }),
+			).toBeVisible();
 			await expect(
 				main.getByRole('link', {
 					name: fr ? 'Voir ce véhicule sur la carte' : 'See this vehicle on the map',

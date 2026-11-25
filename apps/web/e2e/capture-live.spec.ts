@@ -19,14 +19,23 @@ test('the Transit1 live vehicle reads the capture snapshot in English and French
 		await response;
 		const main = page.getByRole('main');
 		await expect(main.getByText(lang === 'fr' ? 'Peu de places' : 'Few seats')).toBeVisible();
-		await expect(main.getByRole('link', { name: /T1/ })).toHaveAttribute('href', /trip\/T1/);
+		await main
+			.getByRole('button', { name: lang === 'fr' ? 'Voir les prévisions' : 'View predictions' })
+			.click();
+		await expect(
+			page
+				.getByRole('dialog')
+				.getByText(
+					lang === 'fr'
+						? 'Ce sont des prévisions, pas des arrivées observées.'
+						: 'These are predictions, not observed arrivals.',
+				),
+		).toBeVisible();
 	}
 	expect(legacyRequests).toEqual([]);
 });
 
-test('trip detail waits through a refreshing scope without showing missing data', async ({
-	page,
-}) => {
+test('Vehicle Live waits for the trip publication to refresh', async ({ page }) => {
 	const scoped = /\/api\/live-trips\?city=stm&trip=T1$/;
 	let attempts = 0;
 	let release!: () => void;
@@ -49,18 +58,36 @@ test('trip detail waits through a refreshing scope without showing missing data'
 	);
 	const current = page.waitForResponse((response) => scoped.test(response.url()) && response.ok());
 	try {
-		await page.goto('/trip/T1?provider=stm');
+		await page.goto('/vehicle/40061?provider=stm&frameMode=live');
 		await refreshing;
+		await page.getByRole('button', { name: 'View predictions' }).click();
+		await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Loading predictions…');
 		await expect(
-			page.getByRole('status').filter({ hasText: 'Refreshing live trip data' }),
-		).toBeVisible();
-		await expect(page.getByTestId('trip-standdown')).toHaveCount(0);
+			page.getByText('No predictions reported for this trip in this window.'),
+		).toHaveCount(0);
 		release();
 		await current;
-		await expect(page.getByText('Fixture stop', { exact: true }).first()).toBeVisible();
+		await expect(page.getByText('These are predictions, not observed arrivals.')).toBeVisible();
 	} finally {
 		release();
 	}
+});
+
+test('Departure Live shows the redirected prediction report and preserves its CSV', async ({
+	page,
+}) => {
+	await page.goto(
+		'/fr/trip/departure-without-vehicle?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14',
+	);
+	await expect(page).toHaveURL(/\/fr\/departure\//);
+	const report = page.getByRole('article', { name: 'Prévisions communiquées' });
+	await expect(
+		report.getByText('Ce sont des prévisions, pas des arrivées observées.'),
+	).toBeVisible();
+	await expect(report.getByRole('table')).toBeVisible();
+	await expect(
+		report.getByRole('link', { name: 'Télécharger toutes les prévisions (CSV)' }),
+	).toHaveAttribute('download', 'trip-departure-without-vehicle-all-predictions.csv');
 });
 
 test('Live alerts display capture evidence and distinguish unsupported coverage', async ({

@@ -1,51 +1,17 @@
-import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
-import { lineViewsCopy } from '#lib/features/lines/lineViews.copy.ts';
+import { defineCopy } from '#lib/i18n/copy.ts';
 
 export const tripCopy = defineCopy({
 	fr: {
-		kicker: 'TRAJET',
-		reportTitle: 'Rapport de prévisions du trajet',
-		contextHeading: 'Bilan de la ligne',
-		lineRecord: 'Voir le bilan de la ligne',
-		lineId: (id: string) => `Identifiant de ligne ${id}`,
-		toward: (name: string) => `Vers ${name}`,
-		reportTime: 'Heure du rapport',
-		timeUnavailable: 'Heure du rapport non fournie.',
 		observedCaveat: 'Ce sont des prévisions, pas des arrivées observées.',
 		columns: { stop: 'Arrêt', time: 'Heure prévue', offset: 'Écart signalé' },
 		showAll: (n: number) => `Voir les ${n} prévisions`,
 		showFewer: 'Voir moins de prévisions',
-		copyLive: 'Copier le lien en direct',
-		changing: lineViewsCopy.fr.changing,
-		linkCopied: 'Lien copié',
-		copyFallback: 'Lien à copier',
 		download: 'Télécharger toutes les prévisions (CSV)',
-		findLine: 'Trouver sa ligne',
-		search: 'Chercher à nouveau',
-		reportedDelay: 'Retard signalé',
-		standDownShown:
-			'Ce trajet ne figure pas dans le rapport affiché. Trouvez sa ligne ou faites une autre recherche.',
 
-		back: '← Retour aux lignes',
-		heading: (id: string) => `Trajet ${id}`,
-		subheading: 'Prévisions communiquées pour ce trajet',
-		predictionCount: (n: number) =>
-			n === 1 ? '1 prévision communiquée' : `${n} prévisions communiquées`,
-		status: {
-			early: 'En avance',
-			on_time: "À l'heure",
-			late: 'En retard',
-			unknown: 'Inconnu',
-		},
 		reportedPredictions: 'Prévisions communiquées',
 		viewStop: 'Voir l’arrêt',
 		predictionCaveat:
 			'Les prédictions couvrent jusqu’à une heure au moment de la préparation du rapport. Elles peuvent changer.',
-		viewOnMap: 'Voir sur la carte',
-		viewTripOnMap: (id: string) => `Voir le trajet ${id} sur la carte`,
-		standDownHeading: 'Trajet absent de ce rapport',
-		standDownBody:
-			'Ce trajet ne figure pas dans le rapport actuel. Trouvez sa ligne ou faites une autre recherche.',
 		noPredictions: 'Aucune prévision communiquée pour ce trajet dans cette fenêtre.',
 		latestReport: 'Dernier rapport',
 		refreshUnavailable: 'Actualisation indisponible',
@@ -54,46 +20,16 @@ export const tripCopy = defineCopy({
 			'Le dernier rapport reçu reste affiché. Ses prédictions peuvent ne plus être à jour.',
 	},
 	en: {
-		kicker: 'TRIP',
-		reportTitle: 'Trip prediction report',
-		contextHeading: 'Line record',
-		lineRecord: 'See the line record',
-		lineId: (id: string) => `Line identifier ${id}`,
-		toward: (name: string) => `Toward ${name}`,
-		reportTime: 'Report time',
-		timeUnavailable: 'Report time not supplied.',
 		observedCaveat: 'These are predictions, not observed arrivals.',
 		columns: { stop: 'Stop', time: 'Predicted time', offset: 'Reported offset' },
 		showAll: (n: number) => `Show all ${n} predictions`,
 		showFewer: 'Show fewer predictions',
-		copyLive: 'Copy live link',
-		changing: lineViewsCopy.en.changing,
-		linkCopied: 'Link copied',
-		copyFallback: 'Link to copy',
 		download: 'Download all predictions (CSV)',
-		findLine: 'Find its line',
-		search: 'Search again',
-		reportedDelay: 'Reported delay',
-		standDownShown: 'This trip is not in the report shown. Find its line or search again.',
 
-		back: '← Back to lines',
-		heading: (id) => `Trip ${id}`,
-		subheading: 'Reported predictions for this trip',
-		predictionCount: (n) => (n === 1 ? '1 prediction reported' : `${n} predictions reported`),
-		status: {
-			early: 'Early',
-			on_time: 'On time',
-			late: 'Late',
-			unknown: 'Unknown',
-		},
 		reportedPredictions: 'Reported predictions',
 		viewStop: 'View stop',
 		predictionCaveat:
 			'Predictions cover up to one hour when the report is prepared. They may change.',
-		viewOnMap: 'View on map',
-		viewTripOnMap: (id) => `View trip ${id} on map`,
-		standDownHeading: 'Trip not in this report',
-		standDownBody: 'This trip is not in the current report. Find its line or search again.',
 		noPredictions: 'No predictions reported for this trip in this window.',
 		latestReport: 'Latest report',
 		refreshUnavailable: 'Refresh unavailable',
@@ -101,5 +37,3 @@ export const tripCopy = defineCopy({
 		retainedReport: 'Showing the last report received. Its predictions may no longer be current.',
 	},
 });
-
-export type TripDetailCopy = (typeof tripCopy)[Locale];

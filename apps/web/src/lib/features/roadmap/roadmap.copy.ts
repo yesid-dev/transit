@@ -19,7 +19,7 @@ export const roadmapCopy = defineCopy({
 	en: {
 		heading: 'What is changing in Transit',
 		introduction:
-			'Thank you for all the feedback. We read every message. It showed that fixing pages one at a time would not give you what you asked for, so Transit is being rebuilt as an app. While the new version is built, this site gets no new features.',
+			'Thank you for all the feedback. We read every message. It showed that fixing pages one at a time would not give you what you asked for, so Transit is being rebuilt as an app.',
 		currentHeading: 'What stays the same meanwhile',
 		current: [
 			'This site keeps running, and its data keeps updating every day.',
@@ -46,7 +46,7 @@ export const roadmapCopy = defineCopy({
 	fr: {
 		heading: 'Ce qui change dans Transit',
 		introduction:
-			"Merci pour tous vos commentaires. Nous les avons tous lus. Ils ont montré qu'en corrigeant les pages une à une, nous n'arriverions pas à vous offrir ce que vous demandiez. Transit est donc reconstruit sous forme d'application. Pendant la construction de la nouvelle version, ce site ne reçoit pas de nouvelles fonctions.",
+			"Merci pour tous vos commentaires. Nous les avons tous lus. Ils ont montré qu'en corrigeant les pages une à une, nous n'arriverions pas à vous offrir ce que vous demandiez. Transit est donc reconstruit sous forme d'application.",
 		currentHeading: "Ce qui ne change pas d'ici là",
 		current: [
 			"Ce site reste en ligne et ses données continuent d'être mises à jour chaque jour.",

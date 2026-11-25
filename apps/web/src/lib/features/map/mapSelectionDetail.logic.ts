@@ -3,6 +3,7 @@ import { absenceShort, stopNameFallback } from '#lib/site/absence.ts';
 import { clockTime } from '#lib/site/presenter.ts';
 import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 import { routeFor } from '#lib/nav/index.ts';
+import { vehicleLiveHref } from '#lib/features/vehicles/vehicleLinks.ts';
 
 export { delayTone } from '#lib/site/delayPresentation.ts';
 import type { MapSelectionDetail, MapStopRef, RouteMapDetail } from './mapSelectionSession.svelte';
@@ -33,6 +34,7 @@ export function detailActions(
 	detail: MapSelectionDetail,
 	locale: Locale,
 	line = (id: string) => id,
+	source = new URL('https://transit.local'),
 ): DetailAction | null {
 	const t = MAP_SELECTION_DETAIL_COPY[locale];
 	if (detail.kind === 'route') {
@@ -49,8 +51,8 @@ export function detailActions(
 	}
 	if (detail.vehicle.trip) {
 		return {
-			href: localizeHref(routeFor({ kind: 'trip', id: detail.vehicle.trip }), locale),
-			label: t.openFullTrip(detail.vehicle.trip),
+			href: vehicleLiveHref(detail.vehicle.id, source, locale),
+			label: t.openFullVehicle(detail.vehicle.id),
 		};
 	}
 	return detail.vehicle.route

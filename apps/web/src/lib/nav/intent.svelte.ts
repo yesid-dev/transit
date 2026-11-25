@@ -31,7 +31,6 @@ const SURFACE_ROOT: Record<SurfaceKind, string> = {
 const ENTITY_DETAIL_ROOT: Partial<Record<SurfaceKind, string>> = {
 	line: '/lines',
 	stop: '/stop',
-	trip: '/trip',
 };
 
 function isEntityKind(kind: SurfaceKind): boolean {

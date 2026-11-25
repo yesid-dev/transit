@@ -1,5 +1,5 @@
 import { localizeHref, type Locale } from '#lib/i18n/index.ts';
-import { carryFrameState } from '#lib/site/frameState.ts';
+import { carryFrameState, type FrameMode } from '#lib/site/frameState.ts';
 
 export function departureIdentity(line: unknown, direction: unknown, departure: unknown) {
 	if (
@@ -24,6 +24,8 @@ export function departureHref(
 	line: string,
 	direction: number | null,
 	departure: string,
+	mode: FrameMode = 'record',
+	trip?: string,
 ) {
 	const identity = departureIdentity(line, direction, departure);
 	if (!identity) return null;
@@ -32,7 +34,8 @@ export function departureHref(
 		carryFrameState(localizeHref(`/departure/${key}`, locale, city), source),
 		source,
 	);
-	target.searchParams.set('frameMode', 'record');
+	target.searchParams.set('frameMode', mode);
+	if (trip) target.searchParams.set('trip', trip);
 	return target.pathname + target.search;
 }
 

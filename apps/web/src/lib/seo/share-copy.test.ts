@@ -20,7 +20,6 @@ const paths = [
 	'/roadmap',
 	'/lines/new',
 	'/stop/new',
-	'/trip/new',
 ];
 it('keeps each description short, searchable and closed with its destination CTA', () => {
 	for (const locale of ['en', 'fr'] as const)

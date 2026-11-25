@@ -80,7 +80,10 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 	});
 
-	test(`${locale}: Roadmap has server-rendered headings and a share card`, async ({ request }) => {
+	test(`${locale}: Roadmap has server-rendered headings and a share card`, async ({
+		page,
+		request,
+	}) => {
 		const path = locale === 'en' ? '/roadmap' : '/fr/roadmap';
 		const title = locale === 'en' ? 'Roadmap' : 'Feuille de route';
 		const introduction =
@@ -93,13 +96,16 @@ for (const locale of ['en', 'fr'] as const) {
 		expect(head).toContain(`rel="canonical" href="https://transit1.yesid.dev${path}"`);
 		expect(head.includes('<script data-announcement-id=')).toBe(announcement.enabled);
 		expect(html.includes('data-slot="announcement-banner"')).toBe(announcement.enabled);
-		const article = html.match(
-			/<article\b[^>]*aria-labelledby="roadmap-title"[^>]*>(.*?)<\/article>/s,
-		)?.[1];
-		const headings = [...(article ?? '').matchAll(/<h([12])\b[^>]*>([^<]+)<\/h\1>/g)];
-		expect(headings.slice(0, 2).map(([, level, text]) => [level, text])).toEqual([
-			['1', title],
-			['2', introduction],
+		const headings = await page.evaluate((html) => {
+			const parsed = new DOMParser().parseFromString(html, 'text/html');
+			const article = parsed.querySelector('article[aria-labelledby="roadmap-title"]');
+			return Array.from(article?.querySelectorAll('h1, h2') ?? [])
+				.slice(0, 2)
+				.map((heading) => [heading.tagName, heading.textContent?.trim()]);
+		}, html);
+		expect(headings).toEqual([
+			['H1', title],
+			['H2', introduction],
 		]);
 		const image = head.match(/<meta property="og:image" content="([^"]*)"/)?.[1];
 		expect(image).toMatch(new RegExp(`/og/pages/roadmap\\.${locale}\\.png\\?v=[a-f0-9]{16}$`));
@@ -126,6 +132,35 @@ test('ephemeral and error documents keep a single noindex tag', async ({ request
 		expect(head, path).not.toContain('max-image-preview:large');
 	}
 });
+
+for (const locale of ['en', 'fr'] as const) {
+	test(`${locale}: legacy trip URLs resolve to a current vehicle or its departure`, async ({
+		request,
+	}) => {
+		const prefix = locale === 'fr' ? '/fr' : '';
+		const query = 'provider=octranspo&recordFrom=2026-11-08&recordTo=2026-11-14';
+		const departureKey = encodeURIComponent(JSON.stringify(['24', 0, '07:00:00']));
+		for (const [id, destination, selected] of [
+			['T1', '/vehicle/40061', null],
+			['departure-without-vehicle', `/departure/${departureKey}`, 'departure-without-vehicle'],
+		] as const) {
+			const response = await request.get(`${prefix}/trip/${id}?${query}`, { maxRedirects: 0 });
+			expect(response.status()).toBe(307);
+			const location = new URL(response.headers().location!, response.url());
+			expect(location.pathname).toBe(prefix + destination);
+			expect(location.searchParams.get('provider')).toBe('octranspo');
+			expect(location.searchParams.get('frameMode')).toBe('live');
+			expect(location.searchParams.get('recordFrom')).toBe('2026-11-08');
+			expect(location.searchParams.get('recordTo')).toBe('2026-11-14');
+			expect(location.searchParams.get('trip')).toBe(selected);
+		}
+		const missing = await request.get(`${prefix}/trip/retired-trip?${query}`);
+		expect(missing.status()).toBe(404);
+		expect(await missing.text()).toContain(
+			locale === 'fr' ? 'Cette station est en construction' : 'This station is under construction',
+		);
+	});
+}
 
 for (const locale of ['en', 'fr'] as const) {
 	test(

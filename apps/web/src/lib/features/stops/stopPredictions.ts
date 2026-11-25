@@ -48,6 +48,8 @@ export interface StopPredictionRow {
 	readonly trip: string | null;
 	readonly delayMin: number | null;
 	readonly status: DepartureStatus;
+	readonly direction?: number | null;
+	readonly startTime?: string | null;
 }
 
 export interface StopPredictionGroup {
@@ -119,6 +121,9 @@ export function presentStopLive(input: StopLiveInput): StopLiveView {
 			row: {
 				etaUtc: Number.isFinite(ms) ? departure.eta_utc : null,
 				trip: departure.trip ?? null,
+				...(departure.start_time
+					? { direction: departure.direction_id, startTime: departure.start_time }
+					: {}),
 				delayMin: departure.delay_min ?? null,
 				status: departureStatus(departure.delay_min, departure.status),
 			},

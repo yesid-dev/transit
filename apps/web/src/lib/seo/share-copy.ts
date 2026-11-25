@@ -181,21 +181,10 @@ export const SHARE_COPY = {
 			cta: 'Voir l’arrêt',
 		},
 	},
-	'/trip/detail': {
-		en: {
-			support: 'Reported trip status and stop predictions',
-			cta: 'View the trip',
-		},
-		fr: {
-			support: 'Statut signalé du trajet et passages prévus',
-			cta: 'Voir le trajet',
-		},
-	},
 } as const;
 export function shareKey(path: string): keyof typeof SHARE_COPY {
 	if (path.startsWith('/lines/')) return '/lines/detail';
 	if (path.startsWith('/stop/')) return '/stop/detail';
-	if (path.startsWith('/trip/')) return '/trip/detail';
 	return Object.hasOwn(SHARE_COPY, path) ? (path as keyof typeof SHARE_COPY) : '/';
 }
 export function shareCopy(path: string, locale: Locale) {

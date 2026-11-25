@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { dailyMessageHold } from './daily-message-hold';
+import { captureTrip, captureTripReport } from './capture-fixture';
 
 test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
@@ -143,8 +144,22 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 test('Departure opens the current prediction report for an exact trip identity', async ({
 	page,
 }) => {
+	const timestamp = '2026-11-23T16:00:00.000Z';
+	await page.clock.setFixedTime(Date.parse(timestamp) + 30_000);
+	await page.route('**/api/live-trips?city=stm&trip=T1', (route) =>
+		route.fulfill({
+			json: captureTripReport('stm', timestamp, [
+				captureTrip('T1', '80', [{ stop: 'S1', eta_utc: '2026-11-23T16:10:00.000Z' }]),
+			]),
+		}),
+	);
 	await page.goto(`/departure/${key('80')}?provider=stm&frameMode=live`);
-	await expect(page.getByRole('heading', { name: /prediction report/i })).toBeVisible();
+	const report = page.getByRole('article', { name: 'Reported predictions' });
+	await expect(report.getByRole('table')).toContainText('11:10');
+	await expect(report.getByText('These are predictions, not observed arrivals.')).toBeVisible();
+	await expect(
+		report.getByRole('link', { name: 'Download all predictions (CSV)' }),
+	).toHaveAttribute('download', 'trip-T1-all-predictions.csv');
 	await page.goto(`/departure/${key('24')}?provider=stm&frameMode=live`);
 	await expect(page.getByText('No live data for this departure today.')).toBeVisible();
 });

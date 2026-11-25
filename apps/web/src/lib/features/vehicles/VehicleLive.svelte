@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { dateAndClock } from '#lib/site/presenter.ts';
 	import { Card } from '@yesid/ui/card';
+	import * as Sheet from '@yesid/ui/sheet';
 	import { onMount, untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { choose } from '#lib/features/record/recordText.ts';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import { tripDirection } from '#lib/features/trips/tripDirection.ts';
+	import LiveTripPredictions from '#lib/features/trips/LiveTripPredictions.svelte';
+	import { liveAbsenceReason } from '#lib/site/absence.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { notReporting } from '#lib/components/map/vehicleProjection.ts';
 	import { routeFor } from '#lib/nav/index.ts';
@@ -72,6 +75,9 @@
 	let search = $state('');
 	let limit = $state(25);
 	const selected = $derived(id ? live.index.byVehicleId.get(id) : undefined);
+	const stopNames = $derived(
+		Object.fromEntries((stops?.stops ?? []).map((stop) => [stop.id, stop.name])),
+	);
 	const active = $derived(
 		(live.vehicles?.vehicles ?? []).filter(
 			(vehicle) =>
@@ -113,6 +119,7 @@
 	}
 
 	const href = (path: string) => vehicleHref(path, url, locale, city);
+	const predictionsLabel = $derived(t('View predictions', 'Voir les prévisions'));
 	const report = $derived(selected?.reported_utc || selected?.updated_utc);
 	const nextStop = $derived(
 		selected?.next_stop
@@ -153,7 +160,7 @@
 			</p>
 		{:else if id}
 			{#if selected && !silent}
-				<dl class="grid gap-3 sm:grid-cols-2">
+				<dl class="grid gap-2 sm:grid-cols-2">
 					<div>
 						<dt>{t('Location', 'Position')}</dt>
 						<dd>
@@ -177,9 +184,45 @@
 					<div>
 						<dt>{t('Departure', 'Départ')}</dt>
 						<dd>
-							{#if selected.trip}<a href={href(routeFor({ kind: 'trip', id: selected.trip }))}
-									>{t('View trip', 'Voir le voyage')} {selected.trip}</a
-								>{:else}{unknown}{/if}
+							{#if selected.trip}
+								<Sheet.Root>
+									<Sheet.Trigger class="text-primary underline">{predictionsLabel}</Sheet.Trigger>
+									<Sheet.Content
+										side="bottom"
+										closeLabel={t('Close', 'Fermer')}
+										class="max-h-[90dvh] overflow-y-auto"
+									>
+										<Sheet.Title
+											>{t(`Trip ${selected.trip}`, `Trajet ${selected.trip}`)}</Sheet.Title
+										>
+										{#if live.trips}
+											<LiveTripPredictions
+												id={selected.trip}
+												report={live.trips}
+												{locale}
+												provider={city}
+												{timeZone}
+												{stopNames}
+												current={live.familyStates.trips.health.state === 'live'}
+												absenceReason={liveAbsenceReason('trip-delay', {
+													familyStates: live.familyStates,
+												})}
+											/>
+										{:else}
+											<p role="status">
+												{live.familyStates.trips.phase === 'failed'
+													? t(
+															'Predictions are temporarily unavailable.',
+															'Les prévisions sont temporairement indisponibles.',
+														)
+													: t('Loading predictions…', 'Chargement des prévisions…')}
+											</p>
+										{/if}
+									</Sheet.Content>
+								</Sheet.Root>
+							{:else}
+								{unknown}
+							{/if}
 						</dd>
 					</div>
 					<div>

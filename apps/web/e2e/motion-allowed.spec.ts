@@ -11,7 +11,6 @@ const read = (name: string) =>
 const provider = read('manifest').provider;
 const line = read('routes-index').routes[0].id;
 const stop = Object.keys(read('departures').stops)[0];
-const trip = Object.keys(read('trips').trips)[0];
 const paths = [
 	'/',
 	'/map',
@@ -19,7 +18,7 @@ const paths = [
 	`/lines/${line}`,
 	'/stops',
 	`/stop/${stop}`,
-	`/trip/${trip}`,
+	'/vehicle/40061?frameMode=live',
 	'/hotspots',
 	'/metrics',
 	'/network',

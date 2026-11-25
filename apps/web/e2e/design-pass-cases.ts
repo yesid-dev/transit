@@ -1,9 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { localizeHref } from '../src/lib/i18n/routing';
 
-const trip = Object.keys(
-	JSON.parse(readFileSync(new URL('./trips.json', import.meta.url), 'utf8')).trips,
-)[0];
 const departure = encodeURIComponent(JSON.stringify(['24', 0, '07:00:00']));
 
 const screens = {
@@ -35,7 +31,6 @@ const screens = {
 	'map-record-corridors': '/map?frameMode=record&mapLayer=corridors&recordLine=24',
 	download: '/download',
 	roadmap: '/roadmap',
-	trip: '/trip/' + trip,
 	privacy: '/privacy',
 	terms: '/terms',
 	accessibility: '/accessibility',
@@ -47,6 +42,8 @@ export type Screen = keyof typeof screens;
 const ottawa: Screen[] = [
 	'alerts',
 	'how-we-measure',
+	'download',
+	'roadmap',
 	'line-live',
 	'line-record',
 	'lines',
@@ -61,6 +58,8 @@ const ottawa: Screen[] = [
 	'vehicles',
 ];
 const french: Screen[] = [
+	'download',
+	'roadmap',
 	'overview',
 	'overview-live',
 	'line-record',
@@ -82,6 +81,8 @@ export const designPassCases = [
 	['overview-live', 'octranspo', 'fr'] as const,
 	['stop-record', 'octranspo', 'fr'] as const,
 	['how-we-measure', 'octranspo', 'fr'] as const,
+	['download', 'octranspo', 'fr'] as const,
+	['roadmap', 'octranspo', 'fr'] as const,
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';

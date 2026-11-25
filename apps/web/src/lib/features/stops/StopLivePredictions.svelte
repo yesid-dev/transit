@@ -1,6 +1,9 @@
 <script lang="ts">
-	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
-	import { routeFor } from '#lib/nav/index.ts';
+	import { type Locale } from '#lib/i18n/index.ts';
+	import { page } from '$app/state';
+	import { departureHref } from '#lib/features/record/departureIdentity.ts';
+	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
+	import { getV1Context } from '#lib/v1/boot.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { clockTime, minuteReading } from '#lib/site/presenter.ts';
 	import { liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
@@ -21,7 +24,7 @@
 
 	const { line, readName } = transitDisplay();
 	const absenceContext = readLiveAbsenceContext();
-	const localizeHref = getLocalizeHref();
+	const { manifest } = getV1Context();
 	const uid = $props.id();
 	const t = $derived(detailCopy[locale].live);
 	const lineLabel = $derived(detailCopy[locale].identity.line);
@@ -80,12 +83,25 @@
 					</thead>
 					<tbody>
 						{#each group.rows as row, ri (`${row.trip ?? ''}-${row.etaUtc ?? ''}-${ri}`)}
+							{@const href =
+								group.line && row.startTime && page.url?.href
+									? departureHref(
+											currentMirrorUrl(),
+											locale,
+											manifest.provider,
+											group.line,
+											row.direction ?? null,
+											row.startTime,
+											'live',
+											row.trip ?? undefined,
+										)
+									: null}
 							<tr>
 								<th scope="row" class="stop-live__time">
 									{#if row.etaUtc == null}
 										<span class="stop-live__unreadable">{t.timeUnreadable}</span>
-									{:else if row.trip}
-										<a href={localizeHref(routeFor({ kind: 'trip', id: row.trip }), locale)}
+									{:else if href}
+										<a {href}
 											><time datetime={row.etaUtc}
 												>{clockTime(new Date(row.etaUtc), locale, timeZone)}</time
 											><span class="sr-only">, {t.trip}</span></a

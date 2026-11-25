@@ -723,9 +723,9 @@ describe('RouteDetail Detail tab: current-buses roster', () => {
 
 		expect(
 			within(roster).getByRole('link', {
-				name: /Vehicle busLate.*Late.*\+8 min.*Next stop First stop.*View trip/,
+				name: /Vehicle busLate.*Late.*\+8 min.*Next stop First stop.*View vehicle/,
 			}),
-		).toHaveAttribute('href', '/trip/tLate');
+		).toHaveAttribute('href', '/vehicle/busLate?provider=stm&frameMode=live');
 	});
 
 	it('shows an honest delay reading per bus and never a fabricated 0', () => {

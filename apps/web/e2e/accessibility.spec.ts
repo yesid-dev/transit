@@ -12,13 +12,19 @@ import { AUDIT_NAV, FOOTER_INFO_NAV, SURFACE_NAV } from '../src/lib/content/nav'
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { tripCopy } from '../src/lib/features/trips/trips.copy';
-import { captureTrip, captureTripReport } from './capture-fixture';
+import {
+	captureFixture,
+	captureTrip,
+	captureTripReport,
+	captureUrl,
+	captureVehicle,
+} from './capture-fixture';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
 const departures = fixture('departures.json');
 const trips = fixture('trips.json').trips;
-const tripId = Object.keys(trips)[0];
+const tripId = 'T1';
 const lineId = fixture('routes-index.json').routes[0].id;
 const line = fixture('../scripts/__fixtures__/b9/rich.json').files[`static/routes/${lineId}.json`];
 const lineStopCount = line.directions.reduce(
@@ -33,8 +39,7 @@ const pages = [
 	`/stop/${Object.keys(departures.stops)[0]}`,
 	`/lines/${lineId}`,
 	`/lines/${lineId}?tab=detail`,
-	`/trip/${tripId}`,
-	'/trip/TEmpty',
+	`/vehicle/40061?frameMode=live`,
 	`/search?q=${encodeURIComponent(fixture('stops-index.json').stops[0].name)}`,
 ];
 const localized = (href: string, locale: Locale) =>
@@ -54,6 +59,7 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 			const url = localized(path, locale);
 			test(`${url} has no serious or critical axe violations`, async ({ page }) => {
 				const lineLive = path === `/lines/${line.id}?tab=detail`;
+				const vehicleLive = path === '/vehicle/40061?frameMode=live';
 				if (lineLive) {
 					// Give each published stop a report so every destination's visible links reach axe.
 					const stops = [
@@ -77,13 +83,31 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 						}),
 					);
 				}
+				if (vehicleLive) {
+					// The Vehicle page needs a current assignment and its scoped prediction report.
+					// Match the timestamps to the frozen reader clock used by this audit.
+					const timestamp = departures.generated_utc;
+					const at = Date.parse(timestamp);
+					const trip = trips[tripId];
+					await page.route(captureUrl, (route) =>
+						route.fulfill({
+							json: captureFixture(at, {
+								vehicle_positions: [captureVehicle(at, { trip_id: tripId, route_id: trip.route })],
+							}),
+						}),
+					);
+					await page.route(`**/api/live-trips?city=stm&trip=${tripId}`, (route) =>
+						route.fulfill({
+							json: captureTripReport('stm', timestamp, [
+								captureTrip(tripId, trip.route, trip.stops),
+							]),
+						}),
+					);
+				}
 				// As in the layout audit below, scan after client-side fixture data settles.
-				await page.goto(
-					lineLive || path.startsWith('/trip/') ? localizeHref(path, locale, 'stm') : url,
-					{
-						waitUntil: 'networkidle',
-					},
-				);
+				await page.goto(lineLive || vehicleLive ? localizeHref(path, locale, 'stm') : url, {
+					waitUntil: 'networkidle',
+				});
 				await expect(page.getByRole('main')).toBeVisible();
 				if (lineLive) {
 					const pane = page.locator('[data-slot="line-directions"][data-mode="live"]');
@@ -108,7 +132,12 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 					}
 					expect(scanned).toBe(lineStopCount);
 				}
-				if (path === `/trip/${tripId}`) {
+				if (vehicleLive) {
+					await page
+						.getByRole('button', {
+							name: locale === 'fr' ? 'Voir les prévisions' : 'View predictions',
+						})
+						.click();
 					const count = trips[tripId].stops.length;
 					const table = page.getByRole('table', {
 						name: tripCopy[locale].reportedPredictions,
@@ -129,21 +158,6 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 						);
 						await expectAccessible(page, { include: `[data-axe-trip-row="${index}"]` });
 					}
-					const lineRecord = page.getByRole('link', {
-						name: tripCopy[locale].lineRecord,
-						exact: true,
-					});
-					await expect(lineRecord).toHaveCount(1);
-					await expect(lineRecord).toBeInViewport({ ratio: 1 });
-					expect((await lineRecord.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-				}
-				if (path === '/trip/TEmpty') {
-					await expect(
-						page
-							.getByTestId('trip-no-stops')
-							.getByText(tripCopy[locale].noPredictions, { exact: true }),
-					).toBeVisible();
-					await expect(page.locator('.trip-stop-link')).toHaveCount(0);
 				}
 				await expectAccessible(page);
 				if (path === '/metrics/archive') {
@@ -228,7 +242,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			page,
 		}) => {
 			// networkidle: the client-side data lands before the page is measured.
-			await page.goto(path.startsWith('/trip/') ? localizeHref(path, locale, 'stm') : url, {
+			await page.goto(path.startsWith('/vehicle/') ? localizeHref(path, locale, 'stm') : url, {
 				waitUntil: 'networkidle',
 			});
 			const announcement = page.locator('[data-slot="announcement-banner"]');
