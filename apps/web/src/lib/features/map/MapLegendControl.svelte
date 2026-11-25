@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { Button } from '@yesid/ui/button';
 	import { Card } from '@yesid/ui/card';
 	import { ChevronToggle } from '@yesid/ui/brand';
@@ -21,6 +21,7 @@
 		hidden = false,
 		open = $bindable(false),
 		onopenchange,
+		content,
 	}: {
 		locale: Locale;
 		presentation: 'phone' | 'desktop';
@@ -29,6 +30,7 @@
 		hidden?: boolean;
 		open?: boolean;
 		onopenchange?: (open: boolean) => void;
+		content?: Snippet;
 	} = $props();
 	const t = $derived(copy[locale]);
 	const storageKey = 'transit:legend-collapsed';
@@ -127,8 +129,15 @@
 			onOpenAutoFocus={focusSheet}
 			onCloseAutoFocus={restoreFocus}
 		>
-			<Sheet.Title class="map-legend-sheet-title">{t.legend.title}</Sheet.Title>
-			<MapLegend {locale} {colourBy} {staleCutoffS} lead />
+			<Sheet.Title class={content ? 'sr-only' : 'map-legend-sheet-title'}
+				>{t.legend.title}</Sheet.Title
+			>
+			{#if content}{@render content()}{:else}<MapLegend
+					{locale}
+					{colourBy}
+					{staleCutoffS}
+					lead
+				/>{/if}
 		</Sheet.Content>
 	</Sheet.Root>
 {/if}

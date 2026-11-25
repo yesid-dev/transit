@@ -14,6 +14,26 @@
 	} from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
+	import { MapFrame } from '@yesid/ui/map';
+	import { Card } from '@yesid/ui/card';
+	import { Sheet, SheetContent, SheetTitle } from '@yesid/ui/sheet';
+	import MaximizeIcon from '@lucide/svelte/icons/maximize';
+	import FreshnessStamp from '#lib/components/surface/FreshnessStamp.svelte';
+	import { recordStamp } from '#lib/site/presenter.ts';
+	import {
+		FrameControlsExtensionContext,
+		type RegisterFrameControlsExtension,
+	} from '#lib/components/shell/FrameControls.svelte';
+	import { colourDimension } from '#lib/components/map/vehicleLayer.ts';
+	import MapFrameLegend from './MapFrameLegend.svelte';
+	import MapLegendControl from './MapLegendControl.svelte';
+	import MapInView from './MapInView.svelte';
+	import MapFeedStallBanner from './MapFeedStallBanner.svelte';
+	import MapNearMeControl from './MapNearMeControl.svelte';
+	import MapNorthControl from './MapNorthControl.svelte';
+	import MapHoverPeek from './MapHoverPeek.svelte';
+	import { mapLegend } from './mapLegend';
+	import { peekRepeatsDetail } from './mapHoverPeek';
 	import { frameClock, parseFrameState } from '#lib/site/frameState.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
 	import type { RecordMapLayer } from './recordMap';
@@ -40,8 +60,7 @@
 	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
 	import { parseMapFocus } from '#lib/search/mapFocus.ts';
-	import { hasOccupancy, lineLabel, stopDisplayName } from '#lib/site/transitDisplay.ts';
-	import { RightPanel } from '#lib/components/shell/index.ts';
+	import { hasOccupancy, lineLabel } from '#lib/site/transitDisplay.ts';
 	import { MapStage, nearestStops, type WithDistance } from '#lib/components/map/index.ts';
 	import { createVehicleMotion } from './vehicleMotion';
 	import { getMapRoutes } from '#lib/v1/repositories/scheduleShapes.ts';
@@ -51,9 +70,6 @@
 	import MapMotionControl from './MapMotionControl.svelte';
 	import MapSelectionDetail from './MapSelectionDetail.svelte';
 	import MapSurfaceCanvasLayer from './MapSurfaceCanvasLayer.svelte';
-	import MapOverlayChrome from './MapOverlayChrome.svelte';
-	import MapDetailOverlay from './MapDetailOverlay.svelte';
-	import MapMobileDetailSheet from './MapMobileDetailSheet.svelte';
 	import { zoomForNearMePrecision } from './mapGeo';
 	import {
 		focusCoordinate,
@@ -72,17 +88,13 @@
 	import { createMapFocusController } from './mapFocusController.svelte';
 	import { createMapUrlCoordinator, MAP_URL_REWRITE } from './mapUrlCoordinator';
 	import { mapCopy } from './map.copy';
-	import { publishRailOffset, readStoredDetailPanelWidth } from './mapDetailPanes';
 	import { createMapRuntime, type MapRuntimeFeed } from './mapRuntime.svelte';
 	import { createMapSelectionSession, type MapSelection } from './mapSelectionSession.svelte';
 	import * as ownerCleanup from './mapOwnerCleanup';
 	import { captureMapReportCamera, type MapReportCamera } from './mapReportCamera';
 	import { buildMapReportView, mapReportFilterTokens } from './mapReports';
-	import { mapReportFilterLabels } from './mapReportFilterSummary';
-	import { mapReportsCopy } from './mapReports.copy';
 	import { buildMapReportLiveViewHref } from './mapReportsLink';
 	import { parseMapViewHint, mapViewHintWithinRuntime, type MapViewHint } from './mapViewHint';
-	import MapReportsPanel from './MapReportsPanel.svelte';
 
 	interface Props {
 		onready?: () => void;
@@ -97,7 +109,9 @@
 	const v1 = getV1Context();
 	const manifest = v1.manifest;
 	const timeZone = v1.provider?.timezone ?? manifest.tz;
-	const t = mapCopy(locale, v1.provider?.labels[locale].city ?? manifest.city ?? manifest.provider);
+	const city = v1.provider?.labels[locale].city ?? manifest.city ?? manifest.provider;
+	const t = mapCopy(locale, city);
+	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 
 	const alertsAvailable = providerHasAlerts(v1.provider);
 	function readMapFilters(params: URLSearchParams) {
@@ -106,13 +120,13 @@
 	}
 
 	let mapWidthPx = $state(1280);
+	let remWidth = $state(16);
+	const wide = $derived(
+		mapWidthPx > 0 && remWidth > 0 ? mapWidthPx >= 64 * remWidth : desktop.current,
+	);
 
-	let detailWidthPx = $state(readStoredDetailPanelWidth());
-	let detailCollapsed = $state(readStoredDetailPanelWidth() === 56);
 	let heroEl = $state<HTMLDivElement | null>(null);
-	let detailDragging = $state(false);
-	const detailResizeAria = $derived(t.detailResizeLabel);
-	const framing = $derived(initialCamera(v1, mapWidthPx, desktop.current));
+	const framing = $derived(initialCamera(v1, mapWidthPx, wide));
 	const currentMapHref = () => (page.shallow?.url ?? page.url).href;
 	const urlCoordinator = createMapUrlCoordinator(new URL(currentMapHref()), goto);
 	const filters = createFilterStore(
@@ -284,7 +298,6 @@
 		),
 	);
 	const recordOptions: { key: RecordMapLayer; label: string }[] = [
-		{ key: 'live', label: locale === 'fr' ? 'En direct' : 'Live' },
 		{ key: 'stops', label: locale === 'fr' ? 'Arrêts' : 'Stops' },
 		{ key: 'corridors', label: 'Corridors' },
 	];
@@ -336,44 +349,37 @@
 		}
 		// Listener registration and projection read the map's own state; only `map` is a dependency.
 		return untrack(() => {
-			let frame = 0;
+			let timer: ReturnType<typeof setTimeout> | undefined;
 			const capture = () => {
-				frame = 0;
+				timer = undefined;
 				reportCamera = captureMapReportCamera(instance);
 			};
-			const onMoveEnd = () => capture();
-			const onResize = () => {
-				if (!frame) frame = requestAnimationFrame(capture);
+			const schedule = () => {
+				if (timer === undefined) timer = setTimeout(capture, 150);
 			};
-			instance.on('moveend', onMoveEnd);
-			instance.on('resize', onResize);
+			instance.on('moveend', schedule);
+			instance.on('resize', schedule);
 			capture();
 			return () => {
-				instance.off('moveend', onMoveEnd);
-				instance.off('resize', onResize);
-				if (frame) cancelAnimationFrame(frame);
+				instance.off('moveend', schedule);
+				instance.off('resize', schedule);
+				if (timer !== undefined) clearTimeout(timer);
 			};
 		});
 	});
 
-	// On a phone, Escape leaves the report list for the map and returns focus to the switch.
-	$effect(() => {
-		if (desktop.current || viewMode !== 'reports') return;
-		const onKey = (event: KeyboardEvent) => {
-			if (event.key !== 'Escape' || event.defaultPrevented) return;
-			if (document.querySelector('[data-slot="bottom-sheet"][data-state="open"]')) return;
-			viewMode = 'map';
-			void tick().then(() => focusMapViewSwitch());
-		};
-		document.addEventListener('keydown', onKey);
-		return () => document.removeEventListener('keydown', onKey);
-	});
-
 	const detailOpen = $derived(session.detailOpen && !isRecordLayer);
+	let inViewOpen = $state(false);
+	let restoreListTrigger = false;
+	let inViewTrigger = $state<HTMLButtonElement | null>(null);
+	let detailBack = $state<HTMLButtonElement | null>(null);
+	let inViewBody = $state<HTMLDivElement | null>(null);
+	let returnVehicle = $state<string | null>(null);
+	const reportPanelOpen = getContext<((open: boolean) => void) | undefined>(mapPanelOpenContext);
 	$effect(() => {
-		if (!detailOpen) detailCollapsed = detailWidthPx === 56;
+		reportPanelOpen?.(!wide && (inViewOpen || detailOpen));
+		return () => reportPanelOpen?.(false);
 	});
-
 	const stopList = $derived(session.stops);
 	const selectedDetail = $derived(session.detail);
 	const selectionPresence = $derived(session.presence);
@@ -384,7 +390,6 @@
 			: live.familyStates.trips.refreshing),
 	);
 	const selectedVehicleAbsence = $derived(session.vehicleAbsence);
-	const detailSurfaceKey = $derived(session.surfaceKey);
 	const hoverPeek = $derived(session.hoverPeek);
 	const routeList = $derived(session.routeList);
 	const routeLineRoutes = $derived(session.routeLineRoutes);
@@ -409,21 +414,18 @@
 		}),
 	);
 
-	let viewMode = $state<'map' | 'reports'>('map');
-	let reportsPaneOpen = $state(false);
-	let reportsScrollTop = $state(0);
-	let reportsReturnFocus = $state<string | null>(null);
 	let reportCamera = $state.raw<MapReportCamera | null>(null);
 	let pendingViewHint: MapViewHint | null = null;
 	let ingestedViewHint = false;
-	const reportsOpen = $derived(desktop.current ? reportsPaneOpen : viewMode === 'reports');
-	const reportPanelOpen = getContext<((open: boolean) => void) | undefined>(mapPanelOpenContext);
-	$effect(() => {
-		reportPanelOpen?.(reportsOpen || detailOpen);
-		return () => reportPanelOpen?.(false);
-	});
-	const viewSwitchValue = $derived<'map' | 'reports'>(reportsOpen ? 'reports' : 'map');
-	const reportsCopy = $derived(mapReportsCopy(locale));
+	let recordCount = $state<number | null>(null);
+	const colourBy = $derived(colourDimension(filters.state));
+	const legendDetails = $derived(
+		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
+	);
+	const title = $derived(
+		isRecordLayer ? tr('Map of the record', 'Carte du bilan') : tr('Live map', 'Carte en direct'),
+	);
+	const viewLabel = tr('What is in view', 'Ce qui est en vue');
 	const providerName = $derived(
 		v1.provider?.labels[locale].operator ?? manifest.city ?? manifest.provider,
 	);
@@ -463,73 +465,21 @@
 			filters: mapReportFilterTokens(filters.state),
 		});
 	});
-	const reportSnapshotId = $derived(reportView.kind === 'ready' ? reportView.model.identity : '');
-	const reportFilterLabels = $derived(
-		mapReportFilterLabels(filters.state, locale, {
-			line: (id) => lineLabel(id, session.routesIndex),
-			stop: (id) => {
-				const stop = session.stops.find((candidate) => candidate.id === id);
-				return stop ? stopDisplayName(stop.name) : id;
-			},
-		}),
+	const inViewCount = $derived(
+		isRecordLayer ? recordCount : reportView.kind === 'ready' ? reportView.model.inViewCount : null,
 	);
-	const reportsLiveViewHref = $derived(
-		buildMapReportLiveViewHref(
-			urlCoordinator.currentUrl(),
-			filters.state,
-			reportCamera,
-			manifest.provider,
-		),
+	const liveViewHref = $derived(
+		!isRecordLayer
+			? buildMapReportLiveViewHref(recordUrl, filters.state, reportCamera, manifest.provider)
+			: null,
 	);
-
-	function setView(next: 'map' | 'reports'): void {
-		if (desktop.current) {
-			if (next === 'reports') {
-				if (detailOpen) closeDetail();
-				reportsPaneOpen = true;
-			} else {
-				reportsPaneOpen = false;
-			}
-			return;
-		}
-		viewMode = next;
-		if (next === 'reports') reportsReturnFocus = null;
-		void tick().then(() => focusMapViewSwitch(next));
-	}
-
-	function closeReports(): void {
-		if (desktop.current) reportsPaneOpen = false;
-		else {
-			viewMode = 'map';
-			void tick().then(() => focusMapViewSwitch());
-		}
-	}
-
-	function focusMapViewSwitch(surface: 'map' | 'reports' = 'map'): void {
-		const owner = surface === 'reports' ? '.map-reports-overlay' : '[data-slot="map-view-choice"]';
-		heroEl
-			?.querySelector<HTMLElement>(`${owner} [role="radio"][aria-checked="true"]`)
-			?.focus({ preventScroll: true });
-	}
-
-	async function copyReportLink(): Promise<boolean> {
-		const href = reportsLiveViewHref;
-		if (!href || typeof navigator === 'undefined' || !navigator.clipboard) return false;
-		try {
-			await navigator.clipboard.writeText(href);
-			return true;
-		} catch {
-			return false;
-		}
-	}
 
 	function selectReportVehicle(id: string): void {
 		camera.interact();
-		reportsReturnFocus = id;
+		returnVehicle = id;
 		commitPickedSelection({ kind: 'vehicle', id });
-		detailCollapsed = detailWidthPx === 56;
+		void tick().then(() => detailBack?.focus({ preventScroll: true }));
 	}
-
 	$effect(() => {
 		const routes = session.loadedRoutes;
 		untrack(() => {
@@ -545,24 +495,19 @@
 		if (isRecordLayer) return;
 		if (next.kind === 'vehicle') camera.interact();
 		commitPickedSelection(next);
-		detailCollapsed = detailWidthPx === 56;
 		// A vehicle pick opens its detail in place; only route and stop picks move the camera.
 		if (next.kind !== 'vehicle') focusSelection(next);
 	}
 	function closeDetail() {
 		session.close();
-		detailCollapsed = detailWidthPx === 56;
-		if (reportsOpen) {
-			const id = reportsReturnFocus;
-			reportsReturnFocus = null;
-			void tick().then(() => {
-				const pane = heroEl?.querySelector<HTMLElement>('[data-slot="map-reports"]');
-				const target =
-					(id && pane?.querySelector<HTMLElement>(`[data-report-select="${CSS.escape(id)}"]`)) ||
-					pane?.querySelector<HTMLElement>('.map-reports-title');
-				target?.focus({ preventScroll: true });
-			});
-		}
+		const id = returnVehicle;
+		returnVehicle = null;
+		if (!id) return;
+		void tick().then(() =>
+			inViewBody
+				?.querySelector<HTMLElement>('[data-in-view-vehicle=\x22' + CSS.escape(id) + '\x22]')
+				?.focus({ preventScroll: true }),
+		);
 	}
 	const selectFromDetail = (next: MapSelection) => {
 		session.select(next, 'detail');
@@ -619,7 +564,6 @@
 
 	function selectNearbyStop(stop: WithDistance<SlimStopEntry>): void {
 		commitPickedSelection({ kind: 'stop', id: stop.id });
-		detailCollapsed = detailWidthPx === 56;
 		if (recovering)
 			cameraIntents.state({ kind: 'point', coord: [stop.lon, stop.lat], minZoom: 15 });
 		else focusCoordinate(map, [stop.lon, stop.lat], 15);
@@ -670,13 +614,19 @@
 
 	function onMapRecovering(): void {
 		const focused = document.activeElement;
-		const ownedFocus = focused instanceof HTMLElement && heroEl?.contains(focused) ? focused : null;
+		const ownedFocus = focused instanceof HTMLElement && ownsMapFocus(focused) ? focused : null;
 		recoveryFocusTarget =
 			ownedFocus && !ownedFocus.closest('[data-map-runtime]') ? ownedFocus : null;
 		ownedFocus?.blur();
 		recovering = true;
 		cameraIntents.state(focusController.pending ? { kind: 'url' } : null);
 		onrecovering?.();
+	}
+
+	function ownsMapFocus(element: HTMLElement): boolean {
+		return Boolean(
+			heroEl?.contains(element) || element.closest('[data-map-controls], [data-map-in-view-sheet]'),
+		);
 	}
 
 	function onMapIdle(): void {
@@ -689,7 +639,7 @@
 				if (
 					!recovering &&
 					focused.isConnected &&
-					heroEl?.contains(focused) &&
+					ownsMapFocus(focused) &&
 					document.activeElement === document.body &&
 					!focused.closest('[inert]')
 				) {
@@ -748,36 +698,17 @@
 		};
 	}
 
-	$effect(() => {
-		const el = heroEl;
-		if (!el) return;
-		const open = desktop.current && !isRecordLayer && (detailOpen || reportsPaneOpen);
-		const dispose = publishRailOffset(el, detailWidthPx, open, detailCollapsed, detailDragging);
-		return () => releaseMapOwner(dispose);
-	});
-
 	// Opening/resizing detail surfaces refits only while the camera is fit-owned.
 	$effect(() => {
 		const instance = map;
 		void detailOpen;
-		void reportsPaneOpen;
-		void detailWidthPx;
-		void detailCollapsed;
-		void desktop.current;
+		void wide;
 		if (!instance) return;
 		let disposed = false;
 		const update = () => {
 			if (disposed) return;
 			if (!heroEl) return;
 			const inset = measureMapFocusInset({ getContainer: () => heroEl! });
-			const width = (selector: string) =>
-				heroEl!.querySelector(selector)?.getBoundingClientRect().width ?? 0;
-			// On desktop the title block shares the controls column; banners keep clear of both.
-			const controlsWidth = Math.max(
-				width('.map-filter-panel'),
-				desktop.current ? width('.map-head') : 0,
-			);
-			heroEl.style.setProperty('--map-controls-width', controlsWidth + 'px');
 			if (!inset.containerWidth || !inset.containerHeight) return;
 			if (import.meta.env.MODE === 'e2e')
 				heroEl.dataset.cameraPadding = JSON.stringify(inset.fitPadding);
@@ -793,7 +724,7 @@
 		void tick().then(() => {
 			if (disposed) return;
 			for (const el of document.querySelectorAll(
-				'[data-slot="map-detail-overlay"], .map-head, .map-filter-panel, [data-slot="map-legend-card"], [data-slot="map-legend-fab"], .map-filter-pill-container, .map-near, [data-slot="bottom-sheet"]',
+				'.map-head, [data-slot="map-details"], [data-frame-controls], [data-slot="surface-rail-mobile"]',
 			))
 				observer.observe(el);
 			update();
@@ -803,11 +734,26 @@
 			observer.disconnect();
 		};
 	});
-	function toggleDetailCollapsed(): void {
-		if (detailCollapsed && detailWidthPx === 56) detailWidthPx = 400;
-		detailCollapsed = !detailCollapsed;
-		if (detailCollapsed) detailWidthPx = 56;
+	function wholeNetwork(): void {
+		if (!map || !framing) return;
+		const inset = measureMapFocusInset(map);
+		camera.update(
+			map,
+			{
+				...framing,
+				size: { width: inset.containerWidth, height: inset.containerHeight },
+				fitPadding: inset.fitPadding,
+			},
+			true,
+		);
 	}
+
+	const registerControls = getContext<RegisterFrameControlsExtension | undefined>(
+		FrameControlsExtensionContext,
+	);
+	$effect(() =>
+		registerControls?.({ between: layerChoice, extra: mapControls, after: desktopLegend }),
+	);
 </script>
 
 {#snippet mapBody()}
@@ -839,32 +785,40 @@
 {/snippet}
 
 {#snippet detailPanel()}
-	<!-- prettier-ignore -->
-
-	<RightPanel
-		locale={locale}
-		identity={detailIdentity}
-		footer={detailFooter}
-		navigation={detailNavigation}
-		surfaceKey={detailSurfaceKey}
-		canGoBack={false}
-		onback={session.back}
-		onclose={closeDetail}
-		collapsed={detailCollapsed}
-		ontogglecollapse={toggleDetailCollapsed}
-		resizable
- selectionKind={session.selected?.kind}
-	>
+	<div data-slot="map-detail-overlay" data-selection-kind={session.selected?.kind}>
+		<Button
+			bind:ref={detailBack}
+			variant="ghost"
+			size="sm"
+			class="min-h-11"
+			data-map-detail-back
+			aria-label={tr('Back to the map list', 'Retour à la liste de la carte')}
+			onclick={closeDetail}
+		>
+			{tr('Back', 'Retour')}
+		</Button>
+		<MapDetailNavigation
+			{locale}
+			{session}
+			desktop={desktop.current}
+			onfocus={() => {
+				if (session.selected) focusSelection(session.selected);
+			}}
+		/>
+		<h2 class="text-lg font-semibold">
+			<MapSelectionDetail detail={selectedDetail} {locale} presentation="identity" />
+		</h2>
 		{#if selectedDetail}
-			<MapSelectionDetail {occupancyAvailable}
+			<MapSelectionDetail
+				{occupancyAvailable}
 				detail={selectedDetail}
 				alertsStale={live.familyStates.alerts.health.notice !== null}
 				alertsAgeSeconds={live.familyStates.alerts.health.ageSeconds}
-				locale={locale}
+				{locale}
 				{timeZone}
 				notReporting={selectedVehicleAbsence}
-				selectionPresence={selectionPresence}
-				selectionSourceHealth={selectionSourceHealth}
+				{selectionPresence}
+				{selectionSourceHealth}
 				{tripRefreshing}
 				onrefresh={live.refresh}
 				onselect={selectFromDetail}
@@ -873,109 +827,152 @@
 				onalertselect={selectAlertRelated}
 			/>
 		{/if}
-	</RightPanel>
+		<MapSelectionDetail
+			detail={selectedDetail}
+			{locale}
+			presentation="action"
+			onfilter={applyDetailFilter}
+		/>
+	</div>
 {/snippet}
 
-{#snippet detailNavigation()}
-	<MapDetailNavigation
-		{locale}
-		{session}
-		desktop={desktop.current}
-		onfocus={() => {
-			if (session.selected) focusSelection(session.selected);
-		}}
-	/>
-{/snippet}
-
-{#snippet detailIdentity()}
-	<!-- prettier-ignore -->
-
-	<MapSelectionDetail
-		detail={selectedDetail}
-		locale={locale}
-		presentation="identity"
-	/>
-{/snippet}
-
-{#snippet detailFooter()}
-	<!-- prettier-ignore -->
-
-	<MapSelectionDetail
-		detail={selectedDetail}
-		locale={locale}
-		presentation="action"
-		onfilter={applyDetailFilter}
-	/>
-{/snippet}
-
-{#snippet reportsPanelContent(presentation: 'pane' | 'overlay')}
-	<MapReportsPanel
-		{locale}
-		view={reportView}
-		{providerName}
-		filterLabels={reportFilterLabels}
-		line={(id) => lineLabel(id, session.routesIndex)}
-		snapshotId={reportSnapshotId}
-		liveViewHref={reportsLiveViewHref}
-		{presentation}
-		copyLiveView={copyReportLink}
-		onselect={selectReportVehicle}
-		onclose={closeReports}
-		bind:scrollTop={reportsScrollTop}
-	/>
-{/snippet}
-
-{#snippet reportsPane()}
-	<!-- prettier-ignore -->
-
-	<RightPanel
-		locale={locale}
-		title={reportsCopy.reportsTitle}
-		surfaceKey="map-reports"
-		canGoBack={false}
-		onclose={closeReports}
-		collapsed={detailCollapsed}
-		ontogglecollapse={toggleDetailCollapsed}
-		resizable
-		selectionKind="reports"
-	>
-		{@render reportsPanelContent('pane')}
-	</RightPanel>
-{/snippet}
-
-{#snippet motionHeader(collapsed: boolean)}
-	<MapMotionControl {locale} copy={t} {collapsed} />
-{/snippet}
-{#snippet mapControls(opts?: { collapsible?: boolean })}
-	<MapFilters
-		{occupancyAvailable}
-		store={filters}
-		{alertsAvailable}
-		{locale}
-		routes={session.routesIndex}
-		stops={session.stops}
-		collapsible={opts?.collapsible ?? true}
-		controlsMode={true}
-		header={motionHeader}
-	/>
-{/snippet}
-
-{#snippet mapRetry()}
-	{#if mapFailure}
-		<Button type="button" size="sm" class="min-h-11" onclick={() => void mapFailure?.retry()}>
-			{t.mapRetry}
-		</Button>
+{#snippet mapControls(context: import('@yesid/ui/layout').SurfaceRailContext)}
+	{#if !isRecordLayer && !mapFailure}
+		<div class="contents" data-map-controls data-ripple-exempt>
+			<MapNearMeControl
+				inline
+				bind:open={nearMeController.open}
+				bind:query={nearMeController.query}
+				{locale}
+				copy={t}
+				loading={nearMeController.loading}
+				error={nearMeController.error}
+				origin={nearMeController.origin}
+				stops={nearbyStops}
+				onuselocation={nearMeController.useLocation}
+				onsearch={nearMeController.search}
+				onsuggestion={nearMeController.selectSuggestion}
+				onstopselect={(stop) => {
+					context.closeSheet();
+					selectNearbyStop(stop);
+				}}
+				onclear={nearMeController.clear}
+			/>
+			<details class="w-full">
+				<summary class="min-h-11 py-3 text-sm font-medium"
+					>{tr('Map filters', 'Filtres de la carte')}</summary
+				>
+				<MapFilters
+					{occupancyAvailable}
+					store={filters}
+					{alertsAvailable}
+					{locale}
+					routes={session.routesIndex}
+					stops={stopList}
+					collapsible={false}
+					controlsMode={false}
+				/>
+				<MapMotionControl {locale} copy={t} collapsed={false} />
+				<ul class="grid list-none gap-1 p-0 text-sm text-muted-foreground">
+					{#each legendDetails.groups.slice(1).flatMap((group) => group.rows) as row (row.id)}
+						<li>{row.label}{row.definition ? ` · ${row.definition}` : ''}</li>
+					{/each}
+				</ul>
+				<p class="text-sm text-muted-foreground">{legendDetails.note}</p>
+			</details>
+		</div>
 	{/if}
 {/snippet}
 
-{#snippet mapSurface()}
-	<div
-		class="map-surface"
-		inert={!desktop.current && viewMode === 'reports' ? true : undefined}
-		data-slot="map-surface"
-	>
-		<MapSurfaceCanvasLayer {mapBody} />
+{#snippet layerChoice()}
+	{#if isRecordLayer}
+		<p class="w-full text-sm font-medium text-muted-foreground">{tr('Layer', 'Couche')}</p>
+		<SegmentedChoice
+			options={recordOptions}
+			value={recordLayer}
+			label={tr('Layer', 'Couche')}
+			onSelect={changeRecordLayer}
+			variant="fit-row"
+		/>
+		<p class="w-full text-sm text-muted-foreground">
+			{recordLayer === 'stops'
+				? tr(
+						'Stops, by their share of observed stop events that were late.',
+						'Arrêts, selon leur part de passages observés en retard.',
+					)
+				: tr(
+						'Stretches between stops, by the time lost.',
+						'Tronçons entre arrêts, selon le temps perdu.',
+					)}
+		</p>
+	{/if}
+{/snippet}
 
+{#snippet desktopLegend()}
+	<MapFrameLegend
+		{locale}
+		layer={recordLayer}
+		{colourBy}
+		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
+		collapsible
+	/>
+{/snippet}
+
+{#snippet phoneLegend()}
+	<MapFrameLegend
+		{locale}
+		layer={recordLayer}
+		{colourBy}
+		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
+	/>
+{/snippet}
+
+{#snippet stamp()}
+	{#if isRecordLayer && recordPeriod}
+		<p class="text-sm" data-slot="freshness-stamp" data-form="record">
+			{recordStamp(recordPeriod, locale)}
+		</p>
+	{:else if !isRecordLayer}
+		<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
+	{/if}
+{/snippet}
+
+{#snippet titleCard(showStamp: boolean)}
+	<div class="grid gap-1">
+		<h1 class="text-xl font-bold">{title}</h1>
+		{#if wide}<p class="text-sm text-muted-foreground">{city}</p>{/if}
+		{#if showStamp}{@render stamp()}{/if}
+		{#if !wide && !isRecordLayer}<MapFeedStallBanner {presentation} inline />{/if}
+	</div>
+{/snippet}
+
+{#snippet inViewPanel(recordContent: import('svelte').Snippet | undefined)}
+	<div class="grid gap-4" bind:this={inViewBody}>
+		{#if isRecordLayer}
+			{@render recordContent?.()}
+		{:else}
+			<MapInView
+				view={reportView}
+				{locale}
+				line={(id) => lineLabel(id, session.routesIndex)}
+				onselect={selectReportVehicle}
+				stamp={wide ? stamp : undefined}
+				detail={detailOpen ? detailPanel : undefined}
+				{liveViewHref}
+			/>
+		{/if}
+	</div>
+{/snippet}
+
+{#snippet mapRetry()}
+	<Button type="button" size="sm" class="min-h-11" onclick={() => void mapFailure?.retry()}>
+		{t.mapRetry}
+	</Button>
+{/snippet}
+
+{#snippet stage()}
+	<div class="map-surface" data-slot="map-surface">
+		<MapSurfaceCanvasLayer {mapBody} />
 		{#if mapFailure}
 			<div class="map-stage-error">
 				<StateNotice
@@ -985,71 +982,133 @@
 					tone="error"
 					presentation="card"
 					role="alert"
-					aria-live="assertive"
 					action={mapRetry}
 				/>
 			</div>
 		{:else}
-			<MapOverlayChrome
-				{orientation}
-				{northStatus}
-				onnorth={turnNorth}
-				{locale}
-				{t}
-				{presentation}
-				bind:nearMeOpen={nearMeController.open}
-				bind:nearMeQuery={nearMeController.query}
-				nearMeLoading={nearMeController.loading}
-				nearMeError={nearMeController.error}
-				nearMeOrigin={nearMeController.origin}
-				{nearbyStops}
-				onuselocation={nearMeController.useLocation}
-				onsearch={nearMeController.search}
-				onsuggestion={nearMeController.selectSuggestion}
-				onstopselect={selectNearbyStop}
-				onclear={nearMeController.clear}
-				isDesktop={desktop.current}
-				filtersStore={filters}
-				staleCutoffS={liveTimingFor(manifest).staleCutoffS}
-				{detailOpen}
-				{hoverPeek}
-				detailSelection={desktop.current && detailOpen && !detailCollapsed
-					? session.selected
-					: null}
-				viewMode={viewSwitchValue}
-				onviewchange={setView}
-				controls={mapControls}
-				layers={layerChoice}
-				record={isRecordLayer}
-			/>
+			<MapNorthControl copy={t} {...orientation} status={northStatus} onreset={turnNorth} />
+			{#if !isRecordLayer}
+				{#if wide}<MapFeedStallBanner {presentation} />{/if}
+				{#if hoverPeek && wide && !peekRepeatsDetail(hoverPeek, detailOpen ? session.selected : null)}
+					<div class="map-peek" data-slot="map-hover-peek">
+						<Card class="p-3"><MapHoverPeek peek={hoverPeek} {locale} /></Card>
+					</div>
+				{/if}
+			{/if}
 		{/if}
 	</div>
 {/snippet}
 
-{#snippet layerChoice()}
-	<SegmentedChoice
-		options={recordOptions}
-		value={recordLayer}
-		label={locale === 'fr' ? 'Couches de la carte' : 'Map layers'}
-		onSelect={changeRecordLayer}
-		variant="fit-row"
-		class="map-record-choice map-view-switch"
-	/>
-	{#if recordLayer !== 'live'}
-		<MapRecordPanel
-			onsourcedate={(date) => (recordSourceDate = date)}
-			{map}
-			layer={recordLayer}
-			line={recordLine}
-			direction={recordDirection}
-			city={manifest.provider}
-			period={recordPeriod}
-			url={recordUrl}
-			{locale}
-			stops={stopList}
-			routes={session.routesIndex}
-			onscope={changeRecordScope}
-		/>
+{#snippet mapContent(recordContent: import('svelte').Snippet | undefined)}
+	{#snippet desktopPanel()}
+		{#if wide}
+			<div class="map-head">{@render titleCard(isRecordLayer)}</div>
+			{@render inViewPanel(recordContent)}
+		{/if}
+	{/snippet}
+	<MapFrame
+		label={t.mapLabel}
+		class="map-hero-frame absolute inset-x-0 bottom-0"
+		style="top: var(--chrome-offset)"
+		details={{ label: viewLabel, content: desktopPanel }}
+	>
+		{@render stage()}
+		{#if !wide}
+			<MapLegendControl
+				{locale}
+				presentation="phone"
+				{colourBy}
+				staleCutoffS={liveTimingFor(manifest).staleCutoffS}
+				hidden={detailOpen || inViewOpen}
+				content={phoneLegend}
+			/>
+			<div class="map-mobile-head map-head">
+				<Card class="gap-1 p-3" edge="neutral">{@render titleCard(true)}</Card>
+			</div>
+			<Button
+				variant="outline"
+				size="sm"
+				class="map-in-view-button min-h-11 max-w-full"
+				bind:ref={inViewTrigger}
+				wrap
+				onclick={() => {
+					restoreListTrigger = true;
+					inViewOpen = true;
+				}}
+			>
+				{inViewCount === null ? viewLabel : `${tr('In view:', 'En vue :')} ${inViewCount}`}
+			</Button>
+		{/if}
+		<div
+			class="map-camera-actions"
+			aria-label={tr('Map navigation', 'Navigation de la carte')}
+			role="group"
+		>
+			<Button
+				variant="outline"
+				size="icon-tap"
+				style="width: var(--size-tap-min); height: var(--size-tap-min);"
+				aria-label={tr('Zoom in', 'Zoom avant')}
+				disabled={!map || recovering}
+				onclick={() => {
+					camera.interact();
+					map?.zoomIn();
+				}}>+</Button
+			>
+			<Button
+				variant="outline"
+				size="icon-tap"
+				style="width: var(--size-tap-min); height: var(--size-tap-min);"
+				aria-label={tr('Zoom out', 'Zoom arrière')}
+				disabled={!map || recovering}
+				onclick={() => {
+					camera.interact();
+					map?.zoomOut();
+				}}>−</Button
+			>
+			<Button
+				variant="outline"
+				size={wide ? 'sm' : 'icon-tap'}
+				wrap
+				class="map-whole-network min-h-[var(--size-tap-min)]"
+				style={wide ? undefined : 'width: var(--size-tap-min); height: var(--size-tap-min);'}
+				aria-label={tr('Whole network', 'Tout le réseau')}
+				disabled={!map || recovering}
+				onclick={wholeNetwork}
+				>{#if wide}{tr('Whole network', 'Tout le réseau')}{:else}<MaximizeIcon
+						aria-hidden="true"
+					/>{/if}</Button
+			>
+		</div>
+	</MapFrame>
+	{#if !wide}
+		<Sheet
+			open={inViewOpen || detailOpen}
+			onOpenChange={(open) => {
+				inViewOpen = open;
+				if (!open && detailOpen) closeDetail();
+			}}
+		>
+			<SheetContent
+				side="bottom"
+				closeLabel={tr('Close', 'Fermer')}
+				class="max-h-[min(66dvh,36rem)] overflow-hidden p-4"
+				data-slot="bottom-sheet"
+				data-map-in-view-sheet
+				data-ripple-exempt
+				data-lenis-prevent
+				onCloseAutoFocus={(event) => {
+					event.preventDefault();
+					if (restoreListTrigger) inViewTrigger?.focus({ preventScroll: true });
+					restoreListTrigger = false;
+				}}
+			>
+				<SheetTitle>{viewLabel}</SheetTitle>
+				<div data-slot="bottom-sheet-body" class="min-h-0 overflow-y-auto">
+					{@render inViewPanel(recordContent)}
+				</div>
+			</SheetContent>
+		</Sheet>
 	{/if}
 {/snippet}
 
@@ -1063,67 +1122,27 @@
 	data-motion-vehicle-count={runtime.processedMotion?.vehicleCount}
 	bind:this={heroEl}
 	bind:clientWidth={mapWidthPx}
-	data-map-view={viewSwitchValue}
 	data-record-layer={recordLayer}
+	data-map-wide={wide}
 >
-	{@render mapSurface()}
-
-	{#if !desktop.current && viewMode === 'reports'}
-		{@render reportsPanelContent('overlay')}
-	{/if}
-
-	{#if desktop.current && detailOpen && !isRecordLayer}
-		<MapDetailOverlay
-			{locale}
-			bind:widthPx={detailWidthPx}
-			bind:collapsed={detailCollapsed}
-			bind:dragging={detailDragging}
-			resizeAria={detailResizeAria}
-			{detailPanel}
-		/>
-	{:else if desktop.current && reportsPaneOpen && !isRecordLayer}
-		<MapDetailOverlay
-			{locale}
-			bind:widthPx={detailWidthPx}
-			bind:collapsed={detailCollapsed}
-			bind:dragging={detailDragging}
-			resizeAria={detailResizeAria}
-			detailPanel={reportsPane}
-		/>
-	{/if}
-
-	{#if detailOpen && !desktop.current && !isRecordLayer}
-		<MapMobileDetailSheet
-			{occupancyAvailable}
-			bind:open={
-				() => session.detailOpen,
-				(next) => {
-					if (next) session.detailOpen = true;
-					else closeDetail();
-				}
-			}
-			{locale}
-			identity={detailIdentity}
-			{timeZone}
-			footer={detailFooter}
-			navigation={detailNavigation}
-			surfaceKey={detailSurfaceKey}
-			canGoBack={false}
-			onback={session.back}
-			{selectedDetail}
-			alertsStale={live.familyStates.alerts.health.notice !== null}
-			alertsAgeSeconds={live.familyStates.alerts.health.ageSeconds}
-			notReporting={selectedVehicleAbsence}
-			{selectionPresence}
-			{selectionSourceHealth}
-			{tripRefreshing}
-			onrefresh={live.refresh}
-			onselect={selectFromDetail}
-			onpreview={(next) => void session.setHovered(next)}
-			onfilter={applyDetailFilter}
-			onalertselect={selectAlertRelated}
-		/>
-	{/if}
+	<span class="map-layout-marker" aria-hidden="true" bind:clientWidth={remWidth}></span>
+	<MapRecordPanel
+		onsourcedate={(date) => (recordSourceDate = date)}
+		oncount={(count) => (recordCount = count)}
+		{reportCamera}
+		{map}
+		layer={recordLayer}
+		line={recordLine}
+		direction={recordDirection}
+		city={manifest.provider}
+		period={recordPeriod}
+		url={recordUrl}
+		{locale}
+		stops={stopList}
+		routes={session.routesIndex}
+		onscope={changeRecordScope}
+		children={mapContent}
+	/>
 </div>
 
 <style>
@@ -1131,53 +1150,80 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
-		overflow: hidden;
 		background: var(--background);
-		--app-right-detail-offset: var(--size-detail-panel);
-		--map-detail-offset: 0rem;
-		--map-mobile-control-bottom: calc(
-			1rem + env(safe-area-inset-bottom, 0px) + var(--map-source-clearance, 0px)
-		);
-		--map-north-clearance: calc(
-			var(--map-mobile-control-bottom) + 2.75rem + 0.75rem + 1.75rem + 0.75rem + 2.75rem + 0.75rem
-		);
-		--z-map-behind: -1;
+		--map-mobile-control-bottom: calc(var(--map-touch-row-bottom) + var(--size-tap-min) + 0.5rem);
+		--map-north-clearance: calc(var(--map-mobile-control-bottom) + 10.25rem);
+		--map-controls-width: 0px;
 		--z-map-canvas: 1;
-		--z-map-popover-behind: 2;
-		--z-map-scrim: 5;
-		--z-map-overlay: 10;
-		--z-map-filter: 12;
-		--z-map-banner-content: 13;
-		--z-map-detail: 24;
-		--z-map-detail-panel: 32;
+		--z-map-overlay: 2;
+		--z-map-banner-content: 2;
+		--z-map-detail: 3;
 	}
-
 	.map-surface {
 		position: absolute;
-		inset: 0;
+		inset: calc(0px - var(--chrome-offset)) 0 0;
 		overflow: hidden;
 	}
-
-	:global(.map-record-choice) {
-		max-width: 100%;
-	}
-
 	.map-hero[data-record-layer]:not([data-record-layer='live'])
 		:global([data-slot='vehicle-overlay']) {
 		visibility: hidden;
 	}
-
+	.map-layout-marker {
+		position: absolute;
+		display: block;
+		width: 1rem;
+		height: 0;
+	}
+	.map-mobile-head {
+		position: absolute;
+		inset: 0.75rem 0.75rem auto;
+		width: fit-content;
+		max-width: calc(100% - var(--size-tap-min) - 2rem);
+		z-index: 1;
+	}
+	:global(.map-in-view-button) {
+		position: absolute;
+		inset-block-end: var(--map-touch-row-bottom);
+		inset-inline-end: 0.75rem;
+		background: var(--card);
+		z-index: 2;
+	}
+	.map-camera-actions {
+		position: absolute;
+		inset-block-start: 0.75rem;
+		inset-inline-end: 0.75rem;
+		display: grid;
+		justify-items: end;
+		gap: 0.5rem;
+		z-index: 1;
+	}
+	.map-camera-actions :global(.button) {
+		background: var(--card);
+	}
+	.map-peek {
+		position: absolute;
+		z-index: var(--z-map-detail);
+		inset-inline-end: calc(min(20rem, 31%) + 1.5rem);
+		inset-block-end: var(--map-north-clearance);
+		max-width: min(20rem, 38%);
+		pointer-events: none;
+	}
+	.map-head {
+		margin-block-end: 0.75rem;
+	}
 	.map-stage-error {
 		position: absolute;
 		z-index: var(--z-map-detail);
 		inset: 0;
 		display: grid;
 		place-items: center;
-		padding: 1rem;
-		background: color-mix(in srgb, var(--background) 88%, transparent);
 	}
-
-	.map-stage-error :global(.state-notice) {
-		width: min(100%, 30rem);
+	.map-hero[data-map-wide='true'] .map-camera-actions {
+		inset-block-start: auto;
+		inset-inline-end: calc(min(20rem, 31%) + 1.5rem);
+		inset-block-end: calc(var(--map-source-clearance, 0px) + 0.75rem);
+	}
+	.map-hero[data-map-wide='true'] {
+		--map-detail-offset: min(20rem, 31%);
 	}
 </style>

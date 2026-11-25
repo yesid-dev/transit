@@ -281,7 +281,11 @@ export function createMapCamera<Selection = unknown>() {
 		interact() {
 			cameraOwner = 'user';
 		},
-		update(m: CameraMap, value: CameraInputs) {
+		update(m: CameraMap, value: CameraInputs, refit = false) {
+			if (refit) {
+				cameraOwner = 'fit';
+				activeFitKey = null;
+			}
 			const { center, zoom, bounds, maxBounds, fitPadding, size } = inputs(value);
 			if (!center) return;
 			const nextFitKey = `${fitKey(bounds, fitPadding)}|${maxBounds?.join(',') ?? ''}|${size?.width},${size?.height}`;

@@ -44,13 +44,16 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			const r = el?.getBoundingClientRect();
 			return r && r.width > 0 && r.height > 0 ? r : null;
 		};
-		const panel = rect('.map-filter-panel');
+		const frame = hero?.closest('[data-slot="app-frame"]');
+		const pairedControls = frame
+			?.querySelector('[data-frame-controls="desktop"]')
+			?.getBoundingClientRect();
+		const panel = pairedControls?.width ? pairedControls : rect('.map-filter-panel');
 		const controls = [rect('.map-filter-pill-container'), rect('.map-near')].filter(
 			(r) => r !== null,
 		);
 		const north = rect('[data-slot="map-north"]');
 		const heading = rect('.map-head');
-		const frame = hero?.closest('[data-slot="app-frame"]');
 		const header = frame?.querySelector('[data-slot="app-frame-chrome"]')?.getBoundingClientRect();
 		const framePill = frame
 			?.querySelector('.app-frame-body > [data-slot="surface-rail-mobile"]')
@@ -83,7 +86,9 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 	containerRect: (container) => container.getBoundingClientRect(),
 	headingRect: (hero) => hero.querySelector('.map-head')?.getBoundingClientRect() ?? null,
 	detailOffset: (hero) => {
-		const panel = hero.querySelector('[data-slot="map-detail-overlay"]');
+		const panel = hero.querySelector(
+			'.map-hero[data-map-wide="true"] [data-slot="map-details"], [data-slot="map-detail-overlay"]',
+		);
 		return panel
 			? panel.getBoundingClientRect().width + 'px'
 			: getComputedStyle(hero).getPropertyValue('--map-detail-offset');

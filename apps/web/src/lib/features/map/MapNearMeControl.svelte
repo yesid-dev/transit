@@ -3,6 +3,7 @@
 	import { readableName } from '#lib/components/surface/readableName.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { SvelteMap } from 'svelte/reactivity';
+	import { tick } from 'svelte';
 	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -16,6 +17,7 @@
 
 	interface Props {
 		open?: boolean;
+		inline?: boolean;
 		query?: string;
 		locale: Locale;
 		copy: MapCopy;
@@ -32,6 +34,7 @@
 
 	let {
 		open = $bindable(false),
+		inline = false,
 		query = $bindable(''),
 		locale,
 		copy: t,
@@ -62,7 +65,7 @@
 
 	$effect(() => {
 		const host = rootEl?.parentElement;
-		if (!host) return;
+		if (!host || inline) return;
 		host.style.setProperty('--map-near-clearance', nearMeClearance);
 		return () => host.style.removeProperty('--map-near-clearance');
 	});
@@ -174,33 +177,60 @@
 
 <svelte:window onpointerdown={handleWindowPointerDown} onkeydown={handleWindowKeydown} />
 
-<div class="map-near" bind:this={rootEl}>
-	<Button
-		variant="ghost"
-		size="sm"
-		type="button"
-		class="map-near-toggle"
-		aria-expanded={open}
-		aria-label={t.nearMe}
-		onclick={() => (open = !open)}
-	>
-		<LocateFixedIcon class="map-near-icon" size={18} strokeWidth={2.25} aria-hidden="true" />
-		<span>{t.nearMe}</span>
-	</Button>
+<div class={inline ? 'near-rail' : 'map-near'} bind:this={rootEl}>
+	{#if inline}
+		<Button
+			variant="outline"
+			size="sm"
+			class="min-h-11"
+			wrap
+			onclick={() => {
+				open = true;
+				trackEvent('Locate Me');
+				onuselocation();
+			}}>{t.nearMe}</Button
+		>
+		<Button
+			variant="outline"
+			size="sm"
+			class="min-h-11"
+			wrap
+			aria-expanded={open}
+			onclick={() => {
+				open = !open;
+				if (open) void tick().then(() => inputEl?.focus());
+			}}>{locale === 'fr' ? 'Près d’une adresse' : 'Near an address'}</Button
+		>
+	{:else}
+		<Button
+			variant="ghost"
+			size="sm"
+			type="button"
+			class="map-near-toggle"
+			aria-expanded={open}
+			aria-label={t.nearMe}
+			onclick={() => (open = !open)}
+		>
+			<LocateFixedIcon class="map-near-icon" size={18} strokeWidth={2.25} aria-hidden="true" />
+			<span>{t.nearMe}</span>
+		</Button>
+	{/if}
 	{#if open}
-		<div class="map-near-panel">
-			<Button
-				variant="ghost"
-				size="sm"
-				type="button"
-				class="map-near-action"
-				onclick={() => {
-					trackEvent('Locate Me');
-					onuselocation();
-				}}
-			>
-				{t.nearMeUseLocation}
-			</Button>
+		<div class={inline ? 'near-rail-panel' : 'map-near-panel'}>
+			{#if !inline}
+				<Button
+					variant="ghost"
+					size="sm"
+					type="button"
+					class="map-near-action"
+					onclick={() => {
+						trackEvent('Locate Me');
+						onuselocation();
+					}}
+				>
+					{t.nearMeUseLocation}
+				</Button>
+			{/if}
 			<form class="map-near-form" onsubmit={onsearch}>
 				<div class="map-near-input-wrap">
 					<input
@@ -278,6 +308,26 @@
 </div>
 
 <style>
+	.near-rail-panel {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(var(--spacing) * 2);
+		min-width: 0;
+		width: 100%;
+	}
+	.near-rail {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: calc(var(--spacing) * 2);
+		width: 100%;
+	}
+	.near-rail-panel {
+		grid-column: 1 / -1;
+	}
+	.near-rail-panel form {
+		min-width: 0;
+		width: 100%;
+	}
 	:global(.map-near) {
 		position: absolute;
 		z-index: var(--z-map-overlay);

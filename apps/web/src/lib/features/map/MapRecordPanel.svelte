@@ -1,14 +1,16 @@
 <script lang="ts">
-	import { minuteReading } from '#lib/site/presenter.ts';
+	import { mapRecordReading } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
-	import { untrack } from 'svelte';
+	import { untrack, type Snippet } from 'svelte';
 	import { Card } from '@yesid/ui/card';
 	import { theme } from '@yesid/ui/state';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { choose, notMeasuredLabel } from '#lib/features/record/recordText.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
+	import { Button } from '@yesid/ui/button';
 	import { frameHref, type parseFrameState } from '#lib/site/frameState.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { getRoute } from '#lib/v1/repositories/static.ts';
@@ -17,6 +19,11 @@
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import type { MapRecordAnswer } from './recordMapAnswer';
+	import {
+		isCoordinateInCapturedView,
+		isLineInCapturedView,
+		type MapReportCamera,
+	} from './mapReportCamera';
 	import { attachRecordMap } from './recordMapLayers';
 	import {
 		recordColours,
@@ -24,11 +31,12 @@
 		recordFeatures,
 		recordMapSampleText,
 		recordStops,
+		type RecordMapLayer,
 	} from './recordMap';
 
 	interface Props {
 		map: MapLibreMap | null;
-		layer: 'stops' | 'corridors';
+		layer: RecordMapLayer;
 		line: string;
 		direction: string;
 		city: string;
@@ -39,6 +47,9 @@
 		routes: readonly RouteIndexEntry[];
 		onscope: (line: string, direction: string) => void;
 		onsourcedate: (date: string | null) => void;
+		reportCamera?: MapReportCamera | null;
+		oncount?: (count: number | null) => void;
+		children?: Snippet<[Snippet | undefined]>;
 	}
 	let {
 		map,
@@ -53,14 +64,17 @@
 		routes,
 		onscope,
 		onsourcedate,
+		reportCamera,
+		oncount,
+		children,
 	}: Props = $props();
 	const { provider } = getV1Context();
 	const display = transitDisplay();
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
 	const stopLayer = $derived(layer === 'stops');
-	const network = $derived(!stopLayer && !line);
+	const network = $derived(layer === 'corridors' && !line);
 	const scope = $derived(
-		period
+		period && layer !== 'live'
 			? new URLSearchParams({
 					city,
 					from: period.from,
@@ -117,7 +131,7 @@
 	$effect(() => {
 		const id = line;
 		routeResult = null;
-		if (stopLayer || !id) return;
+		if (layer !== 'corridors' || !id) return;
 		const controller = new AbortController();
 		const context = { providerId: city, signal: controller.signal };
 		const edition = getRoute(id, context).catch(() => null);
@@ -147,6 +161,24 @@
 	});
 	const markById = $derived(new Map(marks.map((mark) => [mark.id, mark])));
 	const selected = $derived(selectedId === null ? null : (markById.get(selectedId) ?? null));
+	const visible = $derived.by(() => {
+		const camera = reportCamera;
+		if (!camera) return [];
+		return marks
+			.filter(({ geometry }) =>
+				geometry.type === 'Point'
+					? isCoordinateInCapturedView(camera, geometry.coordinates)
+					: isLineInCapturedView(camera, geometry.coordinates),
+			)
+			.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
+	});
+	const leader = $derived(visible.find((mark) => mark.state === 3 && mark.value !== null));
+	let limit = $state(12);
+	$effect(() => {
+		void scope;
+		limit = 12;
+	});
+	$effect(() => oncount?.(answer && reportCamera ? visible.length : null));
 	const matching = $derived(
 		search.trim()
 			? marks
@@ -252,182 +284,264 @@
 	);
 	const sampleText = $derived(selected ? recordMapSampleText(selected, stopLayer, locale) : null);
 	function valueText(value: number) {
-		return stopLayer
-			? new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(
-					value / 1000,
-				)
-			: minuteReading(value / 60, locale);
+		return mapRecordReading(value, stopLayer, locale);
 	}
 </script>
 
-<div class="record-panel">
-	<Card edge="neutral" class="p-3">
-		{#if !stopLayer}
-			<div class="scope">
-				<label>
-					{tr('Line', 'Ligne')}
-					<select value={line} onchange={(event) => onscope(event.currentTarget.value, '')}>
-						<option value=""
-							>{chooseLine
-								? tr('Choose a line', 'Choisir une ligne')
-								: tr('All lines', 'Toutes les lignes')}</option
-						>
-						{#each routes as item (item.id)}
-							<option value={item.id}>{display.lineName(item.id, item.long).label}</option>
-						{/each}
-					</select>
-				</label>
-				{#if line}
+{#snippet recordContent()}
+	<div class="record-panel" class:record-panel-standalone={!children}>
+		<Card edge="neutral" class={children ? 'p-0' : 'p-3'}>
+			{#if leader?.value != null}
+				<RecordAnswer
+					value={valueText(leader.value)}
+					sentence={stopLayer
+						? tr(
+								`is the highest late share of observed stop events in view, at ${leader.name}.`,
+								`: la part de passages observés en retard la plus élevée en vue, à l’arrêt ${leader.name}.`,
+							)
+						: tr(
+								`is the most time lost between two stops in view, at ${leader.name}.`,
+								`: le temps perdu le plus élevé entre deux arrêts en vue, à ${leader.name}.`,
+							)}
+					{locale}
+				/>
+			{/if}
+			{#if !stopLayer}
+				<div class="scope">
 					<label>
-						{tr('Direction', 'Direction')}
-						<select
-							value={direction}
-							onchange={(event) => onscope(line, event.currentTarget.value)}
-						>
-							<option value="">{tr('Both directions', 'Les deux directions')}</option>
-							<option value="0">{display.directionLabel(0, heads, locale)}</option>
-							<option value="1">{display.directionLabel(1, heads, locale)}</option>
+						{tr('Line', 'Ligne')}
+						<select value={line} onchange={(event) => onscope(event.currentTarget.value, '')}>
+							<option value=""
+								>{chooseLine
+									? tr('Choose a line', 'Choisir une ligne')
+									: tr('All lines', 'Toutes les lignes')}</option
+							>
+							{#each routes as item (item.id)}
+								<option value={item.id}>{display.lineName(item.id, item.long).label}</option>
+							{/each}
 						</select>
 					</label>
-				{/if}
-			</div>
-		{/if}
-		{#if chooseLine}
-			<p>
-				{tr(
-					'Choose a line to see time lost between its stops.',
-					'Choisissez une ligne pour voir le temps perdu entre ses arrêts.',
-				)}
-			</p>
-		{:else}
-			<section
-				aria-label={tr('Record map legend', 'Légende de la carte du bilan')}
-				data-slot="record-map-legend"
-			>
-				<h2>{units}</h2>
-				{#if !stopLayer}
-					<p>
+					{#if line}
+						<label>
+							{tr('Direction', 'Direction')}
+							<select
+								value={direction}
+								onchange={(event) => onscope(line, event.currentTarget.value)}
+							>
+								<option value="">{tr('Both directions', 'Les deux directions')}</option>
+								<option value="0">{display.directionLabel(0, heads, locale)}</option>
+								<option value="1">{display.directionLabel(1, heads, locale)}</option>
+							</select>
+						</label>
+					{/if}
+				</div>
+			{/if}
+			{#if chooseLine}
+				<p>
+					{tr(
+						'Choose a line to see time lost between its stops.',
+						'Choisissez une ligne pour voir le temps perdu entre ses arrêts.',
+					)}
+				</p>
+			{:else}
+				{#if !children}<section
+						aria-label={tr('Record map legend', 'Légende de la carte du bilan')}
+						data-slot="record-map-legend"
+					>
+						<h2>{units}</h2>
+						{#if !stopLayer}
+							<p>
+								{tr(
+									'Compared with the timetable for the same runs.',
+									'Par rapport à l’horaire des mêmes parcours.',
+								)}
+							</p>
+							{#if network}
+								<p>
+									{tr(
+										'The map draws a straight line between each pair of stops.',
+										'La carte relie chaque paire d’arrêts par un trait droit.',
+									)}
+								</p>
+							{/if}
+						{/if}
+						<ul class="bins">
+							{#each bins as label, i (label)}
+								<li style:--swatch={palette[i]}>{label}</li>
+							{/each}
+						</ul>
+						<ul class="states" class:stops={stopLayer}>
+							{#each [1, 0, 2] as state (state)}
+								<li
+									data-state={state}
+									style:--swatch={palette[state === 1 ? 5 : state === 2 ? 6 : 4]}
+								>
+									<span aria-hidden="true"></span>{stateLabels[state]}
+								</li>
+							{/each}
+						</ul>
+					</section>{/if}
+				{#if pending}
+					{#key scope}<RecordPending {locale} />{/key}
+				{:else if !answer}
+					<p role="status">
 						{tr(
-							'Compared with the timetable for the same runs.',
-							'Par rapport à l’horaire des mêmes parcours.',
+							'The record is temporarily unavailable.',
+							'Le bilan est temporairement indisponible.',
 						)}
 					</p>
-					{#if network}
+				{:else}
+					{#if answer.stale}
+						<p>{tr('Showing the last available answer.', 'Dernier résultat disponible.')}</p>
+					{/if}
+					{#if answer.evidence.days_not_measured.length > 0}
 						<p>
 							{tr(
-								'The map draws a straight line between each pair of stops.',
-								'La carte relie chaque paire d’arrêts par un trait droit.',
+								'Some days in this period have no measurements.',
+								'Certaines journées de cette période n’ont aucune mesure.',
+							)}
+						</p>
+					{/if}
+					{#if marks.length > 0}
+						{#if children && reportCamera}
+							<section
+								aria-label={stopLayer
+									? tr('Stops in view', 'Arrêts en vue')
+									: tr('Corridors in view', 'Corridors en vue')}
+								data-slot="map-in-view"
+							>
+								<h2>
+									{stopLayer
+										? tr('Stops in view', 'Arrêts en vue')
+										: tr('Corridors in view', 'Corridors en vue')}
+									<span class="tabular-nums">({visible.length})</span>
+								</h2>
+								<ul>
+									{#each visible.slice(0, limit) as mark (mark.id)}
+										<li class="record-in-view-row">
+											<Button
+												variant="ghost"
+												size="sm"
+												class="min-h-11"
+												wrap
+												onclick={() => (selectedId = mark.id)}>{mark.name}</Button
+											>
+											<span
+												>{mark.value !== null
+													? valueText(mark.value)
+													: stateLabels[mark.state]}</span
+											>
+										</li>
+									{/each}
+								</ul>
+								{#if visible.length > limit}
+									<Button variant="outline" size="sm" class="min-h-11" onclick={() => (limit += 12)}
+										>{tr('Show 12 more', 'Afficher 12 de plus')}</Button
+									>
+								{/if}
+							</section>
+						{/if}
+						<label class="find">
+							{stopLayer
+								? tr('Find a stop', 'Trouver un arrêt')
+								: tr('Find a segment', 'Trouver un segment')}
+							<input type="search" bind:this={searchInput} bind:value={search} />
+						</label>
+						{#if matching.length > 0}
+							<ul class="results">
+								{#each matching as mark (mark.id)}
+									<li>
+										<button
+											type="button"
+											onclick={() => {
+												selectedId = mark.id;
+												search = '';
+												searchInput?.focus({ preventScroll: true });
+											}}>{mark.name}</button
+										>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{:else}
+						<p>
+							{tr(
+								'No locations are available for this selection.',
+								'Aucun emplacement disponible pour cette sélection.',
 							)}
 						</p>
 					{/if}
 				{/if}
-				<ul class="bins">
-					{#each bins as label, i (label)}
-						<li style:--swatch={palette[i]}>{label}</li>
-					{/each}
-				</ul>
-				<ul class="states" class:stops={stopLayer}>
-					{#each [1, 0, 2] as state (state)}
-						<li data-state={state} style:--swatch={palette[state === 1 ? 5 : state === 2 ? 6 : 4]}>
-							<span aria-hidden="true"></span>{stateLabels[state]}
-						</li>
-					{/each}
-				</ul>
-			</section>
-			{#if pending}
-				{#key scope}<RecordPending {locale} />{/key}
-			{:else if !answer}
-				<p role="status">
-					{tr('The record is unavailable for now.', 'Le bilan est indisponible pour le moment.')}
-				</p>
-			{:else}
-				{#if answer.stale}
-					<p>{tr('Showing the last available answer.', 'Dernier résultat disponible.')}</p>
-				{/if}
-				{#if answer.evidence.days_not_measured.length > 0}
-					<p>
-						{tr(
-							'Some days in this period have no measurements.',
-							'Certaines journées de cette période n’ont aucune mesure.',
-						)}
-					</p>
-				{/if}
-				{#if marks.length > 0}
-					<label class="find">
-						{stopLayer
-							? tr('Find a stop', 'Trouver un arrêt')
-							: tr('Find a segment', 'Trouver un segment')}
-						<input type="search" bind:this={searchInput} bind:value={search} />
-					</label>
-					{#if matching.length > 0}
-						<ul class="results">
-							{#each matching as mark (mark.id)}
-								<li>
-									<button
-										type="button"
-										onclick={() => {
-											selectedId = mark.id;
-											search = '';
-											searchInput?.focus({ preventScroll: true });
-										}}>{mark.name}</button
-									>
-								</li>
-							{/each}
-						</ul>
+				<div role="status" aria-atomic="true" data-slot="record-map-selection">
+					{#if selected}
+						{#if children}<Button
+								variant="ghost"
+								size="sm"
+								class="min-h-11"
+								onclick={() => (selectedId = null)}>{tr('Back', 'Retour')}</Button
+							>{/if}
+						<h2>{selected.name}</h2>
+						<p>
+							{stateLabels[selected.state]}{selected.value !== null
+								? ` · ${valueText(selected.value)}`
+								: ''}
+						</p>
+						{#if sampleText}
+							<p>{sampleText}</p>
+						{/if}
 					{/if}
-				{:else}
-					<p>
-						{tr(
-							'No locations are available for this selection.',
-							'Aucun emplacement disponible pour cette sélection.',
-						)}
-					</p>
+				</div>
+				{#if selected && recordHref}
+					<a class="record-link" href={recordHref}
+						>{stopLayer
+							? tr('Stop Record', 'Bilan de l’arrêt')
+							: tr('Line Record', 'Bilan de la ligne')}</a
+					>
+				{/if}
+				{#if network && selected?.lines?.length}
+					<ul aria-label={tr('Lines serving this segment', 'Lignes qui desservent ce segment')}>
+						{#each selected.lines as id (id)}
+							<li>
+								<a class="record-link" href={recordLink(id)}
+									>{display.lineName(id, routeNames.get(id)).label}</a
+								>
+							</li>
+						{/each}
+					</ul>
 				{/if}
 			{/if}
-			<div role="status" aria-atomic="true" data-slot="record-map-selection">
-				{#if selected}
-					<h2>{selected.name}</h2>
-					<p>
-						{stateLabels[selected.state]}{selected.value !== null
-							? ` · ${valueText(selected.value)}`
-							: ''}
-					</p>
-					{#if sampleText}
-						<p>{sampleText}</p>
-					{/if}
-				{/if}
-			</div>
-			{#if selected && recordHref}
-				<a class="record-link" href={recordHref}
-					>{stopLayer
-						? tr('Stop Record', 'Bilan de l’arrêt')
-						: tr('Line Record', 'Bilan de la ligne')}</a
-				>
-			{/if}
-			{#if network && selected?.lines?.length}
-				<ul aria-label={tr('Lines serving this segment', 'Lignes qui desservent ce segment')}>
-					{#each selected.lines as id (id)}
-						<li>
-							<a class="record-link" href={recordLink(id)}
-								>{display.lineName(id, routeNames.get(id)).label}</a
-							>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		{/if}
-	</Card>
-</div>
+		</Card>
+	</div>
+{/snippet}
+
+{#if children}
+	{@render children(layer === 'live' ? undefined : recordContent)}
+{:else if layer !== 'live'}
+	{@render recordContent()}
+{/if}
 
 <style>
 	.record-panel {
+		color: var(--foreground);
+		font-size: var(--text-small);
+		line-height: 1.35;
+	}
+	.record-panel-standalone {
 		width: min(26rem, calc(100vw - 1.5rem));
 		max-height: min(27rem, 48dvh);
 		overflow: auto;
 		overscroll-behavior: contain;
-		color: var(--foreground);
-		font-size: var(--text-small);
-		line-height: 1.35;
+	}
+	.record-in-view-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: calc(var(--spacing) * 2);
+		border-block-start: 1px solid var(--border-hairline);
+	}
+	.record-in-view-row span {
+		text-align: end;
+		font-variant-numeric: tabular-nums;
 	}
 	p,
 	h2,

@@ -31,7 +31,17 @@
 	let active = $state('overview');
 	let sections = $state<{ key: string; label: string; element: HTMLElement }[]>([]);
 	function surface() {
-		return root?.closest('[data-slot="right-panel"], [data-slot="bottom-sheet"]');
+		return root?.closest(
+			'[data-slot="map-details"], [data-slot="right-panel"], [data-slot="bottom-sheet"]',
+		);
+	}
+	function scrollViewport() {
+		const panel = surface();
+		return (
+			panel?.querySelector<HTMLElement>(
+				'[data-slot="bottom-sheet-body"], [data-slot="scroll-area-viewport"]',
+			) ?? panel
+		);
 	}
 	function step(delta: -1 | 1) {
 		const next = delta === -1 ? session.adjacent.previous : session.adjacent.next;
@@ -41,9 +51,7 @@
 		}
 	}
 	function scrollToSection(element: HTMLElement) {
-		const scroller = element.closest(
-			'[data-slot="bottom-sheet-body"], [data-slot="scroll-area-viewport"]',
-		);
+		const scroller = scrollViewport();
 		if (scroller)
 			scroller.scrollTop +=
 				element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
@@ -94,9 +102,7 @@
 		}
 		function scroll() {
 			const top = root.getBoundingClientRect().bottom + 24;
-			const viewport = surface()?.querySelector<HTMLElement>(
-				'[data-slot="bottom-sheet-body"], [data-slot="scroll-area-viewport"]',
-			);
+			const viewport = scrollViewport();
 			if (
 				viewport &&
 				viewport.scrollHeight > viewport.clientHeight &&
