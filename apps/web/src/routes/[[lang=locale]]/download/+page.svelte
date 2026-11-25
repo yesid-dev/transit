@@ -124,10 +124,10 @@
 			{#snippet child({ props })}
 				<button
 					{...props}
-					class="flex min-h-11 min-w-11 items-center gap-2 text-start text-primary underline"
+					class="flex min-h-11 min-w-11 max-w-full flex-wrap items-center gap-x-2 text-start text-primary underline"
 				>
 					<ChevronToggle open={props['aria-expanded'] === 'true'} size="sm" />
-					<span>{label}</span>
+					<span class="[overflow-wrap:normal]">{label}</span>
 				</button>
 			{/snippet}
 		</Collapsible.Trigger>

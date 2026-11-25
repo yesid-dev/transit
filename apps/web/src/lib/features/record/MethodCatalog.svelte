@@ -332,7 +332,7 @@
 								<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
 							</RecordCard>
 							<RecordCard title={copy.limitsTitle}>
-								<ul class="method-limits list-outside list-disc ps-5">
+								<ul class="method-limits list-inside list-disc">
 									{#each copy.recordLimits as line (line)}<li>{line}</li>{/each}
 								</ul>
 							</RecordCard>
