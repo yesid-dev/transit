@@ -1,6 +1,6 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
-import { safeAlertUrl } from '#lib/v1/alertDisplay.ts';
+import { alertDisplayUrl, safeAlertUrl, stripAlertHtml } from '#lib/v1/alertDisplay.ts';
 import { effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
 import type { Alert } from '#lib/v1/schemas/alerts.ts';
 
@@ -17,11 +17,26 @@ export type AlertCard = {
 	periods: readonly { start: string | null; end: string | null }[];
 };
 
-export function agencyText(text: Translation, locale: Locale) {
+function translation(text: Translation, locale: Locale) {
 	const other = locale === 'en' ? 'fr' : 'en';
-	if (text[locale]?.trim()) return { text: text[locale], lang: locale };
-	if (text[other]?.trim()) return { text: text[other], lang: other };
+	const preferred = text[locale];
+	const fallback = text[other];
+	if (preferred?.trim()) return { text: preferred, lang: locale };
+	if (fallback?.trim()) return { text: fallback, lang: other };
 	return null;
+}
+
+export function agencyText(translations: Translation, locale: Locale) {
+	const selected = translation(translations, locale);
+	if (!selected) return null;
+	if (!/<\/?[a-z][^>]*>|&(?:nbsp|amp|quot|#39|lt|gt);/i.test(selected.text)) return selected;
+	const text = selected.text
+		.replace(/<(?:br\b[^>]*|\/(?:p|div|li|h[1-6])\s*)>/gi, '\n')
+		.split(/\r?\n/)
+		.map(stripAlertHtml)
+		.filter(Boolean)
+		.join('\n');
+	return text ? { text, lang: selected.lang } : null;
 }
 
 export function alertEffect(effect: string | null, locale: Locale) {
@@ -29,9 +44,12 @@ export function alertEffect(effect: string | null, locale: Locale) {
 }
 
 export function alertAgencyLink(card: AlertCard, locale: Locale) {
-	const link = agencyText(card.url ?? {}, locale);
+	const link = translation(card.url ?? {}, locale);
 	const url = safeAlertUrl(link?.text);
-	return url && link ? { href: url.href, lang: link.lang } : null;
+	if (url && link) return { href: url.href, lang: link.lang };
+	const body = translation(card.description, locale);
+	const embedded = alertDisplayUrl({ description: body?.text }, locale);
+	return embedded && body ? { href: embedded.href, lang: body.lang } : null;
 }
 
 export function genericAgencyHeading(text: string | null | undefined) {
