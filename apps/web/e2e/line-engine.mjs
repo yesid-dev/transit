@@ -5,6 +5,8 @@ import {
 	namedSchedulePeriods,
 } from './line-record-fixtures.mjs';
 
+const requestedRecoveryLines = new Set();
+
 // Engine contract fixtures for the server-side Line requests.
 export function lineEngine(url) {
 	const get = (key) => url.searchParams.get(key);
@@ -14,6 +16,11 @@ export function lineEngine(url) {
 	const to = get('to');
 	const direction = get('direction') === '1' ? 1 : 0;
 	const line = get('line');
+	const recovery = line?.startsWith('recovery-');
+	if (recovery && measure === 'crowding' && !requestedRecoveryLines.has(line)) {
+		requestedRecoveryLines.add(line);
+		return { status: 503, body: {}, headers: { 'retry-after': '1' } };
+	}
 	const named =
 		process.env.TRANSIT_E2E_LINE_RECORD_NAMED === '1' ? lineRecordFixture(get('city'), line) : null;
 	if (named && from === '2026-11-01') return { status: 503, body: {} };
@@ -124,7 +131,9 @@ export function lineEngine(url) {
 					),
 				],
 				day: [cell({ day: from })],
-				weekday_hour: [cell({ weekday: 1, hour: 7 })],
+				weekday_hour: recovery
+					? Array.from({ length: 24 }, (_, hour) => cell({ weekday: 1, hour }))
+					: [cell({ weekday: 1, hour: 7 })],
 				direction: [cell({ direction: 0 }), cell({ direction: 1 })],
 				stop: [
 					cell({ direction, stop_sequence: 1, stop: 'First stop' }),

@@ -56,12 +56,14 @@
 	const title = (section: LineSection) => t(...lineSectionTitles[section]);
 	const bands = $derived(t('Early, on time and late', 'En avance, à l’heure et en retard'));
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(record.period, locale) });
-	const answers = $derived(
-		Object.fromEntries(record.sections.map(({ section, answer }) => [section, answer])) as Record<
-			LineSection,
-			Promise<EngineResult<Answer>>
-		>,
-	);
+	const answerFor = (section: LineSection) =>
+		record.sections.find((item) => item.section === section)!.answer;
+	const punctualityAnswer = $derived(answerFor('punctuality'));
+	const directionsAnswer = $derived(answerFor('directions'));
+	const dailyAnswer = $derived(answerFor('daily'));
+	const hourlyAnswer = $derived(answerFor('hourly'));
+	const networkAnswer = $derived(record.network);
+	const networkDailyAnswer = $derived(record.networkDaily);
 	const files = $derived(
 		record.sections.map(({ section }) => ({
 			href: recordSectionLinks(pinned, section).csv,
@@ -89,7 +91,7 @@
 		const target = lineViewHref(pinned, 'record', direction);
 		await goto(target.pathname + target.search, { reset: false });
 		// The grid remounts when the new punctuality answer resolves.
-		await answers.punctuality;
+		await punctualityAnswer;
 		await tick();
 		if (wasFocused && record.direction === direction && document.activeElement === document.body) {
 			directionField
@@ -202,8 +204,8 @@
 			{actions}
 		/>
 	{:else}
-		{#await answers.punctuality}
-			{#key answers.punctuality}<RecordPending {locale} answer={answers.punctuality} />{/key}
+		{#await punctualityAnswer}
+			{#key punctualityAnswer}<RecordPending {locale} answer={punctualityAnswer} />{/key}
 		{:then result}
 			{#if result.kind === 'answer' && 'value' in result.answer}
 				{@const answer = result.answer}
@@ -225,7 +227,7 @@
 						{actions}
 					/>
 				{:else}
-					{#await record.network}
+					{#await networkAnswer}
 						{@render lead(answer, !!result.lastGood)}
 					{:then network}
 						{@render lead(
@@ -243,13 +245,13 @@
 </div>
 
 {#if !scheduleOnly}
-	{#await answers.punctuality then result}
+	{#await punctualityAnswer then result}
 		{@const headline = result}
 		{#if !(result.kind === 'answer' && 'value' in result.answer && lineTimetableOnly(result.answer))}
 			<DashboardGrid gutter={false} minTile="20rem">
 				<RecordCard title={bands} {stamp}>
-					{#await answers.punctuality}
-						{#key answers.punctuality}<RecordPending {locale} answer={answers.punctuality} />{/key}
+					{#await punctualityAnswer}
+						{#key punctualityAnswer}<RecordPending {locale} answer={punctualityAnswer} />{/key}
 					{:then result}
 						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 							<RecordChart
@@ -268,8 +270,8 @@
 					{/await}
 					<div id="directions" class="mt-3 grid gap-2">
 						<h3 class="font-semibold">{title('directions')}</h3>
-						{#await answers.directions}
-							{#key answers.directions}<RecordPending {locale} answer={answers.directions} />{/key}
+						{#await directionsAnswer}
+							{#key directionsAnswer}<RecordPending {locale} answer={directionsAnswer} />{/key}
 						{:then result}
 							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 								<dl class="grid gap-2">
@@ -302,7 +304,7 @@
 						{/await}
 					</div>
 					{#snippet footer()}
-						{#await answers.punctuality then result}
+						{#await punctualityAnswer then result}
 							{#if result.kind === 'answer'}<LineRecordEvidence
 									evidence={result.answer.evidence}
 									{locale}
@@ -313,8 +315,8 @@
 
 				<div id="daily" class="grid min-w-0">
 					<RecordCard title={title('daily')} {stamp}>
-						{#await answers.daily}
-							{#key answers.daily}<RecordPending {locale} answer={answers.daily} />{/key}
+						{#await dailyAnswer}
+							{#key dailyAnswer}<RecordPending {locale} answer={dailyAnswer} />{/key}
 						{:then result}
 							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 								{@const answer = result.answer}
@@ -337,13 +339,13 @@
 										{locale}
 									/>
 								{/snippet}
-								{#await record.networkDaily}{@render trend()}{:then network}{@render trend(
+								{#await networkDailyAnswer}{@render trend()}{:then network}{@render trend(
 										network,
 									)}{/await}
 							{:else}{@render gap(result)}{/if}
 						{/await}
 						{#snippet footer()}
-							{#await answers.daily then result}
+							{#await dailyAnswer then result}
 								{#if result.kind === 'answer'}
 									<LineRecordEvidence evidence={result.answer.evidence} {locale} />
 									{#if 'cells' in result.answer && result.answer.cells.length}
@@ -363,8 +365,8 @@
 			<div id="hourly" data-slot="line-hour-grid" class="min-w-0">
 				<RecordCard title={title('hourly')} {stamp}>
 					{@render directionControl()}
-					{#await answers.hourly}
-						{#key answers.hourly}<RecordPending {locale} answer={answers.hourly} />{/key}
+					{#await hourlyAnswer}
+						{#key hourlyAnswer}<RecordPending {locale} answer={hourlyAnswer} />{/key}
 					{:then result}
 						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 							<RecordChart
@@ -377,7 +379,7 @@
 						{:else}{@render gap(result)}{/if}
 					{/await}
 					{#snippet footer()}
-						{#await answers.hourly then result}
+						{#await hourlyAnswer then result}
 							{#if result.kind === 'answer'}
 								<LineRecordEvidence evidence={result.answer.evidence} {locale} />
 								{#if 'cells' in result.answer && result.answer.cells.length}
