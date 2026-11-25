@@ -99,9 +99,9 @@ describe('capture-backed Live projection', () => {
 				},
 			],
 		};
-		expect(captureTripScopeSchema.parse({ ...scoped, trip_updates: [update] }).trip_updates).toEqual(
-			[update],
-		);
+		expect(
+			captureTripScopeSchema.parse({ ...scoped, trip_updates: [update] }).trip_updates,
+		).toEqual([update]);
 		expect(captureTripScopeSchema.parse(scoped)).toEqual(scoped);
 	});
 
