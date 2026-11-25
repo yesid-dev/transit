@@ -1,5 +1,6 @@
 import '#lib/site/configureBrowserValidation.ts';
 import { z } from 'zod';
+import { LiveScheduleEvidenceSchema, SilentTripsSchema } from '#lib/v1/schemas/network.ts';
 
 const stamp = z.iso.datetime({ offset: true });
 const sourceStamp = stamp.nullable();
@@ -72,6 +73,8 @@ const feed = z.object({
 	fresh_for_seconds: z.int().positive(),
 	source_lag_seconds: z.int().nonnegative(),
 	read_failed: z.boolean(),
+	expected_every_seconds: z.int().positive().nullish(),
+	bytes: optionalCount,
 });
 
 export const captureSnapshotSchema = z.object({
@@ -89,6 +92,8 @@ export const captureSnapshotSchema = z.object({
 		.array(z.object({ route_id: z.string(), count: z.int().nonnegative() }))
 		.nullable()
 		.optional(),
+	silent_trips: SilentTripsSchema,
+	schedule: LiveScheduleEvidenceSchema,
 });
 
 export const captureTripScopeSchema = z.object({

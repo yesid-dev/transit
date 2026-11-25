@@ -10,8 +10,8 @@ from collections import defaultdict
 from collections.abc import Iterator
 from concurrent.futures import Executor, Future
 from contextlib import closing
-from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from dataclasses import dataclass, replace
+from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from io import TextIOWrapper
 from itertools import batched
@@ -59,6 +59,7 @@ type Stop = tuple[int, str, int | None, int | None]
 class DaySchedule:
     path: Path
     trips: dict[str, TripSpan]
+    evidence: dict[str, str | int | None] | None = None
 
     def stops(self, trip_ids: set[str]) -> dict[str, list[Stop]]:
         with closing(sqlite3.connect(f"{self.path.as_uri()}?mode=ro", uri=True)) as conn:
@@ -274,7 +275,7 @@ class LiveTripSchedule:
             effective = next((candidate for candidate in by_date if candidate <= day), None)
             if effective is not None:
                 edition = editions[effective][0]
-                selections[day] = edition.sha256
+                selections[day] = (effective, edition)
                 if (edition.sha256, day) not in self._cache:
                     build[edition].append(day)
         for edition, dates in build.items():
@@ -287,9 +288,33 @@ class LiveTripSchedule:
             else:
                 self._cache.update({(edition.sha256, day): result for day, result in built.items()})
         self._cache = {
-            key: value for key, value in self._cache.items() if selections.get(key[1]) == key[0]
+            key: value
+            for key, value in self._cache.items()
+            if key[1] in selections and selections[key[1]][1].sha256 == key[0]
         }
-        return {day: self._cache.get((digest, day)) for day, digest in selections.items()}
+        days = {}
+        for day, (effective, edition) in selections.items():
+            schedule = self._cache.get((edition.sha256, day))
+            if schedule is not None:
+                original = (edition.original_key or edition.key).rsplit("/", 1)[-1]
+                stamp, separator, _ = original.partition("__")
+                captured = (
+                    datetime.strptime(stamp, "%Y%m%dT%H%M%S%fZ").replace(tzinfo=UTC)
+                    if separator
+                    else None
+                )
+                # This is the same ZIP already read and verified to build the index.
+                size = (self.workspace / f"{edition.sha256}.zip").stat().st_size
+                schedule = replace(
+                    schedule,
+                    evidence={
+                        "captured_at": captured.isoformat() if captured else None,
+                        "effective_date": effective.isoformat(),
+                        "bytes": size,
+                    },
+                )
+            days[day] = schedule
+        return days
 
     def at(self, now: datetime, *, wait: bool = False) -> dict[date, DaySchedule | None]:
         today = now.astimezone(self.zone).date()

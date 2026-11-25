@@ -213,6 +213,7 @@ class Observation:
     captured: datetime
     source_time: datetime | None
     rows: list[dict[str, object]] | tuple[AlertRecord, ...]
+    payload_bytes: int
 
 
 def _latest(
@@ -283,7 +284,9 @@ class LivePublisher:
             poll, records = read_alert_capture(capture, source[0], {})
             if poll.result == "error":
                 raise ValueError("Unreadable alert capture")
-            return Observation(capture.captured_at_utc, poll.feed_timestamp_utc, records)
+            return Observation(
+                capture.captured_at_utc, poll.feed_timestamp_utc, records, len(capture.payload)
+            )
         poll, message = read_capture(capture, {})
         if message is None or message.header.incrementality == FeedHeader.DIFFERENTIAL:
             raise ValueError("Expected a full realtime capture")
@@ -292,7 +295,9 @@ class LivePublisher:
             if capture.family == "vehicle_positions"
             else _trip_updates(message, capture.captured_at_utc, poll.feed_timestamp_utc)
         )
-        return Observation(capture.captured_at_utc, poll.feed_timestamp_utc, rows)
+        return Observation(
+            capture.captured_at_utc, poll.feed_timestamp_utc, rows, len(capture.payload)
+        )
 
     def poll(self, now: datetime) -> dict[str, object]:
         city = self.manifest.provider.provider_id
@@ -326,7 +331,8 @@ class LivePublisher:
                         endpoint,
                         type(error).__name__,
                     )
-            fresh_for = max(60, 3 * self.manifest.feeds[endpoint].refresh_interval_seconds)
+            interval = self.manifest.feeds[endpoint].refresh_interval_seconds
+            fresh_for = max(60, 3 * interval)
             feeds[endpoint] = {
                 "family": family,
                 "captured_at": _iso(observed.captured) if observed else None,
@@ -334,6 +340,8 @@ class LivePublisher:
                 "fresh_for_seconds": fresh_for,
                 "source_lag_seconds": self.manifest.provider.live_source_lag_seconds,
                 "read_failed": endpoint in self.failures,
+                "expected_every_seconds": interval,
+                "bytes": observed.payload_bytes if observed else None,
             }
             if observed:
                 rows = observed.rows
@@ -431,7 +439,7 @@ class LivePublisher:
                     ):
                         raise ValueError("No complete movement capture for dry check")
                 snapshot = (
-                    {**snapshot, **UNMEASURED}
+                    {**snapshot, **UNMEASURED, "schedule": None}
                     if require_captures
                     else _scheduled_snapshot(snapshot, schedule, reporting, now, wait=once)
                 )
@@ -491,7 +499,7 @@ def _scheduled_snapshot(
     vehicles = cast(list[dict[str, Any]] | None, snapshot["vehicle_positions"])
     updates = cast(list[dict[str, Any]] | None, snapshot["trip_updates"])
     if vehicles is None and updates is None:
-        return {**snapshot, **UNMEASURED}
+        return {**snapshot, **UNMEASURED, "schedule": None}
     loaded = schedule.at(now, wait=wait)
     today = now.astimezone(schedule.zone).date()
     candidate_days = [today + timedelta(days=offset) for offset in DAY_OFFSETS]
@@ -561,10 +569,12 @@ def _scheduled_snapshot(
             {day: tuple(days[day].trips.values()) for day in active_days},
             reports=reports,
             cancellations=cancellations,
+            history=reporting.last_positions,
         )
     return {
         **snapshot,
         **counts,
+        "schedule": days[today].evidence if today in days else None,
         "vehicle_positions": projected_vehicles,
         "trip_updates": projected_updates,
     }

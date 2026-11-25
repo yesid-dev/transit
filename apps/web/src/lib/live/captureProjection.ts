@@ -276,6 +276,8 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 		non_responding: measured ? silent : null,
 		cancelled_now: measured ? (snapshot.cancelled_now ?? null) : null,
 		non_responding_by_route: measured ? (snapshot.non_responding_by_route ?? null) : null,
+		silent_trips: measured ? (snapshot.silent_trips ?? null) : null,
+		schedule: snapshot.schedule ?? null,
 		feed_freshness_s: null,
 		coverage_pct: positions.vehicles.length
 			? percentage(classified, positions.vehicles.length)
