@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
 import { finderEngine } from './finder-engine.mjs';
-import { overviewEngine, overviewNamedLines } from './overview-engine.mjs';
+import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
 import { networkEngine, networkFixtures } from './network-engine.mjs';
@@ -523,7 +523,6 @@ const server = createServer((request, response) => {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
 		}
 		if (city === 'stm' && kind === 'schedule-index') {
-			for (const line of overviewNamedLines) editionRoutes.set(line.id, line);
 			for (const [key, body] of Object.entries(files)) {
 				if (key.startsWith('/v1/stm/static/routes/')) {
 					const { id, short, long, type, directions = [] } = JSON.parse(body);
@@ -569,6 +568,11 @@ const server = createServer((request, response) => {
 					routes: [],
 				});
 			}
+		}
+		if (kind === 'schedule-index') {
+			const places = overviewCapturePlaces(city);
+			for (const line of places.lines) editionRoutes.set(line.id, line);
+			for (const stop of places.stops) editionStops.set(stop.id, stop);
 		}
 		if (
 			kind === 'schedule-index' &&

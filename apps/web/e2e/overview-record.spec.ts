@@ -1,7 +1,7 @@
 import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import { captureFixture, captureFleet, captureUrl, captureVehicle } from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
@@ -266,18 +266,23 @@ for (const colorScheme of ['light', 'dark'] as const) {
 			}) => {
 				await page.addInitScript((theme) => localStorage.setItem('theme', theme), colorScheme);
 				await page.emulateMedia({ colorScheme });
-				await page.goto(`${fr ? '/fr' : '/'}?provider=${provider}&frameMode=record&${period}`);
-				await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
-				await expect(
-					page.getByRole('heading', {
-						name: fr ? 'À propos de ces chiffres' : 'About these figures',
-					}),
-				).toBeVisible();
-				const results = await new AxeBuilder({ page })
-					.include('main')
-					.withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-					.analyze();
-				expect(results.violations).toEqual([]);
+				await page.route(captureUrl, (route) =>
+					route.fulfill({ json: captureFleet(Date.now(), provider, [-120, 0, 360, null]) }),
+				);
+				for (const [mode, heading] of [
+					['record', fr ? 'À propos de ces chiffres' : 'About these figures'],
+					['live', fr ? 'À propos des chiffres en direct' : 'About live figures'],
+				]) {
+					await page.goto(`${fr ? '/fr' : '/'}?provider=${provider}&frameMode=${mode}&${period}`);
+					await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+					await expect(page.getByRole('heading', { name: heading })).toBeVisible();
+					await expect(page.locator('[data-slot="band-bar"]')).toBeVisible();
+					const results = await new AxeBuilder({ page })
+						.include('main')
+						.withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+						.analyze();
+					expect(results.violations, mode).toEqual([]);
+				}
 			});
 		}
 	}
@@ -314,23 +319,48 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 });
 
 test('Live and Record show the same punctuality for the same week (OV1)', async ({ page }) => {
+	const captures: URL[] = [];
+	const snapshots: URL[] = [];
+	page.on('request', (request) => {
+		const url = new URL(request.url());
+		if (captureUrl.test(request.url())) captures.push(url);
+		if (/\/(?:v1|v2)\/|hotspots\.json/.test(url.pathname)) snapshots.push(url);
+	});
+	await page.route(captureUrl, (route) =>
+		route.fulfill({ json: captureFleet(Date.now(), 'stm', [-120, 0, 360, null]) }),
+	);
 	await page.goto(recordHref);
 	const main = page.getByRole('main');
-	const reading = main
-		.getByRole('article', { name: 'Record', exact: true })
-		.getByText('81.2%', { exact: true })
-		.first();
+	const cards = main.getByRole('article');
+	const record = main.getByRole('article', { name: 'Record', exact: true });
+	const live = main.getByRole('article', { name: 'Live now', exact: true });
+	const reading = record.getByText('81.2%', { exact: true }).first();
+	await expect(cards.nth(0)).toHaveAccessibleName('Record');
+	await expect(cards.nth(1)).toHaveAccessibleName('Live now');
 	await expect(reading).toBeVisible();
-	const value = await reading.innerText();
+	await expect(live.locator('[data-slot="band-bar"]')).toBeVisible();
+	for (const status of ['Early', 'On time', 'Late', 'Delay unknown']) {
+		await expect(live.getByRole('term').filter({ hasText: status })).toBeVisible();
+	}
+	await expect(
+		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
+	).toContainText('Not measured');
+	expect(captures.map((url) => url.pathname + url.search)).toEqual(['/api/live?city=stm']);
+	expect(snapshots).toEqual([]);
+
 	await (await openFrameControls(page)).getByRole('radio', { name: 'Live now' }).click();
 	await closeCompactFrameControls(page);
 	await expect(page).toHaveURL(/frameMode=live/);
-	await expect(main.getByRole('region', { name: 'Record for the selected period' })).toContainText(
-		value,
-	);
+	await expect(cards.nth(0)).toHaveAccessibleName('Live now');
+	await expect(cards.nth(1)).toHaveAccessibleName('Record');
+	await expect(reading).toBeVisible();
+	await expect(main.getByRole('heading', { name: 'About live figures' })).toBeVisible();
+	await expect(main.getByText('Read more', { exact: true })).toHaveCount(0);
+	await expect(main.getByText('Search for your line or stop', { exact: true })).toHaveCount(0);
+	expect(snapshots).toEqual([]);
 });
 
-test('changing the custom period reloads Record and Live now still opens the existing homepage', async ({
+test('changing the custom period updates the Record card and Back restores the view', async ({
 	page,
 }) => {
 	await page.goto('/?provider=stm&' + period);
@@ -351,8 +381,45 @@ test('changing the custom period reloads Record and Live now still opens the exi
 	await expect(record.getByText(/78\.8%, 1 Nov 2026/)).toBeVisible();
 	await (await openFrameControls(page)).getByRole('radio', { name: 'Live now' }).click();
 	await closeCompactFrameControls(page);
-	await expect(main.getByText(/how the Montréal · STM network actually runs/)).toBeVisible();
-	await expect(main.getByRole('navigation', { name: 'Explore everything' })).toBeVisible();
-	await page.goBack();
+	await expect(main.getByRole('article').first()).toHaveAccessibleName('Live now');
 	await expect(record.getByText('Record · 8 Nov 2026').first()).toBeVisible();
+	await page.goBack();
+	await expect(main.getByRole('article').first()).toHaveAccessibleName('Record');
+	await expect(record.getByText('Record · 8 Nov 2026').first()).toBeVisible();
+});
+
+test('the header carries the Live view and dates through city and language changes', async ({
+	page,
+}) => {
+	await page.route(captureUrl, (route) => {
+		const city = new URL(route.request().url()).searchParams.get('city')!;
+		return route.fulfill({ json: captureFleet(Date.now(), city, [0, 360]) });
+	});
+	await page.goto(recordHref.replace('frameMode=record', 'frameMode=live'));
+	const main = page.getByRole('main');
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	await page.locator('[data-slot="site-header-network"] select').selectOption('octranspo');
+	const isOttawaLive = (url: URL) =>
+		url.searchParams.get('provider') === 'octranspo' &&
+		url.searchParams.get('frameMode') === 'live' &&
+		url.searchParams.get('recordFrom') === '2026-11-08' &&
+		url.searchParams.get('recordTo') === '2026-11-14';
+	await expect(page).toHaveURL(isOttawaLive);
+	await expect(main.getByRole('heading', { level: 1 })).toHaveText('Ottawa network');
+	const live = main.getByRole('article', { name: 'Live now', exact: true });
+	await expect(
+		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
+	).toContainText('Not measured');
+	await expect(live.getByText('Alerts in effect', { exact: true }).locator('..')).toContainText(
+		'No live data',
+	);
+	await expect(live.getByRole('link', { name: 'Read the alerts' })).toHaveCount(0);
+
+	await page.getByTestId('language-toggle').click();
+	await expect(page).toHaveURL((url) => url.pathname === '/fr' && isOttawaLive(url));
+	await expect(main.getByRole('heading', { level: 1 })).toHaveText('Réseau d’Ottawa');
+	await expect(main.getByRole('article').first()).toHaveAccessibleName('En direct');
+	await expect(
+		main.getByRole('heading', { name: 'À propos des chiffres en direct' }),
+	).toBeVisible();
 });

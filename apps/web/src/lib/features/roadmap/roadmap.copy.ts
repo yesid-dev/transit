@@ -170,3 +170,8 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 		},
 	},
 ];
+
+export const roadmapLinks = {
+	contact: { en: 'https://yesid.dev/contact', fr: 'https://yesid.dev/fr/contact' },
+	code: 'https://github.com/yesid-dev/transit',
+} as const;

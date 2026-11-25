@@ -48,7 +48,7 @@ export function expectDesignPass(screen: Screen, key: string, report: Report) {
 		return;
 	}
 
-	const budget = budgets[screen];
+	const budget = budgets[screen === 'overview-live' ? 'overview' : screen];
 	if (!budget) throw new Error(`${key} needs measured debt or a screen budget.`);
 	expect(report.content, `${key} C1`).toEqual({ titles: 1, answerFirst: true });
 	for (const width of widths) {

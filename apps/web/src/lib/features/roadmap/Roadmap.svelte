@@ -2,8 +2,7 @@
 	import { Badge } from '@yesid/ui/badge';
 	import InfoPage from '#lib/components/layout/InfoPage.svelte';
 	import { getLocale } from '#lib/i18n/index.ts';
-	import { HOME_INVITE_LINKS } from '#lib/features/home/homePulse.copy.ts';
-	import { ROADMAP_ENTRIES, roadmapCopy, roadmapTitle } from './roadmap.copy';
+	import { ROADMAP_ENTRIES, roadmapCopy, roadmapTitle, roadmapLinks } from './roadmap.copy';
 
 	const locale = getLocale();
 	const copy = $derived(roadmapCopy[locale]);
@@ -41,9 +40,8 @@
 	<section aria-labelledby="roadmap-contribute">
 		<h2 id="roadmap-contribute">{copy.contributeHeading}</h2>
 		<p>
-			{copy.follow.before}<a href={HOME_INVITE_LINKS.code}>{copy.follow.repository}</a>{copy.follow
-				.between}<a href={HOME_INVITE_LINKS.contact[locale]}>{copy.follow.contact}</a>{copy.follow
-				.after}
+			{copy.follow.before}<a href={roadmapLinks.code}>{copy.follow.repository}</a>{copy.follow
+				.between}<a href={roadmapLinks.contact[locale]}>{copy.follow.contact}</a>{copy.follow.after}
 		</p>
 	</section>
 </InfoPage>
