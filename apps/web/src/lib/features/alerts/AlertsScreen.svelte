@@ -195,7 +195,7 @@
 {#snippet cutRows(rows: AlertCut[], group: 'effect' | 'line')}
 	{#if rows.length}
 		{#if group === 'effect'}
-			<dl class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+			<dl class="effect-grid grid gap-3">
 				{#each rows as row, index (index)}
 					<div class="min-w-0 border-t border-border pt-2">
 						<dt class="wrap-break-word text-small text-muted-foreground">
@@ -206,9 +206,11 @@
 				{/each}
 			</dl>
 		{:else}
-			<dl class="grid gap-x-6 lg:grid-cols-2">
+			<dl class="line-grid grid gap-x-6 lg:grid-cols-2">
 				{#each rows.slice(0, lineLimit) as row, index (index)}
-					<div class="flex min-w-0 items-center justify-between gap-3 border-b border-border">
+					<div
+						class="line-reading flex min-w-0 items-center justify-between gap-3 border-b border-border"
+					>
 						<dt class="min-w-0">
 							{#if row.key}
 								<a
@@ -216,7 +218,7 @@
 									href={localizeHref(`/lines/${encodeURIComponent(row.key)}`, locale, data.city)}
 								>
 									<span class="w-12"><RoutePlate code={display.line(row.key)} /></span>
-									{display.lineName(row.key).name}
+									<span>{display.lineName(row.key).name}</span>
 								</a>
 							{:else}
 								<StateMark state="unknown" {locale} />
@@ -237,7 +239,14 @@
 			{/if}
 		{/if}
 	{:else}
-		<p>{noAlerts}</p>
+		<p>
+			{group === 'effect'
+				? noAlerts
+				: t(
+						'No line-specific alerts in this view.',
+						'Aucun avis propre à une ligne dans cette vue.',
+					)}
+		</p>
 	{/if}
 {/snippet}
 
@@ -497,3 +506,19 @@
 		</div>
 	</article>
 </Surface>
+
+<style>
+	.effect-grid {
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+	}
+
+	.line-grid {
+		container-type: inline-size;
+	}
+
+	@container (inline-size < 11rem) {
+		.line-reading {
+			display: block;
+		}
+	}
+</style>

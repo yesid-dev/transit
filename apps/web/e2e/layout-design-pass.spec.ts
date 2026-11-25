@@ -139,8 +139,14 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			for (const theme of ['light', 'dark'] as const) {
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
-				const answer = page.locator(screen.startsWith('search') ? '[data-slot="screen-state"]' : '[data-slot="screen-answer"]');
-				await expect(alerts ? answer.or(page.locator('[data-slot="screen-state"]')).first() : answer).toBeVisible();
+				const answer = page.locator(
+					screen.startsWith('search')
+						? '[data-slot="screen-state"]'
+						: '[data-slot="screen-answer"]',
+				);
+				await expect(
+					alerts ? answer.or(page.locator('[data-slot="screen-state"]')).first() : answer,
+				).toBeVisible();
 				if (screen === 'search-query') {
 					await expect(
 						page
