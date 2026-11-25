@@ -10,6 +10,7 @@ declare global {
 		interface PageState {
 			/** This history entry has the phone search sheet open. */
 			searchSheet?: true;
+			stopsSearch?: { href: string; data: import('#lib/server/stopListing.ts').StopSearchResult };
 		}
 	}
 }

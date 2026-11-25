@@ -7,6 +7,56 @@ test.beforeEach(({ browserName }, info) => {
 
 const query = 'provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14';
 
+test('stops debounces engine questions and aborts superseded results', async ({
+	page,
+	request,
+}) => {
+	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops-search' });
+	await page.goto(`/stops?${query}&q=Fixture`);
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	const results = page.locator('#stop-results');
+	const input = page.getByTestId('stops-filter-input');
+	await expect(results.getByRole('cell', { name: /^80\.0%/ })).toBeVisible();
+	const fixture = `http://127.0.0.1:${process.env.TRANSIT_E2E_DATA_PORT ?? '4318'}`;
+	const questions = async (): Promise<number> =>
+		(await request.get(`${fixture}/__stops-search`)).json();
+	const before = await questions();
+	await page.clock.install();
+	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+	await input.press('ControlOrMeta+a');
+	for (const key of 'Fixtu') {
+		await input.pressSequentially(key);
+		await page.clock.runFor(120);
+	}
+	await page.clock.runFor(250);
+	await expect(page).toHaveURL(/q=Fixtu$/);
+	await expect(results.getByRole('link', { name: 'Fixture stop' })).toBeVisible();
+	expect(await questions()).toBe(before + 1);
+
+	await request.post(`${fixture}/__stops-search`);
+	try {
+		await input.fill('Pagination');
+		await expect(results.getByRole('row')).toHaveCount(0);
+		await page.clock.runFor(250);
+		await expect.poll(questions).toBe(before + 2);
+		const aborted = page.waitForEvent('requestfailed', {
+			predicate: (r) =>
+				r.url().includes('/api/stops/slim?') &&
+				new URL(r.url()).searchParams.get('q') === 'Pagination',
+		});
+		await input.fill('Arrêt temporaire');
+		await aborted;
+		await expect(results.getByRole('row')).toHaveCount(0);
+		await page.clock.runFor(250);
+		await expect(results.getByRole('link', { name: 'Arrêt temporaire' })).toBeVisible();
+		await request.post(`${fixture}/__overview/release?fixture=stops-search`);
+		await expect(results.getByRole('link')).toHaveText(['Arrêt temporaire']);
+		expect(await questions()).toBe(before + 3);
+	} finally {
+		await request.post(`${fixture}/__overview/release?fixture=stops-search`);
+	}
+});
+
 test('stops sends a first page for a large timetable', async ({ request }) => {
 	const response = await request.get(`/stops?${query}&q=Volume`, {
 		headers: { 'x-transit-fixture-scope': 'stops-volume' },
@@ -239,7 +289,7 @@ for (const locale of ['en', 'fr'] as const) {
 		});
 		const row = results.getByRole('row', { name: /Fixture stop/ });
 		const filter = page.getByTestId('stops-filter-input');
-		const card = main.getByRole('article', { name: fr ? 'Trouver un arrêt' : 'Find a stop' });
+		const actions = main.locator('[data-slot="screen-answer"]');
 		for (const width of [390, 1440]) {
 			await test.step(`${width}px`, async () => {
 				await page.setViewportSize({ width, height: 900 });
@@ -252,16 +302,25 @@ for (const locale of ['en', 'fr'] as const) {
 					'href',
 					/\/stop\/S1.*recordFrom=2026-11-08.*recordTo=2026-11-14/,
 				);
-				await card.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
+				await actions.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
+				const citation = page.getByRole('dialog', { name: fr ? 'Citer' : 'Cite' });
 				await expect(
-					card.getByText(
-						fr
-							? /Méthode v1, nettoyage v8\..*q=Fixture.*#stop-results/
-							: /Method v1, cleaning v8\..*q=Fixture.*#stop-results/,
-					),
+					citation.getByText(fr ? /Méthode v1, nettoyage v8\./ : /Method v1, cleaning v8\./),
 				).toBeVisible();
-				const csv = await card.getByRole('link', { name: /CSV/ }).getAttribute('href');
+				await expect(citation.getByRole('link')).toHaveAttribute(
+					'href',
+					/q=Fixture.*#stop-results/,
+				);
+				await citation.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
+				await actions.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
+				const downloads = page.getByRole('dialog', {
+					name: fr ? 'Télécharger les fichiers CSV' : 'Download the CSV files',
+				});
+				const csv = await downloads
+					.getByRole('link', { name: fr ? 'Résultats de recherche d’arrêts' : 'Stop results' })
+					.getAttribute('href');
 				expect(decodeURIComponent(csv!)).toContain('"Fixture stop",0.8,100,80');
+				await downloads.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
 				await expect(
 					main.getByRole('link', { name: fr ? 'Près d’une adresse' : 'Near an address' }),
 				).toBeVisible();
@@ -327,7 +386,7 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 
 	test(`${locale} stops filters by line in the controls rail and sheet`, async ({ page }) => {
-		const label = fr ? 'Filtrer par ligne' : 'Filter by line';
+		const label = fr ? 'Ligne' : 'Line';
 		for (const width of [1440, 390]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${prefix}/stops?${query}`);
@@ -348,5 +407,14 @@ for (const locale of ['en', 'fr'] as const) {
 				.click();
 			await expect(page).not.toHaveURL(/(?:\?|&)route=/);
 		}
+	});
+
+	test(`${locale} stops marks an unpublished public code`, async ({ page }) => {
+		await page.goto(`${prefix}/stops?${query}&q=T6-NONE`);
+		const row = page.locator('#stop-results tbody tr').filter({ hasText: 'Arrêt temporaire' });
+		await expect(row.locator('[data-column="code"]')).toContainText(
+			fr ? 'Non publié' : 'Not published',
+		);
+		await expect(row.locator('[data-column="code"]')).not.toContainText('T6-NONE');
 	});
 }

@@ -160,7 +160,8 @@ function engineFetch(
 		(question.parameters.measure === 'alert_counts' ||
 			question.path.endsWith('/schedule-index') ||
 			fixtureScope === 'overview-stream' ||
-			fixtureScope === 'overview-stop-ranking')
+			fixtureScope === 'overview-stop-ranking' ||
+			(fixtureScope === 'stops-search' && question.parameters.group === 'stop_id'))
 	)
 		headers.set('x-transit-fixture-scope', fixtureScope);
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
@@ -185,9 +186,11 @@ export async function query<T>(
 	visitorIp?: string | null,
 	fixtureScope?: string | null,
 	retryBusy = false,
+	requestSignal?: AbortSignal,
 ): Promise<EngineResult<T>> {
 	const timeout = retryBusy ? RECORD_TIMEOUT_MS : ENGINE_TIMEOUT_MS;
-	const signal = AbortSignal.timeout(timeout);
+	const deadline = AbortSignal.timeout(timeout);
+	const signal = requestSignal ? AbortSignal.any([deadline, requestSignal]) : deadline;
 	const recordDeadline = retryBusy ? Date.now() + timeout - 250 : undefined;
 	try {
 		const response = await engineFetch(question, signal, visitorIp, fixtureScope, recordDeadline);
@@ -539,8 +542,19 @@ const finderSeries = recordEnvelope.extend({
 export type FinderSeries = z.infer<typeof finderSeries>;
 export type FinderCell = FinderSeries['cells'][number];
 
-export function getFinderSeries(parameters: FinderQuestionParameters, period: EnginePeriod) {
-	return query(finderQuestion(parameters, period), finderSeries, period.visitorIp);
+export function getFinderSeries(
+	parameters: FinderQuestionParameters,
+	period: EnginePeriod,
+	signal?: AbortSignal,
+) {
+	return query(
+		finderQuestion(parameters, period),
+		finderSeries,
+		period.visitorIp,
+		period.fixtureScope,
+		false,
+		signal,
+	);
 }
 
 export async function getRecordCsv(
@@ -622,8 +636,16 @@ export async function getScheduleEdition(
 	city: string,
 	visitorIp?: string | null,
 	fixtureScope?: string,
+	signal?: AbortSignal,
 ) {
-	const result = await query(scheduleQuestion(city), scheduleIndexSchema, visitorIp, fixtureScope);
+	const result = await query(
+		scheduleQuestion(city),
+		scheduleIndexSchema,
+		visitorIp,
+		fixtureScope,
+		false,
+		signal,
+	);
 	return result.kind === 'answer' ? result.answer.schedule : null;
 }
 

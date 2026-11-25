@@ -6,6 +6,7 @@ import { loadStopsRecord } from '#lib/server/finderRecord.ts';
 import { frameClock } from '#lib/site/frameState.ts';
 import { finderCells } from '#lib/features/record/finderText.ts';
 import { stopReading, type NearbyStop } from '#lib/features/stops/stopListing.ts';
+import { projectStops, stopSearchResult } from '#lib/server/stopListing.ts';
 
 export const prerender = false;
 
@@ -18,6 +19,22 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			(requested[0] && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(requested[0]))
 		) {
 			return json({ error: 'invalid_city' }, { status: 400 });
+		}
+		if (url.searchParams.get('details') === 'search') {
+			const catalog = await getCityCatalog(visitorIp);
+			const city = requested[0] || catalog.default_provider;
+			const provider = catalog.providers.find(({ id }) => id === city);
+			if (!provider) return json({ error: 'invalid_city' }, { status: 400 });
+			const scope = request.headers.get('x-transit-fixture-scope') ?? undefined;
+			const edition = await getScheduleEdition(city, visitorIp, scope, request.signal);
+			if (!edition) return json({ error: 'stops_index_unavailable' }, { status: 503 });
+			const locale = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en';
+			return json(
+				await stopSearchResult(projectStops(edition, url, request, city, provider, locale)),
+				{
+					headers: { 'cache-control': 'no-store' },
+				},
+			);
 		}
 		const city = requested[0] || (await getCityCatalog(visitorIp)).default_provider;
 		const edition = await getScheduleEdition(city, visitorIp);

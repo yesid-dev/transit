@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
-import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 
@@ -75,25 +74,29 @@ test('the Stop Record header clears the frame and gives its back link a full tar
 	expect(back.height).toBeGreaterThanOrEqual(44);
 });
 
-test('listing headers are reading frames: a visible title and no artwork', async ({ page }) => {
-	// The Lines and Stops finders were the last expressive listings; both now lead with the title.
-	let listings = 0;
-	for (const { href } of SURFACE_NAV) {
-		await page.goto(href);
-		const header = page.locator('[data-slot="blueprint-listing-header"]');
-		if (!(await header.count())) continue;
-		listings += 1;
-		const presentation = await page
-			.locator('[data-slot="listing-frame"]')
-			.first()
-			.getAttribute('data-presentation');
-		expect(presentation, href).toBe('reading');
-		await expect(header.locator('h1')).toBeVisible();
-		await expect(header.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
+test('Record listing headers show a title and a page edge without artwork', async ({ page }) => {
+	for (const [path, title] of [
+		['/lines', 'Lines'],
+		['/stops', 'Stops'],
+	] as const) {
+		await page.goto(`${path}?provider=stm`);
+		const screen = page.getByRole('main').locator('[data-record-screen]');
+		const firstGroup = screen.locator('[data-page-section-edges]').first();
+		const heading = firstGroup.getByRole('heading', { level: 1, name: title, exact: true });
+		await expect(heading).toBeVisible();
+		const edge = screen.locator('[data-slot="page-section-boundary"]').first();
+		await expect(edge).toHaveAttribute('data-variant', 'hand-drawn');
+		await expect(edge.locator('svg')).toBeVisible();
+		const order = await screen.evaluate((element) => {
+			const title = element.querySelector('h1')!;
+			const boundary = element.querySelector('[data-slot="page-section-boundary"]')!;
+			const answer = element.querySelector('[data-slot="screen-answer"]')!;
+			return (
+				Boolean(title.compareDocumentPosition(boundary) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+				Boolean(boundary.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING)
+			);
+		});
+		expect(order).toBe(true);
+		await expect(screen.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
 	}
-	expect(listings).toBeGreaterThanOrEqual(1);
-
-	await page.goto('/lines');
-	await expect(page.getByRole('heading', { level: 1 })).toHaveText('Lines');
-	await expect(page.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
 });

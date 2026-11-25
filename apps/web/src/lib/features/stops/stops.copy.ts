@@ -5,8 +5,6 @@ import { articleCopy } from '#lib/components/layout/articleCopy.ts';
 export const indexCopy = defineCopy({
 	fr: {
 		heading: 'Arrêts',
-		lineLabel: 'Filtrer par ligne',
-		linePlaceholder: 'Numéro ou nom de ligne…',
 		lineClear: 'Effacer le filtre de ligne',
 		lineEmpty: 'Aucune ligne ne correspond.',
 		noLineStops: 'Aucune liste d’arrêts publiée pour cette ligne.',
@@ -27,8 +25,6 @@ export const indexCopy = defineCopy({
 	},
 	en: {
 		heading: 'Stops',
-		lineLabel: 'Filter by line',
-		linePlaceholder: 'Line number or name…',
 		lineClear: 'Clear line filter',
 		lineEmpty: 'No lines match.',
 		noLineStops: 'No published stop list for this line.',

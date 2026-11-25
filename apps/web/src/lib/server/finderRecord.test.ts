@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { load as loadLines } from '../../routes/[[lang=locale]]/lines/+page.server.ts';
 import { load as loadStops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 
@@ -32,7 +33,7 @@ it('reads complete finder groups and streams only the displayed Stops readings',
 			lat: 45.5,
 			lon: -73.6,
 		})),
-	};
+	} satisfies ScheduleEdition;
 	const stopCells = ['S1', 'S21'].map((stop) => ({
 		key: { stop },
 		value: { on_time: 0.8 },
@@ -52,11 +53,11 @@ it('reads complete finder groups and streams only the displayed Stops readings',
 		request: new Request('https://transit1.yesid.dev', {
 			headers: { 'cf-connecting-ip': '192.0.2.1' },
 		}),
-		parent: async () => ({ providerId: 'test-network', lang: 'fr' }),
+		parent: async () => ({ providerId: 'test-network', lang: 'fr' as const }),
 		locals: { stopsSchedule: schedule },
 	});
-	const lines = await loadLines(event('lines') as Parameters<typeof loadLines>[0]);
-	const stops = await loadStops(event('stops') as Parameters<typeof loadStops>[0]);
+	const lines = await loadLines(event('lines') as unknown as Parameters<typeof loadLines>[0]);
+	const stops = await loadStops(event('stops') as unknown as Parameters<typeof loadStops>[0]);
 	expect(lines.finderRecord?.period).toEqual({
 		from: '2026-10-17',
 		to: '2026-10-18',
@@ -94,7 +95,7 @@ it('uses the default Record period for bare finders on a local host', async () =
 		const event = (path: string) => ({
 			url: new URL(`http://127.0.0.1:4317/${path}?q=Fixture`),
 			request: new Request('http://127.0.0.1:4317'),
-			parent: async () => ({ providerId: 'test-network', lang: 'en' }),
+			parent: async () => ({ providerId: 'test-network', lang: 'en' as const }),
 			locals: { stopsSchedule: null },
 		});
 		const lines = await loadLines(event('lines') as Parameters<typeof loadLines>[0]);

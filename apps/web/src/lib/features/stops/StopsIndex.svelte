@@ -2,7 +2,7 @@
 	import { getContext, onMount, tick, untrack } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { page } from '$app/state';
-	import { goto, invalidateAll } from '$app/navigation';
+	import { beforeNavigate, goto, invalidateAll, pushState, replaceState } from '$app/navigation';
 	import { FilterSummary, RoutePlate, SearchInput, filterCountText } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { Combobox, type ComboboxOption } from '@yesid/ui/combobox';
@@ -27,11 +27,12 @@
 	import { nearestStops, type LatLon } from '#lib/components/map/nearbyStops.ts';
 	import { isSlimStopsIndex } from '#lib/v1/repositories/stopsSlim.ts';
 	import type { StopsRecord } from '#lib/server/finderRecord.ts';
+	import type { StopSearchResult } from '#lib/server/stopListing.ts';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import { recordCounts } from '../home/overviewRecord.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
-	import FinderRecordActions from '../record/FinderRecordActions.svelte';
+	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
@@ -41,7 +42,7 @@
 	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
-	import { finderCells, finderRecordUrl, finderShare } from '../record/finderText.ts';
+	import { finderCells, finderCsv, finderRecordUrl, finderShare } from '../record/finderText.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
 	import {
 		pooledDays,
@@ -62,9 +63,9 @@
 
 	let {
 		locale,
-		record,
-		listing,
-		view,
+		record: initialRecord,
+		listing: initialListing,
+		view: initialView,
 		provider,
 	}: {
 		locale: Locale;
@@ -73,6 +74,22 @@
 		view: ReturnType<typeof stopListingView>;
 		provider: PublicCity | null;
 	} = $props();
+	const location = $derived(page.shallow?.url ?? page.url);
+	const loadedSearch = $derived(
+		page.state.stopsSearch?.href === location.pathname + location.search
+			? page.state.stopsSearch.data
+			: undefined,
+	);
+	const listing = $derived(loadedSearch ? loadedSearch.listing : initialListing);
+	const view = $derived(loadedSearch?.view ?? initialView);
+	const record = $derived(
+		loadedSearch
+			? loadedSearch.finderRecord && {
+					...loadedSearch.finderRecord,
+					punctuality: Promise.resolve(loadedSearch.finderRecord.punctuality),
+				}
+			: initialRecord,
+	);
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 	const copy = $derived(indexCopy[locale]);
 	const about = $derived(overviewCopy[locale]);
@@ -102,13 +119,16 @@
 	);
 
 	let results = $state<HTMLElement>();
-	let result = $state.raw<StopListingResult | null>(null);
+	let initialResult = $state.raw<StopListingResult | null>(null);
+	const result = $derived<StopListingResult | null>(
+		loadedSearch ? (loadedSearch.finderRecord?.punctuality ?? null) : initialResult,
+	);
 	$effect(() => {
-		const reading = record?.punctuality;
+		const reading = initialRecord?.punctuality;
 		let active = true;
-		result = null;
+		initialResult = null;
 		void reading?.then((answer) => {
-			if (active) result = answer;
+			if (active) initialResult = answer;
 		});
 		return () => {
 			active = false;
@@ -128,7 +148,7 @@
 			locale,
 		),
 	);
-	const pageUrl = $derived(new URL(page.url.href));
+	const pageUrl = $derived(new URL(location.href));
 	const pinned = $derived(record ? finderRecordUrl(pageUrl, record.city, record.period) : pageUrl);
 	function stopHref(id: string) {
 		return carryFrameState(
@@ -143,13 +163,26 @@
 		enhanced = true;
 	});
 	let pendingQuery = $state<string | null>(null);
+	let searchFailed = $state(false);
 	let searchTimer: ReturnType<typeof setTimeout> | undefined;
+	let searchRequest: AbortController | undefined;
 	$effect(() => {
-		if (pendingQuery === null && untrack(() => query.trim()) !== view.query) query = view.query;
+		if (pendingQuery === null && !searchFailed && untrack(() => query.trim()) !== view.query)
+			query = view.query;
 	});
-	$effect(() => () => clearTimeout(searchTimer));
+	function cancelSearch() {
+		clearTimeout(searchTimer);
+		searchRequest?.abort();
+		searchRequest = undefined;
+	}
+	$effect(() => cancelSearch);
+	beforeNavigate(() => {
+		cancelSearch();
+		pendingQuery = null;
+		searchFailed = false;
+	});
 	function listingUrl(nextQuery: string, route: string | null, shown = stopPageSize) {
-		const url = new URL(page.url.href);
+		const url = new URL(location.href);
 		for (const key of ['q', 'route', 'shown', 'stop', 'sort']) url.searchParams.delete(key);
 		if (nextQuery.trim()) url.searchParams.set('q', nextQuery.trim());
 		if (route) url.searchParams.set('route', route);
@@ -159,38 +192,44 @@
 	const clearUrl = $derived(listingUrl('', null));
 	const searchId = 'stops-record-search';
 	async function search(value: string, route: string | null = view.route, replace = true) {
-		clearTimeout(searchTimer);
+		cancelSearch();
+		searchFailed = false;
 		const next = listingUrl(value, route);
-		if (next.href === page.url.href) {
+		if (next.href === location.href) {
 			pendingQuery = null;
 			return;
 		}
-		const active = document.activeElement;
-		const caret =
-			active instanceof HTMLInputElement && active.id === searchId
-				? ([active.selectionStart, active.selectionEnd] as const)
-				: null;
 		pendingQuery = value;
+		const request = new AbortController();
+		searchRequest = request;
+		const params = new SvelteURLSearchParams(next.search);
+		params.set('details', 'search');
+		params.set('lang', locale);
+		if (provider) params.set('provider', provider.id);
 		try {
-			await goto(next, { replace, reset: false });
-			// A data navigation can replace the focused input. Keep typing in the search field.
-			if (caret && document.activeElement === document.body && page.url.href === next.href) {
-				const input = document.getElementById(searchId);
-				if (input instanceof HTMLInputElement) {
-					input.focus({ preventScroll: true });
-					input.setSelectionRange(...caret);
-				}
+			const response = await fetch(`/api/stops/slim?${params}`, { signal: request.signal });
+			if (!response.ok) throw new Error('Stop search unavailable');
+			const data: StopSearchResult = await response.json();
+			if (!request.signal.aborted) {
+				const update = replace ? replaceState : pushState;
+				update(next, { ...page.state, stopsSearch: { href: next.pathname + next.search, data } });
 			}
+		} catch {
+			if (!request.signal.aborted) searchFailed = true;
 		} finally {
-			if (pendingQuery === value) pendingQuery = null;
+			if (searchRequest === request) {
+				searchRequest = undefined;
+				pendingQuery = null;
+			}
 		}
 	}
 	function queueSearch(value: string) {
 		query = value;
 		if (nearOrigin) nearShown = stopPageSize;
-		clearTimeout(searchTimer);
+		cancelSearch();
+		searchFailed = false;
 		pendingQuery = value;
-		searchTimer = setTimeout(() => void search(value), 180);
+		searchTimer = setTimeout(() => void search(value), 250);
 	}
 
 	const lineOptions = $derived<ComboboxOption[]>(
@@ -214,6 +253,7 @@
 	type NearState = 'idle' | 'asking' | 'active' | 'denied' | 'timeout' | 'unavailable' | 'insecure';
 	let nearState = $state<NearState>('idle');
 	let nearOrigin = $state.raw<LatLon | null>(null);
+	const updatingSearch = $derived(!nearOrigin && pendingQuery !== null);
 	let nearStops = $state.raw<readonly NearbyStop[]>([]);
 	let nearShown = $state(stopPageSize);
 	let nearRequest = 0;
@@ -378,27 +418,35 @@
 </script>
 
 {#snippet filterRail(context: SurfaceRailContext)}
+	{@const label = t('Line', 'Ligne')}
 	<ControlsRail label={t('Filter', 'Filtrer')}>
-		<Combobox
-			options={lineOptions}
-			bind:value={
-				() => view.route,
-				(value) => {
-					stopNear();
-					void search(query, value ?? null, false);
-					context.closeSheet();
+		<div class="grid w-full min-w-0 gap-1">
+			<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+			<Combobox
+				options={lineOptions}
+				bind:value={
+					() => view.route,
+					(value) => {
+						stopNear();
+						void search(query, value ?? null, false);
+						context.closeSheet();
+					}
 				}
-			}
-			label={copy.lineLabel}
-			placeholder={copy.linePlaceholder}
-			clearLabel={copy.lineClear}
-			emptyLabel={copy.lineEmpty}
-			fold={foldSearchText}
-		/>
+				{label}
+				placeholder={t('All', 'Toutes')}
+				clearLabel={copy.lineClear}
+				emptyLabel={copy.lineEmpty}
+				fold={foldSearchText}
+			/>
+		</div>
 	</ControlsRail>
 {/snippet}
 
-{#snippet codeCell(row: Row)}<span class="font-mono">{row.code ?? row.id}</span>{/snippet}
+{#snippet codeCell(row: Row)}<RecordTableValue
+		{locale}
+		text={row.code || null}
+		state="not_published"
+	/>{/snippet}
 {#snippet linesCell(row: Row)}
 	<span class="inline-flex flex-wrap gap-1"
 		>{#each new Set(row.lineCodes) as code (code)}<RoutePlate {code} />{/each}</span
@@ -429,32 +477,55 @@
 {/snippet}
 {#snippet resultActions()}
 	{#if record && result && rows.length}
-		<FinderRecordActions
+		{@const href = new URL('#stop-results', pinned).href}
+		{@const headers = [
+			t('Stop ID', 'Identifiant de l’arrêt'),
+			'Code',
+			stopHeader,
+			t('On-time share', 'Part à l’heure'),
+			t('Classified stop events', 'Passages classés'),
+			t('On-time events', 'Passages à l’heure'),
+			t('Status', 'État'),
+		]}
+		{@const csvRows = rows.map((row) => [
+			row.id,
+			row.code ?? '',
+			row.label,
+			row.share,
+			row.events,
+			row.onTime,
+			row.share === null ? finderShare(cells.get(row.id), result, 'on_time', locale).text : '',
+		])}
+		{#snippet citation()}
+			<p>
+				Transit. {tableTitle}. {dateRange(record.period, locale)}.{evidence
+					? ` ${methodEvidence(evidence, locale)}`
+					: ''}
+			</p>
+			<a class="inline-flex min-h-11 items-center text-primary underline" {href}>
+				<span
+					>{#each href.split(/(?<=[/?&=#_.:%-])/u) as part, index (index)}{part}<wbr />{/each}</span
+				>
+			</a>
+		{/snippet}
+		<RecordActionGroup
 			{locale}
-			title={tableTitle}
-			url={pinned}
-			section="stop-results"
-			city={record.city}
-			period={record.period}
-			sources={evidence ? [{ evidence }] : []}
-			headers={[
-				t('Stop ID', 'Identifiant de l’arrêt'),
-				'Code',
-				stopHeader,
-				t('On-time share', 'Part à l’heure'),
-				t('Classified stop events', 'Passages classés'),
-				t('On-time events', 'Passages à l’heure'),
-				t('Status', 'État'),
+			{href}
+			{citation}
+			files={[
+				{
+					label: tableTitle,
+					href: finderCsv(
+						headers,
+						csvRows,
+						locale,
+						record.city,
+						record.period,
+						evidence ? [evidence] : [],
+					),
+					download: `stop-results-${record.period.from}-${record.period.to}.csv`,
+				},
 			]}
-			rows={rows.map((row) => [
-				row.id,
-				row.code ?? '',
-				row.label,
-				row.share,
-				row.events,
-				row.onTime,
-				row.share === null ? finderShare(cells.get(row.id), result, 'on_time', locale).text : '',
-			])}
 		/>
 	{/if}
 {/snippet}
@@ -468,6 +539,9 @@
 					{locale}
 					value={null}
 					{sentence}
+					actions={record && result && rows.length && !updatingSearch && !searchFailed
+						? resultActions
+						: undefined}
 					time={stamp}
 					evidence={evidence
 						? {
@@ -478,24 +552,18 @@
 						: undefined}
 				/>
 			</div>
-			<RecordCard
-				{title}
-				{stamp}
-				interactive
-				evidence={evidence ? evidenceFoot : undefined}
-				links={record && result && rows.length ? resultActions : undefined}
-			>
+			<RecordCard {title} {stamp} interactive evidence={evidence ? evidenceFoot : undefined}>
 				<div class="grid min-w-0 grid-cols-1 gap-3">
 					<form
 						method="GET"
-						action={page.url.pathname}
+						action={location.pathname}
 						class="max-w-xl"
 						onsubmit={(event) => {
 							event.preventDefault();
 							if (!nearOrigin) void search(query, view.route, false);
 						}}
 					>
-						{#each [...page.url.searchParams].filter(([key]) => !['q', 'shown', 'stop', 'sort'].includes(key)) as [key, value], i (i)}
+						{#each [...location.searchParams].filter(([key]) => !['q', 'shown', 'stop', 'sort'].includes(key)) as [key, value], i (i)}
 							<input type="hidden" name={key} {value} />
 						{/each}
 						<SearchInput
@@ -539,9 +607,11 @@
 						{nearMessage}
 					</p>
 					<p class="sr-only" role="status">
-						{listing ? filterCountText(total, countLabel, locale) : ''}
+						{listing && !updatingSearch && !searchFailed
+							? filterCountText(total, countLabel, locale)
+							: ''}
 					</p>
-					{#if listing && (view.query || view.route || nearOrigin)}
+					{#if listing && !updatingSearch && (view.query || view.route || nearOrigin)}
 						<FilterSummary
 							count={total}
 							{countLabel}
@@ -561,7 +631,17 @@
 						>
 					{/if}
 					<section id="stop-results" class="min-w-0" aria-label={tableTitle} bind:this={results}>
-						{#if !listing}<p role="status">
+						{#if updatingSearch}<p role="status">{t('Finding stops…', 'Recherche d’arrêts…')}</p>
+						{:else if searchFailed}<p role="status">
+								{t(
+									'Stop search is temporarily unavailable.',
+									'La recherche d’arrêts est temporairement indisponible.',
+								)}
+							</p>
+							<Button variant="outline" onclick={() => queueSearch(query)}
+								>{t('Retry', 'Réessayer')}</Button
+							>
+						{:else if !listing}<p role="status">
 								{t(
 									'The stop list is temporarily unavailable.',
 									'La liste des arrêts est temporairement indisponible.',
