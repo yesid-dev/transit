@@ -1,0 +1,58 @@
+name: Raw Capture Freshness
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "11,41 * * * *"
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: raw-capture-freshness
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Python workspace
+        uses: ./.github/actions/setup-py
+
+      - name: Check raw capture freshness
+        id: capture
+        shell: bash
+        timeout-minutes: 2
+        working-directory: apps/db
+        env:
+          BRONZE_STORAGE_BACKEND: s3
+          BRONZE_S3_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
+          BRONZE_S3_BUCKET: transit-raw
+          BRONZE_S3_REGION: auto
+          BRONZE_S3_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_READ_ACCESS_KEY_ID }}
+          BRONZE_S3_SECRET_KEY: ${{ secrets.TRANSIT1_R2_READ_SECRET_ACCESS_KEY }}
+        run: uv run --locked python -m transit_ops.capture_freshness | tee "$RUNNER_TEMP/raw-capture-freshness.txt"
+
+      - name: Report capture status
+        if: ${{ !cancelled() }}
+        env:
+          CAPTURE_OUTCOME: ${{ steps.capture.outcome }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ "$CAPTURE_OUTCOME" == success ]]; then
+            .github/scripts/alert-issue.sh resolve raw-capture "recovered: all declared raw capture feeds are fresh"
+          else
+            readings="The raw capture probe did not produce readings. Check the workflow run."
+            report="$RUNNER_TEMP/raw-capture-freshness.txt"
+            if [[ -s "$report" ]]; then
+              readings=$(cat "$report")
+            fi
+            body=$(printf '%s\n\nRun: %s/%s/actions/runs/%s' "$readings" "$GITHUB_SERVER_URL" "$GH_REPO" "$GITHUB_RUN_ID")
+            .github/scripts/alert-issue.sh fire raw-capture "[alert] Raw capture stale, missing or unavailable" "$body"
+          fi

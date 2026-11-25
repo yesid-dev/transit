@@ -42,7 +42,7 @@ def test_static_prune_uses_default_retention_boundary(conn, age_days, selected):
     )
     assert counts == {"static": int(selected)}
     assert failed == set()
-    assert storage.deleted == (["bronze-prune-test/static/unreferenced.zip"] if selected else [])
+    assert storage.deleted == ([f"{PROVIDER}/static/unreferenced.zip"] if selected else [])
 
 
 @pytest.mark.parametrize("age_days,selected", [(399, False), (401, True)])

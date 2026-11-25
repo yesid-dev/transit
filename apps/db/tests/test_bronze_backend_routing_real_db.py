@@ -57,14 +57,18 @@ def test_explicit_store_cannot_delete_metadata_for_another_backend(conn, kind):
 
 
 def test_backend_groups_keep_identical_paths_and_failures_separate(conn):
+    path = f"{PROVIDER}/trip_updates/same.pb"
     conn.execute(
         text("""
-        UPDATE raw.ingestion_objects SET storage_backend=:backend,storage_path='same.pb'
+        UPDATE raw.ingestion_objects SET storage_backend=:backend,storage_path=:path
         WHERE ingestion_object_id=:id
     """),
-        [{"id": TU_OLD_A[1], "backend": "local"}, {"id": TU_OLD_B[1], "backend": "s3"}],
+        [
+            {"id": TU_OLD_A[1], "backend": "local", "path": path},
+            {"id": TU_OLD_B[1], "backend": "s3", "path": path},
+        ],
     )
-    local = MemoryArchive("local", failures={"same.pb"})
+    local = MemoryArchive("local", failures={path})
     remote = MemoryArchive("s3")
     resolved = []
 
@@ -80,8 +84,8 @@ def test_backend_groups_keep_identical_paths_and_failures_separate(conn):
         bronze_storage_resolver=resolve,
     )
     assert resolved == ["local", "s3"]
-    assert local.batches == [["same.pb"]]
-    assert "same.pb" in remote.batches[0]
+    assert local.batches == [[path]]
+    assert path in remote.batches[0]
     assert counts == {"realtime": 2}
     assert failed == {TU_OLD_A[1]}
     assert _object_exists(conn, TU_OLD_A[1])
@@ -161,17 +165,19 @@ def test_local_archive_deletion_cannot_touch_a_remote_keys_local_namesake(conn, 
     from transit_ops.ingestion.storage import LocalBronzeStorage
 
     local = LocalBronzeStorage("local", tmp_path)
-    local_file = tmp_path / "owned.pb"
+    local_key = f"{PROVIDER}/owned.pb"
+    local_file = tmp_path / local_key
+    local_file.parent.mkdir()
     local_file.write_bytes(b"local archive")
     remote_namesake = tmp_path / TU_OLD_B[5]
-    remote_namesake.parent.mkdir(parents=True)
+    remote_namesake.parent.mkdir(parents=True, exist_ok=True)
     remote_namesake.write_bytes(b"not the remote archive")
     conn.execute(
         text(
             "UPDATE raw.ingestion_objects SET storage_backend='local',storage_path=:path "
             "WHERE ingestion_object_id=:id"
         ),
-        {"id": TU_OLD_A[1], "path": str(local_file)},
+        {"id": TU_OLD_A[1], "path": local_key},
     )
     _, counts, _, failed = prune_bronze_realtime_objects(
         conn,
@@ -198,13 +204,14 @@ def test_alert_backend_does_not_guess_from_mismatched_legacy_identity(
 
     from transit_ops.maintenance.i3 import prune_i3_raw_snapshots
 
+    path = f"{ALERT_PROVIDER}/i3_alerts/recorded-alert.json"
     alert_connection.execute(
         text("""
             UPDATE raw.i3_alert_snapshots
-            SET storage_backend=:backend, storage_path='recorded-alert.json'
+            SET storage_backend=:backend, storage_path=:path
             WHERE i3_alert_snapshot_id=:id
         """),
-        {"id": SNAP_IDS[0], "backend": "local" if explicit_backend else None},
+        {"id": SNAP_IDS[0], "backend": "local" if explicit_backend else None, "path": path},
     )
     local, remote = MemoryArchive("local"), MemoryArchive("s3")
     _, counts, _, failed = prune_i3_raw_snapshots(
@@ -225,5 +232,5 @@ def test_alert_backend_does_not_guess_from_mismatched_legacy_identity(
     assert (SNAP_IDS[0] in remaining) is not explicit_backend
     assert counts == {"i3_raw": 2 if explicit_backend else 1}
     assert failed == (set() if explicit_backend else {SNAP_IDS[0]})
-    assert local.batches == ([["recorded-alert.json"]] if explicit_backend else [])
-    assert all("recorded-alert.json" not in batch for batch in remote.batches)
+    assert local.batches == ([[path]] if explicit_backend else [])
+    assert all(path not in batch for batch in remote.batches)

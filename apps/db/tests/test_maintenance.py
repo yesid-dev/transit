@@ -1163,6 +1163,34 @@ def test_prune_bronze_realtime_objects_live_deletes_r2_then_metadata() -> None:
     assert meta_counts["raw.ingestion_objects"] == 3
 
 
+def test_prune_bronze_keeps_objects_and_metadata_for_foreign_paths() -> None:
+    class MismatchedPaths(RecordingConnection):
+        def bronze_selection(self, rows):
+            return super().bronze_selection(
+                [
+                    (10, 1, "other_city/trip_updates/key1.pb", "s3", 100),
+                    (11, 2, "stm/../other_city/key2.pb", "s3", 101),
+                    rows[2],
+                ]
+            )
+
+    connection = MismatchedPaths()
+    storage = FakeBronzeStorage()
+    _, counts, _, failed = prune_bronze_realtime_objects(
+        connection,
+        provider_id="stm",
+        retention_days=400,
+        bronze_storage=storage,
+    )
+
+    assert counts == {"realtime": 1}
+    assert failed == {10, 11}
+    assert storage.deleted == [MOCK_REALTIME_PATHS[2]]
+    assert [
+        params for sql, params in connection.executed if "DELETE FROM raw.ingestion_objects" in sql
+    ] == [{"ingestion_object_ids": [12]}]
+
+
 def test_prune_bronze_realtime_objects_skips_failed_r2_deletes() -> None:
     connection = RecordingConnection()
     storage = FakeBronzeStorage()

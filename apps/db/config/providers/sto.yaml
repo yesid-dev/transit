@@ -82,6 +82,7 @@ public:
     source: {en: "the STO", fr: "de la STO"}
 
 # Applies across all files, including the keyless schedule.
+capture_enabled: true
 capture_download_limit: {requests: 120, window_seconds: 600}
 
 feeds:

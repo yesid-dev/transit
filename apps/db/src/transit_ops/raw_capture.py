@@ -193,6 +193,11 @@ def _request(
     return data.getvalue()
 
 
+def capture_fresh_for_seconds(feed: FeedConfig) -> int:
+    interval = feed.refresh_interval_seconds
+    return interval * 3 // 2 if feed.feed_kind in STATIC else max(60, interval * 3)
+
+
 def _artifact(
     city: str, feed: FeedConfig, source: str, now: datetime, data: bytes
 ) -> tuple[str, int]:
@@ -334,11 +339,7 @@ class CaptureRunner:
                             "attempted_at": item.attempted_at,
                             "captured_at": item.captured_at,
                             "error": item.error,
-                            "fresh_for_seconds": (
-                                item.feed.refresh_interval_seconds * 3 // 2
-                                if item.feed.feed_kind in STATIC
-                                else max(60, item.feed.refresh_interval_seconds * 3)
-                            ),
+                            "fresh_for_seconds": capture_fresh_for_seconds(item.feed),
                         }
                         for item in self.polls
                     },

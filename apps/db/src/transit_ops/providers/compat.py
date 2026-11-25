@@ -121,6 +121,7 @@ def manifest_from_declaration(declaration: Declaration) -> ProviderManifest:
                 **provider_overrides,
             },
             "public": _public(declaration),
+            "capture_enabled": declaration.capture_enabled,
             "realtime": {
                 "unpublished_vehicle_fields": declaration.unpublished_vehicle_fields,
                 "lines_without_live_data": [

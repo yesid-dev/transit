@@ -28,7 +28,7 @@ TU_OLD_A = (
     990301,
     TU_ENDPOINT_ID,
     NOW - timedelta(days=40),
-    "bronze-prune-test/trip_updates/old-a.pb",
+    f"{PROVIDER}/trip_updates/old-a.pb",
 )
 TU_OLD_B = (
     990102,
@@ -36,7 +36,7 @@ TU_OLD_B = (
     990302,
     TU_ENDPOINT_ID,
     NOW - timedelta(days=39),
-    "bronze-prune-test/trip_updates/old-b.pb",
+    f"{PROVIDER}/trip_updates/old-b.pb",
 )
 TU_OLD_C = (
     990103,
@@ -44,16 +44,16 @@ TU_OLD_C = (
     990303,
     TU_ENDPOINT_ID,
     NOW - timedelta(days=38),
-    "bronze-prune-test/trip_updates/old-c.pb",
+    f"{PROVIDER}/trip_updates/old-c.pb",
 )
-TU_FRESH = (990104, 990204, 990304, TU_ENDPOINT_ID, NOW, "bronze-prune-test/trip_updates/fresh.pb")
+TU_FRESH = (990104, 990204, 990304, TU_ENDPOINT_ID, NOW, f"{PROVIDER}/trip_updates/fresh.pb")
 VP_OLD_LATEST = (
     990105,
     990205,
     990305,
     VP_ENDPOINT_ID,
     NOW - timedelta(days=37),
-    "bronze-prune-test/vehicle_positions/old-latest.pb",
+    f"{PROVIDER}/vehicle_positions/old-latest.pb",
 )
 
 REALTIME_ROWS = (TU_OLD_A, TU_OLD_B, TU_OLD_C, TU_FRESH, VP_OLD_LATEST)
@@ -244,7 +244,7 @@ def _seed_realtime_row(
             "o": object_id,
             "r": run_id,
             "p": provider_id,
-            "path": f"bronze-prune-parity/{provider_id}/{object_id}.pb",
+            "path": f"{provider_id}/trip_updates/{object_id}.pb",
         },
     )
     db_seed.realtime_snapshot_index(
@@ -269,12 +269,12 @@ def _seed_static_runs(connection) -> None:
         (
             STATIC_RUN_REFERENCED,
             STATIC_OBJECT_REFERENCED,
-            "bronze-prune-test/static/referenced.zip",
+            f"{PROVIDER}/static/referenced.zip",
         ),
         (
             STATIC_RUN_UNREFERENCED,
             STATIC_OBJECT_UNREFERENCED,
-            "bronze-prune-test/static/unreferenced.zip",
+            f"{PROVIDER}/static/unreferenced.zip",
         ),
     ):
         db_seed.ingestion_runs(
@@ -628,7 +628,7 @@ def test_static_prune_excludes_dataset_version_referenced_runs(conn) -> None:
     assert cutoff_utc == NOW - timedelta(days=365)
     assert object_counts == {"static": 1}
     assert failed_ids == set()
-    assert storage.deleted == ["bronze-prune-test/static/unreferenced.zip"]
+    assert storage.deleted == [f"{PROVIDER}/static/unreferenced.zip"]
     assert not _object_exists(conn, STATIC_OBJECT_UNREFERENCED)
     assert not _run_exists(conn, STATIC_RUN_UNREFERENCED)
     assert _object_exists(conn, STATIC_OBJECT_REFERENCED)
@@ -674,7 +674,12 @@ def test_static_prune_preserves_cutoff_oldest_first_limit_and_exclusions(conn, e
         )
         db_seed.ingestion_objects(
             conn,
-            {"o": object_id, "r": run_id, "p": PROVIDER, "path": f"static/{object_id}.zip"},
+            {
+                "o": object_id,
+                "r": run_id,
+                "p": PROVIDER,
+                "path": f"{PROVIDER}/static/{object_id}.zip",
+            },
             object_kind="'gtfs_schedule_zip'",
         )
     storage = FakeBronzeStorage()
@@ -701,9 +706,9 @@ def test_static_prune_preserves_cutoff_oldest_first_limit_and_exclusions(conn, e
     assert counts == {"static": 2}
     assert failed == set()
     assert storage.deleted == (
-        ["static/990213.zip", "static/990215.zip"]
+        [f"{PROVIDER}/static/990213.zip", f"{PROVIDER}/static/990215.zip"]
         if exclude_first
-        else ["bronze-prune-test/static/unreferenced.zip", "static/990213.zip"]
+        else [f"{PROVIDER}/static/unreferenced.zip", f"{PROVIDER}/static/990213.zip"]
     )
     assert _object_exists(conn, 990214)
     assert _object_exists(conn, STATIC_OBJECT_REFERENCED)

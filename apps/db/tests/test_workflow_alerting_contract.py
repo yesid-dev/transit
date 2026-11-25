@@ -157,8 +157,20 @@ def test_every_alert_channel_caller_has_issue_write_and_workflow_token() -> None
     assert callers == {
         "freshness-probe.yml", "site-probe.yml", "daily-static-pipeline.yml",
         "daily-warm-rollups.yml", "weekly-pg-repack.yml",
-        "worker-start-probe.yml",
+        "worker-start-probe.yml", "raw-capture-freshness.yml",
     }
+
+
+def test_raw_capture_uses_the_private_clean_day_read_credentials() -> None:
+    workflow = _load(WORKFLOWS / "raw-capture-freshness.yml")
+    capture = next(s for s in workflow["jobs"]["probe"]["steps"] if s.get("id") == "capture")
+    clean = _load(WORKFLOWS / "clean-days.yml")
+    source = next(
+        s["env"] for s in clean["jobs"]["clean"]["steps"] if s["name"] == "Verify private clean day"
+    )
+    assert capture["env"]["BRONZE_S3_ACCESS_KEY"] == source["CLEAN_SOURCE_S3_ACCESS_KEY_ID"]
+    assert capture["env"]["BRONZE_S3_SECRET_KEY"] == source["CLEAN_SOURCE_S3_SECRET_ACCESS_KEY"]
+    assert capture["env"]["BRONZE_S3_ENDPOINT"] == source["CLEAN_SOURCE_S3_ENDPOINT"]
 
 
 def test_daily_workflows_use_cancellation_safe_notify_jobs() -> None:

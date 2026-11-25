@@ -631,6 +631,28 @@ def test_list_keys_returns_every_key_under_a_prefix(store, tmp_path):
     assert list(store.list_keys("absent")) == []
 
 
+def test_s3_lists_day_prefixes_across_pages_without_listing_objects():
+    class PaginatedPrefixes:
+        def list_objects_v2(self, *, Bucket, Prefix, Delimiter, ContinuationToken=None):
+            assert Bucket == "bucket"
+            assert Prefix == "city/trip_updates/captured_at_utc="
+            assert Delimiter == "/"
+            if ContinuationToken is None:
+                return {
+                    "CommonPrefixes": [{"Prefix": Prefix + "2026-11-24/"}],
+                    "NextContinuationToken": "next",
+                }
+            assert ContinuationToken == "next"
+            return {"CommonPrefixes": [{"Prefix": Prefix + "2026-11-25/"}]}
+
+    prefix = "city/trip_updates/captured_at_utc="
+    storage = S3BronzeStorage("s3", "bucket", "https://example.invalid", PaginatedPrefixes())
+    assert list(storage.list_prefixes(prefix)) == [prefix + day for day in (
+        "2026-11-24/",
+        "2026-11-25/",
+    )]
+
+
 def test_local_list_keys_reads_only_the_folder_of_the_prefix(tmp_path, monkeypatch):
     store = LocalBronzeStorage("local", tmp_path / "bronze")
     key = "a/b/2026-11-12.c1.pack.xz"

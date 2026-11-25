@@ -352,6 +352,7 @@ class ProviderManifest(BaseModel):
     feeds: dict[str, FeedConfig]
     realtime: ProviderRealtimeConfig = Field(default_factory=ProviderRealtimeConfig)
     public: ProviderPublicConfig = Field(default_factory=ProviderPublicConfig)
+    capture_enabled: bool = Field(default=False, exclude=True)
     capture_download_limit: CaptureDownloadLimit | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")

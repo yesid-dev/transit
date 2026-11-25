@@ -25,6 +25,7 @@ EXPECTED_CALLERS = {
     ("freshness-probe.yml", "backup-freshness"),
     ("historic-publish-recovery.yml", "publish-historic-recovery"),
     ("historic-snapshot-gc.yml", "mark"),
+    ("raw-capture-freshness.yml", "probe"),
     ("refresh-basemap.yml", "providers"),
     ("worker-start-probe.yml", "probe"),
 }
