@@ -2,58 +2,24 @@
 	import type { Snippet } from 'svelte';
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { cn } from '#lib/utils/index.ts';
-	import { Card } from '@yesid/ui/card';
 
 	interface EntityListProps extends Omit<HTMLAttributes<HTMLUListElement>, 'children'> {
 		items: readonly T[];
 		key: (item: T) => string;
 		row: Snippet<[T]>;
-		max?: number;
-		truncatedLabel?: string;
-		grid?: boolean;
-		cards?: boolean;
-		/** Each card is a whole-card link or button: it lifts and lights its edge on hover and focus. */
-		interactive?: boolean;
 		class?: string;
 	}
 
-	let {
-		items,
-		key,
-		row,
-		max = 200,
-		truncatedLabel,
-		grid = false,
-		cards = false,
-		interactive = false,
-		class: className,
-		...restProps
-	}: EntityListProps = $props();
+	let { items, key, row, class: className, ...restProps }: EntityListProps = $props();
 
-	const visible = $derived(items.slice(0, max));
-	const truncated = $derived(items.length > max);
+	const visible = $derived(items.slice(0, 200));
 </script>
 
-{#snippet renderItem(item: T)}
-	{#if cards}
-		<Card class="entity-list-card h-full gap-0 py-0" {interactive}>
-			{@render row(item)}
-		</Card>
-	{:else}
-		{@render row(item)}
-	{/if}
-{/snippet}
-
 <div class="entity-list-container">
-	<ul
-		class={cn('entity-list', grid && 'entity-list--grid', cards && 'entity-list--cards', className)}
-		data-slot="entity-list"
-		{...restProps}
-	>
+	<ul class={cn('entity-list', className)} data-slot="entity-list" {...restProps}>
 		{#each visible as item (key(item))}<li class="entity-list-item">
-				{@render renderItem(item)}
+				{@render row(item)}
 			</li>{/each}
-		{#if truncated && truncatedLabel}<li class="entity-list-more">{truncatedLabel}</li>{/if}
 	</ul>
 </div>
 
@@ -68,52 +34,10 @@
 		display: flex;
 		flex-direction: column;
 	}
-	.entity-list--cards {
-		gap: var(--space-card-gap);
-	}
-	.entity-list:not(.entity-list--cards) .entity-list-item:not(:last-child) {
+	.entity-list-item:not(:last-child) {
 		border-bottom: 1px solid var(--border-subtle, var(--border));
 	}
 	.entity-list-item {
 		min-width: 0;
-	}
-	.entity-list--grid {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr);
-		gap: var(--space-card-gap);
-		align-items: stretch;
-	}
-	:global(.card-surface.entity-list-card) {
-		container: entity-card / inline-size;
-		--entity-gap: 0.75rem;
-		--entity-padding: 1rem;
-		--entity-title-size: var(--text-card-title);
-		--entity-body-size: var(--text-card-body);
-		--entity-meta-size: var(--text-card-meta);
-		--entity-radius: var(--radius-lg);
-		border-radius: var(--radius-lg);
-		box-shadow:
-			var(--shadow-card),
-			inset 0 1px 0 var(--edge-highlight);
-	}
-	:global(.entity-list-card:has(:focus-visible)) {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-	}
-	.entity-list-more {
-		grid-column: 1 / -1;
-		padding: 1rem;
-		font-size: var(--text-card-meta);
-		color: var(--muted-foreground);
-	}
-	@container (min-width:46.5rem) {
-		.entity-list--grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-	}
-	@container (min-width:70.5rem) {
-		.entity-list--grid {
-			grid-template-columns: repeat(3, minmax(0, 1fr));
-		}
 	}
 </style>

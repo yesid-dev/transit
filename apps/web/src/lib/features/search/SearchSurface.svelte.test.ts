@@ -137,7 +137,7 @@ it('takes the query, kind and existing row count from a new search URL before wr
 	expect(mirror).not.toHaveBeenCalled();
 	for (const handler of navigation.after) handler({ type: 'goto', to: { url: new URL(url.href) } });
 	flushSync();
-	expect(view.getByRole('textbox', { name: 'Line, stop or vehicle' })).toHaveValue('laurier');
+	expect(view.getByRole('textbox', { name: 'Line, stop, vehicle or page' })).toHaveValue('laurier');
 	expect(view.getByRole('tab', { name: 'Stops (1,160)' })).toHaveAttribute('aria-selected', 'true');
 	expect(
 		within(view.getByRole('region', { name: 'Stops · 1,160' })).getAllByRole('link'),

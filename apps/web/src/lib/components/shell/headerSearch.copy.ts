@@ -13,10 +13,8 @@ export const headerSearchCopy = {
 		kind: { route: 'Line', stop: 'Stop', vehicle: 'Vehicle', page: 'Page', address: 'Address' },
 		kinds: { route: 'Lines', stop: 'Stops', vehicle: 'Vehicles', page: 'Pages' },
 		modes: { metro: 'Métro', tram: 'Tram', rail: 'Train', bus: 'Road', ferry: 'Ferry' },
-		inputLabel: 'Line, stop or vehicle',
 		idleTitle: 'Nothing typed yet',
-		idleBody:
-			'Find lines by number or name, stops by name or code, vehicles by number, and pages by title.',
+		idleBody: 'Results appear as you type: lines, stops, vehicles and pages.',
 		short: 'Enter a line number or at least two letters.',
 		loading: 'Loading the search index…',
 		unavailable: 'The search index is temporarily unavailable.',
@@ -53,10 +51,8 @@ export const headerSearchCopy = {
 		kind: { route: 'Ligne', stop: 'Arrêt', vehicle: 'Véhicule', page: 'Page', address: 'Adresse' },
 		kinds: { route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules', page: 'Pages' },
 		modes: { metro: 'Métro', tram: 'Tramway', rail: 'Train', bus: 'Routier', ferry: 'Traversier' },
-		inputLabel: 'Ligne, arrêt ou véhicule',
 		idleTitle: 'Rien de saisi',
-		idleBody:
-			'Trouvez les lignes par numéro ou par nom, les arrêts par nom ou par code, les véhicules par numéro et les pages par titre.',
+		idleBody: 'Les résultats s’affichent pendant la saisie : lignes, arrêts, véhicules et pages.',
 		short: 'Saisissez un numéro de ligne ou au moins deux lettres.',
 		loading: 'Chargement de l’index de recherche…',
 		unavailable: 'L’index de recherche est temporairement indisponible.',

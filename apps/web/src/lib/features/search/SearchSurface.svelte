@@ -67,7 +67,7 @@
 	});
 	const pages = $derived(sitePages({ alerts: provider ? providerHasAlerts(provider) : null }));
 	const list = $derived(
-		searchIndexList({ surface: 'list', query, rows: scope === 'all' ? PAGE_SIZE : rows }, index, {
+		searchIndexList({ query, rows: scope === 'all' ? PAGE_SIZE : rows }, index, {
 			locale,
 			nameSeparators: provider?.name_separators,
 			pages,
@@ -150,9 +150,10 @@
 	<div class="search-title"><ScreenTitle title={words.sheetTitle} {subtitle} compact /></div>
 	<div data-slot="screen-content">
 		<section class="search-content" data-slot="screen-state" {id} aria-label={words.sheetTitle}>
+			<p class="search-lede">{t.lede}</p>
 			<div class="search-field">
 				<SearchInput
-					label={words.inputLabel}
+					label={t.inputLabel}
 					placeholder={t.inputPlaceholder}
 					visibleLabel
 					textSize="body"
@@ -258,6 +259,11 @@
 	}
 	.search-field {
 		max-inline-size: var(--measure-lede);
+	}
+	.search-lede {
+		max-inline-size: var(--measure-lede);
+		font-size: var(--text-reading-heading);
+		line-height: 1.4;
 	}
 	.search-idle {
 		display: flex;

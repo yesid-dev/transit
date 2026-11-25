@@ -289,7 +289,7 @@
 		}),
 	);
 	const searchList = $derived(
-		searchIndexList({ surface: 'list', query: topSearch }, searchIndex, {
+		searchIndexList({ query: topSearch }, searchIndex, {
 			locale,
 			nameSeparators: data.provider?.name_separators,
 			pages: searchPages,

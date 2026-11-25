@@ -180,11 +180,10 @@ vi.mock('@yesid/ui/state', async (importOriginal) => ({
 const headerList = vi.hoisted(() => ({ current: null as SearchList | null }));
 vi.mock('#lib/search/transitSearch.ts', async (importOriginal) => {
 	const real = await importOriginal<typeof import('#lib/search/transitSearch.ts')>();
-	const search = real.searchTransit as (...args: unknown[]) => unknown;
 	return {
 		...real,
-		searchTransit: (...args: unknown[]) => headerList.current ?? search(...args),
-		scopeForPath: () => 'all',
+		searchTransit: (...args: Parameters<typeof real.searchTransit>) =>
+			headerList.current ?? real.searchTransit(...args),
 	};
 });
 
@@ -549,7 +548,7 @@ describe('root layout data-independent legal routes', () => {
 
 it('a header result keeps the tab and period the reader sees, not the ones first requested', async () => {
 	headerList.current = searchTransit(
-		{ surface: 'list', query: '1' },
+		{ query: '1' },
 		{ routes: [{ id: '1-373', short: '1', long: 'Confederation', type: 1 }], stops: [] },
 	);
 	try {
@@ -559,7 +558,7 @@ it('a header result keeps the tab and period the reader sees, not the ones first
 		await fireEvent.input(view.getByRole('combobox', { name: 'Search the network' }), {
 			target: { value: '1' },
 		});
-		const row = view.getByRole('option', { name: 'Line 1 · Confederation' });
+		const row = view.getByRole('option', { name: 'Line 1 · Confederation Métro' });
 		const href = new URL(row.getAttribute('href')!, 'https://transit.local');
 		expect(href.pathname).toBe('/lines/1-373');
 		expect(['tab', 'grain', 'from', 'to'].map((key) => href.searchParams.get(key))).toEqual([

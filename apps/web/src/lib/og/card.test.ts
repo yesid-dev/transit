@@ -99,7 +99,7 @@ describe('share card', () => {
 			card({
 				title,
 				subtitle:
-					'Live bus positions and reliability history for Montréal and Ottawa, measured every single day.',
+					'Live vehicle positions and reliability history for Montréal and Ottawa, measured every single day.',
 			}),
 		);
 		const image = pixels(svg);

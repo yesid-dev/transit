@@ -1,37 +1,21 @@
-import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
+import { defineCopy } from '#lib/i18n/copy.ts';
 import { headerSearchCopy } from '#lib/components/shell/headerSearch.copy.ts';
 
 export const copy = defineCopy({
 	en: {
-		inputLabel: headerSearchCopy.en.inputLabel,
+		lede: 'Type a line number, a street, a stop code, a vehicle number or the name of a page.',
+		inputLabel: 'Line, stop, vehicle or page',
 		inputPlaceholder: 'For example 51, Laurier or 52847',
 		scopeAll: 'All',
 		stopsLabel: headerSearchCopy.en.kinds.stop,
 		retry: 'Try again',
-		vehicle: {
-			busAria: (id) => `Live bus ${id}`,
-			routeTag: (route) => `Line ${route}`,
-			next: (stop) => `Next: ${stop}`,
-			noNextStop: 'No next stop',
-			heading: 'Heading',
-			delay: 'Delay',
-		},
 	},
 	fr: {
-		inputLabel: headerSearchCopy.fr.inputLabel,
+		lede: 'Saisissez un numéro de ligne, une rue, un code d’arrêt, un numéro de véhicule ou le nom d’une page.',
+		inputLabel: 'Ligne, arrêt, véhicule ou page',
 		inputPlaceholder: 'Par exemple 51, Laurier ou 52847',
 		scopeAll: 'Tout',
 		stopsLabel: headerSearchCopy.fr.kinds.stop,
 		retry: 'Réessayer',
-		vehicle: {
-			busAria: (id: string) => `Bus en direct ${id}`,
-			routeTag: (route: string) => `Ligne ${route}`,
-			next: (stop: string) => `Prochain : ${stop}`,
-			noNextStop: 'Aucun prochain arrêt',
-			heading: 'Direction',
-			delay: 'Retard',
-		},
 	},
 });
-
-export type VehicleResultCopy = (typeof copy)[Locale]['vehicle'];

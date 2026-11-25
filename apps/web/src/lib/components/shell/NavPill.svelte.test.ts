@@ -247,7 +247,7 @@ describe('NavPill — search', () => {
 	] as const)("names a live vehicle's line in %s", (locale, name) => {
 		const bus = { id: '40061', lat: 0, lon: 0, status: 'late', route: '161' } as Vehicle;
 		const searchList = searchTransit(
-			{ surface: 'list', query: '40061' },
+			{ query: '40061' },
 			{
 				routes: [{ id: '161', short: '161', long: 'Van Horne', type: 3 }],
 				stops: [],
@@ -277,7 +277,7 @@ describe('NavPill — search', () => {
 	it('closes desktop search suggestions when the user clicks outside', async () => {
 		const label = '5333 Avenue Casgrain, Montréal, Quebec';
 		const searchList = withAddresses(
-			searchTransit({ surface: 'list', query: 'casgrain' }, { routes: [], stops: [] }),
+			searchTransit({ query: 'casgrain' }, { routes: [], stops: [] }),
 			[{ lat: 45.5, lon: -73.6, label, source: 'geo_ca', precision: 'address' }],
 		);
 		const { getByRole, queryByRole } = render(NavPill, {

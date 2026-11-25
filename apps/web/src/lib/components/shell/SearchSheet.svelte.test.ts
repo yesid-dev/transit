@@ -47,7 +47,7 @@ function open(query = 'van') {
 	const header = shell.appendChild(document.createElement('div'));
 	const behind = shell.appendChild(document.createElement('main'));
 	document.body.append(shell);
-	const list = searchTransit({ surface: 'list', query }, { routes, stops, vehicles: [] });
+	const list = searchTransit({ query }, { routes, stops, vehicles: [] });
 	const view = render(
 		SearchSheet,
 		{

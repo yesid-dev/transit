@@ -1,12 +1,7 @@
 import { render, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { expect, it, vi } from 'vitest';
-import {
-	searchHitHref,
-	searchTransit,
-	type ChromeSearchScope,
-	type SearchSources,
-} from '#lib/search/transitSearch.ts';
+import { searchHitHref, searchTransit, type SearchSources } from '#lib/search/transitSearch.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import SearchResultsList from './SearchResultsList.svelte';
 
@@ -27,16 +22,14 @@ const stops = Array.from({ length: 38 }, (_, i) => ({
 function show(
 	query: string,
 	{
-		scope = 'all',
 		locale = 'en',
 		sources = { routes, stops, vehicles: [] },
 	}: {
-		scope?: ChromeSearchScope;
 		locale?: 'en' | 'fr';
 		sources?: SearchSources;
 	} = {},
 ) {
-	const list = searchTransit({ surface: 'list', query, scope }, sources);
+	const list = searchTransit({ query }, sources);
 	const hrefs = {
 		hit: (hit: Parameters<typeof searchHitHref>[0]) =>
 			searchHitHref(hit, { path: '/', params: new URLSearchParams() }),
@@ -70,7 +63,7 @@ it.each([
 );
 
 it('highlights an exact first row, and nothing otherwise', () => {
-	const exact = show('18', { scope: 'route' });
+	const exact = show('18');
 	expect(selected(exact)).toHaveLength(1);
 	expect(selected(exact)[0]).toHaveAccessibleName('Line 18 · Beaubien Road');
 	exact.unmount();
@@ -138,7 +131,7 @@ it('keeps the highlight when a live poll brings the same answer', async () => {
 	await tick();
 	const first = selected(view);
 	expect(first).toHaveLength(1);
-	const polled = searchTransit({ surface: 'list', query: 'van', scope: 'all' }, { routes, stops });
+	const polled = searchTransit({ query: 'van' }, { routes, stops });
 	await view.rerender({ list: polled });
 	expect(selected(view)).toEqual(first);
 });
@@ -153,7 +146,7 @@ it.each([
 		expect(view.getByRole('option', { name: seeAll })).toBeInTheDocument();
 		expect(view.getByText(note)).toBeInTheDocument();
 		await view.rerender({
-			list: searchTransit({ surface: 'list', query: 'van' }, { routes, stops }),
+			list: searchTransit({ query: 'van' }, { routes, stops }),
 		});
 		expect(view.getByRole('option', { name: seeAll })).toBeInTheDocument();
 		expect(view.queryByText(note)).toBeNull();

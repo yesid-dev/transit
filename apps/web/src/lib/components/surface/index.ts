@@ -1,6 +1,4 @@
 export { default as ResourceBoundary } from './ResourceBoundary.svelte';
-export { default as EntityRow } from './EntityRow.svelte';
-export { default as EntityResultRow } from './EntityResultRow.svelte';
 export { default as EntityList } from './EntityList.svelte';
 export { default as EntityDetail } from './EntityDetail.svelte';
 export { default as ReliabilityPane } from './ReliabilityPane.svelte';
@@ -12,8 +10,6 @@ export { historyCopy, type HistoryCopyInput } from './historyCopy';
 export { default as FreshnessStamp } from './FreshnessStamp.svelte';
 export { default as ConformanceBadge } from './ConformanceBadge.svelte';
 export { default as ReliabilityBadge } from './ReliabilityBadge.svelte';
-export { default as SearchControls } from './SearchControls.svelte';
-export type { SearchScopeKey } from './SearchControls.svelte';
 export { default as MapDrilldownLink } from './MapDrilldownLink.svelte';
 export { default as AffectedAlerts } from './AffectedAlerts.svelte';
 export {
@@ -21,8 +17,6 @@ export {
 	isReliabilitySnapshotPending,
 } from './createReliabilityListingController.svelte';
 
-export type { EntityRowProps } from './EntityRow.svelte';
-export type { EntityResultRowProps } from './EntityResultRow.svelte';
 export type { ReliabilityPaneProps } from './ReliabilityPane.svelte';
 export type { GrainPickerProps } from './GrainPicker.svelte';
 export type { ArticleControlStackProps } from './ArticleControlStack.svelte';
@@ -42,6 +36,3 @@ export type { GrainSegment } from './GrainPicker.svelte';
 export type { AffectedAlertsCopy } from './AffectedAlerts.svelte';
 export type { ReliabilityListingController } from './createReliabilityListingController.svelte';
 export type { SurfaceHeadCopy } from './copy';
-
-export { default as LineStopResult } from './LineStopResult.svelte';
-export { default as TransitEntityRow } from './TransitEntityRow.svelte';

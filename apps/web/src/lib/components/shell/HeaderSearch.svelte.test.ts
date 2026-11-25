@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
-import { searchTransit, type ChromeSearchScope } from '#lib/search/transitSearch.ts';
+import { searchTransit } from '#lib/search/transitSearch.ts';
 import HeaderSearch from './HeaderSearch.svelte';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -26,13 +26,8 @@ const path = (href: string | null) => {
 	return url.pathname + url.search;
 };
 
-function show(
-	query: string,
-	at = '/',
-	scope: ChromeSearchScope = 'all',
-	locale: 'en' | 'fr' = 'en',
-) {
-	const list = searchTransit({ surface: 'list', query, scope }, { routes, stops, vehicles: [] });
+function show(query: string, at = '/', locale: 'en' | 'fr' = 'en') {
+	const list = searchTransit({ query }, { routes, stops, vehicles: [] });
 	const url = new URL(at, 'https://transit.local');
 	const view = render(HeaderSearch, {
 		props: { locale, providerId: 'stm', url, list, query },
@@ -68,7 +63,7 @@ const opened = (option: HTMLElement) => {
 };
 
 it('an exact line number is highlighted on a line page, and Enter opens that line', async () => {
-	const view = show('18', '/lines/17?tab=reliability&grain=week', 'route');
+	const view = show('18', '/lines/17?tab=reliability&grain=week');
 	const line = view.getByRole('option', { name: 'Line 18 · Beaubien Road' });
 	expect(line).toHaveAttribute('aria-selected', 'true');
 	expect(view.input).toHaveAttribute('aria-activedescendant', line.id);
@@ -115,7 +110,7 @@ it.each([
 ] as const)('announces the totals in %s once typing pauses', async (locale, said) => {
 	vi.useFakeTimers();
 	try {
-		const view = show('van', '/', 'all', locale);
+		const view = show('van', '/', locale);
 		const status = view.getByRole('status');
 		expect(status).toHaveTextContent('');
 		await vi.advanceTimersByTimeAsync(500);
@@ -145,7 +140,7 @@ it.each([
 ] as const)(
 	'offers the next steps when nothing matches in %s',
 	(locale, message, steps, prefix) => {
-		const view = show('zzz', '/', 'all', locale);
+		const view = show('zzz', '/', locale);
 		expect(view.getByText(message)).toBeInTheDocument();
 		const options = view.getAllByRole('option');
 		expect(options.slice(0, 2).map((option) => path(option.getAttribute('href')))).toEqual([
@@ -162,7 +157,7 @@ it.each([
 );
 
 it('says nothing about matches while the indexes load', () => {
-	const list = searchTransit({ surface: 'list', query: 'zzz' }, { routes, stops: null });
+	const list = searchTransit({ query: 'zzz' }, { routes, stops: null });
 	const view = render(HeaderSearch, {
 		props: {
 			locale: 'en',
@@ -190,7 +185,7 @@ it.each([
 	async (locale, said) => {
 		vi.useFakeTimers();
 		try {
-			const list = searchTransit({ surface: 'list', query: 'van' }, { routes, stops: null });
+			const list = searchTransit({ query: 'van' }, { routes, stops: null });
 			const url = new URL('https://transit.local/');
 			const view = render(HeaderSearch, {
 				props: { locale, providerId: 'stm', url, list, query: 'van' },
@@ -209,7 +204,7 @@ it('waits 500 ms after every edit, even when the totals stay the same', async ()
 		const view = show('van');
 		const status = view.getByRole('status');
 		await vi.advanceTimersByTimeAsync(250);
-		const list = searchTransit({ surface: 'list', query: 'va', scope: 'all' }, { routes, stops });
+		const list = searchTransit({ query: 'va' }, { routes, stops });
 		await view.rerender({ query: 'va', list });
 		await vi.advanceTimersByTimeAsync(250);
 		expect(status.textContent).toBe('');
@@ -328,7 +323,7 @@ it.each([
 	async (locale, answer, said) => {
 		const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer());
 		try {
-			const view = show('casgrain', '/', 'all', locale);
+			const view = show('casgrain', '/', locale);
 			await fireEvent.click(
 				view.getByRole('option', { name: /^(Search addresses|Chercher des adresses)/ }),
 			);

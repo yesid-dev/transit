@@ -414,6 +414,7 @@
 		font-weight: 600;
 	}
 	.page-list .search-list-option {
+		padding-inline: 0;
 		border: 0;
 		border-block-start: 1px solid var(--border);
 		border-radius: 0;

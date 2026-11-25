@@ -2,6 +2,7 @@ import { test } from './layout-test';
 import { expect, type Page } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { captureFleet, captureUrl } from './capture-fixture';
+import { settled } from './design-pass-measure';
 import type { SearchIndex } from '../src/lib/search/searchIndex';
 
 const searchLineName = 'Sherbrooke / Boulevard des Anciens-Combattants';
@@ -44,14 +45,18 @@ for (const provider of ['stm', 'octranspo'])
 				);
 				for (const width of [320, 390, 768, 1024, 1440]) {
 					await page.setViewportSize({ width, height: 900 });
-					const tabBottom = await page
-						.getByRole('tab')
-						.evaluateAll((tabs) =>
-							Math.max(...tabs.map((tab) => tab.getBoundingClientRect().bottom)),
-						);
-					expect(tabBottom, `Tabs clear search rows at ${width}px`).toBeLessThanOrEqual(
-						await firstLink.evaluate((link) => link.getBoundingClientRect().top),
-					);
+					await settled(page);
+					// The responsive frame can move the whole Search surface after a resize.
+					const { tabBottom, rowTop } = await firstLink.evaluate((link) => ({
+						tabBottom: Math.max(
+							...Array.from(
+								link.closest('main')!.querySelectorAll('[role="tab"]'),
+								(tab) => tab.getBoundingClientRect().bottom,
+							),
+						),
+						rowTop: link.getBoundingClientRect().top,
+					}));
+					expect(tabBottom, `Tabs clear search rows at ${width}px`).toBeLessThanOrEqual(rowTop);
 					expect(
 						await rows.evaluateAll((items) =>
 							items.flatMap((item) => {

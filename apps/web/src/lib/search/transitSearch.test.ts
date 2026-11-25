@@ -4,6 +4,8 @@ import {
 	canSearchAddresses,
 	searchTransit,
 	withAddresses,
+	type SearchKind,
+	type SearchList,
 	type SearchSources,
 } from './transitSearch';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
@@ -16,13 +18,15 @@ const vehicle = (id: string): Vehicle => ({
 	updated_utc: '2026-06-16T00:00:00Z' as Vehicle['updated_utc'],
 });
 const resultIds = (items: readonly { id: string }[]) => items.map(({ id }) => id);
+const hits = (list: SearchList, kind: SearchKind) =>
+	list.groups.find((group) => group.kind === kind)?.hits ?? [];
 
-it('keeps unknown modes only without a mode selection', () => {
+it('keeps a line with an unknown mode and leaves its mode unspecified', () => {
 	const query = 'hub';
 	const sources = { routes: [{ id: 'unknown', short: '?', long: 'Hub', type: 999 }] };
-	const modes = new Set(['bus'] as const);
-	expect(searchTransit({ surface: 'page', query }, sources).routes).toEqual(sources.routes);
-	expect(searchTransit({ surface: 'page', query, modes }, sources).routes).toEqual([]);
+	expect(hits(searchTransit({ query }, sources), 'route')).toMatchObject([
+		{ id: 'unknown', mode: null },
+	]);
 });
 
 it.each([
@@ -35,9 +39,9 @@ it.each([
 		{ id: 'c', code: '300', name: 'Station Crémazie', lat: 0, lon: 0 },
 		{ id: 'b', code: '100', name: 'Station Berri-UQAM', lat: 0, lon: 0 },
 	];
-	const page = searchTransit({ surface: 'page', query }, { stops });
-	expect(resultIds(page.stops)).toEqual([id]);
-	expect(page.stops[0].name).toBe(label);
+	const found = hits(searchTransit({ query }, { stops }), 'stop');
+	expect(resultIds(found)).toEqual([id]);
+	expect(found[0]?.label).toBe(label);
 });
 
 it('accepts absent sources without inventing results', () => {
@@ -48,12 +52,10 @@ it('accepts absent sources without inventing results', () => {
 			['   ', ''],
 			['---', ''],
 		]) {
-			expect(searchTransit({ surface: 'page', query }, sources)).toEqual({
+			expect(searchTransit({ query }, sources)).toMatchObject({
 				query: folded,
-				routes: [],
-				stops: [],
-				vehicles: [],
-				pages: [],
+				groups: [],
+				total: 0,
 			});
 		}
 	}
@@ -72,8 +74,11 @@ it('finds a line or a stop by what riders read first, and an internal id only ex
 		['r9', [], ['r9']],
 		['r', [], []],
 	] as const) {
-		const page = searchTransit({ surface: 'page', query }, { stops, routes });
-		expect([resultIds(page.stops), resultIds(page.routes)]).toEqual([stopIds, routeIds]);
+		const list = searchTransit({ query }, { stops, routes });
+		expect([resultIds(hits(list, 'stop')), resultIds(hits(list, 'route'))]).toEqual([
+			stopIds,
+			routeIds,
+		]);
 	}
 });
 
@@ -82,13 +87,11 @@ it('finds pages by their names in either language and by the terms they explain'
 		{
 			href: '/receipt',
 			label: { en: 'Daily report', fr: 'Rapport quotidien' },
-			group: null,
 			words: ['Missing trip', 'Trajet manquant'],
 		},
 		{
 			href: '/metrics',
 			label: { en: 'How we measure', fr: 'Comment on mesure' },
-			group: null,
 			words: ['On time', 'À l’heure'],
 		},
 	];
@@ -99,10 +102,8 @@ it('finds pages by their names in either language and by the terms they explain'
 		['missing trip', ['/receipt']],
 		['zzz', []],
 	] as const) {
-		const found = searchTransit({ surface: 'page', query }, { pages }).pages;
-		expect(found.map(({ href }) => href)).toEqual(hrefs);
+		expect(resultIds(hits(searchTransit({ query }, { pages }), 'page'))).toEqual(hrefs);
 	}
-	expect(searchTransit({ surface: 'page', query: 'rapport' }, { pages }).pages[0]).toBe(pages[0]);
 });
 
 it('does not mutate inputs', () => {
@@ -113,16 +114,12 @@ it('does not mutate inputs', () => {
 	const vehicles = Object.freeze([Object.freeze(vehicle('hub'))]);
 	const sources = Object.freeze({ routes, stops, vehicles });
 	const before = JSON.stringify(sources);
-	const modes = new Set(['bus'] as const);
-	const page = searchTransit({ surface: 'page', query: 'hub', modes }, sources);
-	expect(page.routes[0]).toBe(routes[0]);
-	expect(page.stops[0]).toBe(stops[0]);
-	expect(page.vehicles[0]).toBe(vehicles[0]);
+	const list = searchTransit({ query: 'hub' }, sources);
+	expect(list.groups.map((group) => group.hits[0]?.id)).toEqual(['r', 's', 'hub']);
 	expect(JSON.stringify(sources)).toBe(before);
-	expect([...modes]).toEqual(['bus']);
 });
 
-it('returns every match on the page surface', () => {
+it('can reveal a larger page without changing the total', () => {
 	const routes = Array.from({ length: 51 }, (_, i) => ({
 		id: String(i),
 		short: String(i),
@@ -136,18 +133,8 @@ it('returns every match on the page surface', () => {
 		lat: 0,
 		lon: 0,
 	}));
-	const page = searchTransit({ surface: 'page', query: 'hub' }, { routes, stops });
-	expect(page.routes).toHaveLength(51);
-	expect(page.stops).toHaveLength(51);
-});
-
-it('preserves mode filtering relative to stop deduplication', () => {
-	const stops: StopIndexEntry[] = [
-		{ id: 'rail-first', code: 'r', name: 'Station Central', lat: 0, lon: 0, mode: 'rail' },
-		{ id: 'metro-second', code: 'm', name: 'Station Central', lat: 0, lon: 0, mode: 'metro' },
-	];
-	const modes = new Set(['metro'] as const);
-	expect(searchTransit({ surface: 'page', query: 'central', modes }, { stops }).stops).toEqual([]);
+	const list = searchTransit({ query: 'hub', rows: 51 }, { routes, stops });
+	expect(shape(list)).toEqual(['route 51/51', 'stop 51/51']);
 });
 
 it('keeps source order for tied lines and stops', () => {
@@ -159,14 +146,11 @@ it('keeps source order for tied lines and stops', () => {
 		{ id: 'z', code: 'z', name: 'Zulu Hub', lat: 0, lon: 0 },
 		{ id: 'a', code: 'a', name: 'Alpha Hub', lat: 0, lon: 0 },
 	];
-	expect(resultIds(searchTransit({ surface: 'page', query: 'café' }, { routes }).routes)).toEqual([
+	expect(resultIds(hits(searchTransit({ query: 'café' }, { routes }), 'route'))).toEqual([
 		'z',
 		'a',
 	]);
-	expect(resultIds(searchTransit({ surface: 'page', query: 'hub' }, { stops }).stops)).toEqual([
-		'z',
-		'a',
-	]);
+	expect(resultIds(hits(searchTransit({ query: 'hub' }, { stops }), 'stop'))).toEqual(['z', 'a']);
 });
 
 it("keeps exact, prefix, substring and reversed-token matches in today's order", () => {
@@ -183,13 +167,11 @@ it("keeps exact, prefix, substring and reversed-token matches in today's order",
 		['n1', ['r1']],
 		['r1', ['r1']],
 	] as const) {
-		expect(resultIds(searchTransit({ surface: 'page', query }, { routes }).routes)).toEqual(ids);
+		expect(resultIds(hits(searchTransit({ query }, { routes }), 'route'))).toEqual(ids);
 	}
 	for (const query of ['400', '40061']) {
 		const ids = query === '40061' ? ['40061'] : [];
-		expect(resultIds(searchTransit({ surface: 'page', query }, { vehicles }).vehicles)).toEqual(
-			ids,
-		);
+		expect(resultIds(hits(searchTransit({ query }, { vehicles }), 'vehicle'))).toEqual(ids);
 	}
 });
 
@@ -213,18 +195,9 @@ const shape = (list: {
 }) => list.groups.map((group) => `${group.kind} ${group.hits.length}/${group.total}`);
 
 it('returns true totals beyond the cap', () => {
-	const list = searchTransit({ surface: 'list', query: 'hu', scope: 'all' }, hubs(38));
+	const list = searchTransit({ query: 'hu' }, hubs(38));
 	expect(shape(list)).toEqual(['route 4/38', 'stop 4/38']);
 	expect(list.total).toBe(76);
-});
-
-it('the page decides the order, never what is searched', () => {
-	const order = (scope: 'route' | 'stop' | 'map' | 'all') =>
-		shape(searchTransit({ surface: 'list', query: 'hu', scope }, hubs(38)));
-	expect(order('route')).toEqual(['route 6/38', 'stop 2/38']);
-	expect(order('stop')).toEqual(['stop 6/38', 'route 2/38']);
-	expect(order('map')).toEqual(['route 4/38', 'stop 4/38']);
-	expect(order('all')).toEqual(['route 4/38', 'stop 4/38']);
 });
 
 it('adds the addresses asked for last, two at most, outside the /search count', () => {
@@ -236,7 +209,7 @@ it('adds the addresses asked for last, two at most, outside the /search count', 
 		precision: 'street',
 	} as const;
 	const list = searchTransit(
-		{ surface: 'list', query: 'hub', scope: 'all' },
+		{ query: 'hub' },
 		{
 			...hubs(3),
 			vehicles: [vehicle('HUB'), vehicle('hub')],
@@ -264,26 +237,25 @@ it('asks the geocoder only for text that can name a place', () => {
 });
 
 it('marks the first row exact only when it matches the query exactly', () => {
-	const exact = (query: string, scope: 'all' | 'stop') => {
-		const list = searchTransit({ surface: 'list', query, scope }, hubs(12));
+	const exact = (query: string) => {
+		const list = searchTransit({ query }, hubs(12));
 		return [list.exact, list.groups[0]?.hits[0]?.id];
 	};
-	expect(exact('7', 'all')).toEqual([true, 'r7']);
-	expect(exact('c7', 'stop')).toEqual([true, 's7']);
-	expect(exact('hu', 'all')).toEqual([false, 'r0']);
-	expect(exact('1', 'stop')).toEqual([false, 's1']);
+	expect(exact('7')).toEqual([true, 'r7']);
+	expect(exact('c7')).toEqual([true, 's7']);
+	expect(exact('hu')).toEqual([false, 'r0']);
+	expect(exact('1')).toEqual([true, 'r1']);
 });
 
 it('waits for both indexes before an empty answer is final', () => {
 	const { routes, stops } = hubs(2);
-	expect(searchTransit({ surface: 'list', query: 'zz' }, { routes, stops: null })).toMatchObject({
+	expect(searchTransit({ query: 'zz' }, { routes, stops: null })).toMatchObject({
 		groups: [],
 		total: 0,
 		pending: true,
 	});
-	expect(searchTransit({ surface: 'list', query: 'zz' }, { routes, stops }).pending).toBe(false);
-	const missing = (sources: SearchSources) =>
-		searchTransit({ surface: 'list', query: 'zz' }, sources).unsearched;
+	expect(searchTransit({ query: 'zz' }, { routes, stops }).pending).toBe(false);
+	const missing = (sources: SearchSources) => searchTransit({ query: 'zz' }, sources).unsearched;
 	expect([
 		missing({ routes, stops: null }),
 		missing({ routes: null, stops: [] }),
@@ -293,7 +265,7 @@ it('waits for both indexes before an empty answer is final', () => {
 
 it('labels rows with the names riders read', () => {
 	const list = searchTransit(
-		{ surface: 'list', query: '161' },
+		{ query: '161' },
 		{
 			routes: [{ id: '161', short: '161', long: 'Van Horne', type: 3 }],
 			stops: [{ id: 's', code: '161', name: 'MONTGOMERY / SHERBROOKE', lat: 0, lon: 0 }],
@@ -311,13 +283,12 @@ it('includes bilingual app pages in the same ranked list on both surfaces', () =
 		{
 			href: '/metrics',
 			label: { en: 'How we measure', fr: 'Comment on mesure' },
-			group: null,
 			words: [],
 		},
 	];
 	for (const rows of [undefined, 6]) {
 		const { groups, total } = searchTransit(
-			{ surface: 'list', query: 'comment on mesure', rows },
+			{ query: 'comment on mesure', rows },
 			{ routes: [], stops: [], vehicles: [], pages, locale: 'en' },
 		);
 		expect(total).toBe(1);

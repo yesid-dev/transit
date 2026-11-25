@@ -65,7 +65,7 @@
 		providers = [],
 		discoveryError = false,
 		search = $bindable(''),
-		searchList = searchTransit({ surface: 'list', query: '' }, {}),
+		searchList = searchTransit({ query: '' }, {}),
 		searchPresentation,
 		availableLocales = PUBLISHED_LOCALES,
 	}: NavPillProps = $props();
