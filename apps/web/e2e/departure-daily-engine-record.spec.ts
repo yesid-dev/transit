@@ -83,36 +83,44 @@ for (const width of [390, 1440]) {
 			const response = await page.goto(`${path}/receipt?${period}`, { waitUntil: 'commit' });
 			expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 			const main = page.getByRole('main');
-			const section = (name: string) => main.getByRole('region', { name });
-			const headline = section(fr ? 'Part des passages à l’heure' : 'On-time share');
-			await expect(headline).toContainText(fr ? '80 sur 100' : '80 of 100');
-			await expect(headline).toContainText(fr ? 'Faible couverture' : 'Low coverage');
+			const section = (name: string) => main.getByRole('article', { name, exact: true });
+			const headline = main.locator('#punctuality');
+			await expect(headline).toContainText(fr ? /80,0\s%/u : '80.0%');
+			await expect(headline).toContainText(fr ? /92,3\s%/u : '92.3%');
 			const delivery = section(
 				fr
 					? 'Service effectué par rapport au service prévu'
 					: 'Service delivered against scheduled',
 			);
 			await expect(delivery).toContainText('70');
-			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five periods');
+			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five parts');
 			await expect(periods.getByRole('rowheader')).toHaveCount(5);
-			await expect(periods).toContainText(fr ? 'couverture insuffisante' : 'insufficient coverage');
-			await expect(
-				section(fr ? 'Lignes à examiner' : 'Lines to inspect').getByRole('link', { name: /24/ }),
-			).toBeVisible();
+			await expect(periods).toContainText(fr ? 'Couverture insuffisante' : 'Insufficient coverage');
 			const messages = section(fr ? 'Avis de l’agence' : 'Agency messages');
+			await expect(messages.getByRole('heading', { level: 3 })).toHaveCount(1);
+			await expect(messages.getByRole('heading', { level: 3 })).toHaveAttribute('lang', lang);
 			await expect(messages).toContainText(fr ? 'Détour sur la ligne 24' : 'Detour on 24');
-			const csv = await messages.getByRole('link', { name: /CSV/ }).getAttribute('href');
+			await expect(
+				messages.getByRole('link', { name: /Service alerts|avis de service/i }),
+			).toHaveAttribute('href', /\/alerts\?.*recordFrom=2026-11-18/);
+			await main
+				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
+				.click();
+			const csv = await page
+				.getByRole('dialog')
+				.getByRole('link', { name: fr ? 'Avis de l’agence' : 'Agency messages', exact: true })
+				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
 			expect(await csvResponse.text()).toMatch(fr ? /^Mesure,Du,Au/ : /^Measure,From,To/);
+			await page.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true }).click();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 
 			await page.emulateMedia({ media: 'print' });
 			await expect(
-				main.getByRole('button', { name: fr ? 'Imprimer le rapport' : 'Print report' }),
+				main.getByRole('button', { name: fr ? 'Imprimer' : 'Print', exact: true }),
 			).toBeHidden();
-			await expect(headline.getByText(/v1.*#punctuality/).last()).toBeVisible();
-			await expect(headline.getByText(fr ? /80 sur 100/ : /80 of 100/).first()).toBeVisible();
+			await expect(main.getByText(/v1.*#punctuality/).last()).toBeVisible();
 			await expect(delivery.getByText('70', { exact: true })).toBeVisible();
 		});
 	}
@@ -125,13 +133,13 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 	const href = '/receipt?provider=stm&frameMode=record&recordFrom=2026-11-17&recordTo=2026-11-17';
 	const hold = dailyMessageHold(request);
 	const other = dailyMessageHold(request);
-	const messages = page.getByRole('region', { name: 'Agency messages' });
+	const messages = page.getByRole('article', { name: 'Agency messages' });
 	const pending = 'These records take longer';
 	try {
 		expect((await hold.start()).status()).toBe(204);
 		await page.setExtraHTTPHeaders(hold.headers);
 		await page.goto(href, { waitUntil: 'commit' });
-		await expect(page.getByRole('region', { name: 'On-time share' })).toContainText('80 of 100');
+		await expect(page.getByRole('region', { name: 'On-time share' })).toContainText('80.0%');
 
 		expect((await other.release()).status()).toBe(204);
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(pending);
@@ -143,7 +151,7 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 		});
 
 		expect((await hold.release()).status()).toBe(204);
-		await expect(messages).toContainText('Not tracked');
+		await expect(messages).toContainText('Agency messages are not tracked in this city.');
 	} finally {
 		await hold.release();
 	}

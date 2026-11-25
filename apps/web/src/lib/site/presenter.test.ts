@@ -6,6 +6,7 @@ import {
 	clockTime,
 	dateAndClock,
 	dateRange,
+	dailyReportTitle,
 	countedUnit,
 	delayReading,
 	directionLabel,
@@ -196,3 +197,11 @@ it.each([
 		expect(vehiclePositionsCapture(age, locale).replace(/[\u00a0\u202f]/g, ' ')).toBe(expected);
 	},
 );
+it.each([
+	['en', '2026-11-25', '2026-11-25', 'Report for Wednesday 25 November 2026'],
+	['fr', '2026-11-25', '2026-11-25', 'Rapport du mercredi 25 novembre 2026'],
+	['en', '2026-11-16', '2026-11-22', 'Report for 16 to 22 November 2026'],
+	['fr', '2026-11-16', '2026-11-22', 'Rapport du 16 au 22 novembre 2026'],
+] as const)('formats the dated report title in %s (%s to %s)', (locale, from, to, title) => {
+	expect(dailyReportTitle({ from, to }, locale)).toBe(title);
+});

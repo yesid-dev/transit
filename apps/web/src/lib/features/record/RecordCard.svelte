@@ -13,6 +13,7 @@
 		children,
 		expandable = false,
 		open = $bindable(true),
+		compactPrint = false,
 	}: {
 		title: string;
 		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
@@ -21,6 +22,7 @@
 		children: Snippet;
 		expandable?: boolean;
 		open?: boolean;
+		compactPrint?: boolean;
 	} = $props();
 	const id = $props.id();
 </script>
@@ -54,6 +56,7 @@
 		data-slot="record-card"
 		class:nested={disclosure?.nested}
 		class:expandable={expandable && !disclosure}
+		class:compact-print={compactPrint}
 	>
 		{#if disclosure}
 			<details
@@ -91,7 +94,10 @@
 	<Card
 		edge="neutral"
 		textSize="inherit"
-		class={disclosure ? 'min-w-0 px-2 sm:px-6' : 'min-w-0 px-4 sm:px-6'}
+		class={[
+			disclosure ? 'min-w-0 px-2 sm:px-6' : 'min-w-0 px-4 sm:px-6',
+			compactPrint && 'print:p-2',
+		]}
 		spread
 	>
 		{@render content()}
@@ -169,6 +175,11 @@
 	@container (inline-size < 9rem) {
 		.expandable-title {
 			font-size: var(--text-small);
+		}
+	}
+	@media print {
+		.compact-print {
+			gap: calc(var(--space-card-gap) / 3);
 		}
 	}
 </style>

@@ -59,6 +59,7 @@ it.each([
 	});
 	const visit = <T>(load: (event: T) => unknown, path: string) =>
 		load({ url: new URL(path, origin), request, parent, locals: { overviewSchedule: null } } as T);
+	const receipt = '/receipt?frameMode=record&recordFrom=' + period.to + '&recordTo=' + period.to;
 	await Promise.all([
 		visit(overview, '/'),
 		visit(lines, '/lines'),
@@ -67,7 +68,7 @@ it.each([
 		visit(hotspots, '/hotspots?kind=stop'),
 		visit(repeatOffenders, '/repeat-offenders'),
 		visit(repeatOffenders, '/repeat-offenders?kind=vehicle'),
-		visit(daily, '/receipt'),
+		visit(daily, receipt),
 		visit(network, '/network'),
 		visit(alerts, '/alerts'),
 		visit(health, '/status'),

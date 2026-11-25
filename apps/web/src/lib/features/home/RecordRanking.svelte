@@ -19,12 +19,18 @@
 		ranking,
 		link,
 		directory,
+		heading,
+		formatShare,
+		outlineStopCode = false,
 	}: {
 		locale: Locale;
 		kind: 'line' | 'stop';
 		ranking: Promise<EngineResult<RankingAnswer>>;
 		link: (path: string) => string;
 		directory?: Promise<ScheduleEdition['stops']>;
+		heading?: string;
+		formatShare?: (value: number) => string;
+		outlineStopCode?: boolean;
 	} = $props();
 	const display = transitDisplay();
 	const title = $derived(
@@ -45,7 +51,9 @@
 			<li>
 				<span class="plate">
 					{#if line}<RoutePlate code={line.number ?? row.id} />
-					{:else}<span class="font-mono text-sm">{stop?.code || row.id}</span>{/if}
+					{:else}<span class="font-mono text-sm" class:stop-code={outlineStopCode}
+							>{stop?.code || row.id}</span
+						>{/if}
 				</span>
 				<a
 					class="inline-flex min-h-11 min-w-11 items-center font-semibold text-primary underline"
@@ -55,7 +63,7 @@
 				<p class="text-muted-foreground">
 					{countedUnit(row.sample, 'event', locale)}{coverage ? ` · ${coverage}` : ''}
 				</p>
-				<strong>{percent(row.value, locale)}</strong>
+				<strong>{formatShare?.(row.value) ?? percent(row.value, locale)}</strong>
 			</li>
 		{/each}
 	</ol>
@@ -63,7 +71,7 @@
 {/snippet}
 
 <div class="min-w-0" data-slot="record-ranking">
-	<h3 class="font-semibold">{title}</h3>
+	<h3 class="font-semibold">{heading ?? title}</h3>
 	{#await ranking}
 		{#key ranking}<RecordPending {locale} answer={ranking} />{/key}
 	{:then result}
@@ -89,6 +97,12 @@
 <style>
 	[data-slot='record-ranking'] {
 		container-type: inline-size;
+	}
+	.stop-code {
+		display: inline-block;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding-inline: 0.25em;
 	}
 	li {
 		display: grid;

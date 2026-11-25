@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordSeries } from '#lib/server/engine.ts';
-import { dailyPeriodRows, departureDays } from './departureDailyText.ts';
+import { dailyPeriods, departureDays } from './departureDailyText.ts';
 import { departureFromKey, departureHref } from './departureIdentity.ts';
 
 const evidence = {
@@ -50,7 +50,7 @@ describe('Departure and Daily report text', () => {
 	});
 
 	it('sums numerators and denominators across the midnight boundary and applies the pooled floor', () => {
-		const rows = dailyPeriodRows(
+		const rows = dailyPeriods(
 			series([
 				cell({ hour: 19 }, 20, 1),
 				cell({ hour: 0 }, 20, 7),
@@ -60,8 +60,12 @@ describe('Departure and Daily report text', () => {
 			'en',
 		);
 		expect(rows).toHaveLength(5);
-		expect(rows[4]?.slice(1)).toEqual(['20% · 100% of 50 scheduled stops observed', '10/50']);
-		expect(rows[0]?.slice(1)).toEqual(['Too few to judge', '19/20']);
+		expect(rows[4]).toMatchObject({ hours: '19:00 to 05:00', value: '20.0%', count: '50' });
+		expect(rows[0]).toMatchObject({
+			state: 'too_few_to_judge',
+			detail: '20 stop events (minimum 30)',
+			value: null,
+		});
 	});
 
 	it('pools live-eligible scheduled stops at the coverage boundary', () => {
@@ -79,16 +83,18 @@ describe('Departure and Daily report text', () => {
 			]),
 			info: [{ minimum_sample: 30, minimum_coverage: 0.25, low_coverage_below: 0.5 }],
 		};
-		const rows = dailyPeriodRows(answer, 'en');
-		expect(rows[0]?.slice(1)).toEqual([
-			'Not measured (insufficient coverage) · 24.8% of 161 scheduled stops observed · Low coverage',
-			'10/40',
-		]);
-		expect(rows[1]?.slice(1)).toEqual([
-			'25% · 25% of 160 scheduled stops observed · Low coverage',
-			'10/40',
-		]);
-		expect(rows[2]?.[1]).toBe('No live data');
+		const rows = dailyPeriods(answer, 'fr');
+		expect(rows[0]).toMatchObject({
+			state: 'not_measured',
+			detail: 'Couverture insuffisante',
+			count: '40',
+		});
+		expect(rows[1]).toMatchObject({
+			state: null,
+			value: expect.stringMatching(/^25,0\s%$/u),
+			count: '40',
+		});
+		expect(rows[2]).toMatchObject({ state: 'no_live_data', count: null });
 	});
 
 	it('round-trips a provider-supplied line key and after-midnight service time', () => {

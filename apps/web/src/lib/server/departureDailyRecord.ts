@@ -33,12 +33,35 @@ export function departureDay(params: URLSearchParams, { from, to }: { from: stri
 	return Number.isFinite(+date) && date.toISOString().slice(0, 10) === day ? day : to;
 }
 
-export function loadDailyRecord(period: EnginePeriod) {
+export function loadDailyRecord(period: EnginePeriod, tracked = true) {
 	const { questions, messagesLimited } = dailyQuestions(period);
-	const sections = questions.map(({ section, query }) => ({
-		section,
-		answer: getRecordAnswer(query, period),
-	}));
+	if (messagesLimited) {
+		questions.push({
+			section: 'messages',
+			query: { path: '/measure', parameters: { measure: 'alert_counts' } },
+		});
+	}
+	const sections = questions
+		.filter(({ section }) => tracked || section !== 'messages')
+		.map(({ section, query }) => {
+			const answer = getRecordAnswer(query, period);
+			if (section !== 'messages') return { section, answer };
+			return {
+				section,
+				answer: answer.then((result) => {
+					if (result.kind !== 'answer' || !('value' in result.answer)) return result;
+					const { evidence } = result.answer;
+					if (!evidence.alert_messages || evidence.alert_messages.length <= 5) return result;
+					return {
+						...result,
+						answer: {
+							...result.answer,
+							evidence: { ...evidence, alert_messages: evidence.alert_messages.slice(0, 5) },
+						},
+					};
+				}),
+			};
+		});
 	return { sections, messagesLimited };
 }
 

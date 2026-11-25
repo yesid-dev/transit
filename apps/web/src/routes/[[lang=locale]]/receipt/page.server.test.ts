@@ -4,13 +4,17 @@ const { getRecordAnswer, getRecordCsv } = vi.hoisted(() => ({
 	getRecordAnswer: vi.fn().mockResolvedValue({ kind: 'unconfigured' }),
 	getRecordCsv: vi.fn(),
 }));
-vi.mock('#lib/server/engine.ts', () => ({ getRecordAnswer, getRecordCsv }));
+vi.mock('#lib/server/engine.ts', () => ({
+	getRecordAnswer,
+	getRecordCsv,
+	getScheduleEdition: vi.fn(),
+}));
 import { load } from './+page.server';
 import { GET as getCsv } from './record.csv/+server';
 
 beforeEach(() => vi.clearAllMocks());
 
-function event(href: string) {
+function event(href: string, recordThrough?: string) {
 	const url = new URL(href);
 	return {
 		url,
@@ -18,7 +22,7 @@ function event(href: string) {
 		parent: async () => ({
 			providerId: 'demo',
 			lang: 'fr',
-			provider: { labels: { fr: { city: 'Montréal' } } },
+			provider: { record_through: recordThrough, inputs: {}, labels: { fr: { city: 'Montréal' } } },
 		}),
 	} as unknown as Parameters<typeof load>[0];
 }
@@ -54,7 +58,7 @@ it('streams both rankings and agency messages for seven inclusive dates', async 
 	);
 });
 
-it('streams the other sections over eight dates without requesting agency messages', async () => {
+it('streams the alert total over eight dates without requesting message details', async () => {
 	const result = await load(
 		event('https://transit1.yesid.dev/fr/receipt?recordFrom=2026-11-11&recordTo=2026-11-18'),
 	);
@@ -65,11 +69,41 @@ it('streams the other sections over eight dates without requesting agency messag
 		'periods',
 		'lines',
 		'stops',
+		'messages',
 	]);
+	expect(getRecordAnswer).toHaveBeenCalledWith(
+		{ path: '/measure', parameters: { measure: 'alert_counts' } },
+		expect.objectContaining({ from: '2026-11-11', to: '2026-11-18' }),
+	);
 	expect(getRecordAnswer).not.toHaveBeenCalledWith(
 		expect.objectContaining({ parameters: expect.objectContaining({ alert_details: '1' }) }),
 		expect.anything(),
 	);
+});
+
+it('pins the default to the last complete day', async () => {
+	await expect(
+		load(event('https://transit1.yesid.dev/fr/receipt', '2026-11-23')),
+	).rejects.toMatchObject({
+		status: 307,
+		location: '/fr/receipt?frameMode=record&recordFrom=2026-11-23&recordTo=2026-11-23',
+	});
+	expect(getRecordAnswer).not.toHaveBeenCalled();
+});
+
+it('keeps the heading dates for the unpublished Yesterday notice and skips the engine questions', async () => {
+	await expect(
+		load(
+			event(
+				'https://transit1.yesid.dev/fr/receipt?period=yesterday&recordFrom=2026-11-24&recordTo=2026-11-24',
+				'2026-11-23',
+			),
+		),
+	).resolves.toMatchObject({
+		seoTitle: 'Rapport du mardi 24 novembre 2026',
+		report: { unpublished: true, sections: [] },
+	});
+	expect(getRecordAnswer).not.toHaveBeenCalled();
 });
 
 it('rejects an eight-date agency message CSV request before asking the engine', () => {

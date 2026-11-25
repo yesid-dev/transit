@@ -191,6 +191,41 @@ export function dateRange({ from, to }: { from: string; to: string }, locale: Lo
 	return presenterCopy[locale].dateRange(start, end);
 }
 
+export function dailyReportTitle({ from, to }: { from: string; to: string }, locale: Locale) {
+	const fr = locale === 'fr';
+	const end = longDate(to, locale);
+	if (from === to) {
+		const weekday = intl
+			.dateTime(locale, { weekday: 'long', timeZone: 'UTC' })
+			.format(new Date(to));
+		return `${fr ? 'Rapport du' : 'Report for'} ${weekday} ${end}`;
+	}
+	const start =
+		from.slice(0, 7) === to.slice(0, 7)
+			? String(Number(from.slice(8)))
+			: formatDateKey(from, locale, from.slice(0, 4) !== to.slice(0, 4), 'day-first', 'long');
+	return fr ? `Rapport du ${start} au ${end}` : `Report for ${start} to ${end}`;
+}
+
+export function reportHours(start: number, end: number, locale: Locale) {
+	return [clockFace(start, 0), clockFace(end, 0)].join(locale === 'fr' ? ' à ' : ' to ');
+}
+
+export function reportPercent(value: number, locale: Locale) {
+	return intl
+		.number(locale, {
+			style: 'percent',
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})
+		.format(value);
+}
+
+export function agencyMessagePreview(text: string, locale: Locale) {
+	const segmenter = new Intl.Segmenter(locale, { granularity: 'sentence' });
+	return segmenter.segment(text.trim())[Symbol.iterator]().next().value?.segment.trim() ?? '';
+}
+
 export function fileSize(bytes: number | null | undefined, locale: Locale): string | null {
 	if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return null;
 	return intl

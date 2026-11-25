@@ -8,7 +8,12 @@ import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
 import { networkEngine, networkFixtures } from './network-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
-import { departureCaptureStops, departureDailyEngine } from './departure-daily-engine.mjs';
+import {
+	departureCaptureStops,
+	departureDailyEngine,
+	dailyReportLines,
+	dailyReportStops,
+} from './departure-daily-engine.mjs';
 import { alertsEngine } from './alerts-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
@@ -386,6 +391,9 @@ const server = createServer((request, response) => {
 					...provider,
 					attribution: JSON.parse(files[`/v1/${provider.id}/manifest.json`]).attribution,
 					timezone: 'America/Toronto',
+					...(process.env.TRANSIT_E2E_DAILY_ARTWORK === '1'
+						? { record_through: '2026-11-23' }
+						: {}),
 					download_licence: { attribution: sourceCredits[provider.id] },
 					bounds: provider.max_bounds,
 					...(provider.id === 'octranspo'
@@ -579,6 +587,11 @@ const server = createServer((request, response) => {
 			}
 		}
 		const editionRoutes = new Map(data.routes.map((entry) => [entry.id, entry]));
+		if (kind === 'schedule-index' && process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
+			for (const route of dailyReportLines) editionRoutes.set(route.id, route);
+			for (const stop of dailyReportStops)
+				editionStops.set(stop.id, { ...stop, lat: 45.5, lon: -73.6 });
+		}
 		const routeDirections = { 24: route.directions };
 		if (kind === 'search-index') {
 			editionRoutes.set('display-names', {
@@ -758,25 +771,34 @@ const server = createServer((request, response) => {
 			!url.searchParams.has('stop');
 		const isNetwork =
 			question[2] === 'measure' && Object.hasOwn(networkFixtures, url.searchParams.get('measure'));
-		const result = isNetwork
-			? networkEngine(url)
-			: alertFixture
-				? alertsEngine(url)
-				: question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
-					? vehicleEngine(url)
-					: url.searchParams.has('departure')
-						? departureDailyEngine(url)
-						: url.searchParams.has('stop')
-							? stopEngine(url)
-							: url.searchParams.has('line')
-								? lineEngine(url)
-								: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
-									? rankingsEngine(url)
-									: finderFixture
-										? finderEngine(url)
-										: dailyFixture
-											? departureDailyEngine(url, dailyMessageHold)
-											: overviewEngine(url, scope);
+		const reportDate = url.searchParams.get('from');
+		const reportFixture = !['line', 'stop', 'departure', 'vehicle'].some((cut) =>
+			url.searchParams.has(cut),
+		);
+		const result =
+			reportFixture && reportDate === '2026-11-14' && process.env.TRANSIT_E2E_DAILY_ARTWORK === '1'
+				? { status: 503, body: {} }
+				: reportFixture && reportDate === '2026-11-15'
+					? departureDailyEngine(url, undefined, true)
+					: isNetwork
+						? networkEngine(url)
+						: alertFixture
+							? alertsEngine(url)
+							: question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
+								? vehicleEngine(url)
+								: url.searchParams.has('departure')
+									? departureDailyEngine(url)
+									: url.searchParams.has('stop')
+										? stopEngine(url)
+										: url.searchParams.has('line')
+											? lineEngine(url)
+											: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
+												? rankingsEngine(url)
+												: finderFixture
+													? finderEngine(url)
+													: dailyFixture
+														? departureDailyEngine(url, dailyMessageHold)
+														: overviewEngine(url, scope);
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);

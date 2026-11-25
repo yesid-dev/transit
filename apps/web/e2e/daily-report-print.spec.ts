@@ -1,0 +1,116 @@
+import { expect, test } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+const report = '/receipt?provider=stm&recordFrom=2026-11-15&recordTo=2026-11-15';
+
+test.describe('Daily report print', () => {
+	test.beforeEach(({ browserName }, info) => {
+		test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
+	});
+
+	for (const locale of ['en', 'fr'] as const) {
+		test('prints ' + locale + ' on one sheet', async ({ page }, info) => {
+			const fr = locale === 'fr';
+			await page.addInitScript(
+				(theme) => localStorage.setItem('theme', theme),
+				fr ? 'dark' : 'light',
+			);
+			await page.goto((fr ? '/fr' : '') + report);
+			const main = page.getByRole('main');
+			const title = fr
+				? 'Rapport du dimanche 15 novembre 2026'
+				: 'Report for Sunday 15 November 2026';
+			await expect(main.getByRole('heading', { level: 1 })).toHaveText(title);
+			await expect(page).toHaveTitle(new RegExp('^' + title));
+			await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+				'content',
+				new RegExp('^' + title),
+			);
+			await expect(main.locator('#messages h3')).toHaveCount(5);
+			await expect(main.locator('#messages p[lang=fr]')).toHaveCount(5);
+			await expect(main.locator('#messages a[href*="/alerts"]')).toContainText(/1[\s,]690/u);
+			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
+			await expect(main.locator('#punctuality')).toContainText(fr ? /97,2\s%/u : '97.2%');
+			await expect(
+				main
+					.getByRole('article', { name: 'About these figures' })
+					.or(main.getByRole('article', { name: 'À propos de ces chiffres' })),
+			).toBeVisible();
+			await page.evaluate(() => document.fonts.ready);
+			await page.emulateMedia({ media: 'print' });
+			await expect(page.getByRole('banner')).toBeHidden();
+			await expect(
+				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
+			).toBeHidden();
+			for (const format of ['Letter', 'A4'] as const) {
+				const pdf = await page.pdf({
+					format,
+					path: info.outputPath(locale + '-' + format + '.pdf'),
+				});
+				const pages = pdf.toString('latin1').match(/\/Type\s*\/Page\b/gu);
+				expect(pages, format).toHaveLength(1);
+			}
+		});
+	}
+});
+
+if (process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
+	test('captures the daily report design variants', async ({ page }, info) => {
+		test.skip(info.project.name !== 'desktop');
+		const output = info.outputPath('pr18');
+		await mkdir(output, { recursive: true });
+		const variants = [
+			{ name: 'stm-en-1440-light', href: report, width: 1440, theme: 'light' },
+			{ name: 'stm-fr-1440-dark', href: '/fr' + report, width: 1440, theme: 'dark' },
+			{
+				name: 'oc-en-390-light',
+				href: report.replace('stm', 'octranspo'),
+				width: 390,
+				theme: 'light',
+			},
+			{ name: 'stm-fr-390-dark', href: '/fr' + report, width: 390, theme: 'dark' },
+			{
+				name: 'range-1440',
+				href: report.replace('recordTo=2026-11-15', 'recordTo=2026-11-21'),
+				width: 1440,
+				theme: 'light',
+			},
+			{
+				name: 'engine-unreachable',
+				href: report.replaceAll('2026-11-15', '2026-11-14'),
+				width: 1440,
+				theme: 'light',
+			},
+			{
+				name: 'unpublished-yesterday',
+				href: '/receipt?provider=stm&period=yesterday',
+				width: 1440,
+				theme: 'light',
+			},
+		];
+		for (const { name, href, width, theme } of variants) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(href);
+			await page.evaluate((next) => localStorage.setItem('theme', next), theme);
+			await page.reload();
+			const content = page.getByRole('main');
+			if (name === 'unpublished-yesterday') {
+				await expect(content.getByText(/is not in the record yet/u)).toHaveCount(1);
+			} else if (name === 'engine-unreachable') {
+				await expect(content.locator('#periods')).toContainText(
+					'The record is temporarily unavailable.',
+				);
+			} else {
+				await expect(content.locator('#stops')).toContainText('Express Saint-Joseph / Bélanger');
+			}
+			await page.evaluate(() => document.fonts.ready);
+			await page.screenshot({
+				path: join(output, name + '.png'),
+				fullPage: true,
+				animations: 'disabled',
+			});
+			console.log(name, await page.evaluate(() => document.documentElement.scrollHeight));
+		}
+	});
+}

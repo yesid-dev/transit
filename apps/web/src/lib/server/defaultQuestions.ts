@@ -42,6 +42,8 @@ export function defaultCityQuestions(
 	healthPeriod = period,
 ) {
 	const scope = { ...period, city: city.id };
+	const dailyScope = { ...scope, from: scope.to };
+	const tracked = providerHasAlerts(city);
 	const overview = overviewSelection(scope);
 	const [trend, trendPeriod] = overview.trend;
 	const questions = [
@@ -60,11 +62,12 @@ export function defaultCityQuestions(
 				rankingsQuery(rankingSelection(rankingLists[kind].path, new URLSearchParams({ kind }))),
 			)
 			.map(({ path, parameters }) => periodQuestion(scope, path, parameters)),
-		...[
-			...dailyQuestions(scope).questions,
-			...networkQuestions(),
-			...(providerHasAlerts(city) ? alertQuestions(scope) : []),
-		].map(({ query: { path, parameters } }) => periodQuestion(scope, path, parameters)),
+		...dailyQuestions(dailyScope)
+			.questions.filter(({ section }) => tracked || section !== 'messages')
+			.map(({ query: { path, parameters } }) => periodQuestion(dailyScope, path, parameters)),
+		...[...networkQuestions(), ...(tracked ? alertQuestions(scope) : [])].map(
+			({ query: { path, parameters } }) => periodQuestion(scope, path, parameters),
+		),
 		dataHealthQuestion({ ...healthPeriod, city: city.id }),
 		mapRecordQuestion(scope),
 		mapRecordQuestion(scope, undefined, undefined, 'corridors'),

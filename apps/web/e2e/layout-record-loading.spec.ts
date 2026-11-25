@@ -8,7 +8,7 @@ for (const locale of ['en', 'fr'] as const)
 	test(
 		locale + ' Daily report keeps its header and first reading still while messages stream',
 		async ({ page, request, browserName, colorScheme }) => {
-			const city = locale === 'fr' ? 'octranspo' : 'stm';
+			const city = 'stm';
 			const variant = (browserName === 'webkit' ? 2 : 0) + (colorScheme === 'dark' ? 1 : 0);
 			const end = '2026-11-' + [18, 19, 21, 22][variant];
 			const hold = dailyMessageHold(request);
@@ -28,16 +28,28 @@ for (const locale of ['en', 'fr'] as const)
 						localizeHref('/receipt', locale, city) + '&recordFrom=2026-11-18&recordTo=' + end,
 						{ waitUntil: 'commit' },
 					);
-					await expect(first.getByText(/80\s?%/u).first()).toBeVisible();
+					await expect(first.getByText(/80[.,]0\s?%/u).first()).toBeVisible();
 					await expect
 						.poll(() =>
 							page.evaluate(() => [...document.fonts].some((font) => font.status === 'loading')),
 						)
 						.toBe(false);
-					await expect(message.getByRole('link', { name: /CSV/u })).toHaveCount(0);
+					await expect(
+						message.getByText(
+							locale === 'fr'
+								? 'Les avis de l’agence ne sont pas suivis dans cette ville.'
+								: 'Agency messages are not tracked in this city.',
+						),
+					).toHaveCount(0);
 					const before = await frame();
 					expect((await hold.release()).status()).toBe(204);
-					await expect(message.getByRole('link', { name: /CSV/u })).toBeVisible();
+					await expect(
+						message.getByText(
+							locale === 'fr'
+								? 'Les avis de l’agence ne sont pas suivis dans cette ville.'
+								: 'Agency messages are not tracked in this city.',
+						),
+					).toBeVisible();
 					await waitForFrameClearance(page);
 					expect(await frame(), width + 'px').toEqual(before);
 				}
