@@ -87,8 +87,5 @@
 	},
 	"lib/components/surface/EntityList.svelte": {
 		"border-bottom:": 1
-	},
-	"routes/[[lang=locale]]/receipt/+page.svelte": {
-		"border-b": 2
 	}
 }
