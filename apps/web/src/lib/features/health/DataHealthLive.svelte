@@ -3,6 +3,7 @@
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { DashboardGrid } from '@yesid/ui/layout';
+	import type { DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, ScorecardAnswer } from '#lib/server/engine.ts';
 	import { type CaptureSnapshot, feedState } from '#lib/live/captureSnapshot.ts';
@@ -22,7 +23,7 @@
 		type NetworkMeasure,
 		networkRows,
 	} from '../network/networkRecordText.ts';
-	import HealthTable from '../network/HealthTable.svelte';
+	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
@@ -96,13 +97,15 @@
 		snapshot: CaptureSnapshot | null,
 		now: number,
 	): {
+		id: string;
 		name: string;
 		age: string | null;
 		cadence: string | null;
 		size: string | null;
 		state: ReturnType<typeof feedState>;
 	}[] {
-		return Object.values(snapshot?.feeds ?? {}).map((feed) => ({
+		return Object.entries(snapshot?.feeds ?? {}).map(([id, feed]) => ({
+			id,
 			name: healthFeedName(feed.family, locale),
 			age: captureAge(feed.captured_at, now, locale),
 			cadence: captureCadence(feed.expected_every_seconds, locale),
@@ -110,7 +113,26 @@
 			state: feedState(feed, now),
 		}));
 	}
+	type FeedRow = {
+		id: string;
+		label: string;
+		age: string;
+		cadence: string;
+		size: string;
+		state: string;
+	};
+	const feedColumns = $derived<DataTableColumn<FeedRow>[]>([
+		{ key: 'age', header: t('Last capture', 'Dernière collecte'), cell: ageCell },
+		{ key: 'cadence', header: t('Expected', 'Fréquence prévue'), cell: cadenceCell },
+		{ key: 'size', header: t('Size', 'Taille'), numeric: true, cell: sizeCell },
+		{ key: 'state', header: t('State', 'État'), cell: stateCell },
+	]);
 </script>
+
+{#snippet ageCell(row: FeedRow)}{row.age}{/snippet}
+{#snippet cadenceCell(row: FeedRow)}{row.cadence}{/snippet}
+{#snippet sizeCell(row: FeedRow)}{row.size}{/snippet}
+{#snippet stateCell(row: FeedRow)}{row.state}{/snippet}
 
 {#snippet diagnosticsGroup()}
 	{#if diagnostics}
@@ -280,40 +302,42 @@
 					<div class="grid min-w-0 gap-4">
 						<RecordCard title={table} {stamp}>
 							{#if feeds.length || schedule}
-								<HealthTable
+								<RecordDataTable
+									{locale}
 									title={table}
-									headers={[
-										t('Feed', 'Flux'),
-										t('Last capture', 'Dernière collecte'),
-										t('Expected', 'Fréquence prévue'),
-										t('Size', 'Taille'),
-										t('State', 'État'),
-									]}
+									rowHeader={t('Feed', 'Flux')}
+									columns={feedColumns}
 									rows={[
-										...feeds.map(({ name, age, cadence, size, state }) => [
-											name,
-											age ?? labels.unknown,
-											cadence ?? labels.not_measured,
-											size ?? labels.not_measured,
-											state === 'stale' && age
-												? t(`Late: last received ${age}`, `En retard : dernière réception ${age}`)
-												: labels[state],
-										]),
+										...feeds.map(({ id, name, age, cadence, size, state }) => ({
+											id: 'feed:' + id,
+											label: name,
+											age: age ?? labels.unknown,
+											cadence: cadence ?? labels.not_measured,
+											size: size ?? labels.not_measured,
+											state:
+												state === 'stale' && age
+													? t(`Late: last received ${age}`, `En retard : dernière réception ${age}`)
+													: labels[state],
+										})),
 										...(schedule
 											? [
-													[
-														t('Schedule', 'Horaire'),
-														captureAge(schedule.captured_at, now, locale) ?? labels.unknown,
-														t('when the agency publishes', 'à la publication par l’agence'),
-														captureSize(schedule.bytes, locale) ?? labels.not_measured,
-														schedule.effective_date
+													{
+														id: 'schedule',
+														label: t('Schedule', 'Horaire'),
+														age: captureAge(schedule.captured_at, now, locale) ?? labels.unknown,
+														cadence: t(
+															'when the agency publishes',
+															'à la publication par l’agence',
+														),
+														size: captureSize(schedule.bytes, locale) ?? labels.not_measured,
+														state: schedule.effective_date
 															? t('In use', 'En vigueur')
 															: labels.not_measured,
-													],
+													},
 												]
 											: []),
 									]}
-									numeric={[3]}
+									scrollMinWidth="24rem"
 								/>
 								<p class="mt-3 text-small text-muted-foreground">{hold}</p>
 							{:else}<StateMark state="no_live_data" {locale} />{/if}

@@ -6,7 +6,7 @@
 	import { SvelteURL } from 'svelte/reactivity';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { DashboardGrid, Surface } from '@yesid/ui/layout';
-	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
 	import RecordRanking from '#lib/features/home/RecordRanking.svelte';
@@ -16,6 +16,7 @@
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
+	import RecordDataTable from '#lib/features/record/RecordDataTable.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
@@ -229,14 +230,11 @@
 			.filter(Boolean)
 			.join(' ');
 	}
-	type PeriodRow = ReturnType<typeof dailyPeriods>[number];
+	type PeriodRow = Omit<ReturnType<typeof dailyPeriods>[number], 'detail'> & {
+		id: string;
+		stateDetail: string | null;
+	};
 	const columns: DataTableColumn<PeriodRow>[] = $derived([
-		{
-			key: 'part',
-			header: t('Part of the day', 'Partie de la journée'),
-			rowHeader: true,
-			cell: part,
-		},
 		{ key: 'hours', header: t('Hours', 'Heures'), cell: hours },
 		{ key: 'late', header: t('Late share', 'Part en retard'), numeric: true, cell: late },
 		{ key: 'events', header: t('Stop events', 'Passages aux arrêts'), numeric: true, cell: events },
@@ -250,13 +248,12 @@
 	});
 </script>
 
-{#snippet part(row: PeriodRow)}{row.label}{/snippet}
 {#snippet hours(row: PeriodRow)}<span class="font-mono">{row.hours}</span>{/snippet}
 {#snippet late(row: PeriodRow)}
 	{#if row.value != null}{row.value}
 	{:else if row.state}
 		<StateMark state={row.state} locale={lang} />
-		{#if row.detail}<span class="block text-muted-foreground">{row.detail}</span>{/if}
+		{#if row.stateDetail}<span class="block text-muted-foreground">{row.stateDetail}</span>{/if}
 	{/if}
 {/snippet}
 {#snippet events(row: PeriodRow)}
@@ -531,15 +528,20 @@
 									{#key periodsAnswer}<RecordPending locale={lang} answer={periodsAnswer} />{/key}
 								{:then result}
 									{#if result?.kind === 'answer' && 'cells' in result.answer}
-										<DataTable
-											caption={t(
+										<RecordDataTable
+											locale={lang}
+											title={t(
 												'Late share by part of the day',
 												'Part en retard selon la période de la journée',
 											)}
+											rowHeader={t('Part of the day', 'Partie de la journée')}
 											{columns}
-											rows={dailyPeriods(result.answer, lang)}
-											key={(row) => String(row.start)}
-											responsive={{ mode: 'scroll', minWidth: '26rem' }}
+											rows={dailyPeriods(result.answer, lang).map(({ detail, ...row }) => ({
+												...row,
+												id: String(row.start),
+												stateDetail: detail,
+											}))}
+											scrollMinWidth="26rem"
 										/>
 									{:else}
 										{@render failure(result)}

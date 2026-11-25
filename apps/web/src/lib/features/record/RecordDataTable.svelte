@@ -26,6 +26,7 @@
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { DataTable } from '@yesid/ui/table';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
+	import type { Snippet } from 'svelte';
 	import RecordTableName from './RecordTableName.svelte';
 
 	/**
@@ -33,6 +34,8 @@
 	 * (reserved key `name`), the shared plate track, compact rows and paging in groups of 20.
 	 * Supply kit columns for readings, marking figures numeric and using RecordTableValue for
 	 * values and states. `value` names the column paired with the name on a narrow screen.
+	 * Use `scrollMinWidth` for a table that needs to keep its columns at small widths.
+	 * Optional `pageSize` and `rowHeading` preserve established page sizes and row-heading content.
 	 * When sorting is enabled, the caller reads and writes the URL and supplies the resulting
 	 * order and direction. Headers request a direction change; optional choices select a column.
 	 */
@@ -44,6 +47,9 @@
 		columns = [],
 		value,
 		sort,
+		scrollMinWidth,
+		pageSize,
+		rowHeading,
 	}: {
 		locale: Locale;
 		title: string;
@@ -52,6 +58,9 @@
 		columns?: readonly Column<Row>[];
 		value?: string;
 		sort?: RecordTableSort;
+		scrollMinWidth?: string;
+		pageSize?: number;
+		rowHeading?: Snippet<[Row]>;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
 		{
@@ -64,6 +73,7 @@
 		...columns,
 	]);
 	const plates = $derived(rows.some(({ plate }) => plate !== undefined));
+	const page = $derived(pageSize ?? (sort || rows.length > 20 ? 20 : undefined));
 	const number = $derived(intl.number(locale));
 	const sortBy = $derived(locale === 'fr' ? 'Trier par' : 'Sort by');
 	const sortedHeader = $derived(allColumns.find(({ key }) => key === sort?.key)?.header);
@@ -86,7 +96,13 @@
 </script>
 
 {#snippet nameCell(row: Row)}
-	<RecordTableName {row} {plates} />
+	{#if rowHeading}
+		{@render rowHeading(row)}
+	{:else if page && !row.href}
+		<div class="inline-flex min-h-11 items-center"><RecordTableName {row} {plates} /></div>
+	{:else}
+		<RecordTableName {row} {plates} />
+	{/if}
 {/snippet}
 {#if sort?.choices}
 	<div class="sort-choice-frame">
@@ -114,9 +130,11 @@
 	{sort}
 	onSort={sort?.onSort}
 	sortLabels={sort ? { by: sortHeaderLabel } : undefined}
-	pageSize={sort || rows.length > 20 ? 20 : undefined}
+	pageSize={page}
 	{pageLabels}
-	responsive={{ mode: 'rows', primary: 'name', value: value ?? '' }}
+	responsive={scrollMinWidth
+		? { mode: 'scroll', minWidth: scrollMinWidth }
+		: { mode: 'rows', primary: 'name', value: value ?? '' }}
 />
 
 <style>

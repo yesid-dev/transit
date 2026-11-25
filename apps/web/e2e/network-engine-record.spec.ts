@@ -106,7 +106,11 @@ test('Network health reads scheduled trips and individual silent trips from the 
 		'href',
 		/\/lines\/99999\?/u,
 	);
-	await expect(main.getByText('Showing 8 of 44.')).toBeVisible();
+	await expect(main.getByText('Showing 8 of 12')).toBeVisible();
+	await expect(main.getByText('44', { exact: true })).toBeVisible();
+	await main.getByRole('button', { name: 'Show 4 more' }).click();
+	await expect(silent.getByRole('row')).toHaveCount(13);
+	await expect(main.getByText('Showing 12 of 12')).toBeVisible();
 });
 
 test('Network shows the unavailable state when the live capture fails after a successful reading', async ({
