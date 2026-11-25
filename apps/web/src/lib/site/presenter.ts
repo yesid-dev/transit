@@ -405,10 +405,12 @@ export function captureAge(capturedAt: string | null, now: number, locale: Local
 }
 
 export function captureCadence(seconds: number | null | undefined, locale: Locale) {
-	if (seconds == null) return null;
+	if (seconds == null || !Number.isFinite(seconds)) return null;
 	if (seconds === 86_400) return locale === 'fr' ? 'une fois par jour' : 'once a day';
-	const interval = intl.number(locale).format(seconds);
-	return locale === 'fr' ? `toutes les ${interval} s` : `every ${interval} s`;
+	if (seconds === 1 && locale === 'fr') return 'chaque seconde';
+	const interval =
+		seconds < 90 ? `${intl.number(locale).format(seconds)} s` : minuteReading(seconds / 60, locale);
+	return locale === 'fr' ? `toutes les ${interval}` : `every ${interval}`;
 }
 
 export function captureSize(bytes: number | null | undefined, locale: Locale) {

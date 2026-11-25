@@ -4,6 +4,7 @@ import { createLineDirectory } from './lineDirectory.ts';
 import {
 	alertAnswerSentence,
 	alertPaging,
+	captureCadence,
 	clockRange,
 	clockTime,
 	dateAndClock,
@@ -49,6 +50,20 @@ it.each([
 });
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
+
+it.each([
+	['en', 'every 89 s', 'every 1.5 min', 'every 5 min', 'once a day'],
+	['fr', 'toutes les 89 s', 'toutes les 1,5 min', 'toutes les 5 min', 'une fois par jour'],
+] as const)(
+	'shows capture cadence in seconds and minutes in %s',
+	(locale, short, boundary, long, daily) => {
+		expect(normalize(captureCadence(89, locale))).toBe(short);
+		expect(normalize(captureCadence(90, locale))).toBe(boundary);
+		expect(normalize(captureCadence(300, locale))).toBe(long);
+		expect(captureCadence(86_400, locale)).toBe(daily);
+		expect(captureCadence(null, locale)).toBeNull();
+	},
+);
 
 it.each([
 	['en', '13 October 2026'],
