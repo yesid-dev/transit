@@ -155,6 +155,8 @@ test("v2 basemap exposes only the public tile archive and supports a byte range"
   const url = BASEMAP_URL;
   const result = await worker.fetch(new Request(url, { headers: { range: "bytes=0-15" } }), makeEnv());
   assert.equal(result.status, 206);
+  assert.equal(result.headers.get("x-transit-source"), "legacy");
+  assert.match(result.headers.get("access-control-expose-headers"), /\bX-Transit-Source\b/);
   assert.equal(result.headers.get("content-range"), "bytes 0-15/200");
   assert.equal(await result.text(), "P".repeat(16));
   const invalid = await worker.fetch(new Request(url.replace("montreal.pmtiles", "%2fmanifest.json")), makeEnv());
@@ -243,6 +245,7 @@ test("v2 basemap replays the same responses before and after the clean copy", as
     copied = false;
     const legacyResponse = await worker.fetch(request, legacyEnv);
     assert.equal(legacyResponse.status, status);
+    assert.equal(legacyResponse.headers.get("x-transit-source"), status === 404 ? null : "legacy");
     assert.equal(await legacyResponse.text(), body);
     assert.equal(legacyResponse.headers.get("content-range"), contentRange ?? null);
 
@@ -253,7 +256,9 @@ test("v2 basemap replays the same responses before and after the clean copy", as
       legacyHead.mock.resetCalls();
       const result = await worker.fetch(request, cleanEnv);
       assert.equal(result.status, status);
-      assert.deepEqual([...result.headers], [...legacyResponse.headers]);
+      assert.equal(result.headers.get("x-transit-source"), status === 404 ? null : afterCopy ? "clean" : "legacy");
+      const otherHeaders = (response) => [...response.headers].filter(([name]) => name !== "x-transit-source");
+      assert.deepEqual(otherHeaders(result), otherHeaders(legacyResponse));
       assert.equal(await result.text(), body);
       assert.equal(fetch.mock.callCount(), afterCopy && [304, 412].includes(status) ? 2 : 1);
       assert.equal(legacyGet.mock.callCount() + legacyHead.mock.callCount(), !afterCopy || status === 404 ? 1 : 0);
@@ -266,6 +271,26 @@ const partialMetadata = {
   "content-length": "4",
   etag: '"clean-rev-1"',
 };
+
+test("Ottawa basemap ranges identify clean storage", async (t) => {
+  const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+  const legacy = t.mock.method(env.SNAPSHOTS, "get");
+  t.mock.method(globalThis, "fetch", (url, init) => {
+    assert.equal(url.pathname, "/transit-clean/basemaps/v1/octranspo/ottawa.pmtiles");
+    assert.equal(init.headers.get("range"), "bytes=0-3");
+    return new Response("TILE", {
+      status: 206,
+      headers: { ...partialMetadata, "content-range": "bytes 0-3/200" },
+    });
+  });
+  const response = await worker.fetch(new Request("https://data.yesid.dev/v2/octranspo/basemap/ottawa.pmtiles", {
+    headers: { range: "bytes=0-3" },
+  }), env);
+  assert.equal(response.status, 206);
+  assert.equal(response.headers.get("x-transit-source"), "clean");
+  assert.equal(await response.text(), "TILE");
+  assert.equal(legacy.mock.callCount(), 0);
+});
 
 for (const [failure, warning, fetchClean] of [
   ["thrown fetch", "read error", () => { throw new Error("private upstream detail"); }],

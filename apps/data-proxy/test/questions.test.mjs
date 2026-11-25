@@ -882,12 +882,30 @@ test("the city endpoint and dated questions share the declaration catalog", asyn
   };
   assert.equal((await f.fetch("/v2/cities?city=demo")).status, 400);
   assert.equal(f.cityRequests.length, 0);
-  assert.deepEqual(await (await f.fetch("/v2/cities")).json(), f.cities);
+  assert.deepEqual(await (await f.fetch("/v2/cities")).json(), {
+    ...f.cities,
+    providers: f.cities.providers.map((provider) => ({ ...provider, basemap_v2_url: null })),
+  });
   assert.equal((await f.fetch(MEASURE.replace("/demo/", "/private/"))).status, 400);
   assert.equal(f.requests.length, 0);
   assert.equal(f.cityRequests.length, 1);
   assert.equal(f.cityRequests[0].headers.get("authorization"), "Bearer fixture-token");
   assert.equal((await f.fetch(MEASURE)).status, 200);
+});
+
+test("the city catalog adds canonical v2 basemap URLs to fresh and cached catalogs", async (t) => {
+  const f = fixture(t);
+  f.cities.default_provider = "stm";
+  f.cities.providers = [
+    { id: "stm", timezone: "America/Toronto", basemap_url: "/data/v1/stm/static/basemap/montreal.pmtiles" },
+    { id: "octranspo", timezone: "America/Toronto", basemap_url: "/data/v1/octranspo/static/basemap/ottawa.pmtiles" },
+    { id: "other-city", timezone: "Europe/Paris", basemap_url: "/data/v1/stm/static/basemap/montreal.pmtiles" },
+  ];
+  const expected = JSON.parse(readFileSync(new URL("./fixtures/cities-basemaps.golden.json", import.meta.url), "utf8"));
+  for (let request = 0; request < 2; request++) {
+    assert.deepEqual(await (await f.fetch("/v2/cities")).json(), expected);
+  }
+  assert.equal(f.cityRequests.length, 1);
 });
 
 test("settled answer lifetime uses each declared city's local date", async (t) => {

@@ -1,3 +1,4 @@
+import { publicBasemapUrl } from "./basemap.js";
 import { CleanObjectChanged, cleanDownloadStore } from "./clean-download-store.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
 import { readLiveTrips } from "./live-trips.js";
@@ -260,7 +261,12 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
   );
   if (question.route === "cities") {
     if (cities.error) return cities.error;
-    return publicAnswer(cities.body, "application/json");
+    const catalog = JSON.parse(cities.body);
+    catalog.providers = catalog.providers.map((provider) => ({
+      ...provider,
+      basemap_v2_url: publicBasemapUrl(provider.id, provider.basemap_url),
+    }));
+    return publicAnswer(JSON.stringify(catalog), "application/json");
   }
   const catalog = cities.body && JSON.parse(cities.body);
   let timezone;
