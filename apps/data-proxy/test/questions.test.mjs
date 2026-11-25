@@ -736,23 +736,27 @@ test("public callers cannot opt in to retries and short record budgets are respe
 
 test("rate limiting keys on hashed client IP and only runs for cache misses", async (t) => {
   const f = fixture(t);
+  const config = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  const limit = Number(config.match(/simple = \{ limit = (\d+), period = 60 \}/)?.[1]);
+  assert.ok(limit >= 2 * (15 + 3));
   const counts = new Map();
   f.env.QUESTION_LIMIT.limit = async ({ key }) => {
     assert.match(key, /^[a-f0-9]{64}$/);
     counts.set(key, (counts.get(key) ?? 0) + 1);
-    return { success: counts.get(key) <= 30 };
+    return { success: counts.get(key) <= limit };
   };
   const ip = { "cf-connecting-ip": "192.0.2.1" };
-  for (let question = 1; question <= 30; question += 1) {
+  for (let question = 1; question <= limit; question += 1) {
     assert.equal((await f.fetch(MEASURE + "&line=" + question, ip)).status, 200);
   }
   assert.equal((await f.fetch(MEASURE + "&line=1", ip)).status, 200);
-  const rejected = await f.fetch(MEASURE + "&line=31", ip);
+  const next = MEASURE + "&line=" + (limit + 1);
+  const rejected = await f.fetch(next, ip);
   assert.equal(rejected.status, 503);
   assert.equal(rejected.headers.get("retry-after"), "60");
   assert.deepEqual(await rejected.json(), { message: "busy, try again" });
-  assert.equal(f.requests.length, 30);
-  assert.equal((await f.fetch(MEASURE + "&line=31", { "cf-connecting-ip": "192.0.2.2" })).status, 200);
+  assert.equal(f.requests.length, limit);
+  assert.equal((await f.fetch(next, { "cf-connecting-ip": "192.0.2.2" })).status, 200);
   assert.equal(counts.size, 2);
 });
 

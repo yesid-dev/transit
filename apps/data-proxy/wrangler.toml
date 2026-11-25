@@ -26,7 +26,8 @@ binding = "QUESTION_LAST_GOOD"
 [[ratelimits]]
 name = "QUESTION_LIMIT"
 namespace_id = "25261122"
-simple = { limit = 30, period = 60 }
+# Two 15-question Line records leave six for catalog, schedule and source-date reads.
+simple = { limit = 36, period = 60 }
 
 [observability]
 redact_query_string = true
