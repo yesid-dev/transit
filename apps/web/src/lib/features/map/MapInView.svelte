@@ -19,6 +19,7 @@
 		stamp,
 		liveViewHref,
 		detail,
+		limit = $bindable(12),
 	}: {
 		view: MapReportView;
 		locale: Locale;
@@ -27,9 +28,9 @@
 		stamp?: Snippet;
 		liveViewHref?: string | null;
 		detail?: Snippet;
+		limit?: number;
 	} = $props();
 	const PAGE_SIZE = 12;
-	let limit = $state(PAGE_SIZE);
 	let actions = $state(false);
 	const t = $derived(mapReportsCopy(locale));
 	const count = (value: number) => intl.number(locale).format(value);

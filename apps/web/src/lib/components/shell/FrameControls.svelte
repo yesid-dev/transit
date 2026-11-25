@@ -6,6 +6,7 @@
 		between?: Snippet;
 		extra?: Snippet<[SurfaceRailContext]>;
 		after?: Snippet;
+		hideSummary?: () => boolean;
 	}
 
 	export const FrameControlsExtensionContext = Symbol('frame controls extension');

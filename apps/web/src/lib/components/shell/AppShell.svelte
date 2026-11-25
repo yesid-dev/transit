@@ -136,8 +136,9 @@
 			? {
 					rail,
 					label: copy.controls,
-					summary:
-						frame.mode === 'live'
+					summary: controlsExtension?.hideSummary?.()
+						? undefined
+						: frame.mode === 'live'
 							? copy.live
 							: frame.period?.preset
 								? copy.presets[frame.period.preset]

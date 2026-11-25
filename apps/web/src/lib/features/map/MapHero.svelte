@@ -370,6 +370,8 @@
 
 	const detailOpen = $derived(session.detailOpen && !isRecordLayer);
 	let inViewOpen = $state(false);
+	let liveListLimit = $state(12);
+	let mobileScrollTop = 0;
 	let restoreListTrigger = false;
 	let inViewTrigger = $state<HTMLButtonElement | null>(null);
 	let detailBack = $state<HTMLButtonElement | null>(null);
@@ -479,6 +481,9 @@
 		returnVehicle = id;
 		commitPickedSelection({ kind: 'vehicle', id });
 		void tick().then(() => detailBack?.focus({ preventScroll: true }));
+	}
+	function restoreInViewScroll(node: HTMLDivElement): void {
+		node.scrollTop = mobileScrollTop;
 	}
 	$effect(() => {
 		const routes = session.loadedRoutes;
@@ -752,7 +757,12 @@
 		FrameControlsExtensionContext,
 	);
 	$effect(() =>
-		registerControls?.({ between: layerChoice, extra: mapControls, after: desktopLegend }),
+		registerControls?.({
+			between: layerChoice,
+			extra: mapControls,
+			after: desktopLegend,
+			hideSummary: () => !wide && remWidth >= 24,
+		}),
 	);
 </script>
 
@@ -965,6 +975,7 @@
 				onselect={selectReportVehicle}
 				stamp={wide ? stamp : undefined}
 				detail={detailOpen ? detailPanel : undefined}
+				bind:limit={liveListLimit}
 				{liveViewHref}
 			/>
 		{/if}
@@ -1081,7 +1092,7 @@
 		<Button
 			variant="outline"
 			size="sm"
-			class="map-in-view-button min-h-11 max-w-full"
+			class="map-in-view-button min-h-[var(--size-tap-min)] max-w-full py-[min(0.5rem,8px)]"
 			bind:ref={inViewTrigger}
 			wrap
 			onclick={() => {
@@ -1113,7 +1124,12 @@
 				}}
 			>
 				<SheetTitle>{viewLabel}</SheetTitle>
-				<div data-slot="bottom-sheet-body" class="min-h-0 overflow-y-auto">
+				<div
+					data-slot="bottom-sheet-body"
+					class="min-h-0 overflow-y-auto"
+					use:restoreInViewScroll
+					onscroll={(event) => (mobileScrollTop = event.currentTarget.scrollTop)}
+				>
 					{@render inViewPanel(recordContent)}
 				</div>
 			</SheetContent>
