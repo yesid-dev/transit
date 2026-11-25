@@ -16,6 +16,10 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		390: { height: 6000, beforeFigure: 3 },
 		1440: { height: 3500, beforeFigure: 3 },
 	},
+	'how-we-measure': {
+		390: { height: 7392, beforeFigure: 3 },
+		1440: { height: 4300, beforeFigure: 3 },
+	},
 };
 const { screens: debt }: { screens: Partial<Record<string, Report>> } = JSON.parse(
 	readFileSync(new URL('./design-pass-baseline.json', import.meta.url), 'utf8'),

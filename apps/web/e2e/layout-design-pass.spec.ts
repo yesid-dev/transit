@@ -25,6 +25,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.locator('html')).toHaveAttribute('lang', locale);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		await expect(page.getByRole('main')).toBeVisible();
+		if (screen === 'how-we-measure') {
+			await expect(page.locator('[data-record-disclosure]').first()).toBeVisible();
+		}
 		if (screen.startsWith('overview')) {
 			await expect(page.locator('[data-slot="record-ranking"] li')).toHaveCount(6);
 			await expect(page.locator('[data-slot="chart-line-series"]')).toBeVisible();
@@ -53,7 +56,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		const start = performance.now();
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
 		const { report, focusSequences } = await measureDesignPass(page, {
-			countShadowRings: screen.startsWith('overview') || screen === 'stop-record',
+			countShadowRings:
+				screen.startsWith('overview') || screen === 'stop-record' || screen === 'how-we-measure',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
