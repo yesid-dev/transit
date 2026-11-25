@@ -153,7 +153,7 @@ export function measureMapFocusInset(
 	let fitTop = rawTop;
 	// Short landscape viewports can fit to the left of a right-aligned title card.
 	const besideHeading = chrome.fitBesideHeading;
-	if (besideHeading && fitTop + fitBottom + 32 >= containerHeight) {
+	if (measuredSheetHeight === null && besideHeading && fitTop + fitBottom + 32 >= containerHeight) {
 		const right = Math.max(fitRight, besideHeading.right);
 		const left = Math.max(fitLeft, besideHeading.left);
 		const bottom = Math.max(0, rawBottom, besideHeading.bottom);
