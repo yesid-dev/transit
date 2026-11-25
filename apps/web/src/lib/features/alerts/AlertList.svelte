@@ -10,16 +10,14 @@
 	import { choose } from '#lib/features/record/recordText.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { alertPeriods, alertPaging } from '#lib/site/presenter.ts';
+	import { alertPaging } from '#lib/site/presenter.ts';
 	import {
 		agencyMessage,
-		alertAgencyLink,
-		alertEffect,
-		alertTarget,
-		sortAlertCards,
-		unstatedEffect,
-		type AlertCard,
-	} from './alertCards.ts';
+		agencyMessageLink,
+		agencyMessagePeriods,
+		sortAgencyMessages,
+	} from '#lib/site/agencyMessages.ts';
+	import { alertEffect, alertTarget, unstatedEffect, type AlertCard } from './alertCards.ts';
 
 	let {
 		cards,
@@ -60,7 +58,7 @@
 	);
 	const target = $derived(alertTarget(new URL(location.href)));
 	const filtered = $derived(
-		sortAlertCards(
+		sortAgencyMessages(
 			cards.filter(
 				(card) =>
 					(!line || card.routes.includes(line)) &&
@@ -127,8 +125,8 @@
 
 {#snippet item(card: AlertCard, anchorId: string | undefined)}
 	{@const { title, body } = agencyMessage(card, locale)}
-	{@const source = alertAgencyLink(card, locale)}
-	{@const periods = alertPeriods(card.periods, locale, timeZone, live)}
+	{@const source = agencyMessageLink(card, locale)}
+	{@const periods = agencyMessagePeriods(card.periods, locale, timeZone, live)}
 	<li
 		id={anchorId}
 		tabindex="-1"
@@ -148,15 +146,15 @@
 					{/each}
 				</div>
 			{/if}
-			<h3 class="min-w-0 wrap-break-word font-semibold" lang={title?.lang}>
-				{title?.text ?? t('Message without text', 'Avis sans texte')}
+			<h3 class="min-w-0 wrap-break-word font-semibold" lang={title.lang}>
+				{title.text}
 			</h3>
 		</div>
 		<div class="flex flex-wrap items-center gap-x-3 text-small text-muted-foreground">
 			{#if card.effect}
 				<p>{alertEffect(card.effect, locale)}.</p>
 			{/if}
-			{#if periods.length}<p>{periods.join(' ')}</p>{/if}
+			{#if periods.length}<p>{periods.join(live ? ' ' : ' · ')}</p>{/if}
 			{#if card.stops.length}
 				<div class="flex flex-wrap items-center gap-x-1">
 					<span>{t('Stops', 'Arrêts')}</span>

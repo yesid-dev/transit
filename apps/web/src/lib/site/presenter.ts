@@ -86,62 +86,6 @@ export function clockRange(start: string, end: string, locale: Locale, timeZone 
 	return [from, to].join('–');
 }
 
-type AlertPeriod = { start: string | null; end: string | null };
-
-function dayFirstDateAndClock(iso: string, locale: Locale, timeZone: string) {
-	const day = providerLocalDateKey(iso, timeZone);
-	if (!day) return presenterCopy[locale].unknownTime;
-	return `${dateRange({ from: day, to: day }, locale)}, ${clockTime(new Date(iso), locale, timeZone)}`;
-}
-
-export function alertPeriods(
-	periods: readonly AlertPeriod[],
-	locale: Locale,
-	timeZone = 'UTC',
-	live: boolean,
-) {
-	if (live) {
-		return [
-			...new Set(
-				periods.flatMap(({ start, end }) => {
-					const since = start && dayFirstDateAndClock(start, locale, timeZone);
-					const until = end && dayFirstDateAndClock(end, locale, timeZone);
-					return [
-						since && (locale === 'fr' ? `Depuis le ${since}.` : `Since ${since}.`),
-						until && (locale === 'fr' ? `Jusqu’au ${until}.` : `Until ${until}.`),
-					].filter((reading): reading is string => Boolean(reading));
-				}),
-			),
-		];
-	}
-	const ranges = periods
-		.flatMap(({ start, end }) => {
-			if (!start || !end) return [];
-			const span = { start: Date.parse(start), end: Date.parse(end) };
-			return Number.isFinite(span.start) && Number.isFinite(span.end) && span.end >= span.start
-				? [span]
-				: [];
-		})
-		.sort((a, b) => a.start - b.start);
-	const union: typeof ranges = [];
-	for (const span of ranges) {
-		const last = union.at(-1);
-		if (last && span.start - last.end < 10 * 60_000) last.end = Math.max(last.end, span.end);
-		else union.push(span);
-	}
-	return union.flatMap(({ start, end }) => {
-		const from = providerLocalDateKey(new Date(start).toISOString(), timeZone);
-		const to = providerLocalDateKey(new Date(Math.max(start, end - 1)).toISOString(), timeZone);
-		if (!from || !to) return [];
-		const days = dateRange({ from, to }, locale);
-		if (from !== to || providerLocalDateKey(new Date(end).toISOString(), timeZone) !== from)
-			return [days];
-		const first = clockTime(new Date(start), locale, timeZone);
-		const last = clockTime(new Date(end), locale, timeZone);
-		return [locale === 'fr' ? `${days}, de ${first} à ${last}` : `${days}, ${first} to ${last}`];
-	});
-}
-
 export function alertAnswerSentence(count: number, locale: Locale, live: boolean) {
 	if (locale === 'fr') {
 		if (live) return count === 1 ? `avis est en vigueur.` : `avis sont en vigueur.`;
@@ -309,54 +253,6 @@ export function reportPercent(value: number, locale: Locale) {
 			maximumFractionDigits: 1,
 		})
 		.format(value);
-}
-
-function agencyMessagePreview(text: string, locale: Locale) {
-	const segmenter = new Intl.Segmenter(locale, { granularity: 'sentence' });
-	return segmenter.segment(text.trim())[Symbol.iterator]().next().value?.segment.trim() ?? '';
-}
-
-export function agencyMessageHeading(
-	message: {
-		header: Record<Locale, string | null>;
-		description: Record<Locale, string | null>;
-	},
-	locale: Locale,
-) {
-	const other = locale === 'fr' ? 'en' : 'fr';
-	const headingLanguage = message.header[locale]?.trim() ? locale : other;
-	const heading = message.header[headingLanguage]?.trim();
-	const textLanguage = message.description[locale]?.trim() ? locale : other;
-	const preview = agencyMessagePreview(message.description[textLanguage] ?? '', textLanguage);
-	const generic = /^(?:your (?:line|stop)|votre (?:ligne|arrêt))[\s.!:…]*$/iu;
-	if (heading && !generic.test(heading)) {
-		return { title: heading, language: headingLanguage, preview, previewLanguage: textLanguage };
-	}
-	if (preview) return { title: preview, language: textLanguage };
-	return { title: locale === 'fr' ? 'Avis de l’agence' : 'Agency message', language: locale };
-}
-
-export function agencyMessageDates(
-	periods: readonly { start: string; end: string }[],
-	locale: Locale,
-	timeZone?: string,
-) {
-	const ranges = periods.flatMap(({ start, end }) => {
-		const exclusiveEnd = Date.parse(end);
-		if (exclusiveEnd <= Date.parse(start)) return [];
-		const from = providerLocalDateKey(start, timeZone);
-		const to = providerLocalDateKey(new Date(exclusiveEnd - 1).toISOString(), timeZone);
-		return from && to ? [{ from, to }] : [];
-	});
-	ranges.sort((a, b) => a.from.localeCompare(b.from));
-	const merged: typeof ranges = [];
-	for (const range of ranges) {
-		const prior = merged.at(-1);
-		if (prior && range.from <= prior.to) {
-			if (range.to > prior.to) prior.to = range.to;
-		} else merged.push(range);
-	}
-	return merged.map((range) => dateRange(range, locale)).join(' · ');
 }
 
 export function fileSize(bytes: number | null | undefined, locale: Locale): string | null {

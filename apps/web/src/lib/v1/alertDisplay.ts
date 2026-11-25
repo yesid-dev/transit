@@ -129,7 +129,12 @@ const GENERIC_ALERT_HEADERS = new Set([
 ]);
 
 export function isGenericAlertHeading(text: string) {
-	return GENERIC_ALERT_HEADERS.has(text.trim().toLowerCase().replace(/[.:]$/, ''));
+	return GENERIC_ALERT_HEADERS.has(
+		text
+			.trim()
+			.toLowerCase()
+			.replace(/[\s.!:…]+$/u, ''),
+	);
 }
 
 export function stripAlertHtml(value: string): string {

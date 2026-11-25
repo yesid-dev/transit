@@ -1,83 +1,16 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
-import {
-	alertDisplayUrl,
-	isGenericAlertHeading,
-	safeAlertUrl,
-	stripAlertHtml,
-} from '#lib/v1/alertDisplay.ts';
+import type { AgencyMessage, AgencyMessagePeriod } from '#lib/site/agencyMessages.ts';
 import { effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
 import type { Alert } from '#lib/v1/schemas/alerts.ts';
 
-type Translation = Partial<Record<Locale, string | null>>;
-export type AlertCard = {
+export type AlertCard = AgencyMessage & {
 	key: string;
 	id: string;
-	routes: readonly string[];
 	stops: readonly string[];
-	header: Translation;
-	description: Translation;
-	url?: Translation;
 	effect: string | null;
-	periods: readonly { start: string | null; end: string | null }[];
+	periods: readonly AgencyMessagePeriod[];
 };
-
-function translation(text: Translation, locale: Locale) {
-	const other: Locale = locale === 'en' ? 'fr' : 'en';
-	const preferred = text[locale];
-	const fallback = text[other];
-	if (preferred?.trim()) return { text: preferred, lang: locale };
-	if (fallback?.trim()) return { text: fallback, lang: other };
-	return null;
-}
-
-function agencyText(translations: Translation, locale: Locale) {
-	const selected = translation(translations, locale);
-	if (!selected) return null;
-	if (!/<\/?[a-z][^>]*>|&(?:nbsp|amp|quot|#39|lt|gt);/i.test(selected.text)) return selected;
-	const text = selected.text
-		.replace(/<(?:br\b[^>]*|\/(?:p|div|li|h[1-6])\s*)>/gi, '\n')
-		.split(/\r?\n/)
-		.map(stripAlertHtml)
-		.filter(Boolean)
-		.join('\n');
-	return text ? { text, lang: selected.lang } : null;
-}
-
-const sentenceSegments = {
-	en: new Intl.Segmenter('en', { granularity: 'sentence' }),
-	fr: new Intl.Segmenter('fr', { granularity: 'sentence' }),
-};
-
-export function agencyMessage(card: AlertCard, locale: Locale) {
-	const heading = agencyText(card.header, locale);
-	const other = locale === 'en' ? 'fr' : 'en';
-	const alternate = agencyText({ [other]: card.header[other] }, other);
-	const title = [heading, alternate].find(
-		(reading) => reading && !isGenericAlertHeading(reading.text),
-	);
-	const description = agencyText(card.description, locale);
-	if (!description) return { title, body: null };
-
-	const lines = description.text.trim().split(/\r?\n/);
-	while (lines.length && (!lines[0].trim() || isGenericAlertHeading(lines[0]))) lines.shift();
-	const text = lines.join('\n').trim();
-	if (!text) return { title, body: null };
-	const first =
-		sentenceSegments[description.lang]
-			.segment(lines[0])
-			[Symbol.iterator]()
-			.next()
-			.value?.segment.trim() ?? lines[0].trim();
-	const sameHeading =
-		title?.lang === description.lang &&
-		title.text.trim().replace(/[.!?]$/, '') === first.replace(/[.!?]$/, '');
-	const body = title && !sameHeading ? text : text.slice(first.length).trimStart();
-	return {
-		title: title ?? { text: first, lang: description.lang },
-		body: body ? { text: body, lang: description.lang } : null,
-	};
-}
 
 export const unstatedEffect = 'UNKNOWN_EFFECT';
 
@@ -88,47 +21,6 @@ export function publishedAlertEffect(effect: string | null | undefined) {
 
 export function alertEffect(effect: string | null, locale: Locale) {
 	return effectLabel(effect, locale) ?? (locale === 'fr' ? 'Non précisé' : 'Not stated');
-}
-
-export function alertAgencyLink(card: AlertCard, locale: Locale) {
-	const link = translation(card.url ?? {}, locale);
-	const url = safeAlertUrl(link?.text);
-	if (url && link) return { href: url.href, lang: link.lang };
-	const body = translation(card.description, locale);
-	const embedded = alertDisplayUrl({ description: body?.text }, locale);
-	return embedded && body ? { href: embedded.href, lang: body.lang } : null;
-}
-
-export function sortAlertCards(
-	cards: readonly AlertCard[],
-	locale: Locale,
-	lineLabel: (id: string) => string,
-) {
-	const collator = new Intl.Collator(locale, { numeric: true });
-	return cards
-		.map((card) => ({
-			card,
-			start: firstStart(card),
-			line: card.routes[0] ? lineLabel(card.routes[0]) : null,
-			message: agencyMessage(card, locale),
-		}))
-		.sort(
-			(a, b) =>
-				b.start - a.start ||
-				Number(a.line === null) - Number(b.line === null) ||
-				collator.compare(a.line ?? '', b.line ?? '') ||
-				collator.compare(a.message.title?.text ?? '', b.message.title?.text ?? '') ||
-				collator.compare(a.message.body?.text ?? '', b.message.body?.text ?? ''),
-		)
-		.map(({ card }) => card);
-}
-
-function firstStart(card: AlertCard) {
-	const start = card.periods.reduce(
-		(earliest, period) => (period.start ? Math.min(earliest, Date.parse(period.start)) : earliest),
-		Infinity,
-	);
-	return start === Infinity ? -Infinity : start;
 }
 
 export function recordAlertCards(

@@ -1,15 +1,9 @@
-import {
-	getRecordAnswer,
-	query,
-	type EnginePeriod,
-	type RecordMeasure,
-	type RecordQuery,
-} from './engine.ts';
+import { getRecordAnswer, query, type EnginePeriod, type RecordQuery } from './engine.ts';
 import { cityQuestion } from './engineQuestion.ts';
 import { captureTripScopeSchema } from '#lib/live/captureSnapshot.ts';
 import type { DepartureIdentity } from '#lib/features/record/departureIdentity.ts';
 import type { Locale } from '#lib/i18n/copy.ts';
-import { agencyMessageHeading } from '#lib/site/presenter.ts';
+import { sortAgencyMessages } from '#lib/site/agencyMessages.ts';
 import { dailyQuestions } from './screenQuestions.ts';
 export { dailyQuery, type DailySection } from './screenQuestions.ts';
 
@@ -41,35 +35,12 @@ export function departureDay(params: URLSearchParams, { from, to }: { from: stri
 	return Number.isFinite(+date) && date.toISOString().slice(0, 10) === day ? day : to;
 }
 
-function newestMessages(
-	messages: NonNullable<RecordMeasure['evidence']['alert_messages']>,
+export function loadDailyRecord(
+	period: EnginePeriod,
+	tracked: boolean,
 	locale: Locale,
+	lineNumber: (id: string) => string,
 ) {
-	const natural = new Intl.Collator(locale, { numeric: true });
-	return messages
-		.map((message) => ({
-			message,
-			start: message.periods?.length
-				? Math.min(...message.periods.map(({ start }) => Date.parse(start)))
-				: -Infinity,
-			line: message.routes[0],
-			text: agencyMessageHeading(message, locale).title,
-		}))
-		.sort((a, b) => {
-			if (a.start !== b.start) return b.start - a.start;
-			if (a.line !== b.line) {
-				if (a.line == null) return 1;
-				if (b.line == null) return -1;
-				const lineOrder = natural.compare(a.line, b.line);
-				if (lineOrder) return lineOrder;
-			}
-			return natural.compare(a.text, b.text);
-		})
-		.slice(0, 5)
-		.map(({ message }) => message);
-}
-
-export function loadDailyRecord(period: EnginePeriod, tracked: boolean, locale: Locale) {
 	const { questions, messagesLimited } = dailyQuestions(period);
 	if (messagesLimited) {
 		questions.push({
@@ -94,7 +65,11 @@ export function loadDailyRecord(period: EnginePeriod, tracked: boolean, locale: 
 							...result.answer,
 							evidence: {
 								...evidence,
-								alert_messages: newestMessages(evidence.alert_messages, locale),
+								alert_messages: sortAgencyMessages(
+									evidence.alert_messages,
+									locale,
+									lineNumber,
+								).slice(0, 5),
 							},
 						},
 					};
