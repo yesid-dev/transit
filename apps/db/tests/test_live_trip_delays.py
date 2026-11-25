@@ -71,7 +71,9 @@ def schedule(tmp_path, day=DAY, first=90600, stop_time=90900):
                 ("T", 7, "loop", stop_time + 540, stop_time + 560),
             ],
         )
-    return {day: DaySchedule(path, {"T": TripSpan("T", "A", first, stop_time + 540, 0)})}
+    return {
+        day: DaySchedule(path, {"T": TripSpan("T", "A", first, stop_time + 540, 0, "Terminus Est")})
+    }
 
 
 @pytest.mark.parametrize(
@@ -213,6 +215,7 @@ def test_expired_reported_call_cannot_supply_a_delay(tmp_path, following, expect
     assert positions[0]["delay"] == expected
     assert trips[0]["stops"][0]["arrival"] == old["arrival"]
     assert trips[0]["stops"][0]["arrival_delay"] is None
+    assert trips[0]["stops"][0]["scheduled_arrival"] == EXPECTED
     assert coverage == {reason: 1}
 
 
@@ -240,6 +243,8 @@ def test_stale_trip_feed_clears_vehicle_and_stop_delay(tmp_path):
     assert positions[0]["delay"] is None
     assert trips[0]["delay"] is None
     assert trips[0]["stops"][0]["arrival_delay"] is None
+    assert trips[0]["stops"][0]["scheduled_arrival"] == EXPECTED
+    assert trips[0]["trip_headsign"] == "Terminus Est"
 
 
 @pytest.mark.parametrize("difference", [-61, -60, 0, 300, 301])
@@ -322,7 +327,7 @@ def test_elapsed_schedule_handles_clock_changes(tmp_path, day, utc_arrival, sche
         **report(call(arrival=int(utc_arrival.timestamp()) + 42), day=day.strftime("%Y%m%d")),
         "observed_at": int(instant.timestamp()),
     }
-    positions, _ = reconcile_delays(
+    positions, trips = reconcile_delays(
         [vehicle],
         [update],
         schedule(tmp_path, day, scheduled - 60, scheduled),
@@ -331,6 +336,8 @@ def test_elapsed_schedule_handles_clock_changes(tmp_path, day, utc_arrival, sche
         update_window=90,
     )
     assert positions[0]["delay"] == 42
+    assert trips[0]["stops"][0]["scheduled_arrival"] == int(utc_arrival.timestamp())
+    assert trips[0]["stops"][0]["scheduled_departure"] == int(utc_arrival.timestamp()) + 30
 
 
 @pytest.mark.parametrize("hint", ["20261124", "20261125"])
@@ -348,6 +355,7 @@ def test_midnight_position_and_update_use_running_service_day(tmp_path, hint):
         update_window=90,
     )
     assert positions[0]["delay"] == trips[0]["stops"][0]["arrival_delay"] == 45
+    assert trips[0]["stops"][0]["scheduled_arrival"] == predicted - 45
 
 
 @pytest.mark.parametrize(
@@ -409,3 +417,66 @@ def test_delays_beyond_cleaner_sanity_bound_are_never_published(tmp_path, arriva
     assert (
         positions[0]["delay"] is trips[0]["delay"] is trips[0]["stops"][0]["arrival_delay"] is None
     )
+    assert trips[0]["stops"][0]["scheduled_arrival"] == EXPECTED
+
+
+def test_timetable_times_follow_the_matched_stop_even_without_delay(tmp_path):
+    update = report(
+        call(sequence=6, stop="loop"),
+        call(sequence=7, stop=None),
+        call(sequence=None, stop="loop"),
+        call(sequence=7, stop="next"),
+        call(sequence=3, status=1),
+        call(sequence=4, stop="next", status=2),
+        call(sequence=5, stop="terminus"),
+    )
+    _, trips = reconcile_delays(None, [update], schedule(tmp_path), ZONE, NOW, update_window=90)
+    assert [
+        (stop["stop_id"], stop["scheduled_arrival"], stop["scheduled_departure"])
+        for stop in trips[0]["stops"]
+    ] == [
+        ("loop", EXPECTED + 420, EXPECTED + 440),
+        ("loop", EXPECTED + 540, EXPECTED + 560),
+        ("loop", None, None),
+        ("next", None, None),
+        ("stop", EXPECTED, EXPECTED + 30),
+        ("next", EXPECTED + 120, EXPECTED + 150),
+        ("terminus", EXPECTED + 300, None),
+    ]
+    assert all(stop["arrival_delay"] is None for stop in trips[0]["stops"])
+
+
+@pytest.mark.parametrize(
+    ("updates", "headsign", "planned"),
+    [
+        ([report(call(), trip="absent")], None, None),
+        ([report(call(), status=1)], None, None),
+        ([report(call(), status=6)], None, None),
+        ([report(call()), report(call())], None, None),
+        ([report(call(status=1), status=3)], "Terminus Est", EXPECTED),
+    ],
+    ids=["unknown trip", "added", "duplicated service", "duplicate update", "cancelled"],
+)
+def test_only_unique_dated_timetable_matches_supply_metadata(tmp_path, updates, headsign, planned):
+    _, trips = reconcile_delays(None, updates, schedule(tmp_path), ZONE, NOW, update_window=90)
+    for trip in trips:
+        assert (trip["trip_headsign"], trip["delay"]) == (headsign, None)
+        assert trip["stops"][0]["scheduled_arrival"] == planned
+
+
+@pytest.mark.parametrize(
+    "descriptor",
+    [{"direction_id": 1}, {"start_time": "25:10:00", "direction_id": None}],
+    ids=["direction-without-start-time", "start-time-without-direction"],
+)
+def test_timetable_matches_feed_descriptor_shapes(tmp_path, descriptor):
+    update = {
+        **report(call(arrival=EXPECTED + 15), delay=15),
+        **descriptor,
+    }
+    _, trips = reconcile_delays(None, [update], schedule(tmp_path), ZONE, NOW, update_window=90)
+    [trip] = trips
+    [stop] = trip["stops"]
+    assert trip["trip_headsign"] == "Terminus Est"
+    assert stop["scheduled_arrival"] == EXPECTED
+    assert stop["arrival"] - stop["scheduled_arrival"] == stop["arrival_delay"] == 15

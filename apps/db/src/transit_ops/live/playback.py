@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sqlite3
+import sys
 import time
 from collections import Counter
 from collections.abc import Iterator
@@ -364,17 +365,37 @@ class LivePublisher:
             yield LiveTripSchedule(self.manifest, self.raw, self.prefix, executor, Path(workspace))
 
     def inspect_delays(self, now: datetime) -> dict[str, object]:
+        started = time.perf_counter()
         snapshot = self.poll(now)
+        feeds = cast(dict[str, dict[str, Any]], snapshot["feeds"])
         coverage: Counter[str] = Counter()
         reporting = TripReporting(self.manifest.provider.live_source_lag_seconds)
         with self._schedule_workspace() as schedule:
             result = _scheduled_snapshot(
                 snapshot, schedule, reporting, now, wait=True, coverage=coverage
             )
+            trip_feed = next(
+                (feed for feed in feeds.values() if feed["family"] == "trip_updates"), None
+            )
+            updates = cast(list[dict[str, Any]] | None, result["trip_updates"])
+            positions = cast(list[dict[str, Any]] | None, result["vehicle_positions"])
+            publication = None
+            if updates is not None and trip_feed is not None and trip_feed["captured_at"]:
+                publication = _inspect_trip_publication(
+                    schedule.workspace,
+                    self.manifest.provider.provider_id,
+                    trip_feed,
+                    updates,
+                    positions,
+                )
+        peak_rss_kib = None
+        if sys.platform == "linux":
+            import resource
+
+            peak_rss_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         identified = coverage.total()
         with_delay = coverage.pop("delay", 0)
-        feeds = cast(dict[str, dict[str, Any]], snapshot["feeds"])
-        positions = cast(list[dict[str, Any]] | None, result["vehicle_positions"]) or []
+        positions = positions or []
         return {
             "city": snapshot["city"],
             "sampled_at": _iso(now),
@@ -394,6 +415,9 @@ class LivePublisher:
             "max_abs_delay_seconds": max(
                 (abs(row["delay"]) for row in positions if row["delay"] is not None), default=None
             ),
+            "trip_publication": publication,
+            "process_peak_rss_kib": peak_rss_kib,
+            "inspect_seconds": round(time.perf_counter() - started, 3),
         }
 
     def run(
@@ -587,7 +611,7 @@ def _publish_trip_scopes(
     feed: dict[str, object],
     updates: list[dict[str, object]],
     vehicles: list[dict[str, object]] | None,
-) -> None:
+) -> tuple[int, int]:
     scoped = trip_partitions(updates, vehicles)
     if len(scoped.body) > MAX_TRIP_BUNDLE_BYTES:
         raise ValueError("Live trips exceed the publication size limit")
@@ -614,6 +638,58 @@ def _publish_trip_scopes(
     if len(index) > MAX_SNAPSHOT_BYTES:
         raise ValueError("Live trip index exceeds the publication size limit")
     _publish(destination, f"{trip_prefix}.json", index)
+    return len(scoped.body), len(index)
+
+
+def _inspect_trip_publication(
+    workspace: Path,
+    city: str,
+    feed: dict[str, Any],
+    updates: list[dict[str, Any]],
+    vehicles: list[dict[str, Any]] | None,
+) -> dict[str, object]:
+    started = time.perf_counter()
+    updates = _public_trip_updates(updates, feed)
+    dest = LocalBronzeStorage("inspect", workspace / "publication")
+    bundle, index = _publish_trip_scopes(dest, "", city, feed, updates, vehicles)
+    seconds = round(time.perf_counter() - started, 3)
+    stops = 0
+    scheduled = 0
+    samples = {}
+    for trip in updates:
+        for stop in trip["stops"]:
+            stops += 1
+            scheduled += int(
+                stop.get("scheduled_arrival") is not None
+                or stop.get("scheduled_departure") is not None
+            )
+            trip_id = trip["trip_id"]
+            if len(samples) == 5 or trip_id in samples:
+                continue
+            for event in ("arrival", "departure"):
+                predicted, delay = stop[event], stop[f"{event}_delay"]
+                planned = stop.get(f"scheduled_{event}")
+                if planned is not None and predicted is not None and predicted - planned == delay:
+                    samples[trip_id] = {
+                        "trip_id": trip_id,
+                        "stop_id": stop["stop_id"],
+                        "sequence": stop["sequence"],
+                        "event": event,
+                        "predicted": predicted,
+                        "scheduled": planned,
+                        "delay": delay,
+                    }
+                    break
+    return {
+        "trips": len(updates),
+        "stops": stops,
+        "stops_with_schedule": scheduled,
+        "trips_with_headsign": sum(trip.get("trip_headsign") is not None for trip in updates),
+        "bundle_bytes": bundle,
+        "index_bytes": index,
+        "publication_seconds": seconds,
+        "samples": list(samples.values()),
+    }
 
 
 def main() -> None:

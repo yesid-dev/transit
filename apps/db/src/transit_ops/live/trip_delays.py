@@ -7,7 +7,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from transit_ops.gold.vehicle_instance_rule import SANITY_DELAY_SECONDS
-from transit_ops.live.trip_instances import LiveTripInstances
+from transit_ops.live.trip_instances import REMOVED_TRIPS, LiveTripInstances
 from transit_ops.live.trip_schedule import DaySchedule, Stop
 
 type Row = dict[str, Any]
@@ -15,8 +15,9 @@ type Identity = tuple[date, str]
 
 
 def _with_scheduled_calls(
-    stops: list[Row], calls: list[Stop], anchor: int, feed_delay: int | None, expiry: float
+    stops: list[Row], calls: list[Stop], anchor: int, feed_delay: int | None, expiry: float | None
 ) -> tuple[list[Row], list[Row]]:
+    """Keep timetable calls for skipped and no-data stops while suppressing their delay."""
     by_sequence = {call[0]: call for call in calls}
     by_stop: dict[str, Stop | None] = {}
     for call in calls:
@@ -27,32 +28,48 @@ def _with_scheduled_calls(
     for stop in stops:
         seq, stop_id = stop["sequence"], stop["stop_id"]
         call = by_sequence.get(seq) if seq is not None else by_stop.get(stop_id)
-        if (
-            call is None
-            or (stop_id is not None and stop_id != call[1])
-            or stop["relationship"] in (1, 2)
-        ):
-            projected.append({**stop, "arrival_delay": None, "departure_delay": None})
+        if call is None or (stop_id is not None and stop_id != call[1]):
+            projected.append(_without_scheduled_call(stop))
+            continue
+
+        arrival, departure = call[2:]
+        updated = {
+            **stop,
+            "stop_id": call[1],
+            "sequence": call[0],
+            "scheduled_arrival": None if arrival is None else anchor + arrival,
+            "scheduled_departure": None if departure is None else anchor + departure,
+        }
+        if expiry is None or stop["relationship"] in (1, 2):
+            updated.update(arrival_delay=None, departure_delay=None)
         else:
-            updated = _delay_for_stop(stop, call, anchor, feed_delay, expiry)
-            projected.append(updated)
+            _set_stop_delays(updated, feed_delay, expiry)
             matched.append(updated)
+        projected.append(updated)
     return projected, matched
 
 
-def _delay_for_stop(
-    stop: Row, call: Stop, anchor: int, feed_delay: int | None, expiry: float
-) -> Row:
-    updated = {**stop, "stop_id": call[1], "sequence": call[0]}
+def _without_scheduled_call(stop: Row) -> Row:
+    return {
+        **stop,
+        "arrival_delay": None,
+        "departure_delay": None,
+        "scheduled_arrival": None,
+        "scheduled_departure": None,
+    }
+
+
+def _set_stop_delays(stop: Row, feed_delay: int | None, expiry: float) -> None:
     if _expired(stop, expiry):
-        return {**updated, "arrival_delay": None, "departure_delay": None}
-    for field, scheduled in (("arrival", call[2]), ("departure", call[3])):
+        stop.update(arrival_delay=None, departure_delay=None)
+        return
+    for field in ("arrival", "departure"):
         delay = stop[f"{field}_delay"]
         predicted = stop[field]
+        scheduled = stop[f"scheduled_{field}"]
         if delay is None and predicted is not None and scheduled is not None:
-            delay = feed_delay if feed_delay is not None else predicted - (anchor + scheduled)
-        updated[f"{field}_delay"] = _bounded_delay(delay)
-    return updated
+            delay = feed_delay if feed_delay is not None else predicted - scheduled
+        stop[f"{field}_delay"] = _bounded_delay(delay)
 
 
 def _first_prediction(stops: list[Row], now: float) -> Row | None:
@@ -156,7 +173,7 @@ def reconcile_delays(
     instances: LiveTripInstances | None = None,
     positions_captured: datetime | None = None,
 ) -> tuple[list[Row] | None, list[Row] | None]:
-    """Enrich current scheduled reports; retain unmatched positions and absolute ETAs."""
+    """Attach dated timetable evidence and use fresh scheduled updates for delays."""
     instant = now.timestamp()
     expiry = instant - update_window
     instances = instances or LiveTripInstances(
@@ -168,7 +185,7 @@ def reconcile_delays(
     for row in updates or []:
         instance = (
             instances.resolve(row, now, update=True)[0]
-            if update_window and row["relationship"] == 0
+            if row["relationship"] == 0 or row["relationship"] in REMOVED_TRIPS
             else None
         )
         identities.append((instance.service_date, instance.trip_id) if instance else None)
@@ -183,14 +200,29 @@ def reconcile_delays(
     for row, key in zip(updates or [], identities, strict=True):
         usable = []
         raw_stops = row.get("stops", [])
+        headsign = None
         # Reject duplicate updates for the same dated trip, not the whole feed.
         if key is not None and occurrences[key] == 1:
             day, trip = key
+            headsign = days[day].trips[trip].headsign
+            delay_is_eligible = update_window and row["relationship"] == 0
             stops, usable = _with_scheduled_calls(
-                raw_stops, calls[day][trip], anchors[day], row["delay"], expiry
+                raw_stops,
+                calls[day][trip],
+                anchors[day],
+                row.get("delay"),
+                expiry if delay_is_eligible else None,
             )
+            if delay_is_eligible:
+                matched[key] = {
+                    "matched": usable,
+                    "delay": _bounded_delay(row["delay"]),
+                    "skipped": [
+                        stop["sequence"] for stop in raw_stops if stop["relationship"] == 1
+                    ],
+                }
         else:
-            stops = [{**stop, "arrival_delay": None, "departure_delay": None} for stop in raw_stops]
+            stops = [_without_scheduled_call(stop) for stop in raw_stops]
         selected = _first_prediction(usable, instant)
         delay = None
         if selected is not None:
@@ -199,12 +231,6 @@ def reconcile_delays(
                 delay = selected["arrival_delay"]
                 if delay is None:
                     delay = selected["departure_delay"]
-        if key is not None and occurrences[key] == 1:
-            matched[key] = {
-                "matched": usable,
-                "delay": _bounded_delay(row["delay"]),
-                "skipped": [stop["sequence"] for stop in raw_stops if stop["relationship"] == 1],
-            }
         projected.append(
             {
                 **{
@@ -214,6 +240,7 @@ def reconcile_delays(
                 },
                 "stops": stops,
                 "delay": delay,
+                "trip_headsign": headsign,
             }
         )
 
@@ -222,7 +249,7 @@ def reconcile_delays(
         instance, ambiguous = instances.resolve(vehicle, positions_captured or now)
         key = (instance.service_date, instance.trip_id) if instance else None
         delay = None
-        if ambiguous or (key is not None and occurrences[key] > 1):
+        if ambiguous or (update_window and key is not None and occurrences[key] > 1):
             reason = "ambiguous"
         elif key is None:
             reason = "no_schedule"

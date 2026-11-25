@@ -7,12 +7,16 @@ function tripAtStop(stopId, report) {
   const [
     trip_id, route_id, direction_id, start_date, start_time, relationship, delay,
     sequence, arrival, departure, arrival_delay, departure_delay, stopRelationship,
+    scheduled_arrival, scheduled_departure, trip_headsign,
   ] = report;
+  // JSON omits undefined fields when reading an older stop range.
   return {
     trip_id, route_id, direction_id, start_date, start_time, relationship, delay,
+    trip_headsign,
     stops: [{
       stop_id: stopId, sequence, arrival, departure, arrival_delay, departure_delay,
       relationship: stopRelationship,
+      scheduled_arrival, scheduled_departure,
     }],
   };
 }

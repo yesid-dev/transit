@@ -32,6 +32,7 @@ const vehicle = z.object({
 
 const tripUpdate = z.object({
 	trip_id: z.string(),
+	trip_headsign: text.optional(),
 	route_id: text,
 	direction_id: ordinal,
 	start_date: text,
@@ -44,6 +45,8 @@ const tripUpdate = z.object({
 			sequence: ordinal,
 			arrival: ordinal,
 			departure: ordinal,
+			scheduled_arrival: ordinal.optional(),
+			scheduled_departure: ordinal.optional(),
 			arrival_delay: reading,
 			departure_delay: reading,
 			relationship: z.int(),

@@ -119,10 +119,13 @@ test("private live objects and cached answers are as inaccessible as unknown cit
 
 test("reads only the ranges for a live scope and rejects mixed publications", async (t) => {
   const f = fixture(t);
-  const first = [{ trip_id: "t1", route_id: "a/b", stops: [{ stop_id: "s" }, { stop_id: "other" }] }];
+  const first = [{
+    trip_id: "t1", route_id: "a/b", trip_headsign: "Terminus Est",
+    stops: [{ stop_id: "s", scheduled_arrival: null, scheduled_departure: 120 }, { stop_id: "other" }],
+  }];
   const second = { trip_id: "t2", route_id: null, stops: [{ stop_id: "s" }] };
   const stopCalls = [
-    ["t1", "a/b", null, null, null, 0, null, 1, null, 123, null, 0, 0],
+    ["t1", "a/b", null, null, null, 0, null, 1, null, 123, null, 0, 0, null, 120, "Terminus Est"],
     ["t2", null, null, null, null, 0, null, 1, null, 124, null, null, 0],
   ];
   const chunks = [first, second, stopCalls].map((value) => Buffer.from(JSON.stringify(value)));
@@ -166,6 +169,20 @@ test("reads only the ranges for a live scope and rejects mixed publications", as
   const stop = await (await f.fetch(base + "?stop=s")).json();
   assert.deepEqual(stop.trip_updates.map(({ trip_id, stops }) => [trip_id, stops[0].stop_id, stops[0].departure]),
     [["t1", "s", 123], ["t2", "s", 124]]);
+  assert.equal(stop.trip_updates[0].trip_headsign, "Terminus Est");
+  assert.deepEqual(stop.trip_updates[0].stops[0], {
+    stop_id: "s", sequence: 1, arrival: null, departure: 123,
+    arrival_delay: null, departure_delay: 0, relationship: 0,
+    scheduled_arrival: null, scheduled_departure: 120,
+  });
+  assert.deepEqual(stop.trip_updates[1], {
+    trip_id: "t2", route_id: null, direction_id: null, start_date: null, start_time: null,
+    relationship: 0, delay: null,
+    stops: [{
+      stop_id: "s", sequence: 1, arrival: null, departure: 124,
+      arrival_delay: null, departure_delay: null, relationship: 0,
+    }],
+  });
   assert.deepEqual(ranges, [0, chunks[0].length + chunks[1].length]);
   const trip = await (await f.fetch(base + "?trip=t2")).json();
   assert.deepEqual(trip.trip_updates, [second]);

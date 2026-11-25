@@ -86,6 +86,25 @@ const scoped = captureTripScopeSchema.parse({
 });
 
 describe('capture-backed Live projection', () => {
+	it('retains optional timetable values in live trip scopes', () => {
+		const [trip] = scoped.trip_updates;
+		const update = {
+			...trip,
+			trip_headsign: 'Terminus Est',
+			stops: [
+				{
+					...trip.stops[0],
+					scheduled_arrival: null,
+					scheduled_departure: now / 1000 + 300,
+				},
+			],
+		};
+		expect(
+			captureTripScopeSchema.parse({ ...scoped, trip_updates: [update] }).trip_updates,
+		).toEqual([update]);
+		expect(captureTripScopeSchema.parse(scoped)).toEqual(scoped);
+	});
+
 	it('projects optional silent rows and evidence while the prior reader drops added facts', () => {
 		const current = {
 			...snapshot,

@@ -245,7 +245,11 @@ def install_edition(raw_root, city, *, pinned=True):
         archive.writestr("routes.txt", "route_id,route_type\nA,3\nB,3\nC,1\nD,3\n")
         archive.writestr(
             "trips.txt",
-            "trip_id,route_id,service_id\n" + "".join(",".join(row) + "\n" for row in trip_rows),
+            "trip_id,route_id,service_id,trip_headsign\n"
+            + "".join(
+                f"{trip},{route},{service},{'Terminus Est' if trip == 'reporting' else ''}\n"
+                for trip, route, service in trip_rows
+            ),
         )
         archive.writestr(
             "stop_times.txt",
@@ -375,8 +379,25 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
     start, length = scoped_index["ranges"]["trip:reporting"]
     update = json.loads(packed[start : start + length])
     assert update["stops"][0]["arrival_delay"] == (301 if edition else None)
+    assert update["trip_headsign"] == ("Terminus Est" if edition else None)
+    assert update["stops"][0]["scheduled_arrival"] == (
+        int(datetime(2026, 11, 24, 18, tzinfo=UTC).timestamp()) if edition else None
+    )
+    start, length = scoped_index["ranges"]["stop:end"]
+    [packed_call] = json.loads(packed[start : start + length])
+    stop = update["stops"][0]
+    assert packed_call[13:] == [
+        stop["scheduled_arrival"],
+        stop["scheduled_departure"],
+        update["trip_headsign"],
+    ]
     assert published["vehicle_positions"][0]["delay"] == (301 if edition and identified else None)
     coverage = publisher.inspect_delays(NOON)
+    publication = coverage["trip_publication"]
+    assert publication["bundle_bytes"] == len(packed)
+    assert publication["index_bytes"] == len(dest.read_bytes(f"live/v2/{city}/trips.json"))
+    assert publication["stops_with_schedule"] == int(edition)
+    assert publication["trips_with_headsign"] == int(edition)
     assert coverage["vehicles_with_trip"] == int(identified)
     assert coverage["vehicles_with_delay"] == int(edition and identified)
     assert coverage["without_delay"] == ({"no_schedule": 1} if identified and not edition else {})
