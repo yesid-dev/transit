@@ -186,9 +186,10 @@ test('a ranked departure links to its exact line, direction, time and range', as
 	await page.goto(
 		'/fr/rankings?kind=departure&provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14',
 	);
-	const ranking = page.getByRole('region', { name: 'Départs', exact: true });
-	const link = ranking.getByRole('link', { name: /07:15/ }).first();
+	const ranking = page.getByRole('table', { name: 'Départs', exact: true });
+	const link = ranking.getByRole('link', { name: /07:15 vers West B9/ });
 	await expect(link).toBeVisible();
+	await expect(ranking.getByRole('img', { name: /38,0\s*% à 58,0\s*%/u })).toBeVisible();
 	const target = new URL((await link.getAttribute('href'))!, page.url());
 	expect(decodeURIComponent(target.pathname)).toBe('/fr/departure/["24",0,"07:15:00"]');
 	expect(target.searchParams.get('provider')).toBe('stm');
