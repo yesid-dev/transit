@@ -237,7 +237,7 @@
 							{#if result.kind === 'answer'}
 								{@const display = grid(result.answer)}
 								{#if display.from && display.to && display.rows.length}
-									<div class="table-days">
+									<div>
 										<HourGrid
 											label={dailyTitle}
 											columns={display.columns}
@@ -329,6 +329,9 @@
 						{:else if result.answer.length}
 							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 							{#snippet version(row: RecordTableRow & { version: string })}{row.version}{/snippet}
+							{#snippet since(row: RecordTableRow & { since: string })}
+								<time datetime={row.since}>{longDate(row.since, locale)}</time>
+							{/snippet}
 							<RecordDataTable
 								{locale}
 								title={t('Versions in force', 'Versions en vigueur')}
@@ -337,9 +340,13 @@
 									id: entry.family,
 									label: entry.family_text?.[locale] ?? entry.family,
 									href: `${methodHref}#${entry.id}`,
-									version: `${t('method', 'méthode')} ${versionNumber(entry.method_version)}, ${t('since', 'depuis le')} ${longDate(entry.since, locale)}`,
+									version: versionNumber(entry.method_version) ?? labels.unknown,
+									since: entry.since,
 								}))}
-								columns={[{ key: 'version', header: t('Version', 'Version'), cell: version }]}
+								columns={[
+									{ key: 'version', header: t('Version', 'Version'), cell: version },
+									{ key: 'since', header: t('Since', 'Depuis le'), cell: since },
+								]}
 								value="version"
 							/>
 						{:else}<StateMark state="not_measured" {locale} />{/if}
@@ -414,9 +421,5 @@
 <style>
 	.table-days-answer :global(.answer-value) {
 		flex-shrink: 0;
-	}
-	/* The kit's hour legend always includes all states. The table-day legend uses the visible cells. */
-	.table-days :global([data-slot='hour-grid'] > ul) {
-		display: none;
 	}
 </style>

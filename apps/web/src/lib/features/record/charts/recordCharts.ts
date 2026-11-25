@@ -148,7 +148,7 @@ export function histogramChart(
 				value,
 				label: value > 0 ? `+${value}` : String(value),
 			})),
-			yTicks: y.ticks(4).map((value) => ({ value, label: formatShare(value, locale) })),
+			yTicks: y.ticks(4).map((value) => ({ value, label: percent(value, locale) })),
 			boundaries: [-1, 5],
 			bands: [
 				{ status: 'early', label: band.early },
@@ -410,7 +410,7 @@ export function trendChart(
 				{ length: Math.max(0, Math.floor((end - start) / step) + 1) },
 				(_, index) => {
 					const value = (start + index * step) / 100;
-					return { value, label: formatShare(value, locale) };
+					return { value, label: percent(value, locale) };
 				},
 			),
 			last: last ? { ...last, label: formatShare(last.y, locale) } : undefined,

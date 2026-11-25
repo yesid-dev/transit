@@ -333,7 +333,7 @@ export function recordPercent(value: number, locale: Locale) {
 
 export function countedUnit(
 	value: number,
-	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle' | 'distinct-alert',
+	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle' | 'distinct-alert' | 'measured-day',
 	locale: Locale,
 ) {
 	const labels = {
@@ -342,6 +342,7 @@ export function countedUnit(
 		event: { en: ['stop event', 'stop events'], fr: ['passage à un arrêt', 'passages aux arrêts'] },
 		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
 		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
+		'measured-day': { en: ['measured day', 'measured days'], fr: ['jour mesuré', 'jours mesurés'] },
 		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
 		'distinct-alert': {
 			en: ['distinct alert', 'distinct alerts'],

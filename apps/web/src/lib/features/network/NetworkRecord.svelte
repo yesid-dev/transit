@@ -431,15 +431,16 @@
 							{:else}<StateMark state={chartState(result.state)} {locale} />{/if}
 							{#await record.deliveryDays then days}
 								{#if days.kind === 'answer' && 'cells' in days.answer && days.answer.cells.length}
+									{@const rows = days.answer.cells.flatMap((cell) =>
+										typeof cell.key.day !== 'string' ? [] : [deliveryDay(cell.key.day, cell)],
+									)}
 									<RecordDataTable
 										{locale}
 										title={copy.delivery}
 										rowHeader={t('Service date', 'Date de service')}
 										columns={deliveryColumns}
-										rows={days.answer.cells.flatMap((cell) =>
-											typeof cell.key.day !== 'string' ? [] : [deliveryDay(cell.key.day, cell)],
-										)}
-										pageSize={7}
+										{rows}
+										pageSize={rows.length > 7 ? 7 : undefined}
 										scrollMinWidth="24rem"
 									/>
 								{:else if days.kind === 'busy'}<RecordPending {locale} busy />{/if}

@@ -124,14 +124,7 @@
 		<StopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
-			<div
-				class="hour-chart"
-				data-few={reading.props.stateLabels.few ? '' : undefined}
-				data-none={reading.props.stateLabels.none ? '' : undefined}
-				data-unmeasured={reading.props.stateLabels.unmeasured ? '' : undefined}
-			>
-				<HourGrid {...reading.props} />
-			</div>
+			<HourGrid {...reading.props} />
 		{:else}
 			<StateMark state={chartState(input.answer.state)} {locale} />
 		{/if}
@@ -237,17 +230,6 @@
 </div>
 
 <style>
-	.hour-chart {
-		min-inline-size: 0;
-	}
-
-	.hour-chart:not([data-few]) :global([data-slot='hour-grid'] > ul > li:has([data-state='few'])),
-	.hour-chart:not([data-none]) :global([data-slot='hour-grid'] > ul > li:has([data-state='none'])),
-	.hour-chart:not([data-unmeasured])
-		:global([data-slot='hour-grid'] > ul > li:has([data-state='unmeasured'])) {
-		display: none;
-	}
-
 	.trend-end {
 		fill: var(--foreground);
 		font-family: var(--font-mono);

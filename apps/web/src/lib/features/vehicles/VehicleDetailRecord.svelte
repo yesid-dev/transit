@@ -93,7 +93,7 @@
 					plate: { code: name.number ?? line },
 					href: vehicleHref(`/lines/${encodeURIComponent(line)}`, url, locale, data.city),
 					detail: share ? t(`${share} of its trips`, `${share} de ses trajets`) : undefined,
-					count: count != null ? countedUnit(count, 'trip', locale) : null,
+					count: count != null ? tally(count, locale) : null,
 					state: recordStateFor(cell.state),
 				},
 			];
@@ -393,12 +393,16 @@
 								{@const entries = days(result.answer)}
 								{@const reported = entries.filter((entry) => entry.state === 'in_service').length}
 								{@const measured = entries.filter((entry) => entry.state !== 'not_measured').length}
+								{@const denominator =
+									measured < entries.length
+										? countedUnit(measured, 'measured-day', locale)
+										: tally(measured, locale)}
 								<RecordEvidenceLine
 									evidence={result.answer.evidence}
 									sample={measured
 										? t(
-												`${countedUnit(reported, 'day', locale)} in service of ${tally(measured, locale)}${measured < entries.length ? ' measured days' : ''}`,
-												`${countedUnit(reported, 'day', locale)} en service sur ${tally(measured, locale)}${measured < entries.length ? ' jours mesurés' : ''}`,
+												`${countedUnit(reported, 'day', locale)} in service of ${denominator}`,
+												`${countedUnit(reported, 'day', locale)} en service sur ${denominator}`,
 											)
 										: null}
 									{locale}
