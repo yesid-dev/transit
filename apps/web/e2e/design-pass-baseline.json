@@ -1027,9 +1027,7 @@
 					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 1,
-					"textDefects": [
-						"broken-word #error-page-heading-s9 construction"
-					]
+					"textDefects": ["broken-word #error-page-heading-s9 construction"]
 				},
 				"1440": {
 					"height": 1839,

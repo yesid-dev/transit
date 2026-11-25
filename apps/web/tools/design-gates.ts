@@ -125,8 +125,6 @@ export const TRANSIT_FORBIDDEN: ForbiddenPattern[] = [
 // Frozen chart marks skip every pattern; these structural widths skip only the prose-measure one.
 export const TRANSIT_STYLE_EXEMPTIONS = {
 	everyPattern: ['dataviz/chart/marks/'],
-	proseMeasure: [
-		'src/lib/features/map/MapMotionControl.svelte',
-	],
+	proseMeasure: ['src/lib/features/map/MapMotionControl.svelte'],
 	measurePattern: BARE_PROSE_MEASURE,
 };
