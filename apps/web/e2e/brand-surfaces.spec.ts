@@ -85,6 +85,7 @@ test('Record listing headers show a title and a page edge without artwork', asyn
 	for (const [path, title] of [
 		['/lines', 'Lines'],
 		['/stops', 'Stops'],
+		['/vehicles', 'Vehicles'],
 	] as const) {
 		await page.goto(`${path}?provider=stm`);
 		const screen = page.getByRole('main').locator('[data-record-screen]');

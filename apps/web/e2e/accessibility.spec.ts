@@ -136,19 +136,21 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 					}
 				}
 				if (vehicleLive) {
+					const count = trips[tripId].stops.length;
+					const name = tripCopy[locale].reportedPredictions;
+					const inline = page.getByRole('main').getByRole('table', { name, exact: true });
+					await expect(inline.getByRole('rowheader')).toHaveCount(Math.min(3, count));
+					await expectAccessible(page, { include: 'main' });
 					await page
 						.getByRole('button', {
 							name: locale === 'fr' ? 'Voir les prévisions' : 'View predictions',
 						})
 						.click();
-					const count = trips[tripId].stops.length;
-					const table = page.getByRole('table', {
-						name: tripCopy[locale].reportedPredictions,
-						exact: true,
-					});
+					const sheet = page.getByRole('dialog');
+					const table = sheet.getByRole('table', { name, exact: true });
 					await expect(table.getByRole('rowheader')).toHaveCount(Math.min(6, count));
 					if (count > 6)
-						await page
+						await sheet
 							.getByRole('button', { name: tripCopy[locale].showAll(count), exact: true })
 							.click();
 					const rows = table.locator('tbody tr');

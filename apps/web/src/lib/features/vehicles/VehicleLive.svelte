@@ -10,15 +10,14 @@
 	import AboutLiveFigures from '#lib/features/record/AboutLiveFigures.svelte';
 	import VehicleStillMap from './VehicleStillMap.svelte';
 	import { delayReading, liveStampAge, relativeReportAge } from '#lib/site/presenter.ts';
-	import { Card } from '@yesid/ui/card';
 	import * as Sheet from '@yesid/ui/sheet';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { choose } from '#lib/features/record/recordText.ts';
-	import RecordTable from '#lib/features/record/RecordTable.svelte';
 	import { tripDirection } from '#lib/features/trips/tripDirection.ts';
 	import LiveTripPredictions from '#lib/features/trips/LiveTripPredictions.svelte';
+	import TripPredictionTable from '#lib/features/trips/TripPredictionTable.svelte';
 	import { liveAbsenceReason } from '#lib/site/absence.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { bestShapeForPoint, routeShapes } from '#lib/components/map/vehicleShapes.ts';
@@ -28,7 +27,6 @@
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
-	import { isInService } from '#lib/v1/live/vehicleService.ts';
 	import { getScheduleShapes, withScheduleShapes } from '#lib/v1/repositories/scheduleShapes.ts';
 	import { getRoute, getStopsIndexSlim } from '#lib/v1/repositories/static.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
@@ -90,28 +88,13 @@
 		};
 	});
 
-	let search = $state('');
-	let limit = $state(25);
 	const selected = $derived(id ? live.index.byVehicleId.get(id) : undefined);
 	const stopNames = $derived(
 		Object.fromEntries((stops?.stops ?? []).map((stop) => [stop.id, stop.name])),
 	);
-	const active = $derived(
-		(live.vehicles?.vehicles ?? []).filter(
-			(vehicle) =>
-				isInService(vehicle) &&
-				!notReporting(vehicle, clock.serverNow, cutoff) &&
-				vehicle.id.toLowerCase().includes(search.trim().toLowerCase()),
-		),
-	);
-	const visible = $derived(active.slice(0, limit));
 	const routes = new SvelteMap<string, RouteFile | null>();
 	$effect(() => {
-		const want = new Set(
-			(id ? (selected ? [selected] : []) : visible).flatMap((vehicle) =>
-				vehicle.route ? [vehicle.route] : [],
-			),
-		);
+		const want = selected?.route ? [selected.route] : [];
 		for (const route of want) {
 			if (routes.has(route)) continue;
 			routes.set(route, null);
@@ -325,9 +308,13 @@
 									</span></FactRow
 								>
 							{/if}
-							<FactRow label={t('Direction', 'Direction')}>{direction(running)}</FactRow>
 							{#if running.trip}
-								<FactRow label={t('Departure', 'Départ')}>
+								<FactRow
+									label={t('Departure', 'Départ')}
+									detail={destination
+										? t(`Toward ${destination}`, `Vers ${destination}`)
+										: undefined}
+								>
 									{#if running.trip}
 										<Sheet.Root>
 											<Sheet.Trigger
@@ -382,8 +369,6 @@
 											class="ml-2 text-muted-foreground">{liveDelay}</span
 										>{/if}{/if}
 							</FactRow>
-						</FactList>
-						<FactList>
 							{#if running.next_stop}
 								<FactRow label={t('Next stop', 'Prochain arrêt')}>
 									<a
@@ -392,6 +377,23 @@
 									>
 								</FactRow>
 							{/if}
+						</FactList>
+						{#if running.trip}
+							{@const predictions = live.trips?.trips[running.trip]?.stops}
+							{#if predictions?.length}
+								<TripPredictionTable
+									predictions={predictions.slice(0, 3)}
+									{stopNames}
+									{locale}
+									provider={city}
+									{timeZone}
+									absenceReason={liveAbsenceReason('trip-delay', {
+										familyStates: live.familyStates,
+									})}
+								/>
+							{/if}
+						{/if}
+						<FactList leading={false}>
 							{#if running.occupancy}
 								<FactRow label={t('How full it is', 'Achalandage')}
 									>{OCCUPANCY_LABELS[locale][running.occupancy]}</FactRow
@@ -421,86 +423,7 @@
 			/>
 		</RecordGroup>
 	</div>
-{:else}
-	<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
-		<section aria-labelledby="vehicle-live-title" class="grid min-w-0 gap-3">
-			<h2 id="vehicle-live-title">
-				{t('Vehicles in service now', 'Véhicules en service maintenant')}
-			</h2>
-			{#if !live.vehicles}
-				<p role="status">
-					{live.familyStates.vehicles.phase === 'failed'
-						? t(
-								'Live reports are temporarily unavailable.',
-								'Les signalements en direct sont temporairement indisponibles.',
-							)
-						: t('Loading live reports…', 'Chargement des signalements en direct…')}
-				</p>
-			{:else if health.isStale}
-				<p>
-					{t(
-						'The latest feed is delayed. Current vehicle activity is unknown.',
-						'Le flux est en retard. L’activité actuelle des véhicules est inconnue.',
-					)}
-				</p>
-			{:else}
-				<label class="grid max-w-sm gap-1">
-					{t('Find by vehicle number', 'Rechercher par numéro de véhicule')}
-					<input
-						class="min-h-11 rounded-md border border-border px-3"
-						type="search"
-						bind:value={search}
-						oninput={() => (limit = 25)}
-					/>
-				</label>
-				{#if visible.length}
-					<p>
-						{t(
-							`${active.length} vehicles reporting on a trip`,
-							`${active.length} véhicules se signalent pendant un trajet`,
-						)}
-					</p>
-					<RecordTable
-						title={t('Vehicles in service now', 'Véhicules en service maintenant')}
-						headers={[
-							t('Vehicle', 'Véhicule'),
-							t('Line', 'Ligne'),
-							t('Direction', 'Direction'),
-							t('Status', 'État'),
-						]}
-						rows={visible.map((vehicle) => [
-							vehicle.id,
-							vehicle.route ? display.lineName(vehicle.route).label : unknown,
-							direction(vehicle),
-							vehicleStatus(vehicle, locale),
-						])}
-						rowLabel={vehicleLink}
-					/>
-					{#if active.length > limit}
-						<button class="min-h-11 justify-self-start underline" onclick={() => (limit += 25)}
-							>{t('Show more vehicles', 'Afficher plus de véhicules')}</button
-						>
-					{/if}
-				{:else}
-					<p role="status">
-						{search.trim()
-							? t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')
-							: t(
-									'No vehicles are currently reporting on a trip.',
-									'Aucun véhicule ne se signale pendant un trajet en ce moment.',
-								)}
-					</p>
-				{/if}
-			{/if}
-		</section>
-	</Card>
 {/if}
-
-{#snippet vehicleLink(number: string)}
-	<a class="inline-flex min-h-11 items-center" href={href(`/vehicle/${encodeURIComponent(number)}`)}
-		>{number}</a
-	>
-{/snippet}
 
 {#snippet viewRecord()}
 	{#if recordHref}<a

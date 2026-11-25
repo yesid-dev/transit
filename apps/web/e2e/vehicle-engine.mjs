@@ -41,7 +41,11 @@ export function vehicleEngine(url) {
 	const partial = ['40064', '40065', '40067'].includes(vehicle);
 	const measuredDays = partial ? days.slice(0, -1) : days;
 	const vehicleDays = measure === 'vehicles' && vehicle != null;
-	const included = vehicleDays ? measuredDays : [from];
+	const included = vehicleDays
+		? measuredDays
+		: group === 'vehicle' && from === '2026-11-04'
+			? days
+			: [from];
 	const evidence = {
 		start_date: from,
 		end_date: to,
@@ -79,12 +83,35 @@ export function vehicleEngine(url) {
 				...envelope,
 				state,
 				state_text: states[state],
-				cells: supported
-					? [
-							{ key: { vehicle: '40061' }, ...cell({ vehicle_days_in_service: 5 }) },
-							{ key: { vehicle: '40062' }, ...cell({ vehicle_days_in_service: 3 }) },
-						]
-					: [],
+				cells: !supported
+					? []
+					: from === '2026-11-04'
+						? Array.from({ length: 47 }, (_, index) => {
+								const days = index === 0 ? 0 : (index % 7) + 1;
+								return {
+									key: { vehicle: `49-${String(300 + index)}` },
+									...cell(
+										{ vehicle_days_in_service: days },
+										{ hours_in_service: days * 3.4, lines_run: days ? 3 : 0, trips_run: days * 4 },
+									),
+								};
+							})
+						: [
+								{
+									key: { vehicle: '40061' },
+									...cell(
+										{ vehicle_days_in_service: 5 },
+										{ hours_in_service: 12.5, lines_run: 2, trips_run: 22 },
+									),
+								},
+								{
+									key: { vehicle: '40062' },
+									...cell(
+										{ vehicle_days_in_service: 3 },
+										{ hours_in_service: 7.5, lines_run: 1, trips_run: 6 },
+									),
+								},
+							],
 			},
 		};
 	}

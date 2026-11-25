@@ -30,6 +30,8 @@ const cohesionScreens = new Set<Screen>([
 	'stop-record',
 	'vehicle-record',
 	'vehicle-live',
+	'vehicles',
+	'vehicles-live',
 	'departure',
 	'daily',
 	'network-health',
@@ -141,7 +143,16 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			return route.fulfill({
 				json: captureFixture(time, {
 					city,
-					vehicle_positions: [captureVehicle(time)],
+					vehicle_positions:
+						screen === 'vehicles-live'
+							? Array.from({ length: 25 }, (_, index) =>
+									captureVehicle(time, {
+										id: `fleet-${index}`,
+										vehicle_id: `56-${350 + index}`,
+										delay: index ? 240 : null,
+									}),
+								)
+							: [captureVehicle(time)],
 					...(screen === 'alerts-live'
 						? {
 								alerts: stmLiveAlertFixtures(time),
@@ -204,6 +215,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			expect(excluded.y).toBeGreaterThanOrEqual(scheduleOnly.y + scheduleOnly.height);
 		}
 		if (screen === 'stops') await expect(page.locator('#stop-results tbody tr')).toHaveCount(20);
+		if (provider === 'stm' && (screen === 'vehicles' || screen === 'vehicles-live')) {
+			await expect(page.locator('#fleet tbody tr, #vehicles-live tbody tr')).toHaveCount(20);
+		}
 		if (screen.startsWith('map-')) {
 			// The app exposes the live map and makes the poster inert at this handoff.
 			// Later source updates can make MapLibre's loaded() false again.
@@ -285,7 +299,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				screen.startsWith('search') ||
 				screen === 'line-record' ||
 				screen === 'lines' ||
-				screen === 'stops',
+				screen === 'stops' ||
+				screen === 'vehicles' ||
+				screen === 'vehicles-live',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
