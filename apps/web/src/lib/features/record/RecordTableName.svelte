@@ -1,16 +1,28 @@
 <script lang="ts">
 	import { RoutePlate } from '@yesid/ui/brand';
+	import type { Snippet } from 'svelte';
 	import type { RecordTableRow } from './RecordDataTable.svelte';
 
-	let { row, plates, columnCount }: { row: RecordTableRow; plates: boolean; columnCount: number } =
-		$props();
+	let {
+		row,
+		plates,
+		columnCount,
+		inlinePlate = false,
+		detailContent,
+	}: {
+		row: RecordTableRow;
+		plates: boolean;
+		columnCount: number;
+		inlinePlate?: boolean;
+		detailContent?: Snippet;
+	} = $props();
 	const hasTrack = $derived(plates || !!row.plate || !!row.leadingCode);
 </script>
 
 {#snippet contents()}
 	{#if hasTrack}
 		<span class="plate">
-			{#if row.plate}<RoutePlate {...row.plate} />
+			{#if row.plate}<RoutePlate {...row.plate} class={inlinePlate ? 'min-w-0!' : undefined} />
 			{:else if row.leadingCode}<span
 					class="font-mono text-sm"
 					class:outlined={row.leadingCode.outline}>{row.leadingCode.text}</span
@@ -18,13 +30,18 @@
 		</span>
 	{/if}
 	<span class="name-label">{row.label}</span>
-	{#if row.detail}<span class="detail text-muted-foreground">{row.detail}</span>{/if}
+	{#if detailContent || row.detail}
+		<span class="detail text-muted-foreground">
+			{#if detailContent}{@render detailContent()}{:else}{row.detail}{/if}
+		</span>
+	{/if}
 {/snippet}
 
 {#if row.href}
 	<a
 		class="name-cell"
 		class:with-plate={hasTrack}
+		class:inline-plate={inlinePlate}
 		class:schedule-only={row.plate?.scheduleOnly}
 		data-many-columns={columnCount > 2 || undefined}
 		href={row.href}
@@ -35,6 +52,7 @@
 	<div
 		class="name-cell"
 		class:with-plate={hasTrack}
+		class:inline-plate={inlinePlate}
 		data-many-columns={columnCount > 2 || undefined}
 	>
 		{@render contents()}
@@ -108,6 +126,23 @@
 		}
 		.schedule-only[data-many-columns] {
 			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+	.name-cell.with-plate.inline-plate {
+		grid-template-columns: max-content minmax(0, 1fr);
+		column-gap: 0.5em;
+	}
+	.name-cell.with-plate.inline-plate .plate {
+		grid-row: 1 / span 2;
+		align-self: start;
+	}
+	@media (max-width: 40rem) {
+		.name-cell.with-plate.inline-plate {
+			column-gap: 0.25em;
+		}
+		.name-cell.with-plate.inline-plate .name-label {
+			font-size: var(--text-caption);
+			letter-spacing: var(--tracking-tight);
 		}
 	}
 	a.name-cell {

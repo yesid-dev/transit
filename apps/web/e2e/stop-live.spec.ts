@@ -37,21 +37,19 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(table).toHaveCount(1);
 		await expect(table.locator('tbody tr')).toHaveCount(6);
 		await expect(table.getByRole('columnheader')).toHaveText(
-			fr
-				? ['Ligne', 'Vers', 'Horaire', 'Prévu', 'État']
-				: ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'],
+			fr ? ['Ligne', 'Prévu'] : ['Line', 'Expected'],
 		);
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/24\?/);
 		const calls = table.locator('tbody tr');
-		await expect(calls.nth(0).locator('[data-column="toward"]')).toContainText(
-			'Gare Montréal-Ouest',
+		await expect(calls.nth(0).getByRole('rowheader')).toContainText('Gare Montréal-Ouest');
+		await expect(calls.nth(0).getByRole('rowheader')).toContainText(
+			fr ? 'Horaire 08:15' : 'Scheduled 08:15',
 		);
-		await expect(calls.nth(0).locator('[data-column="scheduled"]')).toContainText('08:15');
 		for (const index of [1, 2]) {
-			for (const column of ['scheduled', 'toward']) {
-				await expect(calls.nth(index).locator(`[data-column="${column}"]`)).toContainText(
-					fr ? 'Indisponible' : 'Unavailable',
-				);
+			for (const detail of fr
+				? ['Horaire Indisponible', 'Vers Indisponible']
+				: ['Scheduled Unavailable', 'Toward Unavailable']) {
+				await expect(calls.nth(index).getByRole('rowheader')).toContainText(detail);
 			}
 		}
 		await expect(
