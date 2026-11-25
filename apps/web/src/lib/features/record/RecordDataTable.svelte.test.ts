@@ -28,7 +28,9 @@ it.each([
 		const header = sortButton.closest('th');
 		expect(header).toHaveAttribute('aria-sort', 'ascending');
 		expect(table.getAllByRole('link')).toHaveLength(20);
-		expect(table.getByRole('link', { name: 'Station 1' })).toHaveAttribute('href', '/stop/1');
+		const firstStop = table.getByRole('link', { name: /Station 1$/u });
+		expect(firstStop).toHaveAttribute('href', '/stop/1');
+		expect(within(firstStop).getByText('01234')).toHaveClass('outlined');
 		expect(table.getByText(unknown)).toBeVisible();
 		expect(screen.getByRole('status')).toHaveTextContent(showing);
 		expect(screen.getByRole('button', { name: more })).toBeEnabled();

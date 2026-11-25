@@ -52,7 +52,7 @@
 					line?.name ??
 					line?.label ??
 					(stop ? stopDisplayName(stop.name) : stopNameFallback(row.id, locale)),
-				code:
+				leadingCode:
 					kind === 'stop' ? { text: stop?.code || row.id, outline: outlineStopCode } : undefined,
 				plate: line ? { code: line.number ?? row.id } : undefined,
 				href: link((kind === 'line' ? '/lines/' : '/stop/') + encodeURIComponent(row.id)),

@@ -6,7 +6,7 @@
 		label: string;
 		href?: string;
 		plate?: { code: string; scheduleOnly?: boolean };
-		code?: { text: string; outline?: boolean };
+		leadingCode?: { text: string; outline?: boolean };
 		detail?: string;
 	};
 
@@ -80,7 +80,7 @@
 		...columns,
 	]);
 	const plates = $derived(
-		rows.some(({ plate, code }) => plate !== undefined || code !== undefined),
+		rows.some(({ plate, leadingCode }) => plate !== undefined || leadingCode !== undefined),
 	);
 	const page = $derived(pageSize ?? (sort || rows.length > 20 ? 20 : undefined));
 	const number = $derived(intl.number(locale));

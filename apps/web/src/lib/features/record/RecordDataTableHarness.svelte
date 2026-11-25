@@ -5,11 +5,13 @@
 	import type { RecordState } from './recordStates.ts';
 
 	let { locale }: { locale: Locale } = $props();
-	type Row = RecordTableRow & { reading: string | null; state?: RecordState };
+	type Row = RecordTableRow & { code: string | null; reading: string | null; state?: RecordState };
 	const rows: Row[] = Array.from({ length: 25 }, (_, i) => ({
 		id: String(i + 1),
 		label: 'Station ' + (i + 1),
 		href: '/stop/' + (i + 1),
+		code: i === 0 ? 'S1' : null,
+		leadingCode: i === 0 ? { text: '01234', outline: true } : undefined,
 		reading: i === 1 ? null : String(i + 1),
 		state: i === 1 ? 'unknown' : undefined,
 	}));

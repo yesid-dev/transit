@@ -4,15 +4,16 @@
 
 	let { row, plates, columnCount }: { row: RecordTableRow; plates: boolean; columnCount: number } =
 		$props();
-	const hasTrack = $derived(plates || !!row.plate || !!row.code);
+	const hasTrack = $derived(plates || !!row.plate || !!row.leadingCode);
 </script>
 
 {#snippet contents()}
 	{#if hasTrack}
 		<span class="plate">
 			{#if row.plate}<RoutePlate {...row.plate} />
-			{:else if row.code}<span class="font-mono text-sm" class:outlined={row.code.outline}
-					>{row.code.text}</span
+			{:else if row.leadingCode}<span
+					class="font-mono text-sm"
+					class:outlined={row.leadingCode.outline}>{row.leadingCode.text}</span
 				>{/if}
 		</span>
 	{/if}
