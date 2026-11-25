@@ -193,6 +193,8 @@ export async function query<T>(
 		)
 			return { kind: 'unreachable', status: response.status };
 		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
+		if (response.status === 400 && question.parameters.include_overall)
+			return { kind: 'unreachable', status: 400 };
 		if (!response.ok) return { kind: 'unreachable' };
 		const { success, data } = schema.safeParse(await response.json());
 		if (!success) return { kind: 'unreachable' };
@@ -462,6 +464,28 @@ export function getDelayDistribution(period: EnginePeriod, cuts: DelayDistributi
 		{ ...cuts, measure: 'delay_distribution' },
 		delayDistribution,
 	);
+}
+
+export function getVehicleDayAnswers(vehicle: string, period: EnginePeriod) {
+	const parameters = { measure: 'vehicles', vehicle };
+	const grouped = { ...parameters, group: 'day' };
+	const bundle = periodQuery(
+		'/measure',
+		period,
+		{ ...grouped, include_overall: '1' },
+		recordSeries.extend({ overall: recordMeasure.optional() }),
+	);
+	const split = (daily: boolean): Promise<EngineResult<RecordAnswer>> =>
+		bundle.then((result) => {
+			if (result.kind === 'answer' && result.answer.overall) {
+				const { overall, ...days } = result.answer;
+				return { ...result, answer: daily ? days : overall };
+			}
+			if (result.kind === 'answer' || (result.kind === 'unreachable' && result.status === 400))
+				return getRecordAnswer({ path: '/measure', parameters: daily ? grouped : parameters }, period);
+			return result;
+		});
+	return { service: split(false), days: split(true) };
 }
 
 // Each scorecard answer has one numeric value or readings by feed, field or horizon.

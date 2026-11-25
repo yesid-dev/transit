@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { type FrameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
-import { getRecordAnswer, type RecordQuery } from './engine.ts';
+import { getRecordAnswer, getVehicleDayAnswers, type RecordQuery } from './engine.ts';
 import { recordCsvResponse } from './recordCsv.ts';
 
 const queries = {
@@ -30,6 +30,7 @@ export function loadVehiclePage(
 	const sections: VehicleSection[] = id
 		? ['service', 'lines', 'reporting', 'completion', 'punctuality']
 		: ['fleet'];
+	const bundled = mode === 'record' && id && scope ? getVehicleDayAnswers(id, scope) : null;
 	return {
 		mode,
 		period,
@@ -39,16 +40,13 @@ export function loadVehiclePage(
 			mode === 'record' && scope
 				? sections.map((section) => ({
 						section,
-						answer: getRecordAnswer(recordQuery(section, id), scope),
+						answer:
+							section === 'service' && bundled
+								? bundled.service
+								: getRecordAnswer(recordQuery(section, id), scope),
 					}))
 				: [],
-		days:
-			mode === 'record' && id && scope
-				? getRecordAnswer(
-						{ path: '/measure', parameters: { measure: 'vehicles', group: 'day', vehicle: id } },
-						scope,
-					)
-				: null,
+		days: bundled?.days ?? null,
 	};
 }
 

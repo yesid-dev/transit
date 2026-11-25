@@ -416,6 +416,22 @@ def test_fleet_days_and_vehicle_trips_by_line(
     assert payload.decode().startswith("Numéro de véhicule,")
 
 
+def test_daily_vehicle_reading_can_include_the_overall_answer(
+    vehicle_history: tuple[Store, dict[date, list[Interval]]],
+) -> None:
+    store, _ = vehicle_history
+    cut = {"measure": "vehicles", "vehicle": "101"}
+    daily = answer(store, "/measure", THURSDAY, SATURDAY, group="day", **cut)
+    overall = answer(store, "/measure", THURSDAY, SATURDAY, **cut)
+    bundled = answer(
+        store, "/measure", THURSDAY, SATURDAY, group="day", include_overall="1", **cut
+    )
+    for result in (daily, overall, bundled, bundled["overall"]):
+        del result["evidence"]["query_ms"]
+    assert bundled.pop("overall") == overall
+    assert bundled == daily
+
+
 def test_completion_diagnostics_are_retained_without_publishing_a_rate(
     vehicle_history: tuple[Store, dict[date, list[Interval]]],
 ) -> None:

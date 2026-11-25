@@ -108,7 +108,9 @@ def _question(
         optional.update({"measure", "class", "limit"})
     else:
         required.add("measure")
-        optional.update({"stop", "departure", "vehicle", "group", "alert_details", "view"})
+        optional.update({
+            "stop", "departure", "vehicle", "group", "alert_details", "view", "include_overall"
+        })
     if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
         raise ValueError("invalid query string")
     fields = parse_qs(
@@ -156,6 +158,8 @@ def _question(
         raise ValueError("format must be json or csv and lang must be en or fr")
     if "view" in params and (params["view"] != "map" or output != "json"):
         raise ValueError("view=map requires JSON")
+    if "include_overall" in params and (params["include_overall"] != "1" or output != "json"):
+        raise ValueError("include_overall=1 requires JSON")
     output_format: Literal["json", "csv"] = "csv" if output == "csv" else "json"
     output_language: Language = "fr" if language == "fr" else "en"
     question = Question(
@@ -184,6 +188,7 @@ def _question(
         to_stop=params.get("to_stop"),
         alert_details="alert_details" in params,
         map_view=params.get("view") == "map",
+        include_overall="include_overall" in params,
     )
     if ranking:
         kind = params["kind"]

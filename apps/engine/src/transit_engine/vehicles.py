@@ -105,6 +105,7 @@ def vehicle_stats_query(
     *,
     by_hour: bool = False,
     by_line: bool = False,
+    vehicle: str | None = None,
 ) -> tuple[str, list[object]]:
     gap_us = VEHICLE_REPORTING_GAP_SECONDS * 1_000_000
     tail = vehicle_tail_sql("next_capture", "last_seen_at_utc")
@@ -161,9 +162,26 @@ def vehicle_stats_query(
     params: list[object] = [
         paths[VEHICLE_POSITIONS],
         *scope[:2],
+    ]
+    position_vehicle_filter = ""
+    if vehicle is not None and not by_hour:
+        position_vehicle_filter = "WHERE vehicle_id = ?"
+        params.append(vehicle)
+    params.extend([
         paths[TRIP_DAYS],
         *scope,
-    ]
+    ])
+    assignment_filter = ""
+    trip_vehicle_filter = ""
+    assignment_positions = "positions"
+    if vehicle is not None and not by_hour:
+        if completion:
+            # Other vehicles can make a selected trip's assignment ambiguous.
+            assignment_positions = "all_positions"
+            assignment_filter = "SEMI JOIN selected_trip_keys USING (service_date, trip_id)"
+        else:
+            trip_vehicle_filter = "AND vehicle_id = ?"
+            params.append(vehicle)
     if coverage_sql:
         params.extend([paths[FEED_POLLS], *scope])
     if reporting:
@@ -320,25 +338,36 @@ def vehicle_stats_query(
         params.extend([paths[STOP_EVENTS], *scope])
     return (
         f"""
-        WITH positions AS (
+        WITH all_positions AS NOT MATERIALIZED (
             SELECT vehicle_id, service_date, trip_id, route_id, observed_at_utc,
                 last_seen_at_utc, captured_at_utc
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ?
+        ), positions AS (
+            SELECT * FROM all_positions {position_vehicle_filter}
         ), trips AS (
             SELECT * FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
+        ), selected AS (
+            SELECT vehicle_id FROM selected_vehicles
+        ), selected_trip_keys AS (
+            SELECT service_date, trip_id FROM positions JOIN selected USING (vehicle_id)
+            WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
+            UNION
+            SELECT service_date, trip_id FROM trips JOIN selected USING (vehicle_id)
+            WHERE state = 'ran'
         ), assignments AS (
             SELECT vehicle_id, service_date, trip_id, route_id FROM trips
+            {assignment_filter}
             WHERE state = 'ran' AND nullif(trim(vehicle_id), '') IS NOT NULL
+                {trip_vehicle_filter}
             UNION
             SELECT p.vehicle_id, p.service_date, p.trip_id, coalesce(p.route_id, t.route_id)
-            FROM positions p LEFT JOIN trips t USING (service_date, trip_id)
+            FROM {assignment_positions} p {assignment_filter}
+            LEFT JOIN trips t USING (service_date, trip_id)
             WHERE p.service_date IS NOT NULL AND p.trip_id IS NOT NULL
                 AND nullif(trim(p.vehicle_id), '') IS NOT NULL
                 AND (t.state IS NULL OR t.state IN ('ran', 'unconfirmed', 'added'))
-        ), selected AS (
-            SELECT vehicle_id FROM selected_vehicles
         ), sequenced AS (
             SELECT p.*, lead(trip_id) OVER captured AS next_trip,
                 lead(service_date) OVER captured AS next_service_date,
