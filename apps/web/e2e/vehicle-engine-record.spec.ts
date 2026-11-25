@@ -55,10 +55,9 @@ test('vehicle live links its scheduled departure and keeps predictions in their 
 		'How full it is',
 		'Last report',
 	]);
-	await expect(service.getByRole('link', { name: '07:38 toward Station Laurier', exact: true })).toHaveAttribute(
-		'href',
-		/\/departure\/[^?]+\?.*trip=T1/,
-	);
+	await expect(
+		service.getByRole('link', { name: '07:38 toward Station Laurier', exact: true }),
+	).toHaveAttribute('href', /\/departure\/[^?]+\?.*trip=T1/);
 	await expect(service.locator('table')).toHaveCount(0);
 	await service.getByRole('button', { name: 'Predictions at its next stops' }).click();
 	await expect(page.getByRole('dialog').locator('table tbody tr')).toHaveCount(4);
