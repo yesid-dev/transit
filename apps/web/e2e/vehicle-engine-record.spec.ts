@@ -216,3 +216,50 @@ test('a vehicle without reports has a state in both languages', async ({ page })
 		await expect(answer).not.toContainText(/\b0\b/);
 	}
 });
+
+for (const locale of ['en', 'fr'] as const) {
+	const fr = locale === 'fr';
+	const prefix = fr ? '/fr' : '';
+	test(`${locale} Vehicle distinguishes an unpublished day from a measured day without a report`, async ({
+		page,
+	}) => {
+		await page.goto(`${prefix}/vehicle/40064?provider=stm&frameMode=record&${dates}`);
+		const answer = page.locator('[data-slot="screen-answer"]');
+		await expect(answer).toContainText(fr ? '6 sur 6' : '6 of 6');
+		await expect(answer).toContainText(fr ? 'jours mesurés' : 'measured days');
+		await expect(answer).not.toContainText(fr ? 'Le jour restant' : 'On the other day');
+		await expect(
+			page.getByRole('article', { name: fr ? 'Jour après jour' : 'Day by day' }),
+		).toContainText(
+			fr ? '6 jours en service sur 6 jours mesurés' : '6 days in service of 6 measured days',
+		);
+		await expect(
+			page.getByRole('article', {
+				name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
+			}),
+		).toContainText(fr ? '130,8' : '130.8');
+		await page.goto(`${prefix}/vehicle/40065?provider=stm&frameMode=record&${dates}`);
+		await expect(answer).toContainText(fr ? '5 sur 6' : '5 of 6');
+		await expect(answer).toContainText(fr ? 'Le jour restant' : 'On the other day');
+		const days = page.getByRole('article', { name: fr ? 'Jour après jour' : 'Day by day' });
+		await expect(days.locator('[data-slot="day-strip-cell"][data-reported="false"]')).toContainText(
+			fr ? 'Non mesuré' : 'Not measured',
+		);
+		await expect(days.getByText('◇', { exact: true })).toHaveCount(2);
+		await page.goto(`${prefix}/vehicle/40067?provider=stm&frameMode=record&${dates}`);
+		await expect(answer).toContainText(
+			fr ? 'Aucun signalement les jours mesurés.' : 'Did not report on the measured days.',
+		);
+	});
+
+	test(`${locale} Vehicle busy answer shows the shared pending line`, async ({ page }) => {
+		await page.goto(`${prefix}/vehicle/40066?provider=stm&frameMode=record&${dates}`);
+		await expect(page.locator('[data-slot="screen-answer"]')).toHaveText(
+			fr ? 'Lecture en attente.' : 'Waiting for a reading.',
+		);
+		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
+		await expect(page.locator('[data-slot="record-patience"]')).toContainText(
+			fr ? 'Ce bilan demande plus de temps' : 'These records take longer',
+		);
+	});
+}

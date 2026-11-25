@@ -27,3 +27,13 @@ it.each([
 		vi.useRealTimers();
 	}
 });
+
+it.each([
+	['en', 'Waiting for a reading.', 'These records take longer'],
+	['fr', 'Lecture en attente.', 'Ce bilan demande plus de temps'],
+] as const)('renders one busy notice and a pending line in %s', async (locale, pending, notice) => {
+	render(RecordPatienceHarness, { locale, readings: [Promise.resolve({ kind: 'busy' })] });
+	expect(await screen.findByText(pending)).toBeVisible();
+	expect(screen.getByRole('status')).toHaveTextContent(notice);
+	expect(screen.getAllByText(pending)).toHaveLength(1);
+});

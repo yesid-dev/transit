@@ -6,8 +6,8 @@ import { departureFromKey, departureHref } from './departureIdentity.ts';
 const evidence = {
 	start_date: '2026-11-18',
 	end_date: '2026-11-20',
-	days_included: ['2026-11-18'],
-	days_measured: ['2026-11-18'],
+	days_included: ['2026-11-18', '2026-11-20'],
+	days_measured: ['2026-11-18', '2026-11-20'],
 	days_not_measured: ['2026-11-19'],
 	method_version: 'fixture',
 	cleaning_versions: [8],
@@ -42,7 +42,7 @@ describe('Departure and Daily report text', () => {
 			departureDays(
 				series([
 					cell({ day: '2026-11-18' }, 6, 1),
-					cell({ day: '2026-11-19' }, 0, 0),
+					{ ...cell({ day: '2026-11-19' }, 2, 2), state: 'not_measured' },
 					cell({ day: '2026-11-20' }, 8, 0),
 				]),
 			),

@@ -131,28 +131,26 @@
 					),
 				)}
 				<div data-slot="screen-answer">
-					<RecordAnswer
-						{locale}
-						time={stamp}
-						value={count ? tally(count, locale) : null}
-						state={count ? undefined : result && !result.unavailable ? 'not_measured' : 'unknown'}
-						sentence={count
-							? coverageSentence(coverage, result?.unavailable ?? false)
-							: result?.busy
-								? recordConnection.busy[locale]
+					{#if !count && result?.busy}<RecordPending {locale} busy />
+					{:else}<RecordAnswer
+							{locale}
+							time={stamp}
+							value={count ? tally(count, locale) : null}
+							state={count ? undefined : result && !result.unavailable ? 'not_measured' : 'unknown'}
+							sentence={count
+								? coverageSentence(coverage, result?.unavailable ?? false)
 								: result && !result.unavailable
 									? t(
 											'No files were published for these dates.',
 											'Aucun fichier n’a été publié pour ces dates.',
 										)
 									: recordConnection.unreachable[locale]}
-					/>
+						/>{/if}
 				</div>
 
 				{#if count && result?.unavailable}
-					<p>
-						{result.busy ? recordConnection.busy[locale] : recordConnection.unreachable[locale]}
-					</p>
+					{#if result.busy}<RecordPending {locale} busy />
+					{:else}<p>{recordConnection.unreachable[locale]}</p>{/if}
 				{/if}
 				{#if data.window && data.period && data.window.lastPage}
 					<nav

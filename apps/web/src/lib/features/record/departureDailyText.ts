@@ -49,8 +49,15 @@ export function onTimeStatement(cell: RecordCell, locale: Locale) {
 	return `${withCoverage(reading, cell.evidence, locale)}.`;
 }
 
-export function departureDays({ cells }: RecordSeries) {
-	const observed = cells.filter(({ evidence }) => (evidence.counts.classified ?? 0) > 0);
+export function departureDays({ cells, evidence }: RecordSeries) {
+	const included = new Set(evidence.days_included);
+	const observed = cells.filter(
+		(cell) =>
+			typeof cell.key.day === 'string' &&
+			included.has(cell.key.day) &&
+			(cell.state === 'measured' || cell.state === 'too_few_to_judge') &&
+			(cell.evidence.counts.classified ?? 0) > 0,
+	);
 	return {
 		observed: observed.length,
 		late: observed.filter(({ evidence }) => (evidence.counts.late ?? 0) > 0).length,

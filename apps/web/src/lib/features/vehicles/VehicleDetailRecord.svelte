@@ -13,18 +13,14 @@
 	} from '#lib/server/engine.ts';
 	import type { loadVehiclePage } from '#lib/server/vehicleRecord.ts';
 	import {
-		serviceWeekday,
 		countedUnit,
 		dateRange,
 		hoursReading,
-		longDate,
 		methodEvidence,
-		recordRatio,
 		recordStamp,
 		sampleWithMinimum,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { addIsoDays } from '#lib/v1/history/selection.ts';
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
@@ -48,9 +44,13 @@
 	import { vehicleHref } from './vehicleLinks.ts';
 	import {
 		assignmentCaution,
+		didNotReport,
 		notTracked,
 		sectionTitles,
+		vehicleDayState,
 		vehicleLines,
+		vehicleReportDays,
+		vehicleServiceDays,
 		vehicleReading,
 	} from './vehicleText.ts';
 
@@ -106,45 +106,7 @@
 	});
 
 	function days(series: RecordSeries) {
-		if (!data.period) return [];
-		const byDay = new Map(series.cells.map((cell) => [cell.key.day, cell]));
-		const peak = Math.max(
-			0,
-			...series.cells.map((cell) =>
-				cell.state === 'measured' && (cell.value.vehicle_days_in_service ?? 0) > 0
-					? (cell.value.vehicle_hours_in_service ?? 0)
-					: 0,
-			),
-		);
-		const entries = [];
-		for (let day = data.period.from; day <= data.period.to; day = addIsoDays(day, 1)) {
-			const cell = byDay.get(day);
-			const reported = cell?.state === 'measured' && (cell.value.vehicle_days_in_service ?? 0) > 0;
-			const hours = reported ? cell.value.vehicle_hours_in_service : null;
-			const state =
-				cell?.state === 'measured'
-					? 'not_reporting'
-					: recordStateFor(cell?.state ?? 'not_measured');
-			entries.push({
-				id: day,
-				label: serviceWeekday(day, locale),
-				dateLabel: [longDate(day, locale), !reported && recordState(state)[locale]]
-					.filter(Boolean)
-					.join(', '),
-				report:
-					hours != null
-						? { value: hoursReading(hours, locale), fraction: peak > 0 ? hours / peak : 0 }
-						: null,
-			});
-		}
-		return entries;
-	}
-
-	function serviceDays(answer: RecordMeasure) {
-		if (!data.period || answer.value.vehicle_days_in_service == null) return null;
-		const total =
-			Math.round((Date.parse(data.period.to) - Date.parse(data.period.from)) / 86_400_000) + 1;
-		return recordRatio(answer.value.vehicle_days_in_service, tally(total, locale), locale);
+		return data.period ? vehicleReportDays(series, data.period, locale) : [];
 	}
 
 	function punctualityBands(answer: RecordMeasure) {
@@ -207,8 +169,11 @@
 	{#await service.answer}
 		<div data-slot="screen-answer"><RecordPending {locale} answer={service.answer} /></div>
 	{:then result}
-		{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
+		{#if result.kind === 'busy'}
+			<div data-slot="screen-answer"><RecordPending {locale} busy /></div>
+		{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
 			{@const answer = result.answer}
+			{@const serviceDays = vehicleServiceDays(answer, locale)}
 			{@const {
 				vehicle_days_in_service: active,
 				vehicle_hours_in_service: hours,
@@ -227,10 +192,10 @@
 				.join(', ')}
 			<div data-slot="screen-answer">
 				<RecordAnswer
-					value={serviceDays(answer)}
+					value={serviceDays.ratio}
 					sentence={t(
-						`days had vehicle ${data.id} in service.`,
-						`jours où le véhicule ${data.id} était en service.`,
+						`${serviceDays.partial ? 'measured ' : ''}${serviceDays.total === 1 ? 'day' : 'days'} had vehicle ${data.id} in service.`,
+						`${serviceDays.total === 1 ? 'jour' : 'jours'} ${serviceDays.partial ? (serviceDays.total === 1 ? 'mesuré ' : 'mesurés ') : ''}où le véhicule ${data.id} était en service.`,
 					)}
 					{locale}
 					{time}
@@ -246,7 +211,10 @@
 				{#await data.days then daily}
 					{#if daily?.kind === 'answer' && 'cells' in daily.answer}
 						{@const missing = daily.answer.cells.filter(
-							(cell) => cell.state === 'measured' && cell.value.vehicle_days_in_service === 0,
+							(cell) =>
+								typeof cell.key.day === 'string' &&
+								answer.evidence.days_included.includes(cell.key.day) &&
+								vehicleDayState(cell) === 'not_reporting',
 						).length}
 						{#if missing}<p class="mt-2">
 								{missing === 1
@@ -270,10 +238,15 @@
 							<div>
 								<dt>{t('Days in service', 'Jours en service')}</dt>
 								<dd class="font-heading text-heading font-extrabold tabular-nums">
-									{serviceDays(answer)}
+									{serviceDays.ratio}
 								</dd>
 								<dd class="text-small text-muted-foreground">
-									{t('days with a report on a trip', 'jours avec un signalement pendant un trajet')}
+									{serviceDays.partial
+										? t('of the measured days', 'parmi les jours mesurés')
+										: t(
+												'days with a report on a trip',
+												'jours avec un signalement pendant un trajet',
+											)}
 								</dd>
 							</div>
 							{#if hours != null}<div>
@@ -371,7 +344,7 @@
 				{#await data.days}
 					{#if data.days}<RecordPending {locale} answer={data.days} />{/if}
 				{:then result}
-					{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+					{#if result?.kind === 'answer' && 'cells' in result.answer}
 						{@const cells = days(result.answer)}
 						<DayStrip
 							label={t('Days in service', 'Jours en service')}
@@ -380,11 +353,14 @@
 								'In service: its hours with reports that day',
 								'En service : heures avec signalements ce jour-là',
 							)}
-							missingLabel={t(
-								'Did not report. That is not the same as out of service.',
-								'Aucun signalement. Cela ne veut pas dire que le véhicule était hors service.',
-							)}
+							missingLabel={recordState('not_measured')[locale]}
 						/>
+						{#if cells.some((entry) => entry.state === 'not_reporting')}
+							<p class="mt-2 flex items-baseline gap-2 text-small text-muted-foreground">
+								<StateMark state="not_reporting" {locale} hiddenLabel />
+								{didNotReport[locale]}
+							</p>
+						{/if}
 						{#if cells.length > shownDays}<Button
 								variant="outline"
 								class="mt-2 min-h-11"
@@ -397,13 +373,16 @@
 				{#snippet footer()}{#await data.days then result}
 						{#if result?.kind === 'answer' && 'cells' in result.answer}
 							{@const entries = days(result.answer)}
-							{@const reported = entries.filter((entry) => entry.report !== null).length}
+							{@const reported = entries.filter((entry) => entry.state === 'in_service').length}
+							{@const measured = entries.filter((entry) => entry.state !== 'not_measured').length}
 							<RecordEvidenceFooter
 								evidence={result.answer.evidence}
-								sample={t(
-									`${countedUnit(reported, 'day', locale)} in service of ${tally(entries.length, locale)}`,
-									`${countedUnit(reported, 'day', locale)} en service sur ${tally(entries.length, locale)}`,
-								)}
+								sample={measured
+									? t(
+											`${countedUnit(reported, 'day', locale)} in service of ${tally(measured, locale)}${measured < entries.length ? ' measured days' : ''}`,
+											`${countedUnit(reported, 'day', locale)} en service sur ${tally(measured, locale)}${measured < entries.length ? ' jours mesurés' : ''}`,
+										)
+									: null}
 								{locale}
 							/>
 						{/if}
@@ -598,7 +577,9 @@
 		{:else}
 			{@const reading = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
 			{@const noReports =
-				reading?.state === 'measured' && reading.value.vehicle_days_in_service === 0}
+				reading?.state === 'measured' &&
+				reading.evidence.days_included.length > 0 &&
+				reading.value.vehicle_days_in_service === 0}
 			{@const state = noReports ? 'not_reporting' : recordStateFor(reading?.state)}
 			<div data-slot="screen-answer">
 				<RecordAnswer
@@ -607,7 +588,12 @@
 					{locale}
 					{time}
 					sentence={noReports
-						? noReport
+						? reading && vehicleServiceDays(reading, locale).partial
+							? t(
+									'Did not report on the measured days. That is not the same as out of service.',
+									'Aucun signalement les jours mesurés. Cela ne veut pas dire que le véhicule était hors service.',
+								)
+							: noReport
 						: result.kind !== 'answer'
 							? recordConnection[result.kind][locale]
 							: state === 'not_tracked'
@@ -615,7 +601,6 @@
 								: recordState(state)[locale]}
 					actions={result.kind === 'answer' ? actions : undefined}
 				/>
-				{#if result.kind === 'busy'}<RecordPending {locale} busy />{/if}
 				{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 			</div>
 		{/if}

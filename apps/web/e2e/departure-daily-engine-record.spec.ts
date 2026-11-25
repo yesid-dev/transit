@@ -193,3 +193,19 @@ test('a departure on an unknown line has a single timetable state', async ({ pag
 	);
 	await expect(main.locator('[data-slot="record-card"]')).toHaveCount(0);
 });
+
+for (const locale of ['en', 'fr'] as const) {
+	test(`${locale} Departure busy answer shows the shared pending line`, async ({ page }) => {
+		const fr = locale === 'fr';
+		await page.goto(
+			`${fr ? '/fr' : ''}/departure/${key('24')}?provider=stm&frameMode=record&recordFrom=2026-11-22&recordTo=2026-11-22`,
+		);
+		await expect(page.locator('[data-slot="screen-answer"]')).toHaveText(
+			fr ? 'Lecture en attente.' : 'Waiting for a reading.',
+		);
+		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
+		await expect(page.locator('[data-slot="record-patience"]')).toContainText(
+			fr ? 'Ce bilan demande plus de temps' : 'These records take longer',
+		);
+	});
+}
