@@ -11,7 +11,12 @@ from sqlalchemy.engine import Connection, Engine
 
 from transit_ops.db.connection import make_engine, set_daily_warm_transaction_timeouts
 from transit_ops.ingestion.common import utc_now
-from transit_ops.ingestion.storage import BronzeStorage, BronzeStorageResolver, BronzeStorageScope
+from transit_ops.ingestion.storage import (
+    BronzeStorage,
+    BronzeStorageResolver,
+    BronzeStorageScope,
+    LocalBronzeStorage,
+)
 from transit_ops.settings import Settings, get_settings
 
 from ._helpers import _safe_rowcount, _safe_scalar_count, logger, require_prune_transaction
@@ -226,21 +231,43 @@ def _prune_archive_stores(
 def _delete_archives_by_backend(
     rows: Sequence[tuple[int, str, str]],
     *,
+    provider_id: str,
     storage: BronzeStorage | None,
     resolver: BronzeStorageResolver | None,
 ) -> set[int]:
     if storage is not None and resolver is not None:
         raise ValueError("Provide one Bronze store or a backend resolver, not both")
     groups: dict[str, list[tuple[int, str]]] = {}
-    for row_id, path, backend in rows:
-        groups.setdefault(backend, []).append((row_id, path))
     failed: set[int] = set()
+    for row_id, path, backend in rows:
+        parts = path.split("/")
+        if (
+            len(parts) < 2
+            or parts[0] != provider_id
+            or any(part in {"", ".", ".."} for part in parts)
+            or "\\" in path
+            or ":" in path
+        ):
+            failed.add(row_id)
+            continue
+        groups.setdefault(backend, []).append((row_id, path))
+    if failed:
+        logger.error("Rejected %d Bronze archive paths outside the provider prefix", len(failed))
     for backend, archives in groups.items():
         try:
             target = resolver(backend) if resolver is not None else storage
             if target is None or target.storage_backend != backend:
                 raise ValueError("Bronze store does not match the recorded backend")
-            failed_paths = target.delete_objects(path for _, path in archives)
+            allowed = archives
+            if isinstance(target, LocalBronzeStorage):
+                city_root = target.root.resolve() / provider_id
+                allowed = []
+                for row_id, path in archives:
+                    if (target.root / path).resolve().is_relative_to(city_root):
+                        allowed.append((row_id, path))
+                    else:
+                        failed.add(row_id)
+            failed_paths = target.delete_objects(path for _, path in allowed) if allowed else set()
         except Exception as error:
             logger.error(
                 "Bronze backend %r unavailable for %d objects (%s); metadata retained",
@@ -341,6 +368,7 @@ def prune_bronze_realtime_objects(
 
     failed_object_ids = _delete_archives_by_backend(
         [(int(row[0]), str(row[2]), str(row[3])) for row in rows],
+        provider_id=provider_id,
         storage=bronze_storage,
         resolver=bronze_storage_resolver,
     )
@@ -458,6 +486,7 @@ def prune_bronze_static_objects(
 
     failed_object_ids = _delete_archives_by_backend(
         [(int(row[0]), str(row[2]), str(row[3])) for row in rows],
+        provider_id=provider_id,
         storage=bronze_storage,
         resolver=bronze_storage_resolver,
     )

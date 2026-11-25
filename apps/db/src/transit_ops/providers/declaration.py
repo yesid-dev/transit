@@ -196,6 +196,7 @@ class Declaration(_Block):
     website: _Https | None = None
     currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] | None = None
     stage: Literal["candidate", "capturing", "public"]
+    capture_enabled: bool = False
     licence: Licence
     download_licence: DownloadLicence | None = None
     name_separators: NameSeparators | None = None

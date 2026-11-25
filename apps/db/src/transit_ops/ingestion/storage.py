@@ -61,6 +61,10 @@ class BronzeStorage:
     def list_keys(self, prefix: str) -> Iterator[str]:
         raise NotImplementedError
 
+    def list_prefixes(self, prefix: str) -> Iterator[str]:
+        """List immediate child prefixes, using slash as the delimiter."""
+        raise NotImplementedError
+
     def persist_temp_file(self, temp_path: Path, storage_path: str) -> str:
         raise NotImplementedError
 
@@ -181,6 +185,14 @@ class LocalBronzeStorage(BronzeStorage):
             if path.is_file() and path.relative_to(self.root).as_posix().startswith(prefix)
         )
 
+    def list_prefixes(self, prefix: str) -> Iterator[str]:
+        folder = self.root / prefix.rpartition("/")[0]
+        if folder.is_dir():
+            for path in sorted(folder.iterdir()):
+                key = path.relative_to(self.root).as_posix() + "/"
+                if key.startswith(prefix) and path.is_dir():
+                    yield key
+
     def persist_temp_file(self, temp_path: Path, storage_path: str) -> str:
         final_path = self.root / Path(storage_path)
         if final_path.exists():
@@ -251,12 +263,18 @@ class S3BronzeStorage(BronzeStorage):
             body.close()
 
     def list_keys(self, prefix: str) -> Iterator[str]:
-        keys = []
-        request = {}
+        yield from sorted(self._list(prefix, {}, "Contents", "Key"))
+
+    def list_prefixes(self, prefix: str) -> Iterator[str]:
+        yield from self._list(prefix, {"Delimiter": "/"}, "CommonPrefixes", "Prefix")
+
+    def _list(
+        self, prefix: str, request: dict[str, str], collection: str, field: str
+    ) -> Iterator[str]:
         try:
             while True:
                 page = self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix, **request)
-                keys.extend(item["Key"] for item in page.get("Contents", []))
+                yield from (item[field] for item in page.get(collection, []))
                 token = page.get("NextContinuationToken")
                 if token is None:
                     break
@@ -266,7 +284,6 @@ class S3BronzeStorage(BronzeStorage):
                 f"Failed to list Bronze artifacts at {self.describe_location(prefix)} "
                 f"via endpoint {self.endpoint_url}: {exc}"
             ) from exc
-        yield from sorted(keys)
 
     def persist_temp_file(self, temp_path: Path, storage_path: str) -> str:
         if self.exists(storage_path):

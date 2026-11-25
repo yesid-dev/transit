@@ -135,7 +135,6 @@ sudo systemctl daemon-reload
 sudo bash apps/db/ops/linux/update-capture.sh HEAD sto
 sudo systemctl enable --now transit-capture@sto.service
 sudo journalctl -u transit-capture@sto.service -n 30 --no-pager
-bash .github/scripts/freshness-probe.sh --capture-heartbeat /run/transit-capture-sto/heartbeat.json
 ~~~
 
 `update-capture.sh` stages a locked release, validates configuration without
@@ -145,6 +144,27 @@ previous approved revision and the same cities to roll back an update. To stop
 the initial rollout, run `sudo systemctl disable --now transit-capture@sto.service`.
 Preserve the raw objects and the rolling download state under
 `/var/lib/transit-capture-sto/` in either case.
+
+**Raw Capture Freshness** checks the private bucket every 30 minutes for each
+enabled feed in a provider manifest with `capture_enabled: true`. It uses the
+capture timestamp in the newest raw key. Static feeds are late after 1.5 times
+their polling interval (36 hours for the daily schedule). The outside alert
+marks realtime feeds late after three polling intervals, with a 15-minute
+minimum. The VM heartbeat uses three realtime polling intervals with a
+one-minute minimum (90 seconds for Gatineau trips and positions). The
+workflow reports late, missing and unavailable feeds through the existing
+pipeline-alert GitHub issue channel. It mentions Yesito on the first failure,
+keeps one issue open during the incident and closes it on recovery.
+
+For planned maintenance, disable **Raw Capture Freshness** in GitHub Actions
+and re-enable it when capture resumes. An open issue stays in place until the
+next successful check. To check by hand from the repository root, set
+`BRONZE_STORAGE_BACKEND=s3` and the read-only `BRONZE_S3_*` values in your
+environment and run:
+
+~~~sh
+uv run --project apps/db --managed-python --locked python -m transit_ops.capture_freshness
+~~~
 
 To fetch one sample per feed and see counts, sizes and prospective raw keys,
 run the following from the repository root with the feed variables already

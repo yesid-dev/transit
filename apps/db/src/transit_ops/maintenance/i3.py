@@ -317,6 +317,7 @@ def prune_i3_raw_snapshots(
     archived_rows = [(int(row[0]), str(row[3]), str(row[4])) for row in rows if row[3] is not None]
     failed_snapshot_ids = _delete_archives_by_backend(
         archived_rows,
+        provider_id=provider_id,
         storage=bronze_storage,
         resolver=bronze_storage_resolver,
     )
