@@ -59,8 +59,15 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						await expect(table.locator('tbody tr')).toHaveCount(1);
 						await expect(table.getByRole('link')).toHaveCount(1);
 						await expect(table).toContainText(kind === 'vehicle' ? /24[,.]4/u : /48[,.]0\s*%/u);
-						if (kind === 'departure')
+						if (kind === 'departure') {
 							await expect(table.getByRole('link')).toHaveAttribute('href', /\/departure\//u);
+							if (provider === 'stm')
+								await expect(table.getByRole('link')).toContainText(
+									fr ? 'vers West B9' : 'toward West B9',
+								);
+						}
+						if (kind === 'stop' && provider === 'stm')
+							await expect(table.getByRole('link')).toContainText('Fixture stop');
 						if (kind === 'vehicle')
 							await expect(
 								table.getByText(fr ? 'Intervalle indisponible' : 'Range unavailable'),
@@ -177,7 +184,7 @@ test('pages in groups of twenty and withholds a mismatched reference', async ({ 
 	await expect(rows).toHaveCount(21);
 });
 
-test('the ranking streams before its readings complete', async ({ page, request }, info) => {
+test('the ranking streams before its readings complete', async ({ page, request }) => {
 	const response = await page.goto(
 		'/rankings?provider=stm&recordFrom=2026-11-09&recordTo=2026-11-14',
 		{ waitUntil: 'commit' },

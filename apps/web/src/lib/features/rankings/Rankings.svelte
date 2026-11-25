@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { RoutePlate, SegmentedChoice } from '@yesid/ui/brand';
 	import { RangeMark } from '@yesid/ui/chart';
 	import { Combobox } from '@yesid/ui/combobox';
@@ -8,7 +9,7 @@
 	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { RankingsRecord } from '#lib/server/engine.ts';
-	import type { loadRankingsRecord } from '#lib/server/rankingsRecord.ts';
+	import type { loadRankingsRecord, RankingIdentities } from '#lib/server/rankingsRecord.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
 	import {
@@ -99,7 +100,6 @@
 			? { kind: 'record' as const, label: recordStamp(record.period, locale) }
 			: undefined,
 	);
-	const stops = $derived(new Map(record.stops.map((stop) => [stop.id, stop])));
 	const kindOptions = $derived(
 		rankingKinds.map((key) => ({ key, label: rankingLists[key].label[locale] })),
 	);
@@ -107,7 +107,7 @@
 		rankingMeasures[kind].map((key) => ({ key, label: measures[key][locale] })),
 	);
 	const pinned = $derived.by(() => {
-		const params = new URLSearchParams(url.searchParams);
+		const params = new SvelteURLSearchParams(url.searchParams);
 		params.set('provider', record.city);
 		const target = new URL(rankingHref(record.selection, locale, params), url);
 		const period = record.period && { ...record.period, preset: null };
@@ -145,7 +145,7 @@
 	type Entry = RankingsRecord['rows'][number] | RankingsRecord['excluded'][number];
 	type Ranked = RecordTableRow & { entry: RankingsRecord['rows'][number] };
 	type Excluded = RecordTableRow & { entry: RankingsRecord['excluded'][number] };
-	function name(row: Entry): RecordTableRow {
+	function name(row: Entry, identities: RankingIdentities): RecordTableRow {
 		const id = row.id;
 		if (kind === 'line') {
 			const line = display.lineName(id);
@@ -161,7 +161,7 @@
 			};
 		}
 		if (kind === 'stop') {
-			const stop = stops.get(id);
+			const stop = Object.hasOwn(identities.stops, id) ? identities.stops[id] : null;
 			return {
 				id,
 				label: stop ? stopDisplayName(stop.name) : stopNameFallback(id, locale),
@@ -178,7 +178,7 @@
 		const line = row.line ? display.lineName(row.line) : null;
 		const clock = scheduledClock(row.departure, locale);
 		const sign =
-			row.direction == null || !row.line ? null : record.headsigns[row.line]?.[row.direction];
+			row.direction == null || !row.line ? null : identities.headsigns[row.line]?.[row.direction];
 		const label = [clock, sign ? t(`toward ${sign}`, `vers ${sign}`) : null]
 			.filter(Boolean)
 			.join(' ');
@@ -221,7 +221,7 @@
 		return `${unit}${description} ${t('among', 'parmi')} ${rankedCount(data)}.`;
 	}
 	function exclusions(data: RankingsRecord) {
-		const groups = new Map<string, { count: number; label: string }>();
+		const groups = new SvelteMap<string, { count: number; label: string }>();
 		for (const row of data.excluded)
 			groups.set(row.reason, {
 				count: (groups.get(row.reason)?.count ?? 0) + 1,
@@ -304,9 +304,13 @@
 	/>
 {/snippet}
 
-{#snippet renderAnswer(data: RankingsRecord, lastGood: true | undefined)}
+{#snippet renderAnswer(
+	data: RankingsRecord,
+	identities: RankingIdentities,
+	lastGood: true | undefined,
+)}
 	{@const first = data.rows[0]}
-	{@const entry = first ? name(first) : null}
+	{@const entry = first ? name(first, identities) : null}
 	{#snippet actions()}
 		<RecordActionGroup {locale} href={links.share} files={[{ href: links.csv, label: listLabel }]}>
 			{#snippet citation()}<p>
@@ -350,8 +354,8 @@
 	</RecordAnswer>
 {/snippet}
 
-{#snippet tableCard(data: RankingsRecord)}
-	{@const rows = data.rows.map((entry): Ranked => ({ ...name(entry), entry }))}
+{#snippet tableCard(data: RankingsRecord, identities: RankingIdentities)}
+	{@const rows = data.rows.map((entry): Ranked => ({ ...name(entry, identities), entry }))}
 	{@const plates = rows.some((row) => row.plate || row.leadingCode)}
 	{@const classes = [
 		...new Set(['all', ...data.available_classes, ...(serviceClass ? [serviceClass] : [])]),
@@ -421,16 +425,17 @@
 		{stamp}
 		interactive={rows.some((row) => row.href) || (kind === 'line' && classes.length > 1)}
 	>
-		<div id="ranking" class="grid min-w-0 gap-3">
+		<div id="ranking" class="grid min-w-0 grid-cols-1 gap-3">
 			{#if kind === 'line' && classes.length > 1}
+				{@const defaultClass = t('Default class', 'Classe par défaut')}
 				{@const options = [
-					{ key: '', label: t('Default class', 'Classe par défaut') },
+					{ key: 'default', label: defaultClass },
 					...classes.map((key) => ({
 						key,
 						label: key === 'all' ? t('All classes', 'Toutes les classes') : classText(key, locale),
 					})),
 				]}
-				<div class="grid w-72 max-w-full gap-1 justify-self-start">
+				<div class="grid w-72 min-w-0 max-w-full grid-cols-1 gap-1 justify-self-start">
 					<p>{t('Service class', 'Classe de service')}</p>
 					<Combobox
 						options={options.map(({ key, label }) => ({
@@ -438,12 +443,14 @@
 							label,
 							search: foldSearchText(label),
 						}))}
-						value={serviceClass ?? ''}
+						value={serviceClass}
+						placeholder={defaultClass}
 						label={t('Service class', 'Classe de service')}
 						clearLabel={t('Reset service class', 'Réinitialiser la classe de service')}
 						emptyLabel={t('No matching classes', 'Aucune classe correspondante')}
 						fold={foldSearchText}
-						onValueChange={(next) => select({ kind, measure, serviceClass: next || null })}
+						onValueChange={(next) =>
+							select({ kind, measure, serviceClass: next === 'default' ? null : next })}
 					/>
 				</div>
 			{/if}
@@ -473,7 +480,7 @@
 	</RecordCard>
 {/snippet}
 
-{#snippet excludedCard(data: RankingsRecord)}
+{#snippet excludedCard(data: RankingsRecord, identities: RankingIdentities)}
 	{@const title = t('Excluded, with the reason', 'Exclusions et motifs')}
 	{#if data.excluded.length}
 		{#snippet reason(row: Excluded)}{exclusionText(row.entry, measure, locale)}{/snippet}
@@ -482,7 +489,7 @@
 				{locale}
 				{title}
 				{rowHeader}
-				rows={data.excluded.map((entry): Excluded => ({ ...name(entry), entry }))}
+				rows={data.excluded.map((entry): Excluded => ({ ...name(entry, identities), entry }))}
 				columns={[{ key: 'reason', header: t('Reason', 'Motif'), cell: reason }]}
 			/>
 		</RecordCard>
@@ -576,7 +583,11 @@
 								{#if result.kind === 'answer'}
 									{#if kind === 'vehicle' && result.answer.state === 'not_tracked'}
 										{@render untrackedAnswer()}
-									{:else}{@render renderAnswer(result.answer, result.lastGood)}{/if}
+									{:else}{@render renderAnswer(
+											result.answer,
+											result.identities,
+											result.lastGood,
+										)}{/if}
 								{:else if result.kind === 'busy'}<RecordPending {locale} busy />
 								{:else}<RecordAnswer
 										{locale}
@@ -589,11 +600,12 @@
 					{@render controls()}
 					{#await record.answer then result}{#if result?.kind === 'answer' && !(kind === 'vehicle' && result.answer.state === 'not_tracked')}{@render tableCard(
 								result.answer,
+								result.identities,
 							)}{/if}{/await}
 				</RecordGroup>
 				{#await record.answer then result}
 					{#if result?.kind === 'answer' && !(kind === 'vehicle' && result.answer.state === 'not_tracked')}
-						<RecordGroup>{@render excludedCard(result.answer)}</RecordGroup>
+						<RecordGroup>{@render excludedCard(result.answer, result.identities)}</RecordGroup>
 						<RecordGroup>{@render about(result.answer)}</RecordGroup>
 					{/if}
 				{/await}

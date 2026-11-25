@@ -1,13 +1,13 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
-import type { RouteFile } from '#lib/v1/index.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { recordCsvResponse } from './recordCsv.ts';
-import { getRankingsRecord, getRecordAnswer } from './engine.ts';
+import { getRankingsRecord, getRecordAnswer, type RankingsRecord } from './engine.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import {
 	canRankVehicles,
 	rankingSelection,
+	type RankingKind,
 	type RankingPath,
 } from '#lib/features/rankings/rankingSelection.ts';
 import type { Locale } from '#lib/i18n/index.ts';
@@ -15,26 +15,50 @@ import type { Locale } from '#lib/i18n/index.ts';
 import { rankingsQuery } from './screenQuestions.ts';
 export { rankingsQuery } from './screenQuestions.ts';
 
+export type RankingIdentities = {
+	stops: Record<string, Pick<ScheduleEdition['stops'][number], 'name' | 'code'>>;
+	headsigns: Record<string, Record<number, string>>;
+};
+
+function rankingIdentities(
+	kind: RankingKind,
+	schedule: ScheduleEdition | null | undefined,
+	data: RankingsRecord,
+): RankingIdentities {
+	const rows = [...data.rows, ...data.excluded];
+	const stops = new Set(kind === 'stop' ? rows.map(({ id }) => id) : []);
+	const lines = new Set(
+		kind === 'departure' ? rows.flatMap(({ line }) => (line ? [line] : [])) : [],
+	);
+	return {
+		stops: Object.fromEntries(
+			(schedule?.stops ?? [])
+				.filter(({ id }) => stops.has(id))
+				.map(({ id, name, code }) => [id, { name, code }]),
+		),
+		headsigns: Object.fromEntries(
+			[...lines].map((line) => [line, directionHeadsigns(schedule?.route_directions?.[line])]),
+		),
+	};
+}
+
 export async function loadRankingsRecord(
 	path: RankingPath,
 	event: {
 		url: URL;
 		request: Request;
+		locals?: Pick<App.Locals, 'rankingsSchedule'>;
 		parent: () => Promise<{
 			providerId: string;
 			provider?:
 				| (Pick<PublicCity, 'timezone' | 'record_through'> & Partial<Pick<PublicCity, 'inputs'>>)
 				| null;
-			schedule?: {
-				route_directions?: Record<string, RouteFile['directions']>;
-				stops?: ScheduleEdition['stops'];
-			} | null;
 		}>;
 	},
 ) {
-	const { url, request, parent } = event;
+	const { url, request, parent, locals } = event;
 	const selection = rankingSelection(path, url.searchParams);
-	const { providerId: city, provider, schedule } = await parent();
+	const { providerId: city, provider } = await parent();
 	const { period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
 	const notTracked = selection.kind === 'vehicle' && !canRankVehicles(provider?.inputs);
 	const scope = period &&
@@ -48,17 +72,20 @@ export async function loadRankingsRecord(
 		period,
 		city,
 		notTracked,
-		stops: selection.kind === 'stop' ? (schedule?.stops ?? []) : [],
-		headsigns:
-			selection.kind === 'departure'
-				? Object.fromEntries(
-						Object.entries(schedule?.route_directions ?? {}).map(([id, directions]) => [
-							id,
-							directionHeadsigns(directions),
-						]),
-					)
-				: {},
-		answer: scope ? getRankingsRecord(rankingsQuery(selection).parameters, scope) : null,
+		answer: scope
+			? getRankingsRecord(rankingsQuery(selection).parameters, scope).then((result) =>
+					result.kind === 'answer'
+						? {
+								...result,
+								identities: rankingIdentities(
+									selection.kind,
+									locals?.rankingsSchedule,
+									result.answer,
+								),
+							}
+						: result,
+				)
+			: null,
 		reference: scope
 			? getRecordAnswer({ path: '/measure', parameters: { measure: selection.measure } }, scope)
 			: null,

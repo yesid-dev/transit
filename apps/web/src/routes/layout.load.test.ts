@@ -147,6 +147,7 @@ describe('root server layout boot', () => {
 		['/stop/[id]', { id: ' two ' }, ['two']],
 		['/lines/[id]', { id: 'A' }, ['one', 'three']],
 		['/departure/[key]', { key: '["B",0,"07:15:00"]' }, ['two', 'three']],
+		['/rankings', {}, []],
 	] as const)('sends only the schedule data needed on %s', async (route, params, ids) => {
 		const routes = [
 			{ id: 'A', short: 'A' },
@@ -179,6 +180,7 @@ describe('root server layout boot', () => {
 			...(route === '/departure/[key]' ? { route_directions: { B: [direction] } } : {}),
 		});
 		expect(request.locals.stopsSchedule).toBe(route === '/stops' ? schedule : undefined);
+		expect(request.locals.rankingsSchedule).toBe(route === '/rankings' ? schedule : undefined);
 	});
 	it('passes request-only location to provider selection without returning coordinates', async () => {
 		const request = serverEvent('fr', '/network');
