@@ -141,6 +141,13 @@
 </div>
 
 <style>
+	/* The paired reading rail and the page surface share the card gutter. */
+	@media (min-width: 64rem) {
+		.app-shell-root[data-full-viewport='false']
+			:global([data-slot='app-frame']:not([data-rail-layout='compact']) > .app-frame-body) {
+			--space-page-x: var(--space-card-gap);
+		}
+	}
 	/* remove when yesid.design ships T7/T8 (v0.57.0) */
 	.app-shell-root
 		:global([data-rail-layout='compact'] [data-slot='site-header'] .nav-search.nav-collapsible) {

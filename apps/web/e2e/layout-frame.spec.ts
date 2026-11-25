@@ -2,7 +2,7 @@ import { expect, type Page } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { navPillCopy } from '../src/lib/i18n/messages';
 import { test } from './layout-test';
-import { textDefects } from './layout-helpers';
+import { textDefects, waitForFrameClearance } from './layout-helpers';
 import { openFrameControls } from './frame-controls';
 
 const cities = {
@@ -101,6 +101,35 @@ for (const locale of ['en', 'fr'] as const) {
 		});
 	}
 }
+
+test('the reading rail shares the content gutter and clears the header', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 900 });
+	await open(page, '/?provider=stm&frameMode=record');
+	const frame = page.locator('[data-slot="app-frame"]');
+	await expect(frame).toHaveAttribute('data-rail-layout', 'paired');
+	for (const width of [1024, 1206, 1280, 1440]) {
+		await page.setViewportSize({ width, height: 900 });
+		await waitForFrameClearance(page);
+		const gaps = await frame.evaluate((element) => {
+			const bounds = element.getBoundingClientRect();
+			const rail = element.querySelector('[data-slot="surface-rail"]')!.getBoundingClientRect();
+			const chrome = element
+				.querySelector('[data-slot="app-frame-chrome"]')!
+				.getBoundingClientRect();
+			const surface = element.querySelector('main [data-slot="surface"]')!;
+			return {
+				start: rail.left - bounds.left,
+				end:
+					bounds.right -
+					surface.getBoundingClientRect().right +
+					parseFloat(getComputedStyle(surface).paddingInlineEnd),
+				top: rail.top - chrome.bottom,
+			};
+		});
+		expect(gaps.start, `inline gutter at ${width} px`).toBeCloseTo(gaps.end, 1);
+		expect(gaps.top, `top gap at ${width} px`).toBeCloseTo(16, 1);
+	}
+});
 
 test('desktop controls keep their column and control changes retain focus and scroll', async ({
 	page,
