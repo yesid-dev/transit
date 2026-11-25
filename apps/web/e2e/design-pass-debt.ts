@@ -15,6 +15,14 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		390: { height: 8500, beforeFigure: 0 },
 		1440: { height: 5500, beforeFigure: 0 },
 	},
+	vehicles: {
+		390: { height: 6800, beforeFigure: 0 },
+		1440: { height: 4000, beforeFigure: 0 },
+	},
+	'vehicles-live': {
+		390: { height: 6800, beforeFigure: 0 },
+		1440: { height: 4000, beforeFigure: 0 },
+	},
 	stops: {
 		390: { height: 6541, beforeFigure: 4 },
 		1440: { height: 3486, beforeFigure: 4 },

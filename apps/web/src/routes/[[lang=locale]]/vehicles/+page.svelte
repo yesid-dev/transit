@@ -1,8 +1,10 @@
 <script lang="ts">
-	import VehiclePage from '#lib/features/vehicles/VehiclePage.svelte';
+	import VehicleFleet from '#lib/features/vehicles/VehicleFleet.svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 </script>
 
-<VehiclePage {data} />
+{#key data.city + '|' + data.mode}
+	<VehicleFleet {data} />
+{/key}

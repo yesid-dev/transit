@@ -1,5 +1,12 @@
 import { expect, test } from '@playwright/test';
-import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import {
+	captureFixture,
+	captureTrip,
+	captureTripReport,
+	captureUrl,
+	captureVehicle,
+	liveTripsUrl,
+} from './capture-fixture';
 
 test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
@@ -7,11 +14,124 @@ test.beforeEach(({ browserName }, info) => {
 });
 
 const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
+
+test('vehicle live links its scheduled departure and keeps predictions in their sheet', async ({
+	page,
+}) => {
+	const now = Date.now();
+	let hasTime = true;
+	await page.route(captureUrl, (route) =>
+		route.fulfill({ json: captureFixture(now, { vehicle_positions: [captureVehicle(now)] }) }),
+	);
+	await page.route(liveTripsUrl, (route) =>
+		route.fulfill({
+			json: captureTripReport('stm', new Date(now).toISOString(), [
+				{
+					...captureTrip(
+						'T1',
+						'24',
+						['S1', 'S2', 'S3', 'S4'].map((stop, index) => ({
+							stop,
+							eta_utc: new Date(now + (index + 1) * 60_000).toISOString(),
+							delay_min: 4,
+						})),
+					),
+					direction_id: 1,
+					start_time: hasTime ? '07:38:00' : null,
+					trip_headsign: 'Station Laurier',
+				},
+			]),
+		}),
+	);
+	const path = `/vehicle/40061?provider=stm&frameMode=live&${dates}`;
+	await page.goto(path);
+	const service = page.getByRole('article', { name: 'What it is running' });
+	await expect(service.locator('[data-slot="fact-list"]')).toHaveCount(1);
+	await expect(service.locator('dt')).toHaveText([
+		'Line',
+		'Scheduled departure',
+		'Status',
+		'Next stop',
+		'How full it is',
+		'Last report',
+	]);
+	await expect(
+		service.getByRole('link', { name: '07:38 toward Station Laurier', exact: true }),
+	).toHaveAttribute('href', /\/departure\/[^?]+\?.*trip=T1/);
+	await expect(service.locator('table')).toHaveCount(0);
+	await service.getByRole('button', { name: 'Predictions at its next stops' }).click();
+	await expect(page.getByRole('dialog').locator('table tbody tr')).toHaveCount(4);
+
+	hasTime = false;
+	await page.goto(path);
+	const fallback = service.getByRole('link', { name: 'Departure time not published' });
+	await expect(fallback).toHaveAttribute('href', /\/departure\/trip\?.*trip=T1/);
+	await fallback.click();
+	await expect(page.getByRole('heading', { level: 1, name: 'Departure' })).toBeVisible();
+	await expect(page.getByRole('main').locator('table tbody tr')).toHaveCount(4);
+});
+
+const fleetDates = 'recordFrom=2026-11-04&recordTo=2026-11-10';
+
+test('the vehicle fleet sends only the first page and marks an absent report', async ({
+	page,
+	request,
+}) => {
+	const path = `/vehicles?provider=stm&frameMode=record&${fleetDates}`;
+	const response = await request.get(path);
+	expect(response.ok()).toBe(true);
+	const html = await response.text();
+	expect(new Set(html.match(/49-3\d\d/g)).size).toBe(20);
+	expect(html).not.toContain('49-346');
+	await page.goto(path);
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	const rows = page.locator('#fleet tbody tr');
+	await expect(rows).toHaveCount(20);
+	const first = rows.first();
+	await expect(
+		first.locator('[data-column="days"] [data-record-state="not_reporting"]'),
+	).toBeVisible();
+	await expect(first.getByText('0', { exact: true })).toHaveCount(0);
+	await expect(first.locator('[data-column="days"]')).toContainText('Did not report');
+	for (const column of ['hours', 'lines', 'trips']) {
+		await expect(first.locator(`[data-column="${column}"] .data-table-cell-content`)).toBeEmpty();
+	}
+	await expect(rows.nth(1).locator('[data-column="days"]')).toContainText('2 of 7');
+	await page.getByRole('button', { name: 'Show 20 more', exact: true }).click();
+	await expect(rows).toHaveCount(40);
+	await expect(rows.nth(20).getByRole('link')).toBeFocused();
+});
+
+test('the live fleet pages the reporting vehicles and names delay unknown', async ({ page }) => {
+	const now = Date.now();
+	await page.route(captureUrl, (route) =>
+		route.fulfill({
+			json: captureFixture(now, {
+				vehicle_positions: Array.from({ length: 25 }, (_, index) =>
+					captureVehicle(now, {
+						id: `fleet-${index}`,
+						vehicle_id: `56-${350 + index}`,
+						delay: index ? 240 : null,
+					}),
+				),
+			}),
+		}),
+	);
+	await page.goto('/vehicles?provider=stm&frameMode=live');
+	await expect(page.locator('[data-slot="screen-answer"]')).toContainText(
+		/25\s*vehicles are reporting now/,
+	);
+	const rows = page.locator('#vehicles-live tbody tr');
+	await expect(rows).toHaveCount(20);
+	await expect(rows.first().locator('[data-column="status"]')).toContainText('Delay unknown');
+	await page.getByRole('button', { name: 'Show 5 more', exact: true }).click();
+	await expect(rows).toHaveCount(25);
+});
 for (const width of [390, 1440]) {
 	for (const locale of ['en', 'fr']) {
 		const fr = locale === 'fr';
 		const prefix = fr ? '/fr' : '';
-		const search = fr ? 'Rechercher par numéro de véhicule' : 'Find by vehicle number';
+		const search = fr ? 'Numéro de véhicule' : 'Vehicle number';
 		test(`${locale} at ${width}px searches the fleet and opens a citable vehicle record`, async ({
 			page,
 			request,
@@ -23,7 +143,11 @@ for (const width of [390, 1440]) {
 			await expect(table.getByRole('rowheader')).toHaveCount(2, { timeout: 15_000 });
 			await main.getByRole('searchbox', { name: search }).fill('0061');
 			await expect(table.getByRole('rowheader')).toHaveCount(1);
-			await expect(table.getByRole('row', { name: '40061 5' })).toBeVisible();
+			const first = table
+				.getByRole('row')
+				.filter({ has: page.getByRole('link', { name: '40061', exact: true }) });
+			await expect(first.locator('[data-column="days"]')).toContainText('5');
+			await expect(first.locator('[data-column="trips"]')).toContainText('22');
 			await main.getByRole('link', { name: '40061' }).click();
 			await expect(page).toHaveURL(/vehicle\/40061\?.*recordFrom=2026-11-08/);
 			await expect(
@@ -159,7 +283,9 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('[data-slot="still-map"] polyline')).toBeVisible();
 
 			await expect(
-				main.getByRole('button', { name: fr ? 'Voir les prévisions' : 'View predictions' }),
+				main.getByRole('button', {
+					name: fr ? 'Prévisions à ses prochains arrêts' : 'Predictions at its next stops',
+				}),
 			).toBeVisible();
 			if (width === 1440) {
 				await page.evaluate(() => document.fonts.ready);
@@ -173,7 +299,8 @@ for (const width of [390, 1440]) {
 				const heights = await rows.evaluateAll((items) =>
 					items.map((item) => Math.round(item.getBoundingClientRect().height)),
 				);
-				expect(heights).toEqual([44, 44, 44, 44]);
+				expect(heights).toHaveLength(6);
+				expect(heights.every((height) => height >= 44)).toBe(true);
 				const line = rows.first();
 				const rowBox = (await line.boundingBox())!;
 				const linkBox = (await line.getByRole('link').boundingBox())!;

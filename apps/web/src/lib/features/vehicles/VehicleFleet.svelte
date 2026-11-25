@@ -1,0 +1,738 @@
+<script lang="ts">
+	import { page } from '$app/state';
+	import { goto, replaceState } from '$app/navigation';
+	import { getContext, onMount, tick, untrack } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
+	import {
+		FilterSummary,
+		RoutePlate,
+		SearchInput,
+		StatusMark,
+		filterCountText,
+	} from '@yesid/ui/brand';
+	import { Combobox, type ComboboxOption } from '@yesid/ui/combobox';
+	import { Button } from '@yesid/ui/button';
+	import { ControlsRail, Surface, type SurfaceRailContext } from '@yesid/ui/layout';
+	import { ShowMore, type DataTableColumn } from '@yesid/ui/table';
+	import type { PageData } from '../../../routes/[[lang=locale]]/vehicles/$types';
+	import { getLocale, intl } from '#lib/i18n/index.ts';
+	import { frameHref, RECORD_START } from '#lib/site/frameState.ts';
+	import {
+		dateRange,
+		hoursReading,
+		liveStampAge,
+		methodEvidence,
+		recordRatio,
+		recordStamp,
+		relativeReportAge,
+	} from '#lib/site/presenter.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import {
+		frameSurfaceRailContext,
+		type RegisterFrameSurfaceRail,
+	} from '#lib/components/shell/frameSurfaceRail.ts';
+	import { foldSearchText } from '#lib/search/normalize.ts';
+	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
+	import { notReporting } from '#lib/components/map/vehicleProjection.ts';
+	import { liveReader } from '#lib/v1/adapter/index.ts';
+	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
+	import { getRoute } from '#lib/v1/repositories/static.ts';
+	import { getV1Runtime } from '#lib/v1/runtime.ts';
+	import type { RouteFile, Vehicle } from '#lib/v1/schemas/index.ts';
+	import { overviewCopy } from '../home/overviewRecord.copy.ts';
+	import { recordConnection, tally } from '../record/recordText.ts';
+	import { recordSectionLinks } from '../record/recordLinks.ts';
+	import AboutFigures from '../record/AboutFigures.svelte';
+	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
+	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import RecordAnswer from '../record/RecordAnswer.svelte';
+	import RecordCard from '../record/RecordCard.svelte';
+	import RecordDataTable from '../record/RecordDataTable.svelte';
+	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
+	import RecordGroup from '../record/RecordGroup.svelte';
+	import RecordPending from '../record/RecordPending.svelte';
+	import RecordScreen from '../record/RecordScreen.svelte';
+	import RecordTableValue from '../record/RecordTableValue.svelte';
+	import ScreenTitle from '../record/ScreenTitle.svelte';
+	import StateMark from '../record/StateMark.svelte';
+	import { fleetPageSize, fleetView, type VehicleFleetAnswer } from './vehicleFleet.ts';
+	import { vehicleHref } from './vehicleLinks.ts';
+	import { notTracked, sectionTitles, vehicleStatus } from './vehicleText.ts';
+
+	let { data }: { data: PageData } = $props();
+	const locale = getLocale();
+	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+	const display = transitDisplay();
+	const about = $derived(overviewCopy[locale]);
+	const operator = $derived(data.provider?.labels[locale].operator);
+	const liveMode = $derived(data.mode === 'live');
+	let result = $state.raw<VehicleFleetAnswer | null>(null);
+	const untracked = $derived(
+		data.provider?.inputs.vehicle_positions === false ||
+			data.provider?.inputs.stable_vehicle_ids === false ||
+			result?.kind === 'not_tracked',
+	);
+	const title = $derived(t('Find a vehicle', 'Trouver un véhicule'));
+	const location = $derived(page.shallow?.url ?? page.url);
+	const url = $derived(new URL(location.href));
+	const pinned = $derived(new URL(frameHref(url, { mode: data.mode, period: data.period }), url));
+	const view = $derived(liveMode ? fleetView(location.searchParams) : data.view);
+	const href = (path: string) => vehicleHref(path, pinned, locale, data.city);
+
+	$effect(() => {
+		const answer = data.fleet;
+		let current = true;
+		result = null;
+		void answer?.then((value) => {
+			if (current) result = value;
+		});
+		return () => {
+			current = false;
+		};
+	});
+	const record = $derived(result?.kind === 'answer' ? result.answer : null);
+	const periodDays = $derived(
+		data.period
+			? (Date.parse(data.period.to) - Date.parse(data.period.from)) / 86_400_000 + 1
+			: null,
+	);
+	const recordStampProps = $derived(
+		data.period ? { kind: 'record' as const, label: recordStamp(data.period, locale) } : undefined,
+	);
+	const manifest = untrack(() =>
+		data.mode === 'live' && !untracked ? data.v1?.manifest : undefined,
+	);
+	const live = manifest ? createLiveStore(manifest, liveReader, { families: ['vehicles'] }) : null;
+	const { clock } = getV1Runtime();
+	const health = $derived(live?.familyStates.vehicles.health);
+	const cutoff = manifest ? liveTimingFor(manifest).staleCutoffS : undefined;
+	const reporting = $derived(
+		health?.isStale || cutoff === undefined
+			? []
+			: (live?.vehicles?.vehicles ?? []).filter(
+					(vehicle) => !notReporting(vehicle, clock.serverNow, cutoff),
+				),
+	);
+	const reportStamp = $derived(
+		live?.vehicles?.generated_utc
+			? {
+					kind: 'live' as const,
+					label: liveStampAge(null, locale),
+					updatedAt: new Date(live.vehicles.generated_utc),
+					agoLabel: (seconds: number) => liveStampAge(seconds, locale),
+					late: health?.isStale,
+				}
+			: undefined,
+	);
+	const stamp = $derived(liveMode ? reportStamp : recordStampProps);
+	onMount(() => {
+		live?.start();
+		return () => live?.stop();
+	});
+
+	const compare = intl.collator(locale, { numeric: true, sensitivity: 'base' }).compare;
+	const liveMatches = $derived(
+		reporting
+			.filter(
+				(vehicle) =>
+					(!view.line || vehicle.route === view.line) &&
+					vehicle.id.toLowerCase().includes(view.query.toLowerCase()),
+			)
+			.toSorted((a, b) => compare(a.id, b.id)),
+	);
+	const liveRows = $derived(
+		liveMatches.map((vehicle) => ({
+			id: vehicle.id,
+			label: vehicle.id,
+			href: href(`/vehicle/${encodeURIComponent(vehicle.id)}`),
+			vehicle,
+		})),
+	);
+	const recordRows = $derived(
+		(record?.rows ?? []).map((row) => ({
+			...row,
+			label: row.id,
+			href: href(`/vehicle/${encodeURIComponent(row.id)}`),
+		})),
+	);
+	type LiveRow = (typeof liveRows)[number];
+	type RecordRow = (typeof recordRows)[number];
+	const routes = new SvelteMap<string, RouteFile | null>();
+	$effect(() => {
+		if (!manifest) return;
+		for (const vehicle of liveMatches.slice(0, view.shown)) {
+			if (!vehicle.route || routes.has(vehicle.route)) continue;
+			const id = vehicle.route;
+			routes.set(id, null);
+			void getRoute(id, { manifest })
+				.then((route) => routes.set(id, route))
+				.catch(() => {});
+		}
+	});
+	function direction(vehicle: Vehicle) {
+		const route = vehicle.route ? routes.get(vehicle.route) : null;
+		const directions =
+			route?.directions?.filter((candidate) => candidate.dir === vehicle.direction_id) ?? [];
+		const next = directions.find((candidate) =>
+			candidate.stops?.some(({ id }) => id === vehicle.next_stop),
+		);
+		return display.directionName(
+			(next ?? (directions.length === 1 ? directions[0] : null))?.headsign,
+			locale,
+		);
+	}
+
+	const register = getContext<RegisterFrameSurfaceRail | undefined>(frameSurfaceRailContext);
+	const lineOptions = $derived<ComboboxOption[]>(
+		[...new Set(reporting.flatMap(({ route }) => (route ? [route] : [])))]
+			.map((value) => {
+				const label = display.lineName(value).label;
+				return { value, label, search: foldSearchText(`${value} ${label}`) };
+			})
+			.sort((a, b) => compare(a.label, b.label)),
+	);
+	const reportingOptions = $derived<ComboboxOption[]>([
+		{ value: 'reported', label: t('Reported', 'Signalés'), search: t('reported', 'signales') },
+		{
+			value: 'silent',
+			label: t('Did not report', 'Sans signalement'),
+			search: t('did not report', 'sans signalement'),
+		},
+	]);
+	const canFilter = $derived(!untracked && (liveMode ? lineOptions.length > 0 : record?.canFilter));
+	$effect(() => {
+		if (canFilter) return untrack(() => register?.(filters));
+	});
+
+	let searchInput = $state<HTMLInputElement | null>(null);
+	let query = $state(untrack(() => view.query));
+	let pending = $state(false);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let searchVersion = 0;
+	let results = $state<HTMLElement>();
+	let nextRow = $state<number | null>(null);
+	const liveShown = $derived(Math.min(liveRows.length, view.shown));
+	$effect(() => {
+		if (
+			nextRow === null ||
+			pending ||
+			(liveMode ? liveShown : recordRows.length) <= nextRow ||
+			!results
+		)
+			return;
+		const index = nextRow;
+		void tick().then(() => {
+			results?.querySelectorAll<HTMLAnchorElement>('tbody a')[index]?.focus();
+			nextRow = null;
+		});
+	});
+	$effect(() => {
+		if (!pending && untrack(() => query.trim()) !== view.query) query = view.query;
+	});
+	$effect(() => () => clearTimeout(timer));
+	function listingUrl(text: string, filter: string | null, shown = fleetPageSize) {
+		const next = new URL(location.href);
+		for (const key of ['q', 'route', 'reporting', 'shown']) next.searchParams.delete(key);
+		if (text.trim()) next.searchParams.set('q', text.trim());
+		if (filter) next.searchParams.set(liveMode ? 'route' : 'reporting', filter);
+		if (shown > fleetPageSize) next.searchParams.set('shown', String(shown));
+		return next;
+	}
+	const selectedFilter = $derived(liveMode ? view.line : view.reporting);
+	const clearUrl = $derived(listingUrl('', null));
+	async function navigate(
+		text: string,
+		filter: string | null,
+		replace = true,
+		shown = fleetPageSize,
+	) {
+		clearTimeout(timer);
+		const version = ++searchVersion;
+		const next = listingUrl(text, filter, shown);
+		const input = searchInput;
+		const selection =
+			input && document.activeElement === input
+				? ([input.selectionStart, input.selectionEnd] as const)
+				: null;
+		try {
+			if (next.href === location.href) return;
+			pending = true;
+			if (liveMode) replaceState(next, { ...page.state });
+			else await goto(next, { replace, reset: false });
+			if (
+				version === searchVersion &&
+				selection &&
+				document.activeElement === document.body &&
+				searchInput
+			) {
+				searchInput.focus({ preventScroll: true });
+				searchInput.setSelectionRange(...selection);
+			}
+		} finally {
+			if (version === searchVersion) pending = false;
+		}
+	}
+	function queueSearch(value: string) {
+		query = value;
+		if (liveMode) {
+			void navigate(value, selectedFilter);
+			return;
+		}
+		searchVersion++;
+		clearTimeout(timer);
+		pending = value.trim() !== view.query;
+		timer = setTimeout(() => void navigate(value, selectedFilter), 250);
+	}
+	async function more(count: number) {
+		const index = liveMode ? liveShown : recordRows.length;
+		nextRow = index;
+		await navigate(view.query, selectedFilter, false, index + count);
+	}
+
+	const count = $derived(liveMode ? liveRows.length : (record?.total ?? 0));
+	const countLabels = $derived({
+		singular: t('{count} vehicle', '{count} véhicule'),
+		plural: t('{count} vehicles', '{count} véhicules'),
+	});
+	const paging = $derived({
+		showing: (shown: number, total: number) =>
+			t(
+				`Showing ${tally(shown, locale)} of ${tally(total, locale)}`,
+				`${tally(shown, locale)} sur ${tally(total, locale)}`,
+			),
+		more: (count: number) =>
+			t(`Show ${tally(count, locale)} more`, `Afficher ${tally(count, locale)} de plus`),
+	});
+	const subtitle = $derived(
+		operator && (liveMode ? reporting.length > 0 : Boolean(record))
+			? `${operator}${t(': ', '\u00a0: ')}${t(`${tally(liveMode ? reporting.length : record!.fleet, locale)} vehicles`, `${tally(liveMode ? reporting.length : record!.fleet, locale)} véhicules`)}`
+			: operator,
+	);
+	const sample = $derived(
+		record
+			? [
+					record.daysInService === null
+						? ''
+						: t(
+								`${tally(record.daysInService, locale)} days in service`,
+								`${tally(record.daysInService, locale)} jours en service`,
+							),
+					record.trips === null
+						? ''
+						: t(`${tally(record.trips, locale)} trips`, `${tally(record.trips, locale)} trajets`),
+					record.evidence.days_included.length
+						? t(
+								`${tally(record.evidence.days_included.length, locale)} days`,
+								`${tally(record.evidence.days_included.length, locale)} jours`,
+							)
+						: '',
+				]
+					.filter(Boolean)
+					.join(', ')
+			: '',
+	);
+	const recordColumns = $derived<DataTableColumn<RecordRow>[]>([
+		{
+			key: 'days',
+			header: t('Days in service', 'Jours en service'),
+			numeric: true,
+			cell: daysCell,
+		},
+		{ key: 'hours', header: t('Hours', 'Heures'), numeric: true, cell: hoursCell },
+		{
+			key: 'lines',
+			header: t('Lines it ran', 'Lignes desservies'),
+			numeric: true,
+			cell: linesCell,
+		},
+		{ key: 'trips', header: t('Trips', 'Trajets'), numeric: true, cell: tripsCell },
+	]);
+	const liveColumns = $derived<DataTableColumn<LiveRow>[]>([
+		{ key: 'line', header: t('Line and direction', 'Ligne et direction'), cell: lineCell },
+		{ key: 'status', header: t('Status', 'État'), cell: statusCell },
+		{ key: 'report', header: t('Last report', 'Dernier signalement'), cell: reportCell },
+	]);
+	const archiveLinks = $derived(recordSectionLinks(pinned, 'fleet'));
+</script>
+
+{#snippet filters(context: SurfaceRailContext)}
+	{@const label = liveMode ? t('Line', 'Ligne') : t('Reporting', 'Signalement')}
+	<ControlsRail label={t('Filter', 'Filtrer')}>
+		<div class="grid w-full min-w-0 gap-1">
+			<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+			<Combobox
+				options={liveMode ? lineOptions : reportingOptions}
+				value={selectedFilter || null}
+				onValueChange={(value) => {
+					void navigate(query, value, false);
+					context.closeSheet();
+				}}
+				{label}
+				placeholder={t('All', liveMode ? 'Toutes' : 'Tous')}
+				clearLabel={t('Clear filter', 'Effacer le filtre')}
+				emptyLabel={t('No match', 'Aucune correspondance')}
+				fold={foldSearchText}
+			/>
+		</div>
+	</ControlsRail>
+{/snippet}
+
+{#snippet daysCell(row: RecordRow)}
+	{#if row.state === 'not_reporting'}
+		<span class="inline-flex min-w-0 items-baseline gap-2 font-semibold"
+			><StateMark state="not_reporting" {locale} hiddenLabel />{t(
+				'Did not report',
+				'Aucun signal',
+			)}</span
+		>
+	{:else}<RecordTableValue
+			{locale}
+			text={row.days == null
+				? null
+				: periodDays
+					? recordRatio(row.days, tally(periodDays, locale), locale)
+					: tally(row.days, locale)}
+			state={row.state}
+		/>{/if}
+{/snippet}
+{#snippet hoursCell(row: RecordRow)}{#if row.state !== 'not_reporting'}<RecordTableValue
+			{locale}
+			text={row.hours == null ? null : hoursReading(row.hours, locale)}
+			state={row.state}
+		/>{/if}{/snippet}
+{#snippet linesCell(row: RecordRow)}{#if row.state !== 'not_reporting'}<RecordTableValue
+			{locale}
+			text={row.lines == null ? null : tally(row.lines, locale)}
+			state={row.state}
+		/>{/if}{/snippet}
+{#snippet tripsCell(row: RecordRow)}{#if row.state !== 'not_reporting'}<RecordTableValue
+			{locale}
+			text={row.trips == null ? null : tally(row.trips, locale)}
+			state={row.state}
+		/>{/if}{/snippet}
+{#snippet lineCell({ vehicle }: LiveRow)}
+	{#if vehicle.route}
+		<span class="inline-flex flex-wrap items-center gap-2"
+			><RoutePlate code={display.lineName(vehicle.route).number ?? vehicle.route} />{direction(
+				vehicle,
+			)}</span
+		>
+	{:else}<StateMark state="unknown" {locale} />{/if}
+{/snippet}
+{#snippet statusCell({ vehicle }: LiveRow)}
+	{#if vehicle.status === 'unknown' || vehicle.delay_min == null}<StateMark
+			state="delay_unknown"
+			{locale}
+		/>
+	{:else}<StatusMark
+			status={vehicle.status}
+			label={vehicleStatus(vehicle, locale)}
+			detail={vehicle.delay_min ? `${tally(Math.abs(vehicle.delay_min), locale)} min` : undefined}
+			style="overflow-wrap: normal; word-break: normal"
+		/>{/if}
+{/snippet}
+{#snippet reportCell({ vehicle }: LiveRow)}
+	{@const report = vehicle.reported_utc || vehicle.updated_utc}
+	{#if report && Number.isFinite(Date.parse(report))}<time datetime={report}
+			>{relativeReportAge((clock.serverNow - Date.parse(report)) / 1000, locale)}</time
+		>
+	{:else}<StateMark state="unknown" {locale} />{/if}
+{/snippet}
+{#snippet citation()}
+	{#if record && data.period}<p>
+			Transit. {data.seoTitle}. {sectionTitles.fleet[locale === 'fr' ? 1 : 0]}. {dateRange(
+				data.period,
+				locale,
+			)}. {methodEvidence(record.evidence, locale)}
+			<a class="inline-flex min-h-11 items-center text-primary underline" href={archiveLinks.share}
+				>{t('Link to this view', 'Lien vers cette vue')}</a
+			>
+		</p>{/if}
+{/snippet}
+{#snippet actions()}
+	{#if liveMode}<a
+			href={href('/map')}
+			class="inline-flex min-h-11 items-center text-primary underline">{about.openMap}</a
+		>
+	{:else if record}<RecordActionGroup
+			{locale}
+			href={archiveLinks.share}
+			files={[{ href: archiveLinks.csv, label: sectionTitles.fleet[locale === 'fr' ? 1 : 0] }]}
+			{citation}
+		/>{/if}
+{/snippet}
+{#snippet evidenceFoot()}{#if record}<RecordEvidenceLine
+			{locale}
+			evidence={record.evidence}
+			{sample}
+			note={t(
+				'Days count dates with a position reported on a trip.',
+				'Les jours comptés sont ceux où une position a été signalée pendant un trajet.',
+			)}
+		/>{/if}{/snippet}
+
+<Surface>
+	<RecordScreen class="min-w-0">
+		<RecordGroup><ScreenTitle title={data.seoTitle} {subtitle} /></RecordGroup>
+		<div class="min-w-0" data-slot="screen-content">
+			<RecordGroup density="compact">
+				<div data-slot="screen-answer">
+					{#if untracked}
+						<RecordAnswer {locale} value={null} state="not_tracked" sentence={notTracked[locale]} />
+					{:else if liveMode}
+						<RecordAnswer
+							{locale}
+							time={stamp}
+							value={live?.vehicles && !health?.isStale ? tally(reporting.length, locale) : null}
+							sentence={live?.vehicles && !health?.isStale
+								? reporting.length === 1
+									? about.reportingOne
+									: about.reporting
+								: t(
+										'Current vehicle activity is unavailable.',
+										'L’activité actuelle des véhicules est indisponible.',
+									)}
+							{actions}
+						/>
+					{:else}
+						<RecordAnswer
+							{locale}
+							time={stamp}
+							value={record?.fleet ? tally(record.active, locale) : null}
+							sentence={record?.fleet
+								? t(
+										`of the ${tally(record.fleet, locale)} listed vehicles were in service at least once on these dates.`,
+										`des ${tally(record.fleet, locale)} véhicules de la liste étaient en service au moins une fois pour ces dates.`,
+									)
+								: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
+							evidence={record
+								? {
+										sample,
+										record: record.evidence,
+										lastGood: result?.kind === 'answer' && result.lastGood,
+									}
+								: undefined}
+							actions={record ? actions : undefined}
+						/>
+					{/if}
+				</div>
+				{#if untracked}
+					<RecordCard
+						title={t(
+							'What changes without vehicle numbers',
+							'Ce qui change sans numéro de véhicule',
+						)}
+						interactive
+					>
+						<div class="grid gap-3">
+							<p>
+								{t(
+									'Individual vehicles cannot be followed across dates or compared in the vehicle rankings.',
+									'Le suivi des véhicules d’une date à l’autre et leur comparaison dans les classements sont indisponibles.',
+								)}
+							</p>
+							<p>
+								{t(
+									'The live map and the records for lines and stops are still available.',
+									'La carte en direct et les bilans des lignes et des arrêts restent disponibles.',
+								)}
+							</p>
+							<a
+								href={href('/map')}
+								class="inline-flex min-h-11 items-center text-primary underline">{about.openMap}</a
+							>
+						</div>
+					</RecordCard>
+				{:else}
+					<RecordCard {title} {stamp} interactive evidence={record ? evidenceFoot : undefined}>
+						<div class="grid min-w-0 grid-cols-1 gap-3">
+							<form
+								method="GET"
+								action={location.pathname}
+								class="max-w-xl"
+								onsubmit={(event) => {
+									event.preventDefault();
+									void navigate(query, selectedFilter, false);
+								}}
+							>
+								{#each [...location.searchParams].filter(([key]) => !['q', 'shown'].includes(key)) as [key, value], i (i)}<input
+										type="hidden"
+										name={key}
+										{value}
+									/>{/each}
+								<SearchInput
+									name="q"
+									type="search"
+									bind:ref={searchInput}
+									visibleLabel
+									textSize="body"
+									label={t('Vehicle number', 'Numéro de véhicule')}
+									placeholder={t('Vehicle number', 'Numéro de véhicule')}
+									description={t(
+										'The number painted on the vehicle. The list narrows as you type.',
+										'Le numéro inscrit sur le véhicule. La liste se précise pendant la saisie.',
+									)}
+									value={query}
+									oninput={(event) => queueSearch(event.currentTarget.value)}
+								/>
+								<noscript
+									><Button type="submit" variant="outline">{t('Search', 'Rechercher')}</Button
+									></noscript
+								>
+							</form>
+							<p class="sr-only" role="status">
+								{pending ? '' : filterCountText(count, countLabels, locale)}
+							</p>
+							{#if !pending && (view.query || selectedFilter)}<FilterSummary
+									{count}
+									countLabel={countLabels}
+									{locale}
+									clearLabel={t('Clear filters', 'Effacer les filtres')}
+									onClear={() => {
+										query = '';
+										void navigate('', null, false);
+									}}
+								/>
+								<noscript
+									><a href={clearUrl.pathname + clearUrl.search}
+										>{t('Clear filters', 'Effacer les filtres')}</a
+									></noscript
+								>
+							{/if}
+							<section
+								id={liveMode ? 'vehicles-live' : 'fleet'}
+								aria-label={title}
+								class="min-w-0"
+								bind:this={results}
+							>
+								{#if pending}<p role="status">
+										{t('Finding vehicles…', 'Recherche de véhicules…')}
+									</p>
+								{:else if liveMode && (!live?.vehicles || health?.isStale)}<p role="status">
+										{live?.familyStates.vehicles.phase === 'loading'
+											? t('Loading live reports…', 'Chargement des signalements en direct…')
+											: t(
+													'Live reports are temporarily unavailable.',
+													'Les signalements en direct sont temporairement indisponibles.',
+												)}
+									</p>
+								{:else if !liveMode && !result}
+									{#if data.fleet}{#key data.fleet}<RecordPending
+												{locale}
+												answer={data.fleet}
+											/>{/key}{/if}
+								{:else if !liveMode && result?.kind === 'busy'}<RecordPending {locale} busy />
+								{:else if !liveMode && result && result.kind !== 'answer' && result.kind !== 'not_tracked'}<p
+										role="status"
+									>
+										{recordConnection[result.kind][locale]}
+									</p>
+								{:else if !count}<p role="status">
+										{view.query
+											? t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')
+											: t('No vehicles in this view.', 'Aucun véhicule dans cette vue.')}
+									</p>
+								{:else if liveMode}
+									<p>
+										{t(
+											'Delay unknown means the last report did not give an offset from the timetable.',
+											'Un retard inconnu signifie que le dernier signalement ne donnait aucun écart à l’horaire.',
+										)}
+									</p>
+									<RecordDataTable
+										{locale}
+										{title}
+										rowHeader={t('Vehicle', 'Véhicule')}
+										columns={liveColumns}
+										rows={liveRows.slice(0, liveShown)}
+										value="status"
+										pageSize={0}
+									/>
+									<ShowMore
+										shown={liveShown}
+										total={count}
+										pageSize={fleetPageSize}
+										labels={paging}
+										onMore={(n) => void more(n)}
+									/>
+								{:else}
+									<RecordDataTable
+										{locale}
+										title={sectionTitles.fleet[locale === 'fr' ? 1 : 0]}
+										rowHeader={t('Vehicle', 'Véhicule')}
+										columns={recordColumns}
+										rows={recordRows}
+										value="days"
+										pageSize={0}
+									/>
+									<ShowMore
+										shown={recordRows.length}
+										total={count}
+										pageSize={fleetPageSize}
+										labels={paging}
+										onMore={(n) => void more(n)}
+									/>
+									{#if recordRows.some(({ state }) => state === 'not_reporting')}<p>
+											{t(
+												'Did not report on these dates. That is not the same as out of service.',
+												'Aucun signalement pour ces dates. Cela ne veut pas dire que le véhicule était hors service.',
+											)}
+										</p>{/if}
+								{/if}
+							</section>
+						</div>
+					</RecordCard>
+				{/if}
+			</RecordGroup>
+			{#if !untracked}
+				<RecordGroup>
+					{#if liveMode}<AboutLiveFigures
+							{locale}
+							{operator}
+							healthLink={href('/status')}
+							captureAge={health?.ageSeconds}
+						/>
+					{:else}
+						<AboutFigures
+							title={about.about}
+							compact
+							fields={[
+								{
+									key: 'period',
+									label: about.period,
+									text: data.period ? dateRange(data.period, locale) : null,
+								},
+								{
+									key: 'counted',
+									label: about.counted,
+									text: t(
+										'A day in service requires a position reported on a trip.',
+										'Un jour en service exige une position signalée pendant un trajet.',
+									),
+								},
+								{
+									key: 'observed',
+									label: about.observed,
+									text: record?.coverageNote?.[locale] ?? null,
+								},
+								{
+									key: 'versions',
+									label: about.versions,
+									text: record ? methodEvidence(record.evidence, locale) : null,
+								},
+								{
+									key: 'source',
+									label: about.source,
+									text: operator
+										? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`
+										: null,
+								},
+							]}
+							versionsLink={{ href: href('/metrics'), label: about.method }}
+						/>
+					{/if}
+				</RecordGroup>
+			{/if}
+		</div>
+	</RecordScreen>
+</Surface>

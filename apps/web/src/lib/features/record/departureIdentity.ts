@@ -17,6 +17,22 @@ export function departureIdentity(line: unknown, direction: unknown, departure: 
 
 export type DepartureIdentity = NonNullable<ReturnType<typeof departureIdentity>>;
 
+export function isDepartureTripId(trip: string | null): trip is string {
+	return Boolean(trip && trip.length <= 256 && trip === trip.trim() && !/[^\S ]|\p{C}/u.test(trip));
+}
+
+/** Live departures remain reachable by an opaque trip ID when their timetable key is absent. */
+export function departureByTripHref(source: URL, locale: Locale, city: string, trip: string) {
+	if (!isDepartureTripId(trip)) return null;
+	const target = new URL(
+		carryFrameState(localizeHref('/departure/trip', locale, city), source),
+		source,
+	);
+	target.searchParams.set('frameMode', 'live');
+	target.searchParams.set('trip', trip);
+	return target.pathname + target.search;
+}
+
 export function departureHref(
 	source: URL,
 	locale: Locale,
