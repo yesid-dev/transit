@@ -2,7 +2,7 @@ import { expect } from '@playwright/test';
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
-import { stmLiveAlertFixtures } from './alert-fixture.mjs';
+import { alertFixtures, stmLiveAlertFixtures } from './alert-fixture.mjs';
 import {
 	captureFixture,
 	captureUrl,
@@ -13,6 +13,7 @@ import { designPassCases, type Screen } from './design-pass-cases';
 import { recordMapFixture } from './map-record-fixture';
 import { measureDesignPass, setWidth } from './design-pass-measure';
 import { expectDesignPass } from './design-pass-debt';
+import { openFrameControls } from './frame-controls';
 
 const time = Date.parse('2026-11-23T16:00:00Z');
 const unobstructedCapture = '[data-slot="app-frame-chrome"] { visibility: hidden !important; }';
@@ -38,6 +39,63 @@ const cohesionScreens = new Set<Screen>([
 	'search-query',
 	'roadmap',
 ]);
+
+test('alerts French filter placeholders fit the rail and sheet @layout', async ({ page }) => {
+	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
+	await page.emulateMedia({ colorScheme: 'dark' });
+	await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+	await page.clock.install({ time });
+	await setWidth(page, 1440);
+	await page.route(captureUrl, (route) =>
+		route.fulfill({
+			json: captureFixture(time, {
+				alerts: alertFixtures(12).map((alert) => ({ ...alert, periods: [] })),
+			}),
+		}),
+	);
+	await page.goto('/fr/alerts?provider=stm&frameMode=live');
+	await refreshAlertsCapture(page);
+	const effects = page.locator('#alerts-breakdown dl');
+	await expect(effects.locator('dt')).toHaveCount(5);
+	const rows = await effects.locator('dt').evaluateAll((labels) => {
+		const top = labels[0].getBoundingClientRect().top;
+		return labels.filter((label) => label.getBoundingClientRect().top === top).length;
+	});
+	expect(rows).toBe(4);
+	await expect(effects.locator('[data-slot="separator"]')).toHaveCount(0);
+
+	for (const width of [1440, 1024, 390]) {
+		await setWidth(page, width);
+		const rail = await openFrameControls(page, 'fr');
+		const filter = rail.getByRole('group', { name: 'Filtrer', exact: true });
+		if (width === 390)
+			await expect(
+				page.getByRole('dialog', { name: 'Commandes' }).locator('input').first(),
+			).toBeVisible();
+		await page.evaluate(() => document.fonts.ready);
+		for (const [label, placeholder] of [
+			['Ligne', 'Toutes'],
+			['Arrêt', 'Tous'],
+			['Effet', 'Tous'],
+		]) {
+			await expect(filter.getByText(label, { exact: true })).toBeVisible();
+			const input = filter.getByRole('combobox', { name: label, exact: true });
+			await expect(input).toHaveAttribute('placeholder', placeholder);
+			const { required, available } = await input.evaluate((element: HTMLInputElement) => {
+				const style = getComputedStyle(element);
+				const context = document.createElement('canvas').getContext('2d')!;
+				context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+				context.letterSpacing = style.letterSpacing === 'normal' ? '0px' : style.letterSpacing;
+				return {
+					required: context.measureText(element.placeholder).width,
+					available:
+						element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+				};
+			});
+			expect(required, `${label} placeholder at ${width}px`).toBeLessThanOrEqual(available);
+		}
+	}
+});
 
 for (const { screen, provider, locale, key, href } of designPassCases) {
 	test(`${screen} ${provider} ${locale} @layout`, async ({ page }, info) => {

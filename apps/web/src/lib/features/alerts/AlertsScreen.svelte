@@ -29,8 +29,6 @@
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
-	import FactList from '../record/FactList.svelte';
-	import FactRow from '../record/FactRow.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
@@ -207,13 +205,20 @@
 					</p>
 				</div>
 			{:else}
-				<FactList>
+				<dl class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
 					{#each rows as row, index (index)}
-						<FactRow label={alertEffect(row.key, locale)}>{@render cutValue(row)}</FactRow>
+						<div class="min-w-0">
+							<dt class="wrap-break-word">{alertEffect(row.key, locale)}</dt>
+							<dd
+								class={row.value != null ? 'font-heading text-heading font-extrabold' : undefined}
+							>
+								{@render cutValue(row)}
+							</dd>
+						</div>
 					{/each}
-				</FactList>
+				</dl>
 				{#if rows.some((row) => row.key !== unstatedEffect && row.value != null)}
-					<p class="text-small text-muted-foreground">
+					<p class="mt-2 text-small text-muted-foreground">
 						{t(
 							'Effects are the agency’s own categories, kept as published.',
 							'Les effets sont les catégories de l’agence, telles que publiées.',

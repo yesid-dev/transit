@@ -203,6 +203,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(byLine.getByRole('table')).toBeVisible();
 	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 alerts');
 	await byLineToggle.click();
+	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	const controls = await openFrameControls(page);
 	const filter = controls.getByRole('group', { name: 'Filter', exact: true });
 	const line = filter.getByRole('combobox', { name: 'Line' });

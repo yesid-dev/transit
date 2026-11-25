@@ -164,54 +164,66 @@
 	<ControlsRail label={t('Filter', 'Filtrer')}>
 		<div class="grid w-full min-w-0 gap-3">
 			{#if lineOptions.length}
-				<Combobox
-					options={lineOptions}
-					value={line || null}
-					onValueChange={(value) => applyFilter('route', value)}
-					label={t('Line', 'Ligne')}
-					placeholder={t('All lines', 'Toutes les lignes')}
-					clearLabel={t('Clear line', 'Effacer la ligne')}
-					emptyLabel={t('No matching lines', 'Aucune ligne correspondante')}
-					fold={foldSearchText}
-				/>
-			{/if}
-			{#if stopOptions.length}
-				<Combobox
-					options={stopOptions}
-					value={stop || null}
-					onValueChange={(value) => applyFilter('stop', value)}
-					label={t('Stop', 'Arrêt')}
-					placeholder={t('All stops', 'Tous les arrêts')}
-					clearLabel={t('Clear stop', 'Effacer l’arrêt')}
-					emptyLabel={t('No matching stops', 'Aucun arrêt correspondant')}
-					fold={foldSearchText}
-				/>
-			{/if}
-			{#if hasEffects}
-				{@const allEffects = t('All effects', 'Tous les effets')}
-				{#if effectOptions.length < 5}
-					<SegmentedChoice
-						label={t('Effect', 'Effet')}
-						value={selectedEffect}
-						options={[
-							{ key: '', label: allEffects },
-							...effectOptions.map(({ value: key, label }) => ({ key, label })),
-						]}
-						variant="joined-grid"
-						onSelect={(value) => applyFilter('effect', value)}
-					/>
-				{:else}
+				{@const label = t('Line', 'Ligne')}
+				<div class="grid min-w-0 gap-1">
+					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
 					<Combobox
-						options={effectOptions}
-						value={selectedEffect || null}
-						onValueChange={(value) => applyFilter('effect', value)}
-						label={t('Effect', 'Effet')}
-						placeholder={allEffects}
-						clearLabel={t('Clear effect', 'Effacer l’effet')}
-						emptyLabel={t('No matching effects', 'Aucun effet correspondant')}
+						options={lineOptions}
+						value={line || null}
+						onValueChange={(value) => applyFilter('route', value)}
+						{label}
+						placeholder={t('All', 'Toutes')}
+						clearLabel={t('Clear line', 'Effacer la ligne')}
+						emptyLabel={t('No matching lines', 'Aucune ligne correspondante')}
 						fold={foldSearchText}
 					/>
-				{/if}
+				</div>
+			{/if}
+			{#if stopOptions.length}
+				{@const label = t('Stop', 'Arrêt')}
+				<div class="grid min-w-0 gap-1">
+					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+					<Combobox
+						options={stopOptions}
+						value={stop || null}
+						onValueChange={(value) => applyFilter('stop', value)}
+						{label}
+						placeholder={t('All', 'Tous')}
+						clearLabel={t('Clear stop', 'Effacer l’arrêt')}
+						emptyLabel={t('No matching stops', 'Aucun arrêt correspondant')}
+						fold={foldSearchText}
+					/>
+				</div>
+			{/if}
+			{#if hasEffects}
+				{@const label = t('Effect', 'Effet')}
+				{@const allEffects = t('All', 'Tous')}
+				<div class="grid min-w-0 gap-1">
+					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+					{#if effectOptions.length < 5}
+						<SegmentedChoice
+							{label}
+							value={selectedEffect}
+							options={[
+								{ key: '', label: allEffects },
+								...effectOptions.map(({ value: key, label }) => ({ key, label })),
+							]}
+							variant="joined-grid"
+							onSelect={(value) => applyFilter('effect', value)}
+						/>
+					{:else}
+						<Combobox
+							options={effectOptions}
+							value={selectedEffect || null}
+							onValueChange={(value) => applyFilter('effect', value)}
+							{label}
+							placeholder={allEffects}
+							clearLabel={t('Clear effect', 'Effacer l’effet')}
+							emptyLabel={t('No matching effects', 'Aucun effet correspondant')}
+							fold={foldSearchText}
+						/>
+					{/if}
+				</div>
 			{/if}
 			<div class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 text-small">
 				<p role={context.presentation === 'mobile' ? 'status' : undefined}>{resultCount}</p>
