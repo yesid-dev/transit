@@ -2,6 +2,8 @@
 	import {
 		BandBar,
 		HourGrid,
+		StopLadder,
+		type StopLadderStop,
 		ChartAxis,
 		ChartFrame,
 		ChartLegend,
@@ -13,11 +15,24 @@
 	import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
 	import { choose, tally } from '../recordText.ts';
 	import StateMark from '../StateMark.svelte';
-	import { bandChart, chartState, hourChart, trendChart, type ChartTable } from './recordCharts.ts';
+	import {
+		bandChart,
+		chartState,
+		hourChart,
+		trendChart,
+		stopLadderChart,
+		type ChartTable,
+	} from './recordCharts.ts';
 
 	type Input =
 		| { kind: 'bands'; answer: RecordCell }
 		| { kind: 'hours'; answer: RecordSeries }
+		| {
+				kind: 'ladder';
+				answer: RecordSeries;
+				stop: (id: string) => Pick<StopLadderStop, 'name' | 'code' | 'href' | 'timingPoint'>;
+				observed?: boolean;
+		  }
 		| { kind: 'trend'; answer: RecordSeries; network?: RecordSeries };
 
 	let {
@@ -38,7 +53,12 @@
 			? { kind: input.kind, ...bandChart(input.answer, title, locale) }
 			: input.kind === 'hours'
 				? { kind: input.kind, ...hourChart(input.answer, title, locale) }
-				: { kind: input.kind, ...trendChart(input.answer, title, locale, input.network) },
+				: input.kind === 'ladder'
+					? {
+							kind: input.kind,
+							...stopLadderChart(input.answer, title, locale, input.stop, input.observed),
+						}
+					: { kind: input.kind, ...trendChart(input.answer, title, locale, input.network) },
 	);
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	type Row = ChartTable['rows'][number];
@@ -100,6 +120,8 @@
 				</div>
 			{/each}
 		</dl>
+	{:else if reading.kind === 'ladder'}
+		<StopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
 			<p class="text-small text-muted-foreground">{reading.props.scale.label}</p>

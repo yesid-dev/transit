@@ -1,3 +1,14 @@
+export const departureCaptureStops = [
+	{ id: 'capture-A', name: 'Sherbrooke / Atwater', code: '51543', delay: -61 },
+	{ id: 'capture-B', name: 'Sherbrooke / Guy', code: '51653', delay: 36 },
+	{ id: 'capture-C', name: 'Sherbrooke / de la Montagne', code: '51705', delay: 97 },
+	{ id: 'capture-D', name: 'Sherbrooke / Peel', code: '51735', delay: null },
+	{ id: 'capture-E', name: 'Sherbrooke / Robert-Bourassa', code: '51824', delay: 245 },
+	{ id: 'capture-F', name: 'Sherbrooke / Saint-Laurent', code: '51897', delay: 320 },
+	{ id: 'capture-G', name: 'Station Sherbrooke', code: '51905', delay: 288 },
+	{ id: 'capture-H', name: 'Sherbrooke / Saint-Hubert', code: '51926', delay: 302 },
+];
+
 export function departureDailyEngine(url, dailyMessageHold) {
 	const get = (name) => url.searchParams.get(name);
 	const from = get('from');
@@ -6,6 +17,7 @@ export function departureDailyEngine(url, dailyMessageHold) {
 	const kind = get('kind');
 	const group = get('group');
 	const departure = get('departure');
+	if (departure && from === '2026-11-21') return { status: 503, body: {} };
 	if (
 		departure &&
 		(!['24', '80'].includes(get('line')) || get('direction') !== '0' || departure !== '07:00:00')
@@ -72,6 +84,45 @@ export function departureDailyEngine(url, dailyMessageHold) {
 						ranking_bound: 0.9,
 						rank: 1,
 						range: { lower: 0.7, upper: 0.9, method: 'wilson_95' },
+					},
+				],
+			},
+		};
+	if (group === 'stop' && departure && process.env.TRANSIT_E2E_DEPARTURE_NAMED === '1') {
+		return {
+			body: {
+				...envelope,
+				cells: departureCaptureStops.map(({ id, delay }, index) => {
+					const seconds = from === '2026-11-19' ? null : delay;
+					const stop = cell(
+						{ direction: 0, stop_sequence: index + 1, stop: id },
+						{ classified: seconds == null ? 0 : 1, scheduled: 1 },
+						{},
+						{ observed_delay_seconds: seconds },
+					);
+					return seconds == null
+						? {
+								...stop,
+								state: 'not_measured',
+								state_text: { en: 'Not measured', fr: 'Non mesuré' },
+							}
+						: stop;
+				}),
+			},
+		};
+	}
+	if (group === 'stop' && departure && from === '2026-11-19')
+		return {
+			body: {
+				...envelope,
+				cells: [
+					{
+						...cell(
+							{ direction: 0, stop_sequence: 1, stop: 'S1' },
+							{ classified: 0, scheduled: 1 },
+						),
+						state: 'not_measured',
+						state_text: { en: 'Not measured', fr: 'Non mesuré' },
 					},
 				],
 			},

@@ -58,9 +58,15 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			}
 		}
 		const start = performance.now();
+		const redesignedDetail = screen === 'departure';
+		if (redesignedDetail)
+			await expect(
+				page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]'),
+			).toBeVisible();
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
 		const { report, focusSequences } = await measureDesignPass(page, {
 			countShadowRings:
+				redesignedDetail ||
 				screen.startsWith('overview') ||
 				screen === 'stop-record' ||
 				screen === 'how-we-measure' ||
@@ -85,7 +91,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		);
 		await expect(page.getByRole('main')).not.toContainText(machineUnits);
 		expectDesignPass(screen, key, report);
-		if (screen === 'download' || screen === 'roadmap') {
+		if (redesignedDetail || screen === 'download' || screen === 'roadmap') {
 			for (const theme of ['light', 'dark'] as const) {
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
