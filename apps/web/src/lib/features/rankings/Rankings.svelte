@@ -266,7 +266,6 @@
 			<p>{t('By', 'Par')}</p>
 			{#if byOptions.length > 5}
 				<Combobox
-					class="w-72 max-w-full"
 					options={byOptions.map(({ key, label }) => ({
 						value: key,
 						label,
@@ -435,7 +434,7 @@
 						label: key === 'all' ? t('All classes', 'Toutes les classes') : classText(key, locale),
 					})),
 				]}
-				<div class="grid w-72 min-w-0 max-w-full grid-cols-1 gap-1 justify-self-start">
+				<div class="grid min-w-0 grid-cols-1 gap-1 sm:w-72">
 					<p>{t('Service class', 'Classe de service')}</p>
 					<Combobox
 						options={options.map(({ key, label }) => ({

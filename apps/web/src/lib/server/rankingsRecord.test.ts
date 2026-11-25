@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { loadRankingsRecord, rankingsCsv } from './rankingsRecord.ts';
+import { loadRankingsRecord, rankingHeadsigns, rankingsCsv } from './rankingsRecord.ts';
 import type { RankingPath } from '#lib/features/rankings/rankingSelection.ts';
 
 const { fetcher } = vi.hoisted(() => ({
@@ -15,6 +15,18 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 const dates = 'recordFrom=2026-10-15&recordTo=2026-11-21';
+
+it('keeps published destinations only when a direction has a single destination', () => {
+	expect(
+		rankingHeadsigns([
+			{ dir: 0, headsign: 'East terminus' },
+			{ dir: 0, headsign: 'University' },
+			{ dir: 0, headsign: 'East terminus' },
+			{ dir: 1, headsign: 'West terminus' },
+			{ dir: 1, headsign: ' West terminus ' },
+		]),
+	).toEqual({ 1: 'West terminus' });
+});
 
 it.each([
 	['/hotspots', '', { kind: 'line', measure: 'on_time' }],

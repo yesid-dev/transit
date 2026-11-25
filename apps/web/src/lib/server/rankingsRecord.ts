@@ -1,5 +1,6 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
+import type { RouteFile } from '#lib/v1/index.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { recordCsvResponse } from './recordCsv.ts';
 import { getRankingsRecord, getRecordAnswer, type RankingsRecord } from './engine.ts';
@@ -20,6 +21,15 @@ export type RankingIdentities = {
 	headsigns: Record<string, Record<number, string>>;
 };
 
+export function rankingHeadsigns(directions: RouteFile['directions'] | undefined) {
+	const published = directionHeadsigns(directions);
+	for (const { dir, headsign } of directions ?? []) {
+		const sign = headsign?.trim();
+		if (dir != null && sign && published[dir] !== sign) delete published[dir];
+	}
+	return published;
+}
+
 function rankingIdentities(
 	kind: RankingKind,
 	schedule: ScheduleEdition | null | undefined,
@@ -37,7 +47,7 @@ function rankingIdentities(
 				.map(({ id, name, code }) => [id, { name, code }]),
 		),
 		headsigns: Object.fromEntries(
-			[...lines].map((line) => [line, directionHeadsigns(schedule?.route_directions?.[line])]),
+			[...lines].map((line) => [line, rankingHeadsigns(schedule?.route_directions?.[line])]),
 		),
 	};
 }
