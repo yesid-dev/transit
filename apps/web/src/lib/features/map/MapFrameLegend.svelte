@@ -125,9 +125,9 @@
 						tr('25% and over', '25 % et plus'),
 					]
 				: [
-						tr('Zero seconds or less', 'Zéro seconde ou moins'),
-						tr('Over zero and under 30 seconds', 'Plus de zéro et moins de 30 secondes'),
-						tr('30 to under 60 seconds', '30 à moins de 60 secondes'),
+						tr('Zero or less', 'Zéro ou moins'),
+						tr('Under half a minute', 'Moins d’une demi-minute'),
+						tr('Half to under 1 minute', 'Demi-minute à moins de 1 minute'),
 						tr('1 to under 2 minutes', '1 à moins de 2 minutes'),
 						tr('2 minutes and over', '2 minutes et plus'),
 					];

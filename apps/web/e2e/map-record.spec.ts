@@ -12,8 +12,7 @@ async function pickLine(page: Page, input: Locator, code: string) {
 	await input.fill(code);
 	await page
 		.getByRole('listbox')
-		.getByRole('option')
-		.filter({ hasText: new RegExp(`^${code}\\b`) })
+		.getByRole('option', { name: new RegExp(`^${code}\\b`) })
 		.click();
 }
 

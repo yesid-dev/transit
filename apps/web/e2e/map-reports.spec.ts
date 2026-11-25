@@ -507,6 +507,15 @@ for (const locale of PUBLISHED_LOCALES) {
 		expect(url.searchParams.has('focus')).toBe(false);
 		expect(url.pathname).toContain(locale === 'en' ? '/map' : '/fr/map');
 
+		const citeLabel = locale === 'fr' ? 'Citer' : 'Cite';
+		await panel.getByRole('button', { name: citeLabel, exact: true }).click();
+		const citation = page
+			.getByRole('dialog')
+			.filter({ has: page.getByRole('heading', { name: citeLabel, exact: true }) });
+		await expect(citation.locator('time')).toHaveAttribute('datetime', GENERATED);
+		await expect(citation.getByRole('link')).toHaveAttribute('href', copied);
+		await citation.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close' }).click();
+
 		// Selecting a report opens detail only: no implicit filter and no camera change.
 		const gotoBefore = page.url();
 		const cameraBeforeSelection = await rendererCamera(page);
@@ -582,12 +591,14 @@ test('live filters and a camera pan move the list, counts and CSV together', asy
 	const beforeCount = await countNumber();
 	await closeMapInView(page);
 	const zoomIn = page.getByRole('button', { name: 'Zoom in', exact: true });
+	const startingZoom = (await rendererCamera(page))[2]!;
 	for (let i = 0; i < 4; i++) {
 		const currentZoom = (await rendererCamera(page))[2]!;
 		await zoomIn.click();
 		await expect.poll(async () => (await rendererCamera(page))[2]!).toBeGreaterThan(currentZoom);
 		await page.clock.runFor(450);
 	}
+	expect((await rendererCamera(page))[2]).toBeGreaterThan(startingZoom);
 	await openReports(page);
 	await expect.poll(countNumber).toBeLessThan(beforeCount);
 	const afterCount = await countNumber();
@@ -651,7 +662,6 @@ test('loading, unavailable and retained states never show a reassuring zero @mot
 			? route.fulfill({ status: 500, body: 'down' })
 			: route.fulfill({ json: fleetCapture(file, 'stm') }),
 	);
-	const reports = reportsCopy.en;
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm`);
 	const panel = await openReports(page);
 	await expect(panel.locator('[data-slot="map-in-view-count"]')).toBeVisible();
