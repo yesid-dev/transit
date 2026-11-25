@@ -1,6 +1,11 @@
 import { error } from '@sveltejs/kit';
 import { type FrameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
-import { getRecordAnswer, type RecordQuery } from './engine.ts';
+import {
+	getRecordAnswer,
+	getVehicleDayAnswers,
+	type EnginePeriod,
+	type RecordQuery,
+} from './engine.ts';
 import { recordCsvResponse } from './recordCsv.ts';
 
 const queries = {
@@ -18,6 +23,35 @@ function recordQuery(section: VehicleSection, id?: string): RecordQuery {
 	return { path: '/measure', parameters: { ...queries[section], ...(id ? { vehicle: id } : {}) } };
 }
 
+export function readVehicleSections(scope: EnginePeriod, id?: string, only?: ReadonlySet<string>) {
+	const sections: VehicleSection[] = id
+		? ['service', 'lines', 'reporting', 'completion', 'punctuality']
+		: ['fleet'];
+	const include = (section: string) => !only || only.has(section);
+	const bundled =
+		id && include('service') && include('days') ? getVehicleDayAnswers(id, scope) : null;
+	return {
+		sections: sections.filter(include).map((section) => ({
+			section,
+			answer:
+				section === 'service' && bundled
+					? bundled.service
+					: getRecordAnswer(recordQuery(section, id), scope),
+		})),
+		days:
+			id && include('days')
+				? (bundled?.days ??
+					getRecordAnswer(
+						{
+							path: '/measure',
+							parameters: { ...recordQuery('service', id).parameters, group: 'day' },
+						},
+						scope,
+					))
+				: null,
+	};
+}
+
 export function loadVehiclePage(
 	url: URL,
 	request: Request,
@@ -26,29 +60,18 @@ export function loadVehiclePage(
 	id?: string,
 ) {
 	const { mode, period } = parseAnswerFrameState(url.searchParams, clock);
-	const scope = period && { ...period, city, visitorIp: request.headers.get('cf-connecting-ip') };
-	const sections: VehicleSection[] = id
-		? ['service', 'lines', 'reporting', 'completion', 'punctuality']
-		: ['fleet'];
+	const scope = period && {
+		...period,
+		city,
+		visitorIp: request.headers.get('cf-connecting-ip'),
+		retryBusy: Boolean(id),
+	};
 	return {
 		mode,
 		period,
 		city,
 		id,
-		sections:
-			mode === 'record' && scope
-				? sections.map((section) => ({
-						section,
-						answer: getRecordAnswer(recordQuery(section, id), scope),
-					}))
-				: [],
-		days:
-			mode === 'record' && id && scope
-				? getRecordAnswer(
-						{ path: '/measure', parameters: { measure: 'vehicles', group: 'day', vehicle: id } },
-						scope,
-					)
-				: null,
+		...(mode === 'record' && scope ? readVehicleSections(scope, id) : { sections: [], days: null }),
 	};
 }
 

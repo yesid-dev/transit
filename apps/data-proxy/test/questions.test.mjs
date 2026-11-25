@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { QUESTION_PARAMS } from "../src/question-params.js";
 import { probeEngine, serveBoundQuestion } from "../src/questions.js";
 import worker from "../src/worker.js";
+import { fetchEngine } from "../../engine/upstream.js";
 
 const WINDOW = "from=2020-01-01&to=2020-01-02";
 const HEALTH = `/v2/demo/data-health?${WINDOW}`;
@@ -695,25 +696,67 @@ test("engine busy keeps Retry-After even with a last good answer", async (t) => 
   assert.deepEqual(await response.json(), { message: "busy, try again" });
 });
 
+test("a bound record read retries engine contention under its original admission", async (t) => {
+  let attempts = 0;
+  const f = fixture(t, (request) => fetchEngine(
+    request,
+    { ENGINE_ORIGIN: "https://local-engine.invalid" },
+    async () => ++attempts === 1
+      ? new Response(null, { status: 503, headers: { "retry-after": "0" } })
+      : Response.json(ANSWER),
+  ));
+  let admissions = 0;
+  f.env.QUESTION_LIMIT.limit = async () => ({ success: ++admissions === 1 });
+  const response = await f.fetch(MEASURE, {
+    "x-transit-record-deadline": String(Date.now() + 10_000),
+  }, "GET", true);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), ANSWER);
+  assert.equal(f.requests.length, 1);
+  assert.equal(attempts, 2);
+  assert.equal(admissions, 1);
+  const cached = await f.fetch(MEASURE, {
+    "x-transit-record-deadline": String(Date.now() + 10_000),
+  }, "GET", true);
+  assert.equal(cached.headers.get("cache-status"), "Transit; hit");
+  assert.equal(attempts, 2);
+  assert.equal(admissions, 1);
+});
+
+test("public callers cannot opt in to retries and short record budgets are respected", async (t) => {
+  const f = fixture(t, () =>
+    new Response(null, { status: 503, headers: { "retry-after": "2" } }));
+  const headers = { "x-transit-record-deadline": String(Date.now() + 10_000) };
+  assert.equal((await f.fetch(MEASURE, headers)).status, 503);
+  assert.equal(f.requests.length, 1);
+  const short = { "x-transit-record-deadline": String(Date.now() + 1_000) };
+  assert.equal((await f.fetch(MEASURE, short, "GET", true)).status, 503);
+  assert.equal(f.requests.length, 2);
+});
+
 test("rate limiting keys on hashed client IP and only runs for cache misses", async (t) => {
   const f = fixture(t);
+  const config = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
+  const limit = Number(config.match(/simple = \{ limit = (\d+), period = 60 \}/)?.[1]);
+  assert.ok(limit >= 2 * (15 + 3));
   const counts = new Map();
   f.env.QUESTION_LIMIT.limit = async ({ key }) => {
     assert.match(key, /^[a-f0-9]{64}$/);
     counts.set(key, (counts.get(key) ?? 0) + 1);
-    return { success: counts.get(key) <= 30 };
+    return { success: counts.get(key) <= limit };
   };
   const ip = { "cf-connecting-ip": "192.0.2.1" };
-  for (let question = 1; question <= 30; question += 1) {
+  for (let question = 1; question <= limit; question += 1) {
     assert.equal((await f.fetch(MEASURE + "&line=" + question, ip)).status, 200);
   }
   assert.equal((await f.fetch(MEASURE + "&line=1", ip)).status, 200);
-  const rejected = await f.fetch(MEASURE + "&line=31", ip);
+  const next = MEASURE + "&line=" + (limit + 1);
+  const rejected = await f.fetch(next, ip);
   assert.equal(rejected.status, 503);
   assert.equal(rejected.headers.get("retry-after"), "60");
   assert.deepEqual(await rejected.json(), { message: "busy, try again" });
-  assert.equal(f.requests.length, 30);
-  assert.equal((await f.fetch(MEASURE + "&line=31", { "cf-connecting-ip": "192.0.2.2" })).status, 200);
+  assert.equal(f.requests.length, limit);
+  assert.equal((await f.fetch(next, { "cf-connecting-ip": "192.0.2.2" })).status, 200);
   assert.equal(counts.size, 2);
 });
 

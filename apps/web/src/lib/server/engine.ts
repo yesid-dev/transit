@@ -28,6 +28,7 @@ import {
 export type { EnginePeriod, RecordQuery } from './engineQuestion.ts';
 
 export const ENGINE_TIMEOUT_MS = 20_000;
+const RECORD_TIMEOUT_MS = 45_000;
 
 const bilingual = z.object({ en: z.string(), fr: z.string() });
 const engineState = z.enum([
@@ -143,6 +144,7 @@ function engineFetch(
 	signal: AbortSignal,
 	visitorIp?: string | null,
 	fixtureScope?: string | null,
+	recordDeadline?: number,
 ) {
 	const proxy = env.QUESTION_PROXY;
 	const fixture = env.QUESTION_FIXTURE_ORIGIN;
@@ -150,6 +152,7 @@ function engineFetch(
 	const url = questionUrl(question, proxy ? QUESTION_ORIGIN : fixture);
 	const headers = new Headers();
 	if (proxy && visitorIp) headers.set('x-transit-visitor-ip', visitorIp);
+	if (proxy && recordDeadline) headers.set('x-transit-record-deadline', String(recordDeadline));
 	// The loopback test binding lets a fixture opt in to holding its own request.
 	if (
 		!proxy &&
@@ -180,10 +183,13 @@ export async function query<T>(
 	schema: z.ZodType<T>,
 	visitorIp?: string | null,
 	fixtureScope?: string | null,
+	retryBusy = false,
 ): Promise<EngineResult<T>> {
-	const signal = AbortSignal.timeout(ENGINE_TIMEOUT_MS);
+	const timeout = retryBusy ? RECORD_TIMEOUT_MS : ENGINE_TIMEOUT_MS;
+	const signal = AbortSignal.timeout(timeout);
+	const recordDeadline = retryBusy ? Date.now() + timeout - 250 : undefined;
 	try {
-		const response = await engineFetch(question, signal, visitorIp, fixtureScope);
+		const response = await engineFetch(question, signal, visitorIp, fixtureScope, recordDeadline);
 		if (!response) return { kind: 'unconfigured' };
 		if (
 			question.parameters.view === 'map' &&
@@ -193,6 +199,8 @@ export async function query<T>(
 		)
 			return { kind: 'unreachable', status: response.status };
 		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
+		if (response.status === 400 && question.parameters.include_overall)
+			return { kind: 'unreachable', status: 400 };
 		if (!response.ok) return { kind: 'unreachable' };
 		const { success, data } = schema.safeParse(await response.json());
 		if (!success) return { kind: 'unreachable' };
@@ -217,6 +225,7 @@ function periodQuery<T>(
 		schema,
 		period.visitorIp,
 		period.fixtureScope,
+		period.retryBusy,
 	);
 }
 
@@ -462,6 +471,31 @@ export function getDelayDistribution(period: EnginePeriod, cuts: DelayDistributi
 		{ ...cuts, measure: 'delay_distribution' },
 		delayDistribution,
 	);
+}
+
+export function getVehicleDayAnswers(vehicle: string, period: EnginePeriod) {
+	const parameters = { measure: 'vehicles', vehicle };
+	const grouped = { ...parameters, group: 'day' };
+	const bundle = periodQuery(
+		'/measure',
+		period,
+		{ ...grouped, include_overall: '1' },
+		recordSeries.extend({ overall: recordMeasure.optional() }),
+	);
+	const split = (daily: boolean): Promise<EngineResult<RecordAnswer>> =>
+		bundle.then((result) => {
+			if (result.kind === 'answer' && result.answer.overall) {
+				const { overall, ...days } = result.answer;
+				return { ...result, answer: daily ? days : overall };
+			}
+			if (result.kind === 'answer' || (result.kind === 'unreachable' && result.status === 400))
+				return getRecordAnswer(
+					{ path: '/measure', parameters: daily ? grouped : parameters },
+					period,
+				);
+			return result;
+		});
+	return { service: split(false), days: split(true) };
 }
 
 // Each scorecard answer has one numeric value or readings by feed, field or horizon.

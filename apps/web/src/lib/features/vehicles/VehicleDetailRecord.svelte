@@ -98,6 +98,7 @@
 	const service = $derived(records.find(({ section }) => section === 'service'));
 	const lines = $derived(records.find(({ section }) => section === 'lines'));
 	const timing = $derived(records.find(({ section }) => section === 'punctuality'));
+	const dailyAnswer = $derived(data.days);
 
 	let shownDays = $state(7);
 	let dayPage = $derived(data.period ? `${data.period.from}/${data.period.to}` : '');
@@ -208,7 +209,7 @@
 						</p>
 					{/snippet}
 				</RecordAnswer>
-				{#await data.days then daily}
+				{#await dailyAnswer then daily}
 					{#if daily?.kind === 'answer' && 'cells' in daily.answer}
 						{@const missing = daily.answer.cells.filter(
 							(cell) =>
@@ -341,8 +342,8 @@
 				</RecordCard>
 			</div>
 			<RecordCard title={t('Day by day', 'Jour après jour')} stamp={time}>
-				{#await data.days}
-					{#if data.days}<RecordPending {locale} answer={data.days} />{/if}
+				{#await dailyAnswer}
+					{#if dailyAnswer}<RecordPending {locale} answer={dailyAnswer} />{/if}
 				{:then result}
 					{#if result?.kind === 'answer' && 'cells' in result.answer}
 						{@const cells = days(result.answer)}
@@ -370,7 +371,7 @@
 						{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 					{:else if result}{@render absent(result)}{/if}
 				{/await}
-				{#snippet footer()}{#await data.days then result}
+				{#snippet footer()}{#await dailyAnswer then result}
 						{#if result?.kind === 'answer' && 'cells' in result.answer}
 							{@const entries = days(result.answer)}
 							{@const reported = entries.filter((entry) => entry.state === 'in_service').length}

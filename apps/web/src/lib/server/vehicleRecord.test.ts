@@ -1,7 +1,10 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
-const getRecordAnswer = vi.hoisted(() => vi.fn());
-vi.mock('./engine.ts', () => ({ getRecordAnswer }));
+const { getRecordAnswer, getVehicleDayAnswers } = vi.hoisted(() => ({
+	getRecordAnswer: vi.fn(),
+	getVehicleDayAnswers: vi.fn(),
+}));
+vi.mock('./engine.ts', () => ({ getRecordAnswer, getVehicleDayAnswers }));
 vi.mock('./recordCsv.ts', () => ({ recordCsvResponse: vi.fn() }));
 
 import { frameClock } from '#lib/site/frameState.ts';
@@ -22,7 +25,10 @@ const load = (path: string, id?: string) =>
 		id,
 	);
 
-beforeEach(() => getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unreachable' }));
+beforeEach(() => {
+	getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unreachable' });
+	getVehicleDayAnswers.mockReset();
+});
 
 it('reads fleet days over the chosen dates without a vehicle cut', () => {
 	expect(load(`/vehicles?${dates}`).sections.map(({ section }) => section)).toEqual(['fleet']);
@@ -37,7 +43,9 @@ it('reads fleet days over the chosen dates without a vehicle cut', () => {
 
 it('starts all detail sections without awaiting the slow line breakdown', async () => {
 	const pending = new Promise(() => {});
-	getRecordAnswer.mockResolvedValueOnce({ kind: 'answer' }).mockReturnValueOnce(pending);
+	const days = Promise.resolve({ kind: 'answer' });
+	getVehicleDayAnswers.mockReturnValue({ service: Promise.resolve({ kind: 'answer' }), days });
+	getRecordAnswer.mockReturnValueOnce(pending);
 	const detail = load(`/fr/vehicle/40061?${dates}`, '40061');
 	expect(detail.sections.map(({ section }) => section)).toEqual([
 		'service',
@@ -47,14 +55,17 @@ it('starts all detail sections without awaiting the slow line breakdown', async 
 		'punctuality',
 	]);
 	await expect(detail.sections[0].answer).resolves.toEqual({ kind: 'answer' });
+	expect(detail.days).toBe(days);
 	expect(detail.sections[1].answer).toBe(pending);
+	expect(getVehicleDayAnswers).toHaveBeenCalledExactlyOnceWith(
+		'40061',
+		expect.objectContaining(scope),
+	);
 	expect(getRecordAnswer.mock.calls.map(([query]) => query.parameters)).toEqual([
-		{ vehicle: '40061', measure: 'vehicles' },
 		{ vehicle: '40061', measure: 'vehicle_trips_run', group: 'line' },
 		{ vehicle: '40061', measure: 'vehicle_reporting_gaps_per_100_hours' },
 		{ vehicle: '40061', measure: 'vehicle_unfinished_trips' },
 		{ vehicle: '40061', measure: 'vehicle_on_time' },
-		{ vehicle: '40061', measure: 'vehicles', group: 'day' },
 	]);
 	for (const [, period] of getRecordAnswer.mock.calls) expect(period).toMatchObject(scope);
 });
@@ -65,4 +76,5 @@ it.each([undefined, '40061'])('skips the engine for live mode (%s)', (id) => {
 		sections: [],
 	});
 	expect(getRecordAnswer).not.toHaveBeenCalled();
+	expect(getVehicleDayAnswers).not.toHaveBeenCalled();
 });

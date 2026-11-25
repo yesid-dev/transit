@@ -94,6 +94,23 @@ test("origin timeout returns 504 without querying the Container", async (t) => {
   assert.equal(ENGINE.calls.length, 0);
 });
 
+test("the proxy's record budget extends the origin timeout and stays internal", async (t) => {
+  const ENGINE = binding();
+  t.mock.method(Date, "now", () => 1_000);
+  t.mock.method(AbortSignal, "timeout", (delay) => {
+    assert.equal(delay, 40_000);
+    return new AbortController().signal;
+  });
+  const bounded = new Request(request);
+  bounded.headers.set("x-transit-record-deadline", "41000");
+  const response = await fetchEngine(bounded, { ENGINE, ENGINE_ORIGIN: "https://origin.invalid" },
+    async (upstream) => {
+      assert.equal(upstream.headers.has("x-transit-record-deadline"), false);
+      return new Response("answer");
+    });
+  assert.equal(await response.text(), "answer");
+});
+
 test("origin busy response retains Retry-After without querying the Container", async () => {
   const ENGINE = binding();
   const busy = Response.json({ message: "busy, try again" }, {

@@ -5,7 +5,7 @@ const COMMON_CUTS = [
 export const QUESTION_PARAMS = {
   measure: {
     required: ["from", "to", "measure"],
-    optional: [...COMMON_CUTS, "stop", "departure", "vehicle", "group", "alert_details", "view"],
+    optional: [...COMMON_CUTS, "stop", "departure", "vehicle", "group", "alert_details", "view", "include_overall"],
   },
   ranking: {
     required: ["from", "to", "measure", "kind"],
@@ -36,6 +36,7 @@ const VALID = {
   direction: oneOf("0", "1"),
   departure: (value) => /^[0-9]{2,6}:[0-5][0-9]:[0-5][0-9]$/.test(value),
   alert_details: oneOf("1"),
+  include_overall: oneOf("1"),
   hour: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
   day_type: oneOf("weekday", "saturday", "sunday"),
   group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "segment", "vehicle", "effect", "cause"),

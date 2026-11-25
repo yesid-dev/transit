@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { getLocale } from '#lib/i18n/index.ts';
 	import LineRecord from '#lib/features/lines/LineRecord.svelte';
+	import { recoverRecord } from '#lib/features/record/recordRecovery.svelte.ts';
 	import LineViewNav from '#lib/features/lines/LineViewNav.svelte';
 	import RouteDetail from '#lib/features/lines/RouteDetail.svelte';
 	import { lineRecordHeading, lineSubtitle } from '#lib/site/presenter.ts';
@@ -14,9 +15,14 @@
 	const name = $derived(display.lineName(data.seed.id));
 	const routeType = $derived(display.directory.type(data.seed.id));
 	const url = $derived(new URL(page.shallow?.url.href ?? page.url.href));
+	const readings = recoverRecord(
+		() => data.record,
+		({ city, line, direction, period }) => ({ ...period, city, id: line, direction, kind: 'line' }),
+	);
+	const record = $derived(readings());
 </script>
 
-{#if data.record}
+{#if data.record && record}
 	<LineRecord
 		name={data.seed.name}
 		heading={lineRecordHeading(name, locale)}
@@ -30,7 +36,7 @@
 		scheduleOnly={data.scheduleOnly}
 		{locale}
 		{url}
-		record={data.record}
+		{record}
 		headsigns={data.directionHeadsigns}
 		stopNames={data.stopNames}
 		stopCodes={data.stopCodes}

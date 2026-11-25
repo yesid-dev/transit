@@ -6,6 +6,7 @@ export type EnginePeriod = DateWindow & {
 	city: string;
 	visitorIp?: string | null;
 	fixtureScope?: string | null;
+	retryBusy?: boolean;
 };
 export type EngineQuestion = { path: string; parameters: Record<string, string> };
 export type RecordQuery = EngineQuestion & { path: '/measure' | '/ranking' };

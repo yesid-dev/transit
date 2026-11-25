@@ -323,6 +323,7 @@ class Question:
     to_stop: str | None = None
     alert_details: bool = False
     map_view: bool = False
+    include_overall: bool = False
 
     def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
@@ -332,6 +333,10 @@ class Question:
         family, _ = _SELECTIONS[self.measure]
         if self.measure == _DELAY_DISTRIBUTION_ID and (ranking or self.group is not None):
             raise ValueError("delay_distribution requires an ungrouped measure")
+        if self.include_overall and not (
+            self.measure == _VEHICLES_ID and self.group == "day" and self.vehicle is not None
+        ):
+            raise ValueError("include_overall requires vehicles by day for one vehicle")
         if self.map_view and not (
             (self.measure == "late" and self.group == "stop_id" and not self.cuts())
             or (
@@ -1655,7 +1660,28 @@ def _crowding_rows(
     filters, arguments = _cuts(question, None)
     join = ""
     direction = "NULL::INTEGER"
+    positions = """
+        FROM read_parquet(?, hive_partitioning = false)
+        WHERE provider = ? AND cleaning_version = ?
+    """
     inputs: list[object] = [paths[VEHICLE_POSITIONS], question.city, version]
+    if question.line is not None:
+        matching_vehicles = conn.execute(
+            f"SELECT DISTINCT vehicle_id {positions} AND route_id = ?",
+            [*inputs, question.line],
+        ).fetchall()
+        if not matching_vehicles:
+            return {}
+        # A position on a different line can end an interval on the requested line.
+        # Keep the whole partition for every vehicle seen on the requested line.
+        ids = [row[0] for row in matching_vehicles if row[0] is not None]
+        candidates = []
+        if ids:
+            candidates.append(f"vehicle_id IN ({', '.join('?' for _ in ids)})")
+            inputs.extend(ids)
+        if len(ids) != len(matching_vehicles):
+            candidates.append("vehicle_id IS NULL")
+        positions += f" AND ({' OR '.join(candidates)})"
     if question.direction is not None or question.group == "direction":
         direction = "t.direction_id"
         join = """
@@ -1697,8 +1723,7 @@ def _crowding_rows(
                 occupancy_percentage, lead(captured_at_utc) OVER (
                     PARTITION BY vehicle_id ORDER BY captured_at_utc, filename
                 ) AS next_start
-            FROM read_parquet(?, hive_partitioning = false)
-            WHERE provider = ? AND cleaning_version = ?
+            {positions}
         ), vehicles AS (
             SELECT v.route_id, v.stop_id, {direction} AS direction_id,
                 v.captured_at_utc, v.readings,
@@ -2815,6 +2840,7 @@ def _vehicle_rows(
         question.measure == family.id or question.measure in _VEHICLE_COMPLETION_IDS,
         by_hour=question.group == "hour",
         by_line=question.group == "line",
+        vehicle=question.vehicle,
     )
     timing_cte = ""
     timing_rows = ""
@@ -4869,6 +4895,7 @@ def _series_answer(
     started: float,
 ) -> dict[str, Any]:
     totals: dict[EntityKey, Batch] = {}
+    overall = Batch()
     stop_sequences: dict[EntityKey, Counter[int]] = {}
     alerts = family.id == _ALERT_COUNTS_ID
     alert_entities = alerts and group in _ALERT_ENTITY_GROUPS
@@ -4881,7 +4908,7 @@ def _series_answer(
     position_series = (vehicles or crowding) and group != "direction"
     assert family.query is not None
     query = (
-        replace(question, group="hour" if hourly else None)
+        replace(question, group="hour" if hourly else None, include_overall=False)
         if position_series and group not in ("line", "vehicle")
         else question
     )
@@ -4902,6 +4929,8 @@ def _series_answer(
                 elif position_series:
                     if vehicles and key == (None,):
                         continue
+                    if question.include_overall:
+                        overall.update(part)
                     if group not in ("line", "vehicle"):
                         key = _date_key(group, window.included[offset], key)
                 elif group == "stop" and not _departure_stop_order(question):
@@ -5003,11 +5032,28 @@ def _series_answer(
     elif vehicles and group in ("vehicle", "line"):
         state = "measured" if cells else _vehicle_answer(selected, Batch(), window)[0]
         series_state = {"state": state, "state_text": _STATES[state]._asdict()}
+    combined = {}
+    if question.include_overall:
+        state, values, evidence, _ = _vehicle_answer(selected, overall, window)
+        overall_question = replace(question, group=None, include_overall=False)
+        combined["overall"] = {
+            "measure": question.measure,
+            "value": values,
+            "state": state,
+            "state_text": _STATES[state]._asdict(),
+            "coverage_note": window.coverage_note,
+            "evidence": {
+                **window.evidence(store, overall_question, family, started),
+                **evidence,
+            },
+            "info": [_info(family, measure) for measure in selected],
+        }
     return {
         "measure": question.measure,
         "group": group,
         "cells": cells,
         **series_state,
+        **combined,
         "coverage_note": window.coverage_note,
         "evidence": window.evidence(store, question, family, started),
         "info": [
