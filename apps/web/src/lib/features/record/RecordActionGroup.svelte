@@ -10,11 +10,13 @@
 		href,
 		files,
 		citation,
+		print,
 	}: {
 		locale: Locale;
 		href: string;
 		files: readonly { href?: string; label: string; columns?: readonly string[] }[];
 		citation: Snippet;
+		print?: () => void;
 	} = $props();
 	const fr = $derived(locale === 'fr');
 </script>
@@ -87,5 +89,8 @@
 				</Sheet.Close>
 			</Sheet.Content>
 		</Sheet.Root>
+		{#if print}<Button variant="outline" size="sm" class="min-h-11" onclick={print}
+				>{fr ? 'Imprimer' : 'Print'}</Button
+			>{/if}
 	</div>
 {/key}

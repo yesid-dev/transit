@@ -59,6 +59,7 @@ const ottawa: Screen[] = [
 	'vehicles',
 ];
 const french: Screen[] = [
+	'daily',
 	'vehicle-record',
 	'vehicle-live',
 	'download',
@@ -87,6 +88,8 @@ export const designPassCases = [
 	['how-we-measure', 'octranspo', 'fr'] as const,
 	['download', 'octranspo', 'fr'] as const,
 	['departure', 'octranspo', 'fr'] as const,
+	['daily', 'octranspo', 'en'] as const,
+	['daily', 'octranspo', 'fr'] as const,
 	['vehicle-record', 'octranspo', 'fr'] as const,
 	['vehicle-live', 'octranspo', 'fr'] as const,
 	['roadmap', 'octranspo', 'fr'] as const,

@@ -1,7 +1,15 @@
-import { getRecordAnswer, query, type EnginePeriod, type RecordQuery } from './engine.ts';
+import {
+	getRecordAnswer,
+	query,
+	type EnginePeriod,
+	type RecordMeasure,
+	type RecordQuery,
+} from './engine.ts';
 import { cityQuestion } from './engineQuestion.ts';
 import { captureTripScopeSchema } from '#lib/live/captureSnapshot.ts';
 import type { DepartureIdentity } from '#lib/features/record/departureIdentity.ts';
+import type { Locale } from '#lib/i18n/copy.ts';
+import { agencyMessageHeading } from '#lib/site/presenter.ts';
 import { dailyQuestions } from './screenQuestions.ts';
 export { dailyQuery, type DailySection } from './screenQuestions.ts';
 
@@ -33,12 +41,66 @@ export function departureDay(params: URLSearchParams, { from, to }: { from: stri
 	return Number.isFinite(+date) && date.toISOString().slice(0, 10) === day ? day : to;
 }
 
-export function loadDailyRecord(period: EnginePeriod) {
+function newestMessages(
+	messages: NonNullable<RecordMeasure['evidence']['alert_messages']>,
+	locale: Locale,
+) {
+	const natural = new Intl.Collator(locale, { numeric: true });
+	return messages
+		.map((message) => ({
+			message,
+			start: message.periods?.length
+				? Math.min(...message.periods.map(({ start }) => Date.parse(start)))
+				: -Infinity,
+			line: message.routes[0],
+			text: agencyMessageHeading(message, locale).title,
+		}))
+		.sort((a, b) => {
+			if (a.start !== b.start) return b.start - a.start;
+			if (a.line !== b.line) {
+				if (a.line == null) return 1;
+				if (b.line == null) return -1;
+				const lineOrder = natural.compare(a.line, b.line);
+				if (lineOrder) return lineOrder;
+			}
+			return natural.compare(a.text, b.text);
+		})
+		.slice(0, 5)
+		.map(({ message }) => message);
+}
+
+export function loadDailyRecord(period: EnginePeriod, tracked: boolean, locale: Locale) {
 	const { questions, messagesLimited } = dailyQuestions(period);
-	const sections = questions.map(({ section, query }) => ({
-		section,
-		answer: getRecordAnswer(query, period),
-	}));
+	if (messagesLimited) {
+		questions.push({
+			section: 'messages',
+			query: { path: '/measure', parameters: { measure: 'alert_counts' } },
+		});
+	}
+	const sections = questions
+		.filter(({ section }) => tracked || section !== 'messages')
+		.map(({ section, query }) => {
+			const answer = getRecordAnswer(query, period);
+			if (section !== 'messages') return { section, answer };
+			return {
+				section,
+				answer: answer.then((result) => {
+					if (result.kind !== 'answer' || !('value' in result.answer)) return result;
+					const { evidence } = result.answer;
+					if (!evidence.alert_messages?.length) return result;
+					return {
+						...result,
+						answer: {
+							...result.answer,
+							evidence: {
+								...evidence,
+								alert_messages: newestMessages(evidence.alert_messages, locale),
+							},
+						},
+					};
+				}),
+			};
+		});
 	return { sections, messagesLimited };
 }
 

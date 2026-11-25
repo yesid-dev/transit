@@ -191,6 +191,84 @@ export function dateRange({ from, to }: { from: string; to: string }, locale: Lo
 	return presenterCopy[locale].dateRange(start, end);
 }
 
+export function dailyReportTitle({ from, to }: { from: string; to: string }, locale: Locale) {
+	const fr = locale === 'fr';
+	const end = longDate(to, locale);
+	if (from === to) {
+		const weekday = intl
+			.dateTime(locale, { weekday: 'long', timeZone: 'UTC' })
+			.format(new Date(to));
+		return `${fr ? 'Rapport du' : 'Report for'} ${weekday} ${end}`;
+	}
+	const start =
+		from.slice(0, 7) === to.slice(0, 7)
+			? String(Number(from.slice(8)))
+			: formatDateKey(from, locale, from.slice(0, 4) !== to.slice(0, 4), 'day-first', 'long');
+	return fr ? `Rapport du ${start} au ${end}` : `Report for ${start} to ${end}`;
+}
+
+export function reportHours(start: number, end: number, locale: Locale) {
+	return [clockFace(start, 0), clockFace(end, 0)].join(locale === 'fr' ? ' à ' : ' to ');
+}
+
+export function reportPercent(value: number, locale: Locale) {
+	return intl
+		.number(locale, {
+			style: 'percent',
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})
+		.format(value);
+}
+
+function agencyMessagePreview(text: string, locale: Locale) {
+	const segmenter = new Intl.Segmenter(locale, { granularity: 'sentence' });
+	return segmenter.segment(text.trim())[Symbol.iterator]().next().value?.segment.trim() ?? '';
+}
+
+export function agencyMessageHeading(
+	message: {
+		header: Record<Locale, string | null>;
+		description: Record<Locale, string | null>;
+	},
+	locale: Locale,
+) {
+	const other = locale === 'fr' ? 'en' : 'fr';
+	const headingLanguage = message.header[locale]?.trim() ? locale : other;
+	const heading = message.header[headingLanguage]?.trim();
+	const textLanguage = message.description[locale]?.trim() ? locale : other;
+	const preview = agencyMessagePreview(message.description[textLanguage] ?? '', textLanguage);
+	const generic = /^(?:your (?:line|stop)|votre (?:ligne|arrêt))[\s.!:…]*$/iu;
+	if (heading && !generic.test(heading)) {
+		return { title: heading, language: headingLanguage, preview, previewLanguage: textLanguage };
+	}
+	if (preview) return { title: preview, language: textLanguage };
+	return { title: locale === 'fr' ? 'Avis de l’agence' : 'Agency message', language: locale };
+}
+
+export function agencyMessageDates(
+	periods: readonly { start: string; end: string }[],
+	locale: Locale,
+	timeZone?: string,
+) {
+	const ranges = periods.flatMap(({ start, end }) => {
+		const exclusiveEnd = Date.parse(end);
+		if (exclusiveEnd <= Date.parse(start)) return [];
+		const from = providerLocalDateKey(start, timeZone);
+		const to = providerLocalDateKey(new Date(exclusiveEnd - 1).toISOString(), timeZone);
+		return from && to ? [{ from, to }] : [];
+	});
+	ranges.sort((a, b) => a.from.localeCompare(b.from));
+	const merged: typeof ranges = [];
+	for (const range of ranges) {
+		const prior = merged.at(-1);
+		if (prior && range.from <= prior.to) {
+			if (range.to > prior.to) prior.to = range.to;
+		} else merged.push(range);
+	}
+	return merged.map((range) => dateRange(range, locale)).join(' · ');
+}
+
 export function fileSize(bytes: number | null | undefined, locale: Locale): string | null {
 	if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return null;
 	return intl
