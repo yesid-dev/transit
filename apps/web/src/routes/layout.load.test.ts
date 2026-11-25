@@ -154,11 +154,11 @@ describe('root server layout boot', () => {
 		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null, 'named-lines');
 	});
 	it.each([
-		['/stops', {}, ['one', 'two', 'three'], true],
-		['/stop/[id]', { id: ' two ' }, ['two'], false],
-		['/lines/[id]', { id: 'A' }, ['one', 'three'], false],
-		['/departure/[key]', { key: '["B",0,"07:15:00"]' }, ['two', 'three'], false],
-	] as const)('sends only the schedule data needed on %s', async (route, params, ids, full) => {
+		['/stops', {}, []],
+		['/stop/[id]', { id: ' two ' }, ['two']],
+		['/lines/[id]', { id: 'A' }, ['one', 'three']],
+		['/departure/[key]', { key: '["B",0,"07:15:00"]' }, ['two', 'three']],
+	] as const)('sends only the schedule data needed on %s', async (route, params, ids) => {
 		const routes = [
 			{ id: 'A', short: 'A' },
 			{ id: 'B', short: 'B' },
@@ -182,17 +182,14 @@ describe('root server layout boot', () => {
 		const request = serverEvent(undefined, route);
 		Object.assign(request.params, params);
 		const result = await loadServerLayout(request);
-		expect(result?.schedule).toEqual(
-			full
-				? schedule
-				: {
-						date: schedule.date,
-						routes,
-						stops: schedule.stops.filter((stop) => (ids as readonly string[]).includes(stop.id)),
-						...(route === '/lines/[id]' ? { route_directions: { A: [direction] } } : {}),
-						...(route === '/departure/[key]' ? { route_directions: { B: [direction] } } : {}),
-					},
-		);
+		expect(result?.schedule).toEqual({
+			date: schedule.date,
+			routes: route === '/stops' ? [] : routes,
+			stops: schedule.stops.filter((stop) => (ids as readonly string[]).includes(stop.id)),
+			...(route === '/lines/[id]' ? { route_directions: { A: [direction] } } : {}),
+			...(route === '/departure/[key]' ? { route_directions: { B: [direction] } } : {}),
+		});
+		expect(request.locals.stopsSchedule).toBe(route === '/stops' ? schedule : undefined);
 	});
 	it('passes request-only location to provider selection without returning coordinates', async () => {
 		const request = serverEvent('fr', '/network');
