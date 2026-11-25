@@ -3,12 +3,12 @@ import { getCaptureDataHealth, getDataHealth } from '#lib/v1/repositories/dataHe
 import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
 import { serverV1Context } from '#lib/v1/serverContext.ts';
 import { getMethodCatalog, getRecordDataHealth } from '#lib/server/engine.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { calendarClock, parseFrameState } from '#lib/site/frameState.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { v1, providerId: city, provider } = await event.parent();
 	// The calendar window includes recent dates even when their clean files are late.
-	const { mode, period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
+	const { mode, period } = parseFrameState(event.url.searchParams, calendarClock(provider));
 	if (mode === 'record') {
 		const visitorIp = event.request.headers.get('cf-connecting-ip');
 		return {

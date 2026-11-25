@@ -4,7 +4,12 @@ import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { dateRange } from '#lib/site/presenter.ts';
-import { parseFrameState, type Preset } from '#lib/site/frameState.ts';
+import {
+	parseFrameState,
+	unpublishedYesterday,
+	type FrameClock,
+	type Preset,
+} from '#lib/site/frameState.ts';
 
 export const frameCopy = {
 	en: {
@@ -81,7 +86,7 @@ export const frameCopy = {
 	},
 } satisfies Record<Locale, { presets: Record<Preset, string>; [key: string]: unknown }>;
 
-export function frameControlsState(url: URL, today: string, recordThrough?: string | null) {
+export function frameControlsState(url: URL, clock: FrameClock) {
 	const path = delocalizePath(url.pathname).replace(/\/$/, '') || '/';
 	const recordOnly =
 		isRankingPath(path) || ['/lines', '/stops', '/receipt', '/download'].includes(path);
@@ -91,8 +96,7 @@ export function frameControlsState(url: URL, today: string, recordThrough?: stri
 	const liveOnly = path.startsWith('/trip/');
 	const parsed = parseFrameState(
 		url.searchParams,
-		today,
-		path === '/status' ? undefined : recordThrough,
+		path === '/status' ? { ...clock, recordThrough: null } : clock,
 	);
 	let mode = parsed.mode;
 	if (recordOnly) mode = 'record';
@@ -112,14 +116,8 @@ export function frameControlsState(url: URL, today: string, recordThrough?: stri
 		detail: line || stop,
 		map,
 		waitingForYesterday:
-			mode === 'record' &&
-			path !== '/download' &&
-			path !== '/status' &&
-			recordThrough &&
-			parsed.period?.preset === 'yesterday' &&
-			parsed.period.from === parsed.period.to &&
-			parsed.period.to > recordThrough
-				? parsed.period.to
+			mode === 'record' && path !== '/download' && path !== '/status'
+				? unpublishedYesterday(parsed.period, clock)
 				: null,
 		usesFrameRecord:
 			recordOnly ||

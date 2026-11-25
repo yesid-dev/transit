@@ -47,9 +47,6 @@
 	const t = (en: string, fr: string) => (data.lang === 'fr' ? fr : en);
 	const line = $derived(display.line(data.identity.line));
 	const clock = $derived(scheduledClock(data.identity.departure, data.lang));
-	const subject = $derived(
-		t(`Line ${line}, ${clock} departure`, `Ligne ${line}, départ de ${clock}`),
-	);
 	const direction = $derived(
 		display.directionLabel(data.identity.direction, data.headsigns, data.lang),
 	);
@@ -152,13 +149,11 @@
 	{/if}
 {/snippet}
 
-<svelte:head><title>{subject} · Transit</title></svelte:head>
-
 <Surface>
 	<div class="grid min-w-0 gap-6 pb-8">
 		<div class="border-b border-border pb-4">
 			<ScreenTitle
-				title={subject}
+				title={data.seoTitle}
 				plate={line}
 				subtitle={direction}
 				back={{ href: lineHref, label: t('See the line', 'Voir la ligne') }}
@@ -273,7 +268,7 @@
 														{#if entry.kind === 'answer'}
 															{@const evidence = entry.answer.evidence}
 															<p>
-																Transit · {subject}. {title}. {dateRange(
+																Transit · {data.seoTitle}. {title}. {dateRange(
 																	{ from: evidence.start_date, to: evidence.end_date },
 																	data.lang,
 																)}.

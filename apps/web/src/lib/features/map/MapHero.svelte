@@ -14,7 +14,7 @@
 	} from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
-	import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+	import { frameClock, parseFrameState } from '#lib/site/frameState.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
 	import type { RecordMapLayer } from './recordMap';
 	import { goto } from '$app/navigation';
@@ -289,8 +289,10 @@
 		{ key: 'corridors', label: 'Corridors' },
 	];
 	const recordPeriod = $derived(
-		parseFrameState(recordUrl.searchParams, frameToday(timeZone), v1.provider?.record_through)
-			.period,
+		parseFrameState(
+			recordUrl.searchParams,
+			frameClock(v1.provider ?? (timeZone ? { timezone: timeZone } : null)),
+		).period,
 	);
 	const recordLine = $derived(
 		recordUrl.searchParams.get('recordLine') ??

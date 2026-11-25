@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	carryFrameState,
 	frameHref,
-	frameToday,
+	frameClock,
 	parseFrameState,
 	periodError,
 	presetPeriod,
@@ -10,20 +10,27 @@ import {
 } from './frameState.ts';
 
 const today = '2026-11-22';
+const clock = (today: string, recordThrough: string | null = null) => ({ today, recordThrough });
 const url = (href: string) => new URL(href, 'https://transit.test');
 
 describe('app frame URL state', () => {
 	it('defaults to Record and the last seven complete days', () => {
-		expect(parseFrameState(new URLSearchParams(), today)).toEqual({
+		expect(parseFrameState(new URLSearchParams(), clock(today))).toEqual({
 			mode: 'record',
 			period: { from: '2026-11-15', to: '2026-11-21', preset: '7-days' },
 		});
 	});
 
 	it('uses the local calendar day even after UTC midnight', () => {
-		expect(frameToday('America/Los_Angeles', new Date('2026-11-22T06:30:00Z'))).toBe('2026-11-21');
-		expect(frameToday('America/Toronto', new Date('2026-11-22T06:30:00Z'))).toBe('2026-11-22');
-		expect(frameToday('America/Toronto', new Date('2026-11-22T02:30:00Z'))).toBe('2026-11-21');
+		expect(
+			frameClock({ timezone: 'America/Los_Angeles' }, new Date('2026-11-22T06:30:00Z')).today,
+		).toBe('2026-11-21');
+		expect(
+			frameClock({ timezone: 'America/Toronto' }, new Date('2026-11-22T06:30:00Z')).today,
+		).toBe('2026-11-22');
+		expect(
+			frameClock({ timezone: 'America/Toronto' }, new Date('2026-11-22T02:30:00Z')).today,
+		).toBe('2026-11-21');
 	});
 
 	it.each([
@@ -34,21 +41,21 @@ describe('app frame URL state', () => {
 		['last-month', '2026-10-13', '2026-10-31'],
 		['12-months', '2026-10-13', '2026-11-21'],
 	] as const)('resolves %s against calendar boundaries', (preset, from, to) => {
-		expect(presetPeriod(preset, today)).toEqual({ from, to, preset });
+		expect(presetPeriod(preset, clock(today))).toEqual({ from, to, preset });
 	});
 
 	it('uses calendar months and the resolved dates remain pinned in a copied URL', () => {
-		const period = presetPeriod('12-months', '2027-11-22');
+		const period = presetPeriod('12-months', clock('2027-11-22'));
 		expect(period).toEqual({ preset: '12-months', from: '2026-11-22', to: '2027-11-21' });
 		const href = frameHref(url('/fr/lines?provider=octranspo'), { mode: 'record', period });
-		expect(parseFrameState(url(href).searchParams, '2028-01-01').period).toEqual(period);
+		expect(parseFrameState(url(href).searchParams, clock('2028-01-01')).period).toEqual(period);
 		expect(url(href).searchParams.get('provider')).toBe('octranspo');
 	});
 
 	it('offers only presets that fit within the record', () => {
-		expect(presetPeriod('last-month', '2026-10-31')).toBeNull();
-		expect(presetPeriod('7-days', '2026-10-15')).toBeNull();
-		expect(parseFrameState(new URLSearchParams(), RECORD_START).period).toBeNull();
+		expect(presetPeriod('last-month', clock('2026-10-31'))).toBeNull();
+		expect(presetPeriod('7-days', clock('2026-10-15'))).toBeNull();
+		expect(parseFrameState(new URLSearchParams(), clock(RECORD_START)).period).toBeNull();
 	});
 
 	it.each([
@@ -63,9 +70,9 @@ describe('app frame URL state', () => {
 
 	it('ignores malformed state and preserves independently valid mode', () => {
 		const params = url('/?frameMode=live&period=garbage&recordFrom=2026-10-01').searchParams;
-		expect(parseFrameState(params, today)).toEqual({
+		expect(parseFrameState(params, clock(today))).toEqual({
 			mode: 'live',
-			period: presetPeriod('7-days', today),
+			period: presetPeriod('7-days', clock(today)),
 		});
 	});
 
@@ -81,7 +88,7 @@ describe('app frame URL state', () => {
 			period: { from: RECORD_START, to: today, preset: null },
 		} as const;
 		const written = url(frameHref(source, frame));
-		expect(parseFrameState(written.searchParams, '2026-12-01')).toEqual(frame);
+		expect(parseFrameState(written.searchParams, clock('2026-12-01'))).toEqual(frame);
 		expect(written.searchParams.get('mode')).toBe('rail');
 		expect(written.hash).toBe('#results');
 		expect(carryFrameState('/fr/search?q=95&provider=octranspo#matches', written)).toBe(
@@ -90,9 +97,9 @@ describe('app frame URL state', () => {
 	});
 
 	it('pins a preset to its resolved dates when reopened later', () => {
-		const period = presetPeriod('7-days', today);
+		const period = presetPeriod('7-days', clock(today));
 		const href = frameHref(url('/map'), { period, mode: 'record' });
-		expect(parseFrameState(url(href).searchParams, '2026-12-01')).toEqual({
+		expect(parseFrameState(url(href).searchParams, clock('2026-12-01'))).toEqual({
 			period,
 			mode: 'record',
 		});
@@ -102,33 +109,33 @@ describe('app frame URL state', () => {
 it('ties record presets to the complete day but keeps Yesterday and pinned dates by the city clock', () => {
 	const today = '2026-11-25';
 	const through = '2026-11-23';
-	expect(parseFrameState(new URLSearchParams(), today, through).period).toEqual({
+	expect(parseFrameState(new URLSearchParams(), clock(today, through)).period).toEqual({
 		preset: '7-days',
 		from: '2026-11-17',
 		to: through,
 	});
-	expect(presetPeriod('28-days', today, through)).toMatchObject({
+	expect(presetPeriod('28-days', clock(today, through))).toMatchObject({
 		from: '2026-10-27',
 		to: through,
 	});
-	expect(presetPeriod('this-month', today, through)).toMatchObject({
+	expect(presetPeriod('this-month', clock(today, through))).toMatchObject({
 		from: '2026-11-01',
 		to: through,
 	});
-	expect(presetPeriod('last-month', today, through)).toMatchObject({
+	expect(presetPeriod('last-month', clock(today, through))).toMatchObject({
 		from: RECORD_START,
 		to: '2026-10-31',
 	});
-	expect(presetPeriod('12-months', today, through)).toMatchObject({
+	expect(presetPeriod('12-months', clock(today, through))).toMatchObject({
 		from: RECORD_START,
 		to: through,
 	});
-	expect(presetPeriod('yesterday', today, through)).toMatchObject({
+	expect(presetPeriod('yesterday', clock(today, through))).toMatchObject({
 		from: '2026-11-24',
 		to: '2026-11-24',
 	});
 	const pinned = new URLSearchParams({ recordFrom: '2026-11-23', recordTo: '2026-11-24' });
-	expect(parseFrameState(pinned, today, through).period).toEqual({
+	expect(parseFrameState(pinned, clock(today, through)).period).toEqual({
 		preset: null,
 		from: '2026-11-23',
 		to: '2026-11-24',
@@ -136,8 +143,8 @@ it('ties record presets to the complete day but keeps Yesterday and pinned dates
 });
 
 it('waits for the first complete day of this month and caps last month at the record', () => {
-	expect(presetPeriod('this-month', '2026-12-01', '2026-11-29')).toBeNull();
-	expect(presetPeriod('last-month', '2026-12-01', '2026-11-29')).toMatchObject({
+	expect(presetPeriod('this-month', clock('2026-12-01', '2026-11-29'))).toBeNull();
+	expect(presetPeriod('last-month', clock('2026-12-01', '2026-11-29'))).toMatchObject({
 		from: '2026-11-01',
 		to: '2026-11-29',
 	});

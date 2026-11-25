@@ -16,6 +16,7 @@
 		presetPeriod,
 		PRESETS,
 		RECORD_START,
+		type FrameClock,
 		type FrameMode,
 		type Preset,
 	} from '#lib/site/frameState.ts';
@@ -24,22 +25,21 @@
 	let {
 		locale,
 		url,
-		today,
-		recordThrough,
+		clock,
 		frame,
 		context,
 	}: {
 		locale: Locale;
 		url: URL;
-		today: string;
-		recordThrough?: string | null;
+		clock: FrameClock;
 		frame: ReturnType<typeof frameControlsState>;
 		context: SurfaceRailContext;
 	} = $props();
 
 	const uid = $props.id();
 	const copy = $derived(frameCopy[locale]);
-	const dateLimit = $derived(frameDateLimit(today, recordThrough));
+	const { today, recordThrough } = $derived(clock);
+	const dateLimit = $derived(frameDateLimit(clock));
 	const summary = $derived(framePeriodSummary(frame.period, locale));
 	const startLabel = $derived(longDate(RECORD_START, locale));
 	const modes = $derived([
@@ -60,7 +60,7 @@
 		PRESETS.map((key) => ({
 			key,
 			label: copy.presets[key],
-			disabled: !presetPeriod(key, today, recordThrough),
+			disabled: !presetPeriod(key, clock),
 		})),
 	);
 	let open = $state(false);
@@ -104,7 +104,7 @@
 
 	function selectPreset(key: Preset | '') {
 		if (!key) return;
-		const period = presetPeriod(key, today, recordThrough);
+		const period = presetPeriod(key, clock);
 		if (period) selectPeriod(period);
 	}
 

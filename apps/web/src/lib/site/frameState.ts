@@ -1,4 +1,5 @@
 import { providerLocalDateKey } from '#lib/utils/serviceDate.ts';
+import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 export const RECORD_START = '2026-10-13';
@@ -27,15 +28,29 @@ interface FrameState {
 const KEYS = ['frameMode', 'period', 'recordFrom', 'recordTo'] as const;
 const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
-export function frameToday(timeZone: string | undefined, now = new Date()): string {
-	return providerLocalDateKey(now.toISOString(), timeZone)!;
+type FrameProvider = Pick<PublicCity, 'timezone' | 'record_through'> | null | undefined;
+
+export interface FrameClock {
+	today: string;
+	recordThrough: string | null;
+}
+
+export function frameClock(provider: FrameProvider, now = new Date()): FrameClock {
+	return {
+		today: providerLocalDateKey(now.toISOString(), provider?.timezone)!,
+		recordThrough: provider?.record_through ?? null,
+	};
+}
+
+export function calendarClock(provider: FrameProvider, now = new Date()): FrameClock {
+	return { ...frameClock(provider, now), recordThrough: null };
 }
 
 const shiftDay = (day: string, offset: number) =>
 	isoDay(new Date(Date.parse(day) + offset * 86_400_000));
 const minDay = (a: string, b: string) => (a < b ? a : b);
 
-export function frameDateLimit(today: string, recordThrough?: string | null) {
+export function frameDateLimit({ today, recordThrough }: FrameClock) {
 	return recordThrough ? shiftDay(today, -1) : today;
 }
 
@@ -55,8 +70,7 @@ export function periodError({ from, to }: DateWindow, today: string): PeriodErro
 
 export function presetPeriod(
 	preset: Preset,
-	today: string,
-	recordThrough?: string | null,
+	{ today, recordThrough }: FrameClock,
 ): FramePeriod | null {
 	const date = new Date(today + 'T00:00:00Z');
 	const yesterday = shiftDay(today, -1);
@@ -94,23 +108,34 @@ export function presetPeriod(
 	return periodError(period, today) ? null : period;
 }
 
-export function parseFrameState(
-	params: URLSearchParams,
-	today: string,
-	recordThrough?: string | null,
-): FrameState {
+export function parseFrameState(params: URLSearchParams, clock: FrameClock): FrameState {
 	const mode = params.get('frameMode') === 'live' ? 'live' : 'record';
 	const preset = PRESETS.find((option) => option === params.get('period')) ?? null;
 	const from = params.get('recordFrom') ?? '';
 	const to = params.get('recordTo') ?? '';
 	const period = { preset, from, to };
-	if (!periodError(period, frameDateLimit(today, recordThrough))) return { mode, period };
+	if (!periodError(period, frameDateLimit(clock))) return { mode, period };
 	return {
 		mode,
 		period:
-			presetPeriod('7-days', today, recordThrough) ??
-			presetPeriod(recordThrough ? '12-months' : 'yesterday', today, recordThrough),
+			presetPeriod('7-days', clock) ??
+			presetPeriod(clock.recordThrough ? '12-months' : 'yesterday', clock),
 	};
+}
+
+export function unpublishedYesterday(period: FrameState['period'], { recordThrough }: FrameClock) {
+	return recordThrough &&
+		period?.preset === 'yesterday' &&
+		period.from === period.to &&
+		period.to > recordThrough
+		? period.to
+		: null;
+}
+
+/** Keep the selected dates in the frame, but avoid question work for a pending Yesterday. */
+export function parseAnswerFrameState(params: URLSearchParams, clock: FrameClock): FrameState {
+	const frame = parseFrameState(params, clock);
+	return unpublishedYesterday(frame.period, clock) ? { ...frame, period: null } : frame;
 }
 
 /** Keep the frame separate from the date, mode and range filters on existing pages. */

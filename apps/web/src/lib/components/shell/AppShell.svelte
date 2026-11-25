@@ -4,15 +4,17 @@
 	import { setContext, type Snippet } from 'svelte';
 	import { DEFAULT_LOCALE, getLocale, type Locale } from '#lib/i18n/index.ts';
 	import type { SearchList } from '#lib/search/transitSearch.ts';
-	import { AppFrame, AnnouncementBanner, type SurfaceRailContext } from '@yesid/ui/layout';
+	import { AppFrame, AnnouncementBanner, Surface, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
 	import { formatDateKey } from '#lib/utils/time.ts';
-	import { frameToday } from '#lib/site/frameState.ts';
-	import type { PublicProvider } from '#lib/v1/providers.ts';
+	import { frameClock } from '#lib/site/frameState.ts';
+	import type { PublicCity, PublicProvider } from '#lib/v1/schemas/providers.ts';
 	import NavPill from './NavPill.svelte';
 	import { frameSurfaceRailContext, type RegisterFrameSurfaceRail } from './frameSurfaceRail.ts';
 	import FrameControls from './FrameControls.svelte';
 	import { frameControlsState, frameCopy } from './frameControlsState.ts';
+	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
+	import StateMark from '#lib/features/record/StateMark.svelte';
 	import RecordPatience from '#lib/features/record/RecordPatience.svelte';
 
 	interface AppShellProps {
@@ -23,8 +25,8 @@
 		locale?: Locale;
 		url: URL;
 		providerId?: string;
-		timeZone?: string;
-		recordThrough?: string | null;
+		provider: PublicCity | null;
+		screenTitle: string;
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
@@ -43,8 +45,8 @@
 		locale: localeProp,
 		url,
 		providerId,
-		timeZone,
-		recordThrough,
+		provider,
+		screenTitle,
 		providers,
 		discoveryError,
 		search = $bindable(''),
@@ -60,8 +62,8 @@
 	const copy = $derived(frameCopy[locale]);
 	let announcementHeight = $state(0);
 	let now = $state(new Date());
-	const today = $derived(frameToday(timeZone, now));
-	const frame = $derived(frameControlsState(url, today, recordThrough));
+	const clock = $derived(frameClock(provider, now));
+	const frame = $derived(frameControlsState(url, clock));
 	let surfaceControls = $state.raw<Snippet<[SurfaceRailContext]>[]>([]);
 	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail) => {
 		surfaceControls = [...surfaceControls, rail];
@@ -89,8 +91,7 @@
 		{locale}
 		{url}
 		{providerId}
-		{timeZone}
-		{recordThrough}
+		{clock}
 		{providers}
 		{discoveryError}
 		bind:search
@@ -100,7 +101,7 @@
 {/snippet}
 
 {#snippet rail(context: SurfaceRailContext)}
-	<FrameControls {context} {locale} {url} {today} {recordThrough} {frame} />
+	<FrameControls {context} {locale} {url} {clock} {frame} />
 	{#if context.presentation === 'mobile'}
 		{#each surfaceControls as controls (controls)}
 			{@render controls(context)}
@@ -135,13 +136,17 @@
 		}}
 	>
 		{#if frame.waitingForYesterday && (frame.usesFrameRecord || frame.map)}
-			<div class="mx-auto w-full max-w-5xl px-4 py-8">
-				<p data-slot="record-yesterday-pending">
-					{copy.waitingForDay(
-						formatDateKey(frame.waitingForYesterday, locale, false, 'day-first', 'long'),
-					)}
-				</p>
-			</div>
+			<Surface>
+				<ScreenTitle title={screenTitle} />
+				<div class="flex items-baseline gap-2" data-slot="screen-state">
+					<StateMark state="not_measured" {locale} hiddenLabel />
+					<p data-slot="record-yesterday-pending">
+						{copy.waitingForDay(
+							formatDateKey(frame.waitingForYesterday, locale, false, 'day-first', 'long'),
+						)}
+					</p>
+				</div>
+			</Surface>
 		{:else if fullViewport}
 			{@render main()}
 		{:else}

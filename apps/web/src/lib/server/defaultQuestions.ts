@@ -3,7 +3,7 @@ import {
 	rankingLists,
 	rankingSelection,
 } from '#lib/features/rankings/rankingSelection.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { type FrameClock, parseFrameState } from '#lib/site/frameState.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import {
 	dataHealthQuestion,
@@ -32,8 +32,8 @@ export type WarmCity = {
 	record_through?: string | null;
 };
 
-export function defaultPeriod(now: Date, timeZone: string, recordThrough?: string | null) {
-	return parseFrameState(new URLSearchParams(), frameToday(timeZone, now), recordThrough).period;
+export function defaultPeriod(clock: FrameClock) {
+	return parseFrameState(new URLSearchParams(), clock).period;
 }
 
 export function defaultCityQuestions(

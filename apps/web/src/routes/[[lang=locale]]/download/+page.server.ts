@@ -5,7 +5,7 @@ import { getMethodCatalog } from '#lib/server/engine.ts';
 import {
 	frameHref,
 	frameDateLimit,
-	frameToday,
+	frameClock,
 	parseFrameState,
 	periodError,
 } from '#lib/site/frameState.ts';
@@ -13,9 +13,9 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	const { providerId, provider, lang, discoveryError } = await event.parent();
-	const today = frameToday(provider?.timezone);
+	const clock = frameClock(provider);
 	const { searchParams } = event.url;
-	const { period } = parseFrameState(searchParams, today, provider?.record_through);
+	const { period } = parseFrameState(searchParams, clock);
 	const requested = searchParams.getAll('date');
 	const parsed = z.iso.date().safeParse(requested[0]);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
@@ -23,10 +23,7 @@ export const load: PageServerLoad = async (event) => {
 		requested.length === 1 &&
 		parsed.success &&
 		!searchParams.has('recordFrom') &&
-		!periodError(
-			{ from: parsed.data, to: parsed.data },
-			frameDateLimit(today, provider?.record_through),
-		)
+		!periodError({ from: parsed.data, to: parsed.data }, frameDateLimit(clock))
 	) {
 		const target = new URL(event.url);
 		target.searchParams.delete('date');

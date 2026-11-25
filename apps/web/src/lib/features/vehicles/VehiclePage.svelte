@@ -25,6 +25,7 @@
 		data: ReturnType<typeof loadVehiclePage> & {
 			v1: { manifest: Manifest } | null;
 			provider: PublicCity | null;
+			seoTitle: string;
 		};
 	} = $props();
 	const locale = getLocale();
@@ -35,9 +36,7 @@
 		url.hash = '';
 		return new URL(frameHref(url, { mode: data.mode, period: data.period }), url);
 	});
-	const title = $derived(
-		data.id ? t(`Vehicle ${data.id}`, `Véhicule ${data.id}`) : t('Vehicles', 'Véhicules'),
-	);
+	const title = $derived(data.seoTitle);
 	const notTrackedLive = $derived(
 		data.provider?.inputs.vehicle_positions === false ||
 			data.provider?.inputs.stable_vehicle_ids === false,
