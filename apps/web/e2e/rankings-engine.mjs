@@ -45,6 +45,7 @@ export function rankingsEngine(url) {
 		...(!vehicle ? { share_observed: 0.4, low_coverage: true } : {}),
 	};
 	const notTracked = vehicle && from === '2026-11-10';
+	const paged = kind === 'line' && from === '2026-10-28';
 	const method = wait
 		? 'matched_headways'
 		: reporting
@@ -59,23 +60,22 @@ export function rankingsEngine(url) {
 			measure,
 			class: serviceClass,
 			available_classes: classes,
-			ranked_count: notTracked || floorGated ? 0 : 1,
+			ranked_count: notTracked || floorGated ? 0 : paged ? 21 : 1,
 			rows:
 				notTracked || floorGated
 					? []
-					: [
-							{
-								...entry,
-								rank: 1,
-								...(!reporting && !median && !wait ? { ranking_bound: 0.58 } : {}),
-								value: wait ? 42.5 : early ? 0.04 : reporting ? 24.39 : median ? 30 : 0.48,
-								range: {
-									method,
-									lower: wait || reporting ? null : early ? 0.02 : median ? 27.5 : 0.38,
-									upper: wait || reporting ? null : early ? 0.1 : median ? 32.5 : 0.58,
-								},
+					: Array.from({ length: paged ? 21 : 1 }, (_, index) => ({
+							...entry,
+							id: index === 0 ? entry.id : `L${index + 1}`,
+							rank: index + 1,
+							...(!reporting && !median && !wait ? { ranking_bound: 0.58 } : {}),
+							value: wait ? 42.5 : early ? 0.04 : reporting ? 24.39 : median ? 30 : 0.48,
+							range: {
+								method,
+								lower: wait || reporting ? null : early ? 0.02 : median ? 27.5 : 0.38,
+								upper: wait || reporting ? null : early ? 0.1 : median ? 32.5 : 0.58,
 							},
-						],
+						})),
 			excluded: notTracked
 				? []
 				: [
@@ -124,6 +124,38 @@ export function rankingsEngine(url) {
 				method_version: 'rankings-fixture-v1',
 				cleaning_versions: [8],
 				query_ms: 4,
+			},
+		},
+	};
+}
+
+export function rankingReferenceFixture(url) {
+	const q = url.searchParams;
+	const from = q.get('from');
+	const measure = q.get('measure');
+	if (!['2026-10-27', '2026-10-28'].includes(from) || q.has('group') || !measure) return null;
+	const value = { on_time: 0.8, late: 0.2, early: 0.06, median_delay: 25, excess_wait_time: 35 }[
+		measure
+	];
+	return {
+		body: {
+			measure,
+			state: value == null ? 'not_measured' : 'measured',
+			state_text:
+				value == null ? { en: 'Not measured', fr: 'Non mesuré' } : { en: 'Measured', fr: 'Mesuré' },
+			value: { [measure]: value ?? null },
+			coverage_note: null,
+			evidence: {
+				start_date: from,
+				end_date: q.get('to'),
+				days_included: [from],
+				days_measured: value == null ? [] : [from],
+				days_not_measured: value == null ? [from] : [],
+				method_version: from === '2026-10-28' ? 'old-fixture-v0' : 'rankings-fixture-v1',
+				cleaning_versions: [8],
+				query_ms: 2,
+				counts: { classified: 250 },
+				share_observed: 0.4,
 			},
 		},
 	};

@@ -1,10 +1,15 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { RouteFile } from '#lib/v1/index.ts';
+import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { recordCsvResponse } from './recordCsv.ts';
-import { getRankingsRecord } from './engine.ts';
+import { getRankingsRecord, getRecordAnswer } from './engine.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
-import { rankingSelection, type RankingPath } from '#lib/features/rankings/rankingSelection.ts';
+import {
+	canRankVehicles,
+	rankingSelection,
+	type RankingPath,
+} from '#lib/features/rankings/rankingSelection.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 
 import { rankingsQuery } from './screenQuestions.ts';
@@ -17,8 +22,13 @@ export async function loadRankingsRecord(
 		request: Request;
 		parent: () => Promise<{
 			providerId: string;
-			provider?: Pick<PublicCity, 'timezone' | 'record_through'> | null;
-			schedule?: { route_directions?: Record<string, RouteFile['directions']> } | null;
+			provider?:
+				| (Pick<PublicCity, 'timezone' | 'record_through'> & Partial<Pick<PublicCity, 'inputs'>>)
+				| null;
+			schedule?: {
+				route_directions?: Record<string, RouteFile['directions']>;
+				stops?: ScheduleEdition['stops'];
+			} | null;
 		}>;
 	},
 ) {
@@ -26,10 +36,19 @@ export async function loadRankingsRecord(
 	const selection = rankingSelection(path, url.searchParams);
 	const { providerId: city, provider, schedule } = await parent();
 	const { period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
+	const notTracked = selection.kind === 'vehicle' && !canRankVehicles(provider?.inputs);
+	const scope = period &&
+		!notTracked && {
+			...period,
+			city,
+			visitorIp: request.headers.get('cf-connecting-ip'),
+		};
 	return {
 		selection,
 		period,
 		city,
+		notTracked,
+		stops: selection.kind === 'stop' ? (schedule?.stops ?? []) : [],
 		headsigns:
 			selection.kind === 'departure'
 				? Object.fromEntries(
@@ -39,13 +58,10 @@ export async function loadRankingsRecord(
 						]),
 					)
 				: {},
-		answer:
-			period &&
-			getRankingsRecord(rankingsQuery(selection).parameters, {
-				...period,
-				city,
-				visitorIp: request.headers.get('cf-connecting-ip'),
-			}),
+		answer: scope ? getRankingsRecord(rankingsQuery(selection).parameters, scope) : null,
+		reference: scope
+			? getRecordAnswer({ path: '/measure', parameters: { measure: selection.measure } }, scope)
+			: null,
 	};
 }
 

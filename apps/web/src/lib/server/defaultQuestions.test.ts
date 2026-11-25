@@ -1,12 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { load as overview } from '../../routes/[[lang=locale]]/+page.server.ts';
 import { load as alerts } from '../../routes/[[lang=locale]]/alerts/+page.server.ts';
-import { load as hotspots } from '../../routes/[[lang=locale]]/hotspots/+page.server.ts';
+import { load as rankings } from '../../routes/[[lang=locale]]/rankings/+page.server.ts';
 import { load as lines } from '../../routes/[[lang=locale]]/lines/+page.server.ts';
 import { load as methods } from '../../routes/[[lang=locale]]/metrics/+page.server.ts';
 import { load as network } from '../../routes/[[lang=locale]]/network/+page.server.ts';
 import { load as daily } from '../../routes/[[lang=locale]]/receipt/+page.server.ts';
-import { load as repeatOffenders } from '../../routes/[[lang=locale]]/repeat-offenders/+page.server.ts';
 import { load as health } from '../../routes/[[lang=locale]]/status/+page.server.ts';
 import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
@@ -63,6 +62,7 @@ it.each([
 			url: new URL(path, origin),
 			request,
 			parent,
+			params: {},
 			fetch: captureFetch,
 			locals: { overviewSchedule: null },
 		} as T);
@@ -71,10 +71,10 @@ it.each([
 		visit(overview, '/'),
 		visit(lines, '/lines'),
 		visit(stops, '/stops'),
-		visit(hotspots, '/hotspots'),
-		visit(hotspots, '/hotspots?kind=stop'),
-		visit(repeatOffenders, '/repeat-offenders'),
-		visit(repeatOffenders, '/repeat-offenders?kind=vehicle'),
+		visit(rankings, '/rankings'),
+		visit(rankings, '/rankings?kind=stop'),
+		visit(rankings, '/rankings?kind=departure'),
+		visit(rankings, '/rankings?kind=vehicle'),
 		visit(daily, receipt),
 		visit(network, '/network'),
 		visit(alerts, '/alerts'),

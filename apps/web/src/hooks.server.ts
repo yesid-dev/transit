@@ -155,9 +155,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		(event.route.id === '/[[lang=locale]]/vehicles' ||
 			event.route.id === '/[[lang=locale]]/vehicle/[id]') &&
 		event.url.searchParams.get('frameMode') !== 'live';
-	const rankingsRecord =
-		event.route.id === '/[[lang=locale]]/hotspots' ||
-		event.route.id === '/[[lang=locale]]/repeat-offenders';
+	const rankingsRecord = event.route.id === '/[[lang=locale]]/rankings';
 	const method = event.route.id === '/[[lang=locale]]/metrics';
 	const healthRecord =
 		event.route.id === '/[[lang=locale]]/status' &&

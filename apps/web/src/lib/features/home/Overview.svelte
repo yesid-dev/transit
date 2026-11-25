@@ -425,7 +425,7 @@
 				{#snippet links()}
 					<a
 						class="inline-flex min-h-11 items-center text-primary underline"
-						href={link('/hotspots')}>{t.allRankings}</a
+						href={link('/rankings')}>{t.allRankings}</a
 					>
 				{/snippet}
 				{#snippet evidence()}

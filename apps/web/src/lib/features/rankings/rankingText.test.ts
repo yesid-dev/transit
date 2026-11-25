@@ -23,7 +23,7 @@ const answer: RankingsRecord = {
 };
 
 it('renders bounds in the engine’s units, including zero and negative bounds', () => {
-	expect(rankingRange(row, 'on_time', 'en')).toBe('38% to 58%');
+	expect(rankingRange(row, 'on_time', 'en')).toBe('38.0% to 58.0%');
 	expect(
 		rankingRange(
 			{ ...row, range: { lower: -32.5, upper: -27.5, method: 'histogram_half_bin' } },
@@ -41,7 +41,7 @@ it('renders bounds in the engine’s units, including zero and negative bounds',
 			'en',
 		),
 	).toBe('Unknown');
-	expect(rankingValue(0, reporting, 'fr')).toBe('0 par 100 h');
+	expect(rankingValue(0, reporting, 'fr')).toBe('0,0');
 });
 
 it('only ranks vehicles on reporting gaps, including visits to old completion links', () => {

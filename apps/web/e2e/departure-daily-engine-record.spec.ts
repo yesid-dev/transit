@@ -183,7 +183,9 @@ test('Departure opens the current prediction report for an exact trip identity',
 });
 
 test('a ranked departure links to its exact line, direction, time and range', async ({ page }) => {
-	await page.goto('/fr/repeat-offenders?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
+	await page.goto(
+		'/fr/rankings?kind=departure&provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14',
+	);
 	const ranking = page.getByRole('region', { name: 'Départs', exact: true });
 	const link = ranking.getByRole('link', { name: /07:15/ }).first();
 	await expect(link).toBeVisible();

@@ -5,4 +5,9 @@
 	let { data }: { data: PageData } = $props();
 </script>
 
-<Rankings record={data} locale={data.lang} origin={page.url.origin} path="/hotspots" />
+<Rankings
+	record={data.record}
+	locale={data.lang}
+	url={new URL(page.url.href)}
+	operator={data.provider?.labels[data.lang].operator}
+/>

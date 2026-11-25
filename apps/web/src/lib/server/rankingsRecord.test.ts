@@ -28,11 +28,11 @@ it.each([
 		{ kind: 'vehicle', measure: 'vehicle_reporting_gaps_per_100_hours' },
 	],
 ] as const)('streams the engine query for %s?%s', async (path: RankingPath, query, cuts) => {
-	let finish!: (response: Response) => void;
+	const finish: Array<(response: Response) => void> = [];
 	fetcher.mockImplementation(
 		() =>
 			new Promise((resolve) => {
-				finish = resolve;
+				finish.push(resolve);
 			}),
 	);
 	const url = new URL(`https://transit1.yesid.dev${path}?${dates}&${query}`);
@@ -42,6 +42,7 @@ it.each([
 		parent: async () => ({ providerId: 'agency' }),
 	});
 	expect(record.answer).toBeInstanceOf(Promise);
+	expect(record.reference).toBeInstanceOf(Promise);
 	expect(record.period).toMatchObject({ from: '2026-10-15', to: '2026-11-21' });
 	const request = fetcher.mock.calls[0]![0];
 	const requested = new URL(request.url);
@@ -53,8 +54,32 @@ it.each([
 		...cuts,
 	});
 	expect(request.headers.get('x-transit-visitor-ip')).toBe('192.0.2.24');
-	finish(new Response(null, { status: 503, headers: { 'retry-after': '1' } }));
+	expect(fetcher).toHaveBeenCalledTimes(2);
+	const reference = new URL(fetcher.mock.calls[1]![0].url);
+	expect(reference.pathname).toBe('/v2/agency/measure');
+	expect(Object.fromEntries(reference.searchParams)).toEqual({
+		from: '2026-10-15',
+		to: '2026-11-21',
+		measure: cuts.measure,
+	});
+	for (const respond of finish)
+		respond(new Response(null, { status: 503, headers: { 'retry-after': '1' } }));
 	expect(await record.answer).toEqual({ kind: 'busy' });
+	expect(await record.reference).toEqual({ kind: 'busy' });
+});
+
+it('keeps vehicle tracking unavailable by provider capability', async () => {
+	const url = new URL(`https://transit1.yesid.dev/rankings?kind=vehicle&${dates}`);
+	const record = await loadRankingsRecord('/rankings', {
+		url,
+		request: new Request(url),
+		parent: async () => ({
+			providerId: 'agency',
+			provider: { timezone: 'America/Toronto', inputs: { stable_vehicle_ids: false } },
+		}),
+	});
+	expect(record).toMatchObject({ notTracked: true, answer: null, reference: null });
+	expect(fetcher).not.toHaveBeenCalled();
 });
 
 const city = {

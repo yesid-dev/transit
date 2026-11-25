@@ -146,7 +146,7 @@ for (const locale of ['en', 'fr'] as const) {
 		expect(about).toHaveTextContent(coverage);
 		expect(screen.getByRole('link', { name: copy.allRankings })).toHaveAttribute(
 			'href',
-			expect.stringContaining(`/hotspots?provider=${provider}`),
+			expect.stringContaining(`/rankings?provider=${provider}`),
 		);
 		const label = locale === 'fr' ? 'Copier le lien' : 'Copy link';
 		await fireEvent.click(screen.getByRole('button', { name: label }));

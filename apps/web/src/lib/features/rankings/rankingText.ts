@@ -1,8 +1,14 @@
-import { dateRange, methodEvidence, minuteReading } from '#lib/site/presenter.ts';
+import {
+	dateRange,
+	methodEvidence,
+	minuteReading,
+	recordPercent,
+	rankingComparison,
+} from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import type { RankingsRecord } from '#lib/server/engine.ts';
-import { choose, percent, withCoverage } from '../record/recordText.ts';
-import { reporting, type RankingMeasure } from './rankingSelection.ts';
+import type { EngineResult, RecordAnswer, RankingsRecord } from '#lib/server/engine.ts';
+import { choose, withCoverage } from '../record/recordText.ts';
+import { reporting, worseIsHigher, type RankingMeasure } from './rankingSelection.ts';
 
 type Row = RankingsRecord['rows'][number];
 type Excluded = RankingsRecord['excluded'][number];
@@ -31,8 +37,49 @@ export function rankingValue(value: number, measure: RankingMeasure, locale: Loc
 	if (measure === 'median_delay' || measure === 'excess_wait_time')
 		return minuteReading(value / 60, locale)!;
 	if (measure === reporting)
-		return `${number(value, locale)} ${choose(locale, 'per 100 h', 'par 100 h')}`;
-	return percent(value, locale);
+		return intl
+			.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+			.format(value);
+	return recordPercent(value, locale);
+}
+
+export function rankingReference(
+	result: EngineResult<RecordAnswer> | null,
+	ranking: RankingsRecord,
+	measure: RankingMeasure,
+	locale: Locale,
+) {
+	if (
+		result?.kind !== 'answer' ||
+		!('value' in result.answer) ||
+		result.answer.state !== 'measured'
+	)
+		return null;
+	const reference = result.answer;
+	const value = reference.value[measure];
+	const methodVersion = reference.evidence.method_version;
+	if (
+		value == null ||
+		methodVersion !== ranking.evidence.method_version ||
+		(reference.evidence.measure_states?.[measure] ?? 'measured') !== 'measured'
+	)
+		return null;
+	const title =
+		ranking.kind === 'vehicle'
+			? choose(locale, 'Fleet', 'Parc de véhicules')
+			: choose(locale, 'Network', 'Réseau');
+	return { value, methodVersion, label: `${title} (${rankingValue(value, measure, locale)})` };
+}
+
+export function rankingVerdict(
+	row: Row,
+	reference: ReturnType<typeof rankingReference>,
+	method: string,
+	measure: RankingMeasure,
+	locale: Locale,
+) {
+	if (measure === reporting) return null;
+	return rankingComparison(row.range, reference, method, worseIsHigher(measure), locale);
 }
 
 export function rankingRange({ range }: Row, measure: RankingMeasure, locale: Locale) {
@@ -64,9 +111,14 @@ export function rankingSample(row: Row, measure: RankingMeasure, locale: Locale)
 	const key = numerators[measure];
 	const count = key ? row.counts[key] : null;
 	const sample = sampleText(row.sample, measure, locale);
-	if (count == null) return withCoverage(sample, row, locale);
+	if (count == null) return withCoverage(sample, row, locale, recordPercent);
 	const n = number(count, locale);
-	return withCoverage(choose(locale, `${n} in ${sample}`, `${n} sur ${sample}`), row, locale);
+	return withCoverage(
+		choose(locale, `${n} in ${sample}`, `${n} sur ${sample}`),
+		row,
+		locale,
+		recordPercent,
+	);
 }
 
 export function lineRankingFloor(

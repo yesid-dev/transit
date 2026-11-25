@@ -4,7 +4,7 @@ import { lineEngine } from './line-engine.mjs';
 import { installLineRecordFixtures, lineRecordFixture } from './line-record-fixtures.mjs';
 import { finderEngine, linesFixtureRoutes, stopsFixture } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
-import { rankingsEngine } from './rankings-engine.mjs';
+import { rankingReferenceFixture, rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
 import { networkEngine, networkFixtures, networkServiceFixture } from './network-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
@@ -924,7 +924,8 @@ const server = createServer((request, response) => {
 				? { status: 503, body: {} }
 				: reportFixture && reportDate === '2026-11-15'
 					? departureDailyEngine(url, undefined, true)
-					: (networkServiceFixture(url) ??
+					: ((reportFixture && question[2] === 'measure' ? rankingReferenceFixture(url) : null) ??
+						networkServiceFixture(url) ??
 						(isNetwork
 							? networkEngine(url)
 							: alertFixture

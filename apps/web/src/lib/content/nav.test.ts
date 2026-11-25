@@ -105,7 +105,7 @@ describe('SURFACE_NAV manifest', () => {
 
 	it('registers the four accountability surfaces in SECONDARY_NAV with EN + FR labels', () => {
 		const hrefs = SECONDARY_NAV.map((i) => i.href);
-		for (const href of ['/hotspots', '/receipt', '/repeat-offenders', '/alerts']) {
+		for (const href of ['/rankings', '/receipt', '/rankings?kind=departure', '/alerts']) {
 			expect(hrefs, `${href} missing from SECONDARY_NAV`).toContain(href);
 			const item = SECONDARY_NAV.find((i) => i.href === href)!;
 			expect(item.label.en, `${href} en label`).toBeTruthy();
@@ -138,9 +138,9 @@ describe('AUDIT_NAV (side-nav Audit group)', () => {
 		for (const href of [
 			'/metrics',
 			'/status',
-			'/hotspots',
+			'/rankings',
 			'/receipt',
-			'/repeat-offenders',
+			'/rankings?kind=departure',
 			'/alerts',
 		]) {
 			expect(hrefs, `${href} missing from AUDIT_NAV`).toContain(href);
@@ -177,7 +177,7 @@ describe('AUDIT_NAV (side-nav Audit group)', () => {
 
 	it('isSurfaceActive highlights the audit item on its own path', () => {
 		const hotspots = AUDIT_NAV.find((i) => i.key === 'hotspots')!;
-		expect(isSurfaceActive(hotspots, '/hotspots')).toBe(true);
+		expect(isSurfaceActive(hotspots, '/rankings')).toBe(true);
 		expect(isSurfaceActive(hotspots, '/status')).toBe(false);
 	});
 });

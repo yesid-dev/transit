@@ -81,14 +81,14 @@ export const SHARE_COPY = {
 			cta: 'Voir la santé des données',
 		},
 	},
-	'/hotspots': {
+	'/rankings': {
 		en: {
-			support: 'Severe transit delays by line and stop',
-			cta: 'Compare hotspots',
+			support: 'Service rankings for lines, stops, departures and vehicles',
+			cta: 'View the rankings',
 		},
 		fr: {
-			support: 'Retards graves par ligne et arrêt',
-			cta: 'Comparer les points chauds',
+			support: 'Classement du service par ligne, arrêt, départ et véhicule',
+			cta: 'Consulter le classement',
 		},
 	},
 	'/receipt': {
@@ -99,16 +99,6 @@ export const SHARE_COPY = {
 		fr: {
 			support: 'Ponctualité et service par date',
 			cta: 'Lire le rapport quotidien',
-		},
-	},
-	'/repeat-offenders': {
-		en: {
-			support: 'Recurring severe delays by trip and vehicle',
-			cta: 'View repeat offenders',
-		},
-		fr: {
-			support: 'Retards graves récurrents par trajet et véhicule',
-			cta: 'Voir les récidivistes',
 		},
 	},
 	'/alerts': {

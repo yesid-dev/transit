@@ -343,6 +343,29 @@ export function recordPercent(value: number, locale: Locale) {
 		.format(value);
 }
 
+export function rankingComparison(
+	range: { lower: number | null; upper: number | null },
+	reference: { value: number; methodVersion: string } | null,
+	methodVersion: string,
+	worseIsHigher: boolean,
+	locale: Locale,
+): string | null {
+	if (
+		!reference ||
+		reference.methodVersion !== methodVersion ||
+		range.lower == null ||
+		range.upper == null
+	)
+		return null;
+	const higher = range.lower > reference.value;
+	const lower = range.upper < reference.value;
+	if (!higher && !lower)
+		return locale === 'fr' ? 'Comme le réseau' : 'About the same as the network';
+	if (higher === worseIsHigher)
+		return locale === 'fr' ? 'Moins bien que le réseau' : 'Worse than the network';
+	return locale === 'fr' ? 'Mieux que le réseau' : 'Better than the network';
+}
+
 export function countedUnit(
 	value: number,
 	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle' | 'distinct-alert' | 'measured-day',

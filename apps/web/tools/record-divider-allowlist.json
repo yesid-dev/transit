@@ -5,9 +5,6 @@
 	"lib/features/metrics/MetricsExplainer.svelte": {
 		"border-block-start:": 2
 	},
-	"lib/features/rankings/Rankings.svelte": {
-		"border-t": 1
-	},
 	"lib/features/stops/StopLivePredictions.svelte": {
 		"border-bottom:": 1
 	},

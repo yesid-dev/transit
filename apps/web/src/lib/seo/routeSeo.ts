@@ -88,14 +88,11 @@ const SURFACES: Record<string, BilingualSeo> = {
 	'/download': {
 		title: { en: 'Download the data', fr: 'Télécharger les données' },
 	},
-	'/hotspots': {
-		title: { en: 'Hotspots', fr: 'Points chauds' },
+	'/rankings': {
+		title: { en: 'Worst lines', fr: 'Pires lignes' },
 	},
 	'/receipt': {
 		title: { en: 'Daily report', fr: 'Rapport quotidien' },
-	},
-	'/repeat-offenders': {
-		title: { en: 'Repeat offenders', fr: 'Récidivistes' },
 	},
 	'/alerts': {
 		title: { en: 'Alerts', fr: 'Avis' },
