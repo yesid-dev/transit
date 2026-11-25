@@ -129,22 +129,28 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 });
 
 test('data health distinguishes an aged capture from an unavailable response', async ({ page }) => {
-	const at = Date.now();
+	await page.clock.install();
 	let missing = false;
 	await page.route(captureUrl, (route) =>
 		missing
-			? route.fulfill({ status: 404, json: { state: 'no_live_data' } })
-			: route.fulfill({ json: captureFixture(at - 120_000) }),
+			? route.fulfill({ status: 503, json: { state: 'unavailable' } })
+			: route.fulfill({ json: captureFixture(Date.now() - 120_000) }),
 	);
 	await page.goto('/status?provider=stm&frameMode=live');
-	const live = page.locator('[data-slot="health-summary"] [data-answer="live"]');
-	await expect(live.locator('.health-answer-mark')).toHaveAttribute('data-state', 'behind');
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
+	await page.clock.runFor(21_000);
+	await expect(
+		page.getByRole('cell', { name: /^Late: last received \d+ min ago$/u }).first(),
+	).toBeVisible();
 	missing = true;
-	await page.reload();
-	await expect(live.locator('.health-answer-mark')).toHaveAttribute('data-state', 'unknown');
-	await expect(live.locator('p > span:not([aria-hidden])')).toHaveText(/update time unknown/i);
+	await page.clock.runFor(21_000);
+	await expect(page.getByText('No live data', { exact: true }).first()).toBeVisible();
+	if (process.env.TRANSIT_E2E_HEALTH_SCREENSHOTS)
+		await page.screenshot({
+			fullPage: true,
+			path: 'test-results/health-evidence/pr21/stm-en-live-failing.png',
+		});
 });
-
 test('rail detail uses schedule geometry and omits vehicles from a line without live coverage', async ({
 	page,
 }) => {

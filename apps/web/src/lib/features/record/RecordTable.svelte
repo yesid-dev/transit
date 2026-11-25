@@ -10,6 +10,7 @@
 		wide = false,
 		rowLabel,
 		stack = false,
+		numeric = [],
 		heatLevels,
 	}: {
 		title: string;
@@ -19,6 +20,7 @@
 		wide?: boolean;
 		rowLabel?: Snippet<[string, number]>;
 		stack?: boolean;
+		numeric?: readonly number[];
 		heatLevels?: readonly (readonly (number | null)[])[];
 	} = $props();
 
@@ -55,7 +57,12 @@
 			(header, column): DataTableColumn<Row> =>
 				column === 0
 					? { key: 'label', header, rowHeader: true, cell: labelCell }
-					: { key: String(column), header, cell: textCell(column) },
+					: {
+							key: String(column),
+							header,
+							cell: textCell(column),
+							numeric: numeric.includes(column),
+						},
 		),
 	);
 </script>

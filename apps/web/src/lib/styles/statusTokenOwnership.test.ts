@@ -46,11 +46,7 @@ const TRANSPORT_DOT_COLORS = new Set(['early', 'on_time', 'late', 'severe']);
 // No dot shows a vehicle's punctuality today; one that does is named here.
 const TRANSPORT_STATUS_DOTS = new Set<string>();
 // A dot whose colour comes from elsewhere names the module that computes it.
-const DOT_COLOR_SOURCES: Record<string, string> = {
-	'lib/features/health/sections/SectionFreshness.svelte':
-		'lib/features/health/selectors/provenanceViews.ts',
-	'lib/features/health/sections/SectionLanes.svelte': 'lib/features/health/selectors/laneHealth.ts',
-};
+const DOT_COLOR_SOURCES: Record<string, string> = {};
 
 const quotedWords = (text: string) => [...text.matchAll(/['"]([a-z_]+)['"]/g)].map((m) => m[1]!);
 

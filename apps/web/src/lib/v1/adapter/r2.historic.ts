@@ -12,7 +12,6 @@ import {
 	HistoricCollectionIndexSchema,
 	HistoricEntityDirectoryIndexSchema,
 	LineHistoryPartitionSchema,
-	NetworkHistoryPartitionSchema,
 	StopHistoryPartitionSchema,
 } from '#lib/v1/schemas/history.ts';
 import {
@@ -138,13 +137,6 @@ export const historicPort = {
 			'historic.historyIndex',
 			ctx,
 		),
-	networkHistoryIndex: async (path: string, ctx?: AdapterCtx) =>
-		readOptionalHistory(
-			assertHistoryFamilyIndexPath('network', path),
-			HistoricCollectionIndexSchema,
-			'historic.networkHistoryIndex',
-			ctx,
-		),
 	lineHistoryDirectory: async (path: string, ctx?: AdapterCtx) =>
 		readOptionalHistory(
 			assertHistoryFamilyIndexPath('lines', path),
@@ -171,13 +163,6 @@ export const historicPort = {
 			assertHistoryEntityIndexPath('stops', entityId, path),
 			HistoricCollectionIndexSchema,
 			'historic.stopHistoryIndex',
-			ctx,
-		),
-	networkHistoryPartition: async (path: string, ctx?: AdapterCtx) =>
-		readRawHistoryPartition(
-			assertFamilyPartitionPath('network', null, path),
-			NetworkHistoryPartitionSchema,
-			'historic.networkHistoryPartition',
 			ctx,
 		),
 	lineHistoryPartition: async (entityId: string, path: string, ctx?: AdapterCtx) =>

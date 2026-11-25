@@ -57,8 +57,15 @@ it.each([
 		provider: { ...provider, labels: { en: label, fr: label }, alert_links: {} },
 		lang: 'en',
 	});
+	const captureFetch = vi.fn(async () => new Response(null, { status: 503 }));
 	const visit = <T>(load: (event: T) => unknown, path: string) =>
-		load({ url: new URL(path, origin), request, parent, locals: { overviewSchedule: null } } as T);
+		load({
+			url: new URL(path, origin),
+			request,
+			parent,
+			fetch: captureFetch,
+			locals: { overviewSchedule: null },
+		} as T);
 	const receipt = '/receipt?frameMode=record&recordFrom=' + period.to + '&recordTo=' + period.to;
 	await Promise.all([
 		visit(overview, '/'),
@@ -72,6 +79,7 @@ it.each([
 		visit(network, '/network'),
 		visit(alerts, '/alerts'),
 		visit(health, '/status'),
+		visit(health, '/status?frameMode=live'),
 		visit(methods, '/metrics'),
 		getScheduleEdition(provider.id),
 		...['', '&layer=corridors'].map((layer) =>
@@ -90,6 +98,10 @@ it.each([
 		return url.href;
 	});
 	const warm = [...defaultCityQuestions(provider, period, healthPeriod), sharedDefaultQuestion];
+	expect(captureFetch).toHaveBeenCalledExactlyOnceWith(
+		`/api/live?city=${provider.id}`,
+		expect.anything(),
+	);
 	expect(warm.toSorted()).toEqual([...new Set(visitor)].toSorted());
 	expect(warm.length).toBeLessThan(visitor.length);
 });

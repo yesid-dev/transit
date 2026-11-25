@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { textDefects } from './layout-helpers';
+import { installHealthCapture } from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
@@ -36,6 +37,42 @@ for (const locale of ['en', 'fr'] as const) {
 		).toHaveCSS('list-style-position', 'outside');
 	});
 }
+
+test('Data health reads late feed details, expected cadence, sizes and the schedule', async ({
+	page,
+}) => {
+	const refresh = await installHealthCapture(page);
+	await page.goto('/status?provider=stm&frameMode=live');
+	await refresh();
+	const main = page.getByRole('main');
+	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+		'feeds are fresh. Late: Service alerts.',
+	);
+	await expect(main.getByRole('cell', { name: 'Late: last received 2 min ago' })).toBeVisible();
+	const capture = main.getByRole('table', { name: 'Each feed, at its last capture' });
+	const positions = capture.getByRole('row').filter({ hasText: 'Vehicle positions' });
+	await expect(positions.getByRole('cell', { name: 'every 30 s' })).toBeVisible();
+	await expect(positions.getByRole('cell', { name: '412 kB' })).toBeVisible();
+	const schedule = capture.getByRole('row').filter({ hasText: 'Schedule' });
+	await expect(schedule.getByRole('cell', { name: '64 MB' })).toBeVisible();
+	await expect(schedule.getByRole('cell', { name: 'when the agency publishes' })).toBeVisible();
+	await expect(schedule.getByRole('cell', { name: 'In use' })).toBeVisible();
+	await expect(main.locator('#feed-diagnostics')).not.toHaveAttribute('open');
+});
+
+test('Data health opens feed diagnostics from a previously copied Network link', async ({
+	page,
+	request,
+}) => {
+	const period = 'provider=stm&frameMode=record&recordFrom=2026-11-11&recordTo=2026-11-14';
+	await page.goto(`/network?${period}#poll_success`);
+	await expect(page).toHaveURL(/\/status\?.*frameMode=live.*#poll_success$/);
+	await expect(page.locator('#poll_success').getByText('20 / 25', { exact: true })).toBeVisible();
+	await expect(page.locator('#poll_success')).toContainText('At least 20 samples per reading.');
+	const csv = await request.get(`/network/record.csv?${period}&section=poll_success`);
+	expect(csv.headers()['content-disposition']).toContain('network-poll-success.csv');
+	expect(await csv.text()).toBe('Measure,Value\npoll_success,2026-11-11\n');
+});
 
 for (const width of [390, 1440]) {
 	for (const locale of ['en', 'fr']) {
@@ -121,19 +158,17 @@ for (const width of [390, 1440]) {
 			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
 				fr ? 'Santé des données' : 'Data health',
 			);
-			const table = main.getByRole('table');
-			await expect(table.getByRole('rowheader')).toHaveCount(4);
+			const table = main.locator('#table-health').getByRole('table');
+			await expect(table.getByRole('rowheader')).toHaveCount(2);
 			for (const state of fr
 				? [
 						'Présent',
-						'Incomplet',
 						'Manquant (Fichier manquant)',
 						'Non mesuré (Aucune capture brute)',
 						'Non mesuré (Aucune édition de l’horaire)',
 					]
 				: [
 						'Present',
-						'Incomplete',
 						'Missing (File missing)',
 						'Not measured (No raw captures)',
 						'Not measured (No schedule edition)',
@@ -142,15 +177,27 @@ for (const width of [390, 1440]) {
 			}
 			await expect(main.getByRole('link', { name: /CSV/ })).toHaveCount(0);
 			await expect(
+				main.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true }),
+			).toHaveCount(0);
+			await expect(
 				main.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();
 			await main.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(main.getByText(/recordFrom=2026-11-11.*#table-health/)).toBeVisible();
+			await expect(
+				page.getByRole('dialog').getByText(/recordFrom=2026-11-11.*#table-health/),
+			).toBeVisible();
 			const tableHealthDefects = (await textDefects(page)).filter(({ selector }) =>
 				selector.startsWith('#table-health'),
 			);
 			expect(tableHealthDefects).toEqual([]);
-			await expect(main.getByText('v2', { exact: true })).toBeVisible();
+			const versions = main.locator('[data-slot="record-card"]').filter({
+				has: page.getByRole('heading', {
+					name: fr ? 'Versions en vigueur' : 'Versions in force',
+				}),
+			});
+			await expect(
+				versions.getByText(fr ? 'méthode v3' : 'method v3', { exact: true }),
+			).toBeVisible();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});
 	}

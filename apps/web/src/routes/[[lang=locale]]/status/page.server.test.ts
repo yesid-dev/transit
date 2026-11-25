@@ -1,124 +1,79 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
-const harness = vi.hoisted(() => ({
-	ctx: { fetch: vi.fn(), providerId: 'octranspo', manifest: { provider: 'octranspo' } },
-	getCaptureDataHealth: vi.fn(),
-	getDataHealth: vi.fn(),
-	getHistoricAvailability: vi.fn(),
-	serverV1Context: vi.fn(),
-	engineFetch: vi.fn<(request: Request) => Promise<Response>>(),
+const ports = vi.hoisted(() => ({
+	bucket: vi.fn(),
+	legacy: vi.fn(),
+	engine: vi.fn<(request: Request) => Promise<Response>>(),
+}));
+vi.mock('cloudflare:workers', () => ({
+	env: {
+		SNAPSHOTS: { get: ports.bucket },
+		DATA: { fetch: ports.legacy },
+		QUESTION_PROXY: { fetch: ports.engine },
+	},
 }));
 
-vi.mock('cloudflare:workers', () => ({ env: { QUESTION_PROXY: { fetch: harness.engineFetch } } }));
-
-vi.mock('#lib/v1/repositories/dataHealth.ts', () => ({
-	getCaptureDataHealth: (...args: unknown[]) => harness.getCaptureDataHealth(...args),
-	getDataHealth: (...args: unknown[]) => harness.getDataHealth(...args),
-}));
-
-vi.mock('#lib/v1/repositories/historic.ts', () => ({
-	getHistoricAvailability: (...args: unknown[]) => harness.getHistoricAvailability(...args),
-}));
-
-vi.mock('#lib/v1/serverContext.ts', () => ({
-	serverV1Context: (...args: unknown[]) => harness.serverV1Context(...args),
-}));
-
+import { GET as live } from '../../api/live/+server';
 import { load } from './+page.server';
 
-function deferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((done) => {
-		resolve = done;
-	});
-	return { promise, resolve };
-}
-
-function event(path = '/status?frameMode=live'): Parameters<typeof load>[0] {
-	const url = new URL(path, 'https://transit1.yesid.dev');
-	return {
-		params: { lang: undefined },
-		url,
-		request: new Request(url, { headers: { 'cf-connecting-ip': '192.0.2.11' } }),
-		fetch: vi.fn(),
-		locals: { v1Cache: new Map() },
-		platform: undefined,
-		parent: async () => ({ v1: { manifest: harness.ctx.manifest }, providerId: 'octranspo' }),
-	} as unknown as Parameters<typeof load>[0];
-}
-
-beforeEach(() => {
-	harness.getCaptureDataHealth.mockReset();
-	harness.getDataHealth.mockReset();
-	harness.getHistoricAvailability.mockReset();
-	harness.serverV1Context.mockReset().mockReturnValue(harness.ctx);
-	harness.engineFetch.mockReset();
-});
-
-describe('/status server seeds', () => {
-	it('starts all honesty reads concurrently through one request context', async () => {
-		const captureHealth = { generated_utc: '2026-07-14T12:00:20Z', feeds: [] };
-		const dataHealth = { generated_utc: '2026-07-14T12:00:00Z', lanes: [] };
-		const history = { generated_utc: '2026-07-14T12:00:00Z', families: [] };
-		const dataHealthRead = deferred<typeof dataHealth>();
-		const captureHealthRead = deferred<typeof captureHealth>();
-		const historyRead = deferred<typeof history>();
-		harness.getCaptureDataHealth.mockReturnValue(captureHealthRead.promise);
-		harness.getDataHealth.mockReturnValue(dataHealthRead.promise);
-		harness.getHistoricAvailability.mockReturnValue(historyRead.promise);
-
-		const pending = load(event());
-		await Promise.resolve();
-
-		expect(harness.serverV1Context).toHaveBeenCalledTimes(1);
-		expect(harness.getCaptureDataHealth).toHaveBeenCalledWith(harness.ctx);
-		expect(harness.getDataHealth).toHaveBeenCalledWith(harness.ctx);
-		expect(harness.getHistoricAvailability).toHaveBeenCalledWith(harness.ctx);
-
-		dataHealthRead.resolve(dataHealth);
-		captureHealthRead.resolve(captureHealth);
-		historyRead.resolve(history);
-
-		await expect(pending).resolves.toEqual({
-			view: 'live',
-			dataHealthSeed: { key: 'data-health', data: dataHealth },
-			captureHealthSeed: { key: 'capture-health', data: captureHealth },
-			historicAvailabilitySeed: { key: 'historic-availability', data: history },
+it.each(['live', 'record'] as const)(
+	'serves Data health %s without the old snapshots bucket or /v1',
+	async (mode) => {
+		vi.clearAllMocks();
+		ports.engine.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith('/live'))
+				return Response.json({
+					version: 2,
+					city: 'stm',
+					published_at: '2026-11-24T12:00:00Z',
+					feeds: {},
+					stable_vehicle_ids: true,
+					vehicle_positions: [],
+					alerts: null,
+				});
+			if (path.endsWith('/how-we-measure')) return Response.json([]);
+			return new Response(null, { status: 503, headers: { 'retry-after': '30' } });
 		});
-	});
-
-	it('keeps successful seeds when one independent honesty read fails', async () => {
-		const dataHealth = { generated_utc: '2026-07-14T12:00:00Z', lanes: [{ lane: 'rollup' }] };
-		const history = { generated_utc: '2026-07-14T12:00:00Z', families: [] };
-		harness.getCaptureDataHealth.mockRejectedValue(new Error('live tier unavailable'));
-		harness.getDataHealth.mockResolvedValue(dataHealth);
-		harness.getHistoricAvailability.mockResolvedValue(history);
-
-		await expect(load(event())).resolves.toEqual({
-			view: 'live',
-			dataHealthSeed: { key: 'data-health', data: dataHealth },
-			captureHealthSeed: null,
-			historicAvailabilitySeed: { key: 'historic-availability', data: history },
+		const url = new URL(
+			`https://transit.yesid.dev/status?provider=stm&frameMode=${mode}&recordFrom=2026-11-11&recordTo=2026-11-14`,
+		);
+		const appFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const target = new URL(String(input), url);
+			if (target.pathname !== '/api/live') throw new Error(`Unexpected app request ${target}`);
+			return live({ url: target, request: new Request(target) } as Parameters<typeof live>[0]);
 		});
-	});
-});
-
-it('streams day coverage and current methods from independent engine requests in Record', async () => {
-	const health = deferred<Response>();
-	harness.engineFetch.mockReturnValueOnce(health.promise).mockResolvedValueOnce(Response.json([]));
-	const data = await load(event('/fr/status?recordFrom=2026-11-11&recordTo=2026-11-14'));
-	expect(data?.view).toBe('record');
-	if (data?.view !== 'record' || !data.record) throw new Error('Expected a record period');
-	expect(harness.engineFetch.mock.calls.map(([request]) => request.url)).toEqual([
-		'https://data.yesid.dev/v2/octranspo/data-health?from=2026-11-11&to=2026-11-14',
-		'https://data.yesid.dev/v2/how-we-measure',
-	]);
-	expect(harness.engineFetch.mock.calls[0]?.[0].headers.get('x-transit-visitor-ip')).toBe(
-		'192.0.2.11',
-	);
-	expect(harness.getCaptureDataHealth).not.toHaveBeenCalled();
-	expect(harness.getDataHealth).not.toHaveBeenCalled();
-	await expect(data.record.methods).resolves.toEqual({ kind: 'answer', answer: [] });
-	health.resolve(new Response(null, { status: 503, headers: { 'retry-after': '30' } }));
-	await expect(data.record.health).resolves.toEqual({ kind: 'busy' });
-});
+		const data = await load({
+			url,
+			request: new Request(url),
+			fetch: appFetch,
+			locals: {},
+			parent: async () => ({
+				providerId: 'stm',
+				provider: {},
+				v1: { manifest: { provider: 'stm' } },
+			}),
+		} as unknown as Parameters<typeof load>[0]);
+		expect(data?.view).toBe(mode);
+		if (data?.view === 'live') {
+			await expect(data.capture).resolves.toMatchObject({ city: 'stm', version: 2 });
+			expect(data.diagnostics?.sections).toHaveLength(6);
+			await Promise.all(data.diagnostics?.sections.map(({ answer }) => answer) ?? []);
+		}
+		if (data?.view === 'record' && data.record) {
+			await expect(data.record.methods).resolves.toEqual({ kind: 'answer', answer: [] });
+			await expect(data.record.health).resolves.toEqual({ kind: 'busy' });
+		}
+		expect(ports.bucket).not.toHaveBeenCalled();
+		expect(ports.legacy).not.toHaveBeenCalled();
+		expect(appFetch.mock.calls.map(([input]) => String(input))).toEqual(
+			mode === 'live' ? ['/api/live?city=stm'] : [],
+		);
+		const paths = ports.engine.mock.calls.map(([request]) => new URL(request.url).pathname).sort();
+		expect(paths).toEqual(
+			mode === 'live'
+				? ['/v2/stm/live', ...Array(6).fill('/v2/stm/measure')]
+				: ['/v2/how-we-measure', '/v2/stm/data-health'],
+		);
+	},
+);

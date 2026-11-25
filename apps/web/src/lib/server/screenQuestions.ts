@@ -86,14 +86,14 @@ export const networkRecordQuestions = {
 	crowding: { measure: 'crowding' },
 } satisfies Record<string, RecordQuery['parameters']>;
 
-export function networkRecordQuery(measure: NetworkMeasure): RecordQuery {
+export function healthDiagnosticQuery(measure: NetworkMeasure): RecordQuery {
 	return { path: '/measure', parameters: { measure } };
 }
 
-export function networkQuestions() {
+export function healthDiagnosticQuestions() {
 	return (Object.keys(networkMeasures) as NetworkMeasure[]).map((measure) => ({
 		measure,
-		query: networkRecordQuery(measure),
+		query: healthDiagnosticQuery(measure),
 	}));
 }
 

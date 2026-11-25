@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, test } from 'vitest';
 import { alertHistoryCopy } from '../features/alerts/alerts.copy';
-import { copy as healthCopy } from '../features/health/health.copy';
 import { detailCopy as lineDetailCopy } from '../features/lines/lines.copy';
 import { reliabilityCopy } from '../features/lines/reliability/reliability.copy';
 import { metricsCopy } from '../features/metrics/metrics.copy';
@@ -15,8 +14,6 @@ const FRAGMENTS = {
 	article: {
 		alertsFr: alertHistoryCopy.fr.article,
 		alertsEn: alertHistoryCopy.en.article,
-		healthFr: healthCopy.fr.article,
-		healthEn: healthCopy.en.article,
 		lineFr: lineDetailCopy.fr.article,
 		lineEn: lineDetailCopy.en.article,
 		metricsFr: metricsCopy.fr.article,

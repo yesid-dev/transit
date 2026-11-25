@@ -726,15 +726,51 @@ const server = createServer((request, response) => {
 	if (health) {
 		const from = url.searchParams.get('from');
 		const to = url.searchParams.get('to');
+		if (from === '2026-11-05') {
+			response.writeHead(503).end();
+			return;
+		}
+		const tables = [
+			'scheduled_stop_times',
+			'trip_days',
+			'stop_events',
+			'vehicle_positions',
+			'alerts',
+			'feed_polls',
+		];
+		const healthDays =
+			from === '2026-10-26'
+				? Array.from({ length: 28 }, (_, index) => {
+						const date = new Date(Date.parse(from) + index * 86_400_000).toISOString().slice(0, 10);
+						const missing = date === '2026-11-16';
+						return {
+							service_date: date,
+							status: missing ? 'incomplete' : 'present',
+							cleaning_version: '12',
+							tables: Object.fromEntries(
+								tables.map((table) => [
+									table,
+									{
+										status:
+											table === 'alerts' && health[1] === 'octranspo'
+												? 'not_tracked'
+												: missing && table === 'stop_events'
+													? 'missing'
+													: 'present',
+									},
+								]),
+							),
+						};
+					})
+				: cleanTableHealth.days;
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
 				...cleanTableHealth,
+				...(from === '2026-10-26' ? { cleaning_version: '12' } : {}),
 				city: health[1],
 				from,
 				to,
-				days: cleanTableHealth.days.filter(
-					({ service_date }) => service_date >= from && service_date <= to,
-				),
+				days: healthDays.filter(({ service_date }) => service_date >= from && service_date <= to),
 			}),
 		);
 		return;

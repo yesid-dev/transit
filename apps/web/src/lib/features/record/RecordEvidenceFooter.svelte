@@ -5,18 +5,20 @@
 
 	let {
 		evidence,
+		versions,
 		sample,
 		locale,
 	}: {
-		evidence: RecordEvidence;
 		sample?: string | null;
 		locale: Locale;
-	} = $props();
+	} & ({ evidence: RecordEvidence; versions?: never } | { evidence?: never; versions: string }) =
+		$props();
+	const method = $derived(evidence ? methodEvidence(evidence, locale, true) : versions);
 </script>
 
 <div
 	class="flex w-full min-w-0 flex-wrap justify-between gap-x-4 gap-y-1 border-t border-border pt-2 font-mono text-small text-muted-foreground"
 >
 	{#if sample}<span>{sample}</span>{/if}
-	<span class="ml-auto">{methodEvidence(evidence, locale, true)}</span>
+	{#if method}<span class="ml-auto">{method}</span>{/if}
 </div>

@@ -38,12 +38,10 @@ export const r2Adapter = {
 	}),
 	historic: deferredPort(loadHistoric, (module) => module.historicPort, {
 		historyIndex: true,
-		networkHistoryIndex: true,
 		lineHistoryDirectory: true,
 		stopHistoryDirectory: true,
 		lineHistoryIndex: true,
 		stopHistoryIndex: true,
-		networkHistoryPartition: true,
 		lineHistoryPartition: true,
 		stopHistoryPartition: true,
 		alertArchiveIndex: true,
@@ -55,11 +53,6 @@ export const r2Adapter = {
 		stopReliability: true,
 	}),
 	basemap: deferredPort(loadStatic, (module) => module.basemapPort, { get: true }),
-	provenance: deferredPort(
-		() => import('./r2.provenance'),
-		(module) => module.provenancePort,
-		{ get: true },
-	),
 	dataHealth: deferredPort(
 		() => import('./r2.dataHealth'),
 		(module) => module.dataHealthPort,

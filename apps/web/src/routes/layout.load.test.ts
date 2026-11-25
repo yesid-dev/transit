@@ -98,6 +98,7 @@ describe('root server layout boot', () => {
 		['/lines/[id]', '/lines/24?tab=schedule'],
 		['/stop/[id]', '/stop/S1'],
 		['/status', '/status'],
+		['/status', '/status?frameMode=live'],
 		['/network', '/network?frameMode=record'],
 		['/network', '/network?frameMode=live'],
 		['/receipt', '/receipt?date=2026-08-30'],

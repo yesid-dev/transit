@@ -107,8 +107,9 @@ describe('r2 manifest memo', () => {
 				),
 			() => r2Adapter.historic.routeReliabilityIndex(ctx),
 			() =>
-				r2Adapter.historic.networkHistoryPartition(
-					`historic/history/network/generations/${'a'.repeat(64)}/2026-07.json`,
+				r2Adapter.historic.lineHistoryPartition(
+					'A',
+					`historic/history/lines/41/generations/${'a'.repeat(64)}/2026-07.json`,
 					ctx,
 				),
 		];

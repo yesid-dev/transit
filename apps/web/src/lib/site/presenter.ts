@@ -419,3 +419,52 @@ export function vehiclePositionsCapture(seconds: number | null | undefined, loca
 				: relativeReportAge(seconds, locale);
 	return locale === 'fr' ? `Positions des véhicules : ${age}.` : `Vehicle positions: ${age}.`;
 }
+
+export function captureAge(capturedAt: string | null, now: number, locale: Locale) {
+	const seconds = capturedAt === null ? NaN : (now - Date.parse(capturedAt)) / 1000;
+	return Number.isFinite(seconds) && seconds >= -5
+		? formatRelativeSeconds(Math.max(0, seconds), locale).replace(/\bminutes?\b/u, 'min')
+		: null;
+}
+
+export function captureCadence(seconds: number | null | undefined, locale: Locale) {
+	if (seconds == null) return null;
+	if (seconds === 86_400) return locale === 'fr' ? 'une fois par jour' : 'once a day';
+	const interval = intl.number(locale).format(seconds);
+	return locale === 'fr' ? `toutes les ${interval} s` : `every ${interval} s`;
+}
+
+export function captureSize(bytes: number | null | undefined, locale: Locale) {
+	if (bytes == null) return null;
+	const [scale, unit] =
+		bytes >= 1_000_000 ? [1_000_000, 'megabyte'] : bytes >= 1000 ? [1000, 'kilobyte'] : [1, 'byte'];
+	return intl
+		.number(locale, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: 1 })
+		.format(bytes / scale);
+}
+
+export function healthFeedName(
+	family: 'vehicle_positions' | 'trip_updates' | 'alerts',
+	locale: Locale,
+) {
+	const names = {
+		vehicle_positions: { en: 'Vehicle positions', fr: 'Positions des véhicules' },
+		trip_updates: { en: 'Trip updates', fr: 'Mises à jour des trajets' },
+		alerts: { en: 'Service alerts', fr: 'Avis de service' },
+	};
+	return names[family][locale];
+}
+
+export function healthTableDays(days: readonly { tables: Record<string, { status: string }> }[]) {
+	const totals = { present: 0, missing: 0, notMeasured: 0, tracked: 0 };
+	for (const { tables } of days) {
+		for (const { status } of Object.values(tables)) {
+			if (status === 'not_tracked') continue;
+			totals.tracked++;
+			if (status === 'present') totals.present++;
+			else if (status === 'missing' || status === 'incomplete') totals.missing++;
+			else totals.notMeasured++;
+		}
+	}
+	return totals;
+}

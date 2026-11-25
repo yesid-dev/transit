@@ -1,23 +1,36 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { Surface } from '@yesid/ui/layout';
 	import { getLocale } from '#lib/i18n/index.ts';
 	import RecordDataHealth from '#lib/features/record/RecordDataHealth.svelte';
-	import HealthStatus from '#lib/features/health/HealthStatus.svelte';
+	import DataHealthLive from '#lib/features/health/DataHealthLive.svelte';
+	import { providerDisplayNames } from '#lib/site/providerDisplay.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	const locale = getLocale();
 	const url = $derived(new URL(page.url.href));
+	const names = $derived(providerDisplayNames(data.provider, locale, data.providerId));
 </script>
 
-{#if data.view === 'record'}
-	<RecordDataHealth {locale} {url} record={data.record} />
-{:else if data.v1}
-	<HealthStatus
-		liveOnly
-		manifest={data.v1.manifest}
-		dataHealthSeed={data.dataHealthSeed ?? undefined}
-		captureHealthSeed={data.captureHealthSeed ?? undefined}
-		historicAvailabilitySeed={data.historicAvailabilitySeed ?? undefined}
-	/>
-{/if}
+<Surface>
+	{#if data.view === 'record'}
+		<RecordDataHealth
+			{locale}
+			{url}
+			subject={names.operatorCity}
+			operator={names.short}
+			record={data.record}
+		/>
+	{:else}
+		<DataHealthLive
+			{locale}
+			{url}
+			subject={names.operatorCity}
+			operator={names.short}
+			city={data.provider ? data.providerId : null}
+			capture={data.capture}
+			diagnostics={data.diagnostics}
+		/>
+	{/if}
+</Surface>

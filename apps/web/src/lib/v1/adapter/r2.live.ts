@@ -7,13 +7,10 @@ import {
 } from '#lib/live/captureProjection.ts';
 import {
 	captureSnapshotSchema,
-	feedState,
 	fetchCaptureSnapshot,
 	fetchCaptureTripScope,
 	type CaptureSnapshot,
 } from '#lib/live/captureSnapshot.ts';
-import { freshnessAgeSeconds } from '#lib/v1/freshness.ts';
-import { DataHealthSchema } from '#lib/v1/schemas/data_health.ts';
 import { getV1Runtime } from '#lib/v1/runtime.ts';
 import { providerOf } from './r2.core';
 import type { AdapterCtx } from './types';
@@ -88,28 +85,5 @@ export const livePort = {
 	},
 	async network(ctx?: AdapterCtx) {
 		return captureNetwork(await read(ctx), now());
-	},
-};
-
-export const captureHealthPort = {
-	async get(ctx?: AdapterCtx) {
-		const snapshot = await read(ctx);
-		const at = now();
-		const feeds = Object.entries(snapshot.feeds);
-		const untracked = (['vehicle_positions', 'trip_updates', 'alerts'] as const).filter(
-			(family) => !feeds.some(([, input]) => input.family === family),
-		);
-		return DataHealthSchema.parse({
-			generated_utc: snapshot.published_at,
-			feeds: [
-				...feeds.map(([feed, input]) => ({
-					feed,
-					status: feedState(input, at),
-					age_s: freshnessAgeSeconds(input.source_at ?? input.captured_at, at, 5),
-				})),
-				...untracked.map((feed) => ({ feed, status: 'not_tracked', age_s: null })),
-			],
-			lanes: [],
-		});
 	},
 };

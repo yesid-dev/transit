@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ManifestSchema } from '#lib/v1/schemas/manifest.ts';
-import { getCaptureDataHealth } from '#lib/v1/repositories/dataHealth.ts';
 import { r2Adapter } from './r2';
 import { liveReader } from './index';
 
@@ -88,40 +87,10 @@ it.each(['stm', 'octranspo'])(
 	},
 );
 
-it('reads SSR health through the binding and rejects data for another city', async () => {
-	const captureFetch = vi.fn(async (city: string) => Response.json(liveBody(city)));
-	const ctx = { providerId: 'stm', captureFetch };
-	await expect(getCaptureDataHealth(ctx)).resolves.toMatchObject({
-		feeds: expect.arrayContaining([
-			{ feed: 'vehicles', status: 'live', age_s: expect.any(Number) },
-		]),
-		lanes: [],
-	});
+it('rejects a live capture belonging to another city', async () => {
+	const captureFetch = vi.fn(async () => Response.json(liveBody('other-city')));
+	await expect(r2Adapter.live.vehicles({ providerId: 'stm', captureFetch })).rejects.toThrow(
+		'another city',
+	);
 	expect(captureFetch).toHaveBeenCalledWith('stm');
-	captureFetch.mockResolvedValueOnce(Response.json(liveBody('other-city')));
-	await expect(r2Adapter.live.vehicles(ctx)).rejects.toThrow('another city');
-});
-
-it('reports a stale source, a missing capture and an unsupported feed separately', async () => {
-	const snapshot = liveBody('demo');
-	const { vehicles, trips } = snapshot.feeds;
-	const response = Response.json({
-		...snapshot,
-		feeds: {
-			vehicles: { ...vehicles, source_at: new Date(Date.parse(timestamp) - 120_000).toISOString() },
-			trips: { ...trips, captured_at: null, source_at: null },
-		},
-		trip_updates: null,
-		alerts: null,
-	});
-	const result = await getCaptureDataHealth({
-		providerId: 'demo',
-		captureFetch: async () => response,
-	});
-	expect(result.feeds).toEqual([
-		{ feed: 'vehicles', status: 'stale', age_s: expect.any(Number) },
-		{ feed: 'trips', status: 'no_live_data', age_s: null },
-		{ feed: 'alerts', status: 'not_tracked', age_s: null },
-	]);
-	expect(result.feeds?.[0]?.age_s).toBeGreaterThanOrEqual(120);
 });

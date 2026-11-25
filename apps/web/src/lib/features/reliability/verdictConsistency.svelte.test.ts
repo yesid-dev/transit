@@ -32,8 +32,6 @@ vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getHistoricAvailability: async () => ({
 		families: [{ family: 'network', last_available_date: harness.network?.series?.at(-1)?.date }],
 	}),
-	getNetworkHistoryIndex: async () => null,
-	loadNetworkHistoryRange: vi.fn(),
 }));
 vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoutesIndex: async () => ({

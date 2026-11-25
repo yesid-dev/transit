@@ -9,11 +9,19 @@
 		operator,
 		healthLink,
 		captureAge,
+		scope,
+		statusLabel,
+		definition,
+		captureText,
 	}: {
 		locale: Locale;
 		operator?: string;
-		healthLink: string;
+		healthLink?: string;
 		captureAge?: number | null;
+		scope?: string;
+		statusLabel?: string;
+		definition?: string;
+		captureText?: string;
 	} = $props();
 	const t = $derived(overviewCopy[locale]);
 </script>
@@ -21,13 +29,13 @@
 <AboutFigures
 	title={t.aboutLive}
 	fields={[
-		{ key: 'shows', label: t.liveShows, text: t.liveScope },
-		{ key: 'means', label: t.liveStatus, text: t.liveDefinition },
+		{ key: 'shows', label: t.liveShows, text: scope ?? t.liveScope },
+		{ key: 'means', label: statusLabel ?? t.liveStatus, text: definition ?? t.liveDefinition },
 		{
 			key: 'capture',
 			label: locale === 'fr' ? 'Dernier relevé' : 'Last capture',
-			text: vehiclePositionsCapture(captureAge, locale),
-			link: { href: healthLink, label: t.dataHealth },
+			text: captureText ?? vehiclePositionsCapture(captureAge, locale),
+			link: healthLink ? { href: healthLink, label: t.dataHealth } : undefined,
 		},
 		{ key: 'source', label: t.source, text: operator ? t.liveFeeds(operator) : null },
 	]}

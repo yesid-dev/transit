@@ -29,7 +29,6 @@ export const R2_DEFAULTS = {
 	historic: {
 		history_index: 'historic/history/index.json',
 		alerts_index: 'historic/alerts/index.json',
-		network_trend: 'historic/network_trend.json',
 		hotspots: 'historic/hotspots.json',
 		repeat_offenders: 'historic/repeat_offenders.json',
 		alert_history: 'historic/alert_history.json',

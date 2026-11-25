@@ -11,7 +11,7 @@ const time = Date.parse('2026-11-23T16:00:00Z');
 
 for (const { screen, provider, locale, key, href } of designPassCases) {
 	test(`${screen} ${provider} ${locale} @layout`, async ({ page }, info) => {
-		const health = screen.startsWith('network-health');
+		const health = screen.startsWith('network-health') || screen.startsWith('data-health');
 		await setWidth(page, 1440);
 		if (!(health && screen.endsWith('-live'))) await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());

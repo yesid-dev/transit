@@ -28,7 +28,7 @@ export const networkMeasures = {
 		],
 	},
 	vehicle_field_completeness: {
-		title: ['Details in vehicle reports', 'Détails dans les signalements des véhicules'],
+		title: ['Details in vehicle reports', 'Données des véhicules'],
 		description: [
 			'This shows how much vehicle reporting time included each detail you might rely on, such as position or occupancy.',
 			'Ce taux indique la part du temps de signalement où chaque détail était disponible, comme la position ou l’occupation.',

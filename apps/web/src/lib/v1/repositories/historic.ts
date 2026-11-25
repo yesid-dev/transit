@@ -15,10 +15,8 @@ import { encodeHistoryEntityId } from '#lib/v1/history/entity.ts';
 import { isHistoryEntityIndexPath, isHistoryFamilyIndexPath } from '#lib/v1/history/pointers.ts';
 import {
 	selectLineHistoryPartitionRefs,
-	selectNetworkHistoryPartitionRefs,
 	selectStopHistoryPartitionRefs,
 	validateLineHistoryPartition,
-	validateNetworkHistoryPartition,
 	validateStopHistoryPartition,
 } from '#lib/v1/history/families.ts';
 import type {
@@ -31,7 +29,6 @@ import type {
 	HistoricFamilyAvailability,
 	Hotspots,
 	LineHistoryPartition,
-	NetworkHistoryPartition,
 	RouteReliability,
 	StopReliability,
 	StopHistoryPartition,
@@ -113,13 +110,12 @@ function assertDirectory(
 }
 
 function assertCollection(
-	family: 'network' | 'lines' | 'stops',
-	entityId: string | null,
+	family: 'lines' | 'stops',
+	entityId: string,
 	index: HistoricCollectionIndex,
 ): HistoricCollectionIndex {
-	if (family === 'network') selectNetworkHistoryPartitionRefs(index, ALL_HISTORY);
-	else if (family === 'lines') selectLineHistoryPartitionRefs(entityId!, index, ALL_HISTORY);
-	else selectStopHistoryPartitionRefs(entityId!, index, ALL_HISTORY);
+	if (family === 'lines') selectLineHistoryPartitionRefs(entityId, index, ALL_HISTORY);
+	else selectStopHistoryPartitionRefs(entityId, index, ALL_HISTORY);
 	return index;
 }
 
@@ -203,51 +199,6 @@ async function getFamilyDirectoryDiscovery(
 		);
 	}
 	return { directory, indexPath: edge.index_path };
-}
-
-export async function getNetworkHistoryIndex(
-	ctx?: AdapterCtx,
-): Promise<HistoricCollectionIndex | null> {
-	const root = await adapter.historic.historyIndex(ctx);
-	if (root === null) return null;
-	const edge = rootEdge(root, 'network');
-	if (edge === null) return null;
-	const index = await adapter.historic.networkHistoryIndex(edge.index_path, ctx);
-	if (index === null) {
-		throw new HistoryArtifactContractError(edge.index_path, 'advertised history index not found');
-	}
-	assertCollection('network', null, index);
-	if (index.collection_generation_id !== edge.collection_generation_id) {
-		const freshEdge = await refreshRootEdge('network', ctx);
-		if (
-			freshEdge !== null &&
-			freshEdge.collection_generation_id === index.collection_generation_id &&
-			freshEdge.index_path === edge.index_path
-		) {
-			return index;
-		}
-		if (freshEdge !== null) {
-			const freshIndex = await adapter.historic.networkHistoryIndex(
-				freshEdge.index_path,
-				freshHistoryCtx(ctx),
-			);
-			if (freshIndex === null) {
-				throw new HistoryArtifactContractError(
-					freshEdge.index_path,
-					'advertised history index not found',
-				);
-			}
-			assertCollection('network', null, freshIndex);
-			if (freshIndex.collection_generation_id === freshEdge.collection_generation_id) {
-				return freshIndex;
-			}
-		}
-		transientGeneration(
-			'network',
-			'network generation still disagrees after one bounded pointer-chain refresh',
-		);
-	}
-	return index;
 }
 
 export function getLineHistoryDirectory(
@@ -395,26 +346,6 @@ export function getStopHistoryIndex(
 	onRoot?: (root: HistoricAvailabilityIndex | null) => void,
 ): Promise<HistoricCollectionIndex | null> {
 	return getEntityHistoryIndex('stops', entityId, ctx, onRoot);
-}
-
-export async function loadNetworkHistoryRange(
-	index: HistoricCollectionIndex,
-	window: DateWindow,
-	ctx?: AdapterCtx,
-): Promise<NetworkHistoryPartition[]> {
-	const refs = selectNetworkHistoryPartitionRefs(index, window);
-	return loadHistoryPartitions(
-		refs,
-		async (ref, signal) => {
-			const raw = await adapter.historic.networkHistoryPartition(ref.path, { ...ctx, signal });
-			if (raw === null) {
-				throw new HistoryArtifactContractError(ref.path, 'advertised history partition not found');
-			}
-			await verifyPartitionBytes(ref, raw);
-			return validateNetworkHistoryPartition(index, ref, raw.value);
-		},
-		{ signal: ctx?.signal },
-	);
 }
 
 export async function loadLineHistoryRange(
