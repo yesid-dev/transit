@@ -92,6 +92,7 @@ export const designPassCases = [
 	...french.map((screen) => [screen, 'stm', 'fr'] as const),
 	['overview', 'octranspo', 'fr'] as const,
 	['overview-live', 'octranspo', 'fr'] as const,
+	['line-live', 'octranspo', 'fr'] as const,
 	['stop-record', 'octranspo', 'fr'] as const,
 	['how-we-measure', 'octranspo', 'fr'] as const,
 	['download', 'octranspo', 'fr'] as const,

@@ -1,7 +1,12 @@
 <script lang="ts">
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { feedState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
-	import { dateAndClock, liveStampAge } from '#lib/site/presenter.ts';
+	import {
+		agencyMessageDates,
+		agencyMessageHeading,
+		dateAndClock,
+		liveStampAge,
+	} from '#lib/site/presenter.ts';
 	import { alertDisplayText } from '#lib/v1/alertDisplay.ts';
 	import { effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
 	import { choose } from '../record/recordText.ts';
@@ -56,24 +61,25 @@
 							},
 							locale,
 						);
-						const sentences = [
-							...new Intl.Segmenter(message.lang ?? locale, { granularity: 'sentence' }).segment(
-								message.text,
-							),
-						];
+						const language = message.lang ?? locale;
+						const { title } = agencyMessageHeading(
+							{
+								header: { en: null, fr: null },
+								description: { en: null, fr: null, [language]: message.text },
+							},
+							locale,
+						);
+						const [start, end] = active ?? [];
 						return [
 							{
 								id: alert.id,
 								lang: message.lang,
-								title: sentences[0]?.segment.trim() ?? message.text,
-								body: sentences
-									.slice(1)
-									.map(({ segment }) => segment)
-									.join('')
-									.trim(),
+								title,
+								body: message.text.slice(title.length).trim(),
 								effect: effectLabel(alert.effect, locale),
-								start: active?.[0],
-								end: active?.[1],
+								start,
+								end,
+								dates: start && end ? agencyMessageDates([{ start, end }], locale, timeZone) : null,
 							},
 						];
 					})
@@ -106,12 +112,14 @@
 						<p class="text-small text-muted-foreground">
 							{[
 								notice.effect,
-								notice.start &&
-									t(
-										`Since ${dateAndClock(notice.start, locale, timeZone)}`,
-										`Depuis le ${dateAndClock(notice.start, locale, timeZone)}`,
-									),
-								notice.end &&
+								notice.dates ||
+									(notice.start &&
+										t(
+											`Since ${dateAndClock(notice.start, locale, timeZone)}`,
+											`Depuis le ${dateAndClock(notice.start, locale, timeZone)}`,
+										)),
+								!notice.dates &&
+									notice.end &&
 									t(
 										`Until ${dateAndClock(notice.end, locale, timeZone)}`,
 										`Jusqu’au ${dateAndClock(notice.end, locale, timeZone)}`,

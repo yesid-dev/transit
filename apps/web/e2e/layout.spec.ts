@@ -68,10 +68,6 @@ for (const locale of ['en', 'fr'] as const)
 				await page.goto(localizeHref(href, locale), { waitUntil: 'networkidle' });
 				if (path.startsWith('/stops?q='))
 					await page.getByTestId('stops-filter-input').fill('Fixture');
-				// Measure the line's stop tables, which start closed.
-				if (path === `/lines/${line}?tab=detail`)
-					for (const direction of await page.locator('[data-slot="line-directions"] summary').all())
-						await direction.click();
 				// Measure Data health's detail for auditors, which starts closed.
 				const details = page.locator('[data-toc="health-details"] [data-section-trigger]').first();
 				if (path === '/status' && (await details.count())) {

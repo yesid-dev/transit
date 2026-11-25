@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
-import { installLineRecordFixtures } from './line-record-fixtures.mjs';
+import { installLineRecordFixtures, lineRecordFixture } from './line-record-fixtures.mjs';
 import { finderEngine } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
@@ -66,7 +66,7 @@ for (const [key, body] of Object.entries(b9)) {
 		files[`/v1/stm/${key}`] ??= JSON.stringify(body);
 }
 // Long display names and two realtime capabilities in the published Line schedule.
-const lineStops = Array.from({ length: 6 }, (_, i) => ({
+const lineStops = Array.from({ length: 61 }, (_, i) => ({
 	id: `t4-${i}`,
 	seq: i + 1,
 	name: `Station de l’Université / Boulevard Édouard-Montpetit et chemin de la Côte-des-Neiges ${i + 1}`,
@@ -74,10 +74,17 @@ const lineStops = Array.from({ length: 6 }, (_, i) => ({
 const lineLiveRoute = {
 	id: '9003',
 	short: '9003',
-	long: 'Côte-des-Neiges / Édouard-Montpetit',
+	long: 'Long destinations and live reports',
 	type: 3,
 };
-const lineScheduleOnlyRoute = { id: '9004', short: '9004', long: 'Métro ligne orange', type: 1 };
+const lineScheduleOnlyRoute = { ...lineLiveRoute, id: '9004', short: '9004', type: 1 };
+const lineFixtureDirections = [61, 61, 25, 25].map((size, index) => ({
+	dir: index % 2,
+	headsign: ['Greenboro / Rockcliffe', 'Rockcliffe via station', 'Billings Bridge', 'Rideau'][
+		index
+	],
+	stops: lineStops.slice(0, size),
+}));
 
 // T6 Live now: a hub at the size of the busiest stops (12 lines, two predictions each, the longest
 // French destinations), a stop served only by the metro (no live data) and one no line serves.
@@ -304,10 +311,20 @@ const sourceCredits = {
 
 const heldResponsesByFixture = new Map();
 const dailyMessageHolds = new Set();
+const registeredScheduleLines = new Set();
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
 	const url = new URL(request.url, 'http://127.0.0.1');
+	if (url.pathname === '/__line-schedule/register') {
+		const line = url.searchParams.get('line');
+		if (!line || (!line.startsWith('recovery-') && !lineRecordFixture('stm', line)))
+			return response.writeHead(400).end();
+		if (request.method === 'POST') registeredScheduleLines.add(line);
+		else if (request.method === 'DELETE') registeredScheduleLines.delete(line);
+		else return response.writeHead(405).end();
+		return response.writeHead(204).end();
+	}
 	const download = /^\/v2\/([a-z0-9_-]+)\/download$/.exec(url.pathname);
 	if (download) {
 		const city = download[1];
@@ -592,12 +609,18 @@ const server = createServer((request, response) => {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
 		}
 		if (city === 'stm' && kind === 'schedule-index') {
+			for (const id of registeredScheduleLines) {
+				const { short, long, type } = lineRecordFixture('stm', id) ?? {
+					short: '9005',
+					long: 'Rosemont / Beaubien',
+					type: 3,
+				};
+				editionRoutes.set(id, { id, short, long, type });
+			}
 			editionRoutes.set(lineLiveRoute.id, lineLiveRoute);
 			editionRoutes.set(lineScheduleOnlyRoute.id, lineScheduleOnlyRoute);
-			routeDirections[lineLiveRoute.id] = [
-				{ dir: 0, headsign: 'Station Laurier', stops: lineStops },
-				{ dir: 1, headsign: 'Gare Montréal-Ouest', stops: lineStops.toReversed() },
-			];
+			routeDirections[lineLiveRoute.id] = lineFixtureDirections;
+			routeDirections[lineScheduleOnlyRoute.id] = lineFixtureDirections;
 			for (const { id, name } of lineStops)
 				editionStops.set(id, { id, name, lat: 45.5, lon: -73.6, routes: [lineLiveRoute.id] });
 			for (const [key, body] of Object.entries(files)) {

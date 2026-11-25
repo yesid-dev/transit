@@ -30,8 +30,16 @@ for (const { id, state } of [
 ]) {
 	test(`Line Record ${id} shows the timetable with a state in place of a figure`, async ({
 		page,
+		request,
 	}) => {
-		await page.goto(`/lines/${id}?provider=stm&` + dates);
+		const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+		const registration = `http://127.0.0.1:${port}/__line-schedule/register?line=${id}`;
+		expect((await request.post(registration)).status()).toBe(204);
+		try {
+			await page.goto(`/lines/${id}?provider=stm&` + dates);
+		} finally {
+			await request.delete(registration);
+		}
 		await expect(page.locator('#punctuality [data-record-state]')).toHaveAttribute(
 			'data-record-state',
 			state,
