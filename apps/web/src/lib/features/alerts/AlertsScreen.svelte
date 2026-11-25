@@ -17,6 +17,7 @@
 	import {
 		alertAnswerSentence,
 		alertPaging,
+		captureAge,
 		dateRange,
 		liveStampAge,
 		methodEvidence,
@@ -446,9 +447,7 @@
 					{#snippet children(snapshot, now)}
 						{@const feeds = Object.values(snapshot?.feeds ?? {})}
 						{@const alertFeed = feeds.find(({ family }) => family === 'alerts')}
-						{@const vehiclesAt = feeds.find(
-							({ family }) => family === 'vehicle_positions',
-						)?.captured_at}
+						{@const age = captureAge(alertFeed?.captured_at ?? null, now, locale)}
 						{#if snapshot?.alerts && alertFeed?.captured_at && feedState(alertFeed, now) === 'live'}
 							{@const liveCards = liveAlertCards(snapshot.alerts, now)}
 							{@const liveStamp = {
@@ -519,7 +518,19 @@
 							interactive
 							operator={data.operator}
 							healthLink={localizeHref('/status', locale, data.city)}
-							captureAge={vehiclesAt ? Math.max(0, (now - Date.parse(vehiclesAt)) / 1000) : null}
+							scope={t(
+								'Alerts in effect at this moment, in the latest feed capture.',
+								'Les avis en vigueur en ce moment, dans le dernier relevé du flux.',
+							)}
+							statusLabel={t('How an alert counts', 'Quand un avis compte')}
+							definition={t(
+								'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
+								'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand l’agence ne publie aucune période.',
+							)}
+							captureText={t(
+								`Alerts: ${age ?? 'unavailable'}.`,
+								`Avis : ${age ?? 'indisponibles'}.`,
+							)}
 						/>
 					{/snippet}
 				</LiveCapture>
