@@ -70,7 +70,9 @@
 			rows={reading.table.rows}
 			key={(row) => row.id}
 			responsive={{ mode: 'scroll', minWidth: '28rem' }}
-			pageSize={reading.table.pageSize}
+			pageSize={reading.table.pageSize && reading.table.rows.length > reading.table.pageSize
+				? reading.table.pageSize
+				: undefined}
 			pageLabels={{
 				showing: (shown, total) =>
 					t(

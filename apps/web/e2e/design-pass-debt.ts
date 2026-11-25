@@ -8,6 +8,10 @@ type Budget = Record<(typeof budgetWidths)[number], { height: number; beforeFigu
 
 // A screen PR supplies its budgets here once all of its fixture variants leave the debt list.
 const budgets: Partial<Record<Screen, Budget>> = {
+	'line-record': {
+		390: { height: 16000, beforeFigure: 1 },
+		1440: { height: 8000, beforeFigure: 1 },
+	},
 	'stop-record': {
 		390: { height: 7863, beforeFigure: 1 },
 		1440: { height: 3900, beforeFigure: 1 },

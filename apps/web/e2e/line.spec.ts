@@ -26,41 +26,29 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const locale of PUBLISHED_LOCALES) {
-	test(
-		locale + ': Line Record links keep the date range when switching to Schedule or Live',
-		async ({ page }) => {
-			await page.goto(
-				localizeHref('/lines/24?recordFrom=2026-11-08&recordTo=2026-11-14', locale, provider),
-			);
-			const views = page.getByRole('navigation', { name: /Line views|Vues de la ligne/ });
-			await expect(views.getByRole('link', { name: /Record|Bilan/ })).toHaveAttribute(
-				'aria-current',
-				'page',
-			);
-			await views.getByRole('link', { name: /Schedule|Horaire/ }).click();
-			await expect(views.getByRole('link', { name: /Schedule|Horaire/ })).toHaveAttribute(
-				'aria-current',
-				'page',
-			);
-			await expect(page).toHaveURL(
-				(url) =>
-					url.searchParams.get('tab') === 'schedule' &&
-					url.searchParams.get('recordFrom') === '2026-11-08',
-			);
-			await views.getByRole('link', { name: /Live now|En direct/ }).click();
-			await expect(views.getByRole('link', { name: /Live now|En direct/ })).toHaveAttribute(
-				'aria-current',
-				'page',
-			);
-			await expect(page).toHaveURL(
-				(url) =>
-					url.searchParams.get('frameMode') === 'live' &&
-					url.searchParams.get('recordTo') === '2026-11-14',
-			);
-		},
-	);
+	test(locale + ': old Line Schedule addresses preserve the record selection', async ({ page }) => {
+		await page.goto(
+			localizeHref(
+				'/lines/24?tab=schedule&direction=1&dayType=saturday&recordFrom=2026-11-08&recordTo=2026-11-14',
+				locale,
+				provider,
+			),
+		);
+		await expect(page).toHaveURL(
+			(url) =>
+				url.hash === '#schedule' &&
+				url.searchParams.get('dayType') === 'saturday' &&
+				url.searchParams.get('direction') === '1' &&
+				url.searchParams.get('recordFrom') === '2026-11-08' &&
+				url.searchParams.get('recordTo') === '2026-11-14',
+		);
+		await expect(
+			page
+				.locator('#schedule')
+				.getByRole('radio', { name: locale === 'fr' ? 'Samedi' : 'Saturday' }),
+		).toBeChecked();
+	});
 }
-
 for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: Live keeps real-size destinations usable at 320 to 1280`, async ({
 		page,

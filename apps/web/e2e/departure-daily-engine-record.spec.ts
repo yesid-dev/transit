@@ -22,10 +22,10 @@ for (const width of [390, 1440]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${path}/lines/24?${departurePeriod}`);
 			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
-			const late = page.getByRole('region', {
+			const late = page.getByRole('article', {
 				name: fr ? 'Départs le plus souvent en retard' : 'Departures late most often',
 			});
-			const departure = late.getByRole('link', { name: '07:00' });
+			const departure = late.getByRole('link', { name: /^07:00\b/u });
 			await expect(departure).toBeVisible();
 			await expect(late).toContainText(
 				fr ? '5 dates de service observées' : '5 observed service dates',

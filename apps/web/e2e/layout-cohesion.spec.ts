@@ -62,18 +62,19 @@ for (const provider of ['stm', 'octranspo'])
 						await expect(page.getByRole('main')).toBeVisible();
 						await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 						if (kind === 'line') {
-							const name = /Line views|Vues de la ligne/;
-							const views = page.getByRole('navigation', { name });
-							await expect(views.getByRole('link')).toHaveCount(3);
-							const first = views.getByRole('link').first();
-							await expect(first).toHaveAttribute('aria-current', 'page');
+							const main = page.getByRole('main');
+							await expect(
+								main.getByRole('navigation', { name: /Line views|Vues de la ligne/ }),
+							).toHaveCount(0);
+							const first = main.getByRole('link', { name: /^(All lines|Toutes les lignes)$/ });
 							await first.focus();
 							await expect(first).toBeFocused();
 							await page.keyboard.press('Tab');
-							await expect(views.getByRole('link').nth(1)).toBeFocused();
-							await views.evaluate((node) => node.setAttribute('data-axe-record-nav', ''));
+							await expect(
+								main.getByRole('button', { name: /^(Copy link|Copier le lien)$/ }),
+							).toBeFocused();
 							expect(
-								(await new AxeBuilder({ page }).include('[data-axe-record-nav]').analyze())
+								(await new AxeBuilder({ page }).include('[data-slot="screen-answer"]').analyze())
 									.violations,
 							).toEqual([]);
 						}

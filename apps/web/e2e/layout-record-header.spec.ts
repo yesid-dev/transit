@@ -54,8 +54,7 @@ for (const { name, path, section } of pages)
 								{ waitUntil: 'commit' },
 							);
 							await page.addStyleTag({ content: 'html { font-size: ' + scale + '%; }' });
-							if (name === 'stop') await expect(reading).toBeVisible();
-							else await expect(reading.getByRole('heading')).toBeVisible();
+							await expect(reading).toBeVisible();
 							await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
 							await expect
 								.poll(() =>
@@ -83,11 +82,13 @@ for (const { name, path, section } of pages)
 							releaseScripts();
 							if (name === 'stop')
 								await expect(page.locator('#stop-bands-chart').getByRole('img')).toBeVisible();
-							else await expect(reading.locator('dl')).toBeVisible();
-							await expect(cut.getByRole('table')).toHaveCount(0);
+							else await expect(reading.locator('[data-slot="answer-lead"]')).toBeVisible();
+							const cutContent =
+								name === 'stop' ? cut.getByRole('table') : cut.locator('[data-slot="stop-ladder"]');
+							await expect(cutContent).toHaveCount(0);
 							expect(await frame(page)).toEqual(before);
 							expect((await releaseCut()).status()).toBe(204);
-							await expect(cut.getByRole('table').first()).toBeVisible();
+							await expect(cutContent.first()).toBeVisible();
 							await waitForFrameClearance(page);
 							expect(await frame(page)).toEqual(before);
 						} finally {

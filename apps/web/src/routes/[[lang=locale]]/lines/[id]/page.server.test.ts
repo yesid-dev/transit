@@ -59,7 +59,7 @@ describe('Line Record and Schedule on transit1', () => {
 		});
 		harness.getRecordAnswer.mockImplementationOnce(() => new Promise(() => {}));
 		const data = await load(request);
-		expect(data?.record).toMatchObject({ direction: '1', city: 'octranspo', view: 'record' });
+		expect(data?.record).toMatchObject({ direction: '1', city: 'octranspo' });
 		expect(data?.record?.sections.map(({ section }: { section: string }) => section)).toEqual([
 			'punctuality',
 			'daily',
@@ -72,6 +72,8 @@ describe('Line Record and Schedule on transit1', () => {
 			'late',
 			'crowding',
 			'alerts',
+			'frequency',
+			'boundaries',
 		]);
 		const period = expect.objectContaining({
 			from: '2026-11-08',
@@ -93,7 +95,7 @@ describe('Line Record and Schedule on transit1', () => {
 			period,
 		);
 		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
-			{ path: '/measure', parameters: { measure: 'alert_counts', line: '24' } },
+			{ path: '/measure', parameters: { measure: 'alert_counts', line: '24', alert_details: '1' } },
 			period,
 		);
 		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
@@ -115,13 +117,12 @@ describe('Line Record and Schedule on transit1', () => {
 		expect(harness.getRoute).not.toHaveBeenCalled();
 	});
 
-	it('only asks for scheduled frequency and boundaries on Schedule', async () => {
-		const data = await load(framed('&tab=schedule&direction=invalid'));
-		expect(data?.record?.view).toBe('schedule');
-		expect(harness.getRecordAnswer.mock.calls.map(([query]) => query.parameters)).toEqual([
-			{ line: '24', measure: 'scheduled_frequency' },
-			{ line: '24', measure: 'service_delivered', group: 'day_type' },
-		]);
+	it('redirects the old Schedule URL with its choices before requesting answers', async () => {
+		await expect(load(framed('&tab=schedule&direction=1&dayType=sunday'))).rejects.toMatchObject({
+			status: 308,
+			location: `/lines/24?${dates}&direction=1&dayType=sunday&frameMode=record#schedule`,
+		});
+		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 	});
 
 	it('keeps Live on the existing route data and makes no engine reads', async () => {

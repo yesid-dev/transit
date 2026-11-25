@@ -14,7 +14,6 @@
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import {
 		choose,
-		lastGoodNote,
 		measuredShare,
 		percent,
 		pooledDays,
@@ -246,13 +245,11 @@
 				{#if result.kind === 'answer' && 'value' in result.answer}
 					{@const data = result.answer}
 					{@const share = measuredShare(data, 'on_time')}
-					{#snippet meta()}
-						{#if counted(data)}<p>{t('Counted:', 'Ce qui est compté :')} {counted(data)}</p>{/if}
-						<p class="font-mono text-small text-muted-foreground">
-							{methodEvidence(data.evidence, locale, true)}
-						</p>
-						{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-					{/snippet}
+					{@const evidence = {
+						sample: counted(data),
+						record: data.evidence,
+						lastGood: result.lastGood,
+					}}
 					{#snippet comparisonActions()}
 						<RecordActionGroup {locale} href={pinned.href} {files} {citation} />
 					{/snippet}
@@ -263,7 +260,7 @@
 							state={chartState(data.state)}
 							time={stamp}
 							{locale}
-							{meta}
+							{evidence}
 							actions={comparisonActions}
 						/>
 					{:then network}
@@ -273,7 +270,7 @@
 							state={chartState(data.state)}
 							time={stamp}
 							{locale}
-							{meta}
+							{evidence}
 							actions={comparisonActions}
 							comparison={stopComparison(data, network, locale)}
 						/>

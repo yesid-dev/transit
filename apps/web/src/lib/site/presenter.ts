@@ -82,6 +82,22 @@ export function scheduledClock(value: unknown, locale: Locale): string {
 	return serviceTime(value, locale) ?? presenterCopy[locale].unknownTime;
 }
 
+export function scheduleHours(start: number, end: number, locale: Locale) {
+	const from = clockFace(start, 0);
+	const to = clockFace(end, 0);
+	return locale === 'fr' ? `${from} à ${to}` : `${from} to ${to}`;
+}
+
+export function plannedInterval(tripsPerHour: number, locale: Locale) {
+	const interval = minuteReading(60 / tripsPerHour, locale);
+	if (!interval) return locale === 'fr' ? 'Inconnu' : 'Unknown';
+	return locale === 'fr' ? `toutes les ${interval}` : `every ${interval}`;
+}
+
+export function dailyScheduledTrips(trips: number, locale: Locale) {
+	return intl.number(locale, { maximumFractionDigits: 1 }).format(trips);
+}
+
 export function directionName(
 	headsign: string | null | undefined,
 	locale: Locale,
@@ -90,6 +106,41 @@ export function directionName(
 	return headsign?.trim()
 		? formatTransitName(headsign.trim(), locale, rule)
 		: presenterCopy[locale].unknownDirection;
+}
+
+export function lineSubtitle(
+	type: number | null,
+	headsigns: Record<number, string>,
+	locale: Locale,
+	rule?: NameSeparators,
+) {
+	const modes: Record<number, [string, string]> = {
+		0: ['Light rail', 'Tramway'],
+		1: ['Métro', 'Métro'],
+		2: ['Rail', 'Train'],
+		3: ['Road transit', 'Transport routier'],
+		4: ['Ferry', 'Traversier'],
+	};
+	const mode = type == null ? undefined : modes[type]?.[locale === 'fr' ? 1 : 0];
+	const ends = [
+		...new Set(
+			[headsigns[1], headsigns[0]]
+				.filter(Boolean)
+				.map((name) => formatTransitName(name, locale, rule)),
+		),
+	];
+	const route = ends.join(locale === 'fr' ? ' à ' : ' to ');
+	return [mode, route].filter(Boolean).join(' · ') || undefined;
+}
+
+export function lineRecordHeading(
+	line: { number: string | null; name: string | null; label: string },
+	locale: Locale,
+) {
+	const { number, name, label } = line;
+	if (!name || !number || !/^\d+$/u.test(number) || name === number) return name ?? label;
+	const prefix = locale === 'fr' ? 'Ligne' : 'Line';
+	return `${prefix} ${number} ${name}`;
 }
 
 export function directionLabel(

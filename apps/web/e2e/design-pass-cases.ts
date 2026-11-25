@@ -8,7 +8,6 @@ const screens = {
 	lines: '/lines',
 	'line-record': '/lines/24',
 	'line-live': '/lines/24?frameMode=live',
-	'line-schedule': '/lines/24?tab=schedule',
 	stops: '/stops',
 	'stop-record': '/stop/S1',
 	'stop-live': '/stop/S1?frameMode=live',

@@ -20,6 +20,12 @@ export const load: PageServerLoad = async (event) => {
 	const fallback: IdentitySeed = { id, name: id };
 	const { url } = event;
 	const tab = detailTabFromSearchParams(url.searchParams);
+	if (tab === 'schedule') {
+		const target = new URL(url);
+		target.searchParams.delete('tab');
+		target.searchParams.set('frameMode', 'record');
+		redirect(308, target.pathname + target.search + '#schedule');
+	}
 	const view = lineFrameView(url);
 	const frameLive = view === 'live';
 	if (frameLive && (tab !== 'detail' || url.searchParams.get('frameMode') !== 'live')) {
@@ -31,17 +37,6 @@ export const load: PageServerLoad = async (event) => {
 
 	const { v1, schedule, lang, providerId, provider } = await event.parent();
 	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
-	const record =
-		view !== 'live' && period
-			? loadLineRecord(
-					view,
-					period,
-					providerId,
-					id,
-					lineDirection(url.searchParams),
-					event.request.headers.get('cf-connecting-ip'),
-				)
-			: null;
 	if (!frameLive) {
 		const directory = createLineDirectory(schedule?.routes ?? null, {
 			line: (routeId) => routeNameFallback(routeId, lang),
@@ -49,18 +44,29 @@ export const load: PageServerLoad = async (event) => {
 			nameSeparators: provider?.name_separators,
 		});
 		const name = directory.name(id);
+		const routeType = directory.type(id);
+		const headsigns = directionHeadsigns(schedule?.route_directions?.[id]);
+		const scheduleOnly = lineIsScheduleOnly(provider, id, routeType);
+		const stops = (schedule?.stops ?? []).filter((stop) => stop.routes?.includes(id));
 		return {
 			seed: { id, name: name.label },
-			code: name.number,
-			scheduleOnly: lineIsScheduleOnly(provider, id, directory.type(id)),
-			directionHeadsigns: directionHeadsigns(schedule?.route_directions?.[id]),
-			stopNames: Object.fromEntries(
-				(schedule?.stops ?? [])
-					.filter((stop) => stop.routes?.includes(id))
-					.map((stop) => [stop.id, stop.name]),
+			scheduleOnly,
+			directionHeadsigns: headsigns,
+			stopNames: Object.fromEntries(stops.map((stop) => [stop.id, stop.name])),
+			stopCodes: Object.fromEntries(
+				stops.flatMap((stop) => (stop.code ? [[stop.id, stop.code]] : [])),
 			),
 			seoTitle: linePageTitle(name),
-			record,
+			record: period
+				? loadLineRecord(
+						period,
+						providerId,
+						id,
+						lineDirection(url.searchParams),
+						event.request.headers.get('cf-connecting-ip'),
+						scheduleOnly,
+					)
+				: null,
 			frameLive,
 			routeSeed: null,
 		};

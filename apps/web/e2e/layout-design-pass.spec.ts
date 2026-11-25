@@ -65,7 +65,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				screen === 'stop-record' ||
 				screen === 'how-we-measure' ||
 				screen === 'download' ||
-				screen === 'roadmap',
+				screen === 'roadmap' ||
+				screen === 'line-record',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
