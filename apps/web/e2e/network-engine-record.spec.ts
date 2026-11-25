@@ -19,18 +19,27 @@ for (const locale of ['en', 'fr'] as const) {
 			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(/80[.,]7\s*%/);
 			const delay = main.locator('#delay');
 			await expect(delay.locator('[data-slot="chart-frame"]')).toBeVisible();
+			const tableLabel = locale === 'fr' ? 'Tableau' : 'Table';
+			const chartLabel = locale === 'fr' ? 'Graphique' : 'Chart';
 			for (const id of ['delay', 'trend', 'hours']) {
 				const card = main.locator('#' + id);
-				await expect(card.locator('button[aria-controls^="network-"]')).toBeVisible();
-				await expect(card.locator('footer button')).toHaveCount(0);
-				await expect(card.locator('footer .border-t')).toBeVisible();
+				const footer = card.locator('footer');
+				const controls = `network-${id}`;
+				await expect(card.locator(`button[aria-controls="${controls}"]`)).toHaveCount(1);
+				const tableToggle = footer.getByRole('button', { name: tableLabel, exact: true });
+				await expect(tableToggle).toHaveAttribute('aria-controls', controls);
+				await expect(footer.locator('.hand-drawn-line')).toBeVisible();
+				await tableToggle.click();
+				const chartToggle = footer.getByRole('button', { name: chartLabel, exact: true });
+				await expect(chartToggle).toHaveAttribute('aria-expanded', 'true');
+				await expect(card.getByRole('table')).toBeVisible();
+				if (id === 'delay') {
+					await expect(card.getByRole('cell', { name: /^14[,\s]500$/u })).toBeVisible();
+				}
+				await chartToggle.click();
+				await expect(tableToggle).toHaveAttribute('aria-expanded', 'false');
 			}
 			await expect(main.locator('#delivery dl dd').first()).toHaveCSS('text-align', 'right');
-			await delay.locator('button[aria-controls="network-delay"]').click();
-			await expect(
-				delay.getByRole('table').getByRole('cell', { name: /^14[,\s]500$/u }),
-			).toBeVisible();
-			await delay.locator('button[aria-controls="network-delay"]').click();
 			await expect(
 				main
 					.locator('#hours [data-slot="hour-grid"]')

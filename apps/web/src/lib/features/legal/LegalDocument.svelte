@@ -15,11 +15,11 @@
 	const document = $derived(legalDocument(locale, kind));
 </script>
 
-<Surface class="@container" style="--space-page-x: var(--space-card-gap)">
+<Surface class="@container" style="--space-page-x: var(--space-card-gap); padding-block-start: 0">
 	<ReadingFrame
 		title={document.title}
 		titleId="legal-title"
-		style="--reading-gutter: 0; padding-block: 0"
+		style="--reading-gutter: 0; padding-block-end: 0"
 		aria-labelledby="legal-title"
 		data-testid="legal-document"
 		updated={{

@@ -50,11 +50,8 @@ for (const provider of ['stm', 'octranspo']) {
 	}
 }
 
-// The shell reserves one chrome clearance in flow. A legal page adds only its own
-// reading gap on top of it, so the first line sits one clearance below the chrome. A second
-// --chrome-offset would show up here as a gap as tall as that clearance.
-const READING_GAP_REM = 4;
-const BOTTOM_SPACE_REM = 6;
+// The shell reserves one chrome clearance in flow. ReadingFrame adds its own top gap.
+const READING_GAP_REM = 2;
 
 type LegalMetrics = {
 	root: number;
@@ -62,7 +59,8 @@ type LegalMetrics = {
 	chromeBottom: number;
 	firstTop: number;
 	lastContentBottom: number;
-	articleBottom: number;
+	surfaceBottom: number;
+	surfaceBottomPadding: number;
 	contentSpill: number;
 };
 
@@ -73,6 +71,9 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 		const docBottom = (element: Element) => element.getBoundingClientRect().bottom + scrollY;
 		const main = document.querySelector<HTMLElement>('main')!;
 		const article = document.querySelector<HTMLElement>('[data-testid="legal-document"]')!;
+		const surface = article.closest<HTMLElement>('[data-slot="surface"]')!;
+		const title = document.getElementById('legal-title')!;
+		const body = article.querySelector('[data-slot="reading-frame-body"]')!;
 		// The app frame controls and the pill form the sticky chrome.
 		const pill = document.querySelector<HTMLElement>('[data-testid="nav-pill"]')!;
 		const controls = document.querySelector('[data-slot="app-frame-header"]')!;
@@ -87,9 +88,10 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 			root: px(getComputedStyle(document.documentElement).fontSize),
 			mainContentTop: docTop(main) + px(getComputedStyle(main).paddingTop),
 			chromeBottom: Math.max(...chrome.map(docBottom)),
-			firstTop: docTop(article.firstElementChild!.firstElementChild!),
-			lastContentBottom: docBottom(article.lastElementChild!.lastElementChild!),
-			articleBottom: docBottom(article),
+			firstTop: docTop(title),
+			lastContentBottom: docBottom(body.lastElementChild!),
+			surfaceBottom: docBottom(surface),
+			surfaceBottomPadding: px(getComputedStyle(surface).paddingBlockEnd),
 			contentSpill,
 		};
 	});
@@ -97,14 +99,14 @@ function legalMetrics(page: Page): Promise<LegalMetrics> {
 
 function expectOneHeaderClearance(metrics: LegalMetrics): void {
 	const gap = metrics.firstTop - metrics.mainContentTop;
-	// One shell clearance, then exactly the retained reading gap.
+	// One shell clearance, then exactly the reading gap.
 	expect(Math.abs(gap - READING_GAP_REM * metrics.root)).toBeLessThanOrEqual(1);
 	// The gap starts below the fixed chrome, so the clearance is not dropped either.
 	expect(metrics.firstTop - metrics.chromeBottom).toBeGreaterThanOrEqual(
 		READING_GAP_REM * metrics.root,
 	);
 	expect(
-		Math.abs(metrics.articleBottom - metrics.lastContentBottom - BOTTOM_SPACE_REM * metrics.root),
+		Math.abs(metrics.surfaceBottom - metrics.lastContentBottom - metrics.surfaceBottomPadding),
 	).toBeLessThanOrEqual(1);
 	expect(metrics.contentSpill).toBeLessThanOrEqual(1);
 }
