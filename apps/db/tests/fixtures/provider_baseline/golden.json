@@ -370,13 +370,13 @@
           "min_latitude": 44.7,
           "min_longitude": -77.25
         },
-        "basemap_url": null,
+        "basemap_url": "/data/v1/sto/static/basemap/gatineau.pmtiles",
         "enabled": false,
         "fit_bounds": {
-          "max_latitude": 45.62,
-          "max_longitude": -75.36,
-          "min_latitude": 45.36,
-          "min_longitude": -75.93
+          "max_latitude": 45.592916,
+          "max_longitude": -75.390882,
+          "min_latitude": 45.381251,
+          "min_longitude": -75.890305
         },
         "labels": {
           "en": {

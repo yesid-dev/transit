@@ -31,7 +31,7 @@ provider:
   default_language: fr
   default_currency: CAD
   bounds:
-    # Includes cross-river stops in Ottawa.
+    # Reading filter padded for turnarounds, layovers and GPS drift beyond stops.
     min_latitude: 45.35
     max_latitude: 45.63
     min_longitude: -75.95
@@ -46,20 +46,22 @@ public:
     en: {city: Gatineau, operator: STO}
     fr: {city: Gatineau, operator: STO}
   fit_bounds:
-    min_longitude: -75.93
-    min_latitude: 45.36
-    max_longitude: -75.36
-    max_latitude: 45.62
+    min_longitude: -75.890305
+    min_latitude: 45.381251
+    max_longitude: -75.390882
+    max_latitude: 45.592916
   max_bounds:
     min_longitude: -76.25
     min_latitude: 45.30
     max_longitude: -75.23
     max_latitude: 45.75
   basemap_bounds:
+    # Retain regional tiles beyond the camera limits for wide views at low zoom.
     min_longitude: -77.25
     min_latitude: 44.70
     max_longitude: -74.20
     max_latitude: 46.40
+  basemap_url: /data/v1/sto/static/basemap/gatineau.pmtiles
   geocode_context: Gatineau, Québec
   download_licence:
     checked_on: "2026-11-25"
