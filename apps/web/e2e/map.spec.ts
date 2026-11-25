@@ -72,7 +72,7 @@ test('manual refresh stays busy until live data is received and rendered', async
 	});
 	await page.goto('/map?provider=stm');
 
-	const timestamp = page.locator(`[data-slot="map-frame"] [data-slot="freshness-stamp"]`);
+	const timestamp = page.locator('[data-slot="map-frame"] [data-slot="freshness-stamp"] time');
 	await expect(timestamp).toHaveAttribute('datetime', new Date(generated).toISOString());
 	hold = true;
 	const invalidated = page.waitForResponse((response) => response.url().includes('__data.json'));
@@ -154,7 +154,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 		const stamp = page.locator(`[data-slot="map-frame"] [data-slot="freshness-stamp"]`);
 		await expect(stamp).toHaveAttribute('data-age-seconds', /^\d+$/);
 		const originalAge = Number(await stamp.getAttribute('data-age-seconds'));
-		const timestamp = await stamp.getAttribute('datetime');
+		const timestamp = await stamp.locator('time').getAttribute('datetime');
 		for (let click = 1; click <= 3; click += 1) {
 			await page.clock.runFor(1100);
 			const refreshed = page.waitForResponse((response) => captureUrl.test(response.url()));
@@ -164,7 +164,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 			await expect
 				.poll(async () => Number(await stamp.getAttribute('data-age-seconds')))
 				.toBeGreaterThanOrEqual(originalAge + click);
-			await expect(stamp).toHaveAttribute('datetime', timestamp!);
+			await expect(stamp.locator('time')).toHaveAttribute('datetime', timestamp!);
 		}
 	});
 }

@@ -193,7 +193,7 @@ test('opening vehicle details keeps the global map report timestamp @layout', as
 	);
 	await page.goto('/map', { waitUntil: 'networkidle' });
 
-	const timestamp = page.locator(`[data-slot="map-frame"] [data-slot="freshness-stamp"]`);
+	const timestamp = page.locator('[data-slot="map-frame"] [data-slot="freshness-stamp"] time');
 	await expect(timestamp).toHaveAttribute('datetime', /.+/);
 	const original = await timestamp.getAttribute('datetime');
 	await page.goto('/map?provider=stm&focus=vehicle:layout-bus', { waitUntil: 'networkidle' });

@@ -288,7 +288,10 @@ for (const locale of PUBLISHED_LOCALES) {
 			await panel
 				.locator('[data-report-row]')
 				.evaluateAll((rows) => rows.map((row) => row.getAttribute('data-report-id'))),
-		).toEqual(expectedIds);
+		).toEqual(
+			// The list puts the larger delay first, while the CSV keeps the source order.
+			viewport.width === 1440 ? ['old-late', 'center-late'] : expectedIds,
+		);
 		for (const row of downloaded.slice(1)) {
 			expect(
 				['view_center_lon', 'view_center_lat', 'view_zoom', 'view_bearing', 'view_pitch'].map(
@@ -299,11 +302,10 @@ for (const locale of PUBLISHED_LOCALES) {
 		const size = page.viewportSize()!;
 		await page.setViewportSize({ width: size.width + 80, height: size.height - 64 });
 		await expect.poll(() => rendererCamera(page)).toEqual(hint);
-		const bannerHeight = await page
-			.locator('[data-slot="announcement-banner"]')
-			.evaluateAll(([banner]) => banner?.getBoundingClientRect().height ?? 0);
-		// Round the remaining canvas height after subtracting any fractional banner height.
-		const mapHeight = Math.round(size.height - 64 - bannerHeight);
+		// Compare with the resized surface that owns the renderer. The frame also holds the title panel.
+		const mapHeight = await page
+			.locator('.map-surface')
+			.evaluate((surface) => surface.clientHeight);
 		await expect
 			.poll(async () => (await rendererTransform(page)).slice(2, 4))
 			.toEqual([`${size.width + 80}px`, `${mapHeight}px`]);
@@ -327,6 +329,10 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
 		await serveFleet(page, () => fleet());
 		await page.goto(`${localizeHref(map, locale)}?provider=stm`);
+		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+			'data-map-progressive-state',
+			'ready',
+		);
 		const trigger = page.locator('.map-in-view-button');
 		await trigger.press('Enter');
 		const sheet = page.locator('[data-map-in-view-sheet]');
@@ -607,7 +613,7 @@ test('a newer source generation moves the list, count and CSV together', async (
 	await expect(count).toHaveText('4');
 	await expect(panel.locator('[data-report-row]')).toHaveCount(4);
 	await expect(
-		page.locator('[data-slot="map-frame"] [data-slot="freshness-stamp"]'),
+		page.locator('[data-slot="map-frame"] [data-slot="freshness-stamp"] time'),
 	).toHaveAttribute('datetime', '2026-06-15T12:00:20Z');
 	const updated = await downloadCsv(page, reports);
 	expect(parseCsv(updated.bytes).slice(1)).toHaveLength(4);

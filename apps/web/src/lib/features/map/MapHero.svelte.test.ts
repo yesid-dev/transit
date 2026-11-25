@@ -598,6 +598,11 @@ vi.mock('#lib/v1/boot.ts', () => ({
 vi.mock('#lib/v1/repositories/basemap.ts', () => ({
 	getBasemap: () => null,
 }));
+vi.mock('#lib/v1/adapter/r2.static.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/v1/adapter/r2.static.ts')>()),
+	getMapRouteDirections: async () => ({}),
+}));
+
 vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoutesIndex: () => ({ generated_utc: '2026-06-20T12:00:00Z', routes: [] }),
 	getStopsIndexSlim: harness.getStopsIndexSlim,

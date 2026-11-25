@@ -346,19 +346,23 @@ test('the footer, presets and Ottawa city label keep whole words at 200% text', 
 	).toEqual([]);
 });
 
-test('the map title and near-me control clear their neighbours at normal and enlarged text', async ({
+test('the map title and camera controls clear their neighbours at normal and enlarged text', async ({
 	page,
 }) => {
 	await open(page, '/map?provider=stm&frameMode=live');
-	const footer = page.getByRole('contentinfo');
+	await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+		'data-map-progressive-state',
+		'ready',
+	);
+	const footer = page.locator('[data-slot="map-source-footer"]');
 	await expect(footer).toBeVisible();
-	await expect(page.locator('.map-near-toggle')).toBeVisible();
 	for (const width of [320, 390, 1024, 1440]) {
 		await page.setViewportSize({ width, height: 900 });
 		for (const scale of [100, 200]) {
-			await page.evaluate((value) => {
-				document.documentElement.style.fontSize = value + '%';
-			}, scale);
+			await page.evaluate(
+				(value) => (document.documentElement.style.fontSize = value + '%'),
+				scale,
+			);
 			const paired = width >= 1024 && scale === 100;
 			await expect(page.locator('[data-slot="app-frame"]')).toHaveAttribute(
 				'data-rail-layout',
@@ -369,30 +373,32 @@ test('the map title and near-me control clear their neighbours at normal and enl
 					page.evaluate(() => {
 						const box = (selector: string) =>
 							document.querySelector(selector)!.getBoundingClientRect();
-						const near = box('.map-near-toggle');
-						const title = box('.map-head');
-						const chrome = box('[data-slot="app-frame-chrome"]');
 						return {
-							aboveFooter: near.bottom <= box('[data-slot="map-source-footer"]').top,
-							titleGap: Math.round(title.top - chrome.bottom),
+							aboveFooter:
+								box('.map-camera-actions').bottom <= box('[data-slot="map-source-footer"]').top,
+							belowChrome: box('.map-head').top >= box('[data-slot="app-frame-chrome"]').bottom - 1,
 						};
 					}),
 				)
-				.toEqual({ aboveFooter: true, titleGap: paired ? 16 : 0 });
+				.toEqual({ aboveFooter: true, belowChrome: true });
 		}
 	}
 });
 
-test('map filters and frame controls have distinct names and clear each other on compact maps', async ({
+test('the legend clears Controls on compact maps and filters stay inside Controls', async ({
 	page,
 }) => {
 	await open(page, '/map?provider=stm&frameMode=live');
-	const mapFilters = page.getByRole('button', { name: /^Map filters, \d+ active$/ });
+	await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+		'data-map-progressive-state',
+		'ready',
+	);
+	const legend = page.getByTestId('map-legend-button');
 	const frameControls = page.getByRole('button', { name: /^Controls.*Open controls/ });
 	const footer = page.locator('[data-slot="map-source-footer"]');
 	await expect(footer).toBeVisible();
 	await page.setViewportSize({ width: 390, height: 900 });
-	await expect(mapFilters).toBeVisible();
+	await expect(legend).toBeVisible();
 	await expect(frameControls).toBeVisible();
 	for (const licence of [true, false]) {
 		await footer.evaluate((element, visible) => {
@@ -413,17 +419,24 @@ test('map filters and frame controls have distinct names and clear each other on
 		for (const width of [320, 390, 768, 1023]) {
 			await page.setViewportSize({ width, height: 900 });
 			for (const scale of [100, 200]) {
-				await page.evaluate((percent) => {
-					document.documentElement.style.fontSize = percent + '%';
-				}, scale);
+				await page.evaluate(
+					(percent) => (document.documentElement.style.fontSize = percent + '%'),
+					scale,
+				);
 				await expect
 					.poll(async () => {
-						const a = await mapFilters.boundingBox();
+						const a = await legend.boundingBox();
 						const b = await frameControls.boundingBox();
 						return !!a && !!b && a.y + a.height <= b.y;
-					}, `${width}px at ${scale}% text with licence visible = ${licence}`)
+					})
 					.toBe(true);
 			}
 		}
 	}
+	await page.setViewportSize({ width: 390, height: 900 });
+	await page.evaluate(() => (document.documentElement.style.fontSize = '100%'));
+	const filters = page.locator('[data-map-controls] summary');
+	await expect(filters).toBeHidden();
+	await frameControls.click();
+	await expect(filters).toBeVisible();
 });

@@ -5,6 +5,7 @@
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack, type Snippet } from 'svelte';
 	import { Card } from '@yesid/ui/card';
+	import { Separator } from '@yesid/ui/separator';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { theme } from '@yesid/ui/state';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -445,6 +446,7 @@
 								{@const stopCode = mark.stop ? stopCodes.get(mark.stop) : undefined}
 								{@const target = mark.stop ?? lineId}
 								<li class="record-in-view-row">
+									<Separator class="col-span-full" />
 									<span>
 										{#if lineId}<RoutePlate
 												code={display.lineName(lineId, routeNames.get(lineId)).number ?? lineId}
@@ -597,8 +599,7 @@
 		display: grid;
 		grid-template-columns: 3.25rem minmax(0, 1fr) auto;
 		align-items: center;
-		gap: calc(var(--spacing) * 2);
-		border-block-start: 1px solid var(--border-hairline);
+		column-gap: calc(var(--spacing) * 2);
 	}
 	.record-in-view-value {
 		text-align: end;

@@ -295,8 +295,6 @@ test('rail detail uses schedule geometry and omits vehicles from a line without 
 		})
 		.toBe('pointer');
 	await canvas.click();
-	const detail = page
-		.getByRole('complementary', { name: /Confederation|1/ })
-		.or(page.getByRole('dialog', { name: /Confederation|1/ }));
+	const detail = page.locator('[data-slot="map-detail-overlay"][data-selection-kind="route"]');
 	await expect(detail.getByText('No live data', { exact: true })).toBeVisible();
 });

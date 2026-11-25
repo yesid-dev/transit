@@ -46,6 +46,7 @@
 	let flyToCount = $state(0);
 	let setMaxBoundsCount = $state(0);
 	let pickLayer = STOPS_LAYER;
+	let container: HTMLDivElement;
 	const sources = new SvelteMap<string, { setData: (data: unknown) => void }>();
 	const featureStates = new SvelteSet<string>();
 	let style:
@@ -105,6 +106,7 @@
 			receipt.recordSourceCount(id, 0);
 		},
 		getCanvas: () => fakeCanvas,
+		getContainer: () => container,
 		getCenter: () => ({ lng: -73.57, lat: 45.51 }),
 		getZoom: () => 11,
 		getMinZoom: () => 7,
@@ -312,6 +314,7 @@
 </script>
 
 <div
+	bind:this={container}
 	class={className}
 	data-testid="map-stage-stub"
 	data-pick-count={pickCount}

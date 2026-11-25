@@ -2,10 +2,12 @@
 	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
+	import { stopViewHref } from '#lib/site/stopFrame.ts';
 	import { delayReading, mapDirectionReading } from '#lib/site/presenter.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { vehicleLiveHref } from '#lib/features/vehicles/vehicleLinks.ts';
+	import StateMark from '#lib/features/record/StateMark.svelte';
 	import type { MapSelectionDetail } from './mapSelectionSession.svelte';
 	import { timeLabel } from './mapSelectionDetail.logic';
 	import { mapStatusLabel } from './mapStatusLabels';
@@ -18,6 +20,7 @@
 		city,
 		vehiclesInView,
 		notReporting,
+		scheduleOnly,
 	}: {
 		detail: MapSelectionDetail;
 		locale: Locale;
@@ -26,6 +29,7 @@
 		city: string;
 		vehiclesInView: number | null;
 		notReporting?: boolean;
+		scheduleOnly?: boolean;
 	} = $props();
 	const { line, readName } = transitDisplay();
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
@@ -34,7 +38,8 @@
 		const path = localizeHref(`/${kind}/${encodeURIComponent(id)}`, locale, city);
 		const target = new URL(carryFrameState(path, url), url);
 		target.searchParams.set('frameMode', mode);
-		return target.pathname + target.search;
+		const view = kind === 'stop' ? stopViewHref(target, mode) : target;
+		return view.pathname + view.search;
 	}
 </script>
 
@@ -90,13 +95,23 @@
 		{/if}
 		{#if detail.departures?.length}
 			<p class="font-semibold">{tr('Next departures', 'Prochains départs')}</p>
-			<ul class="list-none p-0">
+			<ul class="list-none p-0" data-slot="map-stop-predictions">
 				{#each detail.departures.slice(0, 3) as departure, index (index)}
+					{@const vehicle = departure.trip
+						? detail.vehicles.find((item) => item.trip === departure.trip)
+						: undefined}
+					{@const clock = timeLabel(departure.eta_utc, locale, timeZone)}
 					<li>
 						{#if departure.route}{line(departure.route)}{/if}
-						<time datetime={departure.eta_utc}
-							>{timeLabel(departure.eta_utc, locale, timeZone)}</time
-						>
+						<time datetime={departure.eta_utc}>{clock}</time>
+						{#if vehicle}
+							{@const label = tr(`Vehicle ${vehicle.id}`, `Véhicule ${vehicle.id}`)}
+							<a
+								class="prediction-vehicle"
+								href={vehicleLiveHref(vehicle.id, url, locale, city)}
+								aria-label={`${label}, ${clock}`}>{label}</a
+							>
+						{/if}
 					</li>
 				{/each}
 			</ul>
@@ -110,7 +125,9 @@
 		{#each [...new Set(detail.directions.map((entry) => entry.terminalLabel ?? entry.label))] as terminal (terminal)}
 			<p>{terminal}</p>
 		{/each}
-		{#if vehiclesInView !== null}
+		{#if scheduleOnly}
+			<StateMark state="no_live_data" {locale} />
+		{:else if vehiclesInView !== null}
 			<p>
 				{intl.number(locale).format(vehiclesInView)}
 				{tr('vehicles in view', 'véhicules en vue')}
@@ -134,7 +151,8 @@
 		flex-wrap: wrap;
 		gap: 0 calc(var(--spacing) * 3);
 	}
-	.selection-links a {
+	.selection-links a,
+	.prediction-vehicle {
 		display: inline-flex;
 		align-items: center;
 		min-height: var(--size-tap-min);

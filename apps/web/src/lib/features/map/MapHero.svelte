@@ -20,6 +20,7 @@
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import { recordStamp } from '#lib/site/presenter.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
+	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import { formatRelativeSeconds } from '#lib/utils/time.ts';
 	import {
 		FrameControlsExtensionContext,
@@ -661,6 +662,7 @@
 				const inputs = {
 					...framing,
 					size: { width: canvas.clientWidth, height: canvas.clientHeight },
+					fitPadding: measureMapFocusInset(m).fitPadding,
 				};
 				// Restore constraints around the copied view before setting its centre.
 				// A different initial title height must not clamp the link to the new fit.
@@ -774,7 +776,7 @@
 		const update = () => {
 			if (disposed) return;
 			if (!heroEl) return;
-			const inset = measureMapFocusInset({ getContainer: () => heroEl! });
+			const inset = measureMapFocusInset(instance);
 			if (!inset.containerWidth || !inset.containerHeight) return;
 			if (import.meta.env.MODE === 'e2e')
 				heroEl.dataset.cameraPadding = JSON.stringify(inset.fitPadding);
@@ -886,6 +888,12 @@
 				{timeZone}
 				url={recordUrl}
 				city={manifest.provider}
+				scheduleOnly={selectedDetail.kind === 'route' &&
+					lineIsScheduleOnly(
+						page.data.provider,
+						selectedDetail.id,
+						selectedDetail.route.type ?? null,
+					)}
 				vehiclesInView={reportView.kind === 'ready' && selectedDetail.kind === 'route'
 					? reportView.model.rows.filter((row) => row.routeId === selectedDetail?.id).length
 					: null}
@@ -1011,18 +1019,24 @@
 {#snippet stamp()}
 	{#if isRecordLayer && recordPeriod}
 		<div data-slot="freshness-stamp" data-form="record">
-			<Stamp kind="record" label={recordStamp(recordPeriod, locale)} />
+			<time datetime={recordPeriod.to}
+				><Stamp kind="record" label={recordStamp(recordPeriod, locale)} /></time
+			>
 		</div>
 	{:else if !isRecordLayer && presentation.stamp.visible}
-		<time
-			datetime={liveTime.generatedUtc ?? undefined}
-			data-slot="freshness-stamp"
-			data-form="live"
-			data-age-seconds={liveTime.ageSeconds ?? undefined}
-			data-stale={presentation.stamp.isStale}
-		>
-			<Stamp kind="live" label={liveStampLabel} late={presentation.stamp.isStale} />
-		</time>
+		<div class="map-stamp-line">
+			<div
+				data-slot="freshness-stamp"
+				data-form="live"
+				data-age-seconds={liveTime.ageSeconds ?? undefined}
+				data-stale={presentation.stamp.isStale}
+			>
+				<time datetime={liveTime.generatedUtc ?? undefined}>
+					<Stamp kind="live" label={liveStampLabel} late={presentation.stamp.isStale} />
+				</time>
+			</div>
+			<RefreshButton {locale} fixedTapTarget />
+		</div>
 	{/if}
 {/snippet}
 
@@ -1195,7 +1209,12 @@
 				data-slot="bottom-sheet"
 				data-m6c2-detail-sheet
 				data-map-in-view-sheet
-				onEscapeKeydown={clearDetailOnEscape}
+				onEscapeKeydown={(event) => {
+					if (inViewOpen && detailOpen) {
+						event.preventDefault();
+						closeDetail();
+					}
+				}}
 				data-ripple-exempt
 				data-lenis-prevent
 				onCloseAutoFocus={(event) => {
@@ -1294,6 +1313,13 @@
 		width: fit-content;
 		max-width: calc(100% - var(--size-tap-min) - 2rem);
 		z-index: 1;
+	}
+	.map-stamp-line {
+		display: flex;
+		align-items: center;
+		gap: var(--spacing);
+		min-width: 0;
+		font-variant-numeric: tabular-nums;
 	}
 	:global(.map-in-view-button) {
 		position: absolute;

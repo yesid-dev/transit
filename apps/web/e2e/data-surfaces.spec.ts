@@ -42,7 +42,14 @@ for (const lang of PUBLISHED_LOCALES)
 				await expect(stamp).toHaveAttribute('data-form', /^(live|record)$/);
 				if ((await stamp.getAttribute('data-form')) === 'live') {
 					await expect(stamp.locator('time')).not.toHaveCSS('white-space', 'nowrap');
-					await expect(stamp.locator('time')).toHaveText(pattern);
+					if (path === '/map') {
+						// The kit chip has a decorative mark before its time label.
+						await expect
+							.poll(async () => (await stamp.locator('time').innerText()).trim())
+							.toMatch(pattern);
+					} else {
+						await expect(stamp.locator('time')).toHaveText(pattern);
+					}
 					liveCount++;
 				}
 			}

@@ -33,6 +33,7 @@
 		content?: Snippet;
 	} = $props();
 	const t = $derived(copy[locale]);
+	const showPhone = $derived(content !== undefined || !desktop.current);
 	const storageKey = 'transit:legend-collapsed';
 	let expanded = $state(true);
 	let sheet = $state<HTMLElement | null>(null);
@@ -59,7 +60,7 @@
 		}
 	}
 	$effect(() => {
-		if (hidden || desktop.current) open = false;
+		if (hidden || !showPhone) open = false;
 	});
 	function focusSheet(event: Event) {
 		event.preventDefault();
@@ -92,7 +93,7 @@
 	</Card>
 {:else}
 	<Sheet.Root bind:open onOpenChange={onopenchange}>
-		{#if !hidden && !desktop.current}
+		{#if !hidden && showPhone}
 			<div class="map-legend-fab" data-slot="map-legend-fab">
 				<Sheet.Trigger bind:ref={trigger} aria-label={t.legend.title} aria-expanded={open}>
 					{#snippet child({ props })}

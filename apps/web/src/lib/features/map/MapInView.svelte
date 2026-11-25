@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
+	import { Separator } from '@yesid/ui/separator';
 	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -99,6 +100,7 @@
 			{#each rows.slice(0, limit) as row (`${row.vehicleId}:${row.index}`)}
 				{@const heading = headsign(row)}
 				<li class="map-in-view-row" data-report-row data-report-id={row.vehicleId}>
+					<Separator class="col-span-full" />
 					<span
 						>{#if row.routeId}<RoutePlate code={line(row.routeId)} />{/if}</span
 					>
@@ -170,8 +172,7 @@
 		display: grid;
 		grid-template-columns: 2.75rem minmax(0, 1fr) auto;
 		align-items: center;
-		gap: calc(var(--spacing) * 2);
-		border-block-start: 1px solid var(--border-hairline);
+		column-gap: calc(var(--spacing) * 2);
 		font-size: var(--text-small);
 	}
 	.map-in-view-row small {

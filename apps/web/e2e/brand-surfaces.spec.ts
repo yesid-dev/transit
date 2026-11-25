@@ -4,18 +4,25 @@ import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { DEFAULT_LOCALE, PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 
 for (const locale of PUBLISHED_LOCALES)
-	test(`${locale}: map credits stay immediately above the location control`, async ({ page }) => {
+	test(`${locale}: map credits clear the visible controls and source footer`, async ({ page }) => {
 		await page.goto((locale === DEFAULT_LOCALE ? '' : `/${locale}`) + '/map');
 		const attribution = page.getByLabel(mapCopy[locale].attributionToggle, { exact: true });
-		const location = page.getByRole('button', { name: mapCopy[locale].nearMe, exact: true });
+		const footer = page.locator('[data-slot="map-source-footer"]');
+		const camera = page.locator('.map-camera-actions');
 		await expect(attribution).toBeVisible();
-		await expect(location).toBeVisible();
+		await expect(footer).toBeVisible();
+		await expect(camera).toBeVisible();
 		for (const expanded of [false, true]) {
 			if (expanded) await attribution.click();
-			const credit = (await attribution.locator('..').boundingBox())!,
-				fab = (await location.boundingBox())!;
-			expect(credit.y + credit.height).toBeLessThanOrEqual(fab.y);
-			expect(Math.abs(credit.x + credit.width - fab.x - fab.width)).toBeLessThanOrEqual(1);
+			const credit = (await attribution.locator('..').boundingBox())!;
+			const navigation = (await camera.boundingBox())!;
+			expect(credit.y + credit.height).toBeLessThanOrEqual((await footer.boundingBox())!.y);
+			expect(
+				credit.x >= navigation.x + navigation.width ||
+					credit.x + credit.width <= navigation.x ||
+					credit.y >= navigation.y + navigation.height ||
+					credit.y + credit.height <= navigation.y,
+			).toBe(true);
 			expect(credit.x).toBeGreaterThanOrEqual(0);
 		}
 		await attribution.focus();
