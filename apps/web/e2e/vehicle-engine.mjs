@@ -5,6 +5,7 @@ export function vehicleEngine(url) {
 	const vehicle = get('vehicle');
 	const from = get('from');
 	const to = get('to');
+	if (from === '2026-11-21') return { status: 503, body: {} };
 	const fr = get('lang') === 'fr';
 	if (get('format') === 'csv') {
 		if (measure === 'vehicle_unfinished_trips')
@@ -37,13 +38,18 @@ export function vehicleEngine(url) {
 		state_text: states[state],
 		evidence: { counts, days_included: [from] },
 	});
-	const envelope = { evidence, coverage_note: null };
-	const service = cell({
-		vehicle_days_in_service: 5,
-		vehicle_hours_in_service: 12.5,
-		vehicle_lines_run: 2,
-		vehicle_trips_run: 22,
-	});
+	const envelope = { evidence, coverage_note: null, info: [{ id: measure, minimum_sample: 30 }] };
+	const noReport = vehicle === '1';
+	const service = cell(
+		{
+			vehicle_days_in_service: noReport ? 0 : 5,
+			vehicle_hours_in_service: noReport ? 0 : 12.5,
+			vehicle_lines_run: noReport ? 0 : 2,
+			vehicle_trips_run: noReport ? 0 : 22,
+		},
+		{},
+		from === '2026-11-10' ? 'not_tracked' : 'measured',
+	);
 	if (group === 'vehicle') {
 		const supported = from !== '2026-11-10';
 		const state = supported ? 'measured' : 'not_tracked';
@@ -62,6 +68,21 @@ export function vehicleEngine(url) {
 		};
 	}
 	if (!vehicle) return { status: 400, body: { message: 'Vehicle cut required' } };
+	if (group === 'day') {
+		const cells = [];
+		for (let ms = Date.parse(from), index = 0; ms <= Date.parse(to); ms += 86_400_000, index++) {
+			const day = new Date(ms).toISOString().slice(0, 10);
+			const active = !noReport && index < 5;
+			cells.push({
+				key: { day },
+				...cell({
+					vehicle_days_in_service: active ? 1 : 0,
+					vehicle_hours_in_service: active ? 2.5 : 0,
+				}),
+			});
+		}
+		return { body: { ...envelope, cells } };
+	}
 	if (group === 'line') {
 		return {
 			hold: from === '2026-11-09',
@@ -78,7 +99,7 @@ export function vehicleEngine(url) {
 		vehicles: service,
 		vehicle_reporting_gaps_per_100_hours: cell(
 			{ vehicle_reporting_gaps_per_100_hours: 16 },
-			{ reporting_gaps: 2 },
+			{ reporting_gaps: 2, hours_in_service: 12.5 },
 		),
 		vehicle_unfinished_trips: {
 			...cell({ vehicle_unfinished_trips: null }, { completion_sample: 20 }, 'not_tracked'),

@@ -1,7 +1,7 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import { intl } from '#lib/i18n/index.ts';
 import { choose, percent, tally } from '#lib/features/record/recordText.ts';
-import type { RecordMeasure } from '#lib/server/engine.ts';
+import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 
@@ -18,9 +18,9 @@ export const assignmentCaution = {
 export const sectionTitles = {
 	fleet: ['Days in service by vehicle', 'Jours en service par véhicule'],
 	service: ['Days and hours in service', 'Jours et heures en service'],
-	lines: ['Lines and trips it ran', 'Lignes et voyages effectués'],
+	lines: ['Lines and trips it ran', 'Lignes et trajets effectués'],
 	reporting: ['Stopped reporting', 'Interruptions de signalement'],
-	completion: ['Trips it did not finish', 'Voyages non terminés'],
+	completion: ['Trips it did not finish', 'Trajets non terminés'],
 	punctuality: ['Its on-time record', 'Son bilan de ponctualité'],
 } as const;
 
@@ -57,4 +57,10 @@ export function vehicleReading(answer: RecordMeasure, measure: string, locale: L
 
 export function vehicleRecordState(state: string | undefined, text: string, locale: Locale) {
 	return state === 'not_tracked' ? notTracked[locale] : text;
+}
+
+export function vehicleLines(answer: RecordSeries) {
+	return answer.cells
+		.filter(({ key }) => typeof key.line === 'string')
+		.sort((a, b) => (b.value.vehicle_trips_run ?? -1) - (a.value.vehicle_trips_run ?? -1));
 }

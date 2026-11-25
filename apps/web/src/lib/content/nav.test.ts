@@ -26,7 +26,7 @@ describe('grouped navigation', () => {
 		]);
 		expect(footer.find((item) => item.key === 'repeatOffenders')?.label).toEqual({
 			en: 'Worst trips and vehicles',
-			fr: 'Pires voyages et véhicules',
+			fr: 'Pires trajets et véhicules',
 		});
 		for (const { label } of [...footer, ...navigation.FRAME_MENU]) {
 			expect(label.en).not.toMatch(/\b(?:bus|buses|autobus)\b/i);

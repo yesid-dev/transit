@@ -49,7 +49,7 @@
 		['vehicle_days_in_service', t('Days in service', 'Jours en service')],
 		['vehicle_hours_in_service', t('Hours in service', 'Heures en service')],
 		['vehicle_lines_run', t('Distinct lines', 'Lignes distinctes')],
-		['vehicle_trips_run', t('Trips run', 'Voyages effectués')],
+		['vehicle_trips_run', t('Trips run', 'Trajets effectués')],
 	] as const);
 </script>
 
@@ -106,7 +106,7 @@
 						{:else}
 							<RecordTable
 								title={heading}
-								headers={[t('Line', 'Ligne'), t('Trips run', 'Voyages effectués')]}
+								headers={[t('Line', 'Ligne'), t('Trips run', 'Trajets effectués')]}
 								rows={reading.cells.flatMap((cell) =>
 									typeof cell.key.line === 'string'
 										? [
@@ -135,7 +135,7 @@
 							<p>
 								{t(
 									'Days count dates with a position reported on a trip.',
-									'Les jours comptés sont ceux où une position a été signalée pendant un voyage.',
+									'Les jours comptés sont ceux où une position a été signalée pendant un trajet.',
 								)}
 							</p>
 						{:else if section === 'reporting'}

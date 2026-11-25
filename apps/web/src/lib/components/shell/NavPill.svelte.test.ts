@@ -37,7 +37,7 @@ const MENU = {
 				'Classements et rapports',
 				[
 					'Pires lignes et arrêts',
-					'Pires voyages et véhicules',
+					'Pires trajets et véhicules',
 					'Rapport quotidien',
 					'Avis de service',
 				],

@@ -320,6 +320,7 @@ const recordEnvelope = z.object({
 });
 const recordMethod = z.object({
 	id: z.string().optional(),
+	minimum_sample: count.optional(),
 	text: z
 		.object({
 			en: z.object({ definition: z.string().optional(), counts: z.string(), limits: z.string() }),

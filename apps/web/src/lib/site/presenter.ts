@@ -287,3 +287,31 @@ export function sampleWithMinimum(sample: string, minimum: number, locale: Local
 	const number = intl.number(locale).format(minimum);
 	return `${sample} (${locale === 'fr' ? 'minimum de' : 'minimum'} ${number})`;
 }
+
+export function hoursReading(hours: number, locale: Locale) {
+	return `${intl.number(locale, { maximumFractionDigits: 1 }).format(hours)}\u00a0h`;
+}
+
+export function relativeReportAge(seconds: number, locale: Locale) {
+	return formatRelativeSeconds(Math.max(0, Math.floor(seconds)), locale);
+}
+
+export function serviceWeekday(day: string, locale: Locale) {
+	return intl
+		.dateTime(locale, { weekday: 'short', day: 'numeric', timeZone: 'UTC' })
+		.format(new Date(day));
+}
+
+export function vehiclePositionsCapture(seconds: number | null | undefined, locale: Locale) {
+	const age =
+		seconds == null
+			? locale === 'fr'
+				? 'indisponibles'
+				: 'unavailable'
+			: seconds < 1
+				? locale === 'fr'
+					? 'à l’instant'
+					: 'now'
+				: relativeReportAge(seconds, locale);
+	return locale === 'fr' ? `Positions des véhicules : ${age}.` : `Vehicle positions: ${age}.`;
+}

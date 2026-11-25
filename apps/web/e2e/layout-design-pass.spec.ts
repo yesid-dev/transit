@@ -58,7 +58,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			}
 		}
 		const start = performance.now();
-		const redesignedDetail = screen === 'departure';
+		const redesignedDetail =
+			screen === 'departure' || screen === 'vehicle-record' || screen === 'vehicle-live';
 		if (redesignedDetail)
 			await expect(
 				page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]'),

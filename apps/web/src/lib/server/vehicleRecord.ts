@@ -27,6 +27,7 @@ export function loadVehiclePage(
 	timeZone?: string,
 ) {
 	const { mode, period } = parseFrameState(url.searchParams, frameToday(timeZone, now));
+	const scope = period && { ...period, city, visitorIp: request.headers.get('cf-connecting-ip') };
 	const sections: VehicleSection[] = id
 		? ['service', 'lines', 'reporting', 'completion', 'punctuality']
 		: ['fleet'];
@@ -36,16 +37,19 @@ export function loadVehiclePage(
 		city,
 		id,
 		sections:
-			mode === 'record' && period
+			mode === 'record' && scope
 				? sections.map((section) => ({
 						section,
-						answer: getRecordAnswer(recordQuery(section, id), {
-							...period,
-							city,
-							visitorIp: request.headers.get('cf-connecting-ip'),
-						}),
+						answer: getRecordAnswer(recordQuery(section, id), scope),
 					}))
 				: [],
+		days:
+			mode === 'record' && id && scope
+				? getRecordAnswer(
+						{ path: '/measure', parameters: { measure: 'vehicles', group: 'day', vehicle: id } },
+						scope,
+					)
+				: null,
 	};
 }
 
