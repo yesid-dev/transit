@@ -68,6 +68,7 @@
 			header: rowHeader,
 			rowHeader: true,
 			sortable: !!sort,
+			width: sort ? 'max(12ch, calc(100cqi - 75ch))' : undefined,
 			cell: nameCell,
 		},
 		...columns,

@@ -209,7 +209,9 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 			['/lines', 'lines directory'],
 			['/stops', 'stops finder'],
 		] as const)
-			test(`${locale}: the ${name} keeps its whole names and 44 px controls`, async ({ page }) => {
+			test(`${locale}: the ${name} keeps its whole names and 44 px controls`, async ({
+				page,
+			}, info) => {
 				await page.setViewportSize({ width: 320, height: 900 });
 				// This project's storage state selects OC Transpo, whose fixture serves no index; the
 				// directory case runs against the STM fixtures the other listing cases use.
@@ -221,13 +223,21 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 					const problems: string[] = [];
 					for (const element of elements) {
 						for (const name of element.querySelectorAll('th a')) {
-							if (name.scrollWidth > name.clientWidth + 1) problems.push(name.textContent ?? '');
-							if (getComputedStyle(name).wordBreak === 'break-all') problems.push('break-all');
+							const parts = name.querySelectorAll('.name-label, .detail');
+							for (const text of parts.length ? parts : [name]) {
+								if (text.scrollWidth > text.clientWidth + 1) problems.push(text.textContent ?? '');
+								if (getComputedStyle(text).wordBreak === 'break-all') problems.push('break-all');
+							}
 						}
 					}
 					return problems;
 				});
 				expect(clipped).toEqual([]);
+				if (path === '/lines') {
+					const row = rows.filter({ hasText: 'West B9' });
+					await expect(row).toBeVisible();
+					await row.screenshot({ path: info.outputPath('lines-320-whole-name.png') });
+				}
 				await expectTapTargets(page);
 				await expectNoHorizontalOverflow(page);
 				await expectAccessible(page);

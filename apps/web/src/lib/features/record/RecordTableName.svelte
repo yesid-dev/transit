@@ -49,7 +49,15 @@
 		min-inline-size: 0;
 		overflow-wrap: normal;
 	}
-	@container (28rem < inline-size <= 42rem) {
+	@container (inline-size <= 18rem) {
+		.name-cell.with-plate {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.name-cell.with-plate .plate {
+			grid-row: 1;
+		}
+	}
+	@container (28rem < inline-size <= 46rem) {
 		.name-cell.with-plate:not(.schedule-only) {
 			grid-template-columns: minmax(min-content, 1fr);
 		}

@@ -227,7 +227,7 @@ for (const locale of ['en', 'fr'] as const) {
 		for (const width of [390, 1440]) {
 			await test.step(`${width}px`, async () => {
 				await page.setViewportSize({ width, height: 900 });
-				await expect(row).toContainText(fr ? /80,0\s%/ : '80.0%');
+				await expect(row).toContainText(fr ? /80\s%/ : '80%');
 				await expect(row).toContainText('100');
 				await expect(row).toContainText(
 					fr ? 'des 250 passages prévus observés' : 'of 250 scheduled stops observed',
