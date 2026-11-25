@@ -2,6 +2,14 @@ import { z } from 'zod';
 import { RouteIndexEntrySchema } from '#lib/v1/schemas/routes_index.ts';
 import { RouteDirectionSchema } from '#lib/v1/schemas/route.ts';
 import { StopIndexEntrySchema } from '#lib/v1/schemas/stops_index.ts';
+import type { Resource } from '#lib/v1/resource.svelte.ts';
+import {
+	searchQueryState,
+	searchTransit,
+	type ListSearchRequest,
+	type SearchList,
+	type SearchSources,
+} from './transitSearch.ts';
 
 export const scheduleSchema = z.object({
 	date: z.iso.date(),
@@ -45,6 +53,28 @@ export const searchIndexSchema = z.object({
 });
 
 export type SearchIndex = z.infer<typeof searchIndexSchema>;
+
+export function searchIndexList(
+	request: ListSearchRequest,
+	index: Pick<Resource<SearchIndex>, 'data' | 'error' | 'settled' | 'loading'>,
+	sources: Pick<SearchSources, 'locale' | 'nameSeparators' | 'pages'>,
+): SearchList {
+	const data = index.error ? null : index.data;
+	const vehiclesNotTracked = data?.vehicle_state === 'not_tracked';
+	return {
+		...searchTransit(
+			{ ...request, query: searchQueryState(request.query) === 'ready' ? request.query : '' },
+			{
+				...sources,
+				routes: data?.schedule?.routes ?? null,
+				stops: data?.schedule?.stops ?? null,
+				vehicles: vehiclesNotTracked ? [] : (data?.vehicles ?? null),
+			},
+		),
+		indexSettled: index.settled && !index.loading,
+		vehiclesNotTracked,
+	};
+}
 
 export async function loadSearchIndex(city: string, signal: AbortSignal): Promise<SearchIndex> {
 	const response = await fetch(`/api/search-index?${new URLSearchParams({ city })}`, { signal });

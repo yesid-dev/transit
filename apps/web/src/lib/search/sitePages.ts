@@ -1,5 +1,4 @@
-import { FOOTER_INFO_NAV, NAV_GROUPS, visibleNav, type NavItem } from '#lib/content/nav.ts';
-import { footerCopy } from '#lib/components/layout/footer.copy.ts';
+import { FOOTER_INFO_NAV, visibleNav, type NavItem } from '#lib/content/nav.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import type { SitePage } from './transitSearch.ts';
 
@@ -24,12 +23,10 @@ const EXPLAINS: Partial<Record<NavItem['key'], (terms: Terms) => readonly string
 
 /** The pages search can find: the menu's pages this network has, then the footer information pages. */
 export function sitePages(capabilities: { readonly alerts: boolean | null }): SitePage[] {
-	const info = { en: footerCopy.en.infoLabel, fr: footerCopy.fr.infoLabel };
 	return [
 		...visibleNav(capabilities).map((item) => ({
 			href: item.href,
 			label: item.label,
-			group: NAV_GROUPS.find((group) => group.key === item.group)?.label ?? null,
 			words: (['en', 'fr'] as const).flatMap((locale) => {
 				const explains = EXPLAINS[item.key];
 				return explains ? explains(transitTerms[locale]) : [];
@@ -38,7 +35,6 @@ export function sitePages(capabilities: { readonly alerts: boolean | null }): Si
 		...FOOTER_INFO_NAV.map((item) => ({
 			href: item.href,
 			label: item.label,
-			group: info,
 			words: [],
 		})),
 	];

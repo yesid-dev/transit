@@ -42,6 +42,14 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		if (screen === 'download') {
 			await expect(page.locator('[data-slot="record-card"]').first()).toBeVisible();
 		}
+		if (screen === 'search-query') {
+			await expect(
+				page
+					.getByRole('main')
+					.getByRole('link', { name: /Sherbrooke/ })
+					.first(),
+			).toBeVisible();
+		}
 		if (screen.startsWith('map-')) {
 			// The app exposes the live map and makes the poster inert at this handoff.
 			// Later source updates can make MapLibre's loaded() false again.
@@ -73,6 +81,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				screen === 'how-we-measure' ||
 				screen === 'download' ||
 				screen === 'roadmap' ||
+				screen.startsWith('search') ||
 				screen === 'line-record',
 		});
 		await info.attach('design-pass-measurements', {
@@ -92,11 +101,30 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		);
 		await expect(page.getByRole('main')).not.toContainText(machineUnits);
 		expectDesignPass(screen, key, report);
-		if (redesignedDetail || screen === 'download' || screen === 'roadmap') {
+		if (
+			redesignedDetail ||
+			screen === 'download' ||
+			screen === 'roadmap' ||
+			screen.startsWith('search')
+		) {
 			for (const theme of ['light', 'dark'] as const) {
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
-				await expect(page.locator('[data-slot="screen-answer"]')).toBeVisible();
+				await expect(
+					page.locator(
+						screen.startsWith('search')
+							? '[data-slot="screen-state"]'
+							: '[data-slot="screen-answer"]',
+					),
+				).toBeVisible();
+				if (screen === 'search-query') {
+					await expect(
+						page
+							.getByRole('main')
+							.getByRole('link', { name: /Sherbrooke/ })
+							.first(),
+					).toBeVisible();
+				}
 				const { violations } = await new AxeBuilder({ page })
 					.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
 					.analyze();

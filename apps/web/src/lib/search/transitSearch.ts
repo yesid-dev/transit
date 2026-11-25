@@ -8,12 +8,7 @@ import type { GeocodePrecision, GeocodeSuggestion } from '#lib/geocode/types.ts'
 import type { BilingualLabel } from '#lib/content/nav.ts';
 import { routeFor } from '#lib/nav/index.ts';
 import { dedupeBy, foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
-import {
-	routeModeKey,
-	stopGroupKey,
-	stopModeKey,
-	type TransitModeKey,
-} from '#lib/search/stopMode.ts';
+import { routeModeKey, stopGroupKey, type TransitModeKey } from '#lib/search/stopMode.ts';
 import { setMapFocusSearchParams, type MapFocusKind } from '#lib/search/mapFocus.ts';
 import {
 	copyNearTargetSearchParams,
@@ -21,16 +16,26 @@ import {
 	setNearTargetSearchParams,
 } from '#lib/search/mapNear.ts';
 
-export type ChromeSearchKind = 'route' | 'stop' | 'vehicle' | 'address';
+export const SEARCH_KINDS = ['route', 'stop', 'vehicle', 'page'] as const;
+export type SearchKind = (typeof SEARCH_KINDS)[number];
+export type ChromeSearchKind = SearchKind | 'address';
+export type SearchScope = SearchKind | 'all';
 
-export type ChromeSearchScope = 'route' | 'stop' | 'map' | 'all';
+export function searchScope(value: string | null): SearchScope {
+	return SEARCH_KINDS.find((kind) => kind === value) ?? 'all';
+}
+
+/** Single-digit line numbers are searchable. */
+export function searchQueryState(query: string): 'empty' | 'short' | 'ready' {
+	if (!query.trim()) return 'empty';
+	const folded = foldSearchText(query);
+	return /\d/.test(folded) || (folded.length >= 2 && /\p{L}/u.test(folded)) ? 'ready' : 'short';
+}
 
 /** A page of this site: found by its name in either language, or by a term it explains. */
 export interface SitePage {
 	readonly href: string;
 	readonly label: BilingualLabel;
-	/** The menu group it sits in, when it has one. */
-	readonly group: BilingualLabel | null;
 	readonly words: readonly string[];
 }
 
@@ -45,23 +50,10 @@ export interface SearchSources {
 	readonly pages?: readonly SitePage[] | null;
 }
 
-export interface PageSearchRequest {
-	readonly query: string;
-	readonly surface: 'page';
-	readonly modes?: ReadonlySet<TransitModeKey>;
-}
-export interface PageSearchResults {
-	readonly query: string;
-	readonly routes: RouteIndexEntry[];
-	readonly stops: StopIndexEntry[];
-	readonly vehicles: SearchVehicle[];
-	readonly pages: SitePage[];
-}
-/** The header list: the page decides the order (`scope`), never what is searched. */
 export interface ListSearchRequest {
 	readonly query: string;
-	readonly surface: 'list';
-	readonly scope?: ChromeSearchScope;
+	/** Results on the page can reveal more rows without changing their ranking. */
+	readonly rows?: number;
 }
 /** One row. Labels are the record's own names; callers add every word. */
 export interface SearchHit {
@@ -69,6 +61,8 @@ export interface SearchHit {
 	readonly id: string;
 	readonly label: string;
 	readonly code?: string | null;
+	readonly name?: string | null;
+	readonly mode?: TransitModeKey | null;
 	readonly line?: string | null;
 	readonly lat?: number;
 	readonly lon?: number;
@@ -86,13 +80,14 @@ export interface SearchGroup {
 export interface SearchList {
 	readonly query: string;
 	readonly groups: readonly SearchGroup[];
-	/** Lines, stops and vehicles matched: the count /search shows. */
+	/** Count across the indexed groups, excluding optional address results. */
 	readonly total: number;
 	/** The first row matches the query exactly. */
 	readonly exact: boolean;
 	/** The lines or stops index has not arrived, so no answer is final yet. */
 	readonly pending: boolean;
 	readonly indexSettled?: boolean;
+	readonly vehiclesNotTracked?: boolean;
 	/** Which of those indexes: never counted as zero. */
 	readonly unsearched: readonly ('route' | 'stop' | 'vehicle')[];
 }
@@ -127,9 +122,7 @@ function byScore(a: { score: number }, b: { score: number }): number {
 	return a.score - b.score;
 }
 
-function candidates(request: PageSearchRequest, sources: SearchSources, query: string): Candidates {
-	const modes = request.modes?.size ? request.modes : null;
-	const keepsMode = (mode: TransitModeKey | null): boolean => !modes || (!!mode && modes.has(mode));
+function candidates(sources: SearchSources, query: string): Candidates {
 	const routes = scoredCandidates(
 		sources.routes ?? [],
 		query,
@@ -139,38 +132,36 @@ function candidates(request: PageSearchRequest, sources: SearchSources, query: s
 			...transitNameAliases(route.long, sources.nameSeparators),
 		],
 		(route) => route.id,
-	)
-		.filter(({ value }) => keepsMode(routeModeKey(value.type)))
-		.sort(byScore);
+	).sort(byScore);
 	const stopMatches = scoredCandidates(
 		sources.stops ?? [],
 		query,
 		(stop) => [stop.code, stop.name],
 		(stop) => stop.id,
 	).sort(byScore);
-	// A stop's representative is chosen before the mode filter.
-	const stops = dedupeBy(stopMatches, ({ value }) => stopGroupKey(value)).filter(({ value }) =>
-		keepsMode(stopModeKey(value)),
-	);
-	const vehicles = keepsMode('bus')
-		? (sources.vehicles ?? []).filter((vehicle) => foldSearchText(vehicle.id) === query)
-		: [];
+	const stops = dedupeBy(stopMatches, ({ value }) => stopGroupKey(value));
+	const numberQuery = /^\d+(?: \d+)*$/.test(query) ? query.replaceAll(' ', '') : null;
+	const vehicles = (sources.vehicles ?? []).filter((vehicle) => {
+		const id = foldSearchText(vehicle.id);
+		return id === query || (numberQuery !== null && id.replaceAll(' ', '') === numberQuery);
+	});
 	return { routes, stops, vehicles };
 }
 
-const LIST_ROWS = {
-	route: { route: 6, stop: 2 },
-	stop: { stop: 6, route: 2 },
-	all: { route: 4, stop: 4 },
-} as const;
-function searchList(
-	request: ListSearchRequest,
-	sources: SearchSources,
-	query: string,
-	matches: Candidates,
-): SearchList {
-	const lead = request.scope === 'route' || request.scope === 'stop' ? request.scope : 'all';
-	const rows = LIST_ROWS[lead];
+function matchingPages(pages: SearchSources['pages'], query: string) {
+	return query
+		? scoredCandidates(pages ?? [], query, (page) => [
+				page.label.en,
+				page.label.fr,
+				...page.words,
+			]).sort(byScore)
+		: [];
+}
+
+export function searchTransit(request: ListSearchRequest, sources: SearchSources): SearchList {
+	const query = foldSearchText(request.query);
+	const matches = query ? candidates(sources, query) : { routes: [], stops: [], vehicles: [] };
+	const pages = matchingPages(sources.pages, query);
 	const directory = createLineDirectory(sources.routes ?? null, {
 		line: (id) => id,
 		locale: sources.locale,
@@ -179,14 +170,22 @@ function searchList(
 	const lines: SearchGroup = {
 		kind: 'route',
 		total: matches.routes.length,
-		hits: matches.routes
-			.slice(0, rows.route)
-			.map(({ value }) => ({ kind: 'route', id: value.id, label: directory.name(value.id).label })),
+		hits: matches.routes.slice(0, request.rows ?? 4).map(({ value }) => {
+			const line = directory.name(value.id);
+			return {
+				kind: 'route',
+				id: value.id,
+				label: line.label,
+				code: line.number,
+				name: line.name,
+				mode: routeModeKey(value.type),
+			};
+		}),
 	};
 	const stops: SearchGroup = {
 		kind: 'stop',
 		total: matches.stops.length,
-		hits: matches.stops.slice(0, rows.stop).map(({ value }) => ({
+		hits: matches.stops.slice(0, request.rows ?? 4).map(({ value }) => ({
 			kind: 'stop',
 			id: value.id,
 			label: stopDisplayName(value.name),
@@ -196,14 +195,23 @@ function searchList(
 	const vehicles: SearchGroup = {
 		kind: 'vehicle',
 		total: matches.vehicles.length,
-		hits: matches.vehicles.slice(0, 1).map((vehicle) => ({
+		hits: matches.vehicles.slice(0, request.rows ?? 1).map((vehicle) => ({
 			kind: 'vehicle',
 			id: vehicle.id,
 			label: vehicle.id,
 			line: vehicle.route ? lineLabel(vehicle.route, sources.routes ?? []) : null,
 		})),
 	};
-	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles];
+	const pageGroup: SearchGroup = {
+		kind: 'page',
+		total: pages.length,
+		hits: pages.slice(0, request.rows ?? 2).map(({ value }) => ({
+			kind: 'page',
+			id: value.href,
+			label: value.label[sources.locale ?? 'en'],
+		})),
+	};
+	const groups = [lines, stops, vehicles, pageGroup];
 	const shown = groups.filter((group) => group.hits.length > 0);
 	const first = shown[0]?.kind;
 	const availability = {
@@ -217,44 +225,14 @@ function searchList(
 	return {
 		query,
 		groups: shown,
-		total: lines.total + stops.total + vehicles.total,
+		total: groups.reduce((total, group) => total + group.total, 0),
 		exact:
 			first === 'vehicle' ||
 			(first === 'route' && matches.routes[0]!.score === 0) ||
-			(first === 'stop' && matches.stops[0]!.score === 0),
+			(first === 'stop' && matches.stops[0]!.score === 0) ||
+			(first === 'page' && pages[0]!.score === 0),
 		pending: unsearched.length > 0,
 		unsearched,
-	};
-}
-
-export function searchTransit(
-	request: PageSearchRequest,
-	sources: SearchSources,
-): PageSearchResults;
-export function searchTransit(request: ListSearchRequest, sources: SearchSources): SearchList;
-export function searchTransit(
-	request: PageSearchRequest | ListSearchRequest,
-	sources: SearchSources,
-): PageSearchResults | SearchList {
-	const query = foldSearchText(request.query);
-	const matches = query
-		? candidates(request.surface === 'list' ? { query, surface: 'page' } : request, sources, query)
-		: { routes: [], stops: [], vehicles: [] };
-	if (request.surface === 'list') return searchList(request, sources, query, matches);
-	return {
-		query,
-		routes: matches.routes.map(({ value }) => value),
-		stops: matches.stops.map(({ value }) => value),
-		vehicles: matches.vehicles,
-		pages: query
-			? scoredCandidates(sources.pages ?? [], query, (page) => [
-					page.label.en,
-					page.label.fr,
-					...page.words,
-				])
-					.sort(byScore)
-					.map(({ value }) => value)
-			: [],
 	};
 }
 
@@ -270,7 +248,7 @@ export function withAddresses(
 }
 
 /** Address rows: each opens the map's near target. */
-export function addressHits(addresses: readonly GeocodeSuggestion[]): SearchHit[] {
+function addressHits(addresses: readonly GeocodeSuggestion[]): SearchHit[] {
 	return addresses.map((address) => ({
 		kind: 'address',
 		id: addressResultId(address),
@@ -287,16 +265,11 @@ export function canSearchAddresses(query: string): boolean {
 	return text.length >= 3 && !/^-?\d+(?:\.\d+)?\s*[, ]\s*-?\d*(?:\.\d*)?$/.test(text);
 }
 
-export function scopeForPath(delocalizedPath: string): ChromeSearchScope {
-	if (delocalizedPath === '/lines' || delocalizedPath.startsWith('/lines/')) return 'route';
-	if (delocalizedPath === '/stops' || delocalizedPath.startsWith('/stop/')) return 'stop';
-	if (delocalizedPath === '/map') return 'map';
-	return 'all';
-}
-
 /** The search page with this query: where "See all" and Enter without a highlight lead. */
-export function searchPageHref(query: string): string {
-	return `/search?${new URLSearchParams({ q: query })}`;
+export function searchPageHref(query: string, kind: SearchScope = 'all'): string {
+	const params = new URLSearchParams({ q: query });
+	if (kind !== 'all') params.set('kind', kind);
+	return `/search?${params}`;
 }
 
 /** Where the reader searches from: the delocalized path and its query. */
@@ -313,6 +286,7 @@ const RECORD_VIEW_PARAMS = ['tab', 'grain', 'from', 'to'] as const;
  * page another line opens on the same tab and period; the same for stops.
  */
 export function searchHitHref(hit: SearchTarget, from: SearchOrigin): string {
+	if (hit.kind === 'page') return hit.id;
 	if (hit.kind === 'vehicle' && from.path !== '/map')
 		return `/vehicle/${encodeURIComponent(hit.id)}`;
 	const record =
@@ -338,7 +312,7 @@ export function searchHitHref(hit: SearchTarget, from: SearchOrigin): string {
 export function chromeSearchHref(
 	result: SearchTarget,
 	currentSearchParams: URLSearchParams = new URLSearchParams(),
-	scope: ChromeSearchScope = 'all',
+	scope: 'map' | 'all' = 'all',
 ): string {
 	const state = fromSearchParams(currentSearchParams);
 	if (result.kind === 'route') {

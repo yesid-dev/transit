@@ -1,10 +1,22 @@
 <script lang="ts">
+	import { tick } from 'svelte';
+	import { RoutePlate } from '@yesid/ui/brand';
+	import { ShowMore } from '@yesid/ui/table';
+	import { Button } from '@yesid/ui/button';
 	import FreshnessStamp from '#lib/components/surface/FreshnessStamp.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import type { SearchHit, SearchList } from '#lib/search/transitSearch.ts';
+	import {
+		searchQueryState,
+		type ChromeSearchKind,
+		type SearchHit,
+		type SearchKind,
+		type SearchList,
+		type SearchScope,
+	} from '#lib/search/transitSearch.ts';
+	import { searchCount } from '#lib/site/presenter.ts';
 	import { trackEvent } from '#lib/site/analytics.ts';
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
-	import { headerSearchCopy } from './headerSearch.copy.ts';
+	import { headerSearchCopy, searchListNotice } from './headerSearch.copy.ts';
 
 	interface Props {
 		id: string;
@@ -13,7 +25,14 @@
 		/** The text as typed, quoted back in messages. */
 		query: string;
 		locale: Locale;
-		hrefs: { hit: (hit: SearchHit) => string; all: string; lines: string; stops: string };
+		hrefs: { hit: (hit: SearchHit) => string; all?: string; lines?: string; stops?: string };
+		page?: {
+			scope: SearchScope;
+			pageSize: number;
+			onMore: (kind: SearchKind, count: number) => void;
+			onRetry: () => void;
+			retryLabel: string;
+		};
 		presentation?: LivePresentation | null;
 		/** The highlighted option's id: what Enter opens. */
 		active?: string | null;
@@ -31,6 +50,7 @@
 		query,
 		locale,
 		hrefs,
+		page,
 		presentation = null,
 		active = $bindable(null),
 		address = null,
@@ -40,14 +60,49 @@
 	let box = $state<HTMLElement>();
 
 	const copy = $derived(headerSearchCopy[locale]);
-	const unmatched = $derived(list.total === 0 && !list.pending);
+	const queryState = $derived(searchQueryState(query));
+	const notice = $derived(searchListNotice(copy, list, query, queryState, page?.scope));
+	const unmatched = $derived(queryState === 'ready' && list.total === 0 && !list.pending);
+	const showNotTracked = $derived(
+		list.vehiclesNotTracked && queryState === 'ready' && page?.scope !== 'vehicle',
+	);
+	const groups = $derived(
+		list.groups.filter((group) => !page || page.scope === 'all' || group.kind === page.scope),
+	);
 	const live = $derived(
 		presentation != null &&
 			(presentation.notice.kind !== 'none' || list.groups.some((g) => g.kind === 'vehicle')),
 	);
 	const optionId = (hit: SearchHit) => `${id}-${hit.kind}-${encodeURIComponent(hit.id)}`;
+	const heading = (kind: ChromeSearchKind, total: number) =>
+		kind === 'address'
+			? copy.heading(kind, null)
+			: `${copy.kinds[kind]} · ${searchCount(total, locale)}`;
 	const detail = (hit: SearchHit) =>
-		hit.kind === 'stop' ? hit.code : hit.line ? `${copy.kind.route} ${hit.line}` : null;
+		hit.kind === 'route' && hit.mode
+			? copy.modes[hit.mode]
+			: hit.line
+				? `${copy.kind.route} ${hit.line}`
+				: null;
+
+	let announcement = $state('');
+	$effect(() => {
+		const pageSize = page?.pageSize;
+		if (!pageSize) return;
+		const message =
+			notice || groups.some((group) => group.total > pageSize)
+				? ''
+				: groups.map((group) => heading(group.kind, group.total)).join('. ');
+		const timer = setTimeout(() => (announcement = message), 500);
+		return () => clearTimeout(timer);
+	});
+
+	async function reveal(kind: SearchKind, shown: number, count: number) {
+		page?.onMore(kind, count);
+		await tick();
+		const next = box?.querySelectorAll<HTMLAnchorElement>(`[data-kind="${kind}"] a`)[shown];
+		next?.focus();
+	}
 
 	// An exact first row is highlighted as the list shows; otherwise none. Live polls keep the choice.
 	const exactId = $derived(list.exact ? optionId(list.groups[0]!.hits[0]!) : null);
@@ -96,7 +151,7 @@
 	function chose(event: MouseEvent, href: string, hit?: SearchHit): void {
 		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
 			return;
-		if (hit) trackEvent('Search Result', { kind: hit.kind });
+		if (hit && hit.kind !== 'page') trackEvent('Search Result', { kind: hit.kind });
 		if (!follow) return onchoose?.();
 		event.preventDefault();
 		follow(href);
@@ -107,19 +162,42 @@
 	<a
 		id={optionKey}
 		{href}
-		role="option"
-		tabindex="-1"
-		aria-selected={active === optionKey}
+		role={page ? undefined : 'option'}
+		tabindex={page ? undefined : -1}
+		aria-selected={page ? undefined : active === optionKey}
+		aria-label={!page && hit?.kind === 'stop'
+			? [copy.kind.stop, hit.label, hit.code].filter(Boolean).join(' ')
+			: undefined}
 		class="search-list-option"
+		class:coded={hit?.kind === 'route' || hit?.kind === 'stop'}
 		onclick={(event) => chose(event, href, hit)}
 	>
-		{#if hit}<span class="search-list-kind">{copy.kind[hit.kind]}</span>{/if}
-		<span class="search-list-label">{text}</span>
-		{#if hit && detail(hit)}<small>{detail(hit)}</small>{/if}
+		{#if hit?.kind === 'route' && hit.code}
+			<span class="search-list-code"
+				><span class="sr-only">{copy.kind.route} </span><RoutePlate code={hit.code} /></span
+			>
+		{:else if hit?.kind === 'stop' && hit.code}
+			<span class="search-list-code"
+				><span class="sr-only">{copy.kind.stop} </span><span class="stop-code">{hit.code}</span
+				></span
+			>
+		{/if}
+		<span class="search-list-label">
+			<span class="search-list-title">
+				{#if hit?.kind === 'route' && hit.code}
+					{#if hit.name}<span class="sr-only"> · </span>{hit.name}{/if}
+				{:else}
+					{#if hit && (hit.kind === 'vehicle' || hit.kind === 'address')}<span class="sr-only"
+							>{copy.kind[hit.kind]}
+						</span>{/if}{text}
+				{/if}
+			</span>
+			{#if hit && detail(hit)}<small>{detail(hit)}</small>{/if}
+		</span>
 	</a>
 {/snippet}
 
-<div class="search-list" data-slot="search-results-list">
+<div class="search-list" class:page-list={page} data-slot="search-results-list">
 	{#if live && presentation}
 		<div class="search-list-live">
 			<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
@@ -128,23 +206,58 @@
 				</p>{/if}
 		</div>
 	{/if}
-	{#if unmatched}<p class="search-list-none">{copy.noResult(query)}</p>{/if}
-	<!-- A group that could not be searched is said, never shown as zero. -->
-	{#each list.unsearched as kind (kind)}<p class="search-list-none">
-			{copy.unsearched(kind)}
-		</p>{/each}
-	{#if list.groups.length || unmatched || address}
+	{#if page}
+		<p role="status" class:sr-only={!notice} class:search-list-none={notice}>
+			{notice || announcement}
+		</p>
+		{#if notice === copy.unavailable}<Button variant="outline" wrap onclick={page.onRetry}
+				>{page.retryLabel}</Button
+			>{/if}
+	{:else if notice}
+		<p class="search-list-none">{notice}</p>
+	{/if}
+	{#if showNotTracked}<p class="search-list-none">{copy.notTracked}</p>{/if}
+	{#if page}
+		<div bind:this={box} class="page-groups">
+			{#each groups as group (group.kind)}
+				<section data-kind={group.kind} aria-labelledby={`${id}-${group.kind}`}>
+					<h2 id={`${id}-${group.kind}`} class="search-list-heading">
+						{heading(group.kind, group.total)}
+					</h2>
+					<ul>
+						{#each group.hits as hit (hit.id)}
+							<li>{@render option(optionId(hit), hrefs.hit(hit), hit.label, hit)}</li>
+						{/each}
+					</ul>
+					{#if group.kind !== 'address' && group.total > page.pageSize}
+						<ShowMore
+							shown={group.hits.length}
+							total={group.total}
+							pageSize={page.pageSize}
+							labels={{
+								showing: (shown, total) =>
+									copy.showing(searchCount(shown, locale), searchCount(total, locale)),
+								more: () => copy.more,
+							}}
+							onMore={(count) =>
+								group.kind !== 'address' && reveal(group.kind, group.hits.length, count)}
+						/>
+					{/if}
+				</section>
+			{/each}
+		</div>
+	{:else if groups.length || unmatched || address}
 		<div bind:this={box} {id} role="listbox" aria-label={label} class="search-list-box">
 			<div class="search-list-scroll">
 				<!-- Above any address rows, so rows already shown never move when addresses arrive. -->
-				{#if unmatched}
+				{#if unmatched && hrefs.lines && hrefs.stops}
 					{@render option(`${id}-lines`, hrefs.lines, copy.browseLines)}
 					{@render option(`${id}-stops`, hrefs.stops, copy.browseStops)}
 				{/if}
-				{#each list.groups as group (group.kind)}
+				{#each groups as group (group.kind)}
 					<div role="group" aria-labelledby={`${id}-${group.kind}`}>
 						<div role="presentation" id={`${id}-${group.kind}`} class="search-list-heading">
-							{copy.heading(group.kind, group.kind === 'address' ? null : group.total)}
+							{heading(group.kind, group.total)}
 						</div>
 						{#each group.hits as hit (hit.id)}
 							{@render option(optionId(hit), hrefs.hit(hit), hit.label, hit)}
@@ -172,13 +285,9 @@
 					</button>
 				{/if}
 			</div>
-			{#if list.total > 0}
+			{#if list.total > 0 && hrefs.all}
 				<div class="search-list-pinned">
-					{@render option(
-						`${id}-all`,
-						hrefs.all,
-						copy.seeAll(list.pending ? null : list.total, query),
-					)}
+					{@render option(`${id}-all`, hrefs.all, copy.seeAll)}
 				</div>
 			{/if}
 		</div>
@@ -236,12 +345,11 @@
 	.search-list-option {
 		display: flex;
 		min-width: 0;
-		align-items: flex-start;
-		gap: 0.375rem;
-		min-height: 2.25rem;
+		align-items: center;
+		gap: 0.5rem;
+		min-height: var(--size-tap-min);
 		padding: 0.375rem 0.5rem;
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
+		font-size: var(--text-small);
 		line-height: 1.25;
 		color: var(--foreground);
 		text-decoration: none;
@@ -259,22 +367,76 @@
 		outline: 2px solid var(--ring);
 		outline-offset: -2px;
 	}
-	.search-list-kind {
-		flex: none;
-		padding: 0.125rem 0.375rem;
-		color: var(--accent-text);
-		background: var(--accent-surface);
-		border: 1px solid color-mix(in srgb, var(--accent-text) 34%, transparent);
-		border-radius: var(--radius-pill);
+	.search-list-code {
+		flex: 0 0 4.5em;
+	}
+	.stop-code {
+		display: inline-block;
+		padding: 0.125em 0.375em;
+		border: 1px solid var(--foreground);
+		border-radius: var(--radius-sm);
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums;
 	}
 	.search-list-label {
 		flex: 1;
 		min-width: 0;
-		overflow-wrap: anywhere;
 	}
 	.search-list-option small {
-		flex: none;
+		display: block;
 		color: var(--muted-foreground);
+	}
+	.page-list {
+		gap: var(--space-card-gap);
+		max-height: none;
+		padding: 0;
+		border: 0;
+		background: none;
+		box-shadow: none;
+		backdrop-filter: none;
+	}
+	.page-list .search-list-none {
+		padding: 0;
+		font-size: inherit;
+	}
+	.page-groups {
+		display: grid;
+		gap: var(--space-card-gap);
+	}
+	.page-groups ul {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	.page-groups h2 {
+		padding: 0 0 0.5rem;
+		font-size: var(--text-subheading);
+		font-weight: 600;
+	}
+	.page-list .search-list-option {
+		padding-inline: 0;
+		border: 0;
+		border-block-start: 1px solid var(--border);
+		border-radius: 0;
+		background: transparent;
+	}
+	.search-list-option .search-list-title {
+		color: var(--primary);
+		text-decoration: underline;
+	}
+	.page-list .search-list-code,
+	.page-list small {
+		color: var(--foreground);
+	}
+	.search-list-option:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: -2px;
+	}
+	.coded {
+		flex-wrap: wrap;
+	}
+	.coded .search-list-label {
+		flex-basis: min(100%, 12em);
 	}
 	.search-list-address {
 		flex-wrap: wrap;

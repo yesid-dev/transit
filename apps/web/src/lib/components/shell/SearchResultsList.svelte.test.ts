@@ -1,12 +1,7 @@
 import { render, within } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { expect, it, vi } from 'vitest';
-import {
-	searchHitHref,
-	searchTransit,
-	type ChromeSearchScope,
-	type SearchSources,
-} from '#lib/search/transitSearch.ts';
+import { searchHitHref, searchTransit, type SearchSources } from '#lib/search/transitSearch.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import SearchResultsList from './SearchResultsList.svelte';
 
@@ -27,16 +22,14 @@ const stops = Array.from({ length: 38 }, (_, i) => ({
 function show(
 	query: string,
 	{
-		scope = 'all',
 		locale = 'en',
 		sources = { routes, stops, vehicles: [] },
 	}: {
-		scope?: ChromeSearchScope;
 		locale?: 'en' | 'fr';
 		sources?: SearchSources;
 	} = {},
 ) {
-	const list = searchTransit({ surface: 'list', query, scope }, sources);
+	const list = searchTransit({ query }, sources);
 	const hrefs = {
 		hit: (hit: Parameters<typeof searchHitHref>[0]) =>
 			searchHitHref(hit, { path: '/', params: new URLSearchParams() }),
@@ -52,14 +45,8 @@ const selected = (view: ReturnType<typeof show>) =>
 	view.getAllByRole('option').filter((option) => option.getAttribute('aria-selected') === 'true');
 
 it.each([
-	['en', 'Lines · 1', 'Stops · 38', 'Line 161 · Van Horne', 'See all 39 results for “van”'],
-	[
-		'fr',
-		'Lignes · 1',
-		'Arrêts · 38',
-		'Ligne 161 · Van Horne',
-		'Voir les 39 résultats pour « van »',
-	],
+	['en', 'Lines · 1', 'Stops · 38', 'Line 161 · Van Horne Road', 'See all results'],
+	['fr', 'Lignes · 1', 'Arrêts · 38', 'Ligne 161 · Van Horne Routier', 'Voir tous les résultats'],
 ] as const)(
 	'shows true totals in each heading and names each row by its text in %s',
 	(locale, lines, stopsHeading, line, all) => {
@@ -76,10 +63,9 @@ it.each([
 );
 
 it('highlights an exact first row, and nothing otherwise', () => {
-	const exact = show('18', { scope: 'route' });
-	expect(selected(exact).map((option) => option.textContent?.trim())).toEqual([
-		'Line 18 · Beaubien',
-	]);
+	const exact = show('18');
+	expect(selected(exact)).toHaveLength(1);
+	expect(selected(exact)[0]).toHaveAccessibleName('Line 18 · Beaubien Road');
 	exact.unmount();
 	expect(selected(show('van'))).toEqual([]);
 });
@@ -101,10 +87,14 @@ it('moves through every row, the pinned one included, wraps, and opens the highl
 });
 
 it.each([
-	['en', 'No line or stop matches “zzz”.', ['Browse all lines', 'Browse all stops']],
+	[
+		'en',
+		'Nothing found for “zzz” in lines, stops, vehicles, pages.',
+		['Browse all lines', 'Browse all stops'],
+	],
 	[
 		'fr',
-		'Aucune ligne ni aucun arrêt ne correspond à « zzz ».',
+		'Aucun résultat pour « zzz » dans les lignes, les arrêts, les véhicules, les pages.',
 		['Parcourir toutes les lignes', 'Parcourir tous les arrêts'],
 	],
 ] as const)('offers the next steps when nothing matches in %s', (locale, message, steps) => {
@@ -123,7 +113,7 @@ it.each([
 it('says nothing about matches while the indexes load', () => {
 	const view = show('zzz', { sources: { routes, stops: null } });
 	expect(view.queryByRole('listbox')).toBeNull();
-	expect(view.queryByText(/No line or stop/)).toBeNull();
+	expect(view.queryByText(/Nothing found/)).toBeNull();
 });
 
 it.each([
@@ -141,34 +131,24 @@ it('keeps the highlight when a live poll brings the same answer', async () => {
 	await tick();
 	const first = selected(view);
 	expect(first).toHaveLength(1);
-	const polled = searchTransit({ surface: 'list', query: 'van', scope: 'all' }, { routes, stops });
+	const polled = searchTransit({ query: 'van' }, { routes, stops });
 	await view.rerender({ list: polled });
 	expect(selected(view)).toEqual(first);
 });
 
 it.each([
-	[
-		'en',
-		'See all results for “van”',
-		'Stop search is unavailable.',
-		'See all 39 results for “van”',
-	],
-	[
-		'fr',
-		'Voir tous les résultats pour « van »',
-		'La recherche de stations et arrêts est indisponible.',
-		'Voir les 39 résultats pour « van »',
-	],
+	['en', 'See all results', 'The search index is temporarily unavailable.'],
+	['fr', 'Voir tous les résultats', 'L’index de recherche est temporairement indisponible.'],
 ] as const)(
-	'with an index missing, says so and gives See all no count, in %s',
-	async (locale, partial, note, full) => {
+	'with an index missing, says so and keeps the link to the search page, in %s',
+	async (locale, seeAll, note) => {
 		const view = show('van', { locale, sources: { routes, stops: null } });
-		expect(view.getByRole('option', { name: partial })).toBeInTheDocument();
+		expect(view.getByRole('option', { name: seeAll })).toBeInTheDocument();
 		expect(view.getByText(note)).toBeInTheDocument();
 		await view.rerender({
-			list: searchTransit({ surface: 'list', query: 'van' }, { routes, stops }),
+			list: searchTransit({ query: 'van' }, { routes, stops }),
 		});
-		expect(view.getByRole('option', { name: full })).toBeInTheDocument();
+		expect(view.getByRole('option', { name: seeAll })).toBeInTheDocument();
 		expect(view.queryByText(note)).toBeNull();
 	},
 );

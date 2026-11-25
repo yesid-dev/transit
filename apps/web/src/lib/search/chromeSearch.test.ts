@@ -9,20 +9,13 @@ import {
 	type SearchHit,
 	chromeSearchHref,
 	searchHitHref,
-	scopeForPath,
 } from './transitSearch';
-import type { TransitModeKey } from './stopMode';
 
-// What the search engine matches, read on the page surface: lines, then stops, then vehicles.
-function matches(query: string, sources: SearchSources, modes?: ReadonlySet<TransitModeKey>) {
-	const page = searchTransit({ surface: 'page', query, modes }, sources);
-	return [
-		...page.routes.map(({ id }) => ({ kind: 'route', id })),
-		...page.stops.map(({ id }) => ({ kind: 'stop', id })),
-		...page.vehicles.map(({ id }) => ({ kind: 'vehicle', id })),
-	];
+function matches(query: string, sources: SearchSources) {
+	return searchTransit({ query }, sources).groups.flatMap(({ hits }) =>
+		hits.map(({ kind, id }) => ({ kind, id })),
+	);
 }
-
 const routes: RouteIndexEntry[] = [
 	{ id: '24', short: '24', long: 'Sherbrooke', type: 3 },
 	{ id: '161', short: '161', long: 'Van Horne', type: 3 },
@@ -43,15 +36,13 @@ it('finds the source and either language while displaying the selected language'
 		nameSeparators: { ends: '<>', languages: '~', language_order: ['en', 'fr'] },
 	};
 	for (const query of [long, 'Parliament', 'Parlement']) {
-		const result = searchTransit({ surface: 'list', query }, sources);
+		const result = searchTransit({ query }, sources);
 		expect(result.groups[0]?.hits[0]?.label).toBe('7 · Blair / Parlement');
 		expect(result.exact).toBe(true);
-		expect(searchTransit({ surface: 'page', query }, sources).routes[0]?.long).toBe(long);
 	}
-	expect(
-		searchTransit({ surface: 'list', query: long }, { routes: sources.routes }).groups[0]?.hits[0]
-			?.label,
-	).toBe(`7 · ${long}`);
+	expect(searchTransit({ query: long }, { routes: sources.routes }).groups[0]?.hits[0]?.label).toBe(
+		`7 · ${long}`,
+	);
 });
 
 const updatedUtc = '2026-06-16T00:00:00Z' as Vehicle['updated_utc'];
@@ -220,28 +211,6 @@ describe('chromeSearchHref', () => {
 	});
 });
 
-describe('scopeForPath', () => {
-	it('maps the line catalogue and route detail to route scope', () => {
-		expect(scopeForPath('/lines')).toBe('route');
-		expect(scopeForPath('/lines/161')).toBe('route');
-	});
-
-	it('maps the stop catalogue and stop detail to stop scope', () => {
-		expect(scopeForPath('/stops')).toBe('stop');
-		expect(scopeForPath('/stop/52819')).toBe('stop');
-	});
-
-	it('maps the map surface to map scope', () => {
-		expect(scopeForPath('/map')).toBe('map');
-	});
-
-	it('falls back to the full blend on the hub, network, and search surfaces', () => {
-		expect(scopeForPath('/')).toBe('all');
-		expect(scopeForPath('/network')).toBe('all');
-		expect(scopeForPath('/search')).toBe('all');
-	});
-});
-
 describe('searchHitHref', () => {
 	const routeResult: SearchHit = {
 		kind: 'route',
@@ -314,36 +283,5 @@ describe('searchHitHref', () => {
 
 	it('URI-encodes the entity id through routeFor', () => {
 		expect(searchHitHref({ ...routeResult, id: '10 A' }, from('/lines'))).toBe('/lines/10%20A');
-	});
-});
-
-describe('mode filter', () => {
-	it('keeps every family when no mode is selected', () => {
-		const results = matches('van horne', { routes, stops, vehicles }, new Set());
-		expect(results.some((r) => r.kind === 'route' && r.id === '161')).toBe(true);
-		expect(results.some((r) => r.kind === 'stop' && r.id === '57191')).toBe(true);
-	});
-
-	it('narrows lines and stops to the selected transit modes', () => {
-		const busOnly = matches('van horne', { routes, stops, vehicles }, new Set(['bus' as const]));
-		expect(busOnly.some((r) => r.kind === 'route' && r.id === '161')).toBe(true);
-
-		const metroOnly = matches(
-			'van horne',
-			{ routes, stops, vehicles },
-			new Set(['metro' as const]),
-		);
-		expect(metroOnly).toEqual([]);
-
-		const metroLine = matches('ligne 1', { routes }, new Set(['metro' as const]));
-		expect(metroLine.map((r) => r.id)).toContain('1');
-	});
-
-	it('drops buses that the selected modes exclude', () => {
-		const metro = matches('40061', { routes, stops, vehicles }, new Set(['metro' as const]));
-		expect(metro.some((r) => r.kind === 'vehicle')).toBe(false);
-
-		const bus = matches('40061', { vehicles }, new Set(['bus' as const]));
-		expect(bus.map((r) => r.id)).toContain('40061');
 	});
 });

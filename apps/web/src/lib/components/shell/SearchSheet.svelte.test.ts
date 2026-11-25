@@ -47,7 +47,7 @@ function open(query = 'van') {
 	const header = shell.appendChild(document.createElement('div'));
 	const behind = shell.appendChild(document.createElement('main'));
 	document.body.append(shell);
-	const list = searchTransit({ surface: 'list', query }, { routes, stops, vehicles: [] });
+	const list = searchTransit({ query }, { routes, stops, vehicles: [] });
 	const view = render(
 		SearchSheet,
 		{
@@ -81,7 +81,7 @@ it('opens a search dialog over an inert page; Escape closes it, keeps the text a
 	expect(pushState).toHaveBeenCalledWith('', { searchSheet: true });
 	expect(view.behind).toHaveAttribute('inert');
 	expect(view.trigger.closest('[inert]')).not.toBeNull();
-	expect(within(dialog).getByRole('option', { name: 'Line 161 · Van Horne' })).toBeVisible();
+	expect(within(dialog).getByRole('option', { name: 'Line 161 · Van Horne Road' })).toBeVisible();
 
 	await fireEvent.keyDown(field, { key: 'Escape' });
 	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
@@ -107,7 +107,7 @@ it('the back gesture closes the sheet and returns focus to the trigger', async (
 it("a chosen row leaves the sheet's own entry first, then opens the record", async () => {
 	const view = open();
 	const { dialog } = await show(view);
-	const row = within(dialog).getByRole('option', { name: 'Line 161 · Van Horne' });
+	const row = within(dialog).getByRole('option', { name: 'Line 161 · Van Horne Road' });
 	expect(row).not.toHaveAttribute('data-sveltekit-replacestate');
 	expect(await fireEvent.click(row)).toBe(false); // the sheet leads the way, not the link
 	await waitFor(() => expect(goto).toHaveBeenCalledOnce());

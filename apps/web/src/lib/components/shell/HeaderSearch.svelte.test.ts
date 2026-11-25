@@ -1,7 +1,7 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import { goto } from '$app/navigation';
-import { searchTransit, type ChromeSearchScope } from '#lib/search/transitSearch.ts';
+import { searchTransit } from '#lib/search/transitSearch.ts';
 import HeaderSearch from './HeaderSearch.svelte';
 
 vi.mock('$app/navigation', () => ({ goto: vi.fn() }));
@@ -26,13 +26,8 @@ const path = (href: string | null) => {
 	return url.pathname + url.search;
 };
 
-function show(
-	query: string,
-	at = '/',
-	scope: ChromeSearchScope = 'all',
-	locale: 'en' | 'fr' = 'en',
-) {
-	const list = searchTransit({ surface: 'list', query, scope }, { routes, stops, vehicles: [] });
+function show(query: string, at = '/', locale: 'en' | 'fr' = 'en') {
+	const list = searchTransit({ query }, { routes, stops, vehicles: [] });
 	const url = new URL(at, 'https://transit.local');
 	const view = render(HeaderSearch, {
 		props: { locale, providerId: 'stm', url, list, query },
@@ -45,11 +40,11 @@ it('shows true totals in each heading and links each row to its record', () => {
 	const stopsGroup = view.getByRole('group', { name: 'Stops · 38' });
 	expect(within(stopsGroup).getAllByRole('option')).toHaveLength(4);
 	const line = within(view.getByRole('group', { name: 'Lines · 1' })).getByRole('option', {
-		name: 'Line 161 · Van Horne',
+		name: 'Line 161 · Van Horne Road',
 	});
 	expect(path(line.getAttribute('href'))).toBe('/lines/161');
-	const all = view.getByRole('option', { name: 'See all 39 results for “van”' });
-	expect(path(all.getAttribute('href'))).toBe('/search?q=van');
+	const all = view.getByRole('option', { name: 'See all results' });
+	expect(path(all.getAttribute('href'))).toBe('/search?q=van&kind=route');
 	expect(view.input).toHaveAttribute('aria-controls', view.getByRole('listbox').id);
 	expect(view.input).toHaveAttribute('aria-expanded', 'true');
 });
@@ -68,8 +63,8 @@ const opened = (option: HTMLElement) => {
 };
 
 it('an exact line number is highlighted on a line page, and Enter opens that line', async () => {
-	const view = show('18', '/lines/17?tab=reliability&grain=week', 'route');
-	const line = view.getByRole('option', { name: 'Line 18 · Beaubien' });
+	const view = show('18', '/lines/17?tab=reliability&grain=week');
+	const line = view.getByRole('option', { name: 'Line 18 · Beaubien Road' });
 	expect(line).toHaveAttribute('aria-selected', 'true');
 	expect(view.input).toHaveAttribute('aria-activedescendant', line.id);
 	expect(path(line.getAttribute('href'))).toBe('/lines/18?tab=reliability&grain=week');
@@ -115,7 +110,7 @@ it.each([
 ] as const)('announces the totals in %s once typing pauses', async (locale, said) => {
 	vi.useFakeTimers();
 	try {
-		const view = show('van', '/', 'all', locale);
+		const view = show('van', '/', locale);
 		const status = view.getByRole('status');
 		expect(status).toHaveTextContent('');
 		await vi.advanceTimersByTimeAsync(500);
@@ -128,13 +123,13 @@ it.each([
 it.each([
 	[
 		'en',
-		'No line or stop matches “zzz”.',
+		'Nothing found for “zzz” in lines, stops, vehicles, pages.',
 		['Browse all lines', 'Browse all stops', 'Search addresses for “zzz”'],
 		'',
 	],
 	[
 		'fr',
-		'Aucune ligne ni aucun arrêt ne correspond à « zzz ».',
+		'Aucun résultat pour « zzz » dans les lignes, les arrêts, les véhicules, les pages.',
 		[
 			'Parcourir toutes les lignes',
 			'Parcourir tous les arrêts',
@@ -145,7 +140,7 @@ it.each([
 ] as const)(
 	'offers the next steps when nothing matches in %s',
 	(locale, message, steps, prefix) => {
-		const view = show('zzz', '/', 'all', locale);
+		const view = show('zzz', '/', locale);
 		expect(view.getByText(message)).toBeInTheDocument();
 		const options = view.getAllByRole('option');
 		expect(options.slice(0, 2).map((option) => path(option.getAttribute('href')))).toEqual([
@@ -162,19 +157,20 @@ it.each([
 );
 
 it('says nothing about matches while the indexes load', () => {
-	const list = searchTransit({ surface: 'list', query: 'zzz' }, { routes, stops: null });
+	const list = searchTransit({ query: 'zzz' }, { routes, stops: null });
 	const view = render(HeaderSearch, {
 		props: {
 			locale: 'en',
 			providerId: 'stm',
 			url: new URL('https://transit.local/'),
 
-			list,
+			list: { ...list, indexSettled: false },
 			query: 'zzz',
 		},
 	});
 	expect(view.queryByRole('listbox')).toBeNull();
-	expect(view.queryByText(/No line or stop/)).toBeNull();
+	expect(view.queryByText(/Nothing found/)).toBeNull();
+	expect(view.getByText('Loading the search index…')).toBeVisible();
 	expect(view.getByRole('combobox', { name: 'Search the network' })).toHaveAttribute(
 		'aria-expanded',
 		'false',
@@ -182,14 +178,14 @@ it('says nothing about matches while the indexes load', () => {
 });
 
 it.each([
-	['en', '1 line. Stop search is unavailable.'],
-	['fr', '1 ligne. La recherche de stations et arrêts est indisponible.'],
+	['en', '1 line. The search index is temporarily unavailable.'],
+	['fr', '1 ligne. L’index de recherche est temporairement indisponible.'],
 ] as const)(
-	'speaks only the groups it searched and names the one it could not, in %s',
+	'speaks only the counts it has and says that the index is unavailable, in %s',
 	async (locale, said) => {
 		vi.useFakeTimers();
 		try {
-			const list = searchTransit({ surface: 'list', query: 'van' }, { routes, stops: null });
+			const list = searchTransit({ query: 'van' }, { routes, stops: null });
 			const url = new URL('https://transit.local/');
 			const view = render(HeaderSearch, {
 				props: { locale, providerId: 'stm', url, list, query: 'van' },
@@ -208,7 +204,7 @@ it('waits 500 ms after every edit, even when the totals stay the same', async ()
 		const view = show('van');
 		const status = view.getByRole('status');
 		await vi.advanceTimersByTimeAsync(250);
-		const list = searchTransit({ surface: 'list', query: 'va', scope: 'all' }, { routes, stops });
+		const list = searchTransit({ query: 'va' }, { routes, stops });
 		await view.rerender({ query: 'va', list });
 		await vi.advanceTimersByTimeAsync(250);
 		expect(status.textContent).toBe('');
@@ -327,7 +323,7 @@ it.each([
 	async (locale, answer, said) => {
 		const request = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer());
 		try {
-			const view = show('casgrain', '/', 'all', locale);
+			const view = show('casgrain', '/', locale);
 			await fireEvent.click(
 				view.getByRole('option', { name: /^(Search addresses|Chercher des adresses)/ }),
 			);

@@ -9,12 +9,14 @@
 	import {
 		searchHitHref,
 		searchPageHref,
+		searchQueryState,
+		searchScope,
 		withAddresses,
 		type SearchHit,
 		type SearchList,
 	} from '#lib/search/transitSearch.ts';
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
-	import { headerSearchCopy } from './headerSearch.copy.ts';
+	import { headerSearchCopy, searchListNotice } from './headerSearch.copy.ts';
 	import SearchResultsList from './SearchResultsList.svelte';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 
@@ -47,6 +49,7 @@
 	const listId = `${uid}-results`;
 	const copy = $derived(navPillCopy[locale]);
 	const text = $derived(query.trim());
+	const queryState = $derived(searchQueryState(query));
 	let open = $state(true);
 	let form = $state<HTMLFormElement>();
 	let results = $state<ReturnType<typeof SearchResultsList>>();
@@ -55,32 +58,28 @@
 	const asked = $derived(lookup.for(text));
 	const shownList = $derived(asked?.state === 'done' ? withAddresses(list, asked.found) : list);
 	const address = $derived.by(() => {
-		const state = lookup.row(text);
-		return state ? { state, onask: () => lookup.ask(text) } : null;
+		const row = queryState === 'ready' && list.indexSettled !== false ? lookup.row(text) : null;
+		return row ? { state: row, onask: () => lookup.ask(text) } : null;
 	});
-	const listed = $derived(list.groups.length > 0 || !list.pending);
-	const shown = $derived(
-		(open || sheet !== null) &&
-			text.length > 0 &&
-			(listed ||
-				(list.indexSettled && list.unsearched.length > 0) ||
-				(presentation?.notice.kind ?? 'none') !== 'none'),
+	const listed = $derived(
+		queryState === 'ready' && (list.groups.length > 0 || !list.pending || address !== null),
 	);
+	const shown = $derived((open || sheet !== null) && queryState !== 'empty');
 	const localized = (href: string) => carryFrameState(localizeHref(href, locale, providerId), url);
 	const hrefs = $derived({
 		hit: (hit: SearchHit) =>
 			localized(
 				searchHitHref(hit, { path: delocalizePath(url.pathname), params: url.searchParams }),
 			),
-		all: localized(searchPageHref(text)),
+		all: localized(searchPageHref(text, searchScope(list.groups[0]?.kind ?? null))),
 		lines: localized('/lines'),
 		stops: localized('/stops'),
 	});
 
 	// Totals are spoken once typing pauses, never on every keystroke or live poll.
 	// A group that could not be searched is named, never counted as 0.
-	const total = (kind: 'route' | 'stop' | 'vehicle') =>
-		list.unsearched.includes(kind)
+	const total = (kind: 'route' | 'stop' | 'vehicle' | 'page') =>
+		list.unsearched.some((missing) => missing === kind)
 			? null
 			: (list.groups.find((group) => group.kind === kind)?.total ?? 0);
 	const summary = $derived.by(() => {
@@ -93,11 +92,19 @@
 				: address?.state === 'failed'
 					? say.addressesFailed
 					: '';
-		if (list.total === 0 && !list.pending)
-			return [say.noResult(text), outcome].filter(Boolean).join(' ');
-		const counts = say.totals(total('route'), total('stop'), total('vehicle') ?? 0);
-		const notes = [...list.unsearched.map(say.unsearched), outcome].filter(Boolean);
-		return notes.length ? [counts && `${counts}.`, ...notes].filter(Boolean).join(' ') : counts;
+		const counts =
+			queryState === 'ready' && list.total > 0
+				? say.totals(total('route'), total('stop'), total('vehicle') ?? 0, total('page') ?? 0)
+				: '';
+		const notice = searchListNotice(say, list, text, queryState);
+		const notes = [
+			notice,
+			queryState === 'ready' && list.vehiclesNotTracked ? say.notTracked : '',
+			outcome,
+		]
+			.filter(Boolean)
+			.join(' ');
+		return [counts && (notes ? `${counts}.` : counts), notes].filter(Boolean).join(' ');
 	});
 	let announcement = $state('');
 	$effect(() => {
@@ -113,12 +120,15 @@
 	}
 
 	async function keydown(event: KeyboardEvent): Promise<void> {
+		if (event.isComposing) return;
 		if (event.key === 'Escape') {
 			if (sheet) {
 				event.preventDefault(); // no native clearing: the text waits for the next opening
 				sheet.dismiss();
-			} else if (shown) open = false;
-			else query = '';
+			} else if (shown) {
+				event.preventDefault();
+				open = false;
+			} else query = '';
 			return;
 		}
 		if (event.key === 'Tab') open = false;
@@ -129,10 +139,10 @@
 			results?.move(event.key === 'ArrowDown' ? 1 : -1);
 			return;
 		}
-		if (event.key !== 'Enter' || !text) return;
+		if (event.key !== 'Enter' || queryState !== 'ready') return;
 		event.preventDefault();
 		if (shown && results?.choose()) return;
-		const href = hrefs.all;
+		const href = localized(searchPageHref(text));
 		if (sheet) return sheet.follow(href);
 		close();
 		const resetFocus = resetFocusAfterNavigation();
@@ -163,8 +173,8 @@
 		bind:value={query}
 		placeholder={copy.searchPlaceholder.all}
 		aria-label={copy.searchAria.all}
-		aria-expanded={shown && (listed || address !== null)}
-		aria-controls={shown && (listed || address !== null) ? listId : undefined}
+		aria-expanded={shown && listed}
+		aria-controls={shown && listed ? listId : undefined}
 		aria-autocomplete="list"
 		aria-activedescendant={shown && active ? active : undefined}
 		autocomplete="off"
