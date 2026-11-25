@@ -176,9 +176,6 @@
 				class="grid min-w-0 gap-3"
 			>
 				<h2 id="line-performance-title">{tableTitle}</h2>
-				{#if !punctuality || !trips}
-					{#key record}<RecordPending {locale} />{/key}
-				{/if}
 				{#each [punctuality, trips] as result, index (index)}
 					{#if result?.kind === 'answer'}
 						{#if result.lastGood}<p>{headers[index === 0 ? 1 : 3]}. {lastGoodNote[locale]}</p>{/if}
@@ -261,6 +258,11 @@
 							'Aucune ligne avec un bilan pour ces dates.',
 						)}
 					</p>
+				{/if}
+				<!-- The cells already show pending readings. Keep the summary below the table so it
+				     can appear and clear without shifting the controls and table above it. -->
+				{#if !punctuality || !trips}
+					{#key record}<RecordPending {locale} />{/key}
 				{/if}
 			</section>
 		</Card>

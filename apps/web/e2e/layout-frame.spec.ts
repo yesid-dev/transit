@@ -174,14 +174,69 @@ test('desktop controls keep their column and control changes retain focus and sc
 	expect(new Set(cards).size).toBe(1);
 	await expect(rail.getByText('Record starts 13 October 2026.')).toBeVisible();
 	const preset = rail.getByRole('radio', { name: '28 days', exact: true });
+	const performance = main.getByRole('region', { name: 'Line performance', exact: true });
+	const firstLine = performance.getByRole('row', { name: /Sherbrooke/ });
+	const position = () =>
+		performance.evaluate((section) => ({
+			scroll: window.scrollY,
+			headingTop: section.querySelector('h2')!.getBoundingClientRect().top,
+			tableHeaderTop: section.querySelector('thead')!.getBoundingClientRect().top,
+		}));
+	const trips = firstLine.getByRole('cell', { name: /^90 of 105/ });
+	const punctuality = firstLine.getByRole('cell', { name: /^80%/ });
+	await expect(trips).toBeVisible();
+	await expect(punctuality).toBeVisible();
+	await page.evaluate(() => document.fonts.ready);
 	await preset.focus();
-	await page.evaluate(() => window.scrollTo(0, 250));
-	const scroll = await page.evaluate(() => window.scrollY);
-	expect(scroll).toBeGreaterThan(0);
-	await page.keyboard.press('Space');
-	await expect(page).toHaveURL(/period=28-days/);
+	await page.evaluate(() => {
+		window.scrollTo(0, 250);
+		// Deliver the real route data first and hold its streamed answers until the pending check.
+		const fetch = window.fetch;
+		window.fetch = async (...args) => {
+			const response = await fetch(...args);
+			if (!response.url.includes('/lines/__data.json?') || !response.url.includes('period=28-days'))
+				return response;
+			window.fetch = fetch;
+			const data = await response.text();
+			const firstLineEnd = data.indexOf('\n') + 1;
+			const encoder = new TextEncoder();
+			return new Response(
+				new ReadableStream({
+					start(controller) {
+						controller.enqueue(encoder.encode(data.slice(0, firstLineEnd)));
+						window.addEventListener(
+							'release-lines-answers',
+							() => {
+								controller.enqueue(encoder.encode(data.slice(firstLineEnd)));
+								controller.close();
+							},
+							{ once: true },
+						);
+					},
+				}),
+				{ headers: response.headers, status: response.status },
+			);
+		};
+	});
+	const before = await position();
+	expect(before.scroll).toBe(250);
+	const rowTop = await firstLine.evaluate((row) => row.getBoundingClientRect().top);
+	try {
+		await page.keyboard.press('Space');
+		await expect(page).toHaveURL(/period=28-days/);
+		await expect(preset).toBeFocused();
+		await expect(
+			firstLine.getByRole('cell', { name: 'Calculating…', exact: true }).first(),
+		).toBeVisible();
+		expect(await position(), 'while line readings are pending').toEqual(before);
+	} finally {
+		await page.evaluate(() => window.dispatchEvent(new Event('release-lines-answers')));
+	}
+	await expect(trips).toBeVisible();
+	await expect(punctuality).toBeVisible();
 	await expect(preset).toBeFocused();
-	expect(await page.evaluate(() => window.scrollY)).toBe(scroll);
+	expect(await position(), 'after both readings arrive').toEqual(before);
+	expect(await firstLine.evaluate((row) => row.getBoundingClientRect().top)).toBe(rowTop);
 	await expect(rail.locator('[data-slot="frame-period-summary"]')).toContainText('28 days');
 });
 
