@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Locator } from '@playwright/test';
 import { test } from './layout-test';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
 import {
@@ -7,6 +7,36 @@ import {
 	openMapControls,
 	openMapInView,
 } from './map-frame-controls';
+
+async function expectUnbrokenWords(legend: Locator, textSize: string) {
+	const result = await legend.evaluate((root) => {
+		const words: string[] = [];
+		const broken: string[] = [];
+		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+		const range = document.createRange();
+		while (walker.nextNode()) {
+			const node = walker.currentNode;
+			const parent = node.parentElement;
+			if (!parent || parent.closest('[aria-hidden="true"]')) continue;
+			const bounds = parent.getBoundingClientRect();
+			for (const match of node.textContent!.matchAll(/[^ \t\r\n\f]+/gu)) {
+				const word = match[0];
+				range.setStart(node, match.index);
+				range.setEnd(node, match.index + word.length);
+				const boxes = [...range.getClientRects()].filter((box) => box.width > 0);
+				words.push(word);
+				if (
+					boxes.length !== 1 ||
+					boxes.some((box) => box.left < bounds.left - 1 || box.right > bounds.right + 1)
+				)
+					broken.push(word);
+			}
+		}
+		return { count: words.length, broken };
+	});
+	expect(result.count).toBeGreaterThan(0);
+	expect(result.broken, `Legend words broken or overflowing at ${textSize}`).toEqual([]);
+}
 
 for (const locale of ['en', 'fr'] as const) {
 	for (const layer of ['stops', 'corridors', 'network'] as const) {
@@ -40,6 +70,29 @@ for (const locale of ['en', 'fr'] as const) {
 			if (phone) await page.getByTestId('map-legend-button').click();
 			await expect(legend).toBeVisible();
 			await assertWithinMap(legend);
+			await expectUnbrokenWords(legend, '100%');
+			if (layer !== 'stops') {
+				const labels = (await legend.locator('ol > li').allTextContents()).map((label) =>
+					label.trim(),
+				);
+				expect(labels).toEqual(
+					fr
+						? [
+								'Aucun temps perdu',
+								'Moins de 30\u00a0s',
+								'30 à moins de 60\u00a0s',
+								'1 à moins de 2\u00a0min',
+								'2\u00a0min et plus',
+							]
+						: [
+								'No time lost',
+								'Under 30\u00a0s',
+								'30 to under 60\u00a0s',
+								'1 to under 2\u00a0min',
+								'2\u00a0min and over',
+							],
+				);
+			}
 			if (layer === 'network' && viewport?.width === 390) {
 				const title = fr ? 'Temps perdu entre deux arrêts' : 'Time lost between two stops';
 				const states = legend.getByRole('list', { name: title, exact: true }).filter({
@@ -49,6 +102,7 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(legend.getByText(title, { exact: true })).toBeVisible();
 				for (const zoom of ['100%', '200%']) {
 					await page.evaluate((size) => (document.documentElement.style.fontSize = size), zoom);
+					await expectUnbrokenWords(legend, zoom);
 					await states.scrollIntoViewIfNeeded();
 					const marks = states.locator('svg');
 					await expect(marks).toHaveCount(3);

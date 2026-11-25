@@ -126,10 +126,10 @@
 					]
 				: [
 						tr('No time lost', 'Aucun temps perdu'),
-						tr('Under 30 seconds', 'Moins de 30 secondes'),
-						tr('30 to under 60 seconds', '30 à moins de 60 secondes'),
-						tr('1 to under 2 minutes', '1 à moins de 2 minutes'),
-						tr('2 minutes and over', '2 minutes et plus'),
+						tr('Under 30\u00a0s', 'Moins de 30\u00a0s'),
+						tr('30 to under 60\u00a0s', '30 à moins de 60\u00a0s'),
+						tr('1 to under 2\u00a0min', '1 à moins de 2\u00a0min'),
+						tr('2\u00a0min and over', '2\u00a0min et plus'),
 					];
 		return {
 			title:
@@ -199,9 +199,40 @@
 	{collapsible}
 	persistKey={collapsible ? 'transit:map-legend-open' : undefined}
 	data-map-legend={collapsible ? 'desktop' : 'phone'}
+	data-map-record-legend={scale ? '' : undefined}
 />
 
 <style>
+	:global([data-map-record-legend]) {
+		container: record-legend / inline-size;
+	}
+
+	:global([data-map-record-legend][data-map-legend] :is(button, p, li, ol)) {
+		overflow-wrap: normal;
+		word-break: normal;
+		hyphens: none;
+	}
+
+	@container record-legend (inline-size < 14rem) {
+		:global([data-map-record-legend] ol[role='list']) {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 0.25rem;
+			text-align: start;
+		}
+
+		:global([data-map-record-legend] ol[role='list'] > li) {
+			display: grid;
+			grid-template-columns: 1.5em minmax(0, 1fr);
+			align-items: center;
+			gap: 0.5em;
+		}
+
+		:global([data-map-record-legend] ol[role='list'] > li > [aria-hidden='true']) {
+			margin-block-end: 0;
+			border-radius: var(--radius-sm);
+		}
+	}
+
 	.record-state-mark {
 		inline-size: 2rem;
 		block-size: 0.75rem;
