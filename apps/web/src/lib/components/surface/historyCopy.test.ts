@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { formatDateKey } from '#lib/utils/time.ts';
 import { endOnDate } from './historyCopy';
 import { reliabilityCopy } from '#lib/features/lines/reliability/reliability.copy.ts';
-import { stopReliabilityCopy } from '#lib/features/stops/reliability/stops-reliability.copy.ts';
 
 // The 17th of every month of 2026, as the history captions print it.
 const DAYS = Array.from({ length: 12 }, (_, m) => `2026-${String(m + 1).padStart(2, '0')}-17`);
@@ -20,8 +19,6 @@ describe('history captions ending on a date', () => {
 		const captions: Array<[string, (day: string) => string]> = [
 			['line coverage', (day) => reliabilityCopy[locale].history.coverage(day, day)],
 			['line selection', (day) => reliabilityCopy[locale].history.selection(day, day)],
-			['stop coverage', (day) => stopReliabilityCopy[locale].history.coverage(day, day)],
-			['stop selection', (day) => stopReliabilityCopy[locale].history.selection(day, day)],
 		];
 		for (const [name, caption] of captions)
 			it(`${locale} ${name} ends with exactly one period for every month`, () => {

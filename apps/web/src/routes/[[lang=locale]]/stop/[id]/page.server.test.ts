@@ -1,184 +1,121 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { loadStopRecord } from '#lib/server/stopRecord.ts';
 
-const harness = vi.hoisted(() => ({ getRecordAnswer: vi.fn() }));
-const stop = {
-	id: '1234',
-	name: '  Van Horne / Rockland  ',
-	code: '56789',
-	lat: 45.51,
-	lon: -73.62,
-	routes: ['24'],
-};
-const schedule = { date: '2026-11-23', routes: [], stops: [stop] };
+const harness = vi.hoisted(() => ({
+	getRecordAnswer: vi.fn(),
+}));
 
 vi.mock('#lib/server/engine.ts', () => ({ getRecordAnswer: harness.getRecordAnswer }));
 
 import { load } from './+page.server';
 
-function event(
-	id = '1234',
-	href = `https://transit.yesid.dev/stop/${id}?tab=detail&frameMode=live`,
-	options: { lang?: 'en' | 'fr'; schedule?: typeof schedule | null; v1?: boolean } = {},
-): Parameters<typeof load>[0] {
+function event({
+	id = 'S1',
+	query = 'frameMode=live',
+	tripUpdates = true,
+	scheduleOnly = false,
+} = {}) {
+	const url = new URL(`https://transit.yesid.dev/stop/${id}?${query}`);
+	const fetch = vi.fn(() => new Promise<Response>(() => {}));
 	return {
 		params: { id },
-		url: new URL(href),
-		fetch: vi.fn(),
-		request: new Request(href, {
-			headers: { 'cf-connecting-ip': '192.0.2.24' },
-		}),
-		locals: {},
-		platform: undefined,
+		url,
+		fetch,
+		request: new Request(url, { headers: { 'cf-connecting-ip': '192.0.2.24' } }),
 		parent: async () => ({
-			v1: options.v1 === false ? null : { manifest: { provider: 'octranspo' } },
-			lang: options.lang ?? 'en',
-			schedule: options.schedule === undefined ? schedule : options.schedule,
-			providerId: 'octranspo',
-			routesIndex: { routes: [{ id: '24', short: '24', long: 'Sherbrooke' }] },
+			lang: 'en',
+			providerId: 'stm',
+			provider: {
+				inputs: { trip_updates: tripUpdates },
+				lines_without_live_data: scheduleOnly ? [{ route_ids: [], route_types: [1] }] : [],
+			},
+			schedule: {
+				stops: [{ id: 'S1', name: '  Van Horne / Rockland ', code: '56789', routes: ['24'] }],
+				routes: [{ id: '24', type: 1 }],
+			},
 		}),
 	} as unknown as Parameters<typeof load>[0];
 }
 
 beforeEach(() => {
+	vi.clearAllMocks();
 	harness.getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unconfigured' });
 });
 
-describe('/stop/[id] server identity seed', () => {
+describe('Stop capture and Record loading', () => {
 	it.each(['next', 'info', 'unknown', 'reliability'])(
-		'redirects the noncanonical %s tab before fetching data and preserves unrelated params',
+		'preserves other parameters when removing the %s tab',
 		async (tab) => {
-			const request = event();
-			Object.assign(request, {
-				url: new URL(
-					`https://transit.yesid.dev/stop/1234?tab=${tab}&from=2026-01-31&to=2026-02-01&line=51`,
-				),
-			});
-
-			await expect(load(request)).rejects.toMatchObject({
+			await expect(load(event({ query: `tab=${tab}&line=51` }))).rejects.toMatchObject({
 				status: 308,
-				location: '/stop/1234?from=2026-01-31&to=2026-02-01&line=51',
+				location: '/stop/S1?line=51',
 			});
-			expect(request.fetch).not.toHaveBeenCalled();
 		},
 	);
 
-	it('keeps an explicit Detail tab without redirecting', async () => {
-		const request = event();
-		Object.assign(request, {
-			url: new URL('https://transit.yesid.dev/stop/1234?tab=detail&frameMode=live'),
+	it('redirects the old Detail address to Live', async () => {
+		await expect(load(event({ query: 'tab=detail&provider=stm' }))).rejects.toMatchObject({
+			status: 308,
+			location: '/stop/S1?provider=stm&frameMode=live',
 		});
-
-		await expect(load(request)).resolves.toMatchObject({ seed: { id: '1234' } });
-		expect(request.fetch).not.toHaveBeenCalled();
 	});
 
-	it('seeds Live from the layout schedule without a second read', async () => {
+	it('streams the capture and stop-scoped trips with a shared schedule title', async () => {
 		const request = event();
-		expect(await load(request)).toMatchObject({
-			seed: { id: '1234', name: 'Van Horne / Rockland' },
+		const data = await load(request);
+		expect(data).toMatchObject({
+			seed: { id: 'S1', name: 'Van Horne / Rockland' },
 			seoTitle: 'Van Horne / Rockland (stop 56789)',
-			stopSeed: {
-				key: '1234',
-				data: {
-					id: '1234',
-					code: '56789',
-					routes_served: ['24'],
-					generated_utc: '2026-11-23T00:00:00Z',
-					scheduled: [],
-				},
-			},
+			frameLive: true,
+			record: null,
+			capture: expect.any(Promise),
+			trips: expect.any(Promise),
+		});
+		expect(vi.mocked(request.fetch).mock.calls.map(([url]) => url)).toEqual([
+			'/api/live?city=stm',
+			'/api/live-trips?city=stm&stop=S1',
+		]);
+		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
+	});
+
+	it.each([{ scheduleOnly: true }, { tripUpdates: false }])(
+		'does not request trip updates for %o',
+		async (options) => {
+			const request = event(options);
+			await expect(load(request)).resolves.toMatchObject({ trips: null });
+			expect(vi.mocked(request.fetch).mock.calls.map(([url]) => url)).toEqual([
+				'/api/live?city=stm',
+			]);
+		},
+	);
+
+	it('returns a Live state for an absent stop without any upstream request', async () => {
+		const request = event({ id: 'archived' });
+		await expect(load(request)).resolves.toMatchObject({
+			outsideCurrentTimetable: true,
+			record: null,
+			trips: null,
+			capture: null,
 		});
 		expect(request.fetch).not.toHaveBeenCalled();
 	});
 
-	it('uses the stop ID when its name is blank', async () => {
-		const request = event(undefined, undefined, {
-			schedule: { ...schedule, stops: [{ ...stop, name: '   ' }] },
+	it('streams the dated Record for an archived stop without requesting legacy identity', async () => {
+		const request = event({ id: 'archived', query: 'recordFrom=2026-10-20&recordTo=2026-10-21' });
+		const slow = new Promise(() => {});
+		harness.getRecordAnswer.mockReturnValueOnce(slow);
+		const data = await load(request);
+		expect(data).toMatchObject({
+			outsideCurrentTimetable: true,
+			seed: { id: 'archived' },
+			trips: null,
 		});
-		expect(await load(request)).toMatchObject({
-			seed: { id: '1234', name: '1234' },
-			stopSeed: { key: '1234', data: { id: '1234', name: '   ' } },
-		});
-	});
-
-	it('seeds a known missing stop without a second read', async () => {
-		const request = event('9999');
-		expect(await load(request)).toMatchObject({
-			seed: { id: '9999', name: '9999' },
-			stopSeed: { key: '9999', data: null },
-		});
+		const record: ReturnType<typeof loadStopRecord> | null | undefined = data?.record;
+		expect(record?.sections.find(({ section }) => section === 'punctuality')?.answer).toBe(slow);
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
+			{ path: '/measure', parameters: { measure: 'punctuality', stop: 'archived' } },
+			expect.objectContaining({ from: '2026-10-20', to: '2026-10-21', visitorIp: '192.0.2.24' }),
+		);
 		expect(request.fetch).not.toHaveBeenCalled();
 	});
-
-	it('leaves the live stop unseeded when schedule-index is unavailable', async () => {
-		expect(await load(event('5678', undefined, { schedule: null }))).toMatchObject({
-			seed: { id: '5678', name: '5678' },
-			stopSeed: null,
-		});
-	});
-});
-
-it.each(['en', 'fr'] as const)('titles from the selected schedule stop in %s', async (lang) => {
-	expect(await load(event(undefined, undefined, { lang }))).toMatchObject({
-		seoTitle: 'Van Horne / Rockland (' + (lang === 'en' ? 'stop' : 'arrêt') + ' 56789)',
-	});
-});
-
-it('omits seoTitle without a live context', async () => {
-	expect(await load(event(undefined, undefined, { v1: false }))).not.toHaveProperty('seoTitle');
-});
-
-it('streams the dated stop cuts without waiting for a slow per-line answer', async () => {
-	const request = event(
-		'S1',
-		'https://transit1.yesid.dev/fr/stop/S1?recordFrom=2026-10-20&recordTo=2026-10-21',
-	);
-	const result = { kind: 'answer', answer: { value: { on_time: 0.8 } } };
-	harness.getRecordAnswer.mockResolvedValueOnce(result);
-	const slow = new Promise(() => {});
-	harness.getRecordAnswer.mockReturnValueOnce(slow);
-	const data = await load(request);
-	const record: ReturnType<typeof loadStopRecord> | undefined = data?.record;
-	const sections = new Map(record?.sections.map(({ section, answer }) => [section, answer]));
-	await expect(sections.get('punctuality')).resolves.toMatchObject(result);
-	expect(sections.get('byLine')).toBe(slow);
-	await expect(sections.get('waiting')).resolves.toEqual({ kind: 'unconfigured' });
-	expect(sections.get('delay')).toBe(sections.get('punctuality'));
-	expect(harness.getRecordAnswer.mock.calls.slice(0, 7)).toEqual(
-		[
-			{ measure: 'punctuality' },
-			{ measure: 'on_time', group: 'line' },
-			{ measure: 'waiting_and_gaps', group: 'line' },
-			{ measure: 'on_time', group: 'hour' },
-			{ measure: 'on_time', group: 'day' },
-			{ measure: 'accessible_stops' },
-			{ measure: 'alert_counts' },
-		].map((parameters) => [
-			{ path: '/measure', parameters: { ...parameters, stop: 'S1' } },
-			{
-				city: 'octranspo',
-				from: '2026-10-20',
-				to: '2026-10-21',
-				preset: null,
-				visitorIp: '192.0.2.24',
-			},
-		]),
-	);
-	expect(harness.getRecordAnswer.mock.calls.slice(7).map(([query]) => query)).toEqual([
-		{ path: '/measure', parameters: { measure: 'late', group: 'weekday_hour', stop: 'S1' } },
-		{ path: '/measure', parameters: { measure: 'on_time' } },
-		{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
-	]);
-});
-
-it('keeps Live on the existing stop data without starting a Record query', async () => {
-	const request = event('S1', 'https://transit1.yesid.dev/stop/S1?frameMode=live');
-	await expect(load(request)).rejects.toMatchObject({
-		status: 307,
-		location: '/stop/S1?frameMode=live&tab=detail',
-	});
-	request.url.searchParams.set('tab', 'detail');
-	await expect(load(request)).resolves.toMatchObject({ frameLive: true, seed: { id: 'S1' } });
-	expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 });

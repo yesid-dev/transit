@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { DEFAULT_LOCALE } from '../src/lib/i18n/config';
-import { captureTrip, captureTripReport } from './capture-fixture';
 import { openMapControls } from './map-frame-controls';
 
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -11,15 +10,7 @@ const b9 = JSON.parse(
 );
 const stop = JSON.parse(readFileSync(new URL('./stops-index.json', import.meta.url), 'utf8'))
 	.stops[0].id;
-const departures = JSON.parse(readFileSync(new URL('./departures.json', import.meta.url), 'utf8'));
 const action = (page: Page) => page.getByTestId('sections-toggle').filter({ visible: true });
-// Seeds a remembered Collapse all for tests that open closed content; a later bulk choice still wins.
-const startCollapsed = (page: Page) =>
-	page.addInitScript(() => {
-		if (localStorage.getItem('sections-choice') === null)
-			localStorage.setItem('sections-choice', 'collapsed');
-	});
-
 test.beforeEach(async ({ page }) => {
 	await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 	await page.clock.setFixedTime(Date.parse(b9.frozen_utc) + 30_000);
@@ -35,79 +26,17 @@ test('metrics starts expanded and remembers the bulk choice across pages and rel
 	expect(await page.evaluate(() => localStorage.getItem('sections-choice'))).toBeNull();
 	await action(page).click();
 	await expect(first).toHaveAttribute('aria-expanded', 'false');
-	await page.goto('/stop/' + stop + '?frameMode=live&tab=detail');
+	await page.goto('/stop/' + stop + '?frameMode=live');
+	await expect(action(page)).toHaveCount(0);
+	await page.goBack();
 	await expect(action(page)).toHaveAccessibleName('Expand all');
 	await action(page).click();
 	await page.reload();
 	await expect(action(page)).toHaveAccessibleName('Collapse all');
 	expect(await page.evaluate(() => localStorage.getItem('sections-choice'))).toBe('expanded');
 });
-
 test.describe('local data fixture rendering', () => {
-	// The fixture uses a separate localhost port outside the production connect-src policy.
 	test.use({ bypassCSP: true });
-	test('departure tables measure after opening remembered collapsed content', async ({ page }) => {
-		await startCollapsed(page);
-		await page.clock.setFixedTime(Date.parse(departures.generated_utc) + 30_000);
-		await page.goto(`/stop/${stop}?tab=detail`);
-		const bulk = action(page);
-		if (await bulk.count()) {
-			await expect(bulk).toBeEnabled();
-			if ((await bulk.getAttribute('data-collapsed')) === 'true') await bulk.click();
-		}
-		const table = page.getByRole('table').first();
-		await expect(table).toBeVisible();
-		await table.scrollIntoViewIfNeeded();
-		expect((await table.boundingBox())!.width).toBeGreaterThan(100);
-		await expect(table.getByRole('row')).not.toHaveCount(0);
-	});
-
-	test('live departures update while collapsed and measure correctly when reopened', async ({
-		page,
-	}) => {
-		await startCollapsed(page);
-		const now = Date.parse(departures.generated_utc) + 30_000;
-		await page.clock.install({ time: now });
-		let changed = false;
-		let reads = 0;
-		await page.route(`**/api/live-trips?city=stm&stop=${stop}`, (route) => {
-			reads++;
-			const payload = structuredClone(departures);
-			if (changed) {
-				payload.generated_utc = new Date(now + 30_000).toISOString();
-				payload.stops[stop].push({ route: 'C10', eta_utc: '2026-06-15T12:15:00Z', delay_min: 1 });
-			}
-			const predictions = payload.stops[stop] as {
-				route: string;
-				eta_utc: string;
-				delay_min: number;
-			}[];
-			return route.fulfill({
-				json: captureTripReport(
-					'stm',
-					payload.generated_utc,
-					predictions.map((row, i) => captureTrip(`T${i + 1}`, row.route, [{ ...row, stop }])),
-				),
-			});
-		});
-		await page.goto(`/stop/${stop}?tab=detail`);
-		await expect(action(page)).toHaveAccessibleName('Expand all');
-		await action(page).click();
-		const list = page.locator('[data-slot="stop-live-predictions"]');
-		const table = list.getByRole('table').first();
-		await expect(table).toBeVisible();
-		await expect(list.getByRole('table', { name: /C10/ })).toHaveCount(0);
-		await action(page).click();
-		const before = reads;
-		changed = true;
-		await page.clock.fastForward('00:31');
-		await expect.poll(() => reads).toBeGreaterThan(before);
-		await action(page).click();
-		await expect(list.getByRole('table', { name: /C10/ })).toBeVisible();
-		expect((await table.boundingBox())!.width).toBeGreaterThan(100);
-		expect(await page.evaluate(() => localStorage.getItem('sections-choice'))).toBe('expanded');
-	});
-
 	test('stored collapse leaves map tools usable and outside the bulk action', async ({ page }) => {
 		await page.addInitScript(() => localStorage.setItem('sections-choice', 'collapsed'));
 		await page.goto('/map');

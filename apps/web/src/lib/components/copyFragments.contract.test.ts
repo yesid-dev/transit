@@ -3,8 +3,6 @@ import { describe, expect, test } from 'vitest';
 import { reliabilityCopy } from '../features/lines/reliability/reliability.copy';
 import { metricsCopy } from '../features/metrics/metrics.copy';
 import { networkReliabilityCopy } from '../features/network/reliability/network-reliability.copy';
-import { stopReliabilityCopy } from '../features/stops/reliability/stops-reliability.copy';
-import { detailCopy as stopDetailCopy } from '../features/stops/stops.copy';
 import * as layout from './layout';
 import * as surface from './surface';
 
@@ -14,16 +12,12 @@ const FRAGMENTS = {
 		metricsEn: metricsCopy.en.article,
 		networkFr: networkReliabilityCopy.fr.article,
 		networkEn: networkReliabilityCopy.en.article,
-		stopFr: stopDetailCopy.fr.article,
-		stopEn: stopDetailCopy.en.article,
 	},
 	history: {
 		lineFr: reliabilityCopy.fr.history.navigator,
 		lineEn: reliabilityCopy.en.history.navigator,
 		networkFr: networkReliabilityCopy.fr.history.navigator,
 		networkEn: networkReliabilityCopy.en.history.navigator,
-		stopFr: stopReliabilityCopy.fr.history.navigator,
-		stopEn: stopReliabilityCopy.en.history.navigator,
 	},
 } as const;
 
@@ -61,8 +55,6 @@ describe('shared copy fragment characterization', () => {
 			lineFr: '6238ee96f5bdf9762200f746035319845b95edb9886ad27f582e1869f096ed26',
 			networkEn: 'bc3092953ff1688e88af70b87f9623a2bf5ef7c0fd45c8a2057621dc50131aee',
 			networkFr: 'd9f6f2afaa567e7c96a479c94101616197d2b72e3080b881534b0cb16e320ed2',
-			stopEn: 'aa0228de2cdc717f03694f036d261bd63e6b6dca5b7a39e5c05f147ec2bae310',
-			stopFr: '5b17556ee3bd7806aa81bea7b4aea2096a391b8b93a0ef5b4066fabb48d5a2e5',
 		});
 	});
 });

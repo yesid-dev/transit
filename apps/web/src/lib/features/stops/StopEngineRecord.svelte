@@ -1,9 +1,8 @@
 <script lang="ts">
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
-	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
-	import { DashboardGrid, Surface } from '@yesid/ui/layout';
+	import { DashboardGrid } from '@yesid/ui/layout';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
@@ -13,7 +12,6 @@
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
@@ -37,7 +35,6 @@
 	import type { loadStopRecord, StopSection } from '#lib/server/stopRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
-	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import StopRecordLines from './StopRecordLines.svelte';
@@ -46,13 +43,13 @@
 		stopCitation,
 		stopComparison,
 		stopEvidenceSample,
+		stopLowCoverage,
 		stopSectionTitles,
 	} from './stopRecordText.ts';
 
 	let {
 		stop,
 		code,
-		lines,
 		operator,
 		locale,
 		url,
@@ -60,20 +57,17 @@
 	}: {
 		stop: { id: string; name: string };
 		code?: string | null;
-		lines?: readonly string[];
 		operator: string;
 		locale: Locale;
 		url: URL;
 		record: ReturnType<typeof loadStopRecord>;
 	} = $props();
-	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const term = $derived(overviewCopy[locale]);
 	const stopCode = $derived(code || stop.id);
 	const stopLabel = $derived(t(`Stop ${stopCode}`, `Arrêt ${stopCode}`));
 	const name = $derived(stop.name === stop.id ? null : stopDisplayName(stop.name));
 	const subject = $derived(name ? `${stopLabel} · ${name}` : stopLabel);
-	const lineList = $derived(lines?.length ? lines.map(display.line).join(', ') : null);
 	const pinned = $derived.by(() => {
 		const link = stopViewHref(url, 'record');
 		link.searchParams.set('provider', record.city);
@@ -103,6 +97,12 @@
 		t(
 			'of observed stop events here were on time.',
 			'des passages observés à cet arrêt étaient à l’heure.',
+		),
+	);
+	const insufficientCoverage = $derived(
+		t(
+			'There are too few observed stop events to measure punctuality for these dates.',
+			'Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates.',
 		),
 	);
 	let bandsTable = $state(false);
@@ -184,7 +184,9 @@
 											: tally(answer.evidence.counts.scheduled, locale),
 									),
 							timingBasis(answer.evidence.counts, locale),
-							answer.coverage_note?.[locale],
+							answer.evidence.coverage_reason === 'insufficient_coverage'
+								? null
+								: answer.coverage_note?.[locale],
 						]
 							.filter(Boolean)
 							.join(' ')
@@ -220,24 +222,7 @@
 	{/await}
 {/snippet}
 
-<Surface>
-	<RecordScreen>
-		<RecordGroup>
-			<ScreenTitle
-				title={name ?? stopLabel}
-				stopCode={name ? stopCode : undefined}
-				subtitle={lineList
-					? t(
-							`${stopLabel}, ${lines?.length === 1 ? 'line' : 'lines'} ${lineList}`,
-							`${stopLabel}, ${lines?.length === 1 ? 'ligne' : 'lignes'} ${lineList}`,
-						)
-					: name
-						? stopLabel
-						: undefined}
-				back={{ href: link('/stops'), label: t('All stops', 'Tous les arrêts') }}
-			/>
-		</RecordGroup>
-		<div class="min-w-0" data-slot="screen-content">
+<div class="min-w-0" data-slot="screen-content">
 			<RecordGroup>
 				<div id="punctuality" data-slot="screen-answer">
 					{#await answers.punctuality}
@@ -257,7 +242,7 @@
 							{#await record.network}
 								<RecordAnswer
 									value={share === null ? null : percent(share, locale)}
-									sentence={share === null ? rateStateText(data, locale) : sentence}
+									sentence={share === null ? (stopLowCoverage(result) ? insufficientCoverage : rateStateText(data, locale)) : sentence}
 									state={chartState(data.state)}
 									time={stamp}
 									{locale}
@@ -267,7 +252,7 @@
 							{:then network}
 								<RecordAnswer
 									value={share === null ? null : percent(share, locale)}
-									sentence={share === null ? rateStateText(data, locale) : sentence}
+									sentence={share === null ? (stopLowCoverage(result) ? insufficientCoverage : rateStateText(data, locale)) : sentence}
 									state={chartState(data.state)}
 									time={stamp}
 									{locale}
@@ -301,7 +286,7 @@
 										'En avance signifie plus de 1 minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
 									)}
 								</p>
-							{:else}{@render gap(result)}{/if}
+							{:else if !stopLowCoverage(result)}{@render gap(result)}{/if}
 						{/await}
 						{#snippet evidence()}
 							{@render evidenceFooter('punctuality')}
@@ -383,7 +368,7 @@
 								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 									{@render delayFacts(result.answer)}
 								{:else}
-									{@render gap(result)}
+									{#if !stopLowCoverage(result)}{@render gap(result)}{/if}
 									{@render delayFacts()}
 								{/if}
 							{/await}
@@ -542,5 +527,3 @@
 				{/await}
 			</RecordGroup>
 		</div>
-	</RecordScreen>
-</Surface>

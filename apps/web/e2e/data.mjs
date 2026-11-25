@@ -747,19 +747,31 @@ const server = createServer((request, response) => {
 			editionStops.has('S1')
 		) {
 			const stop = editionStops.get('S1');
+			const service =
+				city === 'stm'
+					? [
+							['51', 'Édouard-Montpetit', ['Gare Montréal-Ouest', 'Station Laurier']],
+							['165', 'Côte-des-Neiges', ['Station Côte-Vertu', 'Station Guy-Concordia']],
+							['368', 'Avenue-du-Mont-Royal', ['Station Mont-Royal', 'Station Frontenac']],
+						]
+					: [
+							['80', 'Merivale', ['Barrhaven Centre', 'Tunney’s Pasture']],
+							['111', 'Baseline', ['Baseline Station', 'Carleton University']],
+						];
 			editionStops.set('S1', {
 				...stop,
 				name: city === 'stm' ? 'Édouard-Montpetit / Louis-Colin' : 'Merivale / Viewmount',
 				code: city === 'stm' ? '52847' : '3000',
-				routes: ['24', '80'],
+				routes: service.map(([id]) => id),
 			});
-			if (!editionRoutes.has('80'))
-				editionRoutes.set('80', {
-					id: '80',
-					short: '80',
-					long: city === 'stm' ? 'Du Parc' : 'Merivale',
-					type: 3,
-				});
+			for (const [id, long, destinations] of service) {
+				editionRoutes.set(id, { id, short: id, long, type: 3 });
+				routeDirections[id] = destinations.map((headsign, dir) => ({
+					dir,
+					headsign,
+					stops: [{ id: 'S1', name: stop.name, seq: 15 }],
+				}));
+			}
 		}
 
 		response.writeHead(200, { 'content-type': 'application/json' }).end(

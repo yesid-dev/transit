@@ -15,7 +15,38 @@ import type {
 	RecordMeasure,
 	RecordSeries,
 } from '#lib/server/engine.ts';
-import type { StopSection } from '#lib/server/stopRecord.ts';
+import type { loadStopRecord, StopSection } from '#lib/server/stopRecord.ts';
+
+export function stopLowCoverage(result: EngineResult<RecordAnswer>) {
+	return (
+		result.kind === 'answer' &&
+		'value' in result.answer &&
+		result.answer.state === 'not_measured' &&
+		result.answer.evidence.coverage_reason === 'insufficient_coverage'
+	);
+}
+
+export async function stopArchiveAvailability(record: ReturnType<typeof loadStopRecord>) {
+	const results = await Promise.all([...record.sections.map(({ answer }) => answer), record.grid]);
+	const hasReading = (answer: RecordMeasure | RecordSeries | RecordSeries['cells'][number]) =>
+		('counts' in answer.evidence &&
+			Object.values(answer.evidence.counts).some((value) => value != null && value > 0)) ||
+		('value' in answer &&
+			answer.state === 'measured' &&
+			Object.values(answer.value).some((value) => typeof value === 'number' && value !== 0));
+	if (
+		results.some(
+			(result) =>
+				result.kind === 'answer' &&
+				('value' in result.answer || 'cells' in result.answer) &&
+				(hasReading(result.answer) ||
+					('cells' in result.answer && result.answer.cells.some(hasReading))),
+		)
+	)
+		return 'available';
+	if (results.some((result) => result.kind === 'busy')) return 'busy';
+	return results.every((result) => result.kind === 'answer') ? 'empty' : 'unavailable';
+}
 
 export const stopSectionTitles = {
 	waiting: ['Waiting by line', 'Attente par ligne'],

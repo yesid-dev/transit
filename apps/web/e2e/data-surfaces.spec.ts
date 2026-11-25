@@ -2,8 +2,7 @@ import { openFrameControls } from './frame-controls';
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
-import { detailCopy } from '../src/lib/features/stops/stops.copy';
-import { DEFAULT_LOCALE as locale, PUBLISHED_LOCALES } from '../src/lib/i18n/config';
+import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { stampCopy } from '../src/lib/v1/stamp.copy';
 import { captureUrl, layoutCapture } from './capture-fixture';
@@ -70,28 +69,6 @@ test.beforeEach(async ({ page }) => {
 		}),
 	);
 	await page.clock.setFixedTime(now);
-});
-
-test('Live now lists predictions under their line, statuses in words', async ({ page }) => {
-	const provider = fixture('manifest.json').provider;
-	await page.goto(localizeHref(`/stop/${stop}?tab=detail`, locale, provider));
-	const t = detailCopy[locale].live;
-	const list = page.locator('[data-slot="stop-live-predictions"]');
-	const rows = list
-		.getByRole('table')
-		.getByRole('row')
-		.filter({ has: page.getByRole('rowheader') });
-	const section = page.locator('[data-toc="stop-detail-departures"] [data-section-trigger]');
-	if ((await section.getAttribute('aria-expanded')) === 'false') await section.click();
-	await expect(rows).toHaveCount(departures.stops[stop].length);
-	// One line listed: nothing to order yet.
-	await expect(page.getByRole('combobox', { name: t.order })).toHaveCount(0);
-	await expect(rows.nth(0).getByRole('cell').first()).toHaveText(new RegExp(t.bands.on_time));
-	await expect(rows.nth(1).getByRole('cell').first()).toHaveText(new RegExp(t.bands.on_time));
-	const link = page.getByRole('link', { name: t.record, exact: true });
-	const href = new URL((await link.getAttribute('href'))!, page.url());
-	expect(href.pathname).toBe('/stop/' + stop);
-	expect(href.searchParams.get('frameMode')).toBe('record');
 });
 
 for (const lang of PUBLISHED_LOCALES)

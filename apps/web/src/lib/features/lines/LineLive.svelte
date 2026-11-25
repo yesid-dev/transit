@@ -5,6 +5,7 @@
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
+		captureFamily,
 		feedState,
 		type CaptureSnapshot,
 		type CaptureTripReport,
@@ -33,7 +34,6 @@
 	import LineLivePredictions from './LineLivePredictions.svelte';
 	import LineLiveNotices from './LineLiveNotices.svelte';
 	import {
-		captureFamily,
 		delayStatuses,
 		lineSilentCount,
 		lineVehicleRows,
@@ -269,7 +269,7 @@
 		{#if !limits}
 			<div id="alerts">
 				<LineLiveNotices
-					{line}
+					scope={{ kind: 'line', id: line }}
 					{snapshot}
 					{now}
 					{locale}

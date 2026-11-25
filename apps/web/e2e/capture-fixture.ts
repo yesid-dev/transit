@@ -92,6 +92,33 @@ export function captureTripReport(
 	};
 }
 
+export async function installStopCapture(page: Page, city: string, stop: string, at: number) {
+	await page.clock.install({ time: at });
+	await page.route(captureUrl, async (route) => {
+		const current = await page.evaluate(() => Date.now());
+		await route.fulfill({ json: captureFixture(current, { city }) });
+	});
+	await page.route(`**/api/live-trips?city=${city}&stop=${stop}`, async (route) => {
+		const current = await page.evaluate(() => Date.now());
+		const calls = [5, 9, 17, 19, 20, 21].map((minutes, index) =>
+			captureTrip(`stop-trip-${index}`, index % 2 ? '80' : '24', [
+				{
+					stop,
+					eta_utc: new Date(current + minutes * 60_000).toISOString(),
+					delay_min: [0, 6, 4, -2, 5, null][index],
+				},
+			]),
+		);
+		await route.fulfill({ json: captureTripReport(city, new Date(current).toISOString(), calls) });
+	});
+	return async () => {
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		const capture = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await page.clock.fastForward(21_000);
+		await capture;
+	};
+}
+
 export function captureFleet(at: number, city: string, delays: readonly (number | null)[]) {
 	return captureFixture(at, {
 		city,

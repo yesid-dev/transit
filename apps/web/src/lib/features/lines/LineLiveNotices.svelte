@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { feedState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
+	import { captureFamily, feedState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 	import {
 		agencyMessage,
 		agencyMessagePeriods,
@@ -10,13 +10,13 @@
 	import { alertEffect, liveAlertCards } from '../alerts/alertCards.ts';
 	import { choose } from '../record/recordText.ts';
 	import RecordCard from '../record/RecordCard.svelte';
-	import { captureFamily } from './lineLiveReadings.ts';
 
 	let {
 		snapshot,
 		now,
 		locale,
-		line,
+		scope,
+		operator,
 		tracked,
 		timeZone,
 		href,
@@ -24,7 +24,8 @@
 		snapshot: CaptureSnapshot | null;
 		now: number;
 		locale: Locale;
-		line: string;
+		scope: { kind: 'line'; id: string } | { kind: 'stop'; id: string; lines: readonly string[] };
+		operator?: string;
 		tracked: boolean;
 		timeZone: string;
 		href: string;
@@ -40,13 +41,18 @@
 				}
 			: undefined,
 	);
+	function appliesToScope(alert: NonNullable<CaptureSnapshot['alerts']>[number]) {
+		const current = scope;
+		if (current.kind === 'line') return alert.routes.includes(current.id);
+		return (
+			alert.stops.includes(current.id) ||
+			(!alert.stops.length && alert.routes.some((route) => current.lines.includes(route)))
+		);
+	}
 	const notices = $derived(
 		ready
 			? sortAgencyMessages(
-					liveAlertCards(
-						snapshot?.alerts?.filter((alert) => alert.routes.includes(line)) ?? [],
-						now,
-					),
+					liveAlertCards(snapshot?.alerts?.filter(appliesToScope) ?? [], now),
 					locale,
 					(id) => id,
 				).slice(0, 4)
@@ -54,7 +60,13 @@
 	);
 </script>
 
-<RecordCard interactive title={t('Agency notices', 'Avis de l’agence')} {stamp}>
+<RecordCard
+	interactive={tracked}
+	title={scope.kind === 'stop'
+		? t('Notices for this stop', 'Avis pour cet arrêt')
+		: t('Agency notices', 'Avis de l’agence')}
+	{stamp}
+>
 	{#if !tracked}
 		<p>
 			{t(
@@ -89,10 +101,15 @@
 		</ul>
 	{:else}
 		<p>
-			{t(
-				'No agency notices in effect for this line.',
-				'Aucun avis de l’agence en vigueur pour cette ligne.',
-			)}
+			{scope.kind === 'stop' && operator
+				? t(
+						`${operator} has no notice in effect for this stop.`,
+						`${operator} n’a aucun avis en vigueur pour cet arrêt.`,
+					)
+				: t(
+						'No agency notices in effect for this line.',
+						'Aucun avis de l’agence en vigueur pour cette ligne.',
+					)}
 		</p>
 	{/if}
 	{#snippet links()}

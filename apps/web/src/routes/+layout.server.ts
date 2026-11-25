@@ -18,8 +18,6 @@ function usesLiveSnapshots(route: string | null, url: URL): boolean {
 		case localRoute + '/map':
 			return true;
 
-		case localRoute + '/stop/[id]':
-			return stopFrameView(url) === 'live';
 		case localRoute:
 		case localRoute + '/vehicles':
 		case localRoute + '/vehicle/[id]':
@@ -57,7 +55,25 @@ function scheduleForPage(
 			return { date, routes: [], stops: [] };
 		case localRoute + '/stop/[id]': {
 			const id = params.id?.trim() || params.id;
-			return { date, routes, stops: stops.filter((stop) => stop.id === id) };
+			const stop = stops.find((entry) => entry.id === id);
+			const related = stopFrameView(url) === 'live' ? (stop?.routes ?? []) : [];
+			return {
+				date,
+				routes,
+				stops: stop ? [stop] : [],
+				...(related.length && route_directions
+					? {
+							route_directions: Object.fromEntries(
+								related.map((line) => [
+									line,
+									(route_directions[line] ?? [])
+										.filter((direction) => direction.stops?.some((entry) => entry.id === id))
+										.map(({ dir, headsign }) => ({ dir, headsign })),
+								]),
+							),
+						}
+					: {}),
+			};
 		}
 		case localRoute + '/lines/[id]':
 		case localRoute + '/departure/[key]': {

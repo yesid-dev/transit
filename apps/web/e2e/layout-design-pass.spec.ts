@@ -7,6 +7,7 @@ import {
 	captureFixture,
 	captureUrl,
 	captureVehicle,
+	installStopCapture,
 	refreshAlertsCapture,
 } from './capture-fixture';
 import { designPassCases, type Screen } from './design-pass-cases';
@@ -139,7 +140,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await setWidth(page, 1440);
 		const liveAlerts = screen === 'alerts-live' && provider === 'stm';
 		if (liveAlerts) await page.clock.install({ time });
-		else if (screen !== 'line-live' && !(health && screen.endsWith('-live')))
+		else if (screen !== 'stop-live' && screen !== 'line-live' && !(health && screen.endsWith('-live')))
 			await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 		await page.route(captureUrl, (route) => {
@@ -165,6 +166,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				}),
 			});
 		});
+		const refreshStop =
+			screen === 'stop-live' ? await installStopCapture(page, provider, 'S1', time) : null;
 		if (screen.startsWith('map-record')) await recordMapFixture(page);
 		const response = await page.goto(href);
 		expect(response?.status(), href).toBe(screen === 'error' ? 404 : 200);
@@ -172,6 +175,10 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		if (liveAlerts) await refreshAlertsCapture(page);
 		await expect(page.getByRole('main')).toBeVisible();
+		if (refreshStop) {
+			await refreshStop();
+			await expect(page.locator('[data-slot="stop-live-predictions"]')).toBeVisible();
+		}
 		if (screen === 'how-we-measure') {
 			await expect(page.locator('[data-record-disclosure]').first()).toBeVisible();
 		}
@@ -246,7 +253,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			screen === 'vehicle-record' ||
 			screen === 'vehicle-live' ||
 			screen === 'daily' ||
-			screen === 'line-live';
+			screen === 'line-live' ||
+			screen === 'stop-live';
 		if (redesignedDetail)
 			await expect(
 				page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]'),
@@ -361,6 +369,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 					await refreshAlertsCapture(page);
 					await expect(page.locator('#alerts-log [data-slot="show-more"]')).toBeVisible();
 				}
+				if (refreshStop) await refreshStop();
 				if (alerts) {
 					await expect(
 						page.locator('[data-slot="screen-answer"], [data-slot="screen-state"]').first(),

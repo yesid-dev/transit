@@ -1,11 +1,8 @@
 <script lang="ts">
 	import { StatusMark, type StampProps } from '@yesid/ui/brand';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import {
-		fetchCaptureTripScope,
-		feedState,
-		type CaptureTripReport,
-	} from '#lib/live/captureSnapshot.ts';
+	import { feedState, type CaptureTripReport } from '#lib/live/captureSnapshot.ts';
+	import LiveTripReport from '#lib/live/LiveTripReport.svelte';
 	import {
 		clockTime,
 		delayReading,
@@ -40,18 +37,6 @@
 		stopHref: (id: string) => string;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
-	let result = $state<{ clock: number; report: CaptureTripReport | null }>();
-	$effect(() => {
-		if (!refreshed) return;
-		const clock = now;
-		const controller = new AbortController();
-		void fetchCaptureTripScope(city, { kind: 'line', id: line }, controller.signal)
-			.catch(() => null)
-			.then((report) => {
-				if (!controller.signal.aborted) result = { clock, report };
-			});
-		return () => controller.abort();
-	});
 	function stamp(report: CaptureTripReport | null): StampProps | undefined {
 		const at = report?.feed.captured_at;
 		return at && feedState(report?.feed, now) === 'live'
@@ -121,10 +106,4 @@
 	</RecordCard>
 {/snippet}
 
-{#if refreshed && result?.clock === now}
-	{@render readings(result.report)}
-{:else}
-	{#await seed then initial}
-		{@render readings(initial)}
-	{/await}
-{/if}
+<LiveTripReport {city} kind="line" id={line} {seed} {now} {refreshed} children={readings} />

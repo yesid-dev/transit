@@ -1,6 +1,8 @@
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { classifyDelay } from '#lib/v1/live/statusBands.ts';
+import { stopPrediction } from '#lib/live/stopPrediction.ts';
 import {
+	captureFamily,
 	feedState,
 	type CaptureSnapshot,
 	type CaptureTripReport,
@@ -25,13 +27,6 @@ export function selectMainStops(
 		)
 		.slice(0, 5)
 		.map(({ id, name }) => ({ id, name }));
-}
-
-export function captureFamily(
-	snapshot: CaptureSnapshot | null,
-	family: 'vehicle_positions' | 'trip_updates' | 'alerts',
-) {
-	return Object.values(snapshot?.feeds ?? {}).find((feed) => feed.family === family);
 }
 
 export function lineVehicleRows(snapshot: CaptureSnapshot | null, line: string, now: number) {
@@ -87,31 +82,12 @@ export function nextStopPredictions(report: CaptureTripReport | null, now: numbe
 	>();
 	if (!report || feedState(report.feed, now) !== 'live') return result;
 	for (const trip of report.trip_updates) {
-		if (trip.relationship === 3 || trip.relationship === 7) continue;
 		for (const stop of trip.stops) {
-			const time = stop.departure ?? stop.arrival;
-			if (
-				!stop.stop_id ||
-				time === null ||
-				time > 8.64e12 ||
-				time * 1000 < now ||
-				stop.relationship === 1 ||
-				stop.relationship === 2
-			)
+			if (!stop.stop_id) continue;
+			const reading = stopPrediction(trip, stop, now);
+			if (!reading || (result.get(stop.stop_id)?.predictedAt ?? Infinity) <= reading.predictedAt)
 				continue;
-			const predictedAt = time * 1000;
-			if ((result.get(stop.stop_id)?.predictedAt ?? Infinity) <= predictedAt) continue;
-			const delay = stop.departure === null ? stop.arrival_delay : stop.departure_delay;
-			// The publication can fill a stop delay with the trip-wide delay.
-			// Only a distinguishable stop offset can recover a scheduled call.
-			const scheduledAt =
-				delay !== null && delay !== trip.delay ? predictedAt - delay * 1000 : null;
-			result.set(stop.stop_id, {
-				trip: trip.trip_id,
-				predictedAt,
-				delay,
-				scheduledAt,
-			});
+			result.set(stop.stop_id, { trip: trip.trip_id, ...reading });
 		}
 	}
 	return result;

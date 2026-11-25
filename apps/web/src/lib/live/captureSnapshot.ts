@@ -114,6 +114,10 @@ export type CaptureSnapshot = z.infer<typeof captureSnapshotSchema>;
 export type CaptureFamily = z.infer<typeof family>;
 export type CaptureFeed = z.infer<typeof feed>;
 
+export function captureFamily(snapshot: CaptureSnapshot | null, family: CaptureFamily) {
+	return Object.values(snapshot?.feeds ?? {}).find((feed) => feed.family === family);
+}
+
 export interface CaptureEvidence {
 	readonly captureFeed?: CaptureFeed;
 	readonly captureRevision?: string;

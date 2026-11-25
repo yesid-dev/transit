@@ -7,7 +7,6 @@ import { readRequestLocation } from '#lib/v1/requestLocation.ts';
 import { readPublicSiteConfig } from '#lib/site/config.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
-import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { DOCUMENT_SECURITY_HEADERS } from '#lib/site/securityHeaders.ts';
 import { configureTransitUi } from '#lib/ui/configure.ts';
 import { preloadFont } from '@yesid/tokens/fonts';
@@ -149,8 +148,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.route.id === '/[[lang=locale]]' && event.url.searchParams.get('frameMode') !== 'live';
 	const lineView =
 		event.route.id === '/[[lang=locale]]/lines/[id]' ? lineFrameView(event.url) : null;
-	const stopRecord =
-		event.route.id === '/[[lang=locale]]/stop/[id]' && stopFrameView(event.url) === 'record';
+	const stopDetail = event.route.id === '/[[lang=locale]]/stop/[id]';
 	const vehicleRecord =
 		(event.route.id === '/[[lang=locale]]/vehicles' ||
 			event.route.id === '/[[lang=locale]]/vehicle/[id]') &&
@@ -165,7 +163,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const streamedRecord =
 		overviewRecord ||
 		(event.route.id === '/[[lang=locale]]/network' && networkRecordView(event.url)) ||
-		stopRecord ||
+		stopDetail ||
 		vehicleRecord ||
 		rankingsRecord ||
 		finderRecord ||
