@@ -29,12 +29,11 @@
 		}}
 	>
 		{#snippet summary()}
-			<p>{document.kicker}</p>
 			<p>{document.summary}</p>
 		{/snippet}
 
 		{#each document.sections as section, index (section.id)}
-			{#if index > 0}<Separator variant="hand-drawn" />{/if}
+			{#if index > 0}<Separator variant="hand-drawn" class="my-6" />{/if}
 			<section class="legal-section grid gap-3" aria-labelledby={`legal-${section.id}`}>
 				<h2 id={`legal-${section.id}`}>{section.title}</h2>
 				{#each section.paragraphs as paragraph (paragraph)}
@@ -52,6 +51,7 @@
 						{#each section.links as link (link.href)}
 							<li>
 								<a
+									class="text-primary underline"
 									href={link.href}
 									target={link.href.startsWith('https://') ? '_blank' : undefined}
 									rel={link.href.startsWith('https://') ? 'noreferrer' : undefined}>{link.label}</a

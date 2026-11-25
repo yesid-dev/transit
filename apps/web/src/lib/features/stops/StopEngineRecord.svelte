@@ -229,7 +229,7 @@
 
 <Surface>
 	<RecordScreen>
-		<RecordGroup class="lg:pb-3">
+		<RecordGroup>
 			<ScreenTitle
 				title={name ?? stopLabel}
 				stopCode={name ? stopCode : undefined}
@@ -245,7 +245,7 @@
 			/>
 		</RecordGroup>
 		<div class="min-w-0" data-slot="screen-content">
-			<RecordGroup class="grid gap-6 lg:gap-4 lg:py-3">
+			<RecordGroup class="grid gap-6">
 				<div id="punctuality" data-slot="screen-answer">
 					{#await answers.punctuality}
 						{@render pending(answers.punctuality)}
@@ -321,16 +321,14 @@
 					</RecordCard>
 					<RecordCard title={titleFor('delay')} {stamp}>
 						{#snippet footer()}{@render evidenceFooter('delay')}{/snippet}
-						<div id="delay" class="grid gap-4 tabular-nums">
-							{#await answers.delay}
-								{@render pending(answers.delay)}
-							{:then result}
-								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-									<FactList>
+						<div id="delay" class="grid gap-4">
+							{#snippet delayFacts(measure?: RecordMeasure)}
+								<FactList leading={false}>
+									{#if measure}
 										<FactRow label={t('Median delay', 'Retard médian')}
 											><span>
 												<strong class="font-heading text-heading font-extrabold"
-													>{delayReading(result.answer.value.median_delay, locale)}</strong
+													>{delayReading(measure.value.median_delay, locale)}</strong
 												>
 											</span><span class="block text-small text-muted-foreground">
 												{t(
@@ -342,7 +340,7 @@
 										<FactRow label={t('90th percentile', '90e centile')}
 											><span>
 												<strong class="font-heading text-heading font-extrabold"
-													>{delayReading(result.answer.value.p90_delay, locale)}</strong
+													>{delayReading(measure.value.p90_delay, locale)}</strong
 												>
 											</span><span class="block text-small text-muted-foreground">
 												{t(
@@ -351,36 +349,44 @@
 												)}
 											</span></FactRow
 										>
-									</FactList>
-								{:else}{@render gap(result)}{/if}
+									{/if}
+									<FactRow id="accessibility" label={titleFor('accessibility')}>
+										{#await answers.accessibility}
+											{@render pending(answers.accessibility)}
+										{:then result}
+											{#if result.kind === 'answer' && 'value' in result.answer}
+												{#if result.answer.evidence.counts.stops_no_information === 1 || result.answer.state === 'not_published'}
+													{t('Not published', 'Non publié')}
+													<span class="block font-normal text-muted-foreground"
+														>{t(
+															'The agency does not declare it for this stop.',
+															'L’exploitant ne le déclare pas pour cet arrêt.',
+														)}</span
+													>
+												{:else}
+													{stopAccessibility(result.answer, locale)}
+												{/if}
+											{:else}{@render gap(result)}{/if}
+										{/await}
+									</FactRow>
+								</FactList>
+							{/snippet}
+							{#await answers.delay}
+								{@render pending(answers.delay)}
+								{@render delayFacts()}
+							{:then result}
+								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+									{@render delayFacts(result.answer)}
+								{:else}
+									{@render gap(result)}
+									{@render delayFacts()}
+								{/if}
 							{/await}
-							<dl id="accessibility" class="reading text-small">
-								<dt>{titleFor('accessibility')}</dt>
-								<dd>
-									{#await answers.accessibility}
-										{@render pending(answers.accessibility)}
-									{:then result}
-										{#if result.kind === 'answer' && 'value' in result.answer}
-											{#if result.answer.evidence.counts.stops_no_information === 1 || result.answer.state === 'not_published'}
-												{t('Not published', 'Non publié')}
-												<span class="block font-normal text-muted-foreground"
-													>{t(
-														'The agency does not declare it for this stop.',
-														'L’exploitant ne le déclare pas pour cet arrêt.',
-													)}</span
-												>
-											{:else}
-												{stopAccessibility(result.answer, locale)}
-											{/if}
-										{:else}{@render gap(result)}{/if}
-									{/await}
-								</dd>
-							</dl>
 						</div>
 					</RecordCard>
 				</DashboardGrid>
 			</RecordGroup>
-			<RecordGroup class="grid gap-6 lg:py-3">
+			<RecordGroup class="grid gap-6">
 				<div id="byLine" class="min-w-0">
 					<RecordCard interactive title={titleFor('byLine')} {stamp}>
 						{#snippet footer()}{@render evidenceFooter('byLine')}{/snippet}
@@ -496,7 +502,7 @@
 							{@render pending(answers.alerts)}
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-								<FactList>
+								<FactList leading={false}>
 									<FactRow label={t('Distinct alerts', 'Avis distincts')}>
 										{result.answer.value.alerts == null
 											? t('Unknown', 'Inconnu')
@@ -513,7 +519,7 @@
 					</RecordCard>
 				</div>
 			</RecordGroup>
-			<RecordGroup class="lg:pt-3">
+			<RecordGroup>
 				{#await answers.punctuality then result}
 					{@render about(
 						result.kind === 'answer' && 'value' in result.answer ? result.answer : null,
@@ -523,21 +529,3 @@
 		</div>
 	</RecordScreen>
 </Surface>
-
-<style>
-	.reading dt {
-		flex: 0 0 auto;
-		max-inline-size: 100%;
-	}
-	.reading {
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: space-between;
-		gap: 0.25rem 1rem;
-	}
-	.reading dd {
-		margin-inline-start: auto;
-		text-align: end;
-		font-weight: 600;
-	}
-</style>

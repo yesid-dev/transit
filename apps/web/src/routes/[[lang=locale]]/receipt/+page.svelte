@@ -809,6 +809,7 @@
 					[data-slot='surface-rail'],
 					[data-slot='surface-rail-mobile'],
 					[data-slot='record-patience'],
+					[data-slot='page-section-boundary'],
 					[data-slot='footer']
 				)
 		) {

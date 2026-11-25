@@ -311,14 +311,16 @@
 						title={t('What it is running', 'Son service en cours')}
 						stamp={liveTime}
 					>
-						<FactList>
+						<FactList leading={false}>
 							{#if running.route}
 								{@const line = display.lineName(running.route)}
 								<FactRow label={t('Line', 'Ligne')}
-									><span class="ms-auto flex min-w-0 w-fit flex-wrap items-center gap-x-2">
+									><span
+										class="service-line inline-flex min-w-0 max-w-full items-center gap-x-2 align-middle"
+									>
 										<RoutePlate code={line.number ?? running.route} />
 										<a
-											class="inline-flex min-h-11 items-center text-primary underline"
+											class="inline-flex min-h-11 min-w-min items-center text-primary underline [overflow-wrap:normal] [word-break:normal]"
 											href={href(routeFor({ kind: 'line', id: running.route }))}
 											>{line.name ?? line.label}</a
 										>
@@ -519,3 +521,11 @@
 		{unknown}
 	{/if}
 {/snippet}
+
+<style>
+	@container (width < 16rem) {
+		.service-line {
+			flex-wrap: wrap;
+		}
+	}
+</style>

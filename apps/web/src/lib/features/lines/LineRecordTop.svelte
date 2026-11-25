@@ -276,7 +276,7 @@
 							{#key directionsAnswer}<RecordPending {locale} answer={directionsAnswer} />{/key}
 						{:then result}
 							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-								<FactList>
+								<FactList leading={false}>
 									{#each result.answer.cells as cell (cell.key.direction)}
 										{@const share = measuredShare(cell, 'on_time')}
 										<FactRow label={directionLabel(cell.key.direction, headsigns, locale)}>

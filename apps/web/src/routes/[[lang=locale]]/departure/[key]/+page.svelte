@@ -258,7 +258,7 @@
 												sentence={days.observed
 													? t(
 															'observed days had a late stop.',
-															'jours observés avec au moins un passage en retard.',
+															'jours observés avec un passage en retard.',
 														)
 													: recordState(absent)[data.lang]}
 												{actions}
@@ -513,7 +513,7 @@
 												label: t('Counted', 'Décompte'),
 												text: t(
 													'An observed day has at least one classified stop event. The answer counts days with at least one observed late stop.',
-													'Une journée observée comprend au moins un passage classé. Le bilan compte les journées avec au moins un passage observé en retard.',
+													'Jour observé : au moins un passage classé. Le bilan compte les jours avec un retard observé à un arrêt.',
 												),
 											},
 											{
@@ -524,7 +524,7 @@
 												),
 												text: t(
 													'Cancelled: the agency announced it. Missing: it was scheduled and no vehicle was seen during continuous capture.',
-													'Annulé : l’agence l’a annoncé. Manquant : il était prévu et aucun véhicule n’a été vu pendant une collecte continue.',
+													'Annulé : annoncé par l’agence. Manquant : départ prévu, sans véhicule vu en collecte continue.',
 												),
 											},
 											{ key: 'means', label: term.means, text: term.definition },
