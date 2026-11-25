@@ -1,15 +1,22 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { RoutePlate } from '@yesid/ui/brand';
+	import { RoutePlate, SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { Card } from '@yesid/ui/card';
+	import { Combobox } from '@yesid/ui/combobox';
+	import { ControlsRail, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { ShowMore } from '@yesid/ui/table';
-	import { tick } from 'svelte';
+	import { getContext, tick, untrack } from 'svelte';
 	import { SvelteURL } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { choose } from '#lib/features/record/recordText.ts';
+	import {
+		frameSurfaceRailContext,
+		type RegisterFrameSurfaceRail,
+	} from '#lib/components/shell/frameSurfaceRail.ts';
+	import { choose, tally } from '#lib/features/record/recordText.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
+	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { alertPaging } from '#lib/site/presenter.ts';
 	import {
@@ -35,10 +42,14 @@
 	} = $props();
 
 	const pageSize = 12;
+	const registerControls = getContext<RegisterFrameSurfaceRail | undefined>(
+		frameSurfaceRailContext,
+	);
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const location = $derived(page.shallow?.url ?? page.url);
 	const line = $derived(location.searchParams.get('route') ?? '');
+	const stop = $derived(location.searchParams.get('stop') ?? '');
 	const hasEffects = $derived(cards.some(({ effect }) => effect != null));
 	const selectedEffect = $derived(hasEffects ? (location.searchParams.get('effect') ?? '') : '');
 	const effectKey = (card: AlertCard) => card.effect ?? unstatedEffect;
@@ -52,17 +63,27 @@
 			display.line(a).localeCompare(display.line(b), locale, { numeric: true }),
 		),
 	);
-	const filters = $derived(
-		Array.from(location.searchParams).filter(
-			([key]) => key !== 'route' && key !== 'effect' && key !== 'alert',
+	const stops = $derived(
+		[...new Set(cards.flatMap((card) => card.stops))].sort((a, b) =>
+			a.localeCompare(b, locale, { numeric: true }),
 		),
 	);
+	const lineOptions = $derived(choices(lines, line, (id) => display.lineName(id).label));
+	const stopOptions = $derived(choices(stops, stop, (id) => t(`Stop ${id}`, `Arrêt ${id}`)));
+	const effectOptions = $derived(choices(effects, selectedEffect, (id) => alertEffect(id, locale)));
+	const activeFilters = $derived(Boolean(line || stop || selectedEffect));
+	const hasControls = $derived(
+		cards.length > 0 && Boolean(lineOptions.length || stopOptions.length || hasEffects),
+	);
+	const filterKeys = ['route', 'stop', 'effect'] as const;
+	type FilterKey = (typeof filterKeys)[number];
 	const target = $derived(alertTarget(new URL(location.href)));
 	const filtered = $derived(
 		sortAgencyMessages(
 			cards.filter(
 				(card) =>
 					(!line || card.routes.includes(line)) &&
+					(!stop || card.stops.includes(stop)) &&
 					(!selectedEffect || effectKey(card) === selectedEffect),
 			),
 			locale,
@@ -80,11 +101,13 @@
 			: undefined,
 	);
 
-	let paging = $state<{ line: string; effect: string; shown: number }>();
+	let paging = $state<{ line: string; stop: string; effect: string; shown: number }>();
 	const shown = $derived(
 		Math.min(
 			ordered.length,
-			paging?.line === line && paging.effect === selectedEffect ? paging.shown : pageSize,
+			paging?.line === line && paging.stop === stop && paging.effect === selectedEffect
+				? paging.shown
+				: pageSize,
 		),
 	);
 	const labels = $derived(alertPaging(locale));
@@ -92,6 +115,15 @@
 	let list = $state<HTMLUListElement>();
 	let lastJump: string | null = null;
 	const anchor = (id: string) => `alert-${id}`;
+	const resultCount = $derived(
+		`${tally(ordered.length, locale)} ${t(ordered.length === 1 ? 'alert' : 'alerts', 'avis')}`,
+	);
+
+	$effect(() => {
+		if (hasControls) {
+			return untrack(() => registerControls?.(controls));
+		}
+	});
 
 	$effect(() => {
 		if (!target) lastJump = null;
@@ -103,26 +135,108 @@
 
 	async function showMore(count: number) {
 		const previous = shown;
-		paging = { line, effect: selectedEffect, shown: shown + count };
+		paging = { line, stop, effect: selectedEffect, shown: shown + count };
 		await tick();
 		(list?.children[previous] as HTMLElement | undefined)?.focus();
 	}
 
-	function apply(event: SubmitEvent) {
-		event.preventDefault();
+	function choices(ids: string[], selected: string, name: (id: string) => string) {
+		return (selected && !ids.includes(selected) ? [...ids, selected] : ids).map((value) => {
+			const label = name(value);
+			return { value, label, search: foldSearchText(`${label} ${value}`) };
+		});
+	}
+
+	function applyFilter(key?: FilterKey, value?: string | null) {
 		const url = new SvelteURL(location.href);
-		const values = new FormData(event.currentTarget as HTMLFormElement);
-		for (const key of ['route', 'effect']) {
-			const value = values.get(key);
-			if (typeof value === 'string' && value) url.searchParams.set(key, value);
-			else url.searchParams.delete(key);
-		}
+		if (!key) filterKeys.forEach((filterKey) => url.searchParams.delete(filterKey));
+		else if (value) url.searchParams.set(key, value);
+		else url.searchParams.delete(key);
+		if (url.href === location.href) return;
 		url.searchParams.delete('alert');
 		url.hash = '';
 		paging = undefined;
 		void goto(url, { shallow: true, state: { ...page.state } });
 	}
 </script>
+
+{#snippet controls(context: SurfaceRailContext)}
+	<ControlsRail label={t('Filter', 'Filtrer')}>
+		<div class="grid w-full min-w-0 gap-3">
+			{#if lineOptions.length}
+				{@const label = t('Line', 'Ligne')}
+				<div class="grid min-w-0 gap-1">
+					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+					<Combobox
+						options={lineOptions}
+						value={line || null}
+						onValueChange={(value) => applyFilter('route', value)}
+						{label}
+						placeholder={t('All', 'Toutes')}
+						clearLabel={t('Clear line', 'Effacer la ligne')}
+						emptyLabel={t('No matching lines', 'Aucune ligne correspondante')}
+						fold={foldSearchText}
+					/>
+				</div>
+			{/if}
+			{#if stopOptions.length}
+				{@const label = t('Stop', 'Arrêt')}
+				<div class="grid min-w-0 gap-1">
+					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+					<Combobox
+						options={stopOptions}
+						value={stop || null}
+						onValueChange={(value) => applyFilter('stop', value)}
+						{label}
+						placeholder={t('All', 'Tous')}
+						clearLabel={t('Clear stop', 'Effacer l’arrêt')}
+						emptyLabel={t('No matching stops', 'Aucun arrêt correspondant')}
+						fold={foldSearchText}
+					/>
+				</div>
+			{/if}
+			{#if hasEffects}
+				{@const label = t('Effect', 'Effet')}
+				{@const allEffects = t('All', 'Tous')}
+				<div class="grid min-w-0 gap-1">
+					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+					{#if effectOptions.length < 5}
+						<SegmentedChoice
+							{label}
+							value={selectedEffect}
+							options={[
+								{ key: '', label: allEffects },
+								...effectOptions.map(({ value: key, label }) => ({ key, label })),
+							]}
+							variant="joined-grid"
+							onSelect={(value) => applyFilter('effect', value)}
+						/>
+					{:else}
+						<Combobox
+							options={effectOptions}
+							value={selectedEffect || null}
+							onValueChange={(value) => applyFilter('effect', value)}
+							{label}
+							placeholder={allEffects}
+							clearLabel={t('Clear effect', 'Effacer l’effet')}
+							emptyLabel={t('No matching effects', 'Aucun effet correspondant')}
+							fold={foldSearchText}
+						/>
+					{/if}
+				</div>
+			{/if}
+			<div class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 text-small">
+				<p role={context.presentation === 'mobile' ? 'status' : undefined}>{resultCount}</p>
+				<Button
+					variant="outline"
+					class="min-h-11"
+					aria-disabled={!activeFilters}
+					onclick={() => activeFilters && applyFilter()}>{t('Clear', 'Effacer')}</Button
+				>
+			</div>
+		</div>
+	</ControlsRail>
+{/snippet}
 
 {#snippet item(card: AlertCard, anchorId: string | undefined)}
 	{@const { title, body } = agencyMessage(card, locale)}
@@ -132,36 +246,41 @@
 		<Card
 			textSize="inherit"
 			interactive={Boolean(card.routes.length || card.stops.length || source)}
-			class="min-w-0 gap-0 px-1 py-0.5 sm:px-2 sm:py-2"
+			class="min-w-0 px-4 sm:px-6"
 		>
-			<div
-				class="flex flex-wrap items-center gap-x-3"
-				class:single-plate={card.routes.length === 1}
-			>
-				{#if card.routes.length}
-					<div class="flex min-w-0 flex-wrap items-center gap-x-1">
-						{#each [...new Set(card.routes)] as route (route)}
-							<a
-								class="inline-flex min-h-11 min-w-11 items-center justify-center"
-								href={localizeHref(`/lines/${encodeURIComponent(route)}`, locale, city)}
-							>
-								<RoutePlate code={display.line(route)} />
-								<span class="sr-only"> {display.lineName(route).label}</span>
-							</a>
-						{/each}
+			<div class="min-w-0">
+				<div
+					class="flex flex-wrap items-center gap-x-3"
+					class:single-plate={card.routes.length === 1}
+				>
+					{#if card.routes.length}
+						<div class="flex min-w-0 flex-wrap items-center gap-x-1">
+							{#each [...new Set(card.routes)] as route (route)}
+								<a
+									class="inline-flex min-h-11 min-w-11 items-center justify-center"
+									href={localizeHref(`/lines/${encodeURIComponent(route)}`, locale, city)}
+								>
+									<RoutePlate code={display.line(route)} />
+									<span class="sr-only"> {display.lineName(route).label}</span>
+								</a>
+							{/each}
+						</div>
+					{/if}
+					<div class="min-w-0">
+						<h3 class="wrap-break-word font-semibold" lang={title.lang}>
+							{title.text}
+						</h3>
+						{#if card.effect || periods.length}
+							<p class="wrap-break-word text-small text-muted-foreground">
+								{#if card.effect}{alertEffect(card.effect, locale)}.
+								{/if}
+								{periods.join(live ? ' ' : ' · ')}
+							</p>
+						{/if}
 					</div>
-				{/if}
-				<h3 class="min-w-0 wrap-break-word font-semibold" lang={title.lang}>
-					{title.text}
-				</h3>
-			</div>
-			<div class="flex flex-wrap items-center gap-x-3 text-small text-muted-foreground">
-				{#if card.effect}
-					<p>{alertEffect(card.effect, locale)}.</p>
-				{/if}
-				{#if periods.length}<p>{periods.join(live ? ' ' : ' · ')}</p>{/if}
+				</div>
 				{#if card.stops.length}
-					<div class="flex flex-wrap items-center gap-x-1">
+					<div class="flex min-w-0 flex-wrap items-center gap-x-1 text-small text-muted-foreground">
 						<span>{t('Stops', 'Arrêts')}</span>
 						{#each [...new Set(card.stops)] as stop (stop)}
 							<a
@@ -173,13 +292,13 @@
 						{/each}
 					</div>
 				{/if}
+				{#if body}<p
+						class="mt-1 max-w-[var(--measure-body)] wrap-break-word whitespace-pre-line"
+						lang={body.lang}
+					>
+						{body.text}
+					</p>{/if}
 			</div>
-			{#if body}<p
-					class="mt-1 max-w-[var(--measure-body)] wrap-break-word whitespace-pre-line"
-					lang={body.lang}
-				>
-					{body.text}
-				</p>{/if}
 			{#if source}
 				<a
 					class="inline-flex min-h-11 items-center text-primary underline"
@@ -194,58 +313,13 @@
 {/snippet}
 
 {#if cards.length}
-	<search>
-		<form
-			method="GET"
-			action={page.url.pathname}
-			onsubmit={apply}
-			class="flex flex-wrap items-end gap-3"
-		>
-			{#each filters as [key, value], index (index)}<input
-					type="hidden"
-					name={key}
-					{value}
-				/>{/each}
-			{#if hasEffects}
-				<label class="grid min-w-0 max-w-full gap-1 text-small">
-					{t('Effect', 'Effet')}
-					<select
-						name="effect"
-						value={selectedEffect}
-						class="min-h-11 w-full max-w-full rounded-md border border-border bg-background px-2 text-base"
-					>
-						<option value="">{t('All effects', 'Tous les effets')}</option>
-						{#each selectedEffect && !effects.includes(selectedEffect) ? [...effects, selectedEffect] : effects as key (key)}
-							<option value={key}>{alertEffect(key, locale)}</option>
-						{/each}
-					</select>
-				</label>
-			{/if}
-			<label class="grid min-w-0 max-w-full gap-1 text-small">
-				{t('Line', 'Ligne')}
-				<select
-					name="route"
-					value={line}
-					class="min-h-11 w-full max-w-full rounded-md border border-border bg-background px-2 text-base"
-				>
-					<option value="">{t('All lines', 'Toutes les lignes')}</option>
-					{#each line && !lines.includes(line) ? [...lines, line] : lines as key (key)}
-						<option value={key}>{display.lineName(key).label}</option>
-					{/each}
-				</select>
-			</label>
-			<Button type="submit" variant="outline" class="min-h-11 min-w-11"
-				>{t('Filter alerts', 'Filtrer les avis')}</Button
-			>
-		</form>
-	</search>
 	{#if selectedOutsideFilters}
-		<ul class="alert-list mt-2">
+		<ul class="alert-list">
 			{@render item(selectedOutsideFilters, anchor(selectedOutsideFilters.id))}
 		</ul>
 	{/if}
 	{#if ordered.length}
-		<ul bind:this={list} class="alert-list mt-2 grid gap-1">
+		<ul bind:this={list} class="alert-list grid gap-[var(--space-card-gap)]">
 			{#each ordered.slice(0, shown) as card, index (card.key)}
 				{@render item(
 					card,
@@ -255,7 +329,7 @@
 		</ul>
 		<ShowMore {shown} total={ordered.length} {pageSize} {labels} onMore={showMore} />
 	{:else}
-		<p class="mt-3">
+		<p role="status">
 			{t('No alerts match these filters.', 'Aucun avis ne correspond à ces filtres.')}
 		</p>
 	{/if}

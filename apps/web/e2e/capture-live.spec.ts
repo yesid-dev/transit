@@ -6,6 +6,7 @@ import {
 	captureVehicle,
 	refreshAlertsCapture,
 } from './capture-fixture';
+import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 
 test('the Transit1 live vehicle reads the capture snapshot in English and French', async ({
 	page,
@@ -136,7 +137,10 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		await expect(page.locator('#alerts-breakdown')).toContainText(
 			locale === 'fr' ? 'Non publié' : 'Not published',
 		);
-		await expect(page.locator('#alerts-log').getByRole('combobox')).toHaveCount(1);
+		const controls = await openFrameControls(page, locale);
+		const filter = controls.getByRole('group', { name: fr ? 'Filtrer' : 'Filter', exact: true });
+		await expect(filter.getByRole('combobox')).toHaveCount(2);
+		await closeCompactFrameControls(page, locale);
 		await expect(page.locator('#alerts-log').getByText(/(?:Until|Jusqu’au) /)).toBeVisible();
 		const about = page.getByRole('article', {
 			name: fr ? 'À propos des chiffres en direct' : 'About live figures',
@@ -158,6 +162,7 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		hasCapture = false;
 		await refreshAlertsCapture(page);
 		await expect(about).toContainText(fr ? 'Avis : indisponibles.' : 'Alerts: unavailable.');
+		await expect(filter).toHaveCount(0);
 		await page.goto(`${href}?provider=octranspo&frameMode=live`);
 		await expect(
 			page.getByRole('status').filter({ hasText: locale === 'fr' ? 'Non suivi' : 'Not tracked' }),
@@ -191,15 +196,32 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(page.locator('#alerts-breakdown')).toContainText(
 		'Effects are the agency’s own categories, kept as published.',
 	);
-	await list.getByRole('combobox', { name: 'Effect' }).selectOption('DETOUR');
-	await list.getByRole('combobox', { name: 'Line' }).selectOption('24');
-	await list.getByRole('button', { name: 'Filter alerts' }).click();
+	const byLine = page.getByRole('article', { name: 'By line', exact: true });
+	const byLineToggle = byLine.getByRole('button', { name: 'By line', exact: true });
+	await expect(byLineToggle).toHaveAttribute('aria-expanded', 'false');
+	await byLineToggle.click();
+	await expect(byLine.getByRole('table')).toBeVisible();
+	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 alerts');
+	await byLineToggle.click();
+	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
+	const controls = await openFrameControls(page);
+	const filter = controls.getByRole('group', { name: 'Filter', exact: true });
+	const line = filter.getByRole('combobox', { name: 'Line' });
+	await line.fill('Sherbrooke');
+	await line.press('ArrowDown');
+	await page.getByRole('option', { name: /^24.*Sherbrooke/ }).click();
+	const effect = filter.getByRole('combobox', { name: 'Effect' });
+	await effect.fill('Detour');
+	await effect.press('ArrowDown');
+	await page.getByRole('option', { name: 'Detour', exact: true }).click();
+	await closeCompactFrameControls(page);
 	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
 	await expect(page).toHaveURL(/route=24.*effect=DETOUR/);
 	await page.reload();
 	await refreshAlertsCapture(page);
 	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
-	await expect(list.getByRole('combobox', { name: 'Effect' })).toHaveValue('DETOUR');
+	await openFrameControls(page);
+	await expect(effect).toHaveValue('Detour');
 });
 
 test('data health distinguishes an aged capture from an unavailable response', async ({ page }) => {

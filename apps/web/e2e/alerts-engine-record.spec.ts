@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { stmAlertId } from './alert-fixture.mjs';
 import { captureUrl, refreshAlertsCapture } from './capture-fixture';
+import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 
 test.use({ extraHTTPHeaders: { 'x-transit-fixture-scope': 'alerts' } });
 
@@ -49,11 +50,16 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(answer).toContainText('avis ont été en vigueur');
 	await expect(answer).not.toContainText('12,5');
 	await expect(page.locator('#effect')).toContainText('Non publié');
+	const byLine = page.getByRole('button', { name: 'Par ligne', exact: true });
+	await expect(byLine).toHaveAttribute('aria-expanded', 'false');
+	await byLine.click();
+	await expect(byLine).toHaveAttribute('aria-expanded', 'true');
 	await expect(page.locator('#line').getByRole('status')).toHaveText('6 sur 185');
 	await expect(page.locator('#line').getByRole('link').first()).toContainText('Beaubien');
 	await expect(
 		page.locator('#line').getByRole('link').filter({ hasText: 'Sherbrooke' }),
 	).toBeVisible();
+	await byLine.click();
 	await expect(page.getByText('Aucune capture brute')).toBeVisible();
 	const messages = page.locator('#messages');
 	await expect(messages.getByRole('heading', { name: 'Use stop 51234.' })).toHaveAttribute(
@@ -96,11 +102,34 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(
 		page.getByRole('heading', { name: 'Travaux sur la chaussée de la rue Beaubien.' }),
 	).toHaveAttribute('lang', 'fr');
-	await expect(page.getByRole('combobox', { name: 'Effect' })).toHaveCount(0);
-	await page.getByRole('combobox', { name: 'Line' }).selectOption('24');
-	await page.getByRole('button', { name: 'Filter alerts' }).click();
+	const controls = await openFrameControls(page);
+	const filter = controls.getByRole('group', { name: 'Filter', exact: true });
+	await expect(filter.getByRole('combobox', { name: 'Effect' })).toHaveCount(0);
+	await expect(filter.getByRole('radiogroup', { name: 'Effect' })).toHaveCount(0);
+	const line = filter.getByRole('combobox', { name: 'Line' });
+	await line.fill('Sherbrooke');
+	await line.press('ArrowDown');
+	await expect(page.getByRole('option', { name: /^24.*Sherbrooke/ })).toBeVisible();
+	await line.press('Enter');
 	await expect(page).toHaveURL(/route=24/);
-	await expect(page.getByRole('combobox', { name: 'Line' })).toHaveValue('24');
+	await expect(line).toHaveValue(/24.*Sherbrooke/);
+	const stop = filter.getByRole('combobox', { name: 'Stop' });
+	await stop.fill('51234');
+	await stop.press('ArrowDown');
+	await page.getByRole('option', { name: 'Stop 51234' }).click();
+	await expect(page).toHaveURL(/route=24.*stop=51234/);
+	await expect(filter.getByText(/^\d+ alerts?$/)).not.toHaveText('1,707 alerts');
+	await closeCompactFrameControls(page);
+	await expect(messages.getByRole('status')).toHaveText(/Showing [1-9]\d* of [1-9]\d*/);
+	await expect(messages.getByRole('combobox')).toHaveCount(0);
+
+	await page.reload();
+	await openFrameControls(page);
+	await expect(stop).toHaveValue('Stop 51234');
+	await expect(line).toHaveValue(/24.*Sherbrooke/);
+	await filter.getByRole('button', { name: 'Clear', exact: true }).click();
+	await expect(page).not.toHaveURL(/(?:route|stop)=/);
+	await expect(filter.getByText('1,707 alerts', { exact: true })).toBeVisible();
 });
 
 test('Alerts Record shows the engine message limit and OC Transpo has no alert total', async ({
