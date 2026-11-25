@@ -298,7 +298,13 @@ async function answerQuestion(request, env, ctx, visitorIp) {
         });
       }
       if (question.map) return lastGood(env, key);
-      return publicEngineError(await response.json());
+      const error = await response.json();
+      if (question.delayDistribution && error?.message === "unknown measure") {
+        return Response.json({ reason: "delay_distribution_unsupported", message: "engine unavailable" }, {
+          status: 409, headers: PUBLIC_HEADERS,
+        });
+      }
+      return publicEngineError(error);
     }
     if (!response.ok) return lastGood(env, key);
 

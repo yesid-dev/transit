@@ -5,6 +5,7 @@
 		StopLadder,
 		type StopLadderStop,
 		ChartAxis,
+		ChartBarSeries,
 		ChartFrame,
 		ChartLegend,
 		ChartLineSeries,
@@ -12,15 +13,17 @@
 	import { StatusMark } from '@yesid/ui/brand';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import { type Locale } from '#lib/i18n/index.ts';
-	import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
+	import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
+	import { countedUnit } from '#lib/site/presenter.ts';
 	import { choose, tally } from '../recordText.ts';
 	import StateMark from '../StateMark.svelte';
 	import {
 		bandChart,
 		chartState,
+		histogramChart,
 		hourChart,
-		trendChart,
 		stopLadderChart,
+		trendChart,
 		type ChartTable,
 	} from './recordCharts.ts';
 
@@ -33,6 +36,7 @@
 				stop: (id: string) => Pick<StopLadderStop, 'name' | 'code' | 'href' | 'timingPoint'>;
 				observed?: boolean;
 		  }
+		| { kind: 'histogram'; answer: DelayDistribution }
 		| { kind: 'trend'; answer: RecordSeries; network?: RecordSeries };
 
 	let {
@@ -58,7 +62,9 @@
 							kind: input.kind,
 							...stopLadderChart(input.answer, title, locale, input.stop, input.observed),
 						}
-					: { kind: input.kind, ...trendChart(input.answer, title, locale, input.network) },
+					: input.kind === 'histogram'
+						? { kind: input.kind, ...histogramChart(input.answer, title, locale) }
+						: { kind: input.kind, ...trendChart(input.answer, title, locale, input.network) },
 	);
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	type Row = ChartTable['rows'][number];
@@ -128,6 +134,55 @@
 			<HourGrid {...reading.props} />
 		{:else}
 			<StateMark state={chartState(input.answer.state)} {locale} />
+		{/if}
+	{:else if reading.kind === 'histogram'}
+		{#if reading.props.points.length}
+			<div class="flex flex-wrap justify-between gap-x-2 gap-y-1 text-small">
+				{#each reading.props.bands as band (band.status)}
+					<StatusMark status={band.status} label={band.label} />
+				{/each}
+			</div>
+			<ChartFrame
+				class="sm:min-h-96"
+				label={reading.props.label}
+				xDomain={reading.props.xDomain}
+				yDomain={reading.props.yDomain}
+			>
+				{#snippet children(plot)}
+					<ChartAxis
+						{plot}
+						axis="y"
+						ticks={plot.left < 2.5 * plot.unit
+							? reading.props.yTicks.map((tick) =>
+									tick.value === 0 ? tick : { ...tick, label: tick.label.replace(/\s*%$/u, '') },
+								)
+							: reading.props.yTicks}
+					/>
+					<ChartAxis {plot} axis="x" ticks={reading.props.ticks} />
+					<ChartBarSeries {plot} points={reading.props.points} bandWidth={1} />
+					{#each reading.props.boundaries as x (x)}
+						<ChartLineSeries
+							{plot}
+							points={reading.props.yDomain.map((y) => ({ x, y }))}
+							reference
+						/>
+					{/each}
+				{/snippet}
+				{#snippet legend()}
+					<p class="text-right text-small text-muted-foreground">{reading.props.axis}</p>
+				{/snippet}
+			</ChartFrame>
+		{:else}
+			<StateMark state={chartState(input.answer.state)} {locale} />
+			{#if input.kind === 'histogram' && input.answer.state === 'too_few_to_judge'}
+				{@const observed = input.answer.evidence.counts.classified}
+				{@const minimum = input.answer.info?.[0]?.minimum_sample}
+				{#if observed != null && minimum != null}
+					<p class="text-small text-muted-foreground">
+						{countedUnit(observed, 'event', locale)} · minimum {tally(minimum, locale)}
+					</p>
+				{/if}
+			{/if}
 		{/if}
 	{:else if reading.props.points.some(({ y }) => y !== null) || reading.props.reference.some(({ y }) => y !== null)}
 		<ChartFrame

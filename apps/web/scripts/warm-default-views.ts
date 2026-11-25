@@ -47,7 +47,8 @@ export async function warmQuestions(
 				const { reason } = await response.json();
 				if (
 					reason === 'segment_runs_version_required' ||
-					reason === 'network_corridors_unsupported'
+					reason === 'network_corridors_unsupported' ||
+					reason === 'delay_distribution_unsupported'
 				)
 					outcome = 'deferred';
 			} else {

@@ -40,6 +40,7 @@ export function defaultCityQuestions(
 	const [trend, trendPeriod] = overview.trend;
 	const questions = [
 		measureQuestion(...overview.punctuality),
+		periodQuestion(scope, '/measure', { measure: 'delay_distribution' }),
 		measureQuestion(...overview.baseline),
 		measureQuestion(...overview.delivery),
 		periodQuestion(trendPeriod, trend.path, trend.parameters),

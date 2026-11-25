@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { measure, period, ranking, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import {
+	getDelayDistribution,
 	getMeasure,
 	getRanking,
 	getRecordAnswer,
@@ -27,6 +28,43 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+});
+
+it('reads the distribution as a series and treats deploy skew as unavailable', async () => {
+	const timing = measure();
+	const answer = {
+		measure: 'delay_distribution',
+		group: 'delay_minute',
+		state: timing.state,
+		state_text: timing.state_text,
+		coverage_note: timing.coverage_note,
+		evidence: timing.evidence,
+		cells: [
+			{
+				key: { min_seconds: null, max_seconds: -301, band: 'early' },
+				value: { delay_distribution: 0.1, stop_events: 50 },
+				state: timing.state,
+				state_text: timing.state_text,
+				evidence: { counts: { stop_events: 50 }, days_included: timing.evidence.days_included },
+			},
+		],
+	};
+	fetcher.mockResolvedValueOnce(Response.json(answer));
+	expect(await getDelayDistribution(dates, { stop: 'S1' })).toMatchObject({
+		kind: 'answer',
+		answer,
+	});
+	const url = new URL(fetcher.mock.calls[0]![0].url);
+	expect(url.searchParams.get('measure')).toBe('delay_distribution');
+	expect(url.searchParams.get('stop')).toBe('S1');
+	expect(url.searchParams.has('group')).toBe(false);
+	fetcher.mockResolvedValueOnce(
+		Response.json(
+			{ reason: 'delay_distribution_unsupported', message: 'engine unavailable' },
+			{ status: 409 },
+		),
+	);
+	expect(await getDelayDistribution(dates)).toEqual({ kind: 'unreachable' });
 });
 
 describe('overview engine requests', () => {

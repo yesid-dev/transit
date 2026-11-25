@@ -288,6 +288,10 @@ _VEHICLES_ID = "vehicles"
 _CORRIDORS_ID = "corridors"
 CORRIDOR_RANKING_DEFAULT = "median_time_lost"
 _ACCESSIBILITY_ID = "accessibility"
+_DELAY_DISTRIBUTION_ID = "delay_distribution"
+_DELAY_MINUTE_SECONDS = 60
+_DELAY_TAIL_START = -5 * _DELAY_MINUTE_SECONDS
+_DELAY_TAIL_END = 15 * _DELAY_MINUTE_SECONDS
 VEHICLE_RANKING_DEFAULT = "vehicle_reporting_gaps_per_100_hours"
 _BOUNDARIES = ("first_trip", "last_trip")
 
@@ -326,6 +330,8 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
+        if self.measure == _DELAY_DISTRIBUTION_ID and (ranking or self.group is not None):
+            raise ValueError("delay_distribution requires an ungrouped measure")
         if self.map_view and not (
             (self.measure == "late" and self.group == "stop_id" and not self.cuts())
             or (
@@ -680,9 +686,18 @@ def _csv_columns(family: Family) -> dict[str, Text]:
 
 def methods() -> list[dict[str, Any]]:
     return [
-        {**_info(family, measure), "family_text": {"en": family.label.en, "fr": family.label.fr}}
+        {
+            **_info(
+                family,
+                measure,
+                _DELAY_DISTRIBUTION_COLUMNS if measure is _DELAY_DISTRIBUTION else None,
+            ),
+            "family_text": {"en": family.label.en, "fr": family.label.fr},
+        }
         for family in _FAMILIES
-        for measure in family.measures
+        for measure in (
+            (*family.measures, _DELAY_DISTRIBUTION) if family is _PUNCTUALITY else family.measures
+        )
     ]
 
 
@@ -831,7 +846,8 @@ def _punctuality_query(
     elif group:
         routes = "list(DISTINCT route_id) FILTER (NOT added AND route_id IS NOT NULL)"
     edge = f"floor(delay_seconds::DOUBLE / {DELAY_BIN_SECONDS})::BIGINT * {DELAY_BIN_SECONDS}"
-    with_histogram = (for_vehicles and question.group is None) or any(
+    distribution = question.measure == _DELAY_DISTRIBUTION_ID
+    with_histogram = distribution or (for_vehicles and question.group is None) or any(
         measure.percentile is not None for measure in _SELECTIONS[question.measure][1]
     )
     if not with_histogram:
@@ -1022,6 +1038,18 @@ def _punctuality_query(
             if with_histogram
             else edge
         )
+        if distribution:
+            # Whole-minute bins share the punctuality cut: exactly +300 s
+            # closes the last on-time bin, and +301 s opens the first late bin.
+            delay_bucket = (
+                f"WHEN delay_seconds < {_DELAY_TAIL_START} "
+                f"THEN {_DELAY_TAIL_START - _DELAY_MINUTE_SECONDS} "
+                f"WHEN delay_seconds >= {_DELAY_TAIL_END} THEN {_DELAY_TAIL_END} "
+                f"WHEN delay_seconds = {LATE_LIMIT_SECONDS} "
+                f"THEN {LATE_LIMIT_SECONDS - _DELAY_MINUTE_SECONDS} "
+                f"ELSE floor(delay_seconds::DOUBLE / {_DELAY_MINUTE_SECONDS})::BIGINT "
+                f"* {_DELAY_MINUTE_SECONDS}"
+            )
         select_entity = f"{entity} AS entity, " if question.group else ""
         bin_group = final_group = "entity, " if question.group else ""
         result_entity = "entity" if question.group else entity
@@ -3581,6 +3609,25 @@ _FAMILIES = (
     _SCORECARD,
     _ACCESSIBILITY,
 )
+_DELAY_DISTRIBUTION = Measure(
+    id=_DELAY_DISTRIBUTION_ID,
+    unit="share",
+    definition=Text(
+        "Share of observed stop events in each minute range against the timetable. "
+        "The outer ranges count more than 5 minutes early and 15 minutes late or more. "
+        "Exactly 1 minute early and exactly 5 minutes late both count as on time.",
+        "Part des passages observés aux arrêts par tranche d’une minute par rapport à l’horaire. "
+        "Les tranches aux extrémités comptent plus de 5 minutes d’avance et 15 minutes "
+        "de retard ou plus. Un passage avec exactement 1 minute d’avance ou 5 minutes "
+        "de retard est à l’heure.",
+    ),
+    ranking_kinds=(),
+)
+_DELAY_DISTRIBUTION_COLUMNS = {
+    "min_seconds": Text("Minimum delay (s)", "Écart minimal (s)"),
+    "max_seconds": Text("Maximum delay (s)", "Écart maximal (s)"),
+    "stop_events": Text("Stop events", "Passages aux arrêts"),
+}
 _SELECTIONS = {
     key: (family, selected)
     for family in _FAMILIES
@@ -3589,6 +3636,7 @@ _SELECTIONS = {
         *((measure.id, (measure,)) for measure in family.measures),
     )
 }
+_SELECTIONS[_DELAY_DISTRIBUTION_ID] = (_PUNCTUALITY, (_DELAY_DISTRIBUTION,))
 
 
 def _coverage_evidence(family: Family, sample: int, total: int) -> dict[str, Any]:
@@ -4587,8 +4635,9 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
             window.record_vehicle_tracking(family, offset, result)
             if () in result:
                 totals.update(result[()])
+    distribution = question.measure == _DELAY_DISTRIBUTION_ID
     state, values, family_evidence, _ = evaluate(
-        family, selected, totals, window, hour=question.hour
+        family, () if distribution else selected, totals, window, hour=question.hour
     )
     if family.id == _SERVICE_DELIVERED_ID and _single_day_departure(question):
         family_evidence["trip_ids"] = sorted(totals.trip_ids)
@@ -4609,16 +4658,65 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
         family_evidence["alert_messages"] = messages
     return {
         "measure": question.measure,
-        "value": values,
+        **(
+            {
+                "group": "delay_minute",
+                "cells": _delay_distribution_cells(totals, state, window.included),
+            }
+            if distribution
+            else {"value": values}
+        ),
         "state": state,
         "state_text": _STATES[state]._asdict(),
         "coverage_note": window.coverage_note,
         "evidence": {**window.evidence(store, question, family, started), **family_evidence},
         "info": [
-            _info(family, measure, _ALERT_MESSAGE_COLUMN if question.alert_details else None)
+            _info(
+                family,
+                measure,
+                _DELAY_DISTRIBUTION_COLUMNS if distribution
+                else _ALERT_MESSAGE_COLUMN if question.alert_details else None,
+            )
             for measure in selected
         ],
     }
+
+
+def _delay_distribution_cells(
+    totals: Batch, state: str, included: list[str]
+) -> list[dict[str, Any]]:
+    if state != "measured":
+        return []
+    cells = []
+    for edge in range(
+        _DELAY_TAIL_START - _DELAY_MINUTE_SECONDS,
+        _DELAY_TAIL_END + _DELAY_MINUTE_SECONDS,
+        _DELAY_MINUTE_SECONDS,
+    ):
+        count = totals.histogram[edge]
+        next_edge = edge + _DELAY_MINUTE_SECONDS
+        lower = edge + 1 if edge == LATE_LIMIT_SECONDS else edge
+        upper = next_edge if next_edge == LATE_LIMIT_SECONDS else next_edge - 1
+        cells.append({
+            "key": {
+                "min_seconds": None if edge < _DELAY_TAIL_START else lower,
+                "max_seconds": None if edge == _DELAY_TAIL_END else upper,
+                "band": (
+                    "early" if edge < EARLY_LIMIT_SECONDS else
+                    "on_time" if edge < LATE_LIMIT_SECONDS else "late"
+                ),
+            },
+            "value": {
+                _DELAY_DISTRIBUTION_ID: count / totals.counts["classified"],
+                "stop_events": count,
+            },
+            "state": state,
+            "state_text": _STATES[state]._asdict(),
+            "evidence": {
+                "counts": {"stop_events": count}, "excluded": {}, "days_included": included,
+            },
+        })
+    return cells
 
 
 def _date_key(group: SeriesGroup, day: str, hour_key: EntityKey = ()) -> EntityKey:
@@ -5130,7 +5228,9 @@ def answer_csv(answer: dict[str, Any], language: Language) -> str:
     family, _ = _SELECTIONS[answer["measure"]]
     columns = _csv_columns(family)
     group = answer.get("group")
-    if group:
+    if answer["measure"] == _DELAY_DISTRIBUTION_ID:
+        columns.update(_DELAY_DISTRIBUTION_COLUMNS)
+    elif group:
         columns = {**{key: _GROUP_LABELS[key] for key in GROUP_COLUMNS[group]}, **columns}
     cut = answer["evidence"]
     if "alert_messages" in cut:

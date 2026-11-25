@@ -8,11 +8,17 @@ import type {
 	StopLadderProps,
 	StopLadderStop,
 } from '@yesid/ui/chart';
+import { scaleLinear } from 'd3-scale';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
-import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
-import { countedUnit, delayReading, sampleWithMinimum } from '#lib/site/presenter.ts';
-import { dateRange } from '#lib/site/presenter.ts';
+import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
+import {
+	countedUnit,
+	dateRange,
+	delayRange,
+	delayReading,
+	sampleWithMinimum,
+} from '#lib/site/presenter.ts';
 import { choose, measuredShare, percent, tally } from '../recordText.ts';
 import { recordState, type RecordState } from '../recordStates.ts';
 
@@ -91,6 +97,66 @@ export function bandChart(
 }
 
 const hourLevels = [0.1, 0.15, 0.2, 0.25] as const;
+
+export function histogramChart(
+	answer: {
+		state: DelayDistribution['state'];
+		cells: Pick<DelayDistribution['cells'][number], 'key' | 'value'>[];
+	},
+	title: string,
+	locale: Locale,
+) {
+	const bins = answer.state === 'measured' ? answer.cells : [];
+	const points = bins.map(({ key: { min_seconds, max_seconds }, value }) => ({
+		x: min_seconds === null ? (max_seconds! + 1) / 60 - 0.5 : Math.floor(min_seconds / 60) + 0.5,
+		y: value.delay_distribution,
+	}));
+	const xDomain = [(points[0]?.x ?? 0) - 0.5, (points.at(-1)?.x ?? 0) + 0.5] as const;
+	const y = scaleLinear()
+		.domain([0, Math.max(0.01, ...points.map(({ y }) => y))])
+		.nice(4);
+	const yDomain = [0, y.domain()[1]] as const;
+	const axis = choose(locale, 'Minutes against the timetable', 'Minutes par rapport à l’horaire');
+	const { band } = transitTerms[locale];
+	const table: ChartTable = {
+		columns: {
+			label: choose(locale, 'Minute range', 'Tranche de minutes'),
+			value: choose(locale, 'Stop events', 'Passages aux arrêts'),
+			detail: choose(locale, 'Share', 'Part'),
+		},
+		rows: bins.map(({ key, value }) => ({
+			id: String(key.min_seconds),
+			label: delayRange(key.min_seconds, key.max_seconds, locale),
+			value: tally(value.stop_events, locale),
+			detail: percent(value.delay_distribution, locale),
+		})),
+	};
+	return {
+		props: {
+			label: `${title}. ${choose(
+				locale,
+				'Share of observed stop events by minutes against the timetable.',
+				'Part des passages observés aux arrêts selon l’écart à l’horaire en minutes.',
+			)}`,
+			axis,
+			xDomain,
+			yDomain,
+			points,
+			ticks: [-1, 0, 5, 10].map((value) => ({
+				value,
+				label: value > 0 ? `+${value}` : String(value),
+			})),
+			yTicks: y.ticks(4).map((value) => ({ value, label: percent(value, locale) })),
+			boundaries: [-1, 5],
+			bands: [
+				{ status: 'early', label: band.early },
+				{ status: 'on_time', label: band.onTime },
+				{ status: 'late', label: band.late },
+			] as const,
+		},
+		table,
+	};
+}
 
 export function minimumSample(series: RecordSeries, measure: string) {
 	return (

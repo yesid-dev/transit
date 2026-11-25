@@ -109,6 +109,11 @@ export function parseQuestion(url) {
   if (params.has("class") && params.get("kind") !== "line") {
     throw new Error("class applies to line rankings");
   }
+  const delayDistribution = params.get("measure") === "delay_distribution";
+  if (delayDistribution && (route !== "measure" ||
+      ["group", "view", "vehicle", "effect", "cause", "from_stop", "to_stop"].some((name) => params.has(name)))) {
+    throw new Error("delay_distribution requires an ungrouped punctuality measure");
+  }
 
   for (const name of ["hour", "limit"]) {
     if (params.has(name)) params.set(name, String(Number(params.get(name))));
@@ -148,5 +153,5 @@ export function parseQuestion(url) {
     throw new Error("query string is too long");
   }
   const networkCorridors = map && params.get("group") === "segment" && !params.has("line");
-  return { city, route, end, csv, key, upstream, scope, map, networkCorridors };
+  return { city, route, end, csv, key, upstream, scope, map, networkCorridors, delayDistribution };
 }
