@@ -5,6 +5,7 @@ export function mapControlsPill(page: Page) {
 }
 
 export async function openMapControls(page: Page) {
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const pill = mapControlsPill(page);
 	if (await pill.isVisible()) {
 		if ((await pill.getAttribute('aria-expanded')) !== 'true') await pill.click();

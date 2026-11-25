@@ -15,6 +15,10 @@ for (const locale of ['en', 'fr'] as const) {
 	}) => {
 		const received = await recordMapFixture(page);
 		await page.goto(`${prefix}/map?${recordMapPeriod}`);
+		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+			'data-map-progressive-state',
+			'ready',
+		);
 		await openMapControls(page);
 		const layers = page.getByRole('radiogroup', { name: fr ? 'Couche' : 'Layer' });
 		const views = page.getByRole('radiogroup', { name: fr ? 'Vue' : 'View' });

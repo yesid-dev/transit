@@ -253,22 +253,19 @@ test('mobile detail sheet keeps its header controls above the home indicator at 
 		await expect(sheet).toHaveAttribute('data-detent', 'peek', { timeout: 1000 });
 	}).toPass();
 
-	const clearance = () =>
-		page.evaluate((inset) => {
-			const limit = innerHeight - inset;
-			const controls = [
-				...document.querySelectorAll<HTMLElement>(
-					'[data-slot="bottom-sheet"] [data-sheet-handle], [data-slot="bottom-sheet"] button[data-slot^="bottom-sheet-"]',
-				),
-			].filter((el) => el.checkVisibility());
-			return {
-				limit,
-				controls: controls.map((el) => ({
-					name: el.getAttribute('aria-label') ?? el.dataset.slot ?? el.tagName,
-					bottom: el.getBoundingClientRect().bottom,
-				})),
-			};
-		}, HOME_INDICATOR_PX);
+	const clearance = async () => {
+		const limit = await page.evaluate((inset) => innerHeight - inset, HOME_INDICATOR_PX);
+		const controls = await Promise.all([
+			sheet.locator('[data-sheet-handle]').boundingBox(),
+			sheet.getByRole('button', { name: 'Close', exact: true }).boundingBox(),
+		]);
+		return {
+			limit,
+			controls: controls.flatMap((box, index) =>
+				box ? [{ name: index === 0 ? 'Height' : 'Close', bottom: box.y + box.height }] : [],
+			),
+		};
+	};
 
 	const single = await clearance();
 	// Force a two-line identity, the tallest header the sheet budgets for at peek.
