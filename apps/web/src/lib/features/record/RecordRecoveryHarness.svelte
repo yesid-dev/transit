@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
+	import RecordPending from './RecordPending.svelte';
 	import { recoverRecord } from './recordRecovery.svelte.ts';
 
 	let {
@@ -21,6 +22,7 @@
 		<p>{section} pending</p>
 	{:then result}
 		{#if result.kind === 'answer'}<button type="button">{section}</button>
+		{:else if result.kind === 'busy'}<RecordPending locale="en" busy />
 		{:else}<p>{section} {result.kind}</p>{/if}
 	{/await}
 {/each}

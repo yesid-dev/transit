@@ -1,6 +1,7 @@
 import { SvelteURLSearchParams } from 'svelte/reactivity';
 import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
+import { getRecordRecovered } from './recordPatience.ts';
 
 const RECOVERY_DELAY_MS = 60_000;
 const extraReadings = ['days', 'network', 'networkDaily'] as const;
@@ -22,6 +23,7 @@ export function recoverRecord<T extends RecordReadings>(
 	getRecord: () => T | null | undefined,
 	getQuery: (record: T) => RecoveryQuery | null,
 ) {
+	const recordRecovered = getRecordRecovered();
 	let recovered = $state.raw<{ initial: T; answers: Record<string, Answer | undefined> } | null>(
 		null,
 	);
@@ -73,7 +75,10 @@ export function recoverRecord<T extends RecordReadings>(
 									return result?.kind === 'answer' ? [[section, Promise.resolve(result)]] : [];
 								}),
 							);
-							if (Object.keys(answers).length) recovered = { initial, answers };
+							if (Object.keys(answers).length) {
+								recordRecovered?.();
+								recovered = { initial, answers };
+							}
 						})
 						.catch(() => {});
 				},

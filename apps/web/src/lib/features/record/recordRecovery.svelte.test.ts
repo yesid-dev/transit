@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
-import RecordRecoveryHarness from './RecordRecoveryHarness.svelte';
+import RecordRecoveryNoticeHarness from './RecordRecoveryNoticeHarness.svelte';
 
 const answer = Promise.resolve({ kind: 'answer' } as EngineResult<RecordAnswer>);
 const busy = Promise.resolve({ kind: 'busy' } as const);
@@ -13,7 +13,7 @@ it('tries once when visible and preserves the answered control and its focus', a
 	vi.stubGlobal('fetch', fetcher);
 	try {
 		const scope = '/vehicle/101';
-		render(RecordRecoveryHarness, {
+		const { container, rerender } = render(RecordRecoveryNoticeHarness, {
 			scope,
 			sections: [
 				{ section: 'Days', answer },
@@ -21,6 +21,9 @@ it('tries once when visible and preserves the answered control and its focus', a
 			],
 		});
 		await vi.advanceTimersByTimeAsync(0);
+		const notice = container.querySelector<HTMLElement>('[data-slot="record-patience"]')!;
+		Object.defineProperty(notice, 'offsetHeight', { value: 170 });
+		expect(screen.getByRole('status')).toHaveTextContent('These records take longer');
 		const days = screen.getByRole('button', { name: 'Days' });
 		days.focus();
 		await vi.advanceTimersByTimeAsync(60_000);
@@ -37,6 +40,15 @@ it('tries once when visible and preserves the answered control and its focus', a
 		expect(screen.getByRole('button', { name: 'Days' })).toBe(days);
 		expect(days).toHaveFocus();
 		expect(screen.getByRole('button', { name: 'Lines' })).toBeInTheDocument();
+		expect(screen.getByRole('status')).toHaveTextContent('Answered');
+		expect(notice.style.minBlockSize).toBe('170px');
+		window.dispatchEvent(new WheelEvent('wheel', { deltaY: 150 }));
+		await vi.advanceTimersByTimeAsync(0);
+		expect(notice.style.minBlockSize).toBe('');
+		expect(screen.getByRole('status')).toHaveTextContent('Answered');
+		await rerender({ scope: '/vehicle/102', sections: [{ section: 'Days', answer }] });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(screen.queryByRole('status')).toBeNull();
 	} finally {
 		vi.unstubAllGlobals();
 		visibility.mockRestore();

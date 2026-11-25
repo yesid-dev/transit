@@ -1,3 +1,5 @@
+const recoveryFixtures = new Set(['40068', '40069']);
+
 export function vehicleEngine(url) {
 	const get = (key) => url.searchParams.get(key);
 	const measure = get('measure');
@@ -7,6 +9,8 @@ export function vehicleEngine(url) {
 	const to = get('to');
 	if (vehicle === '40066' && group == null && measure === 'vehicles')
 		return { status: 503, body: {}, headers: { 'retry-after': '15' } };
+	if (measure === 'vehicle_reporting_gaps_per_100_hours' && recoveryFixtures.delete(vehicle))
+		return { status: 503, body: {}, headers: { 'retry-after': '1' } };
 	if (from === '2026-11-21') return { status: 503, body: {} };
 	const fr = get('lang') === 'fr';
 	if (get('format') === 'csv') {
