@@ -37,6 +37,7 @@ export interface MapReportRow {
 	readonly index: number;
 	readonly vehicleId: string;
 	readonly routeId: string | null;
+	readonly directionId?: number | null;
 	readonly tripId: string | null;
 	readonly nextStopId: string | null;
 	readonly status: Vehicle['status'];
@@ -141,6 +142,7 @@ function reportRow(
 		index,
 		vehicleId: vehicle.id,
 		routeId: vehicle.route ?? null,
+		directionId: vehicle.direction_id ?? null,
 		tripId: vehicle.trip ?? null,
 		nextStopId: vehicle.next_stop ?? null,
 		status: vehicle.status,

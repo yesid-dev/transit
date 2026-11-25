@@ -7,6 +7,7 @@ import MapHero from './__fixtures__/MapHeroRailHarness.svelte';
 import MapHeroNavigationHarness from '../../../routes/__fixtures__/MapHeroNavigationHarness.svelte';
 import { mapHeroReceiptSignals } from './__fixtures__/MapHeroReceiptSignals.svelte';
 import type { PublicProvider } from '#lib/v1/providers.ts';
+import type { Chip } from '#lib/filters/index.ts';
 
 const providerContext = vi.hoisted(() => ({ value: undefined as PublicProvider | undefined }));
 
@@ -189,7 +190,7 @@ const harness = vi.hoisted(() => {
 		next_stop: 'stop-1',
 	};
 	let liveVehicleVisible = true;
-	let detailFilter: ((chip: unknown) => void) | null = null;
+	let detailFilter: ((chip: Chip) => void) | null = null;
 	const liveStore = {
 		vehicles: { generated_utc: '2026-06-20T12:00:00Z', vehicles: [vehicle] },
 		trips: null,
@@ -475,7 +476,7 @@ const harness = vi.hoisted(() => {
 		get detailFilter() {
 			return detailFilter;
 		},
-		captureDetailFilter(next: ((chip: unknown) => void) | null) {
+		captureDetailFilter(next: ((chip: Chip) => void) | null) {
 			detailFilter = next;
 		},
 		get liveVehicleVisible() {
@@ -656,16 +657,15 @@ vi.mock('#lib/v1/resource.svelte.ts', async () => {
 	return { createResource: createMapHeroResourceStub };
 });
 
-vi.mock('./MapSelectionDetail.svelte', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('./MapSelectionDetail.svelte')>();
+vi.mock('./mapSelectionSession.svelte', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('./mapSelectionSession.svelte')>();
 	return {
-		default: new Proxy(actual.default, {
-			apply(target, thisArg, args) {
-				const props = args[1] as { onfilter?: (chip: unknown) => void } | undefined;
-				harness.captureDetailFilter(props?.onfilter ?? null);
-				return Reflect.apply(target, thisArg, args);
-			},
-		}),
+		...actual,
+		createMapSelectionSession(...args: Parameters<typeof actual.createMapSelectionSession>) {
+			const session = actual.createMapSelectionSession(...args);
+			harness.captureDetailFilter(session.applyFilter);
+			return session;
+		},
 	};
 });
 
@@ -810,7 +810,7 @@ describe('MapHero stage lifecycle', () => {
 		{ notice: 'stale', desktop: true },
 		{ notice: 'refresh-unavailable', desktop: true },
 	] as const)(
-		'neutralizes the empty selected alerts notice for $notice health, desktop=$desktop',
+		'links to the line despite alert health $notice health, desktop=$desktop',
 		async ({ notice, desktop }) => {
 			harness.isDesktop = desktop;
 			const previousAlerts = harness.liveStore.alerts.alerts;
@@ -822,8 +822,11 @@ describe('MapHero stage lifecycle', () => {
 			try {
 				render(MapHero);
 				await fireEvent.click(await screen.findByTestId('map-stage-stub-pick-vehicle'));
-				const label = await screen.findByText('No alerts attached');
-				expect(label.closest('[data-slot="state-notice"]')).toHaveAttribute('data-tone', 'neutral');
+				expect(await screen.findByRole('link', { name: 'Line 24 now' })).toHaveAttribute(
+					'href',
+					/\/lines\/24.*frameMode=live/,
+				);
+				expect(screen.queryByText('No alerts attached')).not.toBeInTheDocument();
 			} finally {
 				harness.liveStore.alerts.alerts = previousAlerts;
 				harness.liveStore.familyStates.alerts.health = previousHealth;
@@ -854,7 +857,7 @@ describe('MapHero stage lifecycle', () => {
 				),
 			);
 			await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-			expect(await screen.findByText('Alert data unavailable')).toBeVisible();
+			expect(await screen.findByRole('link', { name: 'Vehicle bus-1' })).toBeVisible();
 			expect(screen.queryByText('No alerts attached')).not.toBeInTheDocument();
 			expect(harness.createLiveStore).toHaveBeenCalledWith(expect.anything(), expect.anything(), {
 				families: ['vehicles'],
@@ -1199,7 +1202,7 @@ describe('MapHero detail-panel camera isolation (protect #11)', () => {
 		const baselineFocus = focusCalls();
 		const baselineFit = fitCalls();
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await tick();
 
 		expect(screen.getByRole('heading', { name: 'Vehicles in view' })).toBeVisible();
@@ -1262,7 +1265,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 		harness.isDesktop = isDesktop;
 		render(MapHeroNavigationHarness);
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-		const closeLabel = 'Back to the map list';
+		const closeLabel = 'Clear selection';
 		const close = await screen.findByRole('button', { name: closeLabel });
 		const selectionIdentity = (await screen.findAllByRole('heading', { level: 2 })).find(
 			(heading) => heading.textContent === 'Vehicle bus-1',
@@ -1734,7 +1737,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 					await harness.commitNavigation('http://localhost/map');
 				}
 				await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-				await screen.findByRole('button', { name: 'Back to the map list' });
+				await screen.findByRole('button', { name: 'Clear selection' });
 				expect(mapHeroReceiptSignals.mapStageListenerCounts).toEqual(activeListeners);
 				expect(mapHeroReceiptSignals.mapStageSourceCounts).toEqual(activeSources);
 				expect(mapHeroReceiptSignals.mapStageFeatureStateCount).toBe(0);
@@ -1774,7 +1777,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 					await harness.commitNavigation('http://localhost/map');
 				}
 				await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-				await screen.findByRole('button', { name: 'Back to the map list' });
+				await screen.findByRole('button', { name: 'Clear selection' });
 				await fireEvent.click(screen.getByTestId('map-stage-stub-hover-stop'));
 				await tick();
 				expect(harness.activeLeaseCount()).toBe(1);
@@ -1833,7 +1836,7 @@ describe('MapHero reports in this view', () => {
 		expect([...(filter?.vehicles ?? [])]).toEqual([]);
 		expect([...(filter?.routes ?? [])]).toEqual([]);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		const select = await screen.findByRole('link', { name: 'bus-1' });
 		await waitFor(() => expect(select).toHaveFocus());
 	});
@@ -1893,7 +1896,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
 		await waitFor(() => expect(harness.getRoute).toHaveBeenCalled());
 		await settled();
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await settled();
 		const selectionRequests = harness.getRoute.mock.calls.length;
 
@@ -2060,7 +2063,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		).toBe(1);
 
 		const beforeClose = bulkCounts();
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await waitFor(() =>
 			expect(bulkCounts()).toEqual({
 				routes: beforeClose.routes,
@@ -2085,7 +2088,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		harness.getRoute.mockImplementation(() => new Promise<null>(() => {}) as never);
 		render(MapHero);
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-		await screen.findByRole('button', { name: 'Back to the map list' });
+		await screen.findByRole('button', { name: 'Clear selection' });
 		// The pick itself writes no URL; only the explicit detail action does.
 		expect(harness.goto).not.toHaveBeenCalled();
 		const detailFilter = await waitFor(() => {
@@ -2101,7 +2104,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		const navigationCount = harness.goto.mock.calls.length;
 		expect(navigationCount).toBe(1);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await tick();
 		// Closing a user-authored filter neither removes nor rewrites it.
 		expect(harness.goto).toHaveBeenCalledTimes(navigationCount);
@@ -2126,7 +2129,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		expect(harness.goto).not.toHaveBeenCalled();
 
 		const beforeClose = bulkCounts();
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await waitFor(() =>
 			expect(bulkCounts()).toEqual({
 				routes: beforeClose.routes,
@@ -2168,7 +2171,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		await tick();
 
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-		await screen.findByRole('button', { name: 'Back to the map list' });
+		await screen.findByRole('button', { name: 'Clear selection' });
 		// Selection opens detail only: no vehicle or route is written, so no URL navigation happens.
 		expect(harness.goto).not.toHaveBeenCalled();
 
@@ -2176,7 +2179,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		expect([...(beforeCloseFeed?.vehicles ?? [])]).toEqual([]);
 		expect([...(beforeCloseFeed?.routes ?? [])]).toEqual(['24']);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await tick();
 		expect(harness.goto).not.toHaveBeenCalled();
 		const afterCloseFeed = harness.toVehicleFeatures.mock.lastCall?.[1];
@@ -2209,49 +2212,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		);
 
 		mapHeroReceiptSignals.clearFeatureStateEvents();
-		await fireEvent.click(
-			screen.getByRole('button', {
-				name: 'Select alert Board at the temporary stop & follow signs.',
-			}),
-		);
-		await waitFor(() => {
-			expect(mapHeroReceiptSignals.featureStateEvents).toEqual(
-				expect.arrayContaining([
-					{
-						operation: 'remove',
-						target: { source: 'stops', id: 'stop-1' },
-						property: 'selected',
-					},
-					{
-						operation: 'set',
-						target: { source: 'stops', id: 'stop-2' },
-						state: { selected: true },
-					},
-				]),
-			);
-		});
-
-		mapHeroReceiptSignals.clearFeatureStateEvents();
-		await fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-		await waitFor(() => {
-			expect(mapHeroReceiptSignals.featureStateEvents).toEqual(
-				expect.arrayContaining([
-					{
-						operation: 'remove',
-						target: { source: 'stops', id: 'stop-2' },
-						property: 'selected',
-					},
-					{
-						operation: 'set',
-						target: { source: 'stops', id: 'stop-1' },
-						state: { selected: true },
-					},
-				]),
-			);
-		});
-
-		mapHeroReceiptSignals.clearFeatureStateEvents();
-		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await waitFor(() =>
 			expect(mapHeroReceiptSignals.featureStateEvents).toContainEqual({
 				operation: 'remove',
@@ -2261,27 +2222,17 @@ describe('MapHero map-layer feed lifecycle', () => {
 		);
 	});
 
-	it('keeps map emphasis in sync with pointer and keyboard preview inside detail rows', async () => {
+	it('keeps the selected vehicle card compact and links to the full readings', async () => {
 		harness.isDesktop = true;
 		render(MapHero);
-		await tick();
-		await fireEvent.click(screen.getByTestId('map-stage-stub-pick'));
-		const busRow = await screen.findByRole('button', { name: /^Select vehicle bus-1,/ });
-
-		mapHeroReceiptSignals.clearFeatureStateEvents();
-		await fireEvent.pointerEnter(busRow);
-		await waitFor(() => expect(harness.overlayScene.mock.lastCall?.[2]).toBe('bus-1'));
-		expect(mapHeroReceiptSignals.featureStateEvents).toEqual([]);
-
-		mapHeroReceiptSignals.clearFeatureStateEvents();
-		await fireEvent.pointerLeave(busRow);
-		await waitFor(() => expect(harness.overlayScene.mock.lastCall?.[2]).toBeNull());
-		expect(mapHeroReceiptSignals.featureStateEvents).toEqual([]);
-
-		mapHeroReceiptSignals.clearFeatureStateEvents();
-		await fireEvent.focus(busRow);
-		await waitFor(() => expect(harness.overlayScene.mock.lastCall?.[2]).toBe('bus-1'));
-		expect(mapHeroReceiptSignals.featureStateEvents).toEqual([]);
+		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
+		const vehicle = await screen.findByRole('link', { name: 'Vehicle bus-1' });
+		expect(vehicle).toHaveAttribute('href', /\/vehicle\/bus-1.*frameMode=live/);
+		expect(screen.getByRole('link', { name: 'Line 24 now' })).toHaveAttribute(
+			'href',
+			/\/lines\/24.*frameMode=live/,
+		);
+		expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
 	});
 
 	it('keeps vehicle leases and route reads unchanged during hover without fetching a stop', async () => {
@@ -2358,7 +2309,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 			// The open panel shows this selection, so the peek steps aside while it is open.
 			const during = peekText(container);
 
-			await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+			await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 			await waitFor(() => expect(harness.releaseLease).toHaveBeenCalledTimes(1));
 			const after = peekText(container);
 
@@ -2485,99 +2436,24 @@ describe('MapHero map-layer feed lifecycle', () => {
 	});
 });
 
-describe('MapHero mobile alert drilldown orchestrator', () => {
-	it('opens a picked vehicle in place without writing a filter or zooming (#37)', async () => {
+describe('MapHero mobile selection card', () => {
+	it('links a selected stop to both views without rewriting the map scope', async () => {
 		render(MapHero);
-
-		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-
-		expect(harness.goto).not.toHaveBeenCalled();
-		expect(harness.focusCoordinate).not.toHaveBeenCalled();
-		const filter = harness.toVehicleFeatures.mock.lastCall?.[1];
-		expect([...(filter?.vehicles ?? [])]).toEqual([]);
-		expect([...(filter?.routes ?? [])]).toEqual([]);
-		expect(
-			(await screen.findAllByRole('heading', { level: 2 })).some(
-				(heading) => heading.textContent === 'Vehicle bus-1',
-			),
-		).toBe(true);
-	});
-
-	it('swaps custom detail in place, preserves alert identity, and restores Back without redirecting', async () => {
-		const documentPathBefore = window.location.pathname;
-		render(MapHero);
-		expect(harness.createLiveStore.mock.calls[0]?.[2]).toEqual({
-			families: ['vehicles', 'alerts'],
-		});
-
-		const stage = await screen.findByTestId('map-stage-stub');
+		const writes = harness.goto.mock.calls.length;
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick'));
-
-		const firstBody = await waitFor(() => {
-			const body = document.querySelector<HTMLElement>('[data-slot="bottom-sheet-body"]');
-			expect(body).toBeInTheDocument();
-			expect(
-				within(body!).getByRole('heading', { level: 2, name: 'Stop Sherbrooke / Saint-Denis' }),
-			).toBeInTheDocument();
-			return body!;
-		});
-		expect(harness.liveStore.subscribeFamilies).toHaveBeenCalledWith(['departures']);
-		const sheet = document.querySelector('[data-slot="bottom-sheet"]');
-		expect(document.querySelectorAll('[data-slot="bottom-sheet"]')).toHaveLength(1);
-		expect(document.querySelector('.map-peek')).not.toBeInTheDocument();
-		expect(stage).toHaveAttribute('data-pick-count', '1');
-
-		const navigationCountBeforeAlert = harness.goto.mock.calls.length;
-		harness.identityReceivers.length = 0;
-		await fireEvent.click(
-			screen.getByRole('button', {
-				name: 'Select alert Board at the temporary stop & follow signs.',
-			}),
+		const sheet = await screen.findByRole('dialog', { name: 'What is in view' });
+		expect(
+			within(sheet).getByRole('heading', { name: 'Stop Sherbrooke / Saint-Denis' }),
+		).toBeVisible();
+		expect(within(sheet).getByRole('link', { name: 'Stop now' })).toHaveAttribute(
+			'href',
+			/\/stop\/stop-1.*frameMode=live/,
 		);
-
-		await waitFor(() => {
-			const body = document.querySelector<HTMLElement>('[data-slot="bottom-sheet-body"]');
-			expect(body).toBe(firstBody);
-			expect(
-				within(body!).getByRole('heading', { level: 2, name: 'Stop Temporary stop / Clark' }),
-			).toBeInTheDocument();
-		});
-
-		expect(harness.identityReceivers.length).toBeGreaterThan(0);
-		expect(harness.identityReceivers.every((receiver) => receiver === harness.alert)).toBe(true);
-
-		const alertNavigationCalls = harness.goto.mock.calls.slice(navigationCountBeforeAlert);
-		expect(alertNavigationCalls.length).toBeGreaterThan(0);
-		expect(alertNavigationCalls.at(-1)?.[0]).toBe(
-			'/map?route=24&stop=stop-1%2Cstop-2&alert=has_alert',
+		expect(within(sheet).getByRole('link', { name: 'Stop Record' })).toHaveAttribute(
+			'href',
+			/\/stop\/stop-1.*frameMode=record/,
 		);
-		for (const [target, options] of alertNavigationCalls) {
-			expect(target).toMatch(/^\/map(?:\?|$)/);
-			expect(new URL(String(target), 'http://localhost/map').pathname).toBe('/map');
-			expect(options).toMatchObject({ replace: true, reset: false });
-		}
-		expect(window.location.pathname).toBe(documentPathBefore);
-		expect(document.querySelectorAll('[data-slot="bottom-sheet"]')).toHaveLength(1);
-		expect(document.querySelector('[data-slot="bottom-sheet"]')).toBe(sheet);
-		expect(document.querySelector('.map-peek')).not.toBeInTheDocument();
-		expect(stage).toHaveAttribute('data-pick-count', '1');
-
-		const navigationCountBeforeBack = harness.goto.mock.calls.length;
-		await fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-
-		await waitFor(() => {
-			const body = document.querySelector<HTMLElement>('[data-slot="bottom-sheet-body"]');
-			expect(body).toBe(firstBody);
-			expect(
-				within(body!).getByRole('heading', { level: 2, name: 'Stop Sherbrooke / Saint-Denis' }),
-			).toBeInTheDocument();
-		});
-		expect(harness.goto).toHaveBeenCalledTimes(navigationCountBeforeBack);
-		expect(window.location.pathname).toBe(documentPathBefore);
-		expect(document.querySelectorAll('[data-slot="bottom-sheet"]')).toHaveLength(1);
-		expect(document.querySelector('[data-slot="bottom-sheet"]')).toBe(sheet);
-		expect(document.querySelector('.map-peek')).not.toBeInTheDocument();
-		expect(stage).toHaveAttribute('data-pick-count', '1');
+		expect(harness.goto).toHaveBeenCalledTimes(writes);
 	});
 });
 

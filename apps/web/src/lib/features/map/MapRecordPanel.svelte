@@ -1,15 +1,16 @@
 <script lang="ts">
-	import { mapRecordReading } from '#lib/site/presenter.ts';
+	import { mapRecordReading, methodEvidence } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack, type Snippet } from 'svelte';
 	import { Card } from '@yesid/ui/card';
+	import { RoutePlate } from '@yesid/ui/brand';
 	import { theme } from '@yesid/ui/state';
-	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { choose, notMeasuredLabel } from '#lib/features/record/recordText.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
+	import MapPanelAnswer from './MapPanelAnswer.svelte';
 	import { Button } from '@yesid/ui/button';
 	import { frameHref, type parseFrameState } from '#lib/site/frameState.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
@@ -32,6 +33,7 @@
 		recordMapSampleText,
 		recordStops,
 		type RecordMapLayer,
+		type RecordMark,
 	} from './recordMap';
 
 	interface Props {
@@ -49,7 +51,7 @@
 		onsourcedate: (date: string | null) => void;
 		reportCamera?: MapReportCamera | null;
 		oncount?: (count: number | null) => void;
-		children?: Snippet<[Snippet | undefined]>;
+		children?: Snippet<[Snippet<[Snippet | undefined]> | undefined]>;
 	}
 	let {
 		map,
@@ -272,6 +274,21 @@
 				],
 	);
 	const routeNames = $derived(new Map(routes.map((route) => [route.id, route.long])));
+	const stopCodes = $derived(new Map(stops.map((stop) => [stop.id, stop.code ?? stop.id])));
+	const shownCount = (value: number) => intl.number(locale).format(value);
+	function measuredLine(mark: RecordMark) {
+		return stopLayer ? undefined : line || (mark.lines?.length === 1 ? mark.lines[0] : undefined);
+	}
+	function corridorReading(mark: RecordMark) {
+		const id = measuredLine(mark);
+		const names = tr(`${mark.fromName} to ${mark.toName}`, `${mark.fromName} à ${mark.toName}`);
+		return id
+			? tr(
+					`line ${display.lineName(id).number ?? id}, ${names}`,
+					`ligne ${display.lineName(id).number ?? id}, ${names}`,
+				)
+			: names;
+	}
 	function recordLink(id: string, dir?: number | null) {
 		const target = new URL(
 			localizeHref(`/${stopLayer ? 'stop' : 'lines'}/${encodeURIComponent(id)}`, locale, city),
@@ -291,21 +308,34 @@
 	}
 </script>
 
-{#snippet recordBody()}
+{#snippet recordBody(stamp: Snippet | undefined)}
 	{#if leader?.value != null}
-		<RecordAnswer
-			value={valueText(leader.value)}
+		<MapPanelAnswer
+			value={valueText(leader.value) ?? ''}
 			sentence={stopLayer
 				? tr(
 						`is the highest late share of observed stop events in view, at stop ${leaderStop}, ${leader.name}.`,
 						`: la part de passages observés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
 					)
 				: tr(
-						`is the most time lost between two stops in view, at ${leader.name}.`,
-						`: le temps perdu le plus élevé entre deux arrêts en vue, à ${leader.name}.`,
+						`is the most time lost between two stops in view: ${corridorReading(leader)}.`,
+						`\u00a0: le temps perdu le plus élevé entre deux arrêts en vue\u00a0: ${corridorReading(leader)}.`,
 					)}
-			{locale}
+			stacked={!stopLayer}
 		/>
+	{/if}
+	{@render stamp?.()}
+	{#if answer?.evidence.method_version}
+		<p class="font-mono text-caption text-muted-foreground">
+			{methodEvidence(
+				{
+					method_version: answer.evidence.method_version,
+					cleaning_versions: answer.evidence.cleaning_versions,
+				},
+				locale,
+				true,
+			)}
+		</p>
 	{/if}
 	{#if !stopLayer}
 		<div class="scope">
@@ -402,23 +432,55 @@
 							: tr('Corridors in view', 'Corridors en vue')}
 						data-slot="map-in-view"
 					>
-						<h2>
-							{stopLayer
-								? tr('Stops in view', 'Arrêts en vue')
-								: tr('Corridors in view', 'Corridors en vue')}
-							<span class="tabular-nums">({visible.length})</span>
-						</h2>
+						<div class="flex items-baseline justify-between gap-2">
+							<h2 class="map-record-list-title">
+								{stopLayer
+									? tr('Stops in view', 'Arrêts en vue')
+									: tr('Corridors in view', 'Corridors en vue')}
+							</h2>
+							<span class="tabular-nums text-muted-foreground">{shownCount(visible.length)}</span>
+						</div>
 						<ul>
 							{#each visible.slice(0, limit) as mark (mark.id)}
+								{@const lineId = measuredLine(mark)}
+								{@const stopCode = mark.stop ? stopCodes.get(mark.stop) : undefined}
+								{@const target = mark.stop ?? lineId}
 								<li class="record-in-view-row">
-									<Button
-										variant="ghost"
-										size="sm"
-										class="min-h-11"
-										wrap
-										onclick={() => (selectedId = mark.id)}>{mark.name}</Button
-									>
-									<span
+									<span>
+										{#if lineId}<RoutePlate
+												code={display.lineName(lineId, routeNames.get(lineId)).number ?? lineId}
+											/>
+										{:else if stopCode}<span class="record-stop-code">{stopCode}</span>{/if}
+									</span>
+									<div class="record-in-view-name">
+										{#if target}
+											<a
+												href={recordLink(target, mark.direction)}
+												onclick={(event) => {
+													if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
+														return;
+													event.preventDefault();
+													selectedId = mark.id;
+												}}>{stopLayer ? mark.name : mark.fromName}</a
+											>
+										{:else}
+											<Button
+												variant="ghost"
+												size="sm"
+												wrap
+												class="min-h-11 text-left"
+												onclick={() => (selectedId = mark.id)}>{mark.fromName}</Button
+											>
+										{/if}
+										{#if stopLayer && stopCode}
+											<small
+												>{stopCode}{mark.sample === null
+													? ''
+													: `, ${shownCount(mark.sample)} ${tr('stop events', 'passages')}`}</small
+											>
+										{:else if mark.toName}<small>{tr('to', 'à')} {mark.toName}</small>{/if}
+									</div>
+									<span class="record-in-view-value" class:measured={mark.value !== null}
 										>{mark.value !== null ? valueText(mark.value) : stateLabels[mark.state]}</span
 									>
 								</li>
@@ -502,12 +564,12 @@
 	{/if}
 {/snippet}
 
-{#snippet recordContent()}
+{#snippet recordContent(stamp: Snippet | undefined)}
 	<div class="record-panel" class:record-panel-standalone={!children}>
 		{#if children}
-			{@render recordBody()}
+			{@render recordBody(stamp)}
 		{:else}
-			<Card edge="neutral" class="p-3">{@render recordBody()}</Card>
+			<Card edge="neutral" class="p-3">{@render recordBody(stamp)}</Card>
 		{/if}
 	</div>
 {/snippet}
@@ -515,7 +577,7 @@
 {#if children}
 	{@render children(layer === 'live' ? undefined : recordContent)}
 {:else if layer !== 'live'}
-	{@render recordContent()}
+	{@render recordContent(undefined)}
 {/if}
 
 <style>
@@ -533,15 +595,42 @@
 		overscroll-behavior: contain;
 	}
 	.record-in-view-row {
-		display: flex;
-		justify-content: space-between;
+		display: grid;
+		grid-template-columns: 3.25rem minmax(0, 1fr) auto;
 		align-items: center;
 		gap: calc(var(--spacing) * 2);
 		border-block-start: 1px solid var(--border-hairline);
 	}
-	.record-in-view-row span {
+	.record-in-view-value {
 		text-align: end;
 		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+	}
+	.record-in-view-value.measured {
+		white-space: nowrap;
+	}
+	.record-in-view-name {
+		display: grid;
+		justify-items: start;
+	}
+	.record-in-view-name a {
+		display: inline-flex;
+		align-items: center;
+		min-height: var(--size-tap-min);
+		color: var(--accent-text);
+		text-decoration: underline;
+	}
+	.record-in-view-name small {
+		color: var(--muted-foreground);
+	}
+	.record-stop-code {
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding: calc(var(--spacing) * 0.5);
+		font-family: var(--font-mono);
+	}
+	.record-panel .map-record-list-title {
+		font-size: var(--text-control);
 	}
 	p,
 	h2,

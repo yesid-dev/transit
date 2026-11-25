@@ -1,11 +1,13 @@
 import { expect } from '@playwright/test';
 import { test } from './layout-test';
+import { mapChromeShareBudget, mapOpenLegendViewportHeight } from './design-pass-debt';
 
 for (const locale of ['en', 'fr']) {
 	test(`${locale} map chrome leaves room for the map and text enlargement @layout`, async ({
 		page,
 	}) => {
 		await page.setViewportSize({ width: 390, height: 844 });
+		await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:20Z'));
 		await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?provider=stm`);
 		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
 			'data-map-progressive-state',
@@ -65,7 +67,7 @@ for (const locale of ['en', 'fr']) {
 					),
 				};
 			});
-		expect((await measure()).share).toBeLessThanOrEqual(0.25);
+		expect((await measure()).share).toBeLessThanOrEqual(mapChromeShareBudget);
 		await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));
 		await expect.poll(measure).toMatchObject({ overlap: false, clipped: false });
 	});
@@ -73,7 +75,7 @@ for (const locale of ['en', 'fr']) {
 	test(`${locale} desktop legend fits and explains four delay statuses @layout`, async ({
 		page,
 	}) => {
-		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.setViewportSize({ width: 1440, height: mapOpenLegendViewportHeight });
 		await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?provider=stm`);
 		const legend = page.locator('[data-map-legend="desktop"]');
 		await expect(legend).toBeVisible();
@@ -92,7 +94,7 @@ for (const locale of ['en', 'fr']) {
 				clipped: root.scrollHeight > root.clientHeight + 1,
 			};
 		});
-		expect(geometry.bottom).toBeLessThanOrEqual(900);
+		expect(geometry.bottom).toBeLessThanOrEqual(mapOpenLegendViewportHeight);
 		expect(geometry.clipped).toBe(false);
 		expect(new Set(geometry.track).size).toBe(1);
 	});

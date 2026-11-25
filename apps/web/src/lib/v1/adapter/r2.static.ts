@@ -38,6 +38,12 @@ async function editionFor(ctx?: AdapterCtx): Promise<ScheduleEdition> {
 
 const generated = (edition: ScheduleEdition) => `${edition.date}T00:00:00Z`;
 
+export async function getMapRouteDirections(
+	ctx?: AdapterCtx,
+): Promise<ScheduleEdition['route_directions']> {
+	return (await editionFor(ctx)).route_directions;
+}
+
 export const staticPort = {
 	async routesIndex(ctx?: AdapterCtx) {
 		const edition = await editionFor(ctx);

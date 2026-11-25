@@ -182,7 +182,7 @@
 		<Button
 			variant="outline"
 			size="sm"
-			class="min-h-11"
+			class="min-h-11 px-1 py-1"
 			wrap
 			onclick={() => {
 				open = true;
@@ -193,7 +193,7 @@
 		<Button
 			variant="outline"
 			size="sm"
-			class="min-h-11"
+			class="min-h-11 px-1 py-1"
 			wrap
 			aria-expanded={open}
 			onclick={() => {

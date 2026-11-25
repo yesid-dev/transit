@@ -11,6 +11,8 @@ type Geometry =
 export interface RecordMark {
 	id: string;
 	name: string;
+	fromName?: string;
+	toName?: string;
 	stop?: string;
 	direction?: number | null;
 	lines?: readonly string[];
@@ -152,6 +154,8 @@ export function recordCorridors(
 		pairs.set(id, {
 			id,
 			name: `${from.name} → ${to.name}`,
+			fromName: from.name,
+			toName: to.name,
 			direction: dir,
 			geometry: {
 				type: 'LineString',

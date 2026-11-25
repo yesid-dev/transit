@@ -50,8 +50,12 @@ export function mapRecordReading(value: number, stops: boolean, locale: Locale):
 			.number(locale, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 })
 			.format(value / 1000);
 	if (Math.abs(value) < 60)
-		return `${intl.number(locale, { maximumFractionDigits: 1 }).format(value)}${locale === 'fr' ? '\u00a0' : ' '}s`;
-	return minuteReading(value / 60, locale);
+		return `${intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value)}${locale === 'fr' ? '\u00a0' : ' '}s`;
+	return `${intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 60)} min`;
+}
+
+export function mapDirectionReading(name: string, locale: Locale): string {
+	return `${locale === 'fr' ? 'vers' : 'toward'} ${directionName(name, locale)}`;
 }
 
 /** Inclusive delay bounds, shown exactly to the second as signed minutes:seconds. */

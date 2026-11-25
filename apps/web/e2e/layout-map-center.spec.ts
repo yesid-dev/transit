@@ -17,7 +17,9 @@ test.describe.configure({ mode: 'parallel' });
 async function sample(page: Page, bounds: number[]) {
 	return page.evaluate((b) => {
 		const map = document.querySelector('[data-slot="map-stage"]')!.getBoundingClientRect();
-		const panel = document.querySelector('.map-filter-panel')!.getBoundingClientRect();
+		const panel = document
+			.querySelector('[data-frame-controls="desktop"]')!
+			.getBoundingClientRect();
 		const detail = document
 			.querySelector('[data-slot="map-detail-overlay"]')
 			?.getBoundingClientRect();

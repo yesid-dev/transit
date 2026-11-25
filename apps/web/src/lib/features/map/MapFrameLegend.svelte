@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createRawSnippet } from 'svelte';
+	import { RoutePlate } from '@yesid/ui/brand';
 	import { MapLegend, type MapLegendItem, type MapLegendProps } from '@yesid/ui/map';
 	import { theme } from '@yesid/ui/state';
 	import {
@@ -20,12 +21,14 @@
 		colourBy,
 		staleCutoffS,
 		collapsible = false,
+		railName,
 	}: {
 		locale: Locale;
 		layer: RecordMapLayer;
 		colourBy: LegendColourBy;
 		staleCutoffS: number;
 		collapsible?: boolean;
+		railName?: string;
 	} = $props();
 
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
@@ -33,13 +36,22 @@
 	const early = -ON_TIME_LIMITS_S.from / 60;
 	const late = ON_TIME_LIMITS_S.through / 60;
 	const detail = $derived({
-		early: tr(`More than ${early} min early`, `Plus de ${early} min d’avance`),
-		on_time: tr(
-			`${early} min early through ${late} min late`,
-			`De ${early} min d’avance à ${late} min de retard`,
+		early: tr(
+			`more than ${early} minute ahead of the timetable`,
+			`plus de ${early} minute d’avance sur l’horaire`,
 		),
-		late: tr(`More than ${late} min late`, `Plus de ${late} min de retard`),
-		unknown: undefined,
+		on_time: tr(
+			`between ${early} minute early and ${late} minutes late`,
+			`entre ${early} minute d’avance et ${late} minutes de retard`,
+		),
+		late: tr(
+			`more than ${late} minutes behind the timetable`,
+			`plus de ${late} minutes de retard sur l’horaire`,
+		),
+		unknown: tr(
+			'reporting, with no trip to compare it with',
+			'un signalement sans trajet de référence',
+		),
 	});
 
 	function symbol(mark: LegendMark) {
@@ -58,8 +70,20 @@
 			title: tr('The network', 'Le réseau'),
 			items: [
 				{ label: tr('Line with live data', 'Ligne avec données en direct'), symbol: lineMark },
-				{ label: tr('Line number', 'Numéro de ligne'), symbol: numberMark },
-				{ label: tr('Rail: schedule only', 'Rail : horaire seulement'), symbol: railMark },
+				{
+					label: tr(
+						'Line number, on its line or beside it',
+						'Numéro de la ligne, sur son tracé ou à côté',
+					),
+					symbol: numberMark,
+				},
+				{
+					label: tr(
+						`Rail${railName ? ` (${railName})` : ''}: schedule only, no live data`,
+						`Rail${railName ? ` (${railName})` : ''}\u00a0: horaire seulement, aucune donnée en direct`,
+					),
+					symbol: railMark,
+				},
 				{ label: tr('Selected', 'Sélection'), symbol: selectedMark },
 			] satisfies MapLegendItem[],
 		};
@@ -76,8 +100,10 @@
 						: colour.heading,
 				items: colour.rows.map(
 					(row): MapLegendItem => ({
-						label: row.label,
-						detail: row.mark.kind === 'status' ? detail[row.mark.code] : undefined,
+						label:
+							row.mark.kind === 'status'
+								? `${row.label}${locale === 'fr' ? '\u00a0: ' : ': '}${detail[row.mark.code]}`
+								: row.label,
 						symbol: symbol(row.mark),
 					}),
 				),
@@ -123,14 +149,14 @@
 {#snippet lineMark()}<span class="map-key-line"></span>{/snippet}
 {#snippet railMark()}<span class="map-key-line map-key-rail"></span>{/snippet}
 {#snippet selectedMark()}<span class="map-key-line map-key-selected"></span>{/snippet}
-{#snippet numberMark()}<small class="font-mono text-muted-foreground">51</small>{/snippet}
+{#snippet numberMark()}<RoutePlate code="51" />{/snippet}
 {#snippet emptyMark()}{/snippet}
 {#snippet lowSampleMark()}<span>●</span>{/snippet}
 {#snippet noSampleMark()}<span>○</span>{/snippet}
 {#snippet scheduleMark()}<span>⊙</span>{/snippet}
 
 <MapLegend
-	class="p-2 text-sm leading-tight [--text-small:var(--text-caption)]"
+	class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)]"
 	title={copy[locale].legend.title}
 	{groups}
 	{scale}

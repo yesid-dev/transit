@@ -1,5 +1,4 @@
 <script lang="ts">
-	import MapDetailNavigation from './MapDetailNavigation.svelte';
 	import { datedProviderAttribution, providerAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
@@ -7,19 +6,21 @@
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
-	import { getContext, onMount, tick, untrack } from 'svelte';
+	import { getContext, onMount, tick, untrack, type Snippet } from 'svelte';
 	import {
 		mapPanelOpenContext,
 		mapRecordSourceDateContext,
 	} from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
-	import { SegmentedChoice } from '@yesid/ui/brand';
+	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
 	import { MapFrame } from '@yesid/ui/map';
 	import { Card } from '@yesid/ui/card';
-	import { Sheet, SheetContent, SheetTitle } from '@yesid/ui/sheet';
+	import { Sheet, SheetContent, SheetTitle, type SheetDetent } from '@yesid/ui/sheet';
+	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
-	import FreshnessStamp from '#lib/components/surface/FreshnessStamp.svelte';
 	import { recordStamp } from '#lib/site/presenter.ts';
+	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
+	import { formatRelativeSeconds } from '#lib/utils/time.ts';
 	import {
 		FrameControlsExtensionContext,
 		type RegisterFrameControlsExtension,
@@ -57,6 +58,7 @@
 		getStopsIndexSlim,
 	} from '#lib/v1/repositories/static.ts';
 	import type { SlimStopEntry } from '#lib/v1/index.ts';
+	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
 	import { parseMapFocus } from '#lib/search/mapFocus.ts';
@@ -69,6 +71,7 @@
 	import MapFilters from './MapFilters.svelte';
 	import MapMotionControl from './MapMotionControl.svelte';
 	import MapSelectionDetail from './MapSelectionDetail.svelte';
+	import MapSelectionSummary from './MapSelectionSummary.svelte';
 	import MapSurfaceCanvasLayer from './MapSurfaceCanvasLayer.svelte';
 	import { zoomForNearMePrecision } from './mapGeo';
 	import {
@@ -92,7 +95,7 @@
 	import { createMapSelectionSession, type MapSelection } from './mapSelectionSession.svelte';
 	import * as ownerCleanup from './mapOwnerCleanup';
 	import { captureMapReportCamera, type MapReportCamera } from './mapReportCamera';
-	import { buildMapReportView, mapReportFilterTokens } from './mapReports';
+	import { buildMapReportView, mapReportFilterTokens, type MapReportRow } from './mapReports';
 	import { buildMapReportLiveViewHref } from './mapReportsLink';
 	import { parseMapViewHint, mapViewHintWithinRuntime, type MapViewHint } from './mapViewHint';
 
@@ -370,8 +373,15 @@
 
 	const detailOpen = $derived(session.detailOpen && !isRecordLayer);
 	let inViewOpen = $state(false);
+	let inViewDetent = $state('half');
+	const detents: readonly SheetDetent[] = [
+		{ id: 'peek', size: '168px', label: sheetCopy[locale].peek },
+		{ id: 'half', size: '50%', label: sheetCopy[locale].half },
+		{ id: 'full', size: '90%', label: sheetCopy[locale].full },
+	];
 	let liveListLimit = $state(12);
 	let mobileScrollTop = 0;
+	let listScrollBeforeSelection: number | null = null;
 	let restoreListTrigger = false;
 	let inViewTrigger = $state<HTMLButtonElement | null>(null);
 	let detailBack = $state<HTMLButtonElement | null>(null);
@@ -383,17 +393,44 @@
 		return () => reportPanelOpen?.(false);
 	});
 	const stopList = $derived(session.stops);
+	let mapDirections = $state.raw<ScheduleEdition['route_directions']>();
+	onMount(() => {
+		let active = true;
+		void import('#lib/v1/adapter/r2.static.ts')
+			.then(({ getMapRouteDirections }) => getMapRouteDirections({ providerId: manifest.provider }))
+			.then(
+				(directions) => {
+					if (active) mapDirections = directions;
+				},
+				() => {},
+			);
+		return () => {
+			active = false;
+		};
+	});
+	function reportHeadsign(row: MapReportRow): string | null {
+		if (!row.routeId || row.directionId == null) return null;
+		const names = new Set(
+			mapDirections?.[row.routeId]
+				?.filter((direction) => direction.dir === row.directionId)
+				.map((direction) => direction.headsign)
+				.filter(Boolean),
+		);
+		return names.size === 1 ? (names.values().next().value ?? null) : null;
+	}
 	const selectedDetail = $derived(session.detail);
 	const selectionPresence = $derived(session.presence);
 	const selectionSourceHealth = $derived(session.sourceHealth);
-	const tripRefreshing = $derived(
-		!!(session.selected?.kind === 'stop'
-			? live.familyStates.departures.refreshing
-			: live.familyStates.trips.refreshing),
-	);
 	const selectedVehicleAbsence = $derived(session.vehicleAbsence);
 	const hoverPeek = $derived(session.hoverPeek);
 	const routeList = $derived(session.routeList);
+	const railName = $derived(
+		session.routesIndex.some((route) => route.type === 1)
+			? 'métro'
+			: session.routesIndex.some((route) => /\bo-train\b/i.test(route.long ?? ''))
+				? 'O-Train'
+				: undefined,
+	);
 	const routeLineRoutes = $derived(session.routeLineRoutes);
 	const selectedRouteLine = $derived(session.selectedRouteLine);
 	const selectedVehicleId = $derived(session.selectedVehicleId);
@@ -414,6 +451,14 @@
 			selection: session.selected,
 			vehicleCount: live.vehicles?.vehicles.length ?? null,
 		}),
+	);
+	const liveTime = $derived(
+		liveStamp({ ...presentation.stamp, notResponding: presentation.stamp.ageLabel != null }),
+	);
+	const liveStampLabel = $derived(
+		!wide && remWidth >= 24 && liveTime.ageSeconds !== null && liveTime.state === 'current'
+			? `${tr('Live', 'En direct')} · ${formatRelativeSeconds(liveTime.ageSeconds, locale)}`
+			: stampText(liveTime, locale, timeZone),
 	);
 
 	let reportCamera = $state.raw<MapReportCamera | null>(null);
@@ -479,8 +524,18 @@
 	function selectReportVehicle(id: string): void {
 		camera.interact();
 		returnVehicle = id;
+		const scroller = inViewScroller();
+		listScrollBeforeSelection = scroller?.scrollTop ?? null;
 		commitPickedSelection({ kind: 'vehicle', id });
-		void tick().then(() => detailBack?.focus({ preventScroll: true }));
+		void tick().then(() => {
+			if (wide && scroller) scroller.scrollTop = 0;
+			detailBack?.focus({ preventScroll: wide });
+		});
+	}
+	function inViewScroller(): HTMLElement | null {
+		return (
+			inViewBody?.closest('[data-slot="map-details"], [data-slot="bottom-sheet-body"]') ?? null
+		);
 	}
 	function restoreInViewScroll(node: HTMLDivElement): void {
 		node.scrollTop = mobileScrollTop;
@@ -508,19 +563,17 @@
 		const id = returnVehicle;
 		returnVehicle = null;
 		if (!id) return;
-		void tick().then(() =>
+		const scroll = listScrollBeforeSelection;
+		listScrollBeforeSelection = null;
+		void tick().then(() => {
+			const scroller = inViewScroller();
+			if (scroller && scroll !== null) scroller.scrollTop = scroll;
 			inViewBody
-				?.querySelector<HTMLElement>('[data-in-view-vehicle=\x22' + CSS.escape(id) + '\x22]')
-				?.focus({ preventScroll: true }),
-		);
+				?.querySelector<HTMLElement>(`[data-in-view-vehicle="${CSS.escape(id)}"]`)
+				?.focus({ preventScroll: true });
+		});
 	}
-	const selectFromDetail = (next: MapSelection) => {
-		session.select(next, 'detail');
-		focusSelection(next);
-	};
-
 	const applyDetailFilter = session.applyFilter;
-	const selectAlertRelated = session.selectAlert;
 	const nearbyStops = $derived<WithDistance<SlimStopEntry>[]>(
 		nearMeController.origin ? nearestStops(nearMeController.origin, stopList, 5, 1_200) : [],
 	);
@@ -762,6 +815,7 @@
 			extra: mapControls,
 			after: desktopLegend,
 			hideSummary: () => !wide && remWidth >= 24,
+			liveMoment: tr('Live now shows this moment only.', 'Situation actuelle du réseau.'),
 		}),
 	);
 </script>
@@ -795,55 +849,42 @@
 {/snippet}
 
 {#snippet detailPanel()}
-	<div data-slot="map-detail-overlay" data-selection-kind={session.selected?.kind}>
-		<Button
-			bind:ref={detailBack}
-			variant="ghost"
-			size="sm"
-			class="min-h-11"
-			data-map-detail-back
-			aria-label={tr('Back to the map list', 'Retour à la liste de la carte')}
-			onclick={closeDetail}
-		>
-			{tr('Back', 'Retour')}
-		</Button>
-		<MapDetailNavigation
-			{locale}
-			{session}
-			desktop={desktop.current}
-			onfocus={() => {
-				if (session.selected) focusSelection(session.selected);
-			}}
-		/>
-		<h2 class="text-lg font-semibold">
-			<MapSelectionDetail detail={selectedDetail} {locale} presentation="identity" />
-		</h2>
+	<Card
+		edge="brand"
+		class="gap-2 p-3"
+		data-slot="map-detail-overlay"
+		data-selection-kind={session.selected?.kind}
+	>
+		<div class="flex items-baseline justify-between gap-2">
+			<h2 class="text-lg font-semibold">
+				<MapSelectionDetail detail={selectedDetail} {locale} presentation="identity" />
+			</h2>
+			<Button
+				bind:ref={detailBack}
+				variant="ghost"
+				size="sm"
+				class="min-h-11"
+				data-map-detail-back
+				aria-label={tr('Clear selection', 'Effacer la sélection')}
+				onclick={closeDetail}
+			>
+				{tr('Clear', 'Effacer')}
+			</Button>
+		</div>
 		{#if selectedDetail}
-			<MapSelectionDetail
-				{occupancyAvailable}
+			<MapSelectionSummary
 				detail={selectedDetail}
-				alertsStale={live.familyStates.alerts.health.notice !== null}
-				alertsAgeSeconds={live.familyStates.alerts.health.ageSeconds}
 				{locale}
 				{timeZone}
-				notReporting={selectedVehicleAbsence}
-				{selectionPresence}
-				{selectionSourceHealth}
-				{tripRefreshing}
-				onrefresh={live.refresh}
-				onselect={selectFromDetail}
-				onpreview={(next) => void session.setHovered(next)}
-				onfilter={applyDetailFilter}
-				onalertselect={selectAlertRelated}
+				url={recordUrl}
+				city={manifest.provider}
+				vehiclesInView={reportView.kind === 'ready' && selectedDetail.kind === 'route'
+					? reportView.model.rows.filter((row) => row.routeId === selectedDetail?.id).length
+					: null}
+				notReporting={selectedVehicleAbsence !== null}
 			/>
 		{/if}
-		<MapSelectionDetail
-			detail={selectedDetail}
-			{locale}
-			presentation="action"
-			onfilter={applyDetailFilter}
-		/>
-	</div>
+	</Card>
 {/snippet}
 
 {#snippet motionHeader(collapsed: boolean)}
@@ -876,6 +917,22 @@
 				<summary class="min-h-11 py-3 text-sm font-medium"
 					>{tr('Map filters', 'Filtres de la carte')}</summary
 				>
+				<label class="grid gap-1 text-sm">
+					{tr('Add a line filter', 'Ajouter une ligne au filtre')}
+					<select
+						class="min-h-11 min-w-0 rounded-sm border border-border bg-card px-2"
+						onchange={(event) => {
+							const value = event.currentTarget.value;
+							if (value) applyDetailFilter({ kind: 'route', value });
+							event.currentTarget.value = '';
+						}}
+					>
+						<option value="">{tr('Choose a line', 'Choisir une ligne')}</option>
+						{#each session.routesIndex as route (route.id)}
+							<option value={route.id}>{route.short}{route.long ? ` · ${route.long}` : ''}</option>
+						{/each}
+					</select>
+				</label>
 				<MapFilters
 					{occupancyAvailable}
 					store={filters}
@@ -927,6 +984,7 @@
 		{locale}
 		layer={recordLayer}
 		{colourBy}
+		{railName}
 		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
 		collapsible
 	/>
@@ -937,17 +995,26 @@
 		{locale}
 		layer={recordLayer}
 		{colourBy}
+		{railName}
 		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
 	/>
 {/snippet}
 
 {#snippet stamp()}
 	{#if isRecordLayer && recordPeriod}
-		<p class="text-sm" data-slot="freshness-stamp" data-form="record">
-			{recordStamp(recordPeriod, locale)}
-		</p>
-	{:else if !isRecordLayer}
-		<FreshnessStamp variant="live" presentation={presentation.stamp} {locale} />
+		<div data-slot="freshness-stamp" data-form="record">
+			<Stamp kind="record" label={recordStamp(recordPeriod, locale)} />
+		</div>
+	{:else if !isRecordLayer && presentation.stamp.visible}
+		<time
+			datetime={liveTime.generatedUtc ?? undefined}
+			data-slot="freshness-stamp"
+			data-form="live"
+			data-age-seconds={liveTime.ageSeconds ?? undefined}
+			data-stale={presentation.stamp.isStale}
+		>
+			<Stamp kind="live" label={liveStampLabel} late={presentation.stamp.isStale} />
+		</time>
 	{/if}
 {/snippet}
 
@@ -962,16 +1029,17 @@
 	</div>
 {/snippet}
 
-{#snippet inViewPanel(recordContent: import('svelte').Snippet | undefined)}
+{#snippet inViewPanel(recordContent: Snippet<[Snippet | undefined]> | undefined)}
 	<div class="grid gap-4" bind:this={inViewBody}>
 		{#if isRecordLayer}
-			{@render recordContent?.()}
+			{@render recordContent?.(wide ? stamp : undefined)}
 		{:else}
 			{#if !wide && remWidth >= 24}<MapFeedStallBanner {presentation} inline />{/if}
 			<MapInView
 				view={reportView}
 				{locale}
 				line={(id) => lineLabel(id, session.routesIndex)}
+				headsign={reportHeadsign}
 				onselect={selectReportVehicle}
 				stamp={wide ? stamp : undefined}
 				detail={detailOpen ? detailPanel : undefined}
@@ -1017,17 +1085,17 @@
 	</div>
 {/snippet}
 
-{#snippet mapContent(recordContent: import('svelte').Snippet | undefined)}
+{#snippet mapContent(recordContent: Snippet<[Snippet | undefined]> | undefined)}
 	{#snippet desktopPanel()}
 		{#if wide}
-			<div class="map-head">{@render titleCard(isRecordLayer)}</div>
+			<div class="map-head">{@render titleCard(false)}</div>
 			{@render inViewPanel(recordContent)}
 		{/if}
 	{/snippet}
 	<MapFrame
 		label={t.mapLabel}
 		class="map-hero-frame absolute inset-x-0 bottom-0"
-		style="top: var(--chrome-offset)"
+		style="top: var(--map-frame-top)"
 		details={{ label: viewLabel, content: desktopPanel }}
 	>
 		{@render stage()}
@@ -1112,8 +1180,12 @@
 			<SheetContent
 				side="bottom"
 				closeLabel={tr('Close', 'Fermer')}
-				class="max-h-[min(66dvh,36rem)] overflow-hidden p-4"
+				{detents}
+				bind:detent={inViewDetent}
+				handleLabel={sheetCopy[locale].height}
+				class="overflow-hidden p-4"
 				data-slot="bottom-sheet"
+				data-m6c2-detail-sheet
 				data-map-in-view-sheet
 				data-ripple-exempt
 				data-lenis-prevent
@@ -1176,6 +1248,7 @@
 		width: 100%;
 		height: 100%;
 		background: var(--background);
+		--map-frame-top: var(--chrome-offset);
 		--map-mobile-control-bottom: calc(var(--map-touch-row-bottom) + var(--size-tap-min) + 0.5rem);
 		--map-north-clearance: calc(var(--map-mobile-control-bottom) + 10.25rem);
 		--map-controls-width: 0px;
@@ -1191,7 +1264,7 @@
 	}
 	.map-surface {
 		position: absolute;
-		inset: calc(0px - var(--chrome-offset)) 0 0;
+		inset: calc(0px - var(--map-frame-top)) 0 0;
 		overflow: hidden;
 	}
 	.map-hero[data-record-layer]:not([data-record-layer='live'])
@@ -1238,9 +1311,6 @@
 		max-width: min(20rem, 38%);
 		pointer-events: none;
 	}
-	.map-head {
-		margin-block-end: 0.75rem;
-	}
 	.map-stage-error {
 		position: absolute;
 		z-index: var(--z-map-detail);
@@ -1254,6 +1324,7 @@
 		inset-block-end: calc(var(--map-source-clearance, 0px) + 0.75rem);
 	}
 	.map-hero[data-map-wide='true'] {
+		--map-frame-top: calc(var(--chrome-offset) - 0.75rem);
 		--map-detail-offset: min(20rem, 31%);
 	}
 </style>

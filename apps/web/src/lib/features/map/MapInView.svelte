@@ -3,18 +3,19 @@
 	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
-	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
+	import MapPanelAnswer from './MapPanelAnswer.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import { delayReading } from '#lib/site/presenter.ts';
+	import { delayReading, mapDirectionReading } from '#lib/site/presenter.ts';
 	import { mapReportsCopy } from './mapReports.copy';
 	import { mapReportsCsv } from './mapReportsCsv';
 	import { mapStatusLabel } from './mapStatusLabels';
-	import type { MapReportView } from './mapReports';
+	import type { MapReportRow, MapReportView } from './mapReports';
 
 	let {
 		view,
 		locale,
 		line,
+		headsign,
 		onselect,
 		stamp,
 		liveViewHref,
@@ -24,6 +25,7 @@
 		view: MapReportView;
 		locale: Locale;
 		line: (id: string) => string;
+		headsign: (row: MapReportRow) => string | null;
 		onselect: (id: string) => void;
 		stamp?: Snippet;
 		liveViewHref?: string | null;
@@ -37,7 +39,15 @@
 	const french = $derived(locale === 'fr');
 	const model = $derived(view.kind === 'ready' ? view.model : null);
 	const lastAvailable = $derived(model?.sourceHealth?.retained || model?.sourceHealth?.stale);
-	const rows = $derived(model?.rows ?? []);
+	const order = { late: 0, early: 1, on_time: 2, unknown: 3 } as const;
+	const rows = $derived(
+		[...(model?.rows ?? [])].sort(
+			(a, b) =>
+				order[a.status] - order[b.status] ||
+				(b.delayMin ?? -Infinity) - (a.delayMin ?? -Infinity) ||
+				a.vehicleId.localeCompare(b.vehicleId),
+		),
+	);
 	const statuses = $derived(
 		rows.reduce(
 			(counts, row) => {
@@ -67,7 +77,7 @@
 </script>
 
 {#if model}
-	<RecordAnswer value={count(model.inViewCount)} {sentence} {locale} />
+	<MapPanelAnswer value={count(model.inViewCount)} {sentence} />
 {:else if view.kind === 'loading'}
 	<RecordPending {locale} />
 {/if}
@@ -79,20 +89,26 @@
 		<h2 id={uid} class="text-lg font-semibold">
 			{french ? 'Véhicules en vue' : 'Vehicles in view'}
 		</h2>
-		{#if model}<span class="text-sm tabular-nums text-muted-foreground"
-				>{count(model.inViewCount)}</span
+		{#if model}<span
+				class="text-sm tabular-nums text-muted-foreground"
+				data-slot="map-in-view-count">{count(model.inViewCount)}</span
 			>{/if}
 	</div>
 	{#if model}
 		<ul class="list-none p-0">
 			{#each rows.slice(0, limit) as row (`${row.vehicleId}:${row.index}`)}
-				<li class="map-in-view-row">
-					<span class="min-w-10"
+				{@const heading = headsign(row)}
+				<li class="map-in-view-row" data-report-row data-report-id={row.vehicleId}>
+					<span
 						>{#if row.routeId}<RoutePlate code={line(row.routeId)} />{/if}</span
 					>
 					<span>
-						<StatusMark status={row.status} label={mapStatusLabel(locale, row.status)} />
-						{#if row.delayMin !== null}<small>{delayReading(row.delayMin * 60, locale)}</small>{/if}
+						<StatusMark
+							status={row.status}
+							label={mapStatusLabel(locale, row.status)}
+							detail={row.delayMin === null ? undefined : delayReading(row.delayMin * 60, locale)}
+						/>
+						{#if heading}<small>{mapDirectionReading(heading, locale)}</small>{/if}
 					</span>
 					<a
 						class="map-in-view-link"
@@ -148,8 +164,8 @@
 
 <style>
 	.map-in-view-row {
-		display: flex;
-		flex-wrap: wrap;
+		display: grid;
+		grid-template-columns: 2.75rem minmax(0, 1fr) auto;
 		align-items: center;
 		gap: calc(var(--spacing) * 2);
 		border-block-start: 1px solid var(--border-hairline);
@@ -165,6 +181,8 @@
 		min-height: var(--size-tap-min);
 		min-width: var(--size-tap-min);
 		margin-inline-start: auto;
+		color: var(--accent-text);
+		font-family: var(--font-mono);
 		text-decoration: underline;
 	}
 </style>

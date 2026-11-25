@@ -269,7 +269,7 @@ it.each([
 it.each([
 	['en', 202, true, '20.2%'],
 	['fr', 202, true, '20,2\u00a0%'],
-	['en', 42, false, '42 s'],
+	['en', 42, false, '42.0 s'],
 	['en', 258, false, '4.3 min'],
 ] as const)('formats %s map reading %s', (locale, value, stops, expected) => {
 	expect(mapRecordReading(value, stops, locale)).toBe(expected);

@@ -1,3 +1,4 @@
+import { openMapControls } from './map-frame-controls';
 import { test } from './layout-test';
 import { expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
@@ -91,7 +92,8 @@ for (const provider of ['stm', 'octranspo'])
 					await stable(page);
 					expect(await headerOverlaps(page), 'header after fonts load').toEqual([]);
 					await page.emulateMedia({ reducedMotion: 'reduce' });
-					if (width === 390) await page.getByTestId('map-filter-pill').click();
+					await openMapControls(page);
+					await page.locator('[data-map-controls] summary').click();
 					const panel = page.locator('.map-filters:visible');
 					const sw = panel.getByRole('switch', {
 						name: locale === 'fr' ? 'Positions estimées' : 'Estimated positions',
@@ -190,8 +192,8 @@ test('opening vehicle details keeps the global map report timestamp @layout', as
 		}),
 	);
 	await page.goto('/map', { waitUntil: 'networkidle' });
-	const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
-	const timestamp = page.locator(`.map-freshness[data-placement="${placement}"] time`);
+
+	const timestamp = page.locator(`[data-slot="map-frame"] [data-slot="freshness-stamp"]`);
 	await expect(timestamp).toHaveAttribute('datetime', /.+/);
 	const original = await timestamp.getAttribute('datetime');
 	await page.goto('/map?provider=stm&focus=vehicle:layout-bus', { waitUntil: 'networkidle' });

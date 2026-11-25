@@ -7,6 +7,8 @@ const columns = {
 	evidence: z.object({
 		days_not_measured: z.array(z.iso.date()),
 		source_date: z.iso.date().optional(),
+		method_version: z.string().optional(),
+		cleaning_versions: z.array(count).optional(),
 	}),
 };
 
