@@ -2,6 +2,9 @@ import type { Locale } from '#lib/i18n/index.ts';
 import { intl } from '#lib/i18n/index.ts';
 import { choose, percent, tally } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
+import { hoursReading, longDate, recordRatio, serviceWeekday } from '#lib/site/presenter.ts';
+import { addIsoDays } from '#lib/v1/history/selection.ts';
+import { recordState } from '#lib/features/record/recordStates.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 
@@ -52,7 +55,11 @@ export function vehicleReading(answer: RecordMeasure, measure: string, locale: L
 	const value = answer.value[measure];
 	if (value == null) return choose(locale, 'Unknown', 'Inconnu');
 	if (measure === 'vehicle_on_time') return percent(value, locale);
-	return intl.number(locale, { maximumFractionDigits: 2 }).format(value);
+	return intl
+		.number(locale, {
+			maximumFractionDigits: measure === 'vehicle_reporting_gaps_per_100_hours' ? 1 : 2,
+		})
+		.format(value);
 }
 
 export function vehicleRecordState(state: string | undefined, text: string, locale: Locale) {
@@ -63,4 +70,68 @@ export function vehicleLines(answer: RecordSeries) {
 	return answer.cells
 		.filter(({ key }) => typeof key.line === 'string')
 		.sort((a, b) => (b.value.vehicle_trips_run ?? -1) - (a.value.vehicle_trips_run ?? -1));
+}
+
+export const didNotReport = {
+	en: 'Did not report. That is not the same as out of service.',
+	fr: 'Aucun signalement. Cela ne veut pas dire que le véhicule était hors service.',
+};
+
+export function vehicleDayState(cell: RecordSeries['cells'][number] | undefined) {
+	const service = cell?.value.vehicle_days_in_service;
+	if (cell?.state !== 'measured' || service == null) return 'not_measured';
+	return service === 0 ? 'not_reporting' : 'in_service';
+}
+
+export function vehicleReportDays(
+	series: RecordSeries,
+	period: { from: string; to: string },
+	locale: Locale,
+) {
+	const byDay = new Map(series.cells.map((cell) => [cell.key.day, cell]));
+	const peak = Math.max(
+		0,
+		...series.cells.map((cell) =>
+			vehicleDayState(cell) === 'in_service' ? (cell.value.vehicle_hours_in_service ?? 0) : 0,
+		),
+	);
+	const entries = [];
+	for (let day = period.from; day <= period.to; day = addIsoDays(day, 1)) {
+		const cell = byDay.get(day);
+		const state = vehicleDayState(cell);
+		const hours = cell?.value.vehicle_hours_in_service ?? null;
+		const date = longDate(day, locale);
+		const report =
+			state === 'not_measured'
+				? null
+				: state === 'not_reporting'
+					? { value: recordState('not_reporting').glyph, fraction: 0 }
+					: {
+							value: hours == null ? recordState('unknown')[locale] : hoursReading(hours, locale),
+							fraction: hours != null && peak > 0 ? hours / peak : 0,
+						};
+		entries.push({
+			id: day,
+			label: serviceWeekday(day, locale),
+			dateLabel: state === 'not_reporting' ? `${date}, ${didNotReport[locale]}` : date,
+			report,
+			state,
+		});
+	}
+	return entries;
+}
+
+export function vehicleServiceDays(answer: RecordMeasure, locale: Locale) {
+	const active = answer.value.vehicle_days_in_service;
+	const { start_date, end_date, days_included } = answer.evidence;
+	const total = new Set(days_included).size;
+	const selectedDays = (Date.parse(end_date) - Date.parse(start_date)) / 86_400_000 + 1;
+	return {
+		total,
+		partial: total < selectedDays,
+		ratio:
+			active != null && total > 0 && active <= total
+				? recordRatio(active, tally(total, locale), locale)
+				: null,
+	};
 }

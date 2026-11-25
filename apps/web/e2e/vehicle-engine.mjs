@@ -5,6 +5,8 @@ export function vehicleEngine(url) {
 	const vehicle = get('vehicle');
 	const from = get('from');
 	const to = get('to');
+	if (vehicle === '40066' && group == null && measure === 'vehicles')
+		return { status: 503, body: {}, headers: { 'retry-after': '15' } };
 	if (from === '2026-11-21') return { status: 503, body: {} };
 	const fr = get('lang') === 'fr';
 	if (get('format') === 'csv') {
@@ -22,12 +24,20 @@ export function vehicleEngine(url) {
 		too_few_to_judge: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
 		unknown: { en: 'Unknown', fr: 'Inconnu' },
 	};
+	const days = Array.from(
+		{ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 },
+		(_, index) => new Date(Date.parse(from) + index * 86_400_000).toISOString().slice(0, 10),
+	);
+	const partial = ['40064', '40065', '40067'].includes(vehicle);
+	const measuredDays = partial ? days.slice(0, -1) : days;
+	const vehicleDays = measure === 'vehicles' && vehicle != null;
+	const included = vehicleDays ? measuredDays : [from];
 	const evidence = {
 		start_date: from,
 		end_date: to,
-		days_measured: [from],
-		days_included: [from],
-		days_not_measured: [],
+		days_measured: included,
+		days_included: included,
+		days_not_measured: vehicleDays && partial ? days.slice(-1) : [],
 		method_version: 'vehicles-fixture-v1',
 		cleaning_versions: [8],
 		query_ms: 4,
@@ -36,14 +46,15 @@ export function vehicleEngine(url) {
 		value,
 		state,
 		state_text: states[state],
-		evidence: { counts, days_included: [from] },
+		evidence: { counts, days_included: vehicleDays && state !== 'measured' ? [] : included },
 	});
 	const envelope = { evidence, coverage_note: null, info: [{ id: measure, minimum_sample: 30 }] };
-	const noReport = vehicle === '1';
+	const noReport = vehicle === '1' || vehicle === '40067';
+	const activeDays = noReport ? 0 : Math.min(vehicle === '40064' ? 6 : 5, measuredDays.length);
 	const service = cell(
 		{
-			vehicle_days_in_service: noReport ? 0 : 5,
-			vehicle_hours_in_service: noReport ? 0 : 12.5,
+			vehicle_days_in_service: activeDays,
+			vehicle_hours_in_service: activeDays * 2.5,
 			vehicle_lines_run: noReport ? 0 : 2,
 			vehicle_trips_run: noReport ? 0 : 22,
 		},
@@ -70,15 +81,20 @@ export function vehicleEngine(url) {
 	if (!vehicle) return { status: 400, body: { message: 'Vehicle cut required' } };
 	if (group === 'day') {
 		const cells = [];
-		for (let ms = Date.parse(from), index = 0; ms <= Date.parse(to); ms += 86_400_000, index++) {
-			const day = new Date(ms).toISOString().slice(0, 10);
-			const active = !noReport && index < 5;
+		for (const [index, day] of days.entries()) {
+			if (vehicle === '40064' && !measuredDays.includes(day)) continue;
+			const measured = measuredDays.includes(day);
+			const active = measured && index < activeDays;
 			cells.push({
 				key: { day },
-				...cell({
-					vehicle_days_in_service: active ? 1 : 0,
-					vehicle_hours_in_service: active ? 2.5 : 0,
-				}),
+				...cell(
+					{
+						vehicle_days_in_service: active ? 1 : 0,
+						vehicle_hours_in_service: active ? 2.5 : 0,
+					},
+					{},
+					measured ? 'measured' : 'not_measured',
+				),
 			});
 		}
 		return { body: { ...envelope, cells } };
@@ -98,8 +114,10 @@ export function vehicleEngine(url) {
 	const row = {
 		vehicles: service,
 		vehicle_reporting_gaps_per_100_hours: cell(
-			{ vehicle_reporting_gaps_per_100_hours: 16 },
-			{ reporting_gaps: 2, hours_in_service: 12.5 },
+			{ vehicle_reporting_gaps_per_100_hours: partial ? 130.76 : 16 },
+			partial
+				? { reporting_gaps: 16, hours_in_service: 1600 / 130.76 }
+				: { reporting_gaps: 2, hours_in_service: 12.5 },
 		),
 		vehicle_unfinished_trips: {
 			...cell({ vehicle_unfinished_trips: null }, { completion_sample: 20 }, 'not_tracked'),

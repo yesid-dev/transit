@@ -81,12 +81,13 @@
 		data.lineMissing && observed
 			? observed.answer.then(
 					(result) =>
-						result.kind !== 'answer' ||
-						!('cells' in result.answer) ||
-						!result.answer.cells.some(
-							({ evidence }) =>
-								(evidence.counts.scheduled ?? 0) > 0 || (evidence.counts.classified ?? 0) > 0,
-						),
+						result.kind !== 'busy' &&
+						(result.kind !== 'answer' ||
+							!('cells' in result.answer) ||
+							!result.answer.cells.some(
+								({ evidence }) =>
+									(evidence.counts.scheduled ?? 0) > 0 || (evidence.counts.classified ?? 0) > 0,
+							)),
 				)
 			: false,
 	);
@@ -289,6 +290,8 @@
 											{/snippet}
 										</RecordActionGroup>
 									{/snippet}
+								{:else if result.kind === 'busy'}
+									<RecordPending locale={data.lang} busy />
 								{:else}
 									<RecordAnswer
 										value={null}
@@ -299,7 +302,6 @@
 										locale={data.lang}
 										time={recordTime}
 									/>
-									{#if result.kind === 'busy'}<RecordPending locale={data.lang} busy />{/if}
 								{/if}
 							{/await}
 						</div>

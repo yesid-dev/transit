@@ -17,6 +17,8 @@ export function departureDailyEngine(url, dailyMessageHold) {
 	const kind = get('kind');
 	const group = get('group');
 	const departure = get('departure');
+	if (departure && from === '2026-11-22' && measure === 'late' && group === 'day')
+		return { status: 503, body: {}, headers: { 'retry-after': '15' } };
 	if (departure && from === '2026-11-21') return { status: 503, body: {} };
 	if (
 		departure &&
@@ -145,6 +147,17 @@ export function departureDailyEngine(url, dailyMessageHold) {
 		return {
 			body: {
 				...envelope,
+				...(departure && measure === 'late'
+					? {
+							evidence: {
+								...evidence,
+								days_included: Array.from(
+									{ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 },
+									(_, i) => new Date(Date.parse(from) + i * 86_400_000).toISOString().slice(0, 10),
+								),
+							},
+						}
+					: {}),
 				cells: Array.from(
 					{ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 },
 					(_, index) => {

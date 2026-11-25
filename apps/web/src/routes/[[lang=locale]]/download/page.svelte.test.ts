@@ -177,3 +177,28 @@ it.each([
 	);
 	expect(container.querySelectorAll('article [data-record-state]')).toHaveLength(missing);
 });
+
+it.each([
+	['en', 'Waiting for a reading.'],
+	['fr', 'Lecture en attente.'],
+] as const)(
+	'uses the shared pending line for a busy download answer in %s',
+	async (locale, pending) => {
+		language.value = locale;
+		const { container } = render(Page, {
+			props: {
+				data: {
+					providerId: 'octranspo',
+					city: { city: 'Ottawa', operator: 'OC Transpo' },
+					period: { from: day, to: day, preset: null },
+					window: { from: day, to: day, page: 0, lastPage: 0 },
+					methods: null,
+					listing: Promise.resolve({ unavailable: true, busy: true, listings: [] }),
+				},
+			},
+		});
+		expect(await screen.findByText(pending)).toBeVisible();
+		expect(container.querySelector('[data-slot="screen-answer"]')).toHaveTextContent(pending);
+		expect(container.querySelector('[data-slot="answer-lead"]')).toBeNull();
+	},
+);
