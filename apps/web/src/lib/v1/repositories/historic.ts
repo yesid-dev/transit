@@ -388,7 +388,6 @@ export async function loadStopHistoryRange(
 	);
 }
 
-
 export const getHotspots: (ctx?: AdapterCtx) => Promise<Hotspots> = (ctx) =>
 	adapter.historic.hotspots(ctx);
 

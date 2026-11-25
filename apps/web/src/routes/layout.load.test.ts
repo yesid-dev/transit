@@ -101,6 +101,8 @@ describe('root server layout boot', () => {
 		['/status', '/status?frameMode=live'],
 		['/network', '/network?frameMode=record'],
 		['/network', '/network?frameMode=live'],
+		['/alerts', '/alerts?frameMode=record'],
+		['/alerts', '/alerts?frameMode=live'],
 		['/receipt', '/receipt?date=2026-08-30'],
 		['/metrics/archive', '/metrics/archive'],
 	])('leaves snapshot transport idle on %s', async (route, path) => {

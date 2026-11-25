@@ -1,9 +1,41 @@
 import { expect, test } from '@playwright/test';
 import { stmAlertId } from './alert-fixture.mjs';
+import { captureUrl, refreshAlertsCapture } from './capture-fixture';
 
 test.use({ extraHTTPHeaders: { 'x-transit-fixture-scope': 'alerts' } });
 
 const period = 'provider=stm&frameMode=record&recordFrom=2026-11-14&recordTo=2026-11-20';
+
+test('Alerts Record and Live now use no legacy requests across load and refresh', async ({
+	page,
+}) => {
+	await page.clock.install();
+	const legacy: string[] = [];
+	const captures: string[] = [];
+	page.on('request', (request) => {
+		const url = new URL(request.url());
+		if (
+			/(^|\/)v1(\/|$)/.test(url.pathname) ||
+			url.hostname.endsWith('.r2.dev') ||
+			(url.hostname === 'data.yesid.dev' && !url.pathname.startsWith('/v2/'))
+		)
+			legacy.push(url.href);
+		if (captureUrl.test(url.href)) captures.push(url.pathname + url.search);
+	});
+	await page.goto(`/alerts?${period}`);
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
+	await expect(page.locator('#messages [data-slot="show-more"]')).toBeVisible();
+	await page.clock.fastForward(21_000);
+	expect(captures).toEqual([]);
+
+	await page.goto('/alerts?provider=stm&frameMode=live');
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
+	await expect(page.locator('#alerts-window')).toContainText('0 alerts are in effect now.');
+	expect(captures).toEqual([]);
+	expect((await refreshAlertsCapture(page)).ok()).toBe(true);
+	expect(captures).toEqual(['/api/live?city=stm']);
+	expect(legacy).toEqual([]);
+});
 
 test('Alerts Record streams a count, breakdowns and the first page of agency messages', async ({
 	page,

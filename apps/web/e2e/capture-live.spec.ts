@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
 import { alertFixtures } from './alert-fixture.mjs';
-import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import {
+	captureFixture,
+	captureUrl,
+	captureVehicle,
+	refreshAlertsCapture,
+} from './capture-fixture';
 
 test('the Transit1 live vehicle reads the capture snapshot in English and French', async ({
 	page,
@@ -93,6 +98,7 @@ test('Departure Live shows the redirected prediction report and preserves its CS
 test('Live alerts display capture evidence and distinguish unsupported coverage', async ({
 	page,
 }) => {
+	await page.clock.install();
 	const at = Date.now();
 	const header = { en: 'Elevator closed for repair', fr: 'Ascenseur fermé pour réparation' };
 	await page.route(captureUrl, (route) => {
@@ -120,6 +126,7 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 	for (const locale of ['en', 'fr'] as const) {
 		const href = locale === 'fr' ? '/fr/alerts' : '/alerts';
 		await page.goto(`${href}?provider=stm&frameMode=live`);
+		await refreshAlertsCapture(page);
 		await expect(page.getByText(header[locale], { exact: true })).toBeVisible();
 		await expect(page.locator('#alerts-breakdown')).toContainText(
 			locale === 'fr' ? 'Non publié' : 'Not published',
@@ -136,6 +143,7 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 test('Live alerts share effect and line filters and exclude future notices from the count', async ({
 	page,
 }) => {
+	await page.clock.install();
 	const at = Date.now();
 	const start = new Date(at - 60_000).toISOString();
 	const future = new Date(at + 86_400_000).toISOString();
@@ -150,6 +158,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 		}),
 	);
 	await page.goto('/alerts?provider=stm&frameMode=live');
+	await refreshAlertsCapture(page);
 	const list = page.locator('#alerts-log');
 	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12');
 	await expect(page.locator('#alerts-window')).toContainText('12 alerts are in effect now.');
@@ -163,6 +172,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
 	await expect(page).toHaveURL(/route=24.*effect=DETOUR/);
 	await page.reload();
+	await refreshAlertsCapture(page);
 	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
 	await expect(list.getByRole('combobox', { name: 'Effect' })).toHaveValue('DETOUR');
 });

@@ -10,6 +10,14 @@ import type {
 
 export const captureUrl = /\/api\/live\?city=[a-z0-9_-]+$/;
 export const liveTripsUrl = /\/api\/live-trips\?city=[a-z0-9_-]+&/;
+
+export async function refreshAlertsCapture(page: Page) {
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
+	await page.locator('#alerts-window, [data-record-state="no_live_data"]').first().waitFor();
+	const response = page.waitForResponse((reply) => captureUrl.test(reply.url()));
+	await page.clock.fastForward(21_000);
+	return response;
+}
 type Vehicle = NonNullable<CaptureSnapshot['vehicle_positions']>[number];
 type TripUpdate = CaptureTripReport['trip_updates'][number];
 type Prediction = { stop: string; eta_utc: string; delay_min?: number | null };

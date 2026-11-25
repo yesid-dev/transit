@@ -122,10 +122,10 @@ export const designPassCases = [
 				: screen.startsWith('data-health')
 					? ['2026-10-26', '2026-11-22']
 					: screen === 'daily'
-				? ['2026-11-18', '2026-11-20']
-				: screen === 'departure'
-					? ['2026-11-16', '2026-11-20']
-					: ['2026-11-08', '2026-11-14'];
+						? ['2026-11-18', '2026-11-20']
+						: screen === 'departure'
+							? ['2026-11-16', '2026-11-20']
+							: ['2026-11-08', '2026-11-14'];
 	url.searchParams.set('recordFrom', from);
 	url.searchParams.set('recordTo', to);
 	return {

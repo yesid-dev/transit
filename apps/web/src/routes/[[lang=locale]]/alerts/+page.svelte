@@ -5,5 +5,5 @@
 </script>
 
 {#key JSON.stringify([data.providerId, data.alertRecord.mode])}
-	<AlertsScreen data={data.alertRecord} locale={data.lang} manifest={data.v1?.manifest} />
+	<AlertsScreen data={data.alertRecord} locale={data.lang} />
 {/key}

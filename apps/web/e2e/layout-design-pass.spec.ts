@@ -2,7 +2,12 @@ import { expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
 import { stmLiveAlertFixtures } from './alert-fixture.mjs';
-import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import {
+	captureFixture,
+	captureUrl,
+	captureVehicle,
+	refreshAlertsCapture,
+} from './capture-fixture';
 import { designPassCases } from './design-pass-cases';
 import { recordMapFixture } from './map-record-fixture';
 import { measureDesignPass, setWidth } from './design-pass-measure';
@@ -16,7 +21,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		const alerts = screen === 'alerts' || screen === 'alerts-live';
 		if (alerts) await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
 		await setWidth(page, 1440);
-		if (screen !== 'line-live' && !(health && screen.endsWith('-live')))
+		const liveAlerts = screen === 'alerts-live' && provider === 'stm';
+		if (liveAlerts) await page.clock.install({ time });
+		else if (screen !== 'line-live' && !(health && screen.endsWith('-live')))
 			await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 		await page.route(captureUrl, (route) => {
@@ -38,6 +45,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		expect(response?.status(), href).toBe(screen === 'error' ? 404 : 200);
 		await expect(page.locator('html')).toHaveAttribute('lang', locale);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		if (liveAlerts) await refreshAlertsCapture(page);
 		await expect(page.getByRole('main')).toBeVisible();
 		if (screen === 'how-we-measure') {
 			await expect(page.locator('[data-record-disclosure]').first()).toBeVisible();
@@ -137,6 +145,10 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			for (const theme of ['light', 'dark'] as const) {
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
+				if (liveAlerts) {
+					await refreshAlertsCapture(page);
+					await expect(page.locator('#alerts-log [data-slot="show-more"]')).toBeVisible();
+				}
 				const answer = page.locator(
 					screen.startsWith('search')
 						? '[data-slot="screen-state"]'

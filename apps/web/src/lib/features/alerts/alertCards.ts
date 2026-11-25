@@ -2,7 +2,7 @@ import type { Locale } from '#lib/i18n/index.ts';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
 import type { AgencyMessage, AgencyMessagePeriod } from '#lib/site/agencyMessages.ts';
 import { effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
-import type { Alert } from '#lib/v1/schemas/alerts.ts';
+import type { CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 
 export type AlertCard = AgencyMessage & {
 	key: string;
@@ -34,27 +34,27 @@ export function recordAlertCards(
 	}));
 }
 
-export function liveAlertCards(alerts: readonly Alert[], now: number): AlertCard[] {
+export function liveAlertCards(
+	alerts: Readonly<NonNullable<CaptureSnapshot['alerts']>>,
+	now: number,
+): AlertCard[] {
 	return alerts.flatMap((alert) => {
-		const published = alert.active_periods?.length
-			? alert.active_periods
-			: [{ start_utc: alert.start_utc, end_utc: alert.end_utc }];
+		const published = alert.periods.length ? alert.periods : [[null, null] as const];
 		const periods = published
 			.filter(
-				({ start_utc, end_utc }) =>
-					(!start_utc || Date.parse(start_utc) <= now) && (!end_utc || Date.parse(end_utc) > now),
+				([start, end]) => (!start || Date.parse(start) <= now) && (!end || Date.parse(end) > now),
 			)
-			.map(({ start_utc, end_utc }) => ({ start: start_utc ?? null, end: end_utc ?? null }));
+			.map(([start, end]) => ({ start, end }));
 		if (!periods.length) return [];
 		return [
 			{
 				id: alert.id,
 				key: alert.id,
-				routes: alert.routes ?? [],
-				stops: alert.stops ?? [],
-				header: { en: alert.header_text_en, fr: alert.header_text },
-				description: { en: alert.description_en, fr: alert.description },
-				url: { en: alert.url_en, fr: alert.url },
+				routes: alert.routes,
+				stops: alert.stops,
+				header: alert.header,
+				description: alert.description,
+				url: alert.url,
 				effect: publishedAlertEffect(alert.effect),
 				periods,
 			},

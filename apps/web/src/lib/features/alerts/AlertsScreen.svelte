@@ -4,7 +4,6 @@
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { ShowMore } from '@yesid/ui/table';
-	import { onMount, untrack } from 'svelte';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type {
@@ -24,10 +23,8 @@
 		recordStamp,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { liveReader } from '#lib/v1/adapter/index.ts';
-	import { getV1Runtime } from '#lib/v1/runtime.ts';
-	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
-	import type { Manifest } from '#lib/v1/schemas/index.ts';
+	import LiveCapture from '#lib/live/LiveCapture.svelte';
+	import { feedState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
@@ -62,7 +59,6 @@
 	let {
 		data,
 		locale,
-		manifest,
 	}: {
 		data: {
 			mode: 'live' | 'record';
@@ -74,10 +70,10 @@
 			timeZone?: string;
 			cityName: string;
 			operator?: string;
+			capture: Promise<CaptureSnapshot | null> | null;
 			sections: ReturnType<typeof loadAlertRecord>;
 		};
 		locale: Locale;
-		manifest?: Manifest | null;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const title = $derived(t('Service alerts', 'Avis de service'));
@@ -114,31 +110,6 @@
 				href: recordSectionLinks(target, key).csv,
 			}));
 	});
-	const live = untrack(() =>
-		liveMode && data.tracked && manifest
-			? createLiveStore(manifest, liveReader, { families: ['alerts', 'vehicles'] })
-			: null,
-	);
-	onMount(() => {
-		live?.start();
-		return () => live?.stop();
-	});
-	const clock = getV1Runtime().clock;
-	const health = $derived(live?.familyStates.alerts.health);
-	const liveTime = $derived(live?.alerts?.feed_captured_utc);
-	const pending = $derived(
-		live && !health?.retained && ['idle', 'loading'].includes(live.familyStates.alerts.phase),
-	);
-	const current = $derived(
-		health?.state === 'live' && health.retained && !health.isStale && !health.notice,
-	);
-	const liveCards = $derived(liveAlertCards(live?.alerts?.alerts ?? [], clock.serverNow));
-	const liveStamp: StampProps = $derived({
-		kind: 'live',
-		label: liveStampAge(null, locale),
-		updatedAt: liveTime ? new Date(liveTime) : undefined,
-		agoLabel: (seconds) => liveStampAge(seconds, locale),
-	});
 	const scope = $derived(
 		t(
 			'The agency writes these messages. Transit keeps each one in full, with its dates, lines and stops.',
@@ -171,7 +142,7 @@
 	}
 </script>
 
-{#snippet actions(result?: EngineResult<EngineAnswer>)}
+{#snippet actions(result?: EngineResult<EngineAnswer>, liveTime?: string | null)}
 	<RecordActionGroup {locale} href={share.href} {files}>
 		{#snippet citation()}
 			{#if liveMode}
@@ -418,62 +389,81 @@
 						{/snippet}</StateNotice
 					>
 				</div>
-			{:else if liveMode}
-				{#if current}
-					<div id="alerts-window" data-slot="screen-answer">
-						<RecordAnswer
-							value={tally(liveCards.length, locale)}
-							sentence={alertAnswerSentence(liveCards.length, locale, true)}
+			{:else if liveMode && data.capture}
+				<LiveCapture city={data.city} capture={data.capture}>
+					{#snippet pending()}
+						<div data-slot="screen-state">
+							<p role="status">{t('Loading live alerts…', 'Chargement des avis en direct…')}</p>
+						</div>
+					{/snippet}
+					{#snippet children(snapshot, now)}
+						{@const feeds = Object.values(snapshot?.feeds ?? {})}
+						{@const alertFeed = feeds.find(({ family }) => family === 'alerts')}
+						{@const vehiclesAt = feeds.find(
+							({ family }) => family === 'vehicle_positions',
+						)?.captured_at}
+						{#if snapshot?.alerts && alertFeed?.captured_at && feedState(alertFeed, now) === 'live'}
+							{@const liveCards = liveAlertCards(snapshot.alerts, now)}
+							{@const liveStamp = {
+								kind: 'live' as const,
+								label: liveStampAge(null, locale),
+								updatedAt: new Date(alertFeed.captured_at),
+								agoLabel: (seconds: number) => liveStampAge(seconds, locale),
+							}}
+							{#snippet liveActions()}{@render actions(undefined, alertFeed.captured_at)}{/snippet}
+							<div id="alerts-window" data-slot="screen-answer">
+								<RecordAnswer
+									value={tally(liveCards.length, locale)}
+									sentence={alertAnswerSentence(liveCards.length, locale, true)}
+									{locale}
+									time={liveStamp}
+									actions={liveActions}
+								>
+									{#snippet meta()}
+										<p>{t('Counted:', 'Ce qui est compté :')} {labelCount(liveCards.length)}</p>
+										<p>
+											{t('A count of alerts at this moment.', 'Un décompte des avis à ce moment.')}
+										</p>
+										<p>{scope}</p>
+									{/snippet}
+								</RecordAnswer>
+							</div>
+							<div id="alerts-breakdown">
+								<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
+									{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
+									{@render evidenceFooter(undefined, liveCards.length)}
+								</RecordCard>
+							</div>
+							<div id="alerts-log" class="scroll-mt-24">
+								<RecordCard title={t('In effect now', 'En vigueur maintenant')} stamp={liveStamp}>
+									<AlertList
+										cards={liveCards}
+										{locale}
+										city={data.city}
+										timeZone={data.timeZone}
+										live
+									/>
+									{@render evidenceFooter(undefined, liveCards.length)}
+								</RecordCard>
+							</div>
+							<RecordCard title={alertSections.line[locale]} stamp={liveStamp}>
+								{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
+								{@render evidenceFooter(
+									undefined,
+									liveCards.filter(({ routes }) => routes.length).length,
+								)}
+							</RecordCard>
+						{:else}
+							<div data-slot="screen-state"><StateMark state="no_live_data" {locale} /></div>
+						{/if}
+						<AboutLiveFigures
 							{locale}
-							time={liveStamp}
-							{actions}
-						>
-							{#snippet meta()}
-								<p>{t('Counted:', 'Ce qui est compté :')} {labelCount(liveCards.length)}</p>
-								<p>{t('A count of alerts at this moment.', 'Un décompte des avis à ce moment.')}</p>
-								<p>{scope}</p>
-							{/snippet}
-						</RecordAnswer>
-					</div>
-					<div id="alerts-breakdown">
-						<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
-							{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
-							{@render evidenceFooter(undefined, liveCards.length)}
-						</RecordCard>
-					</div>
-					<div id="alerts-log" class="scroll-mt-24">
-						<RecordCard title={t('In effect now', 'En vigueur maintenant')} stamp={liveStamp}>
-							<AlertList
-								cards={liveCards}
-								{locale}
-								city={data.city}
-								timeZone={data.timeZone}
-								live
-							/>
-							{@render evidenceFooter(undefined, liveCards.length)}
-						</RecordCard>
-					</div>
-					<RecordCard title={alertSections.line[locale]} stamp={liveStamp}>
-						{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
-						{@render evidenceFooter(
-							undefined,
-							liveCards.filter(({ routes }) => routes.length).length,
-						)}
-					</RecordCard>
-				{:else}
-					<div data-slot="screen-state">
-						{#if pending}<p role="status">
-								{t('Loading live alerts…', 'Chargement des avis en direct…')}
-							</p>
-						{:else}<StateMark state="no_live_data" {locale} />{/if}
-					</div>
-				{/if}
-				<AboutLiveFigures
-					{locale}
-					operator={data.operator}
-					healthLink={localizeHref('/status', locale, data.city)}
-					captureAge={live?.familyStates.vehicles.health.ageSeconds}
-				/>
+							operator={data.operator}
+							healthLink={localizeHref('/status', locale, data.city)}
+							captureAge={vehiclesAt ? Math.max(0, (now - Date.parse(vehiclesAt)) / 1000) : null}
+						/>
+					{/snippet}
+				</LiveCapture>
 			{:else if answer}
 				<div id="answer" data-slot="screen-answer" class="min-w-0 scroll-mt-24">
 					{#await answer}

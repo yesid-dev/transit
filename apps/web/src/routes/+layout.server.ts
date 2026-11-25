@@ -21,7 +21,6 @@ function usesLiveSnapshots(route: string | null, url: URL): boolean {
 		case localRoute + '/stop/[id]':
 			return stopFrameView(url) === 'live';
 		case localRoute:
-		case localRoute + '/alerts':
 		case localRoute + '/vehicles':
 		case localRoute + '/vehicle/[id]':
 		case localRoute + '/departure/[key]':
