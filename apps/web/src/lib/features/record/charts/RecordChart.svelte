@@ -132,7 +132,6 @@
 		<StopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
-			<p class="text-small text-muted-foreground">{reading.props.scale.label}</p>
 			<div
 				class="hour-chart"
 				data-few={reading.props.stateLabels.few ? '' : undefined}
@@ -214,12 +213,16 @@
 				{/if}
 				{#if reading.props.last}
 					{@const last = reading.props.last}
+					{@const lastIndex = reading.props.points.findIndex(({ x }) => x === last.x)}
+					{@const previous = reading.props.points[lastIndex - 1]?.y}
+					{@const pointY = plot.y(last.y)}
+					{@const below =
+						pointY < plot.top + plot.unit ||
+						(previous != null && previous > last.y && pointY + plot.unit <= plot.bottom)}
 					<text
 						class="trend-end"
 						x={Math.min(plot.right, plot.x(last.x) + plot.unit * 0.4)}
-						y={plot.y(last.y) < plot.top + plot.unit
-							? plot.y(last.y) + plot.unit
-							: plot.y(last.y) - plot.unit * 0.4}
+						y={below ? pointY + plot.unit : pointY - plot.unit * 0.4}
 						text-anchor="end">{last.label}</text
 					>
 				{/if}
