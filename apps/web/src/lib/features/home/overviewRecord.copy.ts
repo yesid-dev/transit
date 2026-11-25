@@ -21,7 +21,7 @@ export const overviewCopy = {
 		liveScope: 'Vehicles that reported a position in the latest feed capture.',
 		liveStatus: 'How a vehicle gets its status',
 		liveDefinition:
-			'At its last report, a vehicle was early beyond 1 minute, late beyond 5 minutes, or on time between the two.',
+			'At its last report: early is more than 1 minute ahead, late is more than 5 minutes behind, on time is between the two.',
 		liveFeeds: (operator: string) => `GTFS-Realtime feeds published by ${operator}.`,
 		dataHealth: 'Data health',
 		liveUnavailable: 'Live numbers unavailable',
@@ -77,7 +77,7 @@ export const overviewCopy = {
 		liveScope: 'Les véhicules ayant transmis leur position dans le dernier relevé du flux.',
 		liveStatus: 'Comment est déterminé l’état d’un véhicule',
 		liveDefinition:
-			'Au dernier relevé, le véhicule était en avance au-delà de 1 minute, en retard au-delà de 5 minutes ou à l’heure entre les deux.',
+			'Au dernier relevé : le véhicule est en avance de plus d’une minute, en retard de plus de 5 minutes ou à l’heure entre les deux.',
 		liveFeeds: (operator: string) => `Flux GTFS-Realtime publiés par ${operator}.`,
 		dataHealth: 'Santé des données',
 		liveUnavailable: 'Chiffres en direct indisponibles',

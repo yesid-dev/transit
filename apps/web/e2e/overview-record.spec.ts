@@ -108,7 +108,7 @@ test('a retained Live reading says it is stale and agrees with the French singul
 	await expect(live.getByText(/mis à jour il y a 3 minutes · pas à jour/u)).toBeVisible();
 	await expect(live.getByText('véhicule transmet sa position.')).toBeVisible();
 	await expect(live.getByText('Retard inconnu')).toBeVisible();
-	await expect(live.getByText('Aucune donnée en direct', { exact: true })).toBeVisible();
+	await expect(live.getByText('Non mesuré', { exact: true })).toBeVisible();
 });
 
 test('a client period change streams the shell before the engine answers', async ({
@@ -342,7 +342,9 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 	for (const status of ['Early', 'On time', 'Late', 'Delay unknown']) {
 		await expect(live.getByRole('term').filter({ hasText: status })).toBeVisible();
 	}
-	await expect(live.getByText('No live data', { exact: true })).toBeVisible();
+	await expect(
+		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
+	).toContainText('Not measured');
 	expect(captures.map((url) => url.pathname + url.search)).toEqual(['/api/live?city=stm']);
 	expect(snapshots).toEqual([]);
 
@@ -405,7 +407,12 @@ test('the header carries the Live view and dates through city and language chang
 	await expect(page).toHaveURL(isOttawaLive);
 	await expect(main.getByRole('heading', { level: 1 })).toHaveText('Ottawa network');
 	const live = main.getByRole('article', { name: 'Live now', exact: true });
-	await expect(live.getByText('No live data', { exact: true })).toHaveCount(2);
+	await expect(
+		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
+	).toContainText('Not measured');
+	await expect(live.getByText('Alerts in effect', { exact: true }).locator('..')).toContainText(
+		'No live data',
+	);
 	await expect(live.getByRole('link', { name: 'Read the alerts' })).toHaveCount(0);
 
 	await page.getByTestId('language-toggle').click();

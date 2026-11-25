@@ -67,21 +67,18 @@
 		value: number | null | undefined,
 		family: LiveFamilyState | undefined,
 		available: boolean,
-		missing: 'not_measured' | 'no_live_data' = 'not_measured',
 	) {
 		if (!available) return { kind: 'absent', state: 'no_live_data' } as const;
 		if (value != null) return { kind: 'value', value } as const;
 		if (!family || family.health.state === 'failed-no-data') return { kind: 'failed' } as const;
 		if (!family.health.retained && (family.phase === 'idle' || family.phase === 'loading'))
 			return { kind: 'pending' } as const;
-		return { kind: 'absent', state: missing } as const;
+		return { kind: 'absent', state: 'not_measured' } as const;
 	}
 	const reporting = $derived(
 		reading(pulse?.reporting, live?.familyStates.network, networkAvailable),
 	);
-	const silent = $derived(
-		reading(pulse?.silent, live?.familyStates.network, networkAvailable, 'no_live_data'),
-	);
+	const silent = $derived(reading(pulse?.silent, live?.familyStates.network, networkAvailable));
 	const alerts = $derived(
 		reading(live?.alerts?.alerts.length, live?.familyStates.alerts, alertsAvailable),
 	);
