@@ -156,10 +156,6 @@ jobs:
           CLEAN_SOURCE_S3_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_READ_ACCESS_KEY_ID }}
           CLEAN_SOURCE_S3_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_READ_SECRET_ACCESS_KEY }}
         run: |
-          private_output="$RUNNER_TEMP/transit-clean-private"
           uv run --managed-python --locked transit-ops clean-days \
             --provider "$CLEAN_PROVIDER" --from "$CLEAN_DAY" --to "$CLEAN_DAY" \
-            --source s3://transit-raw --dest "$private_output"
-          uv run --managed-python --locked python -m transit_ops.clean_day_summary \
-            --root "$private_output" --provider "$CLEAN_PROVIDER" --day "$CLEAN_DAY" \
-            >> "$GITHUB_STEP_SUMMARY"
+            --source s3://transit-raw --dest "$RUNNER_TEMP/transit-clean-private"

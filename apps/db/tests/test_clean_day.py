@@ -998,6 +998,54 @@ def test_private_summary_reports_an_unmeasured_day_without_table_counts(tmp_path
     assert "| Table |" not in summary.getvalue()
 
 
+def test_private_details_reports_alert_languages_and_unmatched_stop_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TRANSIT_CLEAN_BUILDER_COMMIT", "7" * 40)
+    archive = tmp_path / "archive" / "v1" / "schedules" / "sto"
+    archive.mkdir(parents=True)
+    edition = _edition(tmp_path / "schedule.zip", TRIPS, DAY)
+    name = f"{edition['sha256']}.zip"
+    (archive / name).write_bytes((tmp_path / "schedule.zip").read_bytes())
+    (archive / "editions.json").write_text(
+        json.dumps({"provider": "sto", "editions": [{**edition, "path": name}]}),
+        encoding="utf-8",
+    )
+    stamp = MIDNIGHT - timedelta(hours=12)
+    feed = _feed(stamp)
+    vehicle = feed.entity.add(id="vehicle").vehicle
+    vehicle.vehicle.id = "v1"
+    vehicle.stop_id = "unknown-stop"
+    vehicle.position.latitude = 45.5
+    vehicle.position.longitude = -75.6
+    vehicle.occupancy_status = VehiclePosition.FEW_SEATS_AVAILABLE
+    _save(tmp_path, feed, "vehicle_positions", stamp, "sto")
+    feed = _feed(stamp)
+    alert = feed.entity.add(id="service").alert
+    alert.header_text.translation.add(text="Private alert", language="en")
+    alert.header_text.translation.add(text="Alerte privée", language="fr")
+    alert.description_text.translation.add(text="Untagged")
+    _save(tmp_path, feed, "service_alerts", stamp, "sto")
+    output = tmp_path / "private"
+    result = CliRunner().invoke(
+        app, [
+            "clean-days", "--provider", "sto", "--from", DAY.isoformat(),
+            "--to", DAY.isoformat(), "--source", str(tmp_path), "--dest", str(output),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    summary = StringIO()
+    assert summarize(output / version_key("sto", DAY), summary, source=str(tmp_path))
+    report = summary.getvalue()
+    assert f"Builder commit `{'7' * 40}`." in report
+    assert 'vehicle_positions: "unknown-stop": 1' in report
+    assert '"omitted": 1' in report
+    assert "Occupancy supplied: 1/1 (100.0%)" in report
+    assert 'header_text: "en": 1' in report
+    assert 'header_text: "fr": 1' in report
+    assert 'description_text: "(untagged)": 1' in report
+
+
 def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     editions = _index(tmp_path)
     _capture_fixture(tmp_path)
@@ -1008,6 +1056,23 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     assert f"**Scheduled trips** {len(TRIPS)}, including 1 schedule-only." in summary.getvalue()
     assert "**Ran with no vehicle ID** 0 of 1." in summary.getvalue()
     assert "| trip_updates | duplicate |" in summary.getvalue()
+    archive = tmp_path / "archive" / "v1" / "schedules" / "stm"
+    archive.mkdir(parents=True)
+    pinned = []
+    for entry in editions:
+        name = f"{entry['sha256']}.zip"
+        (archive / name).write_bytes((tmp_path / entry["path"]).read_bytes())
+        pinned.append({**entry, "path": name})
+    (archive / "editions.json").write_text(
+        json.dumps({"provider": "stm", "editions": pinned}), encoding="utf-8"
+    )
+    details = StringIO()
+    assert summarize(first, details, source=str(tmp_path))
+    evidence = details.getvalue()
+    assert "largest gap" in evidence
+    assert '"added": 2' in evidence
+    assert "vehicle_stopped: within radius: 1" in evidence
+    assert f"Schedule verification: {len(TRIPS)} trips" in evidence
     with duckdb.connect(config={"TimeZone": "UTC"}) as db:
         trips = _rows(db, first / "trip_days.parquet")
         stops = _rows(db, first / "stop_events.parquet")

@@ -39,6 +39,7 @@ from transit_ops.clean_day_output import (
     write_clean_day,
     write_unmeasured_day,
 )
+from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.core.models import ProviderManifest
 from transit_ops.history.manifest import Manifest, decode_manifest
 from transit_ops.ingestion.storage import BronzeStorage, LocalBronzeStorage, S3BronzeStorage
@@ -252,23 +253,34 @@ def _build_day(
         day,
         declaration.provider.provider_id,
     )
-    selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
-    archived = {(manifest.endpoint_key, manifest.utc_date) for manifest, _ in selections}
-    loose = find_loose_captures(raw, raw_prefix, declaration, start, end, archived)
-    realtime_present = any(capture.family in REALTIME_FEEDS for capture in loose) or (
-        realtime_capture_present(selections, start, end)
-    )
+    realtime_present, captures = day_captures(raw, raw_prefix, declaration, start, end)
     if realtime_feeds(declaration) and not realtime_present:
         return "no_raw_captures", ignored
-    captures = merged_captures(
-        raw, raw_prefix, selections, start, end, read_loose_captures(raw, loose)
-    )
     cleaned = clean_from_inputs(declaration, day, schedules, captures)
     if isinstance(clean, LocalBronzeStorage):
         write_clean_day(cleaned, clean.root, ignored_invalid_original=ignored)
     else:
         publish_clean_day(cleaned, clean, clean_prefix, ignored_invalid_original=ignored)
     return None, ignored
+
+
+def day_captures(
+    raw: BronzeStorage,
+    raw_prefix: str,
+    declaration: ProviderManifest,
+    start: datetime,
+    end: datetime,
+) -> tuple[bool, Iterator[DayCapture | FeedPoll]]:
+    """Select the same checked capture streams for cleaning and private inspection."""
+    selections = list(_capture_manifests(raw, raw_prefix, declaration, start, end))
+    archived = {(manifest.endpoint_key, manifest.utc_date) for manifest, _ in selections}
+    loose = find_loose_captures(raw, raw_prefix, declaration, start, end, archived)
+    realtime_present = any(capture.family in REALTIME_FEEDS for capture in loose) or (
+        realtime_capture_present(selections, start, end)
+    )
+    return realtime_present, merged_captures(
+        raw, raw_prefix, selections, start, end, read_loose_captures(raw, loose)
+    )
 
 
 def run_clean_days(
