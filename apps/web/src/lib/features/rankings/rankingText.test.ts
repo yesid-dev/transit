@@ -58,7 +58,7 @@ it('keeps a measured zero numerator and leaves a missing count out', () => {
 		rankingSample({ ...row, sample: 20.5, counts: { reporting_gaps: 0 } }, reporting, 'en'),
 	).toBe('0 in 20.5 hours in service');
 	expect(rankingSample({ ...row, counts: { on_time: null } }, 'on_time', 'fr')).toBe(
-		'100 passages observés',
+		'100 passages observés aux arrêts',
 	);
 });
 

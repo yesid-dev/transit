@@ -15,7 +15,7 @@ type Excluded = RankingsRecord['excluded'][number];
 
 const sampleUnits = {
 	headways: { en: 'observed intervals', fr: 'intervalles observés' },
-	events: { en: 'observed stop events', fr: 'passages observés' },
+	events: { en: 'observed stop events', fr: 'passages observés aux arrêts' },
 	trips: { en: 'eligible trips', fr: 'trajets admissibles' },
 	hours: { en: 'hours in service', fr: 'heures en service' },
 };
@@ -89,12 +89,6 @@ export function rankingRange({ range }: Row, measure: RankingMeasure, locale: Lo
 	return choose(locale, `${low} to ${high}`, `${low} à ${high}`);
 }
 
-export function rankingRangeLabel(method: string, locale: Locale) {
-	return method === 'histogram_half_bin'
-		? choose(locale, 'Bin rounding only', 'Arrondi des classes seulement')
-		: choose(locale, 'Range', 'Intervalle');
-}
-
 export function sampleText(sample: number, measure: RankingMeasure, locale: Locale) {
 	const unit =
 		measure === 'excess_wait_time'
@@ -132,7 +126,7 @@ export function lineRankingFloor(
 		return choose(
 			locale,
 			`Each line needs at least ${events} observed stop events and ${trips} observed trips to rank.`,
-			`Chaque ligne doit compter au moins ${events} passages observés et ${trips} trajets observés pour être classée.`,
+			`Chaque ligne doit compter au moins ${events} passages observés aux arrêts et ${trips} trajets observés pour être classée.`,
 		);
 	}
 	if (
@@ -149,16 +143,6 @@ export function lineRankingFloor(
 		);
 	}
 	return null;
-}
-
-export function waitingRankingBasis(counts: Row['counts'], locale: Locale) {
-	const { observed_trip_pairs: pairs, covered_scheduled_headways: matched } = counts;
-	if (pairs == null || matched == null) return '';
-	return choose(
-		locale,
-		`${number(pairs, locale)} distinct observed trip pairs, ${number(matched, locale)} scheduled intervals in comparable windows.`,
-		`${number(pairs, locale)} paires distinctes de trajets observés, ${number(matched, locale)} intervalles prévus dans des fenêtres comparables.`,
-	);
 }
 
 export function exclusionText(row: Excluded, measure: RankingMeasure, locale: Locale) {
