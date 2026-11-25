@@ -162,7 +162,10 @@ for (const locale of ['en', 'fr'] as const)
 				waitUntil: 'networkidle',
 			});
 			await page
-				.getByRole('button', { name: locale === 'fr' ? 'Voir les prévisions' : 'View predictions' })
+				.getByRole('button', {
+					name:
+						locale === 'fr' ? 'Prévisions à ses prochains arrêts' : 'Predictions at its next stops',
+				})
 				.click();
 			const link = page.locator('.trip-stop-link').first();
 			await expect(link).toHaveAccessibleName(new RegExp(name.split(' / ')[0]));

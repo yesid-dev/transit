@@ -111,6 +111,24 @@ export function captureTrips(report: CaptureTripReport, now: number) {
 				update.trip_id,
 				{
 					route: update.route_id,
+					...(update.start_time ? { start_time: update.start_time } : {}),
+					...(update.trip_headsign ? { headsign: update.trip_headsign } : {}),
+					...(update.direction_id === null ? {} : { direction_id: update.direction_id }),
+					...(update.stops.length
+						? {
+								scheduled_stops: update.stops.flatMap((stop) =>
+									stop.stop_id
+										? [
+												{
+													stop: stop.stop_id,
+													sequence: stop.sequence,
+													departure: stop.scheduled_departure ?? null,
+												},
+											]
+										: [],
+								),
+							}
+						: {}),
 					status: classifyDelay(usableDelay ? update.delay : null),
 					delay_min: minute(usableDelay ? update.delay : null),
 					stops: update.stops.flatMap((stop) => {

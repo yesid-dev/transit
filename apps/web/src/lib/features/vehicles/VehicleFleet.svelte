@@ -22,6 +22,7 @@
 		hoursReading,
 		liveStampAge,
 		methodEvidence,
+		recordRatio,
 		recordStamp,
 		relativeReportAge,
 	} from '#lib/site/presenter.ts';
@@ -90,6 +91,11 @@
 		};
 	});
 	const record = $derived(result?.kind === 'answer' ? result.answer : null);
+	const periodDays = $derived(
+		data.period
+			? (Date.parse(data.period.to) - Date.parse(data.period.from)) / 86_400_000 + 1
+			: null,
+	);
 	const recordStampProps = $derived(
 		data.period ? { kind: 'record' as const, label: recordStamp(data.period, locale) } : undefined,
 	);
@@ -333,7 +339,12 @@
 			cell: daysCell,
 		},
 		{ key: 'hours', header: t('Hours', 'Heures'), numeric: true, cell: hoursCell },
-		{ key: 'lines', header: t('Lines', 'Lignes'), numeric: true, cell: linesCell },
+		{
+			key: 'lines',
+			header: t('Lines it ran', 'Lignes desservies'),
+			numeric: true,
+			cell: linesCell,
+		},
 		{ key: 'trips', header: t('Trips', 'Trajets'), numeric: true, cell: tripsCell },
 	]);
 	const liveColumns = $derived<DataTableColumn<LiveRow>[]>([
@@ -367,28 +378,38 @@
 {/snippet}
 
 {#snippet daysCell(row: RecordRow)}
-	{#if row.state === 'not_reporting'}<StateMark state="not_reporting" {locale} />
+	{#if row.state === 'not_reporting'}
+		<span class="inline-flex min-w-0 items-baseline gap-2 font-semibold"
+			><StateMark state="not_reporting" {locale} hiddenLabel />{t(
+				'Did not report',
+				'Aucun signal',
+			)}</span
+		>
 	{:else}<RecordTableValue
 			{locale}
-			text={row.days == null ? null : tally(row.days, locale)}
+			text={row.days == null
+				? null
+				: periodDays
+					? recordRatio(row.days, tally(periodDays, locale), locale)
+					: tally(row.days, locale)}
 			state={row.state}
 		/>{/if}
 {/snippet}
-{#snippet hoursCell(row: RecordRow)}<RecordTableValue
-		{locale}
-		text={row.hours == null ? null : hoursReading(row.hours, locale)}
-		state={row.state}
-	/>{/snippet}
-{#snippet linesCell(row: RecordRow)}<RecordTableValue
-		{locale}
-		text={row.lines == null ? null : tally(row.lines, locale)}
-		state={row.state}
-	/>{/snippet}
-{#snippet tripsCell(row: RecordRow)}<RecordTableValue
-		{locale}
-		text={row.trips == null ? null : tally(row.trips, locale)}
-		state={row.state}
-	/>{/snippet}
+{#snippet hoursCell(row: RecordRow)}{#if row.state !== 'not_reporting'}<RecordTableValue
+			{locale}
+			text={row.hours == null ? null : hoursReading(row.hours, locale)}
+			state={row.state}
+		/>{/if}{/snippet}
+{#snippet linesCell(row: RecordRow)}{#if row.state !== 'not_reporting'}<RecordTableValue
+			{locale}
+			text={row.lines == null ? null : tally(row.lines, locale)}
+			state={row.state}
+		/>{/if}{/snippet}
+{#snippet tripsCell(row: RecordRow)}{#if row.state !== 'not_reporting'}<RecordTableValue
+			{locale}
+			text={row.trips == null ? null : tally(row.trips, locale)}
+			state={row.state}
+		/>{/if}{/snippet}
 {#snippet lineCell({ vehicle }: LiveRow)}
 	{#if vehicle.route}
 		<span class="inline-flex flex-wrap items-center gap-2"
@@ -635,12 +656,6 @@
 										onMore={(n) => void more(n)}
 									/>
 								{:else}
-									{#if recordRows.some(({ state }) => state === 'not_reporting')}<p>
-											{t(
-												'Did not report on these dates. That is not the same as out of service.',
-												'Aucun signalement pour ces dates. Cela ne veut pas dire que le véhicule était hors service.',
-											)}
-										</p>{/if}
 									<RecordDataTable
 										{locale}
 										title={sectionTitles.fleet[locale === 'fr' ? 1 : 0]}
@@ -657,6 +672,12 @@
 										labels={paging}
 										onMore={(n) => void more(n)}
 									/>
+									{#if recordRows.some(({ state }) => state === 'not_reporting')}<p>
+											{t(
+												'Did not report on these dates. That is not the same as out of service.',
+												'Aucun signalement pour ces dates. Cela ne veut pas dire que le véhicule était hors service.',
+											)}
+										</p>{/if}
 								{/if}
 							</section>
 						</div>

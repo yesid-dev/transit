@@ -48,10 +48,12 @@
 	let { data }: { data: PageData } = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => (data.lang === 'fr' ? fr : en);
-	const line = $derived(display.line(data.identity.line));
-	const clock = $derived(scheduledClock(data.identity.departure, data.lang));
+	const line = $derived(data.identity ? display.line(data.identity.line) : undefined);
+	const clock = $derived(data.identity ? scheduledClock(data.identity.departure, data.lang) : null);
 	const direction = $derived(
-		display.directionLabel(data.identity.direction, data.headsigns, data.lang),
+		data.identity
+			? display.directionLabel(data.identity.direction, data.headsigns, data.lang)
+			: undefined,
 	);
 
 	const pinned = $derived.by(() => {
@@ -64,7 +66,9 @@
 		);
 	});
 	const local = (path: string) => carryFrameState(localizeHref(path, data.lang, data.city), pinned);
-	const lineHref = $derived(local(`/lines/${encodeURIComponent(data.identity.line)}`));
+	const lineHref = $derived(
+		data.identity ? local(`/lines/${encodeURIComponent(data.identity.line)}`) : undefined,
+	);
 	const stopHref = (id: string) => local(`/stop/${encodeURIComponent(id)}`);
 	const answers = $derived(
 		data.sections.map(({ section, answer }) => ({
@@ -159,7 +163,7 @@
 				title={data.seoTitle}
 				plate={line}
 				subtitle={direction}
-				back={{ href: lineHref, label: t('See the line', 'Voir la ligne') }}
+				back={lineHref ? { href: lineHref, label: t('See the line', 'Voir la ligne') } : undefined}
 			/>
 		</RecordGroup>
 		<div data-slot="screen-content">
@@ -172,7 +176,11 @@
 						{@const selected = result?.selected ?? (trips.length === 1 ? trips[0] : null)}
 						<div data-slot="screen-answer">
 							{#if selected && data.v1}
-								<RecordAnswer value={clock} sentence={direction} locale={data.lang} />
+								<RecordAnswer
+									value={clock}
+									sentence={direction ?? t('Reported predictions', 'Prévisions communiquées')}
+									locale={data.lang}
+								/>
 							{:else}
 								<RecordAnswer
 									value={null}

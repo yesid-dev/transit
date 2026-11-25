@@ -26,7 +26,9 @@ test('the Transit1 live vehicle reads the capture snapshot in English and French
 		const main = page.getByRole('main');
 		await expect(main.getByText(lang === 'fr' ? 'Peu de places' : 'Few seats')).toBeVisible();
 		await main
-			.getByRole('button', { name: lang === 'fr' ? 'Voir les prévisions' : 'View predictions' })
+			.getByRole('button', {
+				name: lang === 'fr' ? 'Prévisions à ses prochains arrêts' : 'Predictions at its next stops',
+			})
 			.click();
 		await expect(
 			page
@@ -66,7 +68,7 @@ test('Vehicle Live waits for the trip publication to refresh', async ({ page }) 
 	try {
 		await page.goto('/vehicle/40061?provider=stm&frameMode=live');
 		await refreshing;
-		await page.getByRole('button', { name: 'View predictions' }).click();
+		await page.getByRole('button', { name: 'Predictions at its next stops' }).click();
 		await expect(page.getByRole('dialog').getByRole('status')).toHaveText('Loading predictions…');
 		await expect(
 			page.getByText('No predictions reported for this trip in this window.'),

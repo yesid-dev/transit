@@ -19,6 +19,18 @@ export type StopEta = z.infer<typeof LiveStopEtaSchema>;
 const LiveTripSchema = PublishedTripSchema.extend({
 	status: LiveStatusCodeSchema,
 	stops: z.array(LiveStopEtaSchema).optional(),
+	start_time: z.string().nullable().optional(),
+	headsign: z.string().nullable().optional(),
+	direction_id: z.number().int().nullable().optional(),
+	scheduled_stops: z
+		.array(
+			z.object({
+				stop: z.string(),
+				sequence: z.number().int().nonnegative().nullable(),
+				departure: z.number().int().nonnegative().nullable(),
+			}),
+		)
+		.optional(),
 });
 export type Trip = z.infer<typeof LiveTripSchema>;
 export const LiveTripsFileSchema = PublishedTripsFileSchema.extend({

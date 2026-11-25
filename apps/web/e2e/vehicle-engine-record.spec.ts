@@ -15,47 +15,61 @@ test.beforeEach(({ browserName }, info) => {
 
 const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 
-test('vehicle live groups the facts before its inline prediction rows', async ({ page }) => {
+test('vehicle live links its scheduled departure and keeps predictions in their sheet', async ({
+	page,
+}) => {
 	const now = Date.now();
+	let hasTime = true;
 	await page.route(captureUrl, (route) =>
 		route.fulfill({ json: captureFixture(now, { vehicle_positions: [captureVehicle(now)] }) }),
 	);
 	await page.route(liveTripsUrl, (route) =>
 		route.fulfill({
 			json: captureTripReport('stm', new Date(now).toISOString(), [
-				captureTrip(
-					'T1',
-					'24',
-					['S1', 'S2', 'S3', 'S4'].map((stop, index) => ({
-						stop,
-						eta_utc: new Date(now + (index + 1) * 60_000).toISOString(),
-						delay_min: 4,
-					})),
-				),
+				{
+					...captureTrip(
+						'T1',
+						'24',
+						['S1', 'S2', 'S3', 'S4'].map((stop, index) => ({
+							stop,
+							eta_utc: new Date(now + (index + 1) * 60_000).toISOString(),
+							delay_min: 4,
+						})),
+					),
+					direction_id: 1,
+					start_time: hasTime ? '07:38:00' : null,
+					trip_headsign: 'Station Laurier',
+				},
 			]),
 		}),
 	);
-	await page.goto(`/vehicle/40061?provider=stm&frameMode=live&${dates}`);
+	const path = `/vehicle/40061?provider=stm&frameMode=live&${dates}`;
+	await page.goto(path);
 	const service = page.getByRole('article', { name: 'What it is running' });
-	await expect(service.locator('[data-slot="fact-list"]').first().locator('dt')).toHaveText([
+	await expect(service.locator('[data-slot="fact-list"]')).toHaveCount(1);
+	await expect(service.locator('dt')).toHaveText([
 		'Line',
-		'Departure',
+		'Scheduled departure',
 		'Status',
 		'Next stop',
+		'How full it is',
+		'Last report',
 	]);
-	await expect(service.locator('table tbody tr')).toHaveCount(3);
-	const order = await service.evaluate((element) => {
-		const first = element.querySelector('[data-slot="fact-list"]')!;
-		const table = element.querySelector('table')!;
-		const last = element.querySelectorAll('[data-slot="fact-list"]')[1]!;
-		return (
-			Boolean(first.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-			Boolean(table.compareDocumentPosition(last) & Node.DOCUMENT_POSITION_FOLLOWING)
-		);
-	});
-	expect(order).toBe(true);
-	await service.getByRole('button', { name: 'View predictions' }).click();
+	await expect(service.getByRole('link', { name: '07:38 toward Station Laurier', exact: true })).toHaveAttribute(
+		'href',
+		/\/departure\/[^?]+\?.*trip=T1/,
+	);
+	await expect(service.locator('table')).toHaveCount(0);
+	await service.getByRole('button', { name: 'Predictions at its next stops' }).click();
 	await expect(page.getByRole('dialog').locator('table tbody tr')).toHaveCount(4);
+
+	hasTime = false;
+	await page.goto(path);
+	const fallback = service.getByRole('link', { name: 'Departure time not published' });
+	await expect(fallback).toHaveAttribute('href', /\/departure\/trip\?.*trip=T1/);
+	await fallback.click();
+	await expect(page.getByRole('heading', { level: 1, name: 'Departure' })).toBeVisible();
+	await expect(page.getByRole('main').locator('table tbody tr')).toHaveCount(4);
 });
 
 const fleetDates = 'recordFrom=2026-11-04&recordTo=2026-11-10';
@@ -79,6 +93,11 @@ test('the vehicle fleet sends only the first page and marks an absent report', a
 		first.locator('[data-column="days"] [data-record-state="not_reporting"]'),
 	).toBeVisible();
 	await expect(first.getByText('0', { exact: true })).toHaveCount(0);
+	await expect(first.locator('[data-column="days"]')).toContainText('Did not report');
+	for (const column of ['hours', 'lines', 'trips']) {
+		await expect(first.locator(`[data-column="${column}"] .data-table-cell-content`)).toBeEmpty();
+	}
+	await expect(rows.nth(1).locator('[data-column="days"]')).toContainText('2 of 7');
 	await page.getByRole('button', { name: 'Show 20 more', exact: true }).click();
 	await expect(rows).toHaveCount(40);
 	await expect(rows.nth(20).getByRole('link')).toBeFocused();
@@ -265,7 +284,9 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('[data-slot="still-map"] polyline')).toBeVisible();
 
 			await expect(
-				main.getByRole('button', { name: fr ? 'Voir les prévisions' : 'View predictions' }),
+				main.getByRole('button', {
+					name: fr ? 'Prévisions à ses prochains arrêts' : 'Predictions at its next stops',
+				}),
 			).toBeVisible();
 			if (width === 1440) {
 				await page.evaluate(() => document.fonts.ready);
@@ -279,7 +300,7 @@ for (const width of [390, 1440]) {
 				const heights = await rows.evaluateAll((items) =>
 					items.map((item) => Math.round(item.getBoundingClientRect().height)),
 				);
-				expect(heights).toHaveLength(4);
+				expect(heights).toHaveLength(6);
 				expect(heights.every((height) => height >= 44)).toBe(true);
 				const line = rows.first();
 				const rowBox = (await line.boundingBox())!;

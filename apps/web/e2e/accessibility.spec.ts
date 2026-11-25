@@ -139,11 +139,14 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 					const count = trips[tripId].stops.length;
 					const name = tripCopy[locale].reportedPredictions;
 					const inline = page.getByRole('main').getByRole('table', { name, exact: true });
-					await expect(inline.getByRole('rowheader')).toHaveCount(Math.min(3, count));
+					await expect(inline).toHaveCount(0);
 					await expectAccessible(page, { include: 'main' });
 					await page
 						.getByRole('button', {
-							name: locale === 'fr' ? 'Voir les prévisions' : 'View predictions',
+							name:
+								locale === 'fr'
+									? 'Prévisions à ses prochains arrêts'
+									: 'Predictions at its next stops',
 						})
 						.click();
 					const sheet = page.getByRole('dialog');
