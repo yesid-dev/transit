@@ -1,16 +1,15 @@
 import type { PageServerLoad } from './$types';
-import { getCaptureDataHealth, getDataHealth } from '#lib/v1/repositories/dataHealth.ts';
-import { getHistoricAvailability } from '#lib/v1/repositories/historic.ts';
-import { serverV1Context } from '#lib/v1/serverContext.ts';
-import { getMethodCatalog, getRecordDataHealth } from '#lib/server/engine.ts';
-import { calendarClock, parseFrameState } from '#lib/site/frameState.ts';
+import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
+import { getMethodCatalog, getRecordDataHealth, getScorecardAnswer } from '#lib/server/engine.ts';
+import { healthDiagnosticQuestions } from '#lib/server/screenQuestions.ts';
+import { calendarClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 
-export const load: PageServerLoad = async (event) => {
-	const { v1, providerId: city, provider } = await event.parent();
+export const load = (async (event) => {
+	const { providerId: city, provider } = await event.parent();
 	// The calendar window includes recent dates even when their clean files are late.
-	const { mode, period } = parseFrameState(event.url.searchParams, calendarClock(provider));
+	const { mode, period } = parseAnswerFrameState(event.url.searchParams, calendarClock(provider));
+	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	if (mode === 'record') {
-		const visitorIp = event.request.headers.get('cf-connecting-ip');
 		return {
 			view: 'record' as const,
 			record: period && {
@@ -21,28 +20,18 @@ export const load: PageServerLoad = async (event) => {
 			},
 		};
 	}
-	if (!v1)
-		return {
-			view: 'live' as const,
-			dataHealthSeed: null,
-			captureHealthSeed: null,
-			historicAvailabilitySeed: null,
-		};
-	const context = {
-		...serverV1Context(event),
-		providerId: v1.manifest.provider,
-		manifest: v1.manifest,
-	};
-	const [captureHealth, dataHealth, history] = await Promise.all([
-		getCaptureDataHealth(context).catch(() => null),
-		getDataHealth(context).catch(() => null),
-		getHistoricAvailability(context).catch(() => null),
-	]);
-
 	return {
 		view: 'live' as const,
-		dataHealthSeed: dataHealth ? { key: 'data-health', data: dataHealth } : null,
-		captureHealthSeed: captureHealth ? { key: 'capture-health', data: captureHealth } : null,
-		historicAvailabilitySeed: history ? { key: 'historic-availability', data: history } : null,
+		capture: provider
+			? fetchCaptureSnapshot(city, event.request.signal, event.fetch).catch(() => null)
+			: Promise.resolve(null),
+		diagnostics: period && {
+			period,
+			city,
+			sections: healthDiagnosticQuestions().map(({ measure, query }) => ({
+				measure,
+				answer: getScorecardAnswer(query, { ...period, city, visitorIp }),
+			})),
+		},
 	};
-};
+}) satisfies PageServerLoad;

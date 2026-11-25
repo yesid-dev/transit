@@ -18,8 +18,8 @@ const schedule = {
 const names = { ends: '<>', languages: '~', language_order: ['en', 'fr'] as ['en', 'fr'] };
 
 it.each([
-	['en', 'Downtown', '7.5 min'],
-	['fr', 'Centre-ville', /^7,5\smin$/u],
+	['en', 'Downtown', '7 min'],
+	['fr', 'Centre-ville', /^7\smin$/u],
 ] as const)('formats a scheduled direction and duration for %s', (locale, toward, silentFor) => {
 	const rows = selectSilentTripRows({ silent_trips: [trip] }, schedule, locale, names);
 	expect(rows).toEqual([

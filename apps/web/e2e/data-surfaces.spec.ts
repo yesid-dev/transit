@@ -2,7 +2,6 @@ import { openFrameControls } from './frame-controls';
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
-import { copy as healthCopy } from '../src/lib/features/health/health.copy';
 import { detailCopy } from '../src/lib/features/stops/stops.copy';
 import { DEFAULT_LOCALE as locale, PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
@@ -110,24 +109,3 @@ for (const lang of PUBLISHED_LOCALES)
 			(await openFrameControls(page, lang)).getByRole('radio', { name: recordName, exact: true }),
 		).toBeChecked();
 	});
-
-test('the status page lists its record families on phones and says when data is missing', async ({
-	page,
-}) => {
-	await page.goto('/status?frameMode=live');
-	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-	// The records index is open by default, outside the auditors' disclosure.
-	const index = page.getByRole('list', {
-		name: healthCopy[locale].historyCoverage.indexLabel,
-		exact: true,
-	});
-
-	await expect(index.getByRole('button').first()).toBeVisible();
-	expect(await index.getByRole('listitem').count()).toBe(7);
-	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-		true,
-	);
-	const box = (await index.boundingBox())!;
-	expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-	await expect(index.locator('[data-slot="absent-value"]').first()).toBeVisible();
-});

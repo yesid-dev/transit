@@ -36,6 +36,7 @@ const pages = [
 	...[...SURFACE_NAV, ...AUDIT_NAV].map(({ href }) => href),
 	...FOOTER_INFO_NAV.map(({ href }) => href),
 	'/metrics/archive',
+	'/network?frameMode=record&recordFrom=2026-11-20&recordTo=2026-11-22',
 	`/stop/${Object.keys(departures.stops)[0]}`,
 	`/lines/${lineId}`,
 	`/lines/${lineId}?tab=detail`,

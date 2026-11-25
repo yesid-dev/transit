@@ -1,83 +1,121 @@
 import { expect, test } from '@playwright/test';
+import { installHealthCapture } from './capture-fixture';
 
-test.use({ bypassCSP: true });
+const period = 'recordFrom=2026-11-20&recordTo=2026-11-22';
 
-test.beforeEach(({ browserName }, info) => {
-	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
-});
+for (const locale of ['en', 'fr'] as const) {
+	for (const city of ['stm', 'octranspo'] as const) {
+		test(`Network health Record and Live for ${city} in ${locale}`, async ({ page }) => {
+			const forbidden: string[] = [];
+			page.on('request', (request) => {
+				if (/\/(?:data\/)?v1\//.test(request.url())) forbidden.push(request.url());
+			});
+			const root = locale === 'fr' ? '/fr' : '';
+			await page.goto(`${root}/network?provider=${city}&frameMode=record&${period}`);
+			const main = page.getByRole('main');
+			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
+				locale === 'fr' ? 'Santé du réseau' : 'Network health',
+			);
+			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(/80[.,]7\s*%/);
+			const delay = main.locator('#delay');
+			await expect(delay.locator('[data-slot="chart-frame"]')).toBeVisible();
+			for (const id of ['delay', 'trend', 'hours']) {
+				const card = main.locator('#' + id);
+				await expect(card.locator('button[aria-controls^="network-"]')).toBeVisible();
+				await expect(card.locator('footer button')).toHaveCount(0);
+				await expect(card.locator('footer .border-t')).toBeVisible();
+			}
+			await expect(main.locator('#delivery dl dd').first()).toHaveCSS('text-align', 'right');
+			await delay.locator('button[aria-controls="network-delay"]').click();
+			await expect(
+				delay.getByRole('table').getByRole('cell', { name: /^14[,\s]500$/u }),
+			).toBeVisible();
+			await delay.locator('button[aria-controls="network-delay"]').click();
+			await expect(
+				main
+					.locator('#hours [data-slot="hour-grid"]')
+					.getByRole('listitem')
+					.filter({ hasText: locale === 'fr' ? /^Non mesuré$/ : /^Not measured$/ }),
+			).toBeVisible();
+			await expect(
+				main.getByRole('heading', { name: locale === 'fr' ? 'Places à bord' : 'Crowding' }),
+			).toBeVisible();
+			await expect(
+				main.getByRole('heading', {
+					name: locale === 'fr' ? 'Par heure et jour de la semaine' : 'By hour and weekday',
+				}),
+			).toBeVisible();
+			await expect(
+				main.getByText(locale === 'fr' ? 'Vérifications réussies des flux' : 'Feed check success'),
+			).toHaveCount(0);
 
-test('the French Network record shows engine readings and preserves the Live view', async ({
+			await page.goto(`${root}/network?provider=${city}&frameMode=live&${period}`);
+			await expect(
+				main.getByRole('heading', {
+					name: locale === 'fr' ? 'Véhicules par état' : 'Vehicles by status',
+				}),
+			).toBeVisible();
+			await expect(
+				main.getByRole('heading', {
+					name: locale === 'fr' ? 'Trajets sans signalement' : 'Silent trips',
+				}),
+			).toBeVisible();
+			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+				locale === 'fr' ? 'véhicule transmet sa position.' : 'vehicle is reporting now.',
+			);
+			expect(forbidden).toEqual([]);
+		});
+	}
+}
+
+test('Network health reads scheduled trips and individual silent trips from the live capture', async ({
 	page,
-	request,
 }) => {
-	await page.setViewportSize({ width: 390, height: 900 });
-	await page.goto(
-		'/fr/network?provider=stm&frameMode=record&recordFrom=2026-11-20&recordTo=2026-11-22',
-	);
+	const refresh = await installHealthCapture(page);
+	await page.goto('/network?provider=stm&frameMode=live');
+	await refresh();
 	const main = page.getByRole('main');
-	await expect(main.getByRole('heading', { name: 'Santé du réseau' })).toBeVisible();
-	const polls = main.getByRole('region', { name: 'Vérifications réussies des flux' });
-	const tripUpdates = polls.getByRole('row').filter({ hasText: 'Mises à jour des trajets' });
-	await expect(tripUpdates).toContainText(/80\s*%/);
-	await expect(tripUpdates).toContainText('20 / 25');
-	await expect(polls).toContainText('Trop peu de données pour conclure');
-	await expect(polls).toContainText('Au moins 20 observations');
-	await polls.getByText('Jours non mesurés (1)', { exact: true }).click();
-	await expect(polls.getByText(/Aucune capture brute/)).toBeVisible();
-	await expect(main.getByRole('region', { name: 'Âge des flux à la collecte' })).toContainText(
-		'Plus de 10 min',
+	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+		'364 vehicles are reporting now, for 1,306 trips scheduled at this moment.',
 	);
+	await expect(main.getByText('1,262', { exact: true })).toBeVisible();
+	await expect(main.getByText('of 1,306', { exact: true })).toBeVisible();
 	await expect(
-		main.getByRole('region', { name: 'Temps entre les mises à jour des flux' }),
-	).toContainText('0,4 min');
-	const fields = main.getByRole('region', { name: 'Détails dans les signalements des véhicules' });
-	await expect(fields.getByRole('row').filter({ hasText: 'Occupation' })).toContainText(
-		'champ non publié',
+		main.getByText('A count of vehicles at this moment, not a percentage.'),
+	).toBeVisible();
+	const silent = main.getByRole('table', { name: 'Scheduled trips with no vehicle reporting' });
+	await expect(silent.getByRole('row')).toHaveCount(9);
+	for (const name of ['Line', 'Departure', 'Toward', 'Silent for'])
+		await expect(silent.getByRole('columnheader', { name })).toBeVisible();
+	await expect(silent.getByRole('cell', { name: '40 min' })).toBeVisible();
+	await expect(silent.getByRole('cell', { name: /Unknown/ }).first()).toBeVisible();
+	await expect(silent.getByRole('link', { name: 'Sherbrooke' })).toHaveAttribute(
+		'href',
+		/\/lines\/24\?.*frameMode=live/u,
 	);
-	await expect(
-		main.getByRole('region', { name: 'Couverture des trajets en direct' }),
-	).toContainText('30 / 40');
-	await expect(
-		main.getByRole('region', { name: 'Précision des prévisions d’arrivée' }),
-	).toContainText('Au moins 30 arrivées observées');
-	await expect(polls.getByRole('button', { name: 'Copier le lien' })).toBeVisible();
-	await polls.getByText('Citer', { exact: true }).click();
-	await expect(polls.getByText(/Méthode v2, nettoyage v9\..*#poll_success/)).toBeVisible();
-	const href = await polls.getByRole('link', { name: /CSV/ }).getAttribute('href');
-	const csv = await request.get(href!);
-	expect(csv.headers()['content-disposition']).toContain('network-poll-success.csv');
-	expect(await csv.text()).toBe('Mesure,Valeur\npoll_success,2026-11-20\n');
-	expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(390);
-
-	await main.getByRole('link', { name: 'Voir la santé du réseau en direct' }).click();
-	await expect(page).toHaveURL(/frameMode=live/);
-	await expect(main.locator('#net-live')).toBeVisible();
-	await page.setViewportSize({ width: 1440, height: 900 });
-	const view = page.getByRole('radiogroup', { name: 'Vue', exact: true });
-	const live = view.getByRole('radio', { name: 'En direct', exact: true });
-	await expect(live).toBeChecked();
-	await live.press('ArrowRight');
-	await expect(page).toHaveURL(/frameMode=record.*recordFrom=2026-11-20/);
-	await expect(tripUpdates).toContainText('20 / 25');
+	await expect(silent.getByRole('link', { name: /99999/u })).toHaveAttribute(
+		'href',
+		/\/lines\/99999\?/u,
+	);
+	await expect(main.getByText('Showing 8 of 44.')).toBeVisible();
 });
 
-test('a slow Network measure does not hold back the other sections', async ({ page, request }) => {
-	const response = await page.goto(
-		'/network?provider=octranspo&recordFrom=2026-11-19&recordTo=2026-11-20',
-		{ waitUntil: 'commit' },
+test('Network shows the unavailable state when the live capture fails after a successful reading', async ({
+	page,
+}) => {
+	await page.clock.install();
+	await page.route('**/api/live?city=stm', (route) =>
+		route.fulfill({ status: 503, json: { state: 'unavailable' } }),
 	);
-	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
-	const polls = page.getByRole('region', { name: 'Feed check success' });
-	await expect(polls).toContainText('20 / 25');
-	const predictions = page.getByRole('region', { name: 'Arrival prediction accuracy' });
-	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-		'These records take longer',
-	);
-	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	const release = await request.post(
-		`http://127.0.0.1:${dataPort}/__overview/release?fixture=network`,
-	);
-	expect(release.status()).toBe(204);
-	await expect(predictions).toContainText('Too few to judge');
-	await expect(predictions).toContainText('90%');
+	await page.goto('/network?provider=stm&frameMode=live');
+	await expect(page.getByText('vehicle is reporting now.')).toBeVisible();
+	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
+	await page.clock.runFor(21_000);
+	await expect(page.getByText('No live data', { exact: true }).first()).toBeVisible();
+	if (process.env.TRANSIT_E2E_HEALTH_SCREENSHOTS) {
+		await page.screenshot({
+			fullPage: true,
+			path: 'test-results/health-evidence/pr20/stm-en-live-failing.png',
+		});
+	}
 });

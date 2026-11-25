@@ -21,7 +21,9 @@ const screens = {
 	daily: '/receipt',
 	alerts: '/alerts',
 	'network-health': '/network',
+	'network-health-live': '/network?frameMode=live',
 	'data-health': '/status',
+	'data-health-live': '/status?frameMode=live',
 	'how-we-measure': '/metrics',
 	search: '/search',
 	'search-query': '/search?q=24',
@@ -50,6 +52,9 @@ const ottawa: Screen[] = [
 	'map-live',
 	'map-record-stops',
 	'network-health',
+	'network-health-live',
+	'data-health',
+	'data-health-live',
 	'overview',
 	'overview-live',
 	'rankings',
@@ -74,6 +79,9 @@ const french: Screen[] = [
 	'map-record-stops',
 	'rankings',
 	'network-health',
+	'network-health-live',
+	'data-health',
+	'data-health-live',
 	'lines',
 	'how-we-measure',
 ];
@@ -93,15 +101,21 @@ export const designPassCases = [
 	['vehicle-record', 'octranspo', 'fr'] as const,
 	['vehicle-live', 'octranspo', 'fr'] as const,
 	['roadmap', 'octranspo', 'fr'] as const,
+	...(['network-health', 'network-health-live', 'data-health', 'data-health-live'] as const).map(
+		(screen) => [screen, 'octranspo', 'fr'] as const,
+	),
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';
-	const [from, to] =
-		screen === 'daily' || screen === 'network-health'
-			? ['2026-11-18', '2026-11-20']
-			: screen === 'departure'
-				? ['2026-11-16', '2026-11-20']
-				: ['2026-11-08', '2026-11-14'];
+	const [from, to] = screen.startsWith('network-health')
+		? ['2026-11-20', '2026-11-22']
+		: screen.startsWith('data-health')
+			? ['2026-10-26', '2026-11-22']
+			: screen === 'daily'
+				? ['2026-11-18', '2026-11-20']
+				: screen === 'departure'
+					? ['2026-11-16', '2026-11-20']
+					: ['2026-11-08', '2026-11-14'];
 	url.searchParams.set('recordFrom', from);
 	url.searchParams.set('recordTo', to);
 	return {

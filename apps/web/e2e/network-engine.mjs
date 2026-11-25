@@ -1,5 +1,152 @@
 const enFr = (en, fr) => ({ en, fr });
 
+export function networkServiceFixture(url) {
+	const { searchParams: query } = url;
+	if (['line', 'stop', 'departure', 'vehicle'].some((key) => query.has(key))) return null;
+	const measure = query.get('measure');
+	const group = query.get('group');
+	if (
+		!['crowding', 'service_delivered'].includes(measure) &&
+		!['day_type', 'weekday_hour'].includes(group) &&
+		!(
+			['punctuality', 'on_time', 'delay_distribution'].includes(measure) &&
+			query.get('from') === '2026-11-20'
+		)
+	)
+		return null;
+	const from = query.get('from');
+	const to = query.get('to');
+	if (query.get('format') === 'csv') return { csv: `measure,from,to\n${measure},${from},${to}\n` };
+	const days = Array.from(
+		{ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 },
+		(_, i) => new Date(Date.parse(from) + i * 86_400_000).toISOString().slice(0, 10),
+	);
+	const counts = { classified: 55720, scheduled: 58338, early: 3120, on_time: 44966, late: 7634 };
+	const delivery = { scheduled: 15861, eligible: 15861, ran: 15476, cancelled: 125, missing: 260 };
+	const evidence = {
+		start_date: from,
+		end_date: to,
+		days_measured: days,
+		days_included: days,
+		days_not_measured: [],
+		method_version: '3',
+		cleaning_versions: [12],
+		query_ms: 6,
+	};
+	const measured = (value, counts, days_included = days) => ({
+		state: 'measured',
+		state_text: enFr('Measured', 'Mesuré'),
+		value,
+		evidence: { counts, days_included },
+	});
+	const share = 44966 / 55720;
+	let result;
+	if (measure === 'delay_distribution') {
+		const bins = [
+			[null, -181, 'early', 650],
+			[-180, -121, 'early', 950],
+			[-120, -61, 'early', 1520],
+			[-60, -1, 'on_time', 9500],
+			[0, 59, 'on_time', 14500],
+			[60, 119, 'on_time', 10500],
+			[120, 179, 'on_time', 6500],
+			[180, 239, 'on_time', 3000],
+			[240, 300, 'on_time', 966],
+			[301, 359, 'late', 2800],
+			[360, 419, 'late', 1600],
+			[420, 479, 'late', 1050],
+			[480, 539, 'late', 850],
+			[540, null, 'late', 1334],
+		];
+		result = {
+			...measured({}, counts),
+			measure,
+			group: 'delay_minute',
+			cells: bins.map(([min_seconds, max_seconds, band, count]) => ({
+				key: { min_seconds, max_seconds, band },
+				...measured(
+					{ delay_distribution: count / counts.classified, stop_events: count },
+					{ stop_events: count },
+				),
+			})),
+		};
+	} else if (group === 'day_type') {
+		result = {
+			cells: [
+				{ key: { day_type: 'weekday' }, ...measured({ on_time: share }, counts) },
+				{
+					key: { day_type: 'saturday' },
+					...measured({ on_time: 0.84 }, { on_time: 16800, classified: 20000 }),
+				},
+				{
+					key: { day_type: 'sunday' },
+					...measured({ on_time: 0.86 }, { on_time: 17200, classified: 20000 }),
+				},
+			],
+		};
+	} else if (group === 'weekday_hour') {
+		result = {
+			cells: Array.from({ length: 7 }, (_, day) =>
+				Array.from({ length: 20 }, (_, hour) => {
+					const late = 110 + ((day * 17 + hour * 37) % 170);
+					const key = { weekday: day + 1, hour: (hour + 5) % 24 };
+					if (day === 0 && hour === 0) {
+						return {
+							key,
+							state: 'not_measured',
+							state_text: enFr('Not measured', 'Non mesuré'),
+							value: { late: null },
+							evidence: { counts: { scheduled: 58 }, days_included: [] },
+						};
+					}
+					return {
+						key,
+						...measured({ late: late / 1000 }, { classified: 1000, late }),
+					};
+				}),
+			).flat(),
+			info: [{ id: 'late', minimum_sample: 60 }],
+		};
+	} else if (group === 'day') {
+		result = {
+			cells: days.map((day, i) => ({
+				key: { day },
+				...(measure === 'service_delivered'
+					? measured({ trips_run: delivery.ran / delivery.eligible }, delivery, [day])
+					: measured({ on_time: share + Math.sin(i * 1.3) * 0.025 }, counts, [day])),
+			})),
+		};
+	} else if (measure === 'service_delivered') {
+		result = measured({ trips_run: delivery.ran / delivery.eligible }, delivery);
+	} else if (measure === 'crowding') {
+		result = measured(
+			{
+				crowding_empty: 0.1,
+				crowding_many_seats: 0.5,
+				crowding_few_seats: 0.29,
+				crowding_standing: 0.08,
+				crowding_crushed: 0.02,
+				crowding_full: 0.01,
+			},
+			{ readings: 2048 },
+		);
+	} else {
+		result = measured(
+			{
+				on_time: share,
+				early: counts.early / counts.classified,
+				late: counts.late / counts.classified,
+				median_delay: 72,
+				p90_delay: 398,
+			},
+			counts,
+		);
+	}
+	return {
+		body: { ...result, coverage_note: null, evidence: { ...evidence, ...result.evidence } },
+	};
+}
+
 export const networkFixtures = {
 	poll_success: {
 		value: { trip_updates: 0.8, vehicle_positions: null },
@@ -63,7 +210,6 @@ export function networkEngine(url) {
 	}
 
 	return {
-		hold: measure === 'prediction_error' && from === '2026-11-19' ? 'network' : false,
 		body: {
 			measure,
 			value: { [measure]: value },

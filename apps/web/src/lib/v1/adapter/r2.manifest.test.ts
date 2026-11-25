@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { r2Adapter } from './r2';
+import { staticPort } from './r2.static';
 import {
 	clearBrowserAdapterManifestForTests,
 	installBrowserAdapterManifest,
@@ -48,7 +49,7 @@ describe('r2 manifest memo', () => {
 			});
 		});
 		const read = (providerId: string) =>
-			r2Adapter.static.routesIndex({ providerId, cache, fetch: request });
+			staticPort.routesIndex({ providerId, cache, fetch: request });
 		const [stm, ottawa] = await Promise.all([read('stm'), read('octranspo')]);
 		expect(stm.routes[0].long).toBe('stm');
 		expect(ottawa.routes[0].long).toBe('octranspo');
@@ -107,8 +108,9 @@ describe('r2 manifest memo', () => {
 				),
 			() => r2Adapter.historic.routeReliabilityIndex(ctx),
 			() =>
-				r2Adapter.historic.networkHistoryPartition(
-					`historic/history/network/generations/${'a'.repeat(64)}/2026-07.json`,
+				r2Adapter.historic.lineHistoryPartition(
+					'A',
+					`historic/history/lines/41/generations/${'a'.repeat(64)}/2026-07.json`,
 					ctx,
 				),
 		];

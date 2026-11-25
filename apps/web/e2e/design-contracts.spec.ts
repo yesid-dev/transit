@@ -79,7 +79,9 @@ for (const locale of PUBLISHED_LOCALES) {
 					? '#ranking'
 					: path === '/receipt'
 						? 'article.daily-report'
-						: '[data-slot="detail-shell"]';
+						: path === '/network'
+							? '[data-slot="screen-content"]'
+							: '[data-slot="detail-shell"]';
 			await expect(page.locator(surface)).toBeVisible();
 			await expect(page.getByTestId('toc-pill')).toHaveCount(0);
 		}
@@ -210,10 +212,10 @@ for (const locale of PUBLISHED_LOCALES) {
 					expect(motion.animation).toBe('none');
 					expect(motion.transition).toBe('none');
 				} else expect(motion.animation).not.toBe('none');
-				const segment = sheet
-					.locator('[data-slot="grain-picker"]')
-					.getByRole('radio', { disabled: false })
-					.first();
+				const segment = sheet.getByRole('radio', {
+					name: locale === 'fr' ? 'En direct' : 'Live now',
+					exact: true,
+				});
 				await segment.tap();
 				await expect(segment).toHaveAttribute('aria-checked', 'true');
 				await page.keyboard.press('Tab');

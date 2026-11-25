@@ -50,14 +50,14 @@
 		{
 			"fixture": "rich",
 			"locale": "en",
-			"surface": "network",
-			"path": "/network?from=2026-08-27&to=2026-08-29"
+			"surface": "network-live",
+			"path": "/network?frameMode=live"
 		},
 		{
 			"fixture": "rich",
 			"locale": "fr",
-			"surface": "network",
-			"path": "/fr/network"
+			"surface": "network-live",
+			"path": "/fr/network?frameMode=live"
 		},
 		{
 			"fixture": "sparse",
@@ -74,8 +74,20 @@
 		{
 			"fixture": "sparse",
 			"locale": "en",
-			"surface": "network",
-			"path": "/network"
+			"surface": "network-live",
+			"path": "/network?frameMode=live"
+		},
+		{
+			"fixture": "rich",
+			"locale": "en",
+			"surface": "network-record",
+			"path": "/network?frameMode=record&recordFrom=2026-11-20&recordTo=2026-11-21"
+		},
+		{
+			"fixture": "rich",
+			"locale": "fr",
+			"surface": "network-record",
+			"path": "/fr/network?frameMode=record&recordFrom=2026-11-20&recordTo=2026-11-21"
 		}
 	]
 }

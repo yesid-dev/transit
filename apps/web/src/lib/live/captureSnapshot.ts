@@ -122,7 +122,10 @@ export class CaptureScopeRefreshing extends Error {
 	}
 }
 
-export function feedState(feed: CaptureFeed | undefined, now: number) {
+export function feedState(
+	feed: CaptureFeed | undefined,
+	now: number,
+): 'not_tracked' | 'no_live_data' | 'unknown' | 'stale' | 'refresh_unavailable' | 'live' {
 	if (!feed) return 'not_tracked';
 	if (!feed.captured_at) return 'no_live_data';
 	const captured = Date.parse(feed.captured_at);

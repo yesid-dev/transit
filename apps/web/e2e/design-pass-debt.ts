@@ -36,6 +36,22 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		390: { height: 5110, beforeFigure: 1 },
 		1440: { height: 2437, beforeFigure: 1 },
 	},
+	'network-health': {
+		390: { height: 9798, beforeFigure: 3 },
+		1440: { height: 4852, beforeFigure: 3 },
+	},
+	'network-health-live': {
+		390: { height: 6459, beforeFigure: 1 },
+		1440: { height: 3129, beforeFigure: 1 },
+	},
+	'data-health': {
+		390: { height: 5626, beforeFigure: 2 },
+		1440: { height: 3309, beforeFigure: 2 },
+	},
+	'data-health-live': {
+		390: { height: 4767, beforeFigure: 1 },
+		1440: { height: 2232, beforeFigure: 1 },
+	},
 	'stop-record': {
 		390: { height: 7863, beforeFigure: 1 },
 		1440: { height: 3900, beforeFigure: 1 },

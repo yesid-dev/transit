@@ -296,16 +296,16 @@ export function hourChart(
 			}),
 		};
 	});
+	const shownStates = new Set(rows.flatMap(({ cells }) => cells.map(({ state }) => state)));
 	return {
 		props: {
 			label: title,
 			rows,
 			columns,
 			stateLabels: {
-				...stateLabels,
-				unmeasured: rows.some((row) => row.cells.some((cell) => cell.state === 'unmeasured'))
-					? stateLabels.unmeasured
-					: '',
+				few: shownStates.has('few') ? stateLabels.few : '',
+				none: shownStates.has('none') ? stateLabels.none : '',
+				unmeasured: shownStates.has('unmeasured') ? stateLabels.unmeasured : '',
 			},
 			scale: {
 				label: choose(locale, 'Late share, in percent:', 'Part en retard, en pourcentage :'),

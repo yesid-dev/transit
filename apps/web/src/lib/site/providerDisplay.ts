@@ -10,12 +10,17 @@ export function providerDisplayNames(
 	locale: Locale,
 	fallback: string,
 ) {
-	if (!provider) return { full: fallback, short: fallback };
+	if (!provider) return { full: fallback, short: fallback, operatorCity: fallback };
 	const { id, labels } = provider;
 	const label = labels[locale];
 	const published = publishedNetwork(id)?.labels[locale];
 	const city = label.city === id ? published?.city : label.city;
 	const operator = label.operator === id ? published?.operator : label.operator;
 	const short = operator ?? city ?? fallback;
-	return { full: city && operator && city !== operator ? `${city} · ${operator}` : short, short };
+	const both = city && operator && city !== operator;
+	return {
+		full: both ? `${city} · ${operator}` : short,
+		short,
+		operatorCity: both ? `${operator}, ${city}` : short,
+	};
 }

@@ -76,14 +76,24 @@ export function dailyQuestions(period: DateWindow) {
 	return { questions, messagesLimited };
 }
 
-export function networkRecordQuery(measure: NetworkMeasure): RecordQuery {
+export const networkRecordQuestions = {
+	punctuality: { measure: 'punctuality' },
+	dayTypes: { measure: 'on_time', group: 'day_type' },
+	trend: { measure: 'on_time', group: 'day' },
+	delivery: { measure: 'service_delivered' },
+	deliveryDays: { measure: 'service_delivered', group: 'day' },
+	hours: { measure: 'late', group: 'weekday_hour' },
+	crowding: { measure: 'crowding' },
+} satisfies Record<string, RecordQuery['parameters']>;
+
+export function healthDiagnosticQuery(measure: NetworkMeasure): RecordQuery {
 	return { path: '/measure', parameters: { measure } };
 }
 
-export function networkQuestions() {
+export function healthDiagnosticQuestions() {
 	return (Object.keys(networkMeasures) as NetworkMeasure[]).map((measure) => ({
 		measure,
-		query: networkRecordQuery(measure),
+		query: healthDiagnosticQuery(measure),
 	}));
 }
 

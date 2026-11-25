@@ -5,7 +5,7 @@ import { openNetwork, statusMarkContrast, weak } from './layout-chart-contrast';
 // Playwright emulates forced colours in Chromium only, so the Chromium 1280 light and dark
 // projects run this file (playwright.config.ts); they supply the saved theme.
 for (const forced of ['light', 'dark'] as const)
-	test(`status chart marks keep 3:1 against Canvas in forced ${forced} colours @layout`, async ({
+	test(`Network status glyphs keep 3:1 against Canvas in forced ${forced} colours @layout`, async ({
 		page,
 	}) => {
 		await openNetwork(page, 'en');

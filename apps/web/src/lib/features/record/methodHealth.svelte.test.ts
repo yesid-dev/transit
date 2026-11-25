@@ -145,26 +145,28 @@ it('renders absent readings and both not-measured reasons while methods can fail
 			methods: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'busy' }),
 		},
 	});
-	expect(
-		await screen.findByText('The record is busy right now. You can come back later.'),
-	).toBeVisible();
+	expect(await screen.findByText('Waiting for a reading.')).toBeVisible();
 	expect(screen.getByText('Calculating…')).toBeVisible();
 	finish({ kind: 'answer', answer });
 	const table = await screen.findByRole('table');
-	for (const label of [
-		'Present',
-		'Not tracked',
-		'Incomplete',
-		'Missing (File size differs from the manifest)',
-	]) {
+	for (const label of ['Present', 'Not tracked', 'Missing (File size differs from the manifest)']) {
 		expect(within(table).getAllByRole('cell', { name: label })[0]).toBeVisible();
 	}
 	for (const reason of ['No raw captures', 'No schedule edition']) {
 		expect(within(table).getAllByRole('cell', { name: `Not measured (${reason})` })).toHaveLength(
-			3,
+			2,
 		);
 	}
 	expect(within(table).queryByRole('cell', { name: '0' })).toBeNull();
+	expect(screen.getByText('Present', { exact: true })).toBeVisible();
+	expect(
+		screen.getByText(
+			'of the 7 table days in these dates are present. 2 are missing and 4 could not be measured.',
+		),
+	).toBeVisible();
+	expect(screen.getByText('Not tracked', { exact: true })).toBeVisible();
+	expect(screen.queryByText('Incomplete', { exact: true })).not.toBeInTheDocument();
+	expect(screen.getByRole('list', { name: 'Table-day states' })).not.toHaveTextContent('Unknown');
 });
 
 it.each([
@@ -197,6 +199,6 @@ it.each([
 	});
 	const table = await screen.findByRole('table');
 	const readings = within(table).getAllByRole('cell', { name: label });
-	expect(readings).toHaveLength(2);
+	expect(readings).toHaveLength(1);
 	for (const reading of readings) expect(reading).toBeVisible();
 });

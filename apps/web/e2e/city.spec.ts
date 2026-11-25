@@ -3,7 +3,6 @@ import { expect, test, type Page } from '@playwright/test';
 
 import { navPillCopy } from '../src/lib/i18n/messages';
 import { AUDIT_NAV, SURFACE_NAV } from '../src/lib/content/nav';
-import { copy as healthCopy } from '../src/lib/features/health/health.copy';
 import { PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
 
@@ -16,8 +15,6 @@ const other: string = catalog.providers.find(
 ).id;
 const stop = fixture('stops-index.json').stops[0].id;
 const line = fixture('routes-index.json').routes[0].id;
-const lanes: { lane: keyof (typeof healthCopy)['en']['lanes']['laneLabel'] }[] =
-	fixture('data-health.json').lanes;
 const [map, lines] = ['map', 'lines'].map(
 	(key) => SURFACE_NAV.find((item) => item.key === key)!.href,
 );
@@ -43,7 +40,6 @@ async function switchProvider(page: Page, locale: Locale) {
 }
 
 for (const locale of PUBLISHED_LOCALES) {
-	const health = healthCopy[locale];
 	const next =
 		PUBLISHED_LOCALES[(PUBLISHED_LOCALES.indexOf(locale) + 1) % PUBLISHED_LOCALES.length];
 
@@ -51,18 +47,18 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		await page.goto(localizeHref(`${status}?frameMode=live`, locale));
-		// Only OC Transpo publishes data health here: its lanes and their check appear after the reload.
-		const list = page.getByRole('list', { name: health.lanes.listLabel });
-		await expect(list).toHaveCount(0);
+		const alert = page.getByRole('rowheader', {
+			name: locale === 'fr' ? 'Avis de service' : 'Service alerts',
+		});
+		await expect(alert).toBeVisible();
 		await switchProvider(page, locale);
-
 		await expect(page).toHaveURL((url) => url.pathname === localizeHref(status, locale));
-		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-		await page.getByRole('button', { name: health.details, exact: true }).click();
-		await expect(list.getByText(health.lanes.gateVerdict.pass, { exact: true })).toBeVisible();
-		for (const { lane } of lanes) {
-			await expect(list.getByText(health.lanes.laneLabel[lane], { exact: true })).toBeVisible();
-		}
+		await expect(
+			page.getByRole('rowheader', {
+				name: locale === 'fr' ? 'Positions des véhicules' : 'Vehicle positions',
+			}),
+		).toBeVisible();
+		await expect(alert).toHaveCount(0);
 	});
 
 	for (const [from, listing] of [

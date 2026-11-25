@@ -1,11 +1,9 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { StopReliability, NetworkTrend } from '#lib/v1/index.ts';
 import { isoUtc } from '#lib/v1/schemas/types.ts';
 import type { ReliabilityWindow } from '#lib/v1/verdict.ts';
-import { lateShareTenths } from '#lib/features/stops/lateShare.ts';
 import StopReliabilitySurface from '../stops/reliability/sections/StopReliabilitySurface.svelte';
-import NetworkSurface from '../network/reliability/sections/NetworkSurface.svelte';
 
 const harness = vi.hoisted(() => {
 	const page = { url: new URL('http://localhost/lines/24'), state: {} };
@@ -31,12 +29,9 @@ vi.mock('#lib/site/urlMirror.ts', () => ({
 }));
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
 	getStopReliability: async () => harness.stop,
-	getNetworkTrend: async () => harness.network,
 	getHistoricAvailability: async () => ({
 		families: [{ family: 'network', last_available_date: harness.network?.series?.at(-1)?.date }],
 	}),
-	getNetworkHistoryIndex: async () => null,
-	loadNetworkHistoryRange: vi.fn(),
 }));
 vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoutesIndex: async () => ({
@@ -133,154 +128,55 @@ function verdictOf(container: HTMLElement) {
 	};
 }
 
-describe('the same reliability evidence across Stop and Network', () => {
-	it('renders a reliable verdict on both surfaces', async () => {
-		const point = {
-			date: '2026-11-02',
-			otp_pct: 85,
-			observation_count: 4000,
-			wilson_lo: 84,
-			wilson_hi: 86,
-		};
-		const generatedUtc = isoUtc().parse('2026-11-02T00:00:00Z');
-		// The stop states the other side of the same readings: its late share, from the same counts
-		// with the publisher's rounding (600 of 4,000 readings late: exactly 15.0 %).
-		const lateTenths = lateShareTenths(4000 - 3400, 4000)!;
-		expect(lateTenths).toBe(150);
-		harness.stop = {
-			id: '24',
-			generated_utc: generatedUtc,
-			periods: [
-				{
-					grain: 'day',
-					otp_pct: 85,
-					severe_pct: lateTenths / 10,
-					observation_count: 4000,
-					wilson_lo: 84,
-					wilson_hi: 86,
-				},
-			],
-		};
-		harness.network = { generated_utc: generatedUtc, series: [point] };
-		for (const [mount, figure] of [
-			[
-				() => render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } }),
-				'15%',
-			],
-			[() => render(NetworkSurface), '85%'],
-		] as const) {
-			const view = mount();
-			await waitFor(() => expect(verdictOf(view.container).status).toBe('reliable'));
-			expect(verdictOf(view.container).ban).toContain(figure);
-			expect(harness.page.url.searchParams.get('grain')).toBeNull();
-			cleanup();
-		}
-	});
+it('Stop keeps explicit windows through grain changes and URL reloads', async () => {
+	const generated_utc = isoUtc().parse('2026-11-02T00:00:00Z');
+	const day = { date: '2026-11-02', grain: 'day', otp_pct: 20, observation_count: 12 };
+	const week = {
+		date: '2026-10-27',
+		grain: 'week',
+		otp_pct: 85,
+		observation_count: 4000,
+		on_time: 3400,
+		wilson_lo: 84,
+		wilson_hi: 86,
+	};
+	const month = { date: '2026-10-04', grain: 'month', otp_pct: 40, observation_count: 12 };
+	harness.stop = {
+		id: '24',
+		generated_utc,
+		periods: [day, week, month].map((window: ReliabilityWindow) => ({
+			grain: window.grain,
+			otp_pct: window.otp_pct,
+			observation_count: window.observation_count,
+			wilson_lo: window.wilson_lo,
+			wilson_hi: window.wilson_hi,
+		})),
+	} as StopReliability;
+	harness.network = {
+		generated_utc,
+		series: [day],
+		weekly: [publishedPoint(week)],
+		monthly: [month],
+	} as NetworkTrend;
+	harness.page.url = new URL('http://localhost/lines/24?grain=week');
+	let view = render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } });
+	await waitFor(() => expect(verdictOf(view.container).status).toBe('reliable'));
+	await fireEvent.click(view.getAllByRole('radio', { name: /month|30 days/i })[0]);
+	await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
+	expect(harness.page.url.searchParams.get('grain')).toBe('month');
+	cleanup();
+	view = render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } });
+	await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
+	await fireEvent.click(
+		view.getAllByRole('radio', {
+			name: /^day|daily/i,
+		})[0],
+	);
+	await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
+	expect(verdictOf(view.container).text).toContain('12');
+	expect(harness.page.url.searchParams.get('grain')).toBe('day');
+	cleanup();
+	view = render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } });
+	await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
+	expect(verdictOf(view.container).text).toContain('12');
 });
-
-describe('the late share and the on-time share of one body of readings', () => {
-	it('round independently, so their sum may differ from 100 by the coarser rounding', async () => {
-		// 1,454 of 10,000 readings late: 14.54 %, shown to one decimal as 14.5 %. The other 8,546 are
-		// 85.46 %, shown whole as 85 %. 14.5 + 85 = 99.5: each figure is the correct rounding of the
-		// same counts, and the gap is never more than the whole-number rounding (0.5 point). The
-		// stop never derives its figure from the other surface's rounded share (100 − 85 = 15 %).
-		const n = 10_000;
-		const late = 1_454;
-		const lateTenths = lateShareTenths(late, n)!;
-		expect(lateTenths).toBe(145);
-		const window = {
-			date: '2026-11-02',
-			otp_pct: 85,
-			observation_count: n,
-			wilson_lo: 84.8,
-			wilson_hi: 86.1,
-		};
-		const generatedUtc = isoUtc().parse('2026-11-02T00:00:00Z');
-		harness.network = { generated_utc: generatedUtc, series: [window] };
-		harness.stop = {
-			id: '24',
-			generated_utc: generatedUtc,
-			// A stop period carries no date (the shape the stop file publishes).
-			periods: [
-				{
-					grain: 'day',
-					otp_pct: window.otp_pct,
-					severe_pct: lateTenths / 10,
-					observation_count: n,
-					wilson_lo: window.wilson_lo,
-					wilson_hi: window.wilson_hi,
-				},
-			],
-		};
-		const network = render(NetworkSurface);
-		await waitFor(() => expect(verdictOf(network.container).status).toBe('reliable'));
-		const onTime = verdictOf(network.container).ban.match(/(\d+)%/)?.[1];
-		expect(onTime).toBe('85');
-		cleanup();
-		const stop = render(StopReliabilitySurface, { props: { data: harness.stop, locale: 'en' } });
-		await waitFor(() => expect(verdictOf(stop.container).status).toBe('reliable'));
-		expect(verdictOf(stop.container).ban).toBe('14.5%');
-		expect(Math.abs(lateTenths / 10 + Number(onTime) - 100)).toBeLessThanOrEqual(0.5);
-	});
-});
-
-function selectedSurface(entity: 'stop' | 'network') {
-	if (entity === 'stop')
-		return render(StopReliabilitySurface, { props: { data: harness.stop!, locale: 'en' } });
-	return render(NetworkSurface);
-}
-it.each(['stop', 'network'] as const)(
-	'%s keeps explicit windows through grain changes and URL reloads',
-	async (entity) => {
-		const generated_utc = isoUtc().parse('2026-11-02T00:00:00Z');
-		const day = { date: '2026-11-02', grain: 'day', otp_pct: 20, observation_count: 12 };
-		const week = {
-			date: '2026-10-27',
-			grain: 'week',
-			otp_pct: 85,
-			observation_count: 4000,
-			on_time: 3400,
-			wilson_lo: 84,
-			wilson_hi: 86,
-		};
-		const month = { date: '2026-10-04', grain: 'month', otp_pct: 40, observation_count: 12 };
-		harness.stop = {
-			id: '24',
-			generated_utc,
-			periods: [day, week, month].map((window: ReliabilityWindow) => ({
-				grain: window.grain,
-				otp_pct: window.otp_pct,
-				observation_count: window.observation_count,
-				wilson_lo: window.wilson_lo,
-				wilson_hi: window.wilson_hi,
-			})),
-		} as StopReliability;
-		harness.network = {
-			generated_utc,
-			series: [day],
-			weekly: [publishedPoint(week)],
-			monthly: [month],
-		} as NetworkTrend;
-		harness.page.url = new URL('http://localhost/lines/24?grain=week');
-		let view = selectedSurface(entity);
-		await waitFor(() => expect(verdictOf(view.container).status).toBe('reliable'));
-		await fireEvent.click(view.getAllByRole('radio', { name: /month|30 days/i })[0]);
-		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
-		expect(harness.page.url.searchParams.get('grain')).toBe('month');
-		cleanup();
-		view = selectedSurface(entity);
-		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
-		await fireEvent.click(
-			view.getAllByRole('radio', {
-				name: /^day|daily/i,
-			})[0],
-		);
-		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
-		expect(verdictOf(view.container).text).toContain('12');
-		expect(harness.page.url.searchParams.get('grain')).toBe('day');
-		cleanup();
-		view = selectedSurface(entity);
-		await waitFor(() => expect(verdictOf(view.container).status).toBe('tentative'));
-		expect(verdictOf(view.container).text).toContain('12');
-	},
-);

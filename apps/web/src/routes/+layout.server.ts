@@ -21,11 +21,8 @@ function usesLiveSnapshots(route: string | null, url: URL): boolean {
 			return lineFrameView(url) === 'live';
 		case localRoute + '/stop/[id]':
 			return stopFrameView(url) === 'live';
-		case localRoute + '/network':
-			return !networkRecordView(url);
 		case localRoute:
 		case localRoute + '/alerts':
-		case localRoute + '/status':
 		case localRoute + '/vehicles':
 		case localRoute + '/vehicle/[id]':
 		case localRoute + '/departure/[key]':
@@ -37,10 +34,26 @@ function usesLiveSnapshots(route: string | null, url: URL): boolean {
 
 function scheduleForPage(
 	schedule: ScheduleEdition,
-	{ route, params }: Parameters<LayoutServerLoad>[0],
+	{ route, params, url }: Parameters<LayoutServerLoad>[0],
 ): ScheduleEdition {
 	const { date, routes, stops, route_directions } = schedule;
 	switch (route.id) {
+		case localRoute + '/network':
+			return {
+				date,
+				routes,
+				stops: [],
+				...(!networkRecordView(url) && route_directions
+					? {
+							route_directions: Object.fromEntries(
+								Object.entries(route_directions).map(([id, directions]) => [
+									id,
+									directions.map(({ dir, headsign }) => ({ dir, headsign })),
+								]),
+							),
+						}
+					: {}),
+			};
 		case localRoute + '/stops':
 			return schedule;
 		case localRoute + '/stop/[id]': {

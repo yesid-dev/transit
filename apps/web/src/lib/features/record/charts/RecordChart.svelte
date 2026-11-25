@@ -45,12 +45,14 @@
 		locale,
 		table = false,
 		id,
+		fill = false,
 	}: {
 		input: Input;
 		title: string;
 		locale: Locale;
 		table?: boolean;
 		id: string;
+		fill?: boolean;
 	} = $props();
 	const reading = $derived(
 		input.kind === 'bands'
@@ -88,7 +90,7 @@
 {#snippet value(row: Row)}{row.value}{/snippet}
 {#snippet detail(row: Row)}{row.detail ?? ''}{/snippet}
 
-<div {id} class="grid min-w-0 gap-2">
+<div {id} class="grid min-w-0 gap-2" class:grow={fill}>
 	{#if table && reading.table.rows.length}
 		<DataTable
 			caption={title}
@@ -131,7 +133,14 @@
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
 			<p class="text-small text-muted-foreground">{reading.props.scale.label}</p>
-			<HourGrid {...reading.props} />
+			<div
+				class="hour-chart"
+				data-few={reading.props.stateLabels.few ? '' : undefined}
+				data-none={reading.props.stateLabels.none ? '' : undefined}
+				data-unmeasured={reading.props.stateLabels.unmeasured ? '' : undefined}
+			>
+				<HourGrid {...reading.props} />
+			</div>
 		{:else}
 			<StateMark state={chartState(input.answer.state)} {locale} />
 		{/if}
@@ -233,6 +242,17 @@
 </div>
 
 <style>
+	.hour-chart {
+		min-inline-size: 0;
+	}
+
+	.hour-chart:not([data-few]) :global([data-slot='hour-grid'] > ul > li:has([data-state='few'])),
+	.hour-chart:not([data-none]) :global([data-slot='hour-grid'] > ul > li:has([data-state='none'])),
+	.hour-chart:not([data-unmeasured])
+		:global([data-slot='hour-grid'] > ul > li:has([data-state='unmeasured'])) {
+		display: none;
+	}
+
 	.trend-end {
 		fill: var(--foreground);
 		font-family: var(--font-mono);

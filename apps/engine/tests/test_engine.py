@@ -30,6 +30,7 @@ from transit_engine.measures import (
     MIN_SERVICE_DELIVERED_TRIPS,
     Question,
     ask,
+    methods,
 )
 from transit_engine.ranking import Ranking, rank
 from transit_engine.server import Engine
@@ -880,6 +881,21 @@ def test_private_engine_requires_bearer(store: Store, path: str, query: str) -> 
         assert status == 200
 
     asyncio.run(run())
+
+
+def test_every_catalog_measure_has_bilingual_display_names() -> None:
+    web = Path(__file__).resolve().parents[2] / "web"
+    names = json.loads(
+        (web / "src/lib/features/record/methodNames.json").read_text(encoding="utf-8")
+    )
+    missing = []
+    for measure in methods():
+        label = names.get(measure["id"])
+        if not isinstance(label, list) or len(label) != 2 or not all(
+            isinstance(text, str) and text.strip() for text in label
+        ):
+            missing.append(measure["id"])
+    assert not missing, f"Missing English or French display names: {', '.join(missing)}"
 
 
 @pytest.mark.parametrize("family", ["punctuality", "service_delivered"])
