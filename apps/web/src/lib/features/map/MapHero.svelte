@@ -856,7 +856,6 @@
 {#snippet detailPanel()}
 	<Card
 		edge="neutral"
-		interactive
 		class="gap-2 p-3"
 		data-slot="map-detail-overlay"
 		data-selection-kind={session.selected?.kind}
