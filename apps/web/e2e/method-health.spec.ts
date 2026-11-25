@@ -29,6 +29,11 @@ for (const width of [390, 1440]) {
 			await expect(measure.locator('time')).toHaveText(
 				fr ? '10 novembre 2026' : '10 November 2026',
 			);
+			await expect(main.locator('#ranking-range > summary')).toHaveAccessibleName(
+				fr
+					? 'L’intervalle dans un classement L’intervalle montre l’incertitude autour d’une valeur du classement.'
+					: 'The range on a ranking row The range shows uncertainty around a ranked value.',
+			);
 			const disclosures = main.locator('details[data-record-disclosure]');
 			for (const card of await disclosures.all()) {
 				const trigger = card.locator('summary').first();

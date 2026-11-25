@@ -23,7 +23,7 @@
 	<article aria-labelledby={id} data-slot="record-card" class:nested={disclosure?.nested}>
 		{#if disclosure}
 			<details id={disclosure.id} class="record-disclosure" data-record-disclosure>
-				<summary aria-labelledby={id}>
+				<summary>
 					<span {id} class="disclosure-title">
 						<span class="disclosure-arrow" aria-hidden="true">▸</span>{title}
 					</span>
