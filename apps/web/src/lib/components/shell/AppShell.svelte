@@ -141,11 +141,12 @@
 </div>
 
 <style>
-	/* The compact frame uses the existing search sheet, including at enlarged desktop text. */
+	/* remove when yesid.design ships T7/T8 (v0.57.0) */
 	.app-shell-root
 		:global([data-rail-layout='compact'] [data-slot='site-header'] .nav-search.nav-collapsible) {
 		display: none;
 	}
+	/* remove when yesid.design ships T7/T8 (v0.57.0) */
 	.app-shell-root
 		:global(
 			[data-rail-layout='compact']
@@ -168,13 +169,28 @@
 		pointer-events: none;
 		background: transparent;
 	}
-	/* Footer navigation keeps whole words when enlarged text makes the frame compact. */
+	/* remove when yesid.design ships T7/T8 (v0.57.0) */
+	.app-shell-root :global([data-rail-layout='compact'] [data-slot='footer'] > .grid) {
+		padding-block: var(--space-card-gap);
+	}
+	/* remove when yesid.design ships T7/T8 (v0.57.0) */
+	.app-shell-root
+		:global(
+			[data-rail-layout='compact']
+				[data-slot='footer']:has([data-slot='legal-footer-status'])
+				> .grid
+		) {
+		padding-block-end: calc(var(--space-card-gap) / 2);
+	}
+
+	/* remove when yesid.design ships T7/T8 (v0.57.0) */
 	@media (min-width: 1024px) {
 		.app-shell-root :global([data-rail-layout='compact'] [data-slot='footer'] > .grid) {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 			column-gap: var(--space-card-gap);
 			padding-inline: var(--space-card-gap);
 		}
+		/* remove when yesid.design ships T7/T8 (v0.57.0) */
 		.app-shell-root
 			:global(
 				[data-rail-layout='compact']
@@ -185,6 +201,7 @@
 			word-break: normal;
 		}
 	}
+	/* remove when yesid.design ships T7/T8 (v0.57.0) */
 	@media (min-width: 1280px) {
 		.app-shell-root :global([data-rail-layout='compact'] [data-slot='footer'] > .grid) {
 			grid-template-columns:

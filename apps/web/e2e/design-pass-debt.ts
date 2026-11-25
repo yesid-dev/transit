@@ -19,16 +19,9 @@ function compare(current: object, recorded: object, location: string) {
 	).toEqual(recorded);
 }
 
-function compareSize<T extends { height: number; targets: number }>(
-	current: T,
-	recorded: T,
-	location: string,
-) {
-	const { height, targets, ...geometry } = current;
-	const { height: ceiling, targets: recordedTargets, ...recordedGeometry } = recorded;
-	// The rail adds six pointer targets. The deficit and short-target count still audit each one.
-	expect(targets, location + ' controls').toBeGreaterThan(0);
-	expect(recordedTargets, location + ' recorded controls').toBeGreaterThan(0);
+function compareSize<T extends { height: number }>(current: T, recorded: T, location: string) {
+	const { height, ...geometry } = current;
+	const { height: ceiling, ...recordedGeometry } = recorded;
 	expect(height, `${location} height`).toBeLessThanOrEqual(ceiling);
 	compare(geometry, recordedGeometry, location);
 }

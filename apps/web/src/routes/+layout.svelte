@@ -9,6 +9,7 @@
 <script lang="ts">
 	import { setPageTitleContext, resolvePageTitle } from '#lib/seo/pageTitle.ts';
 	const clientTitle = setPageTitleContext();
+	import { publishedNetwork } from '#lib/site/providerDisplay.ts';
 	import { providerSourceAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { setContext } from 'svelte';
 	import {
@@ -141,8 +142,13 @@
 	setContext(mapRecordSourceDateContext, (date: string | null) => {
 		mapRecordSourceDate = date;
 	});
-	const footerAgency = $derived(footerCopy[locale].providerFallback);
 	const footerWords = $derived(footerCopy[locale]);
+	const footerAgency = $derived(
+		data.provider?.labels[locale].operator ??
+			v1?.manifest.display_name ??
+			publishedNetwork(data.providerId)?.labels[locale].operator ??
+			footerWords.providerFallback,
+	);
 	const fallbackAttribution = $derived(
 		v1
 			? {
@@ -439,15 +445,17 @@
 		{/snippet}
 		{#snippet footer()}
 			{#if isFullBleed}
-				{#if footerAttribution}
-					<footer
-						class="map-source-footer border-t bg-card px-3 py-2 text-center text-xs text-muted-foreground"
-						data-slot="map-source-footer"
-						bind:clientHeight={mapCreditHeight}
+				<footer
+					class="map-source-footer border-t bg-card px-3 py-2 text-center text-xs text-muted-foreground"
+					data-slot="map-source-footer"
+					bind:clientHeight={mapCreditHeight}
+				>
+					{#if footerAttribution}<span data-slot="source-credit">{footerAttribution}</span
+						>&#32;{/if}
+					<span class="footer-disclaimer" data-slot="agency-disclaimer"
+						>{footerWords.disclaimer(footerAgency)}</span
 					>
-						{footerAttribution}
-					</footer>
-				{/if}
+				</footer>
 			{:else}
 				{#if seoPath === '/' && !isOverviewRecord}
 					{#key page.url.pathname}
@@ -463,30 +471,44 @@
 					{/key}
 				{/if}
 				{#snippet legalStatus()}
-					<p class="footer-honesty m-0 text-center sm:text-left">
-						<span>{footerAttribution}</span>
-						<span class="footer-disclaimer">{footerWords.disclaimer(footerAgency)}</span>
+					<p class="m-0 text-center sm:text-left" data-slot="legal-footer-status">
+						<span>{footerAttribution}</span>&#32;
+						<span class="footer-disclaimer" data-slot="agency-disclaimer"
+							>{footerWords.disclaimer(footerAgency)}</span
+						>
 					</p>
 				{/snippet}
 				<SiteFooter
 					edge="hazard"
-					tagline={legalRoute ? footerWords.legalTagline(footerAgency) : footerWords.tagline}
+					tagline={footerWords.tagline}
 					groups={footerGroups}
 					statusStart={legalRoute ? legalStatus : undefined}
 				>
 					{#snippet brand()}
 						<BrandCluster productHref={localizeHref('/', locale, data.providerId)} />
-						{#if !legalRoute && footerAttribution}
-							<p class="mt-2 text-xs text-muted-foreground" data-slot="source-credit">
-								{#if data.provider?.download_licence?.source_date_required && data.recordSourceDate}
-									{#await data.recordSourceDate}
-										{footerAttribution}
-									{:then date}
-										{providerSourceAttribution(data.provider, locale, date, fallbackAttribution)}
-									{/await}
-								{:else}
-									{footerAttribution}
+						{#if !legalRoute}
+							<p class="mt-2 text-xs text-muted-foreground">
+								{#if footerAttribution}
+									<span data-slot="source-credit">
+										{#if data.provider?.download_licence?.source_date_required && data.recordSourceDate}
+											{#await data.recordSourceDate}
+												{footerAttribution}
+											{:then date}
+												{providerSourceAttribution(
+													data.provider,
+													locale,
+													date,
+													fallbackAttribution,
+												)}
+											{/await}
+										{:else}
+											{footerAttribution}
+										{/if}
+									</span>&#32;
 								{/if}
+								<span class="footer-disclaimer" data-slot="agency-disclaimer"
+									>{footerWords.disclaimer(footerAgency)}</span
+								>
 							</p>
 						{/if}
 					{/snippet}
@@ -536,11 +558,6 @@
 		.home-construction-floor {
 			height: calc(100px * var(--ground-progress, 1));
 		}
-	}
-	.footer-honesty {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
 	}
 	.footer-disclaimer {
 		color: var(--secondary-foreground);

@@ -7,7 +7,7 @@ export const footerCopy = defineCopy({
 		navAria: 'Pied de page',
 		exploreLabel: 'Explorer',
 		providerFallback: 'l’agence de transport',
-		legalTagline: (agencyName: string) => `Analytique citoyenne pour ${agencyName}`,
+
 		disclaimer: (agencyName: string) => `Site non officiel, sans affiliation avec ${agencyName}.`,
 		auditLabel: 'Vérification',
 		infoLabel: 'Information',
@@ -17,7 +17,7 @@ export const footerCopy = defineCopy({
 		navAria: 'Footer',
 		exploreLabel: 'Explore',
 		providerFallback: 'the transit agency',
-		legalTagline: (agencyName: string) => `Citizen analytics for ${agencyName}`,
+
 		disclaimer: (agencyName: string) => `Unofficial website, not affiliated with ${agencyName}.`,
 		auditLabel: 'Audit',
 		infoLabel: 'Information',

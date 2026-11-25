@@ -16,6 +16,12 @@ const cities = {
 	},
 };
 
+const agencyByCity: Record<string, string> = { stm: 'STM', octranspo: 'OC Transpo' };
+const taglines = {
+	en: 'An independent public record of the transit service delivered. Not a trip planner.',
+	fr: 'Un bilan public et indépendant du service de transport livré. Pas un planificateur de trajets.',
+};
+
 async function open(page: Page, href: string) {
 	await page.goto(href);
 	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
@@ -72,18 +78,26 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 
 	for (const [city, licences] of Object.entries(cities)) {
-		test(`${locale} ${city} credits the source on Record, Live and Map pages`, async ({ page }) => {
+		test(`${locale} ${city} credits the source and identifies the site as independent`, async ({
+			page,
+		}) => {
+			const agency = agencyByCity[city];
+			const disclaimer =
+				locale === 'fr'
+					? `Site non officiel, sans affiliation avec ${agency}.`
+					: `Unofficial website, not affiliated with ${agency}.`;
 			for (const href of ['/', '/?frameMode=live', '/map']) {
 				await open(page, localizeHref(href, locale, city));
-				const credit = page.locator(
-					'footer :is([data-slot="source-credit"]), footer[data-slot="map-source-footer"]',
-				);
-				await expect(credit).toHaveText(licences[locale]);
+				const footer = page.getByRole('contentinfo');
+				await expect(footer.locator('[data-slot="source-credit"]')).toHaveText(licences[locale]);
+				await expect(footer.locator('[data-slot="agency-disclaimer"]')).toHaveText(disclaimer);
 			}
 			await open(page, localizeHref('/privacy', locale, city));
 			const legal = page.getByTestId('footer');
-			await expect(legal).not.toContainText(licences[locale]);
+			await expect(legal.getByText(taglines[locale], { exact: true })).toBeVisible();
+			await expect(legal.locator('[data-slot="agency-disclaimer"]')).toHaveText(disclaimer);
 			await expect(legal.locator('[data-slot="source-credit"]')).toHaveCount(0);
+			await expect(legal).not.toContainText(licences[locale]);
 		});
 	}
 }
