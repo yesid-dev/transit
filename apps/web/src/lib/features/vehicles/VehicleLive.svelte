@@ -1,4 +1,7 @@
 <script lang="ts">
+	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
+	import FactList from '#lib/features/record/FactList.svelte';
+	import FactRow from '#lib/features/record/FactRow.svelte';
 	import { DashboardGrid } from '@yesid/ui/layout';
 	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
@@ -257,75 +260,74 @@
 
 {#if id}
 	{@render titleBlock?.(liveReading?.route)}
-	<div class="grid min-w-0 gap-6" data-slot="screen-content">
-		<div data-slot="screen-answer">
-			<RecordAnswer
-				value={liveDelay}
-				state={readingState}
-				sentence={liveSentence}
-				{locale}
-				time={liveTime}
-				comparison={liveReading && liveDelay ? liveMeta : undefined}
-			/>
-			{#if readingState === 'not_reporting' && report}<p>
-					{t('Last report', 'Dernier signalement')} · {@render reportedAt()}
-				</p>{/if}
-		</div>
-		{#if liveReading}
-			{@const running = liveReading}
-			<DashboardGrid gutter={false} minTile="20rem">
-				<RecordCard title={t('Where it is', 'Où il se trouve')} stamp={liveTime}>
-					<div class="grid gap-3">
-						<VehicleStillMap
-							vehicle={running}
-							line={running.route ? display.line(running.route) : undefined}
-							{next}
-							{previous}
-							{shape}
-							{locale}
-						/>
-						{#if previous && next}
-							<p>
-								{t(
-									`Between ${previous.name} and ${next.name}${destination ? ', heading toward ' + destination : ''}.`,
-									`Entre ${previous.name} et ${next.name}${destination ? ', en direction de ' + destination : ''}.`,
-								)}
-							</p>
-						{/if}
-					</div>
-					{#snippet footer()}
-						<a
-							class="inline-flex min-h-11 w-full items-center border-t border-border text-primary underline"
-							href={href(routeFor({ kind: 'vehicle', id }))}
-						>
-							{t('Open the full map on this vehicle', 'Ouvrir la carte sur ce véhicule')}
-						</a>
-					{/snippet}
-				</RecordCard>
-				<RecordCard title={t('What it is running', 'Son service en cours')} stamp={liveTime}>
-					<dl class="running-details divide-y divide-border">
-						{#if running.route}
-							{@const line = display.lineName(running.route)}
-							<div class="flex flex-wrap items-center justify-between gap-2 py-2">
-								<dt>{t('Line', 'Ligne')}</dt>
-								<dd class="running-line grid min-w-0 items-center gap-x-2">
-									<RoutePlate code={line.number ?? running.route} />
-									<a
-										class="inline-flex min-h-11 items-center text-primary underline"
-										href={href(routeFor({ kind: 'line', id: running.route }))}
-										>{line.name ?? line.label}</a
-									>
-								</dd>
-							</div>
-						{/if}
-						<div class="flex flex-wrap justify-between gap-2 py-2">
-							<dt>{t('Direction', 'Direction')}</dt>
-							<dd>{direction(running)}</dd>
+	<div class="min-w-0" data-slot="screen-content">
+		<RecordGroup class="grid gap-6">
+			<div data-slot="screen-answer">
+				<RecordAnswer
+					value={liveDelay}
+					state={readingState}
+					sentence={liveSentence}
+					{locale}
+					time={liveTime}
+					comparison={liveReading && liveDelay ? liveMeta : undefined}
+				/>
+				{#if readingState === 'not_reporting' && report}<p>
+						{t('Last report', 'Dernier signalement')} · {@render reportedAt()}
+					</p>{/if}
+			</div>
+			{#if liveReading}
+				{@const running = liveReading}
+				<DashboardGrid gutter={false} minTile="20rem">
+					<RecordCard interactive title={t('Where it is', 'Où il se trouve')} stamp={liveTime}>
+						<div class="grid gap-3">
+							<VehicleStillMap
+								vehicle={running}
+								line={running.route ? display.line(running.route) : undefined}
+								{next}
+								{previous}
+								{shape}
+								{locale}
+							/>
+							{#if previous && next}
+								<p>
+									{t(
+										`Between ${previous.name} and ${next.name}${destination ? ', heading toward ' + destination : ''}.`,
+										`Entre ${previous.name} et ${next.name}${destination ? ', en direction de ' + destination : ''}.`,
+									)}
+								</p>
+							{/if}
 						</div>
-						{#if running.trip}
-							<div class="flex flex-wrap items-center justify-between gap-2 py-2">
-								<dt>{t('Departure', 'Départ')}</dt>
-								<dd>
+						{#snippet footer()}
+							<a
+								class="inline-flex min-h-11 w-full items-center text-primary underline"
+								href={href(routeFor({ kind: 'vehicle', id }))}
+							>
+								{t('Open the full map on this vehicle', 'Ouvrir la carte sur ce véhicule')}
+							</a>
+						{/snippet}
+					</RecordCard>
+					<RecordCard
+						interactive
+						title={t('What it is running', 'Son service en cours')}
+						stamp={liveTime}
+					>
+						<FactList>
+							{#if running.route}
+								{@const line = display.lineName(running.route)}
+								<FactRow label={t('Line', 'Ligne')}
+									><span class="ms-auto flex min-w-0 w-fit flex-wrap items-center gap-x-2">
+										<RoutePlate code={line.number ?? running.route} />
+										<a
+											class="inline-flex min-h-11 items-center text-primary underline"
+											href={href(routeFor({ kind: 'line', id: running.route }))}
+											>{line.name ?? line.label}</a
+										>
+									</span></FactRow
+								>
+							{/if}
+							<FactRow label={t('Direction', 'Direction')}>{direction(running)}</FactRow>
+							{#if running.trip}
+								<FactRow label={t('Departure', 'Départ')}>
 									{#if running.trip}
 										<Sheet.Root>
 											<Sheet.Trigger
@@ -342,6 +344,7 @@
 												>
 												{#if live.trips}
 													<LiveTripPredictions
+														inSheet
 														id={running.trip}
 														report={live.trips}
 														{locale}
@@ -368,12 +371,9 @@
 									{:else}
 										{unknown}
 									{/if}
-								</dd>
-							</div>
-						{/if}
-						<div class="flex flex-wrap justify-between gap-2 py-2">
-							<dt>{t('Status', 'État')}</dt>
-							<dd>
+								</FactRow>
+							{/if}
+							<FactRow label={t('Status', 'État')}>
 								{#if running.status === 'unknown'}<StateMark state="delay_unknown" {locale} />
 								{:else}<StatusMark
 										status={running.status}
@@ -381,46 +381,45 @@
 									/>{#if liveDelay && running.delay_min !== 0}<span
 											class="ml-2 text-muted-foreground">{liveDelay}</span
 										>{/if}{/if}
-							</dd>
-						</div>
-						{#if running.next_stop}
-							<div class="flex flex-wrap items-center justify-between gap-2 py-2">
-								<dt>{t('Next stop', 'Prochain arrêt')}</dt>
-								<dd>
+							</FactRow>
+						</FactList>
+						<FactList>
+							{#if running.next_stop}
+								<FactRow label={t('Next stop', 'Prochain arrêt')}>
 									<a
 										class="inline-flex min-h-11 items-center text-primary underline"
 										href={href(routeFor({ kind: 'stop', id: running.next_stop }))}>{nextStop}</a
 									>
-								</dd>
-							</div>
-						{/if}
-						{#if running.occupancy}
-							<div class="flex flex-wrap justify-between gap-2 py-2">
-								<dt>{t('How full it is', 'Achalandage')}</dt>
-								<dd>{OCCUPANCY_LABELS[locale][running.occupancy]}</dd>
-							</div>
-						{/if}
-						{#if report}
-							<div class="flex flex-wrap justify-between gap-2 py-2">
-								<dt>{t('Last report', 'Dernier signalement')}</dt>
-								<dd>{@render reportedAt()}</dd>
-							</div>
-						{/if}
-					</dl>
-					{#snippet footer()}<div class="w-full border-t border-border">
-							{@render viewRecord()}
-						</div>{/snippet}
-				</RecordCard>
-			</DashboardGrid>
-		{:else}
-			{@render viewRecord()}
-		{/if}
-		<AboutLiveFigures
-			{locale}
-			{operator}
-			healthLink={href('/status')}
-			captureAge={health.ageSeconds}
-		/>
+								</FactRow>
+							{/if}
+							{#if running.occupancy}
+								<FactRow label={t('How full it is', 'Achalandage')}
+									>{OCCUPANCY_LABELS[locale][running.occupancy]}</FactRow
+								>
+							{/if}
+							{#if report}
+								<FactRow label={t('Last report', 'Dernier signalement')}
+									>{@render reportedAt()}</FactRow
+								>
+							{/if}
+						</FactList>
+						{#snippet footer()}<div class="w-full">
+								{@render viewRecord()}
+							</div>{/snippet}
+					</RecordCard>
+				</DashboardGrid>
+			{:else}
+				{@render viewRecord()}
+			{/if}
+		</RecordGroup>
+		<RecordGroup>
+			<AboutLiveFigures
+				{locale}
+				{operator}
+				healthLink={href('/status')}
+				captureAge={health.ageSeconds}
+			/>
+		</RecordGroup>
 	</div>
 {:else}
 	<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
@@ -520,18 +519,3 @@
 		{unknown}
 	{/if}
 {/snippet}
-
-<style>
-	.running-details {
-		container-type: inline-size;
-	}
-	.running-line {
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-	@container (max-width: 13rem) {
-		.running-line {
-			grid-template-columns: minmax(0, 1fr);
-			justify-items: start;
-		}
-	}
-</style>

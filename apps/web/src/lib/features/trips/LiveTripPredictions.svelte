@@ -16,6 +16,7 @@
 		absenceReason,
 		stopNames,
 		current,
+		inSheet = false,
 	}: {
 		id: string;
 		report: TripsFile;
@@ -25,6 +26,7 @@
 		absenceReason: AbsenceReasonKey;
 		stopNames: Readonly<Record<string, string>>;
 		current: boolean;
+		inSheet?: boolean;
 	} = $props();
 	const copy = $derived(tripCopy[locale]);
 	const trip = $derived(report.trips[id]);
@@ -46,7 +48,11 @@
 	);
 </script>
 
-<RecordCard title={copy.reportedPredictions}>
+<RecordCard
+	title={copy.reportedPredictions}
+	interactive={!!csv}
+	edge={inSheet ? 'neutral' : undefined}
+>
 	<div class="grid min-w-0 gap-3">
 		<p>{copy.observedCaveat}</p>
 		{#if !current}<p>{copy.retainedReport}</p>{/if}

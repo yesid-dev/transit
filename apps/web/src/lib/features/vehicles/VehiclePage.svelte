@@ -1,4 +1,6 @@
 <script lang="ts">
+	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
+	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { page } from '$app/state';
 	import { Surface } from '@yesid/ui/layout';
 	import { SvelteURL } from 'svelte/reactivity';
@@ -55,7 +57,7 @@
 </script>
 
 {#snippet heading(subtitle: string | undefined)}
-	<div class="border-b border-border pb-4">
+	<RecordGroup>
 		<ScreenTitle
 			{title}
 			{subtitle}
@@ -64,7 +66,7 @@
 				label: t('All vehicles', 'Tous les véhicules'),
 			}}
 		/>
-	</div>
+	</RecordGroup>
 {/snippet}
 
 {#snippet liveTitle(line: string | null | undefined)}
@@ -81,114 +83,120 @@
 {/snippet}
 
 <Surface>
-	{#if data.id}
-		<div class="grid min-w-0 gap-6 pb-8">
-			{#if data.mode === 'live' && !notTrackedLive && data.v1}
-				{#key data.city}
-					<VehicleLive
-						manifest={data.v1.manifest}
-						timeZone={data.provider?.timezone ?? data.v1.manifest.tz ?? 'UTC'}
-						id={data.id}
-						{locale}
-						url={pinned}
-						city={data.city}
-						{operator}
-						{recordHref}
-						titleBlock={liveTitle}
-					/>
-				{/key}
-			{:else}
-				{#await lineAnswer}
-					{@render heading(operator)}
-				{:then result}
-					{@const line =
-						result?.kind === 'answer' && 'cells' in result.answer && !notTrackedLive
-							? vehicleLines(result.answer).find(
-									(cell) => cell.state === 'measured' && (cell.value.vehicle_trips_run ?? 0) > 0,
-								)?.key.line
-							: undefined}
-					{@render heading(typeof line === 'string' ? mostlyOnLine(line) : operator)}
-				{/await}
-				<div class="grid min-w-0 gap-6" data-slot="screen-content">
-					{#if data.mode === 'record'}
-						<VehicleDetailRecord
-							{data}
+	<RecordScreen>
+		{#if data.id}
+			<div class="min-w-0">
+				{#if data.mode === 'live' && !notTrackedLive && data.v1}
+					{#key data.city}
+						<VehicleLive
+							manifest={data.v1.manifest}
+							timeZone={data.provider?.timezone ?? data.v1.manifest.tz ?? 'UTC'}
+							id={data.id}
 							{locale}
-							{title}
 							url={pinned}
-							trackingDisabled={notTrackedLive}
+							city={data.city}
 							{operator}
+							{recordHref}
+							titleBlock={liveTitle}
 						/>
-					{:else}
-						<div data-slot="screen-answer">
-							<RecordAnswer
-								value={null}
-								state={notTrackedLive ? 'not_tracked' : 'no_live_data'}
+					{/key}
+				{:else}
+					{#await lineAnswer}
+						{@render heading(operator)}
+					{:then result}
+						{@const line =
+							result?.kind === 'answer' && 'cells' in result.answer && !notTrackedLive
+								? vehicleLines(result.answer).find(
+										(cell) => cell.state === 'measured' && (cell.value.vehicle_trips_run ?? 0) > 0,
+									)?.key.line
+								: undefined}
+						{@render heading(typeof line === 'string' ? mostlyOnLine(line) : operator)}
+					{/await}
+					<div class="min-w-0" data-slot="screen-content">
+						{#if data.mode === 'record'}
+							<VehicleDetailRecord
+								{data}
 								{locale}
-								sentence={notTrackedLive
-									? notTracked[locale]
-									: t(
-											'Live reports are temporarily unavailable.',
-											'Les signalements en direct sont temporairement indisponibles.',
-										)}
+								{title}
+								url={pinned}
+								trackingDisabled={notTrackedLive}
+								{operator}
 							/>
-						</div>
+						{:else}
+							<RecordGroup class="grid gap-6">
+								<div data-slot="screen-answer">
+									<RecordAnswer
+										value={null}
+										state={notTrackedLive ? 'not_tracked' : 'no_live_data'}
+										{locale}
+										sentence={notTrackedLive
+											? notTracked[locale]
+											: t(
+													'Live reports are temporarily unavailable.',
+													'Les signalements en direct sont temporairement indisponibles.',
+												)}
+									/>
+								</div>
+								<a
+									class="inline-flex min-h-11 items-center justify-self-start text-primary underline"
+									href={recordHref}
+								>
+									{t('Its record over the chosen dates', 'Son bilan pour les dates choisies')}
+								</a>
+							</RecordGroup>
+							<RecordGroup>
+								<AboutLiveFigures
+									{locale}
+									{operator}
+									healthLink={vehicleHref('/status', pinned, locale, data.city)}
+								/>
+							</RecordGroup>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{:else}
+			<div class="grid min-w-0 gap-4">
+				<header class="grid gap-2">
+					<h1>{title}</h1>
+					<nav aria-label={t('Vehicle views', 'Vues des véhicules')} class="flex flex-wrap gap-4">
 						<a
-							class="inline-flex min-h-11 items-center justify-self-start text-primary underline"
-							href={recordHref}
+							aria-current={data.mode === 'live' ? 'page' : undefined}
+							href={frameHref(pinned, { mode: 'live', period: data.period })}
+							>{t('Live now', 'En direct')}</a
 						>
-							{t('Its record over the chosen dates', 'Son bilan pour les dates choisies')}
-						</a>
-						<AboutLiveFigures
+						<a
+							aria-current={data.mode === 'record' ? 'page' : undefined}
+							href={frameHref(pinned, { mode: 'record', period: data.period })}
+							>{t('See the record', 'Voir le bilan')}</a
+						>
+					</nav>
+					{#if data.mode === 'record' && data.period}<p>{dateRange(data.period, locale)}</p>{/if}
+				</header>
+				{#if data.mode === 'record'}
+					<VehicleRecord {data} {locale} {title} url={pinned} />
+				{:else if notTrackedLive}
+					<p>{notTracked[locale]}</p>
+				{:else if data.v1}
+					{#key data.city}
+						<VehicleLive
+							manifest={data.v1.manifest}
+							timeZone={data.provider?.timezone ?? data.v1.manifest.tz ?? 'UTC'}
+							id={data.id}
 							{locale}
-							{operator}
-							healthLink={vehicleHref('/status', pinned, locale, data.city)}
+							url={pinned}
+							city={data.city}
 						/>
-					{/if}
-				</div>
-			{/if}
-		</div>
-	{:else}
-		<div class="grid min-w-0 gap-4">
-			<header class="grid gap-2">
-				<h1>{title}</h1>
-				<nav aria-label={t('Vehicle views', 'Vues des véhicules')} class="flex flex-wrap gap-4">
-					<a
-						aria-current={data.mode === 'live' ? 'page' : undefined}
-						href={frameHref(pinned, { mode: 'live', period: data.period })}
-						>{t('Live now', 'En direct')}</a
-					>
-					<a
-						aria-current={data.mode === 'record' ? 'page' : undefined}
-						href={frameHref(pinned, { mode: 'record', period: data.period })}
-						>{t('See the record', 'Voir le bilan')}</a
-					>
-				</nav>
-				{#if data.mode === 'record' && data.period}<p>{dateRange(data.period, locale)}</p>{/if}
-			</header>
-			{#if data.mode === 'record'}
-				<VehicleRecord {data} {locale} {title} url={pinned} />
-			{:else if notTrackedLive}
-				<p>{notTracked[locale]}</p>
-			{:else if data.v1}
-				{#key data.city}
-					<VehicleLive
-						manifest={data.v1.manifest}
-						timeZone={data.provider?.timezone ?? data.v1.manifest.tz ?? 'UTC'}
-						id={data.id}
-						{locale}
-						url={pinned}
-						city={data.city}
-					/>
-				{/key}
-			{:else}
-				<p>
-					{t(
-						'Live reports are temporarily unavailable.',
-						'Les signalements en direct sont temporairement indisponibles.',
-					)}
-				</p>
-			{/if}
-		</div>
-	{/if}
+					{/key}
+				{:else}
+					<p>
+						{t(
+							'Live reports are temporarily unavailable.',
+							'Les signalements en direct sont temporairement indisponibles.',
+						)}
+					</p>
+				{/if}
+			</div>
+		{/if}
+	</RecordScreen>
 </Surface>
