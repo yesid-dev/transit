@@ -11,6 +11,10 @@ routes = [
   { pattern = "data.yesid.dev/v2/*", zone_name = "yesid.dev" },
 ]
 
+[build]
+command = "bun scripts/build-public-cities.mjs"
+watch_dir = ["../db/config/providers", "scripts"]
+
 [[r2_buckets]]
 binding = "SNAPSHOTS"
 bucket_name = "transit-snapshots"

@@ -22,11 +22,11 @@ function errorResponse(status, extraHeaders = {}) {
 }
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, env, ctx, publicCities) {
     const { pathname } = new URL(request.url);
     if (isDownloadPath(pathname)) return serveDownload(request, env, ctx);
     const basemap = /^\/v2\/([a-z0-9][a-z0-9_-]{0,63})\/basemap\/([a-zA-Z0-9_-]+\.pmtiles)$/.exec(pathname);
-    if (pathname.startsWith("/v2/") && !basemap) return serveQuestion(request, env, ctx);
+    if (pathname.startsWith("/v2/") && !basemap) return serveQuestion(request, env, ctx, publicCities);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS });
@@ -36,6 +36,7 @@ export default {
     }
     if (basemap) {
       const [, city, file] = basemap;
+      if (!publicCities?.has(city)) return errorResponse(404);
       const response = await serveCleanBasemap(request, env, city, file)
         ?? await serveSnapshot(request, env.SNAPSHOTS, `v1/${city}/static/basemap/${file}`);
       if (!response) return errorResponse(404);

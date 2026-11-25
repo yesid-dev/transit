@@ -34,6 +34,7 @@ describe('sitemap.xml', () => {
 		expect(xml).toContain('<loc>' + origin + '/stop/10001</loc>');
 		expect(xml).toContain('<loc>' + origin + '/lines/5?provider=octranspo</loc>');
 		expect(xml).toContain('hreflang="fr" href="' + origin + '/fr/stop/OC1?provider=octranspo"');
+		expect(xml).not.toContain('provider=sto');
 	});
 
 	it('keeps another city’s addresses when a schedule is unavailable', async () => {
@@ -45,8 +46,8 @@ describe('sitemap.xml', () => {
 		expect(xml).not.toContain('/lines/11');
 	});
 
-	it('normalizes an invalid provider before requesting a schedule', async () => {
-		const response = await GET(event('?provider=unknown'));
+	it.each(['unknown', 'sto'])('normalizes %s before requesting a schedule', async (provider) => {
+		const response = await GET(event('?provider=' + provider));
 		expect(response.status).toBe(307);
 		expect(response.headers.get('location')).toBe('/sitemap.xml?provider=stm');
 		expect(engine.getScheduleEdition).not.toHaveBeenCalled();

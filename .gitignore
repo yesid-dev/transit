@@ -23,6 +23,7 @@ artifacts/
 # JS workspace tooling (apps/web, apps/data-proxy) + turborepo
 node_modules/
 .wrangler/
+/apps/data-proxy/src/.generated-public-cities.json
 .turbo/
 .svelte-kit/
 # workerd (Cloudflare local runtime) log — regenerable, never committed
