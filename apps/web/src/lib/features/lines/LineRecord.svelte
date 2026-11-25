@@ -79,12 +79,12 @@
 		return frameHref(target, { mode: 'record', period: { ...record.period, preset: null } });
 	});
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(record.period, locale) });
-	const answers = $derived(
-		Object.fromEntries(record.sections.map(({ section, answer }) => [section, answer])) as Record<
-			LineSection,
-			Promise<EngineResult<RecordAnswer>>
-		>,
-	);
+	const answerFor = (section: LineSection) =>
+		record.sections.find((item) => item.section === section)!.answer;
+	const stopsAnswer = $derived(answerFor('stops'));
+	const frequencyAnswer = $derived(answerFor('frequency'));
+	const boundariesAnswer = $derived(answerFor('boundaries'));
+	const punctualityAnswer = $derived(answerFor('punctuality'));
 	const failures = ['stops', 'delivery', 'late', 'waiting', 'offered', 'crowding'] as const;
 	let opened = $state<Record<(typeof failures)[number], boolean>>({
 		stops: true,
@@ -127,8 +127,9 @@
 {/snippet}
 
 {#snippet reading(section: LineSection)}
-	{#await answers[section]}
-		{@render pending(answers[section])}
+	{@const answer = answerFor(section)}
+	{#await answer}
+		{@render pending(answer)}
 	{:then result}
 		{#if result.kind === 'answer' && !recordMessage(result, locale)}
 			{#if section === 'stops' && 'cells' in result.answer}
@@ -163,7 +164,8 @@
 {/snippet}
 
 {#snippet evidence(section: LineSection)}
-	{#await answers[section] then result}
+	{@const answer = answerFor(section)}
+	{#await answer then result}
 		{#if result.kind === 'answer'}<LineRecordEvidence
 				evidence={result.answer.evidence}
 				{locale}
@@ -188,7 +190,7 @@
 					{#snippet footer()}
 						{@render evidence(section)}
 						{#if section === 'stops'}
-							{#await answers.stops then result}
+							{#await stopsAnswer then result}
 								{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 									<RecordChartToggle bind:table={stopsTable} controls="line-stop-ladder" {locale} />
 								{/if}
@@ -203,11 +205,11 @@
 
 {#snippet schedule()}
 	<div id="schedule" class="min-w-0">
-		{#await answers.frequency}
-			{@render pending(answers.frequency)}
+		{#await frequencyAnswer}
+			{@render pending(frequencyAnswer)}
 		{:then frequency}
-			{#await answers.boundaries}
-				{@render pending(answers.boundaries)}
+			{#await boundariesAnswer}
+				{@render pending(boundariesAnswer)}
 			{:then boundaries}
 				{#if frequency.kind === 'busy' || boundaries.kind === 'busy'}
 					<RecordPending {locale} busy />
@@ -336,7 +338,7 @@
 			{@render schedule()}
 			{@render cannotMeasure()}
 		{:else}
-			{#await answers.punctuality then result}
+			{#await punctualityAnswer then result}
 				{@const answer =
 					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
 				{#if !lineTimetableOnly(answer)}
@@ -344,7 +346,7 @@
 				{/if}
 			{/await}
 			{@render schedule()}
-			{#await answers.punctuality then result}
+			{#await punctualityAnswer then result}
 				{@const answer =
 					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
 				{#if !lineTimetableOnly(answer)}
