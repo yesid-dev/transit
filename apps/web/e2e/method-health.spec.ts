@@ -19,10 +19,16 @@ for (const width of [390, 1440]) {
 			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
+			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
+			const intro = await main.locator('[data-slot="answer-lead"] p').first().boundingBox();
+			expect(intro!.x).toBeCloseTo(heading!.x);
 			const measure = main.locator('#fixture_delay');
 			await expect(measure).toHaveAttribute('open', '');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
 			await expect(measure.getByText(/^v2, /)).toBeVisible();
+			await expect(measure.locator('time')).toHaveText(
+				fr ? '10 novembre 2026' : '10 November 2026',
+			);
 			const disclosures = main.locator('details[data-record-disclosure]');
 			for (const card of await disclosures.all()) {
 				const trigger = card.locator('summary').first();

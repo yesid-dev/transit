@@ -68,9 +68,13 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			}),
 			contentType: 'application/json',
 		});
-		await expect(page.getByRole('main')).not.toContainText(
-			/\b(?:\d+ s (?:late|early)|seconds|secondes|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
+		const seconds =
+			screen === 'how-we-measure' ? String.raw`(?<!\b90 )(?:seconds|secondes)` : 'seconds|secondes';
+		const machineUnits = new RegExp(
+			String.raw`\b(?:\d+ s (?:late|early)|${seconds}|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b`,
+			'i',
 		);
+		await expect(page.getByRole('main')).not.toContainText(machineUnits);
 		expectDesignPass(screen, key, report);
 	});
 }

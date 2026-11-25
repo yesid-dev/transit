@@ -32,7 +32,7 @@
 <AnswerLead
 	{value}
 	{sentence}
-	{absent}
+	absent={state ? absent : undefined}
 	stamp={time ? stamp : undefined}
 	{comparison}
 	{actions}

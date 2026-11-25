@@ -4,7 +4,12 @@
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, MethodEntry } from '#lib/server/engine.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
-	import { methodEvidence, registryUnitText, versionNumber } from '#lib/site/presenter.ts';
+	import {
+		longDate,
+		methodEvidence,
+		registryUnitText,
+		versionNumber,
+	} from '#lib/site/presenter.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import RecordActionGroup from './RecordActionGroup.svelte';
 	import RecordAnswer from './RecordAnswer.svelte';
@@ -13,13 +18,7 @@
 	import ScreenTitle from './ScreenTitle.svelte';
 	import StateMark from './StateMark.svelte';
 	import { methodCopy, methodReferenceStates } from './methodCatalog.copy.ts';
-	import {
-		methodDate,
-		methodGroups,
-		methodName,
-		methodParts,
-		methodSummary,
-	} from './methodCatalogText';
+	import { methodGroups, methodName, methodParts, methodSummary } from './methodCatalogText';
 	import { recordSectionLinks } from './recordLinks.ts';
 	import { choose, lastGoodNote, recordConnection, tally } from './recordText.ts';
 
@@ -129,7 +128,7 @@
 				<dt>{copy.since}</dt>
 				<dd>
 					{versionNumber(entry.method_version)},
-					<time datetime={entry.since}>{methodDate(entry.since, locale)}</time>
+					<time datetime={entry.since}>{longDate(entry.since, locale)}</time>
 				</dd>
 			</div>
 		</dl>
@@ -159,10 +158,7 @@
 		{@const entry = group.entries[0]}
 		{@render measure(entry, byId, details[entry.id])}
 	{:else}
-		<RecordCard
-			title={group.name}
-			disclosure={{ id: group.id, description: methodSummary(group.entries[0], locale) }}
-		>
+		<RecordCard title={group.name} disclosure={{ id: group.id, description: group.summary }}>
 			<div class="grid min-w-0 gap-3">
 				{#each group.entries as entry (entry.id)}
 					{@render measure(entry, byId, details[entry.id], true)}
@@ -178,7 +174,7 @@
 			{#each entries as entry (entry.id)}
 				{@const share = recordSectionLinks(canonical, entry.id).share}
 				<li>
-					Transit. {title}. {entry.text[locale].definition} ({versionNumber(entry.method_version)}, {methodDate(
+					Transit. {title}. {entry.text[locale].definition} ({versionNumber(entry.method_version)}, {longDate(
 						entry.since,
 						locale,
 					)}).

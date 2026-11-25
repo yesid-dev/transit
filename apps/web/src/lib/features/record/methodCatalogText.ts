@@ -1,89 +1,42 @@
-import { intl, type Locale } from '#lib/i18n/index.ts';
+import type { Locale } from '#lib/i18n/index.ts';
 import type { MethodEntry } from '#lib/server/engine.ts';
 import { registryUnitText } from '#lib/site/presenter.ts';
+import methodNames from './methodNames.json';
 
-const names: Record<string, readonly [string, string]> = {
-	on_time: ['On-time share', 'Part à l’heure'],
-	early: ['Early share', 'Part en avance'],
-	late: ['Late share', 'Part en retard'],
-	median_delay: ['Median delay', 'Retard médian'],
-	p90_delay: ['90th percentile delay', '90e percentile du retard'],
-	trips_run: ['Trips that ran', 'Trajets effectués'],
-	cancelled_trips: ['Cancelled trips', 'Trajets annulés'],
-	missing_trips: ['Missing trips', 'Trajets manquants'],
-	service_hours: ['Service hours delivered', 'Heures de service effectuées'],
-	first_trip: ['First departure', 'Premier départ'],
-	last_trip: ['Last departure', 'Dernier départ'],
-	crowding_empty: ['Empty vehicles', 'Véhicules vides'],
-	crowding_many_seats: ['Many seats available', 'Plusieurs places assises libres'],
-	crowding_few_seats: ['Few seats available', 'Peu de places assises libres'],
-	crowding_standing: ['Standing room only', 'Places debout seulement'],
-	crowding_crushed: ['Limited standing room', 'Peu de places debout'],
-	crowding_full: ['Full vehicles', 'Véhicules pleins'],
-	alerts: ['Active alerts', 'Avis en vigueur'],
-	alert_versions: ['Alert versions', 'Versions des avis'],
-	alert_hours: ['Hours with alerts', 'Heures avec avis'],
-	observed_headway: ['Observed interval', 'Intervalle observé'],
-	scheduled_headway: ['Scheduled interval', 'Intervalle prévu'],
-	bunching: ['Vehicles following too closely', 'Véhicules trop rapprochés'],
-	long_gaps: ['Long gaps', 'Longs intervalles'],
-	excess_wait_time: ['Excess wait', 'Attente supplémentaire'],
-	scheduled_trips: ['Scheduled trips', 'Trajets prévus'],
-	scheduled_frequency: ['Scheduled frequency', 'Fréquence prévue'],
-	below_minimum_service: ['Periods below minimum service', 'Périodes sous le seuil de service'],
-	vehicle_days_in_service: ['Days in service', 'Jours en service'],
-	vehicle_hours_in_service: ['Hours in service', 'Heures en service'],
-	vehicle_lines_run: ['Lines served', 'Lignes desservies'],
-	vehicle_trips_run: ['Trips served', 'Trajets réalisés'],
-	vehicle_reporting_gaps: ['Reporting gaps', 'Interruptions du signal'],
-	vehicle_silent_hours: ['Time without a signal', 'Durée sans signal'],
-	vehicle_reporting_gaps_per_100_hours: [
-		'Reporting gaps per 100 hours',
-		'Interruptions par 100 heures',
-	],
-	vehicle_unfinished_trips: ['Unfinished trips', 'Trajets inachevés'],
-	vehicle_unfinished_trips_per_100_trips: [
-		'Unfinished trips per 100 trips',
-		'Trajets inachevés par 100 trajets',
-	],
-	vehicle_early: ['Early share by vehicle', 'Part en avance par véhicule'],
-	vehicle_on_time: ['On-time share by vehicle', 'Part à l’heure par véhicule'],
-	vehicle_late: ['Late share by vehicle', 'Part en retard par véhicule'],
-	vehicle_median_delay: ['Median delay by vehicle', 'Retard médian par véhicule'],
-	vehicle_p90_delay: ['90th percentile delay by vehicle', '90e percentile du retard par véhicule'],
-	median_time_lost: ['Median time lost', 'Temps perdu médian'],
-	p90_time_lost: ['90th percentile time lost', '90e percentile du temps perdu'],
-	mean_time_lost: ['Mean time lost', 'Temps perdu moyen'],
-	total_vehicle_minutes_lost: ['Total vehicle-minutes lost', 'Total des minutes-véhicules perdues'],
-	poll_success: ['Successful captures', 'Collectes réussies'],
-	feed_update_interval: ['Time between feed updates', 'Intervalle entre les mises à jour du flux'],
-	feed_age_at_capture: ['Age of the feed at capture', 'Âge du flux à la collecte'],
-	vehicle_field_completeness: [
-		'Completeness of vehicle reports',
-		'Données présentes dans les relevés de véhicules',
-	],
-	live_trip_coverage: ['Realtime trip coverage', 'Couverture des trajets en temps réel'],
-	vehicles_without_trip: ['Vehicles without a trip', 'Véhicules sans trajet associé'],
-	prediction_error: ['Prediction error', 'Erreur de prévision'],
-	accessible_trips: ['Accessible trips', 'Trajets accessibles'],
-	accessible_stops: ['Accessible stops', 'Arrêts accessibles'],
-};
+// These display names belong in the engine registry when it supplies localized titles.
+const names: Readonly<Partial<Record<string, readonly string[]>>> = methodNames;
 
 const featured = [
-	{ id: 'on_time', name: names.on_time, has: (id: string) => id === 'on_time' },
+	{
+		id: 'on_time',
+		name: methodNames.on_time,
+		has: (id: string) => id === 'on_time',
+	},
 	{
 		id: 'early-late',
 		name: ['Early and late', 'En avance et en retard'],
+		summary: [
+			'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.',
+			'Un passage est en avance s’il a lieu plus de 1 minute avant l’heure prévue. Il est en retard s’il a lieu plus de 5 minutes après.',
+		],
 		has: (id: string) => id === 'early' || id === 'late',
 	},
 	{
 		id: 'trip-delivery',
 		name: ['Trips that ran, cancelled and missing', 'Trajets effectués, annulés et manquants'],
+		summary: [
+			'A scheduled trip ran, was cancelled with a notice from the agency, or is missing: no vehicle was seen and no notice was found.',
+			'Un trajet prévu a été effectué, a été annulé avec un avis de l’agence ou est manquant : aucun véhicule n’a été observé et aucun avis n’a été relevé.',
+		],
 		has: (id: string) => ['trips_run', 'cancelled_trips', 'missing_trips'].includes(id),
 	},
 	{
 		id: 'delay-percentiles',
 		name: ['Median delay and 90th percentile', 'Retard médian et 90e percentile'],
+		summary: [
+			'About half of observed stop events were at or below the median delay. About nine in ten were at or below the 90th percentile.',
+			'Environ la moitié des passages observés avaient un retard inférieur ou égal à la médiane. Environ neuf sur dix avaient un retard inférieur ou égal au 90e percentile.',
+		],
 		has: (id: string) => id === 'median_delay' || id === 'p90_delay',
 	},
 	{
@@ -91,6 +44,10 @@ const featured = [
 		name: [
 			'Vehicles: in service, stopped reporting, trips not finished',
 			'Véhicules : en service, sans signal et trajets inachevés',
+		],
+		summary: [
+			'A vehicle is in service on a day when it reported at least once while on a scheduled trip.',
+			'Un véhicule est en service s’il a transmis au moins un relevé pendant un trajet prévu ce jour-là.',
 		],
 		has: (id: string) =>
 			id.startsWith('vehicle_') &&
@@ -106,9 +63,13 @@ const featured = [
 ];
 
 export function methodGroups(entries: MethodEntry[], locale: Locale) {
-	const groups = featured.flatMap(({ id, name, has }) => {
+	const index = locale === 'en' ? 0 : 1;
+	const list = new Intl.ListFormat(locale);
+	const groups = featured.flatMap(({ id, name, summary, has }) => {
 		const matching = entries.filter((entry) => has(entry.id));
-		return matching.length ? [{ id, name: name[locale === 'en' ? 0 : 1], entries: matching }] : [];
+		return matching.length
+			? [{ id, name: name[index], summary: summary?.[index], entries: matching }]
+			: [];
 	});
 	const used = new Set(groups.flatMap((group) => group.entries.map((entry) => entry.id)));
 	const extra = Object.entries(
@@ -119,6 +80,7 @@ export function methodGroups(entries: MethodEntry[], locale: Locale) {
 	).map(([id, members = []]) => ({
 		id: 'family-' + id,
 		name: members[0].family_text?.[locale] ?? id,
+		summary: list.format(members.map((entry) => methodName(entry, locale))) + '.',
 		entries: members,
 	}));
 	return { groups, extra };
@@ -128,10 +90,6 @@ export function methodName(entry: MethodEntry, locale: Locale) {
 	return (
 		names[entry.id]?.[locale === 'en' ? 0 : 1] ?? methodSummary(entry, locale).replace(/\.$/u, '')
 	);
-}
-
-export function methodDate(day: string, locale: Locale) {
-	return intl.dateTime(locale, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(day));
 }
 
 const proseFields = ['counts', 'exclusions', 'limits'] as const;

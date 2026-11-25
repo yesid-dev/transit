@@ -78,6 +78,25 @@ it('puts shared family prose in one reading and links to it from its siblings', 
 	);
 });
 
+it('describes closed families with all of their measures', async () => {
+	const entries = ['early', 'late', 'vehicle_early', 'vehicle_late'].map((id) => ({
+		...catalog[0],
+		id,
+		family: id.startsWith('vehicle_') ? 'vehicles' : catalog[0].family,
+	}));
+	render(MethodCatalog, {
+		locale: 'en',
+		url: new URL('https://transit1.yesid.dev/metrics'),
+		city: 'stm',
+		period,
+		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: entries }),
+	});
+	await screen.findByText(/Early is more than 1 minute ahead.*Late is more than 5 minutes/);
+	expect(document.querySelector('#family-vehicles > summary')).toHaveTextContent(
+		'Early share by vehicle and Late share by vehicle.',
+	);
+});
+
 it('renders an honest empty catalog', async () => {
 	render(MethodCatalog, {
 		locale: 'en',

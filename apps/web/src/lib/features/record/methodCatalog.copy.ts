@@ -48,14 +48,14 @@ export const methodCopy = {
 			delay_unknown:
 				'A vehicle or a trip is there and its delay is not known, for example a scheduled vehicle with no vehicle reporting.',
 			not_reporting:
-				'A vehicle sent no position in the last 90 s, or on a given day. It is not the same as out of service: the vehicle may be in the garage, or on the road with a transmitter that sends nothing.',
+				'A vehicle sent no position in the last 90 seconds, or on a given day. It is not the same as out of service: the vehicle may be in the garage, or on the road with a transmitter that sends nothing.',
 			not_tracked:
-				'The feed gives its vehicles no stable number, so a vehicle cannot be followed from one day to the next. Neither sample city is in this case.',
+				'The feed gives its vehicles no stable number, so a vehicle cannot be followed from one day to the next.',
 		},
 		limitsTitle: 'What this record is not',
 		recordLimits: [
 			'Not a trip planner: it does not tell you which line to take.',
-			'Not a measure of lines without live data. In the two sample cities that is the métro and the O-Train: neither agency publishes realtime data for them.',
+			'Not a measure of lines without live data, such as the métro or the O-Train: their agencies publish no realtime data for them.',
 			'Not a count of riders, and not a cause of delay: neither is in the feeds.',
 			'Observed times are the agency’s own predictions and positions, checked against each other, not a stopwatch at the stop.',
 		],
@@ -100,15 +100,15 @@ export const methodCopy = {
 			delay_unknown:
 				'Le véhicule ou le trajet est présent et son retard est inconnu, par exemple lorsqu’aucun véhicule ne signale sa position pour un trajet prévu.',
 			not_reporting:
-				'Le véhicule n’a transmis aucune position depuis 90 s, ou au cours d’une journée donnée. Il peut se trouver au garage ou circuler sans que son émetteur envoie de signal.',
+				'Le véhicule n’a transmis aucune position depuis 90 secondes, ou au cours d’une journée donnée. Il peut se trouver au garage ou circuler sans que son émetteur envoie de signal.',
 			not_tracked:
-				'Le flux ne fournit aucun identifiant stable pour suivre un véhicule d’un jour à l’autre. Aucune des deux villes de l’exemple n’est dans ce cas.',
+				'Le flux ne fournit aucun identifiant stable pour suivre un véhicule d’un jour à l’autre.',
 		},
 		limitsTitle: 'Ce que ce bilan n’est pas',
 		recordLimits: [
-			'Un planificateur de trajet : il n’indique pas quelle ligne prendre.',
-			'Une mesure des lignes sans données en direct. Dans les deux villes de l’exemple, il s’agit du métro et de l’O-Train, pour lesquels les agences ne publient aucun flux en temps réel.',
-			'Un décompte des gens à bord ou une explication du retard : les flux ne contiennent ni l’un ni l’autre.',
+			'Pas un planificateur de trajets : il n’indique pas quelle ligne prendre.',
+			'Pas une mesure des lignes sans données en direct, comme le métro ou l’O-Train : leurs agences ne publient aucune donnée en temps réel pour ces lignes.',
+			'Pas un décompte des passagers, ni une cause du retard : ces données ne figurent pas dans les flux.',
 			'Les heures observées proviennent des prévisions et des positions de l’agence, comparées entre elles, sans chronométrage à l’arrêt.',
 		],
 	},
