@@ -26,7 +26,8 @@ export async function openMapInView(page: Page) {
 		'ready',
 	);
 	const trigger = page.locator('.map-in-view-button');
-	if (await trigger.isVisible()) await trigger.click();
+	if ((await trigger.isVisible()) && !(await page.locator('[data-map-in-view-sheet]').isVisible()))
+		await trigger.click();
 }
 
 export async function closeMapInView(page: Page) {

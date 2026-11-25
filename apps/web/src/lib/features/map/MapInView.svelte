@@ -86,7 +86,7 @@
 
 <section aria-labelledby={uid} data-slot="map-in-view">
 	<div class="flex items-baseline justify-between gap-2">
-		<h2 id={uid} class="text-lg font-semibold">
+		<h2 id={uid} class="text-lg font-semibold" tabindex="-1" data-map-in-view-title>
 			{french ? 'Véhicules en vue' : 'Vehicles in view'}
 		</h2>
 		{#if model}<span
@@ -147,6 +147,7 @@
 					wrap
 					onclick={copyView}>{t.copyLiveView}</Button
 				>{/if}
+			{#if liveViewHref}<p class="text-muted-foreground">{t.copyDisclaimer}</p>{/if}
 			{#if csv}<Button
 					variant="outline"
 					size="sm"
@@ -158,7 +159,9 @@
 			<p role="status">{copyState}</p>
 		</details>
 	{:else if view.kind === 'unavailable'}
-		<p>{french ? 'Signalements indisponibles.' : 'Reports unavailable.'}</p>
+		<p role="status">
+			{view.reason === 'alerts' ? t.unavailableAlerts : t.unavailableSource}
+		</p>
 	{/if}
 </section>
 

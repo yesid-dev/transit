@@ -16,13 +16,11 @@ const phase = process.env.TRANSIT_FRAMING_PHASE ?? 'after';
 test.describe.configure({ mode: 'parallel' });
 async function sample(page: Page, bounds: number[]) {
 	return page.evaluate((b) => {
-		const map = document.querySelector('[data-slot="map-stage"]')!.getBoundingClientRect();
+		const map = document.querySelector('[data-map-runtime]')!.getBoundingClientRect();
 		const panel = document
 			.querySelector('[data-frame-controls="desktop"]')!
 			.getBoundingClientRect();
-		const detail = document
-			.querySelector('[data-slot="map-detail-overlay"]')
-			?.getBoundingClientRect();
+		const detail = document.querySelector('[data-slot="map-details"]')?.getBoundingClientRect();
 		const probe = (
 			window as unknown as { __transitMap: { project(c: number[]): { x: number; y: number } } }
 		).__transitMap;
@@ -83,10 +81,10 @@ for (const provider of providers.providers)
 				const measurements: Record<string, unknown> = {};
 				const states =
 					process.env.TRANSIT_E2E_PANEL_SIZES === '1'
-						? ['default', 'rail', 'right-open']
-						: ['default', 'rail'];
+						? ['default', 'filters-open', 'right-open']
+						: ['default', 'filters-open'];
 				for (const state of states) {
-					if (state === 'rail') await page.locator('.map-filters [role="separator"]').press('Home');
+					if (state === 'filters-open') await page.locator('[data-map-controls] summary').click();
 					if (state === 'right-open') {
 						await page.goto(`${mapPath}?provider=${provider.id}&focus=vehicle:layout-bus`, {
 							waitUntil: 'networkidle',
@@ -112,7 +110,7 @@ for (const provider of providers.providers)
 							coord,
 						);
 						await page.locator('.maplibregl-canvas').click({ position: p });
-						await expect(page.locator('[data-slot="map-detail-handle"]')).toBeVisible();
+						await expect(page.locator('[data-slot="map-detail-overlay"]')).toBeVisible();
 						const focus = await page.evaluate((c) => {
 							const p = (
 								window as unknown as {

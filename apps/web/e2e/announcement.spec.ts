@@ -111,13 +111,13 @@ test('a wrapped phone banner leaves the map and its controls in the viewport', a
 	expect(mapBox.y + mapBox.height).toBeCloseTo(844, 0);
 	expect(await page.evaluate(() => document.scrollingElement!.scrollHeight)).toBe(844);
 
-	const filters = page.getByTestId('map-filter-pill');
+	const filters = page.locator('[data-slot="surface-rail-mobile"] > button');
 	await filters.click();
-	const drawer = page.locator('[data-m6b-controls-drawer]');
+	const drawer = page.getByRole('dialog', { name: 'Commandes', exact: true });
 	await expect(drawer).toBeInViewport({ ratio: 1 });
 	const pill = (await page.getByTestId('nav-pill').boundingBox())!;
 	expect((await drawer.boundingBox())!.y).toBeGreaterThanOrEqual(pill.y + pill.height);
-	const done = page.getByTestId('map-filter-done');
+	const done = drawer.getByRole('button', { name: 'Fermer les commandes' });
 	expect((await drawer.boundingBox())!.height).toBeGreaterThanOrEqual(
 		(await done.boundingBox())!.height,
 	);

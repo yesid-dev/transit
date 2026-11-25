@@ -803,6 +803,13 @@ function peekText(container: HTMLElement): string {
 	return container.querySelector('.map-peek')?.textContent?.replace(/\s+/gu, ' ').trim() ?? '';
 }
 
+function expectReadingLink(link: HTMLElement, path: string, mode: 'live' | 'record') {
+	const url = new URL(link.getAttribute('href') ?? '', 'http://localhost');
+	expect(url.pathname).toBe(path);
+	expect(url.searchParams.get('provider')).toBe('stm');
+	expect(url.searchParams.get('frameMode')).toBe(mode);
+}
+
 describe('MapHero stage lifecycle', () => {
 	it.each([
 		{ notice: 'stale', desktop: false },
@@ -822,9 +829,10 @@ describe('MapHero stage lifecycle', () => {
 			try {
 				render(MapHero);
 				await fireEvent.click(await screen.findByTestId('map-stage-stub-pick-vehicle'));
-				expect(await screen.findByRole('link', { name: 'Line 24 now' })).toHaveAttribute(
-					'href',
-					/\/lines\/24.*frameMode=live/,
+				expectReadingLink(
+					await screen.findByRole('link', { name: 'Line 24 now' }),
+					'/lines/24',
+					'live',
 				);
 				expect(screen.queryByText('No alerts attached')).not.toBeInTheDocument();
 			} finally {
@@ -2227,11 +2235,8 @@ describe('MapHero map-layer feed lifecycle', () => {
 		render(MapHero);
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
 		const vehicle = await screen.findByRole('link', { name: 'Vehicle bus-1' });
-		expect(vehicle).toHaveAttribute('href', /\/vehicle\/bus-1.*frameMode=live/);
-		expect(screen.getByRole('link', { name: 'Line 24 now' })).toHaveAttribute(
-			'href',
-			/\/lines\/24.*frameMode=live/,
-		);
+		expectReadingLink(vehicle, '/vehicle/bus-1', 'live');
+		expectReadingLink(screen.getByRole('link', { name: 'Line 24 now' }), '/lines/24', 'live');
 		expect(screen.queryByRole('tab', { name: 'Overview' })).not.toBeInTheDocument();
 	});
 
@@ -2445,13 +2450,15 @@ describe('MapHero mobile selection card', () => {
 		expect(
 			within(sheet).getByRole('heading', { name: 'Stop Sherbrooke / Saint-Denis' }),
 		).toBeVisible();
-		expect(within(sheet).getByRole('link', { name: 'Stop now' })).toHaveAttribute(
-			'href',
-			/\/stop\/stop-1.*frameMode=live/,
+		expectReadingLink(
+			within(sheet).getByRole('link', { name: 'Stop now' }),
+			'/stop/stop-1',
+			'live',
 		);
-		expect(within(sheet).getByRole('link', { name: 'Stop Record' })).toHaveAttribute(
-			'href',
-			/\/stop\/stop-1.*frameMode=record/,
+		expectReadingLink(
+			within(sheet).getByRole('link', { name: 'Stop Record' }),
+			'/stop/stop-1',
+			'record',
 		);
 		expect(harness.goto).toHaveBeenCalledTimes(writes);
 	});

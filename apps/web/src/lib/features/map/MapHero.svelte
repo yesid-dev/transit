@@ -568,10 +568,18 @@
 		void tick().then(() => {
 			const scroller = inViewScroller();
 			if (scroller && scroll !== null) scroller.scrollTop = scroll;
-			inViewBody
-				?.querySelector<HTMLElement>(`[data-in-view-vehicle="${CSS.escape(id)}"]`)
-				?.focus({ preventScroll: true });
+			const row = inViewBody?.querySelector<HTMLElement>(
+				`[data-in-view-vehicle="${CSS.escape(id)}"]`,
+			);
+			const heading = inViewBody?.querySelector<HTMLElement>('[data-map-in-view-title]');
+			(row ?? heading)?.focus({ preventScroll: Boolean(row) });
 		});
+	}
+	function clearDetailOnEscape(event: KeyboardEvent) {
+		if (event.key !== 'Escape' || !detailOpen || event.defaultPrevented) return;
+		if (!(event.target instanceof HTMLElement) || !ownsMapFocus(event.target)) return;
+		event.preventDefault();
+		closeDetail();
 	}
 	const applyDetailFilter = session.applyFilter;
 	const nearbyStops = $derived<WithDistance<SlimStopEntry>[]>(
@@ -1187,6 +1195,7 @@
 				data-slot="bottom-sheet"
 				data-m6c2-detail-sheet
 				data-map-in-view-sheet
+				onEscapeKeydown={clearDetailOnEscape}
 				data-ripple-exempt
 				data-lenis-prevent
 				onCloseAutoFocus={(event) => {
@@ -1208,6 +1217,8 @@
 		</Sheet>
 	{/if}
 {/snippet}
+
+<svelte:window onkeydown={clearDetailOnEscape} />
 
 <div
 	class="map-hero"

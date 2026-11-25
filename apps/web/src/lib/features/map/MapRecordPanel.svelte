@@ -321,7 +321,6 @@
 						`is the most time lost between two stops in view: ${corridorReading(leader)}.`,
 						`\u00a0: le temps perdu le plus élevé entre deux arrêts en vue\u00a0: ${corridorReading(leader)}.`,
 					)}
-			stacked={!stopLayer}
 		/>
 	{/if}
 	{@render stamp?.()}
