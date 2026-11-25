@@ -3,6 +3,7 @@
 
 	let {
 		title,
+		id,
 		subtitle,
 		plate,
 		stopCode,
@@ -10,6 +11,7 @@
 		compact = false,
 	}: {
 		title: string;
+		id?: string;
 		subtitle?: string;
 		plate?: string;
 		stopCode?: string;
@@ -22,6 +24,7 @@
 	<hgroup class="min-w-0" class:inline-plate={stopCode}>
 		{#if stopCode}<span class="stop-code" aria-hidden="true">{stopCode}</span>{/if}
 		<h1
+			{id}
 			class="flex flex-wrap items-center gap-2 wrap-break-word text-title font-bold"
 			class:compact
 		>

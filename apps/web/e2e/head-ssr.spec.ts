@@ -80,7 +80,10 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 	});
 
-	test(`${locale}: Roadmap has server-rendered headings and a share card`, async ({ request }) => {
+	test(`${locale}: Roadmap has server-rendered headings and a share card`, async ({
+		page,
+		request,
+	}) => {
 		const path = locale === 'en' ? '/roadmap' : '/fr/roadmap';
 		const title = locale === 'en' ? 'Roadmap' : 'Feuille de route';
 		const introduction =
@@ -93,13 +96,16 @@ for (const locale of ['en', 'fr'] as const) {
 		expect(head).toContain(`rel="canonical" href="https://transit1.yesid.dev${path}"`);
 		expect(head.includes('<script data-announcement-id=')).toBe(announcement.enabled);
 		expect(html.includes('data-slot="announcement-banner"')).toBe(announcement.enabled);
-		const article = html.match(
-			/<article\b[^>]*aria-labelledby="roadmap-title"[^>]*>(.*?)<\/article>/s,
-		)?.[1];
-		const headings = [...(article ?? '').matchAll(/<h([12])\b[^>]*>([^<]+)<\/h\1>/g)];
-		expect(headings.slice(0, 2).map(([, level, text]) => [level, text])).toEqual([
-			['1', title],
-			['2', introduction],
+		const headings = await page.evaluate((html) => {
+			const parsed = new DOMParser().parseFromString(html, 'text/html');
+			const article = parsed.querySelector('article[aria-labelledby="roadmap-title"]');
+			return Array.from(article?.querySelectorAll('h1, h2') ?? [])
+				.slice(0, 2)
+				.map((heading) => [heading.tagName, heading.textContent?.trim()]);
+		}, html);
+		expect(headings).toEqual([
+			['H1', title],
+			['H2', introduction],
 		]);
 		const image = head.match(/<meta property="og:image" content="([^"]*)"/)?.[1];
 		expect(image).toMatch(new RegExp(`/og/pages/roadmap\\.${locale}\\.png\\?v=[a-f0-9]{16}$`));

@@ -48,6 +48,7 @@ const ottawa: Screen[] = [
 	'alerts',
 	'how-we-measure',
 	'download',
+	'roadmap',
 	'line-live',
 	'line-record',
 	'lines',
@@ -63,6 +64,7 @@ const ottawa: Screen[] = [
 ];
 const french: Screen[] = [
 	'download',
+	'roadmap',
 	'overview',
 	'overview-live',
 	'line-record',
@@ -85,6 +87,7 @@ export const designPassCases = [
 	['stop-record', 'octranspo', 'fr'] as const,
 	['how-we-measure', 'octranspo', 'fr'] as const,
 	['download', 'octranspo', 'fr'] as const,
+	['roadmap', 'octranspo', 'fr'] as const,
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';

@@ -16,6 +16,10 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		390: { height: 6075, beforeFigure: 3 },
 		1440: { height: 3082, beforeFigure: 3 },
 	},
+	roadmap: {
+		390: { height: 4836, beforeFigure: 3 },
+		1440: { height: 3351, beforeFigure: 3 },
+	},
 	overview: {
 		390: { height: 6000, beforeFigure: 3 },
 		1440: { height: 3500, beforeFigure: 3 },

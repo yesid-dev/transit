@@ -64,7 +64,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				screen.startsWith('overview') ||
 				screen === 'stop-record' ||
 				screen === 'how-we-measure' ||
-				screen === 'download',
+				screen === 'download' ||
+				screen === 'roadmap',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({
@@ -83,7 +84,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		);
 		await expect(page.getByRole('main')).not.toContainText(machineUnits);
 		expectDesignPass(screen, key, report);
-		if (screen === 'download') {
+		if (screen === 'download' || screen === 'roadmap') {
 			for (const theme of ['light', 'dark'] as const) {
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
