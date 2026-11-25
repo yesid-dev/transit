@@ -54,7 +54,7 @@
 	const dailyTitle = $derived(
 		t('Each clean table, day by day', 'État des tables nettoyées, jour par jour'),
 	);
-	const methodLabel = $derived(t('How we measure', 'Comment nous mesurons'));
+	const methodLabel = $derived(term.method);
 	const stamp = $derived(
 		record ? { kind: 'record' as const, label: recordStamp(record.period, locale) } : undefined,
 	);

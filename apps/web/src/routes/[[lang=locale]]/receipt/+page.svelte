@@ -46,6 +46,7 @@
 	} from '#lib/site/agencyMessages.ts';
 	import {
 		countedUnit,
+		dailyAlertsLink,
 		dateRange,
 		longDate,
 		methodEvidence,
@@ -144,10 +145,7 @@
 		if ('value' in answer) {
 			const counts = answer.evidence.counts;
 			if (section === 'messages' && answer.state === 'measured' && counts.alerts != null)
-				return t(
-					tally(counts.alerts, lang) + ' distinct alerts',
-					tally(counts.alerts, lang) + ' avis distincts',
-				);
+				return countedUnit(counts.alerts, 'distinct-alert', lang);
 			return recordCounts(
 				counts.classified,
 				section === 'delivery' ? counts.ran : null,
@@ -644,10 +642,7 @@
 												class="inline-flex min-h-11 items-center text-primary underline"
 												href={link('/alerts')}
 											>
-												{t(
-													'All ' + tally(count, lang) + ' in Service alerts',
-													'Les ' + tally(count, lang) + ' dans les avis de service',
-												)}
+												{dailyAlertsLink(count, lang)}
 											</a>
 										{/if}
 									{/await}

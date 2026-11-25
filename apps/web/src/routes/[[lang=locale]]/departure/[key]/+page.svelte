@@ -543,7 +543,7 @@
 										]}
 										versionsLink={{
 											href: local('/metrics'),
-											label: t('How we measure', 'Comment nous mesurons'),
+											label: t('How we measure', 'Comment on mesure'),
 										}}
 									/>
 								</RecordGroup>

@@ -99,6 +99,14 @@ export function alertAnswerSentence(count: number, locale: Locale, live: boolean
 		: 'alerts were in effect at some point in these dates.';
 }
 
+export function dailyAlertsLink(count: number, locale: Locale) {
+	const number = intl.number(locale).format(count);
+	if (count === 1) return locale === 'fr' ? 'Voir l’avis de service' : 'See the service alert';
+	return locale === 'fr'
+		? `Les ${number} dans les avis de service`
+		: `All ${number} in Service alerts`;
+}
+
 export function alertPaging(locale: Locale) {
 	const { format } = intl.number(locale);
 	return {
@@ -325,7 +333,7 @@ export function recordPercent(value: number, locale: Locale) {
 
 export function countedUnit(
 	value: number,
-	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle',
+	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle' | 'distinct-alert',
 	locale: Locale,
 ) {
 	const labels = {
@@ -335,6 +343,10 @@ export function countedUnit(
 		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
 		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
 		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
+		'distinct-alert': {
+			en: ['distinct alert', 'distinct alerts'],
+			fr: ['avis distinct', 'avis distincts'],
+		},
 	};
 	const plural = !singularCount(value, locale);
 	return `${intl.number(locale).format(value)} ${labels[unit][locale][Number(plural)]}`;

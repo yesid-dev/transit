@@ -18,6 +18,7 @@
 		countedUnit,
 		dateRange,
 		fileSize,
+		longDate,
 		recordStamp,
 		registryUnitText,
 		versionNumber,
@@ -342,7 +343,9 @@
 										<p>{licence.non_endorsement[locale]} {licence.limits[locale]}</p>
 										<p>
 											{licence.name[locale]} · {t('Licence checked on', 'Licence vérifiée le')}
-											<time datetime={licence.checked_on}>{licence.checked_on}</time>
+											<time datetime={licence.checked_on}
+												>{longDate(licence.checked_on, locale)}</time
+											>
 										</p>
 										<p>
 											{t('Removal requests', 'Demandes de retrait')}

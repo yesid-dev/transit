@@ -596,7 +596,7 @@
 						]}
 						versionsLink={{
 							href: vehicleHref('/metrics', url, locale, data.city),
-							label: t('How we measure', 'Comment nous mesurons'),
+							label: term.method,
 						}}
 					/>
 				</RecordGroup>

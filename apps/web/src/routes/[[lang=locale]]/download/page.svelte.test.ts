@@ -97,6 +97,9 @@ it.each(cases)(
 		);
 		expect(trigger).toHaveAttribute('aria-expanded', 'true');
 		expect(screen.getByRole('link', { name: attribution[locale] })).toHaveAttribute('href', source);
+		expect(
+			screen.getByText(locale === 'en' ? '22 November 2026' : '22 novembre 2026'),
+		).toHaveAttribute('datetime', licence.checked_on);
 		expect(screen.queryByRole('combobox')).toBeNull();
 		expect(
 			screen

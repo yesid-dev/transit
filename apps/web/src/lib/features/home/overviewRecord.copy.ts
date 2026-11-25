@@ -88,7 +88,7 @@ export const overviewCopy = {
 		definition:
 			'Entre 1 minute d’avance et 5 minutes de retard, à chaque arrêt prévu de chaque trajet.',
 		versions: 'Versions',
-		method: 'Comment nous mesurons',
+		method: 'Comment on mesure',
 		source: 'Source',
 		feeds: (operator: string) => `Flux GTFS et GTFS-Realtime publiés par ${operator}.`,
 		recordStart: (date: string) => `Le bilan commence le ${date}.`,

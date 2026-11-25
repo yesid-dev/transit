@@ -10,6 +10,7 @@ import {
 	dateAndClock,
 	dateRange,
 	countedUnit,
+	dailyAlertsLink,
 	delayReading,
 	directionLabel,
 	fileSize,
@@ -64,6 +65,15 @@ it.each([
 		expect(captureCadence(null, locale)).toBeNull();
 	},
 );
+
+it.each([
+	['en', '1 distinct alert', '2 distinct alerts', 'See the service alert'],
+	['fr', '1 avis distinct', '2 avis distincts', 'Voir l’avis de service'],
+] as const)('presents the Daily alert count and link in %s', (locale, one, two, link) => {
+	expect(countedUnit(1, 'distinct-alert', locale)).toBe(one);
+	expect(countedUnit(2, 'distinct-alert', locale)).toBe(two);
+	expect(dailyAlertsLink(1, locale)).toBe(link);
+});
 
 it.each([
 	['en', '13 October 2026'],
