@@ -8,6 +8,27 @@ import RecordDataHealth from './RecordDataHealth.svelte';
 import { recordState } from './recordStates';
 
 const period = { from: health.from, to: health.to };
+const fixtureDelay = catalog.find(({ id }) => id === 'fixture_delay')!;
+
+it.each([
+	['en', undefined, 'method v3'],
+	['en', 12, 'method v3, cleaning v12'],
+	['fr', undefined, 'méthode v3'],
+	['fr', 12, 'méthode v3, nettoyage v12'],
+] as const)(
+	'renders the method versions in %s with cleaning version %s',
+	async (locale, cleaningVersion, label) => {
+		render(MethodCatalog, {
+			locale,
+			url: new URL('https://transit1.yesid.dev/metrics'),
+			city: 'stm',
+			period,
+			cleaningVersion,
+			catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: catalog }),
+		});
+		expect(await screen.findByText(label, { exact: true })).toBeVisible();
+	},
+);
 
 it('renders localized registry content and marks a last-good catalog', async () => {
 	const url = new URL('https://transit1.yesid.dev/fr/metrics');
@@ -22,11 +43,11 @@ it('renders localized registry content and marks a last-good catalog', async () 
 			lastGood: true,
 		}),
 	});
-	const trigger = await screen.findByText(catalog[0].text.fr.definition);
+	const trigger = await screen.findByText(fixtureDelay.text.fr.definition);
 	const entry = trigger.closest('details')!;
-	expect(entry).toHaveAttribute('id', catalog[0].id);
-	expect(entry).toHaveTextContent(catalog[0].text.fr.exclusions);
-	expect(entry).toHaveTextContent(catalog[0].text.fr.limits);
+	expect(entry).toHaveAttribute('id', fixtureDelay.id);
+	expect(entry).toHaveTextContent(fixtureDelay.text.fr.exclusions);
+	expect(entry).toHaveTextContent(fixtureDelay.text.fr.limits);
 	expect(entry).toHaveTextContent(/45/);
 	expect(screen.getByText(/calcul précédent/)).toBeVisible();
 });
@@ -60,8 +81,8 @@ it.each(['en', 'fr'] as const)('uses the shared state marks in %s', async (local
 });
 
 it('puts shared family prose in one reading and links to it from its siblings', async () => {
-	const first = { ...catalog[0], id: 'on_time' };
-	const second = { ...catalog[0], id: 'early' };
+	const first = { ...fixtureDelay, id: 'on_time' };
+	const second = { ...fixtureDelay, id: 'early' };
 	render(MethodCatalog, {
 		locale: 'en',
 		url: new URL('https://transit1.yesid.dev/metrics'),
@@ -80,9 +101,9 @@ it('puts shared family prose in one reading and links to it from its siblings', 
 
 it('describes closed families with all of their measures', async () => {
 	const entries = ['early', 'late', 'vehicle_early', 'vehicle_late'].map((id) => ({
-		...catalog[0],
+		...fixtureDelay,
 		id,
-		family: id.startsWith('vehicle_') ? 'vehicles' : catalog[0].family,
+		family: id.startsWith('vehicle_') ? 'vehicles' : fixtureDelay.family,
 	}));
 	render(MethodCatalog, {
 		locale: 'en',

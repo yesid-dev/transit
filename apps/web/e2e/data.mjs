@@ -381,6 +381,7 @@ const server = createServer((request, response) => {
 		response.writeHead(200, { 'content-type': 'application/json' }).end(
 			JSON.stringify({
 				default_provider,
+				cleaning_version: 12,
 				providers: providers.map((provider) => ({
 					...provider,
 					attribution: JSON.parse(files[`/v1/${provider.id}/manifest.json`]).attribution,
