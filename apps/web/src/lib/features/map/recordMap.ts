@@ -33,6 +33,7 @@ export type RecordFeatures = {
 			id: string;
 			state: MapRecordState;
 			colour: string;
+			step: number | null;
 			offset: number;
 			main: boolean;
 		};
@@ -40,15 +41,34 @@ export type RecordFeatures = {
 };
 
 export const recordColours = {
-	light: ['#a76039', '#934627', '#802f22', '#6b2023', '#501725', '#464f62', '#684b29', '#38435c'],
-	dark: ['#b28871', '#d48d68', '#ee9b69', '#ffad70', '#ffc88d', '#c1cede', '#efd39b', '#96adc8'],
+	light: ['#a76039', '#934627', '#802f22', '#6b2023', '#501725'],
+	dark: ['#b28871', '#d48d68', '#ee9b69', '#ffad70', '#ffc88d'],
+} as const;
+
+export const recordStopRadii = {
+	network: [2.5, 3.25, 4, 5, 6],
+	detail: [4.5, 5.5, 6.5, 7.75, 9],
+} as const;
+
+export const recordCorridorWidths = {
+	network: [1, 1.5, 2.125, 3, 4.25],
+	detail: [2, 3, 4, 5.5, 7],
+} as const;
+
+export const recordUnmeasuredLine = {
+	width: 2,
+	dashes: [
+		[1, 1.8],
+		[3, 1.5],
+		[5, 3],
+	],
 } as const;
 
 const stopLateShareCuts = [100, 150, 200, 250];
 const corridorLossCuts = [30, 60, 120];
 
-export function recordColourIndex(state: MapRecordState, value: number | null, stops: boolean) {
-	if (state !== 3 || value === null) return state === 1 ? 6 : state === 2 ? 7 : 5;
+export function recordRampStep(state: MapRecordState, value: number | null, stops: boolean) {
+	if (state !== 3 || value === null) return null;
 	if (!stops && value <= 0) return 0;
 	const cuts = stops ? stopLateShareCuts : corridorLossCuts;
 	const slot = cuts.findIndex((cut) => value < cut);
@@ -220,19 +240,24 @@ export function recordFeatures(
 	marks: readonly RecordMark[],
 	palette: keyof typeof recordColours,
 	stops: boolean,
+	mutedInk: string,
 ): RecordFeatures {
 	return {
 		type: 'FeatureCollection',
-		features: marks.map(({ id, geometry, state, value, direction, main }) => ({
-			type: 'Feature',
-			geometry,
-			properties: {
-				id,
-				state,
-				main: main === true,
-				colour: recordColours[palette][recordColourIndex(state, value, stops)],
-				offset: direction == null ? 0 : 3,
-			},
-		})),
+		features: marks.map(({ id, geometry, state, value, direction, main }) => {
+			const step = recordRampStep(state, value, stops);
+			return {
+				type: 'Feature',
+				geometry,
+				properties: {
+					id,
+					state,
+					main: main === true,
+					step,
+					colour: step === null ? mutedInk : recordColours[palette][step]!,
+					offset: direction == null ? 0 : 3,
+				},
+			};
+		}),
 	};
 }

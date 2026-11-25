@@ -4,7 +4,6 @@ export const copy = defineCopy({
 	en: {
 		copyLiveView: 'Copy link',
 		copyDisclaimer: 'This link opens the live view, which changes.',
-		downloadCsv: 'Download displayed reports (CSV)',
 		copied: 'Link copied.',
 		loading: 'Loading vehicle reports…',
 		unavailableSource: 'Live vehicle reports are unavailable right now.',
@@ -14,7 +13,6 @@ export const copy = defineCopy({
 	fr: {
 		copyLiveView: 'Copier le lien',
 		copyDisclaimer: 'Ce lien ouvre la vue en direct, dont le contenu change.',
-		downloadCsv: 'Télécharger les relevés affichés (CSV)',
 		copied: 'Lien copié.',
 		loading: 'Chargement des relevés de véhicules…',
 		unavailableSource: 'Les relevés de véhicules en direct sont indisponibles pour l’instant.',

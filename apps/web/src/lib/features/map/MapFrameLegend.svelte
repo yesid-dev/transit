@@ -8,7 +8,7 @@
 	import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 	import { mapLegend, type LegendColourBy, type LegendMark } from './mapLegend';
 	import { copy } from './map.copy';
-	import { recordColours, type RecordMapLayer } from './recordMap';
+	import { recordColours, recordUnmeasuredLine, type RecordMapLayer } from './recordMap';
 
 	let {
 		locale,
@@ -125,9 +125,9 @@
 						tr('25% and over', '25 % et plus'),
 					]
 				: [
-						tr('Zero or less', 'Zéro ou moins'),
-						tr('Under half a minute', 'Moins d’une demi-minute'),
-						tr('Half to under 1 minute', 'Demi-minute à moins de 1 minute'),
+						tr('No time lost', 'Aucun temps perdu'),
+						tr('Under 30 seconds', 'Moins de 30 secondes'),
+						tr('30 to under 60 seconds', '30 à moins de 60 secondes'),
 						tr('1 to under 2 minutes', '1 à moins de 2 minutes'),
 						tr('2 minutes and over', '2 minutes et plus'),
 					];
@@ -138,7 +138,7 @@
 							'Share of observed stop events that were late',
 							'Part des passages observés en retard',
 						)
-					: tr('Time lost between two main stops', 'Temps perdu entre deux arrêts principaux'),
+					: tr('Time lost between two stops', 'Temps perdu entre deux arrêts'),
 			steps: labels.map((label, index) => ({ label, swatch: palette[index]! })),
 			states: [
 				{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
@@ -159,12 +159,37 @@
 {#snippet selectedMark()}{@render networkLine('var(--accent-text)')}{/snippet}
 {#snippet numberMark()}<RoutePlate code="51" />{/snippet}
 {#snippet emptyMark()}{/snippet}
-{#snippet lowSampleMark()}<span style:color={palette[6]}>{layer === 'stops' ? '●' : '┄'}</span
-	>{/snippet}
-{#snippet noSampleMark()}<span style:color={palette[5]}>{layer === 'stops' ? '○' : '┈'}</span
-	>{/snippet}
-{#snippet scheduleMark()}<span style:color={palette[7]}>{layer === 'stops' ? '⊙' : '┅'}</span
-	>{/snippet}
+{#snippet unmeasuredMark(state: 0 | 1 | 2)}
+	<svg class="record-state-mark text-muted-foreground" viewBox="0 0 32 12" aria-hidden="true">
+		{#if layer === 'stops'}
+			<circle
+				cx="16"
+				cy="6"
+				r="3"
+				fill={state === 1 ? 'currentColor' : 'none'}
+				stroke={state === 1 ? 'none' : 'currentColor'}
+				stroke-width="1.5"
+			/>
+			{#if state === 2}<circle cx="16" cy="6" r="1.25" fill="currentColor" />{/if}
+		{:else}
+			<line
+				x1="1"
+				y1="6"
+				x2="31"
+				y2="6"
+				stroke="currentColor"
+				stroke-linecap="round"
+				stroke-width={recordUnmeasuredLine.width}
+				stroke-dasharray={recordUnmeasuredLine.dashes[state]
+					.map((length) => length * recordUnmeasuredLine.width)
+					.join(' ')}
+			/>
+		{/if}
+	</svg>
+{/snippet}
+{#snippet lowSampleMark()}{@render unmeasuredMark(1)}{/snippet}
+{#snippet noSampleMark()}{@render unmeasuredMark(0)}{/snippet}
+{#snippet scheduleMark()}{@render unmeasuredMark(2)}{/snippet}
 
 <MapLegend
 	class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)]"
@@ -177,6 +202,11 @@
 />
 
 <style>
+	.record-state-mark {
+		inline-size: 2rem;
+		block-size: 0.75rem;
+		margin-block-start: 0.15em;
+	}
 	.map-key-line {
 		inline-size: 100%;
 		block-size: 0.75rem;

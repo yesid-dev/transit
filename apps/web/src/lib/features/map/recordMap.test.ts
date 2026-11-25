@@ -1,10 +1,13 @@
 import { expect, it } from 'vitest';
 import { mapRecordAnswer } from './recordMapAnswer';
 import {
-	recordColourIndex,
 	recordColours,
+	recordCorridorWidths,
 	recordCorridors,
+	recordFeatures,
 	recordMapSampleText,
+	recordRampStep,
+	recordStopRadii,
 	recordStopIsVisible,
 	recordStops,
 	scheduleTerminals,
@@ -124,26 +127,61 @@ it('keeps reversed network stop pairs and their serving lines distinct', () => {
 	expect(mapRecordAnswer.safeParse({ ...answer, lines: [['1']] }).success).toBe(false);
 });
 
-it('assigns separate legend marks to every non-value state and readable theme colours', () => {
+it('assigns ordered steps to measured values and keeps absence outside the ramp', () => {
 	expect([
-		recordColourIndex(0, null, true),
-		recordColourIndex(1, null, true),
-		recordColourIndex(2, null, true),
-	]).toEqual([5, 6, 7]);
-	expect([0, 100, 150, 200, 250].map((value) => recordColourIndex(3, value, true))).toEqual([
+		recordRampStep(0, null, true),
+		recordRampStep(1, null, true),
+		recordRampStep(2, null, true),
+	]).toEqual([null, null, null]);
+	expect([0, 100, 150, 200, 250].map((value) => recordRampStep(3, value, true))).toEqual([
 		0, 1, 2, 3, 4,
 	]);
-	expect([-1, 0, 0.5, 30, 60, 120].map((value) => recordColourIndex(3, value, false))).toEqual([
+	expect([-1, 0, 0.5, 30, 60, 120].map((value) => recordRampStep(3, value, false))).toEqual([
 		0, 0, 1, 2, 3, 4,
 	]);
+});
+
+it('uses the same neutral ink for all unmeasured states and increasing sizes for measured values', () => {
+	const answer = mapRecordAnswer.parse({
+		measure: 'late',
+		stop: ['A', 'B', 'C', 'D'],
+		state: [0, 1, 2, 3],
+		sample: [0, 2, 0, 200],
+		value: [null, null, null, 200],
+		evidence,
+	});
+	const marks = recordStops(stops, answer, () => false);
+	expect(
+		recordFeatures(marks, 'dark', true, '#949494').features.map(({ properties }) => [
+			properties.step,
+			properties.state,
+			properties.colour,
+		]),
+	).toEqual([
+		[null, 0, '#949494'],
+		[null, 1, '#949494'],
+		[null, 2, '#949494'],
+		[3, 3, recordColours.dark[3]],
+	]);
+	for (const sizes of [
+		recordStopRadii.network,
+		recordStopRadii.detail,
+		recordCorridorWidths.network,
+		recordCorridorWidths.detail,
+	]) {
+		expect(sizes.slice(1).every((size, index) => size > sizes[index]!)).toBe(true);
+	}
+});
+
+it('keeps the warm ramp and neutral ink readable in both themes', () => {
 	const luminance = (hex: string) =>
 		[0.2126, 0.7152, 0.0722].reduce((sum, weight, channel) => {
 			const srgb = Number.parseInt(hex.slice(1 + channel * 2, 3 + channel * 2), 16) / 255;
 			return sum + weight * (srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4);
 		}, 0);
 	for (const [palette, background] of [
-		[recordColours.light, '#ffffff'],
-		[recordColours.dark, '#20232a'],
+		[[...recordColours.light, '#545e75'], '#ffffff'],
+		[[...recordColours.dark, '#949494'], '#20232a'],
 	] as const) {
 		const ramp = palette.slice(0, 5).map(luminance);
 		const ordered = [...ramp].sort((a, b) => (background === '#ffffff' ? b - a : a - b));

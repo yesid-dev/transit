@@ -10,7 +10,7 @@
 		href,
 		files,
 		groupLabel,
-		directDownload = false,
+		createDownload,
 		citation,
 		print,
 	}: {
@@ -20,16 +20,28 @@
 			href?: string;
 			label: string;
 			download?: string;
-			filename?: string;
 			columns?: readonly string[];
 		}[];
 		groupLabel?: string;
-		directDownload?: boolean;
+		createDownload?: () => { href: string; filename: string } | null;
 		citation: Snippet;
 		print?: () => void;
 	} = $props();
 	const fr = $derived(locale === 'fr');
-	const directFile = $derived(directDownload && files.length === 1 ? files[0] : null);
+	function download(): void {
+		const file = createDownload?.();
+		if (!file) return;
+		const link = document.createElement('a');
+		link.href = file.href;
+		link.download = file.filename;
+		link.hidden = true;
+		document.body.append(link);
+		try {
+			link.click();
+		} finally {
+			link.remove();
+		}
+	}
 </script>
 
 {#key href}
@@ -46,14 +58,9 @@
 			fallback={fr ? 'Copiez le lien ci-dessous.' : 'Copy the link below.'}
 			fallbackLabel={fr ? 'Lien vers cette vue' : 'Link to this view'}
 		/>
-		{#if directFile?.href}
-			<Button
-				href={directFile.href}
-				download={directFile.filename ?? ''}
-				title={directFile.label}
-				variant="outline"
-				size="sm"
-				class="min-h-11">{fr ? 'Télécharger' : 'Download'}</Button
+		{#if createDownload}
+			<Button onclick={download} variant="outline" size="sm" class="min-h-11"
+				>{fr ? 'Télécharger' : 'Download'}</Button
 			>
 		{:else if files.length}
 			<Sheet.Root>
@@ -74,7 +81,7 @@
 								{#if file.href}<a
 										class="inline-flex min-h-11 items-center text-primary underline"
 										href={file.href}
-										download={file.download ?? file.filename ?? true}>{file.label}</a
+										download={file.download ?? true}>{file.label}</a
 									>{:else}<p>{file.label}</p>{/if}
 								{#if file.columns?.length}
 									<details>

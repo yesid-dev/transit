@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { mapRecordReading, methodEvidence } from '#lib/site/presenter.ts';
+	import { resolveColor } from '#lib/components/map/vehicleSprites.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -207,9 +208,14 @@
 	);
 	$effect(() => {
 		if (!map || !marks.length) return;
+		const palette = theme.current === 'dark' ? 'dark' : 'light';
+		const mutedInk = resolveColor(
+			'var(--muted-foreground)',
+			palette === 'dark' ? '#949494' : '#545e75',
+		);
 		return attachRecordMap(
 			map,
-			recordFeatures(marks, theme.current === 'dark' ? 'dark' : 'light', stopLayer),
+			recordFeatures(marks, palette, stopLayer, mutedInk),
 			(id) => (selectedId = id),
 			network,
 		);

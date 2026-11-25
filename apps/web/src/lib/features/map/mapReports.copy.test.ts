@@ -7,8 +7,6 @@ describe('map reports copy', () => {
 		expect(copy.fr.copyLiveView).toBe('Copier le lien');
 		expect(copy.en.copyDisclaimer).toBe('This link opens the live view, which changes.');
 		expect(copy.fr.copyDisclaimer).toBe('Ce lien ouvre la vue en direct, dont le contenu change.');
-		expect(copy.en.downloadCsv).toBe('Download displayed reports (CSV)');
-		expect(copy.fr.downloadCsv).toBe('Télécharger les relevés affichés (CSV)');
 	});
 
 	it('completes every visible and accessible string in both languages', () => {

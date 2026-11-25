@@ -1,8 +1,7 @@
 <script lang="ts">
-	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Button } from '@yesid/ui/button';
 	import { Separator } from '@yesid/ui/separator';
-	import { ChevronToggle, RoutePlate, StatusMark } from '@yesid/ui/brand';
+	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import MapPanelAnswer from './MapPanelAnswer.svelte';
@@ -36,11 +35,11 @@
 		limit?: number;
 	} = $props();
 	const PAGE_SIZE = 12;
-	let actions = $state(false);
 	const t = $derived(mapReportsCopy(locale));
 	const count = (value: number) => intl.number(locale).format(value);
 	const french = $derived(locale === 'fr');
 	const model = $derived(view.kind === 'ready' ? view.model : null);
+	const csv = $derived(model ? mapReportsCsv(model) : null);
 	const lastAvailable = $derived(model?.sourceHealth?.retained || model?.sourceHealth?.stale);
 	const order = { late: 0, early: 1, on_time: 2, unknown: 3 } as const;
 	const rows = $derived(
@@ -65,7 +64,6 @@
 			? `véhicules en vue ${lastAvailable ? 'au dernier signalement' : 'en ce moment'}\u00a0: ${count(statuses.early)} en avance, ${count(statuses.on_time)} à l’heure, ${count(statuses.late)} en retard, ${count(statuses.unknown)} au retard inconnu.`
 			: `vehicles in view ${lastAvailable ? 'at the last report' : 'now'}: ${count(statuses.early)} early, ${count(statuses.on_time)} on time, ${count(statuses.late)} late, ${count(statuses.unknown)} with unknown delay.`,
 	);
-	const csv = $derived(actions && model ? mapReportsCsv(model) : null);
 	const uid = $props.id();
 </script>
 
@@ -133,55 +131,34 @@
 		{/if}
 		{#if !rows.length}<p>{french ? 'Aucun véhicule en vue.' : 'No vehicles in view.'}</p>{/if}
 		{#if liveViewHref}
-			<Collapsible.Root bind:open={actions} class="text-sm" data-map-in-view-actions>
-				<Collapsible.Trigger>
-					{#snippet child({ props })}
-						<Button
-							{...props}
-							variant="ghost"
-							size="sm"
-							class="min-h-11 gap-2"
-							data-map-in-view-actions-trigger
-							wrap
+			<RecordActionGroup
+				{locale}
+				href={liveViewHref}
+				groupLabel={french ? 'Actions de la vue en direct' : 'Live view actions'}
+				createDownload={() => csv}
+				files={[]}
+			>
+				{#snippet citation()}
+					<p>
+						{model.providerName} · {french ? 'V\u00e9hicules en vue' : 'Vehicles in view'}
+					</p>
+					<p>
+						<time datetime={model.generatedUtc}
+							>{dateAndClock(model.generatedUtc, locale, model.timeZone, true)}</time
 						>
-							{french ? 'Actions de la vue' : 'Actions'}
-							<ChevronToggle open={actions} size="sm" />
-						</Button>
-					{/snippet}
-				</Collapsible.Trigger>
-				<Collapsible.Content>
-					{#if csv}
-						<p class="text-muted-foreground">{t.copyDisclaimer}</p>
-						<RecordActionGroup
-							{locale}
-							href={liveViewHref}
-							groupLabel={french ? 'Actions de la vue en direct' : 'Live view actions'}
-							directDownload
-							files={[{ href: csv.href, label: t.downloadCsv, filename: csv.filename }]}
-						>
-							{#snippet citation()}
-								<p>
-									{model.providerName} · {french ? 'V\u00e9hicules en vue' : 'Vehicles in view'}
-								</p>
-								<p>
-									<time datetime={model.generatedUtc}
-										>{dateAndClock(model.generatedUtc, locale, model.timeZone, true)}</time
-									>
-								</p>
-								{#if model.methodologyVersion}<p>
-										{french ? 'M\u00e9thode' : 'Method'}
-										{model.methodologyVersion}
-									</p>{/if}
-								{#if model.attribution}<p>{model.attribution}</p>{/if}
-								<p>{t.copyDisclaimer}</p>
-								<a class="text-primary underline" href={liveViewHref}
-									>{french ? 'Vue en direct' : 'Live view'}</a
-								>
-							{/snippet}
-						</RecordActionGroup>
-					{/if}
-				</Collapsible.Content>
-			</Collapsible.Root>
+					</p>
+					{#if model.methodologyVersion}<p>
+							{french ? 'M\u00e9thode' : 'Method'}
+							{model.methodologyVersion}
+						</p>{/if}
+					{#if model.attribution}<p>{model.attribution}</p>{/if}
+					<p>{t.copyDisclaimer}</p>
+					<a class="text-primary underline" href={liveViewHref}
+						>{french ? 'Vue en direct' : 'Live view'}</a
+					>
+				{/snippet}
+			</RecordActionGroup>
+			<p class="text-sm text-muted-foreground">{t.copyDisclaimer}</p>
 		{/if}
 	{:else if view.kind === 'unavailable'}
 		<p role="status">

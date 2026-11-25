@@ -193,12 +193,6 @@ async function openReports(page: Page) {
 	return panel;
 }
 
-async function openActions(page: Page) {
-	const trigger = page.locator('[data-map-in-view-actions-trigger]');
-	await expect(trigger).toBeVisible();
-	if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
-}
-
 const downloadAction = /^(Download|T\u00e9l\u00e9charger)$/;
 async function rendererCamera(page: Page): Promise<number[]> {
 	return (await rendererTransform(page)).slice(4, 9).map(Number);
@@ -311,7 +305,6 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect
 			.poll(async () => (await rendererTransform(page)).slice(2, 4))
 			.toEqual([`${size.width + 80}px`, `${mapHeight}px`]);
-		await openActions(page);
 		await panel.getByRole('button', { name: t.copyLiveView }).click();
 		const copied = await page.evaluate(() => navigator.clipboard.readText());
 		expect(new URL(copied).searchParams.get('mapview')?.split(',').map(Number)).toEqual(hint);
@@ -423,7 +416,6 @@ for (const provider of ['stm', 'octranspo'])
 						expect(Number(row[header.indexOf('longitude')])).toBe(source.lon);
 						expect(Number(row[header.indexOf('delay_min')])).toBe(source.delay_min);
 					}
-					await openActions(page);
 					await panel.getByRole('button', { name: t.copyLiveView }).click();
 					const copied = new URL(await page.evaluate(() => navigator.clipboard.readText()));
 					expect(copied.searchParams.get('provider')).toBe(provider);
@@ -449,9 +441,8 @@ for (const provider of ['stm', 'octranspo'])
 	}
 
 async function downloadCsv(page: Page) {
-	await openActions(page);
 	const download = page.waitForEvent('download');
-	await page.getByRole('link', { name: downloadAction }).click();
+	await page.getByRole('button', { name: downloadAction }).click();
 	const file = await download;
 	const path = await file.path();
 	if (!path) throw new Error('the CSV download has no readable bytes');
@@ -494,9 +485,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			rows.slice(1).map((row) => row[MAP_REPORT_CSV_COLUMNS.indexOf('no_recent_position')]),
 		).toContain('true');
 
-		await openActions(page);
 		await expect(panel.getByText(reports.copyDisclaimer)).toBeVisible();
-		await openActions(page);
 		await panel.getByRole('button', { name: reports.copyLiveView }).click();
 		await expect(panel.getByText(reports.copied)).toBeVisible();
 		const copied = await page.evaluate(() => navigator.clipboard.readText());
@@ -535,7 +524,6 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.keyboard.press('Escape');
 		await expect(panel.locator('[data-report-row]')).toHaveCount(3);
 		await expect(panel.getByRole('link', { name: 'center-late', exact: true })).toBeFocused();
-		await openActions(page);
 		await panel.getByRole('button', { name: reports.copyLiveView }).click();
 		const afterSelection = await page.evaluate(() => navigator.clipboard.readText());
 		// Constraint updates can differ by an IEEE-754 ulp. Keep the actual camera and
@@ -550,7 +538,6 @@ for (const locale of PUBLISHED_LOCALES) {
 		const reloaded = await openReports(page);
 		await expect(reloaded.locator('[data-report-row]')).toHaveCount(3);
 		await expect(reloaded.locator('[data-slot="map-in-view-count"]')).toHaveText('3');
-		await openActions(page);
 		await expect(reloaded.getByText(reports.copyDisclaimer)).toBeVisible();
 	});
 }
@@ -568,7 +555,6 @@ test('live filters and a camera pan move the list, counts and CSV together', asy
 	const countNumber = async () => Number(/(\d+)/u.exec(await count.innerText())?.[1]);
 	await expect(count).toHaveText('3');
 	const copyHint = async () => {
-		await openActions(page);
 		await panel.getByRole('button', { name: reports.copyLiveView }).click();
 		const href = await page.evaluate(() => navigator.clipboard.readText());
 		return new URL(href).searchParams.get('mapview');
@@ -703,7 +689,7 @@ test('unknown alert-filter evidence does not turn valid vehicle reports into a r
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm&alert=has_alert`);
 	const panel = await openReports(page);
 	await expect(panel.getByText('No vehicles in view.')).toHaveCount(0);
-	await expect(panel.getByRole('link', { name: downloadAction })).toHaveCount(0);
+	await expect(panel.getByRole('button', { name: downloadAction })).toHaveCount(0);
 	await expect(panel.getByRole('status')).toContainText(/alert/i);
 });
 
@@ -801,8 +787,7 @@ test('report list holds 320px French, a short laptop and 200% text with reachabl
 	await expectNoHorizontalOverflow(page);
 	await expectTapTargets(page, { exclude: ['.maplibregl-ctrl'] });
 	await expectAccessible(page);
-	await openActions(page);
-	await page.getByRole('link', { name: downloadAction }).focus();
+	await page.getByRole('button', { name: downloadAction }).focus();
 	await expectFocusedTargetUncovered(page);
 	await page.evaluate(() => {
 		document.documentElement.style.fontSize = '';
