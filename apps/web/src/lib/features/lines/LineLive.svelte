@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { BandBar } from '@yesid/ui/chart';
-	import { StatusMark } from '@yesid/ui/brand';
+	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
+	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
@@ -161,175 +161,176 @@
 				?.filter(({ route_id }) => route_id === line)
 				.every(({ trip_id }) => !trip_id) ??
 				false))}
-	<div id="line-detail-profile" data-slot="screen-answer">
-		{#if live && rows && !limits}
-			{#snippet meta()}<p>
-					{t(
-						'A count of vehicles at this moment, not a percentage.',
-						'Le nombre de véhicules en ce moment, pas un pourcentage.',
-					)}
-				</p>{/snippet}
-			{#snippet citation()}
-				<p>{name} · {t('Vehicle positions', 'Positions des véhicules')} · {operator}</p>
-				{#if feed?.captured_at}<p>{dateAndClock(feed.captured_at, locale, timeZone)}</p>{/if}
-				<p class="wrap-break-word">{share}</p>
-			{/snippet}
-			{#snippet actions()}<RecordActionGroup
+	<RecordGroup class="grid gap-4">
+		<div id="line-detail-profile" data-slot="screen-answer">
+			{#if live && rows && !limits}
+				{#snippet meta()}<p>
+						{t(
+							'A count of vehicles at this moment, not a percentage.',
+							'Le nombre de véhicules en ce moment, pas un pourcentage.',
+						)}
+					</p>{/snippet}
+				{#snippet citation()}
+					<p>{name} · {t('Vehicle positions', 'Positions des véhicules')} · {operator}</p>
+					{#if feed?.captured_at}<p>{dateAndClock(feed.captured_at, locale, timeZone)}</p>{/if}
+					<p class="wrap-break-word">{share}</p>
+				{/snippet}
+				{#snippet actions()}<RecordActionGroup
+						{locale}
+						href={share}
+						files={[]}
+						{citation}
+					/>{/snippet}
+				<RecordAnswer
 					{locale}
-					href={share}
-					files={[]}
-					{citation}
-				/>{/snippet}
-			<RecordAnswer
-				{locale}
-				value={tally(rows.length, locale)}
-				sentence={lineVehicleSentence(counts, locale)}
-				time={stamp}
-				{meta}
-				{actions}
-			/>
-		{:else if limits && historical}
-			{#snippet reason()}<p>
-					{historical.coverage_note?.[locale] ??
-						t(
-							'There are no usable observations for this line on these dates. Its timetable is shown below.',
-							'Il n’y a pas d’observations utilisables pour cette ligne à ces dates. Son horaire est présenté ci-dessous.',
-						)}
-				</p>{/snippet}
-			<RecordAnswer
-				{locale}
-				value={null}
-				state={chartState(historical.state)}
-				sentence={rateStateText(historical, locale)}
-				meta={reason}
-			/>
+					value={tally(rows.length, locale)}
+					sentence={lineVehicleSentence(counts, locale)}
+					time={stamp}
+					{meta}
+					{actions}
+				/>
+			{:else if limits && historical}
+				{#snippet reason()}<p>
+						{historical.coverage_note?.[locale] ??
+							t(
+								'There are no usable observations for this line on these dates. Its timetable is shown below.',
+								'Il n’y a pas d’observations utilisables pour cette ligne à ces dates. Son horaire est présenté ci-dessous.',
+							)}
+					</p>{/snippet}
+				<RecordAnswer
+					{locale}
+					value={null}
+					state={chartState(historical.state)}
+					sentence={rateStateText(historical, locale)}
+					meta={reason}
+				/>
+			{:else}
+				<RecordAnswer
+					{locale}
+					value={null}
+					state={state === 'stale' ? 'not_reporting' : 'no_live_data'}
+					time={stamp}
+					sentence={state === 'stale'
+						? t(
+								'Vehicle positions are out of date.',
+								'Les positions des véhicules ne sont plus à jour.',
+							)
+						: t(
+								'Live vehicle positions are temporarily unavailable.',
+								'Les positions des véhicules en direct sont temporairement indisponibles.',
+							)}
+				/>
+			{/if}
+		</div>
+		{#if live && rows && !limits}
+			<div id="line-detail-live" class="min-w-0">
+				<RecordCard interactive {title} {stamp}>
+					{#if rows.length}
+						<div class="mb-4">
+							<RecordBandBar
+								label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
+								{bands}
+							/>
+						</div>
+						<LiveVehicleTable {rows} {locale} {now} {title} />
+					{:else}
+						<p>
+							{t(
+								'No vehicles are reporting on this line.',
+								'Aucun véhicule ne transmet sa position sur cette ligne.',
+							)}
+						</p>
+					{/if}
+					{#snippet footer()}{#if silent !== null}
+							<p>{terms.silent}{t(': ', ' : ')}{tally(silent, locale)}</p>
+						{/if}{/snippet}
+				</RecordCard>
+			</div>
+		{/if}
+		{#if !limits && trips && mainStops.length}
+			<div id="line-detail-directions">
+				<LineLivePredictions
+					{city}
+					{line}
+					stops={mainStops.map(({ id, name }) => ({ id, name: display.readName(name, locale) }))}
+					seed={trips}
+					{refreshed}
+					{now}
+					{locale}
+					{timeZone}
+					{stopHref}
+				/>
+			</div>
+		{/if}
+	</RecordGroup>
+	<RecordGroup class="grid gap-4">
+		{#if !limits}
+			<div id="alerts">
+				<LineLiveNotices
+					{line}
+					{snapshot}
+					{now}
+					{locale}
+					{timeZone}
+					tracked={hasAlerts}
+					href={link('/alerts?frameMode=live&' + new URLSearchParams({ route: line }))}
+				/>
+			</div>
+		{/if}
+		{@render schedule()}
+	</RecordGroup>
+	<RecordGroup>
+		{#if limits}
+			<LineMeasurementLimits {locale} methodHref={link('/metrics')} scheduleOnly={false} />
 		{:else}
-			<RecordAnswer
+			<AboutLiveFigures
 				{locale}
-				value={null}
-				state={state === 'stale' ? 'not_reporting' : 'no_live_data'}
-				time={stamp}
-				sentence={state === 'stale'
-					? t(
-							'Vehicle positions are out of date.',
-							'Les positions des véhicules ne sont plus à jour.',
-						)
-					: t(
-							'Live vehicle positions are temporarily unavailable.',
-							'Les positions des véhicules en direct sont temporairement indisponibles.',
-						)}
+				{operator}
+				healthLink={link('/status?frameMode=live')}
+				captureAge={age}
 			/>
 		{/if}
-	</div>
-	{#if live && rows && !limits}
-		<div id="line-detail-live" class="min-w-0">
-			<RecordCard {title} {stamp}>
-				{#if rows.length}
-					<div class="mb-4">
-						<BandBar
-							label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
-							{bands}
-							rows={false}
-						/>
-						<dl class="mt-3 grid gap-2">
-							{#each bands as { status, label, valueLabel } (status)}
-								<div
-									class="flex flex-wrap justify-between gap-2 border-b border-border pb-2 last:border-b-0"
-								>
-									<dt><StatusMark {status} {label} /></dt>
-									<dd class="tabular-nums">{valueLabel}</dd>
-								</div>
-							{/each}
-						</dl>
-					</div>
-					<LiveVehicleTable {rows} {locale} {now} {title} />
-				{:else}
-					<p>
-						{t(
-							'No vehicles are reporting on this line.',
-							'Aucun véhicule ne transmet sa position sur cette ligne.',
-						)}
-					</p>
-				{/if}
-				{#snippet footer()}{#if silent !== null}
-						<p>{terms.silent}{t(': ', ' : ')}{tally(silent, locale)}</p>
-					{/if}{/snippet}
-			</RecordCard>
-		</div>
-	{/if}
-	{#if !limits && trips && mainStops.length}
-		<div id="line-detail-directions">
-			<LineLivePredictions
-				{city}
-				{line}
-				stops={mainStops.map(({ id, name }) => ({ id, name: display.readName(name, locale) }))}
-				seed={trips}
-				{refreshed}
-				{now}
-				{locale}
-				{timeZone}
-				{stopHref}
-			/>
-		</div>
-	{/if}
-	{#if !limits}
-		<div id="alerts">
-			<LineLiveNotices
-				{line}
-				{snapshot}
-				{now}
-				{locale}
-				{timeZone}
-				tracked={hasAlerts}
-				href={link('/alerts?frameMode=live&' + new URLSearchParams({ route: line }))}
-			/>
-		</div>
-	{/if}
-	{@render schedule()}
-	{#if limits}
-		<LineMeasurementLimits {locale} methodHref={link('/metrics')} scheduleOnly={false} />
-	{:else}
-		<AboutLiveFigures
-			{locale}
-			{operator}
-			healthLink={link('/status?frameMode=live')}
-			captureAge={age}
-		/>
-	{/if}
+	</RecordGroup>
 {/snippet}
 
-<div data-slot="screen-content" class="grid min-w-0 gap-4">
+<div data-slot="screen-content" class="min-w-0">
 	{#if scheduleOnly}
-		<div id="line-detail-profile" data-slot="screen-answer">
-			{#snippet message()}
-				<p>
-					{t(
-						`${operator} publishes no realtime feed for this line. Its timetable is shown below.`,
-						`${operator} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
-					)}
-				</p>
-			{/snippet}
-			<RecordAnswer
-				{locale}
-				value={null}
-				state="no_live_data"
-				sentence={t('No live data for this line', 'Aucune donnée en direct pour cette ligne')}
-				meta={message}
-			/>
-		</div>
-		{@render schedule()}
-		<LineMeasurementLimits {locale} methodHref={link('/metrics')} />
+		<RecordGroup class="grid gap-4">
+			<div id="line-detail-profile" data-slot="screen-answer">
+				{#snippet message()}
+					<p>
+						{t(
+							`${operator} publishes no realtime feed for this line. Its timetable is shown below.`,
+							`${operator} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
+						)}
+					</p>
+				{/snippet}
+				<RecordAnswer
+					{locale}
+					value={null}
+					state="no_live_data"
+					sentence={t('No live data for this line', 'Aucune donnée en direct pour cette ligne')}
+					meta={message}
+				/>
+			</div>
+			{@render schedule()}
+		</RecordGroup>
+		<RecordGroup><LineMeasurementLimits {locale} methodHref={link('/metrics')} /></RecordGroup>
 	{:else if capture}
 		<LiveCapture {city} {capture}>
 			{#snippet pending()}
-				{@render checking()}
-				{@render schedule()}
+				<RecordGroup class="grid gap-4">
+					{@render checking()}
+					{@render schedule()}
+				</RecordGroup>
 			{/snippet}
 			{#snippet children(snapshot, now, refreshed)}
 				{#if lineVehicleRows(snapshot, line, now) && punctuality && !snapshot?.vehicle_positions?.some(({ route_id, trip_id }) => route_id === line && trip_id)}
 					{#await punctuality}
-						{@render checking()}
-						{@render schedule()}
+						<RecordGroup class="grid gap-4">
+							{@render checking()}
+							{@render schedule()}
+						</RecordGroup>
 					{:then result}
 						{@render body(
 							snapshot,

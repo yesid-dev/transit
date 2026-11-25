@@ -54,7 +54,7 @@
 	);
 </script>
 
-<RecordCard title={t('Agency notices', 'Avis de l’agence')} {stamp}>
+<RecordCard interactive title={t('Agency notices', 'Avis de l’agence')} {stamp}>
 	{#if !tracked}
 		<p>
 			{t(

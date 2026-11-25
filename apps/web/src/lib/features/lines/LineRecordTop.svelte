@@ -1,4 +1,6 @@
 <script lang="ts">
+	import FactList from '#lib/features/record/FactList.svelte';
+	import FactRow from '#lib/features/record/FactRow.svelte';
 	import { goto } from '$app/navigation';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { DashboardGrid } from '@yesid/ui/layout';
@@ -274,30 +276,24 @@
 							{#key directionsAnswer}<RecordPending {locale} answer={directionsAnswer} />{/key}
 						{:then result}
 							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-								<dl class="grid gap-2">
+								<FactList>
 									{#each result.answer.cells as cell (cell.key.direction)}
 										{@const share = measuredShare(cell, 'on_time')}
-										<div
-											class="flex flex-wrap justify-between gap-x-2 border-b border-border pb-2 last:border-b-0"
-										>
-											<dt>{directionLabel(cell.key.direction, headsigns, locale)}</dt>
-											<dd class="ml-auto text-right tabular-nums">
-												{#if share !== null}
-													<strong>{percent(share, locale)}</strong>
-													<span class="block text-small text-muted-foreground">
-														{t('on time', 'à l’heure')}{cell.evidence.counts.classified == null
-															? ''
-															: ', ' +
-																countedUnit(cell.evidence.counts.classified, 'event', locale)}
-													</span>
-												{:else}
-													<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
-													{rateStateText(cell, locale)}
-												{/if}
-											</dd>
-										</div>
+										<FactRow label={directionLabel(cell.key.direction, headsigns, locale)}>
+											{#if share !== null}
+												<strong>{percent(share, locale)}</strong>
+												<span class="block text-small text-muted-foreground">
+													{t('on time', 'à l’heure')}{cell.evidence.counts.classified == null
+														? ''
+														: ', ' + countedUnit(cell.evidence.counts.classified, 'event', locale)}
+												</span>
+											{:else}
+												<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
+												{rateStateText(cell, locale)}
+											{/if}
+										</FactRow>
 									{/each}
-								</dl>
+								</FactList>
 							{:else if result.kind === 'answer' || headline.kind === 'answer'}
 								{@render gap(result)}
 							{/if}
@@ -314,7 +310,7 @@
 				</RecordCard>
 
 				<div id="daily" class="grid min-w-0">
-					<RecordCard title={title('daily')} {stamp}>
+					<RecordCard interactive title={title('daily')} {stamp}>
 						{#await dailyAnswer}
 							{#key dailyAnswer}<RecordPending {locale} answer={dailyAnswer} />{/key}
 						{:then result}
@@ -363,7 +359,7 @@
 			</DashboardGrid>
 
 			<div id="hourly" data-slot="line-hour-grid" class="min-w-0">
-				<RecordCard title={title('hourly')} {stamp}>
+				<RecordCard interactive title={title('hourly')} {stamp}>
 					{@render directionControl()}
 					{#await hourlyAnswer}
 						{#key hourlyAnswer}<RecordPending {locale} answer={hourlyAnswer} />{/key}

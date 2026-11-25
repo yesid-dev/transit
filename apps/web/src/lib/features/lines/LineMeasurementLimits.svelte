@@ -11,7 +11,7 @@
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 </script>
 
-<RecordCard title={t('What cannot be measured', 'Ce qui ne peut pas être mesuré')}>
+<RecordCard interactive title={t('What cannot be measured', 'Ce qui ne peut pas être mesuré')}>
 	<ul class="grid gap-2 list-disc ps-5">
 		<li>
 			{t(
