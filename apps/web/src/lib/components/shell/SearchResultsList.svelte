@@ -90,10 +90,9 @@
 		const pageSize = page?.pageSize;
 		if (!pageSize) return;
 		const message =
-			notice ||
-			(groups.some((group) => group.total > pageSize)
+			notice || groups.some((group) => group.total > pageSize)
 				? ''
-				: groups.map((group) => heading(group.kind, group.total)).join('. '));
+				: groups.map((group) => heading(group.kind, group.total)).join('. ');
 		const timer = setTimeout(() => (announcement = message), 500);
 		return () => clearTimeout(timer);
 	});
@@ -208,8 +207,9 @@
 		</div>
 	{/if}
 	{#if page}
-		<p class="sr-only" role="status">{announcement}</p>
-		{#if notice}<p class="search-list-none">{notice}</p>{/if}
+		<p role="status" class:sr-only={!notice} class:search-list-none={notice}>
+			{notice || announcement}
+		</p>
 		{#if notice === copy.unavailable}<Button variant="outline" wrap onclick={page.onRetry}
 				>{page.retryLabel}</Button
 			>{/if}

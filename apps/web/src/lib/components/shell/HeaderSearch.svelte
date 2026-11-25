@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { resetFocusAfterNavigation, SearchInput } from '@yesid/ui/brand';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import { resetFocusAfterNavigation } from '@yesid/ui/brand';
 	import { delocalizePath, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import { createAddressLookup } from '#lib/search/addressLookup.svelte.ts';
@@ -164,27 +165,25 @@
 	onsubmit={(event) => event.preventDefault()}
 	data-slot="nav-search"
 >
-	<div class="nav-search-field">
-		<SearchInput
-			type="search"
-			role="combobox"
-			name="network-search"
-			bind:value={query}
-			placeholder={headerSearchCopy[locale].inputLabel}
-			label={copy.searchAria.all}
-			aria-expanded={shown && listed}
-			aria-controls={shown && listed ? listId : undefined}
-			aria-autocomplete="list"
-			aria-activedescendant={shown && active ? active : undefined}
-			autocomplete="off"
-			spellcheck="false"
-			class={sheet ? 'py-2' : 'rounded-md py-2'}
-			textSize={sheet ? 'body' : 'small'}
-			onfocus={() => (open = true)}
-			oninput={() => (open = true)}
-			onkeydown={keydown}
-		/>
-	</div>
+	<SearchIcon class="nav-search-icon" size={14} strokeWidth={1.8} aria-hidden="true" />
+	<input
+		type="search"
+		role="combobox"
+		name="network-search"
+		bind:value={query}
+		placeholder={copy.searchPlaceholder.all}
+		aria-label={copy.searchAria.all}
+		aria-expanded={shown && listed}
+		aria-controls={shown && listed ? listId : undefined}
+		aria-autocomplete="list"
+		aria-activedescendant={shown && active ? active : undefined}
+		autocomplete="off"
+		spellcheck="false"
+		class="nav-search-input"
+		onfocus={() => (open = true)}
+		oninput={() => (open = true)}
+		onkeydown={keydown}
+	/>
 	<p class="sr-only" role="status">{announcement}</p>
 	<div class="nav-search-panel" data-slot="nav-search-panel">
 		{#if shown}
@@ -215,9 +214,35 @@
 		align-items: center;
 		min-width: 0;
 	}
-	.nav-search-field {
+	.nav-search :global(.nav-search-icon) {
+		position: absolute;
+		left: 0.5rem;
+		pointer-events: none;
+		color: var(--muted-foreground);
+	}
+	.nav-search-input {
 		width: clamp(11rem, 22cqi, 20rem);
 		min-width: 0;
+		height: var(--size-tap-min);
+		padding: 0 0.75rem 0 1.9rem;
+		font-size: var(--text-small);
+		color: var(--foreground);
+		background: color-mix(in srgb, var(--muted) 70%, transparent);
+		border: 1px solid var(--border-subtle);
+		border-radius: var(--radius-pill);
+		transition:
+			border-color var(--duration-fast) var(--ease-default),
+			background var(--duration-fast) var(--ease-default),
+			box-shadow var(--duration-fast) var(--ease-default);
+	}
+	.nav-search-input::placeholder {
+		color: var(--muted-foreground);
+	}
+	.nav-search-input:focus-visible {
+		border-color: var(--primary);
+		background: var(--muted);
+		outline: none;
+		box-shadow: 0 0 0 2px var(--ring);
 	}
 	.nav-search-panel {
 		position: absolute;
@@ -256,9 +281,16 @@
 		/* Shrinks to the sheet, so the list scrolls and the pinned row stays on screen. */
 		min-height: 0;
 	}
-	.nav-search-sheet .nav-search-field {
+	.nav-search-sheet :global(.nav-search-icon) {
+		top: calc((var(--size-tap-min) - 14px) / 2);
+		left: 0.875rem;
+	}
+	.nav-search-sheet .nav-search-input {
 		flex: none;
 		width: 100%;
+		padding-left: 2.25rem;
+		/* At least 16 px, so phones do not zoom into the field. */
+		font-size: max(1rem, var(--text-body));
 	}
 	.nav-search-sheet .nav-search-panel {
 		position: static;
@@ -284,6 +316,7 @@
 		align-items: center;
 	}
 	@media (prefers-reduced-motion: reduce) {
+		.nav-search-input,
 		.nav-search-panel {
 			transition: none;
 		}

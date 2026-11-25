@@ -13,9 +13,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(localizeHref('/search', locale));
 		const box = page.getByRole('textbox', { name: searchCopy[locale].inputLabel });
 		await expect(box).toBeVisible();
-		await expect(
-			page.getByRole('main').locator('[data-slot="listing-search-field"] svg'),
-		).toBeVisible();
+		await expect(page.locator('[data-slot="listing-search-field"] svg')).toBeVisible();
 		expect((await box.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 		await expect(async () => {
 			await box.fill('Sherbrooke');

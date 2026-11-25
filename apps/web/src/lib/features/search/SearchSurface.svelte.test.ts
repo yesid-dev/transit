@@ -161,6 +161,7 @@ it.each([
 	setUrlQuery('q=' + encodeURIComponent(q));
 	render(SearchSurface);
 	expect(screen.getByText(message)).toBeVisible();
+	if (q) expect(screen.getByText(message)).toHaveAttribute('role', 'status');
 });
 
 it.each(['en', 'fr'] as const)(

@@ -257,7 +257,7 @@
 		margin-block-end: var(--space-card-gap);
 	}
 	.search-field {
-		max-inline-size: 38rem;
+		max-inline-size: var(--measure-lede);
 	}
 	.search-idle {
 		display: flex;
