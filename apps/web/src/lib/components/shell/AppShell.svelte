@@ -11,7 +11,10 @@
 	import type { PublicCity, PublicProvider } from '#lib/v1/schemas/providers.ts';
 	import NavPill from './NavPill.svelte';
 	import { frameSurfaceRailContext, type RegisterFrameSurfaceRail } from './frameSurfaceRail.ts';
-	import FrameControls from './FrameControls.svelte';
+	import FrameControls, {
+		FrameControlsExtensionContext,
+		type FrameControlsExtension,
+	} from './FrameControls.svelte';
 	import { frameControlsState, frameCopy } from './frameControlsState.ts';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
@@ -72,6 +75,13 @@
 		};
 	};
 	setContext(frameSurfaceRailContext, registerSurfaceControls);
+	let controlsExtension = $state.raw<FrameControlsExtension>();
+	setContext(FrameControlsExtensionContext, (extension: FrameControlsExtension) => {
+		controlsExtension = extension;
+		return () => {
+			if (controlsExtension === extension) controlsExtension = undefined;
+		};
+	});
 
 	$effect(() => {
 		const root = document.documentElement;
@@ -101,7 +111,10 @@
 {/snippet}
 
 {#snippet rail(context: SurfaceRailContext)}
-	<FrameControls {context} {locale} {url} {clock} {frame} />
+	<FrameControls {context} {locale} {url} {clock} {frame} extension={controlsExtension} />
+	{#if context.presentation === 'desktop'}
+		{@render controlsExtension?.after?.()}
+	{/if}
 	{#each surfaceControls as controls (controls)}
 		{@render controls(context)}
 	{/each}
