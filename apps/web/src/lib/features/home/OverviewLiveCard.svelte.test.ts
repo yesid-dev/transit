@@ -55,18 +55,27 @@ function renderLive(
 }
 
 it.each([
-	['en', 'of 1,306 trips scheduled now', '2 of 3 vehicles'],
-	['fr', /^sur 1\s?306 trajets prévus en ce moment$/u, '2 sur 3 véhicules'],
-] as const)('renders the localized silent trips and late lines in %s', (locale, detail, ratio) => {
-	const row = renderLive(locale, { non_responding: 44, scheduled_now: 1306 });
-	expect(row.getByText('44')).toBeVisible();
-	expect(row.getByText(detail)).toHaveClass('text-muted-foreground');
-	expect(screen.getByRole('heading', { name: overviewCopy[locale].lateLines })).toBeVisible();
-	const first = screen.getAllByRole('listitem')[0];
-	expect(within(first).getByRole('link')).toHaveAttribute('href', '/lines/51');
-	expect(within(first).getByText(ratio)).toBeVisible();
-	expect(screen.getAllByRole('listitem')).toHaveLength(2);
-});
+	['en', 'of 1,306 trips scheduled now', '2 of 3', 'Line', 'Late'],
+	['fr', /^sur 1\s?306 trajets prévus en ce moment$/u, '2 sur 3', 'Ligne', 'En retard'],
+] as const)(
+	'renders the localized silent trips and late lines in %s',
+	(locale, detail, ratio, line, late) => {
+		const row = renderLive(locale, { non_responding: 44, scheduled_now: 1306 });
+		expect(row.getByText('44')).toBeVisible();
+		expect(row.getByText(detail)).toHaveClass('text-muted-foreground');
+		expect(screen.getByRole('heading', { name: overviewCopy[locale].lateLines })).toBeVisible();
+		const table = within(screen.getByRole('table', { name: overviewCopy[locale].lateLines }));
+		expect(table.getAllByRole('columnheader').map(({ textContent }) => textContent)).toEqual([
+			line,
+			late,
+		]);
+		const [, first, second] = table.getAllByRole('row');
+		expect(within(first).getByRole('link')).toHaveAttribute('href', '/lines/51');
+		expect(within(first).getByRole('cell')).toHaveTextContent(ratio);
+		expect(within(second).getByRole('link')).toHaveAttribute('href', '/lines/24');
+		expect(table.getAllByRole('row')).toHaveLength(3);
+	},
+);
 
 it.each([
 	['en', 'Not measured', { non_responding: null }],

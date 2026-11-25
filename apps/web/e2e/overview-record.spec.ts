@@ -38,17 +38,17 @@ test('the desktop French total stays on one line and plate codes keep names alig
 	for (const row of [
 		page
 			.getByRole('article', { name: 'Lignes et arrêts à examiner' })
-			.getByRole('listitem')
+			.locator('tbody tr')
 			.filter({ has: page.locator('[data-slot="route-plate"]') })
 			.first(),
 		page
 			.getByRole('article', { name: 'En direct', exact: true })
-			.getByRole('listitem')
+			.locator('tbody tr')
 			.filter({ has: page.locator('[data-slot="route-plate"]') })
 			.first(),
 	]) {
 		await expect(row).toBeVisible();
-		const name = row.getByRole('link');
+		const name = row.getByRole('link').locator('.name-label');
 		const left = await name.evaluate((element) => element.getBoundingClientRect().left);
 		await row.locator('[data-slot="route-plate"]').evaluate((element) => {
 			element.textContent = '165';
@@ -184,7 +184,9 @@ for (const width of [390, 1440]) {
 				});
 				await expect(main.getByRole('heading', { level: 1 })).toHaveText(title);
 				await expect(
-					record.getByText(provider === 'stm' ? /81[,.]2\s?%/ : /70\s?%/, { exact: true }).first(),
+					record
+						.getByText(provider === 'stm' ? /81[,.]2\s?%/ : /70[,.]0\s?%/, { exact: true })
+						.first(),
 				).toBeVisible();
 				await expect(record).toContainText(fr ? /90 sur 100/ : /90 of 100/);
 				await expect(record).toContainText(
@@ -200,7 +202,7 @@ for (const width of [390, 1440]) {
 				const ranking = main.getByRole('article', {
 					name: fr ? 'Lignes et arrêts à examiner' : 'Lines and stops to investigate',
 				});
-				await expect(ranking.getByRole('listitem')).toHaveCount(6);
+				await expect(ranking.locator('tbody tr')).toHaveCount(6);
 				await expect(ranking.getByRole('link')).toHaveCount(7);
 
 				const firstLink = record.getByRole('link').first();
@@ -313,7 +315,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	);
 	expect(release.status()).toBe(204);
 	await expect(
-		main.getByRole('article', { name: 'Lines and stops to investigate' }).getByRole('listitem'),
+		main.getByRole('article', { name: 'Lines and stops to investigate' }).locator('tbody tr'),
 	).toHaveCount(6);
 	await expect(main.getByText('These records take longer')).toHaveCount(0);
 });

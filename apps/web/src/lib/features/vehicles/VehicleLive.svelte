@@ -521,6 +521,14 @@
 {/snippet}
 
 <style>
+	@container (width >= 16rem) {
+		.service-line > a {
+			inline-size: max-content;
+			/* Keep the label, plate and gaps inside the row when a long name wraps. */
+			max-inline-size: calc(100cqi - 7rem);
+			flex-shrink: 0;
+		}
+	}
 	@container (width < 16rem) {
 		.service-line {
 			flex-wrap: wrap;
