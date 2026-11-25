@@ -9,6 +9,8 @@
 	import { createLiveStore, type LiveFamilyState } from '#lib/v1/live/store.svelte.ts';
 	import { countedUnit, liveStampAge, recordRatio, singularCount } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import FactList from '../record/FactList.svelte';
+	import FactRow from '../record/FactRow.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import StateMark from '../record/StateMark.svelte';
@@ -144,28 +146,24 @@
 			/>
 		</div>
 	{/if}
-	<dl class="mt-3 grid gap-2">
-		<div class="flex flex-wrap items-baseline justify-between gap-x-2">
-			<dt>{t.silent}</dt>
-			<dd aria-busy={silent.kind === 'pending'}>
-				{#if silent.kind === 'value' && pulse?.silentReading}
-					<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
-					<span class="text-muted-foreground">{pulse.silentReading.detail}</span>
-				{:else}
-					{@render readingValue(silent)}
-				{/if}
-			</dd>
-		</div>
-		<div class="flex flex-wrap items-baseline justify-between gap-x-2">
-			<dt>{t.alerts}</dt>
-			<dd aria-busy={alerts.kind === 'pending'}>
-				{@render readingValue(alerts)}
-				{#if stale(alertHealth)}<p class="text-muted-foreground">
-						{liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')}
-					</p>{/if}
-			</dd>
-		</div>
-	</dl>
+	<FactList class="mt-3">
+		<FactRow label={t.silent} busy={silent.kind === 'pending'}>
+			{#if silent.kind === 'value' && pulse?.silentReading}
+				<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
+				<span class="text-muted-foreground">{pulse.silentReading.detail}</span>
+			{:else}
+				{@render readingValue(silent)}
+			{/if}
+		</FactRow>
+		<FactRow label={t.alerts} busy={alerts.kind === 'pending'}>
+			{@render readingValue(alerts)}
+			{#if stale(alertHealth)}
+				<p class="text-muted-foreground">
+					{liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')}
+				</p>
+			{/if}
+		</FactRow>
+	</FactList>
 	{#if lines.length}
 		<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
 		<ul class="late-lines">

@@ -1174,7 +1174,7 @@
 					"edgeCount": 0,
 					"targets": 36,
 					"shortTargets": 4,
-					"targetDeficit": 52,
+					"targetDeficit": 48,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1186,7 +1186,7 @@
 					"edgeCount": 0,
 					"targets": 36,
 					"shortTargets": 5,
-					"targetDeficit": 65,
+					"targetDeficit": 60,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1198,7 +1198,7 @@
 					"edgeCount": 0,
 					"targets": 37,
 					"shortTargets": 8,
-					"targetDeficit": 104,
+					"targetDeficit": 96,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1210,7 +1210,7 @@
 					"edgeCount": 0,
 					"targets": 37,
 					"shortTargets": 8,
-					"targetDeficit": 88,
+					"targetDeficit": 80,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1222,7 +1222,7 @@
 					"edgeCount": 0,
 					"targets": 41,
 					"shortTargets": 8,
-					"targetDeficit": 88,
+					"targetDeficit": 80,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1291,7 +1291,7 @@
 					"edgeCount": 0,
 					"targets": 33,
 					"shortTargets": 4,
-					"targetDeficit": 52,
+					"targetDeficit": 48,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1303,7 +1303,7 @@
 					"edgeCount": 0,
 					"targets": 33,
 					"shortTargets": 4,
-					"targetDeficit": 52,
+					"targetDeficit": 48,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1315,7 +1315,7 @@
 					"edgeCount": 0,
 					"targets": 34,
 					"shortTargets": 5,
-					"targetDeficit": 65,
+					"targetDeficit": 60,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1327,7 +1327,7 @@
 					"edgeCount": 0,
 					"targets": 34,
 					"shortTargets": 5,
-					"targetDeficit": 55,
+					"targetDeficit": 50,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1339,7 +1339,7 @@
 					"edgeCount": 0,
 					"targets": 38,
 					"shortTargets": 5,
-					"targetDeficit": 55,
+					"targetDeficit": 50,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1403,7 +1403,7 @@
 					"edgeCount": 0,
 					"targets": 29,
 					"shortTargets": 1,
-					"targetDeficit": 13,
+					"targetDeficit": 12,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1415,7 +1415,7 @@
 					"edgeCount": 0,
 					"targets": 29,
 					"shortTargets": 1,
-					"targetDeficit": 13,
+					"targetDeficit": 12,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1427,7 +1427,7 @@
 					"edgeCount": 0,
 					"targets": 30,
 					"shortTargets": 1,
-					"targetDeficit": 13,
+					"targetDeficit": 12,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1439,7 +1439,7 @@
 					"edgeCount": 0,
 					"targets": 30,
 					"shortTargets": 1,
-					"targetDeficit": 11,
+					"targetDeficit": 10,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1451,7 +1451,7 @@
 					"edgeCount": 0,
 					"targets": 34,
 					"shortTargets": 1,
-					"targetDeficit": 11,
+					"targetDeficit": 10,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []

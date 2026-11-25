@@ -70,6 +70,10 @@
 		margin-block: 0;
 	}
 
+	.legal-section :is(p, li) {
+		line-height: 1.7;
+	}
+
 	.legal-document__links {
 		list-style: none;
 		padding-inline-start: 0;

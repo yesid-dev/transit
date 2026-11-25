@@ -2,7 +2,7 @@
 	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
 
-	let { label, children }: { label: string; children: Snippet } = $props();
+	let { label, busy, children }: { label: string; busy?: boolean; children: Snippet } = $props();
 </script>
 
 <div class="fact relative py-2" data-slot="fact-row">
@@ -10,7 +10,7 @@
 		<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
 		{label}
 	</dt>
-	<dd class="tabular-nums">{@render children()}</dd>
+	<dd class="tabular-nums" aria-busy={busy}>{@render children()}</dd>
 </div>
 
 <style>

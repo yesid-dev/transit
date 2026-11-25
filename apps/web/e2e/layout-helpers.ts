@@ -145,8 +145,10 @@ export async function textDefects(page: Page) {
 				// A nested scroller makes offscreen text reachable. Its enclosing
 				// viewport does not clip that text permanently.
 				if (/auto|scroll/.test(css.overflowY) && p.scrollHeight > p.clientHeight + 1) break;
+				// Allow the kit's scrollable DataTable frame to bring offscreen record cells into view.
 				if (
 					recordSection &&
+					p.matches('[data-slot="data-table-frame"][tabindex="0"]') &&
 					p.scrollWidth > p.clientWidth + 1 &&
 					/auto|scroll/.test(css.overflowX)
 				) {
