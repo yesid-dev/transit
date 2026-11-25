@@ -1,7 +1,19 @@
+import { readdirSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
 import { transitTerms } from '../src/lib/i18n/transitTerms.copy';
+
+function terminalPanelChunk(): string {
+	const chunks = new URL('../.svelte-kit/cloudflare/_app/immutable/chunks/', import.meta.url);
+	const match = readdirSync(chunks).find((name) => {
+		if (!name.endsWith('.js')) return false;
+		const source = readFileSync(new URL(name, chunks), 'utf8');
+		return source.includes('terminal-titlebar-main') && source.includes('terminal-footer-label');
+	});
+	if (!match) throw new Error('Missing compiled TerminalPanel asset for the Line replay test');
+	return match;
+}
 
 test.use({ bypassCSP: true });
 test.describe.configure({ mode: 'parallel' });
@@ -63,6 +75,12 @@ for (const { provider, locale, width } of cases) {
 			expect(copied.searchParams.get('direction')).toBe('1');
 			expect(copied.hash).toBe('#punctuality');
 
+			if (provider === 'octranspo' && locale === 'en' && width === 320) {
+				// A method/health widget must not gate hydration of a copied Line Record link.
+				await page.route(`**/_app/immutable/chunks/${terminalPanelChunk()}`, (route) =>
+					route.abort('failed'),
+				);
+			}
 			await page.goto(copied.href);
 			await cite.click();
 			await expect(evidence).toBeVisible();
