@@ -23,6 +23,12 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(collapse).toBeVisible();
 		await open.getByRole('button').first().press('Enter');
 		await expect(expand).toBeVisible();
+		const more = main.locator('[data-slot="page-section"]:has(#more-methods)');
+		await expect(more).toHaveCount(1);
+		await expect(more.locator('xpath=preceding-sibling::*[1]')).toHaveAttribute(
+			'data-slot',
+			'page-section-boundary',
+		);
 		await expand.click();
 		await expect(open).toHaveCount(await cards.count());
 		await collapse.click();
@@ -35,6 +41,27 @@ for (const locale of ['en', 'fr'] as const) {
 				})
 				.getByRole('list'),
 		).toHaveCSS('list-style-position', 'outside');
+	});
+
+	test(`Download keeps the CSV column names findable in ${locale}`, async ({ page }) => {
+		const path = fr ? '/fr/download' : '/download';
+		await page.goto(`${path}?provider=stm`);
+		const disclosure = page.locator('#measure-columns');
+		const trigger = disclosure.getByRole('button', {
+			name: fr ? 'Colonnes des CSV de mesures' : 'Measure CSV columns',
+		});
+		const content = disclosure.locator('[data-slot="collapsible-content"]');
+		await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		await expect(content).toHaveAttribute('hidden', 'until-found');
+		await expect(content).toContainText(fr ? 'Mesure, Valeur' : 'Measure, Value');
+		await trigger.press('Enter');
+		await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+		await expect(content).toBeVisible();
+		await page.goto(
+			`${path}?provider=stm&recordFrom=2026-11-16&recordTo=2026-11-22#measure-columns`,
+		);
+		await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+		await expect(content).toBeVisible();
 	});
 }
 

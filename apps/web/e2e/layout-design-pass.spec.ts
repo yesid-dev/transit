@@ -311,12 +311,17 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			screen === 'accessibility'
 		) {
 			for (const theme of ['light', 'dark'] as const) {
-				const evidence = process.env.TRANSIT_COHESION_EVIDENCE;
+				const packetEvidence = process.env.TRANSIT_COHESION_B_EVIDENCE;
+				const evidence = packetEvidence ?? process.env.TRANSIT_COHESION_EVIDENCE;
 				const capture =
 					evidence &&
-					provider === 'stm' &&
-					(locale === 'en' || screen.startsWith('overview') || screen.startsWith('line-'));
-				const width = (locale === 'en') === (theme === 'light') ? 1440 : 390;
+					(packetEvidence ||
+						(provider === 'stm' &&
+							(locale === 'en' || screen.startsWith('overview') || screen.startsWith('line-'))));
+				const desktopLight = packetEvidence
+					? provider === 'stm' && locale === 'en'
+					: locale === 'en';
+				const width = desktopLight === (theme === 'light') ? 1440 : 390;
 				if (capture) await setWidth(page, width);
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
@@ -342,10 +347,13 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 					const heading = page.getByRole('main').getByRole('heading', { level: 1 });
 					await expect(heading).toBeVisible();
 					await page.screenshot({
-						path: join(evidence, `${screen}-${locale}-${width}-${theme}.png`),
+						path: join(
+							evidence,
+							`${screen}-${packetEvidence ? `${provider}-` : ''}${locale}-${width}-${theme}.png`,
+						),
 						fullPage: true,
 					});
-					if (screen === 'overview' && locale === 'en') {
+					if (!packetEvidence && screen === 'overview' && locale === 'en') {
 						await page.locator('[data-slot="footer"]').screenshot({
 							path: join(evidence, `footer-${width}.png`),
 							style: unobstructedCapture,
