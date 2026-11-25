@@ -28,7 +28,6 @@
 		compactPrint?: boolean;
 		fill?: boolean;
 		interactive?: boolean;
-		compact?: boolean;
 		edge?: 'brand' | 'neutral';
 	} = $props();
 	const id = $props.id();

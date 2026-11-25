@@ -53,7 +53,7 @@
 </script>
 
 <section {id} class="grid min-w-0">
-	<RecordCard {title} {stamp} {fill}>
+	<RecordCard {title} {stamp} {fill} interactive={!!control}>
 		{#await answer}
 			{#key answer}<RecordPending {locale} {answer} />{/key}
 		{:then result}
@@ -61,7 +61,6 @@
 			{:else if result.kind !== 'answer'}<p>{recordConnection.unreachable[locale]}</p>
 			{:else if !('rows' in result.answer)}
 				{@render reading(result.answer)}
-				{#if control}<div class="mt-3">{@render control()}</div>{/if}
 				{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 			{/if}
 		{/await}
@@ -73,6 +72,7 @@
 						sample={sample(result.answer)}
 						{locale}
 					/>
+					{#if control}{@render control()}{/if}
 				{/if}
 			{/await}
 		{/snippet}

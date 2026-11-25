@@ -10,7 +10,6 @@
 		stopCode,
 		back,
 		compact = false,
-		rule = false,
 	}: {
 		title: string;
 		id?: string;
@@ -20,14 +19,12 @@
 		stopCode?: string;
 		back?: { href: string; label: string };
 		compact?: boolean;
-		rule?: boolean;
 	} = $props();
 </script>
 
 <header
 	class="flex min-w-0 flex-wrap items-start justify-between gap-3"
 	class:route-title={plate && back}
-	class:rule
 >
 	<hgroup class="min-w-0" class:inline-plate={stopCode} class:route-heading={plate}>
 		{#if stopCode}<span class="stop-code" aria-hidden="true">{stopCode}</span>{/if}
@@ -49,10 +46,6 @@
 </header>
 
 <style>
-	.rule {
-		border-block-end: 1px solid var(--border);
-		padding-block-end: var(--space-card-gap);
-	}
 	.stop-code {
 		padding: 0.2em 0.45em;
 		border: 1px solid var(--foreground);
