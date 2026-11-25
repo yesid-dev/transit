@@ -755,7 +755,6 @@
 			--foreground: CanvasText;
 			--muted-foreground: CanvasText;
 			--accent-text: CanvasText;
-			--dataviz-status-on-time: CanvasText;
 			--border: GrayText;
 			--shadow-card: none;
 			color: CanvasText;
