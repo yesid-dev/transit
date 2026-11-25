@@ -226,7 +226,15 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(nearMe).toBeVisible();
 		await expect(page.getByRole('status').filter({ hasText: t.liveNoVehicles })).toBeVisible();
 		await expect(banner).toHaveCount(0);
-		// The source report is now beyond the capture feed's freshness window.
+		const stamp = page.locator('[data-slot="map-frame"] [data-slot="freshness-stamp"]');
+		await page.clock.fastForward(70_000);
+		await expect
+			.poll(async () => Number(await stamp.getAttribute('data-age-seconds')))
+			.toBeGreaterThanOrEqual(70);
+		await expect(stamp).toHaveAttribute('data-stale', 'false');
+		await expect(banner).toHaveCount(0);
+
+		// The retained report is beyond the feed's freshness window and its delivery allowance.
 		await page.clock.fastForward('05:00');
 		await expect(banner).toBeVisible();
 

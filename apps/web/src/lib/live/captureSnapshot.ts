@@ -128,6 +128,7 @@ export class CaptureScopeRefreshing extends Error {
 export function feedState(
 	feed: CaptureFeed | undefined,
 	now: number,
+	deliveryGraceSeconds = 0,
 ): 'not_tracked' | 'no_live_data' | 'unknown' | 'stale' | 'refresh_unavailable' | 'live' {
 	if (!feed) return 'not_tracked';
 	if (!feed.captured_at) return 'no_live_data';
@@ -139,7 +140,14 @@ export function feedState(
 		return 'unknown';
 	}
 	const limit = feed.fresh_for_seconds * 1_000;
-	if (age >= limit || sourceAge >= limit + feed.source_lag_seconds * 1_000) return 'stale';
+	const deliveryGrace = deliveryGraceSeconds * 1_000;
+	// A retained answer can age in transit, but delivery cannot explain an old source in a fresh capture.
+	const sourceGrace = Math.min(deliveryGrace, Math.max(0, age));
+	if (
+		age >= limit + deliveryGrace ||
+		sourceAge >= limit + feed.source_lag_seconds * 1_000 + sourceGrace
+	)
+		return 'stale';
 	return feed.read_failed ? 'refresh_unavailable' : 'live';
 }
 

@@ -126,6 +126,48 @@ describe('Live age excludes service alerts', () => {
 });
 
 describe('partial feed capture health', () => {
+	it.each([
+		[70, false],
+		[94, false],
+		[95, true],
+	] as const)(
+		'reports a retained vehicle capture aged %s seconds (stalled: %s)',
+		async (age, stalled) => {
+			mocks.browser = true;
+			const capturedAt = '2026-06-21T12:00:00Z';
+			mocks.nowMs = Date.parse(capturedAt) + age * 1_000;
+			mocks.offsetMs = 0;
+			resetLiveFetches();
+			mocks.vehicles.mockResolvedValue({
+				generated_utc: capturedAt,
+				vehicles: [],
+				captureFeed: {
+					family: 'vehicle_positions',
+					captured_at: capturedAt,
+					source_at: capturedAt,
+					fresh_for_seconds: 60,
+					source_lag_seconds: 0,
+					read_failed: false,
+					expected_every_seconds: 20,
+				},
+			});
+			const mounted = mountLiveStore(30, ['vehicles']);
+			try {
+				await mounted.store.refresh();
+				expect(mounted.store.familyStates.vehicles.health).toMatchObject({
+					state: stalled ? 'retained-stale' : 'live',
+					ageSeconds: age,
+				});
+				expect(present(mounted.store)).toMatchObject({
+					bannerState: stalled ? 'global-stall' : 'idle',
+					stamp: { ageLabel: stalled ? 'not responding' : null },
+				});
+			} finally {
+				mounted.dispose();
+			}
+		},
+	);
+
 	it('keeps the scoped report loading through an ETag refresh window', async () => {
 		vi.useFakeTimers();
 		mocks.browser = true;
