@@ -284,9 +284,12 @@ test('Overview card edge responds to hover and keyboard focus', async ({ page })
 
 	const menu = page.getByTestId('nav-menu-toggle');
 	await page.evaluate(() => window.scrollTo(0, 0));
+	await page.emulateMedia({ reducedMotion: 'reduce' });
 	await menu.click();
 	await expect(menu).toHaveAttribute('aria-expanded', 'true');
-	if (evidence) await page.screenshot({ path: join(evidence, 'menu-open-1440.png') });
+	if (evidence) {
+		await page.screenshot({ path: join(evidence, 'menu-open-1440.png'), animations: 'disabled' });
+	}
 	await page.keyboard.press('Escape');
 	await expect(menu).toBeFocused();
 });

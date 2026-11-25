@@ -29,7 +29,15 @@
 </script>
 
 <div class="copy-action" data-slot="copy-action">
-	<Button variant="outline" {size} class="min-h-11" onclick={copy}>{label}</Button>
+	<Button
+		variant="outline"
+		{size}
+		wrap={size === 'cta-sm'}
+		class={size === 'cta-sm' ? 'min-h-11 max-w-full' : 'min-h-11'}
+		onclick={copy}
+	>
+		{label}
+	</Button>
 	<p role="status" aria-live="polite" aria-atomic="true">
 		{status === 'copied' ? done : status === 'fallback' ? fallback : ''}
 	</p>
