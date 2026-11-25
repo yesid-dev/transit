@@ -196,7 +196,7 @@ export function countedUnit(
 		line: { en: ['line', 'lines'], fr: ['ligne', 'lignes'] },
 		stop: { en: ['stop', 'stops'], fr: ['arrêt', 'arrêts'] },
 		event: { en: ['stop event', 'stop events'], fr: ['passage à un arrêt', 'passages aux arrêts'] },
-		trip: { en: ['trip', 'trips'], fr: ['voyage', 'voyages'] },
+		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
 		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
 		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
 	};

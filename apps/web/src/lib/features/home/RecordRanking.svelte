@@ -92,7 +92,7 @@
 	}
 	li {
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-columns: 3.5rem minmax(0, 1fr) auto;
 		align-items: baseline;
 		column-gap: var(--space-card-gap);
 		border-block-start: 1px solid var(--border);

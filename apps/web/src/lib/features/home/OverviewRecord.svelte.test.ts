@@ -140,7 +140,7 @@ for (const locale of ['en', 'fr'] as const) {
 		expect(within(about).getAllByText(observed)).toHaveLength(1);
 		const coverage =
 			locale === 'fr'
-				? /État connu pour 90\s?% des 111 voyages/
+				? /État connu pour 90\s?% des 111 trajets/
 				: /Status known for 90% of 111 scheduled trips/;
 		expect(record).not.toHaveTextContent(coverage);
 		expect(about).toHaveTextContent(coverage);

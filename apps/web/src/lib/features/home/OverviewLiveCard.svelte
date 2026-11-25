@@ -144,7 +144,7 @@
 	</dl>
 	{#if lines.length}
 		<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
-		<ul>
+		<ul class="late-lines">
 			{#each lines as row (row.id)}
 				{@const line = display.lineName(row.id)}
 				<li class="late-line border-t border-border">
@@ -170,13 +170,29 @@
 </RecordCard>
 
 <style>
+	.late-lines {
+		container-type: inline-size;
+	}
 	.late-line {
 		display: grid;
-		grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+		grid-template-columns: 3.5rem minmax(0, 1fr) minmax(0, 1fr);
 		align-items: baseline;
 		gap: 0.5em;
 	}
 	.late-line > :last-child {
 		text-align: end;
+	}
+	@container (max-width: 14rem) {
+		.late-line {
+			grid-template-columns: 3.5rem minmax(0, 1fr);
+		}
+		.late-line a {
+			grid-column: 1 / -1;
+			grid-row: 2;
+		}
+		.late-line > :last-child {
+			grid-column: 2;
+			grid-row: 1;
+		}
 	}
 </style>

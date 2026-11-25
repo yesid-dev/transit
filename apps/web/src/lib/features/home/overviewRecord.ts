@@ -52,9 +52,9 @@ export function measureText(
 			? `${dates}, ${share} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`
 			: `${dates}, ${share} of observed stop events were on time (${n} of ${total})`
 		: locale === 'fr'
-			? `${dates}, ${share} des voyages prévus dont le résultat est connu ont été effectués (${n} sur ${total})`
+			? `${dates}, ${share} des trajets prévus dont le résultat est connu ont été effectués (${n} sur ${total})`
 			: `${dates}, ${share} of scheduled trips with a known outcome ran (${n} of ${total})`;
-	return `${[reading, coverageText(answer.evidence, locale, 'voyages')].filter(Boolean).join(' · ')}.`;
+	return `${[reading, coverageText(answer.evidence, locale)].filter(Boolean).join(' · ')}.`;
 }
 
 export function comparisonText(

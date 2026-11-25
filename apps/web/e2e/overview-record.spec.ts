@@ -1,7 +1,7 @@
 import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { captureFixture, captureUrl } from './capture-fixture';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
@@ -9,6 +9,53 @@ test.beforeEach(({ browserName }, info) => {
 
 const period = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 const recordHref = '/?provider=stm&frameMode=record&' + period;
+
+test('the desktop French total stays on one line and plate codes keep names aligned', async ({
+	page,
+}) => {
+	const now = Date.now();
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.clock.setFixedTime(now);
+	await page.route(captureUrl, (route) =>
+		route.fulfill({
+			json: captureFixture(now, { vehicle_positions: [captureVehicle(now, { delay: 420 })] }),
+		}),
+	);
+	await page.goto('/fr' + recordHref);
+	const total = page
+		.getByRole('article', { name: 'Bilan', exact: true })
+		.getByText(/^sur 507\s800 passages aux arrêts$/u);
+	await expect(total).toBeVisible();
+	await page.evaluate(() => document.fonts.ready);
+	expect(
+		await total.evaluate((element) => {
+			const text = document.createRange();
+			text.selectNodeContents(element);
+			return text.getClientRects().length;
+		}),
+	).toBe(1);
+
+	for (const row of [
+		page
+			.getByRole('article', { name: 'Lignes et arrêts à examiner' })
+			.getByRole('listitem')
+			.filter({ has: page.locator('[data-slot="route-plate"]') })
+			.first(),
+		page
+			.getByRole('article', { name: 'En direct', exact: true })
+			.getByRole('listitem')
+			.filter({ has: page.locator('[data-slot="route-plate"]') })
+			.first(),
+	]) {
+		await expect(row).toBeVisible();
+		const name = row.getByRole('link');
+		const left = await name.evaluate((element) => element.getBoundingClientRect().left);
+		await row.locator('[data-slot="route-plate"]').evaluate((element) => {
+			element.textContent = '165';
+		});
+		expect(await name.evaluate((element) => element.getBoundingClientRect().left)).toBe(left);
+	}
+});
 
 test('Live now keeps placeholders until its first fetch fails', async ({ page }) => {
 	let release!: () => void;
@@ -70,9 +117,10 @@ test('a client period change streams the shell before the engine answers', async
 }, info) => {
 	await page.goto(recordHref);
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-	await page.getByRole('button', { name: 'Choose other dates' }).click();
-	await page.getByLabel('From', { exact: true }).fill('2026-11-10');
-	await page.getByLabel('To', { exact: true }).fill('2026-11-16');
+	await (await openFrameControls(page)).getByRole('button', { name: 'Choose other dates' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Period', exact: true });
+	await dialog.getByLabel('From', { exact: true }).fill('2026-11-10');
+	await dialog.getByLabel('To', { exact: true }).fill('2026-11-16');
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const release = `http://127.0.0.1:${dataPort}/__overview/release?fixture=overview-stream`;
 	const sent = page.waitForResponse(
@@ -82,9 +130,11 @@ test('a client period change streams the shell before the engine answers', async
 	let shellMs: number;
 	let releasedMs: number;
 	try {
-		await page.getByRole('button', { name: 'Show these dates' }).click();
+		await dialog.getByRole('button', { name: 'Show these dates' }).click();
 		const response = await sent;
 		expect(response.ok()).toBe(true);
+		await expect(dialog).toBeHidden();
+		await closeCompactFrameControls(page);
 		const record = page.getByRole('article', { name: 'Record', exact: true });
 		await expect(record.getByText('Record · 10 to 16 Nov 2026').first()).toBeVisible();
 		await expect(record.getByText('Calculating…').first()).toBeVisible();

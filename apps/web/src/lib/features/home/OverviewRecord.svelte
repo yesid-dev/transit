@@ -219,7 +219,7 @@
 						{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
 							{@const { on_time, classified } = current.answer.evidence.counts}
 							{#if on_time != null && classified != null}
-								<div class="reading">
+								<div class="reading on-time">
 									<dt>{t.onTime}</dt>
 									<dd>
 										<strong>{tally(on_time, locale)}</strong>
@@ -282,7 +282,7 @@
 										>{/if}
 									{#if delivery.answer.evidence.low_coverage}
 										<p class="text-muted-foreground">
-											{coverageText(delivery.answer.evidence, locale, 'voyages')}
+											{coverageText(delivery.answer.evidence, locale)}
 										</p>
 									{/if}
 									{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
@@ -382,7 +382,7 @@
 							delivery &&
 							!delivery.evidence.low_coverage &&
 							(delivery.evidence.share_eligible ?? 1) < 1
-								? coverageText(delivery.evidence, locale, 'voyages') + '.'
+								? coverageText(delivery.evidence, locale) + '.'
 								: null,
 						]
 							.filter(Boolean)
@@ -432,8 +432,12 @@
 	.reading dd {
 		text-align: end;
 	}
+	.reading.on-time {
+		grid-template-columns: fit-content(40%) minmax(0, 1fr);
+	}
 	@container (max-width: 16rem) {
-		.reading {
+		.reading,
+		.reading.on-time {
 			grid-template-columns: minmax(0, 1fr);
 		}
 		.reading dd {
