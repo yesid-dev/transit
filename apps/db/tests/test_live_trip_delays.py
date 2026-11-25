@@ -1,4 +1,5 @@
 import sqlite3
+from collections import Counter
 from contextlib import closing
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -62,13 +63,183 @@ def schedule(tmp_path, day=DAY, first=90600, stop_time=90900):
         conn.executemany(
             "INSERT INTO stops VALUES (?, ?, ?, ?, ?)",
             [
+                ("T", 2, "previous", stop_time - 60, stop_time - 30),
                 ("T", 3, "stop", stop_time, stop_time + 30),
+                ("T", 4, "next", stop_time + 120, stop_time + 150),
                 ("T", 5, "terminus", stop_time + 300, None),
                 ("T", 6, "loop", stop_time + 420, stop_time + 440),
                 ("T", 7, "loop", stop_time + 540, stop_time + 560),
             ],
         )
     return {day: DaySchedule(path, {"T": TripSpan("T", "A", first, stop_time + 540, 0)})}
+
+
+@pytest.mark.parametrize(
+    ("vehicle", "stops", "expected"),
+    [
+        (position(), [call(sequence=4, stop="next", arrival=EXPECTED + 145)], 25),
+        (
+            position(),
+            [
+                call(sequence=4, stop="next", arrival=EXPECTED + 145),
+                call(arrival=EXPECTED + 10),
+            ],
+            10,
+        ),
+        (position(), [call(sequence=2, stop="previous", arrival=EXPECTED + 5)], None),
+        (
+            position(sequence=None, stop="loop"),
+            [call(sequence=7, stop="loop", arrival=EXPECTED + 560)],
+            None,
+        ),
+        (
+            position(),
+            [
+                call(sequence=4, stop="next", status=1),
+                call(sequence=5, stop="terminus", arrival=EXPECTED + 350),
+            ],
+            50,
+        ),
+        (
+            position(sequence=None),
+            [call(sequence=4, stop="next", arrival=EXPECTED + 145)],
+            25,
+        ),
+        (
+            position(stop="next"),
+            [call(sequence=4, stop="next", arrival=EXPECTED + 145)],
+            None,
+        ),
+        (
+            position(),
+            [
+                call(sequence=5, stop="terminus", arrival=EXPECTED + 100),
+                call(sequence=4, stop="next", arrival=EXPECTED + 145),
+            ],
+            25,
+        ),
+        (
+            position(),
+            [
+                call(sequence=4, stop="next", arrival=EXPECTED - 80),
+                call(sequence=5, stop="terminus", arrival=EXPECTED + 350),
+            ],
+            50,
+        ),
+    ],
+    ids=[
+        "reported call dropped",
+        "reported call preferred",
+        "never use preceding call",
+        "unqualified loop stop",
+        "skip and advance",
+        "resolve stop id from schedule",
+        "conflicting stop and sequence",
+        "advance by sequence",
+        "skip expired predictions",
+    ],
+)
+def test_vehicle_uses_first_usable_call_at_or_after_reported_stop(
+    tmp_path, vehicle, stops, expected
+):
+    vehicles, _ = reconcile_delays(
+        [vehicle], [report(*stops)], schedule(tmp_path), ZONE, NOW, update_window=90
+    )
+    assert vehicles[0]["delay"] == expected
+
+
+def test_coverage_counts_identified_vehicles_and_why_delays_are_missing(tmp_path):
+    coverage = Counter()
+    day = schedule(tmp_path)
+    reconcile_delays(
+        [
+            position(),
+            position(sequence=None, stop="loop"),
+            position(trip="absent"),
+            position(trip=None),
+        ],
+        [report(call(sequence=4, stop="next", status=1))],
+        day,
+        ZONE,
+        NOW,
+        update_window=90,
+        coverage=coverage,
+    )
+    reconcile_delays([position()], [], day, ZONE, NOW, update_window=90, coverage=coverage)
+    assert coverage == {"skipped": 1, "ambiguous": 1, "no_schedule": 1, "no_update": 1}
+
+
+def test_dated_trip_matches_when_both_feeds_disagree_with_scheduled_direction(tmp_path):
+    vehicle = {**position(), "direction_id": 1}
+    update = {**report(call(arrival=EXPECTED + 15)), "direction_id": 1}
+    positions, trips = reconcile_delays(
+        [vehicle], [update], schedule(tmp_path), ZONE, NOW, update_window=90
+    )
+    assert positions[0]["delay"] == trips[0]["stops"][0]["arrival_delay"] == 15
+
+
+def test_unchanged_prediction_in_fresh_feed_remains_usable(tmp_path):
+    positions, trips = reconcile_delays(
+        [position()],
+        [report(call(arrival=EXPECTED + 20), age=1200)],
+        schedule(tmp_path),
+        ZONE,
+        NOW,
+        update_window=90,
+    )
+    assert positions[0]["delay"] == trips[0]["stops"][0]["arrival_delay"] == 20
+
+
+@pytest.mark.parametrize(
+    ("following", "expected", "reason"),
+    [
+        ([call(sequence=4, stop="next", arrival=EXPECTED + 145)], 25, "delay"),
+        ([call(sequence=4, stop="next", arrival=EXPECTED - 480)], None, "expired"),
+        ([], None, "expired"),
+    ],
+)
+def test_expired_reported_call_cannot_supply_a_delay(tmp_path, following, expected, reason):
+    coverage = Counter()
+    old = call(arrival=int(NOW.timestamp()) - 600, delay=5)
+    positions, trips = reconcile_delays(
+        [position()],
+        [report(old, *following, delay=25)],
+        schedule(tmp_path),
+        ZONE,
+        NOW,
+        update_window=90,
+        coverage=coverage,
+    )
+    assert positions[0]["delay"] == expected
+    assert trips[0]["stops"][0]["arrival"] == old["arrival"]
+    assert trips[0]["stops"][0]["arrival_delay"] is None
+    assert coverage == {reason: 1}
+
+
+def test_call_at_tolerance_uses_latest_arrival_or_departure(tmp_path):
+    stop = call(
+        arrival=int(NOW.timestamp()) - 600,
+        departure=int(NOW.timestamp()) - 90,
+        delay=12,
+    )
+    positions, trips = reconcile_delays(
+        [position()], [report(stop)], schedule(tmp_path), ZONE, NOW, update_window=90
+    )
+    assert positions[0]["delay"] == trips[0]["stops"][0]["arrival_delay"] == 12
+
+
+def test_stale_trip_feed_clears_vehicle_and_stop_delay(tmp_path):
+    positions, trips = reconcile_delays(
+        [position()],
+        [report(call(arrival=EXPECTED, delay=15), delay=15)],
+        schedule(tmp_path),
+        ZONE,
+        NOW,
+        update_window=0,
+    )
+    assert positions[0]["delay"] is None
+    assert trips[0]["delay"] is None
+    assert trips[0]["stops"][0]["arrival_delay"] is None
 
 
 @pytest.mark.parametrize("difference", [-61, -60, 0, 300, 301])
@@ -117,7 +288,6 @@ def test_feed_delays_take_precedence(tmp_path):
     [
         [report(call(arrival=EXPECTED, delay=10), status=1)],
         [report(call(arrival=EXPECTED, delay=10), trip="unscheduled")],
-        [report(call(arrival=EXPECTED, delay=10), age=90)],
         [report(call(arrival=EXPECTED, delay=10)), report(call(arrival=EXPECTED, delay=10))],
         [report(call(arrival=EXPECTED, delay=10, status=1))],
         [report(call(arrival=EXPECTED, delay=10, stop="other"))],

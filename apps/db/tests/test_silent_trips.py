@@ -261,6 +261,10 @@ def test_published_city_answer_requires_a_schedule_and_trip_ids(
     update = json.loads(packed[start : start + length])
     assert update["stops"][0]["arrival_delay"] == (301 if edition else None)
     assert published["vehicle_positions"][0]["delay"] == (301 if edition and identified else None)
+    coverage = publisher.inspect_delays(NOON)
+    assert coverage["vehicles_with_trip"] == int(identified)
+    assert coverage["vehicles_with_delay"] == int(edition and identified)
+    assert coverage["without_delay"] == ({"no_schedule": 1} if identified and not edition else {})
     counts = {
         key: published[key]
         for key in ("scheduled_now", "non_responding", "cancelled_now", "non_responding_by_route")

@@ -203,7 +203,10 @@ null when the schedule, fresh movement feeds or vehicle trip IDs are unavailable
 The city answer and `GET /v2/{city}/live-trips` use the same dated schedule
 to resolve vehicle and stop delays. A delay uses a fresh feed delay when
 supplied, or an absolute prediction minus the scheduled arrival or departure
-for that same stop. Unmatched, skipped and stale readings have no delay.
+for that same stop. A fresh feed can carry an unchanged prediction for the
+dated trip regardless of feed direction, and delay expires when the last
+predicted arrival or departure is more than the feed's freshness window in
+the past, allowing the vehicle to use its next usable upcoming call.
 On time is from one minute early through five minutes late, inclusive.
 
 ## Analytics

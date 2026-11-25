@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { captureDepartures, captureNetwork, captureTrips, captureVehicles } from './captureProjection';
+import {
+	captureDepartures,
+	captureNetwork,
+	captureTrips,
+	captureVehicles,
+} from './captureProjection';
 import { selectLivePulse } from '#lib/features/home/homePulse.ts';
 import {
 	captureSnapshotSchema,
@@ -191,15 +196,22 @@ describe('capture-backed Live projection', () => {
 			const report = scoped.trip_updates[0];
 			const next = {
 				...scoped,
-				trip_updates: [{
-					...report,
-					delay,
-					stops: [{ ...report.stops[0], departure_delay: delay }],
-				}],
+				trip_updates: [
+					{
+						...report,
+						delay,
+						stops: [{ ...report.stops[0], departure_delay: delay }],
+					},
+				],
 			};
-			expect(captureTrips(next, now).trips['trip-1']).toMatchObject({ status, stops: [{ status }] });
+			expect(captureTrips(next, now).trips['trip-1']).toMatchObject({
+				status,
+				stops: [{ status }],
+			});
 			expect(captureTrips(next, now + 60_000).trips['trip-1']).toMatchObject({
-				status: 'unknown', delay_min: null, stops: [{ status: 'unknown', delay_min: null }],
+				status: 'unknown',
+				delay_min: null,
+				stops: [{ status: 'unknown', delay_min: null }],
 			});
 		}
 	});

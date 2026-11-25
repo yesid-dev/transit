@@ -85,7 +85,11 @@ function stopEta(
 	if (!stop.stop_id || seconds == null || seconds > 8.64e12 || [1, 2].includes(stop.relationship)) {
 		return null;
 	}
-	const delay = usableDelay ? (stop.departure == null ? stop.arrival_delay : stop.departure_delay) : null;
+	const delay = usableDelay
+		? stop.departure == null
+			? stop.arrival_delay
+			: stop.departure_delay
+		: null;
 	return {
 		stop: stop.stop_id,
 		eta_utc: new Date(seconds * 1000).toISOString(),
