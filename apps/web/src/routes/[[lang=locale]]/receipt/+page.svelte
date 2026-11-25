@@ -17,6 +17,7 @@
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
+	import { earlyLateDefinitionEn } from '#lib/features/record/methodCatalogText.ts';
 	import {
 		dailyPeriods,
 		dailyTitles,
@@ -145,12 +146,57 @@
 				lang,
 			);
 		}
-		const rows = 'cells' in answer ? answer.cells : answer.rows;
-		const events =
-			'cells' in answer
-				? answer.cells.reduce((total, cell) => total + (cell.evidence.counts.classified ?? 0), 0)
-				: answer.rows.reduce((total, row) => total + row.sample, 0);
-		return rows.length && events ? recordCounts(events, null, days, lang) : null;
+		if (!('cells' in answer)) return null;
+		const events = answer.cells.reduce(
+			(total, cell) => total + (cell.evidence.counts.classified ?? 0),
+			0,
+		);
+		return events ? recordCounts(events, null, days, lang) : null;
+	}
+	function rankingEvidence(lines: EngineResult<RankingAnswer>, stops: EngineResult<RankingAnswer>) {
+		const inputs = [
+			[lines, t('Lines', 'Lignes')],
+			[stops, t('Stops', 'Arrêts')],
+		] as const;
+		const separator = t(': ', ' : ');
+		const readings = inputs.flatMap(([result, label]) => {
+			if (result.kind !== 'answer') return [];
+			const { answer, lastGood } = result;
+			return [
+				{
+					label,
+					events: answer.rows.reduce((total, row) => total + row.sample, 0),
+					dates: answer.evidence.days_included,
+					version: methodEvidence(answer.evidence, lang, true),
+					lastGood,
+				},
+			];
+		});
+		const counted = readings.filter(({ events }) => events > 0);
+		const commonDates = counted[0]?.dates ?? [];
+		const sharedDays =
+			commonDates.length && counted.every(({ dates }) => dates.join() === commonDates.join())
+				? countedUnit(commonDates.length, 'day', lang)
+				: '';
+		const samples = counted
+			.map(({ label, events, dates }) => {
+				const days =
+					!sharedDays && dates.length ? ', ' + countedUnit(dates.length, 'day', lang) : '';
+				return label + separator + countedUnit(events, 'event', lang) + days;
+			})
+			.join(' · ');
+		const versions = new Set(readings.map(({ version }) => version));
+		return {
+			sample: samples + (sharedDays ? ', ' + sharedDays : ''),
+			versions:
+				versions.size <= 1
+					? readings[0]?.version
+					: readings.map(({ label, version }) => label + separator + version).join(' · '),
+			stale: readings
+				.filter(({ lastGood }) => lastGood)
+				.map(({ label }) => label + separator + lastGoodNote[lang])
+				.join(' · '),
+		};
 	}
 	function citationText(
 		section: DailySection,
@@ -260,6 +306,17 @@
 		</p>
 	{/if}
 {/snippet}
+{#snippet messagesNotTracked()}
+	<p class="flex min-w-0 items-baseline gap-2">
+		<StateMark state="not_tracked" locale={lang} hiddenLabel />
+		<span
+			>{t(
+				'Agency messages are not tracked in this city.',
+				'Les avis de l’agence ne sont pas suivis dans cette ville.',
+			)}</span
+		>
+	</p>
+{/snippet}
 {#snippet lead(
 	current: EngineResult<EngineAnswer>,
 	delivery: EngineResult<EngineAnswer> | undefined,
@@ -363,7 +420,7 @@
 					{/await}
 					<p class="print:hidden">
 						{t(
-							'One summary that can be cited, for any day or any dates. It also prints on one sheet.',
+							'One summary that can be cited, for any day or any dates. A report for one day also prints on one sheet.',
 							'Un résumé à citer pour une journée ou une période de votre choix. Le rapport d’une journée s’imprime aussi sur une seule feuille.',
 						)}
 					</p>
@@ -432,6 +489,12 @@
 											locale={lang}
 											input={{ kind: 'bands', answer: punctuality }}
 										/>
+										<p class="mt-3 text-muted-foreground">
+											{t(
+												earlyLateDefinitionEn,
+												'En avance : plus de 1 minute avant l’horaire. En retard : plus de 5 minutes après l’horaire.',
+											)}
+										</p>
 									{:else}<StateMark state="unknown" locale={lang} />{/if}
 								{/if}
 							{/await}
@@ -484,12 +547,7 @@
 				<div id="messages">
 					<RecordCard compactPrint title={t(...dailyTitles.messages)} {stamp}>
 						{#if !data.tracked}
-							<p>
-								{t(
-									'Agency messages are not tracked in this city.',
-									'Les avis de l’agence ne sont pas suivis dans cette ville.',
-								)}
-							</p>
+							{@render messagesNotTracked()}
 						{:else}
 							{#await messagesAnswer}
 								{#key messagesAnswer}<RecordPending locale={lang} answer={messagesAnswer} />{/key}
@@ -498,12 +556,7 @@
 								{@const count = messages?.evidence.counts.alerts}
 								{#if !messages}{@render failure(result)}
 								{:else if messages.state === 'not_tracked'}
-									<p>
-										{t(
-											'Agency messages are not tracked in this city.',
-											'Les avis de l’agence ne sont pas suivis dans cette ville.',
-										)}
-									</p>
+									{@render messagesNotTracked()}
 								{:else if messages.state !== 'measured'}{@render missingMeasure(messages)}
 								{:else if count === 0}
 									<p>
@@ -618,10 +671,18 @@
 							</div>
 						</DashboardGrid>
 						{#snippet footer()}
-							{#await rankings then [lines, stops]}{@render footerEvidence(
-									lines,
-									'lines',
-								)}{@render footerEvidence(stops, 'stops')}{/await}
+							{#await rankings then [lines, stops]}
+								{@const evidence = rankingEvidence(lines, stops)}
+								{#if evidence.versions}
+									<p
+										class="flex w-full flex-wrap justify-between gap-x-3 border-t border-border pt-2 font-mono text-sm text-muted-foreground"
+									>
+										{#if evidence.sample}<span>{evidence.sample}</span>{/if}
+										<span>{evidence.versions}</span>
+										{#if evidence.stale}<span>{evidence.stale}</span>{/if}
+									</p>
+								{/if}
+							{/await}
 						{/snippet}
 					</RecordCard>
 				</div>
@@ -746,6 +807,7 @@
 			overflow: visible;
 		}
 		.daily-report {
+			print-color-adjust: exact;
 			zoom: 0.52;
 			gap: 0.5rem;
 			padding: 0;

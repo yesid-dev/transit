@@ -35,6 +35,18 @@ test.describe('Daily report print', () => {
 			await expect(main.locator('#messages a[href*="/alerts"]')).toContainText(/1[\s,]690/u);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
 			await expect(main.locator('#punctuality')).toContainText(fr ? /97,2\s%/u : '97.2%');
+			const rankingsFooter = main.locator('#lines footer');
+			await expect(rankingsFooter).toHaveCount(1);
+			await expect(rankingsFooter).toContainText(
+				fr
+					? /Lignes : 1\s089 passages aux arrêts · Arrêts : 1\s089 passages aux arrêts, 1 jour/u
+					: 'Lines: 1,089 stop events · Stops: 1,089 stop events, 1 day',
+			);
+			await expect(
+				rankingsFooter.getByText(fr ? 'méthode v3, nettoyage v12' : 'method v3, cleaning v12', {
+					exact: true,
+				}),
+			).toHaveCount(1);
 			await expect(
 				main
 					.getByRole('article', { name: 'About these figures' })
@@ -42,6 +54,7 @@ test.describe('Daily report print', () => {
 			).toBeVisible();
 			await page.evaluate(() => document.fonts.ready);
 			await page.emulateMedia({ media: 'print' });
+			await expect(main.locator('.daily-report')).toHaveCSS('print-color-adjust', 'exact');
 			await expect(page.getByRole('banner')).toBeHidden();
 			await expect(
 				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
@@ -106,6 +119,12 @@ if (process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
 				);
 			} else {
 				await expect(content.locator('#stops')).toContainText('Express Saint-Joseph / Bélanger');
+			}
+			if (name === 'oc-en-390-light') {
+				await expect(content.locator('#messages [data-record-state="not_tracked"]')).toBeVisible();
+				await expect(content.locator('#messages')).toContainText(
+					'Agency messages are not tracked in this city.',
+				);
 			}
 			if (name === 'range-1440') {
 				await expect(content.locator('#messages li').first().locator('p')).toHaveText(

@@ -6,6 +6,9 @@ import methodNames from './methodNames.json';
 // These display names belong in the engine registry when it supplies localized titles.
 const names: Readonly<Partial<Record<string, readonly string[]>>> = methodNames;
 
+export const earlyLateDefinitionEn =
+	'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.';
+
 const featured = [
 	{
 		id: 'on_time',
@@ -16,7 +19,7 @@ const featured = [
 		id: 'early-late',
 		name: ['Early and late', 'En avance et en retard'],
 		summary: [
-			'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.',
+			earlyLateDefinitionEn,
 			'Un passage est en avance s’il a lieu plus de 1 minute avant l’heure prévue. Il est en retard s’il a lieu plus de 5 minutes après.',
 		],
 		has: (id: string) => id === 'early' || id === 'late',

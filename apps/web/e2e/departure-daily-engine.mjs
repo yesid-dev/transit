@@ -295,7 +295,10 @@ export function departureDailyEngine(url, dailyMessageHold, richReport = false) 
 									' Consultez l’avis de service pour connaître les arrêts accessibles et prévoir votre déplacement pendant les travaux de réaménagement.',
 							},
 							periods: [
-								{ start: from + 'T12:00:00Z', end: to + 'T20:00:00Z' },
+								{
+									start: from + (index === 0 ? 'T13:00:00Z' : 'T12:00:00Z'),
+									end: to + 'T20:00:00Z',
+								},
 								{ start: to + 'T18:00:00Z', end: to + 'T23:00:00Z' },
 							],
 						})),

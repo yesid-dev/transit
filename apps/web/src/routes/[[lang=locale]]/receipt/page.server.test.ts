@@ -81,6 +81,51 @@ it('streams the alert total over eight dates without requesting message details'
 	);
 });
 
+it('streams the five newest agency messages by first start, natural line order, and displayed text', async () => {
+	const message = (id: string, line: string, text: string, ...days: number[]) => ({
+		id,
+		routes: [line],
+		header: { en: 'Your line', fr: 'Votre ligne' },
+		description: { en: null, fr: text },
+		periods: days.map((day) => ({
+			start: `2026-11-${day}T12:00:00Z`,
+			end: `2026-11-${day}T19:00:00Z`,
+		})),
+	});
+	const messages = [
+		message('1', '2', 'Ancien avis.', 18, 12),
+		message('2', '10', 'Travaux.', 17),
+		message('3', '2', 'Travaux.', 17),
+		message('4', '2', 'Détour.', 17),
+		message('5', '99', 'Détour.', 16),
+		message('6', '8', 'Arrêt déplacé.', 18),
+		message('7', '1', 'Date inconnue.'),
+	];
+	await getRecordAnswer.withImplementation(
+		async ({ parameters }) =>
+			parameters.alert_details
+				? { kind: 'answer', answer: { value: {}, evidence: { alert_messages: messages } } }
+				: { kind: 'unconfigured' },
+		async () => {
+			const result = await load(
+				event('https://transit1.yesid.dev/fr/receipt?recordFrom=2026-11-12&recordTo=2026-11-18'),
+			);
+			const streamed = await result?.report?.sections.find(
+				({ section }: { section: string }) => section === 'messages',
+			)?.answer;
+			if (streamed?.kind !== 'answer' || !('value' in streamed.answer))
+				throw new Error('Expected an agency message answer');
+			expect(streamed.answer.evidence.alert_messages?.map(({ id }: { id: string }) => id)).toEqual([
+				'6',
+				'4',
+				'3',
+				'2',
+				'5',
+			]);
+		},
+	);
+});
+
 it('pins the default to the last complete day', async () => {
 	await expect(
 		load(event('https://transit1.yesid.dev/fr/receipt', '2026-11-23')),

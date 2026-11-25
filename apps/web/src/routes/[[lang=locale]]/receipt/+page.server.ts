@@ -49,7 +49,7 @@ export const load: PageServerLoad = async (event) => {
 			fixtureScope: event.request.headers.get('x-transit-fixture-scope'),
 		};
 	const { sections, messagesLimited } = scope
-		? loadDailyRecord(scope, tracked)
+		? loadDailyRecord(scope, tracked, lang)
 		: { sections: [], messagesLimited: false };
 	const ranking = sections.find(({ section }) => section === 'stops')?.answer;
 	const directory = ranking?.then(async (result) => {
