@@ -66,6 +66,13 @@
 	const plates = $derived(rows.some(({ plate }) => plate !== undefined));
 	const number = $derived(intl.number(locale));
 	const sortBy = $derived(locale === 'fr' ? 'Trier par' : 'Sort by');
+	const sortedHeader = $derived(allColumns.find(({ key }) => key === sort?.key)?.header);
+
+	function sortHeaderLabel(header: string) {
+		if (header !== sortedHeader) return `${sortBy} ${header}`;
+		return locale === 'fr' ? `Inverser le tri par ${header}` : `Reverse sort by ${header}`;
+	}
+
 	const pageLabels = $derived({
 		showing: (shown: number, total: number) =>
 			locale === 'fr'
@@ -82,18 +89,20 @@
 	<RecordTableName {row} {plates} />
 {/snippet}
 {#if sort?.choices}
-	<div class="mb-2 flex flex-wrap items-center gap-2">
-		<span class="basis-full sm:basis-auto">{sortBy}</span>
-		<SegmentedChoice
-			label={sortBy}
-			options={sort.choices.options.map((choice) =>
-				choice.key === sort.key
-					? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
-					: choice,
-			)}
-			value={sort.key}
-			onSelect={sort.choices.onSelect}
-		/>
+	<div class="sort-choice-frame">
+		<div class="sort-choices mb-2 flex flex-wrap items-center gap-2">
+			<span class="basis-full sm:basis-auto">{sortBy}</span>
+			<SegmentedChoice
+				label={sortBy}
+				options={sort.choices.options.map((choice) =>
+					choice.key === sort.key
+						? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
+						: choice,
+				)}
+				value={sort.key}
+				onSelect={sort.choices.onSelect}
+			/>
+		</div>
 	</div>
 {/if}
 
@@ -104,8 +113,20 @@
 	key={(row) => row.id}
 	{sort}
 	onSort={sort?.onSort}
-	sortLabels={sort ? { by: (header) => `${sortBy} ${header}` } : undefined}
+	sortLabels={sort ? { by: sortHeaderLabel } : undefined}
 	pageSize={sort || rows.length > 20 ? 20 : undefined}
 	{pageLabels}
 	responsive={{ mode: 'rows', primary: 'name', value: value ?? '' }}
 />
+
+<style>
+	.sort-choice-frame {
+		container-type: inline-size;
+	}
+	/* Column headers retain sorting when the optional choices run out of room. */
+	@container (inline-size < 8rem) {
+		.sort-choices {
+			display: none;
+		}
+	}
+</style>

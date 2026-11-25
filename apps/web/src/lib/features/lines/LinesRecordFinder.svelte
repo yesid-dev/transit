@@ -105,7 +105,7 @@
 				{ key: 'name', label: t('Line number', 'Numéro de ligne') },
 				{ key: 'onTime', label: t('On-time share', 'Part à l’heure') },
 				{ key: 'late', label: t('Late share', 'Part en retard') },
-				{ key: 'trips', label: t('Trips that ran', 'Trajets assurés') },
+				{ key: 'trips', label: tripsHeader },
 			],
 		},
 	});
@@ -274,7 +274,7 @@
 			header: lateHeader,
 			sortable: true,
 			numeric: true,
-			width: '12ch',
+			width: locale === 'fr' ? '16ch' : '12ch',
 			cell: lateCell,
 		},
 		{
@@ -282,10 +282,16 @@
 			header: tripsHeader,
 			sortable: true,
 			numeric: true,
-			width: '19ch',
+			width: locale === 'fr' ? '27ch' : '28ch',
 			cell: tripsCell,
 		},
-		{ key: 'events', header: eventsHeader, numeric: true, width: '13ch', cell: eventsCell },
+		{
+			key: 'events',
+			header: eventsHeader,
+			numeric: true,
+			width: locale === 'fr' ? 'min(24ch, 100cqi)' : 'min(17ch, 100cqi)',
+			cell: eventsCell,
+		},
 	]);
 	const stateColumns = $derived<DataTableColumn<Row>[]>([
 		{ key: 'status', header: statusHeader, cell: stateCell },
@@ -302,15 +308,13 @@
 			{ events: 0, trips: null as number | null },
 		),
 	);
+	const days = $derived(
+		timingEvidence?.days_included.length
+			? countedUnit(timingEvidence.days_included.length, 'day', locale)
+			: '',
+	);
 	const counts = $derived(
-		measured.length
-			? [
-					countedUnit(totals.events, 'event', locale),
-					totals.trips === null ? '' : countedUnit(totals.trips, 'trip', locale),
-				]
-					.filter(Boolean)
-					.join(', ') + '.'
-			: null,
+		measured.length ? recordCounts(totals.events, totals.trips, days, locale) : null,
 	);
 	const observed = $derived(
 		timingBasis(
@@ -406,12 +410,19 @@
 
 <div class="grid min-w-0 gap-6">
 	<ScreenTitle {title} {subtitle} />
-	<div class="grid min-w-0 gap-6" data-slot="screen-content">
+	<div class="grid min-w-0 gap-5 sm:gap-6" data-slot="screen-content">
 		<div class="border-t border-border pt-4" data-slot="screen-answer">
 			{#if !punctuality}
 				{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
 			{:else if spread !== null}
-				<RecordAnswer {locale} time={stamp} value={spread} sentence={answer} {actions} />
+				<RecordAnswer
+					{locale}
+					time={stamp}
+					value={spread}
+					sentence={answer}
+					evidence={timingEvidence ? { sample: counts ?? '', record: timingEvidence } : undefined}
+					{actions}
+				/>
 			{:else if punctuality.kind !== 'busy'}
 				<RecordAnswer
 					{locale}
@@ -435,12 +446,7 @@
 						<RecordEvidenceFooter
 							{locale}
 							evidence={timingEvidence}
-							sample={recordCounts(
-								totals.events,
-								null,
-								countedUnit(timingEvidence.days_included.length, 'day', locale),
-								locale,
-							)}
+							sample={recordCounts(totals.events, null, days, locale)}
 						/>
 					{/if}
 				{/snippet}
@@ -532,6 +538,7 @@
 
 		<AboutFigures
 			title={about.about}
+			compact
 			fields={[
 				{ key: 'period', label: about.period, text: dateRange(record.period, locale) },
 				{
@@ -539,7 +546,7 @@
 					label: about.counted,
 					text: counts
 						? [
-								counts,
+								counts + '.',
 								punctualityWeighting[locale],
 								record.period.from !== record.period.to ? pooledDays[locale] : '',
 							]

@@ -82,13 +82,22 @@ for (const locale of ['en', 'fr'] as const) {
 	}) => {
 		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
 		await page.setViewportSize({ width: 390, height: 900 });
-		const dates = query.replace('2026-11-08', '2026-11-04');
+		const dates = query.replace('2026-11-08', '2026-11-04').replace('2026-11-14', '2026-11-10');
 		await page.goto(`${prefix}/lines?${dates}&sort=onTime&direction=desc`);
 		const table = page.getByRole('table', {
 			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
 		});
 		await expect(table.getByRole('link')).toHaveCount(20);
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/324\?/);
+		const answer = page.locator('[data-slot="screen-answer"]');
+		await expect(answer).toContainText(
+			fr
+				? /Ce qui est compté\s*:\s*250\s000 passages aux arrêts, 30\s225 trajets, 7 jours/
+				: 'Counted: 250,000 stop events, 30,225 trips, 7 days',
+		);
+		await expect(answer).toContainText(
+			fr ? 'méthode v3, nettoyage v12' : 'method v3, cleaning v12',
+		);
 		const more = page.getByRole('button', {
 			name: fr ? 'Afficher 5 de plus' : 'Show 5 more',
 			exact: true,
@@ -116,13 +125,59 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.keyboard.press('Tab');
 		await page.keyboard.press('Tab');
 		const timingHeader = table.getByRole('button', {
-			name: fr ? 'Trier par À l’heure' : 'Sort by On time',
+			name: fr ? 'Inverser le tri par À l’heure' : 'Reverse sort by On time',
 		});
 		await expect(timingHeader).toBeFocused();
 		await page.keyboard.press('Enter');
 		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
 		await expect(timingHeader.locator('..')).toHaveAttribute('aria-sort', 'ascending');
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
+		const choices = page.getByRole('radiogroup', { name: fr ? 'Trier par' : 'Sort by' });
+		await expect(
+			choices.getByRole('radio', { name: fr ? 'Trajets effectués' : 'Trips that ran' }),
+		).toBeVisible();
+		await expect(
+			choices.getByRole('radio', { name: fr ? 'Numéro de ligne' : 'Line number' }),
+		).toBeVisible();
+		await expect(
+			table.getByRole('button', { name: fr ? 'Trier par Ligne' : 'Sort by Line', exact: true }),
+		).toBeVisible();
+
+		for (const width of [1024, 1440]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.evaluate(() => document.fonts.ready);
+			const wrapped = await table.locator('[data-numeric]').evaluateAll((cells) =>
+				cells.flatMap((cell) => {
+					const tops = new Set<number>();
+					const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+					for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+						if (!node.textContent?.trim()) continue;
+						const range = document.createRange();
+						range.selectNodeContents(node);
+						for (const rect of range.getClientRects()) {
+							if (rect.width) tops.add(Math.round(rect.top));
+						}
+					}
+					return tops.size > 1 ? [cell.textContent?.trim()] : [];
+				}),
+			);
+			expect(wrapped, `${width}px numeric headings and cells`).toEqual([]);
+			const overhangingNames = await table
+				.locator('tbody [data-column="name"] a')
+				.evaluateAll((links) =>
+					links.flatMap((link) => {
+						const range = document.createRange();
+						range.selectNodeContents(link);
+						const rightEdge = link.closest('th')!.getBoundingClientRect().right;
+						return [...range.getClientRects()].some(
+							(rect) => rect.width && rect.right > rightEdge + 1,
+						)
+							? [link.textContent?.trim()]
+							: [];
+					}),
+				);
+			expect(overhangingNames, `${width}px row names stay inside their column`).toEqual([]);
+		}
 
 		const excluded = page.getByRole('table', {
 			name: fr

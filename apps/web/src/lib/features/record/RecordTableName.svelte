@@ -49,6 +49,17 @@
 		min-inline-size: 0;
 		overflow-wrap: normal;
 	}
+	@container (28rem < inline-size <= 42rem) {
+		.name-cell.with-plate:not(.schedule-only) {
+			grid-template-columns: minmax(min-content, 1fr);
+		}
+		.name-cell.with-plate:not(.schedule-only) .plate {
+			grid-row: 1;
+		}
+		.name-cell.with-plate:not(.schedule-only) :is(.name-label, .detail) {
+			font-size: var(--text-caption);
+		}
+	}
 	@media (max-width: 40rem) {
 		.plate {
 			grid-row: 1;

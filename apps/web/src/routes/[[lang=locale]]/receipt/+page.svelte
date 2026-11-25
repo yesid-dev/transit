@@ -47,7 +47,7 @@
 		longDate,
 		methodEvidence,
 		recordStamp,
-		reportPercent,
+		recordPercent,
 		sampleWithMinimum,
 	} from '#lib/site/presenter.ts';
 	import { carryFrameState, frameHref, RECORD_START } from '#lib/site/frameState.ts';
@@ -107,7 +107,7 @@
 	const periodsAnswer = $derived(answers.get('periods'));
 	const messagesAnswer = $derived(answers.get('messages'));
 	const bandTitle = $derived(t('Early, on time and late', 'En avance, à l’heure et en retard'));
-	const formatShare = (value: number) => reportPercent(value, lang);
+	const formatShare = (value: number) => recordPercent(value, lang);
 	async function ranked(
 		answer: Promise<EngineResult<EngineAnswer>> | undefined,
 	): Promise<EngineResult<RankingAnswer>> {
@@ -335,7 +335,7 @@
 	{@const deliveryText =
 		trips == null
 			? t('Share of trips that ran', 'Part des trajets effectués') + ' · ' + readingText(delivery)
-			: reportPercent(trips, lang) +
+			: recordPercent(trips, lang) +
 				' ' +
 				t(
 					'of scheduled trips with a known status ran',
@@ -347,7 +347,7 @@
 			: [punctualityText + '.', delivery ? deliveryText + '.' : ''].filter(Boolean).join(' ')}
 	<RecordAnswer
 		locale={lang}
-		value={value == null ? null : reportPercent(value, lang)}
+		value={value == null ? null : recordPercent(value, lang)}
 		{sentence}
 		state={value == null && punctuality ? readingState(punctuality) : undefined}
 		time={stamp}
@@ -461,7 +461,7 @@
 																	locale={lang}
 																/>{/if}
 															{#if share != null}<span class="block text-muted-foreground"
-																	>{reportPercent(share, lang)}</span
+																	>{recordPercent(share, lang)}</span
 																>{/if}
 														</dd>
 													</div>
@@ -743,7 +743,7 @@
 												observed == null
 													? null
 													: copy.observedShare(
-															reportPercent(observed, lang),
+															recordPercent(observed, lang),
 															counts?.scheduled == null ? undefined : tally(counts.scheduled, lang),
 														),
 												current?.evidence.low_coverage ? lowCoverageText(lang) + '.' : null,
