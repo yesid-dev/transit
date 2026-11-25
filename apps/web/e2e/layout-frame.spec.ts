@@ -174,7 +174,7 @@ test('desktop controls keep their column and control changes retain focus and sc
 	expect(new Set(cards).size).toBe(1);
 	await expect(rail.getByText('Record starts 13 October 2026.')).toBeVisible();
 	const preset = rail.getByRole('radio', { name: '28 days', exact: true });
-	const performance = main.getByRole('region', { name: 'Line performance', exact: true });
+	const performance = main.getByRole('article', { name: 'Every measured line', exact: true });
 	const firstLine = performance.getByRole('row', { name: /Sherbrooke/ });
 	const position = () =>
 		performance.evaluate((section) => ({
@@ -183,7 +183,7 @@ test('desktop controls keep their column and control changes retain focus and sc
 			tableHeaderTop: section.querySelector('thead')!.getBoundingClientRect().top,
 		}));
 	const trips = firstLine.getByRole('cell', { name: /^90 of 105/ });
-	const punctuality = firstLine.getByRole('cell', { name: /^80%/ });
+	const punctuality = firstLine.getByRole('cell', { name: /^80\.0%/ });
 	await expect(trips).toBeVisible();
 	await expect(punctuality).toBeVisible();
 	await page.evaluate(() => document.fonts.ready);
@@ -228,6 +228,16 @@ test('desktop controls keep their column and control changes retain focus and sc
 		await expect(
 			firstLine.getByRole('cell', { name: 'Calculating…', exact: true }).first(),
 		).toBeVisible();
+		const pending = performance.locator('p').filter({ hasText: /^Calculating…$/ });
+		await expect(pending).toBeVisible();
+		expect(
+			await pending.evaluate((summary) => {
+				const table = summary.closest('article')?.querySelector('table');
+				return Boolean(
+					table && table.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING,
+				);
+			}),
+		).toBe(true);
 		expect(await position(), 'while line readings are pending').toEqual(before);
 	} finally {
 		await page.evaluate(() => window.dispatchEvent(new Event('release-lines-answers')));

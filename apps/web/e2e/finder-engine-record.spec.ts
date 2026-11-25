@@ -33,10 +33,10 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 		await expect(timing).toContainText(fr ? '90 sur 105' : '90 of 105');
 
-		const scheduleOnly = page.getByRole('list', {
+		const scheduleOnly = page.getByRole('table', {
 			name: fr ? 'Lignes sans données en direct' : 'Lines without live data',
 		});
-		const railLine = scheduleOnly.getByRole('listitem').filter({
+		const railLine = scheduleOnly.getByRole('row').filter({
 			has: page.getByRole('link', { name: /Confederation/ }),
 		});
 		await expect(railLine).toContainText(fr ? 'Horaire seulement.' : 'Schedule only.');

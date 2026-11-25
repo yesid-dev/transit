@@ -19,6 +19,7 @@ const unobstructedCapture = '[data-slot="app-frame-chrome"] { visibility: hidden
 const cohesionScreens = new Set<Screen>([
 	'overview',
 	'overview-live',
+	'lines',
 	'line-record',
 	'line-live',
 	'stop-record',

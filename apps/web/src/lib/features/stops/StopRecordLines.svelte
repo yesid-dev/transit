@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
 	import * as Collapsible from '@yesid/ui/collapsible';
-	import { RoutePlate } from '@yesid/ui/brand';
-	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import type { DataTableColumn } from '@yesid/ui/table';
+	import RecordDataTable, {
+		type RecordTableRow,
+	} from '#lib/features/record/RecordDataTable.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { chartState, minimumSample } from '#lib/features/record/charts/recordCharts.ts';
 	import {
@@ -36,8 +38,7 @@
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
-	type Row = {
-		id: string;
+	type Row = RecordTableRow & {
 		name: ReturnType<typeof display.lineName>;
 		state: ReturnType<typeof chartState>;
 		share: number | null;
@@ -47,22 +48,27 @@
 	const rows = $derived(
 		series.cells.flatMap((cell): Row[] => {
 			const id = cell.key.line;
-			return typeof id !== 'string' || cell.state === 'no_frequent_periods'
-				? []
-				: [
-						{
-							id,
-							name: display.lineName(id),
-							state: chartState(cell.state),
-							share: measuredShare(cell, 'on_time'),
-							sample: cell.evidence.counts.classified ?? null,
-							cell,
-						},
-					];
+			if (typeof id !== 'string' || cell.state === 'no_frequent_periods') return [];
+			const name = display.lineName(id);
+			return [
+				{
+					id,
+					name,
+					label: name.name ?? '',
+					plate: { code: name.number ?? id },
+					href: carryFrameState(
+						localizeHref('/lines/' + encodeURIComponent(id), locale, city),
+						pinned,
+					),
+					state: chartState(cell.state),
+					share: measuredShare(cell, 'on_time'),
+					sample: cell.evidence.counts.classified ?? null,
+					cell,
+				},
+			];
 		}),
 	);
 	const columns = $derived<DataTableColumn<Row>[]>([
-		{ key: 'line', header: t('Line', 'Ligne'), rowHeader: true, cell: line },
 		...(waiting
 			? [
 					{
@@ -79,7 +85,7 @@
 					},
 					{
 						key: 'bunching',
-						header: t(waitingMeasures[2][1], waitingMeasures[2][2]),
+						header: t(waitingMeasures[2][1], 'Véhicules groupés'),
 						numeric: true,
 						cell: bunching,
 					},
@@ -101,18 +107,6 @@
 	]);
 </script>
 
-{#snippet line(row: Row)}
-	<a
-		class="line-link min-h-11 text-primary underline"
-		href={carryFrameState(
-			localizeHref('/lines/' + encodeURIComponent(row.id), locale, city),
-			pinned,
-		)}
-	>
-		<RoutePlate code={row.name.number ?? row.id} size="md" />
-		<span>{row.name.name ?? ''}</span>
-	</a>
-{/snippet}
 {#snippet value(row: Row)}
 	{#if row.share === null}<StateMark state={row.state} {locale} />
 	{:else}{percent(row.share, locale)}{/if}
@@ -141,23 +135,14 @@
 {#snippet bunching(row: Row)}{@render waitingValue(row, 'bunching')}{/snippet}
 
 {#if rows.length}
-	<DataTable
-		class="min-w-0"
-		caption={title}
+	<RecordDataTable
+		{locale}
+		{title}
+		rowHeader={t('Line', 'Ligne')}
+		value={waiting ? undefined : 'value'}
 		{columns}
 		{rows}
-		key={(row) => row.id}
-		responsive={{ mode: 'scroll', minWidth: waiting ? '34rem' : '29rem' }}
 		pageSize={rows.length > 12 ? 12 : undefined}
-		pageLabels={{
-			showing: (shown, total) =>
-				t(
-					`Showing ${tally(shown, locale)} of ${tally(total, locale)}`,
-					`${tally(shown, locale)} sur ${tally(total, locale)}`,
-				),
-			more: (count) =>
-				t(`Show ${tally(count, locale)} more`, `Afficher ${tally(count, locale)} de plus`),
-		}}
 	/>
 {:else if series.cells[0]}<p>{series.cells[0].state_text[locale]}</p>{/if}
 
@@ -185,13 +170,3 @@
 		</Collapsible.Content>
 	</Collapsible.Root>
 {/if}
-
-<style>
-	.line-link {
-		display: inline-grid;
-		grid-template-columns: 3.5rem minmax(min-content, 1fr);
-		gap: var(--space-card-gap);
-		align-items: center;
-		overflow-wrap: normal;
-	}
-</style>

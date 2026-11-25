@@ -87,6 +87,15 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#accessibility')).toContainText(fr ? 'Non publié' : 'Accessible');
 
 			const waiting = main.locator('#waiting');
+			if (width === 390) {
+				for (const card of [main.locator('#byLine'), waiting]) {
+					const frame = card.locator('[data-slot="data-table-frame"]');
+					await expect(frame).toHaveAttribute('data-responsive', 'rows');
+					expect(
+						await frame.evaluate((element) => element.scrollWidth - element.clientWidth),
+					).toBeLessThanOrEqual(1);
+				}
+			}
 			await expect(bands.locator('footer')).toContainText(
 				fr
 					? /8\s285 passages aux arrêts, 230 trajets, 7 jours/

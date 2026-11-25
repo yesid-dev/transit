@@ -105,19 +105,31 @@
 	{/if}
 {/snippet}
 {#if sort?.choices}
+	{@const options = sort.choices.options.map((choice) =>
+		choice.key === sort.key
+			? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
+			: choice,
+	)}
 	<div class="sort-choice-frame">
 		<div class="sort-choices mb-2 flex flex-wrap items-center gap-2">
 			<span class="basis-full sm:basis-auto">{sortBy}</span>
-			<SegmentedChoice
-				label={sortBy}
-				options={sort.choices.options.map((choice) =>
-					choice.key === sort.key
-						? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
-						: choice,
-				)}
-				value={sort.key}
-				onSelect={sort.choices.onSelect}
-			/>
+			<div class="sort-choice-default">
+				<SegmentedChoice
+					label={sortBy}
+					{options}
+					value={sort.key}
+					onSelect={sort.choices.onSelect}
+				/>
+			</div>
+			<div class="sort-choice-grid w-full">
+				<SegmentedChoice
+					label={sortBy}
+					{options}
+					value={sort.key}
+					onSelect={sort.choices.onSelect}
+					variant="joined-grid"
+				/>
+			</div>
 		</div>
 	</div>
 {/if}
@@ -140,6 +152,17 @@
 <style>
 	.sort-choice-frame {
 		container-type: inline-size;
+	}
+	.sort-choice-grid {
+		display: none;
+	}
+	@container (14rem <= inline-size < 24rem) {
+		.sort-choice-default {
+			display: none;
+		}
+		.sort-choice-grid {
+			display: block;
+		}
 	}
 	/* Column headers retain sorting when the optional choices run out of room. */
 	@container (inline-size < 8rem) {
