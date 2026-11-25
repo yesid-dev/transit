@@ -403,8 +403,11 @@
 					)}
 				</p>
 			{:else if !data.unpublished && data.sections.length}
-				<div class="report-content min-w-0" data-slot="screen-content">
-					<RecordGroup class="print:grid-cols-2 print:gap-3">
+				<div
+					class="report-content min-w-0 print:grid print:grid-cols-2 print:gap-3"
+					data-slot="screen-content"
+				>
+					<RecordGroup class="print:contents">
 						<section
 							id="punctuality"
 							aria-label={t(...dailyTitles.punctuality)}
@@ -711,7 +714,7 @@
 							</RecordCard>
 						</div>
 					</RecordGroup>
-					<RecordGroup class="print:pt-3">
+					<RecordGroup class="print:contents">
 						{#await answers.get('punctuality') then result}
 							{@const current = measure(result)}
 							{@const counts = current?.evidence.counts}
@@ -845,7 +848,7 @@
 			--primary: CanvasText;
 			--secondary-foreground: CanvasText;
 		}
-		.report-content :is(#punctuality, .report-pair) {
+		.report-content :is(#punctuality, .report-pair, .report-citation) {
 			grid-column: 1 / -1;
 		}
 		.report-pair {

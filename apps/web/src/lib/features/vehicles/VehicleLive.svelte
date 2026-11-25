@@ -315,9 +315,7 @@
 							{#if running.route}
 								{@const line = display.lineName(running.route)}
 								<FactRow label={t('Line', 'Ligne')}
-									><span
-										class="service-line inline-flex min-w-0 max-w-full items-center gap-x-2 align-middle"
-									>
+									><span class="service-line flex min-w-0 items-center justify-end gap-x-2">
 										<RoutePlate code={line.number ?? running.route} />
 										<a
 											class="inline-flex min-h-11 min-w-min items-center text-primary underline [overflow-wrap:normal] [word-break:normal]"

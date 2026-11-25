@@ -258,7 +258,7 @@
 												sentence={days.observed
 													? t(
 															'observed days had a late stop.',
-															'jours observés avec un passage en retard.',
+															'jours observés avec au moins un retard.',
 														)
 													: recordState(absent)[data.lang]}
 												{actions}

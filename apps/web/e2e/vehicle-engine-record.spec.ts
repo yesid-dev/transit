@@ -161,6 +161,24 @@ for (const width of [390, 1440]) {
 			await expect(
 				main.getByRole('button', { name: fr ? 'Voir les prévisions' : 'View predictions' }),
 			).toBeVisible();
+			if (width === 1440) {
+				await page.evaluate(() => document.fonts.ready);
+				const service = main.getByRole('article', {
+					name: fr ? 'Son service en cours' : 'What it is running',
+				});
+				const rows = service
+					.locator('[data-slot="fact-list"]')
+					.first()
+					.locator('[data-slot="fact-row"]');
+				const heights = await rows.evaluateAll((items) =>
+					items.map((item) => Math.round(item.getBoundingClientRect().height)),
+				);
+				expect(heights).toEqual([44, 44, 44, 44]);
+				const line = rows.first();
+				const rowBox = (await line.boundingBox())!;
+				const linkBox = (await line.getByRole('link').boundingBox())!;
+				expect(linkBox.x + linkBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
+			}
 			await expect(
 				main.getByRole('link', {
 					name: fr ? 'Ouvrir la carte sur ce véhicule' : 'Open the full map on this vehicle',

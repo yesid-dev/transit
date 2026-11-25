@@ -19,7 +19,12 @@
 	} = $props();
 </script>
 
-<div {id} class="fact relative py-2" class:has-detail={!!detail} data-slot="fact-row">
+<div
+	{id}
+	class={['fact relative', detail && 'py-2']}
+	class:has-detail={!!detail}
+	data-slot="fact-row"
+>
 	<dt>
 		<div class="fact-stroke">
 			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />

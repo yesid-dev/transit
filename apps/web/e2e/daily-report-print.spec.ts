@@ -57,11 +57,10 @@ test.describe('Daily report print', () => {
 					exact: true,
 				}),
 			).toHaveCount(1);
-			await expect(
-				main
-					.getByRole('article', { name: 'About these figures' })
-					.or(main.getByRole('article', { name: 'À propos de ces chiffres' })),
-			).toBeVisible();
+			const about = main.getByRole('article', {
+				name: fr ? 'À propos de ces chiffres' : 'About these figures',
+			});
+			await expect(about).toBeVisible();
 			await page.evaluate(() => document.fonts.ready);
 			await page.emulateMedia({ media: 'print' });
 			await expect(dates).toBeVisible();
@@ -71,6 +70,10 @@ test.describe('Daily report print', () => {
 			await expect(
 				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
 			).toBeHidden();
+			const rankingsBox = (await main.locator('#lines > [data-slot="card"]').boundingBox())!;
+			const aboutBox = (await about.locator('xpath=..').boundingBox())!;
+			expect(aboutBox.x).toBeGreaterThan(rankingsBox.x + rankingsBox.width);
+			expect(Math.abs(aboutBox.y - rankingsBox.y)).toBeLessThan(1);
 			for (const format of ['Letter', 'A4'] as const) {
 				const pdf = await page.pdf({
 					format,
