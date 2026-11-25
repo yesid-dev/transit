@@ -172,7 +172,11 @@
 					/>
 				{:else}
 					{#await record.punctuality}
-						{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
+						{#key record.punctuality}<RecordPending
+								shape="answer"
+								{locale}
+								answer={record.punctuality}
+							/>{/key}
 					{:then result}
 						{#if result.kind === 'busy'}<RecordPending {locale} busy />
 						{:else if result.kind !== 'answer'}
@@ -229,6 +233,7 @@
 						{locale}
 						{stamp}
 						answer={record.punctuality}
+						waiting="bands"
 					>
 						{#snippet reading(result)}
 							{#if !('cells' in result)}
@@ -280,6 +285,7 @@
 						<RecordCard interactive title={copy.delay} {stamp}>
 							{#await record.delayDistribution}
 								{#key record.delayDistribution}<RecordPending
+										shape="trend"
 										{locale}
 										answer={record.delayDistribution}
 									/>{/key}

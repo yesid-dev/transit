@@ -285,6 +285,7 @@
 			{stamp}
 			expandable={group === 'line' && rows.length > 0}
 			open={false}
+			waiting={group === 'effect' && !result && promise ? 'card' : undefined}
 		>
 			{#if reading}
 				{@render cutRows(rows, group)}
@@ -447,7 +448,7 @@
 			{:else if liveMode && data.capture}
 				<LiveCapture city={data.city} capture={data.capture}>
 					{#snippet pending()}
-						<RecordGroup>
+						<RecordGroup waiting="answer">
 							<div data-slot="screen-state">
 								<p role="status">{t('Loading live alerts…', 'Chargement des avis en direct…')}</p>
 							</div>
@@ -547,7 +548,7 @@
 				<RecordGroup density="compact">
 					<div id="answer" data-slot="screen-answer" class="min-w-0 scroll-mt-24">
 						{#await answer}
-							<div data-slot="screen-state"><RecordPending {locale} {answer} /></div>
+							<div data-slot="screen-state"><RecordPending shape="answer" {locale} {answer} /></div>
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts != null}
 								{@const count = result.answer.value.alerts}

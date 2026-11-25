@@ -237,7 +237,7 @@
 			{#await catalog}
 				<RecordGroup>
 					<div data-slot="screen-state">
-						{#key catalog}<RecordPending {locale} answer={catalog} />{/key}
+						{#key catalog}<RecordPending shape="card" {locale} answer={catalog} />{/key}
 					</div>
 				</RecordGroup>
 			{:then result}

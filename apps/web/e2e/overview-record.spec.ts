@@ -67,13 +67,18 @@ test('Live now keeps placeholders until its first fetch fails', async ({ page })
 		await route.fulfill({ status: 503, body: '{}' });
 	});
 	try {
+		const firstCapture = page.waitForRequest(captureUrl);
 		await page.goto(recordHref);
 		const live = page.getByRole('article', { name: 'Live now' });
-		await expect(live.locator('[data-slot="skeleton"]')).toHaveCount(3);
+		const pending = live.locator('[aria-busy="true"][data-record-pending]');
+		await expect(pending.locator('[data-waiting-shape="bands"]')).toBeVisible();
+		await expect(pending.locator('[data-waiting-shape="facts"]')).toBeVisible();
 		await expect(live).not.toContainText('No live data');
+		await firstCapture;
 		release();
 		await expect(live.getByText('Live numbers unavailable', { exact: true })).toHaveCount(1);
 		await expect(live.getByText('Unavailable', { exact: true })).toHaveCount(2);
+		await expect(pending).toHaveCount(0);
 		await expect(live).not.toContainText('No live data');
 	} finally {
 		release();
@@ -90,7 +95,9 @@ test('the server-rendered Live card leaves the readings pending without JavaScri
 		await page.goto(recordHref);
 		await expect(page.getByText(/^STM: \d+ lines, [\d,]+ stops$/u)).toBeVisible();
 		const live = page.getByRole('article', { name: 'Live now' });
-		await expect(live.locator('[data-slot="skeleton"]')).toHaveCount(3);
+		const pending = live.locator('[aria-busy="true"][data-record-pending]');
+		await expect(pending.locator('[data-waiting-shape="bands"]')).toBeVisible();
+		await expect(pending.locator('[data-waiting-shape="facts"]')).toBeVisible();
 		await expect(live).not.toContainText('No live data');
 	} finally {
 		await context.close();

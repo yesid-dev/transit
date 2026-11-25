@@ -321,7 +321,7 @@
 	{:else if capture}
 		<LiveCapture {city} {capture}>
 			{#snippet pending()}
-				<RecordGroup>
+				<RecordGroup waiting="answer">
 					{@render checking()}
 					{@render schedule()}
 				</RecordGroup>
@@ -329,7 +329,7 @@
 			{#snippet children(snapshot, now, refreshed)}
 				{#if lineVehicleRows(snapshot, line, now) && punctuality && !snapshot?.vehicle_positions?.some(({ route_id, trip_id }) => route_id === line && trip_id)}
 					{#await punctuality}
-						<RecordGroup>
+						<RecordGroup waiting="answer">
 							{@render checking()}
 							{@render schedule()}
 						</RecordGroup>

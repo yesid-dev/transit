@@ -3,6 +3,7 @@
 	import type { StampProps } from '@yesid/ui/brand';
 	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
 	import { Skeleton } from '@yesid/ui/skeleton';
+	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
@@ -120,11 +121,16 @@
 	{:else}<StateMark state={entry.state} {locale} />{/if}
 {/snippet}
 
-<RecordCard interactive title={t.live} {stamp}>
-	<div aria-busy={reporting.kind === 'pending'} class="min-h-16">
-		{#if reporting.kind === 'pending'}
+<RecordCard interactive title={t.live} stamp={reporting.kind === 'pending' ? undefined : stamp}>
+	{#if reporting.kind === 'pending'}
+		<div class="grid min-w-0 gap-3" aria-busy="true" data-record-pending>
 			<Skeleton class="h-12 w-28 max-w-full" />
-		{:else}
+			<Skeleton class="h-5 w-64 max-w-full" />
+			<RecordSkeleton shape="bands" />
+			<RecordSkeleton shape="facts" />
+		</div>
+	{:else}
+		<div class="min-h-16">
 			<RecordAnswer
 				{locale}
 				state={reporting.kind === 'absent' ? reporting.state : undefined}
@@ -137,58 +143,58 @@
 							? t.reportingOne
 							: t.reporting}
 			/>
-		{/if}
-	</div>
-	{#if bands.length}
-		<div class="mt-3">
-			<RecordBandBar
-				label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
-				{bands}
-			/>
 		</div>
-	{/if}
-	<FactList class="mt-3">
-		<FactRow
-			label={t.silent}
-			busy={silent.kind === 'pending'}
-			detail={silent.kind === 'value' ? pulse?.silentReading?.detail : undefined}
-		>
-			{#if silent.kind === 'value' && pulse?.silentReading}
-				<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
-			{:else}
-				{@render readingValue(silent)}
-			{/if}
-		</FactRow>
-		<FactRow
-			label={t.alerts}
-			busy={alerts.kind === 'pending'}
-			detail={stale(alertHealth)
-				? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
-				: undefined}
-		>
-			{@render readingValue(alerts)}
-		</FactRow>
-	</FactList>
-	{#if lines.length}
-		<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
-		{#snippet late(row: RecordTableRow & { late: string })}{row.late}{/snippet}
-		<RecordDataTable
-			{locale}
-			title={t.lateLines}
-			rowHeader={locale === 'fr' ? 'Ligne' : 'Line'}
-			rows={lines.map((row) => {
-				const line = display.lineName(row.id);
-				return {
-					id: row.id,
-					label: line.name ?? line.label,
-					plate: { code: line.number ?? row.id },
-					href: link('/lines/' + encodeURIComponent(row.id), true),
-					late: recordRatio(row.late, tally(row.total, locale), locale),
-				};
-			})}
-			columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}
-			value="late"
-		/>
+		{#if bands.length}
+			<div class="mt-3">
+				<RecordBandBar
+					label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
+					{bands}
+				/>
+			</div>
+		{/if}
+		<FactList class="mt-3">
+			<FactRow
+				label={t.silent}
+				busy={silent.kind === 'pending'}
+				detail={silent.kind === 'value' ? pulse?.silentReading?.detail : undefined}
+			>
+				{#if silent.kind === 'value' && pulse?.silentReading}
+					<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
+				{:else}
+					{@render readingValue(silent)}
+				{/if}
+			</FactRow>
+			<FactRow
+				label={t.alerts}
+				busy={alerts.kind === 'pending'}
+				detail={stale(alertHealth)
+					? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
+					: undefined}
+			>
+				{@render readingValue(alerts)}
+			</FactRow>
+		</FactList>
+		{#if lines.length}
+			<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
+			{#snippet late(row: RecordTableRow & { late: string })}{row.late}{/snippet}
+			<RecordDataTable
+				{locale}
+				title={t.lateLines}
+				rowHeader={locale === 'fr' ? 'Ligne' : 'Line'}
+				rows={lines.map((row) => {
+					const line = display.lineName(row.id);
+					return {
+						id: row.id,
+						label: line.name ?? line.label,
+						plate: { code: line.number ?? row.id },
+						href: link('/lines/' + encodeURIComponent(row.id), true),
+						late: recordRatio(row.late, tally(row.total, locale), locale),
+					};
+				})}
+				columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}
+				value="late"
+			/>
+		{/if}
 	{/if}
 	{#snippet links()}
 		<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/map', true)}

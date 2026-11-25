@@ -5,6 +5,7 @@
 	import { DashboardGrid } from '@yesid/ui/layout';
 	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
+	import RecordSkeleton from '#lib/features/record/RecordSkeleton.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import AboutLiveFigures from '#lib/features/record/AboutLiveFigures.svelte';
@@ -75,6 +76,9 @@
 	const { clock } = getV1Runtime();
 	const cutoff = $derived(liveTimingFor(manifest).staleCutoffS);
 	const health = $derived(live.familyStates.vehicles.health);
+	const waitingForReports = $derived(
+		!live.vehicles && live.familyStates.vehicles.phase !== 'failed',
+	);
 	let stops = $state<SlimStopsIndex | null>(null);
 	onMount(() => {
 		live.start();
@@ -263,14 +267,23 @@
 	<div class="min-w-0" data-slot="screen-content">
 		<RecordGroup>
 			<div data-slot="screen-answer">
-				<RecordAnswer
-					value={liveDelay}
-					state={readingState}
-					sentence={liveSentence}
-					{locale}
-					time={liveTime}
-					comparison={liveReading && liveDelay ? liveMeta : undefined}
-				/>
+				{#if waitingForReports}
+					<div class="grid min-w-0 gap-4" data-record-pending>
+						<RecordSkeleton shape="reading" />
+						<RecordSkeleton shape="trend" />
+						<RecordSkeleton shape="facts" />
+						<p role="status">{liveSentence}</p>
+					</div>
+				{:else}
+					<RecordAnswer
+						value={liveDelay}
+						state={readingState}
+						sentence={liveSentence}
+						{locale}
+						time={liveTime}
+						comparison={liveReading && liveDelay ? liveMeta : undefined}
+					/>
+				{/if}
 				{#if readingState === 'not_reporting' && report}<p>
 						{t('Last report', 'Dernier signalement')} · {@render reportedAt()}
 					</p>{/if}
@@ -408,7 +421,7 @@
 						{/snippet}
 					</RecordCard>
 				</DashboardGrid>
-			{:else}
+			{:else if !waitingForReports}
 				{@render viewRecord()}
 			{/if}
 		</RecordGroup>

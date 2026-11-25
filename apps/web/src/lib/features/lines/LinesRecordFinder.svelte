@@ -29,6 +29,7 @@
 	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
@@ -115,6 +116,7 @@
 	let delivery = $state.raw<FinderResult | null>(null);
 	let timingPending = $state(true);
 	let tripsPending = $state(true);
+	const initialTiming = $derived(timingPending && punctuality === null);
 	let readingCity: string | null = null;
 	const pendingText = $derived(t('Calculating…', 'Calcul en cours…'));
 	$effect(() => {
@@ -461,8 +463,14 @@
 	<RecordGroup><ScreenTitle {title} {subtitle} /></RecordGroup>
 	<div class="min-w-0" data-slot="screen-content">
 		<RecordGroup density="compact">
-			<div class:invisible={timingPending} inert={timingPending} data-slot="screen-answer">
-				{#if spread !== null}
+			<div
+				class:invisible={timingPending && !initialTiming}
+				inert={timingPending && !initialTiming}
+				data-slot="screen-answer"
+			>
+				{#if initialTiming}
+					<RecordSkeleton shape="answer" />
+				{:else if spread !== null}
 					<RecordAnswer
 						{locale}
 						time={stamp}
@@ -483,103 +491,121 @@
 				{/if}
 			</div>
 
-			<div id="line-performance">
-				<RecordCard
-					title={measuredTitle}
-					{stamp}
-					interactive={measured.length > 0}
-					evidence={!timingPending && timingEvidence && measured.length
-						? measuredEvidence
-						: undefined}
-				>
-					{#if timingFailure || tripsFailure}
-						<p>{recordConnection.unreachable[locale]}</p>
-					{/if}
-					{#if measured.length}
-						<RecordDataTable
-							{locale}
-							title={measuredTitle}
-							rowHeader={lineHeader}
-							rows={measured}
-							columns={measuredColumns}
-							value="onTime"
-							sort={sortChoices}
-						/>
-					{:else if timingAnswer}
-						<p>{t('No measured lines.', 'Aucune ligne mesurée.')}</p>
-					{/if}
-					{#if timingPending}
-						{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
-					{:else if tripsPending}
-						{#key record.trips}<RecordPending {locale} answer={record.trips} />{/key}
-					{:else if busy}<RecordPending {locale} busy />{/if}
-				</RecordCard>
+			<div id="line-performance" class:contents={initialTiming}>
+				{#if initialTiming}
+					<RecordCard title={measuredTitle} {stamp}>
+						{#key record.punctuality}<RecordPending
+								shape="listing"
+								{locale}
+								answer={record.punctuality}
+							/>{/key}
+					</RecordCard>
+				{:else}
+					<RecordCard
+						title={measuredTitle}
+						{stamp}
+						interactive={measured.length > 0}
+						evidence={!timingPending && timingEvidence && measured.length
+							? measuredEvidence
+							: undefined}
+					>
+						{#if timingFailure || tripsFailure}
+							<p>{recordConnection.unreachable[locale]}</p>
+						{/if}
+						{#if measured.length}
+							<RecordDataTable
+								{locale}
+								title={measuredTitle}
+								rowHeader={lineHeader}
+								rows={measured}
+								columns={measuredColumns}
+								value="onTime"
+								sort={sortChoices}
+							/>
+						{:else if timingAnswer}
+							<p>{t('No measured lines.', 'Aucune ligne mesurée.')}</p>
+						{/if}
+						{#if timingPending}
+							{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
+						{:else if tripsPending}
+							{#key record.trips}<RecordPending
+									shape={measured.length ? undefined : 'table'}
+									{locale}
+									answer={record.trips}
+								/>{/key}
+						{:else if busy}<RecordPending {locale} busy />{/if}
+					</RecordCard>
+				{/if}
 			</div>
 
 			<div id="lines-without-live-data">
-				<RecordCard title={noLiveTitle} interactive={scheduleOnly.length > 0}>
-					{#if scheduleOnly.length}
-						<p class="mb-2">
-							<StateMark state="no_live_data" {locale} hiddenLabel />
-							{operator
-								? t(
-										`${operator} publishes no real-time feed for these lines. These lines are listed apart and never ranked.`,
-										`${operator} ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.`,
-									)
-								: t(
-										'The agency publishes no real-time feed for these lines. These lines are listed apart and never ranked.',
-										'L’agence ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.',
-									)}
-						</p>
-						<RecordDataTable
-							{locale}
-							title={noLiveTitle}
-							rowHeader={lineHeader}
-							rows={scheduleOnly.map((row) => ({
-								...row,
-								detail:
-									row.routeType !== null && routeModeKey(row.routeType)
-										? t('Schedule only.', 'Horaire seulement.')
-										: undefined,
-							}))}
-						/>
-					{:else if timingAnswer}
-						<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
-					{:else if timingFailure}
-						<p>{recordConnection.unreachable[locale]}</p>
-					{/if}
-				</RecordCard>
+				{#if !initialTiming}
+					<RecordCard title={noLiveTitle} interactive={scheduleOnly.length > 0}>
+						{#if scheduleOnly.length}
+							<p class="mb-2">
+								<StateMark state="no_live_data" {locale} hiddenLabel />
+								{operator
+									? t(
+											`${operator} publishes no real-time feed for these lines. These lines are listed apart and never ranked.`,
+											`${operator} ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.`,
+										)
+									: t(
+											'The agency publishes no real-time feed for these lines. These lines are listed apart and never ranked.',
+											'L’agence ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.',
+										)}
+							</p>
+							<RecordDataTable
+								{locale}
+								title={noLiveTitle}
+								rowHeader={lineHeader}
+								rows={scheduleOnly.map((row) => ({
+									...row,
+									detail:
+										row.routeType !== null && routeModeKey(row.routeType)
+											? t('Schedule only.', 'Horaire seulement.')
+											: undefined,
+								}))}
+							/>
+						{:else if timingAnswer}
+							<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
+						{:else if timingFailure}
+							<p>{recordConnection.unreachable[locale]}</p>
+						{/if}
+					</RecordCard>
+				{/if}
 			</div>
 
-			<RecordCard
-				title={excludedTitle}
-				{stamp}
-				interactive={!timingFailure && !!timingAnswer && excluded.length > 0}
-				evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
-					? excludedEvidence
-					: undefined}
-			>
-				{#if timingFailure}
-					<p>{recordConnection.unreachable[locale]}</p>
-				{:else if timingAnswer}
-					{#if excluded.length}
-						<RecordDataTable
-							{locale}
-							title={excludedTitle}
-							rowHeader={lineHeader}
-							rows={excluded}
-							columns={stateColumns}
-						/>
-					{:else}
-						<p>
-							{t(
-								'No lines were left out for these dates.',
-								'Aucune ligne n’a été écartée pour ces dates.',
-							)}
-						</p>
+			{#if !initialTiming}
+				<RecordCard
+					title={excludedTitle}
+					{stamp}
+					interactive={!timingFailure && !!timingAnswer && excluded.length > 0}
+					evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
+						? excludedEvidence
+						: undefined}
+				>
+					{#if timingFailure}
+						<p>{recordConnection.unreachable[locale]}</p>
+					{:else if timingAnswer}
+						{#if excluded.length}
+							<RecordDataTable
+								{locale}
+								title={excludedTitle}
+								rowHeader={lineHeader}
+								rows={excluded}
+								columns={stateColumns}
+							/>
+						{:else}
+							<p>
+								{t(
+									'No lines were left out for these dates.',
+									'Aucune ligne n’a été écartée pour ces dates.',
+								)}
+							</p>
+						{/if}
 					{/if}
-				{/if}
-			</RecordCard>
+				</RecordCard>
+			{/if}
 		</RecordGroup>
 
 		<RecordGroup class={timingPending ? 'invisible' : undefined} inert={timingPending}>

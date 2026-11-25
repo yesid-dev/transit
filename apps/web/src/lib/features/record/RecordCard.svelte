@@ -4,6 +4,7 @@
 	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
+	import RecordSkeleton, { type RecordWaitingShape } from './RecordSkeleton.svelte';
 
 	let {
 		title,
@@ -19,6 +20,7 @@
 		fill = false,
 		interactive = false,
 		edge,
+		waiting,
 	}: {
 		title: string;
 		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
@@ -33,6 +35,7 @@
 		fill?: boolean;
 		interactive?: boolean;
 		edge?: 'brand' | 'neutral';
+		waiting?: RecordWaitingShape;
 	} = $props();
 	const id = $props.id();
 	const expanded = $derived(open ?? (disclosure ? !!disclosure.initiallyOpen : true));
@@ -67,7 +70,15 @@
 {/snippet}
 
 {#snippet body()}
-	<div class="min-w-0" class:fill>{@render children()}</div>
+	<div
+		class="min-w-0"
+		class:fill
+		data-slot="record-card-body"
+		data-record-pending={waiting ? '' : undefined}
+	>
+		{#if waiting}<RecordSkeleton shape={waiting} />{/if}
+		{@render children()}
+	</div>
 	{@render cardFooter()}
 {/snippet}
 

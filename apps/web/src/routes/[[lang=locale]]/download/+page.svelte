@@ -151,7 +151,7 @@
 			<RecordGroup>
 				{#await data.listing}
 					<div data-slot="screen-state">
-						{#key data.listing}<RecordPending {locale} />{/key}
+						{#key data.listing}<RecordPending shape="listing" {locale} />{/key}
 					</div>
 				{:then result}
 					{@const listings = result?.listings ?? []}

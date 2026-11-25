@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { expect, it } from 'vitest';
 import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 import { recordConnection } from '../record/recordText';
@@ -44,7 +44,7 @@ it.each(['unconfigured', 'unreachable', 'timeout', 'busy'] as const)(
 			},
 		});
 		if (kind === 'busy') {
-			expect(await screen.findAllByText('Lecture en attente.')).toHaveLength(6);
+			await waitFor(() => expect(screen.getAllByText('Lecture en attente.')).toHaveLength(6));
 		} else {
 			const record = screen.getByRole('article', { name: overviewCopy.fr.record });
 			const rankings = screen.getByRole('article', { name: overviewCopy.fr.rankings });

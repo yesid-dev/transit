@@ -30,6 +30,7 @@
 	import FactList from '../record/FactList.svelte';
 	import FactRow from '../record/FactRow.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import RecordChart from '../record/charts/RecordChart.svelte';
 	import RecordChartToggle from '../record/charts/RecordChartToggle.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
@@ -126,6 +127,11 @@
 		file('stops', t.downloadStops),
 	]);
 	let liveCaptureAge = $state<number | null>(null);
+	const overviewReadings = $derived(
+		Promise.all([record.punctuality, record.baseline, record.delivery]).then(
+			([current, previous, delivery]) => ({ kind: current.kind, current, previous, delivery }),
+		),
+	);
 </script>
 
 {#snippet citeMeasure(promise: Measure, period: DateWindow)}
@@ -200,10 +206,11 @@
 	{@const previousLabel =
 		record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
 	<RecordCard interactive title={t.record} {stamp}>
-		{#await record.punctuality}
-			{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
+		{#await overviewReadings}
+			<RecordPending shape="reading" {locale} answer={overviewReadings} />
 			{@render actions()}
-		{:then current}
+			<RecordSkeleton shape="facts" />
+		{:then { current, previous, delivery }}
 			{#if current.kind === 'busy'}
 				<RecordPending {locale} busy />
 				{@render actions()}
@@ -211,9 +218,7 @@
 				{@render lead(current)}
 				{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 			{/if}
-		{/await}
-		<FactList class="mt-4">
-			{#await record.punctuality then current}
+			<FactList class="mt-4">
 				{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
 					{@const { on_time, classified } = current.answer.evidence.counts}
 					{#if on_time != null && classified != null}
@@ -227,12 +232,6 @@
 				{:else if current.kind !== 'answer' && current.kind !== 'busy'}
 					<FactRow label={t.onTime}>{t.unavailable}</FactRow>
 				{/if}
-			{/await}
-			{#await record.baseline}
-				<FactRow label={previousLabel}>
-					{#key record.baseline}<RecordPending {locale} answer={record.baseline} />{/key}
-				</FactRow>
-			{:then previous}
 				{@const share = overviewValue(previous, 'on_time')}
 				{@const range = dateRange(record.previous, locale)}
 				<FactRow
@@ -242,23 +241,14 @@
 					{#if share == null}
 						{@render gap(previous)}
 					{:else}
-						{#await record.punctuality then current}
-							<strong>{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong
-							>
-						{/await}
+						<strong>{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong>
 					{/if}
 					{#if previous.kind === 'answer' && previous.lastGood}<p>
 							{lastGoodNote[locale]}
 						</p>{/if}
 				</FactRow>
-			{/await}
-			{#await record.delivery}
-				<FactRow label={t.delivery}>
-					{#key record.delivery}<RecordPending {locale} answer={record.delivery} />{/key}
-				</FactRow>
-			{:then delivery}
-				{@const share = overviewValue(delivery, 'trips_run')}
-				{#if delivery.kind === 'answer' && share != null}
+				{@const deliveryShare = overviewValue(delivery, 'trips_run')}
+				{#if delivery.kind === 'answer' && deliveryShare != null}
 					{@const { ran, eligible } = delivery.answer.evidence.counts}
 					<FactRow
 						label={t.delivery}
@@ -266,7 +256,7 @@
 							? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
 							: undefined}
 					>
-						<strong>{percent(share, locale)}</strong>
+						<strong>{percent(deliveryShare, locale)}</strong>
 						{#if delivery.answer.evidence.low_coverage}
 							<p class="text-muted-foreground">
 								{coverageText(delivery.answer.evidence, locale, percent)}
@@ -277,13 +267,13 @@
 				{:else}
 					<FactRow label={t.delivery}>{@render gap(delivery)}</FactRow>
 				{/if}
-			{/await}
-		</FactList>
+			</FactList>
+		{/await}
 		{#if record.trend}
 			<div class="mt-4">
 				<h3 class="font-semibold">{t.trend}</h3>
 				{#await record.trend}
-					{#key record.trend}<RecordPending {locale} answer={record.trend} />{/key}
+					{#key record.trend}<RecordPending shape="trend" {locale} answer={record.trend} />{/key}
 				{:then trend}
 					{#if trend.kind === 'busy'}<RecordPending {locale} busy />
 					{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
@@ -393,7 +383,7 @@
 <RecordScreen class="min-w-0 wrap-break-word">
 	<RecordGroup>
 		{#await record.totals}
-			<ScreenTitle title={t.title(city)} />
+			<ScreenTitle title={t.title(city)} subtitle={operator} />
 		{:then totals}
 			<ScreenTitle
 				title={t.title(city)}

@@ -417,7 +417,7 @@
 						>
 							{#await answers.get('punctuality')}
 								{@const pending = answers.get('punctuality')}
-								{#key pending}<RecordPending locale={lang} answer={pending} />{/key}
+								{#key pending}<RecordPending shape="answer" locale={lang} answer={pending} />{/key}
 							{:then current}
 								{#if current}
 									{#await answers.get('delivery')}
@@ -440,6 +440,7 @@
 								<RecordCard compactPrint title={t(...dailyTitles.delivery)} {stamp}>
 									{#await deliveryAnswer}
 										{#key deliveryAnswer}<RecordPending
+												shape="facts"
 												locale={lang}
 												answer={deliveryAnswer}
 											/>{/key}
@@ -485,6 +486,7 @@
 								<RecordCard compactPrint title={bandTitle} {stamp}>
 									{#await punctualityAnswer}
 										{#key punctualityAnswer}<RecordPending
+												shape="bands"
 												locale={lang}
 												answer={punctualityAnswer}
 											/>{/key}

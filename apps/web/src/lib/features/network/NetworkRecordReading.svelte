@@ -12,6 +12,7 @@
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import type { RecordWaitingShape } from '../record/RecordSkeleton.svelte';
 	import { lastGoodNote, recordConnection } from '../record/recordText.ts';
 
 	let {
@@ -23,6 +24,7 @@
 		control,
 		id,
 		fill = false,
+		waiting,
 	}: {
 		answer: Promise<EngineResult<RecordAnswer>>;
 		title: string;
@@ -32,6 +34,7 @@
 		control?: Snippet;
 		id: string;
 		fill?: boolean;
+		waiting?: RecordWaitingShape;
 	} = $props();
 
 	function sample(result: RecordMeasure | RecordSeries) {
@@ -55,7 +58,7 @@
 <section {id} class="grid min-w-0">
 	<RecordCard {title} {stamp} {fill} interactive={!!control}>
 		{#await answer}
-			{#key answer}<RecordPending {locale} {answer} />{/key}
+			{#key answer}<RecordPending {locale} {answer} shape={waiting} />{/key}
 		{:then result}
 			{#if result.kind === 'busy'}<RecordPending {locale} busy />
 			{:else if result.kind !== 'answer'}<p>{recordConnection.unreachable[locale]}</p>

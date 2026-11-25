@@ -314,8 +314,23 @@ const heldResponsesByFixture = new Map();
 
 let stopSearchQuestions = 0;
 let holdNextStopSearch = false;
-const dailyMessageHolds = new Set();
+const fixtureHolds = new Set();
 const registeredScheduleLines = new Set();
+
+function activeSteadyFixture(city, url) {
+	const key = `steady:${city}:${url.searchParams.get('from')}:${url.searchParams.get('to')}`;
+	return fixtureHolds.has(key) ? key : undefined;
+}
+
+function sendFixtureResponse(response, fixture, send) {
+	if (!fixture) return send();
+	// Named holds survive release calls from other specs sharing this server.
+	const held = heldResponsesByFixture.get(fixture) ?? new Set();
+	held.add(send);
+	heldResponsesByFixture.set(fixture, held);
+	response.on('close', () => held.delete(send));
+}
+
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
@@ -820,15 +835,18 @@ const server = createServer((request, response) => {
 						};
 					})
 				: cleanTableHealth.days;
-		response.writeHead(200, { 'content-type': 'application/json' }).end(
-			JSON.stringify({
-				...cleanTableHealth,
-				...(from === '2026-10-26' ? { cleaning_version: '12' } : {}),
-				city: health[1],
-				from,
-				to,
-				days: healthDays.filter(({ service_date }) => service_date >= from && service_date <= to),
-			}),
+		response.writeHead(200, { 'content-type': 'application/json' });
+		sendFixtureResponse(response, activeSteadyFixture(health[1], url), () =>
+			response.end(
+				JSON.stringify({
+					...cleanTableHealth,
+					...(from === '2026-10-26' ? { cleaning_version: '12' } : {}),
+					city: health[1],
+					from,
+					to,
+					days: healthDays.filter(({ service_date }) => service_date >= from && service_date <= to),
+				}),
+			),
 		);
 		return;
 	}
@@ -845,7 +863,7 @@ const server = createServer((request, response) => {
 	}
 	if (request.method === 'POST' && url.pathname === '/__overview/hold') {
 		const fixture = url.searchParams.get('fixture');
-		if (fixture) dailyMessageHolds.add(fixture);
+		if (fixture) fixtureHolds.add(fixture);
 		response.writeHead(fixture ? 204 : 400).end();
 		return;
 	}
@@ -856,9 +874,17 @@ const server = createServer((request, response) => {
 			.end(JSON.stringify(stopSearchQuestions));
 		return;
 	}
+	if (request.method === 'GET' && url.pathname === '/__overview/hold') {
+		const fixture = url.searchParams.get('fixture');
+		const waiting = heldResponsesByFixture.get(fixture)?.size ?? 0;
+		response
+			.writeHead(200, { 'content-type': 'application/json' })
+			.end(JSON.stringify({ waiting }));
+		return;
+	}
 	if (request.method === 'POST' && url.pathname === '/__overview/release') {
 		const fixture = url.searchParams.get('fixture') ?? 'overview';
-		dailyMessageHolds.delete(fixture);
+		fixtureHolds.delete(fixture);
 		const held = heldResponsesByFixture.get(fixture);
 		heldResponsesByFixture.delete(fixture);
 		for (const send of held ?? []) send();
@@ -877,7 +903,7 @@ const server = createServer((request, response) => {
 			stopSearchQuestions++;
 			holdNextStopSearch = false;
 		}
-		const dailyMessageHold = dailyMessageHolds.has(scope) ? scope : undefined;
+		const dailyMessageHold = fixtureHolds.has(scope) ? scope : undefined;
 		const finderFixture =
 			question[2] === 'measure' && ['line', 'stop_id'].includes(url.searchParams.get('group'));
 		const alertFixture =
@@ -925,17 +951,11 @@ const server = createServer((request, response) => {
 			return;
 		}
 		const { hold, body, status = 200, headers = {} } = result;
-		const pendingFixture = holdStopSearch ? 'stops-search' : hold;
+		const heldBy = holdStopSearch
+			? 'stops-search'
+			: (activeSteadyFixture(question[1], url) ?? (hold === true ? 'overview' : hold));
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
-		const send = () => response.end(JSON.stringify(body));
-		if (pendingFixture) {
-			// Named holds survive release calls from other specs sharing this server.
-			const fixture = pendingFixture === true ? 'overview' : pendingFixture;
-			const held = heldResponsesByFixture.get(fixture) ?? new Set();
-			held.add(send);
-			heldResponsesByFixture.set(fixture, held);
-			response.on('close', () => held.delete(send));
-		} else send();
+		sendFixtureResponse(response, heldBy, () => response.end(JSON.stringify(body)));
 		return;
 	}
 	const body =

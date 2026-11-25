@@ -124,7 +124,7 @@
 	<div data-slot="screen-content">
 		<LiveCapture {city} {capture} {captureClock}>
 			{#snippet pending()}
-				<RecordGroup
+				<RecordGroup waiting="answer"
 					><div data-slot="screen-answer">
 						<p role="status">
 							{t('Checking live reports…', 'Vérification des signalements en direct…')}
