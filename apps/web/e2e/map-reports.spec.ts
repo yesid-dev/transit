@@ -579,7 +579,13 @@ test('live filters and a camera pan move the list, counts and CSV together', asy
 	// An explicit named camera action changes the captured rows and the exported view together.
 	const beforeCount = await countNumber();
 	await closeMapInView(page);
-	await page.getByRole('button', { name: 'Zoom in', exact: true }).click({ clickCount: 2 });
+	const zoomIn = page.getByRole('button', { name: 'Zoom in', exact: true });
+	for (let i = 0; i < 4; i++) {
+		const currentZoom = (await rendererCamera(page))[2]!;
+		await zoomIn.click();
+		await expect.poll(async () => (await rendererCamera(page))[2]!).toBeGreaterThan(currentZoom);
+		await page.clock.runFor(450);
+	}
 	await openReports(page);
 	await expect.poll(countNumber).toBeLessThan(beforeCount);
 	const afterCount = await countNumber();

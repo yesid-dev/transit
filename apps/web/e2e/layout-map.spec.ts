@@ -15,10 +15,11 @@ type Draw = { x: number; y: number; time: number; cameraMoving: boolean };
 async function framing(page: Page, bounds: number[]) {
 	return page.evaluate((bounds) => {
 		const probe = (window as unknown as { __transitMap: Probe }).__transitMap;
-		const map = document.querySelector('[data-slot="map-stage"]')!.getBoundingClientRect();
+		// MapLibre projects into its runtime container, which extends behind the frame header.
+		const map = document.querySelector('[data-map-runtime]')!.getBoundingClientRect();
 		const blockers = [
 			...document.querySelectorAll(
-				'header,.map-head,.map-filter-panel,.map-near,[data-slot="map-north"],.map-filter-pill-container,[data-slot="map-detail-overlay"],[data-slot="right-panel"],.maplibregl-ctrl',
+				'header,.map-head,.map-camera-actions,.map-in-view-button,[data-frame-controls="desktop"],[data-slot="surface-rail-mobile"],[data-slot="map-legend-fab"],[data-slot="map-north"],[data-slot="map-details"],.maplibregl-ctrl',
 			),
 		]
 			.filter((el) => el.checkVisibility())

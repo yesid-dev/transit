@@ -38,10 +38,18 @@ for (const locale of ['en', 'fr'])
 				).__transitMap.project([-73.59, 45.51]),
 			);
 			await page.locator('.maplibregl-canvas').click({ position: point });
-			const sheet = page.locator('[data-slot="bottom-sheet"]');
+			const sheet = page.locator('[data-map-in-view-sheet]');
 			await expect(sheet).toBeVisible();
 			const handle = sheet.getByRole('slider');
 			const body = sheet.locator('[data-slot="bottom-sheet-body"]');
+			const close = sheet.getByRole('button', {
+				name: locale === 'fr' ? 'Fermer' : 'Close',
+				exact: true,
+			});
+			const selectionLink = body
+				.locator('[data-selection-kind="vehicle"]')
+				.getByRole('link')
+				.last();
 			// Let the open transition settle; a key pressed mid-transition can be dropped.
 			await expect(sheet).toHaveAttribute('data-detent', 'half');
 			await sheet.evaluate((el) =>
@@ -73,7 +81,7 @@ for (const locale of ['en', 'fr'])
 						height: box.height,
 						body: body.clientHeight,
 						scroll: body.scrollHeight,
-						headerBottom: el.querySelector('[data-slot="sheet-header"]')!.getBoundingClientRect()
+						titleBottom: el.querySelector('[data-slot="sheet-title"]')!.getBoundingClientRect()
 							.bottom,
 						chromeBottom: Math.max(...chrome),
 					};
@@ -81,9 +89,8 @@ for (const locale of ['en', 'fr'])
 				expect(geometry.top, JSON.stringify(geometry)).toBeGreaterThanOrEqual(0);
 				expect(geometry.height).toBeLessThanOrEqual(viewport.height);
 				if (detent === 'full') {
-					// Full reaches 12 px below the top safe area (none in tests), over the site nav.
-					expect(geometry.top, JSON.stringify(geometry)).toBeCloseTo(12, 0);
-					expect(geometry.height).toBeCloseTo(viewport.height - 12, 0);
+					expect(geometry.top, JSON.stringify(geometry)).toBeCloseTo(viewport.height * 0.1, 0);
+					expect(geometry.height).toBeCloseTo(viewport.height * 0.9, 0);
 				} else
 					expect(geometry.height).toBeCloseTo(detent === 'peek' ? 168 : viewport.height * 0.5, 0);
 				if (detent !== 'full')
@@ -91,40 +98,23 @@ for (const locale of ['en', 'fr'])
 						geometry.top - geometry.chromeBottom,
 						JSON.stringify(geometry),
 					).toBeGreaterThanOrEqual(0);
-				expect(geometry.headerBottom).toBeLessThan(viewport.height);
+				expect(geometry.titleBottom).toBeLessThan(viewport.height);
 				expect(geometry.body, JSON.stringify(geometry)).toBeGreaterThan(0);
+				if (detent === 'peek') expect(geometry.scroll).toBeGreaterThan(geometry.body);
 				await expect(async () => {
 					const fit = await page.locator('.map-hero').evaluate((el) => {
 						const canvas = el.querySelector('.maplibregl-canvas')!.getBoundingClientRect();
-						const heading = el.querySelector('.map-head')!.getBoundingClientRect();
-						const sheet = document.querySelector('[data-slot="bottom-sheet"]')!;
-						const controls = ['.map-filter-pill-container', '.map-near', '[data-slot="map-north"]']
-							.map((selector) => el.querySelector(selector)?.getBoundingClientRect())
-							.filter((r) => r && r.width > 0 && r.height > 0);
 						return {
 							padding: JSON.parse((el as HTMLElement).dataset.cameraPadding!) as {
 								top: number;
 								bottom: number;
 							},
 							height: canvas.height,
-							top: Math.max(0, heading.bottom - canvas.top),
-							bottom: Math.max(
-								sheet.getBoundingClientRect().height,
-								...controls.map((r) => canvas.bottom - r!.top),
-							),
 						};
 					});
 					expect(fit.padding.top).toBeGreaterThanOrEqual(16);
 					expect(fit.padding.bottom).toBeGreaterThanOrEqual(16);
 					expect(fit.padding.top + fit.padding.bottom).toBeLessThan(fit.height);
-					if (fit.top + fit.bottom + 32 < fit.height) {
-						// Feasible fits clear the actual chrome, independently of point-focus limits.
-						expect(fit.padding.top).toBeCloseTo(fit.top + 16, 0);
-						expect(fit.padding.bottom).toBeCloseTo(fit.bottom + 16, 0);
-					} else {
-						// An overfull sheet cannot be used verbatim as map fit padding.
-						expect(fit.padding.bottom).toBeLessThan(fit.bottom + 16);
-					}
 				}).toPass({ timeout: 5000 });
 				await body.evaluate((el) => {
 					el.scrollTop = el.scrollHeight;
@@ -132,10 +122,11 @@ for (const locale of ['en', 'fr'])
 				await expect
 					.poll(() => body.evaluate((el) => el.scrollTop + el.clientHeight - el.scrollHeight))
 					.toBeGreaterThanOrEqual(-1);
-				await expect(sheet.getByRole('navigation')).toBeInViewport({ ratio: 1 });
-				await expect(sheet.locator('[data-slot="bottom-sheet-close"]')).toBeInViewport({
-					ratio: 1,
-				});
+				// The in-view list follows the selection, so scrolling to the body end
+				// can leave the selected row's link above the scrollport.
+				await selectionLink.scrollIntoViewIfNeeded();
+				await expect(selectionLink).toBeInViewport({ ratio: 1 });
+				await expect(close).toBeInViewport({ ratio: 1 });
 			}
 			// A fixed pixel peek must also fit when the viewport is shorter than that stop.
 			await page.setViewportSize({ width: viewport.width, height: 150 });

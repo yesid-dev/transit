@@ -1189,16 +1189,14 @@
 			class="map-in-view-button min-h-[var(--size-tap-min)] max-w-full py-[min(0.5rem,8px)]"
 			bind:ref={inViewTrigger}
 			wrap
-			onclick={() => {
-				restoreListTrigger = true;
-				inViewOpen = true;
-			}}
+			onclick={() => (inViewOpen = true)}
 		>
 			{inViewCount === null ? viewLabel : `${tr('In view:', 'En vue :')} ${inViewCount}`}
 		</Button>
 		<Sheet
 			open={inViewOpen || detailOpen}
 			onOpenChange={(open) => {
+				restoreListTrigger = !open && inViewOpen;
 				inViewOpen = open;
 				if (!open && detailOpen) closeDetail();
 			}}
@@ -1209,7 +1207,7 @@
 				{detents}
 				bind:detent={inViewDetent}
 				handleLabel={sheetCopy[locale].height}
-				class="overflow-hidden p-4"
+				class="max-h-dvh overflow-hidden p-4"
 				data-slot="bottom-sheet"
 				data-m6c2-detail-sheet
 				data-map-in-view-sheet
@@ -1347,6 +1345,9 @@
 		max-width: calc(100% - var(--size-tap-min) - 2rem);
 		z-index: 1;
 	}
+	:global(.map-hero-frame [data-slot='map-stage']) {
+		min-block-size: 0;
+	}
 	.map-stamp-line {
 		display: flex;
 		align-items: center;
@@ -1372,6 +1373,19 @@
 	}
 	.map-camera-actions :global(.button) {
 		background: var(--card);
+	}
+	@media (orientation: landscape) and (max-height: 32rem) {
+		.map-hero[data-map-wide='false'] .map-camera-actions {
+			grid-auto-flow: column;
+		}
+		.map-hero[data-map-wide='false'] :global([data-slot='map-north']) {
+			top: calc(var(--map-frame-top) + 0.75rem);
+			right: calc(0.75rem + 3 * (var(--size-tap-min) + 0.5rem));
+			bottom: auto;
+		}
+		.map-hero[data-map-wide='false'] .map-mobile-head {
+			max-width: calc(100% - 4 * var(--size-tap-min) - 3.5rem);
+		}
 	}
 	.map-peek {
 		position: absolute;

@@ -51,9 +51,13 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 		const panel = pairedControls?.width ? pairedControls : null;
 		const north = rect('[data-slot="map-north"]');
 		const heading = rect('.map-head');
+		const cameraActions = hero?.querySelector('.map-camera-actions');
+		const landscapeDock =
+			cameraActions && getComputedStyle(cameraActions).gridAutoFlow === 'column';
+		const headingOnRight = heading && heading.left > box.left + box.width / 2;
 		const header = frame?.querySelector('[data-slot="app-frame-chrome"]')?.getBoundingClientRect();
 		const framePill = frame
-			?.querySelector('.app-frame-body > [data-slot="surface-rail-mobile"]')
+			?.querySelector('[data-slot="surface-rail-mobile"]')
 			?.getBoundingClientRect();
 		const credit = frame?.querySelector('[data-slot="map-source-footer"]')?.getBoundingClientRect();
 		const legendButton = rect('[data-slot="map-legend-fab"]');
@@ -63,17 +67,29 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			// Point and route focus still clear its actual covered edge.
 			fitLeft: panel && panel.width > 56 ? panel.right - box.left : 0,
 			bottom: north ? Math.max(0, box.bottom - north.top) : 0,
-			fitBesideNorth: north ? { right: box.right - north.left, bottom: 0 } : undefined,
+			fitBesideNorth:
+				north && !landscapeDock ? { right: box.right - north.left, bottom: 0 } : undefined,
 			fitBesideHeading:
-				heading && header && heading.left > box.left + box.width / 2
+				heading && header && (headingOnRight || landscapeDock)
 					? {
 							top: Math.max(0, header.bottom - box.top),
-							right: box.right - heading.left,
+							right: Math.max(
+								headingOnRight ? box.right - heading.left : 0,
+								...(landscapeDock
+									? [north, rect('.map-camera-actions'), rect('.map-in-view-button')].map((r) =>
+											r ? box.right - r.left : 0,
+										)
+									: []),
+							),
 							bottom: Math.max(
 								0,
 								...[framePill, credit].map((r) => (r?.height ? box.bottom - r.top : 0)),
 							),
-							left: Math.max(0, (legendButton?.right ?? box.left) - box.left),
+							left: Math.max(
+								0,
+								(legendButton?.right ?? box.left) - box.left,
+								headingOnRight ? 0 : heading.right - box.left,
+							),
 						}
 					: undefined,
 		};
