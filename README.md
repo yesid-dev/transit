@@ -148,11 +148,13 @@ Preserve the raw objects and the rolling download state under
 **Raw Capture Freshness** checks the private bucket every 30 minutes for each
 enabled feed in a provider manifest with `capture_enabled: true`. It uses the
 capture timestamp in the newest raw key. Static feeds are late after 1.5 times
-their polling interval (36 hours for the daily schedule). Realtime feeds are
-late after three polling intervals, with a one-minute minimum. The report
-distinguishes late, missing and unavailable feeds. The workflow uses the
-existing pipeline-alert GitHub issue channel, mentions Yesito on the first
-failure, keeps one issue open during the incident and closes it on recovery.
+their polling interval (36 hours for the daily schedule). The outside alert
+marks realtime feeds late after three polling intervals, with a 15-minute
+minimum. The VM heartbeat uses three realtime polling intervals with a
+one-minute minimum (90 seconds for Gatineau trips and positions). The
+workflow reports late, missing and unavailable feeds through the existing
+pipeline-alert GitHub issue channel. It mentions Yesito on the first failure,
+keeps one issue open during the incident and closes it on recovery.
 
 For planned maintenance, disable **Raw Capture Freshness** in GitHub Actions
 and re-enable it when capture resumes. An open issue stays in place until the

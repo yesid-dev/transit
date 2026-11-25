@@ -26,11 +26,11 @@ def test_capture_freshness_lists_only_opted_in_cities_and_enabled_feeds(tmp_path
     now = datetime(2026, 11, 25, 0, 0, 10, tzinfo=UTC)
     for feed, age, partition in (
         ("static_schedule", 86_400, "ingested_at_utc"),
-        ("trip_updates", 200, "captured_at_utc"),
-        ("trip_updates", 20, "captured_at_utc"),
+        ("trip_updates", 700, "captured_at_utc"),
+        ("trip_updates", 10 * 60, "captured_at_utc"),
         ("trip_updates", -60, "captured_at_utc"),
         ("trip_updates", 5 * 86_400, "captured_at_utc"),
-        ("vehicle_positions", 5 * 86_400, "captured_at_utc"),
+        ("vehicle_positions", 16 * 60, "captured_at_utc"),
     ):
         key = build_bronze_object_storage_path(
             provider_id="fixture_capture",
@@ -47,11 +47,12 @@ def test_capture_freshness_lists_only_opted_in_cities_and_enabled_feeds(tmp_path
     readings = check_capture_freshness(ProviderRegistry(providers), storage, now=now)
 
     assert {
-        (reading.city, reading.feed): (reading.status, reading.age_seconds) for reading in readings
+        (reading.city, reading.feed): (reading.status, reading.age_seconds, reading.limit_seconds)
+        for reading in readings
     } == {
-        ("fixture_capture", "static_schedule"): ("fresh", 86_400),
-        ("fixture_capture", "trip_updates"): ("fresh", 20),
-        ("fixture_capture", "vehicle_positions"): ("late", 5 * 86_400),
+        ("fixture_capture", "static_schedule"): ("fresh", 86_400, 36 * 3600),
+        ("fixture_capture", "trip_updates"): ("fresh", 10 * 60, 15 * 60),
+        ("fixture_capture", "vehicle_positions"): ("late", 16 * 60, 15 * 60),
     }
 
     storage = LocalBronzeStorage("local", tmp_path / "empty")

@@ -67,6 +67,8 @@ def check_capture_freshness(
             if not feed.is_enabled:
                 continue
             limit = capture_fresh_for_seconds(feed)
+            if feed.feed_kind not in STATIC:
+                limit = max(900, limit)
             partition = "ingested_at_utc" if feed.feed_kind in STATIC else "captured_at_utc"
             archive_feed = (
                 feed.feed_kind.value
