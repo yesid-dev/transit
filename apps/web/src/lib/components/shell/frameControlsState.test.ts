@@ -26,9 +26,18 @@ describe('frame control state', () => {
 	it('recognizes links to legacy Live details and Record map layers', () => {
 		expect(state('/lines/24?tab=detail').mode).toBe('live');
 		expect(state('/fr/stop/S1?tab=detail').mode).toBe('live');
-		expect(state('/map?frameMode=record').mode).toBe('live');
 		expect(state('/trip/T1?frameMode=record')).toMatchObject({ mode: 'live', liveOnly: true });
 		expect(state('/map?mapLayer=corridors&recordLine=24').mode).toBe('record');
+	});
+
+	it('defaults a carried Record view to stops and respects an explicit map layer', () => {
+		expect(state('/map?frameMode=record&recordFrom=2026-11-17&recordTo=2026-11-21')).toMatchObject({
+			mode: 'record',
+			period: { from: '2026-11-17', to: '2026-11-21' },
+		});
+		expect(state('/map?frameMode=live&mapLayer=stops').mode).toBe('record');
+		expect(state('/map?frameMode=record&mapLayer=live').mode).toBe('live');
+		expect(state('/map?recordFrom=2026-11-17&recordTo=2026-11-21').mode).toBe('live');
 	});
 
 	it('replaces an unavailable Yesterday answer while keeping the diagnostic screens usable', () => {

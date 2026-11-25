@@ -14,7 +14,9 @@ for (const locale of ['en', 'fr'] as const) {
 		page,
 	}) => {
 		const received = await recordMapFixture(page);
-		await page.goto(`${prefix}/map?${recordMapPeriod}`);
+		const livePeriod = new URLSearchParams(recordMapPeriod);
+		livePeriod.set('frameMode', 'live');
+		await page.goto(`${prefix}/map?${livePeriod}`);
 		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
 			'data-map-progressive-state',
 			'ready',
@@ -134,6 +136,30 @@ for (const locale of ['en', 'fr'] as const) {
 				from: '2026-11-18',
 				to: '2026-11-21',
 			});
+	});
+}
+
+for (const [label, params] of [
+	['carried Record view', 'frameMode=record'],
+	['explicit Stops layer', 'frameMode=live&mapLayer=stops'],
+]) {
+	test(`the ${label} opens Record stops with its dates without a redirect`, async ({ page }) => {
+		const received = await recordMapFixture(page);
+		const response = await page.goto(
+			`/map?provider=stm&recordFrom=2026-11-18&recordTo=2026-11-21&${params}`,
+		);
+		expect(response?.request().redirectedFrom()).toBeNull();
+		await expect(page.getByRole('heading', { name: 'Map of the record' })).toBeVisible();
+		await expect
+			.poll(() => Object.fromEntries(received.at(-1) ?? []))
+			.toEqual({ city: 'stm', from: '2026-11-18', to: '2026-11-21' });
+		await openMapControls(page);
+		await expect(
+			page.getByRole('radiogroup', { name: 'View' }).getByRole('radio', { name: 'Record' }),
+		).toBeChecked();
+		await expect(
+			page.getByRole('radiogroup', { name: 'Layer' }).getByRole('radio', { name: 'Stops' }),
+		).toBeChecked();
 	});
 }
 

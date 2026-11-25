@@ -3,6 +3,7 @@ import { isRankingPath } from '#lib/features/rankings/rankingSelection.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
+import { mapLayerFor } from '#lib/site/mapFrame.ts';
 import { dateRange } from '#lib/site/presenter.ts';
 import {
 	parseFrameState,
@@ -111,10 +112,7 @@ export function frameControlsState(url: URL, clock: FrameClock) {
 	else if (liveOnly) mode = 'live';
 	else if (line) mode = lineFrameView(url) === 'live' ? 'live' : 'record';
 	else if (stop) mode = stopFrameView(url);
-	else if (map)
-		mode = ['stops', 'corridors'].includes(url.searchParams.get('mapLayer') ?? '')
-			? 'record'
-			: 'live';
+	else if (map) mode = mapLayerFor(url.searchParams) === 'live' ? 'live' : 'record';
 	else if (path === '/network') mode = networkRecordView(url) ? 'record' : 'live';
 	return {
 		...parsed,
