@@ -13,12 +13,34 @@ export const lineSortKeys = ['line', 'onTime', 'late', 'trips'] as const;
 export type LineSortKey = (typeof lineSortKeys)[number];
 export type LineSort = { key: LineSortKey; direction: 'asc' | 'desc' };
 
+export function firstLineSort(key: LineSortKey): LineSort {
+	return { key, direction: key === 'late' ? 'desc' : 'asc' };
+}
+
 export function lineSort(params: URLSearchParams): LineSort {
 	const key = lineSortKeys.find((key) => key === params.get('sort'));
-	return {
-		key: key ?? 'line',
-		direction: key && params.get('direction') === 'desc' ? 'desc' : 'asc',
-	};
+	const direction = params.get('direction');
+	return key && (direction === 'asc' || direction === 'desc')
+		? { key, direction }
+		: firstLineSort(key ?? 'line');
+}
+
+type Coverage = Pick<FinderCell['evidence'], 'share_observed' | 'counts'>;
+
+export function observedLineReadings(readings: readonly Coverage[]) {
+	let scheduled = 0;
+	let observed = 0;
+	for (const { share_observed: share, counts } of readings) {
+		const events = counts.scheduled ?? counts.punctuality_scheduled;
+		if (share == null || events == null || events <= 0) continue;
+		scheduled += events;
+		observed += share * events;
+	}
+	if (scheduled > 0) return { share: observed / scheduled, scheduled };
+	const shares = readings.flatMap(({ share_observed }) =>
+		share_observed == null ? [] : [share_observed],
+	);
+	return shares.length === 1 ? { share: shares[0]!, scheduled: undefined } : null;
 }
 
 type Reading = { id: string; number: string } & Record<Exclude<LineSortKey, 'line'>, number | null>;
@@ -75,10 +97,11 @@ export function lineRecordRows(
 	const rows = Array.from(ids, (id) => {
 		const timing = timingById.get(id);
 		const deliveryCell = tripsById.get(id);
+		const routeType = directory.type(id);
 		const noLive =
 			timing?.state === 'no_live_data' ||
 			deliveryCell?.state === 'no_live_data' ||
-			lineIsScheduleOnly(provider, id, directory.type(id));
+			lineIsScheduleOnly(provider, id, routeType);
 		// The existing finder readings are also the source of the legacy CSV status columns.
 		const onTime = finderShare(timing, punctuality, 'on_time', locale);
 		const late = finderShare(timing, punctuality, 'late', locale);
@@ -87,6 +110,7 @@ export function lineRecordRows(
 			id,
 			number: directory.number(id),
 			name: directory.name(id),
+			routeType,
 			noLive,
 			onTime: onTime.value,
 			late: late.value,

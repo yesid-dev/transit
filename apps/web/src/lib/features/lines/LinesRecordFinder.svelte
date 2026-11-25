@@ -2,6 +2,7 @@
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { routeFor } from '#lib/nav/index.ts';
+	import { routeModeKey } from '#lib/search/stopMode.ts';
 	import { carryFrameState, RECORD_START } from '#lib/site/frameState.ts';
 	import {
 		countedUnit,
@@ -21,6 +22,7 @@
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import RecordTableName from '../record/RecordTableName.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
@@ -41,6 +43,7 @@
 		lineReadingState,
 		lineRecordRows,
 		lineSpread,
+		observedLineReadings,
 		orderedLines,
 		type LineSort,
 	} from './linesRecord.ts';
@@ -53,7 +56,7 @@
 		directions,
 		provider,
 		sort,
-		onSort,
+		setSort,
 	}: {
 		locale: Locale;
 		url: URL;
@@ -62,7 +65,7 @@
 		directions?: ScheduleEdition['route_directions'];
 		provider: PublicCity | null;
 		sort: LineSort;
-		onSort: (key: string) => void;
+		setSort: (key: string, toggle: boolean) => void;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -90,7 +93,8 @@
 	const sortChoices = $derived({
 		...sort,
 		nameKey: 'line',
-		onSort,
+		onSort: (key: string) => setSort(key, true),
+		onSelect: (key: string) => setSort(key, false),
 		label: (header: string) => t(`Sort by ${header}`, `Trier par ${header}`),
 		choiceLabel: t('Sort by', 'Trier par'),
 		choices: [
@@ -138,7 +142,7 @@
 			label: row.name.name ?? row.name.label,
 			plate: row.name.number ?? undefined,
 			scheduleOnly: row.noLive,
-			detail: row.noLive ? undefined : endpoints(row.id),
+			detail: endpoints(row.id),
 		})),
 	);
 	type Row = (typeof all)[number];
@@ -283,6 +287,15 @@
 			locale,
 		),
 	);
+	const observation = $derived(
+		observedLineReadings(measured.flatMap(({ timing }) => (timing ? [timing.evidence] : []))),
+	);
+
+	const subtitle = $derived.by(() => {
+		if (!all.length) return undefined;
+		const count = countedUnit(all.length, 'line', locale);
+		return operator ? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${count}` : count;
+	});
 </script>
 
 {#snippet citation()}
@@ -303,27 +316,20 @@
 {/snippet}
 
 {#snippet onTimeCell(row: Row)}
-	<strong class="text-base">
-		<RecordTableValue {locale} label={about.onTime} text={percent(row.onTime!, locale)} />
-	</strong>
+	<strong class="text-base">{percent(row.onTime!, locale)}</strong>
 	{#if row.timing?.evidence.low_coverage}<small class="block text-muted-foreground"
 			>{lowCoverageText(locale)}</small
 		>{/if}
 {/snippet}
 
 {#snippet lateCell(row: Row)}
-	<RecordTableValue
-		{locale}
-		label={lateHeader}
-		text={row.late === null ? null : percent(row.late, locale)}
-	/>
+	<RecordTableValue {locale} text={row.late === null ? null : percent(row.late, locale)} />
 {/snippet}
 
 {#snippet tripsCell(row: Row)}
 	{@const counts = row.delivery?.evidence.counts}
 	<RecordTableValue
 		{locale}
-		label={tripsHeader}
 		text={row.trips === null
 			? null
 			: recordRatio(counts!.ran!, tally(counts!.scheduled!, locale), locale)}
@@ -333,11 +339,7 @@
 
 {#snippet eventsCell(row: Row)}
 	{@const count = row.timing?.evidence.counts.classified}
-	<RecordTableValue
-		{locale}
-		label={eventsHeader}
-		text={count == null ? null : tally(count, locale)}
-	/>
+	<RecordTableValue {locale} text={count == null ? null : tally(count, locale)} />
 {/snippet}
 
 {#snippet stateCell(row: Row)}
@@ -364,15 +366,10 @@
 	{/if}
 {/snippet}
 
-<div class="grid min-w-0 gap-6 px-4 sm:px-0">
-	<ScreenTitle
-		{title}
-		subtitle={all.length
-			? [operator, countedUnit(all.length, 'line', locale)].filter(Boolean).join(' · ')
-			: undefined}
-	/>
+<div class="grid min-w-0 gap-6">
+	<ScreenTitle {title} {subtitle} />
 	<div class="grid min-w-0 gap-6" data-slot="screen-content">
-		<div class="lines-answer border-t border-border pt-4" data-slot="screen-answer">
+		<div class="border-t border-border pt-4" data-slot="screen-answer">
 			{#if !punctuality}
 				{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
 			{:else if spread !== null}
@@ -416,27 +413,36 @@
 		</div>
 
 		<div id="lines-without-live-data">
-			<RecordCard title={noLiveTitle} {stamp}>
+			<RecordCard title={noLiveTitle}>
 				{#if scheduleOnly.length}
 					<p class="mb-2">
 						<StateMark state="no_live_data" {locale} hiddenLabel />
 						{operator
 							? t(
-									`${operator} publishes no real-time feed for these lines. These lines are listed apart and never ranked. Only their schedule is shown.`,
-									`${operator} ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées. Seul leur horaire est affiché.`,
+									`${operator} publishes no real-time feed for these lines. These lines are listed apart and never ranked.`,
+									`${operator} ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.`,
 								)
 							: t(
-									'The agency publishes no real-time feed for these lines. These lines are listed apart and never ranked. Only their schedule is shown.',
-									'L’agence ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées. Seul leur horaire est affiché.',
+									'The agency publishes no real-time feed for these lines. These lines are listed apart and never ranked.',
+									'L’agence ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.',
 								)}
 					</p>
-					<RecordDataTable
-						{locale}
-						title={noLiveTitle}
-						rowHeader={lineHeader}
-						rows={scheduleOnly}
-						plates
-					/>
+					<ul role="list" aria-label={noLiveTitle} class="grid gap-x-6 md:grid-cols-2">
+						{#each scheduleOnly as row (row.id)}
+							<li class="min-w-0 border-t border-border py-2">
+								<RecordTableName
+									row={{
+										...row,
+										detail:
+											row.routeType !== null && routeModeKey(row.routeType)
+												? t('Schedule only.', 'Horaire seulement.')
+												: undefined,
+									}}
+									plates
+								/>
+							</li>
+						{/each}
+					</ul>
 				{:else if timingAnswer}
 					<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
 				{:else if timingFailure}
@@ -490,6 +496,14 @@
 					key: 'observed',
 					label: about.observed,
 					text: [
+						observation
+							? about.observedShare(
+									percent(observation.share, locale),
+									observation.scheduled === undefined
+										? undefined
+										: tally(observation.scheduled, locale),
+								)
+							: '',
 						observed,
 						timingAnswer?.coverage_note?.[locale],
 						delivery?.kind === 'answer' ? delivery.answer.coverage_note?.[locale] : '',
@@ -521,13 +535,3 @@
 		/>
 	</div>
 </div>
-
-<style>
-	.lines-answer :global(.answer-value) {
-		max-inline-size: 100%;
-		flex: 0 0 auto;
-	}
-	.lines-answer :global([data-slot='answer-lead']) {
-		overflow-wrap: normal;
-	}
-</style>

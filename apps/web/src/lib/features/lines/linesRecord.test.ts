@@ -1,6 +1,6 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import { describe, expect, it } from 'vitest';
-import { lineSort, orderedLines, lineSpread } from './linesRecord.ts';
+import { lineSort, orderedLines, lineSpread, observedLineReadings } from './linesRecord.ts';
 
 describe('Lines Record', () => {
 	const rows = [
@@ -21,6 +21,30 @@ describe('Lines Record', () => {
 		expect(
 			orderedLines(rows, { key: 'onTime', direction: 'asc' }, 'en').map(({ id }) => id),
 		).toEqual(['10', '20', '2']);
+	});
+
+	it.each([
+		['line', 'asc'],
+		['onTime', 'asc'],
+		['late', 'desc'],
+		['trips', 'asc'],
+	])('uses the natural direction for %s unless the URL supplies one', (key, direction) => {
+		expect(lineSort(new URLSearchParams({ sort: key }))).toEqual({ key, direction });
+	});
+
+	it('pools observed shares by scheduled stop events and ignores missing readings', () => {
+		expect(
+			observedLineReadings([
+				{ share_observed: 0.4, counts: { scheduled: 250 } },
+				{ share_observed: 1, counts: { punctuality_scheduled: 50 } },
+				{ counts: { scheduled: 1000 } },
+			]),
+		).toEqual({ share: 0.5, scheduled: 300 });
+		expect(observedLineReadings([{ share_observed: 0, counts: { scheduled: 20 } }])).toEqual({
+			share: 0,
+			scheduled: 20,
+		});
+		expect(observedLineReadings([{ counts: { scheduled: 20 } }])).toBeNull();
 	});
 
 	it.each([

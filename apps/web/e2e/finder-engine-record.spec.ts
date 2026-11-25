@@ -33,12 +33,23 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 		await expect(timing).toContainText(fr ? '90 sur 105' : '90 of 105');
 
-		const scheduleOnly = page.getByRole('table', {
+		const scheduleOnly = page.getByRole('list', {
 			name: fr ? 'Lignes sans données en direct' : 'Lines without live data',
 		});
+		const railLine = scheduleOnly.getByRole('listitem').filter({
+			has: page.getByRole('link', { name: /Confederation/ }),
+		});
+		await expect(railLine).toContainText(fr ? 'Horaire seulement.' : 'Schedule only.');
+		await expect(railLine.locator('[data-slot="route-plate"]')).toHaveAttribute(
+			'data-schedule-only',
+			'true',
+		);
+		await expect(page.locator('#lines-without-live-data [data-slot="stamp"]')).toHaveCount(0);
 		await expect(
-			scheduleOnly.getByRole('row', { name: /Confederation/ }).locator('[data-slot="route-plate"]'),
-		).toHaveAttribute('data-schedule-only', 'true');
+			page.getByText(
+				fr ? /40\s% des 500 passages prévus/ : /40% of 500 scheduled stop events have a reading/,
+			),
+		).toBeVisible();
 		await expect(measured.getByRole('link', { name: /Confederation|99/ })).toHaveCount(0);
 		await page.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true }).click();
 		const sheet = page.getByRole('dialog', {
@@ -55,11 +66,11 @@ for (const locale of ['en', 'fr'] as const) {
 		).toHaveAttribute('download', /^lines-without-live-data-.*\.csv$/);
 		await sheet.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
 		await page.getByRole('radio', { name: fr ? 'Part en retard' : 'Late share' }).click();
-		await expect(page).toHaveURL(/sort=late&direction=asc$/);
+		await expect(page).toHaveURL(/sort=late&direction=desc$/);
 		await timing.getByRole('link').click();
 		await expect(page).toHaveURL(/\/lines\/24\?/);
 		await page.goBack();
-		await expect(page).toHaveURL(/\/lines\?.*sort=late&direction=asc$/);
+		await expect(page).toHaveURL(/\/lines\?.*sort=late&direction=desc$/);
 		await expect(timing).toBeVisible();
 	});
 
@@ -99,6 +110,17 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await page.goBack();
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/324\?/);
+		await page.getByRole('radio', { name: fr ? 'Part à l’heure' : 'On-time share' }).focus();
+		await page.keyboard.press('Tab');
+		await page.keyboard.press('Tab');
+		const timingHeader = table.getByRole('button', {
+			name: fr ? 'Trier par À l’heure' : 'Sort by On time',
+		});
+		await expect(timingHeader).toBeFocused();
+		await page.keyboard.press('Enter');
+		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
+		await expect(timingHeader.locator('..')).toHaveAttribute('aria-sort', 'ascending');
+		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
 
 		const excluded = page.getByRole('table', {
 			name: fr

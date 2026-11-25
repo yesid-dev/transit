@@ -83,9 +83,11 @@ export function finderEngine(url) {
 						share_observed: 0.4,
 						low_coverage: true,
 					}
-				: trips
-					? { share_eligible: 100 / 105 }
-					: {}),
+				: !trips && counts.classified != null && counts.scheduled
+					? { share_observed: counts.classified / counts.scheduled }
+					: trips
+						? { share_eligible: 100 / 105 }
+						: {}),
 		},
 	});
 	const onTime = (line, value) =>
@@ -136,6 +138,7 @@ export function finderEngine(url) {
 												on_time: onTime * 10000,
 												late: (190 - index * 2) * 10,
 												classified: 10000,
+												scheduled: 12500,
 												vehicle_stopped: 7140,
 												trip_update_passed: 2860,
 											},
