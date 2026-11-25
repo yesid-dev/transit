@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { RoutePlate, type StampProps } from '@yesid/ui/brand';
+	import { RoutePlate, Stamp, type StampProps } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
-	import { ShowMore } from '@yesid/ui/table';
+	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type {
@@ -29,10 +29,15 @@
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
+	import FactList from '../record/FactList.svelte';
+	import FactRow from '../record/FactRow.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
+	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import RecordScreen from '../record/RecordScreen.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { healthReason } from '../record/dataHealthText.ts';
@@ -47,6 +52,7 @@
 	} from './alertRecord.ts';
 	import {
 		alertEffect,
+		type AlertCard,
 		liveAlertCards,
 		liveAlertCut,
 		recordAlertCards,
@@ -122,7 +128,6 @@
 	const unavailable = $derived(t('Unavailable', 'Indisponible'));
 	const noAlerts = $derived(t('No alerts in effect.', 'Aucun avis en vigueur.'));
 	const linePageSize = 6;
-	let lineLimit = $state(linePageSize);
 	const paging = $derived(alertPaging(locale));
 
 	function formatCitation(key: keyof typeof alertSections, result: EngineAnswer, lastGood?: true) {
@@ -165,14 +170,26 @@
 	</RecordActionGroup>
 {/snippet}
 
-{#snippet evidenceFooter(evidence?: RecordEvidence, count?: number | null)}
-	{#if evidence || count != null}
-		<div
-			class="flex w-full flex-wrap justify-between gap-2 font-mono text-small text-muted-foreground"
+{#snippet evidenceFooter(evidence?: RecordEvidence, count?: number | null, note?: string)}
+	{@const sample = count == null ? null : labelCount(count)}
+	{#if evidence}
+		<RecordEvidenceLine {evidence} {locale} {sample} {note} />
+	{:else if sample}
+		<RecordEvidenceLine versions="" {locale} {sample} {note} />
+	{/if}
+{/snippet}
+
+{#snippet lineCell(row: AlertCut)}
+	{#if row.key}
+		<a
+			class="flex min-h-11 min-w-11 flex-wrap items-center gap-x-2 text-primary underline"
+			href={localizeHref(`/lines/${encodeURIComponent(row.key)}`, locale, data.city)}
 		>
-			{#if count != null}<span>{labelCount(count)}</span>{/if}
-			{#if evidence}<span>{methodEvidence(evidence, locale, true)}</span>{/if}
-		</div>
+			<span class="w-12"><RoutePlate code={display.line(row.key)} /></span>
+			<span>{display.lineName(row.key).name}</span>
+		</a>
+	{:else}
+		<StateMark state="unknown" {locale} />
 	{/if}
 {/snippet}
 
@@ -190,18 +207,13 @@
 					</p>
 				</div>
 			{:else}
-				<dl class="effect-grid grid gap-3">
+				<FactList>
 					{#each rows as row, index (index)}
-						<div class="min-w-0">
-							<dt class="wrap-break-word text-small text-muted-foreground">
-								{alertEffect(row.key, locale)}
-							</dt>
-							<dd class="text-subheading font-semibold tabular-nums">{@render cutValue(row)}</dd>
-						</div>
+						<FactRow label={alertEffect(row.key, locale)}>{@render cutValue(row)}</FactRow>
 					{/each}
-				</dl>
+				</FactList>
 				{#if rows.some((row) => row.key !== unstatedEffect && row.value != null)}
-					<p class="mt-3 text-small text-muted-foreground">
+					<p class="text-small text-muted-foreground">
 						{t(
 							'Effects are the agency’s own categories, kept as published.',
 							'Les effets sont les catégories de l’agence, telles que publiées.',
@@ -210,35 +222,18 @@
 				{/if}
 			{/if}
 		{:else}
-			<dl class="line-grid grid gap-x-6 lg:grid-cols-2">
-				{#each sortAlertLineCut(rows, locale, display.line).slice(0, lineLimit) as row, index (index)}
-					<div class="line-reading flex min-w-0 items-center justify-between gap-3">
-						<dt class="min-w-0">
-							{#if row.key}
-								<a
-									class="flex min-h-11 min-w-11 flex-wrap items-center gap-x-2 text-primary underline"
-									href={localizeHref(`/lines/${encodeURIComponent(row.key)}`, locale, data.city)}
-								>
-									<span class="w-12"><RoutePlate code={display.line(row.key)} /></span>
-									<span>{display.lineName(row.key).name}</span>
-								</a>
-							{:else}
-								<StateMark state="unknown" {locale} />
-							{/if}
-						</dt>
-						<dd class="shrink-0 text-right tabular-nums">{@render cutValue(row)}</dd>
-					</div>
-				{/each}
-			</dl>
-			{#if rows.length > linePageSize}
-				<ShowMore
-					shown={Math.min(lineLimit, rows.length)}
-					total={rows.length}
-					pageSize={linePageSize}
-					labels={paging}
-					onMore={(count) => (lineLimit += count)}
-				/>
-			{/if}
+			<DataTable
+				caption={alertSections.line[locale]}
+				columns={[
+					{ key: 'line', header: t('Line', 'Ligne'), rowHeader: true, cell: lineCell },
+					{ key: 'count', header: t('Alerts', 'Avis'), numeric: true, cell: cutValue },
+				] satisfies readonly DataTableColumn<AlertCut>[]}
+				rows={sortAlertLineCut(rows, locale, display.line)}
+				key={(row, index) => (row.key ? `line:${row.key}` : `unknown:${index}`)}
+				responsive={{ mode: 'rows', primary: 'line', value: 'count' }}
+				pageSize={rows.length > linePageSize ? linePageSize : undefined}
+				pageLabels={paging}
+			/>
 		{/if}
 	{:else}
 		<p>
@@ -283,18 +278,25 @@
 		<RecordCard
 			title={alertSections[group][locale]}
 			{stamp}
-			interactive={group === 'line' &&
-				(rows.length > linePageSize || rows.some(({ key }) => Boolean(key)))}
+			expandable={group === 'line' && rows.length > 0}
+			open={false}
 		>
 			{#if reading}
 				{@render cutRows(rows, group)}
-				{@render evidenceFooter(reading.evidence, rows.length === 1 ? rows[0].value : undefined)}
-				{#if result?.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 			{:else if result}
 				{@render resultState(result)}
 			{:else if promise}
 				{#key promise}<RecordPending {locale} answer={promise} />{/key}
 			{/if}
+			{#snippet evidence()}
+				{#if reading}
+					{@render evidenceFooter(
+						reading.evidence,
+						rows.length === 1 ? rows[0].value : undefined,
+						result?.kind === 'answer' && result.lastGood ? lastGoodNote[locale] : undefined,
+					)}
+				{/if}
+			{/snippet}
 		</RecordCard>
 	{/snippet}
 	<div id={group} class="scroll-mt-24">
@@ -302,40 +304,42 @@
 	</div>
 {/snippet}
 
-{#snippet archiveCard(result?: EngineResult<EngineAnswer>)}
+{#snippet logHeading(label: string, stamp?: StampProps)}
+	<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+		<h2 class="text-subheading font-semibold">{label}</h2>
+		{#if stamp}<Stamp {...stamp} />{/if}
+	</header>
+{/snippet}
+
+{#snippet messageList(cards: AlertCard[], live: boolean)}
+	<AlertList {cards} {locale} city={data.city} timeZone={data.timeZone} {live} />
+{/snippet}
+
+{#snippet archive(result?: EngineResult<EngineAnswer>)}
 	{@const reading =
 		result?.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'
 			? result.answer
 			: null}
-	<RecordCard
-		title={t('Archive for these dates', 'Archives pour ces dates')}
-		{stamp}
-		interactive={Boolean(reading?.evidence.alert_messages?.length)}
-	>
-		{#if reading}
-			{#if reading.evidence.alert_messages?.length || reading.value.alerts === 0}
-				{#key messages}
-					<AlertList
-						cards={recordAlertCards(reading.evidence.alert_messages)}
-						{locale}
-						city={data.city}
-						timeZone={data.timeZone}
-						live={false}
-					/>
-				{/key}
-			{:else}
-				<p>{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}</p>
-			{/if}
-			{@render evidenceFooter(reading.evidence, reading.value.alerts)}
-			{#if result?.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-		{:else if result}
-			{@render resultState(result)}
-		{:else if messages}
-			{#key messages}<RecordPending {locale} answer={messages} />{/key}
+	{#if reading}
+		{#if reading.evidence.alert_messages?.length || reading.value.alerts === 0}
+			{#key messages}
+				{@render messageList(recordAlertCards(reading.evidence.alert_messages), false)}
+			{/key}
 		{:else}
-			<p>{alertDetailsLimit[locale]}</p>
+			<p>{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}</p>
 		{/if}
-	</RecordCard>
+		{@render evidenceFooter(
+			reading.evidence,
+			reading.value.alerts,
+			result?.kind === 'answer' && result.lastGood ? lastGoodNote[locale] : undefined,
+		)}
+	{:else if result}
+		{@render resultState(result)}
+	{:else if messages}
+		{#key messages}<RecordPending {locale} answer={messages} />{/key}
+	{:else}
+		<p>{alertDetailsLimit[locale]}</p>
+	{/if}
 {/snippet}
 
 {#snippet recordAbout(result: RecordMeasure)}
@@ -351,7 +355,6 @@
 		<span id="day"></span><span id="hour"></span><span id="stop"></span><span id="cause"></span>
 		<AboutFigures
 			title={t('About these figures', 'À propos de ces chiffres')}
-			interactive
 			compact
 			fields={[
 				{
@@ -406,40 +409,44 @@
 {/snippet}
 
 <Surface>
-	<article class="grid min-w-0 grid-cols-1 gap-4">
-		<div class="pb-3">
+	<RecordScreen>
+		<RecordGroup>
 			<ScreenTitle {title} {subtitle} />
-		</div>
-		<div class="grid min-w-0 grid-cols-1 gap-2 sm:gap-4" data-slot="screen-content">
+		</RecordGroup>
+		<div class="contents" data-slot="screen-content">
 			{#if !data.tracked}
-				<div data-slot="screen-state">
-					<StateNotice
-						title={t('Not tracked', 'Non suivi')}
-						glyph="⊠"
-						role="status"
-						body={t(
-							'Transit does not track service alerts for this network.',
-							'Transit ne suit pas les avis de service de ce réseau.',
-						)}
-					>
-						{#snippet action()}
-							{#if data.officialAlertsUrl}
-								<a
-									class="inline-flex min-h-11 max-w-[calc(100cqi-2.5rem)] items-center text-primary underline"
-									href={data.officialAlertsUrl}
-								>
-									{t('Check official service alerts', 'Consulter les avis officiels')}
-								</a>
-							{/if}
-						{/snippet}</StateNotice
-					>
-				</div>
+				<RecordGroup>
+					<div data-slot="screen-state">
+						<StateNotice
+							title={t('Not tracked', 'Non suivi')}
+							glyph="⊠"
+							role="status"
+							body={t(
+								'Transit does not track service alerts for this network.',
+								'Transit ne suit pas les avis de service de ce réseau.',
+							)}
+						>
+							{#snippet action()}
+								{#if data.officialAlertsUrl}
+									<a
+										class="inline-flex min-h-11 max-w-[calc(100cqi-2.5rem)] items-center text-primary underline"
+										href={data.officialAlertsUrl}
+									>
+										{t('Check official service alerts', 'Consulter les avis officiels')}
+									</a>
+								{/if}
+							{/snippet}</StateNotice
+						>
+					</div>
+				</RecordGroup>
 			{:else if liveMode && data.capture}
 				<LiveCapture city={data.city} capture={data.capture}>
 					{#snippet pending()}
-						<div data-slot="screen-state">
-							<p role="status">{t('Loading live alerts…', 'Chargement des avis en direct…')}</p>
-						</div>
+						<RecordGroup>
+							<div data-slot="screen-state">
+								<p role="status">{t('Loading live alerts…', 'Chargement des avis en direct…')}</p>
+							</div>
+						</RecordGroup>
 					{/snippet}
 					{#snippet children(snapshot, now)}
 						{@const feeds = Object.values(snapshot?.feeds ?? {})}
@@ -447,6 +454,7 @@
 						{@const age = captureAge(alertFeed?.captured_at ?? null, now, locale)}
 						{#if snapshot?.alerts && alertFeed?.captured_at && feedState(alertFeed, now) === 'live'}
 							{@const liveCards = liveAlertCards(snapshot.alerts, now)}
+							{@const lineCount = liveCards.filter(({ routes }) => routes.length).length}
 							{@const liveStamp = {
 								kind: 'live' as const,
 								label: liveStampAge(null, locale),
@@ -454,143 +462,134 @@
 								agoLabel: (seconds: number) => liveStampAge(seconds, locale),
 							}}
 							{#snippet liveActions()}{@render actions(undefined, alertFeed.captured_at)}{/snippet}
-							<div id="alerts-window" data-slot="screen-answer">
-								<RecordAnswer
-									value={tally(liveCards.length, locale)}
-									sentence={alertAnswerSentence(liveCards.length, locale, true)}
-									{locale}
-									time={liveStamp}
-									actions={liveActions}
-								>
-									{#snippet meta()}
-										<p>{t('Counted:', 'Ce qui est compté :')} {labelCount(liveCards.length)}</p>
-										<p>
-											{t('A count of alerts at this moment.', 'Un décompte des avis à ce moment.')}
-										</p>
-										<p>{scope}</p>
-									{/snippet}
-								</RecordAnswer>
-							</div>
-							<div id="alerts-breakdown">
-								<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
-									{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
-									{@render evidenceFooter(undefined, liveCards.length)}
-								</RecordCard>
-							</div>
-							<div id="alerts-log" class="scroll-mt-24">
-								<RecordCard
-									title={t('In effect now', 'En vigueur maintenant')}
-									stamp={liveStamp}
-									interactive={liveCards.length > 0}
-								>
-									<AlertList
-										cards={liveCards}
+							<RecordGroup density="compact">
+								<div id="alerts-window" data-slot="screen-answer">
+									<RecordAnswer
+										value={tally(liveCards.length, locale)}
+										sentence={alertAnswerSentence(liveCards.length, locale, true)}
 										{locale}
-										city={data.city}
-										timeZone={data.timeZone}
-										live
-									/>
-									{@render evidenceFooter(undefined, liveCards.length)}
+										time={liveStamp}
+										actions={liveActions}
+									>
+										{#snippet meta()}
+											<p>{t('Counted:', 'Ce qui est compté :')} {labelCount(liveCards.length)}</p>
+											<p>
+												{t(
+													'A count of alerts at this moment.',
+													'Un décompte des avis à ce moment.',
+												)}
+											</p>
+											<p>{scope}</p>
+										{/snippet}
+									</RecordAnswer>
+								</div>
+								<div id="alerts-breakdown">
+									<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
+										{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
+										{#snippet evidence()}{@render evidenceFooter(
+												undefined,
+												liveCards.length,
+											)}{/snippet}
+									</RecordCard>
+								</div>
+							</RecordGroup>
+							<RecordGroup id="alerts-log" class="scroll-mt-24" density="compact">
+								{@render logHeading(t('In effect now', 'En vigueur maintenant'), liveStamp)}
+								{@render messageList(liveCards, true)}
+								{@render evidenceFooter(undefined, liveCards.length)}
+							</RecordGroup>
+							<RecordGroup density="compact">
+								<RecordCard
+									title={alertSections.line[locale]}
+									stamp={liveStamp}
+									expandable={lineCount > 0}
+									open={false}
+								>
+									{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
+									{#snippet evidence()}
+										{@render evidenceFooter(undefined, lineCount)}
+									{/snippet}
 								</RecordCard>
-							</div>
-							<RecordCard
-								title={alertSections.line[locale]}
-								stamp={liveStamp}
-								interactive={liveCards.some(({ routes }) => routes.length > 0)}
-							>
-								{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
-								{@render evidenceFooter(
-									undefined,
-									liveCards.filter(({ routes }) => routes.length).length,
-								)}
-							</RecordCard>
+							</RecordGroup>
 						{:else}
-							<div data-slot="screen-state"><StateMark state="no_live_data" {locale} /></div>
+							<RecordGroup>
+								<div data-slot="screen-state"><StateMark state="no_live_data" {locale} /></div>
+							</RecordGroup>
 						{/if}
-						<AboutLiveFigures
-							{locale}
-							interactive
-							operator={data.operator}
-							healthLink={localizeHref('/status', locale, data.city)}
-							scope={t(
-								'Alerts in effect at this moment, in the latest feed capture.',
-								'Les avis en vigueur en ce moment, dans le dernier relevé du flux.',
-							)}
-							statusLabel={t('How an alert counts', 'Quand un avis compte')}
-							definition={t(
-								'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
-								'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand l’agence ne publie aucune période.',
-							)}
-							captureText={t(
-								`Alerts: ${age ?? 'unavailable'}.`,
-								`Avis : ${age ?? 'indisponibles'}.`,
-							)}
-						/>
+						<RecordGroup density="compact">
+							<AboutLiveFigures
+								{locale}
+								operator={data.operator}
+								healthLink={localizeHref('/status', locale, data.city)}
+								scope={t(
+									'Alerts in effect at this moment, in the latest feed capture.',
+									'Les avis en vigueur en ce moment, dans le dernier relevé du flux.',
+								)}
+								statusLabel={t('How an alert counts', 'Quand un avis compte')}
+								definition={t(
+									'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
+									'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand l’agence ne publie aucune période.',
+								)}
+								captureText={t(
+									`Alerts: ${age ?? 'unavailable'}.`,
+									`Avis : ${age ?? 'indisponibles'}.`,
+								)}
+							/>
+						</RecordGroup>
 					{/snippet}
 				</LiveCapture>
 			{:else if answer}
-				<div id="answer" data-slot="screen-answer" class="min-w-0 scroll-mt-24">
-					{#await answer}
-						<div data-slot="screen-state"><RecordPending {locale} {answer} /></div>
-					{:then result}
-						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts != null}
-							{@const count = result.answer.value.alerts}
-							{#snippet recordActions()}{@render actions(result)}{/snippet}
-							<RecordAnswer
-								value={tally(count, locale)}
-								sentence={alertAnswerSentence(count, locale, false)}
-								{locale}
-								time={stamp}
-								evidence={{
-									sample: labelCount(count),
-									record: result.answer.evidence,
-									lastGood: result.lastGood,
-								}}
-								actions={recordActions}
-							>
-								{#snippet meta()}<p>{scope}</p>{/snippet}
-							</RecordAnswer>
-						{:else}
-							<div data-slot="screen-state">{@render resultState(result)}</div>
-						{/if}
-					{/await}
-				</div>
-				{@render recordCut('effect')}
-				<div id="messages" class="min-w-0 scroll-mt-24">
-					{#await messages}{@render archiveCard()}{:then result}{@render archiveCard(
-							result,
-						)}{/await}
-				</div>
-				{@render recordCut('line')}
+				<RecordGroup density="compact">
+					<div id="answer" data-slot="screen-answer" class="min-w-0 scroll-mt-24">
+						{#await answer}
+							<div data-slot="screen-state"><RecordPending {locale} {answer} /></div>
+						{:then result}
+							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts != null}
+								{@const count = result.answer.value.alerts}
+								{#snippet recordActions()}{@render actions(result)}{/snippet}
+								<RecordAnswer
+									value={tally(count, locale)}
+									sentence={alertAnswerSentence(count, locale, false)}
+									{locale}
+									time={stamp}
+									evidence={{
+										sample: labelCount(count),
+										record: result.answer.evidence,
+										lastGood: result.lastGood,
+									}}
+									actions={recordActions}
+								>
+									{#snippet meta()}<p>{scope}</p>{/snippet}
+								</RecordAnswer>
+							{:else}
+								<div data-slot="screen-state">{@render resultState(result)}</div>
+							{/if}
+						{/await}
+					</div>
+					{@render recordCut('effect')}
+				</RecordGroup>
+				<RecordGroup id="messages" class="scroll-mt-24" density="compact">
+					{@render logHeading(t('Archive for these dates', 'Archives pour ces dates'), stamp)}
+					{#await messages}{@render archive()}{:then result}{@render archive(result)}{/await}
+				</RecordGroup>
+				<RecordGroup density="compact">
+					{@render recordCut('line')}
+				</RecordGroup>
 				{#await answer then result}
-					{#if result.kind === 'answer' && 'value' in result.answer}{@render recordAbout(
-							result.answer,
-						)}{/if}
+					{#if result.kind === 'answer' && 'value' in result.answer}
+						<RecordGroup density="compact">{@render recordAbout(result.answer)}</RecordGroup>
+					{/if}
 				{/await}
 			{:else}
-				<p>
-					{t(
-						'Choose a period to see the record.',
-						'Choisissez une période pour consulter le bilan.',
-					)}
-				</p>
+				<RecordGroup>
+					<p data-slot="screen-state">
+						{t(
+							'Choose a period to see the record.',
+							'Choisissez une période pour consulter le bilan.',
+						)}
+					</p>
+				</RecordGroup>
 			{/if}
 		</div>
-	</article>
+	</RecordScreen>
 </Surface>
-
-<style>
-	.effect-grid {
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
-	}
-
-	.line-grid {
-		container-type: inline-size;
-	}
-
-	@container (inline-size < 11rem) {
-		.line-reading {
-			display: block;
-		}
-	}
-</style>

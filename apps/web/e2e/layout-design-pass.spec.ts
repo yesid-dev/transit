@@ -17,6 +17,8 @@ import { expectDesignPass } from './design-pass-debt';
 const time = Date.parse('2026-11-23T16:00:00Z');
 const unobstructedCapture = '[data-slot="app-frame-chrome"] { visibility: hidden !important; }';
 const cohesionScreens = new Set<Screen>([
+	'alerts',
+	'alerts-live',
 	'overview',
 	'overview-live',
 	'line-record',
@@ -150,6 +152,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				)
 				.toBe('page-section');
 			await expect.soft(layout.locator('table .hand-drawn-line')).toHaveCount(0);
+			if (alerts)
+				await expect.soft(layout.locator('[data-slot="card"] [data-slot="card"]')).toHaveCount(0);
 			const plainControlCards = await layout
 				.locator(
 					'[data-slot="card"]:not([data-interactive]):has(a[href], button, input, select, summary)',
