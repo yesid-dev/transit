@@ -1,3 +1,4 @@
+import { recordPercent as percent } from '#lib/site/presenter.ts';
 import {
 	countedUnit,
 	dateRange,
@@ -9,13 +10,7 @@ import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, MeasureAnswer, RankingAnswer } from '#lib/server/engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
-import {
-	rateStateText,
-	coverageText,
-	percent,
-	recordConnection,
-	tally,
-} from '../record/recordText.ts';
+import { rateStateText, coverageText, recordConnection, tally } from '../record/recordText.ts';
 import { comparePeriods, periodDays } from './periodComparison.ts';
 import { recordState, type RecordState } from '../record/recordStates';
 export { dateRange, percent, tally };
@@ -34,7 +29,7 @@ export function measureText(
 ): string {
 	if (result.kind !== 'answer') return recordConnection[result.kind][locale];
 	const answer = result.answer;
-	if (answer.state !== 'measured') return rateStateText(answer, locale);
+	if (answer.state !== 'measured') return rateStateText(answer, locale, percent);
 
 	const value = answer.value[answer.measure === 'trips_run' ? 'trips_run' : 'on_time'];
 	const { on_time, classified, ran, eligible } = answer.evidence.counts;
@@ -54,7 +49,7 @@ export function measureText(
 		: locale === 'fr'
 			? `${dates}, ${share} des trajets prévus dont le résultat est connu ont été effectués (${n} sur ${total})`
 			: `${dates}, ${share} of scheduled trips with a known outcome ran (${n} of ${total})`;
-	return `${[reading, coverageText(answer.evidence, locale)].filter(Boolean).join(' · ')}.`;
+	return `${[reading, coverageText(answer.evidence, locale, percent)].filter(Boolean).join(' · ')}.`;
 }
 
 export function comparisonText(

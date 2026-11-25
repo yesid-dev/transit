@@ -1,6 +1,7 @@
+import { recordPercent as percent } from '#lib/site/presenter.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import { intl } from '#lib/i18n/index.ts';
-import { choose, percent, tally } from '#lib/features/record/recordText.ts';
+import { choose, tally } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
 import { hoursReading, longDate, recordRatio, serviceWeekday } from '#lib/site/presenter.ts';
 import { addIsoDays } from '#lib/v1/history/selection.ts';

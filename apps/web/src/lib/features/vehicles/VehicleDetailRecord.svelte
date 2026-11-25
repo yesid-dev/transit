@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { recordPercent as percent } from '#lib/site/presenter.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
 	import { DayStrip } from '@yesid/ui/chart';
@@ -38,7 +39,6 @@
 	import {
 		coverageText,
 		lastGoodNote,
-		percent,
 		pooledDays,
 		punctualityWeighting,
 		recordConnection,
@@ -496,6 +496,7 @@
 												</p>
 												{@const chart = punctualityBands(reading)}
 												{#if chart}<RecordChart
+														formatShare={percent}
 														input={{ kind: 'bands', answer: chart }}
 														title={timing.title}
 														{locale}
@@ -579,8 +580,8 @@
 								label: t('Observed', 'Observations'),
 								text: evidence
 									? [
-											coverageText(evidence, locale).replace(/([^.!?])$/, '$1.'),
-											timingBasis(evidence.counts, locale),
+											coverageText(evidence, locale, percent).replace(/([^.!?])$/, '$1.'),
+											timingBasis(evidence.counts, locale, percent),
 										]
 											.filter(Boolean)
 											.join(' ')

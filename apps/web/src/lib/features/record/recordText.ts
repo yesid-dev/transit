@@ -53,9 +53,10 @@ export function observedCoverage(
 	share: number | null | undefined,
 	scheduled: number | null | undefined,
 	locale: Locale,
+	formatShare = percent,
 ) {
 	if (share == null) return '';
-	const rate = percent(share, locale);
+	const rate = formatShare(share, locale);
 	return scheduled == null
 		? choose(locale, `${rate} of scheduled stops observed`, `${rate} des passages prévus observés`)
 		: choose(
@@ -69,7 +70,7 @@ export function lowCoverageText(locale: Locale) {
 	return lowCoverageLabel[locale];
 }
 
-export function coverageText(evidence: RateEvidence, locale: Locale) {
+export function coverageText(evidence: RateEvidence, locale: Locale, formatShare = percent) {
 	const {
 		counts,
 		excluded,
@@ -82,9 +83,10 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		share_observed,
 		counts?.scheduled ?? counts?.punctuality_scheduled,
 		locale,
+		formatShare,
 	);
 	if (share_observed != null && counts?.frequent_headways != null) {
-		const rate = percent(share_observed, locale);
+		const rate = formatShare(share_observed, locale);
 		const total = tally(counts.frequent_headways, locale);
 		coverage = choose(
 			locale,
@@ -93,7 +95,7 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		);
 	}
 	if (share_eligible != null) {
-		const rate = percent(share_eligible, locale);
+		const rate = formatShare(share_eligible, locale);
 		const scheduled = counts?.scheduled;
 		const withLive =
 			scheduled == null ? null : scheduled - (excluded?.route_without_live_data ?? 0);
@@ -109,7 +111,7 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		counts?.occupancy_readings != null &&
 		counts.readings != null
 	) {
-		const rate = percent(share_occupancy_readings, locale);
+		const rate = formatShare(share_occupancy_readings, locale);
 		const sample = tally(counts.occupancy_readings, locale);
 		const total = tally(counts.readings, locale);
 		coverage = choose(
@@ -137,14 +139,20 @@ export function periodCoverage(
 	);
 }
 
-export function withCoverage(reading: string, evidence: RateEvidence, locale: Locale) {
-	const coverage = coverageText(evidence, locale);
+export function withCoverage(
+	reading: string,
+	evidence: RateEvidence,
+	locale: Locale,
+	formatShare = percent,
+) {
+	const coverage = coverageText(evidence, locale, formatShare);
 	return [reading, coverage].filter(Boolean).join(' · ');
 }
 
 export function rateStateText(
 	answer: Pick<RecordCell, 'state' | 'state_text'> & { evidence: RateEvidence },
 	locale: Locale,
+	formatShare = percent,
 ) {
 	const status = answer.state_text[locale];
 	if (
@@ -152,9 +160,11 @@ export function rateStateText(
 		answer.evidence.coverage_reason === 'insufficient_coverage'
 	) {
 		const reason = choose(locale, 'insufficient coverage', 'couverture insuffisante');
-		return withCoverage(`${status} (${reason})`, answer.evidence, locale);
+		return withCoverage(`${status} (${reason})`, answer.evidence, locale, formatShare);
 	}
-	return answer.evidence.low_coverage ? withCoverage(status, answer.evidence, locale) : status;
+	return answer.evidence.low_coverage
+		? withCoverage(status, answer.evidence, locale, formatShare)
+		: status;
 }
 
 export const punctualityWeighting = {
@@ -167,7 +177,7 @@ export const pooledDays = {
 	fr: 'Les chiffres sur plusieurs jours regroupent les passages, donc les jours de semaine chargés pèsent davantage.',
 };
 
-export function timingBasis(counts: Counts | undefined, locale: Locale) {
+export function timingBasis(counts: Counts | undefined, locale: Locale, formatShare = percent) {
 	if (!counts) return '';
 	const bases = [
 		['vehicle_stopped', 'vehicle reported stopped', 'véhicule signalé à l’arrêt'],
@@ -183,7 +193,7 @@ export function timingBasis(counts: Counts | undefined, locale: Locale) {
 	const total = bases.reduce((sum, [key]) => sum + read(key), 0);
 	if (!total) return '';
 	const parts = bases.flatMap(([key, en, fr]) =>
-		read(key) ? [`${percent(read(key) / total, locale)} ${choose(locale, en, fr)}`] : [],
+		read(key) ? [`${formatShare(read(key) / total, locale)} ${choose(locale, en, fr)}`] : [],
 	);
 	const caution =
 		read('trip_update_passed') > total / 2

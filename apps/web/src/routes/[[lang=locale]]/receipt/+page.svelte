@@ -495,6 +495,7 @@
 										{:else}
 											{#if ['early', 'on_time', 'late'].every((band) => measuredShare(punctuality, band) != null)}
 												<RecordChart
+													formatShare={recordPercent}
 													title={bandTitle}
 													id="punctuality-bands"
 													locale={lang}
@@ -745,7 +746,7 @@
 															counts?.scheduled == null ? undefined : tally(counts.scheduled, lang),
 														),
 												current?.evidence.low_coverage ? lowCoverageText(lang) + '.' : null,
-												timingBasis(counts, lang),
+												timingBasis(counts, lang, recordPercent),
 												current?.coverage_note?.[lang],
 											]
 												.filter(Boolean)

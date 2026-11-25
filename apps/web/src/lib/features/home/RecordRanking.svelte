@@ -42,7 +42,7 @@
 		return answer.rows.slice(0, 3).map((row) => {
 			const line = kind === 'line' ? display.lineName(row.id) : null;
 			const stop = kind === 'stop' ? stops.find((item) => item.id === row.id) : undefined;
-			const coverage = row.low_coverage ? coverageText(row, locale) : null;
+			const coverage = row.low_coverage ? coverageText(row, locale, percent) : null;
 			return {
 				id: row.id,
 				label:

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { recordPercent as percent } from '#lib/site/presenter.ts';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
@@ -21,7 +22,6 @@
 	import {
 		choose,
 		measuredShare,
-		percent,
 		pooledDays,
 		punctualityWeighting,
 		recordConnection,
@@ -233,6 +233,7 @@
 						{#snippet reading(result)}
 							{#if !('cells' in result)}
 								<RecordChart
+									formatShare={percent}
 									input={{ kind: 'bands', answer: result }}
 									title={copy.bands}
 									{locale}
@@ -286,6 +287,7 @@
 								{#if distribution.kind === 'answer'}
 									<div class="grid gap-3">
 										<RecordChart
+											formatShare={percent}
 											input={{ kind: 'histogram', answer: distribution.answer }}
 											title={copy.delay}
 											{locale}
@@ -363,6 +365,7 @@
 					>
 						{#snippet reading(result)}
 							{#if 'cells' in result}<RecordChart
+									formatShare={percent}
 									input={{ kind: 'trend', answer: result }}
 									title={copy.trend}
 									{locale}
@@ -447,6 +450,7 @@
 				<NetworkRecordReading id="hours" title={copy.hours} {locale} {stamp} answer={record.hours}>
 					{#snippet reading(result)}
 						{#if 'cells' in result}<RecordChart
+								formatShare={percent}
 								input={{ kind: 'hours', answer: result }}
 								title={copy.hours}
 								{locale}
@@ -542,7 +546,7 @@
 															? undefined
 															: tally(answer.evidence.counts.scheduled, locale),
 													),
-											timingBasis(answer.evidence.counts, locale),
+											timingBasis(answer.evidence.counts, locale, percent),
 											answer.coverage_note?.[locale],
 										]
 											.filter(Boolean)

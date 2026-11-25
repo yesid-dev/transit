@@ -20,6 +20,7 @@ import {
 	minuteReading,
 	registryUnitText,
 	recordRatio,
+	recordPercent,
 	recordStamp,
 	scheduledClock,
 	serviceTime,
@@ -51,6 +52,15 @@ it.each([
 });
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
+
+it.each([
+	['en', '0.0%', '14.0%', '80.7%'],
+	['fr', '0,0 %', '14,0 %', '80,7 %'],
+] as const)('formats measured shares with one decimal in %s', (locale, zero, whole, fraction) => {
+	expect(normalize(recordPercent(0, locale))).toBe(zero);
+	expect(normalize(recordPercent(0.14, locale))).toBe(whole);
+	expect(normalize(recordPercent(0.807, locale))).toBe(fraction);
+});
 
 it.each([
 	['en', 'every 89 s', 'every 1.5 min', 'every 5 min', 'once a day'],

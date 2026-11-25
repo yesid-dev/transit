@@ -46,6 +46,7 @@
 		table = false,
 		id,
 		fill = false,
+		formatShare,
 	}: {
 		input: Input;
 		title: string;
@@ -53,20 +54,24 @@
 		table?: boolean;
 		id: string;
 		fill?: boolean;
+		formatShare?: (value: number, locale: Locale) => string;
 	} = $props();
 	const reading = $derived(
 		input.kind === 'bands'
-			? { kind: input.kind, ...bandChart(input.answer, title, locale) }
+			? { kind: input.kind, ...bandChart(input.answer, title, locale, formatShare) }
 			: input.kind === 'hours'
-				? { kind: input.kind, ...hourChart(input.answer, title, locale) }
+				? { kind: input.kind, ...hourChart(input.answer, title, locale, formatShare) }
 				: input.kind === 'ladder'
 					? {
 							kind: input.kind,
 							...stopLadderChart(input.answer, title, locale, input.stop, input.observed),
 						}
 					: input.kind === 'histogram'
-						? { kind: input.kind, ...histogramChart(input.answer, title, locale) }
-						: { kind: input.kind, ...trendChart(input.answer, title, locale, input.network) },
+						? { kind: input.kind, ...histogramChart(input.answer, title, locale, formatShare) }
+						: {
+								kind: input.kind,
+								...trendChart(input.answer, title, locale, input.network, formatShare),
+							},
 	);
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	type Row = ChartTable['rows'][number];
