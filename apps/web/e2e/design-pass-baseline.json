@@ -525,7 +525,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1837,
+					"height": 1934,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -549,7 +549,7 @@
 					"stops": 54,
 					"order": "8db083729c647975",
 					"withoutRing": 2,
-					"outOfOrder": 1,
+					"outOfOrder": 0,
 					"beforeFigure": 0
 				}
 			},
@@ -1656,7 +1656,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1455,
+					"height": 1478,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1775,7 +1775,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1371,
+					"height": 1394,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -1894,7 +1894,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 2730,
+					"height": 2752,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -2703,9 +2703,9 @@
 					"targets": 21,
 					"shortTargets": 1,
 					"targetDeficit": 40,
-					"clipped": 1,
+					"clipped": 0,
 					"brokenWords": 0,
-					"textDefects": ["inaccessible-ellipsis #bits-c14 > span:nth-child(2) Controls"]
+					"textDefects": []
 				},
 				"1440": {
 					"height": 900,
@@ -3243,14 +3243,14 @@
 					"order": "765ac1b38c5df410",
 					"withoutRing": 0,
 					"outOfOrder": 0,
-					"beforeFigure": 7
+					"beforeFigure": 8
 				},
 				"1440": {
 					"stops": 42,
 					"order": "aa84540d506755e7",
 					"withoutRing": 1,
 					"outOfOrder": 2,
-					"beforeFigure": 6
+					"beforeFigure": 7
 				}
 			},
 			"zoom": {
@@ -3788,7 +3788,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 900,
+					"height": 902,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3898,7 +3898,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1817,
+					"height": 1914,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -3922,7 +3922,7 @@
 					"stops": 53,
 					"order": "ca96373f217d8f4c",
 					"withoutRing": 2,
-					"outOfOrder": 1,
+					"outOfOrder": 0,
 					"beforeFigure": 0
 				}
 			},
@@ -4286,9 +4286,9 @@
 					"targets": 21,
 					"shortTargets": 1,
 					"targetDeficit": 40,
-					"clipped": 1,
+					"clipped": 0,
 					"brokenWords": 0,
-					"textDefects": ["inaccessible-ellipsis #bits-c14 > span:nth-child(2) Controls"]
+					"textDefects": []
 				},
 				"1440": {
 					"height": 900,
@@ -4695,7 +4695,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1351,
+					"height": 1374,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5255,7 +5255,7 @@
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
-					"targets": 82,
+					"targets": 83,
 					"shortTargets": 0,
 					"targetDeficit": 0,
 					"clipped": 0,
@@ -5263,7 +5263,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 5876,
+					"height": 5898,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5375,7 +5375,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1876,
+					"height": 1935,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
@@ -5399,7 +5399,7 @@
 					"stops": 54,
 					"order": "7264c4163afbdede",
 					"withoutRing": 2,
-					"outOfOrder": 1,
+					"outOfOrder": 0,
 					"beforeFigure": 0
 				}
 			},
@@ -5656,13 +5656,9 @@
 					"targets": 21,
 					"shortTargets": 1,
 					"targetDeficit": 40,
-					"clipped": 3,
+					"clipped": 1,
 					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"map-surface\"] Arrêts",
-						"clipped [data-slot=\"map-surface\"] Corridors",
-						"inaccessible-ellipsis #bits-c14 > span:nth-child(2) Contrôles"
-					]
+					"textDefects": ["clipped [data-slot=\"map-surface\"] Corridors"]
 				},
 				"1440": {
 					"height": 900,
@@ -5968,7 +5964,7 @@
 					"textDefects": []
 				},
 				"1440": {
-					"height": 3353,
+					"height": 3376,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
