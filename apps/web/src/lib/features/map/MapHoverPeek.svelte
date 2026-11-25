@@ -29,7 +29,7 @@
 	const absenceContext = readLiveAbsenceContext();
 	const t = $derived(MAP_SELECTION_DETAIL_COPY[locale]);
 	const kindLabel = $derived(
-		peek.kind === 'vehicle' ? t.bus : peek.kind === 'route' ? t.route : t.stop,
+		peek.kind === 'vehicle' ? t.vehicle : peek.kind === 'route' ? t.route : t.stop,
 	);
 	const title = $derived(
 		peek.kind === 'stop' && peek.nameAbsent ? stopNameFallback(peek.id, locale) : peek.title,
@@ -149,11 +149,11 @@
 				</dd>
 			</div>
 			<div>
-				<dt>{t.liveBuses}</dt>
+				<dt>{t.liveVehicles}</dt>
 				<dd>
 					{#if peek.visibleVehicleCount === 0 && routeHasNoLiveData(absenceContext().providerId, peek.type)}
 						<AbsentValue reason="metro-no-realtime" {locale} />
-					{:else}{t.visibleBuses(peek.visibleVehicleCount)}{/if}
+					{:else}{t.visibleVehicles(peek.visibleVehicleCount)}{/if}
 				</dd>
 			</div>
 		</dl>

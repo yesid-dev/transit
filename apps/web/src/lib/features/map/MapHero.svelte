@@ -867,7 +867,7 @@
 					{#if selectedDetail}
 						<span class="detail-identity-kind"
 							>{selectedDetail.kind === 'vehicle'
-								? selectionCopy.bus
+								? selectionCopy.vehicle
 								: selectedDetail.kind === 'route'
 									? selectionCopy.route
 									: selectionCopy.stop}</span

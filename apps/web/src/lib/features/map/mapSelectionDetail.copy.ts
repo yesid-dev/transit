@@ -3,7 +3,7 @@ import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 export const MAP_SELECTION_DETAIL_COPY = defineCopy({
 	en: {
 		ago: (age: string) => `${age} ago`,
-		bus: 'Vehicle',
+		vehicle: 'Vehicle',
 		stop: 'Stop',
 		route: 'Line',
 		status: 'Status',
@@ -20,16 +20,16 @@ export const MAP_SELECTION_DETAIL_COPY = defineCopy({
 		departuresUnavailable: 'Live departures unavailable',
 		approaching: 'Approaching',
 		vehicleCount: (count: number) => `${count} vehicle${count === 1 ? '' : 's'}`,
-		visibleBuses: (count: number) => `${count} vehicle${count === 1 ? '' : 's'} visible`,
+		visibleVehicles: (count: number) => `${count} vehicle${count === 1 ? '' : 's'} visible`,
 		direction: 'Direction',
 		selectAlertAction: 'Select alert',
 		alertLink: 'Details',
 		alertLinkAria: (host: string) => `Open alert details on ${host} (new tab)`,
-		liveBuses: 'Live vehicles',
+		liveVehicles: 'Live vehicles',
 	},
 	fr: {
 		ago: (age: string) => `il y a ${age}`,
-		bus: 'Véhicule',
+		vehicle: 'Véhicule',
 		stop: 'Arrêt',
 		route: 'Ligne',
 		status: 'Statut',
@@ -46,13 +46,13 @@ export const MAP_SELECTION_DETAIL_COPY = defineCopy({
 		departuresUnavailable: 'Départs en direct indisponibles',
 		approaching: 'En approche',
 		vehicleCount: (count: number) => `${count} véhicule${count === 1 ? '' : 's'}`,
-		visibleBuses: (count: number) =>
+		visibleVehicles: (count: number) =>
 			`${count} véhicule${count === 1 ? '' : 's'} visible${count === 1 ? '' : 's'}`,
 		direction: 'Direction',
 		selectAlertAction: 'Sélectionner l’alerte',
 		alertLink: 'Détails',
 		alertLinkAria: (host: string) => `Ouvrir les détails de l’alerte sur ${host} (nouvel onglet)`,
-		liveBuses: 'Véhicules en direct',
+		liveVehicles: 'Véhicules en direct',
 	},
 });
 

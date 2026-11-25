@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { absenceShort } from '#lib/site/absence.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
 	import { delayReading, mapDirectionReading } from '#lib/site/presenter.ts';
@@ -72,9 +73,12 @@
 		{#if notReporting}<p class="text-muted-foreground">
 				{tr('No recent position.', 'Aucune position récente.')}
 			</p>{/if}
-		{#if detail.nextStop}
-			<p>{tr('Next stop:', 'Prochain arrêt\u00a0:')} {stopDisplayName(detail.nextStop.name)}</p>
-		{/if}
+		<p>
+			{tr('Next stop:', 'Prochain arr\u00eat\u00a0:')}
+			{detail.nextStop
+				? stopDisplayName(detail.nextStop.name)
+				: absenceShort(detail.nextStopAbsence, locale)}
+		</p>
 		<div class="selection-links">
 			<a class="text-primary underline" href={vehicleLiveHref(detail.id, url, locale, city)}
 				>{tr(`Vehicle ${detail.id}`, `Véhicule ${detail.id}`)}</a
@@ -93,8 +97,12 @@
 				{/each}
 			</ul>
 		{/if}
-		{#if detail.departures?.length}
-			<p class="font-semibold">{tr('Next departures', 'Prochains départs')}</p>
+		<p class="font-semibold">{tr('Next departures', 'Prochains départs')}</p>
+		{#if detail.departures === null}
+			<StateMark state="no_live_data" {locale} />
+		{:else if detail.departures.length === 0}
+			<p>{tr('No departure is predicted now.', 'Aucun d\u00e9part pr\u00e9vu en ce moment.')}</p>
+		{:else}
 			<ul class="list-none p-0" data-slot="map-stop-predictions">
 				{#each detail.departures.slice(0, 3) as departure, index (index)}
 					{@const vehicle = departure.trip
@@ -129,9 +137,9 @@
 		{#each [...new Set(detail.directions.map((entry) => entry.terminalLabel ?? entry.label))] as terminal (terminal)}
 			<p>{terminal}</p>
 		{/each}
-		{#if scheduleOnly}
+		{#if scheduleOnly || vehiclesInView === null}
 			<StateMark state="no_live_data" {locale} />
-		{:else if vehiclesInView !== null}
+		{:else}
 			<p>
 				{intl.number(locale).format(vehiclesInView)}
 				{tr('vehicles in view', 'véhicules en vue')}
