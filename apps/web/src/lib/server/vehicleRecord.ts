@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { type FrameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { getRecordAnswer, type RecordQuery } from './engine.ts';
 import { recordCsvResponse } from './recordCsv.ts';
 
@@ -22,11 +22,10 @@ export function loadVehiclePage(
 	url: URL,
 	request: Request,
 	city: string,
-	now = new Date(),
+	clock: FrameClock,
 	id?: string,
-	timeZone?: string,
 ) {
-	const { mode, period } = parseFrameState(url.searchParams, frameToday(timeZone, now));
+	const { mode, period } = parseAnswerFrameState(url.searchParams, clock);
 	const scope = period && { ...period, city, visitorIp: request.headers.get('cf-connecting-ip') };
 	const sections: VehicleSection[] = id
 		? ['service', 'lines', 'reporting', 'completion', 'punctuality']

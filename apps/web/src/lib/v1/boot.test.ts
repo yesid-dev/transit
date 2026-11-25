@@ -42,6 +42,25 @@ it('parses old and new city metadata and rejects invalid name separators', () =>
 		).toBe(false);
 	}
 });
+it('keeps the optional complete service date in the public city catalog', () => {
+	const [first, second] = cities.providers;
+	const parsed = CityCatalogSchema.parse({
+		...cities,
+		providers: [
+			{ ...first, record_through: '2026-11-23' },
+			{ ...second, record_through: null },
+		],
+	});
+	expect(parsed.providers.map(({ record_through }) => record_through)).toEqual([
+		'2026-11-23',
+		null,
+	]);
+	expect(first).not.toHaveProperty('record_through');
+	expect(PublicCitySchema.safeParse({ ...first, record_through: '2026-11-31' }).success).toBe(
+		false,
+	);
+});
+
 const unavailable = async () => {
 	throw new Error('catalog unavailable');
 };

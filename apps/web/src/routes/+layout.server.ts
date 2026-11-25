@@ -4,7 +4,7 @@ import { DEFAULT_LOCALE, type Locale } from '#lib/i18n/index.ts';
 import { bootProvider } from '#lib/v1/boot.ts';
 import { captureContext } from '#lib/live/captureContext.ts';
 import { getCityCatalog, getRecordDataHealth, getScheduleEdition } from '#lib/server/engine.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { calendarClock, frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
@@ -104,7 +104,10 @@ export const load: LayoutServerLoad = async (event) => {
 	const provider = selection.provider;
 	const period =
 		!loadSnapshots && needsSchedule && provider?.download_licence?.source_date_required
-			? parseFrameState(event.url.searchParams, frameToday(provider.timezone)).period
+			? parseAnswerFrameState(
+					event.url.searchParams,
+					route === localRoute + '/status' ? calendarClock(provider) : frameClock(provider),
+				).period
 			: null;
 	const recordSourceDate = period
 		? getRecordDataHealth({ ...period, city: selection.providerId, visitorIp }).then((result) =>

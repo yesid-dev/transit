@@ -9,12 +9,14 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { longDate } from '#lib/site/presenter.ts';
 	import {
+		frameDateLimit,
 		frameHref,
 		MAX_RECORD_DAYS,
 		periodError,
 		presetPeriod,
 		PRESETS,
 		RECORD_START,
+		type FrameClock,
 		type FrameMode,
 		type Preset,
 	} from '#lib/site/frameState.ts';
@@ -23,19 +25,21 @@
 	let {
 		locale,
 		url,
-		today,
+		clock,
 		frame,
 		context,
 	}: {
 		locale: Locale;
 		url: URL;
-		today: string;
+		clock: FrameClock;
 		frame: ReturnType<typeof frameControlsState>;
 		context: SurfaceRailContext;
 	} = $props();
 
 	const uid = $props.id();
 	const copy = $derived(frameCopy[locale]);
+	const { today, recordThrough } = $derived(clock);
+	const dateLimit = $derived(frameDateLimit(clock));
 	const summary = $derived(framePeriodSummary(frame.period, locale));
 	const startLabel = $derived(longDate(RECORD_START, locale));
 	const modes = $derived([
@@ -56,7 +60,7 @@
 		PRESETS.map((key) => ({
 			key,
 			label: copy.presets[key],
-			disabled: !presetPeriod(key, today),
+			disabled: !presetPeriod(key, clock),
 		})),
 	);
 	let open = $state(false);
@@ -100,13 +104,13 @@
 
 	function selectPreset(key: Preset | '') {
 		if (!key) return;
-		const period = presetPeriod(key, today);
+		const period = presetPeriod(key, clock);
 		if (period) selectPeriod(period);
 	}
 
 	function applyDates({ start, end }: { start: string; end: string }) {
 		const period = { from: start, to: end, preset: null };
-		tooLong = periodError(period, today) === 'tooLong';
+		tooLong = periodError(period, dateLimit) === 'tooLong';
 		if (tooLong) return;
 		open = false;
 		selectPeriod(period);
@@ -142,6 +146,9 @@
 				onSelect={selectPreset}
 				variant="joined-grid"
 			/>
+			{#if recordThrough && recordThrough.slice(0, 7) < today.slice(0, 7)}
+				<p class="w-full text-sm text-muted-foreground">{copy.waitingForMonth}</p>
+			{/if}
 			{#if summary}
 				<p class="w-full text-sm" data-slot="frame-period-summary">
 					{#if summary.title}<strong class="block">{summary.title}</strong>{/if}
@@ -169,7 +176,7 @@
 							presets={[]}
 							value={{ start: frame.period?.from ?? '', end: frame.period?.to ?? '' }}
 							min={RECORD_START}
-							max={today}
+							max={dateLimit}
 							labels={{
 								legend: copy.custom,
 								presets: copy.period,
@@ -178,7 +185,7 @@
 								end: copy.to,
 								apply: copy.apply,
 								missing: copy.missing,
-								bounds: copy.bounds,
+								bounds: dateLimit === today ? copy.bounds : copy.completeBounds,
 								order: copy.order,
 							}}
 							onValueChange={applyDates}

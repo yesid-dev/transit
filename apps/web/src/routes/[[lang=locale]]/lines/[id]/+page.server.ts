@@ -1,6 +1,6 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import { loadLineRecord, lineDirection } from '#lib/server/lineRecord.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
@@ -36,7 +36,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const { v1, schedule, lang, providerId, provider } = await event.parent();
-	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	const { period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
 	if (!frameLive) {
 		const directory = createLineDirectory(schedule?.routes ?? null, {
 			line: (routeId) => routeNameFallback(routeId, lang),

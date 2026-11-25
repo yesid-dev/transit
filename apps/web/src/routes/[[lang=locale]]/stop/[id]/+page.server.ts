@@ -6,7 +6,7 @@ import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
 import { getStop } from '#lib/v1/repositories/static.ts';
 import { serverV1Context, type IdentitySeed } from '#lib/v1/serverContext.ts';
 import { loadStopRecord } from '#lib/server/stopRecord.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { stopFrameView, stopViewHref } from '#lib/site/stopFrame.ts';
 
 export const load: PageServerLoad = async (event) => {
@@ -29,7 +29,7 @@ export const load: PageServerLoad = async (event) => {
 	const { v1, lang, providerId, schedule, provider } = await event.parent();
 	const period =
 		view === 'record'
-			? parseFrameState(event.url.searchParams, frameToday(provider?.timezone)).period
+			? parseAnswerFrameState(event.url.searchParams, frameClock(provider)).period
 			: null;
 	const scheduledStop = schedule?.stops.find((stop) => stop.id === id);
 	const frame = period

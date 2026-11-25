@@ -3,7 +3,7 @@ import {
 	rankingLists,
 	rankingSelection,
 } from '#lib/features/rankings/rankingSelection.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { type FrameClock, parseFrameState } from '#lib/site/frameState.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import {
 	dataHealthQuestion,
@@ -25,15 +25,21 @@ import {
 	rankingsQuery,
 } from './screenQuestions.ts';
 
-export type WarmCity = { id: string; timezone: string; inputs: Record<string, boolean> };
+export type WarmCity = {
+	id: string;
+	timezone: string;
+	inputs: Record<string, boolean>;
+	record_through?: string | null;
+};
 
-export function defaultPeriod(now: Date, timeZone: string) {
-	return parseFrameState(new URLSearchParams(), frameToday(timeZone, now)).period;
+export function defaultPeriod(clock: FrameClock) {
+	return parseFrameState(new URLSearchParams(), clock).period;
 }
 
 export function defaultCityQuestions(
 	city: WarmCity,
 	period: NonNullable<ReturnType<typeof defaultPeriod>>,
+	healthPeriod = period,
 ) {
 	const scope = { ...period, city: city.id };
 	const overview = overviewSelection(scope);
@@ -59,7 +65,7 @@ export function defaultCityQuestions(
 			...networkQuestions(),
 			...(providerHasAlerts(city) ? alertQuestions(scope) : []),
 		].map(({ query: { path, parameters } }) => periodQuestion(scope, path, parameters)),
-		dataHealthQuestion(scope),
+		dataHealthQuestion({ ...healthPeriod, city: city.id }),
 		mapRecordQuestion(scope),
 		mapRecordQuestion(scope, undefined, undefined, 'corridors'),
 		scheduleQuestion(city.id),

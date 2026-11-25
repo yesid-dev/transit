@@ -1,4 +1,5 @@
 import { providerLocalDateKey } from '#lib/utils/serviceDate.ts';
+import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 
 export const RECORD_START = '2026-10-13';
@@ -27,8 +28,30 @@ interface FrameState {
 const KEYS = ['frameMode', 'period', 'recordFrom', 'recordTo'] as const;
 const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
-export function frameToday(timeZone: string | undefined, now = new Date()): string {
-	return providerLocalDateKey(now.toISOString(), timeZone)!;
+type FrameProvider = Pick<PublicCity, 'timezone' | 'record_through'> | null | undefined;
+
+export interface FrameClock {
+	today: string;
+	recordThrough: string | null;
+}
+
+export function frameClock(provider: FrameProvider, now = new Date()): FrameClock {
+	return {
+		today: providerLocalDateKey(now.toISOString(), provider?.timezone)!,
+		recordThrough: provider?.record_through ?? null,
+	};
+}
+
+export function calendarClock(provider: FrameProvider, now = new Date()): FrameClock {
+	return { ...frameClock(provider, now), recordThrough: null };
+}
+
+const shiftDay = (day: string, offset: number) =>
+	isoDay(new Date(Date.parse(day) + offset * 86_400_000));
+const minDay = (a: string, b: string) => (a < b ? a : b);
+
+export function frameDateLimit({ today, recordThrough }: FrameClock) {
+	return recordThrough ? shiftDay(today, -1) : today;
 }
 
 function isDay(key: string): boolean {
@@ -45,28 +68,36 @@ export function periodError({ from, to }: DateWindow, today: string): PeriodErro
 	return null;
 }
 
-export function presetPeriod(preset: Preset, today: string): FramePeriod | null {
+export function presetPeriod(
+	preset: Preset,
+	{ today, recordThrough }: FrameClock,
+): FramePeriod | null {
 	const date = new Date(today + 'T00:00:00Z');
-	const daysAgo = (days: number) =>
-		isoDay(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - days)));
+	const yesterday = shiftDay(today, -1);
+	const through = recordThrough && isDay(recordThrough) ? minDay(recordThrough, yesterday) : null;
+	const end = through ?? yesterday;
+	const yearEnd = through ? new Date(shiftDay(through, 1) + 'T00:00:00Z') : date;
 	const monthStart = (offset: number) =>
 		isoDay(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1)));
 	const lastDayOfPreviousMonth = isoDay(
 		new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 0)),
 	);
-	const year = date.getUTCFullYear() - 1;
-	const month = date.getUTCMonth();
+	const year = yearEnd.getUTCFullYear() - 1;
+	const month = yearEnd.getUTCMonth();
 	const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 	const lastYear = isoDay(
-		new Date(Date.UTC(year, month, Math.min(date.getUTCDate(), daysInMonth))),
+		new Date(Date.UTC(year, month, Math.min(yearEnd.getUTCDate(), daysInMonth))),
 	);
 	const periods = {
-		yesterday: { from: daysAgo(1), to: daysAgo(1) },
-		'7-days': { from: daysAgo(7), to: daysAgo(1) },
-		'28-days': { from: daysAgo(28), to: daysAgo(1) },
-		'this-month': { from: monthStart(0), to: today },
-		'last-month': { from: monthStart(-1), to: lastDayOfPreviousMonth },
-		'12-months': { from: lastYear, to: daysAgo(1) },
+		yesterday: { from: yesterday, to: yesterday },
+		'7-days': { from: shiftDay(end, -6), to: end },
+		'28-days': { from: shiftDay(end, -27), to: end },
+		'this-month': { from: monthStart(0), to: through ?? today },
+		'last-month': {
+			from: monthStart(-1),
+			to: through ? minDay(lastDayOfPreviousMonth, through) : lastDayOfPreviousMonth,
+		},
+		'12-months': { from: lastYear, to: end },
 	};
 	const period = { ...periods[preset], preset };
 	if (
@@ -77,14 +108,34 @@ export function presetPeriod(preset: Preset, today: string): FramePeriod | null 
 	return periodError(period, today) ? null : period;
 }
 
-export function parseFrameState(params: URLSearchParams, today: string): FrameState {
+export function parseFrameState(params: URLSearchParams, clock: FrameClock): FrameState {
 	const mode = params.get('frameMode') === 'live' ? 'live' : 'record';
 	const preset = PRESETS.find((option) => option === params.get('period')) ?? null;
 	const from = params.get('recordFrom') ?? '';
 	const to = params.get('recordTo') ?? '';
 	const period = { preset, from, to };
-	if (!periodError(period, today)) return { mode, period };
-	return { mode, period: presetPeriod('7-days', today) ?? presetPeriod('yesterday', today) };
+	if (!periodError(period, frameDateLimit(clock))) return { mode, period };
+	return {
+		mode,
+		period:
+			presetPeriod('7-days', clock) ??
+			presetPeriod(clock.recordThrough ? '12-months' : 'yesterday', clock),
+	};
+}
+
+export function unpublishedYesterday(period: FrameState['period'], { recordThrough }: FrameClock) {
+	return recordThrough &&
+		period?.preset === 'yesterday' &&
+		period.from === period.to &&
+		period.to > recordThrough
+		? period.to
+		: null;
+}
+
+/** Keep the selected dates in the frame, but avoid question work for a pending Yesterday. */
+export function parseAnswerFrameState(params: URLSearchParams, clock: FrameClock): FrameState {
+	const frame = parseFrameState(params, clock);
+	return unpublishedYesterday(frame.period, clock) ? { ...frame, period: null } : frame;
 }
 
 /** Keep the frame separate from the date, mode and range filters on existing pages. */

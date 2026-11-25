@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from transit_engine.clean_manifest import file_identities
-from transit_engine.store import CITY, env_int
+from transit_engine.store import CITY, Store, env_int
 
 REMOTE = "clean:transit-clean"
 DATE = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
@@ -141,6 +141,7 @@ def sync(remote: R2, root: Path, version: int, reserve: int, *, check: bool = Fa
 
     for key in missing_search:
         copy_object(remote, key, root, inventory[key], reserve)
+    stamp = Store(str(root), version).mirror_stamp()
     for key, (city, day) in pending.items():
         directory = key.rsplit("/", 1)[0]
         payload = remote.run("cat", f"{REMOTE}/{key}")
@@ -162,6 +163,7 @@ def sync(remote: R2, root: Path, version: int, reserve: int, *, check: bool = Fa
             stream.flush()
             os.fsync(stream.fileno())
         publish_manifest(partial, marker)
+        stamp.touch()
     print(f"Published {len(pending)} clean days and {len(missing_search)} search files", flush=True)
 
 

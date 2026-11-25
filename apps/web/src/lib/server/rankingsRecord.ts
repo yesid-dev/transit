@@ -1,8 +1,9 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
+import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { RouteFile } from '#lib/v1/index.ts';
 import { recordCsvResponse } from './recordCsv.ts';
 import { getRankingsRecord } from './engine.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { rankingSelection, type RankingPath } from '#lib/features/rankings/rankingSelection.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 
@@ -16,7 +17,7 @@ export async function loadRankingsRecord(
 		request: Request;
 		parent: () => Promise<{
 			providerId: string;
-			provider?: { timezone: string } | null;
+			provider?: Pick<PublicCity, 'timezone' | 'record_through'> | null;
 			schedule?: { route_directions?: Record<string, RouteFile['directions']> } | null;
 		}>;
 	},
@@ -24,7 +25,7 @@ export async function loadRankingsRecord(
 	const { url, request, parent } = event;
 	const selection = rankingSelection(path, url.searchParams);
 	const { providerId: city, provider, schedule } = await parent();
-	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	const { period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
 	return {
 		selection,
 		period,

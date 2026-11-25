@@ -4,6 +4,7 @@ const getRecordAnswer = vi.hoisted(() => vi.fn());
 vi.mock('./engine.ts', () => ({ getRecordAnswer }));
 vi.mock('./recordCsv.ts', () => ({ recordCsvResponse: vi.fn() }));
 
+import { frameClock } from '#lib/site/frameState.ts';
 import { loadVehiclePage } from './vehicleRecord.ts';
 
 const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
@@ -13,7 +14,13 @@ const request = new Request('https://transit1.yesid.dev', {
 });
 const scope = { city: 'test-city', from: '2026-11-08', to: '2026-11-14', visitorIp: '192.0.2.24' };
 const load = (path: string, id?: string) =>
-	loadVehiclePage(new URL(path, request.url), request, scope.city, now, id);
+	loadVehiclePage(
+		new URL(path, request.url),
+		request,
+		scope.city,
+		frameClock({ timezone: 'UTC' }, now),
+		id,
+	);
 
 beforeEach(() => getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unreachable' }));
 

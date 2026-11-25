@@ -11,6 +11,7 @@ import { load as health } from '../../routes/[[lang=locale]]/status/+page.server
 import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
+import { calendarClock, frameClock } from '#lib/site/frameState.ts';
 import { getDelayDistribution, getScheduleEdition } from './engine.ts';
 import { GET as mapRecord } from '../../routes/api/map-record/+server.ts';
 
@@ -28,22 +29,25 @@ it.each([
 	{
 		id: 'fixture-north',
 		timezone: 'America/Toronto',
+		record_through: '2026-11-20',
 		inputs: { i3_alerts: true, service_alerts: false },
 	},
 	{
 		id: 'fixture-south',
 		timezone: 'America/Los_Angeles',
+		record_through: '2026-11-19',
 		inputs: { i3_alerts: false, service_alerts: false },
 	},
 ])('warms the same questions that the default screens request for $id', async (provider) => {
 	vi.useFakeTimers({ toFake: ['Date'] });
 	const now = new Date('2026-11-22T06:30:00Z');
 	vi.setSystemTime(now);
-	const period = defaultPeriod(now, provider.timezone)!;
+	const period = defaultPeriod(frameClock(provider, now))!;
+	const healthPeriod = defaultPeriod(calendarClock(provider, now))!;
 	expect(period).toMatchObject(
 		provider.id === 'fixture-north'
-			? { from: '2026-11-15', to: '2026-11-21' }
-			: { from: '2026-11-14', to: '2026-11-20' },
+			? { from: '2026-11-14', to: '2026-11-20' }
+			: { from: '2026-11-13', to: '2026-11-19' },
 	);
 	const origin = 'https://transit1.yesid.dev';
 	const request = new Request(origin);
@@ -85,9 +89,49 @@ it.each([
 		url.searchParams.sort();
 		return url.href;
 	});
-	const warm = [...defaultCityQuestions(provider, period), sharedDefaultQuestion];
+	const warm = [...defaultCityQuestions(provider, period, healthPeriod), sharedDefaultQuestion];
 	expect(warm.toSorted()).toEqual([...new Set(visitor)].toSorted());
 	expect(warm.length).toBeLessThan(visitor.length);
+});
+
+it('does not start Record questions for an unpublished Yesterday', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date('2026-11-25T05:30:00Z'));
+	const url = new URL(
+		'https://transit1.yesid.dev/lines?period=yesterday&recordFrom=2026-11-24&recordTo=2026-11-24',
+	);
+	const request = new Request(url);
+	const parent = async () => ({
+		providerId: 'fixture',
+		provider: { timezone: 'America/Toronto', record_through: '2026-11-23' },
+	});
+	const result = await lines({ url, request, parent } as Parameters<typeof lines>[0]);
+	expect(result.finderRecord).toBeNull();
+	expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('warms the same ranges and questions overnight and in the afternoon on the same edition', () => {
+	const city = {
+		id: 'fixture',
+		timezone: 'America/Toronto',
+		inputs: { i3_alerts: true },
+		record_through: '2026-11-23',
+	};
+	const at = (utc: string) => {
+		const now = new Date(utc);
+		const period = defaultPeriod(frameClock(city, now))!;
+		const healthPeriod = defaultPeriod(calendarClock(city, now))!;
+		return { period, questions: defaultCityQuestions(city, period, healthPeriod) };
+	};
+	const overnight = at('2026-11-25T05:30:00Z');
+	expect(overnight.period).toMatchObject({ from: '2026-11-17', to: '2026-11-23' });
+	expect(at('2026-11-25T18:00:00Z')).toEqual(overnight);
+	expect(
+		overnight.questions
+			.map((url) => new URL(url))
+			.find(({ pathname }) => pathname === '/v2/fixture/data-health')
+			?.searchParams.get('to'),
+	).toBe('2026-11-24');
 });
 
 it.each([

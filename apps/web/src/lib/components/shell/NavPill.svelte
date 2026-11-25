@@ -27,7 +27,12 @@
 	import { searchTransit, type SearchList } from '#lib/search/transitSearch.ts';
 	import HeaderSearch from './HeaderSearch.svelte';
 	import SearchSheet from './SearchSheet.svelte';
-	import { carryFrameState, frameHref, frameToday, parseFrameState } from '#lib/site/frameState.ts';
+	import {
+		carryFrameState,
+		frameHref,
+		parseFrameState,
+		type FrameClock,
+	} from '#lib/site/frameState.ts';
 	import {
 		type NavItem,
 		FRAME_MENU,
@@ -47,7 +52,7 @@
 		locale?: Locale;
 		url?: URL;
 		providerId?: string;
-		timeZone?: string;
+		clock: FrameClock;
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
@@ -61,7 +66,7 @@
 		locale: localeProp,
 		url = new URL('https://transit.local/'),
 		providerId = v1Provider(url),
-		timeZone,
+		clock,
 		providers = [],
 		discoveryError = false,
 		search = $bindable(''),
@@ -83,7 +88,7 @@
 	const hrefFor = (href: string) => {
 		const localized = localizeHref(href, locale, providerId);
 		if (href !== '/receipt') return carryFrameState(localized, url);
-		const { period } = parseFrameState(url.searchParams, frameToday(timeZone));
+		const { period } = parseFrameState(url.searchParams, clock);
 		return frameHref(new URL(localized, url), { mode: 'record', period });
 	};
 	const home = $derived(hrefFor('/'));

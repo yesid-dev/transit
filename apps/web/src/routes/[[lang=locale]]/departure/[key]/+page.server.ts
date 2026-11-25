@@ -8,7 +8,8 @@ import {
 	loadDepartureRecord,
 	publishedDepartureTrip,
 } from '#lib/server/departureDailyRecord.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { scheduledClock } from '#lib/site/presenter.ts';
+import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { providerId, lang, v1, schedule, provider } = await event.parent();
@@ -20,14 +21,19 @@ export const load: PageServerLoad = async (event) => {
 				? 'Ce départ ne figure pas à l’horaire.'
 				: 'This departure is not in the timetable.',
 		);
-	const today = frameToday(provider?.timezone);
-	const { period, mode } = parseFrameState(event.url.searchParams, today);
+	const clock = frameClock(provider);
+	const { today } = clock;
+	const { period, mode } = parseAnswerFrameState(event.url.searchParams, clock);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const day = period ? departureDay(event.url.searchParams, period) : today;
 	const scope = { city: providerId, visitorIp };
+	const line = schedule?.routes.find(({ id }) => id === identity.line)?.short || identity.line;
+	const time = scheduledClock(identity.departure, lang);
 	const requestedTrip = event.url.searchParams.get('trip');
 	return {
 		identity,
+		seoTitle:
+			lang === 'fr' ? `Ligne ${line}, départ de ${time}` : `Line ${line}, ${time} departure`,
 		lineMissing: schedule != null && !schedule.routes.some(({ id }) => id === identity.line),
 		lang,
 		city: providerId,

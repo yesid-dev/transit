@@ -7,6 +7,7 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from hmac import compare_digest
 from pathlib import Path
+from time import monotonic
 from typing import Any, Literal, cast
 from urllib.parse import parse_qs
 from uuid import uuid4
@@ -233,6 +234,33 @@ class Engine:
         self.boot_id = uuid4().hex
         self.authorization = b"Bearer " + access_token if access_token else None
 
+        self._cities_lock = asyncio.Lock()
+        self._cities: dict[str, Any] | None = None
+        self._cities_refresh_at = 0.0
+        self._mirror_stamp: int | None = None
+
+    def _load_cities(self) -> dict[str, Any]:
+        stamp = None
+        if not self.store.s3_endpoint:
+            try:
+                stamp = self.store.mirror_stamp().stat().st_mtime_ns
+            except FileNotFoundError:
+                pass
+        if (
+            self._cities is None
+            or stamp != self._mirror_stamp
+            or (stamp is None and monotonic() >= self._cities_refresh_at)
+        ):
+            catalog = city_catalog()
+            for provider in catalog["providers"]:
+                provider["record_through"] = self.store.record_through(provider["id"])
+            catalog["cleaning_version"] = self.store.cleaning_version
+            self._cities = catalog
+            self._mirror_stamp = stamp
+            # Direct stores without a mirror publisher refresh on the catalog's open TTL.
+            self._cities_refresh_at = monotonic() + 30
+        return self._cities
+
     async def __call__(
         self, scope: Scope, receive: ASGIReceiveCallable, send: ASGISendCallable
     ) -> None:
@@ -253,8 +281,8 @@ class Engine:
             if scope["query_string"]:
                 await respond(send, 400, {"message": "this endpoint takes no parameters"})
             else:
-                catalog = await asyncio.to_thread(city_catalog)
-                catalog["cleaning_version"] = self.store.cleaning_version
+                async with self._cities_lock:
+                    catalog = await asyncio.to_thread(self._load_cities)
                 await respond(send, 200, catalog, cleaning_version=self.store.cleaning_version)
             return
         if scope["path"] == "/how-we-measure":

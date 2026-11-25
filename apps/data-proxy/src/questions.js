@@ -74,8 +74,8 @@ export async function admit(env, visitorIp) {
   }
 }
 
-async function loadCities(env, cache, key, authorize, ctx, allowLastGood) {
-  const cached = await cacheMatch(cache, key);
+async function loadCities(env, cache, key, authorize, ctx, allowLastGood, refresh) {
+  const cached = refresh ? undefined : await cacheMatch(cache, key);
   if (cached) return { body: await cached.text() };
   const denied = await authorize();
   if (denied) return { error: denied };
@@ -112,9 +112,11 @@ async function loadCities(env, cache, key, authorize, ctx, allowLastGood) {
   return { error: message(503, "provider catalog unavailable") };
 }
 
-export function loadPublicCities(env, cache, origin, authorize, ctx, allowLastGood = false) {
+export function loadPublicCities(
+  env, cache, origin, authorize, ctx, allowLastGood = false, refresh = false,
+) {
   const key = new Request(`${origin}/__transit_question_cache/v2/unversioned/cities`);
-  return loadCities(env, cache, key, authorize, ctx, allowLastGood);
+  return loadCities(env, cache, key, authorize, ctx, allowLastGood, refresh);
 }
 
 async function lastGood(env, key) {
@@ -248,6 +250,9 @@ async function answerQuestion(request, env, ctx, visitorIp) {
 
   const cities = await loadPublicCities(
     env, cache, url.origin, authorize, ctx, question.route !== "cities",
+    // The mirror's warm-up revalidates the public catalog immediately after copying.
+    question.route === "cities" &&
+      /(?:^|,)\s*no-cache\s*(?:,|$)/i.test(request.headers.get("cache-control") ?? ""),
   );
   if (question.route === "cities") {
     if (cities.error) return cities.error;

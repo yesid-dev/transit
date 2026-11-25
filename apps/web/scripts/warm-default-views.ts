@@ -7,6 +7,7 @@ import {
 	sharedDefaultQuestion,
 	type WarmCity,
 } from '../src/lib/server/defaultQuestions.ts';
+import { calendarClock, frameClock } from '../src/lib/site/frameState.ts';
 import { citiesQuestion, questionUrl } from '../src/lib/server/engineQuestion.ts';
 
 // Keep one request in flight and leave room below the public limit of 30 new
@@ -68,7 +69,10 @@ export async function warmQuestions(
 }
 
 async function publicCities(): Promise<WarmCity[]> {
-	const response = await fetch(questionUrl(citiesQuestion), requestOptions());
+	const response = await fetch(questionUrl(citiesQuestion), {
+		...requestOptions(),
+		headers: { 'cache-control': 'no-cache' },
+	});
 	if (!response.ok) throw new Error(`Public city catalog returned HTTP ${response.status}`);
 	const { providers } = (await response.json()) as { providers?: WarmCity[] };
 	if (
@@ -110,8 +114,9 @@ async function main(args: string[]) {
 	const missing: string[] = [];
 	const urls: string[] = [];
 	for (const city of cities) {
-		const period = defaultPeriod(now, city.timezone);
-		if (!period) throw new Error('Default Record period unavailable');
+		const period = defaultPeriod(frameClock(city, now));
+		const healthPeriod = defaultPeriod(calendarClock(city, now));
+		if (!period || !healthPeriod) throw new Error('Default Record period unavailable');
 		periods.push(period);
 		if (root && version && !dryRun) {
 			try {
@@ -121,7 +126,7 @@ async function main(args: string[]) {
 				continue;
 			}
 		}
-		const cityUrls = defaultCityQuestions(city, period);
+		const cityUrls = defaultCityQuestions(city, period, healthPeriod);
 		counts[city.id] = cityUrls.length;
 		urls.push(...cityUrls);
 	}

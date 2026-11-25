@@ -36,6 +36,7 @@ export const PublicProviderSchema = z.object({
 export const PublicCitySchema = PublicProviderSchema.extend({
 	name_separators: nameSeparators.optional(),
 	timezone: z.string().min(1),
+	record_through: z.iso.date().nullable().optional(),
 	bounds: bounds.nullable(),
 	basemap_url: z.string().nullable().optional(),
 	attribution: z.string().nullable().optional(),

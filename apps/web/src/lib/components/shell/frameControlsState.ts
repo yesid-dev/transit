@@ -4,7 +4,12 @@ import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { dateRange } from '#lib/site/presenter.ts';
-import { parseFrameState, type Preset } from '#lib/site/frameState.ts';
+import {
+	parseFrameState,
+	unpublishedYesterday,
+	type FrameClock,
+	type Preset,
+} from '#lib/site/frameState.ts';
 
 export const frameCopy = {
 	en: {
@@ -19,6 +24,9 @@ export const frameCopy = {
 		recordDates: 'Dates apply to Record',
 		liveMoment: 'Live now shows this moment only.',
 		period: 'Period',
+		waitingForMonth: 'This month’s first complete day is not in the record yet.',
+		waitingForDay: (date: string) =>
+			`${date} is not in the record yet. Each day is added the next day, after cleaning.`,
 		presets: {
 			yesterday: 'Yesterday',
 			'7-days': '7 days',
@@ -36,6 +44,7 @@ export const frameCopy = {
 		dayCount: (days: number) => `${days} ${days === 1 ? 'day' : 'days'}`,
 		missing: 'Enter both dates.',
 		bounds: 'Choose dates between the start of the record and today.',
+		completeBounds: 'Choose dates between the start of the record and yesterday.',
 		order: 'The end date must be on or after the start date.',
 		tooLong: (days: number) => `Choose a period of at most ${days} days.`,
 	},
@@ -51,6 +60,9 @@ export const frameCopy = {
 		recordDates: 'Les dates s’appliquent au bilan',
 		liveMoment: 'La vue en direct montre seulement la situation actuelle.',
 		period: 'Période',
+		waitingForMonth: 'Le premier jour complet de ce mois-ci ne figure pas encore au bilan.',
+		waitingForDay: (date: string) =>
+			`La journée du ${date} ne figure pas encore au bilan. Chaque journée est ajoutée le lendemain, après le nettoyage des données.`,
 		presets: {
 			yesterday: 'Hier',
 			'7-days': '7 jours',
@@ -68,12 +80,13 @@ export const frameCopy = {
 		dayCount: (days: number) => `${days} ${days === 1 ? 'jour' : 'jours'}`,
 		missing: 'Entrez les deux dates.',
 		bounds: 'Choisissez des dates entre le début du bilan et aujourd’hui.',
+		completeBounds: 'Choisissez des dates entre le début du bilan et hier.',
 		order: 'La date de fin doit être égale ou postérieure à la date de début.',
 		tooLong: (days: number) => `Choisissez une période d’au plus ${days} jours.`,
 	},
 } satisfies Record<Locale, { presets: Record<Preset, string>; [key: string]: unknown }>;
 
-export function frameControlsState(url: URL, today: string) {
+export function frameControlsState(url: URL, clock: FrameClock) {
 	const path = delocalizePath(url.pathname).replace(/\/$/, '') || '/';
 	const recordOnly =
 		isRankingPath(path) || ['/lines', '/stops', '/receipt', '/download'].includes(path);
@@ -81,7 +94,10 @@ export function frameControlsState(url: URL, today: string) {
 	const stop = /^\/stop\/[^/]+$/.test(path);
 	const map = path === '/map';
 	const liveOnly = path.startsWith('/trip/');
-	const parsed = parseFrameState(url.searchParams, today);
+	const parsed = parseFrameState(
+		url.searchParams,
+		path === '/status' ? { ...clock, recordThrough: null } : clock,
+	);
 	let mode = parsed.mode;
 	if (recordOnly) mode = 'record';
 	else if (liveOnly) mode = 'live';
@@ -99,12 +115,16 @@ export function frameControlsState(url: URL, today: string) {
 		liveOnly,
 		detail: line || stop,
 		map,
+		waitingForYesterday:
+			mode === 'record' && path !== '/download' && path !== '/status'
+				? unpublishedYesterday(parsed.period, clock)
+				: null,
 		usesFrameRecord:
 			recordOnly ||
 			line ||
 			stop ||
 			path.startsWith('/departure/') ||
-			['/', '/alerts', '/network', '/vehicles'].includes(path) ||
+			['/', '/alerts', '/network', '/status', '/vehicles'].includes(path) ||
 			path.startsWith('/vehicle/'),
 	} as const;
 }

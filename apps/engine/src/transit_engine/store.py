@@ -106,6 +106,41 @@ class Store:
                 raise
         return conn
 
+    def mirror_stamp(self) -> Path:
+        return Path(self.root) / f".record-v{self.cleaning_version}"
+
+    def record_through(self, city: str) -> str | None:
+        """Find the last complete date. Earlier gaps do not shorten the record."""
+        directory = f"{self.root.rstrip('/')}/{city}"
+        pattern = f"*/v{self.cleaning_version}/manifest.json"
+        markers: list[str]
+        with self.connect() as conn:
+            if self.s3_endpoint:
+                markers = [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT file FROM glob(?)", [f"{directory}/{pattern}"]
+                    ).fetchall()
+                ]
+            else:
+                markers = [path.as_posix() for path in Path(directory).glob(pattern)]
+            for marker in sorted(markers, reverse=True):
+                day_key = marker.split("/")[-3]
+                try:
+                    day = date.fromisoformat(day_key)
+                except ValueError:
+                    continue
+                if day.isoformat() != day_key:
+                    continue
+                # The receipt declares the edition's files, including whether alerts
+                # are tracked. Check all of them with the same rules as a query.
+                checked = self.query_day(
+                    conn, city, day, _PUNCTUALITY_FILES, allow_untracked_alerts=True
+                )
+                if checked.settled and checked.files:
+                    return day_key
+        return None
+
     def files(
         self,
         conn: duckdb.DuckDBPyConnection,

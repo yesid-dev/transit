@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { frameControlsState, framePeriodSummary } from './frameControlsState.ts';
 
 const today = '2026-11-22';
-const state = (href: string) => frameControlsState(new URL(href, 'https://transit.test'), today);
+const clock = (recordThrough: string | null = null) => ({ today, recordThrough });
+const state = (href: string) => frameControlsState(new URL(href, 'https://transit.test'), clock());
 
 describe('frame control state', () => {
 	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/repeat-offenders', '/fr/download'])(
@@ -17,6 +18,22 @@ describe('frame control state', () => {
 		expect(state('/map?frameMode=record').mode).toBe('live');
 		expect(state('/trip/T1?frameMode=record')).toMatchObject({ mode: 'live', liveOnly: true });
 		expect(state('/map?mapLayer=corridors&recordLine=24').mode).toBe('record');
+	});
+
+	it('replaces an unavailable Yesterday answer while keeping the diagnostic screens usable', () => {
+		const url = new URL(
+			'https://transit.test/lines/51?period=yesterday&recordFrom=2026-11-21&recordTo=2026-11-21',
+		);
+		expect(frameControlsState(url, clock('2026-11-20')).waitingForYesterday).toBe('2026-11-21');
+		expect(frameControlsState(url, clock('2026-11-21')).waitingForYesterday).toBeNull();
+		expect(frameControlsState(url, clock()).waitingForYesterday).toBeNull();
+		for (const path of ['/status', '/download']) {
+			url.pathname = path;
+			expect(frameControlsState(url, clock('2026-11-20'))).toMatchObject({
+				waitingForYesterday: null,
+				period: { from: '2026-11-21', to: '2026-11-21' },
+			});
+		}
 	});
 
 	it('describes pinned dates and their inclusive duration in either language', () => {

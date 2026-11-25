@@ -2,7 +2,7 @@ import { getMeasure, getRanking, getRecordAnswer, getScheduleEdition } from '#li
 import { captureContext } from '#lib/live/captureContext.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { overviewSelection } from '#lib/server/screenQuestions.ts';
-import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
+import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import type { PageServerLoad } from './$types';
 
 function scheduleTotals(edition: ScheduleEdition | null) {
@@ -11,7 +11,7 @@ function scheduleTotals(edition: ScheduleEdition | null) {
 
 export const load: PageServerLoad = async ({ url, parent, request, locals }) => {
 	const { providerId: city, provider, lang, schedule } = await parent();
-	const { mode, period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	const { mode, period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
 	if (!period) return { mode, record: null };
 
 	const visitorIp = request.headers.get('cf-connecting-ip');
