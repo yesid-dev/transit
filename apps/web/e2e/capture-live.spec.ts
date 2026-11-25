@@ -121,6 +121,11 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		const href = locale === 'fr' ? '/fr/alerts' : '/alerts';
 		await page.goto(`${href}?provider=stm&frameMode=live`);
 		await expect(page.getByText(header[locale], { exact: true })).toBeVisible();
+		await expect(page.locator('#alerts-breakdown')).toContainText(
+			locale === 'fr' ? 'Non publié' : 'Not published',
+		);
+		await expect(page.locator('#alerts-log').getByRole('combobox')).toHaveCount(1);
+		await expect(page.locator('#alerts-log').getByText(/(?:Until|Jusqu’au) /)).toBeVisible();
 		await page.goto(`${href}?provider=octranspo&frameMode=live`);
 		await expect(
 			page.getByRole('status').filter({ hasText: locale === 'fr' ? 'Non suivi' : 'Not tracked' }),
@@ -148,6 +153,10 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	const list = page.locator('#alerts-log');
 	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12');
 	await expect(page.locator('#alerts-window')).toContainText('12 alerts are in effect now.');
+	await expect(page.locator('#alerts-breakdown')).toContainText('Not stated');
+	await expect(page.locator('#alerts-breakdown')).toContainText(
+		'Effects are the agency’s own categories, kept as published.',
+	);
 	await list.getByRole('combobox', { name: 'Effect' }).selectOption('DETOUR');
 	await list.getByRole('combobox', { name: 'Line' }).selectOption('24');
 	await list.getByRole('button', { name: 'Filter alerts' }).click();

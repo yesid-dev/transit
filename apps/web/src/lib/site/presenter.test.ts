@@ -6,7 +6,7 @@ import {
 	agencyMessageHeading,
 	alertAnswerSentence,
 	alertPaging,
-	alertPeriod,
+	alertPeriods,
 	clockRange,
 	clockTime,
 	dateAndClock,
@@ -87,10 +87,30 @@ it.each([
 		expect(alertPaging(locale).more(12)).toBe(more);
 		expect(alertPaging(locale).showing(12, 426)).toBe(showing);
 		expect(
-			alertPeriod({ start: '2026-11-20T14:00:00Z', end: null }, locale, 'America/Toronto', true),
-		).toMatch(new RegExp(`^${since}.*09:00`));
+			alertPeriods([{ start: '2026-11-20T14:00:00Z', end: null }], locale, 'America/Toronto', true),
+		).toEqual([expect.stringMatching(new RegExp(`^${since} 20 nov.*2026, 09:00\\.$`, 'i'))]);
 	},
 );
+
+it('unions overlapping archive periods and gaps under ten minutes in local time', () => {
+	const ranges = [
+		{ start: '2026-11-17T05:00:00Z', end: '2026-11-18T04:57:00Z' },
+		{ start: '2026-11-17T05:00:00Z', end: '2026-11-19T04:58:00Z' },
+		{ start: '2026-11-19T05:05:00Z', end: '2026-11-24T05:00:00Z' },
+		{ start: '2026-11-24T05:10:00Z', end: '2026-11-24T08:30:00Z' },
+	];
+	expect(alertPeriods(ranges, 'en', 'America/Toronto', false)).toEqual([
+		'17 to 23 Nov 2026',
+		'24 Nov 2026, 00:10 to 03:30',
+	]);
+	expect(alertPeriods(ranges.slice(0, 3), 'fr', 'America/Toronto', false)).toEqual([
+		'du 17 au 23 nov. 2026',
+	]);
+	expect(alertPeriods(ranges.slice(-1), 'en', 'America/Toronto', true)).toEqual([
+		'Since 24 Nov 2026, 00:10.',
+		'Until 24 Nov 2026, 03:30.',
+	]);
+});
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
 

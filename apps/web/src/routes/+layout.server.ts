@@ -112,7 +112,9 @@ export const load: LayoutServerLoad = async (event) => {
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });
 	const schedule =
 		needsSchedule && selection.provider
-			? await getScheduleEdition(selection.providerId, visitorIp)
+			? route === localRoute + '/alerts'
+				? await getScheduleEdition(selection.providerId, visitorIp, 'alerts')
+				: await getScheduleEdition(selection.providerId, visitorIp)
 			: null;
 	// Overview combines schedule totals with a small set of ranked stop names.
 	// Keep the untrimmed schedule on the server for its page loader.

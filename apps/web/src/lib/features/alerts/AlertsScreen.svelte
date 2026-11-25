@@ -53,6 +53,7 @@
 		liveAlertCut,
 		recordAlertCards,
 		recordAlertCut,
+		unstatedEffect,
 		type AlertCut,
 	} from './alertCards.ts';
 	import AlertList from './AlertList.svelte';
@@ -139,15 +140,16 @@
 	});
 	const scope = $derived(
 		t(
-			'The agency writes these messages. Their dates, lines and stops come from the feed.',
-			'L’agence rédige ces avis. Leurs dates, lignes et arrêts proviennent du flux.',
+			'The agency writes these messages. Transit keeps each one in full, with its dates, lines and stops.',
+			'L’agence rédige ces avis. Transit conserve chacun en entier, avec ses dates, ses lignes et ses arrêts.',
 		),
 	);
 	const labelCount = (count: number) =>
 		`${tally(count, locale)} ${t(count === 1 ? 'alert' : 'alerts', 'avis')}`;
 	const unavailable = $derived(t('Unavailable', 'Indisponible'));
 	const noAlerts = $derived(t('No alerts in effect.', 'Aucun avis en vigueur.'));
-	let lineLimit = $state(12);
+	const linePageSize = 6;
+	let lineLimit = $state(linePageSize);
 	const paging = $derived(alertPaging(locale));
 
 	function formatCitation(key: keyof typeof alertSections, result: EngineAnswer, lastGood?: true) {
@@ -190,28 +192,50 @@
 	</RecordActionGroup>
 {/snippet}
 
-{#snippet evidenceFooter(evidence: RecordEvidence, count?: number | null)}
-	<div
-		class="flex w-full flex-wrap justify-between gap-2 border-t border-border pt-2 font-mono text-small text-muted-foreground"
-	>
-		{#if count != null}<span>{labelCount(count)}</span>{/if}
-		<span>{methodEvidence(evidence, locale, true)}</span>
-	</div>
+{#snippet evidenceFooter(evidence?: RecordEvidence, count?: number | null)}
+	{#if evidence || count != null}
+		<div
+			class="flex w-full flex-wrap justify-between gap-2 border-t border-border pt-2 font-mono text-small text-muted-foreground"
+		>
+			{#if count != null}<span>{labelCount(count)}</span>{/if}
+			{#if evidence}<span>{methodEvidence(evidence, locale, true)}</span>{/if}
+		</div>
+	{/if}
 {/snippet}
 
 {#snippet cutRows(rows: AlertCut[], group: 'effect' | 'line')}
 	{#if rows.length}
 		{#if group === 'effect'}
-			<dl class="effect-grid grid gap-3">
-				{#each rows as row, index (index)}
-					<div class="min-w-0 border-t border-border pt-2">
-						<dt class="wrap-break-word text-small text-muted-foreground">
-							{alertEffect(row.key, locale)}
-						</dt>
-						<dd class="text-subheading font-semibold tabular-nums">{@render cutValue(row)}</dd>
-					</div>
-				{/each}
-			</dl>
+			{#if rows.every((row) => row.key === unstatedEffect && row.value != null)}
+				<div class="grid gap-1">
+					<StateMark state="not_published" {locale} />
+					<p>
+						{t(
+							'The agency does not publish the effect of its messages.',
+							'L’agence ne publie pas l’effet de ses avis.',
+						)}
+					</p>
+				</div>
+			{:else}
+				<dl class="effect-grid grid gap-3">
+					{#each rows as row, index (index)}
+						<div class="min-w-0 border-t border-border pt-2">
+							<dt class="wrap-break-word text-small text-muted-foreground">
+								{alertEffect(row.key, locale)}
+							</dt>
+							<dd class="text-subheading font-semibold tabular-nums">{@render cutValue(row)}</dd>
+						</div>
+					{/each}
+				</dl>
+				{#if rows.some((row) => row.key !== unstatedEffect && row.value != null)}
+					<p class="mt-3 text-small text-muted-foreground">
+						{t(
+							'Effects are the agency’s own categories, kept as published.',
+							'Les effets sont les catégories de l’agence, telles que publiées.',
+						)}
+					</p>
+				{/if}
+			{/if}
 		{:else}
 			<dl class="line-grid grid gap-x-6 lg:grid-cols-2">
 				{#each rows.slice(0, lineLimit) as row, index (index)}
@@ -235,11 +259,11 @@
 					</div>
 				{/each}
 			</dl>
-			{#if rows.length > 12}
+			{#if rows.length > linePageSize}
 				<ShowMore
 					shown={Math.min(lineLimit, rows.length)}
 					total={rows.length}
-					pageSize={12}
+					pageSize={linePageSize}
 					labels={paging}
 					onMore={(count) => (lineLimit += count)}
 				/>
@@ -283,8 +307,12 @@
 				{#key promise}<RecordPending {locale} answer={promise} />{/key}
 			{:then result}
 				{#if result?.kind === 'answer' && 'cells' in result.answer && (result.answer.cells.length || result.answer.state === 'measured')}
-					{@render cutRows(recordAlertCut(result.answer, group), group)}
-					{@render evidenceFooter(result.answer.evidence)}
+					{@const rows = recordAlertCut(result.answer, group)}
+					{@render cutRows(rows, group)}
+					{@render evidenceFooter(
+						result.answer.evidence,
+						rows.length === 1 ? rows[0].value : undefined,
+					)}
 					{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				{:else if result}
 					{@render resultState(result)}
@@ -307,6 +335,7 @@
 		<span id="day"></span><span id="hour"></span><span id="stop"></span><span id="cause"></span>
 		<AboutFigures
 			title={t('About these figures', 'À propos de ces chiffres')}
+			compact
 			fields={[
 				{
 					key: 'period',
@@ -316,7 +345,9 @@
 				{
 					key: 'counts',
 					label: t('Counted', 'Ce qui est compté'),
-					text: result.info?.[0]?.text?.[locale]?.counts ?? scope,
+					text:
+						result.info?.[0]?.text?.[locale]?.counts ??
+						(result.value.alerts != null ? labelCount(result.value.alerts) : null),
 				},
 				{
 					key: 'coverage',
@@ -351,7 +382,7 @@
 			]}
 			versionsLink={{
 				href: localizeHref('/metrics', locale, data.city),
-				label: t('How we measure', 'Comment nous mesurons'),
+				label: t('How we measure', 'Comment on mesure'),
 			}}
 		/>
 	</div>
@@ -362,7 +393,7 @@
 		<div class="border-b border-border pb-3">
 			<ScreenTitle {title} {subtitle} />
 		</div>
-		<div class="grid min-w-0 grid-cols-1 gap-4" data-slot="screen-content">
+		<div class="grid min-w-0 grid-cols-1 gap-2 sm:gap-4" data-slot="screen-content">
 			{#if !data.tracked}
 				<div data-slot="screen-state">
 					<StateNotice
@@ -398,6 +429,7 @@
 						>
 							{#snippet meta()}
 								<p>{t('Counted:', 'Ce qui est compté :')} {labelCount(liveCards.length)}</p>
+								<p>{t('A count of alerts at this moment.', 'Un décompte des avis à ce moment.')}</p>
 								<p>{scope}</p>
 							{/snippet}
 						</RecordAnswer>
@@ -405,6 +437,7 @@
 					<div id="alerts-breakdown">
 						<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
 							{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
+							{@render evidenceFooter(undefined, liveCards.length)}
 						</RecordCard>
 					</div>
 					<div id="alerts-log" class="scroll-mt-24">
@@ -416,10 +449,15 @@
 								timeZone={data.timeZone}
 								live
 							/>
+							{@render evidenceFooter(undefined, liveCards.length)}
 						</RecordCard>
 					</div>
 					<RecordCard title={alertSections.line[locale]} stamp={liveStamp}>
 						{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
+						{@render evidenceFooter(
+							undefined,
+							liveCards.filter(({ routes }) => routes.length).length,
+						)}
 					</RecordCard>
 				{:else}
 					<div data-slot="screen-state">

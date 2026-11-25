@@ -10,14 +10,14 @@
 	import { choose } from '#lib/features/record/recordText.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { alertPeriod, alertPaging } from '#lib/site/presenter.ts';
-	import StateMark from '#lib/features/record/StateMark.svelte';
+	import { alertPeriods, alertPaging } from '#lib/site/presenter.ts';
 	import {
-		agencyText,
+		agencyMessage,
 		alertAgencyLink,
 		alertEffect,
 		alertTarget,
-		genericAgencyHeading,
+		sortAlertCards,
+		unstatedEffect,
 		type AlertCard,
 	} from './alertCards.ts';
 
@@ -40,8 +40,9 @@
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const location = $derived(page.shallow?.url ?? page.url);
 	const line = $derived(location.searchParams.get('route') ?? '');
-	const selectedEffect = $derived(live ? (location.searchParams.get('effect') ?? '') : '');
-	const effectKey = (card: AlertCard) => card.effect ?? 'UNKNOWN_EFFECT';
+	const hasEffects = $derived(cards.some(({ effect }) => effect != null));
+	const selectedEffect = $derived(hasEffects ? (location.searchParams.get('effect') ?? '') : '');
+	const effectKey = (card: AlertCard) => card.effect ?? unstatedEffect;
 	const effects = $derived(
 		[...new Set(cards.map(effectKey))].sort((a, b) =>
 			alertEffect(a, locale).localeCompare(alertEffect(b, locale), locale),
@@ -54,15 +55,19 @@
 	);
 	const filters = $derived(
 		Array.from(location.searchParams).filter(
-			([key]) => key !== 'route' && (!live || key !== 'effect') && key !== 'alert',
+			([key]) => key !== 'route' && key !== 'effect' && key !== 'alert',
 		),
 	);
 	const target = $derived(alertTarget(new URL(location.href)));
 	const filtered = $derived(
-		cards.filter(
-			(card) =>
-				(!line || card.routes.includes(line)) &&
-				(!selectedEffect || effectKey(card) === selectedEffect),
+		sortAlertCards(
+			cards.filter(
+				(card) =>
+					(!line || card.routes.includes(line)) &&
+					(!selectedEffect || effectKey(card) === selectedEffect),
+			),
+			locale,
+			display.line,
 		),
 	);
 	const ordered = $derived.by(() => {
@@ -108,7 +113,7 @@
 		event.preventDefault();
 		const url = new SvelteURL(location.href);
 		const values = new FormData(event.currentTarget as HTMLFormElement);
-		for (const key of live ? ['route', 'effect'] : ['route']) {
+		for (const key of ['route', 'effect']) {
 			const value = values.get(key);
 			if (typeof value === 'string' && value) url.searchParams.set(key, value);
 			else url.searchParams.delete(key);
@@ -121,16 +126,15 @@
 </script>
 
 {#snippet item(card: AlertCard, anchorId: string | undefined)}
-	{@const title = agencyText(card.header, locale)}
-	{@const generic = genericAgencyHeading(title?.text)}
-	{@const description = agencyText(card.description, locale)}
+	{@const { title, body } = agencyMessage(card, locale)}
 	{@const source = alertAgencyLink(card, locale)}
+	{@const periods = alertPeriods(card.periods, locale, timeZone, live)}
 	<li
 		id={anchorId}
 		tabindex="-1"
-		class="min-w-0 scroll-mt-24 border-b border-border py-2 last:border-b-0"
+		class="min-w-0 scroll-mt-24 border-b border-border py-1 last:border-b-0 sm:py-2"
 	>
-		<div class="flex flex-wrap items-center gap-x-3">
+		<div class="flex flex-wrap items-center gap-x-3" class:single-plate={card.routes.length === 1}>
 			{#if card.routes.length}
 				<div class="flex min-w-0 flex-wrap items-center gap-x-1">
 					{#each [...new Set(card.routes)] as route (route)}
@@ -144,22 +148,15 @@
 					{/each}
 				</div>
 			{/if}
-			<h3 class="min-w-0 wrap-break-word font-semibold" lang={generic ? undefined : title?.lang}>
-				{(!generic && title?.text) || t(`Alert ${card.id}`, `Avis ${card.id}`)}
+			<h3 class="min-w-0 wrap-break-word font-semibold" lang={title?.lang}>
+				{title?.text ?? t('Message without text', 'Avis sans texte')}
 			</h3>
 		</div>
 		<div class="flex flex-wrap items-center gap-x-3 text-small text-muted-foreground">
 			{#if card.effect}
 				<p>{alertEffect(card.effect, locale)}.</p>
-			{:else}
-				<p>
-					<span class="sr-only">{t('Effect', 'Effet')} </span><StateMark state="unknown" {locale} />
-				</p>
 			{/if}
-			{#each card.periods as period, index (index)}
-				{@const text = alertPeriod(period, locale, timeZone, live)}
-				{#if text}<p>{text}</p>{/if}
-			{/each}
+			{#if periods.length}<p>{periods.join(' ')}</p>{/if}
 			{#if card.stops.length}
 				<div class="flex flex-wrap items-center gap-x-1">
 					<span>{t('Stops', 'Arrêts')}</span>
@@ -174,12 +171,11 @@
 				</div>
 			{/if}
 		</div>
-		{#if generic}<p class="mt-1 font-semibold" lang={title?.lang}>{title?.text}</p>{/if}
-		{#if description}<p
+		{#if body}<p
 				class="mt-1 max-w-[var(--measure-body)] wrap-break-word whitespace-pre-line"
-				lang={description.lang}
+				lang={body.lang}
 			>
-				{description.text}
+				{body.text}
 			</p>{/if}
 		{#if source}
 			<a
@@ -206,7 +202,7 @@
 					name={key}
 					{value}
 				/>{/each}
-			{#if live}
+			{#if hasEffects}
 				<label class="grid min-w-0 max-w-full gap-1 text-small">
 					{t('Effect', 'Effet')}
 					<select
@@ -240,10 +236,12 @@
 		</form>
 	</search>
 	{#if selectedOutsideFilters}
-		<ul class="mt-2">{@render item(selectedOutsideFilters, anchor(selectedOutsideFilters.id))}</ul>
+		<ul class="alert-list mt-2">
+			{@render item(selectedOutsideFilters, anchor(selectedOutsideFilters.id))}
+		</ul>
 	{/if}
 	{#if ordered.length}
-		<ul bind:this={list} class="mt-2">
+		<ul bind:this={list} class="alert-list mt-2">
 			{#each ordered.slice(0, shown) as card, index (card.key)}
 				{@render item(
 					card,
@@ -260,3 +258,16 @@
 {:else}
 	<p>{t('No alerts in effect.', 'Aucun avis en vigueur.')}</p>
 {/if}
+
+<style>
+	.alert-list {
+		container-type: inline-size;
+	}
+
+	@container (inline-size >= 12rem) {
+		.single-plate {
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr);
+		}
+	}
+</style>

@@ -114,11 +114,14 @@ export const designPassCases = [
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';
-	const [from, to] = screen.startsWith('network-health')
-		? ['2026-11-20', '2026-11-22']
-		: screen.startsWith('data-health')
-			? ['2026-10-26', '2026-11-22']
-			: screen === 'daily'
+	const [from, to] =
+		screen === 'alerts' || screen === 'alerts-live'
+			? ['2026-11-17', '2026-11-23']
+			: screen.startsWith('network-health')
+				? ['2026-11-20', '2026-11-22']
+				: screen.startsWith('data-health')
+					? ['2026-10-26', '2026-11-22']
+					: screen === 'daily'
 				? ['2026-11-18', '2026-11-20']
 				: screen === 'departure'
 					? ['2026-11-16', '2026-11-20']

@@ -158,6 +158,7 @@ function engineFetch(
 		!proxy &&
 		fixtureScope &&
 		(question.parameters.measure === 'alert_counts' ||
+			(question.path.endsWith('/schedule-index') && fixtureScope === 'alerts') ||
 			fixtureScope === 'overview-stream' ||
 			fixtureScope === 'overview-stop-ranking')
 	)
@@ -271,6 +272,7 @@ const recordCell = recordState.extend({
 					version: z.string(),
 					routes: z.array(z.string()),
 					stops: z.array(z.string()),
+					effect: z.string().nullable().optional(),
 					header: translatedMessage,
 					description: translatedMessage,
 					periods: z
@@ -615,8 +617,12 @@ export async function getCityCatalog(visitorIp?: string | null) {
 	return result.answer;
 }
 
-export async function getScheduleEdition(city: string, visitorIp?: string | null) {
-	const result = await query(scheduleQuestion(city), scheduleIndexSchema, visitorIp);
+export async function getScheduleEdition(
+	city: string,
+	visitorIp?: string | null,
+	fixtureScope?: string,
+) {
+	const result = await query(scheduleQuestion(city), scheduleIndexSchema, visitorIp, fixtureScope);
 	return result.kind === 'answer' ? result.answer.schedule : null;
 }
 

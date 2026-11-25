@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
-import { alertFixtures } from './alert-fixture.mjs';
+import { stmLiveAlertFixtures } from './alert-fixture.mjs';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 import { designPassCases } from './design-pass-cases';
 import { recordMapFixture } from './map-record-fixture';
@@ -25,10 +25,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 					vehicle_positions: [captureVehicle(time)],
 					...(screen === 'alerts-live'
 						? {
-								alerts: alertFixtures(12).map((alert) => ({
-									...alert,
-									periods: [[new Date(time - 3600000).toISOString(), null]],
-								})),
+								alerts: stmLiveAlertFixtures(time),
 							}
 						: {}),
 				}),

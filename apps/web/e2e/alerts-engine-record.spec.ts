@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { stmAlertId } from './alert-fixture.mjs';
 
 const period = 'provider=stm&frameMode=record&recordFrom=2026-11-14&recordTo=2026-11-20';
 
@@ -13,15 +14,24 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	const answer = page.locator('#answer');
 	await expect(answer).toContainText('avis ont été en vigueur');
 	await expect(answer).not.toContainText('12,5');
-	await expect(page.locator('#effect')).toContainText('Détour');
-	await expect(page.locator('#line').getByRole('link').first()).toBeVisible();
+	await expect(page.locator('#effect')).toContainText('Non publié');
+	await expect(page.locator('#line').getByRole('status')).toHaveText('6 sur 185');
+	await expect(
+		page.locator('#line').getByRole('link').filter({ hasText: 'Sherbrooke' }),
+	).toBeVisible();
 	await expect(page.getByText('Aucune capture brute')).toBeVisible();
 	const messages = page.locator('#messages');
-	await expect(messages.getByText('Use stop 51234.')).toHaveAttribute('lang', 'en');
-	await expect(messages.getByRole('status')).toHaveText('12 sur 426');
+	await expect(messages.getByRole('heading', { name: 'Use stop 51234.' })).toHaveAttribute(
+		'lang',
+		'en',
+	);
+	await expect(messages.getByRole('heading', { name: 'Avis sans texte' })).toBeVisible();
+	await expect(messages.getByText(/Votre arrêt|anonymous:|Inconnu/)).toHaveCount(0);
+	await expect(messages.getByText('du 14 au 20 nov. 2026', { exact: true }).first()).toBeVisible();
+	await expect(messages.getByRole('status')).toHaveText(/^12 sur 1\s707$/);
 	await messages.getByRole('button', { name: 'Afficher 12 de plus' }).click();
-	await expect(messages.getByRole('status')).toHaveText('24 sur 426');
-	await expect(page.locator('#alert-a13')).toBeFocused();
+	await expect(messages.getByRole('status')).toHaveText(/^24 sur 1\s707$/);
+	await expect(messages.locator('ul > li').nth(12)).toBeFocused();
 
 	await answer.getByRole('button', { name: 'Citer', exact: true }).click();
 	await expect(page.getByRole('dialog')).toContainText(/v1.*recordFrom=2026-11-14.*#answer/);
@@ -45,9 +55,13 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 		expect(await download.text()).toMatch(/^Mesure,Du,Au/);
 	}
 
-	await page.goto(`/alerts?${period}#alert-a426`);
-	await expect(page.locator('#alert-a426')).toBeVisible();
-	await expect(page.getByText(/Votre arrêt/)).toHaveAttribute('lang', 'fr');
+	const target = stmAlertId(1706);
+	await page.goto(`/alerts?${period}#alert-${encodeURIComponent(target)}`);
+	await expect(page.locator(`[id="alert-${target}"]`)).toBeVisible();
+	await expect(
+		page.getByRole('heading', { name: 'Travaux sur la chaussée de la rue Beaubien.' }),
+	).toHaveAttribute('lang', 'fr');
+	await expect(page.getByRole('combobox', { name: 'Effect' })).toHaveCount(0);
 	await page.getByRole('combobox', { name: 'Line' }).selectOption('24');
 	await page.getByRole('button', { name: 'Filter alerts' }).click();
 	await expect(page).toHaveURL(/route=24/);
@@ -97,7 +111,7 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 	);
 	expect(release.status()).toBe(204);
 	await expect(
-		page.locator('#messages').getByRole('heading', { name: 'Detour on Sherbrooke' }).first(),
+		page.locator('#messages').getByRole('heading', { name: 'Use stop 51234.' }),
 	).toBeVisible();
 	await expect(patience).toContainText('Answered');
 });

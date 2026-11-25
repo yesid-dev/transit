@@ -86,16 +86,60 @@ export function clockRange(start: string, end: string, locale: Locale, timeZone 
 	return [from, to].join('–');
 }
 
-export function alertPeriod(
-	{ start, end }: { start: string | null; end: string | null },
+type AlertPeriod = { start: string | null; end: string | null };
+
+function dayFirstDateAndClock(iso: string, locale: Locale, timeZone: string) {
+	const day = providerLocalDateKey(iso, timeZone);
+	if (!day) return presenterCopy[locale].unknownTime;
+	return `${dateRange({ from: day, to: day }, locale)}, ${clockTime(new Date(iso), locale, timeZone)}`;
+}
+
+export function alertPeriods(
+	periods: readonly AlertPeriod[],
 	locale: Locale,
-	timeZone: string | undefined,
+	timeZone = 'UTC',
 	live: boolean,
 ) {
-	if (!live && start && end) return clockRange(start, end, locale, timeZone);
-	if (!start) return null;
-	const date = dateAndClock(start, locale, timeZone);
-	return locale === 'fr' ? `Depuis le ${date}.` : `Since ${date}.`;
+	if (live) {
+		return [
+			...new Set(
+				periods.flatMap(({ start, end }) => {
+					const since = start && dayFirstDateAndClock(start, locale, timeZone);
+					const until = end && dayFirstDateAndClock(end, locale, timeZone);
+					return [
+						since && (locale === 'fr' ? `Depuis le ${since}.` : `Since ${since}.`),
+						until && (locale === 'fr' ? `Jusqu’au ${until}.` : `Until ${until}.`),
+					].filter((reading): reading is string => Boolean(reading));
+				}),
+			),
+		];
+	}
+	const ranges = periods
+		.flatMap(({ start, end }) => {
+			if (!start || !end) return [];
+			const span = { start: Date.parse(start), end: Date.parse(end) };
+			return Number.isFinite(span.start) && Number.isFinite(span.end) && span.end >= span.start
+				? [span]
+				: [];
+		})
+		.sort((a, b) => a.start - b.start);
+	const union: typeof ranges = [];
+	for (const span of ranges) {
+		const last = union.at(-1);
+		if (last && span.start - last.end < 10 * 60_000) last.end = Math.max(last.end, span.end);
+		else union.push(span);
+	}
+	return union.flatMap(({ start, end }) => {
+		const from = providerLocalDateKey(new Date(start).toISOString(), timeZone);
+		const to = providerLocalDateKey(new Date(Math.max(start, end - 1)).toISOString(), timeZone);
+		if (!from || !to) return [];
+		const days = dateRange({ from, to }, locale);
+		if (from !== to || providerLocalDateKey(new Date(end).toISOString(), timeZone) !== from)
+			return [days];
+		const first = clockTime(new Date(start), locale, timeZone);
+		const last = clockTime(new Date(end), locale, timeZone);
+		return [locale === 'fr' ? `${days}, de ${first} à ${last}` : `${days}, ${first} to ${last}`];
+	});
 }
 
 export function alertAnswerSentence(count: number, locale: Locale, live: boolean) {
