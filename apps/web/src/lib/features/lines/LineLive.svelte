@@ -61,6 +61,7 @@
 		record,
 		stopNames,
 		headsigns,
+		predictionHeadsigns,
 	}: {
 		line: string;
 		name: string;
@@ -79,6 +80,7 @@
 		record: ReturnType<typeof loadLineRecord> | null | undefined;
 		stopNames: Record<string, string>;
 		headsigns: Record<number, string>;
+		predictionHeadsigns: Record<number, string>;
 	} = $props();
 	const labels = $derived(liveDelayLabels(locale));
 	const title = $derived(choose(locale, 'Its vehicles now', 'Ses véhicules en ce moment'));
@@ -258,7 +260,7 @@
 					{city}
 					{line}
 					stops={mainStops}
-					{headsigns}
+					headsigns={predictionHeadsigns}
 					seed={trips}
 					{refreshed}
 					{now}

@@ -1,5 +1,5 @@
 import type { CaptureTripReport } from '#lib/live/captureSnapshot.ts';
-import { stopPrediction } from '#lib/live/stopPrediction.ts';
+import { stopPrediction, uniqueDirectionHeadsigns } from '#lib/live/stopPrediction.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 
 export type StopPrediction = {
@@ -22,18 +22,18 @@ export function stopLiveReadings(
 	directions?: ScheduleEdition['route_directions'],
 ) {
 	const readings = new Map<string, StopPrediction>();
+	const headsigns = new Map(
+		Object.entries(directions ?? {}).map(([line, patterns]) => [
+			line,
+			uniqueDirectionHeadsigns(patterns),
+		]),
+	);
 	for (const trip of report.trip_updates) {
 		const line = trip.route_id || null;
-		const destinations = new Set(
-			(line ? (directions?.[line] ?? []) : [])
-				.filter(({ dir }) => dir === trip.direction_id)
-				.map(({ headsign }) => headsign?.trim() ?? ''),
-		);
-		const toward = destinations.size === 1 ? [...destinations][0] || null : null;
 		const instance = JSON.stringify([line, trip.trip_id, trip.start_date, trip.start_time]);
 		for (const stop of trip.stops) {
 			if (stop.stop_id !== id) continue;
-			const reading = stopPrediction(trip, stop, now);
+			const reading = stopPrediction(trip, stop, now, line ? headsigns.get(line) : undefined);
 			if (!reading) continue;
 			const key = JSON.stringify([instance, stop.sequence]);
 			if ((readings.get(key)?.predictedAt ?? Infinity) <= reading.predictedAt) continue;
@@ -44,7 +44,6 @@ export function stopLiveReadings(
 				line,
 				direction: trip.direction_id,
 				start: trip.start_time,
-				toward,
 				...reading,
 			});
 		}

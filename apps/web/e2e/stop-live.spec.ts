@@ -42,6 +42,18 @@ for (const locale of PUBLISHED_LOCALES) {
 				: ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'],
 		);
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/24\?/);
+		const calls = table.locator('tbody tr');
+		await expect(calls.nth(0).locator('[data-column="toward"]')).toContainText(
+			'Gare Montréal-Ouest',
+		);
+		await expect(calls.nth(0).locator('[data-column="scheduled"]')).toContainText('08:15');
+		for (const index of [1, 2]) {
+			for (const column of ['scheduled', 'toward']) {
+				await expect(calls.nth(index).locator(`[data-column="${column}"]`)).toContainText(
+					fr ? 'Indisponible' : 'Unavailable',
+				);
+			}
+		}
 		await expect(
 			content.getByRole('heading', { name: fr ? 'Avis pour cet arrêt' : 'Notices for this stop' }),
 		).toBeVisible();

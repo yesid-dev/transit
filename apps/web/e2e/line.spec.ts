@@ -96,10 +96,21 @@ for (const locale of PUBLISHED_LOCALES) {
 			await route.fulfill({
 				json: captureTripReport('stm', new Date(at).toISOString(), [
 					{
-						...captureTrip('trip-0', '9003', [
-							{ stop: 't4-0', eta_utc: new Date(at + 270_000).toISOString(), delay_min: 2 },
-						]),
+						...captureTrip(
+							'trip-0',
+							'9003',
+							[
+								{
+									stop: 't4-0',
+									eta_utc: new Date(at + 270_000).toISOString(),
+									delay_min: 2,
+									scheduled_utc: new Date(at + 150_000).toISOString(),
+								},
+							],
+							120,
+						),
 						direction_id: 0,
+						trip_headsign: 'Greenboro / Rockcliffe',
 					},
 				]),
 			});
@@ -152,6 +163,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		const predictions = page.locator('#line-detail-directions');
 		await expect(predictions).toContainText(fr ? 'dans 5' : 'in 5');
 		await expect(predictions).toContainText(fr ? 'Vers Greenboro' : 'Toward Greenboro');
+		await expect(predictions).toContainText(fr ? /Prévu à \d\d:\d\d/ : /Scheduled \d\d:\d\d/);
 		await expect(predictions.getByRole('link').first().locator('[data-slot="badge"]')).toHaveText(
 			't4-0',
 		);

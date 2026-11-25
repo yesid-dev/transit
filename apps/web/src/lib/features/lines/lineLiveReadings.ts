@@ -79,19 +79,23 @@ export function lineSilentCount(snapshot: CaptureSnapshot | null, line: string, 
 	return snapshot.non_responding_by_route.find(({ route_id }) => route_id === line)?.count ?? 0;
 }
 
-export function nextStopPredictions(report: CaptureTripReport | null, now: number) {
+export function nextStopPredictions(
+	report: CaptureTripReport | null,
+	now: number,
+	headsigns?: Readonly<Record<number, string>>,
+) {
 	const result = new Map<
 		string,
-		NonNullable<ReturnType<typeof stopPrediction>> & { trip: string; direction: number | null }
+		NonNullable<ReturnType<typeof stopPrediction>> & { trip: string }
 	>();
 	if (!report || feedState(report.feed, now) !== 'live') return result;
 	for (const trip of report.trip_updates) {
 		for (const stop of trip.stops) {
 			if (!stop.stop_id) continue;
-			const reading = stopPrediction(trip, stop, now);
+			const reading = stopPrediction(trip, stop, now, headsigns);
 			if (!reading || (result.get(stop.stop_id)?.predictedAt ?? Infinity) <= reading.predictedAt)
 				continue;
-			result.set(stop.stop_id, { trip: trip.trip_id, direction: trip.direction_id, ...reading });
+			result.set(stop.stop_id, { trip: trip.trip_id, ...reading });
 		}
 	}
 	return result;

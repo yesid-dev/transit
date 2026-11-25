@@ -20,7 +20,12 @@ export async function refreshAlertsCapture(page: Page) {
 }
 type Vehicle = NonNullable<CaptureSnapshot['vehicle_positions']>[number];
 type TripUpdate = CaptureTripReport['trip_updates'][number];
-type Prediction = { stop: string; eta_utc: string; delay_min?: number | null };
+type Prediction = {
+	stop: string;
+	eta_utc: string;
+	delay_min?: number | null;
+	scheduled_utc?: string | null;
+};
 
 export function captureVehicle(at: number, overrides: Partial<Vehicle> = {}): Vehicle {
 	return {
@@ -60,11 +65,15 @@ export function captureTrip(
 		start_time: null,
 		relationship: 0,
 		delay,
-		stops: stops.map(({ stop, eta_utc, delay_min }, i) => ({
+		stops: stops.map(({ stop, eta_utc, delay_min, scheduled_utc }, i) => ({
 			stop_id: stop,
 			sequence: i + 1,
 			arrival: null,
 			departure: Math.floor(Date.parse(eta_utc) / 1_000),
+			...(scheduled_utc !== undefined && {
+				scheduled_departure:
+					scheduled_utc === null ? null : Math.floor(Date.parse(scheduled_utc) / 1_000),
+			}),
 			arrival_delay: null,
 			departure_delay: delay_min == null ? null : delay_min * 60,
 			relationship: 0,
@@ -100,15 +109,22 @@ export async function installStopCapture(page: Page, city: string, stop: string,
 	});
 	await page.route(`**/api/live-trips?city=${city}&stop=${stop}`, async (route) => {
 		const current = await page.evaluate(() => Date.now());
-		const calls = [5, 9, 17, 19, 20, 21].map((minutes, index) =>
-			captureTrip(`stop-trip-${index}`, index % 2 ? '80' : '24', [
+		const calls = [5, 9, 17, 19, 20, 21].map((minutes, index) => ({
+			...captureTrip(`stop-trip-${index}`, index % 2 ? '80' : '24', [
 				{
 					stop,
 					eta_utc: new Date(current + minutes * 60_000).toISOString(),
 					delay_min: [0, 6, 4, -2, 5, null][index],
+					scheduled_utc:
+						index === 0 ? new Date(at + 180_000).toISOString() : index === 1 ? null : undefined,
 				},
 			]),
-		);
+			...(index === 0
+				? { trip_headsign: 'Gare Montréal-Ouest' }
+				: index === 1
+					? { trip_headsign: null }
+					: {}),
+		}));
 		await route.fulfill({ json: captureTripReport(city, new Date(current).toISOString(), calls) });
 	});
 	return async () => {

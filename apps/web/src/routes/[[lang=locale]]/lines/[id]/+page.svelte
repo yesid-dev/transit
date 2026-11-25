@@ -100,6 +100,7 @@
 					{record}
 					stopNames={data.stopNames}
 					headsigns={data.directionHeadsigns}
+					predictionHeadsigns={data.predictionHeadsigns}
 				/>
 			{/key}
 		{:else if record}

@@ -71,7 +71,7 @@
 {/snippet}
 
 {#snippet toward(row: StopPrediction)}
-	{row.toward ? display.readName(row.toward, locale) : t('Not published', 'Non publié')}
+	{row.toward ? display.readName(row.toward, locale) : t('Unavailable', 'Indisponible')}
 {/snippet}
 
 {#snippet scheduled(row: StopPrediction)}

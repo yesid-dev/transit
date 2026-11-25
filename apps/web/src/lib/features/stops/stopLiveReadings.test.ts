@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CaptureTripReport } from '#lib/live/captureSnapshot.ts';
+import { captureTripScopeSchema, type CaptureTripReport } from '#lib/live/captureSnapshot.ts';
 import { stopLiveReadings } from './stopLiveReadings.ts';
 
 const now = Date.parse('2026-11-25T13:12:00Z');
@@ -8,7 +8,7 @@ function trip(
 	id: string,
 	minutes: number,
 	changes: Partial<CaptureTripReport['trip_updates'][number]> = {},
-) {
+): CaptureTripReport['trip_updates'][number] {
 	return {
 		trip_id: id,
 		route_id: '51',
@@ -73,24 +73,50 @@ describe('Stop trip predictions', () => {
 		);
 		expect(readings.count).toBe(2);
 		expect(readings.rows.map(({ trip }) => trip)).toEqual(['near', 'near', 'boundary', 'later']);
-		expect(readings.rows[1].scheduledAt).toBe(now + 3 * 60_000);
+		expect(readings.rows[1].scheduledAt).toBeNull();
 	});
 
-	it('requires an unambiguous direction and a stop-specific delay before reporting the schedule', () => {
-		const updates = report(
-			trip('first', 5, { delay: 120 }),
-			trip('second', 6, { route_id: '165' }),
+	it('uses published departure and arrival calls, and falls back only to a single headsign', () => {
+		const departure = trip('departure', 5, { trip_headsign: ' Montréal-Ouest ', delay: 120 });
+		Object.assign(departure.stops[0], {
+			arrival: now / 1000 + 280,
+			scheduled_arrival: now / 1000 + 155,
+			scheduled_departure: now / 1000 + 180,
+		});
+		const arrival = trip('arrival', 6, { route_id: '165', trip_headsign: null });
+		Object.assign(arrival.stops[0], {
+			departure: null,
+			arrival: now / 1000 + 360,
+			arrival_delay: 60,
+			scheduled_arrival: now / 1000 + 300,
+			scheduled_departure: now / 1000 + 390,
+		});
+		const unmatched = trip('unmatched', 7, { trip_headsign: ' ' });
+		Object.assign(unmatched.stops[0], {
+			scheduled_departure: null,
+			scheduled_arrival: now / 1000 + 300,
+		});
+		const updates = captureTripScopeSchema.parse(
+			report(departure, arrival, unmatched, trip('older', 8)),
 		);
 		const readings = stopLiveReadings(updates, '52847', now, {
 			51: [
 				{ dir: 1, headsign: 'Laurier' },
 				{ dir: 1, headsign: 'Montréal-Ouest' },
 			],
-			165: [{ dir: 1, headsign: 'Station Guy-Concordia' }],
+			165: [
+				{ dir: 1, headsign: 'Station Guy-Concordia' },
+				{ dir: 1, headsign: ' Station Guy-Concordia ' },
+				{ dir: 0, headsign: 'Côte-Vertu' },
+			],
 		});
-		expect(readings.rows.map(({ toward, scheduledAt }) => ({ toward, scheduledAt }))).toEqual([
-			{ toward: null, scheduledAt: null },
-			{ toward: 'Station Guy-Concordia', scheduledAt: now + 4 * 60_000 },
+		expect(
+			readings.rows.map(({ toward, scheduledAt, delay }) => ({ toward, scheduledAt, delay })),
+		).toEqual([
+			{ toward: 'Montréal-Ouest', scheduledAt: now + 180_000, delay: 120 },
+			{ toward: 'Station Guy-Concordia', scheduledAt: now + 300_000, delay: 60 },
+			{ toward: null, scheduledAt: null, delay: 120 },
+			{ toward: null, scheduledAt: null, delay: 120 },
 		]);
 	});
 });
