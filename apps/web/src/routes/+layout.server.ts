@@ -16,7 +16,6 @@ const localRoute = '/[[lang=locale]]';
 function usesLiveSnapshots(route: string | null, url: URL): boolean {
 	switch (route) {
 		case localRoute + '/map':
-		case localRoute + '/trip/[id]':
 			return true;
 		case localRoute + '/lines/[id]':
 			return lineFrameView(url) === 'live';
@@ -78,7 +77,9 @@ export const load: LayoutServerLoad = async (event) => {
 	const lang = (params.lang as Locale | undefined) ?? locals.locale ?? DEFAULT_LOCALE;
 
 	const route = event.route.id;
-	const needsSchedule = route !== localRoute + '/search' && route !== localRoute + '/download';
+	const needsSchedule = !['/search', '/download', '/trip/[id]'].some(
+		(path) => route === localRoute + path,
+	);
 	const loadSnapshots = usesLiveSnapshots(route, event.url);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const selection = await bootProvider(

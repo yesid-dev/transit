@@ -134,6 +134,35 @@ test('ephemeral and error documents keep a single noindex tag', async ({ request
 });
 
 for (const locale of ['en', 'fr'] as const) {
+	test(`${locale}: legacy trip URLs resolve to a current vehicle or its departure`, async ({
+		request,
+	}) => {
+		const prefix = locale === 'fr' ? '/fr' : '';
+		const query = 'provider=octranspo&recordFrom=2026-11-08&recordTo=2026-11-14';
+		const departureKey = encodeURIComponent(JSON.stringify(['24', 0, '07:00:00']));
+		for (const [id, destination, selected] of [
+			['T1', '/vehicle/40061', null],
+			['departure-without-vehicle', `/departure/${departureKey}`, 'departure-without-vehicle'],
+		] as const) {
+			const response = await request.get(`${prefix}/trip/${id}?${query}`, { maxRedirects: 0 });
+			expect(response.status()).toBe(307);
+			const location = new URL(response.headers().location!, response.url());
+			expect(location.pathname).toBe(prefix + destination);
+			expect(location.searchParams.get('provider')).toBe('octranspo');
+			expect(location.searchParams.get('frameMode')).toBe('live');
+			expect(location.searchParams.get('recordFrom')).toBe('2026-11-08');
+			expect(location.searchParams.get('recordTo')).toBe('2026-11-14');
+			expect(location.searchParams.get('trip')).toBe(selected);
+		}
+		const missing = await request.get(`${prefix}/trip/retired-trip?${query}`);
+		expect(missing.status()).toBe(404);
+		expect(await missing.text()).toContain(
+			locale === 'fr' ? 'Cette station est en construction' : 'This station is under construction',
+		);
+	});
+}
+
+for (const locale of ['en', 'fr'] as const) {
 	test(
 		locale + ': a line page and a stop page name themselves in the title',
 		async ({ request }) => {

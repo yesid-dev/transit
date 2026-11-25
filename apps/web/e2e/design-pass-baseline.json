@@ -309,14 +309,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 46,
-					"order": "f2eee9f9d71fcb40",
+					"order": "18e5dafe9c4c1849",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 54,
-					"order": "8db083729c647975",
+					"order": "c47743de3d8b6eb5",
 					"withoutRing": 2,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -939,8 +939,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 47,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -951,8 +951,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 47,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -963,8 +963,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 48,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -975,8 +975,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 57,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -987,8 +987,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 61,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1044,61 +1044,61 @@
 			},
 			"widths": {
 				"320": {
-					"height": 2312,
+					"height": 2259,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 36,
-					"shortTargets": 7,
-					"targetDeficit": 156,
+					"shortTargets": 4,
+					"targetDeficit": 92,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
 				},
 				"390": {
-					"height": 2256,
+					"height": 2203,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 36,
-					"shortTargets": 7,
-					"targetDeficit": 156,
+					"shortTargets": 4,
+					"targetDeficit": 92,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
 				},
 				"768": {
-					"height": 1414,
+					"height": 1353,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 37,
-					"shortTargets": 7,
-					"targetDeficit": 156,
+					"shortTargets": 4,
+					"targetDeficit": 92,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
 				},
 				"1024": {
-					"height": 923,
+					"height": 910,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 39,
-					"shortTargets": 7,
-					"targetDeficit": 156,
+					"shortTargets": 4,
+					"targetDeficit": 92,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
 				},
 				"1440": {
-					"height": 921,
+					"height": 908,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 43,
-					"shortTargets": 7,
-					"targetDeficit": 156,
+					"shortTargets": 4,
+					"targetDeficit": 92,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -1107,14 +1107,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 35,
-					"order": "84ab318d8e5d09c4",
+					"order": "4bdb3c4ba5fd6096",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 40,
-					"order": "130f92d19a014dc9",
+					"order": "66f2266c8ad0fcd1",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -1122,25 +1122,25 @@
 			},
 			"zoom": {
 				"390": {
-					"height": 4348,
+					"height": 4331,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 36,
-					"shortTargets": 2,
-					"targetDeficit": 10,
+					"shortTargets": 1,
+					"targetDeficit": 5,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
 				},
 				"1440": {
-					"height": 1854,
+					"height": 1583,
 					"overflow": 0,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 37,
-					"shortTargets": 4,
-					"targetDeficit": 20,
+					"shortTargets": 3,
+					"targetDeficit": 15,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -2495,116 +2495,6 @@
 				}
 			}
 		},
-		"trip/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3016,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2872,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1942,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1507,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1401,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 43,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 37,
-					"order": "765ac1b38c5df410",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 8
-				},
-				"1440": {
-					"stops": 42,
-					"order": "aa84540d506755e7",
-					"withoutRing": 1,
-					"outOfOrder": 2,
-					"beforeFigure": 7
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 6773,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 2949,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 38,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
 		"privacy/stm/en": {
 			"content": {
 				"titles": 1,
@@ -3238,14 +3128,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 45,
-					"order": "66922dcd8225a3df",
+					"order": "eb0115e4611f0f2d",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 53,
-					"order": "ca96373f217d8f4c",
+					"order": "e71efd5c063c4b8f",
 					"withoutRing": 2,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -3983,8 +3873,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 46,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -3995,8 +3885,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 46,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4007,8 +3897,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 47,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4019,8 +3909,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 56,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4031,8 +3921,8 @@
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 60,
-					"shortTargets": 3,
-					"targetDeficit": 60,
+					"shortTargets": 0,
+					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 0,
 					"textDefects": []
@@ -4379,14 +4269,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 46,
-					"order": "02779e4805b51b12",
+					"order": "b4a92583afddee75",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 54,
-					"order": "7264c4163afbdede",
+					"order": "dceb8f33d9cca939",
 					"withoutRing": 2,
 					"outOfOrder": 0,
 					"beforeFigure": 0

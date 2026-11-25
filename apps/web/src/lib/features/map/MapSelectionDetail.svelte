@@ -9,6 +9,8 @@
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { Button } from '@yesid/ui/button';
 	import { getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { page } from '$app/state';
+	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import type { Chip } from '#lib/filters/index.ts';
 	import type { Alert } from '#lib/v1/schemas/index.ts';
 	import { AbsentValue, MaybeValue } from '#lib/components/edge/index.ts';
@@ -84,7 +86,16 @@
 
 	const t = $derived(MAP_SELECTION_DETAIL_COPY[locale]);
 	const seqUnknownAria = $derived(t.sequenceUnknown);
-	const action = $derived(detail ? detailActions(detail, locale, line) : null);
+	const action = $derived(
+		detail
+			? detailActions(
+					detail,
+					locale,
+					line,
+					page.url?.origin && page.url.origin !== 'null' ? currentMirrorUrl() : undefined,
+				)
+			: null,
+	);
 	const identityKind = $derived(
 		detail?.kind === 'vehicle' ? t.bus : detail?.kind === 'route' ? t.route : t.stop,
 	);

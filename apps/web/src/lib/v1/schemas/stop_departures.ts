@@ -12,6 +12,8 @@ export {
 
 const LiveStopDepartureSchema = PublishedStopDepartureSchema.extend({
 	status: LiveStatusCodeSchema.optional(),
+	direction_id: z.number().nullable().optional(),
+	start_time: z.string().nullable().optional(),
 });
 export type StopDeparture = z.infer<typeof LiveStopDepartureSchema>;
 export const LiveStopDeparturesFileSchema = PublishedStopDeparturesFileSchema.extend({

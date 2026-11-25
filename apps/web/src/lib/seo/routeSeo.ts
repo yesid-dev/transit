@@ -122,16 +122,11 @@ const STOP_DETAIL: BilingualSeo = {
 	title: { en: 'Stop detail', fr: "Détail de l'arrêt" },
 };
 
-const TRIP_DETAIL: BilingualSeo = {
-	title: { en: 'Trip detail', fr: 'Détail du trajet' },
-};
-
 function entryFor(path: string): BilingualSeo {
 	if (path === '/') return HOME;
 	if (SURFACES[path]) return SURFACES[path];
 	if (path.startsWith('/lines/')) return LINE_DETAIL;
 	if (path.startsWith('/stop/')) return STOP_DETAIL;
-	if (path.startsWith('/trip/')) return TRIP_DETAIL;
 	const upcoming = upcomingPage(path);
 	if (upcoming) return { title: upcoming.label };
 	return HOME;

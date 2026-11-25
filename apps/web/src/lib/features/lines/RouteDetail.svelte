@@ -19,8 +19,10 @@
 	import { onMount, untrack } from 'svelte';
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { getLocale, getLocalizeHref } from '#lib/i18n/index.ts';
+	import { page } from '$app/state';
+	import { vehicleLiveHref } from '#lib/features/vehicles/vehicleLinks.ts';
 
-	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
+	import { mapHrefFor } from '#lib/nav/index.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
@@ -214,8 +216,13 @@
 
 	const showAbsenceNote = $derived(roster.length === 0);
 
-	const tripHref = (tripId: string): string =>
-		localizeHref(routeFor({ kind: 'trip', id: tripId }), locale);
+	const liveVehicleHref = (vehicleId: string): string =>
+		vehicleLiveHref(
+			vehicleId,
+			currentMirrorUrl(new URL(page.url?.href || 'https://transit.local')),
+			locale,
+			v1.manifest.provider,
+		);
 </script>
 
 <EntityDetail tabs={[{ key: 'detail', label: t.tabs.detail }]} {articleToc} active="detail">
@@ -392,9 +399,9 @@
 																	</div>
 																{/snippet}
 																{#if bus.trip}
-																	<a class="route-roster-link" href={tripHref(bus.trip)}>
+																	<a class="route-roster-link" href={liveVehicleHref(bus.id)}>
 																		{@render rosterRow()}
-																		<span class="sr-only">{t.roster.viewTrip}</span>
+																		<span class="sr-only">{t.roster.viewVehicle}</span>
 																		<ChevronRightIcon
 																			size={14}
 																			strokeWidth={2.4}

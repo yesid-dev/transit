@@ -24,6 +24,8 @@
 	} = $props();
 	const locale = getLocale();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	// Extend the targets into the header spacing. The navigation keeps wrapped rows apart.
+	const detailLink = 'inline-flex min-h-11 -my-2.5 items-center';
 	const pinned = $derived.by(() => {
 		const url = new SvelteURL(page.url.href);
 		url.searchParams.set('provider', data.city);
@@ -43,18 +45,25 @@
 	<div class="grid min-w-0 gap-4">
 		<header class="grid gap-2">
 			{#if data.id}
-				<a href={vehicleHref('/vehicles', pinned, locale, data.city)}
+				<a
+					class={`${detailLink} justify-self-start`}
+					href={vehicleHref('/vehicles', pinned, locale, data.city)}
 					>{t('All vehicles', 'Tous les véhicules')}</a
 				>
 			{/if}
 			<h1>{title}</h1>
-			<nav aria-label={t('Vehicle views', 'Vues des véhicules')} class="flex flex-wrap gap-4">
+			<nav
+				aria-label={t('Vehicle views', 'Vues des véhicules')}
+				class={data.id ? 'flex flex-wrap gap-x-4 gap-y-5' : 'flex flex-wrap gap-4'}
+			>
 				<a
+					class={data.id ? detailLink : undefined}
 					aria-current={data.mode === 'live' ? 'page' : undefined}
 					href={frameHref(pinned, { mode: 'live', period: data.period })}
 					>{t('Live now', 'En direct')}</a
 				>
 				<a
+					class={data.id ? detailLink : undefined}
 					aria-current={data.mode === 'record' ? 'page' : undefined}
 					href={frameHref(pinned, { mode: 'record', period: data.period })}
 					>{t('See the record', 'Voir le bilan')}</a

@@ -6,6 +6,7 @@ import {
 	departureDay,
 	loadDepartureLive,
 	loadDepartureRecord,
+	publishedDepartureTrip,
 } from '#lib/server/departureDailyRecord.ts';
 import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 
@@ -18,6 +19,7 @@ export const load: PageServerLoad = async (event) => {
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const day = period ? departureDay(event.url.searchParams, period) : today;
 	const scope = { city: providerId, visitorIp };
+	const requestedTrip = event.url.searchParams.get('trip');
 	return {
 		identity,
 		lang,
@@ -37,7 +39,13 @@ export const load: PageServerLoad = async (event) => {
 				: [],
 		liveTrips:
 			mode === 'live' && v1
-				? loadDepartureLive({ ...scope, from: today, to: today }, identity)
+				? loadDepartureLive({ ...scope, from: today, to: today }, identity).then(async (trips) => {
+						const selected =
+							!requestedTrip || trips.includes(requestedTrip)
+								? requestedTrip
+								: await publishedDepartureTrip(providerId, requestedTrip, identity, visitorIp);
+						return { trips, selected };
+					})
 				: null,
 	};
 };

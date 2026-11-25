@@ -4,14 +4,20 @@ import { expect } from '@playwright/test';
 import { chartOverlaps, forwardRoute } from './layout-helpers';
 import { expectLayout } from './layout-debt';
 import { localizeHref } from '../src/lib/i18n/routing';
-import { captureUrl, layoutCapture } from './capture-fixture';
+import {
+	captureFixture,
+	captureTrip,
+	captureTripReport,
+	captureUrl,
+	captureVehicle,
+	layoutCapture,
+} from './capture-fixture';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}.json`, import.meta.url), 'utf8'));
 const epoch = Date.parse(fixture('departures').generated_utc);
 const line = fixture('routes-index').routes[0].id;
 const stop = Object.keys(fixture('departures').stops)[0];
-const trip = Object.keys(fixture('trips').trips)[0];
 const pages = [
 	'/',
 	'/map?provider=stm&vehicle=layout-bus',
@@ -30,7 +36,7 @@ const pages = [
 	'/receipt',
 	'/receipt?date=2026-08-30',
 	'/status',
-	`/trip/${trip}`,
+	'/vehicle/40061?frameMode=live',
 	`/search?q=${encodeURIComponent(fixture('stops-index').stops[0].name)}`,
 ];
 
@@ -130,15 +136,35 @@ for (const locale of ['en', 'fr'] as const)
 				'Station Université de Montréal / Boulevard Édouard-Montpetit et chemin de la Côte-des-Neiges / Terminus des voyageurs';
 			await page.clock.setFixedTime(epoch + 30_000);
 			await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-			await page.route(`**/api/schedule-edition?city=${provider}`, async (route) => {
+			await page.route(captureUrl, (route) =>
+				route.fulfill({
+					json: captureFixture(epoch, {
+						city: provider,
+						vehicle_positions: [captureVehicle(epoch)],
+					}),
+				}),
+			);
+			await page.route(`**/api/live-trips?city=${provider}&trip=T1`, (route) =>
+				route.fulfill({
+					json: captureTripReport(provider, new Date(epoch).toISOString(), [
+						captureTrip('T1', '24', [
+							{ stop: 'S1', eta_utc: new Date(epoch + 180_000).toISOString(), delay_min: 4 },
+						]),
+					]),
+				}),
+			);
+			await page.route(`**/api/stops/slim?provider=${provider}`, async (route) => {
 				const response = await route.fetch();
 				const body = await response.json();
-				for (const stop of body.schedule.stops) stop.name = name;
+				for (const stop of body.stops) stop.name = name;
 				await route.fulfill({ response, json: body });
 			});
-			await page.goto(localizeHref(`/trip/${trip}?provider=${provider}`, locale), {
+			await page.goto(localizeHref(`/vehicle/40061?frameMode=live&provider=${provider}`, locale), {
 				waitUntil: 'networkidle',
 			});
+			await page
+				.getByRole('button', { name: locale === 'fr' ? 'Voir les prévisions' : 'View predictions' })
+				.click();
 			const link = page.locator('.trip-stop-link').first();
 			await expect(link).toHaveAccessibleName(new RegExp(name.split(' / ')[0]));
 			await expect(link.locator('[title]')).toHaveAttribute('title', name);

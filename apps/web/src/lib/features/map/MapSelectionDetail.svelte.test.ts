@@ -338,7 +338,7 @@ describe('MapSelectionDetail', () => {
 		});
 		expect(action.container.querySelector('[data-slot="detail-footer-action"]')).toHaveAttribute(
 			'href',
-			'/trip/trip-24-a',
+			'/vehicle/veh-1?frameMode=live',
 		);
 		expect(action.container.querySelector('[data-slot="detail-body"]')).not.toBeInTheDocument();
 		expect(action.container.querySelector('[data-slot="detail-identity"]')).not.toBeInTheDocument();

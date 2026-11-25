@@ -22,7 +22,7 @@
 	import RecordSection from '#lib/features/record/RecordSection.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import RecordTable from '#lib/features/record/RecordTable.svelte';
-	import TripDetail from '#lib/features/trips/TripDetail.svelte';
+	import DeparturePredictions from '#lib/features/trips/DeparturePredictions.svelte';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import type { PageData } from './$types';
@@ -54,6 +54,12 @@
 			pinned,
 		),
 	);
+
+	function departureLink(id: string) {
+		const url = new URL(pinned);
+		url.searchParams.set('trip', id);
+		return url.pathname + url.search;
+	}
 
 	function noObservation(answer: RecordSeries) {
 		const scheduled = answer.cells.filter((cell) => (cell.evidence.counts.scheduled ?? 0) > 0);
@@ -105,23 +111,25 @@
 		{#if data.mode === 'live'}
 			{#await data.liveTrips}
 				<RecordPending locale={data.lang} />
-			{:then trips}
-				{#if trips?.length === 1 && trips[0]}
-					<TripDetail id={trips[0]} embedded />
-				{:else if trips?.length}
+			{:then result}
+				{@const trips = result?.trips ?? []}
+				{@const selected = result?.selected ?? (trips.length === 1 ? trips[0] : null)}
+				{#if selected && data.v1}
+					{#key selected}
+						<DeparturePredictions id={selected} locale={data.lang} stopNames={data.stopNames} />
+					{/key}
+				{/if}
+				{#if trips.length > 1}
 					<ul class="grid gap-2">
 						{#each trips as id (id)}
 							<li>
-								<a
-									class="inline-flex min-h-11 items-center"
-									href={localizeHref(`/trip/${encodeURIComponent(id)}`, data.lang, data.city)}
-								>
+								<a class="inline-flex min-h-11 items-center" href={departureLink(id)}>
 									{t(`Prediction report for trip ${id}`, `Rapport de prévisions du trajet ${id}`)}
 								</a>
 							</li>
 						{/each}
 					</ul>
-				{:else}
+				{:else if !selected || !data.v1}
 					<p>
 						{t(
 							'No live data for this departure today.',

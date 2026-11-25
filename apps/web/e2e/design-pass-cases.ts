@@ -1,9 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { localizeHref } from '../src/lib/i18n/routing';
 
-const trip = Object.keys(
-	JSON.parse(readFileSync(new URL('./trips.json', import.meta.url), 'utf8')).trips,
-)[0];
 const departure = encodeURIComponent(JSON.stringify(['24', 0, '07:00:00']));
 
 const screens = {
@@ -35,7 +31,6 @@ const screens = {
 	'map-record-corridors': '/map?frameMode=record&mapLayer=corridors&recordLine=24',
 	download: '/download',
 	roadmap: '/roadmap',
-	trip: '/trip/' + trip,
 	privacy: '/privacy',
 	terms: '/terms',
 	accessibility: '/accessibility',

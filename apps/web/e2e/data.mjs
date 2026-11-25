@@ -446,6 +446,13 @@ const server = createServer((request, response) => {
 				: Object.entries(trips)
 						.filter(([id, trip]) => (tripScope ? id === tripScope : trip.route === lineScope))
 						.map(([id, trip]) => tripUpdate(id, trip.route, trip.delay_min, trip.stops ?? []));
+			if (tripScope === 'departure-without-vehicle') {
+				trip_updates.push({
+					...tripUpdate(tripScope, '24', 60, trips.T1.stops),
+					direction_id: 0,
+					start_time: '07:00:00',
+				});
+			}
 			response.writeHead(200, { 'content-type': 'application/json' }).end(
 				JSON.stringify({
 					version: 2,

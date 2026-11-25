@@ -195,7 +195,7 @@ for (const provider of ['stm', 'octranspo'])
 					page.locator(selector + ' [data-slot="detail-footer-action"]'),
 				).toHaveAttribute(
 					'href',
-					new RegExp(provider === 'octranspo' ? 'provider=octranspo' : 'trip/'),
+					new RegExp(provider === 'octranspo' ? 'provider=octranspo' : 'vehicle/'),
 				);
 				await expect(
 					panel.getByRole('button', {

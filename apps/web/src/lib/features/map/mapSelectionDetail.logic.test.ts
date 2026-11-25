@@ -88,8 +88,8 @@ describe('detailActions', () => {
 		});
 
 		expect(action).toEqual({
-			href: '/trip/trip-24-a',
-			label: 'Open the full analysis for trip trip-24-a',
+			href: '/vehicle/veh-trip?frameMode=live',
+			label: 'View vehicle veh-trip live',
 		});
 	});
 	it('keeps a vehicle without a trip honest by falling back to its known route', () => {

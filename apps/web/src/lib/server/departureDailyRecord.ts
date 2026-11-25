@@ -1,4 +1,6 @@
-import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.ts';
+import { getRecordAnswer, query, type EnginePeriod, type RecordQuery } from './engine.ts';
+import { cityQuestion } from './engineQuestion.ts';
+import { captureTripScopeSchema } from '#lib/live/captureSnapshot.ts';
 import type { DepartureIdentity } from '#lib/features/record/departureIdentity.ts';
 import { dailyQuestions } from './screenQuestions.ts';
 export { dailyQuery, type DailySection } from './screenQuestions.ts';
@@ -61,4 +63,27 @@ export async function loadDepartureLive(period: EnginePeriod, identity: Departur
 	);
 	if (result.kind !== 'answer' || !('value' in result.answer) || result.lastGood) return [];
 	return result.answer.evidence.trip_ids ?? [];
+}
+
+export async function publishedDepartureTrip(
+	city: string,
+	trip: string,
+	identity: DepartureIdentity,
+	visitorIp?: string | null,
+) {
+	if (!trip || trip.length > 256 || trip !== trip.trim() || /[^\S ]|\p{C}/u.test(trip)) return null;
+	const question = cityQuestion(city, '/live-trips');
+	question.parameters.trip = trip;
+	const result = await query(question, captureTripScopeSchema, visitorIp);
+	return result.kind === 'answer' &&
+		result.answer.city === city &&
+		result.answer.trip_updates.some(
+			(row) =>
+				row.trip_id === trip &&
+				row.route_id === identity.line &&
+				row.direction_id === identity.direction &&
+				row.start_time === identity.departure,
+		)
+		? trip
+		: null;
 }

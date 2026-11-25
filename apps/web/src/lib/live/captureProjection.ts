@@ -126,9 +126,13 @@ export function captureDepartures(report: CaptureTripReport, now: number) {
 			eta_utc: string;
 			delay_min: number | null;
 			status?: StatusCode;
+			direction_id?: number | null;
+			start_time?: string;
 		}[]
 	>();
+	const descriptions = new Map(report.trip_updates.map((trip) => [trip.trip_id, trip]));
 	for (const [tripId, trip] of Object.entries(trips.trips)) {
+		const description = descriptions.get(tripId);
 		for (const stop of trip.stops ?? []) {
 			if (Date.parse(stop.eta_utc) < now) continue;
 			const entries = stops.get(stop.stop) ?? [];
@@ -138,6 +142,12 @@ export function captureDepartures(report: CaptureTripReport, now: number) {
 				eta_utc: stop.eta_utc,
 				delay_min: stop.delay_min ?? null,
 				status: stop.status,
+				...(description?.start_time
+					? {
+							direction_id: description.direction_id,
+							start_time: description.start_time,
+						}
+					: {}),
 			});
 			stops.set(stop.stop, entries);
 		}
