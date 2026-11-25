@@ -10,6 +10,7 @@ export const footerCopy = defineCopy({
 
 		disclaimer: (agencyName: string) => `Site non officiel, sans affiliation avec ${agencyName}.`,
 		auditLabel: 'Vérification',
+		reportsLabel: 'Rapports',
 		infoLabel: 'Information',
 	},
 	en: {
@@ -20,6 +21,7 @@ export const footerCopy = defineCopy({
 
 		disclaimer: (agencyName: string) => `Unofficial website, not affiliated with ${agencyName}.`,
 		auditLabel: 'Audit',
+		reportsLabel: 'Reports',
 		infoLabel: 'Information',
 	},
 });

@@ -78,6 +78,7 @@
 	import BrandCluster from '#lib/components/brand/BrandCluster.svelte';
 	import { footerCopy } from '#lib/components/layout/footer.copy.ts';
 	import { EdgeState } from '#lib/components/edge/index.ts';
+	import { Separator } from '@yesid/ui/separator';
 	import { SiteFooter, SiteRoot } from '@yesid/ui/layout';
 	import { ConstructionProps } from '@yesid/ui/brand';
 	import { desktop } from '@yesid/ui/state';
@@ -166,7 +167,7 @@
 	const footerGroups = $derived(
 		[
 			...NAV_GROUPS.map((group) => ({
-				label: group.label[locale],
+				label: group.key === 'reports' ? footerWords.reportsLabel : group.label[locale],
 				links: visibleNav({
 					alerts: data.provider ? providerHasAlerts(data.provider) : null,
 				}).filter((item) => item.group === group.key),
@@ -439,10 +440,11 @@
 		{#snippet footer()}
 			{#if isFullBleed}
 				<footer
-					class="map-source-footer border-t bg-card px-3 py-2 text-center text-xs text-muted-foreground"
+					class="map-source-footer bg-card px-3 py-2 text-center text-xs text-muted-foreground"
 					data-slot="map-source-footer"
 					bind:clientHeight={mapCreditHeight}
 				>
+					<Separator decorative class="absolute inset-x-0 top-0" />
 					{#if footerAttribution}<span data-slot="source-credit">{footerAttribution}</span
 						>{footerSeparator}{/if}
 					<span class="footer-disclaimer" data-slot="agency-disclaimer"
