@@ -101,7 +101,9 @@ for (const width of [390, 1440]) {
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveAttribute('lang', lang);
 			await expect(messages).toContainText(fr ? 'Détour sur la ligne 24' : 'Detour on 24');
 			await expect(
-				messages.getByRole('link', { name: /Service alerts|avis de service/i }),
+				messages.getByRole('link', {
+					name: fr ? 'Voir l’avis de service' : 'See the service alert',
+				}),
 			).toHaveAttribute('href', /\/alerts\?.*recordFrom=2026-11-18/);
 			await main
 				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })

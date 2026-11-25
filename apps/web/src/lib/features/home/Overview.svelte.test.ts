@@ -135,13 +135,13 @@ for (const locale of ['en', 'fr'] as const) {
 		const about = await screen.findByRole('article', { name: copy.about });
 		const observed =
 			locale === 'fr'
-				? /60\s?% des 846.?333 passages prévus aux arrêts/
-				: /60% of 846,333 scheduled stop events/;
+				? /60,0\s% des 846.?333 passages prévus aux arrêts/u
+				: /60\.0% of 846,333 scheduled stop events/u;
 		expect(within(about).getAllByText(observed)).toHaveLength(1);
 		const coverage =
 			locale === 'fr'
-				? /État connu pour 90\s?% des 111 trajets/
-				: /Status known for 90% of 111 scheduled trips/;
+				? /État connu pour 90,0\s% des 111 trajets/u
+				: /Status known for 90\.0% of 111 scheduled trips/u;
 		expect(record).not.toHaveTextContent(coverage);
 		expect(about).toHaveTextContent(coverage);
 		expect(screen.getByRole('link', { name: copy.allRankings })).toHaveAttribute(

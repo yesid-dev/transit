@@ -269,7 +269,7 @@
 						<strong>{percent(share, locale)}</strong>
 						{#if delivery.answer.evidence.low_coverage}
 							<p class="text-muted-foreground">
-								{coverageText(delivery.answer.evidence, locale)}
+								{coverageText(delivery.answer.evidence, locale, percent)}
 							</p>
 						{/if}
 						{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
@@ -289,6 +289,7 @@
 					{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
 					{:else if 'cells' in trend.answer && trend.answer.cells.length}
 						<RecordChart
+							formatShare={percent}
 							title={t.trend}
 							id="overview-record-trend"
 							table={trendTable}
@@ -343,7 +344,7 @@
 	{@const trips = delivery?.evidence.counts.ran}
 	{@const observed = current?.evidence.share_observed}
 	{@const scheduled = counts?.scheduled ?? counts?.punctuality_scheduled}
-	{@const basis = timingBasis(counts, locale)}
+	{@const basis = timingBasis(counts, locale, percent)}
 	<AboutFigures
 		title={t.about}
 		fields={[
@@ -367,7 +368,7 @@
 					basis,
 					current?.coverage_note?.[locale],
 					delivery && !delivery.evidence.low_coverage && (delivery.evidence.share_eligible ?? 1) < 1
-						? coverageText(delivery.evidence, locale) + '.'
+						? coverageText(delivery.evidence, locale, percent) + '.'
 						: null,
 				]
 					.filter(Boolean)

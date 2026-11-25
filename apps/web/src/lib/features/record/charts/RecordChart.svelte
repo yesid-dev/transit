@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		BandBar,
 		HourGrid,
 		StopLadder,
 		type StopLadderStop,
@@ -17,6 +16,7 @@
 	import { countedUnit } from '#lib/site/presenter.ts';
 	import { choose, tally } from '../recordText.ts';
 	import StateMark from '../StateMark.svelte';
+	import RecordBandBar from './RecordBandBar.svelte';
 	import {
 		bandChart,
 		chartState,
@@ -46,6 +46,7 @@
 		table = false,
 		id,
 		fill = false,
+		formatShare,
 	}: {
 		input: Input;
 		title: string;
@@ -53,20 +54,24 @@
 		table?: boolean;
 		id: string;
 		fill?: boolean;
+		formatShare?: (value: number, locale: Locale) => string;
 	} = $props();
 	const reading = $derived(
 		input.kind === 'bands'
-			? { kind: input.kind, ...bandChart(input.answer, title, locale) }
+			? { kind: input.kind, ...bandChart(input.answer, title, locale, formatShare) }
 			: input.kind === 'hours'
-				? { kind: input.kind, ...hourChart(input.answer, title, locale) }
+				? { kind: input.kind, ...hourChart(input.answer, title, locale, formatShare) }
 				: input.kind === 'ladder'
 					? {
 							kind: input.kind,
 							...stopLadderChart(input.answer, title, locale, input.stop, input.observed),
 						}
 					: input.kind === 'histogram'
-						? { kind: input.kind, ...histogramChart(input.answer, title, locale) }
-						: { kind: input.kind, ...trendChart(input.answer, title, locale, input.network) },
+						? { kind: input.kind, ...histogramChart(input.answer, title, locale, formatShare) }
+						: {
+								kind: input.kind,
+								...trendChart(input.answer, title, locale, input.network, formatShare),
+							},
 	);
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	type Row = ChartTable['rows'][number];
@@ -112,34 +117,14 @@
 			}}
 		/>
 	{:else if reading.kind === 'bands'}
-		<BandBar {...reading.props} rows={false}>
+		<RecordBandBar {...reading.props}>
 			{#snippet absent()}<StateMark state={chartState(input.answer.state)} {locale} />{/snippet}
-		</BandBar>
-		<dl class="grid gap-2">
-			{#each reading.props.bands as band (band.id)}
-				<div
-					class="flex flex-wrap justify-between gap-2 border-b border-border pb-2 last:border-b-0"
-				>
-					<dt><StatusMark status={band.status} label={band.label} /></dt>
-					<dd class="ml-auto text-right tabular-nums">
-						<strong>{band.valueLabel}</strong>
-						<span class="block text-small text-muted-foreground">{band.detail}</span>
-					</dd>
-				</div>
-			{/each}
-		</dl>
+		</RecordBandBar>
 	{:else if reading.kind === 'ladder'}
 		<StopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
-			<div
-				class="hour-chart"
-				data-few={reading.props.stateLabels.few ? '' : undefined}
-				data-none={reading.props.stateLabels.none ? '' : undefined}
-				data-unmeasured={reading.props.stateLabels.unmeasured ? '' : undefined}
-			>
-				<HourGrid {...reading.props} />
-			</div>
+			<HourGrid {...reading.props} />
 		{:else}
 			<StateMark state={chartState(input.answer.state)} {locale} />
 		{/if}
@@ -245,17 +230,6 @@
 </div>
 
 <style>
-	.hour-chart {
-		min-inline-size: 0;
-	}
-
-	.hour-chart:not([data-few]) :global([data-slot='hour-grid'] > ul > li:has([data-state='few'])),
-	.hour-chart:not([data-none]) :global([data-slot='hour-grid'] > ul > li:has([data-state='none'])),
-	.hour-chart:not([data-unmeasured])
-		:global([data-slot='hour-grid'] > ul > li:has([data-state='unmeasured'])) {
-		display: none;
-	}
-
 	.trend-end {
 		fill: var(--foreground);
 		font-family: var(--font-mono);

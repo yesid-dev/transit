@@ -6,6 +6,17 @@ const clock = (recordThrough: string | null = null) => ({ today, recordThrough }
 const state = (href: string) => frameControlsState(new URL(href, 'https://transit.test'), clock());
 
 describe('frame control state', () => {
+	it('shows the View hint on the updated screens in both modes', () => {
+		expect(state('/?frameMode=live')).toMatchObject({ mode: 'live', showViewHint: true });
+		expect(state('/fr/network?frameMode=record')).toMatchObject({
+			mode: 'record',
+			showViewHint: true,
+		});
+		expect(state('/fr/receipt')).toMatchObject({ mode: 'record', showViewHint: false });
+		expect(state('/download')).toMatchObject({ mode: 'record', showViewHint: false });
+		expect(state('/lines/24')).toMatchObject({ showViewHint: false });
+	});
+
 	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/repeat-offenders', '/fr/download'])(
 		'shows Record when a live link opens the record-only %s',
 		(path) =>

@@ -1,7 +1,8 @@
+import { recordPercent as percent } from '#lib/site/presenter.ts';
 import { minuteReading } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { healthReading } from '#lib/features/record/dataHealthText.ts';
-import { choose, percent, tally } from '#lib/features/record/recordText.ts';
+import { choose, tally } from '#lib/features/record/recordText.ts';
 import type { ScorecardAnswer } from '#lib/server/engine.ts';
 
 import type { NetworkMeasure } from './networkMeasures.ts';

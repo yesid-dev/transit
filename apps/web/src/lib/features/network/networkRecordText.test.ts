@@ -34,7 +34,7 @@ it('shows per-feed results, counts and too-few and untracked states', () => {
 		},
 	};
 	expect(networkRows('poll_success', data, 'en').rows).toEqual([
-		['Trip updates', '80%', '20 / 25'],
+		['Trip updates', '80.0%', '20 / 25'],
 		['Vehicle positions', 'Too few to judge', '3 / 5'],
 		['Service alerts', 'Not tracked', ''],
 	]);
@@ -84,7 +84,7 @@ it('keeps a declared unpublished vehicle field separate from measured zero', () 
 	};
 	const { rows } = networkRows('vehicle_field_completeness', data, 'en');
 	expect(rows).toContainEqual(['Occupancy', 'Not tracked (field not published)', '']);
-	expect(rows).toContainEqual(['Stop', '0%', '0 / 2']);
+	expect(rows).toContainEqual(['Stop', '0.0%', '0 / 2']);
 });
 
 it('shows dates and separate reasons when live coverage could not be measured', () => {

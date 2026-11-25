@@ -20,6 +20,7 @@
 	import RecordAnswer from './RecordAnswer.svelte';
 	import AboutFigures from './AboutFigures.svelte';
 	import RecordCard from './RecordCard.svelte';
+	import RecordDataTable, { type RecordTableRow } from './RecordDataTable.svelte';
 	import RecordEvidenceLine from './RecordEvidenceLine.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import ScreenTitle from './ScreenTitle.svelte';
@@ -53,7 +54,7 @@
 	const dailyTitle = $derived(
 		t('Each clean table, day by day', 'État des tables nettoyées, jour par jour'),
 	);
-	const methodLabel = $derived(t('How we measure', 'Comment nous mesurons'));
+	const methodLabel = $derived(term.method);
 	const stamp = $derived(
 		record ? { kind: 'record' as const, label: recordStamp(record.period, locale) } : undefined,
 	);
@@ -236,7 +237,7 @@
 							{#if result.kind === 'answer'}
 								{@const display = grid(result.answer)}
 								{#if display.from && display.to && display.rows.length}
-									<div class="table-days">
+									<div>
 										<HourGrid
 											label={dailyTitle}
 											columns={display.columns}
@@ -327,26 +328,27 @@
 						{:else if result.kind !== 'answer'}<p>{recordConnection.unreachable[locale]}</p>
 						{:else if result.answer.length}
 							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-							<dl class="grid gap-2">
-								{#each familiesFor(result.answer) as entry (entry.family)}
-									<div
-										class="flex flex-wrap items-baseline gap-x-4 border-b border-border last:border-b-0"
-									>
-										<dt>
-											<a
-												class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
-												href={`${methodHref}#${entry.id}`}
-												>{entry.family_text?.[locale] ?? entry.family}</a
-											>
-										</dt>
-										<dd>
-											{t('method', 'méthode')}
-											{versionNumber(entry.method_version)}, {t('since', 'depuis le')}
-											{longDate(entry.since, locale)}
-										</dd>
-									</div>
-								{/each}
-							</dl>
+							{#snippet version(row: RecordTableRow & { version: string })}{row.version}{/snippet}
+							{#snippet since(row: RecordTableRow & { since: string })}
+								<time datetime={row.since}>{longDate(row.since, locale)}</time>
+							{/snippet}
+							<RecordDataTable
+								{locale}
+								title={t('Versions in force', 'Versions en vigueur')}
+								rowHeader={t('Measure family', 'Famille de mesures')}
+								rows={familiesFor(result.answer).map((entry) => ({
+									id: entry.family,
+									label: entry.family_text?.[locale] ?? entry.family,
+									href: `${methodHref}#${entry.id}`,
+									version: versionNumber(entry.method_version) ?? labels.unknown,
+									since: entry.since,
+								}))}
+								columns={[
+									{ key: 'version', header: t('Version', 'Version'), cell: version },
+									{ key: 'since', header: t('Since', 'Depuis le'), cell: since },
+								]}
+								value="version"
+							/>
 						{:else}<StateMark state="not_measured" {locale} />{/if}
 					{/await}
 				</RecordCard>
@@ -419,9 +421,5 @@
 <style>
 	.table-days-answer :global(.answer-value) {
 		flex-shrink: 0;
-	}
-	/* The kit's hour legend always includes all states. The table-day legend uses the visible cells. */
-	.table-days :global([data-slot='hour-grid'] > ul) {
-		display: none;
 	}
 </style>

@@ -13,6 +13,8 @@
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
 	import { recordCounts } from '#lib/features/home/overviewRecord.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
+	import FactList from '#lib/features/record/FactList.svelte';
+	import FactRow from '#lib/features/record/FactRow.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
@@ -44,6 +46,7 @@
 	} from '#lib/site/agencyMessages.ts';
 	import {
 		countedUnit,
+		dailyAlertsLink,
 		dateRange,
 		longDate,
 		methodEvidence,
@@ -142,10 +145,7 @@
 		if ('value' in answer) {
 			const counts = answer.evidence.counts;
 			if (section === 'messages' && answer.state === 'measured' && counts.alerts != null)
-				return t(
-					tally(counts.alerts, lang) + ' distinct alerts',
-					tally(counts.alerts, lang) + ' avis distincts',
-				);
+				return countedUnit(counts.alerts, 'distinct-alert', lang);
 			return recordCounts(
 				counts.classified,
 				section === 'delivery' ? counts.ran : null,
@@ -342,50 +342,54 @@
 		value != null && trips != null
 			? [punctualityText, t(', and ', ', et '), deliveryText, '.'].join('')
 			: [punctualityText + '.', delivery ? deliveryText + '.' : ''].filter(Boolean).join(' ')}
-	<RecordAnswer
-		locale={lang}
-		value={value == null ? null : recordPercent(value, lang)}
-		{sentence}
-		state={value == null && punctuality ? readingState(punctuality) : undefined}
-		time={stamp}
-		{actions}
+	<div
+		class="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_fit-content(48%)] xl:gap-6 print:block"
 	>
-		{#snippet meta()}
-			{@const currentSample = punctuality?.evidence.counts.classified}
-			{@const ran = service?.evidence.counts.ran}
-			{@const days = punctuality?.evidence.days_included.length}
-			{@const sample = recordCounts(
-				currentSample,
-				ran,
-				days ? countedUnit(days, 'day', lang) : '',
-				lang,
-			)}
-			{#if sample}<p>{t('Counted:', 'Ce qui est compté :')} {sample}</p>{/if}
-			{#if punctuality}<p class="font-mono text-sm text-muted-foreground">
-					{methodEvidence(punctuality.evidence, lang, true)}
-				</p>{/if}
-			{#if current.kind !== 'answer'}{@render failure(current)}{/if}
-			{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[lang]}</p>{/if}
-			{#if punctuality?.state === 'too_few_to_judge' && punctuality.info?.[0]?.minimum_sample != null && currentSample != null}
-				<p>
-					{sampleWithMinimum(
-						countedUnit(currentSample, 'event', lang),
-						punctuality.info[0].minimum_sample,
-						lang,
-					)}
-				</p>
-			{/if}
-			{#if service?.state === 'too_few_to_judge' && service.info?.[0]?.minimum_sample != null && service.evidence.counts.eligible != null}
-				<p>
-					{sampleWithMinimum(
-						countedUnit(service.evidence.counts.eligible, 'trip', lang),
-						service.info[0].minimum_sample,
-						lang,
-					)}
-				</p>
-			{/if}
-		{/snippet}
-	</RecordAnswer>
+		<RecordAnswer
+			locale={lang}
+			value={value == null ? null : recordPercent(value, lang)}
+			{sentence}
+			state={value == null && punctuality ? readingState(punctuality) : undefined}
+			time={stamp}
+		>
+			{#snippet meta()}
+				{@const currentSample = punctuality?.evidence.counts.classified}
+				{@const ran = service?.evidence.counts.ran}
+				{@const days = punctuality?.evidence.days_included.length}
+				{@const sample = recordCounts(
+					currentSample,
+					ran,
+					days ? countedUnit(days, 'day', lang) : '',
+					lang,
+				)}
+				{#if sample}<p>{t('Counted:', 'Ce qui est compté :')} {sample}</p>{/if}
+				{#if punctuality}<p class="font-mono text-sm text-muted-foreground">
+						{methodEvidence(punctuality.evidence, lang, true)}
+					</p>{/if}
+				{#if current.kind !== 'answer'}{@render failure(current)}{/if}
+				{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[lang]}</p>{/if}
+				{#if punctuality?.state === 'too_few_to_judge' && punctuality.info?.[0]?.minimum_sample != null && currentSample != null}
+					<p>
+						{sampleWithMinimum(
+							countedUnit(currentSample, 'event', lang),
+							punctuality.info[0].minimum_sample,
+							lang,
+						)}
+					</p>
+				{/if}
+				{#if service?.state === 'too_few_to_judge' && service.info?.[0]?.minimum_sample != null && service.evidence.counts.eligible != null}
+					<p>
+						{sampleWithMinimum(
+							countedUnit(service.evidence.counts.eligible, 'trip', lang),
+							service.info[0].minimum_sample,
+							lang,
+						)}
+					</p>
+				{/if}
+			{/snippet}
+		</RecordAnswer>
+		{@render actions()}
+	</div>
 {/snippet}
 
 <Surface class="print:py-0!">
@@ -444,26 +448,23 @@
 										{#if !service}{@render failure(result)}
 										{:else if service.state !== 'measured'}{@render missingMeasure(service, true)}
 										{:else}
-											<dl class="delivery-rows grid">
+											<FactList
+												leading={false}
+												class="print:[&_[data-slot=fact-row]]:min-h-0 print:[&_[data-slot=fact-row]]:py-0.5"
+											>
 												{#each Object.entries(deliveryLabels) as [key, label] (key)}
 													{@const count = service.evidence.counts[key]}
 													{@const share = key === 'ran' ? tripsRun(service) : null}
-													<div
-														class="delivery-row grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-border py-2 print:py-0.5"
+													<FactRow
+														{label}
+														detail={share == null ? undefined : recordPercent(share, lang)}
 													>
-														<dt>{label}</dt>
-														<dd class="text-right font-semibold tabular-nums">
-															{#if count != null}{tally(count, lang)}{:else}<StateMark
-																	state="unknown"
-																	locale={lang}
-																/>{/if}
-															{#if share != null}<span class="block text-muted-foreground"
-																	>{recordPercent(share, lang)}</span
-																>{/if}
-														</dd>
-													</div>
+														{#if count != null}<strong>{tally(count, lang)}</strong>{:else}
+															<StateMark state="unknown" locale={lang} />
+														{/if}
+													</FactRow>
 												{/each}
-											</dl>
+											</FactList>
 											<p class="mt-3 text-muted-foreground">
 												{t(
 													'A cancelled trip comes with a notice from the agency. A missing trip has no vehicle reporting and no notice.',
@@ -494,6 +495,7 @@
 										{:else}
 											{#if ['early', 'on_time', 'late'].every((band) => measuredShare(punctuality, band) != null)}
 												<RecordChart
+													formatShare={recordPercent}
 													title={bandTitle}
 													id="punctuality-bands"
 													locale={lang}
@@ -598,9 +600,7 @@
 														data.timeZone,
 														false,
 													)}
-													<li
-														class="message-row grid min-w-0 gap-x-4 border-b border-border py-2 print:py-0.5"
-													>
+													<li class="message-row grid min-w-0 gap-x-4 py-2 print:py-0.5">
 														<div class="flex flex-wrap items-start gap-x-2">
 															{#each message.routes.slice(0, 3) as id (id)}
 																{@const line = display.lineName(id)}
@@ -643,10 +643,7 @@
 												class="inline-flex min-h-11 items-center text-primary underline"
 												href={link('/alerts')}
 											>
-												{t(
-													'All ' + tally(count, lang) + ' in Service alerts',
-													'Les ' + tally(count, lang) + ' dans les avis de service',
-												)}
+												{dailyAlertsLink(count, lang)}
 											</a>
 										{/if}
 									{/await}
@@ -749,7 +746,7 @@
 															counts?.scheduled == null ? undefined : tally(counts.scheduled, lang),
 														),
 												current?.evidence.low_coverage ? lowCoverageText(lang) + '.' : null,
-												timingBasis(counts, lang),
+												timingBasis(counts, lang, recordPercent),
 												current?.coverage_note?.[lang],
 											]
 												.filter(Boolean)
@@ -795,17 +792,12 @@
 	.message-row {
 		grid-template-columns: fit-content(30%) minmax(0, 1fr);
 	}
-	.delivery-rows,
 	.message-rows {
 		container-type: inline-size;
 	}
 	@container (max-width: 13rem) {
-		.delivery-row,
 		.message-row {
 			grid-template-columns: minmax(0, 1fr);
-		}
-		.delivery-row dd {
-			text-align: start;
 		}
 	}
 	@page {

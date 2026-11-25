@@ -1,15 +1,17 @@
 <script lang="ts">
 	import { StatusMark } from '@yesid/ui/brand';
 	import { BandBar, type BandBarBand } from '@yesid/ui/chart';
+	import type { Snippet } from 'svelte';
 
-	let { label, bands }: { label: string; bands: readonly BandBarBand[] } = $props();
+	let { label, bands, absent }: { label: string; bands: readonly BandBarBand[]; absent?: Snippet } =
+		$props();
 	const hasTrack = $derived(bands.some(({ share }) => Number.isFinite(share) && share > 0));
 	let narrow = $state(0);
 </script>
 
 <div class="record-bands">
 	<div class="measure" aria-hidden="true" bind:clientWidth={narrow}></div>
-	<BandBar {label} {bands} rows={!narrow} />
+	<BandBar {label} {bands} {absent} rows={!narrow} />
 	{#if narrow || !hasTrack}
 		<dl class="mt-3 grid gap-2">
 			{#each bands as band (band.id)}

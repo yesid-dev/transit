@@ -4,11 +4,13 @@ import { createLineDirectory } from './lineDirectory.ts';
 import {
 	alertAnswerSentence,
 	alertPaging,
+	captureCadence,
 	clockRange,
 	clockTime,
 	dateAndClock,
 	dateRange,
 	countedUnit,
+	dailyAlertsLink,
 	delayReading,
 	directionLabel,
 	fileSize,
@@ -18,6 +20,7 @@ import {
 	minuteReading,
 	registryUnitText,
 	recordRatio,
+	recordPercent,
 	recordStamp,
 	scheduledClock,
 	serviceTime,
@@ -49,6 +52,38 @@ it.each([
 });
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
+
+it.each([
+	['en', '0.0%', '14.0%', '80.7%'],
+	['fr', '0,0 %', '14,0 %', '80,7 %'],
+] as const)('formats measured shares with one decimal in %s', (locale, zero, whole, fraction) => {
+	expect(normalize(recordPercent(0, locale))).toBe(zero);
+	expect(normalize(recordPercent(0.14, locale))).toBe(whole);
+	expect(normalize(recordPercent(0.807, locale))).toBe(fraction);
+});
+
+it.each([
+	['en', 'every 89 s', 'every 1.5 min', 'every 5 min', 'once a day'],
+	['fr', 'toutes les 89 s', 'toutes les 1,5 min', 'toutes les 5 min', 'une fois par jour'],
+] as const)(
+	'shows capture cadence in seconds and minutes in %s',
+	(locale, short, boundary, long, daily) => {
+		expect(normalize(captureCadence(89, locale))).toBe(short);
+		expect(normalize(captureCadence(90, locale))).toBe(boundary);
+		expect(normalize(captureCadence(300, locale))).toBe(long);
+		expect(captureCadence(86_400, locale)).toBe(daily);
+		expect(captureCadence(null, locale)).toBeNull();
+	},
+);
+
+it.each([
+	['en', '1 distinct alert', '2 distinct alerts', 'See the service alert'],
+	['fr', '1 avis distinct', '2 avis distincts', 'Voir l’avis de service'],
+] as const)('presents the Daily alert count and link in %s', (locale, one, two, link) => {
+	expect(countedUnit(1, 'distinct-alert', locale)).toBe(one);
+	expect(countedUnit(2, 'distinct-alert', locale)).toBe(two);
+	expect(dailyAlertsLink(1, locale)).toBe(link);
+});
 
 it.each([
 	['en', '13 October 2026'],

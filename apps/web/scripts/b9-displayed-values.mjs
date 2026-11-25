@@ -437,6 +437,19 @@ async function installNetworkBoundary(context, pageOrigin, replay, documentPaths
 	});
 }
 
+async function readBandRows(bands) {
+	return bands.locator('dt').evaluateAll((terms) =>
+		terms.map((term) => {
+			const status = term.querySelector('[data-slot="status-mark"]');
+			return {
+				label: status?.querySelector('.status-word')?.textContent.trim(),
+				count: status?.querySelector('.status-detail')?.textContent,
+				share: term.nextElementSibling?.textContent,
+			};
+		}),
+	);
+}
+
 async function verifyNetwork(page, cell, fixture, replay, errors, html) {
 	const label = `${cell.fixture}/${cell.locale}/${cell.surface}`;
 	const main = page.locator('main');
@@ -466,8 +479,10 @@ async function verifyNetwork(page, cell, fixture, replay, errors, html) {
 		expectedPaths.push('/v2/stm/live');
 	} else {
 		const bands = main.locator('#network-bands');
-		const shares = (await bands.locator('dd strong').allTextContents()).map(parseNumber);
-		const counts = (await bands.locator('dd span').allTextContents()).map(parseNumber);
+		await bands.locator('dt').first().waitFor();
+		const displayedRows = await readBandRows(bands);
+		const shares = displayedRows.map(({ share }) => parseNumber(share));
+		const counts = displayedRows.map(({ count }) => parseNumber(count));
 		const delivery = main.locator('#delivery table tbody tr');
 		await delivery.first().waitFor();
 		const deliveryValues = (await delivery.first().locator('td').allTextContents()).map(
@@ -668,29 +683,18 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 		const early = isLine ? 10 : 5;
 		const onTime = new URL(page.url()).searchParams.get('direction') === '1' ? 40 : 80;
 		const counts = [early, onTime, 100 - early - onTime];
-		const displayedLabels = await bands.locator('dt').evaluateAll((terms) =>
-			terms.map((term) => {
-				const label = term.cloneNode(true);
-				label.querySelectorAll('[aria-hidden="true"]').forEach((decoration) => decoration.remove());
-				return label.textContent.trim();
-			}),
-		);
+		const displayedRows = await readBandRows(bands);
+		const displayedLabels = displayedRows.map(({ label }) => label);
 		const expectedLabels =
 			cell.locale === 'fr' ? ['En avance', 'À l’heure', 'En retard'] : ['Early', 'On time', 'Late'];
 		invariant(
 			JSON.stringify(displayedLabels) === JSON.stringify(expectedLabels),
 			`${label} mislabeled or reordered the punctuality bands: ${displayedLabels}`,
 		);
-		const readings = (
-			await bands
-				.locator('dd')
-				.evaluateAll((rows) =>
-					rows.map((row) => [
-						row.querySelector('strong')?.textContent,
-						row.querySelector('span')?.textContent,
-					]),
-				)
-		).map((row) => row.map(parseNumber));
+		const readings = displayedRows.map(({ share, count }) => [
+			parseNumber(share),
+			parseNumber(count),
+		]);
 		const expectedReadings = isLine
 			? counts.map((count) => [count, count])
 			: [

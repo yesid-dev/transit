@@ -83,14 +83,23 @@ it.each(cases)(
 		});
 		const chosen = version === '12' ? downloadLayouts.segment_runs : downloadLayouts.stop_events;
 		const card = await screen.findByRole('article', { name: chosen[locale] });
-		within(card)
-			.getByText(locale === 'en' ? 'See the layout and files' : 'Voir la structure et les fichiers')
-			.click();
+		const trigger = within(card).getByRole('button', {
+			name: locale === 'en' ? 'See the layout and files' : 'Voir la structure et les fichiers',
+		});
+		expect(trigger).toHaveAttribute('aria-expanded', 'false');
+		const content = document.getElementById(trigger.getAttribute('aria-controls')!);
+		expect(content).toHaveTextContent(chosen.columns[0]);
+		expect(content).toHaveAttribute('hidden', 'until-found');
+		trigger.click();
 		expect(await screen.findByRole('link', { name: new RegExp(filename) })).toHaveAttribute(
 			'href',
 			file,
 		);
+		expect(trigger).toHaveAttribute('aria-expanded', 'true');
 		expect(screen.getByRole('link', { name: attribution[locale] })).toHaveAttribute('href', source);
+		expect(
+			screen.getByText(locale === 'en' ? '22 November 2026' : '22 novembre 2026'),
+		).toHaveAttribute('datetime', licence.checked_on);
 		expect(screen.queryByRole('combobox')).toBeNull();
 		expect(
 			screen

@@ -118,6 +118,8 @@ it('describes closed families with all of their measures', async () => {
 	});
 	await screen.findByText(/Early is more than 1 minute ahead.*Late is more than 5 minutes/);
 	const family = document.getElementById('family-vehicles')!;
+	const more = family.closest('[aria-labelledby="more-methods"]');
+	expect(more?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
 	const trigger = within(family).getByRole('button', {
 		name: /Early share by vehicle and Late share by vehicle\.$/u,
 	});

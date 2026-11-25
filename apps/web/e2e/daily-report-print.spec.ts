@@ -12,6 +12,7 @@ test.describe('Daily report print', () => {
 	for (const locale of ['en', 'fr'] as const) {
 		test('prints ' + locale + ' on one sheet', async ({ page }, info) => {
 			const fr = locale === 'fr';
+			await page.setViewportSize({ width: 1440, height: 900 });
 			await page.addInitScript(
 				(theme) => localStorage.setItem('theme', theme),
 				fr ? 'dark' : 'light',
@@ -45,6 +46,13 @@ test.describe('Daily report print', () => {
 			await expect(main.locator('#messages a[href*="/alerts"]')).toContainText(/1[\s,]690/u);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
 			await expect(main.locator('#punctuality')).toContainText(fr ? /97,2\s%/u : '97.2%');
+			await expect(main.locator('#delivery [data-slot="fact-row"]')).toHaveCount(5);
+			const actions = main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' });
+			await expect(actions.getByRole('button')).toHaveCount(4);
+			const actionTops = await actions
+				.getByRole('button')
+				.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
+			expect(Math.max(...actionTops) - Math.min(...actionTops)).toBeLessThan(1);
 			const rankingsFooter = main.locator('#lines footer');
 			await expect(rankingsFooter).toHaveCount(1);
 			await expect(rankingsFooter).toContainText(
@@ -67,9 +75,7 @@ test.describe('Daily report print', () => {
 			await expect(preview).toBeHidden();
 			await expect(main.locator('.daily-report')).toHaveCSS('print-color-adjust', 'exact');
 			await expect(page.getByRole('banner')).toBeHidden();
-			await expect(
-				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
-			).toBeHidden();
+			await expect(actions).toBeHidden();
 			const rankingsBox = (await main.locator('#lines > [data-slot="card"]').boundingBox())!;
 			const aboutBox = (await about.locator('xpath=..').boundingBox())!;
 			expect(aboutBox.x).toBeGreaterThan(rankingsBox.x + rankingsBox.width);

@@ -2,7 +2,10 @@
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { page } from '$app/state';
+	import { ChevronToggle } from '@yesid/ui/brand';
+	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Surface, DashboardGrid } from '@yesid/ui/layout';
+	import { onMount, type Snippet } from 'svelte';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
 	import { downloadCoverage } from '#lib/features/record/downloadCoverage.ts';
 	import {
@@ -15,6 +18,7 @@
 		countedUnit,
 		dateRange,
 		fileSize,
+		longDate,
 		recordStamp,
 		registryUnitText,
 		versionNumber,
@@ -41,6 +45,11 @@
 	const stamp = $derived(
 		data.window ? { kind: 'record' as const, label: recordStamp(data.window, locale) } : undefined,
 	);
+	// The server does not receive the fragment, so reveal the columns after hydration.
+	let mounted = $state(false);
+	onMount(() => {
+		mounted = true;
+	});
 
 	function daysHref(index: number) {
 		const url = new URL(page.url.href);
@@ -113,6 +122,27 @@
 		unavailable: t('Unavailable', 'Indisponible'),
 	};
 </script>
+
+{#snippet disclosure(label: string, content: Snippet, id?: string)}
+	<Collapsible.Root {id} class="@container" open={!!id && mounted && page.url.hash === `#${id}`}>
+		<Collapsible.Trigger>
+			{#snippet child({ props })}
+				<button
+					{...props}
+					class="grid min-h-11 min-w-11 max-w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 py-2 text-start text-primary underline @max-[9rem]:gap-x-1 @max-[9rem]:text-small"
+				>
+					<ChevronToggle
+						open={props['aria-expanded'] === 'true'}
+						size="sm"
+						class="mt-1 @max-[9rem]:size-3"
+					/>
+					<span class="[overflow-wrap:normal]">{label}</span>
+				</button>
+			{/snippet}
+		</Collapsible.Trigger>
+		<Collapsible.Content hiddenUntilFound>{@render content()}</Collapsible.Content>
+	</Collapsible.Root>
+{/snippet}
 
 <Surface>
 	<RecordScreen>
@@ -216,13 +246,7 @@
 												{/each}
 											</ul>
 										{/if}
-										<details>
-											<summary class="min-h-11 min-w-11 cursor-pointer py-3 text-primary underline"
-												>{t(
-													'See the layout and files',
-													'Voir la structure et les fichiers',
-												)}</summary
-											>
+										{#snippet layoutAndFiles()}
 											<!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard access to columns that overflow at large text sizes.) -->
 											<div
 												class="code-scroll flex min-h-11 flex-wrap gap-x-2 gap-y-1 overflow-x-auto"
@@ -259,7 +283,11 @@
 														</li>
 													{/each}
 												</ul>{/if}
-										</details>
+										{/snippet}
+										{@render disclosure(
+											t('See the layout and files', 'Voir la structure et les fichiers'),
+											layoutAndFiles,
+										)}
 									</div>
 									{#snippet evidence()}
 										<p class="font-mono text-sm text-muted-foreground">
@@ -311,23 +339,22 @@
 										{#if changes.length === 1}
 											<p>{changes[0]}</p>
 										{:else if changes.length}
-											<details>
-												<summary
-													class="min-h-11 min-w-11 cursor-pointer py-3 text-primary underline"
-													>{t(
-														'Changes to the source data',
-														'Modifications aux données sources',
-													)}</summary
-												>
+											{#snippet sourceChanges()}
 												<ul class="grid gap-2">
 													{#each changes as change (change)}<li>{change}</li>{/each}
 												</ul>
-											</details>
+											{/snippet}
+											{@render disclosure(
+												t('Changes to the source data', 'Modifications aux données sources'),
+												sourceChanges,
+											)}
 										{/if}
 										<p>{licence.non_endorsement[locale]} {licence.limits[locale]}</p>
 										<p>
 											{licence.name[locale]} · {t('Licence checked on', 'Licence vérifiée le')}
-											<time datetime={licence.checked_on}>{licence.checked_on}</time>
+											<time datetime={licence.checked_on}
+												>{longDate(licence.checked_on, locale)}</time
+											>
 										</p>
 										<p>
 											{t('Removal requests', 'Demandes de retrait')}
@@ -338,13 +365,7 @@
 									</div>
 								{/each}
 								{#if complete.some((day) => day.readme_url)}
-									<details>
-										<summary class="min-h-11 min-w-11 cursor-pointer py-3 text-primary underline">
-											{t(
-												'Download README with licence and checksums',
-												'Télécharger le fichier README avec la licence et les sommes de contrôle',
-											)}
-										</summary>
+									{#snippet readmeFiles()}
 										<ul class="flex flex-wrap gap-x-4">
 											{#each complete as day (day.service_date)}
 												{#if day.readme_url}
@@ -357,7 +378,14 @@
 												{/if}
 											{/each}
 										</ul>
-									</details>
+									{/snippet}
+									{@render disclosure(
+										t(
+											'Download README with licence and checksums',
+											'Télécharger le fichier README avec la licence et les sommes de contrôle',
+										),
+										readmeFiles,
+									)}
 								{/if}
 							</div>
 						</RecordCard>
@@ -407,10 +435,7 @@
 									>
 								</li>
 							</ul>
-							<details id="measure-columns">
-								<summary class="min-h-11 min-w-11 cursor-pointer py-3 text-primary underline"
-									>{t('Measure CSV columns', 'Colonnes des CSV de mesures')}</summary
-								>
+							{#snippet measureColumns()}
 								{#await data.methods}
 									<p>{t('Loading…', 'Chargement…')}</p>
 								{:then result}
@@ -431,7 +456,12 @@
 										<p>{recordConnection.unreachable[locale]}</p>
 									{/if}
 								{/await}
-							</details>
+							{/snippet}
+							{@render disclosure(
+								t('Measure CSV columns', 'Colonnes des CSV de mesures'),
+								measureColumns,
+								'measure-columns',
+							)}
 						</div>
 					</RecordCard>
 				</DashboardGrid>

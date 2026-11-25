@@ -19,6 +19,10 @@ export const frameCopy = {
 		view: 'View',
 		live: 'Live now',
 		record: 'Record',
+		viewHint: {
+			live: 'What the feeds say at this moment.',
+			record: 'What was delivered over the dates below.',
+		},
 		recordOnly: 'This screen is a record. It has no live view.',
 		liveOnly: 'This screen shows the trip in progress.',
 		recordDates: 'Dates apply to Record',
@@ -55,6 +59,10 @@ export const frameCopy = {
 		view: 'Vue',
 		live: 'En direct',
 		record: 'Bilan',
+		viewHint: {
+			live: 'Ce que disent les flux en ce moment.',
+			record: 'Ce qui a été livré aux dates ci-dessous.',
+		},
 		recordOnly: 'Cet écran présente un bilan. Il n’a pas de vue en direct.',
 		liveOnly: 'Cet écran montre le trajet en cours.',
 		recordDates: 'Les dates s’appliquent au bilan',
@@ -112,6 +120,10 @@ export function frameControlsState(url: URL, clock: FrameClock) {
 		...parsed,
 		mode,
 		showRail: !['/roadmap', '/privacy', '/terms', '/accessibility'].includes(path),
+		showViewHint:
+			['/', '/network', '/status', '/metrics'].includes(path) ||
+			path.startsWith('/departure/') ||
+			(mode === 'record' && path.startsWith('/vehicle/')),
 		recordOnly,
 		liveOnly,
 		detail: line || stop,

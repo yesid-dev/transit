@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
+import { recordPercent } from '#lib/site/presenter.ts';
 import {
 	bandChart,
 	histogramChart,
@@ -153,6 +154,27 @@ describe('record charts', () => {
 		expect(chart.props.ticks.map(({ label }) => label)).toEqual(['8 Nov', '10 Nov']);
 		expect(chart.props.last?.label).toBe('75.1%');
 	});
+
+	it.each([
+		['en', ['75%', '80%', '85%'], '85.0%'],
+		['fr', ['75 %', '80 %', '85 %'], '85,0 %'],
+	] as const)(
+		'keeps whole trend ticks and a one-decimal end label in %s',
+		(locale, ticks, last) => {
+			const chart = trendChart(
+				series(
+					cell({ day: '2026-11-08' }),
+					cell({ day: '2026-11-09' }, { value: { on_time: 0.85 } }),
+				),
+				'Daily',
+				locale,
+				undefined,
+				recordPercent,
+			);
+			expect(chart.props.yTicks.map(({ label }) => label.replace(/\s/gu, ' '))).toEqual(ticks);
+			expect(chart.props.last?.label.replace(/\s/gu, ' ')).toBe(last);
+		},
+	);
 
 	it('uses the engine interval without recalculating its endpoints', () => {
 		const chart = rangeChart(
