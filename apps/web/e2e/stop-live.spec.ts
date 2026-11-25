@@ -60,7 +60,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		const header = page.locator('header').filter({ has: page.locator('#stop-title') });
 		const originalTitle = await header.innerText();
 		expect(new URL(page.url()).searchParams.has('tab')).toBe(false);
-		await expect(header).toHaveCSS('border-bottom-width', '1px');
+		await expect(page.locator('[data-page-section-edges]').filter({ has: header })).toHaveCount(1);
 		const before = (await header.boundingBox())?.height;
 		const controls = await openFrameControls(page, locale);
 		await controls.getByRole('radio', { name: fr ? 'Bilan' : 'Record', exact: true }).click();

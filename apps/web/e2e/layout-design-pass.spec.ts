@@ -29,6 +29,7 @@ const cohesionScreens = new Set<Screen>([
 	'line-record',
 	'line-live',
 	'stop-record',
+	'stop-live',
 	'vehicle-record',
 	'vehicle-live',
 	'vehicles',

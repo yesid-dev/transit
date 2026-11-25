@@ -13,6 +13,7 @@
 	import LineLiveNotices from '../lines/LineLiveNotices.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
+	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import { choose, tally } from '../record/recordText.ts';
 	import StopPredictionTable from './StopPredictionTable.svelte';
@@ -59,9 +60,13 @@
 </script>
 
 {#snippet pending()}
-	<div id="stop-detail-departures" data-slot="screen-answer">
-		<p role="status">{t('Checking live predictions…', 'Vérification des prévisions en direct…')}</p>
-	</div>
+	<RecordGroup>
+		<div id="stop-detail-departures" data-slot="screen-answer">
+			<p role="status">
+				{t('Checking live predictions…', 'Vérification des prévisions en direct…')}
+			</p>
+		</div>
+	</RecordGroup>
 {/snippet}
 
 {#snippet content(snapshot: CaptureSnapshot | null, report: CaptureTripReport | null, now: number)}
@@ -78,124 +83,134 @@
 					label: liveStampAge(age, locale, feed === 'live' ? 'current' : 'behind'),
 					late: feed !== 'live',
 				}}
-	<div id="stop-detail-departures" data-slot="screen-answer">
-		{#if readings?.rows.length}
-			<RecordAnswer
-				{locale}
-				value={tally(readings.count, locale)}
-				sentence={readings.count === 1
-					? t(
-							'vehicle is expected here in the next 15 minutes.',
-							'véhicule est attendu ici dans les 15 prochaines minutes.',
-						)
-					: t(
-							'vehicles are expected here in the next 15 minutes.',
-							'véhicules sont attendus ici dans les 15 prochaines minutes.',
-						)}
-				time={stamp}
-			>
-				{#snippet meta()}<p>{countNote}</p>{/snippet}
-			</RecordAnswer>
-		{:else}
-			<RecordAnswer
-				{locale}
-				value={null}
-				time={stamp}
-				state={feed === 'stale'
-					? 'not_reporting'
-					: !tripUpdatesPublished
-						? 'not_tracked'
-						: 'no_live_data'}
-				sentence={scheduleOnly
-					? t(
-							'Only timetable data is published for the lines serving this stop.',
-							'Seuls les horaires sont publiés pour les lignes qui desservent cet arrêt.',
-						)
-					: !tripUpdatesPublished
-						? t(
-								'This network does not publish live trip updates.',
-								'Ce réseau ne publie pas de mises à jour des trajets en direct.',
-							)
-						: feed === 'stale'
-							? t(
-									'Live predictions for this stop are out of date.',
-									'Les prévisions en direct pour cet arrêt ne sont plus à jour.',
-								)
-							: readings
-								? t(
-										'No current prediction for this stop.',
-										'Aucune prévision à jour pour cet arrêt.',
-									)
-								: t(
-										'Live predictions for this stop are temporarily unavailable.',
-										'Les prévisions en direct pour cet arrêt sont temporairement indisponibles.',
-									)}
-			/>
-		{/if}
-	</div>
-	{#if readings?.rows.length}
-		<div class="min-w-0" data-slot="stop-live-predictions">
-			<RecordCard {title} {stamp}>
-				<StopPredictionTable
-					rows={readings.rows}
-					caption={title}
+	<RecordGroup>
+		<div id="stop-detail-departures" data-slot="screen-answer">
+			{#if readings?.rows.length}
+				<RecordAnswer
 					{locale}
-					{city}
-					{url}
-					{timeZone}
-					{now}
+					value={tally(readings.count, locale)}
+					sentence={readings.count === 1
+						? t(
+								'vehicle is expected here in the next 15 minutes.',
+								'véhicule est attendu ici dans les 15 prochaines minutes.',
+							)
+						: t(
+								'vehicles are expected here in the next 15 minutes.',
+								'véhicules sont attendus ici dans les 15 prochaines minutes.',
+							)}
+					time={stamp}
+				>
+					{#snippet meta()}<p>{countNote}</p>{/snippet}
+				</RecordAnswer>
+			{:else}
+				<RecordAnswer
+					{locale}
+					value={null}
+					time={stamp}
+					state={feed === 'stale'
+						? 'not_reporting'
+						: !tripUpdatesPublished
+							? 'not_tracked'
+							: 'no_live_data'}
+					sentence={scheduleOnly
+						? t(
+								'Only timetable data is published for the lines serving this stop.',
+								'Seuls les horaires sont publiés pour les lignes qui desservent cet arrêt.',
+							)
+						: !tripUpdatesPublished
+							? t(
+									'This network does not publish live trip updates.',
+									'Ce réseau ne publie pas de mises à jour des trajets en direct.',
+								)
+							: feed === 'stale'
+								? t(
+										'Live predictions for this stop are out of date.',
+										'Les prévisions en direct pour cet arrêt ne sont plus à jour.',
+									)
+								: readings
+									? t(
+											'No current prediction for this stop.',
+											'Aucune prévision à jour pour cet arrêt.',
+										)
+									: t(
+											'Live predictions for this stop are temporarily unavailable.',
+											'Les prévisions en direct pour cet arrêt sont temporairement indisponibles.',
+										)}
 				/>
-				{#snippet footer()}
-					<p class="text-small text-muted-foreground">
-						{t(
-							'A prediction is the agency’s estimate. “Delay unknown” means the feed does not give a usable delay for this stop. Trips with no prediction are not listed.',
-							'Une prévision est une estimation de l’agence. « Retard inconnu » signifie que le flux ne donne pas de retard exploitable pour cet arrêt. Les trajets sans prévision ne sont pas affichés.',
-						)}
-					</p>
-				{/snippet}
-			</RecordCard>
+			{/if}
 		</div>
-	{/if}
-	<div id="stop-detail-notices" data-testid="stop-alerts" class="min-w-0">
-		<LineLiveNotices
-			{snapshot}
-			{now}
-			{locale}
-			{timeZone}
-			{operator}
-			scope={{ kind: 'stop', id, lines }}
-			tracked={hasAlerts}
-			href={link('/alerts?frameMode=live')}
-		/>
-	</div>
-	<div id="stop-detail-facts">
-		<AboutLiveFigures
-			{locale}
-			{operator}
-			healthLink={link('/status?frameMode=live')}
-			scope={t(
-				'Agency predictions for this stop. The count includes trips expected here in the next 15 minutes.',
-				'Prévisions de l’agence pour cet arrêt. Le décompte couvre les trajets attendus ici dans les 15 prochaines minutes.',
-			)}
-			statusLabel={t(
-				'How a prediction gets its status',
-				'Comment est déterminé l’état d’une prévision',
-			)}
-			definition={t(
-				'From the predicted delay at this stop: early is more than 1 minute ahead, late is more than 5 minutes behind, and on time is between those limits.',
-				'Selon le retard prévu à cet arrêt : en avance signifie plus de 1 minute avant l’heure prévue, en retard signifie plus de 5 minutes après, et à l’heure se situe entre ces seuils.',
-			)}
-			captureText={age === null
-				? t('Trip updates unavailable.', 'Mises à jour des trajets indisponibles.')
-				: t(
-						`Trip updates: ${relativeReportAge(age, locale)}.`,
-						`Mises à jour des trajets : ${relativeReportAge(age, locale)}.`,
-					)}
-		/>
-	</div>
+		{#if readings?.rows.length}
+			<div class="min-w-0" data-slot="stop-live-predictions">
+				<RecordCard
+					{title}
+					{stamp}
+					interactive={readings.rows.some(({ line }) => line !== null) || readings.rows.length > 20}
+				>
+					<StopPredictionTable
+						rows={readings.rows}
+						caption={title}
+						{locale}
+						{city}
+						{url}
+						{timeZone}
+						{now}
+					/>
+					{#snippet evidence()}
+						<p class="text-small text-muted-foreground">
+							{t(
+								'A prediction is the agency’s estimate. “Delay unknown” means the feed does not give a usable delay for this stop. Trips with no prediction are not listed.',
+								'Une prévision est une estimation de l’agence. « Retard inconnu » signifie que le flux ne donne pas de retard exploitable pour cet arrêt. Les trajets sans prévision ne sont pas affichés.',
+							)}
+						</p>
+					{/snippet}
+				</RecordCard>
+			</div>
+		{/if}
+	</RecordGroup>
+	<RecordGroup>
+		<div id="stop-detail-notices" data-testid="stop-alerts" class="min-w-0">
+			<LineLiveNotices
+				{snapshot}
+				{now}
+				{locale}
+				{timeZone}
+				{operator}
+				scope={{ kind: 'stop', id, lines }}
+				tracked={hasAlerts}
+				href={link('/alerts?frameMode=live')}
+			/>
+		</div>
+	</RecordGroup>
+	<RecordGroup>
+		<div id="stop-detail-facts">
+			<AboutLiveFigures
+				{locale}
+				{operator}
+				healthLink={link('/status?frameMode=live')}
+				scope={t(
+					'Agency predictions for this stop. The count includes trips expected here in the next 15 minutes.',
+					'Prévisions de l’agence pour cet arrêt. Le décompte couvre les trajets attendus ici dans les 15 prochaines minutes.',
+				)}
+				statusLabel={t(
+					'How a prediction gets its status',
+					'Comment est déterminé l’état d’une prévision',
+				)}
+				definition={t(
+					'From the predicted delay at this stop: early is more than 1 minute ahead, late is more than 5 minutes behind, and on time is between those limits.',
+					'Selon le retard prévu à cet arrêt : en avance signifie plus de 1 minute avant l’heure prévue, en retard signifie plus de 5 minutes après, et à l’heure se situe entre ces seuils.',
+				)}
+				captureText={age === null
+					? t('Trip updates unavailable.', 'Mises à jour des trajets indisponibles.')
+					: t(
+							`Trip updates: ${relativeReportAge(age, locale)}.`,
+							`Mises à jour des trajets : ${relativeReportAge(age, locale)}.`,
+						)}
+			/>
+		</div>
+	</RecordGroup>
 {/snippet}
 
-<div class="grid min-w-0 grid-cols-1 gap-6" data-slot="screen-content">
+<div class="min-w-0" data-slot="screen-content">
 	{#if capture}
 		<LiveCapture {city} {capture} {pending}>
 			{#snippet children(snapshot, now, refreshed)}
