@@ -21,7 +21,21 @@ import {
 	setNearTargetSearchParams,
 } from '#lib/search/mapNear.ts';
 
-export type ChromeSearchKind = 'route' | 'stop' | 'vehicle' | 'address';
+export const SEARCH_KINDS = ['route', 'stop', 'vehicle', 'page'] as const;
+export type SearchKind = (typeof SEARCH_KINDS)[number];
+export type ChromeSearchKind = SearchKind | 'address';
+export type SearchScope = SearchKind | 'all';
+
+export function searchScope(value: string | null): SearchScope {
+	return SEARCH_KINDS.find((kind) => kind === value) ?? 'all';
+}
+
+/** Single-digit line numbers are searchable. */
+export function searchQueryState(query: string): 'empty' | 'short' | 'ready' {
+	if (!query.trim()) return 'empty';
+	const folded = foldSearchText(query);
+	return /\d/.test(folded) || (folded.length >= 2 && /\p{L}/u.test(folded)) ? 'ready' : 'short';
+}
 
 export type ChromeSearchScope = 'route' | 'stop' | 'map' | 'all';
 
@@ -62,6 +76,8 @@ export interface ListSearchRequest {
 	readonly query: string;
 	readonly surface: 'list';
 	readonly scope?: ChromeSearchScope;
+	/** Results on the page can reveal more rows without changing their ranking. */
+	readonly rows?: number;
 }
 /** One row. Labels are the record's own names; callers add every word. */
 export interface SearchHit {
@@ -69,6 +85,8 @@ export interface SearchHit {
 	readonly id: string;
 	readonly label: string;
 	readonly code?: string | null;
+	readonly name?: string | null;
+	readonly mode?: TransitModeKey | null;
 	readonly line?: string | null;
 	readonly lat?: number;
 	readonly lon?: number;
@@ -93,6 +111,7 @@ export interface SearchList {
 	/** The lines or stops index has not arrived, so no answer is final yet. */
 	readonly pending: boolean;
 	readonly indexSettled?: boolean;
+	readonly vehiclesNotTracked?: boolean;
 	/** Which of those indexes: never counted as zero. */
 	readonly unsearched: readonly ('route' | 'stop' | 'vehicle')[];
 }
@@ -152,10 +171,24 @@ function candidates(request: PageSearchRequest, sources: SearchSources, query: s
 	const stops = dedupeBy(stopMatches, ({ value }) => stopGroupKey(value)).filter(({ value }) =>
 		keepsMode(stopModeKey(value)),
 	);
+	const numberQuery = /^\d+(?: \d+)*$/.test(query) ? query.replaceAll(' ', '') : null;
 	const vehicles = keepsMode('bus')
-		? (sources.vehicles ?? []).filter((vehicle) => foldSearchText(vehicle.id) === query)
+		? (sources.vehicles ?? []).filter((vehicle) => {
+				const id = foldSearchText(vehicle.id);
+				return id === query || (numberQuery !== null && id.replaceAll(' ', '') === numberQuery);
+			})
 		: [];
 	return { routes, stops, vehicles };
+}
+
+function matchingPages(pages: SearchSources['pages'], query: string) {
+	return query
+		? scoredCandidates(pages ?? [], query, (page) => [
+				page.label.en,
+				page.label.fr,
+				...page.words,
+			]).sort(byScore)
+		: [];
 }
 
 const LIST_ROWS = {
@@ -171,6 +204,7 @@ function searchList(
 ): SearchList {
 	const lead = request.scope === 'route' || request.scope === 'stop' ? request.scope : 'all';
 	const rows = LIST_ROWS[lead];
+	const pages = matchingPages(sources.pages, query);
 	const directory = createLineDirectory(sources.routes ?? null, {
 		line: (id) => id,
 		locale: sources.locale,
@@ -179,14 +213,22 @@ function searchList(
 	const lines: SearchGroup = {
 		kind: 'route',
 		total: matches.routes.length,
-		hits: matches.routes
-			.slice(0, rows.route)
-			.map(({ value }) => ({ kind: 'route', id: value.id, label: directory.name(value.id).label })),
+		hits: matches.routes.slice(0, request.rows ?? rows.route).map(({ value }) => {
+			const line = directory.name(value.id);
+			return {
+				kind: 'route',
+				id: value.id,
+				label: line.label,
+				code: line.number,
+				name: line.name,
+				mode: routeModeKey(value.type),
+			};
+		}),
 	};
 	const stops: SearchGroup = {
 		kind: 'stop',
 		total: matches.stops.length,
-		hits: matches.stops.slice(0, rows.stop).map(({ value }) => ({
+		hits: matches.stops.slice(0, request.rows ?? rows.stop).map(({ value }) => ({
 			kind: 'stop',
 			id: value.id,
 			label: stopDisplayName(value.name),
@@ -196,14 +238,23 @@ function searchList(
 	const vehicles: SearchGroup = {
 		kind: 'vehicle',
 		total: matches.vehicles.length,
-		hits: matches.vehicles.slice(0, 1).map((vehicle) => ({
+		hits: matches.vehicles.slice(0, request.rows ?? 1).map((vehicle) => ({
 			kind: 'vehicle',
 			id: vehicle.id,
 			label: vehicle.id,
 			line: vehicle.route ? lineLabel(vehicle.route, sources.routes ?? []) : null,
 		})),
 	};
-	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles];
+	const pageGroup: SearchGroup = {
+		kind: 'page',
+		total: pages.length,
+		hits: pages.slice(0, request.rows ?? 2).map(({ value }) => ({
+			kind: 'page',
+			id: value.href,
+			label: value.label[sources.locale ?? 'en'],
+		})),
+	};
+	const groups = [...(lead === 'stop' ? [stops, lines] : [lines, stops]), vehicles, pageGroup];
 	const shown = groups.filter((group) => group.hits.length > 0);
 	const first = shown[0]?.kind;
 	const availability = {
@@ -217,11 +268,12 @@ function searchList(
 	return {
 		query,
 		groups: shown,
-		total: lines.total + stops.total + vehicles.total,
+		total: groups.reduce((total, group) => total + group.total, 0),
 		exact:
 			first === 'vehicle' ||
 			(first === 'route' && matches.routes[0]!.score === 0) ||
-			(first === 'stop' && matches.stops[0]!.score === 0),
+			(first === 'stop' && matches.stops[0]!.score === 0) ||
+			(first === 'page' && pages[0]!.score === 0),
 		pending: unsearched.length > 0,
 		unsearched,
 	};
@@ -246,15 +298,7 @@ export function searchTransit(
 		routes: matches.routes.map(({ value }) => value),
 		stops: matches.stops.map(({ value }) => value),
 		vehicles: matches.vehicles,
-		pages: query
-			? scoredCandidates(sources.pages ?? [], query, (page) => [
-					page.label.en,
-					page.label.fr,
-					...page.words,
-				])
-					.sort(byScore)
-					.map(({ value }) => value)
-			: [],
+		pages: matchingPages(sources.pages, query).map(({ value }) => value),
 	};
 }
 
@@ -295,8 +339,10 @@ export function scopeForPath(delocalizedPath: string): ChromeSearchScope {
 }
 
 /** The search page with this query: where "See all" and Enter without a highlight lead. */
-export function searchPageHref(query: string): string {
-	return `/search?${new URLSearchParams({ q: query })}`;
+export function searchPageHref(query: string, kind: SearchScope = 'all'): string {
+	const params = new URLSearchParams({ q: query });
+	if (kind !== 'all') params.set('kind', kind);
+	return `/search?${params}`;
 }
 
 /** Where the reader searches from: the delocalized path and its query. */
@@ -313,6 +359,7 @@ const RECORD_VIEW_PARAMS = ['tab', 'grain', 'from', 'to'] as const;
  * page another line opens on the same tab and period; the same for stops.
  */
 export function searchHitHref(hit: SearchTarget, from: SearchOrigin): string {
+	if (hit.kind === 'page') return hit.id;
 	if (hit.kind === 'vehicle' && from.path !== '/map')
 		return `/vehicle/${encodeURIComponent(hit.id)}`;
 	const record =

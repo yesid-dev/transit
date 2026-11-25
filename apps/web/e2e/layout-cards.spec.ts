@@ -13,7 +13,7 @@ async function serveSearchCards(page: Page) {
 		const index: SearchIndex = await response.json();
 		const schedule = index.schedule!;
 		const line = schedule.routes.find(({ id }) => id === '24')!;
-		schedule.routes = ['24', '241', '242', '243', '244', '245'].map((id) => ({
+		schedule.routes = ['24', '241', '242', '243', '244', '245', '246'].map((id) => ({
 			...line,
 			id,
 			short: id,
@@ -25,58 +25,53 @@ async function serveSearchCards(page: Page) {
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'] as const)
-		test(provider + ' ' + locale + ' search card container rules', async ({ page }) => {
-			await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
-			await serveSearchCards(page);
-			await page.goto(localizeHref('/search?q=24', locale, provider), { waitUntil: 'networkidle' });
-			const list = page.locator('[data-slot="entity-list"]').first();
-			await expect(list).toBeVisible();
-			const row = list.locator('[data-slot="entity-result-row"]').first();
-			const cards = list.locator('[data-slot="card"]');
-			await expect(cards).toHaveCount(6);
-			await expect(list.locator('[data-slot="entity-result-status"]')).toHaveCount(0);
-			const firstLink = row.getByRole('link');
-			await expect(firstLink).toContainText(searchLineName);
-			await expect(firstLink).toHaveAttribute('href', localizeHref('/lines/24', locale, provider));
-			// The same viewport exercises both sides of each container boundary.
-			for (const [width, columns] of [
-				[320, 1],
-				[420, 1],
-				[470, 1],
-				[743, 1],
-				[744, 2],
-				[1127, 2],
-				[1128, 3],
-			]) {
-				await list.evaluate((el, width) => {
-					el.parentElement!.style.width = `${width}px`;
-				}, width);
-				await expect
-					.poll(() =>
-						cards.evaluateAll((items) => {
-							const firstTop = items[0]!.getBoundingClientRect().top;
-							return items.filter(
-								(item) => Math.abs(item.getBoundingClientRect().top - firstTop) < 1,
-							).length;
-						}),
-					)
-					.toBe(columns);
-				const clipped = await cards.evaluateAll((items) =>
-					items.flatMap((item) => {
-						const link = item.querySelector('a')!;
-						const name = link.querySelector('.entity-row-subtitle')!;
-						const card = item.getBoundingClientRect();
-						const bounds = link.getBoundingClientRect();
-						return name.scrollWidth > name.clientWidth + 1 ||
-							bounds.left < card.left - 1 ||
-							bounds.right > card.right + 1
-							? [link.textContent]
-							: [];
-					}),
+		test(
+			provider + ' ' + locale + ' search keeps names whole within its result rows',
+			async ({ page }) => {
+				await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
+				await serveSearchCards(page);
+				await page.goto(localizeHref('/search?q=24&kind=route', locale, provider), {
+					waitUntil: 'networkidle',
+				});
+				const list = page.getByRole('main').getByRole('list').first();
+				const rows = list.getByRole('listitem');
+				await expect(rows).toHaveCount(6);
+				const firstLink = rows.first().getByRole('link');
+				await expect(firstLink).toContainText(searchLineName);
+				await expect(firstLink).toHaveAttribute(
+					'href',
+					localizeHref('/lines/24', locale, provider),
 				);
-				expect(clipped, `Card text at ${width}px`).toEqual([]);
-			}
-		});
+				for (const width of [320, 390, 768, 1024, 1440]) {
+					await page.setViewportSize({ width, height: 900 });
+					const tabBottom = await page
+						.getByRole('tab')
+						.evaluateAll((tabs) =>
+							Math.max(...tabs.map((tab) => tab.getBoundingClientRect().bottom)),
+						);
+					expect(tabBottom, `Tabs clear search rows at ${width}px`).toBeLessThanOrEqual(
+						await firstLink.evaluate((link) => link.getBoundingClientRect().top),
+					);
+					expect(
+						await rows.evaluateAll((items) =>
+							items.flatMap((item) => {
+								const link = item.querySelector('a')!;
+								const label = link.querySelector('.search-list-label')!;
+								const row = item.getBoundingClientRect();
+								const bounds = link.getBoundingClientRect();
+								return label.scrollWidth > label.clientWidth + 1 ||
+									bounds.left < row.left - 1 ||
+									bounds.right > row.right + 1 ||
+									bounds.height < 44
+									? [link.textContent]
+									: [];
+							}),
+						),
+						`Search rows at ${width}px`,
+					).toEqual([]);
+				}
+			},
+		);
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr'] as const)

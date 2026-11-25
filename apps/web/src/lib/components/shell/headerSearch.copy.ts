@@ -1,5 +1,7 @@
 // Header search words. Plain data: Node and Playwright import it without the app's aliases.
-type Kind = 'route' | 'stop' | 'vehicle' | 'address';
+import type { SearchKind, SearchList, SearchScope } from '#lib/search/transitSearch.ts';
+
+type Kind = SearchKind | 'address';
 // English: 1 is singular. French: 0 and 1 are.
 const count = (n: number, one: string, many: string, singular = n === 1) =>
 	`${n} ${singular ? one : many}`;
@@ -8,18 +10,29 @@ const counts = (...parts: (string | false)[]) => parts.filter(Boolean).join(', '
 
 export const headerSearchCopy = {
 	en: {
-		kind: { route: 'Line', stop: 'Stop', vehicle: 'Vehicle', address: 'Address' },
+		kind: { route: 'Line', stop: 'Stop', vehicle: 'Vehicle', page: 'Page', address: 'Address' },
+		kinds: { route: 'Lines', stop: 'Stops', vehicle: 'Vehicles', page: 'Pages' },
+		modes: { metro: 'Métro', tram: 'Tram', rail: 'Train', bus: 'Road', ferry: 'Ferry' },
+		inputLabel: 'Line, stop or vehicle',
+		idleTitle: 'Nothing typed yet',
+		idleBody:
+			'Find lines by number or name, stops by name or code, vehicles by number, and pages by title.',
+		short: 'Enter a line number or at least two letters.',
+		loading: 'Loading the search index…',
+		unavailable: 'The search index is temporarily unavailable.',
+		notTracked: 'This feed does not track vehicles by number.',
+		showing: (shown: string, total: string) => `Showing ${shown} of ${total}`,
+		more: 'Show more',
+		results: 'Results by kind',
+		searched: { route: 'lines', stop: 'stops', vehicle: 'vehicles', page: 'pages' },
 		/** The phone search button's visible word; its spoken name stays the field's own. */
 		trigger: 'Search',
 		sheetTitle: 'Search',
 		closeSheet: 'Close search',
 		heading: (kind: Kind, n: number | null) =>
-			`${{ route: 'Lines', stop: 'Stops', vehicle: 'Vehicles', address: 'Addresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
-		seeAll: (n: number | null, query: string) =>
-			`See ${n === 1 ? '1 result' : n === null ? 'all results' : `all ${n} results`} for “${query}”`,
-		unsearched: (kind: 'route' | 'stop' | 'vehicle') =>
-			`${{ route: 'Line', stop: 'Stop', vehicle: 'Vehicle' }[kind]} search is unavailable.`,
-		noResult: (query: string) => `No line or stop matches “${query}”.`,
+			`${{ route: 'Lines', stop: 'Stops', vehicle: 'Vehicles', page: 'Pages', address: 'Addresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
+		seeAll: 'See all results',
+		noResult: (query: string, kinds: string) => `Nothing found for “${query}” in ${kinds}.`,
 		browseLines: 'Browse all lines',
 		browseStops: 'Browse all stops',
 		askAddresses: (query: string) => `Search addresses for “${query}”`,
@@ -28,25 +41,42 @@ export const headerSearchCopy = {
 		addressesLoading: 'Looking up addresses…',
 		addressesNone: (query: string) => `No address found for “${query}”.`,
 		addressesFailed: 'Address search is unavailable right now.',
-		totals: (lines: number | null, stops: number | null, vehicles: number) =>
+		totals: (lines: number | null, stops: number | null, vehicles: number, pages = 0) =>
 			counts(
 				lines !== null && count(lines, 'line', 'lines'),
 				stops !== null && count(stops, 'stop', 'stops'),
 				vehicles > 0 && count(vehicles, 'vehicle', 'vehicles'),
+				pages > 0 && count(pages, 'page', 'pages'),
 			),
 	},
 	fr: {
-		kind: { route: 'Ligne', stop: 'Arrêt', vehicle: 'Véhicule', address: 'Adresse' },
+		kind: { route: 'Ligne', stop: 'Arrêt', vehicle: 'Véhicule', page: 'Page', address: 'Adresse' },
+		kinds: { route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules', page: 'Pages' },
+		modes: { metro: 'Métro', tram: 'Tramway', rail: 'Train', bus: 'Routier', ferry: 'Traversier' },
+		inputLabel: 'Ligne, arrêt ou véhicule',
+		idleTitle: 'Rien de saisi',
+		idleBody:
+			'Trouvez les lignes par numéro ou par nom, les arrêts par nom ou par code, les véhicules par numéro et les pages par titre.',
+		short: 'Saisissez un numéro de ligne ou au moins deux lettres.',
+		loading: 'Chargement de l’index de recherche…',
+		unavailable: 'L’index de recherche est temporairement indisponible.',
+		notTracked: 'Ce flux ne permet pas de suivre les véhicules par numéro.',
+		showing: (shown: string, total: string) => `${shown} sur ${total} affichés`,
+		more: 'Afficher plus',
+		results: 'Résultats par type',
+		searched: {
+			route: 'les lignes',
+			stop: 'les arrêts',
+			vehicle: 'les véhicules',
+			page: 'les pages',
+		},
 		trigger: 'Rechercher',
 		sheetTitle: 'Recherche',
 		closeSheet: 'Fermer la recherche',
 		heading: (kind: Kind, n: number | null) =>
-			`${{ route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules', address: 'Adresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
-		seeAll: (n: number | null, query: string) =>
-			`Voir ${n === 1 ? 'le résultat' : n === null ? 'tous les résultats' : `les ${n} résultats`} pour « ${query} »`,
-		unsearched: (kind: 'route' | 'stop' | 'vehicle') =>
-			`La recherche de ${{ route: 'lignes', stop: 'stations et arrêts', vehicle: 'véhicules' }[kind]} est indisponible.`,
-		noResult: (query: string) => `Aucune ligne ni aucun arrêt ne correspond à « ${query} ».`,
+			`${{ route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules', page: 'Pages', address: 'Adresses' }[kind]}${n === null ? '' : ` · ${n}`}`,
+		seeAll: 'Voir tous les résultats',
+		noResult: (query: string, kinds: string) => `Aucun résultat pour « ${query} » dans ${kinds}.`,
 		browseLines: 'Parcourir toutes les lignes',
 		browseStops: 'Parcourir tous les arrêts',
 		askAddresses: (query: string) => `Chercher des adresses pour « ${query} »`,
@@ -55,11 +85,31 @@ export const headerSearchCopy = {
 		addressesLoading: 'Recherche d’adresses…',
 		addressesNone: (query: string) => `Aucune adresse trouvée pour « ${query} ».`,
 		addressesFailed: 'La recherche d’adresse est indisponible pour le moment.',
-		totals: (lines: number | null, stops: number | null, vehicles: number) =>
+		totals: (lines: number | null, stops: number | null, vehicles: number, pages = 0) =>
 			counts(
 				lines !== null && count(lines, 'ligne', 'lignes', lines < 2),
 				stops !== null && count(stops, 'arrêt', 'arrêts', stops < 2),
 				vehicles > 0 && count(vehicles, 'véhicule', 'véhicules', vehicles < 2),
+				pages > 0 && count(pages, 'page', 'pages', pages < 2),
 			),
 	},
 };
+
+export function searchListNotice(
+	copy: (typeof headerSearchCopy)['en' | 'fr'],
+	list: SearchList,
+	query: string,
+	state: 'empty' | 'short' | 'ready',
+	scope: SearchScope = 'all',
+): string {
+	if (state === 'empty') return '';
+	if (state === 'short') return copy.short;
+	const kinds = scope === 'all' ? (Object.keys(copy.kinds) as SearchKind[]) : [scope];
+	if (kinds.some((kind) => list.unsearched.some((missing) => missing === kind)))
+		return list.indexSettled === false ? copy.loading : copy.unavailable;
+	if (scope === 'vehicle' && list.vehiclesNotTracked) return copy.notTracked;
+	if (list.groups.some((group) => group.total > 0 && kinds.some((kind) => kind === group.kind)))
+		return '';
+	const searched = kinds.filter((kind) => kind !== 'vehicle' || !list.vehiclesNotTracked);
+	return copy.noResult(query, searched.map((kind) => copy.searched[kind]).join(', '));
+}

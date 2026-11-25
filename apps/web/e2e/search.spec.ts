@@ -33,6 +33,67 @@ test.beforeEach(async ({ page }) => {
 for (const locale of PUBLISHED_LOCALES) {
 	const nav = navPillCopy[locale];
 
+	test(`${locale}: keyboard search opens a line, stop and vehicle, with one Back`, async ({
+		page,
+	}) => {
+		const start = localizeHref('/search', locale, 'stm');
+		await page.goto(start);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		for (const [query, target] of [
+			[line.long, `/lines/${line.id}`],
+			[stop.name, `/stop/${stop.id}`],
+			['40061', '/vehicle/40061'],
+		] as const) {
+			const trigger = page.getByRole('button', { name: nav.searchAria.all, exact: true });
+			const field = page.getByRole('combobox', { name: nav.searchAria.all });
+			const compact = await trigger.isVisible();
+			const control = compact ? trigger : field;
+			for (
+				let i = 0;
+				i < 20 && !(await control.evaluate((el) => el === document.activeElement));
+				i++
+			)
+				await page.keyboard.press('Tab');
+			await expect(control).toBeFocused();
+			if (compact) await page.keyboard.press('Enter');
+			await expect(field).toBeFocused();
+			await page.keyboard.type(query);
+			const result = page
+				.getByRole('option')
+				.filter({
+					hasText: query,
+				})
+				.first();
+			await expect(result).toHaveAttribute('aria-selected', 'true');
+			await page.keyboard.press('ArrowUp');
+			await expect(result).toHaveAttribute('aria-selected', 'false');
+			await page.keyboard.press('ArrowDown');
+			await expect(result).toHaveAttribute('aria-selected', 'true');
+			await page.keyboard.press('Enter');
+			await expect(page).toHaveURL((url) => url.pathname === localizeHref(target, locale));
+			await page.goBack();
+			await expect(page).toHaveURL((url) => url.pathname + url.search === start);
+			await expect(
+				page.getByRole('heading', { level: 1, name: headerSearchCopy[locale].sheetTitle }),
+			).toBeVisible();
+		}
+	});
+
+	test(`${locale}: blank and short search leave the index idle`, async ({ page }) => {
+		let requests = 0;
+		await page.route('**/api/search-index?*', (route) => {
+			requests++;
+			return route.continue();
+		});
+		await page.goto(localizeHref('/search', locale));
+		const main = page.getByRole('main');
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await expect(main.getByText(headerSearchCopy[locale].idleTitle)).toBeVisible();
+		await main.getByRole('textbox', { name: searchCopy[locale].inputLabel }).fill('x');
+		await expect(main.getByText(headerSearchCopy[locale].short)).toBeVisible();
+		expect(requests).toBe(0);
+	});
+
 	test(`${locale}: the header search finds a stop and Enter opens it`, async ({ page }, {
 		project,
 	}) => {
@@ -176,6 +237,15 @@ for (const locale of PUBLISHED_LOCALES) {
 			(url) => url.searchParams.get('q') === stop.name && url.searchParams.get('kind') === 'stop',
 		);
 		await expect(field).toHaveValue(stop.name);
+		await expect(stopsTab).toHaveAttribute('aria-selected', 'true');
+
+		const more = page.getByRole('listbox', { name: nav.searchAria.all }).locator('[id$="-all"]');
+		await box.fill(stop.name);
+		await expect(more).toHaveAttribute('href', expect.stringContaining('kind=stop'));
+		await more.click();
+		await expect(page).toHaveURL(
+			(url) => url.searchParams.get('q') === stop.name && url.searchParams.get('kind') === 'stop',
+		);
 		await expect(stopsTab).toHaveAttribute('aria-selected', 'true');
 	});
 

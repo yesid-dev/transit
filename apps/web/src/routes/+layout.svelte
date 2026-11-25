@@ -61,7 +61,8 @@
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { errorDocumentHead } from '#lib/site/errorPage.ts';
 	import { setV1Context } from '#lib/v1/boot.ts';
-	import { loadSearchIndex } from '#lib/search/searchIndex.ts';
+	import { loadSearchIndex, searchIndexList } from '#lib/search/searchIndex.ts';
+	import { sitePages } from '#lib/search/sitePages.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import { dataPulse } from '#lib/stores/index.ts';
 	import { registerServiceWorker } from '#lib/pwa/register.ts';
@@ -82,11 +83,7 @@
 	import { desktop } from '@yesid/ui/state';
 	import { NAV_GROUPS, visibleNav, YESID_HOUSE_LINK, mainLandmarkLabel } from '#lib/content/nav.ts';
 	import { legalCopy } from '#lib/features/legal/legal.copy.ts';
-	import {
-		searchTransit,
-		scopeForPath,
-		type ChromeSearchScope,
-	} from '#lib/search/transitSearch.ts';
+	import { searchQueryState } from '#lib/search/transitSearch.ts';
 	import type { LayoutData } from './$types';
 
 	const navigation = createNavigationLifecycle({
@@ -122,7 +119,6 @@
 	const isFullBleed = $derived(seoPath === '/map');
 	const dataIndependentRoute = $derived(isDataIndependentRoute(seoPath));
 
-	const searchScope = $derived<ChromeSearchScope>(scopeForPath(seoPath));
 
 	const mainLabel = $derived(mainLandmarkLabel(seoPath));
 
@@ -283,27 +279,23 @@
 
 	const edgeLayout = $derived(desktop.current ? 'desktop' : 'mobile');
 	let topSearch = $state('');
-	const chromeSearchEnabled = $derived(topSearch.trim().length > 0);
+	const chromeSearchEnabled = $derived(searchQueryState(topSearch) === 'ready');
 	const searchIndex = createResource((signal) => loadSearchIndex(data.providerId, signal), {
 		enabled: () => chromeSearchEnabled,
 		key: () => data.providerId,
 	});
-	const searchList = $derived({
-		...searchTransit(
-			{ surface: 'list', query: topSearch, scope: searchScope },
-			{
-				routes: searchIndex.data?.schedule?.routes ?? null,
-				locale,
-				nameSeparators: data.provider?.name_separators,
-				stops: searchIndex.data?.schedule?.stops ?? null,
-				vehicles:
-					searchIndex.data?.vehicle_state === 'not_tracked'
-						? []
-						: (searchIndex.data?.vehicles ?? null),
-			},
-		),
-		indexSettled: searchIndex.settled && !searchIndex.loading,
-	});
+	const searchPages = $derived(
+		sitePages({
+			alerts: data.provider ? providerHasAlerts(data.provider) : null,
+		}),
+	);
+	const searchList = $derived(
+		searchIndexList({ surface: 'list', query: topSearch }, searchIndex, {
+			locale,
+			nameSeparators: data.provider?.name_separators,
+			pages: searchPages,
+		}),
+	);
 
 	// Keep smooth-scroll state aligned on new paths; SvelteKit restores history entries.
 	function resetMainScroll(hash: string): void {

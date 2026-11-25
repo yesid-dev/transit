@@ -45,11 +45,11 @@ it('shows true totals in each heading and links each row to its record', () => {
 	const stopsGroup = view.getByRole('group', { name: 'Stops · 38' });
 	expect(within(stopsGroup).getAllByRole('option')).toHaveLength(4);
 	const line = within(view.getByRole('group', { name: 'Lines · 1' })).getByRole('option', {
-		name: 'Line 161 · Van Horne',
+		name: 'Line 161 · Van Horne Road',
 	});
 	expect(path(line.getAttribute('href'))).toBe('/lines/161');
-	const all = view.getByRole('option', { name: 'See all 39 results for “van”' });
-	expect(path(all.getAttribute('href'))).toBe('/search?q=van');
+	const all = view.getByRole('option', { name: 'See all results' });
+	expect(path(all.getAttribute('href'))).toBe('/search?q=van&kind=route');
 	expect(view.input).toHaveAttribute('aria-controls', view.getByRole('listbox').id);
 	expect(view.input).toHaveAttribute('aria-expanded', 'true');
 });
@@ -69,7 +69,7 @@ const opened = (option: HTMLElement) => {
 
 it('an exact line number is highlighted on a line page, and Enter opens that line', async () => {
 	const view = show('18', '/lines/17?tab=reliability&grain=week', 'route');
-	const line = view.getByRole('option', { name: 'Line 18 · Beaubien' });
+	const line = view.getByRole('option', { name: 'Line 18 · Beaubien Road' });
 	expect(line).toHaveAttribute('aria-selected', 'true');
 	expect(view.input).toHaveAttribute('aria-activedescendant', line.id);
 	expect(path(line.getAttribute('href'))).toBe('/lines/18?tab=reliability&grain=week');
@@ -128,13 +128,13 @@ it.each([
 it.each([
 	[
 		'en',
-		'No line or stop matches “zzz”.',
+		'Nothing found for “zzz” in lines, stops, vehicles, pages.',
 		['Browse all lines', 'Browse all stops', 'Search addresses for “zzz”'],
 		'',
 	],
 	[
 		'fr',
-		'Aucune ligne ni aucun arrêt ne correspond à « zzz ».',
+		'Aucun résultat pour « zzz » dans les lignes, les arrêts, les véhicules, les pages.',
 		[
 			'Parcourir toutes les lignes',
 			'Parcourir tous les arrêts',
@@ -169,12 +169,13 @@ it('says nothing about matches while the indexes load', () => {
 			providerId: 'stm',
 			url: new URL('https://transit.local/'),
 
-			list,
+			list: { ...list, indexSettled: false },
 			query: 'zzz',
 		},
 	});
 	expect(view.queryByRole('listbox')).toBeNull();
-	expect(view.queryByText(/No line or stop/)).toBeNull();
+	expect(view.queryByText(/Nothing found/)).toBeNull();
+	expect(view.getByText('Loading the search index…')).toBeVisible();
 	expect(view.getByRole('combobox', { name: 'Search the network' })).toHaveAttribute(
 		'aria-expanded',
 		'false',
@@ -182,10 +183,10 @@ it('says nothing about matches while the indexes load', () => {
 });
 
 it.each([
-	['en', '1 line. Stop search is unavailable.'],
-	['fr', '1 ligne. La recherche de stations et arrêts est indisponible.'],
+	['en', '1 line. The search index is temporarily unavailable.'],
+	['fr', '1 ligne. L’index de recherche est temporairement indisponible.'],
 ] as const)(
-	'speaks only the groups it searched and names the one it could not, in %s',
+	'speaks only the counts it has and says that the index is unavailable, in %s',
 	async (locale, said) => {
 		vi.useFakeTimers();
 		try {

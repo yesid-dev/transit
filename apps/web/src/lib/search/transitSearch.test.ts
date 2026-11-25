@@ -300,9 +300,31 @@ it('labels rows with the names riders read', () => {
 			vehicles: [{ ...vehicle('161'), route: '161' }],
 		},
 	);
-	expect(list.groups.map((group) => group.hits[0])).toEqual([
+	expect(list.groups.map((group) => group.hits[0])).toMatchObject([
 		{ kind: 'route', id: '161', label: '161 · Van Horne' },
 		{ kind: 'stop', id: 's', label: 'Montgomery / Sherbrooke', code: '161' },
 		{ kind: 'vehicle', id: '161', label: '161', line: '161' },
 	]);
+});
+it('includes bilingual app pages in the same ranked list on both surfaces', () => {
+	const pages = [
+		{
+			href: '/metrics',
+			label: { en: 'How we measure', fr: 'Comment on mesure' },
+			group: null,
+			words: [],
+		},
+	];
+	for (const rows of [undefined, 6]) {
+		const { groups, total } = searchTransit(
+			{ surface: 'list', query: 'comment on mesure', rows },
+			{ routes: [], stops: [], vehicles: [], pages, locale: 'en' },
+		);
+		expect(total).toBe(1);
+		expect(groups[0]?.hits[0]).toMatchObject({
+			kind: 'page',
+			id: '/metrics',
+			label: 'How we measure',
+		});
+	}
 });
