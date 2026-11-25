@@ -44,6 +44,18 @@ export function delayReading(
 	return seconds < 0 ? copy.early(magnitude) : seconds > 0 ? copy.late(magnitude) : copy.onSchedule;
 }
 
+export function mapRecordReading(value: number, stops: boolean, locale: Locale): string | null {
+	if (stops)
+		return intl
+			.number(locale, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 })
+			.format(value / 1000);
+	return `${intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 60)} min`;
+}
+
+export function mapDirectionReading(name: string, locale: Locale): string {
+	return `${locale === 'fr' ? 'vers' : 'toward'} ${directionName(name, locale)}`;
+}
+
 /** Inclusive delay bounds, shown exactly to the second as signed minutes:seconds. */
 export function delayRange(min: number | null, max: number | null, locale: Locale): string {
 	const copy = presenterCopy[locale];

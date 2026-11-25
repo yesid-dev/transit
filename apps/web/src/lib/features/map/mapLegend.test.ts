@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STATUS_CODES } from '#lib/v1/schemas/types.ts';
-import { mapLegend } from './mapLegend';
+import { mapLegend, railLegendName } from './mapLegend';
 
 const NB = ' ';
 
@@ -86,5 +86,35 @@ describe('mapLegend', () => {
 		expect(at(45)).toBe(`None for 45${NB}s or more. It can appear with any status.`);
 		for (const broken of [Number.NaN, Number.POSITIVE_INFINITY, 0, -30])
 			expect(at(broken)).toBeNull();
+	});
+});
+
+describe('rail legend name', () => {
+	const provider = { lines_without_live_data: [{ route_ids: ['schedule-only'], route_types: [] }] };
+
+	it.each([
+		[0, 'light rail', 'train léger'],
+		[1, 'métro', 'métro'],
+		[2, 'train', 'train'],
+	] as const)('labels GTFS route type %s in both languages', (type, english, french) => {
+		const routes = [
+			{ id: 'schedule-only', type },
+			{ id: 'live', type: 1 },
+		];
+		expect(railLegendName('en', provider, routes)).toBe(english);
+		expect(railLegendName('fr', provider, routes)).toBe(french);
+	});
+
+	it('leaves out the name when types are mixed, unknown or absent', () => {
+		const mixed = { lines_without_live_data: [{ route_ids: [], route_types: [0, 1] }] };
+		expect(
+			railLegendName('en', mixed, [
+				{ id: 'a', type: 0 },
+				{ id: 'b', type: 1 },
+			]),
+		).toBeUndefined();
+		expect(railLegendName('en', provider, [{ id: 'schedule-only', type: 99 }])).toBeUndefined();
+		expect(railLegendName('en', provider, [{ id: 'schedule-only' }])).toBeUndefined();
+		expect(railLegendName('en', provider, [{ id: 'live', type: 1 }])).toBeUndefined();
 	});
 });

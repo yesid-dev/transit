@@ -1,6 +1,7 @@
 import { directionLabel } from '#lib/site/presenter.ts';
 import { render, waitFor } from '@testing-library/svelte';
 import type { Map as MapLibreMap } from 'maplibre-gl';
+import { createRawSnippet } from 'svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import { getMapRoutes } from '#lib/v1/repositories/scheduleShapes.ts';
 import { getRoute } from '#lib/v1/repositories/static.ts';
@@ -87,6 +88,7 @@ it('draws a line answer before shapes arrive and uses straight segments for unav
 			locale: 'en',
 			stops,
 			routes: [],
+			children: createRawSnippet(() => ({ render: () => '<div></div>' })),
 			onscope: vi.fn(),
 			onsourcedate: vi.fn(),
 		},

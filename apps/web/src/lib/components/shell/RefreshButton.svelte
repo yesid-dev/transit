@@ -18,9 +18,10 @@
 	interface Props {
 		locale: Locale;
 		class?: string;
+		fixedTapTarget?: boolean;
 	}
 
-	let { locale, class: className }: Props = $props();
+	let { locale, class: className, fixedTapTarget = false }: Props = $props();
 
 	const refreshing = $derived(dataRefresh.refreshing);
 	let result = $state<RefreshResult | null>(null);
@@ -99,6 +100,7 @@
 		type="button"
 		variant="ghost"
 		size="icon-tap"
+		style={fixedTapTarget ? 'width: var(--size-tap-min); height: var(--size-tap-min);' : undefined}
 		aria-label={label}
 		title={label}
 		onclick={onClick}

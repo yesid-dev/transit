@@ -243,48 +243,50 @@
 		{/if}
 		<div class="map-progressive-shade" aria-hidden="true"></div>
 
-		<div class="map-progressive-copy">
-			<p class="map-progressive-kicker">{t.staticKicker}</p>
-			<h1 id="map-progressive-heading">
-				{phase === 'booting' ? t.bootHeading : t.staticHeading}
-			</h1>
-			<p class="map-progressive-body">
-				{phase === 'booting'
-					? hasPoster
-						? t.bootBody
-						: t.bootUnavailable
-					: hasPoster
-						? t.staticBody
-						: t.staticUnavailable}
+		{#if phase !== 'ready'}
+			<div class="map-progressive-copy">
+				<p class="map-progressive-kicker">{t.staticKicker}</p>
+				<h1 id="map-progressive-heading">
+					{phase === 'booting' ? t.bootHeading : t.staticHeading}
+				</h1>
+				<p class="map-progressive-body">
+					{phase === 'booting'
+						? hasPoster
+							? t.bootBody
+							: t.bootUnavailable
+						: hasPoster
+							? t.staticBody
+							: t.staticUnavailable}
+				</p>
+				{#if hasPoster}<p class="map-progressive-snapshot">
+						{t.staticSnapshot.replace('{date}', sourceDate)}
+					</p>{/if}
+				<p class="map-progressive-status" role="status" aria-live="polite">
+					{phase === 'booting' ? t.mapBooting : ''}
+				</p>
+
+				{#if phase === 'failed'}
+					<div class="map-progressive-failure" role="alert">
+						<p>{t.mapImportError}</p>
+						<Button
+							type="button"
+							size="sm"
+							class="mt-4 min-h-11"
+							disabled={liveRetryPending}
+							onclick={retry}>{t.mapImportRetry}</Button
+						>
+					</div>
+				{/if}
+			</div>
+
+			<p class="map-progressive-attribution">
+				<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
+				<span aria-hidden="true"> · </span>
+				<a href="https://github.com/protomaps/basemaps">© Protomaps</a>
 			</p>
-			{#if hasPoster}<p class="map-progressive-snapshot">
-					{t.staticSnapshot.replace('{date}', sourceDate)}
-				</p>{/if}
-			<p class="map-progressive-status" role="status" aria-live="polite">
-				{phase === 'booting' ? t.mapBooting : ''}
-			</p>
 
-			{#if phase === 'failed'}
-				<div class="map-progressive-failure" role="alert">
-					<p>{t.mapImportError}</p>
-					<Button
-						type="button"
-						size="sm"
-						class="mt-4 min-h-11"
-						disabled={liveRetryPending}
-						onclick={retry}>{t.mapImportRetry}</Button
-					>
-				</div>
-			{/if}
-		</div>
-
-		<p class="map-progressive-attribution">
-			<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
-			<span aria-hidden="true"> · </span>
-			<a href="https://github.com/protomaps/basemaps">© Protomaps</a>
-		</p>
-
-		<noscript><p class="map-progressive-noscript">{t.staticNoScript}</p></noscript>
+			<noscript><p class="map-progressive-noscript">{t.staticNoScript}</p></noscript>
+		{/if}
 	</section>
 </div>
 

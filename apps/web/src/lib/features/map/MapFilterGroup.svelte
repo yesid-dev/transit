@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
+	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
 	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import MapPinnedIcon from '@lucide/svelte/icons/map-pinned';
@@ -13,7 +14,6 @@
 		kind: MapFilterGroupKind;
 		label: string;
 		open: boolean;
-		presentation: 'desktop' | 'drawer';
 		count?: number;
 		/** One line of guidance shown above the group's rows. */
 		help?: string;
@@ -21,11 +21,12 @@
 		children?: Snippet;
 	}
 
-	let { kind, label, open, presentation, count = 0, help, ontoggle, children }: Props = $props();
-	const contentId = $derived(`map-filter-group-${presentation}-${kind}`);
+	let { kind, label, open, count = 0, help, ontoggle, children }: Props = $props();
+	const contentId = $derived(`map-filter-group-${kind}`);
 </script>
 
 <fieldset class="mf-group" data-filter-group={kind} aria-label={label}>
+	{#if kind !== 'markers'}<Separator decorative />{/if}
 	<Button
 		variant="ghost"
 		size="sm"

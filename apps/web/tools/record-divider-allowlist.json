@@ -2,40 +2,6 @@
 	"lib/features/lines/LineLivePredictions.svelte": {
 		"border-t": 1
 	},
-	"lib/features/map/detail/DetailAttributeGrid.svelte": {
-		"border-bottom:": 2
-	},
-	"lib/features/map/detail/DetailSection.svelte": {
-		"border-bottom:": 1
-	},
-	"lib/features/map/MapDetailAlerts.svelte": {
-		"border-top:": 1
-	},
-	"lib/features/map/MapFilterPill.svelte": {
-		"border-top:": 1
-	},
-	"lib/features/map/MapFilters.svelte": {
-		"border-bottom:": 3,
-		"border-top:": 1
-	},
-	"lib/features/map/MapHoverPeek.svelte": {
-		"border-top:": 1,
-		"border-bottom:": 2
-	},
-	"lib/features/map/MapLegend.svelte": {
-		"border-top:": 2
-	},
-	"lib/features/map/MapRecordPanel.svelte": {
-		"border-top:": 2,
-		"border-top-style:": 2,
-		"border-bottom:": 1
-	},
-	"lib/features/map/MapReportsPanel.svelte": {
-		"border-top:": 1
-	},
-	"lib/features/map/MapSelectionDetail.svelte": {
-		"border-bottom:": 5
-	},
 	"lib/features/metrics/MetricsExplainer.svelte": {
 		"border-block-start:": 2
 	},
@@ -56,9 +22,6 @@
 	"lib/components/schedule/ScheduleTable.svelte": {
 		"border-bottom:": 2,
 		"border-top:": 1
-	},
-	"lib/components/shared/CheckboxRow.svelte": {
-		"border-bottom:": 1
 	},
 	"lib/components/shell/BottomSheet.svelte": {
 		"border-b": 1,

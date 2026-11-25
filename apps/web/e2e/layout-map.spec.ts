@@ -15,10 +15,11 @@ type Draw = { x: number; y: number; time: number; cameraMoving: boolean };
 async function framing(page: Page, bounds: number[]) {
 	return page.evaluate((bounds) => {
 		const probe = (window as unknown as { __transitMap: Probe }).__transitMap;
-		const map = document.querySelector('[data-slot="map-stage"]')!.getBoundingClientRect();
+		// MapLibre projects into its runtime container, which extends behind the frame header.
+		const map = document.querySelector('[data-map-runtime]')!.getBoundingClientRect();
 		const blockers = [
 			...document.querySelectorAll(
-				'header,.map-head,.map-filter-panel,.map-near,[data-slot="map-north"],.map-filter-pill-container,[data-slot="map-detail-overlay"],[data-slot="right-panel"],.maplibregl-ctrl',
+				'header,.map-head,.map-camera-actions,.map-in-view-button,[data-frame-controls="desktop"],[data-slot="surface-rail-mobile"],[data-slot="map-legend-fab"],[data-slot="map-north"],[data-slot="map-details"],.maplibregl-ctrl',
 			),
 		]
 			.filter((el) => el.checkVisibility())
@@ -253,22 +254,19 @@ test('mobile detail sheet keeps its header controls above the home indicator at 
 		await expect(sheet).toHaveAttribute('data-detent', 'peek', { timeout: 1000 });
 	}).toPass();
 
-	const clearance = () =>
-		page.evaluate((inset) => {
-			const limit = innerHeight - inset;
-			const controls = [
-				...document.querySelectorAll<HTMLElement>(
-					'[data-slot="bottom-sheet"] [data-sheet-handle], [data-slot="bottom-sheet"] button[data-slot^="bottom-sheet-"]',
-				),
-			].filter((el) => el.checkVisibility());
-			return {
-				limit,
-				controls: controls.map((el) => ({
-					name: el.getAttribute('aria-label') ?? el.dataset.slot ?? el.tagName,
-					bottom: el.getBoundingClientRect().bottom,
-				})),
-			};
-		}, HOME_INDICATOR_PX);
+	const clearance = async () => {
+		const limit = await page.evaluate((inset) => innerHeight - inset, HOME_INDICATOR_PX);
+		const controls = await Promise.all([
+			sheet.locator('[data-sheet-handle]').boundingBox(),
+			sheet.getByRole('button', { name: 'Close', exact: true }).boundingBox(),
+		]);
+		return {
+			limit,
+			controls: controls.flatMap((box, index) =>
+				box ? [{ name: index === 0 ? 'Height' : 'Close', bottom: box.y + box.height }] : [],
+			),
+		};
+	};
 
 	const single = await clearance();
 	// Force a two-line identity, the tallest header the sheet budgets for at peek.
@@ -291,138 +289,35 @@ test('mobile detail sheet keeps its header controls above the home indicator at 
 
 for (const provider of read('providers').providers) {
 	for (const locale of ['en', 'fr']) {
-		test(`${provider.id} ${locale} map report and title fit their responsive placement @layout`, async ({
-			page,
-		}) => {
-			const mobile = page.viewportSize()!.width < 1024;
-			await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-			await page.route('**/v1/**', async (route) => {
-				const url = new URL(route.request().url());
-				url.pathname = '/__layout/stale' + url.pathname;
-				await route.fulfill({ response: await route.fetch({ url: url.href }) });
-			});
-			await page.clock.setFixedTime(epoch + 900_000);
-			await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?provider=${provider.id}`, {
-				waitUntil: 'networkidle',
-			});
-			const panel = page.locator('.map-head');
-			const report = page.locator(
-				`.map-freshness[data-placement="${mobile ? 'head' : 'floating'}"] [data-slot="freshness-stamp"]`,
-			);
-			await expect(report).toBeVisible();
-			const titleBox = (await panel.getByRole('heading', { level: 1 }).boundingBox())!;
-			const reportBox = (await report.boundingBox())!;
-			const panelBox = (await panel.boundingBox())!;
-			if (mobile) {
-				const titleSurface = panel.getByRole('heading', { level: 1 }).locator('..');
-				const reportSurface = report.locator('..');
-				const titleSurfaceBox = (await titleSurface.boundingBox())!;
-				const reportSurfaceBox = (await reportSurface.boundingBox())!;
-				expect(titleBox.y).toBeGreaterThanOrEqual(reportBox.y + reportBox.height);
-				expect(titleSurfaceBox.x + titleSurfaceBox.width).toBeCloseTo(
-					reportSurfaceBox.x + reportSurfaceBox.width,
-					0,
+		test(
+			provider.id + ' ' + locale + ' map title and stamp share the reading panel @layout',
+			async ({ page }) => {
+				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
+				await page.clock.setFixedTime(epoch + 900_000);
+				await page.goto((locale === 'fr' ? '/fr' : '') + '/map?provider=' + provider.id);
+				const frame = page.locator('[data-slot="map-frame"]');
+				const title = frame.getByRole('heading', { level: 1 });
+				const stamp = frame.locator('[data-slot="freshness-stamp"]');
+				await expect(title).toBeVisible();
+				await expect(page.locator('h1')).toHaveCount(1);
+				await expect(page.getByText(/NETWORK · LIVE|RÉSEAU · EN DIRECT/)).toHaveCount(0);
+				await expect(stamp).toBeVisible();
+				const phone = page.viewportSize()!.width < 1024;
+				const panel = frame.locator(phone ? '.map-mobile-head' : '[data-slot="map-details"]');
+				await expect(panel.getByRole('heading', { level: 1 })).toHaveCount(1);
+				await expect(panel.locator('[data-slot="freshness-stamp"]')).toHaveCount(1);
+				const head = (await title.boundingBox())!;
+				const time = (await stamp.boundingBox())!;
+				const card = (await panel.boundingBox())!;
+				expect(head.y + head.height).toBeLessThanOrEqual(time.y);
+				expect(time.x).toBeGreaterThanOrEqual(card.x);
+				expect(time.x + time.width).toBeLessThanOrEqual(card.x + card.width + 1);
+				if (phone) await page.getByTestId('map-legend-button').click();
+				const legend = page.locator(
+					phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 				);
-				expect(titleSurfaceBox.width).toBeLessThanOrEqual(panelBox.width);
-				for (const surface of [titleSurface, reportSurface]) {
-					expect(await surface.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe(
-						'rgba(0, 0, 0, 0)',
-					);
-				}
-				expect(page.viewportSize()!.width - panelBox.x - panelBox.width).toBeCloseTo(12, 0);
-				expect(reportBox.x + reportBox.width).toBeLessThanOrEqual(panelBox.x + panelBox.width);
-			} else {
-				expect(reportBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width);
-				expect(reportBox.y).toBeLessThan(titleBox.y + titleBox.height);
-				expect(titleBox.y).toBeLessThan(reportBox.y + reportBox.height);
-				expect(reportBox.x + reportBox.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-			}
-		});
-
-		test(`${provider.id} ${locale} map title without eyebrow @layout`, async ({ page }) => {
-			await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-			await page.clock.setFixedTime(epoch + 30_000);
-			await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?provider=${provider.id}`, {
-				waitUntil: 'networkidle',
-			});
-			const heading = page.locator('.map-head').getByRole('heading', { level: 1 });
-			await expect(heading).toBeVisible();
-			await expect(page.getByText(/NETWORK · LIVE|RÉSEAU · EN DIRECT/)).toHaveCount(0);
-			const geometry = await heading.evaluate((el) => {
-				const title = el.getBoundingClientRect();
-				const panel = el.closest('.map-head')!;
-				const head = el.parentElement!.getBoundingClientRect();
-				const style = getComputedStyle(el.parentElement!);
-				const stamp = panel.querySelector('[data-slot="freshness-stamp"]');
-				const report = stamp?.checkVisibility()
-					? stamp.parentElement!.getBoundingClientRect()
-					: null;
-				// The report precedes the mobile title; neither row should leave a phantom eyebrow.
-				return {
-					top:
-						title.top - head.top - parseFloat(style.paddingTop) - parseFloat(style.borderTopWidth),
-					left:
-						title.left -
-						head.left -
-						parseFloat(style.paddingLeft) -
-						parseFloat(style.borderLeftWidth),
-					right: title.right,
-					panelRight: panel.getBoundingClientRect().right,
-					titleTop: title.top,
-					titleRight: head.right,
-					report: report ? { bottom: report.bottom, right: report.right } : null,
-					width: innerWidth,
-				};
-			});
-			expect(geometry.top).toBeGreaterThanOrEqual(0);
-			expect(geometry.top).toBeLessThan(8);
-			expect(geometry.left).toBeGreaterThanOrEqual(0);
-			expect(geometry.left).toBeLessThan(12);
-			expect(geometry.right).toBeLessThanOrEqual(geometry.width);
-			if (geometry.width < 1024) {
-				expect(geometry.width - geometry.panelRight).toBeCloseTo(12, 0);
-				if (geometry.report) {
-					expect(geometry.titleTop).toBeGreaterThanOrEqual(geometry.report.bottom);
-					expect(geometry.titleRight).toBeCloseTo(geometry.report.right, 0);
-				}
-			}
-			// The line under the title says what colour and shape mean. Below desktop width
-			// the title block has no room for it, so the legend's first line carries it.
-			const lead = page.locator('.map-head [data-slot="map-lead"]');
-			if (geometry.width < 1024) {
-				await expect(lead).toBeHidden();
-				await page.getByTestId('map-legend-button').click();
-				await expect(page.locator('[data-slot="map-legend-lead"]:visible')).toHaveCount(1);
-				return;
-			}
-			await expect(lead).toBeVisible();
-			await expect(lead).not.toBeEmpty();
-			const placement = await lead.evaluate((el) => {
-				const box = el.getBoundingClientRect();
-				const title = el.closest('.map-head')!.querySelector('h1')!.getBoundingClientRect();
-				const covering = [
-					...document.querySelectorAll(
-						'.map-filter-panel,.map-freshness[data-placement="floating"],.map-near,[data-slot="map-north"],.map-filter-pill-container,[data-slot="map-detail-overlay"],[data-slot="map-hover-peek"],.map-live-edge,.maplibregl-ctrl',
-					),
-				]
-					.filter((other) => other.checkVisibility())
-					.filter((other) => {
-						const r = other.getBoundingClientRect();
-						return (
-							Math.min(r.right, box.right) - Math.max(r.left, box.left) > 0 &&
-							Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top) > 0
-						);
-					})
-					.map((other) => other.className || other.tagName);
-				return {
-					belowTitle: box.top >= title.bottom,
-					covering,
-					clipped: el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1,
-				};
-			});
-			expect(placement.belowTitle).toBe(true);
-			expect(placement.covering).toEqual([]);
-			expect(placement.clipped).toBe(false);
-		});
+				await expect(legend.getByRole('list').first().getByRole('listitem')).toHaveCount(4);
+			},
+		);
 	}
 }

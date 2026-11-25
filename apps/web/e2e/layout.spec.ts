@@ -106,11 +106,14 @@ for (const locale of ['en', 'fr'] as const)
 						).__transitMap.project([-73.59, 45.51]),
 					);
 					await page.locator('.maplibregl-canvas').click({ position: point });
-					await expect(page.locator('[data-slot="detail-body"]')).toBeVisible();
+					const detail = page.locator('[data-slot="map-detail-overlay"]');
+					await expect(detail).toBeVisible();
 					if (state === 'stale')
 						await expect(page.locator('[data-slot="map-feed-stall"]')).toBeVisible();
 					if (state === 'missing')
-						await expect(page.locator('[data-slot="absent-value"]').first()).toBeVisible();
+						await expect(
+							detail.locator('[data-slot="status-mark"][data-status="unknown"]'),
+						).toBeVisible();
 				}
 				if (state === 'fresh' && path === `/lines/${line}` && page.viewportSize()!.width < 1024) {
 					// The Record heading starts below the actual frame controls.

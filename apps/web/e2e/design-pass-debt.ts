@@ -6,6 +6,9 @@ import { budgetWidths, widths, type measureDesignPass } from './design-pass-meas
 type Report = Awaited<ReturnType<typeof measureDesignPass>>['report'];
 type Budget = Record<(typeof budgetWidths)[number], { height: number; beforeFigure: number }>;
 
+export const mapChromeShareBudget = 0.25;
+export const mapOpenLegendViewportHeight = 900;
+
 // A screen PR supplies its budgets here once all of its fixture variants leave the debt list.
 const budgets: Partial<Record<Screen, Budget>> = {
 	lines: {
@@ -108,6 +111,14 @@ function compareSize<T extends { height: number }>(current: T, recorded: T, loca
 }
 
 export function expectDesignPass(screen: Screen, key: string, report: Report) {
+	if (screen.startsWith('map-')) {
+		expect(report.content.titles, `${key} C1 map title`).toBe(1);
+		for (const width of widths)
+			expect(report.widths[width].overflow, `${key} C3 sideways map scroll at ${width}px`).toBe(0);
+		for (const width of budgetWidths)
+			expect(report.zoom[width].overflow, `${key} C4 sideways map scroll at ${width}px`).toBe(0);
+		return;
+	}
 	const recorded = debt[key];
 	if (recorded) {
 		compare(report.content, recorded.content, `${key} C1 content order`);

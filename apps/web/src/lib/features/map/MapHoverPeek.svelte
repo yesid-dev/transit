@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Badge } from '@yesid/ui/badge';
+	import { Separator } from '@yesid/ui/separator';
 	import { isInService, vehicleServiceCopy } from '#lib/v1/live/vehicleService.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
@@ -28,7 +29,7 @@
 	const absenceContext = readLiveAbsenceContext();
 	const t = $derived(MAP_SELECTION_DETAIL_COPY[locale]);
 	const kindLabel = $derived(
-		peek.kind === 'vehicle' ? t.bus : peek.kind === 'route' ? t.route : t.stop,
+		peek.kind === 'vehicle' ? t.vehicle : peek.kind === 'route' ? t.route : t.stop,
 	);
 	const title = $derived(
 		peek.kind === 'stop' && peek.nameAbsent ? stopNameFallback(peek.id, locale) : peek.title,
@@ -78,6 +79,7 @@
 				class="map-peek-stale"
 			/>
 		{/if}
+		<Separator decorative />
 		<dl class="peek-facts">
 			<div>
 				<dt>{t.status}</dt>
@@ -135,6 +137,7 @@
 			>
 			{#if peek.labelInferred}<AbsentValue reason="inferred" {locale} />{/if}
 		</p>
+		<Separator decorative />
 		<dl class="peek-facts">
 			<div>
 				<dt>{t.direction}</dt>
@@ -146,15 +149,16 @@
 				</dd>
 			</div>
 			<div>
-				<dt>{t.liveBuses}</dt>
+				<dt>{t.liveVehicles}</dt>
 				<dd>
 					{#if peek.visibleVehicleCount === 0 && routeHasNoLiveData(absenceContext().providerId, peek.type)}
 						<AbsentValue reason="metro-no-realtime" {locale} />
-					{:else}{t.visibleBuses(peek.visibleVehicleCount)}{/if}
+					{:else}{t.visibleVehicles(peek.visibleVehicleCount)}{/if}
 				</dd>
 			</div>
 		</dl>
 	{:else}
+		<Separator decorative />
 		<dl class="peek-facts">
 			<div>
 				<dt>{t.stopCode}</dt>
@@ -243,7 +247,6 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		margin: 0;
-		border-top: 1px solid var(--border-subtle);
 	}
 	.peek-facts > div {
 		display: grid;
@@ -251,10 +254,6 @@
 		column-gap: 0.75rem;
 		align-items: baseline;
 		padding-block: 0.375rem;
-		border-bottom: 1px solid var(--border-subtle);
-	}
-	.peek-facts > div:last-child {
-		border-bottom: 0;
 	}
 	dt {
 		min-width: 0;

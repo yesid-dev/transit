@@ -1,3 +1,4 @@
+import { mapControlsPill, openMapControls } from './map-frame-controls';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { revealRefresh } from './header-refresh';
@@ -70,8 +71,8 @@ test('manual refresh stays busy until live data is received and rendered', async
 		});
 	});
 	await page.goto('/map?provider=stm');
-	const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
-	const timestamp = page.locator(`.map-freshness[data-placement="${placement}"] time`);
+
+	const timestamp = page.locator('[data-slot="map-frame"] [data-slot="freshness-stamp"] time');
 	await expect(timestamp).toHaveAttribute('datetime', new Date(generated).toISOString());
 	hold = true;
 	const invalidated = page.waitForResponse((response) => response.url().includes('__data.json'));
@@ -95,10 +96,8 @@ test('a manual refresh shows its result under the button, moves nothing, then le
 	await page.clock.install({ time: generated + 15_000 });
 	await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(generated) }));
 	await page.goto('/map?provider=stm', { waitUntil: 'networkidle' });
-	const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
-	const stamp = page.locator(
-		`.map-freshness[data-placement="${placement}"] [data-slot="freshness-stamp"]`,
-	);
+
+	const stamp = page.locator(`[data-slot="map-frame"] [data-slot="freshness-stamp"]`);
 	const banner = page.getByRole('banner');
 	const button = await revealRefresh(page);
 	const boxes = [await banner.boundingBox(), await stamp.boundingBox()];
@@ -125,10 +124,8 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 		await page.clock.install({ time: generated + 15_000 });
 		await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(generated) }));
 		await page.goto('/map', { waitUntil: 'networkidle' });
-		const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
-		const stamp = page.locator(
-			`.map-freshness[data-placement="${placement}"] [data-slot="freshness-stamp"]`,
-		);
+
+		const stamp = page.locator(`[data-slot="map-frame"] [data-slot="freshness-stamp"]`);
 		await expect(stamp).toHaveAttribute('data-age-seconds', /^\d+$/);
 		const age = Number(await stamp.getAttribute('data-age-seconds'));
 		await page.clock.runFor(2100);
@@ -153,10 +150,8 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 			route.fulfill({ json: captureFixture(generated), headers: clockHeaders }),
 		);
 		await page.goto('/map?provider=stm');
-		const placement = page.viewportSize()!.width < 1024 ? 'head' : 'floating';
-		const stamp = page.locator(
-			`.map-freshness[data-placement="${placement}"] [data-slot="freshness-stamp"]`,
-		);
+
+		const stamp = page.locator(`[data-slot="map-frame"] [data-slot="freshness-stamp"]`);
 		await expect(stamp).toHaveAttribute('data-age-seconds', /^\d+$/);
 		const originalAge = Number(await stamp.getAttribute('data-age-seconds'));
 		const timestamp = await stamp.locator('time').getAttribute('datetime');
@@ -184,7 +179,8 @@ for (const locale of PUBLISHED_LOCALES) {
 	}) => {
 		await page.addInitScript(recordMotion);
 		await page.goto(localizeHref(map, locale));
-		await openNearMe(page, t.nearMe);
+		await openMapControls(page);
+		await openNearMe(page, locale === 'fr' ? 'Près d’une adresse' : 'Near an address');
 		await page.getByRole('searchbox', { name: t.nearMeSearchPlaceholder }).fill(address.label);
 		const suggestion = page
 			.getByRole('group', { name: t.nearMeSuggestions })
@@ -198,9 +194,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.getByRole('button', { name: new RegExp(`^${literal(stop.name)}`) }).click();
 
 		// A side panel on desktop, a sheet below.
-		const detail = page
-			.getByRole('complementary', { name: stop.name })
-			.or(page.getByRole('dialog', { name: stop.name }));
+		const detail = page.locator('[data-slot="map-detail-overlay"]');
 		await expect(detail).toBeVisible();
 		// Reduced motion (the suite's default): nothing on the surface animated in. The click
 		// ripple stays on by design (@yesid/motion globalRipple) and is not part of the surface.
@@ -222,7 +216,9 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(localizeHref(map, locale));
 		await snapshot;
 		const banner = page.getByRole('status').filter({ hasText: stall });
-		const nearMe = page.getByRole('button', { name: t.nearMe, exact: true });
+		const nearMe = (await mapControlsPill(page).isVisible())
+			? mapControlsPill(page)
+			: page.getByRole('button', { name: t.nearMe, exact: true });
 		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
 			'data-map-progressive-state',
 			'ready',
@@ -255,6 +251,7 @@ for (const locale of PUBLISHED_LOCALES) {
 				expect(overlap, `control ${i} overlaps a later one`).toBe(false);
 			}
 		}
-		await openNearMe(page, t.nearMe);
+		await openMapControls(page);
+		await openNearMe(page, locale === 'fr' ? 'Près d’une adresse' : 'Near an address');
 	});
 }

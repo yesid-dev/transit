@@ -31,7 +31,7 @@ describe('near-me address search', () => {
 		vi.stubGlobal('fetch', fetch);
 		const props = { locale: 'en' as const, copy: copy.en, ...handlers() };
 		const { getByRole, getAllByRole, queryByRole, rerender } = render(MapNearMeControl, { props });
-		await fireEvent.click(getByRole('button', { name: copy.en.nearMe }));
+		await fireEvent.click(getByRole('button', { name: 'Near an address' }));
 		const input = getByRole('searchbox', { name: copy.en.nearMeSearchPlaceholder });
 		expect(queryByRole('button', { name: copy.en.nearMeClear })).not.toBeInTheDocument();
 
@@ -74,7 +74,11 @@ it.each(['en', 'fr'] as const)(
 			props: { locale, copy: copy[locale], ...handlers() },
 		});
 
-		await fireEvent.click(getByRole('button', { name: copy[locale].nearMe }));
+		await fireEvent.click(
+			getByRole('button', {
+				name: locale === 'fr' ? 'Près d\u2019une adresse' : 'Near an address',
+			}),
+		);
 
 		expect(getByText(copy[locale].nearMeCollectionNotice)).toBeVisible();
 		expect(

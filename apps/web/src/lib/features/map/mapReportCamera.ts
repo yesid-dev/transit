@@ -108,6 +108,32 @@ export function isCoordinateInCapturedView(
 	return point.x >= 0 && point.x <= camera.width && point.y >= 0 && point.y <= camera.height;
 }
 
+/** A corridor can cross the view even when both ends are outside it. */
+export function isLineInCapturedView(
+	camera: MapReportCamera,
+	coordinates: readonly (readonly [number, number])[],
+): boolean {
+	const points = coordinates.map(camera.project);
+	for (let i = 0; i < points.length; i++) {
+		const point = points[i]!;
+		if (point.x >= 0 && point.x <= camera.width && point.y >= 0 && point.y <= camera.height)
+			return true;
+		const previous = points[i - 1];
+		if (!previous) continue;
+		for (const boundary of [0, camera.width]) {
+			const t = (boundary - previous.x) / (point.x - previous.x);
+			const y = previous.y + t * (point.y - previous.y);
+			if (t >= 0 && t <= 1 && y >= 0 && y <= camera.height) return true;
+		}
+		for (const boundary of [0, camera.height]) {
+			const t = (boundary - previous.y) / (point.y - previous.y);
+			const x = previous.x + t * (point.x - previous.x);
+			if (t >= 0 && t <= 1 && x >= 0 && x <= camera.width) return true;
+		}
+	}
+	return false;
+}
+
 /** Stable camera identity for snapshot comparison, without any animation state. */
 export function mapReportCameraKey(camera: MapReportCamera | null): string {
 	if (!camera) return 'no-view';

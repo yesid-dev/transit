@@ -7,15 +7,12 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
-	import PanelSizeHandle from './PanelSizeHandle.svelte';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import BusFrontIcon from '@lucide/svelte/icons/bus-front';
-	import PanelLeftCloseIcon from '@lucide/svelte/icons/panel-left-close';
 	import RouteIcon from '@lucide/svelte/icons/route';
 	import TicketIcon from '@lucide/svelte/icons/ticket';
 	import XIcon from '@lucide/svelte/icons/x';
-	import { onMount, tick, type Snippet } from 'svelte';
-	import { browser } from '$app/env';
+	import { tick, type Snippet } from 'svelte';
 	import type { AlertEntityKind, EntityKind, FilterStore } from '#lib/filters/index.ts';
 	import type { RouteIndexEntry, StopIndexEntry } from '#lib/v1/index.ts';
 	import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
@@ -29,12 +26,8 @@
 	} from '#lib/components/dataviz/tokens.ts';
 	import MapFilterGroup from './MapFilterGroup.svelte';
 	import type { MapFilterGroupKind } from './MapFilterGroup.svelte';
-	import MapFilterRail from './MapFilterRail.svelte';
 	import MarkerGlyph from './MarkerGlyph.svelte';
 	import { copy as MAP_COPY } from './map.copy';
-
-	const STORAGE_KEY = 'transit:controls-rail';
-	type RailTarget = 'motion' | MapFilterGroupKind;
 
 	interface Props {
 		store: FilterStore;
@@ -43,9 +36,7 @@
 		occupancyAvailable?: boolean;
 		routes?: readonly RouteIndexEntry[];
 		stops?: readonly StopIndexEntry[];
-		collapsible?: boolean;
-		controlsMode?: boolean;
-		header?: Snippet<[boolean]>;
+		header?: Snippet;
 		class?: string;
 	}
 
@@ -56,14 +47,11 @@
 		occupancyAvailable = true,
 		routes = [],
 		stops = [],
-		collapsible = true,
-		controlsMode = false,
 		header,
 		class: className = '',
 	}: Props = $props();
 
 	let rootEl = $state<HTMLDivElement | null>(null);
-	let filterOpen = $state(true);
 	const groupOpen = $state<Record<MapFilterGroupKind, boolean>>({
 		markers: true,
 		alerts: true,
@@ -74,10 +62,6 @@
 	let previousSelectedCount = 0;
 
 	const t = $derived(MAP_COPY[locale]);
-	const panelTitle = $derived(controlsMode ? t.controlsTitle : t.filterTitle);
-	const panelOpen = $derived(!collapsible || filterOpen);
-	const presentation = $derived<'desktop' | 'drawer'>(collapsible ? 'desktop' : 'drawer');
-	const controlsId = $derived(`map-filter-controls-${presentation}`);
 	const collator = $derived(intl.collator(locale, { numeric: true, sensitivity: 'base' }));
 	const routeById = $derived(new Map(routes.map((route) => [route.id, route])));
 	const stopById = $derived(new Map(stops.map((stop) => [stop.id, stop])));
@@ -108,11 +92,6 @@
 		{ kind: 'has_alert', label: t.alertHas, aria: t.alertHasAria },
 	] satisfies { kind: AlertEntityKind; label: string; aria: string }[]);
 
-	onMount(() => {
-		if (!collapsible) return;
-		filterOpen = !readRailCollapsed();
-	});
-
 	$effect(() => {
 		const count = selectedCount;
 		if (count > 0 && previousSelectedCount === 0) groupOpen.active = true;
@@ -137,47 +116,7 @@
 		return stop.code ? `${stopDisplayName(stop.name)} · ${stop.code}` : stopDisplayName(stop.name);
 	}
 
-	function readRailCollapsed(): boolean {
-		if (!browser) return false;
-		try {
-			return localStorage.getItem(STORAGE_KEY) === 'true';
-		} catch {
-			return false;
-		}
-	}
-
-	function persistRailState(collapsed: boolean): void {
-		if (!browser) return;
-		try {
-			localStorage.setItem(STORAGE_KEY, String(collapsed));
-		} catch {
-			// Storage denial must not block the controls.
-		}
-	}
-
-	function setPanelOpen(open: boolean): void {
-		filterOpen = open;
-		if (collapsible) persistRailState(!open);
-	}
-
-	async function togglePanel(open: boolean): Promise<void> {
-		setPanelOpen(open);
-		await tick();
-		rootEl?.querySelector<HTMLElement>(open ? '.mf-toggle' : '.mf-rail-expand')?.focus();
-	}
-
 	const toggleGroup = (kind: MapFilterGroupKind) => (groupOpen[kind] = !groupOpen[kind]);
-
-	async function activateRail(target: RailTarget): Promise<void> {
-		if (target !== 'motion') groupOpen[target] = true;
-		setPanelOpen(true);
-		await tick();
-		const selector =
-			target === 'motion'
-				? '[data-testid="map-motion-switch"]'
-				: `[data-filter-group="${target}"] .mf-group-trigger`;
-		rootEl?.querySelector<HTMLElement>(selector)?.focus();
-	}
 
 	async function focusAfterRemoval(): Promise<void> {
 		await tick();
@@ -187,15 +126,7 @@
 	async function clearFilters(): Promise<void> {
 		store.clear();
 		await tick();
-		if (presentation === 'drawer') {
-			rootEl
-				?.closest<HTMLElement>('[data-m6b-controls-drawer]')
-				?.querySelector<HTMLElement>('[data-testid="map-filter-done"]')
-				?.focus();
-			return;
-		}
-		const fallback = collapsible && !filterOpen ? '.mf-rail-expand' : '.mf-toggle';
-		rootEl?.querySelector<HTMLElement>(fallback)?.focus();
+		rootEl?.closest('details')?.querySelector('summary')?.focus();
 	}
 
 	async function removeRoute(route: RouteIndexEntry): Promise<void> {
@@ -238,39 +169,14 @@
 <Card
 	bind:ref={rootEl}
 	class="map-filters {className}"
-	data-open={panelOpen}
-	data-collapsible={collapsible}
-	data-controls={controlsMode}
-	data-presentation={presentation}
+	data-presentation="drawer"
 	role="group"
-	aria-label={panelTitle}
+	aria-label={t.filterTitle}
 >
-	{#if collapsible}<PanelSizeHandle
-			{locale}
-			side="left"
-			width={panelOpen ? 300 : 56}
-			onchange={(width) => void togglePanel(width === 300)}
-		/>{/if}
-	<div id={controlsId} class="mf-expanded" aria-hidden={!panelOpen} inert={!panelOpen}>
+	<div class="mf-expanded">
 		<div class="mf-controls">
 			<div class="mf-head">
-				{#if collapsible}
-					<Button
-						variant="ghost"
-						size="sm"
-						type="button"
-						class="mf-toggle"
-						aria-expanded={filterOpen}
-						aria-controls={controlsId}
-						aria-label={t.controlsCollapse}
-						onclick={() => void togglePanel(false)}
-					>
-						<PanelLeftCloseIcon size={16} strokeWidth={2.25} aria-hidden="true" />
-						<span class="mf-title">{panelTitle}</span>
-					</Button>
-				{:else}
-					<span class="mf-title">{panelTitle}</span>
-				{/if}
+				<span class="mf-title">{t.filterTitle}</span>
 				{#if filterCount > 0}
 					<span class="mf-head-count">{filterCount}</span>
 				{/if}
@@ -288,8 +194,9 @@
 				{/if}
 			</div>
 			{#if header}
+				<Separator decorative />
 				<div class="mf-header" data-testid="map-filter-header">
-					{@render header(!panelOpen)}
+					{@render header()}
 				</div>
 			{/if}
 		</div>
@@ -300,7 +207,6 @@
 				kind="markers"
 				label={t.legendTitle}
 				open={groupOpen.markers}
-				{presentation}
 				ontoggle={() => toggleGroup('markers')}
 			>
 				<div class="mf-chips mf-entity-chips">
@@ -334,7 +240,6 @@
 					kind="alerts"
 					label={t.modeAlerts}
 					open={groupOpen.alerts}
-					{presentation}
 					ontoggle={() => toggleGroup('alerts')}
 				>
 					<div class="mf-chips">
@@ -362,7 +267,6 @@
 				kind="active"
 				label={t.activeTitle}
 				open={groupOpen.active}
-				{presentation}
 				count={selectedCount}
 				ontoggle={() => toggleGroup('active')}
 			>
@@ -459,7 +363,6 @@
 				label={t.modeStatus}
 				help={t.statusHelp}
 				open={groupOpen.status}
-				{presentation}
 				ontoggle={() => toggleGroup('status')}
 			>
 				<div class="mf-chips">
@@ -490,7 +393,6 @@
 					kind="crowding"
 					label={t.modeOccupancy}
 					open={groupOpen.crowding}
-					{presentation}
 					ontoggle={() => toggleGroup('crowding')}
 				>
 					<div class="mf-chips">
@@ -518,20 +420,6 @@
 				</MapFilterGroup>{/if}
 		</div>
 	</div>
-
-	{#if collapsible && !panelOpen}
-		<MapFilterRail
-			{alertsAvailable}
-			{occupancyAvailable}
-			copy={t}
-			activeCount={selectedCount}
-			hasFilters={!store.isEmpty}
-			{controlsId}
-			onexpand={() => void togglePanel(true)}
-			onactivate={(target) => void activateRail(target)}
-			onclear={() => void clearFilters()}
-		/>
-	{/if}
 </Card>
 
 <style>
@@ -540,51 +428,17 @@
 		gap: 0;
 		--mf-control-size: 2rem;
 		--mf-swatch-size: 0.7rem;
-		--mf-edge: color-mix(in srgb, var(--border) 82%, var(--primary) 18%);
 		position: relative;
 		display: flex;
 		flex-direction: column;
-		width: 300px;
-		max-width: calc(100vw - 2rem);
-		max-height: min(72dvh, calc(100dvh - 7rem));
-		background: color-mix(in srgb, var(--card) 90%, transparent);
-		border: 1px solid var(--mf-edge);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-card);
-		-webkit-backdrop-filter: blur(var(--glass-blur-sm));
-		backdrop-filter: blur(var(--glass-blur-sm));
-		overflow: hidden;
-		transition-property: width;
-		transition-duration: var(--duration-slow);
-		transition-timing-function: var(--ease-out);
-	}
-
-	:global(.map-filters[data-open='false']) {
-		width: 56px;
-		transition-duration: var(--duration-normal);
 	}
 
 	:global(.mf-expanded) {
 		display: flex;
-		width: 300px;
-		max-height: inherit;
 		min-height: 0;
 		flex: none;
 		flex-direction: column;
 		gap: 0.75rem;
-		padding: 0.5rem 0.75rem 0.75rem;
-		opacity: 1;
-		transition-property: opacity;
-		transition-duration: var(--duration-fast);
-		transition-delay: 100ms;
-		transition-timing-function: var(--ease-out);
-	}
-
-	:global(.map-filters[data-open='false'] .mf-expanded) {
-		position: absolute;
-		pointer-events: none;
-		opacity: 0;
-		transition: none;
 	}
 
 	:global(.mf-chips.mf-entity-chips) {
@@ -608,25 +462,6 @@
 		align-items: center;
 		gap: 0.375rem;
 		min-width: 0;
-	}
-
-	:global(.mf-toggle) {
-		display: flex;
-		align-items: center;
-		min-width: 0;
-		min-height: 44px;
-		gap: 0.5rem;
-		padding: 0.375rem 0;
-		color: var(--foreground);
-		background: transparent;
-		border: 0;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-	}
-
-	:global(.mf-toggle:hover),
-	:global(.mf-toggle:focus-visible) {
-		background: var(--muted);
 	}
 
 	:global(.mf-title) {
@@ -710,21 +545,6 @@
 	:global(.mf-body::-webkit-scrollbar-thumb) {
 		background: var(--border);
 		border-radius: var(--radius-pill);
-	}
-
-	/* On short maps the filter header can consume the entire card height. Scroll the
-	   whole desktop panel so every filter remains reachable with the legend open. */
-	:global(.map-filters[data-presentation='desktop'][data-open='true'] .mf-expanded) {
-		width: 100%;
-		overflow-y: auto;
-		scrollbar-width: thin;
-		scrollbar-color: var(--border) transparent;
-	}
-
-	:global(.map-filters[data-presentation='desktop'] .mf-body) {
-		flex: none;
-		overflow: visible;
-		scrollbar-gutter: auto;
 	}
 
 	:global(.mf-chips) {
@@ -863,12 +683,10 @@
 		z-index: 1;
 		padding: 0.75rem 1rem 0.625rem;
 		background: color-mix(in srgb, var(--card) 96%, transparent);
-		border-bottom: 1px solid color-mix(in srgb, var(--mf-edge) 70%, transparent);
 	}
 
 	:global(.map-filters[data-presentation='drawer'] .mf-header) {
 		padding: 0.5rem 1rem 0.625rem;
-		border-bottom: 1px solid color-mix(in srgb, var(--mf-edge) 70%, transparent);
 	}
 
 	:global(.map-filters[data-presentation='drawer'] .mf-body) {
@@ -882,8 +700,6 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		:global(.map-filters),
-		:global(.mf-expanded),
 		:global(.mf-chip) {
 			transition: none;
 		}
@@ -897,18 +713,9 @@
 		flex-wrap: wrap;
 		gap: 0 0.375rem;
 	}
-	/* One hairline between groups; a group's last row needs no rule of its own. */
-	:global(.mf-body > .mf-group + .mf-group) {
-		padding-top: 0.25rem;
-		border-top: 1px solid var(--border-subtle);
-	}
-	:global(.mf-group-content .transit-checkbox-row:last-child) {
-		border-bottom: 0;
-	}
 
 	:global(.mf-clear:focus-visible),
-	:global(.mf-chip:focus-visible),
-	:global(.mf-toggle:focus-visible) {
+	:global(.mf-chip:focus-visible) {
 		outline: 2px solid var(--ring);
 		outline-offset: -2px;
 	}

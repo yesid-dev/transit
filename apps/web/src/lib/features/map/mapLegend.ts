@@ -1,4 +1,5 @@
 import type { Locale } from '#lib/i18n/index.ts';
+import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
@@ -113,4 +114,27 @@ export function mapLegend(
 		],
 		note: colourBy === 'occupancy' ? t.zoomCrowdingBadges : t.zoomBadges,
 	};
+}
+
+export function railLegendName(
+	locale: Locale,
+	provider: Parameters<typeof lineIsScheduleOnly>[0],
+	routes: readonly { id: string; type?: number | null }[],
+): string | undefined {
+	const types = new Set(
+		routes
+			.filter(({ id, type }) => lineIsScheduleOnly(provider, id, type ?? null))
+			.map(({ type }) => type),
+	);
+	if (types.size !== 1) return undefined;
+	switch (types.values().next().value) {
+		case 0:
+			return locale === 'fr' ? 'train léger' : 'light rail';
+		case 1:
+			return 'métro';
+		case 2:
+			return 'train';
+		default:
+			return undefined;
+	}
 }

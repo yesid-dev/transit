@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { DEFAULT_LOCALE } from '../src/lib/i18n/config';
 import { captureTrip, captureTripReport } from './capture-fixture';
+import { openMapControls } from './map-frame-controls';
 
 test.use({ storageState: { cookies: [], origins: [] } });
 const b9 = JSON.parse(
@@ -112,7 +113,8 @@ test.describe('local data fixture rendering', () => {
 		await page.goto('/map');
 		await expect(action(page)).toHaveCount(0);
 		const t = mapCopy[DEFAULT_LOCALE];
-		const near = page.getByRole('button', { name: t.nearMe, exact: true });
+		await openMapControls(page);
+		const near = page.getByRole('button', { name: 'Near an address', exact: true });
 		await near.click();
 		await expect(near).toHaveAttribute('aria-expanded', 'true');
 		await expect(page.getByRole('searchbox', { name: t.nearMeSearchPlaceholder })).toBeVisible();

@@ -23,7 +23,6 @@
 	:global(.transit-checkbox-row[role='checkbox']) {
 		padding-inline: 0;
 		border: 0;
-		border-bottom: 1px solid var(--border-subtle);
 		border-radius: 0;
 		background: transparent;
 		box-shadow: none;

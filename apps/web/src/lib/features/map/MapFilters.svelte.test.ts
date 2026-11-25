@@ -1,6 +1,6 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { STATUS_GLYPH, occupancyGlyph } from '#lib/components/dataviz/index.ts';
 import { createFilterStore, emptyFilterState } from '#lib/filters/index.ts';
 import { type OccupancyCode, type StatusCode } from '#lib/v1/schemas/index.ts';
@@ -19,8 +19,6 @@ describe('MapFilters', () => {
 		expect(late).toHaveAttribute('aria-checked', 'true');
 		expect(store.status).toContain('late');
 	});
-	beforeEach(() => localStorage.removeItem('transit:controls-rail'));
-	afterEach(() => localStorage.removeItem('transit:controls-rail'));
 
 	const routeFixtures = [
 		{ id: '161', short: '161', long: 'Van Horne', type: 3 },
@@ -68,41 +66,28 @@ describe('MapFilters', () => {
 		}
 	}
 
-	it.each(['en', 'fr'] as const)(
-		'hides unavailable alert filtering in the panel and rail (%s)',
-		async (locale) => {
-			const store = createFilterStore(emptyFilterState(), () => {});
-			const view = render(MapFilters, { props: { store, locale, alertsAvailable: false } });
-			expect(view.container.querySelector('[data-filter-group="alerts"]')).toBeNull();
-			expect(
-				view.getByText(
-					locale === 'en'
-						? 'Filter unavailable: no alert feed connected.'
-						: 'Filtre indisponible : aucune source d’alertes connectée.',
-				),
-			).toBeVisible();
-			await fireEvent.click(
-				view.getByRole('button', {
-					name: locale === 'en' ? 'Collapse controls' : 'Réduire les contrôles',
-				}),
-			);
-			expect(
-				within(view.getByTestId('map-filter-rail')).queryByRole('button', {
-					name: locale === 'en' ? 'Alerts' : 'Alertes',
-				}),
-			).toBeNull();
-			expect(store.alerts).toEqual([]);
-		},
-	);
+	it.each(['en', 'fr'] as const)('hides unavailable alert filtering (%s)', async (locale) => {
+		const store = createFilterStore(emptyFilterState(), () => {});
+		const view = render(MapFilters, { props: { store, locale, alertsAvailable: false } });
+		expect(view.container.querySelector('[data-filter-group="alerts"]')).toBeNull();
+		expect(
+			view.getByText(
+				locale === 'en'
+					? 'Filter unavailable: no alert feed connected.'
+					: 'Filtre indisponible : aucune source d’alertes connectée.',
+			),
+		).toBeVisible();
+		expect(store.alerts).toEqual([]);
+	});
 
-	it('renders ordered disclosures and reopens both state mappings from the five-group glyph rail', async () => {
+	it('renders ordered disclosures and applies their filters', async () => {
 		let pushed = '';
 		const store = createFilterStore(emptyFilterState(), (search) => {
 			pushed = search;
 		});
 
 		const { container, getByText, getByRole, getAllByText, queryByRole } = render(MapFilters, {
-			props: { store, locale: 'en', controlsMode: true, routes: routeFixtures },
+			props: { store, locale: 'en', routes: routeFixtures },
 		});
 
 		expect(getByText('Status')).toBeTruthy();
@@ -115,7 +100,7 @@ describe('MapFilters', () => {
 		expect(container.querySelectorAll('.mf-group-badge[data-icon]').length).toBeGreaterThanOrEqual(
 			4,
 		);
-		expect(container.querySelector('.map-filters')).toHaveAttribute('data-open', 'true');
+
 		expect(queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
 		expect(
 			Array.from(container.querySelectorAll('[data-filter-group]'), (group) =>
@@ -138,54 +123,13 @@ describe('MapFilters', () => {
 		await waitFor(() =>
 			expect(getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-expanded', 'true'),
 		);
-
-		await fireEvent.click(getByRole('button', { name: 'Collapse controls' }));
-		expect(container.querySelector('.map-filters')).toHaveAttribute('data-open', 'false');
-		expect(localStorage.getItem('transit:controls-rail')).toBe('true');
-
-		const rail = container.querySelector('[data-testid="map-filter-rail"]');
-		expect(rail).toBeInTheDocument();
-		expect(rail?.querySelectorAll('.mf-rail-glyph')).toHaveLength(6);
-		expect(rail?.querySelectorAll('.mf-chip')).toHaveLength(0);
-		expect(
-			Array.from(rail?.querySelectorAll('.mf-rail-abbr') ?? [], (item) => item.textContent),
-		).toEqual(['Pos.', 'Mark.', 'Alerts', 'Active', 'Status', 'Crowd']);
-		expect(within(rail as HTMLElement).getByRole('button', { name: 'Active 1' })).toHaveTextContent(
-			'1',
-		);
-
-		await fireEvent.click(within(rail as HTMLElement).getByRole('button', { name: 'Status' }));
-		expect(container.querySelector('.map-filters')).toHaveAttribute('data-open', 'true');
-		expect(localStorage.getItem('transit:controls-rail')).toBe('false');
-		await waitFor(() => expect(getByRole('button', { name: 'Status' })).toHaveFocus());
-		expectGlyphMappings(container, 'status', statusMappings, 'en');
-
-		await fireEvent.click(getByRole('button', { name: 'Collapse controls' }));
-		const crowdingRail = container.querySelector<HTMLElement>('[data-testid="map-filter-rail"]')!;
-		expect(crowdingRail.querySelectorAll('.mf-chip')).toHaveLength(0);
-		await fireEvent.click(within(crowdingRail).getByRole('button', { name: 'Crowding' }));
-		expect(container.querySelector('.map-filters')).toHaveAttribute('data-open', 'true');
-		await waitFor(() => expect(getByRole('button', { name: 'Crowding' })).toHaveFocus());
-		expectGlyphMappings(container, 'crowding', occupancyMappings, 'en');
 	});
 
-	it.each([
-		{ locale: 'en', collapsible: true, presentation: 'desktop' },
-		{ locale: 'fr', collapsible: true, presentation: 'desktop' },
-		{ locale: 'en', collapsible: false, presentation: 'drawer' },
-		{ locale: 'fr', collapsible: false, presentation: 'drawer' },
-	] as const)(
-		'renders canonical glyphs without changing $locale $presentation chip names',
-		({ locale, collapsible, presentation }) => {
+	it.each(['en', 'fr'] as const)(
+		'renders canonical glyphs without changing %s chip names',
+		(locale) => {
 			const store = createFilterStore(emptyFilterState());
-			const { container } = render(MapFilters, {
-				props: { store, locale, collapsible, controlsMode: true },
-			});
-
-			expect(container.querySelector('.map-filters')).toHaveAttribute(
-				'data-presentation',
-				presentation,
-			);
+			const { container } = render(MapFilters, { props: { store, locale } });
 			expectGlyphMappings(container, 'status', statusMappings, locale);
 			expectGlyphMappings(container, 'crowding', occupancyMappings, locale);
 		},
@@ -226,36 +170,6 @@ describe('MapFilters', () => {
 		expect(store.isEmpty).toBe(true);
 	});
 
-	it('expands the Motion glyph and focuses the full motion switch', async () => {
-		const store = createFilterStore(emptyFilterState());
-		const header = createRawSnippet(() => ({
-			render: () =>
-				'<button type="button" role="switch" aria-checked="false" aria-label="Motion" data-testid="map-motion-switch">Raw</button>',
-		}));
-		const { container, getByRole, getByTestId } = render(MapFilters, {
-			props: { store, locale: 'en', controlsMode: true, header },
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'Collapse controls' }));
-		const rail = container.querySelector<HTMLElement>('[data-testid="map-filter-rail"]')!;
-		await fireEvent.click(within(rail).getByRole('button', { name: 'Positions' }));
-
-		expect(container.querySelector('.map-filters')).toHaveAttribute('data-open', 'true');
-		await waitFor(() => expect(getByTestId('map-motion-switch')).toHaveFocus());
-	});
-
-	it('includes the dynamic Active count in the localized rail name', async () => {
-		const store = createFilterStore(emptyFilterState());
-		store.addRoute('161');
-		const { container, getByRole } = render(MapFilters, {
-			props: { store, locale: 'fr', controlsMode: true, routes: routeFixtures },
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'Réduire les contrôles' }));
-		const rail = container.querySelector<HTMLElement>('[data-testid="map-filter-rail"]')!;
-		expect(within(rail).getByRole('button', { name: 'Actifs 1' })).toHaveTextContent('1');
-	});
-
 	it('counts every active filter in the header while Active counts selected IDs only', () => {
 		const store = createFilterStore(emptyFilterState());
 		store.addRoute('161');
@@ -266,8 +180,7 @@ describe('MapFilters', () => {
 			props: {
 				store,
 				locale: 'en',
-				controlsMode: true,
-				collapsible: false,
+
 				routes: routeFixtures,
 			},
 		});
@@ -318,28 +231,14 @@ describe('MapFilters', () => {
 		expect([...store.routes]).toEqual(['24']);
 	});
 
-	it('renames the panel title to Controls in controlsMode and keeps the aria-labels in sync', () => {
-		const store = createFilterStore(emptyFilterState(), () => {});
-
-		const { container, getByRole, queryByRole } = render(MapFilters, {
-			props: { store, locale: 'en', controlsMode: true },
-		});
-
-		expect(getByRole('button', { name: 'Collapse controls' })).toBeInTheDocument();
-		expect(queryByRole('button', { name: 'Filter' })).not.toBeInTheDocument();
-		expect(container.querySelector('.mf-title')).toHaveTextContent('Controls');
-		expect(container.querySelector('.map-filters')).toHaveAttribute('aria-label', 'Controls');
-		expect(container.querySelector('.map-filters')).toHaveAttribute('data-controls', 'true');
-	});
-
-	it('renders the collapse icon + title above the motion header inside the controls panel', () => {
+	it('renders the filter title above the motion header', () => {
 		const store = createFilterStore(emptyFilterState(), () => {});
 		const header = createRawSnippet(() => ({
 			render: () => `<div data-testid="motion-slot">motion</div>`,
 		}));
 
 		const { container, getByTestId } = render(MapFilters, {
-			props: { store, locale: 'en', controlsMode: true, header },
+			props: { store, locale: 'en', header },
 		});
 
 		const slot = getByTestId('motion-slot');
@@ -353,7 +252,7 @@ describe('MapFilters', () => {
 		expect(headerWrap.contains(slot)).toBe(true);
 	});
 
-	it('keeps the Filter title and omits the header when controlsMode is off', () => {
+	it('renders the filter title and omits a missing header', () => {
 		const store = createFilterStore(emptyFilterState(), () => {});
 
 		const { container } = render(MapFilters, {
@@ -361,13 +260,13 @@ describe('MapFilters', () => {
 		});
 
 		expect(container.querySelector('.mf-title')).toHaveTextContent('Filter');
-		expect(container.querySelector('.map-filters')).toHaveAttribute('data-controls', 'false');
+
 		expect(container.querySelector('[data-testid="map-filter-header"]')).not.toBeInTheDocument();
 	});
 
-	it.each([true, false])('keeps the legend out of controls (collapsible=%s)', (collapsible) => {
+	it('keeps the legend out of controls', () => {
 		const view = render(MapFilters, {
-			props: { store: createFilterStore(emptyFilterState()), locale: 'fr', collapsible },
+			props: { store: createFilterStore(emptyFilterState()), locale: 'fr' },
 		});
 		expect(view.container.querySelector('[data-filter-group]')).toHaveAttribute(
 			'data-filter-group',
@@ -376,53 +275,13 @@ describe('MapFilters', () => {
 		expect(view.queryByRole('button', { name: 'Légende' })).toBeNull();
 		expect(view.queryByRole('list', { name: 'Légende' })).toBeNull();
 	});
-	it('restores the persisted desktop rail state with a browser-safe localStorage key', async () => {
-		localStorage.setItem('transit:controls-rail', 'true');
-		const store = createFilterStore(emptyFilterState());
-		const { container } = render(MapFilters, {
-			props: { store, locale: 'en', controlsMode: true },
-		});
-
-		await waitFor(() =>
-			expect(container.querySelector('.map-filters')).toHaveAttribute('data-open', 'false'),
-		);
-	});
-
-	it('moves focus to the surviving Expand control when collapsed Clear disappears', async () => {
-		const store = createFilterStore(emptyFilterState());
-		store.addRoute('161');
-		const { getByRole } = render(MapFilters, {
-			props: { store, locale: 'en', controlsMode: true, routes: routeFixtures },
-		});
-
-		await fireEvent.click(getByRole('button', { name: 'Collapse controls' }));
-		await fireEvent.click(getByRole('button', { name: 'Clear' }));
-
-		expect(store.isEmpty).toBe(true);
-		expect(getByRole('button', { name: 'Expand controls' })).toHaveFocus();
-	});
-
-	it('hands focus between the desktop Collapse and Expand controls', async () => {
-		const store = createFilterStore(emptyFilterState());
-		const { getByRole } = render(MapFilters, {
-			props: { store, locale: 'en', controlsMode: true },
-		});
-
-		const collapse = getByRole('button', { name: 'Collapse controls' });
-		collapse.focus();
-		await fireEvent.click(collapse);
-		await waitFor(() => expect(getByRole('button', { name: 'Expand controls' })).toHaveFocus());
-
-		await fireEvent.click(getByRole('button', { name: 'Expand controls' }));
-		await waitFor(() => expect(getByRole('button', { name: 'Collapse controls' })).toHaveFocus());
-	});
 });
 
 describe.each(['en', 'fr'] as const)('out-of-service filter %s', (locale) => {
 	it('starts off, persists its toggle, and clears', async () => {
 		const writes: string[] = [];
 		const store = createFilterStore(emptyFilterState(), (value) => writes.push(value));
-		const view = render(MapFilters, { store, locale, collapsible: false });
+		const view = render(MapFilters, { store, locale });
 		const name = locale === 'en' ? 'Out-of-service vehicles' : 'Véhicules hors service';
 		const button = view.getByRole('checkbox', { name });
 		expect(button).toHaveAttribute('aria-checked', 'false');

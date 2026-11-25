@@ -2,8 +2,6 @@ import { readFileSync } from 'node:fs';
 import { expect } from '@playwright/test';
 import { test } from './layout-test';
 import { copy } from '../src/lib/features/map/map.copy';
-import { copy as reportsCopy } from '../src/lib/features/map/mapReports.copy';
-import { navPillCopy } from '../src/lib/i18n/messages';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 type Probe = {
@@ -34,35 +32,21 @@ for (const provider of providers)
 			await expect.poll(() => page.evaluate(() => window.__transitMap?.loaded)).toBe(true);
 			const t = copy[locale];
 			const north = page.getByRole('button', { name: t.northControl, exact: true });
+			const canvas = page.getByRole('region', { name: t.mapCanvasLabel, exact: true });
 			const neighbours = [
-				page.getByRole('button', { name: t.nearMe, exact: true }),
+				page.getByRole('button', { name: locale === 'fr' ? 'Zoom avant' : 'Zoom in', exact: true }),
 				page.getByLabel(t.attributionToggle, { exact: true }),
 			];
 			await expect(north).toHaveCount(0);
 			await expect(neighbours[0]).toBeVisible();
-			async function tabPastMapView() {
-				const refresh = page.getByRole('button', {
-					name: navPillCopy[locale].refresh,
-					exact: true,
-				});
-				const compact = page.viewportSize()!.width < 1024;
-				await neighbours[1].focus();
-				if (compact) {
+			async function tabToNorth() {
+				await canvas.focus();
+				for (let index = 0; index < 25; index++) {
 					await page.keyboard.press('Tab');
-					await expect(refresh).toBeFocused();
+					if (await north.evaluate((element) => element === document.activeElement)) break;
 				}
-				await page.keyboard.press('Tab');
-				await expect(
-					page.getByRole('radio', { name: reportsCopy[locale].mapTab, exact: true }),
-				).toBeFocused();
-				if (!compact) {
-					await page.keyboard.press('Tab');
-					await expect(refresh).toBeFocused();
-				}
-				await page.keyboard.press('Tab');
+				await expect(north).toBeFocused();
 			}
-			await tabPastMapView();
-			await expect(neighbours[0]).toBeFocused();
 			const before = await Promise.all(neighbours.map((el) => el.boundingBox()));
 			await page.evaluate(() => window.__transitMap.setOrientation(35, 30));
 			await expect(north).toBeVisible();
@@ -81,8 +65,7 @@ for (const provider of providers)
 						neighbour.y < northBox.y + northBox.height,
 				).toBe(false);
 			}
-			await tabPastMapView();
-			await expect(north).toBeFocused();
+			await tabToNorth();
 			await page.keyboard.press('Enter');
 			await expect(north).toHaveCount(0);
 			await expect(page.getByRole('region', { name: t.mapCanvasLabel })).toBeFocused();
@@ -95,8 +78,7 @@ for (const provider of providers)
 			await expect(north).toHaveCount(0);
 			await expect(page.getByRole('region', { name: t.mapCanvasLabel })).toBeFocused();
 			await page.evaluate(() => window.__transitMap.setOrientation(-20, 0));
-			await tabPastMapView();
-			await expect(north).toBeFocused();
+			await tabToNorth();
 			await page.keyboard.press('Space');
 			await expect(north).toHaveCount(0);
 			await expect(page.getByRole('region', { name: t.mapCanvasLabel })).toBeFocused();

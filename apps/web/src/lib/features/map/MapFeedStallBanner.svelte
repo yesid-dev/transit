@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
-	let { presentation }: { presentation: LivePresentation } = $props();
+	let { presentation, inline = false }: { presentation: LivePresentation; inline?: boolean } =
+		$props();
 	const resolvedState = $derived(presentation.bannerState);
 </script>
 
 <div
-	class="map-overlay map-live-edge"
+	class={inline ? 'map-live-inline' : 'map-overlay map-live-edge'}
 	class:map-feed-stall={resolvedState === 'global-stall' || resolvedState === 'partial-stall'}
 	data-slot={resolvedState === 'global-stall' || resolvedState === 'partial-stall'
 		? 'map-feed-stall'
@@ -18,6 +19,13 @@
 </div>
 
 <style>
+	.map-live-inline {
+		font-size: var(--text-caption);
+		color: var(--muted-foreground);
+	}
+	.map-live-inline[data-state='idle'] {
+		display: none;
+	}
 	.map-overlay {
 		position: absolute;
 		z-index: var(--z-map-overlay);

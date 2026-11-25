@@ -812,7 +812,10 @@
 	.map-stage :global(.maplibregl-ctrl-bottom-right) {
 		right: calc(var(--map-detail-offset, 0rem) + 1rem);
 		top: auto;
-		bottom: calc(var(--map-mobile-control-bottom, 1rem) + 2.75rem + 0.75rem);
+		bottom: var(
+			--map-attribution-bottom,
+			calc(var(--map-mobile-control-bottom, 1rem) + 2.75rem + 0.75rem)
+		);
 		max-width: calc(100% - var(--map-detail-offset, 0rem) - 2rem);
 		z-index: 12;
 		transition: right var(--duration-normal) var(--ease-out);

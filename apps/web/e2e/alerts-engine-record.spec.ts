@@ -102,6 +102,8 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(
 		page.getByRole('heading', { name: 'Travaux sur la chaussée de la rue Beaubien.' }),
 	).toHaveAttribute('lang', 'fr');
+	// The compact rail steps aside when the footer is in view.
+	await answer.scrollIntoViewIfNeeded();
 	const controls = await openFrameControls(page);
 	const filter = controls.getByRole('group', { name: 'Filter', exact: true });
 	await expect(filter.getByRole('combobox', { name: 'Effect' })).toHaveCount(0);
@@ -124,6 +126,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(messages.getByRole('combobox')).toHaveCount(0);
 
 	await page.reload();
+	await answer.scrollIntoViewIfNeeded();
 	await openFrameControls(page);
 	await expect(stop).toHaveValue('Stop 51234');
 	await expect(line).toHaveValue(/24.*Sherbrooke/);

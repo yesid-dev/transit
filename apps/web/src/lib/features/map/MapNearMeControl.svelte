@@ -3,7 +3,7 @@
 	import { readableName } from '#lib/components/surface/readableName.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { SvelteMap } from 'svelte/reactivity';
-	import LocateFixedIcon from '@lucide/svelte/icons/locate-fixed';
+	import { tick } from 'svelte';
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { LatLon, WithDistance } from '#lib/components/map/index.ts';
@@ -58,15 +58,6 @@
 	const showSuggestions = $derived(
 		open && suggestionsOpen && suggestions.length > 0 && shouldSuggestNearMeAddress(query),
 	);
-	const nearMeClearance = 'var(--map-north-clearance)';
-
-	$effect(() => {
-		const host = rootEl?.parentElement;
-		if (!host) return;
-		host.style.setProperty('--map-near-clearance', nearMeClearance);
-		return () => host.style.removeProperty('--map-near-clearance');
-	});
-
 	function shouldSuggestNearMeAddress(value: string): boolean {
 		const trimmed = value.trim();
 		if (trimmed.length < 3) return false;
@@ -174,33 +165,31 @@
 
 <svelte:window onpointerdown={handleWindowPointerDown} onkeydown={handleWindowKeydown} />
 
-<div class="map-near" bind:this={rootEl}>
+<div class="near-rail" bind:this={rootEl}>
 	<Button
-		variant="ghost"
+		variant="outline"
 		size="sm"
-		type="button"
-		class="map-near-toggle"
-		aria-expanded={open}
-		aria-label={t.nearMe}
-		onclick={() => (open = !open)}
+		class="min-h-11 px-1 py-1"
+		wrap
+		onclick={() => {
+			open = true;
+			trackEvent('Locate Me');
+			onuselocation();
+		}}>{t.nearMe}</Button
 	>
-		<LocateFixedIcon class="map-near-icon" size={18} strokeWidth={2.25} aria-hidden="true" />
-		<span>{t.nearMe}</span>
-	</Button>
+	<Button
+		variant="outline"
+		size="sm"
+		class="min-h-11 px-1 py-1"
+		wrap
+		aria-expanded={open}
+		onclick={() => {
+			open = !open;
+			if (open) void tick().then(() => inputEl?.focus());
+		}}>{locale === 'fr' ? 'Près d’une adresse' : 'Near an address'}</Button
+	>
 	{#if open}
-		<div class="map-near-panel">
-			<Button
-				variant="ghost"
-				size="sm"
-				type="button"
-				class="map-near-action"
-				onclick={() => {
-					trackEvent('Locate Me');
-					onuselocation();
-				}}
-			>
-				{t.nearMeUseLocation}
-			</Button>
+		<div class="near-rail-panel">
 			<form class="map-near-form" onsubmit={onsearch}>
 				<div class="map-near-input-wrap">
 					<input
@@ -278,22 +267,26 @@
 </div>
 
 <style>
-	:global(.map-near) {
-		position: absolute;
-		z-index: var(--z-map-overlay);
-		top: auto;
-		right: calc(var(--map-detail-offset, 0rem) + 1rem);
-		bottom: var(--map-mobile-control-bottom, 1rem);
-		left: auto;
-		transform: none;
-		display: grid;
-		gap: 0.375rem;
-		width: auto;
-		justify-items: end;
-		transition: right var(--duration-normal) var(--ease-out);
+	.near-rail-panel {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(var(--spacing) * 2);
+		min-width: 0;
+		width: 100%;
 	}
-	:global(.map-near-toggle),
-	:global(.map-near-action),
+	.near-rail {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: calc(var(--spacing) * 2);
+		width: 100%;
+	}
+	.near-rail-panel {
+		grid-column: 1 / -1;
+	}
+	.near-rail-panel form {
+		min-width: 0;
+		width: 100%;
+	}
 	:global(.map-near-form button),
 	:global(.map-near-stop),
 	:global(.map-near-suggestion),
@@ -307,34 +300,6 @@
 			background-color var(--duration-fast) var(--ease-default),
 			border-color var(--duration-fast) var(--ease-default);
 	}
-	:global(.map-near-toggle) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.5rem;
-		justify-self: end;
-		min-height: 44px;
-		padding: 0.5rem 1rem;
-		font-weight: 700;
-		letter-spacing: var(--tracking-wide);
-		color: var(--accent-foreground);
-		background: var(--accent);
-		border-color: var(--accent);
-		border-radius: var(--radius-pill);
-		box-shadow: var(--shadow-card);
-	}
-	:global(.map-near-toggle:hover),
-	:global(.map-near-toggle:focus-visible),
-	:global(.map-near-toggle[aria-expanded='true']) {
-		color: var(--accent-foreground);
-		background: color-mix(in srgb, var(--accent) 88%, var(--accent-foreground) 12%);
-		border-color: var(--accent);
-	}
-	:global(.map-near-toggle .map-near-icon) {
-		color: var(--accent-foreground);
-	}
-	:global(.map-near-action:hover),
-	:global(.map-near-action:focus-visible),
 	:global(.map-near-form button:hover),
 	:global(.map-near-form button:focus-visible),
 	:global(.map-near-stop:hover),
@@ -346,37 +311,6 @@
 		color: var(--primary);
 		background: color-mix(in srgb, var(--primary) 10%, var(--muted) 90%);
 		border-color: color-mix(in srgb, var(--primary) 42%, var(--border) 58%);
-	}
-	:global(.map-near-icon) {
-		flex: none;
-		color: var(--primary);
-		transition: color var(--duration-fast) var(--ease-default);
-	}
-	:global(.map-near-panel) {
-		position: absolute;
-		right: 0;
-		bottom: calc(100% + 0.5rem);
-		width: min(28rem, calc(100vw - var(--map-detail-offset, 0rem) - 2rem));
-		display: grid;
-		gap: 0.375rem;
-		padding: 0.5rem;
-		background: color-mix(in srgb, var(--card) 92%, transparent);
-		border: 1px solid color-mix(in srgb, var(--border) 78%, var(--primary) 22%);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-card);
-		-webkit-backdrop-filter: blur(var(--glass-blur-sm));
-		backdrop-filter: blur(var(--glass-blur-sm));
-	}
-	:global(.map-near-action) {
-		min-height: 2rem;
-		padding: 0.375rem 0.625rem;
-		font-weight: 600;
-		letter-spacing: var(--tracking-eyebrow);
-		text-transform: uppercase;
-		color: var(--foreground);
-		background: var(--muted);
-		border-color: color-mix(in srgb, var(--border) 70%, var(--primary) 30%);
-		border-radius: var(--radius-pill);
 	}
 	:global(.map-near-form button) {
 		min-height: 2rem;
@@ -531,42 +465,12 @@
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		:global(.map-near),
-		:global(.map-near-toggle),
-		:global(.map-near-action),
 		:global(.map-near-form button),
 		:global(.map-near-form input),
 		:global(.map-near-stop),
 		:global(.map-near-suggestion),
-		:global(.map-near-clear),
-		:global(.map-near-icon) {
+		:global(.map-near-clear) {
 			transition: none;
-		}
-	}
-
-	@media (--desktop-max) {
-		:global(.map-near) {
-			top: auto;
-			right: 0.75rem;
-			bottom: var(--map-mobile-control-bottom);
-			left: auto;
-			width: auto;
-			transform: none;
-		}
-		:global(.map-near-toggle) {
-			justify-self: end;
-			width: 2.75rem;
-			height: 2.75rem;
-			min-height: 2.75rem;
-			padding: 0;
-			border-radius: var(--radius-pill);
-		}
-		:global(.map-near-toggle span) {
-			display: none;
-		}
-		:global(.map-near-panel) {
-			width: min(24rem, calc(100vw - 1.5rem));
-			max-width: calc(100vw - 1.5rem);
 		}
 	}
 </style>

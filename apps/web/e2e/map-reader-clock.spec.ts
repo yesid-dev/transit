@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { openMapControls } from './map-frame-controls';
 import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
@@ -129,8 +130,8 @@ const clocks = {
 } as const;
 
 const vehicleNames = {
-	en: 'Select vehicle V1, Line 80, 08:05, On-time, Delay: 0 min',
-	fr: 'Sélectionner le véhicule V1, Ligne 80, 08:05, À l’heure, Retard: 0 min',
+	en: 'Vehicle V1, 08:05',
+	fr: 'Véhicule V1, 08:05',
 } as const;
 
 for (const provider of ['stm', 'octranspo'] as const) {
@@ -144,7 +145,8 @@ for (const provider of ['stm', 'octranspo'] as const) {
 
 			const network = networkFor(provider);
 			const t = mapCopy[locale];
-			await openNearMe(page, t.nearMe);
+			await openMapControls(page);
+			await openNearMe(page, locale === 'fr' ? 'Près d’une adresse' : 'Near an address');
 			await page
 				.getByRole('searchbox', { name: t.nearMeSearchPlaceholder })
 				.fill(network.address.label);
@@ -162,27 +164,27 @@ for (const provider of ['stm', 'octranspo'] as const) {
 				.getByRole('button', { name: new RegExp(`^${literal(network.stop.name)}`) })
 				.click();
 
-			const detail = page
-				.getByRole('complementary', { name: network.stop.name })
-				.or(page.getByRole('dialog', { name: network.stop.name }));
+			const detail = page.locator('[data-slot="map-detail-overlay"][data-selection-kind="stop"]');
 			await expect(detail).toBeVisible();
+			await expect(
+				detail.getByRole('heading', { name: new RegExp(literal(network.stop.name)) }),
+			).toBeVisible();
 			const clock = clocks[locale];
-			await expect(detail.locator('.map-departures time')).toHaveText([
+			await expect(detail.locator('[data-slot="map-stop-predictions"] time')).toHaveText([
 				clock.first,
 				clock.second,
 				clock.third,
 			]);
-			// The same instant in the row's accessible name, including its line and status.
+			// The vehicle link carries the same instant in its accessible name.
 			await expect(
-				detail.getByRole('button', { name: vehicleNames[locale], exact: true }),
+				detail.getByRole('link', { name: vehicleNames[locale], exact: true }),
 			).toBeVisible();
-			// The +N more row and the panel footer must keep the selected provider and locale.
-			const expectedStopHref = `${locale === 'en' ? '' : `/${locale}`}/stop/${encodeURIComponent(network.stop.id)}?provider=${provider}`;
-			const moreAction = page.locator('[data-slot="detail-more-departures-action"]');
-			const footerAction = page.locator('[data-slot="detail-footer-action"]');
-			await expect(moreAction).toHaveText(`+1 ${locale === 'en' ? 'more' : 'de plus'}`);
+			// The Stop page carries the remaining predictions using the selected provider and locale.
+			const expectedStopHref = `${locale === 'en' ? '' : `/${locale}`}/stop/${encodeURIComponent(network.stop.id)}?provider=${provider}&frameMode=live&tab=detail`;
+			const moreAction = detail.getByRole('link', {
+				name: locale === 'fr' ? 'Arrêt en direct' : 'Stop now',
+			});
 			await expect(moreAction).toHaveAttribute('href', expectedStopHref);
-			await expect(footerAction).toHaveAttribute('href', expectedStopHref);
 			const expectedStopUrl = new URL(expectedStopHref, page.url()).href;
 			await moreAction.focus();
 			await expect(moreAction).toBeFocused();
