@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: Provider ID (leave blank for all active providers)
+        description: Provider ID (leave blank for public providers). Private runs use temporary output.
         type: string
         required: false
       from:
@@ -68,13 +68,12 @@ jobs:
 
           registry = ProviderRegistry.from_project_root()
           active = registry.list_active_provider_ids()
+          public = [provider for provider in active if registry.get_public_config(provider).enabled]
           selected = os.environ["CLEAN_PROVIDER"]
-          if selected and selected not in active:
-              raise SystemExit("Requested provider is unknown or inactive")
+          if selected and selected not in registry.list_provider_ids():
+              raise SystemExit("Requested provider is unknown")
           manual = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch"
-          providers = [selected] if selected else active
-          if not manual:
-              providers = [provider for provider in active if registry.get_public_config(provider).enabled]
+          providers = [selected] if manual and selected else public
           if not providers:
               raise SystemExit("No eligible providers declared")
 
@@ -87,12 +86,13 @@ jobs:
               if days * len(providers) > 256:
                   raise SystemExit("GitHub Actions allows at most 256 provider-days per backfill")
               entries = [
-                  {"provider": provider, "day": (first + timedelta(days=offset)).isoformat()}
+                  {"provider": provider, "day": (first + timedelta(days=offset)).isoformat(),
+                   "private": provider not in public}
                   for provider in providers
                   for offset in range(days)
               ]
           else:
-              entries = [{"provider": provider} for provider in providers]
+              entries = [{"provider": provider, "private": False} for provider in providers]
 
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               print("matrix=" + json.dumps({"include": entries}), file=output)
@@ -114,6 +114,7 @@ jobs:
       - name: Set up Python workspace
         uses: ./.github/actions/setup-py
       - name: Build and publish clean days
+        if: ${{ !matrix.private }}
         env:
           CLEAN_PROVIDER: ${{ matrix.provider }}
           CLEAN_DAY: ${{ matrix.day }}
@@ -146,3 +147,15 @@ jobs:
               )
           PY
           fi
+      - name: Verify private clean day
+        if: ${{ matrix.private }}
+        env:
+          CLEAN_PROVIDER: ${{ matrix.provider }}
+          CLEAN_DAY: ${{ matrix.day }}
+          CLEAN_SOURCE_S3_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
+          CLEAN_SOURCE_S3_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_READ_ACCESS_KEY_ID }}
+          CLEAN_SOURCE_S3_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_READ_SECRET_ACCESS_KEY }}
+        run: |
+          uv run --managed-python --locked transit-ops clean-days \
+            --provider "$CLEAN_PROVIDER" --from "$CLEAN_DAY" --to "$CLEAN_DAY" \
+            --source s3://transit-raw --dest "$RUNNER_TEMP/transit-clean-private"

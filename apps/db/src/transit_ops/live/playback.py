@@ -271,8 +271,6 @@ def _publish(
 
 class LivePublisher:
     def __init__(self, manifest: ProviderManifest, raw: BronzeStorage, prefix: str = ""):
-        if not manifest.public.enabled or not manifest.provider.is_active:
-            raise ValueError("Live publication requires an active public city")
         self.manifest = manifest
         self.raw = raw
         self.prefix = prefix
@@ -363,6 +361,8 @@ class LivePublisher:
         once: bool,
         require_captures: bool = False,
     ) -> None:
+        if not self.manifest.public.enabled or not self.manifest.provider.is_active:
+            raise ValueError("Live publication requires an active public city")
         previous = None
         previous_trips: tuple[object, object] | None = None
         city = self.manifest.provider.provider_id
@@ -468,22 +468,33 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("city")
     parser.add_argument("--source", required=True)
-    parser.add_argument("--dest", required=True)
+    output = parser.add_mutually_exclusive_group(required=True)
+    output.add_argument("--dest")
+    output.add_argument(
+        "--inspect", action="store_true", help="Read only, including private cities"
+    )
     parser.add_argument("--provider-dir", type=Path)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--require-captures", action="store_true")
     args = parser.parse_args()
-    if args.require_captures and not args.once:
-        parser.error("--require-captures requires --once")
+    if args.require_captures and (not args.once or args.inspect):
+        parser.error("--require-captures requires publication with --once")
     logging.basicConfig(level=logging.INFO)
-    if os.environ.get("TRANSIT1_LIVE_ENABLED", "1") != "1":
+    if not args.inspect and os.environ.get("TRANSIT1_LIVE_ENABLED", "1") != "1":
         LOGGER.info("Transit1 live publisher disabled")
         if args.require_captures:
             raise SystemExit(1)
         return
     raw, source_prefix = _storage(args.source, "SOURCE")
+    publisher = LivePublisher(
+        declaration_for(args.city, directory=args.provider_dir), raw, source_prefix
+    )
+    if args.inspect:
+        result = publisher.poll(datetime.now(UTC))
+        print(encode({"city": args.city, "feeds": result["feeds"]}).decode())
+        return
     clean, dest_prefix = _storage(args.dest, "DEST")
-    LivePublisher(declaration_for(args.city, directory=args.provider_dir), raw, source_prefix).run(
+    publisher.run(
         clean,
         dest_prefix,
         once=args.once,

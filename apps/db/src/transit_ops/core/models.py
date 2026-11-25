@@ -324,11 +324,19 @@ class ProviderRealtimeConfig(BaseModel):
     lines_without_live_data: list[LinesWithoutLiveData] = Field(default_factory=list)
 
 
+class CaptureDownloadLimit(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    requests: PositiveInt
+    window_seconds: PositiveInt
+
+
 class ProviderManifest(BaseModel):
     provider: ProviderConfig
     feeds: dict[str, FeedConfig]
     realtime: ProviderRealtimeConfig = Field(default_factory=ProviderRealtimeConfig)
     public: ProviderPublicConfig = Field(default_factory=ProviderPublicConfig)
+    capture_download_limit: CaptureDownloadLimit | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_manifest_shape(self) -> ProviderManifest:

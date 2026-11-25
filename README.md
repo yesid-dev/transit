@@ -100,6 +100,72 @@ gh workflow run deploy-now.yml -R yesid-dev/transit --ref main -f ref=<sha> -f t
 For VM workers, use the existing [worker-only rollout runbook](https://app.notion.com/p/40e3e8630690813a80eddf5efc7752bb),
 including its documented Compose activation command and host preconditions.
 
+### Private raw capture on the Linux VM
+
+The capture unit takes one provider ID, polls its enabled feeds, and writes
+original responses to the private raw bucket. It uses no PostgreSQL connection.
+Keep the provider inactive and hidden while validating Gatineau.
+
+From a clean checkout of the approved capture revision, with the VM clock
+synchronized, prepare the root-owned systemd environment files:
+
+~~~sh
+timedatectl show --property=NTPSynchronized --value
+sudo install -d -m 0750 /etc/transit-capture
+sudoedit /etc/transit-capture/r2-write.env
+sudoedit /etc/transit-capture/sto.env
+sudo chown root:root /etc/transit-capture/r2-write.env /etc/transit-capture/sto.env
+sudo chmod 0600 /etc/transit-capture/r2-write.env /etc/transit-capture/sto.env
+~~~
+
+- `r2-write.env` takes `BRONZE_STORAGE_BACKEND` (S3),
+  `BRONZE_S3_ENDPOINT`, `BRONZE_S3_BUCKET` (the private raw bucket),
+  `BRONZE_S3_ACCESS_KEY`, `BRONZE_S3_SECRET_KEY`, and optionally
+  `BRONZE_S3_REGION`.
+- `sto.env` takes `STO_PUBLIC_KEY` and `STO_PRIVATE_KEY`. Optional URL
+  overrides are `STO_STATIC_GTFS_URL`, `STO_RT_TRIP_UPDATES_URL`,
+  `STO_RT_VEHICLE_POSITIONS_URL`, and `STO_SERVICE_ALERTS_URL`.
+  Keep the registered key with its owner.
+
+Install and start the unit after the clock reports `yes`:
+
+~~~sh
+sudo install -m 0644 apps/db/ops/linux/transit-capture@.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo bash apps/db/ops/linux/update-capture.sh HEAD sto
+sudo systemctl enable --now transit-capture@sto.service
+sudo journalctl -u transit-capture@sto.service -n 30 --no-pager
+bash .github/scripts/freshness-probe.sh --capture-heartbeat /run/transit-capture-sto/heartbeat.json
+~~~
+
+`update-capture.sh` stages a locked release, validates configuration without
+fetching feeds, then restarts the listed instances that were running. Pass all
+running city instances when updating their shared release. Re-run it with the
+previous approved revision and the same cities to roll back an update. To stop
+the initial rollout, run `sudo systemctl disable --now transit-capture@sto.service`.
+Preserve the raw objects and the rolling download state under
+`/var/lib/transit-capture-sto/` in either case.
+
+To fetch one sample per feed and see counts, sizes and prospective raw keys,
+run the following from the repository root with the feed variables already
+provided through your environment. Use the dry run before the service starts
+or after stopping it and waiting a full download window (10 minutes for STO).
+
+~~~sh
+uv run --project apps/db --managed-python --locked python -m transit_ops.raw_capture sto --dry-run
+~~~
+
+For a private clean-day check, select `sto` explicitly in **Clean service days**.
+Its output is confined to the job's temporary directory. To keep the tables
+for inspection, run `transit-ops clean-days --provider sto --from YYYY-MM-DD
+--to YYYY-MM-DD --source s3://transit-raw --dest /path/to/private-clean` with
+the raw read environment. Use `python -m transit_ops.live.playback sto
+--source s3://transit-raw --inspect` with that same read environment to check
+which realtime feeds the live publisher can read without writing a snapshot.
+The read variables are `CLEAN_SOURCE_S3_ENDPOINT`,
+`CLEAN_SOURCE_S3_ACCESS_KEY_ID`, `CLEAN_SOURCE_S3_SECRET_ACCESS_KEY` and
+optionally `CLEAN_SOURCE_S3_REGION` and `CLEAN_SOURCE_S3_SESSION_TOKEN`.
+
 ## Analytics
 
 The production site counts visits and a few named interactions with cookieless

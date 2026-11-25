@@ -33,6 +33,27 @@
 # Legacy alert:freshness stays open for explicit reconciliation after rollout.
 set -euo pipefail
 
+# The VM can run the same probe against a private capture worker.
+if [[ ${1:-} == --capture-heartbeat ]]; then
+  [[ $# == 2 ]] || { echo "Usage: freshness-probe.sh --capture-heartbeat FILE" >&2; exit 2; }
+  feeds=$(jq -er '
+    .feeds | select(type == "object" and length > 0) | to_entries[] |
+    [.key, (.value.captured_at // "missing"), .value.fresh_for_seconds] | @tsv
+  ' "$2")
+  now=$(date -u +%s)
+  result=0
+  while IFS=$'\t' read -r feed captured limit; do
+    if [[ $limit =~ ^[1-9][0-9]*$ ]] && stamp=$(date -u -d "$captured" +%s 2>/dev/null) &&
+      (( now >= stamp && now - stamp <= limit )); then
+      printf '%s capture fresh (%ss old)\n' "$feed" "$((now - stamp))"
+    else
+      printf '%s capture missing or stale\n' "$feed" >&2
+      result=1
+    fi
+  done <<< "$feeds"
+  exit "$result"
+fi
+
 : "${SNAPSHOT_PUBLIC_BASE_URL:?SNAPSHOT_PUBLIC_BASE_URL must be set}"
 : "${DATABASE_URL:?DATABASE_URL must be set}"
 

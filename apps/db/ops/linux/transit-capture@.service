@@ -1,0 +1,27 @@
+[Unit]
+Description=Transit raw capture for %i
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+EnvironmentFile=/etc/transit-capture/r2-write.env
+EnvironmentFile=/etc/transit-capture/%i.env
+StateDirectory=transit-capture-%i
+StateDirectoryMode=0700
+RuntimeDirectory=transit-capture-%i
+WorkingDirectory=/opt/transit-capture/current/apps/db
+ExecStart=/opt/transit-capture/current/apps/db/.venv/bin/python -m transit_ops.raw_capture %i --provider-dir /opt/transit-capture/current/apps/db/config/providers --rate-state /var/lib/transit-capture-%i/rate.json --heartbeat /run/transit-capture-%i/heartbeat.json
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=90s
+MemoryMax=512M
+CPUWeight=25
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

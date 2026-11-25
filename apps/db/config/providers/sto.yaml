@@ -1,8 +1,11 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # STO, Société de transport de l'Outaouais (Gatineau, QC)
 #
-# Do not activate until STO confirms that its terms cover historical capture
-# retention and public downloads of cleaned and derived tables.
+# STO's terms permit use, reproduction, modification, dissemination and
+# redistribution of its open data for personal or commercial purposes.
+# Capture is private. Before any public release, verify the screens and the
+# dated source statement. Use no STO logo, implied affiliation or disparaging
+# presentation. One API key per user, with no transfer.
 #
 # Geometry ships in shapes.txt, with no separate GIS bundle.
 #
@@ -58,9 +61,8 @@ public:
     max_longitude: -74.20
     max_latitude: 46.40
   geocode_context: Gatineau, Québec
-  # Terms reviewed. Written confirmation for retention and derived downloads is pending.
   download_licence:
-    checked_on: "2026-11-24"
+    checked_on: "2026-11-25"
     name:
       en: "Terms of Use for STO's Open Data and API Key"
       fr: "Conditions d'utilisation des données ouvertes et de la clé API de la STO"
@@ -78,6 +80,9 @@ public:
       en: "Transit is independent of the STO. The STO does not sponsor or endorse Transit."
       fr: "Transit est indépendant de la STO. La STO ne commandite ni n’approuve Transit."
     source: {en: "the STO", fr: "de la STO"}
+
+# Applies across all files, including the keyless schedule.
+capture_download_limit: {requests: 120, window_seconds: 600}
 
 feeds:
   static_schedule:
