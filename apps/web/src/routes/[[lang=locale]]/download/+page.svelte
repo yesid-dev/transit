@@ -5,7 +5,7 @@
 	import { ChevronToggle } from '@yesid/ui/brand';
 	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Surface, DashboardGrid } from '@yesid/ui/layout';
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
 	import { downloadCoverage } from '#lib/features/record/downloadCoverage.ts';
 	import {
@@ -45,6 +45,11 @@
 	const stamp = $derived(
 		data.window ? { kind: 'record' as const, label: recordStamp(data.window, locale) } : undefined,
 	);
+	// The server does not receive the fragment, so reveal the columns after hydration.
+	let mounted = $state(false);
+	onMount(() => {
+		mounted = true;
+	});
 
 	function daysHref(index: number) {
 		const url = new URL(page.url.href);
@@ -119,7 +124,7 @@
 </script>
 
 {#snippet disclosure(label: string, content: Snippet, id?: string)}
-	<Collapsible.Root {id} open={!!id && page.url.hash === `#${id}`}>
+	<Collapsible.Root {id} open={!!id && mounted && page.url.hash === `#${id}`}>
 		<Collapsible.Trigger>
 			{#snippet child({ props })}
 				<button
