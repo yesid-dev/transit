@@ -292,7 +292,6 @@ def test_feed_delays_take_precedence(tmp_path):
         [report(call(arrival=EXPECTED, delay=10, status=1))],
         [report(call(arrival=EXPECTED, delay=10, stop="other"))],
         [report(call(arrival=EXPECTED, delay=10, stop="loop", sequence=None))],
-        [report(call(arrival=EXPECTED, delay=10), day="20261125")],
     ],
 )
 def test_does_not_label_unmatched_ambiguous_or_stale_predictions(tmp_path, updates):
@@ -332,3 +331,81 @@ def test_elapsed_schedule_handles_clock_changes(tmp_path, day, utc_arrival, sche
         update_window=90,
     )
     assert positions[0]["delay"] == 42
+
+
+@pytest.mark.parametrize("hint", ["20261124", "20261125"])
+def test_midnight_position_and_update_use_running_service_day(tmp_path, hint):
+    now = datetime(2026, 11, 25, 5, 30, tzinfo=UTC)
+    predicted = int(datetime(2026, 11, 25, 5, 35, tzinfo=UTC).timestamp()) + 45
+    vehicle = {**position(day=hint), "start_time": "24:10:00", "observed_at": now.isoformat()}
+    update = report(call(arrival=predicted), day=hint)
+    positions, trips = reconcile_delays(
+        [vehicle],
+        [update],
+        schedule(tmp_path, first=87000, stop_time=88500),
+        ZONE,
+        now,
+        update_window=90,
+    )
+    assert positions[0]["delay"] == trips[0]["stops"][0]["arrival_delay"] == 45
+
+
+@pytest.mark.parametrize(
+    ("previous_day", "now_utc", "scheduled_utc", "hint"),
+    [
+        (date(2026, 3, 7), "2026-03-08T07:10:00+00:00", "2026-03-08T07:20:00+00:00", "20260308"),
+        (date(2026, 10, 31), "2026-11-01T06:10:00+00:00", "2026-11-01T06:20:00+00:00", "20261101"),
+    ],
+)
+def test_calendar_date_hint_does_not_lose_overnight_trip_on_clock_change(
+    tmp_path, previous_day, now_utc, scheduled_utc, hint
+):
+    now = datetime.fromisoformat(now_utc)
+    predicted = int(datetime.fromisoformat(scheduled_utc).timestamp()) + 25
+    vehicle = {**position(day=hint), "start_time": "25:50:00", "observed_at": now_utc}
+    positions, updates = reconcile_delays(
+        [vehicle],
+        [report(call(arrival=predicted), day=hint)],
+        schedule(tmp_path, previous_day, 93000, 94800),
+        ZONE,
+        now,
+        update_window=90,
+    )
+    assert positions[0]["delay"] == updates[0]["delay"] == 25
+
+
+@pytest.mark.parametrize(
+    ("day", "first", "stop_time", "absolute"),
+    [
+        (DAY, 93000, 93300, "2026-11-25T06:55:00+00:00"),
+        (date(2026, 11, 25), 21600, 21900, "2026-11-25T11:05:00+00:00"),
+    ],
+)
+def test_midnight_advance_notice_uses_scheduled_service_day(
+    tmp_path, day, first, stop_time, absolute
+):
+    now = datetime(2026, 11, 25, 5, 30, tzinfo=UTC)
+    predicted = int(datetime.fromisoformat(absolute).timestamp()) + 75
+    update = report(call(arrival=predicted), day="20261125")
+    _, trips = reconcile_delays(
+        None, [update], schedule(tmp_path, day, first, stop_time), ZONE, now, update_window=90
+    )
+    assert trips[0]["stops"][0]["arrival_delay"] == 75
+
+
+@pytest.mark.parametrize(
+    ("arrival", "delay"),
+    [(EXPECTED + 86400, None), (EXPECTED, -86400), (EXPECTED, 86400)],
+)
+def test_delays_beyond_cleaner_sanity_bound_are_never_published(tmp_path, arrival, delay):
+    positions, trips = reconcile_delays(
+        [position()],
+        [report(call(arrival=arrival), delay=delay)],
+        schedule(tmp_path),
+        ZONE,
+        NOW,
+        update_window=90,
+    )
+    assert (
+        positions[0]["delay"] is trips[0]["delay"] is trips[0]["stops"][0]["arrival_delay"] is None
+    )

@@ -38,6 +38,7 @@ from transit_ops.live.silent_trips import (
     feed_is_fresh,
 )
 from transit_ops.live.trip_delays import last_prediction_time, reconcile_delays
+from transit_ops.live.trip_instances import LiveTripInstances
 from transit_ops.live.trip_partitions import encode, trip_partitions
 from transit_ops.live.trip_schedule import DAY_OFFSETS, MAX_SERVICE_SECONDS, LiveTripSchedule
 from transit_ops.providers.alert_record import AlertRecord
@@ -118,8 +119,12 @@ def _vehicles(
     return rows
 
 
-def _trip_updates(message: FeedMessage) -> list[dict[str, object]]:
+def _trip_updates(
+    message: FeedMessage, captured: datetime, header: datetime | None
+) -> list[dict[str, object]]:
     rows = []
+    capture_second = int(captured.timestamp())
+    feed_second = min(int(header.timestamp()), capture_second) if header else capture_second
     for entity in message.entity:
         if entity.is_deleted or not entity.HasField("trip_update"):
             continue
@@ -150,6 +155,7 @@ def _trip_updates(message: FeedMessage) -> list[dict[str, object]]:
                 "start_date": trip.start_date or None,
                 "start_time": trip.start_time or None,
                 "relationship": trip.schedule_relationship,
+                "_published_at": min(update.timestamp or feed_second, capture_second),
                 "delay": update.delay if update.HasField("delay") else None,
                 "stops": stops,
             }
@@ -167,7 +173,7 @@ def _public_trip_updates(
     cutoff = captured.timestamp() - tolerance
     return [
         {
-            **row,
+            **{key: value for key, value in row.items() if key != "_published_at"},
             "stops": [
                 stop
                 for stop in row["stops"]
@@ -284,7 +290,7 @@ class LivePublisher:
         rows = (
             _vehicles(message, capture.captured_at_utc, poll.feed_timestamp_utc, self.manifest)
             if capture.family == "vehicle_positions"
-            else _trip_updates(message)
+            else _trip_updates(message, capture.captured_at_utc, poll.feed_timestamp_utc)
         )
         return Observation(capture.captured_at_utc, poll.feed_timestamp_utc, rows)
 
@@ -360,6 +366,7 @@ class LivePublisher:
         identified = coverage.total()
         with_delay = coverage.pop("delay", 0)
         feeds = cast(dict[str, dict[str, Any]], snapshot["feeds"])
+        positions = cast(list[dict[str, Any]] | None, result["vehicle_positions"]) or []
         return {
             "city": snapshot["city"],
             "sampled_at": _iso(now),
@@ -368,11 +375,17 @@ class LivePublisher:
                 for feed in feeds.values()
                 if feed["family"] in ("vehicle_positions", "trip_updates")
             },
-            "vehicles": len(cast(list[object] | None, result["vehicle_positions"]) or []),
+            "vehicles": len(positions),
             "vehicles_with_trip": identified,
             "vehicles_with_delay": with_delay,
             "share_with_delay": with_delay / identified if identified else None,
             "without_delay": dict(sorted(coverage.items())),
+            "scheduled_now": result["scheduled_now"],
+            "non_responding": result["non_responding"],
+            "cancelled_now": result["cancelled_now"],
+            "max_abs_delay_seconds": max(
+                (abs(row["delay"]) for row in positions if row["delay"] is not None), default=None
+            ),
         }
 
     def run(
@@ -500,12 +513,17 @@ def _scheduled_snapshot(
     }
     if today not in days:
         days = {}
-    trip_feed = next(
+    feeds = cast(dict[str, dict[str, Any]], snapshot["feeds"])
+    positions_captured = min(
         (
-            feed
-            for feed in cast(dict[str, dict[str, Any]], snapshot["feeds"]).values()
-            if feed["family"] == "trip_updates"
+            datetime.fromisoformat(feed["captured_at"])
+            for feed in feeds.values()
+            if feed["family"] == "vehicle_positions" and feed["captured_at"]
         ),
+        default=now,
+    )
+    trip_feed = next(
+        (feed for feed in feeds.values() if feed["family"] == "trip_updates"),
         None,
     )
     freshness = (
@@ -513,18 +531,28 @@ def _scheduled_snapshot(
         if trip_feed is not None and feed_is_fresh(trip_feed, now)
         else 0
     )
+    instances = LiveTripInstances({day: item.trips for day, item in days.items()}, schedule.zone)
     try:
         projected_vehicles, projected_updates = reconcile_delays(
-            vehicles, updates, days, schedule.zone, now, update_window=freshness, coverage=coverage
+            vehicles,
+            updates,
+            days,
+            schedule.zone,
+            now,
+            update_window=freshness,
+            coverage=coverage,
+            instances=instances,
+            positions_captured=positions_captured,
         )
     except (OSError, sqlite3.Error) as error:
         LOGGER.warning("Live scheduled calls unavailable (%s)", type(error).__name__)
         days = {}
+        instances = LiveTripInstances({}, schedule.zone)
         projected_vehicles, projected_updates = reconcile_delays(
             vehicles, updates, days, schedule.zone, now, update_window=0, coverage=coverage
         )
     counts = UNMEASURED
-    evidence = reporting.observe(snapshot, now)
+    evidence = reporting.observe(snapshot, now, instances)
     if evidence is not None and all(day in days for day in active_days):
         reports, cancellations = evidence
         counts = count_silent_trips(
@@ -599,8 +627,20 @@ def main() -> None:
     )
     parser.add_argument("--provider-dir", type=Path)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--at", help="Capture cutoff as an ISO timestamp for --inspect-delays")
     parser.add_argument("--require-captures", action="store_true")
     args = parser.parse_args()
+    if args.at and not args.inspect_delays:
+        parser.error("--at requires --inspect-delays")
+    at = None
+    if args.at:
+        try:
+            at = datetime.fromisoformat(args.at)
+        except ValueError:
+            parser.error("--at requires an ISO timestamp with an offset")
+        if at.utcoffset() is None:
+            parser.error("--at requires an ISO timestamp with an offset")
+        at = at.astimezone(UTC)
     if args.require_captures and (not args.once or not args.dest):
         parser.error("--require-captures requires publication with --once")
     logging.basicConfig(level=logging.INFO)
@@ -618,7 +658,7 @@ def main() -> None:
         print(encode({"city": args.city, "feeds": result["feeds"]}).decode())
         return
     if args.inspect_delays:
-        print(encode(publisher.inspect_delays(datetime.now(UTC))).decode())
+        print(encode(publisher.inspect_delays(at or datetime.now(UTC))).decode())
         return
     clean, dest_prefix = _storage(args.dest, "DEST")
     publisher.run(
