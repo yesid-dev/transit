@@ -126,6 +126,9 @@
 			onSelect={selectMode}
 			variant="fit-row"
 		/>
+		{#if frame.showViewHint}
+			<p class="text-sm text-muted-foreground">{copy.viewHint[frame.mode]}</p>
+		{/if}
 		{#if frame.recordOnly}
 			<p id={uid} class="text-sm text-muted-foreground">{copy.recordOnly}</p>
 		{:else if frame.liveOnly}
