@@ -390,6 +390,12 @@ describe('server HTML edge cache', () => {
 		['http://127.0.0.1:4317/lines/24', '/[[lang=locale]]/lines/[id]'],
 		['http://127.0.0.1:4317/fr/lines/24?frameMode=record', '/[[lang=locale]]/lines/[id]'],
 		['https://transit1.yesid.dev/fr/lines/24?tab=schedule', '/[[lang=locale]]/lines/[id]'],
+		['http://127.0.0.1:4317/lines/24?frameMode=live', '/[[lang=locale]]/lines/[id]'],
+		['https://transit1.yesid.dev/lines/24?tab=detail', '/[[lang=locale]]/lines/[id]'],
+		[
+			'https://transit1.yesid.dev/lines/24?frameMode=live&tab=detail',
+			'/[[lang=locale]]/lines/[id]',
+		],
 		[
 			'https://transit1.yesid.dev/fr/stop/S1?frameMode=record#waiting',
 			'/[[lang=locale]]/stop/[id]',
@@ -510,19 +516,6 @@ describe('server HTML edge cache', () => {
 		expect(response.status).toBe(status);
 		expect(response.headers.get('content-encoding')).toBe(encoding);
 		expect(await response.text()).toBe(method === 'HEAD' ? '' : 'original');
-	});
-
-	it.each([
-		'http://127.0.0.1:4317/lines/24?frameMode=live&tab=detail',
-		'https://transit1.yesid.dev/lines/24?frameMode=live&tab=detail',
-	])('preserves the cache policy for %s', async (url) => {
-		const cache = cacheHarness(html('cached'));
-		const request = event(url, { cache, routeId: '/[[lang=locale]]/lines/[id]' });
-		const response = await handle({ event: request, resolve: vi.fn(async () => html('fresh')) });
-
-		expect(await response.text()).toBe('cached');
-		expect(response.headers.get('content-encoding')).toBeNull();
-		expect(response.headers.get('x-transit-edge-cache')).toBe('HIT');
 	});
 
 	it('uses a cached GET representation for HEAD without returning a body', async () => {

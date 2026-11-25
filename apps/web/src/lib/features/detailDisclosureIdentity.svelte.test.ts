@@ -1,13 +1,11 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RouteFile, StopFile, StopReliability } from '#lib/v1/index.ts';
+import type { StopFile, StopReliability } from '#lib/v1/index.ts';
 import rich from '../../../scripts/__fixtures__/b9/rich.json';
-import RouteDetail from './lines/RouteDetail.svelte';
 import StopDetail from './stops/StopDetail.svelte';
 
 const navigation = vi.hoisted(() => ({ setPath: (_path: string) => {} }));
 const ports = vi.hoisted(() => ({
-	getRoute: vi.fn<(id: string) => Promise<RouteFile | null>>(),
 	getStop: vi.fn<(id: string) => Promise<StopFile | null>>(),
 	getStopReliability: vi.fn<(id: string) => Promise<StopReliability | null>>(),
 }));
@@ -43,7 +41,6 @@ vi.mock('$app/navigation', () => ({
 	replaceState: (url: string | URL) => navigation.setPath(String(url)),
 }));
 vi.mock('#lib/v1/repositories/static.ts', () => ({
-	getRoute: ports.getRoute,
 	getStop: ports.getStop,
 }));
 vi.mock('#lib/v1/repositories/historic.ts', () => ({
@@ -58,9 +55,6 @@ vi.mock('#lib/v1/boot.ts', () => ({
 	getV1Context: () => ({
 		manifest: { provider: 'stm', short_name: 'STM', display_name: 'STM', files: { historic: {} } },
 	}),
-}));
-vi.mock('#lib/v1/live/routeStopPredictions.ts', () => ({
-	deriveRouteStopPredictions: () => new Map(),
 }));
 vi.mock('#lib/v1/live/store.svelte.ts', () => ({
 	LIVE_FAMILIES: ['vehicles', 'trips', 'departures', 'alerts', 'network'],
@@ -87,14 +81,12 @@ vi.mock('#lib/v1/live/store.svelte.ts', () => ({
 	}),
 }));
 
-const route = rich.files['static/routes/24.json'] as unknown as RouteFile;
 const stop = rich.files['static/stops/52095.json'] as unknown as StopFile;
 const stopReliability = rich.files[
 	'historic/stop_reliability/52095.json'
 ] as unknown as StopReliability;
 
 beforeEach(() => {
-	ports.getRoute.mockImplementation(async (id) => ({ ...route, id }));
 	ports.getStop.mockImplementation(async (id) => ({ ...stop, id }));
 	ports.getStopReliability.mockImplementation(async (id) => ({ ...stopReliability, id }));
 });
@@ -134,26 +126,6 @@ async function expectResetOnIdChange(
 }
 
 describe.each([false, true])('entity disclosure identity with seeded static data=%s', (seeded) => {
-	it('RouteDetail resets Live cards on an id change', async () => {
-		const props = (id: string) => ({
-			id,
-			seed: { id, name: `Line ${id}` },
-			routeSeed: seeded ? { key: id, data: { ...route, id } } : undefined,
-		});
-		navigation.setPath(`/lines/24?tab=detail&frameMode=live`);
-		const view = render(RouteDetail, { props: props('24') });
-		const selector = '[data-toc^="line-detail-"] [data-section-trigger]';
-		const defaults = await expectResetOnIdChange(
-			view.container,
-			selector,
-			() => view.rerender(props('24')),
-			async () => {
-				navigation.setPath(`/lines/51?tab=detail&frameMode=live`);
-				await view.rerender(props('51'));
-			},
-		);
-		expect(defaults.every((value) => value === 'true')).toBe(true);
-	});
 	it.each(['detail', 'schedule', 'reliability'] as const)(
 		'StopDetail resets %s cards on an id change',
 		async (tab) => {

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
-import { installLineRecordFixtures } from './line-record-fixtures.mjs';
+import { installLineRecordFixtures, lineRecordFixture } from './line-record-fixtures.mjs';
 import { finderEngine } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
@@ -65,35 +65,27 @@ for (const [key, body] of Object.entries(b9)) {
 	if (/^(static\/(routes|stops)|historic\/(route|stop)_reliability)\//.test(key))
 		files[`/v1/stm/${key}`] ??= JSON.stringify(body);
 }
-// T4 Live/Schedule: real-size destination lists, isolated from the ordinary line fixture.
+// Long display names and two realtime capabilities in the published Line schedule.
 const lineStops = Array.from({ length: 61 }, (_, i) => ({
 	id: `t4-${i}`,
 	seq: i + 1,
 	name: `Station de l’Université / Boulevard Édouard-Montpetit et chemin de la Côte-des-Neiges ${i + 1}`,
 }));
-files['/v1/stm/static/routes/9003.json'] = JSON.stringify({
-	...b9['static/routes/24.json'],
+const lineLiveRoute = {
 	id: '9003',
 	short: '9003',
 	long: 'Long destinations and live reports',
 	type: 3,
-	directions: [61, 61, 25, 25].map((size, i) => ({
-		dir: i % 2,
-		headsign: ['Greenboro / Rockcliffe', 'Rockcliffe via station', 'Billings Bridge', 'Rideau'][i],
-		stops: lineStops.slice(0, size),
-	})),
-	service_periods: [
-		{ shift: 'am_peak', window: '06:00–09:00', headway_min: 9 },
-		{ shift: 'afternoon', window: '15:00–19:00', headway_min: 15 },
-		{ shift: 'night', window: null, headway_min: 30.5 },
+};
+const lineScheduleOnlyRoute = { ...lineLiveRoute, id: '9004', short: '9004', type: 1 };
+const lineFixtureDirections = [61, 61, 25, 25].map((size, index) => ({
+	dir: index % 2,
+	headsign: ['Greenboro / Rockcliffe', 'Rockcliffe via station', 'Billings Bridge', 'Rideau'][
+		index
 	],
-});
-files['/v1/stm/static/routes/9004.json'] = JSON.stringify({
-	...JSON.parse(files['/v1/stm/static/routes/9003.json']),
-	id: '9004',
-	short: '9004',
-	type: 1,
-});
+	stops: lineStops.slice(0, size),
+}));
+
 // T6 Live now: a hub at the size of the busiest stops (12 lines, two predictions each, the longest
 // French destinations), a stop served only by the metro (no live data) and one no line serves.
 const t6HubLines = [
@@ -319,10 +311,20 @@ const sourceCredits = {
 
 const heldResponsesByFixture = new Map();
 const dailyMessageHolds = new Set();
+const registeredScheduleLines = new Set();
 const server = createServer((request, response) => {
 	// No Date header: the app anchors its clock to it, which would undo page.clock.
 	response.sendDate = false;
 	const url = new URL(request.url, 'http://127.0.0.1');
+	if (url.pathname === '/__line-schedule/register') {
+		const line = url.searchParams.get('line');
+		if (!line || (!line.startsWith('recovery-') && !lineRecordFixture('stm', line)))
+			return response.writeHead(400).end();
+		if (request.method === 'POST') registeredScheduleLines.add(line);
+		else if (request.method === 'DELETE') registeredScheduleLines.delete(line);
+		else return response.writeHead(405).end();
+		return response.writeHead(204).end();
+	}
 	const download = /^\/v2\/([a-z0-9_-]+)\/download$/.exec(url.pathname);
 	if (download) {
 		const city = download[1];
@@ -607,6 +609,20 @@ const server = createServer((request, response) => {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
 		}
 		if (city === 'stm' && kind === 'schedule-index') {
+			for (const id of registeredScheduleLines) {
+				const { short, long, type } = lineRecordFixture('stm', id) ?? {
+					short: '9005',
+					long: 'Rosemont / Beaubien',
+					type: 3,
+				};
+				editionRoutes.set(id, { id, short, long, type });
+			}
+			editionRoutes.set(lineLiveRoute.id, lineLiveRoute);
+			editionRoutes.set(lineScheduleOnlyRoute.id, lineScheduleOnlyRoute);
+			routeDirections[lineLiveRoute.id] = lineFixtureDirections;
+			routeDirections[lineScheduleOnlyRoute.id] = lineFixtureDirections;
+			for (const { id, name } of lineStops)
+				editionStops.set(id, { id, name, lat: 45.5, lon: -73.6, routes: [lineLiveRoute.id] });
 			for (const [key, body] of Object.entries(files)) {
 				if (key.startsWith('/v1/stm/static/routes/')) {
 					const { id, short, long, type, directions = [] } = JSON.parse(body);

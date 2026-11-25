@@ -29,6 +29,11 @@ function event(id = '24'): Parameters<typeof load>[0] {
 		parent: async () => ({
 			v1: { manifest: harness.ctx.manifest },
 			providerId: harness.ctx.providerId,
+			provider: {
+				inputs: { vehicle_positions: true, trip_updates: true },
+				lines_without_live_data: [],
+				timezone: 'America/Toronto',
+			},
 			lang: 'en',
 			schedule: { routes: [{ id: '24', short: '24', long: 'Sherbrooke' }], stops: [] },
 		}),
@@ -125,11 +130,61 @@ describe('Line Record and Schedule on transit1', () => {
 		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 	});
 
-	it('keeps Live on the existing route data and makes no engine reads', async () => {
-		const data = await load(framed('&frameMode=live&tab=detail'));
+	it('streams capture, predictions and the schedule without requesting a legacy route', async () => {
+		const request = framed('&frameMode=live');
+		vi.mocked(request.fetch).mockImplementation(() => new Promise(() => {}));
+		const data = await load(request);
 		expect(data?.frameLive).toBe(true);
-		expect(data?.record).toBeUndefined();
-		expect(harness.getRoute).toHaveBeenCalledOnce();
+		expect(data?.capture).toBeInstanceOf(Promise);
+		expect(data?.trips).toBeInstanceOf(Promise);
+		expect(data?.record?.sections.map(({ section }: { section: string }) => section)).toEqual([
+			'punctuality',
+			'frequency',
+			'boundaries',
+		]);
+		expect(vi.mocked(request.fetch).mock.calls.map(([url]) => url)).toEqual([
+			'/api/live?city=octranspo',
+			'/api/live-trips?city=octranspo&line=24',
+		]);
+		expect(harness.getRoute).not.toHaveBeenCalled();
+		expect(harness.serverV1Context).not.toHaveBeenCalled();
+	});
+
+	it('keeps old live addresses and only reads the selected mode', async () => {
+		await expect(load(framed('&tab=detail'))).rejects.toMatchObject({
+			status: 308,
+			location: `/lines/24?${dates}&frameMode=live`,
+		});
+		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
+	});
+
+	it('loads historical readings for a line outside the current timetable', async () => {
+		const request = framed('&frameMode=record');
+		request.params.id = 'seasonal';
+		const data = await load(request);
+		expect(data?.outsideCurrentTimetable).toBe(true);
+		expect(data?.record?.line).toBe('seasonal');
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
+			{
+				path: '/measure',
+				parameters: { measure: 'punctuality', group: 'stop', line: 'seasonal' },
+			},
+			expect.objectContaining({ from: '2026-11-08', to: '2026-11-14' }),
+		);
+		expect(request.fetch).not.toHaveBeenCalled();
+	});
+
+	it('returns a Live state for a line outside the current timetable without asking for readings', async () => {
+		const request = framed('&frameMode=live');
+		request.params.id = 'seasonal';
+		await expect(load(request)).resolves.toMatchObject({
+			frameLive: true,
+			outsideCurrentTimetable: true,
+			capture: null,
+			trips: null,
+			record: null,
+		});
+		expect(request.fetch).not.toHaveBeenCalled();
 		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 	});
 });

@@ -5,18 +5,26 @@ test.use({ bypassCSP: true });
 for (const locale of ['en', 'fr']) {
 	test(`${locale} Line recovery keeps completed controls and readings in place`, async ({
 		page,
+		request,
 	}, info) => {
 		const fr = locale === 'fr';
 		const prefix = fr ? '/fr' : '';
 		const id = encodeURIComponent(
 			`recovery-${info.project.name}-${info.repeatEachIndex}-${locale}`,
 		);
+		const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 		const viewport = page.viewportSize()!;
 		await page.setViewportSize({ ...viewport, width: Math.min(viewport.width, 1080) });
 		await page.clock.install();
-		await page.goto(
-			`${prefix}/lines/${id}?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
-		);
+		const registration = `http://127.0.0.1:${port}/__line-schedule/register?line=${id}`;
+		expect((await request.post(registration)).status()).toBe(204);
+		try {
+			await page.goto(
+				`${prefix}/lines/${id}?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
+			);
+		} finally {
+			await request.delete(registration);
+		}
 		const crowding = page.locator('#crowding');
 		await expect(crowding).toContainText(fr ? 'Lecture en attente.' : 'Waiting for a reading.');
 

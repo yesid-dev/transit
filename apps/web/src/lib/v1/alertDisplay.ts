@@ -15,7 +15,10 @@ const FALLBACK = defineCopy({
 });
 
 export interface AlertDisplaySource {
-	readonly message?: AlertMessageProvenance | null;
+	readonly message?: Pick<
+		AlertMessageProvenance,
+		'description_language' | 'header_language' | 'url_language'
+	> | null;
 	readonly header_key?: string | null;
 	readonly header_text?: string | null;
 	readonly header_text_en?: string | null;

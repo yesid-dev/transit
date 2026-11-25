@@ -56,7 +56,7 @@ export function captureTrip(
 			stop_id: stop,
 			sequence: i + 1,
 			arrival: null,
-			departure: Date.parse(eta_utc) / 1_000,
+			departure: Math.floor(Date.parse(eta_utc) / 1_000),
 			arrival_delay: null,
 			departure_delay: delay_min == null ? null : delay_min * 60,
 			relationship: 0,
@@ -193,7 +193,9 @@ export function layoutCapture(city: string, overrides: Partial<Vehicle> = {}) {
 
 export function captureFixture(
 	at: number,
-	options: Partial<Pick<CaptureSnapshot, 'city' | 'vehicle_positions' | 'alerts'>> = {},
+	options: Partial<
+		Pick<CaptureSnapshot, 'city' | 'vehicle_positions' | 'alerts' | 'non_responding_by_route'>
+	> = {},
 ): CaptureSnapshot {
 	const timestamp = new Date(at).toISOString();
 	const feed = (family: CaptureFamily, fresh_for_seconds: number) => ({

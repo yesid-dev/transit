@@ -27,10 +27,14 @@ const trips = fixture('trips.json').trips;
 const tripId = 'T1';
 const lineId = fixture('routes-index.json').routes[0].id;
 const line = fixture('../scripts/__fixtures__/b9/rich.json').files[`static/routes/${lineId}.json`];
-const lineStopCount = line.directions.reduce(
-	(count: number, direction: { stops: unknown[] }) => count + direction.stops.length,
-	0,
-);
+const lineStops = [
+	...new Set<string>(
+		line.directions.flatMap((direction: { stops: { id: string }[] }) =>
+			direction.stops.map((stop) => stop.id),
+		),
+	),
+];
+const readerTime = Date.parse(departures.generated_utc) + 30_000;
 const pages = [
 	'/',
 	...[...SURFACE_NAV, ...AUDIT_NAV].map(({ href }) => href),
@@ -51,7 +55,8 @@ test.use({ bypassCSP: true });
 test.beforeEach(async ({ page }) => {
 	await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 	// Inside the live data's freshness window, as data-surfaces.spec does.
-	await page.clock.setFixedTime(Date.parse(departures.generated_utc) + 30_000);
+	await page.clock.install({ time: readerTime });
+	await page.clock.setFixedTime(readerTime);
 });
 
 test.describe('accessibility', { tag: '@theme' }, () => {
@@ -62,23 +67,23 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 				const lineLive = path === `/lines/${line.id}?tab=detail`;
 				const vehicleLive = path === '/vehicle/40061?frameMode=live';
 				if (lineLive) {
-					// Give each published stop a report so every destination's visible links reach axe.
-					const stops = [
-						...new Set<string>(
-							line.directions.flatMap((direction: { stops: { id: string }[] }) =>
-								direction.stops.map((stop) => stop.id),
-							),
-						),
-					];
-					const eta_utc = new Date(Date.parse(departures.generated_utc) + 300_000).toISOString();
+					await page.route(captureUrl, (route) =>
+						route.fulfill({
+							json: captureFixture(readerTime, {
+								vehicle_positions: [
+									captureVehicle(readerTime, { route_id: lineId, stop_id: lineStops[0] }),
+								],
+							}),
+						}),
+					);
+					const eta_utc = new Date(readerTime + 300_000).toISOString();
 					await page.route(`**/api/live-trips?city=stm&line=${lineId}`, (route) =>
 						route.fulfill({
-							json: captureTripReport('stm', departures.generated_utc, [
+							json: captureTripReport('stm', new Date(readerTime).toISOString(), [
 								captureTrip(
 									'a11y-line-predictions',
 									lineId,
-									stops.map((stop) => ({ stop, eta_utc, delay_min: 0 })),
-									0,
+									lineStops.map((stop) => ({ stop, eta_utc, delay_min: 0 })),
 								),
 							]),
 						}),
@@ -111,27 +116,24 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 				});
 				await expect(page.getByRole('main')).toBeVisible();
 				if (lineLive) {
-					const pane = page.locator('[data-slot="line-directions"][data-mode="live"]');
-					const destination = pane.getByRole('combobox');
-					await expect(destination).toBeVisible();
-					await expect(destination.getByRole('option')).toHaveCount(line.directions.length);
-					let scanned = 0;
-					for (const [index, direction] of line.directions.entries()) {
-						await destination.selectOption(String(index));
-						const links = pane.getByRole('table').getByRole('rowheader').getByRole('link');
-						await expect(links).toHaveCount(direction.stops.length);
-						// Axe's label-in-name check needs the selected destination's links on screen.
-						for (const link of await links.all()) {
-							await link.scrollIntoViewIfNeeded();
-							await link.evaluate(
-								(element, index) => element.setAttribute('data-axe-stop', String(index)),
-								scanned,
-							);
-							await expectAccessible(page, { include: `[data-axe-stop="${scanned}"]` });
-							scanned += 1;
-						}
+					await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+					const refresh = page.waitForResponse((response) => captureUrl.test(response.url()));
+					await page.clock.fastForward(21_000);
+					await refresh;
+					const roster = page.locator('#line-detail-live');
+					await expect(roster.locator('tbody tr')).toHaveCount(1);
+					await expect(roster.getByRole('link')).toHaveCount(2);
+					const predictions = page.locator('#line-detail-directions');
+					await expect(predictions).toContainText(locale === 'fr' ? 'dans 5 min' : 'in 5 min');
+					const links = roster.or(predictions).getByRole('link');
+					for (const [index, link] of (await links.all()).entries()) {
+						await link.scrollIntoViewIfNeeded();
+						await link.evaluate(
+							(element, index) => element.setAttribute('data-axe-line-link', String(index)),
+							index,
+						);
+						await expectAccessible(page, { include: `[data-axe-line-link="${index}"]` });
 					}
-					expect(scanned).toBe(lineStopCount);
 				}
 				if (vehicleLive) {
 					await page

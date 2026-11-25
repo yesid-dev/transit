@@ -20,6 +20,10 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		390: { height: 7500, beforeFigure: 1 },
 		1440: { height: 4300, beforeFigure: 1 },
 	},
+	'line-live': {
+		390: { height: 8000, beforeFigure: 1 },
+		1440: { height: 5071, beforeFigure: 1 },
+	},
 	'line-record': {
 		390: { height: 16000, beforeFigure: 1 },
 		1440: { height: 8000, beforeFigure: 1 },

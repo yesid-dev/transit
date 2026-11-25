@@ -13,7 +13,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 	test(`${screen} ${provider} ${locale} @layout`, async ({ page }, info) => {
 		const health = screen.startsWith('network-health') || screen.startsWith('data-health');
 		await setWidth(page, 1440);
-		if (!(health && screen.endsWith('-live'))) await page.clock.setFixedTime(time);
+		if (screen !== 'line-live' && !(health && screen.endsWith('-live')))
+			await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 		await page.route(captureUrl, (route) => {
 			const city = new URL(route.request().url()).searchParams.get('city')!;
@@ -74,7 +75,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			screen === 'departure' ||
 			screen === 'vehicle-record' ||
 			screen === 'vehicle-live' ||
-			screen === 'daily';
+			screen === 'daily' ||
+			screen === 'line-live';
 		if (redesignedDetail)
 			await expect(
 				page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]'),
