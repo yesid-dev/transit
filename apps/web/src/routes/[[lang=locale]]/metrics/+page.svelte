@@ -24,4 +24,11 @@
 	});
 </script>
 
-<MethodCatalog {locale} {url} city={data.providerId} period={data.period} catalog={data.catalog} />
+<MethodCatalog
+	{locale}
+	{url}
+	city={data.providerId}
+	period={data.period}
+	catalog={data.catalog}
+	cleaningVersion={data.cleaningVersion}
+/>

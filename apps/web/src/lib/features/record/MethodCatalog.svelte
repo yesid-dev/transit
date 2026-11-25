@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
 	import { Surface } from '@yesid/ui/layout';
+	import { sectionsToggleCopy } from '#lib/components/shared/sectionsToggle.copy.ts';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, MethodEntry } from '#lib/server/engine.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
@@ -28,12 +29,14 @@
 		url,
 		city,
 		period,
+		cleaningVersion,
 	}: {
 		catalog: Promise<EngineResult<MethodEntry[]>>;
 		locale: Locale;
 		url: URL;
 		city: string;
 		period: DateWindow | null;
+		cleaningVersion?: number;
 	} = $props();
 
 	const copy = $derived(methodCopy[locale]);
@@ -48,18 +51,17 @@
 			url,
 		);
 	});
-	let surface: HTMLElement;
 	let measures = $state<HTMLElement>();
+	let hasOpenCards = $state(false);
+	const cards = 'details[data-record-disclosure]';
 
 	function revealMeasure(node: HTMLElement, hash: string) {
 		const target = document.getElementById(hash.slice(1));
 		if (!target || !node.contains(target)) return;
-		let details = target.closest<HTMLDetailsElement>('details[data-record-disclosure]');
+		let details = target.closest<HTMLDetailsElement>(cards);
 		while (details) {
 			details.open = true;
-			details =
-				details.parentElement?.closest<HTMLDetailsElement>('details[data-record-disclosure]') ??
-				null;
+			details = details.parentElement?.closest<HTMLDetailsElement>(cards) ?? null;
 		}
 		const frame = requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
 		return () => cancelAnimationFrame(frame);
@@ -69,18 +71,35 @@
 		if (measures) return revealMeasure(measures, url.hash);
 	});
 
-	function collapseAll() {
-		for (const card of surface.querySelectorAll<HTMLDetailsElement>('details[open]'))
-			card.open = false;
+	$effect(() => {
+		const node = measures;
+		if (!node) return;
+		const sync = () => {
+			hasOpenCards = !!node.querySelector(`${cards}[open]:not(details:not([open]) *)`);
+		};
+		sync();
+		// Native toggle events also cover keyboard, fragment and find-in-page reveals.
+		node.addEventListener('toggle', sync, true);
+		return () => node.removeEventListener('toggle', sync, true);
+	});
+
+	function toggleAll() {
+		if (!measures) return;
+		const open = !hasOpenCards;
+		for (const card of measures.querySelectorAll<HTMLDetailsElement>(
+			open ? cards : 'details[open]',
+		))
+			card.open = open;
+		hasOpenCards = open;
 	}
 
-	function versions(entries: MethodEntry[], cleaningVersion?: string) {
+	function versions(entries: MethodEntry[], cleaningVersion?: number) {
 		const measure = entries.find(({ id }) => id === 'on_time');
 		if (!measure) return undefined;
 		return methodEvidence(
 			{
 				method_version: measure.method_version,
-				cleaning_versions: cleaningVersion ? [Number(cleaningVersion)] : [],
+				cleaning_versions: cleaningVersion === undefined ? undefined : [cleaningVersion],
 			},
 			locale,
 			true,
@@ -96,7 +115,12 @@
 )}
 	<RecordCard
 		title={methodName(entry, locale)}
-		disclosure={{ id: entry.id, description: methodSummary(entry, locale), nested }}
+		disclosure={{
+			id: entry.id,
+			description: methodSummary(entry, locale),
+			nested,
+			initiallyOpen: entry.id === 'on_time',
+		}}
 	>
 		<dl class="method-parts">
 			{#each details.parts as part (part.field)}
@@ -198,7 +222,7 @@
 {/snippet}
 
 <Surface>
-	<div class="grid min-w-0 gap-6" bind:this={surface}>
+	<div class="grid min-w-0 gap-6">
 		<ScreenTitle {title} />
 		<div
 			data-slot="screen-content"
@@ -223,7 +247,7 @@
 					{@const ordered = [...groups, ...extra].flatMap(({ entries }) => entries)}
 					{@const parts = methodParts(ordered, locale)}
 					{@const byId = new Map(ordered.map((entry) => [entry.id, entry]))}
-					{@const version = versions(result.answer, result.cleaningVersion)}
+					{@const version = versions(result.answer, cleaningVersion)}
 					<div data-slot="screen-answer">
 						{#snippet leadActions()}{@render actions(result.answer)}{/snippet}
 						{#snippet meta()}{#if version}<p>{version}</p>{/if}{/snippet}
@@ -257,8 +281,10 @@
 						<header class="flex flex-wrap items-center justify-between gap-3">
 							<h2 id="method-heading">{copy.heading}</h2>
 							{#if ordered.length}
-								<Button variant="outline" size="sm" class="min-h-11" onclick={collapseAll}
-									>{copy.collapse}</Button
+								<Button variant="outline" size="sm" class="min-h-11" onclick={toggleAll}
+									>{hasOpenCards
+										? sectionsToggleCopy[locale].collapse
+										: sectionsToggleCopy[locale].expand}</Button
 								>
 							{/if}
 						</header>
@@ -292,7 +318,7 @@
 							<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
 						</RecordCard>
 						<RecordCard title={copy.limitsTitle}>
-							<ul class="method-limits list-inside list-disc">
+							<ul class="method-limits list-outside list-disc">
 								{#each copy.recordLimits as line (line)}<li>{line}</li>{/each}
 							</ul>
 						</RecordCard>

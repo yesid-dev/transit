@@ -5,6 +5,38 @@ test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
 });
 
+for (const locale of ['en', 'fr'] as const) {
+	const fr = locale === 'fr';
+	test(`How we measure disclosure defaults in ${locale}`, async ({ page }) => {
+		await page.goto(fr ? '/fr/metrics' : '/metrics');
+		const main = page.getByRole('main');
+		const cards = main.locator('details[data-record-disclosure]');
+		const open = main.locator('details[data-record-disclosure][open]');
+		const collapse = main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' });
+		const expand = main.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all' });
+		await expect(
+			main.getByText(fr ? 'méthode v3, nettoyage v12' : 'method v3, cleaning v12'),
+		).toBeVisible();
+		await expect(open).toHaveCount(1);
+		await expect(open).toHaveAttribute('id', 'on_time');
+		await expect(collapse).toBeVisible();
+		await open.locator('summary').first().press('Enter');
+		await expect(expand).toBeVisible();
+		await expand.click();
+		await expect(open).toHaveCount(await cards.count());
+		await collapse.click();
+		await expect(open).toHaveCount(0);
+		await expect(expand).toBeVisible();
+		await expect(
+			main
+				.getByRole('article', {
+					name: fr ? 'Ce que ce bilan n’est pas' : 'What this record is not',
+				})
+				.getByRole('list'),
+		).toHaveCSS('list-style-position', 'outside');
+	});
+}
+
 for (const width of [390, 1440]) {
 	for (const locale of ['en', 'fr']) {
 		const fr = locale === 'fr';

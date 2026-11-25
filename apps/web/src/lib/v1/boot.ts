@@ -9,7 +9,7 @@ import { getManifest } from '#lib/v1/repositories/manifest.ts';
 import { installBrowserAdapterManifest } from '#lib/v1/adapter/browserManifest.ts';
 import { resolveProvider } from './providers';
 import { v1Provider } from './config';
-import type { PublicCity } from './schemas/providers';
+import type { CityCatalog, PublicCity } from './schemas/providers';
 import type { ApproximateLocation } from './requestLocation';
 
 export interface V1Context {
@@ -45,7 +45,7 @@ export async function bootV1(lang: Locale = DEFAULT_LOCALE, ctx?: AdapterCtx): P
 export async function bootProvider(
 	url: URL,
 	lang: Locale,
-	loadCatalog: () => Promise<{ default_provider: string; providers: PublicCity[] }>,
+	loadCatalog: () => Promise<CityCatalog>,
 	ctx?: AdapterCtx,
 	location?: ApproximateLocation | null,
 	loadSnapshots = true,
@@ -55,6 +55,7 @@ export async function bootProvider(
 	let providerId = requested[0] ?? defaultProviderId;
 	let provider: PublicCity | null = null;
 	let providers: PublicCity[] = [];
+	let cleaningVersion: number | undefined;
 	let redirectHref: string | null = null;
 	let discoveryError = false;
 	try {
@@ -64,6 +65,7 @@ export async function bootProvider(
 		provider = selected.provider;
 		providerId = provider.id;
 		providers = catalog.providers;
+		cleaningVersion = catalog.cleaning_version;
 		if (selected.url.href !== url.href) redirectHref = selected.url.pathname + selected.url.search;
 	} catch {
 		discoveryError = true;
@@ -75,7 +77,16 @@ export async function bootProvider(
 		v1 = await bootV1(lang, { ...ctx, providerId }).catch(() => null);
 		if (v1 && provider) v1 = { ...v1, provider };
 	}
-	return { providerId, defaultProviderId, provider, providers, v1, discoveryError, redirectHref };
+	return {
+		providerId,
+		defaultProviderId,
+		provider,
+		providers,
+		...(cleaningVersion === undefined ? {} : { cleaningVersion }),
+		v1,
+		discoveryError,
+		redirectHref,
+	};
 }
 
 export function resolveLabel(code: string, labels: Record<string, string>): string {

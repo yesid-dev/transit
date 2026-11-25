@@ -74,6 +74,7 @@ export const CityCatalogSchema = z
 	.object({
 		default_provider: providerId,
 		providers: z.array(PublicCitySchema).min(1),
+		cleaning_version: z.int().nonnegative().optional(),
 	})
 	.refine(({ default_provider, providers }) => {
 		const ids = new Set(providers.map(({ id }) => id));
@@ -81,3 +82,4 @@ export const CityCatalogSchema = z
 	}, 'Catalog providers must be unique and include the default');
 
 export type PublicProviderCatalog = z.infer<typeof PublicProviderCatalogSchema>;
+export type CityCatalog = z.infer<typeof CityCatalogSchema>;

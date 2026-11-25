@@ -15,7 +15,7 @@
 		open = $bindable(true),
 	}: {
 		title: string;
-		disclosure?: { id: string; description?: string; nested?: boolean };
+		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
 		stamp?: StampProps;
 		footer?: Snippet;
 		children: Snippet;
@@ -56,7 +56,12 @@
 		class:expandable={expandable && !disclosure}
 	>
 		{#if disclosure}
-			<details id={disclosure.id} class="record-disclosure" data-record-disclosure>
+			<details
+				id={disclosure.id}
+				open={disclosure.initiallyOpen}
+				class="record-disclosure"
+				data-record-disclosure
+			>
 				<summary>
 					<span {id} class="disclosure-title">
 						<span class="disclosure-arrow" aria-hidden="true">▸</span>{title}

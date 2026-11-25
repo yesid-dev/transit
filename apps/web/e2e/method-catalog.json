@@ -1,13 +1,50 @@
 [
 	{
+		"id": "on_time",
+		"family": "punctuality",
+		"family_text": {
+			"en": "Punctuality",
+			"fr": "Ponctualité"
+		},
+		"minimum_sample": 30,
+		"method_version": "punctuality-v3",
+		"since": "2026-11-22",
+		"csv_columns": {
+			"en": [],
+			"fr": []
+		},
+		"text": {
+			"en": {
+				"definition": "Share of stops from 60 seconds early to 300 seconds late, including both limits.",
+				"unit": "Share",
+				"counts": "Each scheduled stop of each trip counts once.",
+				"exclusions": "Added trips and cancelled trips are excluded.",
+				"limits": "The answer covers measured days only."
+			},
+			"fr": {
+				"definition": "Part des arrêts entre 60 secondes d’avance et 300 secondes de retard, limites incluses.",
+				"unit": "Part",
+				"counts": "Chaque arrêt prévu de chaque trajet compte une fois.",
+				"exclusions": "Les trajets ajoutés et les trajets annulés sont exclus.",
+				"limits": "Le résultat porte seulement sur les jours mesurés."
+			}
+		}
+	},
+	{
 		"id": "fixture_delay",
 		"family": "punctuality",
-		"family_text": { "en": "Punctuality", "fr": "Ponctualité" },
+		"family_text": {
+			"en": "Punctuality",
+			"fr": "Ponctualité"
+		},
 		"minimum_sample": 32,
 		"ranking_minimum_sample": 45,
 		"method_version": "fixture-v2",
 		"since": "2026-11-10",
-		"csv_columns": { "en": ["Measure", "Value"], "fr": ["Mesure", "Valeur"] },
+		"csv_columns": {
+			"en": ["Measure", "Value"],
+			"fr": ["Mesure", "Valeur"]
+		},
 		"text": {
 			"en": {
 				"definition": "Typical delay at recorded stops.",

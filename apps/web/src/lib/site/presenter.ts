@@ -196,16 +196,15 @@ export function methodEvidence(
 	{
 		method_version,
 		cleaning_versions,
-	}: { method_version: string; cleaning_versions: readonly number[] },
+	}: { method_version: string; cleaning_versions?: readonly number[] },
 	locale: Locale,
 	compact = false,
 ): string {
 	const copy = presenterCopy[locale];
 	const method = copy.method(versionNumber(method_version) ?? copy.unknownVersion);
-	const cleaning = copy.cleaning(
-		cleaning_versions.map(versionNumber).join(', ') || copy.unknownVersion,
-	);
-	const text = `${method}, ${cleaning}`;
+	const text = cleaning_versions
+		? `${method}, ${copy.cleaning(cleaning_versions.map(versionNumber).join(', ') || copy.unknownVersion)}`
+		: method;
 	return compact ? text[0].toLocaleLowerCase(locale) + text.slice(1) : `${text}.`;
 }
 
