@@ -4,6 +4,7 @@ import { serviceClockParts } from '#lib/utils/serviceDate.ts';
 import {
 	clockFace,
 	formatClock,
+	formatRelativeSeconds,
 	formatDateKey,
 	formatUtc,
 	providerLocalDateKey,
@@ -11,6 +12,7 @@ import {
 import { presenterCopy } from './presenter.copy.ts';
 import { formatTransitName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
+import { stampCopy, type LiveState } from '#lib/v1/stamp.copy.ts';
 
 export function minuteReading(
 	minutes: number | null | undefined,
@@ -141,13 +143,15 @@ export function methodEvidence(
 		cleaning_versions,
 	}: { method_version: string; cleaning_versions: readonly number[] },
 	locale: Locale,
+	compact = false,
 ): string {
 	const copy = presenterCopy[locale];
 	const method = copy.method(versionNumber(method_version) ?? copy.unknownVersion);
 	const cleaning = copy.cleaning(
 		cleaning_versions.map(versionNumber).join(', ') || copy.unknownVersion,
 	);
-	return `${method}, ${cleaning}.`;
+	const text = `${method}, ${cleaning}`;
+	return compact ? text[0].toLocaleLowerCase(locale) + text.slice(1) : `${text}.`;
 }
 
 export function lineName(
@@ -177,4 +181,54 @@ export function tripsInHours(trips: number, hours: number, locale: Locale): stri
 /** Registry descriptions can document raw sub-minute inputs and export columns. */
 export function registryUnitText(text: string, locale: Locale) {
 	return presenterCopy[locale].registryUnitText(text);
+}
+
+export function recordStamp(period: { from: string; to: string }, locale: Locale) {
+	return `${locale === 'fr' ? 'Bilan' : 'Record'} · ${dateRange(period, locale)}`;
+}
+
+export function countedUnit(
+	value: number,
+	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle',
+	locale: Locale,
+) {
+	const labels = {
+		line: { en: ['line', 'lines'], fr: ['ligne', 'lignes'] },
+		stop: { en: ['stop', 'stops'], fr: ['arrêt', 'arrêts'] },
+		event: { en: ['stop event', 'stop events'], fr: ['passage à un arrêt', 'passages aux arrêts'] },
+		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
+		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
+		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
+	};
+	const plural = !singularCount(value, locale);
+	return `${intl.number(locale).format(value)} ${labels[unit][locale][Number(plural)]}`;
+}
+
+export function recordRatio(count: number, total: string, locale: Locale) {
+	return `${intl.number(locale).format(count)} ${recordDenominator(total, locale)}`;
+}
+
+export function recordDenominator(total: string, locale: Locale) {
+	return `${locale === 'fr' ? 'sur' : 'of'} ${total}`;
+}
+
+export function singularCount(value: number, locale: Locale) {
+	return locale === 'fr' ? value < 2 : value === 1;
+}
+
+export function liveStampAge(seconds: number | null, locale: Locale, state: LiveState = 'current') {
+	if (seconds == null && state === 'behind') {
+		const unknown = stampCopy[locale].live('data', 'unknown', null);
+		return `${unknown} · ${locale === 'fr' ? 'pas à jour' : 'not current'}`;
+	}
+	return stampCopy[locale].live(
+		'data',
+		state,
+		seconds == null ? null : formatRelativeSeconds(seconds, locale),
+	);
+}
+
+export function sampleWithMinimum(sample: string, minimum: number, locale: Locale) {
+	const number = intl.number(locale).format(minimum);
+	return `${sample} (${locale === 'fr' ? 'minimum de' : 'minimum'} ${number})`;
 }

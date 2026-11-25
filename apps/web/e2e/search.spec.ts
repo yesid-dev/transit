@@ -33,10 +33,10 @@ test.beforeEach(async ({ page }) => {
 for (const locale of PUBLISHED_LOCALES) {
 	const nav = navPillCopy[locale];
 	for (const provider of ['stm', 'octranspo']) {
-		test(`${locale}/${provider}: home invitation opens the existing search page`, async ({
+		test(`${locale}/${provider}: Live home invitation opens the existing search page`, async ({
 			page,
 		}) => {
-			await page.goto(localizeHref(`/?provider=${provider}`, locale));
+			await page.goto(localizeHref(`/?provider=${provider}&frameMode=live`, locale));
 			await page
 				.locator('[data-slot="home-search"]')
 				.getByRole('link', {

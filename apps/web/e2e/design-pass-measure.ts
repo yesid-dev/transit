@@ -7,6 +7,7 @@ import {
 	textDefects,
 	waitForFrameClearance,
 } from './layout-helpers';
+import { focusOutOfOrder, type FocusPosition } from './design-pass-order';
 
 export const widths = [320, 390, 768, 1024, 1440] as const;
 export const budgetWidths = [390, 1440] as const;
@@ -132,13 +133,23 @@ export async function contentOrder(page: Page) {
 	}, answer);
 }
 
-async function keyboardMetrics(page: Page) {
+async function keyboardMetrics(page: Page, countShadowRings: boolean) {
 	await page.evaluate(() => window.scrollTo(0, 0));
-	await page.evaluate(() => {
-		Object.assign(window, {
-			designPassVisited: new WeakSet<Element>(),
-		});
-	});
+	await page.evaluate(
+		({ controls, countShadowRings }) => {
+			const shadows = new WeakMap<Element, string>();
+			if (countShadowRings) {
+				for (const control of document.querySelectorAll(controls)) {
+					shadows.set(control, getComputedStyle(control).boxShadow);
+				}
+			}
+			Object.assign(window, {
+				designPassVisited: new WeakSet<Element>(),
+				designPassShadows: shadows,
+			});
+		},
+		{ controls, countShadowRings },
+	);
 	const sequence: string[] = [];
 	const accessibleStops: string[] = [];
 	let withoutRing = 0;
@@ -146,7 +157,7 @@ async function keyboardMetrics(page: Page) {
 	let beforeFigure = 0;
 	let cdp: CDPSession | undefined;
 	const dateStops = new Set<string>();
-	let prior: { left: number; top: number; bottom: number; region: string } | undefined;
+	let prior: FocusPosition | undefined;
 	// Bound the walk by DOM candidates, including controls revealed on focus, such as the skip link.
 	const candidates =
 		(await page.locator(controls).count()) +
@@ -185,6 +196,11 @@ async function keyboardMetrics(page: Page) {
 						node.checkVisibility(),
 					);
 					const main = el.closest('main');
+					const groupSelector = '[data-slot="record-card"], [data-slot="record-ranking"]';
+					const groups = [...(main?.querySelectorAll(groupSelector) ?? [])];
+					const group = el.closest(groupSelector);
+					const parent = group?.parentElement?.closest(groupSelector);
+					const bounds = group?.getBoundingClientRect();
 					const { left, top, bottom } = el.getBoundingClientRect();
 					return {
 						repeated,
@@ -197,6 +213,10 @@ async function keyboardMetrics(page: Page) {
 							!first.contains(el) &&
 							!!(el.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING),
 						region: el.closest('[data-slot="frame-nav"]') ? 'frame' : main ? 'main' : 'other',
+						group: group ? groups.indexOf(group) : -1,
+						groupParent: parent ? groups.indexOf(parent) : undefined,
+						groupLeft: bounds?.left ?? left,
+						groupTop: (bounds?.top ?? top) + window.scrollY,
 						left,
 						top: top + window.scrollY,
 						bottom: bottom + window.scrollY,
@@ -238,15 +258,32 @@ async function keyboardMetrics(page: Page) {
 			}
 			accessibleStops.push(accessibleStop);
 			const ring = await page.evaluate(focusRing, undefined);
-			if (!ring.visible || ring.outline === 'none' || ring.width < 1) withoutRing++;
+			const hasOutline = ring.outline !== 'none' && ring.width >= 1;
+			const hasShadow =
+				ring.visible &&
+				!hasOutline &&
+				countShadowRings &&
+				(await page.evaluate(async () => {
+					const focused = document.activeElement!;
+					await Promise.allSettled(
+						focused
+							.getAnimations()
+							.filter(
+								(animation) =>
+									animation instanceof CSSTransition &&
+									animation.transitionProperty === 'box-shadow',
+							)
+							.map((animation) => animation.finished),
+					);
+					const resting = Reflect.get(window, 'designPassShadows') as WeakMap<Element, string>;
+					const current = getComputedStyle(focused).boxShadow;
+					// A centered, unblurred spread is a ring. Require a change from the resting shadow.
+					const spread = /\b0px 0px 0px ([\d.]+)px\b/u.exec(current)?.[1];
+					return resting.has(focused) && current !== resting.get(focused) && Number(spread) >= 1;
+				}));
+			if (!ring.visible || (!hasOutline && !hasShadow)) withoutRing++;
 			if (stop.beforeFigure) beforeFigure++;
-			if (
-				prior?.region === stop.region &&
-				stop.region !== 'other' &&
-				(stop.bottom <= prior.top ||
-					(Math.abs(stop.top - prior.top) <= 2 && stop.left < prior.left - 2))
-			)
-				outOfOrder++;
+			if (prior && focusOutOfOrder(prior, stop)) outOfOrder++;
 			prior = stop;
 		}
 	} finally {
@@ -266,7 +303,7 @@ async function keyboardMetrics(page: Page) {
 	};
 }
 
-export async function measureDesignPass(page: Page) {
+export async function measureDesignPass(page: Page, { countShadowRings = false } = {}) {
 	const content = await contentOrder(page);
 	const widthsReport = {} as Record<
 		(typeof widths)[number],
@@ -286,7 +323,7 @@ export async function measureDesignPass(page: Page) {
 		}
 		Object.assign(widthsReport, { [width]: await layoutMetrics(page) });
 		if (width === 390 || width === 1440) {
-			const { metrics, accessibleStops } = await keyboardMetrics(page);
+			const { metrics, accessibleStops } = await keyboardMetrics(page, countShadowRings);
 			keyboard[width] = metrics;
 			focusSequences[width] = accessibleStops;
 			await page.evaluate(() => {

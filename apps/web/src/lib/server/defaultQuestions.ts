@@ -37,10 +37,12 @@ export function defaultCityQuestions(
 ) {
 	const scope = { ...period, city: city.id };
 	const overview = overviewSelection(scope);
+	const [trend, trendPeriod] = overview.trend;
 	const questions = [
 		measureQuestion(...overview.punctuality),
 		measureQuestion(...overview.baseline),
 		measureQuestion(...overview.delivery),
+		periodQuestion(trendPeriod, trend.path, trend.parameters),
 		overviewRankingQuestion(...overview.lines),
 		overviewRankingQuestion(...overview.stops),
 		...Object.values(finderQuestions).flatMap((finder) =>

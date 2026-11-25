@@ -65,6 +65,10 @@ export function observedCoverage(
 			);
 }
 
+export function lowCoverageText(locale: Locale) {
+	return lowCoverageLabel[locale];
+}
+
 export function coverageText(evidence: RateEvidence, locale: Locale) {
 	const {
 		counts,

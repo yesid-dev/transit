@@ -6,13 +6,17 @@ import {
 	clockTime,
 	dateAndClock,
 	dateRange,
+	countedUnit,
 	delayReading,
 	directionLabel,
 	fileSize,
+	liveStampAge,
 	longDate,
 	methodEvidence,
 	minuteReading,
 	registryUnitText,
+	recordRatio,
+	recordStamp,
 	scheduledClock,
 	serviceTime,
 	tripsInHours,
@@ -26,6 +30,33 @@ it.each([
 	['fr', '13 octobre 2026'],
 ] as const)('writes the full day-first date in %s', (locale, expected) => {
 	expect(longDate('2026-10-13', locale)).toBe(expected);
+});
+
+it.each([
+	[
+		'en',
+		'Record · 16 to 22 Nov 2026',
+		'1 stop',
+		'1,234 of 2,000 stop events',
+		'Live · updated 20 s ago',
+	],
+	[
+		'fr',
+		'Bilan · du 16 au 22 nov. 2026',
+		'1 arrêt',
+		'1 234 sur 2 000 passages aux arrêts',
+		'En direct · mis à jour il y a 20 s',
+	],
+] as const)('presents record and live readings in %s', (locale, stamp, stop, counts, age) => {
+	expect(recordStamp({ from: '2026-11-16', to: '2026-11-22' }, locale)).toBe(stamp);
+	expect(countedUnit(1, 'stop', locale)).toBe(stop);
+	expect(recordRatio(1234, countedUnit(2000, 'event', locale), locale).replace(/\s/g, ' ')).toBe(
+		counts,
+	);
+	expect(liveStampAge(20, locale)).toBe(age);
+	expect(liveStampAge(75, locale)).toBe(
+		locale === 'en' ? 'Live · updated 1 minute ago' : 'En direct · mis à jour il y a 1 minute',
+	);
 });
 
 it.each([

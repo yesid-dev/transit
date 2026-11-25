@@ -75,6 +75,7 @@ export const designPassCases = [
 	...Object.keys(screens).map((screen) => [screen as Screen, 'stm', 'en'] as const),
 	...ottawa.map((screen) => [screen, 'octranspo', 'en'] as const),
 	...french.map((screen) => [screen, 'stm', 'fr'] as const),
+	['overview', 'octranspo', 'fr'] as const,
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';

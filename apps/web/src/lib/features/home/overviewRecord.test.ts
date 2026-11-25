@@ -2,7 +2,13 @@ import { dateRange } from '#lib/site/presenter.ts';
 import { describe, expect, it } from 'vitest';
 import type { EngineResult, MeasureAnswer } from '#lib/server/engine.ts';
 import { delivered, measure, period, stateText } from './overviewRecord.fixture.ts';
-import { citationText, comparisonText, measureText, previousPeriod } from './overviewRecord.ts';
+import {
+	citationText,
+	comparisonText,
+	measureText,
+	overviewValue,
+	previousPeriod,
+} from './overviewRecord.ts';
 
 const answer = (value: MeasureAnswer): EngineResult<MeasureAnswer> => ({
 	kind: 'answer',
@@ -42,18 +48,21 @@ describe('Overview record text', () => {
 			from: '2026-12-28',
 			to: '2026-12-28',
 		});
-		expect(comparisonText(answer(measure()), answer(baseline), 'en')).toBe(
-			'Change of +1.2 percentage points.',
-		);
-		expect(comparisonText(answer(measure()), answer(baseline), 'fr')).toBe(
-			'Écart de +1,2 point de pourcentage.',
+		expect(comparisonText(answer(measure()), answer(baseline), 'en')).toBe('1.2 points higher');
+		expect(comparisonText(answer(measure()), answer(baseline), 'fr')).toBe('1,2 point de plus');
+		const almostSame = {
+			...current,
+			evidence: { ...current.evidence, counts: { ...current.evidence.counts, on_time: 412400 } },
+		};
+		expect(comparisonText(answer(current), answer(almostSame), 'en')).toBe(
+			'About the same (within normal variation)',
 		);
 		expect(comparisonText(answer(measure()), answer(measure('not_measured')), 'fr')).toBeNull();
 		expect(comparisonText(answer(current), answer(current), 'en')).toBe(
-			'About the same (within normal variation) [0.0 percentage points]',
+			'About the same (within normal variation)',
 		);
 		expect(comparisonText(answer(current), answer(current), 'fr')).toBe(
-			'Environ pareil (variation normale) [0,0 point de pourcentage]',
+			'Environ pareil (variation normale)',
 		);
 		expect(
 			comparisonText(
@@ -71,6 +80,9 @@ describe('Overview record text', () => {
 	});
 
 	it.each(gaps)('uses the engine’s %s words without substituting a zero', (state) => {
+		expect(
+			overviewValue(answer({ ...measure(state), value: { on_time: 0 } }), 'on_time'),
+		).toBeNull();
 		for (const locale of ['en', 'fr'] as const) {
 			expect(measureText(answer(measure(state)), period, locale)).toBe(stateText[state][locale]);
 		}
@@ -86,6 +98,7 @@ describe('Overview record text', () => {
 		const value = measure();
 		value.value.on_time = 0;
 		value.evidence.counts.on_time = 0;
+		expect(overviewValue(answer(value), 'on_time')).toBe(0);
 		expect(measureText(answer(value), period, 'en')).toContain(
 			'0% of observed stop events were on time (0 of 507,800) · 60% of 846,333 scheduled stops observed.',
 		);

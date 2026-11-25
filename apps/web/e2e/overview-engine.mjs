@@ -1,11 +1,24 @@
 // Contract fixtures for the Worker-side engine fetches. Fixed dates keep the page
 // independent of the browser clock and distinguish its previous period.
-export function overviewEngine(url) {
+export const overviewNamedLines =
+	process.env.TRANSIT_E2E_OVERVIEW_NAMED_LINES === '1'
+		? [
+				{ id: '24', short: '24', long: 'Sherbrooke', type: 3 },
+				{ id: '67', short: '67', long: 'Saint-Michel', type: 3 },
+				{ id: '165', short: '165', long: 'Côte-des-Neiges', type: 3 },
+			]
+		: [];
+
+export function overviewEngine(url, scope) {
 	const from = url.searchParams.get('from');
 	const to = url.searchParams.get('to');
 	const city = url.searchParams.get('city');
 	const measure = url.searchParams.get('measure');
 	const kind = url.searchParams.get('kind');
+	const window = `${from}/${to}`;
+	if (window === '2026-11-12/2026-11-18' || window === '2026-11-05/2026-11-11')
+		return { status: 503, body: {} };
+	const hold = scope === 'overview-stream' && window === '2026-11-10/2026-11-16' ? scope : false;
 	const measured = ['2026-11-01', '2026-11-08', '2026-11-09'].includes(from);
 	const days = measured
 		? Array.from({ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 }, (_, i) =>
@@ -25,10 +38,16 @@ export function overviewEngine(url) {
 	};
 	const coverage_note = null;
 
+	if (url.searchParams.get('format') === 'csv') {
+		return { csv: `measure,from,to\n${measure},${from},${to}\n` };
+	}
+
 	if (url.pathname === '/ranking') {
 		const rows = measured
 			? [0.4, 0.45, 0.5].map((value, index) => ({
-					id: `${kind === 'line' ? 'L' : 'S'}${index + 1}`,
+					id:
+						(city === 'stm' && kind === 'line' && overviewNamedLines[index]?.id) ||
+						`${kind === 'line' ? 'L' : 'S'}${index + 1}`,
 					rank: index + 1,
 					value,
 					sample: 100,
@@ -39,7 +58,11 @@ export function overviewEngine(url) {
 				}))
 			: [];
 		return {
-			hold: kind === 'stop' && from === '2026-11-09' ? 'overview-stop-ranking' : false,
+			hold:
+				hold ||
+				(scope === 'overview-stop-ranking' && kind === 'stop' && from === '2026-11-09'
+					? scope
+					: false),
 			body: {
 				measure,
 				kind,
@@ -66,8 +89,24 @@ export function overviewEngine(url) {
 				vehicle_stopped: 200000,
 				trip_update_passed: 307800,
 			};
+	if (url.searchParams.get('group') === 'day') {
+		return {
+			hold,
+			body: {
+				evidence,
+				coverage_note,
+				cells: days.map((day) => ({
+					key: { day },
+					state: 'measured',
+					state_text: { en: 'Measured', fr: 'Mesuré' },
+					value: { on_time: onTime / 507800 },
+					evidence: { counts, days_included: [day] },
+				})),
+			},
+		};
+	}
 	return {
-		hold: false,
+		hold,
 		body: {
 			measure,
 			value:

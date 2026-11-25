@@ -95,6 +95,9 @@ export const load: LayoutServerLoad = async (event) => {
 		needsSchedule && selection.provider
 			? await getScheduleEdition(selection.providerId, visitorIp)
 			: null;
+	// Overview combines schedule totals with a small set of ranked stop names.
+	// Keep the untrimmed schedule on the server for its page loader.
+	if (route === localRoute && !loadSnapshots) locals.overviewSchedule = schedule;
 	const v1 =
 		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;
 	const provider = selection.provider;

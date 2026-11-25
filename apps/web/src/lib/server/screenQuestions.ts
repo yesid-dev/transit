@@ -5,6 +5,11 @@ import type { RankingSelection } from '#lib/features/rankings/rankingSelection.t
 import type { DateWindow } from '#lib/v1/history/window.ts';
 import type { EnginePeriod, RecordQuery } from './engineQuestion.ts';
 
+export const overviewTrendQuery = {
+	path: '/measure',
+	parameters: { measure: 'on_time', group: 'day' },
+} satisfies RecordQuery;
+
 export function overviewSelection(period: EnginePeriod) {
 	const previous = previousPeriod(period);
 	return {
@@ -12,6 +17,7 @@ export function overviewSelection(period: EnginePeriod) {
 		punctuality: ['punctuality', period],
 		baseline: ['on_time', { ...period, ...previous }],
 		delivery: ['trips_run', period],
+		trend: [overviewTrendQuery, period],
 		lines: ['line', period],
 		stops: ['stop', period],
 	} as const;

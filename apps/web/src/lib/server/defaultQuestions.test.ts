@@ -54,7 +54,7 @@ it.each([
 		lang: 'en',
 	});
 	const visit = <T>(load: (event: T) => unknown, path: string) =>
-		load({ url: new URL(path, origin), request, parent } as T);
+		load({ url: new URL(path, origin), request, parent, locals: { overviewSchedule: null } } as T);
 	await Promise.all([
 		visit(overview, '/'),
 		visit(lines, '/lines'),

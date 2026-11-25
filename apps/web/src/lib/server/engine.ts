@@ -63,12 +63,16 @@ const rateCoverage = z.object({
 });
 const rankingFloors = z.object({
 	line: z.record(z.string(), count).optional(),
+	stop: z.record(z.string(), count).optional(),
 	departure: z.object({ observed_service_dates: count, classified: count }).optional(),
 });
 const measureAnswer = state.extend({
 	measure: z.enum(['on_time', 'trips_run', 'punctuality']),
 	value: z.record(z.string(), z.number().nullable()),
 	coverage_note: bilingual.nullable(),
+	info: z
+		.array(z.object({ id: z.string().optional(), minimum_sample: count.optional() }))
+		.optional(),
 	evidence: evidence.extend({ ...rateCoverage.shape, counts, excluded: counts }),
 });
 const rankingEnvelope = state.partial().extend({
@@ -78,6 +82,7 @@ const rankingEnvelope = state.partial().extend({
 		.array(
 			z.object({
 				minimum_sample: count,
+				ranking_minimum_sample: count.optional(),
 				ranking_floors: rankingFloors.optional(),
 			}),
 		)
@@ -99,7 +104,14 @@ const rankingAnswer = rankingEnvelope.extend({
 			range: z.object({ lower: share, upper: share, method: z.string() }),
 		}),
 	),
-	excluded: z.array(z.object({ reason: engineState, reason_text: bilingual })),
+	excluded: z.array(
+		z.object({
+			reason: engineState,
+			reason_text: bilingual,
+			sample: count.nullable().optional(),
+			counts: counts.optional(),
+		}),
+	),
 });
 
 export type MeasureAnswer = z.infer<typeof measureAnswer>;
@@ -139,7 +151,13 @@ function engineFetch(
 	const headers = new Headers();
 	if (proxy && visitorIp) headers.set('x-transit-visitor-ip', visitorIp);
 	// The loopback test binding lets a fixture opt in to holding its own request.
-	if (!proxy && fixtureScope && question.parameters.measure === 'alert_counts')
+	if (
+		!proxy &&
+		fixtureScope &&
+		(question.parameters.measure === 'alert_counts' ||
+			fixtureScope === 'overview-stream' ||
+			fixtureScope === 'overview-stop-ranking')
+	)
 		headers.set('x-transit-fixture-scope', fixtureScope);
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
 	return proxy ? proxy.fetch(request) : fetch(request);
@@ -201,11 +219,21 @@ function periodQuery<T>(
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
-	return query(measureQuestion(measure, period), measureAnswer, period.visitorIp);
+	return query(
+		measureQuestion(measure, period),
+		measureAnswer,
+		period.visitorIp,
+		period.fixtureScope,
+	);
 }
 
 export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
-	return query(overviewRankingQuestion(kind, period), rankingAnswer, period.visitorIp);
+	return query(
+		overviewRankingQuestion(kind, period),
+		rankingAnswer,
+		period.visitorIp,
+		period.fixtureScope,
+	);
 }
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
