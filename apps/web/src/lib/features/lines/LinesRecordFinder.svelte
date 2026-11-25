@@ -1,6 +1,5 @@
 <script lang="ts">
 	import type { DataTableColumn } from '@yesid/ui/table';
-	import { DashboardGrid } from '@yesid/ui/layout';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { routeFor } from '#lib/nav/index.ts';
@@ -517,72 +516,70 @@
 				</RecordCard>
 			</div>
 
-			<DashboardGrid gutter={false} minTile="22rem">
-				<div id="lines-without-live-data">
-					<RecordCard title={noLiveTitle} interactive={scheduleOnly.length > 0}>
-						{#if scheduleOnly.length}
-							<p class="mb-2">
-								<StateMark state="no_live_data" {locale} hiddenLabel />
-								{operator
-									? t(
-											`${operator} publishes no real-time feed for these lines. These lines are listed apart and never ranked.`,
-											`${operator} ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.`,
-										)
-									: t(
-											'The agency publishes no real-time feed for these lines. These lines are listed apart and never ranked.',
-											'L’agence ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.',
-										)}
-							</p>
-							<RecordDataTable
-								{locale}
-								title={noLiveTitle}
-								rowHeader={lineHeader}
-								rows={scheduleOnly.map((row) => ({
-									...row,
-									detail:
-										row.routeType !== null && routeModeKey(row.routeType)
-											? t('Schedule only.', 'Horaire seulement.')
-											: undefined,
-								}))}
-							/>
-						{:else if timingAnswer}
-							<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
-						{:else if timingFailure}
-							<p>{recordConnection.unreachable[locale]}</p>
-						{/if}
-					</RecordCard>
-				</div>
-
-				<RecordCard
-					title={excludedTitle}
-					{stamp}
-					interactive={!timingFailure && !!timingAnswer && excluded.length > 0}
-					evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
-						? excludedEvidence
-						: undefined}
-				>
-					{#if timingFailure}
-						<p>{recordConnection.unreachable[locale]}</p>
+			<div id="lines-without-live-data">
+				<RecordCard title={noLiveTitle} interactive={scheduleOnly.length > 0}>
+					{#if scheduleOnly.length}
+						<p class="mb-2">
+							<StateMark state="no_live_data" {locale} hiddenLabel />
+							{operator
+								? t(
+										`${operator} publishes no real-time feed for these lines. These lines are listed apart and never ranked.`,
+										`${operator} ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.`,
+									)
+								: t(
+										'The agency publishes no real-time feed for these lines. These lines are listed apart and never ranked.',
+										'L’agence ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.',
+									)}
+						</p>
+						<RecordDataTable
+							{locale}
+							title={noLiveTitle}
+							rowHeader={lineHeader}
+							rows={scheduleOnly.map((row) => ({
+								...row,
+								detail:
+									row.routeType !== null && routeModeKey(row.routeType)
+										? t('Schedule only.', 'Horaire seulement.')
+										: undefined,
+							}))}
+						/>
 					{:else if timingAnswer}
-						{#if excluded.length}
-							<RecordDataTable
-								{locale}
-								title={excludedTitle}
-								rowHeader={lineHeader}
-								rows={excluded}
-								columns={stateColumns}
-							/>
-						{:else}
-							<p>
-								{t(
-									'No lines were left out for these dates.',
-									'Aucune ligne n’a été écartée pour ces dates.',
-								)}
-							</p>
-						{/if}
+						<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
+					{:else if timingFailure}
+						<p>{recordConnection.unreachable[locale]}</p>
 					{/if}
 				</RecordCard>
-			</DashboardGrid>
+			</div>
+
+			<RecordCard
+				title={excludedTitle}
+				{stamp}
+				interactive={!timingFailure && !!timingAnswer && excluded.length > 0}
+				evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
+					? excludedEvidence
+					: undefined}
+			>
+				{#if timingFailure}
+					<p>{recordConnection.unreachable[locale]}</p>
+				{:else if timingAnswer}
+					{#if excluded.length}
+						<RecordDataTable
+							{locale}
+							title={excludedTitle}
+							rowHeader={lineHeader}
+							rows={excluded}
+							columns={stateColumns}
+						/>
+					{:else}
+						<p>
+							{t(
+								'No lines were left out for these dates.',
+								'Aucune ligne n’a été écartée pour ces dates.',
+							)}
+						</p>
+					{/if}
+				{/if}
+			</RecordCard>
 		</RecordGroup>
 
 		<RecordGroup class={timingPending ? 'invisible' : undefined} inert={timingPending}>
