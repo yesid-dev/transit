@@ -8,7 +8,7 @@
 </script>
 
 <a class="line-link min-h-11 min-w-11 text-primary underline" class:wrap {href}>
-	<RoutePlate code={name.number ?? id} size="md" />
+	<RoutePlate code={name.number ?? id} size="md" class={wrap ? 'min-w-0!' : undefined} />
 	{#if name.name}<span>{name.name}</span>{/if}
 </a>
 
@@ -21,8 +21,7 @@
 		overflow-wrap: normal;
 	}
 	.line-link.wrap {
-		display: inline-flex;
-		flex-wrap: wrap;
-		gap: 0.25em 0.75em;
+		grid-template-columns: max-content minmax(0, 1fr);
+		gap: 0.5em;
 	}
 </style>

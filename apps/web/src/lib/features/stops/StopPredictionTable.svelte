@@ -30,11 +30,27 @@
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	let container = $state<HTMLDivElement>();
+	let needsScroll = $state(false);
+	$effect(() => {
+		const element = container;
+		if (!element) return;
+		const root = element.ownerDocument.documentElement;
+		const measure = () => {
+			const rem = Number.parseFloat(getComputedStyle(root).fontSize);
+			// Below this width in text units, the two lead cells need a scrollable table.
+			needsScroll = element.clientWidth < 12 * rem;
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		return () => observer.disconnect();
+	});
 	const columns = $derived<DataTableColumn<StopPrediction>[]>([
-		{ key: 'line', header: t('Line', 'Ligne'), rowHeader: true, cell: line },
+		{ key: 'line', header: t('Line', 'Ligne'), width: '30%', rowHeader: true, cell: line },
 		{ key: 'toward', header: t('Toward', 'Vers'), cell: toward },
-		{ key: 'scheduled', header: t('Scheduled', 'Horaire'), numeric: true, cell: scheduled },
-		{ key: 'expected', header: t('Expected', 'Prévu'), numeric: true, cell: expected },
+		{ key: 'scheduled', header: t('Scheduled', 'Horaire'), cell: scheduled },
+		{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected },
 		{ key: 'status', header: t('Status', 'État'), cell: status },
 	]);
 </script>
@@ -59,9 +75,11 @@
 {/snippet}
 
 {#snippet scheduled(row: StopPrediction)}
-	{row.scheduledAt === null
-		? t('Unavailable', 'Indisponible')
-		: clockTime(new Date(row.scheduledAt), locale, timeZone)}
+	<span class="tabular-nums">
+		{row.scheduledAt === null
+			? t('Unavailable', 'Indisponible')
+			: clockTime(new Date(row.scheduledAt), locale, timeZone)}
+	</span>
 {/snippet}
 
 {#snippet expected(row: StopPrediction)}
@@ -71,34 +89,42 @@
 			? departureHref(url, locale, city, row.line, row.direction, row.start, 'live', row.trip)
 			: null}
 	{#if href}
-		<a class="inline-flex min-h-11 min-w-11 items-center justify-end text-primary underline" {href}
+		<a class="inline-flex min-h-11 min-w-11 items-center text-primary underline tabular-nums" {href}
 			>{time}</a
 		>
-	{:else}{time}{/if}
+	{:else}<span class="tabular-nums">{time}</span>{/if}
 {/snippet}
 
 {#snippet status(row: StopPrediction)}
 	{@const band = classifyDelay(row.delay)}
-	<StatusMark status={band} label={liveDelayLabels(locale)[band]} />
-	{#if row.delay !== null}
-		<span class="block text-small text-muted-foreground">{delayReading(row.delay, locale)}</span>
-	{/if}
+	<StatusMark
+		class="font-sans"
+		status={band}
+		label={liveDelayLabels(locale)[band]}
+		detail={row.delay === null
+			? undefined
+			: delayReading(row.delay, locale).toLocaleLowerCase(locale)}
+	/>
 {/snippet}
 
-<DataTable
-	{caption}
-	{columns}
-	{rows}
-	key={(row) => row.key}
-	responsive={{ mode: 'rows', primary: 'expected', value: 'line' }}
-	pageSize={rows.length > 20 ? 20 : undefined}
-	pageLabels={{
-		showing: (shown, total) =>
-			t(
-				`Showing ${tally(shown, locale)} of ${tally(total, locale)}`,
-				`${tally(shown, locale)} sur ${tally(total, locale)}`,
-			),
-		more: (count) =>
-			t(`Show ${tally(count, locale)} more`, `Afficher ${tally(count, locale)} de plus`),
-	}}
-/>
+<div class="min-w-0" bind:this={container}>
+	<DataTable
+		{caption}
+		{columns}
+		{rows}
+		key={(row) => row.key}
+		responsive={needsScroll
+			? { mode: 'scroll', minWidth: '36rem' }
+			: { mode: 'rows', primary: 'line', value: 'expected' }}
+		pageSize={rows.length > 20 ? 20 : undefined}
+		pageLabels={{
+			showing: (shown, total) =>
+				t(
+					`Showing ${tally(shown, locale)} of ${tally(total, locale)}`,
+					`${tally(shown, locale)} sur ${tally(total, locale)}`,
+				),
+			more: (count) =>
+				t(`Show ${tally(count, locale)} more`, `Afficher ${tally(count, locale)} de plus`),
+		}}
+	/>
+</div>
