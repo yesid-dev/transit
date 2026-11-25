@@ -111,6 +111,7 @@ export function frameControlsState(url: URL, clock: FrameClock) {
 	return {
 		...parsed,
 		mode,
+		showRail: !['/roadmap', '/privacy', '/terms', '/accessibility'].includes(path),
 		recordOnly,
 		liveOnly,
 		detail: line || stop,

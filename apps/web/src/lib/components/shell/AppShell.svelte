@@ -102,11 +102,9 @@
 
 {#snippet rail(context: SurfaceRailContext)}
 	<FrameControls {context} {locale} {url} {clock} {frame} />
-	{#if context.presentation === 'mobile'}
-		{#each surfaceControls as controls (controls)}
-			{@render controls(context)}
-		{/each}
-	{/if}
+	{#each surfaceControls as controls (controls)}
+		{@render controls(context)}
+	{/each}
 {/snippet}
 
 <div
@@ -121,19 +119,21 @@
 		{footer}
 		{fullViewport}
 		{mainLabel}
-		controlsRail={{
-			rail,
-			label: copy.controls,
-			summary:
-				frame.mode === 'live'
-					? copy.live
-					: frame.period?.preset
-						? copy.presets[frame.period.preset]
-						: copy.record,
-			openAria: copy.open,
-			closeAria: copy.close,
-			mobileVisible: mobileControlsVisible,
-		}}
+		controlsRail={frame.showRail
+			? {
+					rail,
+					label: copy.controls,
+					summary:
+						frame.mode === 'live'
+							? copy.live
+							: frame.period?.preset
+								? copy.presets[frame.period.preset]
+								: copy.record,
+					openAria: copy.open,
+					closeAria: copy.close,
+					mobileVisible: mobileControlsVisible,
+				}
+			: undefined}
 	>
 		{#if frame.waitingForYesterday && (frame.usesFrameRecord || frame.map)}
 			<Surface>

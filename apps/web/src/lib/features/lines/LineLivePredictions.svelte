@@ -63,6 +63,7 @@
 {#snippet readings(report: CaptureTripReport | null)}
 	{@const predictions = nextStopPredictions(report, now)}
 	<RecordCard
+		interactive
 		title={t('Next vehicles at its main stops', 'Prochains véhicules à ses principaux arrêts')}
 		stamp={stamp(report)}
 	>
@@ -109,7 +110,7 @@
 				</li>
 			{/each}
 		</ul>
-		{#snippet footer()}
+		{#snippet evidence()}
 			<p>
 				{t(
 					'These are the agency’s predictions, not observed arrivals.',

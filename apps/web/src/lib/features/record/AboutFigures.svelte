@@ -9,7 +9,7 @@
 		compact = false,
 		compactPrint = false,
 		edge,
-		interactive,
+		interactive = false,
 	}: {
 		title: string;
 		fields: readonly {
@@ -26,7 +26,13 @@
 	} = $props();
 </script>
 
-<RecordCard {title} {compactPrint} {edge} {interactive}>
+<RecordCard
+	{title}
+	{compactPrint}
+	{edge}
+	interactive={interactive ||
+		fields.some(({ key, text, link }) => text && (link || (key === 'versions' && versionsLink)))}
+>
 	<DashboardGrid
 		gutter={false}
 		minTile="17rem"

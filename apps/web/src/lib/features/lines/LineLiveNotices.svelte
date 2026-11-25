@@ -54,7 +54,7 @@
 	);
 </script>
 
-<RecordCard title={t('Agency notices', 'Avis de l’agence')} {stamp}>
+<RecordCard interactive title={t('Agency notices', 'Avis de l’agence')} {stamp}>
 	{#if !tracked}
 		<p>
 			{t(
@@ -95,7 +95,7 @@
 			)}
 		</p>
 	{/if}
-	{#snippet footer()}
+	{#snippet links()}
 		{#if tracked}
 			<a class="inline-flex min-h-11 items-center text-primary underline" {href}
 				>{t('All alerts in effect', 'Tous les avis en vigueur')}</a

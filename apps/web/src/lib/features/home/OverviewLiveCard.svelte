@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { RoutePlate, StatusMark, type StampProps } from '@yesid/ui/brand';
-	import { BandBar } from '@yesid/ui/chart';
+	import { RoutePlate, type StampProps } from '@yesid/ui/brand';
+	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
@@ -9,6 +9,8 @@
 	import { createLiveStore, type LiveFamilyState } from '#lib/v1/live/store.svelte.ts';
 	import { countedUnit, liveStampAge, recordRatio, singularCount } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import FactList from '../record/FactList.svelte';
+	import FactRow from '../record/FactRow.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import StateMark from '../record/StateMark.svelte';
@@ -117,7 +119,7 @@
 	{:else}<StateMark state={entry.state} {locale} />{/if}
 {/snippet}
 
-<RecordCard title={t.live} {stamp}>
+<RecordCard interactive title={t.live} {stamp}>
 	<div aria-busy={reporting.kind === 'pending'} class="min-h-16">
 		{#if reporting.kind === 'pending'}
 			<Skeleton class="h-12 w-28 max-w-full" />
@@ -138,45 +140,34 @@
 	</div>
 	{#if bands.length}
 		<div class="mt-3">
-			<BandBar
+			<RecordBandBar
 				label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
 				{bands}
-				rows={false}
 			/>
-			<dl class="mt-3 grid gap-2">
-				{#each bands as { status, label, valueLabel } (status)}
-					<div
-						class="flex flex-wrap items-baseline justify-between gap-x-2 border-b border-border pb-2"
-					>
-						<dt><StatusMark {status} {label} /></dt>
-						<dd class="tabular-nums">{valueLabel}</dd>
-					</div>
-				{/each}
-			</dl>
 		</div>
 	{/if}
-	<dl class="mt-3 grid gap-2">
-		<div class="flex flex-wrap items-baseline justify-between gap-x-2">
-			<dt>{t.silent}</dt>
-			<dd aria-busy={silent.kind === 'pending'}>
-				{#if silent.kind === 'value' && pulse?.silentReading}
-					<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
-					<span class="text-muted-foreground">{pulse.silentReading.detail}</span>
-				{:else}
-					{@render readingValue(silent)}
-				{/if}
-			</dd>
-		</div>
-		<div class="flex flex-wrap items-baseline justify-between gap-x-2">
-			<dt>{t.alerts}</dt>
-			<dd aria-busy={alerts.kind === 'pending'}>
-				{@render readingValue(alerts)}
-				{#if stale(alertHealth)}<p class="text-muted-foreground">
-						{liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')}
-					</p>{/if}
-			</dd>
-		</div>
-	</dl>
+	<FactList class="mt-3">
+		<FactRow
+			label={t.silent}
+			busy={silent.kind === 'pending'}
+			detail={silent.kind === 'value' ? pulse?.silentReading?.detail : undefined}
+		>
+			{#if silent.kind === 'value' && pulse?.silentReading}
+				<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
+			{:else}
+				{@render readingValue(silent)}
+			{/if}
+		</FactRow>
+		<FactRow
+			label={t.alerts}
+			busy={alerts.kind === 'pending'}
+			detail={stale(alertHealth)
+				? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
+				: undefined}
+		>
+			{@render readingValue(alerts)}
+		</FactRow>
+	</FactList>
 	{#if lines.length}
 		<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
 		<ul class="late-lines">
@@ -193,7 +184,7 @@
 			{/each}
 		</ul>
 	{/if}
-	{#snippet footer()}
+	{#snippet links()}
 		<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/map', true)}
 			>{t.openMap}</a
 		>

@@ -208,7 +208,9 @@ for (const locale of PUBLISHED_LOCALES) {
 	});
 }
 
-test('the kit network and custom date controls update the frame route', async ({ page }) => {
+test('the kit network changes on legal pages and custom dates change a record route', async ({
+	page,
+}) => {
 	await page.goto('/privacy?provider=stm');
 	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
 	const controls = page.locator('[data-slot="site-header-network"]');
@@ -216,6 +218,10 @@ test('the kit network and custom date controls update the frame route', async ({
 	await expect(network).toHaveValue('stm');
 	await network.selectOption('octranspo');
 	await expect(page).toHaveURL((url) => url.searchParams.get('provider') === 'octranspo');
+	await expect(
+		page.locator('[data-slot="surface-rail"], [data-slot="surface-rail-mobile"]'),
+	).toHaveCount(0);
+	await page.goto('/network?provider=octranspo&frameMode=record');
 	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
 	if (page.viewportSize()!.width < 1024) {
 		await page.getByRole('button', { name: /^Controls.*Open controls/ }).click();
@@ -228,6 +234,8 @@ test('the kit network and custom date controls update the frame route', async ({
 	await dates.getByRole('button', { name: 'Show these dates' }).click();
 	await expect(page).toHaveURL(
 		(url) =>
+			url.pathname === '/network' &&
+			url.searchParams.get('provider') === 'octranspo' &&
 			url.searchParams.get('recordFrom') === '2026-10-20' &&
 			url.searchParams.get('recordTo') === '2026-10-21',
 	);

@@ -143,7 +143,7 @@
 				{#each messages.slice(0, noticeLimit) as message (JSON.stringify( [message.source, message.id, message.version], ))}
 					{@const header = message.header[locale] || message.header[otherLocale]}
 					{@const description = message.description[locale] || message.description[otherLocale]}
-					<li class="border-t border-border pt-3">
+					<li class="pt-3">
 						<h3
 							class="font-semibold"
 							lang={header && !message.header[locale] ? otherLocale : undefined}

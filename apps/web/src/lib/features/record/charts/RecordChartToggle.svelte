@@ -16,7 +16,7 @@
 
 <Button
 	class="min-h-11 w-fit"
-	size="sm"
+	size="cta-sm"
 	variant="outline"
 	aria-controls={controls}
 	aria-expanded={table}

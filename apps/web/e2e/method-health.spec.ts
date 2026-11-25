@@ -11,8 +11,8 @@ for (const locale of ['en', 'fr'] as const) {
 	test(`How we measure disclosure defaults in ${locale}`, async ({ page }) => {
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
 		const main = page.getByRole('main');
-		const cards = main.locator('details[data-record-disclosure]');
-		const open = main.locator('details[data-record-disclosure][open]');
+		const cards = main.locator('[data-record-disclosure]:not([id$="-notes"])');
+		const open = main.locator('[data-record-disclosure]:not([id$="-notes"])[data-open="true"]');
 		const collapse = main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' });
 		const expand = main.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all' });
 		await expect(
@@ -21,7 +21,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(open).toHaveCount(1);
 		await expect(open).toHaveAttribute('id', 'on_time');
 		await expect(collapse).toBeVisible();
-		await open.locator('summary').first().press('Enter');
+		await open.getByRole('button').first().press('Enter');
 		await expect(expand).toBeVisible();
 		await expand.click();
 		await expect(open).toHaveCount(await cards.count());
@@ -57,7 +57,7 @@ test('Data health reads late feed details, expected cadence, sizes and the sched
 	await expect(schedule.getByRole('cell', { name: '64 MB' })).toBeVisible();
 	await expect(schedule.getByRole('cell', { name: 'when the agency publishes' })).toBeVisible();
 	await expect(schedule.getByRole('cell', { name: 'In use' })).toBeVisible();
-	await expect(main.locator('#feed-diagnostics')).not.toHaveAttribute('open');
+	await expect(main.locator('#feed-diagnostics')).toHaveAttribute('data-open', 'false');
 });
 
 test('Data health opens feed diagnostics from a previously copied Network link', async ({
@@ -92,30 +92,32 @@ for (const width of [390, 1440]) {
 			const intro = await main.locator('[data-slot="answer-lead"] p').first().boundingBox();
 			expect(intro!.x).toBeCloseTo(heading!.x);
 			const measure = main.locator('#fixture_delay');
-			await expect(measure).toHaveAttribute('open', '');
+			await expect(measure).toHaveAttribute('data-open', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
 			await expect(measure.getByText(/^v2, /)).toBeVisible();
 			await expect(measure.locator('time')).toHaveText(
 				fr ? '10 novembre 2026' : '10 November 2026',
 			);
-			await expect(main.locator('#ranking-range > summary')).toHaveAccessibleName(
+			await expect(main.locator('#ranking-range').getByRole('button').first()).toHaveAccessibleName(
 				fr
 					? 'L’intervalle dans un classement L’intervalle montre l’incertitude autour d’une valeur du classement.'
 					: 'The range on a ranking row The range shows uncertainty around a ranked value.',
 			);
-			const disclosures = main.locator('details[data-record-disclosure]');
+			const disclosures = main.locator('[data-record-disclosure]:not([id$="-notes"])');
 			for (const card of await disclosures.all()) {
-				const trigger = card.locator('summary').first();
+				const trigger = card.getByRole('button').first();
 				if (await trigger.isVisible()) {
-					const initiallyOpen = (await card.getAttribute('open')) !== null;
+					const initiallyOpen = (await card.getAttribute('data-open')) === 'true';
 					await trigger.press('Enter');
-					expect((await card.getAttribute('open')) !== null).toBe(!initiallyOpen);
+					expect((await card.getAttribute('data-open')) === 'true').toBe(!initiallyOpen);
 					await trigger.press('Space');
-					expect((await card.getAttribute('open')) !== null).toBe(initiallyOpen);
+					expect((await card.getAttribute('data-open')) === 'true').toBe(initiallyOpen);
 				}
 			}
 			await main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }).click();
-			await expect(main.locator('details[data-record-disclosure][open]')).toHaveCount(0);
+			await expect(
+				main.locator('[data-record-disclosure]:not([id$="-notes"])[data-open="true"]'),
+			).toHaveCount(0);
 			await expect(
 				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
 			).toHaveCount(1);

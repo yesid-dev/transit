@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Separator } from '@yesid/ui/separator';
 	import { tick } from 'svelte';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { ShowMore } from '@yesid/ui/table';
@@ -286,7 +287,8 @@
 				{/if}
 			</div>
 			{#if list.total > 0 && hrefs.all}
-				<div class="search-list-pinned">
+				<div class="search-list-pinned relative">
+					<Separator decorative class="absolute inset-x-0 top-0" />
 					{@render option(`${id}-all`, hrefs.all, copy.seeAll)}
 				</div>
 			{/if}
@@ -340,7 +342,6 @@
 		flex: none;
 		margin-top: 0.25rem;
 		padding-top: 0.375rem;
-		border-top: 1px solid var(--border-subtle);
 	}
 	.search-list-option {
 		display: flex;
@@ -416,7 +417,6 @@
 	.page-list .search-list-option {
 		padding-inline: 0;
 		border: 0;
-		border-block-start: 1px solid var(--border);
 		border-radius: 0;
 		background: transparent;
 	}

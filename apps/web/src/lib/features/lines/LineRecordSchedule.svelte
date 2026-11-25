@@ -71,7 +71,7 @@
 </script>
 
 <div class="min-w-0">
-	<RecordCard {title} {stamp}>
+	<RecordCard interactive {title} {stamp}>
 		<div class="grid min-w-0 grid-cols-1 gap-3">
 			<SegmentedChoice
 				options={dayTypes}
@@ -130,7 +130,7 @@
 				</p>
 			{/if}
 		</div>
-		{#snippet footer()}
+		{#snippet evidence()}
 			{#if frequency}<LineRecordEvidence evidence={frequency.evidence} {locale} />{/if}
 		{/snippet}
 	</RecordCard>

@@ -1,0 +1,97 @@
+{
+	"lib/features/home/OverviewLiveCard.svelte": {
+		"border-t": 1
+	},
+	"lib/features/home/RecordRanking.svelte": {
+		"border-block-start:": 1
+	},
+	"lib/features/lines/LineLivePredictions.svelte": {
+		"border-t": 1
+	},
+	"lib/features/map/detail/DetailAttributeGrid.svelte": {
+		"border-bottom:": 2
+	},
+	"lib/features/map/detail/DetailSection.svelte": {
+		"border-bottom:": 1
+	},
+	"lib/features/map/MapDetailAlerts.svelte": {
+		"border-top:": 1
+	},
+	"lib/features/map/MapFilterPill.svelte": {
+		"border-top:": 1
+	},
+	"lib/features/map/MapFilters.svelte": {
+		"border-bottom:": 3,
+		"border-top:": 1
+	},
+	"lib/features/map/MapHoverPeek.svelte": {
+		"border-top:": 1,
+		"border-bottom:": 2
+	},
+	"lib/features/map/MapLegend.svelte": {
+		"border-top:": 2
+	},
+	"lib/features/map/MapRecordPanel.svelte": {
+		"border-top:": 2,
+		"border-top-style:": 2,
+		"border-bottom:": 1
+	},
+	"lib/features/map/MapReportsPanel.svelte": {
+		"border-top:": 1
+	},
+	"lib/features/map/MapSelectionDetail.svelte": {
+		"border-bottom:": 5
+	},
+	"lib/features/metrics/MetricsExplainer.svelte": {
+		"border-block-start:": 2
+	},
+	"lib/features/rankings/Rankings.svelte": {
+		"border-t": 1
+	},
+	"lib/features/record/charts/RecordChart.svelte": {
+		"border-b": 1,
+		"border-b-0": 1
+	},
+	"lib/features/record/RecordDataHealth.svelte": {
+		"border-b": 1,
+		"border-b-0": 1
+	},
+	"lib/features/stops/reliability/sections/StopDailyChart.svelte": {
+		"border-top:": 1,
+		"border-top-color:": 1,
+		"border-bottom:": 1
+	},
+	"lib/features/stops/StopCurrentNotice.svelte": {
+		"border-block:": 1
+	},
+	"lib/features/stops/StopLivePredictions.svelte": {
+		"border-bottom:": 1
+	},
+	"lib/features/vehicles/VehicleDetailRecord.svelte": {
+		"border-t": 1
+	},
+	"lib/components/layout/ListingHeaderStats.svelte": {
+		"border-top:": 1
+	},
+	"lib/components/schedule/ScheduleTable.svelte": {
+		"border-bottom:": 2,
+		"border-top:": 1
+	},
+	"lib/components/shared/CheckboxRow.svelte": {
+		"border-bottom:": 1
+	},
+	"lib/components/shell/BottomSheet.svelte": {
+		"border-b": 1,
+		"border-t": 1
+	},
+	"lib/components/shell/RightPanel.svelte": {
+		"border-b": 2,
+		"border-t": 1
+	},
+	"lib/components/surface/EntityList.svelte": {
+		"border-bottom:": 1
+	},
+	"routes/[[lang=locale]]/receipt/+page.svelte": {
+		"border-b": 2
+	}
+}

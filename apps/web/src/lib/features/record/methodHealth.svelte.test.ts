@@ -43,9 +43,13 @@ it('renders localized registry content and marks a last-good catalog', async () 
 			lastGood: true,
 		}),
 	});
-	const trigger = await screen.findByText(fixtureDelay.text.fr.definition);
-	const entry = trigger.closest('details')!;
-	expect(entry).toHaveAttribute('id', fixtureDelay.id);
+	const trigger = await screen.findByRole('button', {
+		name: /^Retard typique aux arrêts observés/u,
+	});
+	const entry = document.getElementById(fixtureDelay.id)!;
+	expect(entry).toContainElement(trigger);
+	expect(entry).toHaveAttribute('data-open', 'false');
+	expect(trigger).toHaveAttribute('aria-expanded', 'false');
 	expect(entry).toHaveTextContent(fixtureDelay.text.fr.exclusions);
 	expect(entry).toHaveTextContent(fixtureDelay.text.fr.limits);
 	expect(entry).toHaveTextContent(/45/);
@@ -113,9 +117,15 @@ it('describes closed families with all of their measures', async () => {
 		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: entries }),
 	});
 	await screen.findByText(/Early is more than 1 minute ahead.*Late is more than 5 minutes/);
-	expect(document.querySelector('#family-vehicles > summary')).toHaveTextContent(
-		'Early share by vehicle and Late share by vehicle.',
-	);
+	const family = document.getElementById('family-vehicles')!;
+	const trigger = within(family).getByRole('button', {
+		name: /Early share by vehicle and Late share by vehicle\.$/u,
+	});
+	expect(family).toHaveAttribute('data-open', 'false');
+	expect(trigger).toHaveAttribute('aria-expanded', 'false');
+	const content = document.getElementById(trigger.getAttribute('aria-controls')!);
+	expect(content).toContainElement(document.getElementById('vehicle_early'));
+	expect(content).toHaveAttribute('aria-hidden', 'true');
 });
 
 it('renders an honest empty catalog', async () => {

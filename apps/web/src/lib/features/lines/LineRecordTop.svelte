@@ -1,4 +1,6 @@
 <script lang="ts">
+	import FactList from '#lib/features/record/FactList.svelte';
+	import FactRow from '#lib/features/record/FactRow.svelte';
 	import { goto } from '$app/navigation';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { DashboardGrid } from '@yesid/ui/layout';
@@ -274,36 +276,34 @@
 							{#key directionsAnswer}<RecordPending {locale} answer={directionsAnswer} />{/key}
 						{:then result}
 							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-								<dl class="grid gap-2">
+								<FactList leading={false}>
 									{#each result.answer.cells as cell (cell.key.direction)}
 										{@const share = measuredShare(cell, 'on_time')}
-										<div
-											class="flex flex-wrap justify-between gap-x-2 border-b border-border pb-2 last:border-b-0"
+										{@const classified = cell.evidence.counts.classified}
+										<FactRow
+											label={directionLabel(cell.key.direction, headsigns, locale)}
+											detail={share === null
+												? undefined
+												: t('on time', 'à l’heure') +
+													(classified == null
+														? ''
+														: ', ' + countedUnit(classified, 'event', locale))}
 										>
-											<dt>{directionLabel(cell.key.direction, headsigns, locale)}</dt>
-											<dd class="ml-auto text-right tabular-nums">
-												{#if share !== null}
-													<strong>{percent(share, locale)}</strong>
-													<span class="block text-small text-muted-foreground">
-														{t('on time', 'à l’heure')}{cell.evidence.counts.classified == null
-															? ''
-															: ', ' +
-																countedUnit(cell.evidence.counts.classified, 'event', locale)}
-													</span>
-												{:else}
-													<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
-													{rateStateText(cell, locale)}
-												{/if}
-											</dd>
-										</div>
+											{#if share !== null}
+												<strong>{percent(share, locale)}</strong>
+											{:else}
+												<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
+												{rateStateText(cell, locale)}
+											{/if}
+										</FactRow>
 									{/each}
-								</dl>
+								</FactList>
 							{:else if result.kind === 'answer' || headline.kind === 'answer'}
 								{@render gap(result)}
 							{/if}
 						{/await}
 					</div>
-					{#snippet footer()}
+					{#snippet evidence()}
 						{#await punctualityAnswer then result}
 							{#if result.kind === 'answer'}<LineRecordEvidence
 									evidence={result.answer.evidence}
@@ -314,7 +314,7 @@
 				</RecordCard>
 
 				<div id="daily" class="grid min-w-0">
-					<RecordCard title={title('daily')} {stamp}>
+					<RecordCard interactive title={title('daily')} {stamp}>
 						{#await dailyAnswer}
 							{#key dailyAnswer}<RecordPending {locale} answer={dailyAnswer} />{/key}
 						{:then result}
@@ -344,10 +344,16 @@
 									)}{/await}
 							{:else}{@render gap(result)}{/if}
 						{/await}
-						{#snippet footer()}
+						{#snippet evidence()}
 							{#await dailyAnswer then result}
 								{#if result.kind === 'answer'}
 									<LineRecordEvidence evidence={result.answer.evidence} {locale} />
+								{/if}
+							{/await}
+						{/snippet}
+						{#snippet toggle()}
+							{#await dailyAnswer then result}
+								{#if result.kind === 'answer'}
 									{#if 'cells' in result.answer && result.answer.cells.length}
 										<RecordChartToggle
 											bind:table={dailyTable}
@@ -363,7 +369,7 @@
 			</DashboardGrid>
 
 			<div id="hourly" data-slot="line-hour-grid" class="min-w-0">
-				<RecordCard title={title('hourly')} {stamp}>
+				<RecordCard interactive title={title('hourly')} {stamp}>
 					{@render directionControl()}
 					{#await hourlyAnswer}
 						{#key hourlyAnswer}<RecordPending {locale} answer={hourlyAnswer} />{/key}
@@ -378,10 +384,16 @@
 							/>
 						{:else}{@render gap(result)}{/if}
 					{/await}
-					{#snippet footer()}
+					{#snippet evidence()}
 						{#await hourlyAnswer then result}
 							{#if result.kind === 'answer'}
 								<LineRecordEvidence evidence={result.answer.evidence} {locale} />
+							{/if}
+						{/await}
+					{/snippet}
+					{#snippet toggle()}
+						{#await hourlyAnswer then result}
+							{#if result.kind === 'answer'}
 								{#if 'cells' in result.answer && result.answer.cells.length}
 									<RecordChartToggle bind:table={hoursTable} controls="line-hour-chart" {locale} />
 								{/if}

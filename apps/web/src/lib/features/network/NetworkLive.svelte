@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
-	import { BandBar } from '@yesid/ui/chart';
+	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
+	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
+	import { RoutePlate } from '@yesid/ui/brand';
+	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
@@ -115,97 +117,93 @@
 {/snippet}
 {#snippet silent(row: SilentTrip)}{row.silentFor}{/snippet}
 
-<div class="grid min-w-0 gap-6">
-	<ScreenTitle title={t('Network health', 'Santé du réseau')} subtitle={subject} rule />
-	<div class="grid min-w-0 gap-6" data-slot="screen-content">
-		<div data-slot="screen-answer">
-			<LiveCapture {city} {capture} {captureClock}>
-				{#snippet pending()}
-					<p role="status">
-						{t('Checking live reports…', 'Vérification des signalements en direct…')}
-					</p>
-				{/snippet}
-				{#snippet children(snapshot, now)}
-					{@const feed = Object.values(snapshot?.feeds ?? {}).find(
-						(feed) => feed.family === 'vehicle_positions',
-					)}
-					{@const captureAge = feed?.captured_at
-						? Math.max(0, (now - Date.parse(feed.captured_at)) / 1000)
-						: null}
-					{@const live = reading(snapshot, feed, now)}
-					{@const scheduled = live?.scheduled_now ?? null}
-					{@const silentCount = live?.non_responding ?? null}
-					{@const silentTrips = selectSilentTripRows(
-						live,
-						schedule,
-						locale,
-						display.directory.nameSeparators,
-					)}
-					{@const bands = live?.status_dist
-						? (
-								[
-									['early', delayLabels.early],
-									['on_time', delayLabels.onTime],
-									['late', delayLabels.late],
-									['unknown', t('Delay unknown', 'Retard inconnu')],
-								] as const
-							).map(([status, label]) => {
-								const count = live.status_dist?.[status] ?? 0;
-								return {
-									id: status,
-									status,
-									label,
-									share: count,
-									valueLabel: countedUnit(count, 'vehicle', locale),
-								};
-							})
-						: []}
-					{@const stamp = live
-						? {
-								kind: 'live' as const,
-								label: liveStampAge(captureAge, locale),
-							}
-						: undefined}
-					<RecordAnswer
-						{locale}
-						value={live ? tally(live.vehicles_in_service, locale) : null}
-						state={live ? undefined : 'no_live_data'}
-						sentence={live
-							? liveAnswer(live.vehicles_in_service, scheduled)
-							: t('No live data', 'Aucune donnée en direct')}
-						time={stamp}
-					>
-						{#snippet meta()}
-							{#if live}<p>
-									{t(
-										'A count of vehicles at this moment, not a percentage.',
-										'Le nombre de véhicules en ce moment, pas un pourcentage.',
-									)}
-								</p>{/if}
-						{/snippet}
-					</RecordAnswer>
-					<div class="mt-6 grid min-w-0 gap-4">
+<RecordScreen class="min-w-0">
+	<RecordGroup
+		><ScreenTitle title={t('Network health', 'Santé du réseau')} subtitle={subject} /></RecordGroup
+	>
+	<div data-slot="screen-content">
+		<LiveCapture {city} {capture} {captureClock}>
+			{#snippet pending()}
+				<RecordGroup
+					><div data-slot="screen-answer">
+						<p role="status">
+							{t('Checking live reports…', 'Vérification des signalements en direct…')}
+						</p>
+					</div></RecordGroup
+				>{/snippet}
+			{#snippet children(snapshot, now)}
+				{@const feed = Object.values(snapshot?.feeds ?? {}).find(
+					(feed) => feed.family === 'vehicle_positions',
+				)}
+				{@const captureAge = feed?.captured_at
+					? Math.max(0, (now - Date.parse(feed.captured_at)) / 1000)
+					: null}
+				{@const live = reading(snapshot, feed, now)}
+				{@const scheduled = live?.scheduled_now ?? null}
+				{@const silentCount = live?.non_responding ?? null}
+				{@const silentTrips = selectSilentTripRows(
+					live,
+					schedule,
+					locale,
+					display.directory.nameSeparators,
+				)}
+				{@const bands = live?.status_dist
+					? (
+							[
+								['early', delayLabels.early],
+								['on_time', delayLabels.onTime],
+								['late', delayLabels.late],
+								['unknown', t('Delay unknown', 'Retard inconnu')],
+							] as const
+						).map(([status, label]) => {
+							const count = live.status_dist?.[status] ?? 0;
+							return {
+								id: status,
+								status,
+								label,
+								share: count,
+								valueLabel: countedUnit(count, 'vehicle', locale),
+							};
+						})
+					: []}
+				{@const stamp = live
+					? {
+							kind: 'live' as const,
+							label: liveStampAge(captureAge, locale),
+						}
+					: undefined}
+				<RecordGroup>
+					<div data-slot="screen-answer">
+						<RecordAnswer
+							{locale}
+							value={live ? tally(live.vehicles_in_service, locale) : null}
+							state={live ? undefined : 'no_live_data'}
+							sentence={live
+								? liveAnswer(live.vehicles_in_service, scheduled)
+								: t('No live data', 'Aucune donnée en direct')}
+							time={stamp}
+						>
+							{#snippet meta()}
+								{#if live}<p>
+										{t(
+											'A count of vehicles at this moment, not a percentage.',
+											'Le nombre de véhicules en ce moment, pas un pourcentage.',
+										)}
+									</p>{/if}
+							{/snippet}
+						</RecordAnswer>
+					</div>
+					<div class="grid min-w-0 gap-4">
 						<RecordCard title={statusTitle} {stamp}>
 							{#if bands.length}
 								<div class="grid gap-6 md:grid-cols-2">
 									<div class="min-w-0">
-										<BandBar
+										<RecordBandBar
 											label={bands
 												.map(({ label, valueLabel }) => `${label}, ${valueLabel}`)
 												.join('. ')}
 											{bands}
-											rows={false}
 										/>
-										<dl class="mt-3 grid gap-2">
-											{#each bands as { status, label, valueLabel } (status)}
-												<div
-													class="flex flex-wrap justify-between gap-2 border-b border-border pb-2 last:border-b-0"
-												>
-													<dt><StatusMark {status} {label} /></dt>
-													<dd class="tabular-nums">{valueLabel}</dd>
-												</div>
-											{/each}
-										</dl>
 									</div>
 									{#if scheduled != null && silentCount != null}
 										<dl class="grid content-start gap-4">
@@ -236,7 +234,7 @@
 								<StateMark state="no_live_data" {locale} />
 							{/if}
 						</RecordCard>
-						<RecordCard title={silentTitle} {stamp}>
+						<RecordCard interactive={Boolean(silentTrips?.length)} title={silentTitle} {stamp}>
 							<p class="mb-3">
 								{t(
 									'Trips that should be running and have no vehicle reporting. Trips the agency cancelled are not counted.',
@@ -266,10 +264,11 @@
 								{/if}
 							{/if}
 						</RecordCard>
-						<AboutLiveFigures {locale} {operator} {healthLink} {captureAge} />
 					</div>
-				{/snippet}
-			</LiveCapture>
-		</div>
+				</RecordGroup>
+				<RecordGroup><AboutLiveFigures {locale} {operator} {healthLink} {captureAge} /></RecordGroup
+				>
+			{/snippet}
+		</LiveCapture>
 	</div>
-</div>
+</RecordScreen>

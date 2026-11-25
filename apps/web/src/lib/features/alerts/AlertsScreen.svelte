@@ -283,7 +283,6 @@
 		<RecordCard
 			title={alertSections[group][locale]}
 			{stamp}
-			edge="brand"
 			interactive={group === 'line' &&
 				(rows.length > linePageSize || rows.some(({ key }) => Boolean(key)))}
 		>
@@ -311,7 +310,6 @@
 	<RecordCard
 		title={t('Archive for these dates', 'Archives pour ces dates')}
 		{stamp}
-		edge="brand"
 		interactive={Boolean(reading?.evidence.alert_messages?.length)}
 	>
 		{#if reading}
@@ -353,7 +351,6 @@
 		<span id="day"></span><span id="hour"></span><span id="stop"></span><span id="cause"></span>
 		<AboutFigures
 			title={t('About these figures', 'À propos de ces chiffres')}
-			edge="brand"
 			interactive
 			compact
 			fields={[
@@ -475,7 +472,7 @@
 								</RecordAnswer>
 							</div>
 							<div id="alerts-breakdown">
-								<RecordCard title={alertSections.effect[locale]} stamp={liveStamp} edge="brand">
+								<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
 									{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
 									{@render evidenceFooter(undefined, liveCards.length)}
 								</RecordCard>
@@ -484,7 +481,6 @@
 								<RecordCard
 									title={t('In effect now', 'En vigueur maintenant')}
 									stamp={liveStamp}
-									edge="brand"
 									interactive={liveCards.length > 0}
 								>
 									<AlertList
@@ -500,7 +496,6 @@
 							<RecordCard
 								title={alertSections.line[locale]}
 								stamp={liveStamp}
-								edge="brand"
 								interactive={liveCards.some(({ routes }) => routes.length > 0)}
 							>
 								{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
@@ -514,7 +509,6 @@
 						{/if}
 						<AboutLiveFigures
 							{locale}
-							edge="brand"
 							interactive
 							operator={data.operator}
 							healthLink={localizeHref('/status', locale, data.city)}

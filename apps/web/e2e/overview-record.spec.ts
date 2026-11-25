@@ -342,6 +342,11 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 	for (const status of ['Early', 'On time', 'Late', 'Delay unknown']) {
 		await expect(live.getByRole('term').filter({ hasText: status })).toBeVisible();
 	}
+	for (const fact of ['Scheduled trips with no vehicle reporting', 'Alerts in effect']) {
+		await expect(
+			live.locator('[data-slot="fact-row"]').filter({ hasText: fact }).locator('.hand-drawn-line'),
+		).toHaveCount(1);
+	}
 	await expect(
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
 	).toContainText('Not measured');

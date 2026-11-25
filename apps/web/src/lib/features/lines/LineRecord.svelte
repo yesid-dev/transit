@@ -1,4 +1,5 @@
 <script lang="ts">
+	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
 
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -159,7 +160,7 @@
 	{/await}
 {/snippet}
 
-{#snippet evidence(section: LineSection)}
+{#snippet sectionEvidence(section: LineSection)}
 	{@const answer = answerFor(section)}
 	{#await answer then result}
 		{#if result.kind === 'answer'}<LineRecordEvidence
@@ -170,9 +171,9 @@
 {/snippet}
 
 {#snippet failureGroup()}
-	<section aria-labelledby="line-failures-heading" class="grid min-w-0 gap-3">
+	<RecordGroup aria-labelledby="line-failures-heading">
 		<div class="flex flex-wrap items-center justify-between gap-2">
-			<h2 id="line-failures-heading" class="text-subheading font-semibold">
+			<h2 id="line-failures-heading" class="text-heading font-bold">
 				{t('Where and when it fails', 'Où et quand le service fait défaut')}
 			</h2>
 			<Button variant="outline" size="sm" class="min-h-11" onclick={toggleAll}
@@ -181,10 +182,18 @@
 		</div>
 		{#each failures as section (section)}
 			<div id={section} class="min-w-0">
-				<RecordCard title={title(section)} {stamp} expandable bind:open={opened[section]}>
+				<RecordCard
+					title={title(section)}
+					{stamp}
+					interactive
+					expandable
+					bind:open={opened[section]}
+				>
 					{@render reading(section)}
-					{#snippet footer()}
-						{@render evidence(section)}
+					{#snippet evidence()}
+						{@render sectionEvidence(section)}
+					{/snippet}
+					{#snippet toggle()}
 						{#if section === 'stops'}
 							{#await stopsAnswer then result}
 								{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
@@ -196,7 +205,7 @@
 				</RecordCard>
 			</div>
 		{/each}
-	</section>
+	</RecordGroup>
 {/snippet}
 
 {#snippet about(answer: RecordMeasure | null)}
@@ -251,11 +260,15 @@
 	>
 {/snippet}
 
-<div data-slot="screen-content" class="grid min-w-0 gap-4">
-	<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
+<div data-slot="screen-content" class="min-w-0">
+	<RecordGroup>
+		<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
+		{#if scheduleOnly}
+			<LineScheduleCard {record} {locale} {url} />
+		{/if}
+	</RecordGroup>
 	{#if scheduleOnly}
-		<LineScheduleCard {record} {locale} {url} />
-		<LineMeasurementLimits {locale} methodHref={link('/metrics')} />
+		<RecordGroup><LineMeasurementLimits {locale} methodHref={link('/metrics')} /></RecordGroup>
 	{:else}
 		{#await punctualityAnswer then result}
 			{@const answer = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
@@ -263,17 +276,27 @@
 				{@render failureGroup()}
 			{/if}
 		{/await}
-		<LineScheduleCard {record} {locale} {url} />
+		<RecordGroup>
+			<LineScheduleCard {record} {locale} {url} />
+			{#await punctualityAnswer then result}
+				{@const answer =
+					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
+				{#if !lineTimetableOnly(answer)}
+					<div id="alerts">
+						<RecordCard interactive title={title('alerts')} {stamp}>
+							{@render reading('alerts')}
+							{#snippet evidence()}
+								{@render sectionEvidence('alerts')}
+							{/snippet}
+						</RecordCard>
+					</div>
+				{/if}
+			{/await}
+		</RecordGroup>
 		{#await punctualityAnswer then result}
 			{@const answer = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
 			{#if !lineTimetableOnly(answer)}
-				<div id="alerts">
-					<RecordCard title={title('alerts')} {stamp}>
-						{@render reading('alerts')}
-						{#snippet footer()}{@render evidence('alerts')}{/snippet}
-					</RecordCard>
-				</div>
-				{@render about(answer)}
+				<RecordGroup>{@render about(answer)}</RecordGroup>
 			{/if}
 		{/await}
 	{/if}

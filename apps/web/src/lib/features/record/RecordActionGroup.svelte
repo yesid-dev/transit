@@ -28,6 +28,7 @@
 		aria-label={fr ? 'Actions du bilan' : 'Record actions'}
 	>
 		<CopyAction
+			size="cta-sm"
 			text={href}
 			label={fr ? 'Copier le lien' : 'Copy link'}
 			done={fr ? 'Lien copié.' : 'Link copied.'}
@@ -37,8 +38,11 @@
 		{#if files.length}
 			<Sheet.Root>
 				<Sheet.Trigger>
-					{#snippet child({ props })}<Button {...props} variant="outline" size="sm" class="min-h-11"
-							>{fr ? 'Télécharger' : 'Download'}</Button
+					{#snippet child({ props })}<Button
+							{...props}
+							variant="outline"
+							size="cta-sm"
+							class="min-h-11">{fr ? 'Télécharger' : 'Download'}</Button
 						>{/snippet}
 				</Sheet.Trigger>
 				<Sheet.Content side="bottom" showCloseButton={false} class="max-h-[90dvh] overflow-y-auto">
@@ -72,7 +76,7 @@
 						{#snippet child({ props })}<Button
 								{...props}
 								variant="outline"
-								size="sm"
+								size="cta-sm"
 								class="min-h-11">{fr ? 'Fermer' : 'Close'}</Button
 							>{/snippet}
 					</Sheet.Close>
@@ -81,21 +85,27 @@
 		{/if}
 		<Sheet.Root>
 			<Sheet.Trigger>
-				{#snippet child({ props })}<Button {...props} variant="outline" size="sm" class="min-h-11"
-						>{fr ? 'Citer' : 'Cite'}</Button
+				{#snippet child({ props })}<Button
+						{...props}
+						variant="outline"
+						size="cta-sm"
+						class="min-h-11">{fr ? 'Citer' : 'Cite'}</Button
 					>{/snippet}
 			</Sheet.Trigger>
 			<Sheet.Content side="bottom" showCloseButton={false} class="max-h-[90dvh] overflow-y-auto">
 				<Sheet.Title>{fr ? 'Citer' : 'Cite'}</Sheet.Title>
 				<div class="grid gap-2 wrap-break-word">{@render citation()}</div>
 				<Sheet.Close>
-					{#snippet child({ props })}<Button {...props} variant="outline" size="sm" class="min-h-11"
-							>{fr ? 'Fermer' : 'Close'}</Button
+					{#snippet child({ props })}<Button
+							{...props}
+							variant="outline"
+							size="cta-sm"
+							class="min-h-11">{fr ? 'Fermer' : 'Close'}</Button
 						>{/snippet}
 				</Sheet.Close>
 			</Sheet.Content>
 		</Sheet.Root>
-		{#if print}<Button variant="outline" size="sm" class="min-h-11" onclick={print}
+		{#if print}<Button variant="outline" size="cta-sm" class="min-h-11" onclick={print}
 				>{fr ? 'Imprimer' : 'Print'}</Button
 			>{/if}
 	</div>

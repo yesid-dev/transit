@@ -49,7 +49,7 @@
 	}
 </script>
 
-<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
+<Card interactive textSize="inherit" class="min-w-0 px-4 sm:px-6">
 	<section id={section} aria-labelledby={`${section}-title`} class="grid min-w-0 gap-3">
 		<h2 id={`${section}-title`}>{title}</h2>
 		{@render controls?.()}

@@ -1,5 +1,6 @@
 <script lang="ts">
-	import InfoPage from '#lib/components/layout/InfoPage.svelte';
+	import { ReadingFrame, Surface } from '@yesid/ui/layout';
+	import { Separator } from '@yesid/ui/separator';
 	import { getLocale, type Locale } from '#lib/i18n/index.ts';
 	import { LEGAL_EFFECTIVE_DATES, legalDocument, type LegalPageKind } from './legal.copy';
 
@@ -14,67 +15,63 @@
 	const document = $derived(legalDocument(locale, kind));
 </script>
 
-<InfoPage title={document.title} titleId="legal-title" testId="legal-document">
-	{#snippet beforeTitle()}
-		<p class="legal-document__kicker">{document.kicker}</p>
-	{/snippet}
-	{#snippet afterTitle()}
-		<p class="legal-document__effective">
-			{document.effectiveLabel}:
-			<time datetime={LEGAL_EFFECTIVE_DATES[kind]}>{document.effectiveDate}</time>
-		</p>
-		<p class="legal-document__summary">{document.summary}</p>
-	{/snippet}
+<Surface class="@container" style="--space-page-x: var(--space-card-gap); padding-block-start: 0">
+	<ReadingFrame
+		title={document.title}
+		titleId="legal-title"
+		style="--reading-gutter: 0; padding-block-end: 0"
+		aria-labelledby="legal-title"
+		data-testid="legal-document"
+		updated={{
+			datetime: LEGAL_EFFECTIVE_DATES[kind],
+			label: document.effectiveLabel + ':',
+			text: document.effectiveDate,
+		}}
+	>
+		{#snippet summary()}
+			<p>{document.summary}</p>
+		{/snippet}
 
-	{#each document.sections as section (section.id)}
-		<section aria-labelledby={`legal-${section.id}`}>
-			<h2 id={`legal-${section.id}`}>{section.title}</h2>
-			{#each section.paragraphs as paragraph (paragraph)}
-				<p>{paragraph}</p>
-			{/each}
-			{#if section.bullets}
-				<ul>
-					{#each section.bullets as item (item)}
-						<li>{item}</li>
-					{/each}
-				</ul>
-			{/if}
-			{#if section.links}
-				<ul class="legal-document__links">
-					{#each section.links as link (link.href)}
-						<li>
-							<a
-								href={link.href}
-								target={link.href.startsWith('https://') ? '_blank' : undefined}
-								rel={link.href.startsWith('https://') ? 'noreferrer' : undefined}>{link.label}</a
-							>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</section>
-	{/each}
-</InfoPage>
+		{#each document.sections as section, index (section.id)}
+			{#if index > 0}<Separator variant="hand-drawn" class="my-6 @max-[12rem]:my-4" />{/if}
+			<section class="legal-section grid gap-3" aria-labelledby={`legal-${section.id}`}>
+				<h2 id={`legal-${section.id}`}>{section.title}</h2>
+				{#each section.paragraphs as paragraph (paragraph)}
+					<p>{paragraph}</p>
+				{/each}
+				{#if section.bullets}
+					<ul class="ms-5 list-disc">
+						{#each section.bullets as item (item)}
+							<li>{item}</li>
+						{/each}
+					</ul>
+				{/if}
+				{#if section.links}
+					<ul class="legal-document__links">
+						{#each section.links as link (link.href)}
+							<li>
+								<a
+									class="text-primary underline"
+									href={link.href}
+									target={link.href.startsWith('https://') ? '_blank' : undefined}
+									rel={link.href.startsWith('https://') ? 'noreferrer' : undefined}>{link.label}</a
+								>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
+		{/each}
+	</ReadingFrame>
+</Surface>
 
 <style>
-	.legal-document__kicker,
-	.legal-document__effective {
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
+	.legal-section > :is(h2, p, ul) {
+		margin-block: 0;
 	}
 
-	.legal-document__kicker {
-		color: var(--primary);
-		font-weight: 700;
-		letter-spacing: var(--tracking-eyebrow);
-	}
-
-	.legal-document__effective {
-		color: var(--muted-foreground);
-	}
-
-	.legal-document__summary {
-		font-size: var(--text-reading-support);
+	.legal-section :is(p, li) {
+		line-height: 1.7;
 	}
 
 	.legal-document__links {
@@ -82,7 +79,7 @@
 		padding-inline-start: 0;
 	}
 
-	.legal-document__links :global(li > a) {
+	.legal-document__links a {
 		display: inline-block;
 		min-block-size: 24px;
 		align-content: center;

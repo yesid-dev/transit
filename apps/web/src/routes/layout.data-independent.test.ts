@@ -11,22 +11,26 @@ import { footerCopy } from '#lib/components/layout/footer.copy.ts';
 
 it.each(['en', 'fr'] as const)(
 	'the footer shows the four groups, then Information in %s',
-	(locale) => {
+	async (locale) => {
 		const view = renderWithoutV1(locale === 'en' ? '/privacy' : '/fr/privacy', locale);
-		const groups = within(view.getByTestId('footer')).getAllByRole('navigation');
+		const footer = view.getByTestId('footer');
+		const groups = within(footer).getAllByRole('navigation');
 		const labels = [
-			...NAV_GROUPS.map((group) => group.label[locale]),
+			...NAV_GROUPS.map((group) =>
+				group.key === 'reports' ? (locale === 'en' ? 'Reports' : 'Rapports') : group.label[locale],
+			),
 			footerCopy[locale].infoLabel,
 		];
 		for (const [index, name] of labels.entries())
-			expect(groups[index]).toBe(
-				within(view.getByTestId('footer')).getByRole('navigation', {
-					name: (accessibleName) => accessibleName === name,
-				}),
-			);
+			expect(groups[index]).toBe(within(footer).getByRole('navigation', { name }));
 		expect(groups).toHaveLength(labels.length);
+		await fireEvent.click(view.getByRole('button', { name: /Open menu|Ouvrir le menu/ }));
+		expect(
+			within(view.getByRole('dialog')).getByRole('heading', {
+				name: locale === 'en' ? 'Rankings and reports' : 'Classements et rapports',
+			}),
+		).toBeInTheDocument();
 		// DEV-43: the footer's top edge is the kit hazard strip, as on yesid.dev.
-		const footer = view.container.querySelector('[data-testid="footer"]')!;
 		expect(footer.querySelector('[data-slot="footer-hazard-edge"]')).not.toBeNull();
 		expect(footer.querySelector('[data-slot="footer-street-edge"]')).toBeNull();
 	},

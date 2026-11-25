@@ -42,6 +42,15 @@ for (const locale of ['en', 'fr'] as const)
 						),
 					).toHaveCount(0);
 					const before = await frame();
+					if (width === 1280) {
+						await expect(page.locator('[data-testid="nav-pill"].nav-hydrated')).toBeVisible();
+						const menu = page.getByTestId('nav-menu-toggle');
+						await menu.click();
+						await expect(menu).toHaveAttribute('aria-expanded', 'true');
+						await page.keyboard.press('Escape');
+						await expect(menu).toHaveAttribute('aria-expanded', 'false');
+						await expect(menu).toBeFocused();
+					}
 					expect((await hold.release()).status()).toBe(204);
 					await expect(
 						message.getByText(

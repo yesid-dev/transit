@@ -182,14 +182,17 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page.locator('#line-detail-live')).toHaveCount(0);
 
 		const titleBlock = page.locator('header').filter({ has: page.locator('#line-title') });
-		await expect(titleBlock).toHaveCSS('border-bottom-width', '1px');
+		const titleBoundary = page.locator(
+			'[data-record-screen] [data-slot="page-section-boundary"].hand-drawn-line:has(+ [data-slot="page-section"] [data-slot="screen-answer"])',
+		);
+		await expect(titleBoundary).toHaveCount(1);
 		const headerHeight = (await titleBlock.boundingBox())?.height;
 		await answer.getByRole('link', { name: fr ? 'Voir le bilan' : 'View record' }).click();
 		await expect(page).toHaveURL(
 			(url) => url.searchParams.get('frameMode') === 'record' && url.search.includes(dates),
 		);
 		await expect(titleBlock.getByText(notice, { exact: true })).toBeVisible();
-		await expect(titleBlock).toHaveCSS('border-bottom-width', '1px');
+		await expect(titleBoundary).toHaveCount(1);
 		expect((await titleBlock.boundingBox())?.height).toBe(headerHeight);
 		await expect(answer).toContainText(fr ? '80 %' : '80%');
 
