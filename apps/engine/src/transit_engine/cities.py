@@ -106,6 +106,7 @@ def city_catalog() -> dict[str, Any]:
         }
         map_info = public if legacy else declaration.get("map") or {}
         realtime = declaration.get("realtime", {}) if legacy else declaration
+        name_separators = (public if legacy else declaration).get("name_separators")
         inputs = _inputs(declaration.get("feeds", {}))
         for capability in ("stable_vehicle_ids", "occupancy"):
             if isinstance(public.get(capability), bool):
@@ -126,6 +127,7 @@ def city_catalog() -> dict[str, Any]:
                 "alert_links": (public if legacy else declaration).get("alert_links") or {},
                 "inputs": inputs,
                 "download_licence": (public if legacy else declaration).get("download_licence"),
+                **({"name_separators": name_separators} if name_separators is not None else {}),
                 "lines_without_live_data": [
                     {key: gap.get(key, []) for key in ("route_types", "route_ids")}
                     for gap in realtime.get("lines_without_live_data") or []

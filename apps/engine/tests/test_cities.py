@@ -36,6 +36,12 @@ def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     assert cities["octranspo"]["inputs"]["service_alerts"] is False
     assert cities["octranspo"]["fit_bounds"] == [-75.95, 45.2, -75.43, 45.55]
     assert cities["octranspo"]["timezone"] == "America/Toronto"
+    assert cities["octranspo"]["name_separators"] == {
+        "ends": "<>",
+        "languages": "~",
+        "language_order": ["en", "fr"],
+    }
+    assert "name_separators" not in cities["stm"]
     assert "feeds" not in cities["stm"]
     assert asyncio.run(http(app, "/cities", "city=stm"))[0] == 400
 
@@ -86,6 +92,7 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     (tmp_path / "candidate.yaml").write_text("stage: candidate\n", encoding="utf8")
     (tmp_path / "example.yaml").write_text(
         "stage: public\ntimezone: Europe/Paris\nname: Example\n"
+        'name_separators: {ends: "<>", languages: "~", language_order: [fr, en]}\n'
         "labels:\n  en: {city: Example, operator: Rail}\n"
         "  fr: {city: Exemple, operator: Rail}\n",
         encoding="utf8",
@@ -96,6 +103,11 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     cities = city_catalog()
     assert cities["default_provider"] == "example"
     assert [provider["id"] for provider in cities["providers"]] == ["example"]
+    assert cities["providers"][0]["name_separators"] == {
+        "ends": "<>",
+        "languages": "~",
+        "language_order": ["fr", "en"],
+    }
     (tmp_path / "default-city.txt").write_text("hidden\n", encoding="utf8")
     with pytest.raises(RuntimeError, match="default city must be a public provider"):
         city_catalog()

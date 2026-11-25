@@ -35,6 +35,25 @@ const stops: StopIndexEntry[] = [
 	{ id: '57191', code: '57191', name: 'Van Horne / Rockland', lat: 45.53, lon: -73.59 },
 ];
 
+it('finds the source and either language while displaying the selected language', () => {
+	const long = 'Blair <> Parliament ~ Parlement';
+	const sources: SearchSources = {
+		routes: [{ id: 'example', short: '7', long, type: 3 }],
+		locale: 'fr',
+		nameSeparators: { ends: '<>', languages: '~', language_order: ['en', 'fr'] },
+	};
+	for (const query of [long, 'Parliament', 'Parlement']) {
+		const result = searchTransit({ surface: 'list', query }, sources);
+		expect(result.groups[0]?.hits[0]?.label).toBe('7 · Blair / Parlement');
+		expect(result.exact).toBe(true);
+		expect(searchTransit({ surface: 'page', query }, sources).routes[0]?.long).toBe(long);
+	}
+	expect(
+		searchTransit({ surface: 'list', query: long }, { routes: sources.routes }).groups[0]?.hits[0]
+			?.label,
+	).toBe(`7 · ${long}`);
+});
+
 const updatedUtc = '2026-06-16T00:00:00Z' as Vehicle['updated_utc'];
 
 const vehicles: Vehicle[] = [

@@ -55,6 +55,8 @@
 	const directory = $derived(
 		createLineDirectory(routes, {
 			line: (id) => routeNameFallback(id, locale),
+			locale,
+			nameSeparators: provider?.name_separators,
 		}),
 	);
 	const collator = $derived(intl.collator(locale, { numeric: true, sensitivity: 'base' }));

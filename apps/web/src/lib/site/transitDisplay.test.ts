@@ -1,5 +1,71 @@
 import { describe, expect, it } from 'vitest';
-import { lineLabel, stopDisplayName, hasOccupancy } from './transitDisplay';
+import { lineLabel, stopDisplayName, hasOccupancy, formatTransitName } from './transitDisplay';
+import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
+
+const separators: NameSeparators = { ends: '<>', languages: '~', language_order: ['en', 'fr'] };
+
+describe('declared names', () => {
+	it.each([
+		['Waller <> Elmvale', 'Waller / Elmvale', 'Waller / Elmvale'],
+		['Hospital ~ Hôpital', 'Hospital', 'Hôpital'],
+		['Blair <> Parliament ~ Parlement', 'Blair / Parliament', 'Blair / Parlement'],
+		[
+			'Hospital ~ Hôpital <> Hurdman & N Rideau',
+			'Hospital / Hurdman & N Rideau',
+			'Hôpital / Hurdman & N Rideau',
+		],
+		[
+			'Shuttle-Express Downtown ~ Navette-Express Centre-Ville <> Shuttle-Express Blair ~ Navette-Express Blair',
+			'Shuttle-Express Downtown / Shuttle-Express Blair',
+			'Navette-Express Centre-Ville / Navette-Express Blair',
+		],
+		[
+			'South Keys / Hunt Club Loop ~ South Keys / Boucle Hunt Club',
+			'South Keys / Hunt Club Loop',
+			'South Keys / Boucle Hunt Club',
+		],
+		[
+			"Tunney's Pasture <> Innovation / Carling Campus ~ Innovation /  Complexe Carling",
+			"Tunney's Pasture / Innovation / Carling Campus",
+			"Tunney's Pasture / Innovation /  Complexe Carling",
+		],
+		['St-Laurent', 'St-Laurent', 'St-Laurent'],
+		['A - Antares', 'A - Antares', 'A - Antares'],
+		[
+			'Cumberland / Sarsfield / Navan',
+			'Cumberland / Sarsfield / Navan',
+			'Cumberland / Sarsfield / Navan',
+		],
+	])('formats %s in both languages', (raw, en, fr) => {
+		expect(formatTransitName(raw, 'en', separators)).toBe(en);
+		expect(formatTransitName(raw, 'fr', separators)).toBe(fr);
+		expect(formatTransitName(raw, 'fr')).toBe(raw);
+	});
+
+	it.each([
+		' ~ Hôpital',
+		'Hospital ~ ',
+		'Hospital ~ Hôpital ~ Other',
+		'Place~Name',
+		'Place~Name ~ Nom',
+		'Waller<>Elmvale',
+		'Waller <> Elmvale <> Main',
+		'Waller <> ',
+		'Fallowfield <> Limebank & CFIA ~ ACIA',
+	])('preserves ambiguous %s', (raw) => {
+		expect(formatTransitName(raw, 'en', separators)).toBe(raw);
+		expect(formatTransitName(raw, 'fr', separators)).toBe(raw);
+	});
+
+	it('uses the declared language order', () => {
+		expect(
+			formatTransitName('Hôpital ~ Hospital', 'en', {
+				...separators,
+				language_order: ['fr', 'en'],
+			}),
+		).toBe('Hospital');
+	});
+});
 
 // Names read from the published OC static/stops_index.json snapshot.
 describe('OC stop display names', () => {

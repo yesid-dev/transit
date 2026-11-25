@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	const { line } = transitDisplay();
+	const { line, readName } = transitDisplay();
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
@@ -55,7 +55,7 @@
 {#snippet gridDestinationCell(entry: ScheduleGridRow)}
 	<span class="schedule-destination">
 		{#if entry.headsign}
-			{entry.headsign}
+			{readName(entry.headsign, locale)}
 		{:else}
 			<AbsentValue variant="row" reason="no-observations" {locale} />
 		{/if}

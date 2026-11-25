@@ -1,4 +1,6 @@
-import { stopDisplayName, lineLabel } from '#lib/site/transitDisplay.ts';
+import { stopDisplayName, lineLabel, transitNameAliases } from '#lib/site/transitDisplay.ts';
+import type { Locale } from '#lib/i18n/copy.ts';
+import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import type { RouteIndexEntry, StopIndexEntry, Vehicle } from '#lib/v1/schemas/index.ts';
 import { FILTER_SEARCH_PARAM_KEYS, fromSearchParams, toSearchString } from '#lib/filters/index.ts';
@@ -35,6 +37,8 @@ export interface SitePage {
 type SearchVehicle = Pick<Vehicle, 'id' | 'route'>;
 
 export interface SearchSources {
+	readonly locale?: Locale;
+	readonly nameSeparators?: NameSeparators;
 	readonly routes?: readonly RouteIndexEntry[] | null;
 	readonly stops?: readonly StopIndexEntry[] | null;
 	readonly vehicles?: readonly SearchVehicle[] | null;
@@ -129,7 +133,11 @@ function candidates(request: PageSearchRequest, sources: SearchSources, query: s
 	const routes = scoredCandidates(
 		sources.routes ?? [],
 		query,
-		(route) => [route.short || route.id, route.long],
+		(route) => [
+			route.short || route.id,
+			route.long,
+			...transitNameAliases(route.long, sources.nameSeparators),
+		],
 		(route) => route.id,
 	)
 		.filter(({ value }) => keepsMode(routeModeKey(value.type)))
@@ -163,7 +171,11 @@ function searchList(
 ): SearchList {
 	const lead = request.scope === 'route' || request.scope === 'stop' ? request.scope : 'all';
 	const rows = LIST_ROWS[lead];
-	const directory = createLineDirectory(sources.routes ?? null, { line: (id) => id });
+	const directory = createLineDirectory(sources.routes ?? null, {
+		line: (id) => id,
+		locale: sources.locale,
+		nameSeparators: sources.nameSeparators,
+	});
 	const lines: SearchGroup = {
 		kind: 'route',
 		total: matches.routes.length,

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	const display = transitDisplay();
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 
 	import { tick, untrack } from 'svelte';
@@ -95,6 +97,7 @@
 			{ surface: 'page', query, modes },
 			{
 				routes: index.data?.schedule?.routes,
+				nameSeparators: display.directory.nameSeparators,
 				stops: index.data?.schedule?.stops,
 				vehicles: index.data?.vehicles,
 				pages,
@@ -234,7 +237,7 @@
 		localizeHref(searchHitHref(hit, { path: '/search', params: new URLSearchParams() }), locale);
 
 	function routeTitle(r: RouteIndexEntry): string {
-		return r.short || r.long || r.id;
+		return r.short || (r.long ? display.readName(r.long, locale) : r.id);
 	}
 </script>
 
@@ -276,7 +279,7 @@
 							swatch={routeColor(r.color)}
 							tag={hint.tag ?? undefined}
 							title={routeTitle(r)}
-							subtitle={r.short ? (r.long ?? undefined) : undefined}
+							subtitle={r.short && r.long ? display.readName(r.long, locale) : undefined}
 						/>
 					{/snippet}
 				</EntityList>

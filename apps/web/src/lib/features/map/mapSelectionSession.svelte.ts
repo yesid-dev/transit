@@ -1,3 +1,4 @@
+import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { neighbors } from './selectionSession/detailNavigation';
 import { untrack } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
@@ -35,6 +36,7 @@ export interface MapSelectionSessionOptions {
 	>;
 	readonly filters: FilterStore;
 	readonly locale: Locale;
+	readonly nameSeparators?: NameSeparators;
 	readonly timeZone?: string;
 	readonly staleCutoffS?: number;
 	readonly serverNow: () => number;
@@ -218,6 +220,7 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	const resolvedSelectedDetail = $derived(
 		resolveMapSelection(selected, {
 			locale,
+			nameSeparators: options.nameSeparators,
 			timeZone: manifest.tz,
 			index: live.index,
 			stops: stopList,
@@ -231,6 +234,7 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 		resolveMapHoverPeek(hovered, {
 			staleCutoffS: options.staleCutoffS,
 			locale,
+			nameSeparators: options.nameSeparators,
 			index: live.index,
 			stops: stopList,
 			routesIndex: routesIndex.data?.routes ?? [],

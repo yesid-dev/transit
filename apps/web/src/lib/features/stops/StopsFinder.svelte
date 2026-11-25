@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { formatTransitName, transitNameAliases } from '#lib/site/transitDisplay.ts';
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/state';
 	import { invalidateAll } from '$app/navigation';
@@ -76,9 +77,20 @@
 			.map((route) => ({
 				value: route.id,
 				label: route.short,
-				sublabel: route.long ?? undefined,
+				sublabel: route.long
+					? formatTransitName(route.long, locale, provider?.name_separators)
+					: undefined,
 				glyph: routeModeHint(route.type).glyph,
-				search: foldSearchText([route.id, route.short, route.long].filter(Boolean).join(' ')),
+				search: foldSearchText(
+					[
+						route.id,
+						route.short,
+						route.long,
+						...transitNameAliases(route.long, provider?.name_separators),
+					]
+						.filter(Boolean)
+						.join(' '),
+				),
 			})),
 	);
 
@@ -222,7 +234,9 @@
 		return [
 			row.stop.code ? t.row.code(row.stop.code) : null,
 			lines.length > 0 ? t.row.lines(lines.length, lines.join(', ')) : null,
-			row.towards ? t.row.towards(row.towards) : null,
+			row.towards
+				? t.row.towards(formatTransitName(row.towards, locale, provider?.name_separators))
+				: null,
 			row.distanceM == null
 				? null
 				: t.row.distance(numberFmt.format(Math.round(row.distanceM / 10) * 10)),

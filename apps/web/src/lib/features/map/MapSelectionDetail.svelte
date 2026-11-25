@@ -2,7 +2,7 @@
 	import { isInService, vehicleServiceCopy } from '#lib/v1/live/vehicleService.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	const { line } = transitDisplay();
+	const { line, readName } = transitDisplay();
 	import { liveAbsenceReason, readLiveAbsenceContext } from '#lib/site/absence.ts';
 	const absenceContext = readLiveAbsenceContext();
 	import { tick } from 'svelte';
@@ -144,12 +144,14 @@
 						label={`${t.route} ${line(detail.vehicle.route)}`}
 						ariaLabel={t.selectRoute(line(detail.vehicle.route))}
 						onclick={() => selectRoute(detail.vehicle.route)}
-					/>{#if detail.route?.long}<span class="detail-lede-item">{detail.route.long}</span
+					/>{#if detail.route?.long}<span class="detail-lede-item"
+							>{readName(detail.route.long, locale)}</span
 						>{/if}</DetailLede
 				>{/if}
 		{:else if detail.kind === 'route' && (detail.route.long || detail.direction)}
 			<DetailLede
-				>{#if detail.route.long}<span class="detail-lede-item">{detail.route.long}</span
+				>{#if detail.route.long}<span class="detail-lede-item"
+						>{readName(detail.route.long, locale)}</span
 					>{/if}{#if detail.direction}<span class="detail-lede-item"
 						>{directionLabel(detail, locale)}</span
 					>{/if}</DetailLede
@@ -435,7 +437,8 @@
 									label={`${t.route} ${line(route.route)}`}
 									ariaLabel={t.selectRoute(line(route.route))}
 									onclick={() => selectRoute(route.route)}
-								/>{#if route.headsign}<span class="map-route-times-headsign">{route.headsign}</span
+								/>{#if route.headsign}<span class="map-route-times-headsign"
+										>{readName(route.headsign, locale)}</span
 									>{/if}
 							</p>
 							<details data-slot="detail-schedule-tail">

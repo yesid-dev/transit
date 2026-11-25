@@ -141,6 +141,19 @@ class DownloadLicence(BaseModel):
         return self
 
 
+class NameSeparators(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    ends: Annotated[str, Field(pattern=r"^\S+$")]
+    languages: Annotated[str, Field(pattern=r"^\S+$")]
+    language_order: tuple[Literal["en", "fr"], Literal["en", "fr"]]
+
+    @model_validator(mode="after")
+    def validate_distinct(self) -> NameSeparators:
+        if self.ends == self.languages or self.language_order[0] == self.language_order[1]:
+            raise ValueError("Name separators and languages must be distinct")
+        return self
+
+
 class ProviderPublicConfig(BaseModel):
     enabled: bool = False
     labels: dict[Literal["en", "fr"], ProviderLabel] = Field(default_factory=dict)
@@ -156,6 +169,9 @@ class ProviderPublicConfig(BaseModel):
         default=None, exclude_if=lambda value: value is None
     )
     occupancy: bool | None = Field(default=None, exclude_if=lambda value: value is None)
+    name_separators: NameSeparators | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def validate_camera_bounds(self) -> ProviderPublicConfig:

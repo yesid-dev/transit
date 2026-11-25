@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	const { directionLabel } = transitDisplay();
 	import { clockFace } from '#lib/utils/time.ts';
 	import {
-		directionLabel,
 		methodEvidence,
 		minuteReading,
 		scheduledClock,

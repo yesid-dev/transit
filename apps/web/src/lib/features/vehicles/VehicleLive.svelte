@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { dateAndClock, directionName } from '#lib/site/presenter.ts';
+	import { dateAndClock } from '#lib/site/presenter.ts';
 	import { Card } from '@yesid/ui/card';
 	import { onMount, untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -102,14 +102,14 @@
 		const trip = vehicle.trip ? live.index.byTripId.get(vehicle.trip) : null;
 		const variants = file?.directions ?? [];
 		const inferred = tripDirection(trip?.stops?.map((stop) => stop.stop) ?? [], variants);
-		if (inferred) return directionName(inferred, locale);
+		if (inferred) return display.directionName(inferred, locale);
 		const reported = variants.filter((variant) => variant.dir === vehicle.direction_id);
 		if (reported.length === 1 && reported[0]?.headsign)
-			return directionName(reported[0].headsign, locale);
+			return display.directionName(reported[0].headsign, locale);
 		const matching = variants.filter((variant) =>
 			variant.stops?.some((stop) => stop.id === vehicle.next_stop),
 		);
-		return directionName(matching.length === 1 ? matching[0].headsign : null, locale);
+		return display.directionName(matching.length === 1 ? matching[0].headsign : null, locale);
 	}
 
 	const href = (path: string) => vehicleHref(path, url, locale, city);

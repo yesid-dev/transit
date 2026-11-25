@@ -45,6 +45,8 @@ export const load: PageServerLoad = async (event) => {
 	if (!frameLive) {
 		const directory = createLineDirectory(schedule?.routes ?? null, {
 			line: (routeId) => routeNameFallback(routeId, lang),
+			locale: lang,
+			nameSeparators: provider?.name_separators,
 		});
 		const name = directory.name(id);
 		return {
@@ -80,6 +82,8 @@ export const load: PageServerLoad = async (event) => {
 	);
 	const directory = createLineDirectory(schedule?.routes ?? null, {
 		line: (id) => routeNameFallback(id, lang),
+		locale: lang,
+		nameSeparators: provider?.name_separators,
 	});
 	const name = directory.name(id, routeSeed?.data?.long);
 

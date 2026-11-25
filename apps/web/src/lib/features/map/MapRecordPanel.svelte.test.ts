@@ -1,3 +1,4 @@
+import { directionLabel } from '#lib/site/presenter.ts';
 import { render, waitFor } from '@testing-library/svelte';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -9,7 +10,7 @@ import MapRecordPanel from './MapRecordPanel.svelte';
 
 vi.mock('#lib/v1/boot.ts', () => ({ getV1Context: () => ({ provider: null }) }));
 vi.mock('#lib/site/transitDisplayContext.ts', () => ({
-	transitDisplay: () => ({ lineName: (id: string) => ({ label: id }) }),
+	transitDisplay: () => ({ lineName: (id: string) => ({ label: id }), directionLabel }),
 }));
 vi.mock('#lib/v1/repositories/static.ts', () => ({ getRoute: vi.fn() }));
 vi.mock('#lib/v1/repositories/scheduleShapes.ts', () => ({ getMapRoutes: vi.fn() }));

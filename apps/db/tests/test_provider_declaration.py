@@ -37,6 +37,32 @@ def test_unpublished_vehicle_fields_are_retained_for_clean_days(tmp_path, payloa
     refuses(tmp_path, payload, "unpublished_vehicle_fields")
 
 
+def test_name_separators_are_optional_and_retained_in_public_config(tmp_path, payload):
+    public = manifest_from_declaration(load(tmp_path, payload)).public
+    assert "name_separators" not in public.model_dump(mode="json")
+    rule = {"ends": "<>", "languages": "~", "language_order": ["en", "fr"]}
+    payload["name_separators"] = rule
+    public = manifest_from_declaration(load(tmp_path, payload)).public
+    assert public.model_dump(mode="json")["name_separators"] == rule
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        {"ends": ""},
+        {"languages": " "},
+        {"languages": "<>"},
+        {"language_order": ["en", "en"]},
+        {"language_order": ["en", "es"]},
+        {"language_order": ["en"]},
+    ],
+)
+def test_refuses_invalid_name_separators(tmp_path, payload, invalid):
+    payload["name_separators"] = {"ends": "<>", "languages": "~", "language_order": ["en", "fr"]}
+    payload["name_separators"].update(invalid)
+    refuses(tmp_path, payload, "name_separators")
+
+
 @pytest.mark.parametrize(
     "key",
     [

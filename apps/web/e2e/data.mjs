@@ -322,6 +322,9 @@ const server = createServer((request, response) => {
 					attribution: JSON.parse(files[`/v1/${provider.id}/manifest.json`]).attribution,
 					timezone: 'America/Toronto',
 					bounds: provider.max_bounds,
+					...(provider.id === 'octranspo'
+						? { name_separators: { ends: '<>', languages: '~', language_order: ['en', 'fr'] } }
+						: {}),
 					lines_without_live_data: [
 						{ route_types: [provider.id === 'stm' ? 1 : 0], route_ids: [] },
 					],
@@ -496,6 +499,14 @@ const server = createServer((request, response) => {
 		const editionStops = new Map(stops.stops.map((stop) => [stop.id, stop]));
 		const editionRoutes = new Map(data.routes.map((entry) => [entry.id, entry]));
 		const routeDirections = { 24: route.directions };
+		if (kind === 'search-index') {
+			editionRoutes.set('display-names', {
+				id: 'display-names',
+				short: '501',
+				long: 'Waller <> Hospital ~ Hôpital',
+				type: 3,
+			});
+		}
 		for (const stop of fromRoute) {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
 		}

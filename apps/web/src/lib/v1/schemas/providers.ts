@@ -3,6 +3,19 @@ import { payloadEnvelopeFields } from './types';
 
 const providerId = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/);
 const label = z.object({ city: z.string().min(1), operator: z.string().min(1) });
+const nameLanguage = z.enum(['en', 'fr']);
+const nameSeparator = z.string().regex(/^\S+$/u);
+const nameSeparators = z
+	.object({
+		ends: nameSeparator,
+		languages: nameSeparator,
+		language_order: z.tuple([nameLanguage, nameLanguage]),
+	})
+	.refine(
+		({ ends, languages, language_order: [first, second] }) =>
+			ends !== languages && first !== second,
+	);
+export type NameSeparators = z.infer<typeof nameSeparators>;
 const bounds = z
 	.tuple([z.number(), z.number(), z.number(), z.number()])
 	.refine(
@@ -21,6 +34,7 @@ export const PublicProviderSchema = z.object({
 	inputs: z.record(z.string(), z.boolean()),
 });
 export const PublicCitySchema = PublicProviderSchema.extend({
+	name_separators: nameSeparators.optional(),
 	timezone: z.string().min(1),
 	bounds: bounds.nullable(),
 	basemap_url: z.string().nullable().optional(),

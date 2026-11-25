@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { directionLabel, minuteReading } from '#lib/site/presenter.ts';
+	import { minuteReading } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -285,8 +285,8 @@
 							onchange={(event) => onscope(line, event.currentTarget.value)}
 						>
 							<option value="">{tr('Both directions', 'Les deux directions')}</option>
-							<option value="0">{directionLabel(0, heads, locale)}</option>
-							<option value="1">{directionLabel(1, heads, locale)}</option>
+							<option value="0">{display.directionLabel(0, heads, locale)}</option>
+							<option value="1">{display.directionLabel(1, heads, locale)}</option>
 						</select>
 					</label>
 				{/if}

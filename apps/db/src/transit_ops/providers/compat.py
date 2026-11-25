@@ -54,6 +54,7 @@ def _public(declaration: Declaration) -> dict[str, object]:
         "labels": {k: v.model_dump() for k, v in declaration.labels.items()},
         "alert_links": dict(declaration.alert_links or {}),
         "download_licence": declaration.download_licence,
+        "name_separators": declaration.name_separators,
     }
     if overrides:
         public.update(

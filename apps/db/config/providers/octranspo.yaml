@@ -43,6 +43,10 @@ provider:
   reading_population: vehicle_evidence
 
 public:
+  name_separators:
+    ends: "<>"
+    languages: "~"
+    language_order: [en, fr]
   download_licence:
     checked_on: "2026-11-22"
     name:

@@ -85,12 +85,13 @@
 				: null,
 	);
 	const predictions = $derived(trip?.stops ?? []);
-	const direction = $derived(
-		tripDirection(
+	const direction = $derived.by(() => {
+		const headsign = tripDirection(
 			predictions.map((stop) => stop.stop),
 			routeFile?.directions ?? [],
-		),
-	);
+		);
+		return headsign ? display.readName(headsign, locale) : null;
+	});
 	usePageTitle(() =>
 		embedded
 			? null
