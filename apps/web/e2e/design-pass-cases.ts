@@ -16,8 +16,10 @@ const screens = {
 	'vehicle-record': '/vehicle/40061',
 	'vehicle-live': '/vehicle/40061?frameMode=live',
 	departure: '/departure/' + departure,
-	hotspots: '/hotspots',
-	rankings: '/repeat-offenders',
+	'rankings-lines': '/rankings',
+	'rankings-stops': '/rankings?kind=stop&measure=late',
+	'rankings-departures': '/rankings?kind=departure',
+	'rankings-vehicles': '/rankings?kind=vehicle',
 	daily: '/receipt',
 	alerts: '/alerts',
 	'alerts-live': '/alerts?frameMode=live',
@@ -41,6 +43,13 @@ const screens = {
 
 export type Screen = keyof typeof screens;
 
+const rankings = [
+	'rankings-lines',
+	'rankings-stops',
+	'rankings-departures',
+	'rankings-vehicles',
+] as const;
+
 const ottawa: Screen[] = [
 	'alerts',
 	'alerts-live',
@@ -60,7 +69,7 @@ const ottawa: Screen[] = [
 	'data-health-live',
 	'overview',
 	'overview-live',
-	'rankings',
+	...rankings,
 	'stop-record',
 	'vehicle-record',
 	'vehicle-live',
@@ -85,7 +94,7 @@ const french: Screen[] = [
 	'stop-record',
 	'map-live',
 	'map-record-stops',
-	'rankings',
+	...rankings,
 	'network-health',
 	'network-health-live',
 	'data-health',
@@ -117,6 +126,7 @@ export const designPassCases = [
 	['vehicles', 'octranspo', 'fr'] as const,
 	['vehicles-live', 'octranspo', 'fr'] as const,
 	['roadmap', 'octranspo', 'fr'] as const,
+	...rankings.map((screen) => [screen, 'octranspo', 'fr'] as const),
 	...(['network-health', 'network-health-live', 'data-health', 'data-health-live'] as const).map(
 		(screen) => [screen, 'octranspo', 'fr'] as const,
 	),
@@ -136,7 +146,9 @@ export const designPassCases = [
 							? ['2026-11-16', '2026-11-20']
 							: screen === 'lines' || screen === 'stops' || screen === 'vehicles'
 								? ['2026-11-04', '2026-11-10']
-								: ['2026-11-08', '2026-11-14'];
+								: screen.startsWith('rankings-')
+									? ['2026-10-27', '2026-11-02']
+									: ['2026-11-08', '2026-11-14'];
 	url.searchParams.set('recordFrom', from);
 	url.searchParams.set('recordTo', to);
 	return {

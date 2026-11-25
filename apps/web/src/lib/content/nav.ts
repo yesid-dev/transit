@@ -123,7 +123,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 		group: 'reports',
 		href: '/rankings?kind=departure',
 		label: { en: 'Worst trips and vehicles', fr: 'Pires trajets et véhicules' },
-		activePrefixes: [],
+		activePrefixes: ['/rankings?kind=departure'],
 	},
 	{
 		key: 'receipt',

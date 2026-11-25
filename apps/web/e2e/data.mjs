@@ -940,7 +940,7 @@ const server = createServer((request, response) => {
 											: url.searchParams.has('line')
 												? lineEngine(url)
 												: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
-													? rankingsEngine(url)
+													? rankingsEngine(url, question[1])
 													: finderFixture
 														? finderEngine(url)
 														: dailyFixture

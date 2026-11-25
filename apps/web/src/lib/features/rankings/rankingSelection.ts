@@ -12,7 +12,7 @@ export const rankingLists = {
 		label: { en: 'Vehicles', fr: 'Véhicules' },
 		title: {
 			en: 'Vehicles that stop reporting most often',
-			fr: 'Véhicules qui interrompent le plus souvent leur signalement',
+			fr: 'Véhicules qui cessent le plus souvent de se signaler',
 		},
 	},
 } as const;

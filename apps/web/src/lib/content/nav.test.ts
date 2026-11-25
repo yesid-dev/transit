@@ -84,7 +84,8 @@ type SurfaceKey = (typeof SURFACE_NAV)[number]['key'];
 describe('SURFACE_NAV manifest', () => {
 	it('every surface href resolves to a real +page.svelte (no dead links)', () => {
 		for (const item of [...SURFACE_NAV, ...SECONDARY_NAV]) {
-			const page = resolve(ROUTES, item.href.replace(/^\//, ''), '+page.svelte');
+			const path = new URL(item.href, 'https://transit.test').pathname;
+			const page = resolve(ROUTES, path.replace(/^\//, ''), '+page.svelte');
 			expect(existsSync(page), `${item.href} -> ${page}`).toBe(true);
 		}
 	});
@@ -163,7 +164,8 @@ describe('AUDIT_NAV (side-nav Audit group)', () => {
 
 	it('every audit href resolves to a real +page.svelte (no dead links)', () => {
 		for (const item of AUDIT_NAV) {
-			const page = resolve(ROUTES, item.href.replace(/^\//, ''), '+page.svelte');
+			const path = new URL(item.href, 'https://transit.test').pathname;
+			const page = resolve(ROUTES, path.replace(/^\//, ''), '+page.svelte');
 			expect(existsSync(page), `${item.href} -> ${page}`).toBe(true);
 		}
 	});

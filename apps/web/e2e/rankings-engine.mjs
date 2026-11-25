@@ -1,8 +1,9 @@
-export function rankingsEngine(url) {
+export function rankingsEngine(url, city) {
 	const get = (key) => url.searchParams.get(key);
 	const kind = get('kind');
 	const measure = get('measure');
 	const from = get('from');
+	if (from === '2026-10-29' && get('to') === '2026-11-04') return { status: 503, body: {} };
 	const vehicle = kind === 'vehicle';
 	const reporting = measure === 'vehicle_reporting_gaps_per_100_hours';
 	if (vehicle && !reporting) {
@@ -44,7 +45,7 @@ export function rankingsEngine(url) {
 					},
 		...(!vehicle ? { share_observed: 0.4, low_coverage: true } : {}),
 	};
-	const notTracked = vehicle && from === '2026-11-10';
+	const notTracked = vehicle && (city === 'octranspo' || from === '2026-11-10');
 	const paged = kind === 'line' && from === '2026-10-28';
 	const method = wait
 		? 'matched_headways'
@@ -133,10 +134,19 @@ export function rankingReferenceFixture(url) {
 	const q = url.searchParams;
 	const from = q.get('from');
 	const measure = q.get('measure');
-	if (!['2026-10-27', '2026-10-28'].includes(from) || q.has('group') || !measure) return null;
-	const value = { on_time: 0.8, late: 0.2, early: 0.06, median_delay: 25, excess_wait_time: 35 }[
-		measure
-	];
+	const windows = { '2026-10-27': '2026-11-02', '2026-10-28': '2026-11-03' };
+	if (!Object.hasOwn(windows, from) || windows[from] !== q.get('to') || q.has('group') || !measure)
+		return null;
+	const values = {
+		on_time: 0.8,
+		late: 0.2,
+		early: 0.06,
+		median_delay: 25,
+		excess_wait_time: 35,
+		vehicle_reporting_gaps_per_100_hours: 20.5,
+	};
+	if (!Object.hasOwn(values, measure)) return null;
+	const value = values[measure];
 	return {
 		body: {
 			measure,

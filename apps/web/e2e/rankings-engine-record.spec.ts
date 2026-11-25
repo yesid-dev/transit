@@ -19,7 +19,7 @@ const examples = [
 		'vehicle',
 		'',
 		'Vehicles that stop reporting most often',
-		'Véhicules qui interrompent le plus souvent leur signalement',
+		'Véhicules qui cessent le plus souvent de se signaler',
 		'Vehicles',
 		'Véhicules',
 	],
@@ -41,12 +41,15 @@ for (const provider of ['stm', 'octranspo'] as const) {
 			}) => {
 				const main = page.getByRole('main');
 				const unsupported = provider === 'octranspo' && kind === 'vehicle';
+				const heights: Record<number, number> = {};
+				await page.goto(`${prefix}/rankings?provider=${provider}&kind=${kind}&${dates}${extras}`);
 				for (const width of [1440, 390]) {
 					const theme = fr || (width === 390 && provider === 'stm') ? 'dark' : 'light';
 					await page.setViewportSize({ width, height: 900 });
 					await page.emulateMedia({ colorScheme: theme });
-					await page.addInitScript((theme) => localStorage.setItem('theme', theme), theme);
-					await page.goto(`${prefix}/rankings?provider=${provider}&kind=${kind}&${dates}${extras}`);
+					await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
+					await page.reload();
+					await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
 					await expect(main.getByRole('heading', { level: 1 })).toHaveText(fr ? french : en);
 					if (unsupported) {
 						await expect(main.locator('[data-record-state="not_tracked"]')).toBeVisible();
@@ -73,6 +76,7 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						.withTags(['wcag2a', 'wcag2aa'])
 						.analyze();
 					expect(axe.violations).toEqual([]);
+					heights[width] = await page.evaluate(() => document.documentElement.scrollHeight);
 					const art = process.env.TRANSIT_RANKINGS_ARTWORK;
 					if (art)
 						await page.screenshot({
@@ -80,6 +84,10 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							fullPage: true,
 						});
 				}
+				await test.info().attach('rankings-heights', {
+					body: JSON.stringify({ kind, provider, locale, heights }),
+					contentType: 'application/json',
+				});
 				if (!unsupported && kind === 'line') {
 					await main.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
 					const csv = await page.getByRole('dialog').getByRole('link').first().getAttribute('href');
@@ -107,8 +115,40 @@ test('redirects legacy rankings permanently with their choices and dates', async
 	}
 });
 
+test('shows separate exclusions and honest empty and unavailable states', async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto(
+		'/rankings?kind=departure&provider=stm&recordFrom=2026-11-08&recordTo=2026-11-08',
+	);
+	const main = page.getByRole('main');
+	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+		'No entries can be ranked on these dates.',
+	);
+	const excluded = main.getByRole('button', { name: /Excluded, with the reason/u });
+	await expect(excluded).toContainText('Too few to judge');
+	await excluded.click();
+	await expect(main.getByRole('table', { name: 'Excluded, with the reason' })).toBeVisible();
+	const art = process.env.TRANSIT_RANKINGS_ARTWORK;
+	if (art)
+		await page.screenshot({
+			path: join(art, 'departures-stm-en-1440-light-excluded.png'),
+			fullPage: true,
+		});
+	await page.goto('/rankings?provider=stm&recordFrom=2026-10-29&recordTo=2026-11-04');
+	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+		'The record is temporarily unavailable.',
+	);
+	await expect(main.getByRole('table')).toHaveCount(0);
+	if (art)
+		await page.screenshot({
+			path: join(art, 'lines-stm-en-1440-light-unavailable.png'),
+			fullPage: true,
+		});
+});
+
 test('keeps one history entry per rank and measure choice', async ({ page }) => {
 	await page.goto(`/rankings?provider=stm&${dates}`);
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const main = page.getByRole('main');
 	await main.getByRole('radio', { name: 'Stops', exact: true }).click();
 	await expect(page).toHaveURL(/kind=stop/u);
@@ -137,7 +177,7 @@ test('pages in groups of twenty and withholds a mismatched reference', async ({ 
 	await expect(rows).toHaveCount(21);
 });
 
-test('the ranking streams before its readings complete', async ({ page, request }) => {
+test('the ranking streams before its readings complete', async ({ page, request }, info) => {
 	const response = await page.goto(
 		'/rankings?provider=stm&recordFrom=2026-11-09&recordTo=2026-11-14',
 		{ waitUntil: 'commit' },

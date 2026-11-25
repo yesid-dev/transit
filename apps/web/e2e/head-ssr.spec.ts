@@ -8,6 +8,19 @@ import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
 
 // Request HTML directly: crawler metadata must be correct before any browser JavaScript runs.
+test('the canonical rankings route serves the selected bilingual title', async ({ request }) => {
+	for (const [path, title] of [
+		['/rankings?provider=stm', 'Worst lines'],
+		['/fr/rankings?provider=stm&kind=departure', 'Départs qui échouent le plus souvent'],
+	]) {
+		const response = await request.get(path);
+		expect(response.ok()).toBe(true);
+		const head = (await response.text()).split('</head>')[0];
+		expect(head).toContain(`<title>${title}`);
+		expect(head).toMatch(/\/og\/pages\/rankings\.(?:en|fr)\.png\?v=/u);
+	}
+});
+
 for (const locale of ['en', 'fr'] as const) {
 	test(`${locale}: only a validated home query brands the server-rendered head`, async ({
 		request,

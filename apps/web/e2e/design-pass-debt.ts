@@ -11,6 +11,22 @@ export const mapOpenLegendViewportHeight = 900;
 
 // A screen PR supplies its budgets here once all of its fixture variants leave the debt list.
 const budgets: Partial<Record<Screen, Budget>> = {
+	'rankings-lines': {
+		390: { height: 9078, beforeFigure: 0 },
+		1440: { height: 4632, beforeFigure: 0 },
+	},
+	'rankings-stops': {
+		390: { height: 8611, beforeFigure: 0 },
+		1440: { height: 4579, beforeFigure: 0 },
+	},
+	'rankings-departures': {
+		390: { height: 5209, beforeFigure: 0 },
+		1440: { height: 2610, beforeFigure: 0 },
+	},
+	'rankings-vehicles': {
+		390: { height: 9951, beforeFigure: 0 },
+		1440: { height: 5095, beforeFigure: 0 },
+	},
 	lines: {
 		390: { height: 8500, beforeFigure: 0 },
 		1440: { height: 5500, beforeFigure: 0 },

@@ -39,6 +39,7 @@
 	 * Optional `pageSize` and `rowHeading` preserve established page sizes and row-heading content.
 	 * Use `pageSize={0}` when the caller fetches additional rows a page at a time.
 	 * `leadingColumn` puts an identifier before the name on wide screens.
+	 * `nameWidth` reserves room for a custom row heading on wide screens.
 	 * When sorting is enabled, the caller reads and writes the URL and supplies the resulting
 	 * order and direction. Headers request a direction change; optional choices select a column.
 	 */
@@ -49,6 +50,7 @@
 		rows,
 		columns = [],
 		leadingColumn,
+		nameWidth,
 		value,
 		sort,
 		scrollMinWidth,
@@ -61,6 +63,7 @@
 		rows: readonly Row[];
 		columns?: readonly Column<Row>[];
 		leadingColumn?: Column<Row>;
+		nameWidth?: string;
 		value?: string;
 		sort?: RecordTableSort;
 		scrollMinWidth?: string;
@@ -74,7 +77,7 @@
 			header: rowHeader,
 			rowHeader: true,
 			sortable: !!sort,
-			width: sort ? 'max(12ch, calc(100cqi - 75ch))' : undefined,
+			width: nameWidth ?? (sort ? 'max(12ch, calc(100cqi - 75ch))' : undefined),
 			cell: nameCell,
 		},
 		...columns,
