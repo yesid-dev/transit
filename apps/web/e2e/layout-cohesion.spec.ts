@@ -63,11 +63,10 @@ for (const provider of ['stm', 'octranspo'])
 						});
 						await expect(page.getByRole('main')).toBeVisible();
 						await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-						if (kind !== 'trip') {
-							const name =
-								kind === 'line' ? /Line views|Vues de la ligne/ : /Stop views|Vues de l’arrêt/;
+						if (kind === 'line') {
+							const name = /Line views|Vues de la ligne/;
 							const views = page.getByRole('navigation', { name });
-							await expect(views.getByRole('link')).toHaveCount(kind === 'line' ? 3 : 2);
+							await expect(views.getByRole('link')).toHaveCount(3);
 							const first = views.getByRole('link').first();
 							await expect(first).toHaveAttribute('aria-current', 'page');
 							await first.focus();

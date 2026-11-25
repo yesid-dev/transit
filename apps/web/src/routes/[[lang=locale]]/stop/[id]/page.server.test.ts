@@ -164,7 +164,7 @@ it('streams the dated stop cuts without waiting for a slow per-line answer', asy
 	expect(sections.get('byLine')).toBe(slow);
 	await expect(sections.get('waiting')).resolves.toEqual({ kind: 'unconfigured' });
 	expect(sections.get('delay')).toBe(sections.get('punctuality'));
-	expect(harness.getRecordAnswer.mock.calls).toEqual(
+	expect(harness.getRecordAnswer.mock.calls.slice(0, 7)).toEqual(
 		[
 			{ measure: 'punctuality' },
 			{ measure: 'on_time', group: 'line' },
@@ -184,6 +184,11 @@ it('streams the dated stop cuts without waiting for a slow per-line answer', asy
 			},
 		]),
 	);
+	expect(harness.getRecordAnswer.mock.calls.slice(7).map(([query]) => query)).toEqual([
+		{ path: '/measure', parameters: { measure: 'late', group: 'weekday_hour', stop: 'S1' } },
+		{ path: '/measure', parameters: { measure: 'on_time' } },
+		{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
+	]);
 });
 
 it('keeps Live on the existing stop data without starting a Record query', async () => {

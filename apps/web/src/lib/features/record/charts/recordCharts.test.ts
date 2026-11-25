@@ -1,0 +1,137 @@
+import { describe, expect, it } from 'vitest';
+import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
+import { bandChart, hourChart, rangeChart, stopLadderChart, trendChart } from './recordCharts.ts';
+
+const cell = (key: Record<string, string | number>, patch: Partial<RecordCell> = {}) =>
+	({
+		key,
+		state: 'measured',
+		state_text: { en: 'Measured', fr: 'Mesuré' },
+		value: { on_time: 0.751, early: 0.083, late: 0.166 },
+		evidence: { counts: { classified: 58, on_time: 44, early: 4, late: 10 } },
+		...patch,
+	}) as RecordSeries['cells'][number];
+
+const series = (...cells: RecordSeries['cells']) =>
+	({ cells, evidence: { days_not_measured: [] } }) as unknown as RecordSeries;
+
+describe('record charts', () => {
+	it('keeps the three engine shares and counts with localized readings', () => {
+		expect(bandChart(cell({}), 'Bands', 'en').props.bands[2]).toMatchObject({
+			share: 0.166,
+			valueLabel: '16.6%',
+			detail: '10 stop events',
+		});
+		expect(bandChart(cell({}), 'Bands', 'fr').props.bands[2]?.detail).toBe(
+			'10 passages aux arrêts',
+		);
+	});
+
+	it('names measured, few and no-service cells and withholds numeric levels for states', () => {
+		const data = series(
+			cell({ weekday: 1, hour: 6 }),
+			cell({ weekday: 2, hour: 5 }),
+			cell({ weekday: 2, hour: 0 }),
+			...Array.from({ length: 15 }, (_, index) => cell({ weekday: 2, hour: index + 9 })),
+			cell({ weekday: 1, hour: 7 }, { state: 'too_few_to_judge' }),
+			cell(
+				{ weekday: 1, hour: 8 },
+				{
+					state: 'unknown',
+					evidence: { counts: { scheduled: 0 }, days_included: [] },
+				},
+			),
+		);
+		const grid = hourChart(
+			{ ...data, info: [{ id: 'late', minimum_sample: 30 }] },
+			'Hours',
+			'en',
+		).props;
+		expect(grid.columns.map(({ label }) => label)).toEqual([
+			'05h',
+			'06h',
+			'07h',
+			'08h',
+			'09h',
+			'10h',
+			'11h',
+			'12h',
+			'13h',
+			'14h',
+			'15h',
+			'16h',
+			'17h',
+			'18h',
+			'19h',
+			'20h',
+			'21h',
+			'22h',
+			'23h',
+			'00h',
+		]);
+		expect(grid.stateLabels.few).toBe('few: too few to judge, under 30 stop events');
+		expect(grid.rows[0]?.cells[1]).toMatchObject({
+			text: '17',
+			name: 'Monday, 06h: 16.6% late, 58 stop events',
+		});
+		expect(grid.rows[0]?.cells[2]).toMatchObject({ text: 'few', level: null, state: 'few' });
+		expect(grid.rows[0]?.cells[3]).toMatchObject({
+			text: 'none',
+			level: null,
+			state: 'none',
+			name: 'Monday, 08h: no service at that hour',
+		});
+		expect(grid.rows[1]?.cells[3]?.state).toBe('unmeasured');
+		expect(hourChart(data, 'Heures', 'fr').props.rows[0]?.cells[1]?.name).toMatch(
+			/lundi, 6 h : 16,6\s% en retard, 58 passages aux arrêts/,
+		);
+	});
+
+	it('keeps gaps in daily readings and aligns the reference to the same dates', () => {
+		const data = series(
+			cell({ day: '2026-11-08' }),
+			cell({ day: '2026-11-09' }, { state: 'not_measured' }),
+			cell({ day: '2026-11-10' }),
+		);
+		const reference = series(cell({ day: '2026-11-10' }, { value: { on_time: 0.807 } }));
+		const chart = trendChart(data, 'Daily', 'en', reference);
+		expect(chart.props.points.map(({ y }) => y)).toEqual([0.751, null, 0.751]);
+		expect(chart.props.reference.map(({ y }) => y)).toEqual([null, null, 0.807]);
+		expect(chart.table.rows[0]?.value).toBe('75.1%');
+		expect(chart.props.yDomain).toEqual([0.75, 0.85]);
+		expect(chart.props.ticks.map(({ label }) => label)).toEqual(['8 Nov', '10 Nov']);
+		expect(chart.props.last?.label).toBe('75.1%');
+	});
+
+	it('uses the engine interval without recalculating its endpoints', () => {
+		const chart = rangeChart(
+			{ value: 0.751, range: { lower: 0.706, upper: 0.758 } },
+			'On-time share',
+			'en',
+			0.807,
+		);
+		expect(chart.props).toMatchObject({
+			low: 0.706,
+			high: 0.758,
+			value: 0.751,
+			reference: { value: 0.807 },
+		});
+		expect(chart.props.label).toBe('On-time share: 75.1%, 70.6% to 75.8%; network at 80.7%.');
+	});
+
+	it('keeps the engine stop order and separates a real zero from a state', () => {
+		const chart = stopLadderChart(
+			series(
+				cell({ stop: 'B' }, { value: { median_delay: 0 } }),
+				cell({ stop: 'A' }, { state: 'no_live_data' }),
+			),
+			'Delay',
+			'fr',
+			(id) => ({ name: id }),
+		);
+		expect(chart.props.stops).toMatchObject([
+			{ id: 'B/0', value: 0 },
+			{ id: 'A/1', value: null, state: 'Aucune donnée en direct' },
+		]);
+	});
+});

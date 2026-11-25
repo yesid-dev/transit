@@ -24,7 +24,7 @@ test('the desktop French total stays on one line and plate codes keep names alig
 	await page.goto('/fr' + recordHref);
 	const total = page
 		.getByRole('article', { name: 'Bilan', exact: true })
-		.getByText(/^sur 507\s800 passages aux arrêts$/u);
+		.getByText(/^sur 507[ \u00a0\u202f]800 passages aux arrêts$/u);
 	await expect(total).toBeVisible();
 	await page.evaluate(() => document.fonts.ready);
 	expect(
@@ -227,6 +227,12 @@ for (const width of [390, 1440]) {
 				await expect(cite).toBeFocused();
 				await page.keyboard.press('Tab');
 				await expect(firstLink).toBeFocused();
+				const trendTable = record.getByRole('button', {
+					name: fr ? 'Tableau' : 'Table',
+					exact: true,
+				});
+				await page.keyboard.press('Tab');
+				await expect(trendTable).toBeFocused();
 
 				await download.click();
 				const exports = page.getByRole('dialog');

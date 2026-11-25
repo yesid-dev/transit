@@ -490,7 +490,13 @@ test('the Stop Record header clears the frame and gives its back link a full tar
 	const back = (await link.boundingBox())!;
 	const heading = (await title.boundingBox())!;
 	expect(back.y).toBeGreaterThanOrEqual(chrome.y + chrome.height);
-	expect(back.y + back.height).toBeLessThanOrEqual(heading.y);
+	expect(heading.y).toBeGreaterThanOrEqual(chrome.y + chrome.height);
+	const overlaps =
+		back.x < heading.x + heading.width &&
+		heading.x < back.x + back.width &&
+		back.y < heading.y + heading.height &&
+		heading.y < back.y + back.height;
+	expect(overlaps).toBe(false);
 	expect(back.height).toBeGreaterThanOrEqual(44);
 });
 

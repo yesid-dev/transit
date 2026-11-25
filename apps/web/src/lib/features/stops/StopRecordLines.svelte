@@ -1,0 +1,197 @@
+<script lang="ts">
+	import { Button } from '@yesid/ui/button';
+	import * as Collapsible from '@yesid/ui/collapsible';
+	import { RoutePlate } from '@yesid/ui/brand';
+	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import StateMark from '#lib/features/record/StateMark.svelte';
+	import { chartState, minimumSample } from '#lib/features/record/charts/recordCharts.ts';
+	import {
+		choose,
+		coverageText,
+		measuredShare,
+		percent,
+		tally,
+	} from '#lib/features/record/recordText.ts';
+	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import type { RecordSeries } from '#lib/server/engine.ts';
+	import { countedUnit } from '#lib/site/presenter.ts';
+	import { waitingMeasures, waitingReadingParts } from '#lib/features/record/waitingText.ts';
+	import { carryFrameState } from '#lib/site/frameState.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+
+	let {
+		series,
+		locale,
+		city,
+		pinned,
+		title,
+		waiting = false,
+	}: {
+		series: RecordSeries;
+		locale: Locale;
+		city: string;
+		pinned: URL;
+		title: string;
+		waiting?: boolean;
+	} = $props();
+	const display = transitDisplay();
+	const t = (en: string, fr: string) => choose(locale, en, fr);
+	type Row = {
+		id: string;
+		name: ReturnType<typeof display.lineName>;
+		state: ReturnType<typeof chartState>;
+		share: number | null;
+		sample: number | null;
+		cell: RecordSeries['cells'][number];
+	};
+	const rows = $derived(
+		series.cells.flatMap((cell): Row[] => {
+			const id = cell.key.line;
+			return typeof id !== 'string' || cell.state === 'no_frequent_periods'
+				? []
+				: [
+						{
+							id,
+							name: display.lineName(id),
+							state: chartState(cell.state),
+							share: measuredShare(cell, 'on_time'),
+							sample: cell.evidence.counts.classified ?? null,
+							cell,
+						},
+					];
+		}),
+	);
+	const columns = $derived<DataTableColumn<Row>[]>([
+		{ key: 'line', header: t('Line', 'Ligne'), rowHeader: true, cell: line },
+		...(waiting
+			? [
+					{
+						key: 'excess_wait_time',
+						header: t(waitingMeasures[0][1], waitingMeasures[0][2]),
+						numeric: true,
+						cell: excess,
+					},
+					{
+						key: 'long_gaps',
+						header: t(waitingMeasures[1][1], waitingMeasures[1][2]),
+						numeric: true,
+						cell: gaps,
+					},
+					{
+						key: 'bunching',
+						header: t(waitingMeasures[2][1], waitingMeasures[2][2]),
+						numeric: true,
+						cell: bunching,
+					},
+				]
+			: [
+					{
+						key: 'value',
+						header: t('On-time share', 'Part à l’heure'),
+						numeric: true,
+						cell: value,
+					},
+					{
+						key: 'count',
+						header: t('Stop events here', 'Passages à cet arrêt'),
+						numeric: true,
+						cell: count,
+					},
+				]),
+	]);
+</script>
+
+{#snippet line(row: Row)}
+	<a
+		class="line-link min-h-11 text-primary underline"
+		href={carryFrameState(
+			localizeHref('/lines/' + encodeURIComponent(row.id), locale, city),
+			pinned,
+		)}
+	>
+		<RoutePlate code={row.name.number ?? row.id} size="md" />
+		<span>{row.name.name ?? ''}</span>
+	</a>
+{/snippet}
+{#snippet value(row: Row)}
+	{#if row.share === null}<StateMark state={row.state} {locale} />
+	{:else}{percent(row.share, locale)}{/if}
+{/snippet}
+{#snippet count(row: Row)}
+	{@const minimum = minimumSample(series, 'on_time')}
+	{#if row.state === 'too_few_to_judge' && row.sample !== null && minimum != null}
+		<span class="text-small text-muted-foreground"
+			>{t(
+				`${countedUnit(row.sample, 'event', locale)}, the minimum is ${tally(minimum, locale)}`,
+				`${countedUnit(row.sample, 'event', locale)}, le minimum est de ${tally(minimum, locale)}`,
+			)}</span
+		>
+	{:else if row.sample !== null}{tally(row.sample, locale)}
+	{:else}<span class="sr-only">{t('Unknown', 'Inconnu')}</span>{/if}
+{/snippet}
+
+{#snippet waitingValue(row: Row, id: (typeof waitingMeasures)[number][0])}
+	{@const reading = waitingReadingParts(row.cell, id, locale)}
+	{reading.value}
+	{#if reading.detail}<span class="block text-small text-muted-foreground">{reading.detail}</span
+		>{/if}
+{/snippet}
+{#snippet excess(row: Row)}{@render waitingValue(row, 'excess_wait_time')}{/snippet}
+{#snippet gaps(row: Row)}{@render waitingValue(row, 'long_gaps')}{/snippet}
+{#snippet bunching(row: Row)}{@render waitingValue(row, 'bunching')}{/snippet}
+
+{#if rows.length}
+	<DataTable
+		class="min-w-0"
+		caption={title}
+		{columns}
+		{rows}
+		key={(row) => row.id}
+		responsive={{ mode: 'scroll', minWidth: waiting ? '34rem' : '29rem' }}
+		pageSize={rows.length > 12 ? 12 : undefined}
+		pageLabels={{
+			showing: (shown, total) =>
+				t(
+					`Showing ${tally(shown, locale)} of ${tally(total, locale)}`,
+					`${tally(shown, locale)} sur ${tally(total, locale)}`,
+				),
+			more: (count) =>
+				t(`Show ${tally(count, locale)} more`, `Afficher ${tally(count, locale)} de plus`),
+		}}
+	/>
+{:else if series.cells[0]}<p>{series.cells[0].state_text[locale]}</p>{/if}
+
+{#if waiting}
+	<Collapsible.Root class="mt-3">
+		<Collapsible.Trigger>
+			{#snippet child({ props })}
+				<Button {...props} size="sm" variant="outline" class="min-h-11"
+					>{t('Definitions', 'Définitions')}</Button
+				>
+			{/snippet}
+		</Collapsible.Trigger>
+		<Collapsible.Content class="pt-3">
+			<div class="grid gap-2 text-small">
+				{#each waitingMeasures as [id, en, fr] (id)}
+					{@const definition = series.info?.find((item) => item.id === id)?.text?.[locale]
+						.definition}
+					{#if definition}<p><strong>{t(en, fr)}</strong> {definition}</p>{/if}
+				{/each}
+				{#each rows as row (row.id)}
+					{@const coverage = coverageText(row.cell.evidence, locale)}
+					{#if coverage}<p>{row.name.label}: {coverage}</p>{/if}
+				{/each}
+			</div>
+		</Collapsible.Content>
+	</Collapsible.Root>
+{/if}
+
+<style>
+	.line-link {
+		display: inline-grid;
+		grid-template-columns: 3.5rem minmax(min-content, 1fr);
+		gap: var(--space-card-gap);
+		align-items: center;
+		overflow-wrap: normal;
+	}
+</style>

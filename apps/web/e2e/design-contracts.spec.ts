@@ -16,29 +16,34 @@ for (const locale of PUBLISHED_LOCALES) {
 	for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 		test(
 			locale +
-				' Stop view links keep keyboard focus and fit at each width with ' +
+				' Stop Record controls keep keyboard focus and fit at each width with ' +
 				reducedMotion +
 				' @theme',
 			async ({ page }) => {
 				await page.emulateMedia({ reducedMotion });
 				for (const width of [390, 768, 1280, 1440]) {
 					await page.setViewportSize({ width, height: 900 });
-					await page.goto(localizeHref('/stop/S1', locale, 'stm'));
-					const nav = page.getByRole('navigation', { name: /Stop views|Vues de l’arrêt/ });
-					const links = nav.getByRole('link');
-					await expect(links).toHaveCount(2);
-					await expect(links.first()).toHaveAttribute('aria-current', 'page');
-					await links.first().focus();
+					await page.goto(
+						localizeHref('/stop/S1?recordFrom=2026-11-08&recordTo=2026-11-14', locale, 'stm'),
+					);
+					const main = page.getByRole('main');
+					const back = main.getByRole('link', {
+						name: locale === 'fr' ? 'Tous les arrêts' : 'All stops',
+					});
+					const firstAction = main.getByRole('button', {
+						name: locale === 'fr' ? 'Copier le lien' : 'Copy link',
+					});
+					await expect(firstAction).toBeVisible();
+					await back.focus();
 					await page.keyboard.press('Tab');
-					await expect(links.nth(1)).toBeFocused();
-					for (const link of await links.all()) {
-						const bounds = (await link.boundingBox())!;
+					await expect(firstAction).toBeFocused();
+					for (const target of [back, firstAction]) {
+						const bounds = (await target.boundingBox())!;
 						expect(bounds.height).toBeGreaterThanOrEqual(44);
 						expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
 					}
 					await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
-					await nav.evaluate((node) => node.setAttribute('data-axe-stop-nav', ''));
-					await expectAccessible(page, { include: '[data-axe-stop-nav]' });
+					await expectAccessible(page, { include: 'main' });
 				}
 			},
 		);

@@ -12,14 +12,23 @@ export const waitingMeasures = [
 type WaitingMeasure = (typeof waitingMeasures)[number][0];
 
 export function waitingReading(cell: RecordCell, measure: WaitingMeasure, locale: Locale) {
+	const { value, detail } = waitingReadingParts(cell, measure, locale);
+	if (detail == null) return value;
+	return measure === 'excess_wait_time' ? `${value} · ${detail}` : `${value} (${detail})`;
+}
+
+export function waitingReadingParts(cell: RecordCell, measure: WaitingMeasure, locale: Locale) {
 	if (cell.state !== 'measured') {
-		return cell.evidence.coverage_reason === 'insufficient_coverage'
-			? choose(
-					locale,
-					'Not measured (insufficient coverage)',
-					'Non mesuré (couverture insuffisante)',
-				)
-			: cell.state_text[locale];
+		return {
+			value:
+				cell.evidence.coverage_reason === 'insufficient_coverage'
+					? choose(
+							locale,
+							'Not measured (insufficient coverage)',
+							'Non mesuré (couverture insuffisante)',
+						)
+					: cell.state_text[locale],
+		};
 	}
 
 	const value = cell.value[measure];
@@ -30,26 +39,28 @@ export function waitingReading(cell: RecordCell, measure: WaitingMeasure, locale
 		value == null ||
 		!observed
 	)
-		return unknown;
+		return { value: unknown };
 
 	const total = tally(observed, locale);
 	if (measure === 'excess_wait_time') {
-		if (!matched) return unknown;
+		if (!matched) return { value: unknown };
 		const duration = minuteReading(value / 60, locale);
 		const scheduled = tally(matched, locale);
-		return choose(
-			locale,
-			`${duration} · ${total} observed intervals, ${scheduled} scheduled intervals in comparable windows`,
-			`${duration} · ${total} intervalles observés, ${scheduled} intervalles prévus dans des fenêtres comparables`,
-		);
+		return {
+			value: duration,
+			detail: choose(
+				locale,
+				`${total} observed intervals, ${scheduled} scheduled intervals in comparable windows`,
+				`${total} intervalles observés, ${scheduled} intervalles prévus dans des fenêtres comparables`,
+			),
+		};
 	}
 
 	const count = cell.evidence.counts[measure];
-	if (count == null) return unknown;
+	if (count == null) return { value: unknown };
 	const n = tally(count, locale);
-	return choose(
-		locale,
-		`${percent(value, locale)} (${n} of ${total})`,
-		`${percent(value, locale)} (${n} sur ${total})`,
-	);
+	return {
+		value: percent(value, locale),
+		detail: choose(locale, `${n} of ${total}`, `${n} sur ${total}`),
+	};
 }

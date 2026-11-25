@@ -25,7 +25,8 @@
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
-	import RecordPunctualityDays from '../record/RecordPunctualityDays.svelte';
+	import RecordChart from '../record/charts/RecordChart.svelte';
+	import RecordChartToggle from '../record/charts/RecordChartToggle.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { recordSectionLinks } from '../record/recordLinks.ts';
@@ -85,6 +86,7 @@
 		};
 	} = $props();
 	const t = $derived(overviewCopy[locale]);
+	let trendTable = $state(false);
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(record.period, locale) });
 	const days = $derived(
 		countedUnit(periodDays(record.period.from, record.period.to), 'day', locale),
@@ -300,7 +302,13 @@
 							{#if trend.kind === 'busy'}<RecordPending {locale} busy />
 							{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
 							{:else if 'cells' in trend.answer && trend.answer.cells.length}
-								<RecordPunctualityDays title={t.trend} series={trend.answer} {locale} />
+								<RecordChart
+									title={t.trend}
+									id="overview-record-trend"
+									table={trendTable}
+									input={{ kind: 'trend', answer: trend.answer }}
+									{locale}
+								/>
 							{:else}
 								{@const state = 'cells' in trend.answer ? trend.answer.state : undefined}
 								<StateMark
@@ -317,6 +325,17 @@
 						href={link('/network')}>{t.fullRecord}</a
 					>
 					{@render evidenceFooter()}
+					{#if record.trend}
+						{#await record.trend then trend}
+							{#if trend.kind === 'answer' && 'cells' in trend.answer && trend.answer.cells.length}
+								<RecordChartToggle
+									bind:table={trendTable}
+									controls="overview-record-trend"
+									{locale}
+								/>
+							{/if}
+						{/await}
+					{/if}
 				{/snippet}
 			</RecordCard>
 			{#key record.manifest?.provider}

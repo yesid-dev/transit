@@ -1,3 +1,4 @@
+import { openFrameControls } from './frame-controls';
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
@@ -125,16 +126,14 @@ test('Live now lists predictions under their line, statuses in words', async ({ 
 
 for (const lang of PUBLISHED_LOCALES)
 	test(lang + ': Stop Record and Live share the selected city and dates', async ({ page }) => {
+		await page.clock.setFixedTime(Date.parse('2026-11-23T16:00:00Z'));
 		const path = localizeHref('/stop/S1', lang, 'stm');
 		await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14');
-		const views = page.getByRole('navigation', {
-			name: lang === 'fr' ? 'Vues de l’arrêt' : 'Stop views',
-		});
-		const record = views.getByRole('link', { name: lang === 'fr' ? 'Bilan' : 'Record' });
-		const live = views.getByRole('link', { name: lang === 'fr' ? 'En direct' : 'Live now' });
-		await expect(record).toHaveAttribute('aria-current', 'page');
-		await live.click();
-		await expect(live).toHaveAttribute('aria-current', 'page');
+		const views = await openFrameControls(page, lang);
+		const recordName = lang === 'fr' ? 'Bilan' : 'Record';
+		const liveName = lang === 'fr' ? 'En direct' : 'Live now';
+		await expect(views.getByRole('radio', { name: recordName, exact: true })).toBeChecked();
+		await views.getByRole('radio', { name: liveName, exact: true }).click();
 		await expect(page).toHaveURL(
 			(url) =>
 				url.searchParams.get('provider') === 'stm' &&
@@ -143,7 +142,9 @@ for (const lang of PUBLISHED_LOCALES)
 				url.searchParams.get('frameMode') === 'live',
 		);
 		await page.goBack();
-		await expect(record).toHaveAttribute('aria-current', 'page');
+		await expect(
+			(await openFrameControls(page, lang)).getByRole('radio', { name: recordName, exact: true }),
+		).toBeChecked();
 	});
 
 test('the status page lists its record families on phones and says when data is missing', async ({

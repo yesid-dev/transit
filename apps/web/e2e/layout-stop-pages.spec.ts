@@ -11,8 +11,12 @@ for (const locale of ['en', 'fr'] as const)
 				await page.setViewportSize({ width, height: 900 });
 				await page.goto(localizeHref('/stop/S1', locale, 'stm') + period);
 				const hourly = page.locator('#hourly');
-				await expect(hourly.getByRole('rowheader', { name: '07:00' })).toBeVisible();
-				await expect(hourly.getByRole('cell', { name: /80\s?%/u })).toBeVisible();
+				await expect(
+					hourly.getByRole('columnheader', { name: locale === 'fr' ? '7 h' : '07h', exact: true }),
+				).toBeVisible();
+				await expect(
+					hourly.getByRole('cell', { name: /(?:06h|6 h).*(?:late|en retard)/u }).first(),
+				).toBeVisible();
 				await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
 				await page.goto(localizeHref('/stops', locale, 'stm') + period);
 				const row = page

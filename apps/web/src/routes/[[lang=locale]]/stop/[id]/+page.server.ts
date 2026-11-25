@@ -49,6 +49,7 @@ export const load: PageServerLoad = async (event) => {
 			seed: name ? { id, name } : fallback,
 			stopSeed: null,
 			stopCode: scheduledStop?.code,
+			stopLines: scheduledStop?.routes,
 			...(name
 				? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) }
 				: {}),

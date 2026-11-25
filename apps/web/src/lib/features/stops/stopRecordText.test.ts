@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { measure, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import { punctualityBands, recordMessage } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure } from '#lib/server/engine.ts';
-import { stopAccessibility, stopAnswer, stopCitation } from './stopRecordText.ts';
+import { stopAccessibility, stopAnswer, stopCitation, stopComparison } from './stopRecordText.ts';
 
 const base = measure();
 const answer: RecordMeasure = {
@@ -75,4 +75,26 @@ it('cites the stop, dates, scope, and versions and marks older results', () => {
 	]) {
 		expect(text).toContain(expected);
 	}
+});
+
+it('compares measured shares over the same dates in both languages', () => {
+	const stop = { ...answer, value: { on_time: 0.751 } };
+	const network = { kind: 'answer', answer: { ...answer, value: { on_time: 0.807 } } } as const;
+	expect(stopComparison(stop, network, 'en')).toBe(
+		'5.6 points below the network, which was at 80.7% over the same dates.',
+	);
+	expect(stopComparison(stop, network, 'fr')).toMatch(
+		/^5,6 points sous la part du réseau, qui était de 80,7\s% sur les mêmes dates\.$/,
+	);
+	expect(stopComparison(stop, { kind: 'unreachable' }, 'en')).toBeUndefined();
+	expect(
+		stopComparison(
+			stop,
+			{
+				...network,
+				answer: { ...network.answer, evidence: { ...answer.evidence, start_date: '2026-11-01' } },
+			},
+			'en',
+		),
+	).toBeUndefined();
 });

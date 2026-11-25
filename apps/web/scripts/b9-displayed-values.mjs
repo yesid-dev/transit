@@ -16,6 +16,7 @@ import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { lineEngine } from '../e2e/line-engine.mjs';
+import { overviewEngine } from '../e2e/overview-engine.mjs';
 import { stopEngine } from '../e2e/stop-engine.mjs';
 import { b9LiveFixture } from './b9-live-fixture.mjs';
 import { verifyInstalledBrowserArtifact } from './browser-toolchain.mjs';
@@ -46,10 +47,15 @@ function recordFixture(url, fixtureName) {
 	if (!match) return null;
 	const line = url.searchParams.get('line') === '24';
 	const stop = url.searchParams.get('stop') === 'S1';
-	if (!line && !stop) return null;
 	const query = new URL(url);
 	query.pathname = '/' + match[1];
 	query.searchParams.set('city', 'stm');
+	if (!line && !stop)
+		return match[1] === 'measure' &&
+			query.searchParams.get('measure') === 'on_time' &&
+			[null, 'day'].includes(query.searchParams.get('group'))
+			? overviewEngine(query)
+			: null;
 	const answer = (line ? lineEngine : stopEngine)(query);
 	if (fixtureName === 'sparse' && query.searchParams.get('measure') === 'punctuality') {
 		answer.body.state = 'not_measured';
@@ -1488,9 +1494,20 @@ async function settleSurface(page, cell, fixture) {
 
 async function verifyEngineRecord(page, cell, replay, errors, html) {
 	const label = `${cell.fixture}/${cell.locale}/${cell.surface}`;
+	const isLine = cell.surface === 'line';
 	const section = page.locator('#punctuality');
-	const bands = section.locator('dl');
+	const bands = isLine ? section.locator('dl') : page.locator('#stop-bands-chart dl');
 	const missing = cell.fixture === 'sparse';
+	const verifyExport = (csv) => {
+		invariant(csv != null, `${label} missing CSV link`);
+		const exportUrl = new URL(csv, page.url());
+		invariant(
+			exportUrl.searchParams.get('section') === 'punctuality' &&
+				exportUrl.searchParams.get('recordFrom') === '2026-11-08' &&
+				exportUrl.searchParams.get('recordTo') === '2026-11-14',
+			`${label} CSV lost the displayed measure or dates: ${exportUrl}`,
+		);
+	};
 	if (missing) {
 		await section.getByText('Not measured', { exact: true }).waitFor();
 		invariant((await bands.count()) === 0, `${label} gave an unmeasured record numeric bands`);
@@ -1500,7 +1517,7 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 		);
 	} else {
 		await bands.waitFor();
-		const early = cell.surface === 'line' ? 10 : 5;
+		const early = isLine ? 10 : 5;
 		const onTime = new URL(page.url()).searchParams.get('direction') === '1' ? 40 : 80;
 		const counts = [early, onTime, 100 - early - onTime];
 		const displayedLabels = await bands.locator('dt').evaluateAll((terms) =>
@@ -1516,31 +1533,48 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 			JSON.stringify(displayedLabels) === JSON.stringify(expectedLabels),
 			`${label} mislabeled or reordered the punctuality bands: ${displayedLabels}`,
 		);
-		const readings = (await bands.locator('dd').allTextContents()).map((text) =>
-			Array.from(text.matchAll(/\d+(?:[.,]\d+)?/gu), ([number]) => parseNumber(number)),
-		);
+		const readings = isLine
+			? (await bands.locator('dd').allTextContents()).map((text) =>
+					Array.from(text.matchAll(/\d+(?:[.,]\d+)?/gu), ([number]) => parseNumber(number)),
+				)
+			: (
+					await bands
+						.locator('dd')
+						.evaluateAll((rows) =>
+							rows.map((row) => [
+								row.querySelector('strong')?.textContent,
+								row.querySelector('span')?.textContent,
+							]),
+						)
+				).map((row) => row.map(parseNumber));
+		const expectedReadings = isLine
+			? counts.map((count) => [count, count, 100, 50, 200])
+			: [
+					[5, 414],
+					[80, 6628],
+					[15, 1243],
+				];
 		invariant(
-			JSON.stringify(readings) ===
-				JSON.stringify(
-					counts.map((count) =>
-						cell.surface === 'line' ? [count, count, 100, 50, 200] : [count, count, 100],
-					),
-				),
+			JSON.stringify(readings) === JSON.stringify(expectedReadings),
 			`${label} punctuality shares or denominators drifted: ${JSON.stringify(readings)}`,
 		);
+		if (!isLine) await page.locator('#daily footer button').click();
 		await page.locator('#daily table tbody tr').first().waitFor();
-		const csv = await section.getByRole('link', { name: /CSV/u }).getAttribute('href');
-		invariant(csv != null, `${label} missing CSV link`);
-		const exportUrl = new URL(csv, page.url());
-		invariant(
-			exportUrl.searchParams.get('section') === 'punctuality' &&
-				exportUrl.searchParams.get('recordFrom') === '2026-11-08' &&
-				exportUrl.searchParams.get('recordTo') === '2026-11-14',
-			`${label} CSV lost the displayed measure or dates: ${exportUrl}`,
-		);
+		if (!isLine) await page.locator('#daily footer button').click();
+		if (isLine)
+			verifyExport(await section.getByRole('link', { name: /CSV/u }).getAttribute('href'));
+	}
+	if (!isLine) {
+		await section.getByRole('button', { name: /^(Download|Télécharger)$/u }).click();
+		const sheet = page.getByRole('dialog');
+		await sheet.locator('a[href*="section=daily"]').waitFor();
+		verifyExport(await sheet.locator('a[href*="section=punctuality"]').getAttribute('href'));
+		await page.keyboard.press('Escape');
+		await sheet.waitFor({ state: 'hidden' });
 	}
 	await verifyAccessibility(page, cell);
-	await page.locator('#daily a[href*="section=daily"]').first().waitFor({ state: 'attached' });
+	if (isLine)
+		await page.locator('#daily a[href*="section=daily"]').first().waitFor({ state: 'attached' });
 	const data = replay.state.ledger;
 	invariant(errors.length === 0, `${label} browser errors: ${errors.join(' | ')}`);
 	invariant(replay.state.outbound.length === 0, `${label} outbound: ${replay.state.outbound}`);
@@ -1551,7 +1585,6 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 		`${label} touched a snapshot or made an unknown request: ${JSON.stringify(data)}`,
 	);
 	const queries = data.filter(({ path }) => /\/(measure|ranking)\?/u.test(path));
-	const isLine = cell.surface === 'line';
 	const direction = new URL(cell.path, 'http://b9.local').searchParams.get('direction');
 	const expectedQueries = isLine
 		? [
@@ -1575,12 +1608,15 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 				{ measure: 'on_time', group: 'day' },
 				{ measure: 'accessible_stops' },
 				{ measure: 'alert_counts' },
+				{ measure: 'late', group: 'weekday_hour' },
+				{ measure: 'on_time', network: true },
+				{ measure: 'on_time', group: 'day', network: true },
 			];
-	const expectedPaths = expectedQueries.map((query) => {
+	const expectedPaths = expectedQueries.map(({ network, ...query }) => {
 		const params = new URLSearchParams({
 			from: '2026-11-08',
 			to: '2026-11-14',
-			...(isLine ? { line: '24' } : { stop: 'S1' }),
+			...(network ? {} : isLine ? { line: '24' } : { stop: 'S1' }),
 			...query,
 		});
 		if (isLine && direction && query.group !== 'direction' && query.measure !== 'alert_counts')

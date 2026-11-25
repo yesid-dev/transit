@@ -76,6 +76,7 @@ export const designPassCases = [
 	...ottawa.map((screen) => [screen, 'octranspo', 'en'] as const),
 	...french.map((screen) => [screen, 'stm', 'fr'] as const),
 	['overview', 'octranspo', 'fr'] as const,
+	['stop-record', 'octranspo', 'fr'] as const,
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';

@@ -46,5 +46,15 @@ export function loadStopRecord(scope: EnginePeriod, stop: string) {
 					? punctuality
 					: getRecordAnswer(stopRecordQuery(section, stop), scope),
 		})),
+		// Keep the existing export queries and stream the display cuts independently.
+		grid: getRecordAnswer(
+			{ path: '/measure', parameters: { measure: 'late', group: 'weekday_hour', stop } },
+			scope,
+		),
+		network: getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope),
+		networkDaily: getRecordAnswer(
+			{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
+			scope,
+		),
 	};
 }
