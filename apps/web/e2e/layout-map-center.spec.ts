@@ -149,7 +149,7 @@ for (const provider of providers.providers)
 					JSON.stringify(measurements, null, 2),
 				);
 				if (phase === 'after')
-					for (const state of ['default', 'rail']) {
+					for (const state of ['default', 'filters-open']) {
 						const m = measurements[state] as Awaited<ReturnType<typeof sample>>;
 						expect(Math.abs(m.center.x - m.expectedX), state).toBeLessThan(3);
 						if (state === 'default') expect(m.west).toBeGreaterThanOrEqual(m.panel.right + 15);
