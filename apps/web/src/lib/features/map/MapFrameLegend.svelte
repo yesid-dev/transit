@@ -63,7 +63,7 @@
 				{ label: tr('Selected', 'Sélection'), symbol: selectedMark },
 			] satisfies MapLegendItem[],
 		};
-		if (layer !== 'live') return [network];
+		if (layer !== 'live') return [];
 		const colour = live.groups[0]!;
 		return [
 			{

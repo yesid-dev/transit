@@ -836,6 +836,10 @@
 	</div>
 {/snippet}
 
+{#snippet motionHeader(collapsed: boolean)}
+	<MapMotionControl {locale} copy={t} {collapsed} />
+{/snippet}
+
 {#snippet mapControls(context: import('@yesid/ui/layout').SurfaceRailContext)}
 	{#if !isRecordLayer && !mapFailure}
 		<div class="contents" data-map-controls data-ripple-exempt>
@@ -871,8 +875,8 @@
 					stops={stopList}
 					collapsible={false}
 					controlsMode={false}
+					header={motionHeader}
 				/>
-				<MapMotionControl {locale} copy={t} collapsed={false} />
 				<ul class="grid list-none gap-1 p-0 text-sm text-muted-foreground">
 					{#each legendDetails.groups.slice(1).flatMap((group) => group.rows) as row (row.id)}
 						<li>{row.label}{row.definition ? ` · ${row.definition}` : ''}</li>
@@ -939,10 +943,12 @@
 
 {#snippet titleCard(showStamp: boolean)}
 	<div class="grid gap-1">
-		<h1 class="text-xl font-bold">{title}</h1>
+		<h1 class={wide ? 'text-xl font-bold' : 'text-lg font-bold leading-tight'}>{title}</h1>
 		{#if wide}<p class="text-sm text-muted-foreground">{city}</p>{/if}
 		{#if showStamp}{@render stamp()}{/if}
-		{#if !wide && !isRecordLayer}<MapFeedStallBanner {presentation} inline />{/if}
+		{#if !wide && !isRecordLayer}
+			<div class:sr-only={remWidth >= 24}><MapFeedStallBanner {presentation} inline /></div>
+		{/if}
 	</div>
 {/snippet}
 
@@ -951,6 +957,7 @@
 		{#if isRecordLayer}
 			{@render recordContent?.()}
 		{:else}
+			{#if !wide && remWidth >= 24}<MapFeedStallBanner {presentation} inline />{/if}
 			<MapInView
 				view={reportView}
 				{locale}
@@ -1014,30 +1021,11 @@
 	>
 		{@render stage()}
 		{#if !wide}
-			<MapLegendControl
-				{locale}
-				presentation="phone"
-				{colourBy}
-				staleCutoffS={liveTimingFor(manifest).staleCutoffS}
-				hidden={detailOpen || inViewOpen}
-				content={phoneLegend}
-			/>
 			<div class="map-mobile-head map-head">
-				<Card class="gap-1 p-3" edge="neutral">{@render titleCard(true)}</Card>
+				<Card class="gap-1 p-[min(0.75rem,12px)] [--text-small:var(--text-caption)]" edge="neutral"
+					>{@render titleCard(true)}</Card
+				>
 			</div>
-			<Button
-				variant="outline"
-				size="sm"
-				class="map-in-view-button min-h-11 max-w-full"
-				bind:ref={inViewTrigger}
-				wrap
-				onclick={() => {
-					restoreListTrigger = true;
-					inViewOpen = true;
-				}}
-			>
-				{inViewCount === null ? viewLabel : `${tr('In view:', 'En vue :')} ${inViewCount}`}
-			</Button>
 		{/if}
 		<div
 			class="map-camera-actions"
@@ -1082,6 +1070,27 @@
 		</div>
 	</MapFrame>
 	{#if !wide}
+		<MapLegendControl
+			{locale}
+			presentation="phone"
+			{colourBy}
+			staleCutoffS={liveTimingFor(manifest).staleCutoffS}
+			hidden={detailOpen || inViewOpen}
+			content={phoneLegend}
+		/>
+		<Button
+			variant="outline"
+			size="sm"
+			class="map-in-view-button min-h-11 max-w-full"
+			bind:ref={inViewTrigger}
+			wrap
+			onclick={() => {
+				restoreListTrigger = true;
+				inViewOpen = true;
+			}}
+		>
+			{inViewCount === null ? viewLabel : `${tr('In view:', 'En vue :')} ${inViewCount}`}
+		</Button>
 		<Sheet
 			open={inViewOpen || detailOpen}
 			onOpenChange={(open) => {
@@ -1158,6 +1167,11 @@
 		--z-map-overlay: 2;
 		--z-map-banner-content: 2;
 		--z-map-detail: 3;
+	}
+	.map-hero[data-map-wide='false'] {
+		--map-attribution-bottom: calc(
+			var(--map-touch-row-bottom) + max(2.75rem, var(--size-tap-min)) + 0.75rem
+		);
 	}
 	.map-surface {
 		position: absolute;
