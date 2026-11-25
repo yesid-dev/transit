@@ -12,7 +12,7 @@
 	const copy = $derived(roadmapCopy[locale]);
 </script>
 
-<Surface>
+<Surface as="article" aria-labelledby="roadmap-title">
 	<RecordScreen>
 		<RecordGroup><ScreenTitle title={roadmapTitle[locale]} id="roadmap-title" /></RecordGroup>
 		<div class="min-w-0" data-slot="screen-content">
