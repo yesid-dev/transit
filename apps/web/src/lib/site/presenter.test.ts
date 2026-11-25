@@ -2,6 +2,8 @@ import { expect, it } from 'vitest';
 import { routeNameFallback } from './absence.ts';
 import { createLineDirectory } from './lineDirectory.ts';
 import {
+	agencyMessageDates,
+	agencyMessageHeading,
 	clockRange,
 	clockTime,
 	dateAndClock,
@@ -24,6 +26,38 @@ import {
 	vehiclePositionsCapture,
 	versionNumber,
 } from './presenter.ts';
+
+it.each(['en', 'fr'] as const)(
+	'uses the agency’s first sentence for a generic %s heading',
+	(locale) => {
+		expect(
+			agencyMessageHeading(
+				{
+					header: { en: 'Your line', fr: 'Votre arrêt :' },
+					description: { en: null, fr: 'Travaux près du terminus. Consultez l’avis complet.' },
+				},
+				locale,
+			),
+		).toEqual({ title: 'Travaux près du terminus.', language: 'fr' });
+	},
+);
+
+it.each([
+	['en', '17 to 23 Nov 2026 · 25 Nov 2026'],
+	['fr', 'du 17 au 23 nov. 2026 · 25 nov. 2026'],
+] as const)('combines overlapping local calendar dates in %s', (locale, label) => {
+	expect(
+		agencyMessageDates(
+			[
+				{ start: '2026-11-20T10:00:00Z', end: '2026-11-24T05:00:00Z' },
+				{ start: '2026-11-25T10:00:00Z', end: '2026-11-25T17:00:00Z' },
+				{ start: '2026-11-17T10:00:00Z', end: '2026-11-20T23:00:00Z' },
+			],
+			locale,
+			'America/Toronto',
+		),
+	).toBe(label);
+});
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
 

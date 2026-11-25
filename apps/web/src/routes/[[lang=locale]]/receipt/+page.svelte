@@ -33,7 +33,8 @@
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
 	import {
-		agencyMessagePreview,
+		agencyMessageDates,
+		agencyMessageHeading,
 		countedUnit,
 		dateRange,
 		longDate,
@@ -44,7 +45,6 @@
 	} from '#lib/site/presenter.ts';
 	import { carryFrameState, frameHref, RECORD_START } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { providerLocalDateKey } from '#lib/utils/serviceDate.ts';
 	import type { DailySection } from '#lib/server/departureDailyRecord.ts';
 	import type {
 		EngineResult,
@@ -516,9 +516,12 @@
 								{:else if messages.evidence.alert_messages?.length}
 									<ul class="message-rows">
 										{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version], ))}
-											{@const other = lang === 'fr' ? 'en' : 'fr'}
-											{@const headline = message.header[lang] || message.header[other]}
-											{@const text = message.description[lang] || message.description[other]}
+											{@const heading = agencyMessageHeading(message, lang)}
+											{@const dates = agencyMessageDates(
+												message.periods ?? [],
+												lang,
+												data.timeZone,
+											)}
 											<li
 												class="message-row grid min-w-0 gap-x-4 border-b border-border py-2 print:py-0.5"
 											>
@@ -533,30 +536,18 @@
 													{/each}
 												</div>
 												<div class="min-w-0">
-													<h3
-														class="font-semibold"
-														lang={headline ? (message.header[lang] ? lang : other) : undefined}
-													>
-														{headline || [t('Alert', 'Avis'), message.id].join(' ')}
+													<h3 class="font-semibold" lang={heading.language}>
+														{heading.title}
 													</h3>
-													{#if message.periods?.length}
-														<p class="text-muted-foreground">
-															{message.periods
-																.map(({ start, end }) => {
-																	const from = providerLocalDateKey(start, data.timeZone);
-																	const to = providerLocalDateKey(end, data.timeZone);
-																	return from && to ? dateRange({ from, to }, lang) : null;
-																})
-																.filter(Boolean)
-																.join(' · ')}
-														</p>
+													{#if dates}
+														<p class="text-muted-foreground">{dates}</p>
 													{/if}
-													{#if text}
+													{#if heading.preview}
 														<p
 															class="text-muted-foreground print:hidden"
-															lang={message.description[lang] ? lang : other}
+															lang={heading.previewLanguage}
 														>
-															{agencyMessagePreview(text, message.description[lang] ? lang : other)}
+															{heading.preview}
 														</p>
 													{/if}
 												</div>

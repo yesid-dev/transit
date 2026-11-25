@@ -28,7 +28,10 @@ test.describe('Daily report print', () => {
 				new RegExp('^' + title),
 			);
 			await expect(main.locator('#messages h3')).toHaveCount(5);
-			await expect(main.locator('#messages p[lang=fr]')).toHaveCount(5);
+			await expect(main.locator('#messages h3[lang=fr]')).toHaveCount(5);
+			await expect(main.locator('#messages h3').first()).toHaveText(
+				'Le service est réduit sur Sauvé en raison de travaux.',
+			);
 			await expect(main.locator('#messages a[href*="/alerts"]')).toContainText(/1[\s,]690/u);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
 			await expect(main.locator('#punctuality')).toContainText(fr ? /97,2\s%/u : '97.2%');
@@ -103,6 +106,11 @@ if (process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
 				);
 			} else {
 				await expect(content.locator('#stops')).toContainText('Express Saint-Joseph / Bélanger');
+			}
+			if (name === 'range-1440') {
+				await expect(content.locator('#messages li').first().locator('p')).toHaveText(
+					'15 to 21 Nov 2026',
+				);
 			}
 			await page.evaluate(() => document.fonts.ready);
 			await page.screenshot({

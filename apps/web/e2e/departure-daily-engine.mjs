@@ -278,22 +278,26 @@ export function departureDailyEngine(url, dailyMessageHold, richReport = false) 
 							routes: [dailyReportLines[index % dailyReportLines.length].id],
 							stops: [],
 							header: {
-								en: [
-									'Reduced service on Sauvé',
-									'Detour near Saint-Michel',
-									'Relocated stop on Édouard-Montpetit',
-								][index % 3],
-								fr: [
-									'Service réduit sur Sauvé',
-									'Détour près de Saint-Michel',
-									'Déplacement d’un arrêt sur Édouard-Montpetit',
-								][index % 3],
+								en: index % 2 ? 'Your stop' : 'Your line',
+								fr: index % 2 ? 'Votre arrêt' : 'Votre ligne',
 							},
 							description: {
 								en: null,
-								fr: 'En raison de travaux de réaménagement, les véhicules empruntent un itinéraire temporaire. Le passage à l’arrêt habituel est suspendu pendant les travaux. Consultez l’avis de service pour connaître les arrêts accessibles et prévoir votre déplacement.',
+								fr:
+									[
+										'Le service est réduit sur Sauvé en raison de travaux.',
+										'Les véhicules font un détour près de Saint-Michel.',
+										'L’arrêt sur Édouard-Montpetit est temporairement déplacé.',
+										'La ligne emprunte un itinéraire temporaire vers Côte-Vertu.',
+										'Le passage à l’arrêt habituel est suspendu sur Saint-Michel.',
+										'Les travaux se poursuivent près du terminus.',
+									][index] +
+									' Consultez l’avis de service pour connaître les arrêts accessibles et prévoir votre déplacement pendant les travaux de réaménagement.',
 							},
-							periods: [{ start: from + 'T12:00:00Z', end: to + 'T23:00:00Z' }],
+							periods: [
+								{ start: from + 'T12:00:00Z', end: to + 'T20:00:00Z' },
+								{ start: to + 'T18:00:00Z', end: to + 'T23:00:00Z' },
+							],
 						})),
 					},
 				),
