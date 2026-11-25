@@ -289,12 +289,12 @@
 							</p>
 						{/if}
 					</RecordGroup>
-					<RecordGroup aria-labelledby="method-heading">
-						<section class="grid min-w-0 gap-6" bind:this={measures}>
+					<div class="min-w-0" bind:this={measures}>
+						<RecordGroup aria-labelledby="method-heading">
 							<header class="flex flex-wrap items-center justify-between gap-3">
 								<h2 id="method-heading">{copy.heading}</h2>
 								{#if ordered.length}
-									<Button variant="outline" size="sm" class="min-h-11" onclick={toggleAll}
+									<Button variant="outline" size="cta-sm" wrap class="min-h-11" onclick={toggleAll}
 										>{hasOpenCards
 											? sectionsToggleCopy[locale].collapse
 											: sectionsToggleCopy[locale].expand}</Button
@@ -332,18 +332,18 @@
 								<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
 							</RecordCard>
 							<RecordCard title={copy.limitsTitle}>
-								<ul class="method-limits list-outside list-disc">
+								<ul class="method-limits list-outside list-disc ps-5">
 									{#each copy.recordLimits as line (line)}<li>{line}</li>{/each}
 								</ul>
 							</RecordCard>
-							{#if extra.length}
-								<section aria-labelledby="more-methods" class="grid min-w-0 gap-4">
-									<h2 id="more-methods">{copy.more}</h2>
-									{#each extra as item (item.id)}{@render group(item, byId, parts)}{/each}
-								</section>
-							{/if}
-						</section>
-					</RecordGroup>
+						</RecordGroup>
+						{#if extra.length}
+							<RecordGroup aria-labelledby="more-methods">
+								<h2 id="more-methods">{copy.more}</h2>
+								{#each extra as item (item.id)}{@render group(item, byId, parts)}{/each}
+							</RecordGroup>
+						{/if}
+					</div>
 				{/if}
 			{/await}
 			<RecordGroup>
