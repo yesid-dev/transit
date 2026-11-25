@@ -13,6 +13,8 @@ const time = Date.parse('2026-11-23T16:00:00Z');
 for (const { screen, provider, locale, key, href } of designPassCases) {
 	test(`${screen} ${provider} ${locale} @layout`, async ({ page }, info) => {
 		const health = screen.startsWith('network-health') || screen.startsWith('data-health');
+		const alerts = screen === 'alerts' || screen === 'alerts-live';
+		if (alerts) await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
 		await setWidth(page, 1440);
 		if (screen !== 'line-live' && !(health && screen.endsWith('-live')))
 			await page.clock.setFixedTime(time);
@@ -79,7 +81,6 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				).toBeVisible();
 			}
 		}
-		const alerts = screen === 'alerts' || screen === 'alerts-live';
 		if (alerts && provider === 'stm')
 			await expect(page.locator('[data-slot="show-more"]').first()).toBeVisible();
 		const start = performance.now();

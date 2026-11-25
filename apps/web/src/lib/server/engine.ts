@@ -158,7 +158,7 @@ function engineFetch(
 		!proxy &&
 		fixtureScope &&
 		(question.parameters.measure === 'alert_counts' ||
-			(question.path.endsWith('/schedule-index') && fixtureScope === 'alerts') ||
+			question.path.endsWith('/schedule-index') ||
 			fixtureScope === 'overview-stream' ||
 			fixtureScope === 'overview-stop-ranking')
 	)

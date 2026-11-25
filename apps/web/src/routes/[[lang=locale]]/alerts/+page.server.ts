@@ -25,7 +25,7 @@ export const load: PageServerLoad = async (event) => {
 							...period,
 							city: providerId,
 							visitorIp: event.request.headers.get('cf-connecting-ip'),
-							fixtureScope: 'alerts',
+							fixtureScope: event.request.headers.get('x-transit-fixture-scope'),
 						})
 					: [],
 		},

@@ -144,6 +144,13 @@ describe('root server layout boot', () => {
 		});
 		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null);
 	});
+	it('passes the requested fixture scope to the schedule loader', async () => {
+		harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
+		const event = serverEvent(undefined, '/lines');
+		event.request.headers.set('x-transit-fixture-scope', 'named-lines');
+		await loadServerLayout(event);
+		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null, 'named-lines');
+	});
 	it.each([
 		['/stops', {}, ['one', 'two', 'three'], true],
 		['/stop/[id]', { id: ' two ' }, ['two'], false],

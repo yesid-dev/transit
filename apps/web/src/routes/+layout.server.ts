@@ -110,10 +110,11 @@ export const load: LayoutServerLoad = async (event) => {
 	);
 	if (selection.redirectHref) redirect(307, selection.redirectHref);
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });
+	const fixtureScope = event.request.headers.get('x-transit-fixture-scope');
 	const schedule =
 		needsSchedule && selection.provider
-			? route === localRoute + '/alerts'
-				? await getScheduleEdition(selection.providerId, visitorIp, 'alerts')
+			? fixtureScope
+				? await getScheduleEdition(selection.providerId, visitorIp, fixtureScope)
 				: await getScheduleEdition(selection.providerId, visitorIp)
 			: null;
 	// Overview combines schedule totals with a small set of ranked stop names.

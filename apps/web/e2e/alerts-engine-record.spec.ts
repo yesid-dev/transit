@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { stmAlertId } from './alert-fixture.mjs';
 
+test.use({ extraHTTPHeaders: { 'x-transit-fixture-scope': 'alerts' } });
+
 const period = 'provider=stm&frameMode=record&recordFrom=2026-11-14&recordTo=2026-11-20';
 
 test('Alerts Record streams a count, breakdowns and the first page of agency messages', async ({
@@ -16,6 +18,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(answer).not.toContainText('12,5');
 	await expect(page.locator('#effect')).toContainText('Non publié');
 	await expect(page.locator('#line').getByRole('status')).toHaveText('6 sur 185');
+	await expect(page.locator('#line').getByRole('link').first()).toContainText('Beaubien');
 	await expect(
 		page.locator('#line').getByRole('link').filter({ hasText: 'Sherbrooke' }),
 	).toBeVisible();

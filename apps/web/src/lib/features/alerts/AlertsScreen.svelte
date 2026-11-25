@@ -53,6 +53,7 @@
 		liveAlertCut,
 		recordAlertCards,
 		recordAlertCut,
+		sortAlertLineCut,
 		unstatedEffect,
 		type AlertCut,
 	} from './alertCards.ts';
@@ -238,7 +239,7 @@
 			{/if}
 		{:else}
 			<dl class="line-grid grid gap-x-6 lg:grid-cols-2">
-				{#each rows.slice(0, lineLimit) as row, index (index)}
+				{#each sortAlertLineCut(rows, locale, display.line).slice(0, lineLimit) as row, index (index)}
 					<div
 						class="line-reading flex min-w-0 items-center justify-between gap-3 border-b border-border"
 					>

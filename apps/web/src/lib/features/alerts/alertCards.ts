@@ -172,6 +172,20 @@ export function liveAlertCards(alerts: readonly Alert[], now: number): AlertCard
 
 export type AlertCut = { key: string; value: number | null; state?: string };
 
+export function sortAlertLineCut(
+	rows: readonly AlertCut[],
+	locale: Locale,
+	lineNumber: (id: string) => string,
+): AlertCut[] {
+	const order = new Intl.Collator(locale, { numeric: true });
+	return rows.toSorted(
+		(a, b) =>
+			(b.value ?? -Infinity) - (a.value ?? -Infinity) ||
+			Number(!a.key) - Number(!b.key) ||
+			order.compare(lineNumber(a.key), lineNumber(b.key)),
+	);
+}
+
 export function liveAlertCut(cards: readonly AlertCard[], group: 'effect' | 'line'): AlertCut[] {
 	const counts = new Map<string, number>();
 	for (const card of cards) {
