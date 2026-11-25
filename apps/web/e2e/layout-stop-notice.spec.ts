@@ -1,9 +1,10 @@
 import { expect } from '@playwright/test';
 import { test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
+import type { CaptureSnapshot } from '../src/lib/live/captureSnapshot';
 import { captureFixture, captureUrl, installStopCapture } from './capture-fixture';
 
-const notice = {
+const notice: NonNullable<CaptureSnapshot['alerts']>[number] = {
 	id: 'layout-stop-notice',
 	severity: 'WARNING',
 	routes: ['24'],
@@ -16,7 +17,7 @@ const notice = {
 	url: {},
 	cause: null,
 	effect: null,
-	periods: [],
+	periods: [['2026-11-23T15:00:00Z', null]],
 };
 const time = Date.parse('2026-11-23T16:00:00Z');
 
@@ -36,12 +37,30 @@ for (const locale of ['en', 'fr'] as const)
 			const before = (await first.boundingBox())?.y;
 			const capture = async (route: import('@playwright/test').Route) => {
 				const now = await page.evaluate(() => Date.now());
-				await route.fulfill({ json: captureFixture(now, { alerts: [notice] }) });
+				await route.fulfill({
+					json: captureFixture(now, {
+						alerts: [
+							notice,
+							{
+								...notice,
+								id: 'notice-for-another-stop',
+								stops: ['S2'],
+								description: { en: 'This notice is for another stop.' },
+							},
+						],
+					}),
+				});
 			};
 			await page.route(captureUrl, capture);
 			await refresh();
 			await expect(page.getByTestId('stop-alerts')).toContainText(
 				locale === 'fr' ? 'L’ascenseur est hors service.' : 'The elevator is out of service.',
+			);
+			await expect(page.getByTestId('stop-alerts')).toContainText(
+				locale === 'fr' ? /Depuis le 23 nov\. 2026/ : /Since 23 Nov 2026/,
+			);
+			await expect(page.getByTestId('stop-alerts')).not.toContainText(
+				'This notice is for another stop.',
 			);
 			expect((await first.boundingBox())?.y).toBe(before);
 			await page.unroute(captureUrl, capture);

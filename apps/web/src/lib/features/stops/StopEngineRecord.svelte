@@ -40,6 +40,7 @@
 	import StopRecordLines from './StopRecordLines.svelte';
 	import {
 		stopAccessibility,
+		stopBoardingNotPublished,
 		stopCitation,
 		stopComparison,
 		stopEvidenceSample,
@@ -334,9 +335,7 @@
 										</FactRow>
 									{:then result}
 										{#if result.kind === 'answer' && 'value' in result.answer}
-											{@const notPublished =
-												result.answer.evidence.counts.stops_no_information === 1 ||
-												result.answer.state === 'not_published'}
+											{@const notPublished = stopBoardingNotPublished(result.answer)}
 											<FactRow
 												id="accessibility"
 												label={titleFor('accessibility')}
@@ -348,7 +347,7 @@
 													: undefined}
 											>
 												{#if notPublished}
-													{t('Not published', 'Non publié')}
+													<StateMark state="not_published" {locale} />
 												{:else}
 													{stopAccessibility(result.answer, locale)}
 												{/if}

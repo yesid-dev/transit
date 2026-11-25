@@ -9,6 +9,7 @@ import {
 	tally,
 } from '#lib/features/record/recordText.ts';
 import { countedUnit, dateRange, methodEvidence, singularCount } from '#lib/site/presenter.ts';
+import { recordState } from '../record/recordStates.ts';
 import type {
 	EngineResult,
 	RecordAnswer,
@@ -125,10 +126,14 @@ export const stopAccessibilityDescription = {
 	fr: 'Il s’agit de la déclaration de l’exploitant dans l’horaire pour cet arrêt à sa dernière date de service dans la période choisie.',
 };
 
+export function stopBoardingNotPublished(answer: RecordMeasure) {
+	return answer.state === 'not_published' || answer.evidence.counts.stops_no_information === 1;
+}
+
 export function stopAccessibility(answer: RecordMeasure, locale: Locale): string {
+	if (stopBoardingNotPublished(answer)) return recordState('not_published')[locale];
 	if (answer.state !== 'measured') return answer.state_text[locale];
-	const { stops_accessible, stops_not_accessible, stops_no_information } = answer.evidence.counts;
-	if (stops_no_information === 1) return choose(locale, 'No information', 'Aucune information');
+	const { stops_accessible, stops_not_accessible } = answer.evidence.counts;
 	if (stops_accessible === 1) return choose(locale, 'Accessible', 'Accessible');
 	if (stops_not_accessible === 1) return choose(locale, 'Not accessible', 'Non accessible');
 	return choose(locale, 'Unknown', 'Inconnu');

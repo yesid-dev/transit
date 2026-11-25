@@ -165,7 +165,7 @@
 			{operator}
 			scope={{ kind: 'stop', id, lines }}
 			tracked={hasAlerts}
-			href={link('/alerts?frameMode=live&' + new URLSearchParams({ stop: id }))}
+			href={link('/alerts?frameMode=live')}
 		/>
 	</div>
 	<div id="stop-detail-facts">

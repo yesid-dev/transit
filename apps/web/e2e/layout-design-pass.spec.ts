@@ -140,7 +140,11 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await setWidth(page, 1440);
 		const liveAlerts = screen === 'alerts-live' && provider === 'stm';
 		if (liveAlerts) await page.clock.install({ time });
-		else if (screen !== 'stop-live' && screen !== 'line-live' && !(health && screen.endsWith('-live')))
+		else if (
+			screen !== 'stop-live' &&
+			screen !== 'line-live' &&
+			!(health && screen.endsWith('-live'))
+		)
 			await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 		await page.route(captureUrl, (route) => {
