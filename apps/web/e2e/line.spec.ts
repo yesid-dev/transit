@@ -66,35 +66,41 @@ for (const locale of PUBLISHED_LOCALES) {
 				}),
 			);
 			await route.fulfill({
-				json: captureFixture(at, {
-					vehicle_positions: vehicles,
-					non_responding_by_route: [{ route_id: '9003', count: 2 }],
-					alerts: [
-						{
-							id: 'shared-line-notice',
-							header: { en: 'Your line', fr: 'Votre ligne' },
-							description: { fr: 'Détour près du terminus. Suivez la signalisation temporaire.' },
-							url: {},
-							cause: null,
-							effect: null,
-							severity: null,
-							routes: ['9003'],
-							stops: [],
-							periods: [
-								[new Date(at - 3_600_000).toISOString(), new Date(at + 3_600_000).toISOString()],
-							],
-						},
-					],
-				}),
+				json: {
+					...captureFixture(at, {
+						vehicle_positions: vehicles,
+						non_responding_by_route: [{ route_id: '9003', count: 2 }],
+						alerts: [
+							{
+								id: 'shared-line-notice',
+								header: { en: 'Your line', fr: 'Votre ligne' },
+								description: { fr: 'Détour près du terminus. Suivez la signalisation temporaire.' },
+								url: {},
+								cause: null,
+								effect: null,
+								severity: null,
+								routes: ['9003'],
+								stops: [],
+								periods: [
+									[new Date(at - 3_600_000).toISOString(), new Date(at + 3_600_000).toISOString()],
+								],
+							},
+						],
+					}),
+					stable_vehicle_ids: null,
+				},
 			});
 		});
 		await page.route('**/api/live-trips?city=stm&line=9003', async (route) => {
 			const at = await page.evaluate(() => Date.now());
 			await route.fulfill({
 				json: captureTripReport('stm', new Date(at).toISOString(), [
-					captureTrip('trip-0', '9003', [
-						{ stop: 't4-0', eta_utc: new Date(at + 270_000).toISOString(), delay_min: 2 },
-					]),
+					{
+						...captureTrip('trip-0', '9003', [
+							{ stop: 't4-0', eta_utc: new Date(at + 270_000).toISOString(), delay_min: 2 },
+						]),
+						direction_id: 0,
+					},
 				]),
 			});
 		});
@@ -143,7 +149,12 @@ for (const locale of PUBLISHED_LOCALES) {
 			'href',
 			/\/stop\/t4-0\?/,
 		);
-		await expect(page.locator('#line-detail-directions')).toContainText(fr ? 'dans 5' : 'in 5');
+		const predictions = page.locator('#line-detail-directions');
+		await expect(predictions).toContainText(fr ? 'dans 5' : 'in 5');
+		await expect(predictions).toContainText(fr ? 'Vers Greenboro' : 'Toward Greenboro');
+		await expect(predictions.getByRole('link').first().locator('[data-slot="badge"]')).toHaveText(
+			't4-0',
+		);
 		await page.getByRole('button', { name: fr ? 'Afficher 1 de plus' : 'Show 1 more' }).click();
 		await expect(roster.locator('tbody tr')).toHaveCount(21);
 		await page.goto(localizeHref('/lines/9003', locale, provider));

@@ -4,6 +4,14 @@ export function providerHasAlerts<T extends { inputs: Record<string, boolean> }>
 	return !(provider?.inputs.i3_alerts === false && provider.inputs.service_alerts === false);
 }
 
+export function vehicleTrackingDisabled(
+	provider: { inputs: Record<string, boolean> } | null | undefined,
+): boolean {
+	return (
+		provider?.inputs.vehicle_positions === false || provider?.inputs.stable_vehicle_ids === false
+	);
+}
+
 export function lineIsScheduleOnly(
 	provider:
 		| {

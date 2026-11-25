@@ -72,7 +72,7 @@ describe('Line Live readings', () => {
 			]);
 		const report = captureTripReport('stm', new Date(now).toISOString(), [
 			call('later', 420_000, 2),
-			call('next', 270_000, null),
+			{ ...call('next', 270_000, null), direction_id: 1 },
 			call('past', -1_000, 0),
 			{ ...call('cancelled', 120_000, 0), relationship: 3 },
 			{
@@ -82,6 +82,7 @@ describe('Line Live readings', () => {
 		]);
 		expect(nextStopPredictions(report, now).get('snowdon')).toEqual({
 			trip: 'next',
+			direction: 1,
 			predictedAt: now + 270_000,
 			delay: null,
 			scheduledAt: null,

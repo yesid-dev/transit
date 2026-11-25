@@ -8,10 +8,12 @@ import {
 	type CaptureTripReport,
 } from '#lib/live/captureSnapshot.ts';
 
+export type LineMainStop = Pick<ScheduleEdition['stops'][number], 'id' | 'name' | 'code'>;
+
 export function selectMainStops(
 	stops: ScheduleEdition['stops'],
 	directions: NonNullable<ScheduleEdition['route_directions']>[string],
-) {
+): LineMainStop[] {
 	const firstStops = new Set(
 		directions.flatMap(({ stops }) => (stops?.[0]?.id ? [stops[0].id] : [])),
 	);
@@ -26,7 +28,7 @@ export function selectMainStops(
 				(b.routes?.length ?? 0) - (a.routes?.length ?? 0),
 		)
 		.slice(0, 5)
-		.map(({ id, name }) => ({ id, name }));
+		.map(({ id, name, code }) => ({ id, name, code }));
 }
 
 export function lineVehicleRows(snapshot: CaptureSnapshot | null, line: string, now: number) {
@@ -46,6 +48,7 @@ export function lineVehicleRows(snapshot: CaptureSnapshot | null, line: string, 
 		const delay = delayReady ? vehicle.delay : null;
 		rows.set(id, {
 			id,
+			vehicleId: vehicle.vehicle_id,
 			delay,
 			status: classifyDelay(delay),
 			toward: vehicle.direction_id,
@@ -58,6 +61,7 @@ export function lineVehicleRows(snapshot: CaptureSnapshot | null, line: string, 
 
 export type LiveVehicleRow = {
 	id: string;
+	vehicleId: string | null;
 	delay: number | null;
 	status: ReturnType<typeof classifyDelay>;
 	toward: number | null;
@@ -78,7 +82,7 @@ export function lineSilentCount(snapshot: CaptureSnapshot | null, line: string, 
 export function nextStopPredictions(report: CaptureTripReport | null, now: number) {
 	const result = new Map<
 		string,
-		{ trip: string; predictedAt: number; delay: number | null; scheduledAt: number | null }
+		NonNullable<ReturnType<typeof stopPrediction>> & { trip: string; direction: number | null }
 	>();
 	if (!report || feedState(report.feed, now) !== 'live') return result;
 	for (const trip of report.trip_updates) {
@@ -87,7 +91,7 @@ export function nextStopPredictions(report: CaptureTripReport | null, now: numbe
 			const reading = stopPrediction(trip, stop, now);
 			if (!reading || (result.get(stop.stop_id)?.predictedAt ?? Infinity) <= reading.predictedAt)
 				continue;
-			result.set(stop.stop_id, { trip: trip.trip_id, ...reading });
+			result.set(stop.stop_id, { trip: trip.trip_id, direction: trip.direction_id, ...reading });
 		}
 	}
 	return result;

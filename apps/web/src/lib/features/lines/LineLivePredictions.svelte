@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { StatusMark, type StampProps } from '@yesid/ui/brand';
+	import { Badge } from '@yesid/ui/badge';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { feedState, type CaptureTripReport } from '#lib/live/captureSnapshot.ts';
 	import LiveTripReport from '#lib/live/LiveTripReport.svelte';
@@ -10,8 +11,9 @@
 		liveStampAge,
 		predictedIn,
 	} from '#lib/site/presenter.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
-	import { nextStopPredictions } from './lineLiveReadings.ts';
+	import { nextStopPredictions, type LineMainStop } from './lineLiveReadings.ts';
 	import { choose } from '../record/recordText.ts';
 	import RecordCard from '../record/RecordCard.svelte';
 
@@ -19,6 +21,7 @@
 		city,
 		line,
 		stops,
+		headsigns,
 		seed,
 		refreshed,
 		now,
@@ -28,7 +31,8 @@
 	}: {
 		city: string;
 		line: string;
-		stops: { id: string; name: string }[];
+		stops: LineMainStop[];
+		headsigns: Readonly<Record<number, string>>;
 		seed: Promise<CaptureTripReport | null>;
 		refreshed: boolean;
 		now: number;
@@ -36,6 +40,7 @@
 		timeZone: string;
 		stopHref: (id: string) => string;
 	} = $props();
+	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	function stamp(report: CaptureTripReport | null): StampProps | undefined {
 		const at = report?.feed.captured_at;
@@ -55,17 +60,25 @@
 		<ul class="grid gap-x-6 md:grid-cols-2">
 			{#each stops as stop (stop.id)}
 				{@const estimate = predictions.get(stop.id)}
-				<li class="grid min-w-0 content-start gap-1 border-t border-border py-2">
+				<li class="grid min-w-0 content-start gap-1 py-2">
 					<a
-						class="inline-flex min-h-11 min-w-11 w-fit items-center text-primary underline"
-						href={stopHref(stop.id)}>{stop.name}</a
+						class="inline-flex min-h-11 min-w-11 w-fit items-center gap-2 text-primary underline"
+						href={stopHref(stop.id)}
 					>
+						<Badge variant="outline" class="shrink-0 font-mono">{stop.code || stop.id}</Badge>
+						<span>{display.readName(stop.name, locale)}</span>
+					</a>
 					{#if estimate}
 						{@const status = classifyDelay(estimate.delay)}
 						{@const scheduled =
 							estimate.scheduledAt === null
 								? null
 								: clockTime(new Date(estimate.scheduledAt), locale, timeZone)}
+						{#if estimate.direction !== null && headsigns[estimate.direction]}
+							<p class="text-small text-muted-foreground">
+								{display.directionLabel(estimate.direction, headsigns, locale)}
+							</p>
+						{/if}
 						<div class="flex flex-wrap justify-between gap-x-3">
 							<span class="inline-flex flex-wrap items-baseline gap-x-2"
 								><StatusMark

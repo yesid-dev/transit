@@ -38,6 +38,7 @@
 		lineSilentCount,
 		lineVehicleRows,
 		vehicleCounts,
+		type LineMainStop,
 	} from './lineLiveReadings.ts';
 	import { lineTimetableOnly } from './lineRecordText.ts';
 	import type { RecordMeasure } from '#lib/server/engine.ts';
@@ -52,6 +53,7 @@
 		timeZone,
 		scheduleOnly,
 		knownLine,
+		tracksVehicles,
 		hasAlerts,
 		mainStops,
 		capture,
@@ -69,8 +71,9 @@
 		timeZone: string;
 		scheduleOnly: boolean;
 		knownLine: boolean;
+		tracksVehicles: boolean;
 		hasAlerts: boolean;
-		mainStops: { id: string; name: string }[];
+		mainStops: LineMainStop[];
 		capture: Promise<CaptureSnapshot | null> | null;
 		trips: Promise<CaptureTripReport | null> | null;
 		record: ReturnType<typeof loadLineRecord> | null | undefined;
@@ -99,8 +102,8 @@
 			lineVehicleRows(snapshot, line, now)?.map((row) => ({
 				...row,
 				href:
-					snapshot?.stable_vehicle_ids === true
-						? vehicleLiveHref(row.id, url, locale, city)
+					tracksVehicles && row.vehicleId
+						? vehicleLiveHref(row.vehicleId, url, locale, city)
 						: undefined,
 				destination:
 					row.toward === null ? null : display.directionLabel(row.toward, headsigns, locale),
@@ -254,7 +257,8 @@
 				<LineLivePredictions
 					{city}
 					{line}
-					stops={mainStops.map(({ id, name }) => ({ id, name: display.readName(name, locale) }))}
+					stops={mainStops}
+					{headsigns}
 					seed={trips}
 					{refreshed}
 					{now}

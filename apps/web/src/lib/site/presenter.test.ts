@@ -14,6 +14,7 @@ import {
 	delayReading,
 	directionLabel,
 	fileSize,
+	lineRecordHeading,
 	liveStampAge,
 	longDate,
 	mapRecordReading,
@@ -153,10 +154,35 @@ it.each([
 		expect(normalize(delayReading(352, locale))).toBe(late);
 		expect(normalize(delayReading(-61, locale))).toBe(early);
 		expect(delayReading(0, locale)).toBe(onSchedule);
+		expect(delayReading(2, locale)).toBe(onSchedule);
+		expect(delayReading(-2, locale)).toBe(onSchedule);
+		expect(normalize(delayReading(3, locale))).toBe(
+			locale === 'en' ? '0.1 min late' : '0,1 min de retard',
+		);
+		expect(normalize(delayReading(-3, locale))).toBe(
+			locale === 'en' ? '0.1 min early' : '0,1 min d’avance',
+		);
 		expect(delayReading(null, locale)).toBe(unknown);
 		expect(delayReading(NaN, locale, 'Unavailable')).toBe('Unavailable');
 		expect(normalize(minuteReading(352 / 60, locale, true))).toBe(signed);
 		expect(minuteReading(null, locale, true)).toBeNull();
+	},
+);
+
+it.each([
+	['1', 'Ligne 1 - Verte', 'en', 'Line 1 Verte'],
+	['1', 'line 1: Verte', 'fr', 'Ligne 1 Verte'],
+	['1', 'Ligne 1 / Verte', 'fr', 'Ligne 1 Verte'],
+	['1', 'Ligne 1', 'en', 'Line 1'],
+	['1', 'Ligne 10 - Verte', 'en', 'Line 1 Ligne 10 - Verte'],
+	['1', 'Ligne 1A', 'en', 'Line 1 Ligne 1A'],
+	['1', 'Old Line 1', 'en', 'Line 1 Old Line 1'],
+	['51', 'Édouard-Montpetit', 'en', 'Line 51 Édouard-Montpetit'],
+	['A', 'Baker Street', 'en', 'Baker Street'],
+] as const)(
+	'presents line %s with the published name %s in %s',
+	(number, name, locale, expected) => {
+		expect(lineRecordHeading({ number, name, label: number }, locale)).toBe(expected);
 	},
 );
 
