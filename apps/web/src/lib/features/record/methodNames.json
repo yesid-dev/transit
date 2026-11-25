@@ -4,6 +4,7 @@
 	"late": ["Late share", "Part en retard"],
 	"median_delay": ["Median delay", "Retard médian"],
 	"p90_delay": ["90th percentile delay", "90e percentile du retard"],
+	"delay_distribution": ["Delay, minute by minute", "Écart, minute par minute"],
 	"trips_run": ["Trips that ran", "Trajets effectués"],
 	"cancelled_trips": ["Cancelled trips", "Trajets annulés"],
 	"missing_trips": ["Missing trips", "Trajets manquants"],

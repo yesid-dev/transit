@@ -24,8 +24,7 @@ export function b9LiveFixture(fixture) {
 		family,
 		captured_at: stamp,
 		source_at: stamp,
-		// The display oracle replays a frozen publication against the host SSR clock.
-		fresh_for_seconds: 63_072_000,
+		fresh_for_seconds: 600,
 		source_lag_seconds: 0,
 		read_failed: false,
 	});

@@ -23,6 +23,7 @@
 
 	let {
 		capture,
+		captureClock,
 		subject,
 		operator,
 		healthLink,
@@ -32,6 +33,7 @@
 		url,
 	}: {
 		capture: Promise<CaptureSnapshot | null>;
+		captureClock?: number;
 		subject: string;
 		operator: string;
 		healthLink: string;
@@ -117,7 +119,7 @@
 	<ScreenTitle title={t('Network health', 'Santé du réseau')} subtitle={subject} rule />
 	<div class="grid min-w-0 gap-6" data-slot="screen-content">
 		<div data-slot="screen-answer">
-			<LiveCapture {city} {capture}>
+			<LiveCapture {city} {capture} {captureClock}>
 				{#snippet pending()}
 					<p role="status">
 						{t('Checking live reports…', 'Vérification des signalements en direct…')}

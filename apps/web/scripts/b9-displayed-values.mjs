@@ -240,7 +240,7 @@ async function ensureBuild() {
 	return true;
 }
 
-async function startPreview(replay) {
+async function startPreview(replay, captureClock) {
 	const version = await runChild('node', [WRANGLER, '--version'], {
 		cwd: WEB_ROOT,
 		label: 'wrangler version',
@@ -267,6 +267,7 @@ async function startPreview(replay) {
 					PUBLIC_V1_BASE: replay.base,
 					PUBLIC_V1_PROVIDER: 'stm',
 					QUESTION_FIXTURE_ORIGIN: replay.origin,
+					CAPTURE_FIXTURE_CLOCK: captureClock,
 				},
 			}),
 		);
@@ -807,6 +808,13 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 
 async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic = true } = {}) {
 	const selfCheck = runRunnerSelfCheck();
+	const captureClocks = new Set(
+		cells
+			.filter(({ surface }) => surface === 'network-live')
+			.map(({ fixture }) => fixtures[fixture].frozen_utc),
+	);
+	invariant(captureClocks.size <= 1, 'B9 Live Network fixtures must share a capture clock');
+	const [captureClock] = captureClocks;
 	const built = await ensureBuild();
 	const replay = await startReplay(fixtures, cells[0]?.fixture);
 	const transcripts = [];
@@ -825,7 +833,7 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 			'launched Chromium version mismatch',
 		);
 		for (let run = 0; run < runs; run += 1) {
-			preview = await startPreview(replay);
+			preview = await startPreview(replay, captureClock);
 			const transcript = [];
 			for (const cell of cells) {
 				replay.state.active = cell.fixture;

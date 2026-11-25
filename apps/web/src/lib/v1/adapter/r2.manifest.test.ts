@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { r2Adapter } from './r2';
+import { staticPort } from './r2.static';
 import {
 	clearBrowserAdapterManifestForTests,
 	installBrowserAdapterManifest,
@@ -48,7 +49,7 @@ describe('r2 manifest memo', () => {
 			});
 		});
 		const read = (providerId: string) =>
-			r2Adapter.static.routesIndex({ providerId, cache, fetch: request });
+			staticPort.routesIndex({ providerId, cache, fetch: request });
 		const [stm, ottawa] = await Promise.all([read('stm'), read('octranspo')]);
 		expect(stm.routes[0].long).toBe('stm');
 		expect(ottawa.routes[0].long).toBe('octranspo');

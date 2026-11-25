@@ -5,11 +5,13 @@
 	let {
 		city,
 		capture,
+		captureClock,
 		children,
 		pending,
 	}: {
 		city: string | null;
 		capture: Promise<CaptureSnapshot | null>;
+		captureClock?: number;
 		children: Snippet<[CaptureSnapshot | null, number]>;
 		pending: Snippet;
 	} = $props();
@@ -47,6 +49,6 @@
 	{#await capture}
 		{@render pending()}
 	{:then snapshot}
-		{@render children(snapshot, Date.now())}
+		{@render children(snapshot, captureClock ?? Date.now())}
 	{/await}
 {/if}
