@@ -22,7 +22,7 @@ it('tries once when visible and preserves the answered control and its focus', a
 		});
 		await vi.advanceTimersByTimeAsync(0);
 		const notice = container.querySelector<HTMLElement>('[data-slot="record-patience"]')!;
-		Object.defineProperty(notice, 'offsetHeight', { value: 170 });
+		vi.spyOn(notice, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1024, 170.25));
 		expect(screen.getByRole('status')).toHaveTextContent('These records take longer');
 		const days = screen.getByRole('button', { name: 'Days' });
 		days.focus();
@@ -41,7 +41,7 @@ it('tries once when visible and preserves the answered control and its focus', a
 		expect(days).toHaveFocus();
 		expect(screen.getByRole('button', { name: 'Lines' })).toBeInTheDocument();
 		expect(screen.getByRole('status')).toHaveTextContent('Answered');
-		expect(notice.style.minBlockSize).toBe('170px');
+		expect(notice.style.minBlockSize).toBe('170.25px');
 		window.dispatchEvent(new WheelEvent('wheel', { deltaY: 150 }));
 		await vi.advanceTimersByTimeAsync(0);
 		expect(notice.style.minBlockSize).toBe('');

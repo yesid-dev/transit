@@ -53,7 +53,8 @@
 	setRecordRecovered(() => {
 		if (busy === 0 || !notice) return;
 		recovered = true;
-		reservation = { width: notice.offsetWidth, height: notice.offsetHeight };
+		const { width, height } = notice.getBoundingClientRect();
+		reservation = { width, height };
 	});
 
 	$effect(() => {
@@ -75,7 +76,7 @@
 		const width = reservation?.width;
 		if (!element || width === undefined) return;
 		const observer = new ResizeObserver(() => {
-			if (element.offsetWidth !== width) reservation = null;
+			if (element.getBoundingClientRect().width !== width) reservation = null;
 		});
 		observer.observe(element);
 		return () => observer.disconnect();
