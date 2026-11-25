@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { captureDepartures, captureNetwork, captureVehicles } from './captureProjection';
+import { selectLivePulse } from '#lib/features/home/homePulse.ts';
 import {
 	captureSnapshotSchema,
 	captureTripScopeSchema,
@@ -79,6 +80,39 @@ const scoped = captureTripScopeSchema.parse({
 });
 
 describe('capture-backed Live projection', () => {
+	it('accepts both publisher versions and preserves the measured pair, including zero', () => {
+		const current = {
+			...snapshot,
+			scheduled_now: 1306,
+			non_responding: 0,
+			non_responding_by_route: [],
+			cancelled_now: 2,
+		};
+		const previousReader = captureSnapshotSchema.pick({
+			version: true,
+			city: true,
+			published_at: true,
+			stable_vehicle_ids: true,
+			feeds: true,
+			vehicle_positions: true,
+			alerts: true,
+		});
+		expect(previousReader.parse(current)).toEqual(snapshot);
+		const old = captureNetwork(captureSnapshotSchema.parse(snapshot), now);
+		expect(old).toMatchObject({ non_responding: null, scheduled_now: null });
+		const measured = captureNetwork(captureSnapshotSchema.parse(current), now);
+		expect(measured).toMatchObject({
+			scheduled_now: 1306,
+			non_responding: 0,
+			non_responding_by_route: [],
+			cancelled_now: 2,
+		});
+		expect(selectLivePulse(measured, 'en')?.silentReading).toBe('0 of 1,306 trips scheduled now');
+		expect(selectLivePulse(old, 'en')?.silentReading).toBeUndefined();
+		expect(captureNetwork({ ...current, scheduled_now: null }, now).non_responding).toBeNull();
+		expect(captureNetwork(current, now + 60_000).scheduled_now).toBeNull();
+	});
+
 	it('keeps no capture, unsupported capabilities and stale capture separate', () => {
 		const feed = snapshot.feeds.positions;
 		expect(feedState(undefined, now)).toBe('not_tracked');

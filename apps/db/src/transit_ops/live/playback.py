@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import md5
@@ -25,7 +26,9 @@ from transit_ops.clean_day_inputs import (
 from transit_ops.clean_day_realtime import DayCapture, read_capture, vehicle_reading
 from transit_ops.core.models import ProviderManifest
 from transit_ops.ingestion.storage import BronzeStorage, LocalBronzeStorage, S3BronzeStorage
+from transit_ops.live.silent_trips import UNMEASURED, TripReporting, count_silent_trips
 from transit_ops.live.trip_partitions import encode, trip_partitions
+from transit_ops.live.trip_schedule import LiveTripSchedule
 from transit_ops.providers.alert_record import AlertRecord
 
 LOGGER = logging.getLogger(__name__)
@@ -363,9 +366,23 @@ class LivePublisher:
     ) -> None:
         if not self.manifest.public.enabled or not self.manifest.provider.is_active:
             raise ValueError("Live publication requires an active public city")
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            schedule = LiveTripSchedule(self.manifest, self.raw, self.prefix, executor)
+            self._run(destination, prefix, schedule, once=once, require_captures=require_captures)
+
+    def _run(
+        self,
+        destination: BronzeStorage,
+        prefix: str,
+        schedule: LiveTripSchedule,
+        *,
+        once: bool,
+        require_captures: bool,
+    ) -> None:
         previous = None
         previous_trips: tuple[object, object] | None = None
         city = self.manifest.provider.provider_id
+        reporting = TripReporting(self.manifest.provider.live_source_lag_seconds)
         while True:
             try:
                 now = datetime.now(UTC)
@@ -382,6 +399,18 @@ class LivePublisher:
                         not feed["captured_at"] or feed["read_failed"] for feed in movement
                     ):
                         raise ValueError("No complete movement capture for dry check")
+                counts = UNMEASURED
+                # The installer's capture-only check keeps its existing work and deadline.
+                if (
+                    not require_captures
+                    and (evidence := reporting.observe(snapshot, now)) is not None
+                ):
+                    if (trips := schedule.at(now, wait=once)) is not None:
+                        reports, cancellations = evidence
+                        counts = count_silent_trips(
+                            now, schedule.zone, trips, reports=reports, cancellations=cancellations
+                        )
+                snapshot = {**snapshot, **counts}
                 if snapshot != previous:
                     document = {
                         key: value for key, value in snapshot.items() if key != "trip_updates"

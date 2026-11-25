@@ -6,6 +6,7 @@ const sourceStamp = stamp.nullable();
 const text = z.string().nullable();
 const ordinal = z.int().nonnegative().nullable();
 const reading = z.number().nullable();
+const optionalCount = z.int().nonnegative().nullable().optional();
 
 const vehicle = z.object({
 	id: z.string(),
@@ -81,6 +82,13 @@ export const captureSnapshotSchema = z.object({
 	feeds: z.record(z.string(), feed),
 	vehicle_positions: z.array(vehicle).nullable(),
 	alerts: z.array(alert).nullable(),
+	scheduled_now: optionalCount,
+	non_responding: optionalCount,
+	cancelled_now: optionalCount,
+	non_responding_by_route: z
+		.array(z.object({ route_id: z.string(), count: z.int().nonnegative() }))
+		.nullable()
+		.optional(),
 });
 
 export const captureTripScopeSchema = z.object({

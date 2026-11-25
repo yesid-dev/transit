@@ -219,6 +219,15 @@ export function captureAlerts(snapshot: CaptureSnapshot, now: number) {
 
 export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 	const positions = captureVehicles(snapshot, now);
+	const scheduled = snapshot.scheduled_now;
+	const silent = snapshot.non_responding;
+	const measured =
+		scheduled != null &&
+		silent != null &&
+		silent <= scheduled &&
+		Object.values(snapshot.feeds).every(
+			(feed) => feed.family === 'alerts' || feedState(feed, now) === 'live',
+		);
 	const status_dist = { on_time: 0, early: 0, late: 0, unknown: 0 };
 	const occupancy = { empty: 0, many_seats: 0, few_seats: 0, standing: 0, full: 0 };
 	let occupancyTotal = 0;
@@ -255,7 +264,10 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 						Object.entries(occupancy).map(([key, count]) => [key, count / occupancyTotal]),
 					)
 				: null,
-		non_responding: null,
+		scheduled_now: measured ? scheduled : null,
+		non_responding: measured ? silent : null,
+		cancelled_now: measured ? (snapshot.cancelled_now ?? null) : null,
+		non_responding_by_route: measured ? (snapshot.non_responding_by_route ?? null) : null,
 		feed_freshness_s: null,
 		coverage_pct: positions.vehicles.length
 			? percentage(classified, positions.vehicles.length)
@@ -264,6 +276,6 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 	return {
 		...payload,
 		captureFeed: positions.captureFeed,
-		captureRevision: positions.captureRevision,
+		captureRevision: JSON.stringify([positions.captureRevision, measured]),
 	};
 }
