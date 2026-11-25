@@ -1,5 +1,6 @@
 import { getRecordAnswer, type RecordQuery, type EnginePeriod } from './engine.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
+import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
 
 const record = {
 	punctuality: { measure: 'punctuality' },
@@ -47,37 +48,42 @@ export function lineRecordQuery(
 }
 
 export function loadLineRecord(
-	view: 'record' | 'schedule',
 	period: DateWindow,
 	city: string,
 	line: string,
 	direction: LineDirection,
 	visitorIp?: EnginePeriod['visitorIp'],
+	scheduleOnly = false,
 ) {
 	const scope = { ...period, city, ...(visitorIp ? { visitorIp } : {}) };
 	const sections = (
-		view === 'record' ? Object.keys(record) : Object.keys(schedule)
+		scheduleOnly ? Object.keys(schedule) : Object.keys(lineRecordQueries)
 	) as LineSection[];
 	return {
-		view,
 		period,
 		city,
 		line,
 		direction,
-		network:
-			view === 'record'
-				? getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope)
-				: null,
-		networkDaily:
-			view === 'record'
-				? getRecordAnswer(
-						{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
-						scope,
-					)
-				: null,
-		sections: sections.map((section) => ({
-			section,
-			answer: getRecordAnswer(lineRecordQuery(section, line, direction), scope),
-		})),
+		network: !scheduleOnly
+			? getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope)
+			: null,
+		networkDaily: !scheduleOnly
+			? getRecordAnswer(
+					{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
+					scope,
+				)
+			: null,
+		sections: sections.map((section) => {
+			const query = lineRecordQuery(section, line, direction);
+			return {
+				section,
+				answer: getRecordAnswer(
+					section === 'alerts' && alertDetailsAllowed(period)
+						? { ...query, parameters: { ...query.parameters, alert_details: '1' } }
+						: query,
+					scope,
+				),
+			};
+		}),
 	};
 }

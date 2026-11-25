@@ -20,7 +20,10 @@
 	} = $props();
 </script>
 
-<header class="flex min-w-0 flex-wrap items-start justify-between gap-3">
+<header
+	class="flex min-w-0 flex-wrap items-start justify-between gap-3"
+	class:route-title={plate && back}
+>
 	<hgroup class="min-w-0" class:inline-plate={stopCode} class:route-heading={plate}>
 		{#if stopCode}<span class="stop-code" aria-hidden="true">{stopCode}</span>{/if}
 		{#if plate}<span class="route-code" aria-hidden="true"
@@ -68,6 +71,13 @@
 	}
 	.route-heading p {
 		grid-column: 2;
+	}
+	@media (width > 35em) {
+		.route-title {
+			display: grid;
+			/* Keep the back link beside the title when the frame changes reading width. */
+			grid-template-columns: minmax(0, 1fr) fit-content(25%);
+		}
 	}
 	@media (max-width: 35em) {
 		.route-heading {

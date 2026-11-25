@@ -129,15 +129,16 @@ for (const locale of PUBLISHED_LOCALES) {
 				url.searchParams.get('recordFrom') === '2026-11-08' &&
 				url.searchParams.get('recordTo') === '2026-11-14',
 		);
-		const record = page
-			.getByRole('navigation', { name: /Line views|Vues de la ligne/ })
-			.getByRole('link', { name: locale === 'fr' ? 'Bilan' : 'Record' });
-		await expect(record).toHaveAttribute('aria-current', 'page');
+		const record = page.getByRole('radio', {
+			name: locale === 'fr' ? 'Bilan' : 'Record',
+			exact: true,
+		});
+		await expect(record).toBeChecked();
 		await expect(page.locator('#punctuality')).toBeVisible();
 		// One Back shows the line the search began on: the page itself, not only its URL.
 		await page.goBack();
 		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-			`${line.short} · ${line.long}`,
+			`${locale === 'fr' ? 'Ligne' : 'Line'} ${line.short} ${line.long}`,
 		);
 	});
 

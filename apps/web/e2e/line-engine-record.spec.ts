@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
 });
@@ -9,46 +10,38 @@ for (const width of [390, 1440]) {
 		const fr = locale === 'fr';
 		test(`${locale} at ${width}px shows the Line record and schedule with evidence`, async ({
 			page,
-			request,
 		}) => {
 			await page.setViewportSize({ width, height: 900 });
-			await page.goto(
-				`${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
-			);
-			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
+			const path = `${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`;
+			await page.goto(path);
+			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			const main = page.getByRole('main');
-			const section = (name: string) => main.getByRole('region', { name, exact: true }).first();
-			const punctuality = section(fr ? 'Ponctualité' : 'On-time performance');
-			await expect(
-				punctuality.getByText(
-					fr
-						? /^du .*80\s% des passages.*80 sur 100/
-						: /^8 to 14 Nov 2026, 80% of observed stop events.*80 of 100/,
-				),
-			).toBeVisible();
-			await expect(
-				punctuality.getByText(fr ? 'En avance' : 'Early', { exact: true }),
-			).toBeVisible();
-			await expect(
-				punctuality.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
-			).toBeVisible();
-			await punctuality.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(punctuality.getByText(/Method v1|Méthode v1/)).toBeVisible();
-			const csv = punctuality.getByRole('link', { name: /CSV/ });
-			const response = await request.get((await csv.getAttribute('href'))!);
-			expect(response.ok()).toBeTruthy();
-			expect(await response.text()).toMatch(fr ? /^Mesure,Valeur/ : /^Measure,Value/);
-
-			const waiting = section(fr ? 'Attente et intervalles' : 'Waiting and gaps');
-			await expect(waiting).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
-			await expect(waiting).toContainText(
-				fr ? 'Attente observée moins attente prévue.' : 'Observed wait minus scheduled wait.',
+			const answer = main.locator('#punctuality');
+			await expect(answer).toContainText(fr ? /80\s%/u : '80%');
+			await expect(main.getByRole('heading', { level: 1 })).toContainText(
+				fr ? 'Ligne 24' : 'Line 24',
 			);
+			const meta = answer.locator('.answer-meta');
+			await expect(meta.locator('p').first()).toContainText(fr ? 'Ce qui est compté' : 'Counted:');
+			await expect(meta.locator('p').nth(1)).toContainText(fr ? 'nettoyage v7' : 'cleaning v7');
+			await expect(main.locator('#directions dd').first()).toContainText(fr ? /80\s%/u : '80%');
+
+			const trend = main.locator('#daily');
+			await trend.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
+			await expect(trend.getByRole('rowheader')).toHaveCount(2);
+			const waiting = main.locator('#waiting');
+			await expect(waiting).toContainText(
+				fr ? 'L’attente excédentaire était de' : 'Excess wait time was',
+			);
+			await expect(waiting).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
 			await expect(waiting).toContainText(
 				fr ? 'sur 48 intervalles prévus' : 'coverage of 48 scheduled intervals',
 			);
-			const offered = section(fr ? 'Service offert' : 'Service offered');
-			await expect(offered.getByRole('row', { name: /07:00–08:00/ })).toContainText(
+			const offered = main.locator('#offered');
+			await expect(offered).toContainText(
+				fr ? 'Le service prévu atteignait un maximum de 8' : 'Planned service peaked at 8',
+			);
+			await expect(offered.getByRole('row', { name: /07:00.*08:00/ })).toContainText(
 				fr ? '8 trajets en 1 heure' : '8 trips in 1 hour',
 			);
 			await expect(offered).toContainText(fr ? 'Aucun service prévu' : 'No service scheduled');
@@ -56,91 +49,51 @@ for (const width of [390, 1440]) {
 				.getByRole('link', { name: fr ? /Voir les trajets/ : /See scheduled and delivered trips/ })
 				.click();
 			await expect(page).toHaveURL(/#delivery$/);
+			await expect(main.locator('#stops [data-highlighted]')).toHaveCount(2);
+			await expect(
+				main.locator('#delivery').getByRole('cell', { name: '6', exact: true }),
+			).toBeVisible();
+			await expect(main.locator('#delivery')).toContainText(
+				fr ? '8 des 40 trajets prévus' : '8 of 40 scheduled trips did not run',
+			);
+			await expect(main.locator('#delivery')).not.toContainText(fr ? '1 sur 1' : 'Showing 1 of 1');
+			await expect(main.locator('#late').getByRole('link', { name: /07:00/ })).toBeVisible();
+			await expect(main.locator('#late')).toContainText(fr ? 'se classe premier' : 'ranked first');
+			await expect(main.locator('#crowding')).toContainText(fr ? 'Non suivi' : '25%');
+			await expect(main.locator('#alerts').getByText('3', { exact: true })).toBeVisible();
 
-			const stop = section(fr ? 'Retard le long de ses arrêts' : 'Delay along its stops');
-			await expect(stop.getByRole('rowheader')).toHaveText([/1\. First stop/, /2\. Second stop/]);
-			const dailyTitle = fr ? 'Jour par jour' : 'Day by day';
-			const daily = section(dailyTitle);
-			const strip = daily.getByRole('list', { name: dailyTitle, exact: true });
-			await expect(strip.getByRole('listitem')).toHaveCount(2);
-			await expect(strip.getByRole('listitem').first()).toContainText(fr ? /80\s%/ : '80%');
-			await expect(strip.getByRole('listitem').last()).toContainText(
-				fr ? 'Aucune part mesurée' : 'No measured share',
-			);
-			await expect(
-				daily.getByRole('table', { name: dailyTitle }).getByRole('rowheader'),
-			).toHaveCount(1);
-			await expect(
-				section(fr ? 'Par heure et jour de la semaine' : 'By hour and weekday').getByRole(
-					'rowheader',
-				),
-			).toHaveCount(24);
-			await expect(
-				section(fr ? 'Par direction' : 'Each direction').getByRole('rowheader'),
-			).toHaveCount(2);
-			await expect(
-				section(
-					fr
-						? 'Trajets annulés et manquants, par départ'
-						: 'Cancelled and missing trips, by departure',
-				).getByRole('cell', { name: '6', exact: true }),
-			).toBeVisible();
-			await expect(
-				section(fr ? 'Départs le plus souvent en retard' : 'Departures late most often').getByRole(
-					'rowheader',
-					{ name: '07:00' },
-				),
-			).toBeVisible();
-			await expect(section(fr ? 'Achalandage' : 'Crowding')).toContainText(
-				fr ? 'Non suivi' : '25%',
-			);
-			await expect(
-				section(fr ? 'Avis de l’agence à ces dates' : 'Agency notices on these dates').getByText(
-					'3',
-					{ exact: true },
-				),
-			).toBeVisible();
-			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
-			const filter = main.getByRole('navigation', {
-				name: fr ? 'Filtrer par direction' : 'Filter by direction',
-			});
-			await filter.locator('a').last().click();
-			await expect(page).toHaveURL(/direction=1/);
-			await expect(punctuality).toContainText(
-				fr ? /40\s% des passages/ : /40% of observed stop events/,
-			);
+			await main
+				.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all', exact: true })
+				.click();
+			await expect(main.locator('#delivery').getByRole('table')).toHaveCount(0);
+			await main
+				.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all', exact: true })
+				.click();
+			await expect(main.locator('#delivery table')).toBeVisible();
 
-			await main.getByRole('link', { name: fr ? 'Horaire' : 'Schedule', exact: true }).click();
-			await expect(section(fr ? 'Fréquence prévue' : 'Planned frequency')).toContainText(
+			await page.goto(path + '&direction=1&tab=schedule');
+			await expect(page).toHaveURL(
+				(url) =>
+					url.hash === '#schedule' &&
+					url.searchParams.get('direction') === '1' &&
+					!url.searchParams.has('tab'),
+			);
+			await expect(main.locator('#schedule')).toContainText(
 				fr ? 'Pointe du matin' : 'Morning peak',
 			);
-			await expect(
-				section(fr ? 'Premiers et derniers trajets' : 'First and last trips'),
-			).toContainText(fr ? '01:15, le lendemain' : '01:15, next day');
-			await expect(page).toHaveURL(/direction=1/);
+			await expect(main.locator('#schedule')).toContainText(
+				fr ? '01:15, le lendemain' : '01:15, next day',
+			);
+			await expect(main.locator('#punctuality')).toContainText(fr ? /40\s%/u : '40%');
+			await main
+				.locator('#schedule')
+				.getByRole('radio', { name: fr ? 'Samedi' : 'Saturday' })
+				.click();
+			await expect(main.locator('#schedule')).toContainText(
+				fr ? 'toutes les 15 min' : 'every 15 min',
+			);
 		});
 	}
-}
-
-for (const theme of ['light', 'dark'] as const) {
-	test(`Line evidence reflows at 320px and 200% text in ${theme} mode`, async ({ page }) => {
-		await page.setViewportSize({ width: 320, height: 900 });
-		await page.addInitScript((theme) => localStorage.setItem('theme', theme), theme);
-		await page.goto(
-			'/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14',
-		);
-		await page.addStyleTag({ content: 'html { font-size: 200%; }' });
-		const main = page.getByRole('main');
-		const daily = main.getByRole('table', { name: 'Day by day' });
-		await expect(daily.getByRole('columnheader', { name: 'On-time share' })).toBeAttached();
-		await expect(daily.getByRole('cell', { name: /80%/ })).toBeVisible();
-		expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(320);
-		const heatmap = main.getByRole('region', { name: 'By hour and weekday' }).getByRole('region');
-		await expect(heatmap).toHaveAttribute('tabindex', '0');
-		await heatmap.focus();
-		await page.keyboard.press('ArrowRight');
-		await expect.poll(() => heatmap.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-	});
 }
 
 test('Line shows patience for a slow stop query while punctuality is already readable', async ({
@@ -151,11 +104,27 @@ test('Line shows patience for a slow stop query while punctuality is already rea
 		'/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15',
 		{ waitUntil: 'commit' },
 	);
-	await expect(page.getByText(/^9 to 15 Nov 2026, 80% of observed stop events/)).toBeVisible();
+	await expect(page.locator('#punctuality')).toContainText('80%');
 	await expect(page.getByText('These records take longer')).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect(
 		(await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=line`)).status(),
 	).toBe(204);
-	await expect(page.getByRole('rowheader', { name: /Second stop/ })).toBeVisible();
+	await expect(page.locator('#stops')).toContainText('Second stop');
+});
+
+test('keyboard changes the hour grid direction and retains focus', async ({ page }) => {
+	await page.goto('/lines/24?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	const hours = page.locator('#hourly');
+	const choices = hours.getByRole('radiogroup', { name: 'Filter by direction' });
+	const both = choices.getByRole('radio', { name: 'Both directions' });
+	await expect(both).toBeChecked();
+	await both.focus();
+	await page.keyboard.press('ArrowLeft');
+	await expect(page).toHaveURL(/direction=1/u);
+	const selected = choices.getByRole('radio').last();
+	await expect(selected).toBeChecked();
+	await expect(selected).toBeFocused();
+	await expect(hours.getByRole('table')).toBeVisible();
 });

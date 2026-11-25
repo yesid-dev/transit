@@ -1,9 +1,11 @@
-import type { Locale } from '#lib/i18n/index.ts';
+import { intl, type Locale } from '#lib/i18n/index.ts';
 import type {
 	DepartureRanking,
 	RecordAnswer,
 	RecordCell,
 	RecordEvidence,
+	RecordMeasure,
+	RecordSeries,
 } from '#lib/server/engine.ts';
 import {
 	choose,
@@ -13,7 +15,8 @@ import {
 	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
-import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
+import { waitingReadingParts } from '#lib/features/record/waitingText.ts';
+import { dateRange, methodEvidence, scheduleHours, serviceTime } from '#lib/site/presenter.ts';
 import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
 
 export const lineSectionTitles = {
@@ -34,6 +37,142 @@ export const lineSectionTitles = {
 	frequency: ['Planned frequency', 'Fréquence prévue'],
 	boundaries: ['First and last trips', 'Premiers et derniers trajets'],
 } satisfies Record<LineSection, [string, string]>;
+
+export function lineTimetableOnly(answer: RecordMeasure | null) {
+	return (
+		answer?.state === 'no_live_data' ||
+		(answer?.state === 'not_measured' && !answer.evidence.counts.classified)
+	);
+}
+
+export function deliveryFinding(answer: RecordSeries, locale: Locale) {
+	if (!answer.cells.length || answer.evidence.days_not_measured.length) return null;
+	let scheduled = 0;
+	let cancelled = 0;
+	let missing = 0;
+	// Departure and direction partition the selected timetable. Require every cell's counts.
+	for (const cell of answer.cells) {
+		const counts = cell.evidence.counts;
+		if (
+			(cell.state !== 'measured' && cell.state !== 'too_few_to_judge') ||
+			counts.scheduled == null ||
+			counts.cancelled == null ||
+			counts.missing == null
+		)
+			return null;
+		scheduled += counts.scheduled;
+		cancelled += counts.cancelled;
+		missing += counts.missing;
+	}
+	const total = tally(scheduled, locale);
+	const failures = tally(cancelled + missing, locale);
+	const a = tally(cancelled, locale);
+	const m = tally(missing, locale);
+	return choose(
+		locale,
+		`${failures} of ${total} scheduled trips did not run: ${a} cancelled by the agency and ${m} missing, with no vehicle and no notice.`,
+		`${failures} des ${total} trajets prévus n’ont pas été effectués : ${a} annulés par l’agence et ${m} manquants, sans véhicule ni avis.`,
+	);
+}
+
+export function departureFinding(
+	answer: DepartureRanking,
+	end: string | undefined,
+	locale: Locale,
+) {
+	const top = answer.rows[0];
+	const time = serviceTime(top?.departure, locale);
+	if (!top || !time) return null;
+	const value = percent(top.value, locale);
+	return choose(
+		locale,
+		`The ${time} departure${end ? ` toward ${end}` : ''} ranked first, with ${value} of its observed stop events late.`,
+		`Le départ de ${time}${end ? ` vers ${end}` : ''} se classe premier, avec ${value} de ses passages observés aux arrêts en retard.`,
+	);
+}
+
+export function waitingFinding(answer: RecordMeasure, locale: Locale) {
+	const excess = waitingReadingParts(answer, 'excess_wait_time', locale);
+	if (excess.value && excess.detail)
+		return choose(
+			locale,
+			`Excess wait time was ${excess.value} in comparable frequent-service windows.`,
+			`L’attente excédentaire était de ${excess.value} dans les périodes comparables de service fréquent.`,
+		);
+	const gaps = waitingReadingParts(answer, 'long_gaps', locale);
+	if (gaps.detail)
+		return choose(
+			locale,
+			`Long gaps accounted for ${gaps.value} of observed intervals.`,
+			`Les intervalles prolongés représentaient ${gaps.value} des intervalles observés.`,
+		);
+	const bunching = waitingReadingParts(answer, 'bunching', locale);
+	return bunching.detail
+		? choose(
+				locale,
+				`Vehicle bunching accounted for ${bunching.value} of observed intervals.`,
+				`Les regroupements de véhicules représentaient ${bunching.value} des intervalles observés.`,
+			)
+		: null;
+}
+
+export function offeredFinding(answer: RecordSeries, locale: Locale) {
+	let peak: { hour: number; rate: number } | undefined;
+	for (const cell of answer.cells) {
+		const { hour } = cell.key;
+		const rate = cell.value.scheduled_frequency;
+		if (cell.state === 'measured' && hour != null && rate != null && (!peak || rate > peak.rate)) {
+			peak = { hour: Number(hour), rate };
+		}
+	}
+	if (!peak) return null;
+	if (peak.rate === 0)
+		return choose(
+			locale,
+			'The timetable scheduled no trips in the available hours.',
+			'L’horaire ne prévoyait aucun trajet dans les heures disponibles.',
+		);
+	const rate = intl.number(locale, { maximumFractionDigits: 2 }).format(peak.rate);
+	const hours = scheduleHours(peak.hour, peak.hour + 1, locale);
+	return choose(
+		locale,
+		`Planned service peaked at ${rate} trips per hour from ${hours}.`,
+		`Le service prévu atteignait un maximum de ${rate} trajets par heure de ${hours}.`,
+	);
+}
+
+export function delayBuilds(cells: RecordSeries['cells']) {
+	let largest: { from: number; to: number; seconds: number } | undefined;
+	let start = 0;
+	for (let to = 1; to < cells.length; to++) {
+		const from = to - 1;
+		const a = cells[from];
+		const b = cells[to];
+		const sequence = Number(a.key.stop_sequence);
+		const nextSequence = Number(b.key.stop_sequence);
+		const early = a.value.median_delay;
+		const late = b.value.median_delay;
+		if (
+			typeof a.key.stop !== 'string' ||
+			typeof b.key.stop !== 'string' ||
+			a.key.direction !== b.key.direction ||
+			Number(cells[from - 1]?.key.stop_sequence) === sequence ||
+			Number(cells[to + 1]?.key.stop_sequence) === nextSequence ||
+			!(nextSequence > sequence) ||
+			a.state !== 'measured' ||
+			b.state !== 'measured' ||
+			early == null ||
+			late == null ||
+			late <= early
+		) {
+			start = to;
+			continue;
+		}
+		const seconds = late - cells[start].value.median_delay!;
+		if (seconds > (largest?.seconds ?? 0)) largest = { from: start, to, seconds };
+	}
+	return largest;
+}
 
 export function lineAnswer(cell: RecordCell, evidence: RecordEvidence, locale: Locale): string {
 	if (cell.state !== 'measured') return rateStateText(cell, locale);

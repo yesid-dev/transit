@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
 	import { Stamp, type StampProps } from '@yesid/ui/brand';
+	import * as Collapsible from '@yesid/ui/collapsible';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -9,18 +11,50 @@
 		stamp,
 		footer,
 		children,
+		expandable = false,
+		open = $bindable(true),
 	}: {
 		title: string;
 		disclosure?: { id: string; description?: string; nested?: boolean };
 		stamp?: StampProps;
 		footer?: Snippet;
 		children: Snippet;
+		expandable?: boolean;
+		open?: boolean;
 	} = $props();
 	const id = $props.id();
 </script>
 
+{#snippet cardFooter()}
+	{#if footer}<footer class="flex flex-wrap gap-x-4 gap-y-2">{@render footer()}</footer>{/if}
+{/snippet}
+
+{#snippet body()}
+	<div class="min-w-0">{@render children()}</div>
+	{@render cardFooter()}
+{/snippet}
+
+{#snippet header()}
+	<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
+		<h2 {id} class:expandable-title={expandable}>
+			{#if expandable}
+				<Collapsible.Trigger class="flex min-h-11 min-w-11 items-center gap-2 text-left">
+					<ChevronDown class={open ? '' : '-rotate-90'} size={16} aria-hidden="true" />
+					{title}
+				</Collapsible.Trigger>
+			{:else}{title}{/if}
+		</h2>
+		{#if stamp}<Stamp {...stamp} />{/if}
+	</header>
+{/snippet}
+
 {#snippet content()}
-	<article aria-labelledby={id} data-slot="record-card" class:nested={disclosure?.nested}>
+	<article
+		aria-labelledby={id}
+		data-slot="record-card"
+		class:nested={disclosure?.nested}
+		class:expandable={expandable && !disclosure}
+	>
 		{#if disclosure}
 			<details id={disclosure.id} class="record-disclosure" data-record-disclosure>
 				<summary>
@@ -33,14 +67,16 @@
 				</summary>
 				<div class="min-w-0 pt-3">{@render children()}</div>
 			</details>
+			{@render cardFooter()}
+		{:else if expandable}
+			<Collapsible.Root bind:open>
+				{@render header()}
+				<Collapsible.Content><div class="disclosure">{@render body()}</div></Collapsible.Content>
+			</Collapsible.Root>
 		{:else}
-			<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
-				<h2 {id}>{title}</h2>
-				{#if stamp}<Stamp {...stamp} />{/if}
-			</header>
-			<div class="min-w-0">{@render children()}</div>
+			{@render header()}
+			{@render body()}
 		{/if}
-		{#if footer}<footer class="flex flex-wrap gap-x-4 gap-y-2">{@render footer()}</footer>{/if}
 	</article>
 {/snippet}
 
@@ -115,5 +151,19 @@
 	}
 	footer:empty {
 		display: none;
+	}
+	.disclosure {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-card-gap);
+		margin-block-start: var(--space-card-gap);
+	}
+	.expandable {
+		container-type: inline-size;
+	}
+	@container (inline-size < 9rem) {
+		.expandable-title {
+			font-size: var(--text-small);
+		}
 	}
 </style>

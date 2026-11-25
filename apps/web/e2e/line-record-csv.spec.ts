@@ -20,8 +20,11 @@ for (const provider of ['stm', 'octranspo'])
 					});
 					await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14');
 					const section = page.locator('#punctuality');
-					await expect(section.locator('dl').getByText(/80\s?% \(80\/100\)/u)).toBeVisible();
-					const csv = section.getByRole('link', { name: /CSV/u });
+					await expect(section).toContainText(/80\s?%/u);
+					await section.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
+					const csv = page
+						.getByRole('dialog')
+						.getByRole('link', { name: fr ? 'Ponctualité' : 'On-time performance', exact: true });
 					const href = new URL((await csv.getAttribute('href'))!, page.url());
 					expect(href.pathname).toBe((fr ? '/fr' : '') + '/lines/24/record.csv');
 					expect(Object.fromEntries(href.searchParams)).toMatchObject({

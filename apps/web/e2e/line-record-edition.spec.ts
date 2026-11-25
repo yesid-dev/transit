@@ -38,11 +38,15 @@ for (const { provider, locale, width } of cases) {
 			await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14&direction=1');
 			const section = page.locator('#punctuality');
 			const cite = section.getByText(locale === 'fr' ? 'Citer' : 'Cite', { exact: true });
-			const evidence = section.getByText(
-				locale === 'fr' ? 'Méthode v1, nettoyage v7.' : 'Method v1, cleaning v7.',
+			const dialog = page.getByRole('dialog');
+			const evidence = dialog.getByText(
+				locale === 'fr'
+					? /40 sur 100.*Méthode v1, nettoyage v7/u
+					: /40 of 100.*Method v1, cleaning v7/u,
 			);
 			await cite.click();
 			await expect(evidence).toBeVisible();
+			await dialog.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close' }).click();
 			const copy = section.getByRole('button', { name: transitTerms[locale].action.copyLink });
 			expect((await copy.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
 			await copy.focus();
@@ -62,9 +66,9 @@ for (const { provider, locale, width } of cases) {
 			await page.goto(copied.href);
 			await cite.click();
 			await expect(evidence).toBeVisible();
-			expect((await new AxeBuilder({ page }).include('#punctuality').analyze()).violations).toEqual(
-				[],
-			);
+			expect(
+				(await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations,
+			).toEqual([]);
 		},
 	);
 }

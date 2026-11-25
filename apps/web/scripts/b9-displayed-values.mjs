@@ -1492,17 +1492,102 @@ async function settleSurface(page, cell, fixture) {
 	);
 }
 
+async function displayedRecordNumbers(locator, expected, label) {
+	await locator.first().waitFor();
+	const readings = (await locator.allInnerTexts()).map((text) =>
+		Array.from(text.matchAll(/\d+(?:[ ,\u00a0\u202f]\d{3}\b)*(?:[.,]\d+)?/gu), ([number]) =>
+			parseNumber(number),
+		),
+	);
+	invariant(
+		JSON.stringify(readings) === JSON.stringify(expected),
+		`${label} expected ${JSON.stringify(expected)}, read ${JSON.stringify(readings)}`,
+	);
+	return readings;
+}
+
+async function verifyLineReadings(page, cell, onTime, label) {
+	const fr = cell.locale === 'fr';
+	const network = 81.2;
+	const late = 90 - onTime;
+	const readings = [];
+	const check = async (selector, values) => {
+		const actual = await displayedRecordNumbers(
+			page.locator(selector),
+			values,
+			`${label} ${selector}`,
+		);
+		readings.push({ selector, actual });
+	};
+	const about = page.getByRole('article', {
+		name: fr ? 'À propos de ces chiffres' : 'About these figures',
+		exact: true,
+	});
+	// Coverage is displayed once, alongside the denominator that used to appear in every band.
+	const coverage = about.getByText(fr ? /^50\s*% des 200 /u : /^50% of 200 /u);
+	const actual = await displayedRecordNumbers(
+		coverage,
+		[[50, 200, 50, 50]],
+		`${label} coverage and timing basis`,
+	);
+	readings.push({ selector: 'observed coverage', actual });
+	await check('#punctuality .answer-value', [[onTime]]);
+	await check('#punctuality .answer-meta > p:first-child', [[100, 1]]);
+	await check('#punctuality .answer-meta > p:nth-child(2)', [[1, 7]]);
+	await check('#punctuality .answer-context > p', [[onTime === 40 ? 41.2 : 1.2, network]]);
+	await check('#directions dd', [
+		[80, 100],
+		[80, 100],
+	]);
+
+	const daily = page.locator('#daily footer button');
+	await daily.click();
+	await check('#daily tbody td', [[onTime], [network], [], [network]]);
+	await daily.click();
+
+	const measuredHour = page.locator('#line-hour-chart td[aria-label]').first();
+	await measuredHour.waitFor();
+	const hour = await measuredHour.getAttribute('aria-label');
+	invariant(
+		JSON.stringify(hour?.match(/\d+/gu)?.map(Number)) === JSON.stringify([7, late, 100]),
+		`${label} hourly late share or stop count drifted: ${hour}`,
+	);
+	readings.push({ selector: 'hourly accessible reading', actual: hour });
+	await check('#line-hour-chart td[aria-label]:first-of-type [data-level]', [[late]]);
+
+	const stops = page.locator('#stops footer button');
+	await stops.click();
+	await check('#stops tbody td', [[0.6], [5.6]]);
+	await stops.click();
+	await check('#delivery tbody td', [[2], [6], [32], [40]]);
+	await check('#late tbody td', [[late, 100]]);
+	await check('#waiting dl dd:first-of-type', [[0.8], [8.3], [25]]);
+	await check('#offered tbody td', [
+		[8, 8, 1],
+		[0, 1],
+	]);
+	await check('#crowding tbody td', [
+		[25, 30],
+		[75, 90],
+	]);
+	await check('#boundaries dd', [[5, 44], [1, 15], [16]]);
+	await check('#frequency tbody td', [[7, 0, 9, 0], [7.5]]);
+	await check('#alerts dd', [[3], [4]]);
+	return readings;
+}
+
 async function verifyEngineRecord(page, cell, replay, errors, html) {
 	const label = `${cell.fixture}/${cell.locale}/${cell.surface}`;
 	const isLine = cell.surface === 'line';
 	const section = page.locator('#punctuality');
-	const bands = isLine ? section.locator('dl') : page.locator('#stop-bands-chart dl');
+	const bands = page.locator(isLine ? '#line-bands-chart dl' : '#stop-bands-chart dl');
 	const missing = cell.fixture === 'sparse';
-	const verifyExport = (csv) => {
+	let lineReadings = [];
+	const verifyExport = (csv, section = 'punctuality') => {
 		invariant(csv != null, `${label} missing CSV link`);
 		const exportUrl = new URL(csv, page.url());
 		invariant(
-			exportUrl.searchParams.get('section') === 'punctuality' &&
+			exportUrl.searchParams.get('section') === section &&
 				exportUrl.searchParams.get('recordFrom') === '2026-11-08' &&
 				exportUrl.searchParams.get('recordTo') === '2026-11-14',
 			`${label} CSV lost the displayed measure or dates: ${exportUrl}`,
@@ -1533,22 +1618,18 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 			JSON.stringify(displayedLabels) === JSON.stringify(expectedLabels),
 			`${label} mislabeled or reordered the punctuality bands: ${displayedLabels}`,
 		);
-		const readings = isLine
-			? (await bands.locator('dd').allTextContents()).map((text) =>
-					Array.from(text.matchAll(/\d+(?:[.,]\d+)?/gu), ([number]) => parseNumber(number)),
+		const readings = (
+			await bands
+				.locator('dd')
+				.evaluateAll((rows) =>
+					rows.map((row) => [
+						row.querySelector('strong')?.textContent,
+						row.querySelector('span')?.textContent,
+					]),
 				)
-			: (
-					await bands
-						.locator('dd')
-						.evaluateAll((rows) =>
-							rows.map((row) => [
-								row.querySelector('strong')?.textContent,
-								row.querySelector('span')?.textContent,
-							]),
-						)
-				).map((row) => row.map(parseNumber));
+		).map((row) => row.map(parseNumber));
 		const expectedReadings = isLine
-			? counts.map((count) => [count, count, 100, 50, 200])
+			? counts.map((count) => [count, count])
 			: [
 					[5, 414],
 					[80, 6628],
@@ -1558,23 +1639,23 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 			JSON.stringify(readings) === JSON.stringify(expectedReadings),
 			`${label} punctuality shares or denominators drifted: ${JSON.stringify(readings)}`,
 		);
-		if (!isLine) await page.locator('#daily footer button').click();
-		await page.locator('#daily table tbody tr').first().waitFor();
-		if (!isLine) await page.locator('#daily footer button').click();
-		if (isLine)
-			verifyExport(await section.getByRole('link', { name: /CSV/u }).getAttribute('href'));
+		if (isLine) {
+			lineReadings = await verifyLineReadings(page, cell, onTime, label);
+		} else {
+			await page.locator('#daily footer button').click();
+			await page.locator('#daily table tbody tr').first().waitFor();
+			await page.locator('#daily footer button').click();
+		}
 	}
-	if (!isLine) {
-		await section.getByRole('button', { name: /^(Download|Télécharger)$/u }).click();
-		const sheet = page.getByRole('dialog');
-		await sheet.locator('a[href*="section=daily"]').waitFor();
-		verifyExport(await sheet.locator('a[href*="section=punctuality"]').getAttribute('href'));
-		await page.keyboard.press('Escape');
-		await sheet.waitFor({ state: 'hidden' });
-	}
+	await section.getByRole('button', { name: /^(Download|Télécharger)$/u }).click();
+	const sheet = page.getByRole('dialog');
+	const dailyExport = sheet.locator('a[href*="section=daily"]');
+	await dailyExport.waitFor();
+	verifyExport(await dailyExport.getAttribute('href'), 'daily');
+	verifyExport(await sheet.locator('a[href*="section=punctuality"]').getAttribute('href'));
+	await page.keyboard.press('Escape');
+	await sheet.waitFor({ state: 'hidden' });
 	await verifyAccessibility(page, cell);
-	if (isLine)
-		await page.locator('#daily a[href*="section=daily"]').first().waitFor({ state: 'attached' });
 	const data = replay.state.ledger;
 	invariant(errors.length === 0, `${label} browser errors: ${errors.join(' | ')}`);
 	invariant(replay.state.outbound.length === 0, `${label} outbound: ${replay.state.outbound}`);
@@ -1598,7 +1679,11 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 				{ measure: 'trips_run', group: 'departure' },
 				{ measure: 'late', kind: 'departure', limit: '8' },
 				{ measure: 'crowding' },
-				{ measure: 'alert_counts' },
+				{ measure: 'alert_counts', alert_details: '1' },
+				{ measure: 'scheduled_frequency' },
+				{ measure: 'service_delivered', group: 'day_type' },
+				{ measure: 'on_time', network: true },
+				{ measure: 'on_time', group: 'day', network: true },
 			]
 		: [
 				{ measure: 'punctuality' },
@@ -1619,7 +1704,13 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 			...(network ? {} : isLine ? { line: '24' } : { stop: 'S1' }),
 			...query,
 		});
-		if (isLine && direction && query.group !== 'direction' && query.measure !== 'alert_counts')
+		if (
+			isLine &&
+			!network &&
+			direction &&
+			query.group !== 'direction' &&
+			query.measure !== 'alert_counts'
+		)
 			params.set('direction', direction);
 		params.sort();
 		return `/v2/stm/${query.kind ? 'ranking' : 'measure'}?${params}`;
@@ -1643,7 +1734,9 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 	);
 	return {
 		cell: label,
-		actual: missing ? ['not_measured'] : await bands.locator('dd').allTextContents(),
+		actual: missing
+			? ['not_measured']
+			: [...(await bands.locator('dd').allTextContents()), ...lineReadings],
 		ssr: ssrText(html),
 		hydrated,
 		ledger: data.map(({ lane, path, status }) => `${lane}|${path}|${status}`).sort(),

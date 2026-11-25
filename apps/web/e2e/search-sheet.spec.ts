@@ -9,8 +9,6 @@ import { localizeHref } from '../src/lib/i18n/routing';
 const [line, other] = JSON.parse(
 	readFileSync(new URL('./routes-index.json', import.meta.url), 'utf8'),
 ).routes;
-// A line page's heading: what the reader sees, whatever the URL says.
-const heading = (entry: typeof line) => `${entry.short} · ${entry.long}`;
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 test.use({ bypassCSP: true });
@@ -27,7 +25,9 @@ for (const locale of PUBLISHED_LOCALES) {
 	const sheet = (page: Page) => page.getByRole('dialog', { name: words.sheetTitle });
 	const home = localizeHref('/', locale, 'stm');
 	const start = localizeHref(`/lines/${other.id}`, locale, 'stm');
-	const row = new RegExp(`^${literal(`${words.kind.route} ${heading(line)}`)}`);
+	const row = new RegExp(`^${literal(`${words.kind.route} ${line.short} · ${line.long}`)}`);
+	const startingHeading = locale === 'fr' ? 'Ligne 1 Confederation' : 'Line 1 Confederation';
+	const selectedHeading = locale === 'fr' ? 'Ligne 24 Sherbrooke' : 'Line 24 Sherbrooke';
 	const entries = (page: Page) => page.evaluate(() => history.length);
 
 	async function openSheet(page: Page, label = name) {
@@ -43,21 +43,21 @@ for (const locale of PUBLISHED_LOCALES) {
 		const title = page.getByRole('heading', { level: 1 });
 		await page.goto(start);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-		await expect(title).toHaveText(heading(other));
+		await expect(title).toHaveText(startingHeading);
 		const length = await entries(page);
 		const field = await openSheet(page);
 		// Modal: the header and the page behind the sheet are inert.
 		await expect(page.locator('[data-slot="app-frame"]')).toHaveAttribute('inert', '');
 		await field.fill(line.long);
 		await sheet(page).getByRole('option', { name: row }).click();
-		await expect(title).toHaveText(heading(line));
+		await expect(title).toHaveText(selectedHeading);
 		await expect(sheet(page)).toBeHidden();
 		await expect(page.locator('[data-slot="app-frame"]')).not.toHaveAttribute('inert');
 		expect(await entries(page)).toBe(length + 1);
 		// One Back shows the page the search began on, not only its URL.
 		await page.goBack();
 		await expect(page).toHaveURL((url) => url.pathname + url.search === start);
-		await expect(title).toHaveText(heading(other));
+		await expect(title).toHaveText(startingHeading);
 		await expect(sheet(page)).toBeHidden();
 	});
 
@@ -104,11 +104,11 @@ for (const locale of PUBLISHED_LOCALES) {
 			'true',
 		);
 		await field.press('Enter');
-		await expect(title).toHaveText(heading(line));
+		await expect(title).toHaveText(selectedHeading);
 		expect(await entries(page)).toBe(length + 1);
 		await page.goBack();
 		await expect(page).toHaveURL((url) => url.pathname + url.search === start);
-		await expect(title).toHaveText(heading(other));
+		await expect(title).toHaveText(startingHeading);
 		await expect(sheet(page)).toBeHidden();
 	});
 

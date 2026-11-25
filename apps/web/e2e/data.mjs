@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
+import { installLineRecordFixtures } from './line-record-fixtures.mjs';
 import { finderEngine } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
@@ -390,7 +391,10 @@ const server = createServer((request, response) => {
 						? { name_separators: { ends: '<>', languages: '~', language_order: ['en', 'fr'] } }
 						: {}),
 					lines_without_live_data: [
-						{ route_types: [provider.id === 'stm' ? 1 : 0], route_ids: [] },
+						{
+							route_types: [provider.id === 'stm' ? 1 : 0],
+							route_ids: provider.id === 'stm' ? ['m2'] : [],
+						},
 					],
 				})),
 			}),
@@ -578,6 +582,8 @@ const server = createServer((request, response) => {
 				type: 3,
 			});
 		}
+		if (kind === 'schedule-index' && process.env.TRANSIT_E2E_LINE_RECORD_NAMED === '1')
+			installLineRecordFixtures(city, editionRoutes, routeDirections, editionStops);
 		for (const stop of fromRoute) {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
 		}

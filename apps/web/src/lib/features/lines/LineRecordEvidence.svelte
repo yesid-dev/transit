@@ -1,13 +1,12 @@
-<script lang="ts">
+<script lang="ts" module>
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RecordEvidence, RecordMeasure } from '#lib/server/engine.ts';
 	import { countedUnit, methodEvidence } from '#lib/site/presenter.ts';
 
 	type Evidence = RecordEvidence & Partial<Pick<RecordMeasure['evidence'], 'counts' | 'trip_ids'>>;
-	let { evidence, locale }: { evidence: Evidence; locale: Locale } = $props();
-	const trips = $derived(evidence.trip_ids?.length ?? evidence.counts?.observed_trips);
-	const sample = $derived(
-		[
+	export function lineEvidenceSample(evidence: Evidence, locale: Locale) {
+		const trips = evidence.trip_ids?.length ?? evidence.counts?.observed_trips;
+		return [
 			evidence.counts?.classified == null
 				? null
 				: countedUnit(evidence.counts.classified, 'event', locale),
@@ -17,8 +16,13 @@
 				: null,
 		]
 			.filter(Boolean)
-			.join(', '),
-	);
+			.join(', ');
+	}
+</script>
+
+<script lang="ts">
+	let { evidence, locale }: { evidence: Evidence; locale: Locale } = $props();
+	const sample = $derived(lineEvidenceSample(evidence, locale));
 </script>
 
 <div

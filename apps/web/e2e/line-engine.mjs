@@ -1,4 +1,9 @@
 import { waitingEngine } from './waiting-engine.mjs';
+import {
+	lineRecordFixture,
+	namedLineCells,
+	namedSchedulePeriods,
+} from './line-record-fixtures.mjs';
 
 // Engine contract fixtures for the server-side Line requests.
 export function lineEngine(url) {
@@ -8,6 +13,10 @@ export function lineEngine(url) {
 	const from = get('from');
 	const to = get('to');
 	const direction = get('direction') === '1' ? 1 : 0;
+	const line = get('line');
+	const named =
+		process.env.TRANSIT_E2E_LINE_RECORD_NAMED === '1' ? lineRecordFixture(get('city'), line) : null;
+	if (named && from === '2026-11-01') return { status: 503, body: {} };
 	const evidence = {
 		start_date: from,
 		end_date: to,
@@ -90,60 +99,71 @@ export function lineEngine(url) {
 		return waitingEngine(url, evidence);
 	}
 	if (group) {
-		const cells = {
-			hour: [
-				cell(
-					{ hour: 7 },
-					{ scheduled_frequency: 8 },
-					{ counts: { scheduled_trips: 8, scheduled_clock_hours: 1 } },
-				),
-				cell(
-					{ hour: 8 },
-					{ scheduled_frequency: 0 },
-					{ counts: { scheduled_trips: 0, scheduled_clock_hours: 1 } },
-				),
-			],
-			day: [cell({ day: from })],
-			weekday_hour: [cell({ weekday: 1, hour: 7 })],
-			direction: [cell({ direction: 0 }), cell({ direction: 1 })],
-			stop: [
-				cell({ direction, stop_sequence: 1, stop: 'First stop' }),
-				cell(
-					{ direction, stop_sequence: 2, stop: 'Second stop' },
-					{ ...values, median_delay: 337.5 },
-				),
-			],
-			departure: [
-				cell(
-					{ direction, departure: '07:00:00' },
-					{ trips_run: 0.8 },
-					{ counts: { cancelled: 2, missing: 6, ran: 32, scheduled: 40 } },
-				),
-			],
-			day_type: [
-				cell(
-					{ day_type: 'weekday' },
-					{},
-					{
-						counts: {},
-						boundary_departures: [
-							{
-								measure: 'first_trip',
-								service_date: from,
-								scheduled_departure: '05:44:00',
-								scheduled: 1,
-							},
-							{
-								measure: 'last_trip',
-								service_date: from,
-								scheduled_departure: '25:15:00',
-								scheduled: 1,
-							},
-						],
-					},
-				),
-			],
-		}[group];
+		const cells =
+			(named
+				? namedLineCells(
+						line,
+						named,
+						group,
+						get('direction') == null ? null : direction,
+						cell,
+						from,
+					)
+				: undefined) ??
+			{
+				hour: [
+					cell(
+						{ hour: 7 },
+						{ scheduled_frequency: 8 },
+						{ counts: { scheduled_trips: 8, scheduled_clock_hours: 1 } },
+					),
+					cell(
+						{ hour: 8 },
+						{ scheduled_frequency: 0 },
+						{ counts: { scheduled_trips: 0, scheduled_clock_hours: 1 } },
+					),
+				],
+				day: [cell({ day: from })],
+				weekday_hour: [cell({ weekday: 1, hour: 7 })],
+				direction: [cell({ direction: 0 }), cell({ direction: 1 })],
+				stop: [
+					cell({ direction, stop_sequence: 1, stop: 'First stop' }),
+					cell(
+						{ direction, stop_sequence: 2, stop: 'Second stop' },
+						{ ...values, median_delay: 337.5 },
+					),
+				],
+				departure: [
+					cell(
+						{ direction, departure: '07:00:00' },
+						{ trips_run: 0.8 },
+						{ counts: { cancelled: 2, missing: 6, ran: 32, scheduled: 40 } },
+					),
+				],
+				day_type: [
+					cell(
+						{ day_type: 'weekday' },
+						{},
+						{
+							counts: {},
+							boundary_departures: [
+								{
+									measure: 'first_trip',
+									service_date: from,
+									scheduled_departure: '05:44:00',
+									scheduled: 1,
+								},
+								{
+									measure: 'last_trip',
+									service_date: from,
+									scheduled_departure: '25:15:00',
+									scheduled: 1,
+								},
+							],
+						},
+					),
+				],
+			}[group];
 		return {
 			hold:
 				group === 'stop' &&
@@ -159,6 +179,20 @@ export function lineEngine(url) {
 	}
 
 	let row = cell(null);
+	if (line === '715' && measure === 'punctuality') {
+		return {
+			body: {
+				...cell(null, {}, { counts: {} }),
+				state: 'not_measured',
+				state_text: { en: 'Not measured', fr: 'Non mesuré' },
+				coverage_note: {
+					en: 'The feed carried this line without trip identifiers on these dates, so its vehicles cannot be matched to the timetable.',
+					fr: 'Le flux de cette ligne ne contenait aucun identifiant de trajet à ces dates. Il est donc impossible d’associer ses véhicules à l’horaire.',
+				},
+				evidence: { ...evidence, counts: {} },
+			},
+		};
+	}
 	if (measure === 'crowding') {
 		row =
 			get('city') === 'octranspo'
@@ -189,18 +223,30 @@ export function lineEngine(url) {
 			{ scheduled_frequency: 8 },
 			{
 				counts: {},
-				periods: [
-					{
-						period_text: { en: 'Morning peak', fr: 'Pointe du matin' },
-						start_hour: 7,
-						end_hour: 9,
-						day_type: 'weekday',
-						days: 1,
-						scheduled_trips: 16,
-						scheduled_clock_hours: 2,
-						scheduled_frequency: 8,
-					},
-				],
+				periods: named
+					? namedSchedulePeriods(line)
+					: [
+							{
+								period_text: { en: 'Morning peak', fr: 'Pointe du matin' },
+								start_hour: 7,
+								end_hour: 9,
+								day_type: 'weekday',
+								days: 1,
+								scheduled_trips: 16,
+								scheduled_clock_hours: 2,
+								scheduled_frequency: 8,
+							},
+							{
+								period_text: { en: 'Midday', fr: 'Milieu de journée' },
+								start_hour: 9,
+								end_hour: 15,
+								day_type: 'saturday',
+								days: 1,
+								scheduled_trips: 24,
+								scheduled_clock_hours: 6,
+								scheduled_frequency: 4,
+							},
+						],
 			},
 		);
 	}
