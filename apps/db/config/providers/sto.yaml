@@ -31,11 +31,11 @@ provider:
   default_language: fr
   default_currency: CAD
   bounds:
-    # Includes cross-river stops in Ottawa.
-    min_latitude: 45.381251
-    max_latitude: 45.592916
-    min_longitude: -75.890305
-    max_longitude: -75.390882
+    # Reading filter padded for turnarounds, layovers and GPS drift beyond stops.
+    min_latitude: 45.35
+    max_latitude: 45.63
+    min_longitude: -75.95
+    max_longitude: -75.35
   attribution_text: "This service incorporates the open data provided by the Société de transport de l'Outaouais (STO)."
   website_url: https://www.sto.ca/
   is_active: false
@@ -56,6 +56,7 @@ public:
     max_longitude: -75.23
     max_latitude: 45.75
   basemap_bounds:
+    # Retain regional tiles beyond the camera limits for wide views at low zoom.
     min_longitude: -77.25
     min_latitude: 44.70
     max_longitude: -74.20
