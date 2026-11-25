@@ -117,7 +117,7 @@ const rankingAnswer = rankingEnvelope.extend({
 export type MeasureAnswer = z.infer<typeof measureAnswer>;
 export type RankingAnswer = z.infer<typeof rankingAnswer>;
 export type EngineResult<T> =
-	| { kind: 'answer'; answer: T; lastGood?: true }
+	| { kind: 'answer'; answer: T; lastGood?: true; cleaningVersion?: string }
 	| { kind: 'unreachable'; status?: number }
 	| { kind: 'unconfigured' | 'timeout' | 'busy' };
 
@@ -196,9 +196,13 @@ export async function query<T>(
 		if (!response.ok) return { kind: 'unreachable' };
 		const { success, data } = schema.safeParse(await response.json());
 		if (!success) return { kind: 'unreachable' };
-		return response.headers.get('x-transit-answer') === 'last-good'
-			? { kind: 'answer', answer: data, lastGood: true }
-			: { kind: 'answer', answer: data };
+		const cleaningVersion = response.headers.get('x-transit-cleaning-version');
+		return {
+			kind: 'answer',
+			answer: data,
+			...(response.headers.get('x-transit-answer') === 'last-good' && { lastGood: true }),
+			...(cleaningVersion && /^\d+$/.test(cleaningVersion) && { cleaningVersion }),
+		};
 	} catch {
 		return { kind: signal.aborted ? 'timeout' : 'unreachable' };
 	}

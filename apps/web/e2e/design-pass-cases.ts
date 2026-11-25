@@ -46,6 +46,7 @@ export type Screen = keyof typeof screens;
 
 const ottawa: Screen[] = [
 	'alerts',
+	'how-we-measure',
 	'line-live',
 	'line-record',
 	'lines',
@@ -80,6 +81,7 @@ export const designPassCases = [
 	['overview', 'octranspo', 'fr'] as const,
 	['overview-live', 'octranspo', 'fr'] as const,
 	['stop-record', 'octranspo', 'fr'] as const,
+	['how-we-measure', 'octranspo', 'fr'] as const,
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';

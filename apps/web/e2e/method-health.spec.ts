@@ -19,23 +19,56 @@ for (const width of [390, 1440]) {
 			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
-			await expect(main.getByRole('heading', { level: 2 })).toHaveText(
-				fr ? 'Ponctualité' : 'Punctuality',
-			);
+			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
+			const intro = await main.locator('[data-slot="answer-lead"] p').first().boundingBox();
+			expect(intro!.x).toBeCloseTo(heading!.x);
 			const measure = main.locator('#fixture_delay');
-			await expect(measure.getByRole('heading')).toHaveText(
-				fr ? 'Retard typique aux arrêts observés.' : 'Typical delay at recorded stops.',
-			);
+			await expect(measure).toHaveAttribute('open', '');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
-			await expect(measure.getByText('v2', { exact: true })).toBeVisible();
+			await expect(measure.getByText(/^v2, /)).toBeVisible();
+			await expect(measure.locator('time')).toHaveText(
+				fr ? '10 novembre 2026' : '10 November 2026',
+			);
+			await expect(main.locator('#ranking-range > summary')).toHaveAccessibleName(
+				fr
+					? 'L’intervalle dans un classement L’intervalle montre l’incertitude autour d’une valeur du classement.'
+					: 'The range on a ranking row The range shows uncertainty around a ranked value.',
+			);
+			const disclosures = main.locator('details[data-record-disclosure]');
+			for (const card of await disclosures.all()) {
+				const trigger = card.locator('summary').first();
+				if (await trigger.isVisible()) {
+					const initiallyOpen = (await card.getAttribute('open')) !== null;
+					await trigger.press('Enter');
+					expect((await card.getAttribute('open')) !== null).toBe(!initiallyOpen);
+					await trigger.press('Space');
+					expect((await card.getAttribute('open')) !== null).toBe(initiallyOpen);
+				}
+			}
+			await main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }).click();
+			await expect(main.locator('details[data-record-disclosure][open]')).toHaveCount(0);
 			await expect(
-				measure.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
-			).toBeVisible();
-			await measure.getByText(fr ? 'Colonnes du CSV' : 'CSV columns', { exact: true }).click();
-			await expect(measure.getByText(fr ? 'Valeur' : 'Value', { exact: true })).toBeVisible();
-			await measure.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(measure.getByText(/v2.*\/metrics#fixture_delay/)).toBeVisible();
-			const csvUrl = (await measure.getByRole('link', { name: /CSV/ }).getAttribute('href'))!;
+				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
+			).toHaveCount(1);
+
+			await main.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
+			await expect(page.getByRole('dialog').getByText(/v2.*\/metrics#fixture_delay/)).toBeVisible();
+			await page.keyboard.press('Escape');
+			await main
+				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
+				.click();
+			const dialog = page.getByRole('dialog');
+			await dialog
+				.getByText(fr ? 'Colonnes du CSV' : 'CSV columns', { exact: false })
+				.first()
+				.click();
+			await expect(dialog.getByText(fr ? 'Valeur' : 'Value', { exact: true })).toBeVisible();
+			const csvUrl = (await dialog
+				.getByRole('link', {
+					name: fr ? 'Retard typique aux arrêts observés' : 'Typical delay at recorded stops',
+				})
+				.getAttribute('href'))!;
+			await page.keyboard.press('Escape');
 			expect(new URL(csvUrl, page.url()).searchParams.get('provider')).toBe(provider);
 			const csv = await request.get(csvUrl);
 			expect(csv.ok()).toBe(true);

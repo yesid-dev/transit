@@ -5,6 +5,7 @@ import health from '../../../../e2e/clean-table-health.json';
 import catalog from '../../../../e2e/method-catalog.json';
 import MethodCatalog from './MethodCatalog.svelte';
 import RecordDataHealth from './RecordDataHealth.svelte';
+import { recordState } from './recordStates';
 
 const period = { from: health.from, to: health.to };
 
@@ -21,12 +22,79 @@ it('renders localized registry content and marks a last-good catalog', async () 
 			lastGood: true,
 		}),
 	});
-	const entry = await screen.findByRole('article', { name: catalog[0].text.fr.definition });
+	const trigger = await screen.findByText(catalog[0].text.fr.definition);
+	const entry = trigger.closest('details')!;
 	expect(entry).toHaveAttribute('id', catalog[0].id);
 	expect(entry).toHaveTextContent(catalog[0].text.fr.exclusions);
 	expect(entry).toHaveTextContent(catalog[0].text.fr.limits);
 	expect(entry).toHaveTextContent(/45/);
 	expect(screen.getByText(/calcul précédent/)).toBeVisible();
+});
+
+it.each(['en', 'fr'] as const)('uses the shared state marks in %s', async (locale) => {
+	render(MethodCatalog, {
+		locale,
+		url: new URL('https://transit1.yesid.dev/metrics'),
+		city: 'stm',
+		period,
+		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: catalog }),
+	});
+	const card = await screen.findByRole('article', {
+		name: locale === 'fr' ? 'Six états, chacun nommé' : 'Six states, each said in words',
+	});
+	const states = [
+		'no_live_data',
+		'not_measured',
+		'too_few_to_judge',
+		'delay_unknown',
+		'not_reporting',
+		'not_tracked',
+	] as const;
+	const marks = card.querySelectorAll('[data-record-state]');
+	expect(marks).toHaveLength(states.length);
+	states.forEach((state, index) => {
+		expect(marks[index]).toHaveAttribute('data-record-state', state);
+		expect(marks[index]).toHaveTextContent(recordState(state)[locale]);
+		expect(marks[index].querySelector('[aria-hidden]')).toHaveTextContent(recordState(state).glyph);
+	});
+});
+
+it('puts shared family prose in one reading and links to it from its siblings', async () => {
+	const first = { ...catalog[0], id: 'on_time' };
+	const second = { ...catalog[0], id: 'early' };
+	render(MethodCatalog, {
+		locale: 'en',
+		url: new URL('https://transit1.yesid.dev/metrics'),
+		city: 'stm',
+		period,
+		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({
+			kind: 'answer',
+			answer: [second, first],
+		}),
+	});
+	expect(await screen.findAllByText(/Each stop with a reading counts once\./)).toHaveLength(1);
+	expect(document.getElementById('early')?.querySelector('a[href="#on_time"]')).toHaveTextContent(
+		'On-time share',
+	);
+});
+
+it('describes closed families with all of their measures', async () => {
+	const entries = ['early', 'late', 'vehicle_early', 'vehicle_late'].map((id) => ({
+		...catalog[0],
+		id,
+		family: id.startsWith('vehicle_') ? 'vehicles' : catalog[0].family,
+	}));
+	render(MethodCatalog, {
+		locale: 'en',
+		url: new URL('https://transit1.yesid.dev/metrics'),
+		city: 'stm',
+		period,
+		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: entries }),
+	});
+	await screen.findByText(/Early is more than 1 minute ahead.*Late is more than 5 minutes/);
+	expect(document.querySelector('#family-vehicles > summary')).toHaveTextContent(
+		'Early share by vehicle and Late share by vehicle.',
+	);
 });
 
 it('renders an honest empty catalog', async () => {
