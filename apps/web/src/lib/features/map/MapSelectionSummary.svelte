@@ -44,7 +44,7 @@
 </script>
 
 {#snippet lineNow(id: string)}
-	<a href={pageHref('lines', id, 'live')}
+	<a class="text-primary underline" href={pageHref('lines', id, 'live')}
 		>{tr(`Line ${line(id)} now`, `Ligne ${line(id)} en direct`)}</a
 	>
 {/snippet}
@@ -76,7 +76,7 @@
 			<p>{tr('Next stop:', 'Prochain arrêt\u00a0:')} {stopDisplayName(detail.nextStop.name)}</p>
 		{/if}
 		<div class="selection-links">
-			<a href={vehicleLiveHref(detail.id, url, locale, city)}
+			<a class="text-primary underline" href={vehicleLiveHref(detail.id, url, locale, city)}
 				>{tr(`Vehicle ${detail.id}`, `Véhicule ${detail.id}`)}</a
 			>
 			{#if routeId}{@render lineNow(routeId)}{/if}
@@ -117,8 +117,12 @@
 			</ul>
 		{/if}
 		<div class="selection-links">
-			<a href={pageHref('stop', detail.id, 'live')}>{tr('Stop now', 'Arrêt en direct')}</a>
-			<a href={pageHref('stop', detail.id, 'record')}>{tr('Stop Record', 'Bilan de l’arrêt')}</a>
+			<a class="text-primary underline" href={pageHref('stop', detail.id, 'live')}
+				>{tr('Stop now', 'Arrêt en direct')}</a
+			>
+			<a class="text-primary underline" href={pageHref('stop', detail.id, 'record')}
+				>{tr('Stop Record', 'Bilan de l’arrêt')}</a
+			>
 		</div>
 	{:else}
 		<RoutePlate code={line(detail.id)} />
@@ -135,7 +139,9 @@
 		{/if}
 		<div class="selection-links">
 			{@render lineNow(detail.id)}
-			<a href={pageHref('lines', detail.id, 'record')}>{tr('Line Record', 'Bilan de la ligne')}</a>
+			<a class="text-primary underline" href={pageHref('lines', detail.id, 'record')}
+				>{tr('Line Record', 'Bilan de la ligne')}</a
+			>
 		</div>
 	{/if}
 </div>
