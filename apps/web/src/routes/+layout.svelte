@@ -143,6 +143,7 @@
 		mapRecordSourceDate = date;
 	});
 	const footerWords = $derived(footerCopy[locale]);
+	const footerSeparator = ' ';
 	const footerAgency = $derived(
 		data.provider?.labels[locale].operator ??
 			v1?.manifest.display_name ??
@@ -451,7 +452,7 @@
 					bind:clientHeight={mapCreditHeight}
 				>
 					{#if footerAttribution}<span data-slot="source-credit">{footerAttribution}</span
-						>&#32;{/if}
+						>{footerSeparator}{/if}
 					<span class="footer-disclaimer" data-slot="agency-disclaimer"
 						>{footerWords.disclaimer(footerAgency)}</span
 					>
@@ -472,7 +473,7 @@
 				{/if}
 				{#snippet legalStatus()}
 					<p class="m-0 text-center sm:text-left" data-slot="legal-footer-status">
-						<span>{footerAttribution}</span>&#32;
+						<span>{footerAttribution}</span>{footerSeparator}
 						<span class="footer-disclaimer" data-slot="agency-disclaimer"
 							>{footerWords.disclaimer(footerAgency)}</span
 						>
@@ -504,7 +505,7 @@
 										{:else}
 											{footerAttribution}
 										{/if}
-									</span>&#32;
+									</span>{footerSeparator}
 								{/if}
 								<span class="footer-disclaimer" data-slot="agency-disclaimer"
 									>{footerWords.disclaimer(footerAgency)}</span
