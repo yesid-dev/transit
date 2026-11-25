@@ -13,11 +13,13 @@
 </script>
 
 <script lang="ts">
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	const { directionName } = transitDisplay();
 	import { getLocalizeHref } from '#lib/i18n/index.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
-	import { clockTime, directionName, minuteReading } from '#lib/site/presenter.ts';
+	import { clockTime, minuteReading } from '#lib/site/presenter.ts';
 	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import { lineViewsCopy } from './lineViews.copy';
 	import { Button } from '@yesid/ui/button';

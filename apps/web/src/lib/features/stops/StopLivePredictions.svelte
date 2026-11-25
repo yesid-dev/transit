@@ -19,7 +19,7 @@
 
 	let { view, order = $bindable(), locale, timeZone }: Props = $props();
 
-	const { line } = transitDisplay();
+	const { line, readName } = transitDisplay();
 	const absenceContext = readLiveAbsenceContext();
 	const localizeHref = getLocalizeHref();
 	const uid = $props.id();
@@ -62,7 +62,11 @@
 					{/if}
 					<span class="stop-live__destination" data-known={group.destinations.length > 0}
 						>{group.destinations.length > 0
-							? t.toward(listFormat.format(group.destinations))
+							? t.toward(
+									listFormat.format([
+										...new Set(group.destinations.map((name) => readName(name, locale))),
+									]),
+								)
 							: t.noDestination}</span
 					>
 				</h3>

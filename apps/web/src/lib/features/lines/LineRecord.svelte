@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	const { directionLabel } = transitDisplay();
 	import { Card } from '@yesid/ui/card';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
@@ -8,7 +10,7 @@
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import RecordLineLabel from '#lib/features/record/RecordLineLabel.svelte';
 	import { choose, lastGoodNote, recordMessage } from '#lib/features/record/recordText.ts';
-	import { dateRange, directionLabel } from '#lib/site/presenter.ts';
+	import { dateRange } from '#lib/site/presenter.ts';
 	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import WaitingReadings from '#lib/features/record/WaitingReadings.svelte';

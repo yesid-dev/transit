@@ -5,7 +5,7 @@
 	import { Separator } from '@yesid/ui/separator';
 	import { Button } from '@yesid/ui/button';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	const { line } = transitDisplay();
+	const { line, readName } = transitDisplay();
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import PanelSizeHandle from './PanelSizeHandle.svelte';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
@@ -125,7 +125,7 @@
 	}
 
 	function routeDisplay(route: RouteIndexEntry): string {
-		return route.long ? `${route.short} ${route.long}` : route.short;
+		return route.long ? `${route.short} ${readName(route.long, locale)}` : route.short;
 	}
 
 	function fallbackStop(id: string): StopIndexEntry {

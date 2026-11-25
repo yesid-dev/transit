@@ -229,6 +229,9 @@
 		continuous: () => untrack(() => clock.serverNowContinuousMs()),
 	});
 	const session = createMapSelectionSession({
+		get nameSeparators() {
+			return v1.provider?.name_separators;
+		},
 		live,
 		repositories: { getRoute, getStop, getStopsIndexSlim, getRoutesIndex },
 		filters,

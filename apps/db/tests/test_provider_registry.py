@@ -221,6 +221,13 @@ def test_manifest_loading() -> None:
 
     assert registry.list_provider_ids() == ["octranspo", "stm", "sto"]
     assert registry.list_active_provider_ids() == ["octranspo", "stm"]
+    assert registry.get_public_config("octranspo").model_dump(mode="json")["name_separators"] == {
+        "ends": "<>",
+        "languages": "~",
+        "language_order": ["en", "fr"],
+    }
+    assert registry.get_public_config("stm").name_separators is None
+    assert registry.get_public_config("sto").name_separators is None
     assert provider.provider.provider_id == "stm"
     assert static_url is not None
     assert static_url == STM_STATIC_URL

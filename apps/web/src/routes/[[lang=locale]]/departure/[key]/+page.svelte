@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { dateRange, delayReading, directionLabel, scheduledClock } from '#lib/site/presenter.ts';
+	import { dateRange, delayReading, scheduledClock } from '#lib/site/presenter.ts';
 	import { page } from '$app/state';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
@@ -83,7 +83,7 @@
 			<a class="w-fit" href={lineHref}>{t('See the line', 'Voir la ligne')}</a>
 			<h1>{subject}</h1>
 			<p>
-				{directionLabel(data.identity.direction, data.headsigns, data.lang)}
+				{display.directionLabel(data.identity.direction, data.headsigns, data.lang)}
 			</p>
 			<nav class="flex flex-wrap gap-x-4" aria-label={t('Departure views', 'Vues du départ')}>
 				<a

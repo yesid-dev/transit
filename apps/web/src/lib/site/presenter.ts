@@ -9,6 +9,8 @@ import {
 	providerLocalDateKey,
 } from '#lib/utils/time.ts';
 import { presenterCopy } from './presenter.copy.ts';
+import { formatTransitName } from './transitDisplay.ts';
+import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 
 export function minuteReading(
 	minutes: number | null | undefined,
@@ -78,20 +80,25 @@ export function scheduledClock(value: unknown, locale: Locale): string {
 	return serviceTime(value, locale) ?? presenterCopy[locale].unknownTime;
 }
 
-export function directionName(headsign: string | null | undefined, locale: Locale): string {
-	const name = headsign?.trim();
-	const copy = presenterCopy[locale];
-	return name || copy.unknownDirection;
+export function directionName(
+	headsign: string | null | undefined,
+	locale: Locale,
+	rule?: NameSeparators,
+): string {
+	return headsign?.trim()
+		? formatTransitName(headsign.trim(), locale, rule)
+		: presenterCopy[locale].unknownDirection;
 }
 
 export function directionLabel(
 	direction: string | number | null | undefined,
 	headsigns: Readonly<Record<number, string>>,
 	locale: Locale,
+	rule?: NameSeparators,
 ): string {
-	const name = direction == null || direction === '' ? null : headsigns[Number(direction)]?.trim();
+	const name = direction == null || direction === '' ? null : headsigns[Number(direction)];
 	const copy = presenterCopy[locale];
-	return name ? copy.toward(name) : copy.unknownDirection;
+	return name?.trim() ? copy.toward(directionName(name, locale, rule)) : copy.unknownDirection;
 }
 
 export function dateRange({ from, to }: { from: string; to: string }, locale: Locale): string {

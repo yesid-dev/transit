@@ -756,6 +756,11 @@ test("serves and caches the search index with the normal limit and no v1 catalog
 
 test("the city endpoint and dated questions share the declaration catalog", async (t) => {
   const f = fixture(t);
+  f.cities.providers[0].name_separators = {
+    ends: "<>",
+    languages: "~",
+    language_order: ["en", "fr"],
+  };
   assert.equal((await f.fetch("/v2/cities?city=demo")).status, 400);
   assert.equal(f.cityRequests.length, 0);
   assert.deepEqual(await (await f.fetch("/v2/cities")).json(), f.cities);

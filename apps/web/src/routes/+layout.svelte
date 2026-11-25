@@ -95,6 +95,8 @@
 	const lineDirectory = $derived(
 		createLineDirectory(data.schedule?.routes ?? null, {
 			line: (id) => routeNameFallback(id, locale),
+			locale,
+			nameSeparators: data.provider?.name_separators,
 		}),
 	);
 	setLineDirectory(() => lineDirectory);
@@ -266,6 +268,8 @@
 			{ surface: 'list', query: topSearch, scope: searchScope },
 			{
 				routes: searchIndex.data?.schedule?.routes ?? null,
+				locale,
+				nameSeparators: data.provider?.name_separators,
 				stops: searchIndex.data?.schedule?.stops ?? null,
 				vehicles:
 					searchIndex.data?.vehicle_state === 'not_tracked'

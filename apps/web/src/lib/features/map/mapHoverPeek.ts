@@ -1,3 +1,4 @@
+import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 import { notReporting } from './vehicleMotion';
 import type { clock } from '@yesid/ui/state';
@@ -26,6 +27,7 @@ type PeekLiveIndex = Pick<LiveIndex, 'byVehicleId' | 'vehiclesByStop' | 'byStopI
 export interface MapHoverPeekContext {
 	readonly staleCutoffS?: number;
 	readonly locale?: Locale;
+	readonly nameSeparators?: NameSeparators;
 	readonly index: PeekLiveIndex;
 	readonly stops: readonly SlimStopEntry[];
 	readonly routesIndex: readonly RouteIndexEntry[];
@@ -159,7 +161,9 @@ export function resolveMapHoverPeek(
 			if (vehicle.route === route.id) visibleVehicleCount += 1;
 		}
 		const hoverRoute = context.hoverRoute?.id === route.id ? context.hoverRoute : null;
-		const variants = hoverRoute ? routeDirectionVariants(hoverRoute, context.locale) : [];
+		const variants = hoverRoute
+			? routeDirectionVariants(hoverRoute, context.locale, context.nameSeparators)
+			: [];
 		const variant =
 			selection.variantKey != null
 				? (variants.find((candidate) => candidate.key === selection.variantKey) ?? null)

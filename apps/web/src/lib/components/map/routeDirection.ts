@@ -1,3 +1,5 @@
+import { formatTransitName } from '#lib/site/transitDisplay.ts';
+import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import type { RouteDirection, RouteFile, RouteStop } from '#lib/v1/schemas/index.ts';
 
@@ -45,11 +47,6 @@ function normalizeHeadsign(value: string | null | undefined): string {
 	return cleanName(value).toLowerCase();
 }
 
-function riderFacingHeadsign(value: string | null | undefined, locale: Locale): string {
-	const headsign = cleanName(value);
-	return CARDINAL_HEADSIGN_LABELS.get(normalizeHeadsign(headsign))?.[locale] ?? headsign;
-}
-
 function keyToken(value: string | number | null | undefined): string {
 	const raw = String(value ?? '')
 		.trim()
@@ -76,21 +73,10 @@ function baseVariantKey(
 		.join(':');
 }
 
-function terminalLabel(
-	direction: RouteDirection,
-	last: RouteStop | null,
-	locale: Locale,
-): string | null {
-	const terminal = stopName(last);
-	if (terminal) return `${TOWARD[locale]} ${terminal}`;
-	const headsign = cleanName(direction.headsign);
-	if (headsign && !CARDINAL_HEADSIGN_LABELS.has(normalizeHeadsign(headsign))) return headsign;
-	return null;
-}
-
 export function routeDirectionVariants(
 	route: RouteFile,
 	locale: Locale = 'en',
+	nameSeparators?: NameSeparators,
 ): RouteDirectionVariant[] {
 	const directions = route.directions ?? [];
 	const dirCounts = new Map<number, number>();
@@ -110,8 +96,14 @@ export function routeDirectionVariants(
 		const key = (baseCounts.get(base) ?? 0) > 1 ? `${base}:${index}` : base;
 		const firstStop = stops[0] ?? null;
 		const lastStop = stops.at(-1) ?? null;
-		const terminal = terminalLabel(direction, lastStop, locale);
-		const headsign = riderFacingHeadsign(direction.headsign, locale);
+		const stop = stopName(lastStop);
+		const source = direction.headsign ?? '';
+		const cardinal = CARDINAL_HEADSIGN_LABELS.get(normalizeHeadsign(source))?.[locale];
+		const name = source.trim()
+			? formatTransitName(nameSeparators ? source : cleanName(source), locale, nameSeparators)
+			: '';
+		const headsign = cardinal ?? name;
+		const terminal = stop ? `${TOWARD[locale]} ${stop}` : cardinal ? null : name || null;
 		const fallback = headsign || `Direction ${direction.dir}`;
 		const duplicateDir = (dirCounts.get(direction.dir) ?? 0) > 1;
 		const labelInferred = !terminal && !headsign;

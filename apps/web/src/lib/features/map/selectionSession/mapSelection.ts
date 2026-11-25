@@ -1,5 +1,6 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import type { LiveIndex } from '#lib/v1/live/index.ts';
+import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { routeDirectionVariants, type RouteDirectionVariant } from '#lib/components/map/index.ts';
 import type {
 	Alert,
@@ -51,6 +52,7 @@ export function sameNullableSelection(a: MapSelection | null, b: MapSelection | 
 
 export interface ResolveContext {
 	readonly locale?: Locale;
+	readonly nameSeparators?: NameSeparators;
 	readonly timeZone?: string;
 	readonly index: LiveIndex;
 	readonly stops: readonly StopIndexEntry[];
@@ -240,8 +242,9 @@ function resolveVehicleDirectionVariant(
 	vehicle: Vehicle,
 	trip: Trip | null,
 	locale: Locale = 'en',
+	nameSeparators?: NameSeparators,
 ): RouteDirectionVariant | null {
-	const variants = route ? routeDirectionVariants(route, locale) : [];
+	const variants = route ? routeDirectionVariants(route, locale, nameSeparators) : [];
 	if (variants.length === 0) return null;
 	const anchors = (trip?.stops ?? []).map((stop) => stop.stop);
 	const fallbackAnchors = vehicle.next_stop ? [vehicle.next_stop] : [];
@@ -364,12 +367,7 @@ function buildStopRouteTimes(
 	return [...byRoute.values()].sort((a, b) => routeCompare(a.route, b.route));
 }
 
-function routeDirectionStops(
-	route: RouteFile,
-	selectedVariant: RouteDirectionVariant | null,
-	locale: Locale = 'en',
-): RouteDirectionStops[] {
-	const variants = selectedVariant ? [selectedVariant] : routeDirectionVariants(route, locale);
+function routeDirectionStops(variants: readonly RouteDirectionVariant[]): RouteDirectionStops[] {
 	return variants.map((variant) => ({
 		variantKey: variant.key,
 		dir: variant.dir,
@@ -402,6 +400,7 @@ export function resolveMapSelection(
 			vehicle,
 			trip,
 			context.locale,
+			context.nameSeparators,
 		);
 		const routeDirection = routeDirectionVariant?.direction ?? null;
 		const { pastStops, nextStops } = buildVehicleStopProgress(
@@ -439,7 +438,7 @@ export function resolveMapSelection(
 	if (selection.kind === 'route') {
 		const route = (context.routes ?? []).find((candidate) => candidate.id === selection.id);
 		if (!route) return null;
-		const variants = routeDirectionVariants(route, context.locale);
+		const variants = routeDirectionVariants(route, context.locale, context.nameSeparators);
 		const selectedVariant =
 			selection.variantKey == null
 				? selection.direction == null
@@ -453,7 +452,7 @@ export function resolveMapSelection(
 			title: `Route ${route.id}`,
 			route,
 			direction,
-			directions: routeDirectionStops(route, selectedVariant, context.locale),
+			directions: routeDirectionStops(selectedVariant ? [selectedVariant] : variants),
 			vehicles: route.schedule_only ? [] : vehiclesOnRoute(context.index, route.id),
 			alerts:
 				context.alerts == null

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { dateRange, directionLabel, scheduledClock } from '#lib/site/presenter.ts';
+	import { dateRange, scheduledClock } from '#lib/site/presenter.ts';
 	import { goto } from '$app/navigation';
 	import { FilterSummary, SegmentedChoice } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
@@ -117,7 +117,11 @@
 		if (kind === 'vehicle') return t(`Vehicle ${row.id}`, `Véhicule ${row.id}`);
 		const line = row.line ? display.lineName(row.line).label : t('Unknown line', 'Ligne inconnue');
 		const departure = scheduledClock(row.departure, locale);
-		const direction = directionLabel(row.direction, record.headsigns[row.line ?? ''] ?? {}, locale);
+		const direction = display.directionLabel(
+			row.direction,
+			record.headsigns[row.line ?? ''] ?? {},
+			locale,
+		);
 		return `${line} · ${departure} · ${direction}`;
 	}
 

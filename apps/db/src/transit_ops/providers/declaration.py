@@ -22,6 +22,7 @@ from pydantic_core import InitErrorDetails
 
 from transit_ops.core.models import (
     DownloadLicence,
+    NameSeparators,
     ReadingPopulation,
     SignatureScheme,
     VehicleField,
@@ -197,6 +198,7 @@ class Declaration(_Block):
     stage: Literal["candidate", "capturing", "public"]
     licence: Licence
     download_licence: DownloadLicence | None = None
+    name_separators: NameSeparators | None = None
     attribution: dict[_Locale, _Text]
     disclaimer: dict[_Locale, _Text] | None = None
     feeds: list[FeedDeclaration]

@@ -11,7 +11,7 @@ vi.mock('#lib/v1/repositories/manifest.ts', () => ({ getManifest: mocks.getManif
 vi.mock('#lib/v1/repositories/labels.ts', () => ({ getLabels: mocks.getLabels }));
 
 import { bootV1, bootProvider, resolveLabel } from './boot';
-import { CityCatalogSchema } from './schemas/providers';
+import { CityCatalogSchema, PublicCitySchema } from './schemas/providers';
 
 const cities = CityCatalogSchema.parse({
 	...readyProviders,
@@ -23,6 +23,25 @@ const cities = CityCatalogSchema.parse({
 	})),
 });
 const loadCities = async () => cities;
+
+it('parses old and new city metadata and rejects invalid name separators', () => {
+	const city = cities.providers[0]!;
+	const rule = { ends: '<>', languages: '~', language_order: ['en', 'fr'] };
+	expect(PublicCitySchema.parse(city)).not.toHaveProperty('name_separators');
+	expect(PublicCitySchema.parse({ ...city, name_separators: rule }).name_separators).toEqual(rule);
+	for (const invalid of [
+		{ ends: '' },
+		{ languages: ' ' },
+		{ languages: '<>' },
+		{ language_order: ['en', 'en'] },
+		{ language_order: ['en', 'es'] },
+		{ language_order: ['en'] },
+	]) {
+		expect(
+			PublicCitySchema.safeParse({ ...city, name_separators: { ...rule, ...invalid } }).success,
+		).toBe(false);
+	}
+});
 const unavailable = async () => {
 	throw new Error('catalog unavailable');
 };

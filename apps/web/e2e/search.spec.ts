@@ -219,4 +219,19 @@ for (const locale of PUBLISHED_LOCALES) {
 			).toHaveAttribute('href', new RegExp(`^${literal(localizeHref(path, locale))}(\\?|$)`));
 		}
 	});
+
+	test(`${locale}: line names follow the selected city's declaration in search`, async ({
+		page,
+	}) => {
+		const query = encodeURIComponent(locale === 'en' ? 'Hôpital' : 'Hospital');
+		for (const [city, label] of [
+			['octranspo', locale === 'en' ? 'Waller / Hospital' : 'Waller / Hôpital'],
+			['stm', 'Waller <> Hospital ~ Hôpital'],
+		]) {
+			await page.goto(localizeHref(`/search?q=${query}&provider=${city}`, locale));
+			await expect(
+				page.getByRole('main').getByRole('link', { name: new RegExp(literal(label)) }),
+			).toBeVisible();
+		}
+	});
 }

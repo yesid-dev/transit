@@ -2,7 +2,7 @@
 	import { Badge } from '@yesid/ui/badge';
 	import { isInService, vehicleServiceCopy } from '#lib/v1/live/vehicleService.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	const { line } = transitDisplay();
+	const { line, readName } = transitDisplay();
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { AbsentValue, MaybeValue } from '#lib/components/edge/index.ts';
 	import {
@@ -59,7 +59,9 @@
 				<Badge variant="tag" size="xs" class="peek-route-tag">{t.route} {line(peek.route.id)}</Badge
 				>
 				<span class="peek-lede-item"
-					>{peek.route.longName ?? `${t.route} ${line(peek.route.id)}`}</span
+					>{peek.route.longName
+						? readName(peek.route.longName, locale)
+						: `${t.route} ${line(peek.route.id)}`}</span
 				>
 				{#if peek.route.labelInferred}<AbsentValue reason="inferred" {locale} />{/if}
 			{:else}
@@ -128,7 +130,9 @@
 		</dl>
 	{:else if peek.kind === 'route'}
 		<p class="peek-lede" data-slot="peek-lede">
-			<span class="peek-lede-item">{peek.longName ?? `${t.route} ${peek.title}`}</span>
+			<span class="peek-lede-item"
+				>{peek.longName ? readName(peek.longName, locale) : `${t.route} ${peek.title}`}</span
+			>
 			{#if peek.labelInferred}<AbsentValue reason="inferred" {locale} />{/if}
 		</p>
 		<dl class="peek-facts">
