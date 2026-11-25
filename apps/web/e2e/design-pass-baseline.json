@@ -125,7 +125,7 @@
 			"widths": {
 				"320": {
 					"height": 6297,
-					"overflow": 22,
+					"overflow": 24,
 					"edges": 0,
 					"edgeCount": 0,
 					"targets": 49,
@@ -322,7 +322,7 @@
 				"390": {
 					"height": 12460,
 					"overflow": 0,
-					"edges": 67,
+					"edges": 69,
 					"edgeCount": 9,
 					"targets": 44,
 					"shortTargets": 0,
@@ -565,14 +565,14 @@
 					"clipped": 1,
 					"brokenWords": 7,
 					"textDefects": [
-						"broken-word #c5-summary > span:nth-child(1) before",
-						"broken-word #c5-summary > span:nth-child(1) minutes",
-						"broken-word #c5-summary > span:nth-child(1) scheduled",
-						"broken-word #s13-summary > span:nth-child(1) changes",
-						"broken-word #s13-summary > span:nth-child(1) reports",
+						"broken-word #c3-summary > span:nth-child(1) before",
+						"broken-word #c3-summary > span:nth-child(1) minutes",
+						"broken-word #c3-summary > span:nth-child(1) scheduled",
+						"broken-word #s14-summary > span:nth-child(1) changes",
+						"broken-word #s14-summary > span:nth-child(1) reports",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
-						"clipped #c5-content > div:nth-child(1) 1 vehicle in service"
+						"clipped #c3-content > div:nth-child(1) 1 vehicle in service"
 					]
 				},
 				"1440": {
@@ -1014,11 +1014,11 @@
 					"clipped": 0,
 					"brokenWords": 7,
 					"textDefects": [
-						"broken-word #s14-summary > span:nth-child(1) changes",
-						"broken-word #s14-summary > span:nth-child(1) reports",
-						"broken-word #s15-summary > span:nth-child(1) agency",
-						"broken-word #s16-summary > span:nth-child(1) Where",
-						"broken-word #s16-summary > span:nth-child(1) service",
+						"broken-word #s15-summary > span:nth-child(1) changes",
+						"broken-word #s15-summary > span:nth-child(1) reports",
+						"broken-word #s16-summary > span:nth-child(1) agency",
+						"broken-word #s17-summary > span:nth-child(1) Where",
+						"broken-word #s17-summary > span:nth-child(1) service",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) information"
 					]
@@ -1124,7 +1124,7 @@
 				"390": {
 					"height": 4871,
 					"overflow": 0,
-					"edges": 163,
+					"edges": 211,
 					"edgeCount": 10,
 					"targets": 37,
 					"shortTargets": 0,
@@ -1240,7 +1240,7 @@
 				"390": {
 					"height": 3780,
 					"overflow": 0,
-					"edges": 163,
+					"edges": 211,
 					"edgeCount": 6,
 					"targets": 33,
 					"shortTargets": 0,
@@ -1580,9 +1580,10 @@
 					"targets": 46,
 					"shortTargets": 0,
 					"targetDeficit": 0,
-					"clipped": 1,
+					"clipped": 2,
 					"brokenWords": 0,
 					"textDefects": [
+						"clipped [data-slot=\"card\"] CSV",
 						"clipped [data-slot=\"card\"] Transit · Line 24, 07:00 departure. Stop by stop. 20 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/departure/%5B%2224%22%2C0%2C%2207%3A00%3A00%22%5D?provider=stm&day=2026-11-20&frameMode=record&recordFrom=2026-11-16&recordTo=2026-11-20#stops"
 					]
 				},
@@ -3032,7 +3033,7 @@
 				"390": {
 					"height": 10354,
 					"overflow": 0,
-					"edges": 17,
+					"edges": 19,
 					"edgeCount": 5,
 					"targets": 34,
 					"shortTargets": 0,
@@ -3374,12 +3375,12 @@
 					"clipped": 0,
 					"brokenWords": 6,
 					"textDefects": [
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(1) > p:nth-child(3) dev",
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(5) dev",
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(6) cloudflareinsights",
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(5) > p:nth-child(2) cloudflareinsights",
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(8) > p:nth-child(3) dev",
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(9) > p:nth-child(3) dev"
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(1) > p:nth-child(3) dev",
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(5) dev",
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(2) > p:nth-child(6) cloudflareinsights",
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(5) > p:nth-child(2) cloudflareinsights",
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(8) > p:nth-child(3) dev",
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(9) > p:nth-child(3) dev"
 					]
 				},
 				"1440": {
@@ -3491,7 +3492,7 @@
 					"clipped": 0,
 					"brokenWords": 1,
 					"textDefects": [
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(7) > p:nth-child(4) dev"
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(7) > p:nth-child(4) dev"
 					]
 				},
 				"1440": {
@@ -3604,8 +3605,8 @@
 					"brokenWords": 3,
 					"textDefects": [
 						"broken-word #legal-title Accessibility",
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > p:nth-child(2) dev",
-						"broken-word #main > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) dev"
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > p:nth-child(2) dev",
+						"broken-word #main-flow > article:nth-child(1) > div:nth-child(2) > section:nth-child(3) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) dev"
 					]
 				},
 				"1440": {
@@ -3716,7 +3717,7 @@
 					"targetDeficit": 0,
 					"clipped": 0,
 					"brokenWords": 1,
-					"textDefects": ["broken-word #error-page-heading-s7 construction"]
+					"textDefects": ["broken-word #error-page-heading-s9 construction"]
 				},
 				"1440": {
 					"height": 2099,
@@ -3937,14 +3938,14 @@
 					"clipped": 1,
 					"brokenWords": 7,
 					"textDefects": [
-						"broken-word #c5-summary > span:nth-child(1) before",
-						"broken-word #c5-summary > span:nth-child(1) minutes",
-						"broken-word #c5-summary > span:nth-child(1) scheduled",
-						"broken-word #s13-summary > span:nth-child(1) changes",
-						"broken-word #s13-summary > span:nth-child(1) reports",
+						"broken-word #c3-summary > span:nth-child(1) before",
+						"broken-word #c3-summary > span:nth-child(1) minutes",
+						"broken-word #c3-summary > span:nth-child(1) scheduled",
+						"broken-word #s14-summary > span:nth-child(1) changes",
+						"broken-word #s14-summary > span:nth-child(1) reports",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Predictions",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
-						"clipped #c5-content > div:nth-child(1) 1 vehicle in service"
+						"clipped #c3-content > div:nth-child(1) 1 vehicle in service"
 					]
 				},
 				"1440": {
@@ -4158,7 +4159,7 @@
 				"390": {
 					"height": 8703,
 					"overflow": 0,
-					"edges": 67,
+					"edges": 69,
 					"edgeCount": 9,
 					"targets": 36,
 					"shortTargets": 0,
@@ -5065,7 +5066,7 @@
 				"390": {
 					"height": 4810,
 					"overflow": 0,
-					"edges": 163,
+					"edges": 211,
 					"edgeCount": 10,
 					"targets": 36,
 					"shortTargets": 0,
@@ -5414,21 +5415,21 @@
 					"clipped": 1,
 					"brokenWords": 14,
 					"textDefects": [
-						"broken-word #c5-content > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) > div:nth-child(1) > strong:nth-child(1) Véhicule",
-						"broken-word #c5-summary > span:nth-child(1) heure",
-						"broken-word #c5-summary > span:nth-child(1) minutes",
-						"broken-word #c5-summary > span:nth-child(1) prévue",
-						"broken-word #s13-summary > span:nth-child(1) arrivent",
-						"broken-word #s13-summary > span:nth-child(1) change",
-						"broken-word #s13-summary > span:nth-child(1) mesure",
-						"broken-word #s13-summary > span:nth-child(1) nouveaux",
-						"broken-word #s13-summary > span:nth-child(1) rapports",
+						"broken-word #c3-content > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > ul:nth-child(3) > li:nth-child(1) > a:nth-child(1) > div:nth-child(1) > strong:nth-child(1) Véhicule",
+						"broken-word #c3-summary > span:nth-child(1) heure",
+						"broken-word #c3-summary > span:nth-child(1) minutes",
+						"broken-word #c3-summary > span:nth-child(1) prévue",
+						"broken-word #s14-summary > span:nth-child(1) arrivent",
+						"broken-word #s14-summary > span:nth-child(1) change",
+						"broken-word #s14-summary > span:nth-child(1) mesure",
+						"broken-word #s14-summary > span:nth-child(1) nouveaux",
+						"broken-word #s14-summary > span:nth-child(1) rapports",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Prévisions",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Rapports",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) Véhicules",
 						"broken-word [data-slot=\"collapsible-trigger\"] > span:nth-child(2) destination",
 						"broken-word [data-slot=\"status-badge\"] > span:nth-child(2) heure",
-						"clipped #c5-content > div:nth-child(1) 1 véhicule en service"
+						"clipped #c3-content > div:nth-child(1) 1 véhicule en service"
 					]
 				},
 				"1440": {
@@ -6109,7 +6110,7 @@
 				"390": {
 					"height": 13233,
 					"overflow": 0,
-					"edges": 149,
+					"edges": 150,
 					"edgeCount": 10,
 					"targets": 44,
 					"shortTargets": 0,
