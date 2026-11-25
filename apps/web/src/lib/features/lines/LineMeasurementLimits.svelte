@@ -41,7 +41,7 @@
 	</ul>
 	{#snippet footer()}
 		<a class="inline-flex min-h-11 items-center text-primary underline" href={methodHref}
-			>{t('How we measure', 'Comment nous mesurons')}</a
+			>{t('How we measure', 'Comment on mesure')}</a
 		>
 	{/snippet}
 </RecordCard>

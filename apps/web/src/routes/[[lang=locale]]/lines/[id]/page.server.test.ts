@@ -158,12 +158,31 @@ describe('Line Record and Schedule on transit1', () => {
 		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 	});
 
-	it('reports an id absent from the timetable before asking for readings', async () => {
+	it('loads historical readings for a line outside the current timetable', async () => {
+		const request = framed('&frameMode=record');
+		request.params.id = 'seasonal';
+		const data = await load(request);
+		expect(data?.outsideCurrentTimetable).toBe(true);
+		expect(data?.record?.line).toBe('seasonal');
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
+			{
+				path: '/measure',
+				parameters: { measure: 'punctuality', group: 'stop', line: 'seasonal' },
+			},
+			expect.objectContaining({ from: '2026-11-08', to: '2026-11-14' }),
+		);
+		expect(request.fetch).not.toHaveBeenCalled();
+	});
+
+	it('returns a Live state for a line outside the current timetable without asking for readings', async () => {
 		const request = framed('&frameMode=live');
-		request.params.id = 'unknown';
-		await expect(load(request)).rejects.toMatchObject({
-			status: 404,
-			body: { message: 'This line is not in the timetable.' },
+		request.params.id = 'seasonal';
+		await expect(load(request)).resolves.toMatchObject({
+			frameLive: true,
+			outsideCurrentTimetable: true,
+			capture: null,
+			trips: null,
+			record: null,
 		});
 		expect(request.fetch).not.toHaveBeenCalled();
 		expect(harness.getRecordAnswer).not.toHaveBeenCalled();

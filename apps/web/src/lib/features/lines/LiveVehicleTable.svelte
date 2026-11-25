@@ -81,7 +81,7 @@
 	{rows}
 	key={(row) => row.id}
 	responsive={{ mode: 'scroll', minWidth: '38rem' }}
-	pageSize={20}
+	pageSize={rows.length > 20 ? 20 : undefined}
 	pageLabels={{
 		showing: (shown, total) =>
 			t(`Showing ${number(shown)} of ${number(total)}`, `${number(shown)} sur ${number(total)}`),

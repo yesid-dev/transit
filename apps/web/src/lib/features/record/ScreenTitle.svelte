@@ -5,6 +5,7 @@
 		title,
 		id,
 		subtitle,
+		hideSubtitle = false,
 		plate,
 		stopCode,
 		back,
@@ -14,6 +15,7 @@
 		title: string;
 		id?: string;
 		subtitle?: string;
+		hideSubtitle?: boolean;
 		plate?: string;
 		stopCode?: string;
 		back?: { href: string; label: string };
@@ -39,7 +41,9 @@
 		>
 			{title}
 		</h1>
-		{#if subtitle}<p class="text-muted-foreground">{subtitle}</p>{/if}
+		{#if subtitle}<p class="text-muted-foreground" class:invisible={hideSubtitle}>
+				{subtitle}
+			</p>{/if}
 	</hgroup>
 	{#if back}<a class="record-link" href={back.href}>{back.label}</a>{/if}
 </header>

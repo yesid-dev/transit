@@ -4,6 +4,8 @@
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
 	import LineRecord from '#lib/features/lines/LineRecord.svelte';
 	import LineLive from '#lib/features/lines/LineLive.svelte';
+	import { lineViewHref } from '#lib/features/lines/lineRecordText.ts';
+	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import { recoverRecord } from '#lib/features/record/recordRecovery.svelte.ts';
 	import { lineRecordHeading, lineSubtitle } from '#lib/site/presenter.ts';
@@ -17,6 +19,13 @@
 	const name = $derived(display.lineName(data.seed.id));
 	const routeType = $derived(display.directory.type(data.seed.id));
 	const url = $derived(new URL(page.shallow?.url.href ?? page.url.href));
+	const timetableNotice =
+		locale === 'fr'
+			? 'Cette ligne ne figure pas à l’horaire actuel.'
+			: 'This line is not in the current timetable.';
+	const subtitle = $derived(
+		lineSubtitle(routeType, data.directionHeadsigns, locale, display.directory.nameSeparators),
+	);
 	const readings = recoverRecord(
 		() => data.record,
 		({ city, line, direction, period }) => ({ ...period, city, id: line, direction, kind: 'line' }),
@@ -44,15 +53,27 @@
 		id="line-title"
 		title={lineRecordHeading(name, locale)}
 		plate={name.number ?? undefined}
-		subtitle={lineSubtitle(
-			routeType,
-			data.directionHeadsigns,
-			locale,
-			display.directory.nameSeparators,
-		)}
+		subtitle={subtitle ?? (data.outsideCurrentTimetable ? timetableNotice : undefined)}
+		hideSubtitle={data.frameLive && data.outsideCurrentTimetable && !subtitle}
 		{back}
+		rule
 	/>
-	{#if data.frameLive}
+	{#if data.frameLive && data.outsideCurrentTimetable}
+		<div data-slot="screen-content">
+			<div id="line-detail-profile" data-slot="screen-answer">
+				<RecordAnswer {locale} value={null} state="no_live_data" sentence={timetableNotice}>
+					{#snippet actions()}
+						<a
+							class="inline-flex min-h-11 items-center text-primary underline"
+							href={lineViewHref(url, 'record').href}
+						>
+							{locale === 'fr' ? 'Voir le bilan' : 'View record'}
+						</a>
+					{/snippet}
+				</RecordAnswer>
+			</div>
+		</div>
+	{:else if data.frameLive}
 		{#key data.capture ?? data.seed.id}
 			<LineLive
 				line={data.seed.id}

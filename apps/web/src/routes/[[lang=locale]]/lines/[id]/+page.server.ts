@@ -6,7 +6,7 @@ import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { lineIsScheduleOnly, providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { routeNameFallback } from '#lib/site/nameFallback.ts';
 import { linePageTitle } from '#lib/seo/riderPageTitle.ts';
-import { error, redirect } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation, detailTabFromSearchParams } from '#lib/site/detailTabs.ts';
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
@@ -34,14 +34,9 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const { schedule, lang, providerId, provider } = await event.parent();
-	if (schedule && !schedule.routes.some((route) => route.id === id)) {
-		error(
-			404,
-			lang === 'fr'
-				? 'Cette ligne ne figure pas à l’horaire.'
-				: 'This line is not in the timetable.',
-		);
-	}
+	const knownLine = schedule?.routes.some((route) => route.id === id) ?? false;
+	const outsideCurrentTimetable = schedule != null && !knownLine;
+	const showLiveReadings = frameLive && !outsideCurrentTimetable;
 	const directory = createLineDirectory(schedule?.routes ?? null, {
 		line: (routeId) => routeNameFallback(routeId, lang),
 		locale: lang,
@@ -50,21 +45,23 @@ export const load: PageServerLoad = async (event) => {
 	const name = directory.name(id);
 	const directions = schedule?.route_directions?.[id];
 	const scheduleOnly =
-		lineIsScheduleOnly(provider, id, directory.type(id)) ||
-		(frameLive &&
-			provider?.inputs.vehicle_positions === false &&
-			provider.inputs.trip_updates === false);
+		!outsideCurrentTimetable &&
+		(lineIsScheduleOnly(provider, id, directory.type(id)) ||
+			(frameLive &&
+				provider?.inputs.vehicle_positions === false &&
+				provider.inputs.trip_updates === false));
 	const stops = (schedule?.stops ?? []).filter((stop) => stop.routes?.includes(id));
 	const { period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const canPredict = !!provider?.inputs.trip_updates && !scheduleOnly;
 	const capture =
-		frameLive && !scheduleOnly && provider
+		showLiveReadings && !scheduleOnly && provider
 			? fetchCaptureSnapshot(providerId, event.request.signal, event.fetch).catch(() => null)
 			: null;
 	return {
 		seed: { id, name: name.label },
-		knownLine: schedule != null,
+		knownLine,
+		outsideCurrentTimetable,
 		scheduleOnly,
 		directionHeadsigns: directionHeadsigns(directions),
 		stopNames: Object.fromEntries(stops.map((stop) => [stop.id, stop.name])),
@@ -72,29 +69,30 @@ export const load: PageServerLoad = async (event) => {
 			stops.flatMap((stop) => (stop.code ? [[stop.id, stop.code]] : [])),
 		),
 		seoTitle: linePageTitle(name),
-		record: period
-			? loadLineRecord(
-					period,
-					providerId,
-					id,
-					lineDirection(url.searchParams),
-					visitorIp,
-					scheduleOnly,
-					frameLive
-						? new Set(
-								scheduleOnly
-									? ['frequency', 'boundaries']
-									: ['frequency', 'boundaries', 'punctuality'],
-							)
-						: undefined,
-				)
-			: null,
+		record:
+			period && (!frameLive || showLiveReadings)
+				? loadLineRecord(
+						period,
+						providerId,
+						id,
+						lineDirection(url.searchParams),
+						visitorIp,
+						scheduleOnly,
+						frameLive
+							? new Set(
+									scheduleOnly
+										? ['frequency', 'boundaries']
+										: ['frequency', 'boundaries', 'punctuality'],
+								)
+							: undefined,
+					)
+				: null,
 		frameLive,
 		capture,
 		canPredict,
-		mainStops: frameLive && !scheduleOnly ? selectMainStops(stops, directions ?? []) : [],
+		mainStops: showLiveReadings && !scheduleOnly ? selectMainStops(stops, directions ?? []) : [],
 		trips:
-			frameLive && canPredict
+			showLiveReadings && canPredict
 				? fetchCaptureTripScope(
 						providerId,
 						{ kind: 'line', id },

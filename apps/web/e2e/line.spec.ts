@@ -47,6 +47,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		const fr = locale === 'fr';
+		let vehicleCount = 13;
 		const legacyRequests: string[] = [];
 		page.on('request', (request) => {
 			const url = new URL(request.url());
@@ -55,7 +56,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.clock.install();
 		await page.route(captureUrl, async (route) => {
 			const at = await page.evaluate(() => Date.now());
-			const vehicles = Array.from({ length: 21 }, (_, index) =>
+			const vehicles = Array.from({ length: vehicleCount }, (_, index) =>
 				captureVehicle(at - 18_000, {
 					vehicle_id: `40-${298 + index}`,
 					route_id: '9003',
@@ -92,10 +93,18 @@ for (const locale of PUBLISHED_LOCALES) {
 		).toHaveCount(0);
 		const heading = await page.getByRole('heading', { level: 1 }).innerText();
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-		const refresh = page.waitForResponse((response) => captureUrl.test(response.url()));
-		await page.clock.fastForward(21_000);
-		await refresh;
-		const roster = page.locator('#line-detail-live').getByRole('table');
+		async function refreshLive() {
+			const refresh = page.waitForResponse((response) => captureUrl.test(response.url()));
+			await page.clock.fastForward(21_000);
+			await refresh;
+		}
+		await refreshLive();
+		const vehicleSection = page.locator('#line-detail-live');
+		const roster = vehicleSection.getByRole('table');
+		await expect(roster.locator('tbody tr')).toHaveCount(13);
+		await expect(vehicleSection.getByText(fr ? '13 sur 13' : 'Showing 13 of 13')).toHaveCount(0);
+		vehicleCount = 21;
+		await refreshLive();
 		await expect(roster.locator('tbody tr')).toHaveCount(20);
 		await expect(page.locator('[data-slot="screen-answer"]')).toContainText('21');
 		await expect(page.locator('#line-detail-live')).toContainText(
@@ -117,7 +126,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		expect(legacyRequests).toEqual([]);
 	});
 
-	test(`${locale}: schedule-only and unknown lines have no Live zero`, async ({ page }) => {
+	test(`${locale}: schedule-only lines have no Live zero`, async ({ page }) => {
 		await page.goto(localizeHref('/lines/9004?frameMode=live', locale, provider));
 		await expect(page.locator('[data-slot="screen-answer"]')).toContainText(
 			locale === 'fr' ? 'Aucune donnée en direct pour cette ligne' : 'No live data for this line',
@@ -129,15 +138,38 @@ for (const locale of PUBLISHED_LOCALES) {
 			}),
 		).toBeVisible();
 		await expect(page.locator('#line-detail-live')).toHaveCount(0);
+	});
 
-		const missing = await page.goto(
-			localizeHref('/lines/line-does-not-exist?frameMode=live', locale, provider),
+	test(`${locale}: a seasonal line remains readable in Record and reachable from Live`, async ({
+		page,
+	}) => {
+		const fr = locale === 'fr';
+		const notice = fr
+			? 'Cette ligne ne figure pas à l’horaire actuel.'
+			: 'This line is not in the current timetable.';
+		const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
+		const live = await page.goto(
+			localizeHref(`/lines/seasonal?tab=detail&${dates}`, locale, provider),
 		);
-		expect(missing?.status()).toBe(404);
-		await expect(page.getByRole('heading', { level: 1 })).toContainText(
-			locale === 'fr'
-				? 'Cette ligne ne figure pas à l’horaire.'
-				: 'This line is not in the timetable.',
+		expect(live?.status()).toBe(200);
+		const answer = page.locator('[data-slot="screen-answer"]');
+		await expect(answer.getByText(notice, { exact: true })).toBeVisible();
+		await expect(page.locator('#line-detail-live')).toHaveCount(0);
+
+		const titleBlock = page.locator('header').filter({ has: page.locator('#line-title') });
+		await expect(titleBlock).toHaveCSS('border-bottom-width', '1px');
+		const headerHeight = (await titleBlock.boundingBox())?.height;
+		await answer.getByRole('link', { name: fr ? 'Voir le bilan' : 'View record' }).click();
+		await expect(page).toHaveURL(
+			(url) => url.searchParams.get('frameMode') === 'record' && url.search.includes(dates),
 		);
+		await expect(titleBlock.getByText(notice, { exact: true })).toBeVisible();
+		await expect(titleBlock).toHaveCSS('border-bottom-width', '1px');
+		expect((await titleBlock.boundingBox())?.height).toBe(headerHeight);
+		await expect(answer).toContainText(fr ? '80 %' : '80%');
+
+		const record = await page.reload();
+		expect(record?.status()).toBe(200);
+		await expect(answer).toContainText(fr ? '80 %' : '80%');
 	});
 }
