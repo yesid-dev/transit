@@ -13,7 +13,11 @@ export function selectMainStops(
 	const firstStops = new Set(
 		directions.flatMap(({ stops }) => (stops?.[0]?.id ? [stops[0].id] : [])),
 	);
+	const patternedStops = new Set(
+		directions.flatMap(({ stops }) => stops?.map(({ id }) => id) ?? []),
+	);
 	return stops
+		.filter(({ id }) => patternedStops.size === 0 || patternedStops.has(id))
 		.toSorted(
 			(a, b) =>
 				Number(firstStops.has(b.id)) - Number(firstStops.has(a.id)) ||

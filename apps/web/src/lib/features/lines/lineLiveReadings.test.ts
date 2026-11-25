@@ -88,4 +88,17 @@ describe('Line Live readings', () => {
 		});
 		expect(nextStopPredictions(report, now + 91_000).size).toBe(0);
 	});
+
+	it('withholds a scheduled clock when the stop delay could be a trip-wide fallback', () => {
+		const stop = { stop: 'snowdon', eta_utc: new Date(now + 300_000).toISOString(), delay_min: 2 };
+		const predict = (tripDelay: number | null) =>
+			nextStopPredictions(
+				captureTripReport('stm', new Date(now).toISOString(), [
+					captureTrip('next', '51', [stop], tripDelay),
+				]),
+				now,
+			).get(stop.stop);
+		expect(predict(120)?.scheduledAt).toBeNull();
+		expect(predict(null)?.scheduledAt).toBe(now + 180_000);
+	});
 });

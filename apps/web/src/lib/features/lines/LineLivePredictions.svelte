@@ -81,7 +81,7 @@
 								? null
 								: clockTime(new Date(estimate.scheduledAt), locale, timeZone)}
 						<div class="flex flex-wrap justify-between gap-x-3">
-							<span
+							<span class="inline-flex flex-wrap items-baseline gap-x-2"
 								><StatusMark
 									{status}
 									label={liveDelayLabels(locale)[status]}
