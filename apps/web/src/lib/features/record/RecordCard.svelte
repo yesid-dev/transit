@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
-	import { Stamp, type StampProps } from '@yesid/ui/brand';
+	import { ChevronToggle, Stamp, type StampProps } from '@yesid/ui/brand';
 	import * as Collapsible from '@yesid/ui/collapsible';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
 
 	let {
@@ -12,12 +12,11 @@
 		footer,
 		children,
 		expandable = false,
-		open = $bindable(true),
+		open = $bindable(),
 		compactPrint = false,
 		fill = false,
-		compact = false,
-		edge = 'neutral',
 		interactive = false,
+		edge,
 	}: {
 		title: string;
 		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
@@ -28,15 +27,23 @@
 		open?: boolean;
 		compactPrint?: boolean;
 		fill?: boolean;
+		interactive?: boolean;
 		compact?: boolean;
 		edge?: 'brand' | 'neutral';
-		interactive?: boolean;
 	} = $props();
 	const id = $props.id();
+	const expanded = $derived(open ?? (disclosure ? !!disclosure.initiallyOpen : true));
 </script>
 
 {#snippet cardFooter()}
-	{#if footer}<footer class="flex flex-wrap gap-x-4 gap-y-2">{@render footer()}</footer>{/if}
+	{#if footer}
+		<footer
+			class="relative -mx-4 flex flex-wrap gap-x-4 gap-y-2 px-4 pt-3 sm:-mx-6 sm:px-6 print:mx-0 print:px-0 print:pt-0"
+		>
+			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
+			{@render footer()}
+		</footer>
+	{/if}
 {/snippet}
 
 {#snippet body()}
@@ -49,7 +56,7 @@
 		<h2 {id} class:expandable-title={expandable}>
 			{#if expandable}
 				<Collapsible.Trigger class="flex min-h-11 min-w-11 items-center gap-2 text-left">
-					<ChevronDown class={open ? '' : '-rotate-90'} size={16} aria-hidden="true" />
+					<ChevronToggle open={expanded} size="sm" />
 					{title}
 				</Collapsible.Trigger>
 			{:else}{title}{/if}
@@ -67,28 +74,33 @@
 		class:compact-print={compactPrint}
 	>
 		{#if disclosure}
-			<details
-				id={disclosure.id}
-				open={disclosure.initiallyOpen}
-				class="record-disclosure"
-				data-record-disclosure
-			>
-				<summary>
-					<span {id} class="disclosure-title">
-						<span class="disclosure-arrow" aria-hidden="true">▸</span>{title}
-					</span>
-					{#if disclosure.description}<span class="disclosure-description">
-							{disclosure.description}
-						</span>{/if}
-				</summary>
-				<div class="min-w-0 pt-3">{@render children()}</div>
-			</details>
+			{#if disclosure.nested}
+				<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
+			{/if}
+			<div id={disclosure.id} class="record-disclosure" data-record-disclosure data-open={expanded}>
+				<Collapsible.Root open={expanded} onOpenChange={(value) => (open = value)}>
+					<Collapsible.Trigger class="grid min-h-11 w-full content-center gap-2 text-left">
+						<span {id} class="disclosure-title">
+							<span>{title}</span><ChevronToggle open={expanded} class="ms-auto" />
+						</span>
+						{#if disclosure.description}<span class="disclosure-description">
+								{disclosure.description}
+							</span>{/if}
+					</Collapsible.Trigger>
+					<Collapsible.Content>
+						<div class="min-w-0 pt-3">{@render children()}</div>
+					</Collapsible.Content>
+				</Collapsible.Root>
+			</div>
 			{@render cardFooter()}
 		{:else if expandable}
-			<Collapsible.Root bind:open>
+			<Collapsible.Root open={expanded} onOpenChange={(value) => (open = value)}>
 				{@render header()}
-				<Collapsible.Content><div class="disclosure">{@render body()}</div></Collapsible.Content>
+				<Collapsible.Content>
+					<div class="disclosure min-w-0" class:fill>{@render children()}</div>
+				</Collapsible.Content>
 			</Collapsible.Root>
+			{#if expanded}{@render cardFooter()}{/if}
 		{:else}
 			{@render header()}
 			{@render body()}
@@ -96,17 +108,15 @@
 	</article>
 {/snippet}
 
+<!-- Pass interactive for cards with links or controls. Put links, evidence and switches in footer. -->
 {#if disclosure?.nested}
 	{@render content()}
 {:else}
 	<Card
 		{edge}
-		{interactive}
+		interactive={interactive || expandable || !!disclosure}
 		textSize="inherit"
-		class={[
-			disclosure || compact ? 'min-w-0 px-2 sm:px-6' : 'min-w-0 px-4 sm:px-6',
-			compactPrint && 'print:p-2',
-		]}
+		class={['min-w-0 px-4 sm:px-6', compactPrint && 'print:p-2']}
 		spread
 	>
 		{@render content()}
@@ -135,37 +145,20 @@
 	.record-disclosure {
 		scroll-margin-block-start: var(--space-page-x);
 	}
-	summary {
-		display: grid;
-		align-content: center;
-		gap: calc(var(--space-card-gap) / 2);
-		min-block-size: max(44px, var(--size-tap-min));
-		cursor: pointer;
-		list-style: none;
-	}
-	summary::-webkit-details-marker {
-		display: none;
-	}
-	summary:focus-visible {
-		outline: 2px solid var(--ring);
-		outline-offset: 2px;
-	}
 	.disclosure-title {
-		display: block;
-	}
-	.disclosure-arrow {
-		float: inline-end;
-		margin-inline-start: calc(var(--space-card-gap) / 2);
-		color: var(--muted-foreground);
-	}
-	details[open] > summary .disclosure-arrow {
-		transform: rotate(90deg);
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: calc(var(--space-card-gap) / 2);
+		overflow-wrap: normal;
 	}
 	.disclosure-description {
+		display: grid;
 		max-inline-size: var(--measure-body);
 	}
 	.nested {
-		border-block-start: 1px solid var(--border);
+		position: relative;
 		padding-block-start: calc(var(--space-card-gap) / 2);
 	}
 	.nested .disclosure-title {
@@ -174,7 +167,7 @@
 	footer {
 		margin-block-start: auto;
 	}
-	footer:empty {
+	footer:not(:has(> :nth-child(2))) {
 		display: none;
 	}
 	.disclosure {

@@ -8,8 +8,9 @@
 		done: string;
 		fallback: string;
 		fallbackLabel: string;
+		size?: 'sm' | 'cta-sm';
 	}
-	let { text, label, done, fallback, fallbackLabel }: CopyActionProps = $props();
+	let { text, label, done, fallback, fallbackLabel, size = 'sm' }: CopyActionProps = $props();
 	const id = $props.id();
 	let status = $state<'idle' | 'copied' | 'fallback'>('idle');
 	let area = $state<HTMLTextAreaElement>();
@@ -28,7 +29,7 @@
 </script>
 
 <div class="copy-action" data-slot="copy-action">
-	<Button variant="outline" size="sm" class="min-h-11" onclick={copy}>{label}</Button>
+	<Button variant="outline" {size} class="min-h-11" onclick={copy}>{label}</Button>
 	<p role="status" aria-live="polite" aria-atomic="true">
 		{status === 'copied' ? done : status === 'fallback' ? fallback : ''}
 	</p>
