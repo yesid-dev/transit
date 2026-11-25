@@ -24,6 +24,10 @@
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordScreen from '../record/RecordScreen.svelte';
+	import RecordGroup from '../record/RecordGroup.svelte';
+	import FactList from '../record/FactList.svelte';
+	import FactRow from '../record/FactRow.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordChart from '../record/charts/RecordChart.svelte';
 	import RecordChartToggle from '../record/charts/RecordChartToggle.svelte';
@@ -180,7 +184,7 @@
 			{@const counted = recordCounts(events, trips, days, locale)}
 			{#if counted}
 				<p
-					class="flex w-full flex-wrap justify-between gap-x-3 border-t border-border pt-2 font-mono text-sm text-muted-foreground"
+					class="flex w-full flex-wrap justify-between gap-x-3 font-mono text-sm text-muted-foreground"
 				>
 					<span>{counted}</span>
 					{#if current.kind === 'answer' && current.answer.state === 'measured'}<span
@@ -192,301 +196,256 @@
 	{/await}
 {/snippet}
 
-<div class="overview grid min-w-0 gap-6">
-	{#await record.totals}
-		<ScreenTitle title={t.title(city)} />
-	{:then totals}
-		<ScreenTitle
-			title={t.title(city)}
-			subtitle={totals
-				? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${countedUnit(totals.lines, 'line', locale)}, ${countedUnit(totals.stops, 'stop', locale)}`
-				: undefined}
-		/>
-	{/await}
-	<p class="border-t border-border pt-4">{t.intro}</p>
-
-	<div class="grid min-w-0 gap-6" data-slot="screen-content">
-		{#snippet recordCard()}
-			<RecordCard title={t.record} {stamp}>
-				{#await record.punctuality}
-					{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
-					{@render actions()}
-				{:then current}
-					{#if current.kind === 'busy'}
-						<RecordPending {locale} busy />
-						{@render actions()}
+{#snippet recordCard()}
+	<RecordCard interactive title={t.record} {stamp}>
+		{#await record.punctuality}
+			{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
+			{@render actions()}
+		{:then current}
+			{#if current.kind === 'busy'}
+				<RecordPending {locale} busy />
+				{@render actions()}
+			{:else}
+				{@render lead(current)}
+				{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+			{/if}
+		{/await}
+		<FactList class="mt-4">
+			{#await record.punctuality then current}
+				{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
+					{@const { on_time, classified } = current.answer.evidence.counts}
+					{#if on_time != null && classified != null}
+						<FactRow label={t.onTime}>
+							<strong>{tally(on_time, locale)}</strong>
+							<span class="block text-muted-foreground"
+								>{recordDenominator(countedUnit(classified, 'event', locale), locale)}</span
+							>
+						</FactRow>
+					{/if}
+				{:else if current.kind !== 'answer' && current.kind !== 'busy'}
+					<FactRow label={t.onTime}>{t.unavailable}</FactRow>
+				{/if}
+			{/await}
+			<FactRow
+				label={record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
+			>
+				{#await record.baseline}
+					{#key record.baseline}<RecordPending {locale} answer={record.baseline} />{/key}
+				{:then previous}
+					{@const share = overviewValue(previous, 'on_time')}
+					{#if share == null}
+						{@render gap(previous)}
+						<span class="block text-muted-foreground">{dateRange(record.previous, locale)}</span>
 					{:else}
-						{@render lead(current)}
-						{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+						{#await record.punctuality then current}
+							<strong>{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong
+							>
+						{/await}
+						<span class="block text-muted-foreground"
+							>{percent(share, locale)}, {dateRange(record.previous, locale)}</span
+						>
+					{/if}
+					{#if previous.kind === 'answer' && previous.lastGood}<p>
+							{lastGoodNote[locale]}
+						</p>{/if}
+				{/await}
+			</FactRow>
+			<FactRow label={t.delivery}>
+				{#await record.delivery}
+					{#key record.delivery}<RecordPending {locale} answer={record.delivery} />{/key}
+				{:then delivery}
+					{@const share = overviewValue(delivery, 'trips_run')}
+					{#if delivery.kind === 'answer' && share != null}
+						{@const { ran, eligible } = delivery.answer.evidence.counts}
+						<strong>{percent(share, locale)}</strong>
+						{#if ran != null && eligible != null}<span class="block text-muted-foreground"
+								>{recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)}</span
+							>{/if}
+						{#if delivery.answer.evidence.low_coverage}
+							<p class="text-muted-foreground">
+								{coverageText(delivery.answer.evidence, locale)}
+							</p>
+						{/if}
+						{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+					{:else}{@render gap(delivery)}{/if}
+				{/await}
+			</FactRow>
+		</FactList>
+		{#if record.trend}
+			<div class="mt-4">
+				<h3 class="font-semibold">{t.trend}</h3>
+				{#await record.trend}
+					{#key record.trend}<RecordPending {locale} answer={record.trend} />{/key}
+				{:then trend}
+					{#if trend.kind === 'busy'}<RecordPending {locale} busy />
+					{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
+					{:else if 'cells' in trend.answer && trend.answer.cells.length}
+						<RecordChart
+							title={t.trend}
+							id="overview-record-trend"
+							table={trendTable}
+							input={{ kind: 'trend', answer: trend.answer }}
+							{locale}
+						/>
+					{:else}
+						{@const state = 'cells' in trend.answer ? trend.answer.state : undefined}
+						<StateMark
+							state={state != null && state !== 'measured' ? state : 'not_measured'}
+							{locale}
+						/>
 					{/if}
 				{/await}
-				<dl class="readings mt-4 grid gap-3">
-					{#await record.punctuality then current}
-						{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
-							{@const { on_time, classified } = current.answer.evidence.counts}
-							{#if on_time != null && classified != null}
-								<div class="reading on-time">
-									<dt>{t.onTime}</dt>
-									<dd>
-										<strong>{tally(on_time, locale)}</strong>
-										<span class="block text-muted-foreground"
-											>{recordDenominator(countedUnit(classified, 'event', locale), locale)}</span
-										>
-									</dd>
-								</div>
-							{/if}
-						{:else if current.kind !== 'answer' && current.kind !== 'busy'}
-							<div class="reading">
-								<dt>{t.onTime}</dt>
-								<dd>{t.unavailable}</dd>
-							</div>
-						{/if}
-					{/await}
-					<div class="reading">
-						<dt>
-							{record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
-						</dt>
-						<dd>
-							{#await record.baseline}
-								{#key record.baseline}<RecordPending {locale} answer={record.baseline} />{/key}
-							{:then previous}
-								{@const share = overviewValue(previous, 'on_time')}
-								{#if share == null}
-									{@render gap(previous)}
-									<span class="block text-muted-foreground"
-										>{dateRange(record.previous, locale)}</span
-									>
-								{:else}
-									{#await record.punctuality then current}
-										<strong
-											>{comparisonText(current, previous, locale) ??
-												t.comparisonUnavailable}</strong
-										>
-									{/await}
-									<span class="block text-muted-foreground"
-										>{percent(share, locale)}, {dateRange(record.previous, locale)}</span
-									>
-								{/if}
-								{#if previous.kind === 'answer' && previous.lastGood}<p>
-										{lastGoodNote[locale]}
-									</p>{/if}
-							{/await}
-						</dd>
-					</div>
-					<div class="reading">
-						<dt>{t.delivery}</dt>
-						<dd>
-							{#await record.delivery}
-								{#key record.delivery}<RecordPending {locale} answer={record.delivery} />{/key}
-							{:then delivery}
-								{@const share = overviewValue(delivery, 'trips_run')}
-								{#if delivery.kind === 'answer' && share != null}
-									{@const { ran, eligible } = delivery.answer.evidence.counts}
-									<strong>{percent(share, locale)}</strong>
-									{#if ran != null && eligible != null}<span class="block text-muted-foreground"
-											>{recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)}</span
-										>{/if}
-									{#if delivery.answer.evidence.low_coverage}
-										<p class="text-muted-foreground">
-											{coverageText(delivery.answer.evidence, locale)}
-										</p>
-									{/if}
-									{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-								{:else}{@render gap(delivery)}{/if}
-							{/await}
-						</dd>
-					</div>
-				</dl>
-				{#if record.trend}
-					<div class="mt-4">
-						<h3 class="font-semibold">{t.trend}</h3>
-						{#await record.trend}
-							{#key record.trend}<RecordPending {locale} answer={record.trend} />{/key}
-						{:then trend}
-							{#if trend.kind === 'busy'}<RecordPending {locale} busy />
-							{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
-							{:else if 'cells' in trend.answer && trend.answer.cells.length}
-								<RecordChart
-									title={t.trend}
-									id="overview-record-trend"
-									table={trendTable}
-									input={{ kind: 'trend', answer: trend.answer }}
-									{locale}
-								/>
-							{:else}
-								{@const state = 'cells' in trend.answer ? trend.answer.state : undefined}
-								<StateMark
-									state={state != null && state !== 'measured' ? state : 'not_measured'}
-									{locale}
-								/>
-							{/if}
-						{/await}
-					</div>
-				{/if}
+			</div>
+		{/if}
+		{#snippet footer()}
+			<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/network')}
+				>{t.fullRecord}</a
+			>
+			{@render evidenceFooter()}
+			{#if record.trend}
+				{#await record.trend then trend}
+					{#if trend.kind === 'answer' && 'cells' in trend.answer && trend.answer.cells.length}
+						<RecordChartToggle bind:table={trendTable} controls="overview-record-trend" {locale} />
+					{/if}
+				{/await}
+			{/if}
+		{/snippet}
+	</RecordCard>
+{/snippet}
+
+{#snippet liveCard()}
+	{#key record.manifest?.provider}
+		<OverviewLiveCard
+			{locale}
+			manifest={record.manifest ?? null}
+			{alertsAvailable}
+			{link}
+			onCaptureAge={(age) => (liveCaptureAge = age)}
+		/>
+	{/key}
+{/snippet}
+
+{#snippet evidence(current: MeasureAnswer | null, delivery: MeasureAnswer | null)}
+	{@const counts = current?.evidence.counts}
+	{@const events = counts?.classified}
+	{@const trips = delivery?.evidence.counts.ran}
+	{@const observed = current?.evidence.share_observed}
+	{@const scheduled = counts?.scheduled ?? counts?.punctuality_scheduled}
+	{@const basis = timingBasis(counts, locale)}
+	<AboutFigures
+		title={t.about}
+		fields={[
+			{ key: 'period', label: t.period, text: `${dateRange(record.period, locale)}, ${days}.` },
+			{
+				key: 'counted',
+				label: t.counted,
+				text: recordCounts(events, trips, days, locale),
+			},
+			{
+				key: 'observed',
+				label: t.observed,
+				text: [
+					observed == null
+						? null
+						: t.observedShare(
+								percent(observed, locale),
+								scheduled == null ? undefined : tally(scheduled, locale),
+							),
+					current?.evidence.low_coverage ? lowCoverageText(locale) + '.' : null,
+					basis,
+					current?.coverage_note?.[locale],
+					delivery && !delivery.evidence.low_coverage && (delivery.evidence.share_eligible ?? 1) < 1
+						? coverageText(delivery.evidence, locale) + '.'
+						: null,
+				]
+					.filter(Boolean)
+					.join(' '),
+			},
+			{ key: 'means', label: t.means, text: t.definition },
+			{
+				key: 'versions',
+				label: t.versions,
+				text: current ? methodEvidence(current.evidence, locale) : null,
+			},
+			{
+				key: 'source',
+				label: t.source,
+				text: `${t.feeds(operator)} ${t.recordStart(locale === 'fr' ? longDate(RECORD_START, locale) : dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`,
+			},
+		]}
+		versionsLink={{ href: link('/metrics'), label: t.method }}
+	/>
+{/snippet}
+
+<RecordScreen class="min-w-0 wrap-break-word">
+	<RecordGroup>
+		{#await record.totals}
+			<ScreenTitle title={t.title(city)} />
+		{:then totals}
+			<ScreenTitle
+				title={t.title(city)}
+				subtitle={totals
+					? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${countedUnit(totals.lines, 'line', locale)}, ${countedUnit(totals.stops, 'stop', locale)}`
+					: undefined}
+			/>
+		{/await}
+	</RecordGroup>
+	<div data-slot="screen-content">
+		<RecordGroup class="grid gap-6">
+			<p data-screen-intro>{t.intro}</p>
+
+			<DashboardGrid gutter={false} minTile="22rem" data-slot="screen-answer">
+				{#each mode === 'live' ? [liveCard, recordCard] : [recordCard, liveCard] as card (card)}
+					{@render card()}
+				{/each}
+			</DashboardGrid>
+		</RecordGroup>
+		<RecordGroup>
+			<RecordCard interactive title={t.rankings} {stamp}>
+				<p class="mb-3 text-muted-foreground">{t.rankingIntro}</p>
+				{#await rankings then results}
+					{@const failure = results
+						.map(({ kind }) => kind)
+						.find((kind) => kind !== 'answer' && kind !== 'busy')}
+					{#if failure}<p class="mb-3">{recordConnection[failure][locale]}</p>{/if}
+				{/await}
+				<DashboardGrid gutter={false} minTile="18rem">
+					<RecordRanking {locale} kind="line" ranking={record.lines} {link} />
+					<RecordRanking
+						{locale}
+						kind="stop"
+						ranking={record.stops}
+						{link}
+						directory={record.directory}
+					/>
+				</DashboardGrid>
 				{#snippet footer()}
 					<a
 						class="inline-flex min-h-11 items-center text-primary underline"
-						href={link('/network')}>{t.fullRecord}</a
+						href={link('/hotspots')}>{t.allRankings}</a
 					>
 					{@render evidenceFooter()}
-					{#if record.trend}
-						{#await record.trend then trend}
-							{#if trend.kind === 'answer' && 'cells' in trend.answer && trend.answer.cells.length}
-								<RecordChartToggle
-									bind:table={trendTable}
-									controls="overview-record-trend"
-									{locale}
-								/>
-							{/if}
-						{/await}
-					{/if}
 				{/snippet}
 			</RecordCard>
-		{/snippet}
-		{#snippet liveCard()}
-			{#key record.manifest?.provider}
-				<OverviewLiveCard
+		</RecordGroup>
+		<RecordGroup>
+			{#if mode === 'live'}
+				<AboutLiveFigures
 					{locale}
-					manifest={record.manifest ?? null}
-					{alertsAvailable}
-					{link}
-					onCaptureAge={(age) => (liveCaptureAge = age)}
+					{operator}
+					healthLink={link('/status', true)}
+					captureAge={liveCaptureAge}
 				/>
-			{/key}
-		{/snippet}
-		<DashboardGrid gutter={false} minTile="22rem" data-slot="screen-answer">
-			{#each mode === 'live' ? [liveCard, recordCard] : [recordCard, liveCard] as card (card)}
-				{@render card()}
-			{/each}
-		</DashboardGrid>
-
-		<RecordCard title={t.rankings} {stamp}>
-			<p class="mb-3 text-muted-foreground">{t.rankingIntro}</p>
-			{#await rankings then results}
-				{@const failure = results
-					.map(({ kind }) => kind)
-					.find((kind) => kind !== 'answer' && kind !== 'busy')}
-				{#if failure}<p class="mb-3">{recordConnection[failure][locale]}</p>{/if}
-			{/await}
-			<DashboardGrid gutter={false} minTile="18rem">
-				<RecordRanking {locale} kind="line" ranking={record.lines} {link} />
-				<RecordRanking
-					{locale}
-					kind="stop"
-					ranking={record.stops}
-					{link}
-					directory={record.directory}
-				/>
-			</DashboardGrid>
-			{#snippet footer()}
-				<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/hotspots')}
-					>{t.allRankings}</a
-				>
-				{@render evidenceFooter()}
-			{/snippet}
-		</RecordCard>
-
-		{#snippet evidence(current: MeasureAnswer | null, delivery: MeasureAnswer | null)}
-			{@const counts = current?.evidence.counts}
-			{@const events = counts?.classified}
-			{@const trips = delivery?.evidence.counts.ran}
-			{@const observed = current?.evidence.share_observed}
-			{@const scheduled = counts?.scheduled ?? counts?.punctuality_scheduled}
-			{@const basis = timingBasis(counts, locale)}
-			<AboutFigures
-				title={t.about}
-				fields={[
-					{ key: 'period', label: t.period, text: `${dateRange(record.period, locale)}, ${days}.` },
-					{
-						key: 'counted',
-						label: t.counted,
-						text: recordCounts(events, trips, days, locale),
-					},
-					{
-						key: 'observed',
-						label: t.observed,
-						text: [
-							observed == null
-								? null
-								: t.observedShare(
-										percent(observed, locale),
-										scheduled == null ? undefined : tally(scheduled, locale),
-									),
-							current?.evidence.low_coverage ? lowCoverageText(locale) + '.' : null,
-							basis,
-							current?.coverage_note?.[locale],
-							delivery &&
-							!delivery.evidence.low_coverage &&
-							(delivery.evidence.share_eligible ?? 1) < 1
-								? coverageText(delivery.evidence, locale) + '.'
-								: null,
-						]
-							.filter(Boolean)
-							.join(' '),
-					},
-					{ key: 'means', label: t.means, text: t.definition },
-					{
-						key: 'versions',
-						label: t.versions,
-						text: current ? methodEvidence(current.evidence, locale) : null,
-					},
-					{
-						key: 'source',
-						label: t.source,
-						text: `${t.feeds(operator)} ${t.recordStart(locale === 'fr' ? longDate(RECORD_START, locale) : dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`,
-					},
-				]}
-				versionsLink={{ href: link('/metrics'), label: t.method }}
-			/>
-		{/snippet}
-		{#if mode === 'live'}
-			<AboutLiveFigures
-				{locale}
-				{operator}
-				healthLink={link('/status', true)}
-				captureAge={liveCaptureAge}
-			/>
-		{:else}
-			{#await record.punctuality then current}
-				{#await record.delivery then delivery}
-					{@render evidence(
-						current.kind === 'answer' ? current.answer : null,
-						delivery.kind === 'answer' ? delivery.answer : null,
-					)}
+			{:else}
+				{#await record.punctuality then current}
+					{#await record.delivery then delivery}
+						{@render evidence(
+							current.kind === 'answer' ? current.answer : null,
+							delivery.kind === 'answer' ? delivery.answer : null,
+						)}
+					{/await}
 				{/await}
-			{/await}
-		{/if}
+			{/if}
+		</RecordGroup>
 	</div>
-</div>
-
-<style>
-	.overview {
-		overflow-wrap: break-word;
-	}
-	.readings {
-		container-type: inline-size;
-	}
-	.reading {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-		align-items: baseline;
-		gap: 0.25em 1em;
-		border-block-start: 1px solid var(--border);
-		padding-block-start: 0.5em;
-	}
-	.reading dd {
-		text-align: end;
-	}
-	.reading.on-time {
-		grid-template-columns: fit-content(40%) minmax(0, 1fr);
-	}
-	@container (max-width: 16rem) {
-		.reading,
-		.reading.on-time {
-			grid-template-columns: minmax(0, 1fr);
-		}
-		.reading dd {
-			text-align: start;
-		}
-	}
-</style>
+</RecordScreen>

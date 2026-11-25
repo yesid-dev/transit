@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { RoutePlate, StatusMark, type StampProps } from '@yesid/ui/brand';
-	import { BandBar } from '@yesid/ui/chart';
+	import { RoutePlate, type StampProps } from '@yesid/ui/brand';
+	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
@@ -117,7 +117,7 @@
 	{:else}<StateMark state={entry.state} {locale} />{/if}
 {/snippet}
 
-<RecordCard title={t.live} {stamp}>
+<RecordCard interactive title={t.live} {stamp}>
 	<div aria-busy={reporting.kind === 'pending'} class="min-h-16">
 		{#if reporting.kind === 'pending'}
 			<Skeleton class="h-12 w-28 max-w-full" />
@@ -138,21 +138,10 @@
 	</div>
 	{#if bands.length}
 		<div class="mt-3">
-			<BandBar
+			<RecordBandBar
 				label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
 				{bands}
-				rows={false}
 			/>
-			<dl class="mt-3 grid gap-2">
-				{#each bands as { status, label, valueLabel } (status)}
-					<div
-						class="flex flex-wrap items-baseline justify-between gap-x-2 border-b border-border pb-2"
-					>
-						<dt><StatusMark {status} {label} /></dt>
-						<dd class="tabular-nums">{valueLabel}</dd>
-					</div>
-				{/each}
-			</dl>
 		</div>
 	{/if}
 	<dl class="mt-3 grid gap-2">
