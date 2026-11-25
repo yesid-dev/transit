@@ -151,3 +151,25 @@ def test_missing_key_does_not_stop_other_checks(city, monkeypatch):
     assert report["blockers"] == ["trip_updates: key required"]
     assert report["capabilities"]["trip_updates"]["status"] == "key_required"
     assert report["capabilities"]["vehicle_positions"]["status"] == "supported"
+
+
+@pytest.mark.parametrize(("unknown", "ready"), [(6, True), (16, False)])
+def test_readiness_distinguishes_unassigned_vehicles_and_sparse_unknown_stops(city, unknown, ready):
+    declaration, static, samples = city
+    vehicle = FeedMessage.FromString(samples["vehicle_positions"].read_bytes())
+    vehicle.entity.add(id="unassigned").vehicle.stop_id = "UNKNOWN"
+    samples["vehicle_positions"].write_bytes(vehicle.SerializeToString())
+    update = FeedMessage.FromString(samples["trip_updates"].read_bytes())
+    stops = update.entity[0].trip_update.stop_time_update
+    for index in range(3117):
+        stops.add(stop_id="UNKNOWN" if index < unknown else "S", stop_sequence=index + 2)
+    samples["trip_updates"].write_bytes(update.SerializeToString())
+
+    report = check_provider(declaration, static=static, samples=samples, now=NOW)
+
+    assert report["ready"] is ready, report["blockers"]
+    vehicle_evidence = report["capabilities"]["vehicle_positions"]["evidence"]
+    assert vehicle_evidence["unknown_stop_without_trip"] == 1
+    update_evidence = report["capabilities"]["trip_updates"]["evidence"]
+    assert update_evidence["unknown_stop_time_updates"] == unknown
+    assert update_evidence["stop_time_update"] == 3118

@@ -237,6 +237,7 @@ def _realtime(
     counts: Counter[str] = Counter()
     trips: list[str] = []
     stops: list[str] = []
+    unknown_stop_without_trip = 0
     field = REALTIME[feed.feed_kind]
     for entity in message.entity:
         if entity.is_deleted or not entity.HasField(field):
@@ -246,6 +247,8 @@ def _realtime(
         if field == "vehicle":
             trips.append(record.trip.trip_id)
             stops.append(record.stop_id)
+            if ids and record.stop_id and not record.trip.trip_id and record.stop_id not in ids[1]:
+                unknown_stop_without_trip += 1
             counts["stopped_at"] += (
                 record.HasField("current_status")
                 and record.current_status == VehiclePosition.STOPPED_AT
@@ -275,8 +278,21 @@ def _realtime(
         matched = sum(value in ids[index] for value in values if value) if ids else None
         evidence[name] = {"reported": reported, "matched": matched}
         if matched is not None and reported > matched:
-            blockers.append(f"{name} mismatch with static GTFS ({reported - matched}/{reported})")
+            unknown = reported - matched
+            if name == "stop_id" and field == "vehicle" and unknown == unknown_stop_without_trip:
+                continue
+            if name == "stop_id" and field == "trip_update":
+                # Permit at most 0.5% isolated rows. An unknown stop cannot supply a reading.
+                if unknown * 200 <= counts["stop_time_update"]:
+                    continue
+                blockers.append(
+                    f"stop_id mismatch with static GTFS "
+                    f"({unknown}/{counts['stop_time_update']} stop updates, limit 0.5%)"
+                )
+                continue
+            blockers.append(f"{name} mismatch with static GTFS ({unknown}/{reported})")
     if field == "vehicle":
+        evidence["unknown_stop_without_trip"] = unknown_stop_without_trip if ids else None
         evidence.update(
             {
                 name: counts[name]
@@ -296,6 +312,11 @@ def _realtime(
             else "unobserved"
         )
     if field == "trip_update":
+        stop_match = evidence["stop_id"]
+        evidence["unknown_stop_time_updates"] = (
+            stop_match["reported"] - stop_match["matched"] if ids else None
+        )
+        evidence["unknown_stop_time_update_limit_percent"] = 0.5
         evidence.update(
             {name: counts[name] for name in ("stop_time_update", "arrival", "departure")}
         )
