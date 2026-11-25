@@ -43,6 +43,7 @@
 	{#if row.line}
 		<StopLineTableLink
 			id={row.line}
+			wrap
 			href={carryFrameState(
 				localizeHref('/lines/' + encodeURIComponent(row.line), locale, city),
 				url,
@@ -89,7 +90,7 @@
 	{columns}
 	{rows}
 	key={(row) => row.key}
-	responsive={{ mode: 'scroll', minWidth: '36rem' }}
+	responsive={{ mode: 'rows', primary: 'expected', value: 'line' }}
 	pageSize={rows.length > 20 ? 20 : undefined}
 	pageLabels={{
 		showing: (shown, total) =>

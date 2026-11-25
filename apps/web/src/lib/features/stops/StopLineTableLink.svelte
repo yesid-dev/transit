@@ -2,12 +2,12 @@
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 
-	let { id, href }: { id: string; href: string } = $props();
+	let { id, href, wrap = false }: { id: string; href: string; wrap?: boolean } = $props();
 	const display = transitDisplay();
 	const name = $derived(display.lineName(id));
 </script>
 
-<a class="line-link min-h-11 text-primary underline" {href}>
+<a class="line-link min-h-11 min-w-11 text-primary underline" class:wrap {href}>
 	<RoutePlate code={name.number ?? id} size="md" />
 	{#if name.name}<span>{name.name}</span>{/if}
 </a>
@@ -19,5 +19,10 @@
 		gap: var(--space-card-gap);
 		align-items: center;
 		overflow-wrap: normal;
+	}
+	.line-link.wrap {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 0.25em 0.75em;
 	}
 </style>

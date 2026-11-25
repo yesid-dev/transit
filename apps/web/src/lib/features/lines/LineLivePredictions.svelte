@@ -62,11 +62,11 @@
 				{@const estimate = predictions.get(stop.id)}
 				<li class="grid min-w-0 content-start gap-1 py-2">
 					<a
-						class="inline-flex min-h-11 min-w-11 w-fit items-center gap-2 text-primary underline"
+						class="inline-flex min-h-11 min-w-11 w-fit max-w-full flex-wrap items-center gap-2 text-primary underline"
 						href={stopHref(stop.id)}
 					>
 						<Badge variant="outline" class="shrink-0 font-mono">{stop.code || stop.id}</Badge>
-						<span>{display.readName(stop.name, locale)}</span>
+						<span class="wrap-normal">{display.readName(stop.name, locale)}</span>
 					</a>
 					{#if estimate}
 						{@const status = classifyDelay(estimate.delay)}
