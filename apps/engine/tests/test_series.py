@@ -18,6 +18,92 @@ from transit_engine.server import Engine
 from transit_engine.store import Store
 
 
+def test_delay_distribution_http_csv_and_catalog(store: Store) -> None:
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=50)
+    params = urlencode({
+        "city": "stm",
+        "from": THURSDAY,
+        "to": THURSDAY,
+        "measure": "delay_distribution",
+        "format": "csv",
+        "lang": "fr",
+    })
+    status, _, body = asyncio.run(http(app, "/measure", params))
+    assert status == 200
+    rows = list(csv.DictReader(io.StringIO(body.decode())))
+    assert len(rows) == 22
+    assert rows[0]["Écart minimal (s)"] == ""
+    assert rows[0]["Écart maximal (s)"] == "-301"
+    assert rows[-1]["Écart minimal (s)"] == "900"
+    assert rows[-1]["Écart maximal (s)"] == ""
+    classified = query(store)["evidence"]["counts"]["classified"]
+    assert sum(int(row["Passages aux arrêts"]) for row in rows) == classified
+    entry = next(entry for entry in measures.methods() if entry["id"] == "delay_distribution")
+    assert entry["family"] == "punctuality"
+    assert entry["csv_columns"]["fr"] == list(rows[0])
+
+
+@pytest.mark.parametrize("version", [8, 10])
+def test_delay_distribution_partitions_classified_events(tmp_path: Path, version: int) -> None:
+    delays = (-500, -301, -300, -61, -60, -1, 0, 240, 299, 300, 301, 899, 900, None)
+    main = Trip("main", "A", 0, "ran", None, True, delays, stop_ids=("S1",) * len(delays))
+    trips = (
+        *(main._replace(id=f"sample-{index}") for index in range(5)),
+        main._replace(id="opposite", direction=1, delays=(301,) * len(delays)),
+        main._replace(id="other", line="B", delays=(0,) * len(delays)),
+        main._replace(id="added", state="added"),
+        main._replace(id="cancelled", state="cancelled"),
+    )
+    store = _build_store(tmp_path, version, {THURSDAY: trips})
+    for cuts in ({}, {"line": "A"}, {"line": "A", "direction": 0}, {"stop": "S1"}):
+        timing = query(store, **cuts)
+        distribution = query(store, measure="delay_distribution", **cuts)
+        assert distribution["state"] == timing["state"] == "measured"
+        assert distribution["group"] == "delay_minute"
+        assert distribution["info"][0]["method_version"] == timing["info"][0]["method_version"]
+        counts = timing["evidence"]["counts"]
+        assert distribution["evidence"]["counts"] == counts
+        bins = distribution["cells"]
+        assert len(bins) == 22
+        assert sum(cell["value"]["delay_distribution"] for cell in bins) == pytest.approx(1)
+        for band in ("early", "on_time", "late"):
+            assert (
+                sum(cell["value"]["stop_events"] for cell in bins if cell["key"]["band"] == band)
+                == counts[band]
+            )
+        if "direction" in cuts:
+            by_bounds = {
+                (cell["key"]["min_seconds"], cell["key"]["max_seconds"]):
+                cell["value"]["stop_events"]
+                for cell in bins
+            }
+            assert by_bounds[(None, -301)] == 10
+            assert by_bounds[(-60, -1)] == 10
+            assert by_bounds[(240, 300)] == 15
+            assert by_bounds[(301, 359)] == 5
+            assert by_bounds[(900, None)] == 5
+
+
+@pytest.mark.parametrize(
+    ("delays", "state"),
+    [
+        ((0,) * 10, "too_few_to_judge"),
+        ((0,) * 30 + (None,) * 91, "not_measured"),
+        ((0,) * 30, "measured"),
+    ],
+)
+def test_delay_distribution_uses_punctuality_coverage(
+    tmp_path: Path, delays: tuple[int | None, ...], state: str
+) -> None:
+    store = _build_store(tmp_path, 10, {THURSDAY: (Trip("a", "A", 0, "ran", None, True, delays),)})
+    scope = {"start": THURSDAY, "end": FRIDAY}
+    timing = query(store, **scope)
+    answer = query(store, measure="delay_distribution", **scope)
+    assert answer["state"] == timing["state"] == state
+    assert answer["coverage_note"] == timing["coverage_note"]
+    assert bool(answer["cells"]) == (state == "measured")
+
+
 def _quantile(delays: list[int], fraction: float) -> float:
     delays = sorted(delays)
     rank = (len(delays) - 1) * fraction

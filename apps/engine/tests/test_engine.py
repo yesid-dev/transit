@@ -897,7 +897,10 @@ def test_http_and_bilingual_csv_come_from_same_registry(
         status, headers, answer = await http(app, "/measure", params)
         assert status == 200
         assert headers[b"x-transit-cleaning-version"] == str(store.cleaning_version).encode()
-        info = [item for item in json.loads(catalog) if item["family"] == family]
+        info = [
+            item for item in json.loads(catalog)
+            if item["family"] == family and item["id"] != "delay_distribution"
+        ]
         assert [
             {key: value for key, value in entry.items() if key != "family_text"} for entry in info
         ] == json.loads(answer)["info"]

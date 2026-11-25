@@ -40,6 +40,20 @@ export function delayReading(
 	return seconds < 0 ? copy.early(magnitude) : seconds > 0 ? copy.late(magnitude) : copy.onSchedule;
 }
 
+/** Inclusive delay bounds, shown exactly to the second as signed minutes:seconds. */
+export function delayRange(min: number | null, max: number | null, locale: Locale): string {
+	const copy = presenterCopy[locale];
+	if (min === null && max !== null)
+		return copy.earlierThan(minuteReading(-(max + 1) / 60, locale)!);
+	if (max === null && min !== null) return copy.atLeastLate(minuteReading(min / 60, locale)!);
+	const minuteClock = (seconds: number) => {
+		const sign = seconds < 0 ? '−' : seconds > 0 ? '+' : '';
+		const magnitude = Math.abs(seconds);
+		return `${sign}${Math.floor(magnitude / 60)}:${String(magnitude % 60).padStart(2, '0')}`;
+	};
+	return min === null || max === null ? '' : copy.delayRange(minuteClock(min), minuteClock(max));
+}
+
 export function clockTime(date: Date, locale: Locale, timeZone = 'UTC'): string {
 	return formatClock(date, locale, timeZone);
 }

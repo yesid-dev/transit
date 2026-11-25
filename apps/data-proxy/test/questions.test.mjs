@@ -731,6 +731,41 @@ test("missing binding and unknown registry measures get honest responses", async
   assert.equal(preflight.headers.get("access-control-allow-methods"), "GET, OPTIONS");
 });
 
+test("delay distribution validates its cuts and handles an older engine", async (t) => {
+  const distribution = `/v2/demo/measure?measure=delay_distribution&${WINDOW}`;
+  const answer = { measure: "delay_distribution", group: "delay_minute", cells: [] };
+  const f = fixture(t, (request) => {
+    const params = new URL(request.url).searchParams;
+    if (params.get("measure") !== "delay_distribution") return Response.json(ANSWER);
+    if (!params.has("line")) return Response.json({ message: "unknown measure" }, { status: 400 });
+    assert.equal(params.get("line"), "24");
+    assert.equal(params.get("direction"), "1");
+    assert.equal(params.get("stop"), "S1");
+    assert.equal(params.get("hour"), "7");
+    assert.equal(params.get("day_type"), "weekday");
+    return Response.json(answer);
+  });
+  for (const path of [
+    distribution + "&group=day",
+    distribution + "&direction=2",
+    distribution + "&vehicle=1",
+    distribution + "&effect=DETOUR",
+    distribution + "&departure=07:00:00",
+    distribution.replace("/measure?", "/ranking?kind=line&"),
+  ]) assert.equal((await f.fetch(path)).status, 400);
+  assert.equal(f.requests.length, 0);
+  const unavailable = await f.fetch(distribution);
+  assert.equal(unavailable.status, 409);
+  assert.equal(unavailable.headers.get("retry-after"), null);
+  assert.deepEqual(await unavailable.json(), {
+    reason: "delay_distribution_unsupported", message: "engine unavailable",
+  });
+  assert.equal((await f.fetch(MEASURE)).status, 200);
+  const response = await f.fetch(distribution + "&line=24&direction=1&stop=S1&hour=07&day_type=weekday");
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), answer);
+});
+
 
 test("serves and caches the search index with the normal limit and no v1 catalog", async (t) => {
   const body = { schedule: null, vehicles: null, vehicle_state: "not_tracked" };

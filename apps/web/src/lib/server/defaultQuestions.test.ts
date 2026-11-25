@@ -11,7 +11,7 @@ import { load as health } from '../../routes/[[lang=locale]]/status/+page.server
 import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
-import { getScheduleEdition } from './engine.ts';
+import { getDelayDistribution, getScheduleEdition } from './engine.ts';
 import { GET as mapRecord } from '../../routes/api/map-record/+server.ts';
 
 const { fetcher } = vi.hoisted(() => ({
@@ -68,6 +68,7 @@ it.each([
 		visit(alerts, '/alerts'),
 		visit(health, '/status'),
 		visit(methods, '/metrics'),
+		getDelayDistribution({ city: provider.id, ...period }),
 		getScheduleEdition(provider.id),
 		...['', '&layer=corridors'].map((layer) =>
 			mapRecord({
@@ -149,6 +150,8 @@ it('stays under 30 starts per rolling minute and waits for slow responses', asyn
 			if (index === 4)
 				return Response.json({ reason: 'segment_runs_version_required' }, { status: 409 });
 			if (index === 5) return Response.json({ reason: 'segment_runs_missing' }, { status: 409 });
+			if (index === 6)
+				return Response.json({ reason: 'delay_distribution_unsupported' }, { status: 409 });
 			return Response.json({});
 		},
 	});
@@ -163,7 +166,7 @@ it('stays under 30 starts per rolling minute and waits for slow responses', asyn
 		'failed',
 		'deferred',
 		'failed',
-		'answered',
+		'deferred',
 	]);
 	expect(requests).toHaveLength(urls.length);
 });

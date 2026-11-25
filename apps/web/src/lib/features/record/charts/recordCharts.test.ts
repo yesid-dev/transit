@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
-import { bandChart, hourChart, rangeChart, stopLadderChart, trendChart } from './recordCharts.ts';
+import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
+import {
+	bandChart,
+	histogramChart,
+	hourChart,
+	rangeChart,
+	stopLadderChart,
+	trendChart,
+} from './recordCharts.ts';
 
 const cell = (key: Record<string, string | number>, patch: Partial<RecordCell> = {}) =>
 	({
@@ -16,6 +23,50 @@ const series = (...cells: RecordSeries['cells']) =>
 	({ cells, evidence: { days_not_measured: [] } }) as unknown as RecordSeries;
 
 describe('record charts', () => {
+	it.each([
+		['en', 'More than 5 min early', '+5:01 to +5:59', '15 min late or more', '24%', 'Stop events'],
+		[
+			'fr',
+			'Plus de 5 min d’avance',
+			'+5:01 à +5:59',
+			'15 min de retard ou plus',
+			'24 %',
+			'Passages aux arrêts',
+		],
+	] as const)(
+		'presents exact delay ranges and counts in %s',
+		(locale, early, late, end, share, events) => {
+			const cells = [
+				{
+					key: { min_seconds: null, max_seconds: -301, band: 'early' },
+					value: { delay_distribution: 0, stop_events: 0 },
+				},
+				{
+					key: { min_seconds: 301, max_seconds: 359, band: 'late' },
+					value: { delay_distribution: 0.24, stop_events: 24 },
+				},
+				{
+					key: { min_seconds: 900, max_seconds: null, band: 'late' },
+					value: { delay_distribution: 0, stop_events: 0 },
+				},
+			] satisfies Pick<DelayDistribution['cells'][number], 'key' | 'value'>[];
+			const chart = histogramChart({ cells, state: 'measured' }, 'Distribution', locale);
+			expect(chart.props.points).toEqual([
+				{ x: -5.5, y: 0 },
+				{ x: 5.5, y: 0.24 },
+				{ x: 15.5, y: 0 },
+			]);
+			expect(chart.props.ticks.map(({ label }) => label)).toEqual(['-1', '0', '+5', '+10']);
+			expect(chart.props.yDomain).toEqual([0, 0.25]);
+			expect(chart.table.columns.value).toBe(events);
+			expect(chart.table.rows.map(({ label }) => label)).toEqual([early, late, end]);
+			expect(chart.table.rows[1]).toMatchObject({ value: '24', detail: share });
+			expect(
+				histogramChart({ cells: [], state: 'not_measured' }, 'Distribution', locale).table.rows,
+			).toEqual([]);
+		},
+	);
+
 	it('keeps the three engine shares and counts with localized readings', () => {
 		expect(bandChart(cell({}), 'Bands', 'en').props.bands[2]).toMatchObject({
 			share: 0.166,

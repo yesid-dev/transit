@@ -350,6 +350,23 @@ const recordSeries = recordEnvelope.extend({
 		}),
 	),
 });
+const delayDistribution = recordSeries.extend({
+	...state.shape,
+	measure: z.literal('delay_distribution'),
+	group: z.literal('delay_minute'),
+	evidence: evidence.extend(recordCell.shape.evidence.shape),
+	cells: z.array(
+		recordSeries.shape.cells.element.extend({
+			state: z.literal('measured'),
+			key: z.object({
+				min_seconds: z.int().nullable(),
+				max_seconds: z.int().nullable(),
+				band: z.enum(['early', 'on_time', 'late']),
+			}),
+			value: z.object({ delay_distribution: share, stop_events: count }),
+		}),
+	),
+});
 const departureRanking = rankingAnswer.extend({
 	kind: z.literal('departure'),
 	measure: z.literal('late'),
@@ -366,6 +383,7 @@ export type RecordEvidence = z.infer<typeof evidence>;
 export type RecordMeasure = z.infer<typeof recordMeasure>;
 export type RecordCell = z.infer<typeof recordCell>;
 export type RecordSeries = z.infer<typeof recordSeries>;
+export type DelayDistribution = z.infer<typeof delayDistribution>;
 export type DepartureRanking = z.infer<typeof departureRanking>;
 export type RecordAnswer = RecordMeasure | RecordSeries | DepartureRanking | RankingAnswer;
 
@@ -427,10 +445,25 @@ export function getRecordAnswer({ path, parameters }: RecordQuery, period: Engin
 			? parameters.kind === 'departure'
 				? departureRanking
 				: rankingAnswer
-			: parameters.group
-				? recordSeries
-				: recordMeasure;
+			: parameters.measure === 'delay_distribution'
+				? delayDistribution
+				: parameters.group
+					? recordSeries
+					: recordMeasure;
 	return periodQuery(path, period, parameters, schema);
+}
+
+type DelayDistributionCuts = Partial<
+	Record<'line' | 'direction' | 'stop' | 'hour' | 'day_type' | 'departure', string>
+>;
+
+export function getDelayDistribution(period: EnginePeriod, cuts: DelayDistributionCuts = {}) {
+	return periodQuery(
+		'/measure',
+		period,
+		{ ...cuts, measure: 'delay_distribution' },
+		delayDistribution,
+	);
 }
 
 // Each scorecard answer has one numeric value or readings by feed, field or horizon.
