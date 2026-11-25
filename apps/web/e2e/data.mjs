@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
 import { installLineRecordFixtures, lineRecordFixture } from './line-record-fixtures.mjs';
-import { finderEngine, linesFixtureRoutes } from './finder-engine.mjs';
+import { finderEngine, linesFixtureRoutes, stopsFixture } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
@@ -107,7 +107,7 @@ const t6Stop = (id, name, routes, scheduled) =>
 	JSON.stringify({
 		generated_utc: '2026-06-15T12:00:00Z',
 		id,
-		code: id.slice(3),
+		code: id === 'T6-NONE' ? null : id.slice(3),
 		name,
 		lat: 45.5,
 		lon: -73.6,
@@ -311,6 +311,9 @@ const sourceCredits = {
 };
 
 const heldResponsesByFixture = new Map();
+
+let stopSearchQuestions = 0;
+let holdNextStopSearch = false;
 const dailyMessageHolds = new Set();
 const registeredScheduleLines = new Set();
 const server = createServer((request, response) => {
@@ -584,6 +587,25 @@ const server = createServer((request, response) => {
 			).values(),
 		);
 		const editionStops = new Map(stops.stops.map((stop) => [stop.id, stop]));
+		if (kind === 'schedule-index' && request.headers['x-transit-fixture-scope'] === 'stops') {
+			for (const stop of stopsFixture(city)) editionStops.set(stop.id, stop);
+		}
+		if (
+			kind === 'schedule-index' &&
+			request.headers['x-transit-fixture-scope'] === 'stops-volume'
+		) {
+			for (let i = 0; i < 8630; i++) {
+				const id = `volume-stop-${String(i).padStart(4, '0')}`;
+				editionStops.set(id, {
+					id,
+					name: `Volume stop ${i}`,
+					code: String(70000 + i),
+					lat: 45.5,
+					lon: -73.6,
+					routes: ['24'],
+				});
+			}
+		}
 		if (kind === 'schedule-index' && process.env.TRANSIT_E2E_DEPARTURE_NAMED === '1') {
 			for (const { id, name, code } of departureCaptureStops) {
 				editionStops.set(id, { id, name, code, lat: 45.5, lon: -73.6, routes: ['24'] });
@@ -667,7 +689,9 @@ const server = createServer((request, response) => {
 				{ dir: 0, headsign: 'Rail terminal', stops: [{ id: 'S1', seq: 1 }] },
 			];
 			// Keep the keyboard pagination case independent of the search index fixture.
-			for (let n = 1; n <= 25; n++) {
+			const paginationCount =
+				request.headers['x-transit-fixture-scope'] === 'stops-pagination' ? 45 : 25;
+			for (let n = 1; n <= paginationCount; n++) {
 				const id = `pagination-stop-${n}`;
 				editionStops.set(id, {
 					id,
@@ -825,6 +849,13 @@ const server = createServer((request, response) => {
 		response.writeHead(fixture ? 204 : 400).end();
 		return;
 	}
+	if (url.pathname === '/__stops-search') {
+		if (request.method === 'POST') holdNextStopSearch = true;
+		response
+			.writeHead(200, { 'content-type': 'application/json' })
+			.end(JSON.stringify(stopSearchQuestions));
+		return;
+	}
 	if (request.method === 'POST' && url.pathname === '/__overview/release') {
 		const fixture = url.searchParams.get('fixture') ?? 'overview';
 		dailyMessageHolds.delete(fixture);
@@ -840,6 +871,12 @@ const server = createServer((request, response) => {
 		url.searchParams.set('city', question[1]);
 		const dailyFixture = ['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from'));
 		const scope = request.headers['x-transit-fixture-scope'];
+		const stopSearch = scope === 'stops-search' && url.searchParams.get('group') === 'stop_id';
+		const holdStopSearch = stopSearch && holdNextStopSearch;
+		if (stopSearch) {
+			stopSearchQuestions++;
+			holdNextStopSearch = false;
+		}
 		const dailyMessageHold = dailyMessageHolds.has(scope) ? scope : undefined;
 		const finderFixture =
 			question[2] === 'measure' && ['line', 'stop_id'].includes(url.searchParams.get('group'));
@@ -888,11 +925,12 @@ const server = createServer((request, response) => {
 			return;
 		}
 		const { hold, body, status = 200, headers = {} } = result;
+		const pendingFixture = holdStopSearch ? 'stops-search' : hold;
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		const send = () => response.end(JSON.stringify(body));
-		if (hold) {
+		if (pendingFixture) {
 			// Named holds survive release calls from other specs sharing this server.
-			const fixture = hold === true ? 'overview' : hold;
+			const fixture = pendingFixture === true ? 'overview' : pendingFixture;
 			const held = heldResponsesByFixture.get(fixture) ?? new Set();
 			held.add(send);
 			heldResponsesByFixture.set(fixture, held);

@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { load as loadLines } from '../../routes/[[lang=locale]]/lines/+page.server.ts';
 import { load as loadStops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 
@@ -7,7 +8,7 @@ const { fetcher } = vi.hoisted(() => ({
 }));
 vi.mock('cloudflare:workers', () => ({ env: { QUESTION_PROXY: { fetch: fetcher } } }));
 
-it('streams complete groups for the selected city and period through the service binding', async () => {
+it('reads complete finder groups and streams only the displayed Stops readings', async () => {
 	fetcher.mockReset();
 	const answer = {
 		evidence: {
@@ -23,29 +24,57 @@ it('streams complete groups for the selected city and period through the service
 		coverage_note: null,
 		cells: [],
 	};
-	fetcher.mockImplementation(async () => Response.json(answer));
+	const schedule = {
+		date: '2026-10-18',
+		routes: [],
+		stops: Array.from({ length: 21 }, (_, index) => ({
+			id: `S${index + 1}`,
+			name: `Stop ${index + 1}`,
+			lat: 45.5,
+			lon: -73.6,
+		})),
+	} satisfies ScheduleEdition;
+	const stopCells = ['S1', 'S21'].map((stop) => ({
+		key: { stop },
+		value: { on_time: 0.8 },
+		state: 'measured',
+		state_text: { en: 'Measured', fr: 'Mesuré' },
+		evidence: { counts: { classified: 100 } },
+	}));
+	fetcher.mockImplementation(async (request) =>
+		Response.json(
+			new URL(request.url).searchParams.get('group') === 'stop_id'
+				? { ...answer, cells: stopCells }
+				: answer,
+		),
+	);
 	const event = (path: string) => ({
 		url: new URL(`https://transit1.yesid.dev/fr/${path}?recordFrom=2026-10-17&recordTo=2026-10-18`),
 		request: new Request('https://transit1.yesid.dev', {
 			headers: { 'cf-connecting-ip': '192.0.2.1' },
 		}),
-		parent: async () => ({ providerId: 'test-network' }),
+		parent: async () => ({ providerId: 'test-network', lang: 'fr' as const }),
+		locals: { stopsSchedule: schedule },
 	});
-	const lines = await loadLines(event('lines') as Parameters<typeof loadLines>[0]);
-	const stops = await loadStops(event('stops') as Parameters<typeof loadStops>[0]);
+	const lines = await loadLines(event('lines') as unknown as Parameters<typeof loadLines>[0]);
+	const stops = await loadStops(event('stops') as unknown as Parameters<typeof loadStops>[0]);
 	expect(lines.finderRecord?.period).toEqual({
 		from: '2026-10-17',
 		to: '2026-10-18',
 		preset: null,
 	});
-	for (const section of [
-		lines.finderRecord?.punctuality,
-		lines.finderRecord?.trips,
-		stops.finderRecord?.punctuality,
-	]) {
+	for (const section of [lines.finderRecord?.punctuality, lines.finderRecord?.trips]) {
 		expect(section).toBeInstanceOf(Promise);
 		expect(await section).toEqual({ kind: 'answer', answer });
 	}
+	expect(stops.listing?.total).toBe(21);
+	expect(stops.listing?.rows).toHaveLength(20);
+	expect(stops.finderRecord?.punctuality).toBeInstanceOf(Promise);
+	expect(await stops.finderRecord?.punctuality).toEqual({
+		kind: 'answer',
+		answer: { ...answer, cells: [stopCells[0]] },
+		totals: { counts: { classified: 200 }, observed: null },
+	});
 	expect(fetcher.mock.calls.map(([request]) => request.url)).toEqual([
 		'https://data.yesid.dev/v2/test-network/measure?from=2026-10-17&to=2026-10-18&measure=on_time&group=line',
 		'https://data.yesid.dev/v2/test-network/measure?from=2026-10-17&to=2026-10-18&measure=trips_run&group=line',
@@ -66,7 +95,8 @@ it('uses the default Record period for bare finders on a local host', async () =
 		const event = (path: string) => ({
 			url: new URL(`http://127.0.0.1:4317/${path}?q=Fixture`),
 			request: new Request('http://127.0.0.1:4317'),
-			parent: async () => ({ providerId: 'test-network' }),
+			parent: async () => ({ providerId: 'test-network', lang: 'en' as const }),
+			locals: { stopsSchedule: null },
 		});
 		const lines = await loadLines(event('lines') as Parameters<typeof loadLines>[0]);
 		const stops = await loadStops(event('stops') as Parameters<typeof loadStops>[0]);

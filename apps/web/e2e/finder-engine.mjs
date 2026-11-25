@@ -59,6 +59,18 @@ export const linesFixtureRoutes = (city) =>
 		return { id, short: id, long, type: 3 };
 	});
 
+export const stopsFixture = (city) => {
+	const names = city === 'octranspo' ? ottawaNames : montrealNames;
+	return names.map((name, index) => ({
+		id: `finder-stop-${index + 1}`,
+		code: String(52840 + index),
+		name: `${city === 'octranspo' ? 'Bank' : 'Beaubien'} / ${name}`,
+		lat: city === 'octranspo' ? 45.42 : 45.53,
+		lon: city === 'octranspo' ? -75.7 : -73.6,
+		routes: ['24'],
+	}));
+};
+
 export function finderEngine(url) {
 	const from = url.searchParams.get('from');
 	const to = url.searchParams.get('to');
@@ -67,12 +79,15 @@ export function finderEngine(url) {
 	const trips = measure === 'trips_run';
 	const rich = from === '2026-11-04';
 	const richLines = rich && group === 'line';
-	const days = richLines
-		? Array.from({ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 }, (_, i) =>
-				new Date(Date.parse(from) + i * 86_400_000).toISOString().slice(0, 10),
-			)
-		: [from];
+	const richStops = rich && group === 'stop_id';
+	const days =
+		richLines || richStops
+			? Array.from({ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 }, (_, i) =>
+					new Date(Date.parse(from) + i * 86_400_000).toISOString().slice(0, 10),
+				)
+			: [from];
 	if (group === 'line' && from === '2026-11-05') return { status: 502, body: {} };
+	if (group === 'stop_id' && from === '2026-11-05') return { status: 502, body: {} };
 	if (group === 'line' && from === '2026-11-06') {
 		return { status: 503, headers: { 'retry-after': '20' }, body: {} };
 	}
@@ -126,52 +141,67 @@ export function finderEngine(url) {
 	return {
 		hold: from === '2026-11-09' && trips,
 		body: {
-			cells: richLines
+			cells: richStops
 				? [
-						...linesFixtureRoutes(url.searchParams.get('city')).map(({ id }, index) => {
-							const onTime = (732 + Math.round((index * 115) / 24)) / 1000;
-							return trips
-								? cell(
-										{ line: id },
-										{ trips_run: 0.97 },
-										{ ran: 1197 + index, scheduled: 1234 + index },
-									)
-								: cell(
-										{ line: id },
-										{ on_time: onTime },
-										{
-											on_time: onTime * 10000,
-											late: (190 - index * 2) * 10,
-											classified: 10000,
-											scheduled: 12500,
-											vehicle_stopped: 7140,
-											trip_update_passed: 2860,
-										},
-									);
-						}),
-						...(trips
-							? []
-							: [
-									cell(
-										{ line: '99' },
-										{ on_time: null },
-										{ classified: 394 },
-										'too_few_to_judge',
-										'Too few to judge',
-										'Trop peu pour juger',
-									),
-									cell(
-										{ line: '715' },
-										{ on_time: null },
-										{},
-										'not_measured',
-										'The feed carried this line without trip identifiers on these dates.',
-										'Le flux contenait cette ligne sans identifiants de trajet pour ces dates.',
-									),
-									cell({ line: '716' }, { on_time: null }, {}, 'unknown', 'Unknown', 'Inconnu'),
-								]),
+						...stopsFixture(url.searchParams.get('city')).map(({ id }, i) =>
+							cell(
+								{ stop: id },
+								{ on_time: (780 + 4 * i) / 1000 },
+								{ classified: 2456 + i, scheduled: 2972 + i, on_time: 1900 + i },
+							),
+						),
+						cell(
+							{ stop: '57430' },
+							{ on_time: 0.81 },
+							{ classified: 210, scheduled: 275, on_time: 170 },
+						),
 					]
-				: rows,
+				: richLines
+					? [
+							...linesFixtureRoutes(url.searchParams.get('city')).map(({ id }, index) => {
+								const onTime = (732 + Math.round((index * 115) / 24)) / 1000;
+								return trips
+									? cell(
+											{ line: id },
+											{ trips_run: 0.97 },
+											{ ran: 1197 + index, scheduled: 1234 + index },
+										)
+									: cell(
+											{ line: id },
+											{ on_time: onTime },
+											{
+												on_time: onTime * 10000,
+												late: (190 - index * 2) * 10,
+												classified: 10000,
+												scheduled: 12500,
+												vehicle_stopped: 7140,
+												trip_update_passed: 2860,
+											},
+										);
+							}),
+							...(trips
+								? []
+								: [
+										cell(
+											{ line: '99' },
+											{ on_time: null },
+											{ classified: 394 },
+											'too_few_to_judge',
+											'Too few to judge',
+											'Trop peu pour juger',
+										),
+										cell(
+											{ line: '715' },
+											{ on_time: null },
+											{},
+											'not_measured',
+											'The feed carried this line without trip identifiers on these dates.',
+											'Le flux contenait cette ligne sans identifiants de trajet pour ces dates.',
+										),
+										cell({ line: '716' }, { on_time: null }, {}, 'unknown', 'Unknown', 'Inconnu'),
+									]),
+						]
+					: rows,
 			info: [{ id: trips ? 'trips_run' : 'on_time', minimum_sample: 500 }],
 			coverage_note: null,
 			evidence: {

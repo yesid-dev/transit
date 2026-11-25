@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Locator } from '@playwright/test';
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
@@ -23,6 +23,7 @@ const cohesionScreens = new Set<Screen>([
 	'overview',
 	'overview-live',
 	'lines',
+	'stops',
 	'line-record',
 	'line-live',
 	'stop-record',
@@ -40,6 +41,44 @@ const cohesionScreens = new Set<Screen>([
 	'search-query',
 	'roadmap',
 ]);
+
+async function expectFilterPlaceholder(
+	filter: Locator,
+	label: string,
+	placeholder: string,
+	width: number,
+) {
+	await expect(filter.getByText(label, { exact: true })).toBeVisible();
+	const input = filter.getByRole('combobox', { name: label, exact: true });
+	await expect(input).toHaveAttribute('placeholder', placeholder);
+	const { required, available } = await input.evaluate((element: HTMLInputElement) => {
+		const style = getComputedStyle(element);
+		const context = document.createElement('canvas').getContext('2d')!;
+		context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+		context.letterSpacing = style.letterSpacing === 'normal' ? '0px' : style.letterSpacing;
+		return {
+			required: context.measureText(element.placeholder).width,
+			available:
+				element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+		};
+	});
+	expect(required, `${label} placeholder at ${width}px`).toBeLessThanOrEqual(available);
+}
+
+test('stops French filter placeholder fits the rail and sheet @layout', async ({ page }) => {
+	await page.goto('/fr/stops?provider=stm');
+	for (const width of [1440, 1024, 390]) {
+		await setWidth(page, width);
+		const rail = await openFrameControls(page, 'fr');
+		await page.evaluate(() => document.fonts.ready);
+		await expectFilterPlaceholder(
+			rail.getByRole('group', { name: 'Filtrer', exact: true }),
+			'Ligne',
+			'Toutes',
+			width,
+		);
+	}
+});
 
 test('alerts French filter placeholders fit the rail and sheet @layout', async ({ page }) => {
 	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
@@ -79,21 +118,7 @@ test('alerts French filter placeholders fit the rail and sheet @layout', async (
 			['Arrêt', 'Tous'],
 			['Effet', 'Tous'],
 		]) {
-			await expect(filter.getByText(label, { exact: true })).toBeVisible();
-			const input = filter.getByRole('combobox', { name: label, exact: true });
-			await expect(input).toHaveAttribute('placeholder', placeholder);
-			const { required, available } = await input.evaluate((element: HTMLInputElement) => {
-				const style = getComputedStyle(element);
-				const context = document.createElement('canvas').getContext('2d')!;
-				context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-				context.letterSpacing = style.letterSpacing === 'normal' ? '0px' : style.letterSpacing;
-				return {
-					required: context.measureText(element.placeholder).width,
-					available:
-						element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
-				};
-			});
-			expect(required, `${label} placeholder at ${width}px`).toBeLessThanOrEqual(available);
+			await expectFilterPlaceholder(filter, label, placeholder, width);
 		}
 	}
 });
@@ -103,6 +128,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		const health = screen.startsWith('network-health') || screen.startsWith('data-health');
 		const alerts = screen === 'alerts' || screen === 'alerts-live';
 		if (alerts) await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
+		if (screen === 'stops') await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops' });
 		await setWidth(page, 1440);
 		const liveAlerts = screen === 'alerts-live' && provider === 'stm';
 		if (liveAlerts) await page.clock.install({ time });
@@ -175,6 +201,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			expect(scheduleOnly.y).toBeGreaterThanOrEqual(measured.y + measured.height);
 			expect(excluded.y).toBeGreaterThanOrEqual(scheduleOnly.y + scheduleOnly.height);
 		}
+		if (screen === 'stops') await expect(page.locator('#stop-results tbody tr')).toHaveCount(20);
 		if (screen.startsWith('map-')) {
 			// The app exposes the live map and makes the poster inert at this handoff.
 			// Later source updates can make MapLibre's loaded() false again.
@@ -255,7 +282,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				screen === 'roadmap' ||
 				screen.startsWith('search') ||
 				screen === 'line-record' ||
-				screen === 'lines',
+				screen === 'lines' ||
+				screen === 'stops',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({

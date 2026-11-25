@@ -7,5 +7,3 @@ export { default as ArticleSectionStack } from './ArticleSectionStack.svelte';
 export type { ArticleSectionStackProps } from './ArticleSectionStack.svelte';
 export { default as ArticleSummaryLane } from './ArticleSummaryLane.svelte';
 export type { ArticleSummaryLaneProps } from './ArticleSummaryLane.svelte';
-export { default as ListingHeaderStats } from './ListingHeaderStats.svelte';
-export type { ListingHeaderStat, ListingHeaderStatsProps } from './ListingHeaderStats.svelte';

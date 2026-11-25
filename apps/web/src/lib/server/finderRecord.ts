@@ -26,11 +26,16 @@ export function loadStopsRecord(url: URL, city: string, request: Request, clock:
 		? {
 				period,
 				city,
-				punctuality: getFinderSeries(finderQuestions.stops.punctuality, {
-					...period,
-					city,
-					visitorIp,
-				}),
+				punctuality: getFinderSeries(
+					finderQuestions.stops.punctuality,
+					{
+						...period,
+						city,
+						visitorIp,
+						fixtureScope: request.headers.get('x-transit-fixture-scope') ?? undefined,
+					},
+					request.signal,
+				),
 			}
 		: null;
 }

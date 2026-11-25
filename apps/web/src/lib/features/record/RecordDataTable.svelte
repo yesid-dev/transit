@@ -36,6 +36,8 @@
 	 * values and states. `value` names the column paired with the name on a narrow screen.
 	 * Use `scrollMinWidth` for a table that needs to keep its columns at small widths.
 	 * Optional `pageSize` and `rowHeading` preserve established page sizes and row-heading content.
+	 * Use `pageSize={0}` when the caller fetches additional rows a page at a time.
+	 * `leadingColumn` puts an identifier before the name on wide screens.
 	 * When sorting is enabled, the caller reads and writes the URL and supplies the resulting
 	 * order and direction. Headers request a direction change; optional choices select a column.
 	 */
@@ -45,6 +47,7 @@
 		rowHeader,
 		rows,
 		columns = [],
+		leadingColumn,
 		value,
 		sort,
 		scrollMinWidth,
@@ -56,6 +59,7 @@
 		rowHeader: string;
 		rows: readonly Row[];
 		columns?: readonly Column<Row>[];
+		leadingColumn?: Column<Row>;
 		value?: string;
 		sort?: RecordTableSort;
 		scrollMinWidth?: string;
@@ -63,6 +67,7 @@
 		rowHeading?: Snippet<[Row]>;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
+		...(leadingColumn ? [leadingColumn] : []),
 		{
 			key: 'name',
 			header: rowHeader,

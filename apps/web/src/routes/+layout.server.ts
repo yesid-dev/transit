@@ -54,7 +54,7 @@ function scheduleForPage(
 					: {}),
 			};
 		case localRoute + '/stops':
-			return schedule;
+			return { date, routes: [], stops: [] };
 		case localRoute + '/stop/[id]': {
 			const id = params.id?.trim() || params.id;
 			return { date, routes, stops: stops.filter((stop) => stop.id === id) };
@@ -120,6 +120,7 @@ export const load: LayoutServerLoad = async (event) => {
 	// Overview combines schedule totals with a small set of ranked stop names.
 	// Keep the untrimmed schedule on the server for its page loader.
 	if (route === localRoute && !loadSnapshots) locals.overviewSchedule = schedule;
+	if (route === localRoute + '/stops') locals.stopsSchedule = schedule;
 	const v1 =
 		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;
 	const provider = selection.provider;
