@@ -16,12 +16,14 @@
 	import WaitingReadings from '#lib/features/record/WaitingReadings.svelte';
 	import LineRecordReadings from './LineRecordReadings.svelte';
 	import LineViewNav from './LineViewNav.svelte';
+	import LineRecordTop from './LineRecordTop.svelte';
 	import { lineCitation, lineSectionTitles, lineViewHref } from './lineRecordText.ts';
 
 	let {
 		name,
 		lineId,
 		code,
+		subtitle,
 		scheduleOnly,
 		locale,
 		url,
@@ -32,6 +34,7 @@
 		name: string;
 		lineId?: string;
 		code?: string | null;
+		subtitle?: string;
 		scheduleOnly?: boolean;
 		locale: Locale;
 		url: URL;
@@ -40,7 +43,6 @@
 		stopNames: Record<string, string>;
 	} = $props();
 
-	const directions = [null, '0', '1'] as const;
 	const stopNames = $derived(new Map(Object.entries(stopNamesById)));
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const pinned = $derived.by(() => {
@@ -64,43 +66,54 @@
 
 <Surface>
 	<div class="grid min-w-0 gap-4 lg:gap-3">
-		<header class="grid gap-2">
-			<a class="inline-flex min-h-11 w-fit items-center" href={back}>
-				{t('All lines', 'Toutes les lignes')}
-			</a>
-			<h1><RecordLineLabel label={name} code={code ?? null} {scheduleOnly} size="lg" /></h1>
-			{#if scheduleOnly}
-				<StateNotice
-					presentation="frameless"
-					title={t('No live data', 'Aucune donnée en direct')}
-				/>
-			{/if}
-			<LineViewNav url={pinned} {locale} view={record.view} />
-			{#if corridorMap}
-				<a class="inline-flex min-h-11 w-fit items-center" href={corridorMap}>
-					{t('See corridors on the map', 'Voir les corridors sur la carte')}
+		{#if record.view === 'record'}
+			<LineRecordTop
+				{name}
+				{code}
+				{subtitle}
+				{scheduleOnly}
+				{locale}
+				{record}
+				{pinned}
+				{back}
+				{headsigns}
+			/>
+			<div class="flex flex-wrap gap-4">
+				<a
+					class="inline-flex min-h-11 items-center text-primary underline"
+					href={lineViewHref(pinned, 'schedule').href}
+				>
+					{t('Schedule', 'Horaire')}
 				</a>
-			{/if}
-			<p>{dateRange(record.period, locale)}</p>
-			<nav
-				aria-label={t('Filter by direction', 'Filtrer par direction')}
-				class="flex flex-wrap gap-x-4"
-			>
-				{#each directions as direction (direction)}
-					<a
-						href={lineViewHref(pinned, record.view, direction).href}
-						class="inline-flex min-h-11 items-center"
-						aria-current={direction === record.direction ? 'true' : undefined}
-					>
-						{direction === null
-							? t('Both directions', 'Les deux directions')
-							: directionLabel(direction, headsigns, locale)}
+				{#if corridorMap}
+					<a class="inline-flex min-h-11 items-center text-primary underline" href={corridorMap}>
+						{t('See corridors on the map', 'Voir les corridors sur la carte')}
 					</a>
-				{/each}
-			</nav>
-		</header>
+				{/if}
+			</div>
+		{:else}
+			<header class="grid gap-2">
+				<a class="inline-flex min-h-11 w-fit items-center" href={back}>
+					{t('All lines', 'Toutes les lignes')}
+				</a>
+				<h1><RecordLineLabel label={name} code={code ?? null} {scheduleOnly} size="lg" /></h1>
+				{#if scheduleOnly}
+					<StateNotice
+						presentation="frameless"
+						title={t('No live data', 'Aucune donnée en direct')}
+					/>
+				{/if}
+				<LineViewNav url={pinned} {locale} view={record.view} />
+				{#if corridorMap}
+					<a class="inline-flex min-h-11 w-fit items-center" href={corridorMap}>
+						{t('See corridors on the map', 'Voir les corridors sur la carte')}
+					</a>
+				{/if}
+				<p>{dateRange(record.period, locale)}</p>
+			</header>
+		{/if}
 
-		{#each record.sections as { section, answer } (section)}
+		{#each record.sections.filter(({ section }) => !['punctuality', 'directions', 'daily', 'hourly'].includes(section)) as { section, answer } (section)}
 			{@const title = t(...lineSectionTitles[section])}
 			{@const links = recordSectionLinks(pinned, section)}
 			<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">

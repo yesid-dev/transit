@@ -21,14 +21,16 @@
 </script>
 
 <header class="flex min-w-0 flex-wrap items-start justify-between gap-3">
-	<hgroup class="min-w-0" class:inline-plate={stopCode}>
+	<hgroup class="min-w-0" class:inline-plate={stopCode} class:route-heading={plate}>
 		{#if stopCode}<span class="stop-code" aria-hidden="true">{stopCode}</span>{/if}
+		{#if plate}<span class="route-code" aria-hidden="true"
+				><RoutePlate code={plate} size="lg" /></span
+			>{/if}
 		<h1
 			{id}
 			class="flex flex-wrap items-center gap-2 wrap-break-word text-title font-bold"
 			class:compact
 		>
-			{#if plate}<RoutePlate code={plate} size="lg" />{/if}
 			{title}
 		</h1>
 		{#if subtitle}<p class="text-muted-foreground">{subtitle}</p>{/if}
@@ -53,6 +55,34 @@
 	}
 	.inline-plate p {
 		grid-column: 2;
+	}
+	.route-heading {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr);
+		column-gap: calc(var(--space-card-gap) / 2);
+	}
+	.route-code {
+		grid-row: span 2;
+		align-self: start;
+		margin-block-start: 0.25em;
+	}
+	.route-heading p {
+		grid-column: 2;
+	}
+	@media (max-width: 35em) {
+		.route-heading {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.route-code {
+			grid-row: auto;
+			justify-self: start;
+		}
+		.route-heading p {
+			grid-column: 1;
+		}
+		.route-heading h1:not(.compact) {
+			font-size: var(--text-heading);
+		}
 	}
 	@media (max-width: 35em) {
 		.inline-plate {

@@ -54,6 +54,7 @@ export function loadLineRecord(
 	direction: LineDirection,
 	visitorIp?: EnginePeriod['visitorIp'],
 ) {
+	const scope = { ...period, city, ...(visitorIp ? { visitorIp } : {}) };
 	const sections = (
 		view === 'record' ? Object.keys(record) : Object.keys(schedule)
 	) as LineSection[];
@@ -63,13 +64,20 @@ export function loadLineRecord(
 		city,
 		line,
 		direction,
+		network:
+			view === 'record'
+				? getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope)
+				: null,
+		networkDaily:
+			view === 'record'
+				? getRecordAnswer(
+						{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
+						scope,
+					)
+				: null,
 		sections: sections.map((section) => ({
 			section,
-			answer: getRecordAnswer(lineRecordQuery(section, line, direction), {
-				...period,
-				city,
-				...(visitorIp ? { visitorIp } : {}),
-			}),
+			answer: getRecordAnswer(lineRecordQuery(section, line, direction), scope),
 		})),
 	};
 }

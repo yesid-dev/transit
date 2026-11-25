@@ -5,6 +5,7 @@ import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 import { routeNameFallback } from '#lib/site/nameFallback.ts';
+import { lineSubtitle } from '#lib/site/presenter.ts';
 import { linePageTitle } from '#lib/seo/riderPageTitle.ts';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
@@ -49,11 +50,14 @@ export const load: PageServerLoad = async (event) => {
 			nameSeparators: provider?.name_separators,
 		});
 		const name = directory.name(id);
+		const routeType = directory.type(id);
+		const headsigns = directionHeadsigns(schedule?.route_directions?.[id]);
 		return {
 			seed: { id, name: name.label },
 			code: name.number,
-			scheduleOnly: lineIsScheduleOnly(provider, id, directory.type(id)),
-			directionHeadsigns: directionHeadsigns(schedule?.route_directions?.[id]),
+			subtitle: lineSubtitle(routeType, headsigns, lang),
+			scheduleOnly: lineIsScheduleOnly(provider, id, routeType),
+			directionHeadsigns: headsigns,
 			stopNames: Object.fromEntries(
 				(schedule?.stops ?? [])
 					.filter((stop) => stop.routes?.includes(id))

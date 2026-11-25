@@ -92,6 +92,24 @@ export function directionName(
 		: presenterCopy[locale].unknownDirection;
 }
 
+export function lineSubtitle(
+	type: number | null,
+	headsigns: Record<number, string>,
+	locale: Locale,
+) {
+	const modes: Record<number, [string, string]> = {
+		0: ['Light rail', 'Tramway'],
+		1: ['Métro', 'Métro'],
+		2: ['Rail', 'Train'],
+		3: ['Road transit', 'Transport routier'],
+		4: ['Ferry', 'Traversier'],
+	};
+	const mode = type == null ? undefined : modes[type]?.[locale === 'fr' ? 1 : 0];
+	const ends = [...new Set([headsigns[1], headsigns[0]].filter(Boolean))];
+	const route = ends.join(locale === 'fr' ? ' à ' : ' to ');
+	return [mode, route].filter(Boolean).join(' · ') || undefined;
+}
+
 export function directionLabel(
 	direction: string | number | null | undefined,
 	headsigns: Readonly<Record<number, string>>,

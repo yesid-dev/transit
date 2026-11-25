@@ -16,6 +16,7 @@
 		name={data.seed.name}
 		lineId={data.seed.id}
 		code={data.code}
+		subtitle={data.subtitle}
 		scheduleOnly={data.scheduleOnly}
 		{locale}
 		{url}
