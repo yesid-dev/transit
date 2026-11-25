@@ -220,6 +220,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await page.reload();
 	await refreshAlertsCapture(page);
 	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
+	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	await openFrameControls(page);
 	await expect(effect).toHaveValue('Detour');
 });
