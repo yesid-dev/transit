@@ -127,7 +127,6 @@ export const TRANSIT_STYLE_EXEMPTIONS = {
 	everyPattern: ['dataviz/chart/marks/'],
 	proseMeasure: [
 		'src/lib/features/map/MapMotionControl.svelte',
-		'src/lib/features/map/MapSelectionDetail.svelte',
 	],
 	measurePattern: BARE_PROSE_MEASURE,
 };

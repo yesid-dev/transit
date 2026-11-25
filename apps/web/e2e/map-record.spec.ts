@@ -89,7 +89,7 @@ for (const locale of ['en', 'fr'] as const) {
 			.getByRole('searchbox', { name: fr ? 'Trouver un segment' : 'Find a segment' })
 			.fill('Mont-Royal');
 		await page.getByRole('button', { name: 'Mont-Royal → Laurier' }).last().click();
-		await expect(selected).toContainText(/42[.,]0\s+s/);
+		await expect(selected).toContainText(/0[.,]7\s+min/);
 		await expect(selected).toContainText('34');
 		await expect(
 			page.getByRole('link', { name: fr ? 'Bilan de la ligne' : 'Line Record' }),

@@ -7,7 +7,6 @@
 		extra?: Snippet<[SurfaceRailContext]>;
 		after?: Snippet;
 		hideSummary?: () => boolean;
-		liveMoment?: string;
 	}
 
 	export const FrameControlsExtensionContext = Symbol('frame controls extension');
@@ -157,7 +156,7 @@
 	{#if frame.mode === 'live'}
 		<p class="w-full text-sm">
 			<strong class="block">{copy.recordDates}</strong>
-			<span class="text-muted-foreground">{extension?.liveMoment ?? copy.liveMoment}</span>
+			<span class="text-muted-foreground">{copy.liveMoment}</span>
 		</p>
 	{:else}
 		{#if !extension}<SegmentedChoice

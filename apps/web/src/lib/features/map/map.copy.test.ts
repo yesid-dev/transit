@@ -54,11 +54,6 @@ describe('map copy', () => {
 		expect(copy.fr.entityBus).toBe('Véhicule');
 	});
 
-	it('carries a bilingual accessible label for the detail-panel resize handle', () => {
-		expect(copy.en.detailResizeLabel).toBe('Resize details panel');
-		expect(copy.fr.detailResizeLabel).toBe('Redimensionner le panneau de détails');
-	});
-
 	it('invites precise near-me address searches', () => {
 		expect(copy.en.nearMeSearchPlaceholder).toBe('Address, postal code, or coordinates');
 		expect(copy.fr.nearMeSearchPlaceholder).toBe('Adresse, code postal ou coordonnées');
@@ -132,28 +127,8 @@ describe('map copy', () => {
 		expect(copy.fr.motion.raw).toBe('Signalées');
 	});
 
-	it('uses frozen prefix-matching rail abbreviations and drawer actions', () => {
-		expect(copy.en.rail).toEqual({
-			motion: 'Pos.',
-			legend: 'Legend',
-			markers: 'Mark.',
-			alerts: 'Alerts',
-			active: 'Active',
-			status: 'Status',
-			crowding: 'Crowd',
-		});
-		expect(copy.fr.rail).toEqual({
-			motion: 'Pos.',
-			legend: 'Lég.',
-			markers: 'Marq.',
-			alerts: 'Alertes',
-			active: 'Actifs',
-			status: 'Statut',
-			crowding: 'Achal.',
-		});
+	it('labels the active filters group in both languages', () => {
 		expect(copy.en.activeTitle).toBe('Active');
 		expect(copy.fr.activeTitle).toBe('Actifs');
-		expect(copy.en.controlsDone).toBe('Done');
-		expect(copy.fr.controlsDone).toBe('Terminé');
 	});
 });

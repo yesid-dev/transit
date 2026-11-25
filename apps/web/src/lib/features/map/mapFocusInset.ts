@@ -48,10 +48,7 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 		const pairedControls = frame
 			?.querySelector('[data-frame-controls="desktop"]')
 			?.getBoundingClientRect();
-		const panel = pairedControls?.width ? pairedControls : rect('.map-filter-panel');
-		const controls = [rect('.map-filter-pill-container'), rect('.map-near')].filter(
-			(r) => r !== null,
-		);
+		const panel = pairedControls?.width ? pairedControls : null;
 		const north = rect('[data-slot="map-north"]');
 		const heading = rect('.map-head');
 		const header = frame?.querySelector('[data-slot="app-frame-chrome"]')?.getBoundingClientRect();
@@ -59,16 +56,14 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			?.querySelector('.app-frame-body > [data-slot="surface-rail-mobile"]')
 			?.getBoundingClientRect();
 		const credit = frame?.querySelector('[data-slot="map-source-footer"]')?.getBoundingClientRect();
-		const leftControls = [rect('[data-slot="map-legend-fab"]'), rect('.map-filter-pill-container')];
-
-		const bottom = Math.max(0, ...controls.map((r) => box.bottom - r.top));
+		const legendButton = rect('[data-slot="map-legend-fab"]');
 		return {
 			left: panel ? panel.right - box.left : 0,
 			// The narrow controls rail leaves the provider framing viewport-centered.
 			// Point and route focus still clear its actual covered edge.
 			fitLeft: panel && panel.width > 56 ? panel.right - box.left : 0,
-			bottom: Math.max(bottom, north ? box.bottom - north.top : 0),
-			fitBesideNorth: north ? { right: box.right - north.left, bottom } : undefined,
+			bottom: north ? Math.max(0, box.bottom - north.top) : 0,
+			fitBesideNorth: north ? { right: box.right - north.left, bottom: 0 } : undefined,
 			fitBesideHeading:
 				heading && header && heading.left > box.left + box.width / 2
 					? {
@@ -78,7 +73,7 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 								0,
 								...[framePill, credit].map((r) => (r?.height ? box.bottom - r.top : 0)),
 							),
-							left: Math.max(0, ...leftControls.map((r) => (r ? r.right - box.left : 0))),
+							left: Math.max(0, (legendButton?.right ?? box.left) - box.left),
 						}
 					: undefined,
 		};

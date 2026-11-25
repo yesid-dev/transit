@@ -4,7 +4,6 @@
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack, type Snippet } from 'svelte';
-	import { Card } from '@yesid/ui/card';
 	import { Separator } from '@yesid/ui/separator';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { theme } from '@yesid/ui/state';
@@ -26,9 +25,9 @@
 		isLineInCapturedView,
 		type MapReportCamera,
 	} from './mapReportCamera';
+	import { measureMapFocusInset } from './mapFocusInset';
 	import { attachRecordMap } from './recordMapLayers';
 	import {
-		recordColours,
 		recordCorridors,
 		recordFeatures,
 		recordMapSampleText,
@@ -52,7 +51,7 @@
 		onsourcedate: (date: string | null) => void;
 		reportCamera?: MapReportCamera | null;
 		oncount?: (count: number | null) => void;
-		children?: Snippet<[Snippet<[Snippet | undefined]> | undefined]>;
+		children: Snippet<[Snippet<[Snippet | undefined]> | undefined]>;
 	}
 	let {
 		map,
@@ -87,7 +86,6 @@
 				}).toString()
 			: '',
 	);
-	const palette = $derived(recordColours[theme.current === 'dark' ? 'dark' : 'light']);
 	const routeTypes = $derived(new Map(routes.map((route) => [route.id, route.type ?? null])));
 	const scheduleOnly = $derived(lineIsScheduleOnly(provider, line, routeTypes.get(line) ?? null));
 	let request = $state.raw<{
@@ -231,15 +229,8 @@
 		] as [[number, number], [number, number]];
 		if (bounds[0][0] === bounds[1][0] && bounds[0][1] === bounds[1][1]) return;
 		untrack(() => {
-			const frame = instance.getContainer().getBoundingClientRect();
-			const head = instance
-				.getContainer()
-				.closest('.map-surface')
-				?.querySelector('.map-layer-controls')
-				?.getBoundingClientRect();
-			const top = Math.max(32, (head?.bottom ?? frame.top) - frame.top + 12);
 			instance.fitBounds(bounds, {
-				padding: { top, left: 32, right: 32, bottom: 48 },
+				padding: measureMapFocusInset(instance).fitPadding,
 				maxZoom: 15,
 				duration: 0,
 			});
@@ -254,26 +245,6 @@
 		tr('No live data', 'Aucune donnée en direct'),
 		tr('Measured', 'Mesuré'),
 	]);
-	const units = $derived(
-		stopLayer
-			? tr('Late stop events (%)', 'Passages en retard (%)')
-			: tr('Mean time lost (s per run)', 'Temps perdu moyen (s par parcours)'),
-	);
-	const bins = $derived(
-		stopLayer
-			? [
-					tr('Under 10%', 'Moins de 10 %'),
-					tr('10 to <25%', '10 à <25 %'),
-					tr('25 to <50%', '25 à <50 %'),
-					tr('50% or more', '50 % ou plus'),
-				]
-			: [
-					tr('0 s or less', '0 s ou moins'),
-					tr('>0 to <30 s', '>0 à <30 s'),
-					tr('30 to <60 s', '30 à <60 s'),
-					tr('60 s or more', '60 s ou plus'),
-				],
-	);
 	const routeNames = $derived(new Map(routes.map((route) => [route.id, route.long])));
 	const stopCodes = $derived(new Map(stops.map((stop) => [stop.id, stop.code ?? stop.id])));
 	const shownCount = (value: number) => intl.number(locale).format(value);
@@ -316,11 +287,11 @@
 			sentence={stopLayer
 				? tr(
 						`is the highest late share of observed stop events in view, at stop ${leaderStop}, ${leader.name}.`,
-						`: la part de passages observés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
+						`est la part de passages observés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
 					)
 				: tr(
 						`is the most time lost between two stops in view: ${corridorReading(leader)}.`,
-						`\u00a0: le temps perdu le plus élevé entre deux arrêts en vue\u00a0: ${corridorReading(leader)}.`,
+						`est le plus grand temps perdu entre deux arrêts en vue\u00a0: ${corridorReading(leader)}.`,
 					)}
 		/>
 	{/if}
@@ -372,40 +343,6 @@
 			)}
 		</p>
 	{:else}
-		{#if !children}<section
-				aria-label={tr('Record map legend', 'Légende de la carte du bilan')}
-				data-slot="record-map-legend"
-			>
-				<h2>{units}</h2>
-				{#if !stopLayer}
-					<p>
-						{tr(
-							'Compared with the timetable for the same runs.',
-							'Par rapport à l’horaire des mêmes parcours.',
-						)}
-					</p>
-					{#if network}
-						<p>
-							{tr(
-								'The map draws a straight line between each pair of stops.',
-								'La carte relie chaque paire d’arrêts par un trait droit.',
-							)}
-						</p>
-					{/if}
-				{/if}
-				<ul class="bins">
-					{#each bins as label, i (label)}
-						<li style:--swatch={palette[i]}>{label}</li>
-					{/each}
-				</ul>
-				<ul class="states" class:stops={stopLayer}>
-					{#each [1, 0, 2] as state (state)}
-						<li data-state={state} style:--swatch={palette[state === 1 ? 5 : state === 2 ? 6 : 4]}>
-							<span aria-hidden="true"></span>{stateLabels[state]}
-						</li>
-					{/each}
-				</ul>
-			</section>{/if}
 		{#if pending}
 			{#key scope}<RecordPending {locale} />{/key}
 		{:else if !answer}
@@ -425,7 +362,7 @@
 				</p>
 			{/if}
 			{#if marks.length > 0}
-				{#if children && reportCamera}
+				{#if reportCamera}
 					<Separator decorative />
 					<section
 						aria-label={stopLayer
@@ -474,12 +411,8 @@
 												onclick={() => (selectedId = mark.id)}>{mark.fromName}</Button
 											>
 										{/if}
-										{#if stopLayer && stopCode}
-											<small
-												>{stopCode}{mark.sample === null
-													? ''
-													: `, ${shownCount(mark.sample)} ${tr('stop events', 'passages')}`}</small
-											>
+										{#if stopLayer && mark.sample !== null}
+											<small>{shownCount(mark.sample)} {tr('stop events', 'passages')}</small>
 										{:else if mark.toName}<small>{tr('to', 'à')} {mark.toName}</small>{/if}
 									</div>
 									<span class="record-in-view-value" class:measured={mark.value !== null}
@@ -528,12 +461,9 @@
 		{/if}
 		<div role="status" aria-atomic="true" data-slot="record-map-selection">
 			{#if selected}
-				{#if children}<Button
-						variant="ghost"
-						size="sm"
-						class="min-h-11"
-						onclick={() => (selectedId = null)}>{tr('Back', 'Retour')}</Button
-					>{/if}
+				<Button variant="ghost" size="sm" class="min-h-11" onclick={() => (selectedId = null)}
+					>{tr('Back', 'Retour')}</Button
+				>
 				<h2>{selected.name}</h2>
 				<p>
 					{stateLabels[selected.state]}{selected.value !== null
@@ -567,20 +497,12 @@
 {/snippet}
 
 {#snippet recordContent(stamp: Snippet | undefined)}
-	<div class="record-panel" class:record-panel-standalone={!children}>
-		{#if children}
-			{@render recordBody(stamp)}
-		{:else}
-			<Card edge="neutral" interactive class="p-3">{@render recordBody(stamp)}</Card>
-		{/if}
+	<div class="record-panel">
+		{@render recordBody(stamp)}
 	</div>
 {/snippet}
 
-{#if children}
-	{@render children(layer === 'live' ? undefined : recordContent)}
-{:else if layer !== 'live'}
-	{@render recordContent(undefined)}
-{/if}
+{@render children(layer === 'live' ? undefined : recordContent)}
 
 <style>
 	.record-panel {
@@ -589,12 +511,6 @@
 		color: var(--foreground);
 		font-size: var(--text-small);
 		line-height: 1.35;
-	}
-	.record-panel-standalone {
-		width: min(26rem, calc(100vw - 1.5rem));
-		max-height: min(27rem, 48dvh);
-		overflow: auto;
-		overscroll-behavior: contain;
 	}
 	.record-in-view-row {
 		display: grid;
@@ -643,53 +559,6 @@
 	ul {
 		list-style: none;
 		padding: 0;
-	}
-	.bins {
-		display: grid;
-		grid-template-columns: repeat(4, minmax(0, 1fr));
-		gap: 0.375rem;
-	}
-	.bins li {
-		border-top: 0.3rem solid var(--swatch);
-		padding-top: 0.25rem;
-	}
-	.states {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem 0.75rem;
-		margin-top: 0.5rem;
-	}
-	.states li {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.35rem;
-	}
-	.states span {
-		width: 1rem;
-		height: 0.375rem;
-		border-top: 0.18rem solid var(--swatch);
-	}
-	.states [data-state='0'] span {
-		border-top-style: dotted;
-	}
-	.states [data-state='1'] span,
-	.states [data-state='2'] span {
-		border-top-style: dashed;
-	}
-	.states [data-state='2'] span {
-		border-bottom: 0.1rem solid var(--swatch);
-	}
-	.states.stops span {
-		width: 0.65rem;
-		height: 0.65rem;
-		border: 0.125rem solid var(--swatch);
-		border-radius: 50%;
-	}
-	.states.stops [data-state='1'] span {
-		background: var(--swatch);
-	}
-	.states.stops [data-state='2'] span {
-		background: radial-gradient(var(--swatch) 35%, transparent 40%);
 	}
 	.scope {
 		display: flex;

@@ -26,10 +26,13 @@ function rect(width: number, height: number): DOMRect {
 function mountedMap() {
 	const hero = document.createElement('div');
 	hero.className = 'map-hero';
+	const frame = document.createElement('div');
+	frame.dataset.slot = 'app-frame';
 	const container = document.createElement('div');
 	hero.append(container);
-	document.body.append(hero);
-	return { hero, container, map: { getContainer: () => container } };
+	frame.append(hero);
+	document.body.append(frame);
+	return { frame, hero, container, map: { getContainer: () => container } };
 }
 
 function measurementAdapter(
@@ -118,17 +121,17 @@ describe('map focus inset arithmetic', () => {
 			[0, 320, 400, 560].map((right) => ({ width, right })),
 		),
 	)('balances expanded controls and detail at $width/$right', ({ width, right }) => {
-		const { hero, container, map } = mountedMap();
+		const { frame, hero, container, map } = mountedMap();
 		hero.style.setProperty('--map-detail-offset', `${right}px`);
 		vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect(width, 900));
 		const panel = document.createElement('div');
-		panel.className = 'map-filter-panel';
+		panel.dataset.frameControls = 'desktop';
 		vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({
 			...rect(300, 600),
 			left: 16,
 			right: 316,
 		});
-		hero.append(panel);
+		frame.append(panel);
 		const inset = measureMapFocusInset(map);
 		const visibleCenter = (width + 316 - right) / 2;
 		expect((width + inset.fitPadding.left - inset.fitPadding.right) / 2).toBe(visibleCenter);
@@ -136,16 +139,16 @@ describe('map focus inset arithmetic', () => {
 	it.each([1280, 1440, 1536, 1600, 1920, 2560])(
 		'centers the provider in a %spx viewport when controls are a rail',
 		(width) => {
-			const { hero, container, map } = mountedMap();
+			const { frame, container, map } = mountedMap();
 			vi.spyOn(container, 'getBoundingClientRect').mockReturnValue(rect(width, 864));
 			const panel = document.createElement('div');
-			panel.className = 'map-filter-panel';
+			panel.dataset.frameControls = 'desktop';
 			vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({
 				...rect(56, 600),
 				left: 16,
 				right: 72,
 			});
-			hero.append(panel);
+			frame.append(panel);
 			const inset = measureMapFocusInset(map);
 			expect(inset.fitPadding.left).toBe(inset.fitPadding.right);
 			// Point focus still avoids the rail so a selected vehicle remains reachable.

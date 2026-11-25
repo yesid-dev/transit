@@ -34,7 +34,7 @@
 	import MapNearMeControl from './MapNearMeControl.svelte';
 	import MapNorthControl from './MapNorthControl.svelte';
 	import MapHoverPeek from './MapHoverPeek.svelte';
-	import { mapLegend } from './mapLegend';
+	import { mapLegend, railLegendName } from './mapLegend';
 	import { peekRepeatsDetail } from './mapHoverPeek';
 	import { frameClock, parseFrameState } from '#lib/site/frameState.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
@@ -71,7 +71,8 @@
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import MapFilters from './MapFilters.svelte';
 	import MapMotionControl from './MapMotionControl.svelte';
-	import MapSelectionDetail from './MapSelectionDetail.svelte';
+	import { detailStopName } from './mapSelectionDetail.logic';
+	import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
 	import MapSelectionSummary from './MapSelectionSummary.svelte';
 	import MapSurfaceCanvasLayer from './MapSurfaceCanvasLayer.svelte';
 	import { zoomForNearMePrecision } from './mapGeo';
@@ -420,18 +421,13 @@
 		return names.size === 1 ? (names.values().next().value ?? null) : null;
 	}
 	const selectedDetail = $derived(session.detail);
+	const selectionCopy = $derived(MAP_SELECTION_DETAIL_COPY[locale]);
 	const selectionPresence = $derived(session.presence);
 	const selectionSourceHealth = $derived(session.sourceHealth);
 	const selectedVehicleAbsence = $derived(session.vehicleAbsence);
 	const hoverPeek = $derived(session.hoverPeek);
 	const routeList = $derived(session.routeList);
-	const railName = $derived(
-		session.routesIndex.some((route) => route.type === 1)
-			? 'métro'
-			: session.routesIndex.some((route) => /\bo-train\b/i.test(route.long ?? ''))
-				? 'O-Train'
-				: undefined,
-	);
+	const railName = $derived(railLegendName(locale, page.data.provider, session.routesIndex));
 	const routeLineRoutes = $derived(session.routeLineRoutes);
 	const selectedRouteLine = $derived(session.selectedRouteLine);
 	const selectedVehicleId = $derived(session.selectedVehicleId);
@@ -825,7 +821,6 @@
 			extra: mapControls,
 			after: desktopLegend,
 			hideSummary: () => !wide && remWidth >= 24,
-			liveMoment: tr('Live now shows this moment only.', 'Situation actuelle du réseau.'),
 		}),
 	);
 </script>
@@ -868,7 +863,26 @@
 	>
 		<div class="flex items-baseline justify-between gap-2">
 			<h2 class="text-lg font-semibold">
-				<MapSelectionDetail detail={selectedDetail} {locale} presentation="identity" />
+				<span class="detail-identity" data-slot="detail-identity" data-kind={selectedDetail?.kind}>
+					{#if selectedDetail}
+						<span class="detail-identity-kind"
+							>{selectedDetail.kind === 'vehicle'
+								? selectionCopy.bus
+								: selectedDetail.kind === 'route'
+									? selectionCopy.route
+									: selectionCopy.stop}</span
+						>
+						<span class="detail-identity-title"
+							>{selectedDetail.kind === 'vehicle'
+								? selectedDetail.vehicle.id
+								: selectedDetail.kind === 'route'
+									? lineLabel(selectedDetail.id, session.routesIndex)
+									: detailStopName(selectedDetail.stop, locale)}</span
+						>
+					{:else}
+						<span class="detail-identity-title">{selectionCopy.alertLink}</span>
+					{/if}
+				</span>
 			</h2>
 			<Button
 				bind:ref={detailBack}
@@ -904,15 +918,14 @@
 	</Card>
 {/snippet}
 
-{#snippet motionHeader(collapsed: boolean)}
-	<MapMotionControl {locale} copy={t} {collapsed} />
+{#snippet motionHeader()}
+	<MapMotionControl {locale} copy={t} />
 {/snippet}
 
 {#snippet mapControls(context: import('@yesid/ui/layout').SurfaceRailContext)}
 	{#if !isRecordLayer && !mapFailure}
 		<div class="contents" data-map-controls data-ripple-exempt>
 			<MapNearMeControl
-				inline
 				bind:open={nearMeController.open}
 				bind:query={nearMeController.query}
 				{locale}
@@ -957,8 +970,6 @@
 					{locale}
 					routes={session.routesIndex}
 					stops={stopList}
-					collapsible={false}
-					controlsMode={false}
 					header={motionHeader}
 				/>
 				<ul class="grid list-none gap-1 p-0 text-sm text-muted-foreground">
@@ -1174,14 +1185,7 @@
 		</div>
 	</MapFrame>
 	{#if !wide}
-		<MapLegendControl
-			{locale}
-			presentation="phone"
-			{colourBy}
-			staleCutoffS={liveTimingFor(manifest).staleCutoffS}
-			hidden={detailOpen || inViewOpen}
-			content={phoneLegend}
-		/>
+		<MapLegendControl {locale} hidden={detailOpen || inViewOpen} content={phoneLegend} />
 		<Button
 			variant="outline"
 			size="sm"
@@ -1276,6 +1280,35 @@
 </div>
 
 <style>
+	.detail-identity {
+		display: grid;
+		gap: 0.125rem;
+		min-width: 0;
+	}
+	.detail-identity-kind {
+		font-family: var(--font-mono);
+		font-size: var(--text-micro);
+		font-weight: 500;
+		line-height: 1.2;
+		letter-spacing: var(--tracking-eyebrow);
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+	}
+	.detail-identity-title {
+		min-width: 0;
+		overflow-wrap: anywhere;
+		font-family: var(--font-heading);
+		font-size: var(--text-card-title);
+		font-weight: 700;
+		line-height: 1.15;
+		letter-spacing: -0.01em;
+		color: var(--foreground);
+	}
+	.detail-identity[data-kind='vehicle'] .detail-identity-title,
+	.detail-identity[data-kind='route'] .detail-identity-title {
+		font-variant-numeric: tabular-nums;
+	}
+
 	.map-hero {
 		position: relative;
 		width: 100%;
