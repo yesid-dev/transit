@@ -1,5 +1,5 @@
 import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
-import type { RecordFeatures } from './recordMap';
+import { OTHER_STOPS_MIN_ZOOM, type RecordFeatures } from './recordMap';
 
 const sourceId = 'record-map';
 const pointsId = 'record-map-stops';
@@ -10,7 +10,13 @@ const segmentIds = [
 	'record-map-no-live',
 	'record-map-measured',
 ];
-const allIds = [pointDetailId, pointsId, ...segmentIds];
+const allIds = [
+	pointDetailId,
+	pointsId,
+	`${pointDetailId}-other`,
+	`${pointsId}-other`,
+	...segmentIds,
+];
 
 export function attachRecordMap(
 	map: MapLibreMap,
@@ -42,27 +48,37 @@ export function attachRecordMap(
 				},
 			});
 		});
-		map.addLayer({
-			id: pointsId,
-			type: 'circle',
-			source: sourceId,
-			filter: ['==', ['geometry-type'], 'Point'],
-			layout: { 'circle-sort-key': ['get', 'state'] },
-			paint: {
-				'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 2.5, 15, 5],
-				'circle-color': ['get', 'colour'],
-				'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
-				'circle-stroke-color': ['get', 'colour'],
-				'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 1.5],
-			},
-		});
-		map.addLayer({
-			id: pointDetailId,
-			type: 'circle',
-			source: sourceId,
-			filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'state'], 2]],
-			paint: { 'circle-color': ['get', 'colour'], 'circle-radius': 1.25 },
-		});
+		for (const main of [true, false]) {
+			const minzoom = main ? 0 : OTHER_STOPS_MIN_ZOOM;
+			map.addLayer({
+				id: main ? pointsId : `${pointsId}-other`,
+				minzoom,
+				type: 'circle',
+				source: sourceId,
+				filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'main'], main]],
+				layout: { 'circle-sort-key': ['get', 'state'] },
+				paint: {
+					'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 2.5, 15, 5],
+					'circle-color': ['get', 'colour'],
+					'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
+					'circle-stroke-color': ['get', 'colour'],
+					'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 1.5],
+				},
+			});
+			map.addLayer({
+				id: main ? pointDetailId : `${pointDetailId}-other`,
+				minzoom,
+				type: 'circle',
+				source: sourceId,
+				filter: [
+					'all',
+					['==', ['geometry-type'], 'Point'],
+					['==', ['get', 'main'], main],
+					['==', ['get', 'state'], 2],
+				],
+				paint: { 'circle-color': ['get', 'colour'], 'circle-radius': 1.25 },
+			});
+		}
 	}
 	function pick(event: MapMouseEvent) {
 		const layers = allIds.filter((id) => map.getLayer(id));

@@ -1,14 +1,9 @@
 <script lang="ts">
 	import { createRawSnippet } from 'svelte';
-	import { RoutePlate } from '@yesid/ui/brand';
+	import { RoutePlate, statusGlyphSvg } from '@yesid/ui/brand';
 	import { MapLegend, type MapLegendItem, type MapLegendProps } from '@yesid/ui/map';
 	import { theme } from '@yesid/ui/state';
-	import {
-		OCCUPANCY_GLYPH,
-		STATUS_GLYPH,
-		occupancyVar,
-		statusVar,
-	} from '#lib/components/dataviz/tokens.ts';
+	import { OCCUPANCY_GLYPH, occupancyVar, statusVar } from '#lib/components/dataviz/tokens.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 	import { mapLegend, type LegendColourBy, type LegendMark } from './mapLegend';
@@ -55,16 +50,22 @@
 	});
 
 	function symbol(mark: LegendMark) {
-		if (mark.kind === 'status' || mark.kind === 'occupancy') {
-			const ink = mark.kind === 'status' ? statusVar(mark.code) : occupancyVar(mark.code);
-			const badge = mark.kind === 'status' ? STATUS_GLYPH[mark.code] : OCCUPANCY_GLYPH[mark.code];
+		if (mark.kind === 'status') {
+			const glyph = statusGlyphSvg(mark.code, { size: 16, ink: 'currentColor' });
 			return createRawSnippet(() => ({
 				render: () =>
-					`<span class="inline-flex items-center gap-1" style="color:${ink}"><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><rect width="12" height="14" rx="3" fill="currentColor"/><rect x="2" y="2" width="8" height="4" rx="1" fill="var(--card)"/><circle cx="3" cy="11" r="1" fill="var(--card)"/><circle cx="9" cy="11" r="1" fill="var(--card)"/></svg>${badge}</span>`,
+					`<span class="inline-flex" aria-hidden="true" style="color:${statusVar(mark.code)}">${glyph}</span>`,
+			}));
+		}
+		if (mark.kind === 'occupancy') {
+			return createRawSnippet(() => ({
+				render: () =>
+					`<span style="color:${occupancyVar(mark.code)}" aria-hidden="true">${OCCUPANCY_GLYPH[mark.code]}</span>`,
 			}));
 		}
 		return emptyMark;
 	}
+
 	const groups = $derived.by(() => {
 		const network = {
 			title: tr('The network', 'Le réseau'),
@@ -111,22 +112,24 @@
 			network,
 		];
 	});
+	const palette = $derived(recordColours[theme.current === 'dark' ? 'dark' : 'light']);
 	const scale = $derived.by((): MapLegendProps['scale'] => {
 		if (layer === 'live') return undefined;
-		const palette = recordColours[theme.current === 'dark' ? 'dark' : 'light'];
 		const labels =
 			layer === 'stops'
 				? [
 						tr('Under 10%', 'Moins de 10 %'),
-						tr('10 to <25%', '10 à <25 %'),
-						tr('25 to <50%', '25 à <50 %'),
-						tr('50% and over', '50 % et plus'),
+						tr('10 to under 15%', '10 à moins de 15 %'),
+						tr('15 to under 20%', '15 à moins de 20 %'),
+						tr('20 to under 25%', '20 à moins de 25 %'),
+						tr('25% and over', '25 % et plus'),
 					]
 				: [
-						tr('0 s or less', '0 s ou moins'),
-						tr('>0 to <30 s', '>0 à <30 s'),
-						tr('30 to <60 s', '30 à <60 s'),
-						tr('60 s and over', '60 s et plus'),
+						tr('Zero seconds or less', 'Zéro seconde ou moins'),
+						tr('Over zero and under 30 seconds', 'Plus de zéro et moins de 30 secondes'),
+						tr('30 to under 60 seconds', '30 à moins de 60 secondes'),
+						tr('1 to under 2 minutes', '1 à moins de 2 minutes'),
+						tr('2 minutes and over', '2 minutes et plus'),
 					];
 		return {
 			title:
@@ -135,7 +138,7 @@
 							'Share of observed stop events that were late',
 							'Part des passages observés en retard',
 						)
-					: tr('Time lost between two stops', 'Temps perdu entre deux arrêts'),
+					: tr('Time lost between two main stops', 'Temps perdu entre deux arrêts principaux'),
 			steps: labels.map((label, index) => ({ label, swatch: palette[index]! })),
 			states: [
 				{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
@@ -156,9 +159,12 @@
 {#snippet selectedMark()}{@render networkLine('var(--accent-text)')}{/snippet}
 {#snippet numberMark()}<RoutePlate code="51" />{/snippet}
 {#snippet emptyMark()}{/snippet}
-{#snippet lowSampleMark()}<span>●</span>{/snippet}
-{#snippet noSampleMark()}<span>○</span>{/snippet}
-{#snippet scheduleMark()}<span>⊙</span>{/snippet}
+{#snippet lowSampleMark()}<span style:color={palette[6]}>{layer === 'stops' ? '●' : '┄'}</span
+	>{/snippet}
+{#snippet noSampleMark()}<span style:color={palette[5]}>{layer === 'stops' ? '○' : '┈'}</span
+	>{/snippet}
+{#snippet scheduleMark()}<span style:color={palette[7]}>{layer === 'stops' ? '⊙' : '┅'}</span
+	>{/snippet}
 
 <MapLegend
 	class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)]"

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VehicleFC, VehicleFeature } from './vehicleLayer';
 import {
 	createVehicleOverlay,
-	STATUS_BADGE_MIN_ZOOM,
+	CROWDING_BADGE_MIN_ZOOM,
 	VEHICLE_OVERLAY_RECEIPT,
 	visibleBadge,
 } from './vehicleOverlay';
@@ -11,12 +11,12 @@ import {
 	HEADING_ICON,
 	SILENT_ICON,
 	VEHICLE_MARKER_GEOMETRY,
-	stateBadgeIconId,
+	occupancyBadgeIconId,
 	type VehicleSpriteReceipt,
 } from './vehicleSprites';
-import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
+import { OCCUPANCY_CODES } from '#lib/v1/schemas/types.ts';
 
-const LATE = stateBadgeIconId('status', 'late');
+const FULL = occupancyBadgeIconId('full');
 
 type PaintCall = { kind: string; id?: string; values?: number[]; opacity?: number };
 
@@ -104,7 +104,7 @@ function harness() {
 	const sprites = {
 		pixelRatio: 2,
 		sprites: Object.fromEntries(
-			['body-a', 'body-b', HEADING_ICON, 'mark-a', 'mark-b', LATE, SILENT_ICON].map((id) => [
+			['body-a', 'body-b', HEADING_ICON, 'mark-a', 'mark-b', FULL, SILENT_ICON].map((id) => [
 				id,
 				image(id),
 			]),
@@ -157,7 +157,7 @@ function feature(
 afterEach(() => vi.restoreAllMocks());
 
 describe('vehicle moving foreground', () => {
-	it('draws status badges from zoom 13 and centres the not-reporting badge below it', () => {
+	it('draws crowding badges from zoom 13 and centres the not-reporting badge below it', () => {
 		const { overlay, calls, setCamera } = harness();
 		const scene: VehicleFC = {
 			type: 'FeatureCollection',
@@ -169,7 +169,7 @@ describe('vehicle moving foreground', () => {
 			overlay.draw(scene);
 			return calls.filter((call) => call.kind === 'sprite').map((call) => call.id);
 		};
-		expect(STATUS_BADGE_MIN_ZOOM).toBe(13);
+		expect(CROWDING_BADGE_MIN_ZOOM).toBe(13);
 		expect(painted(12.9)).toEqual(['body-b', 'body-a', HEADING_ICON, HEADING_ICON, SILENT_ICON]);
 		expect(painted(13)).toEqual([
 			'body-b',
@@ -180,7 +180,7 @@ describe('vehicle moving foreground', () => {
 			'mark-a',
 			SILENT_ICON,
 		]);
-		// Bus 'a' sits at x 400 and has a status; its "!" moves aside only when the badge is drawn.
+		// Vehicle 'a' sits at x 400, with an offset when the crowding badge is drawn.
 		const silentCentreX = (zoom: number) => {
 			painted(zoom);
 			const [left, , size] = calls.find((call) => call.id === SILENT_ICON)!.values!;
@@ -192,17 +192,11 @@ describe('vehicle moving foreground', () => {
 		overlay.destroy();
 	});
 
-	it('shows status and crowding badges only from zoom 13', () => {
-		for (const code of STATUS_CODES) {
-			const mark = stateBadgeIconId('status', code);
-			expect(visibleBadge(mark, 12.9)).toBe('');
-			expect(visibleBadge(mark, 11)).toBe('');
-			expect(visibleBadge(mark, STATUS_BADGE_MIN_ZOOM)).toBe(mark);
-		}
+	it('shows crowding badges only from zoom 13', () => {
 		for (const code of OCCUPANCY_CODES) {
-			const mark = stateBadgeIconId('occupancy', code);
+			const mark = occupancyBadgeIconId(code);
 			expect(visibleBadge(mark, 12.9)).toBe('');
-			expect(visibleBadge(mark, STATUS_BADGE_MIN_ZOOM)).toBe(mark);
+			expect(visibleBadge(mark, CROWDING_BADGE_MIN_ZOOM)).toBe(mark);
 		}
 		expect(visibleBadge('', 15)).toBe('');
 	});
@@ -210,8 +204,8 @@ describe('vehicle moving foreground', () => {
 	it('keeps the stale marker and vehicle hit targets at zoom 12', () => {
 		const { overlay, calls, setCamera } = harness();
 		setCamera({ zoom: 12 });
-		const late = feature('a', 0, { mark: LATE });
-		const stale = feature('b', 1, { mark: LATE, stale: 1 });
+		const late = feature('a', 0, { mark: FULL });
+		const stale = feature('b', 1, { mark: FULL, stale: 1 });
 		overlay.draw({ type: 'FeatureCollection', features: [late, stale] });
 		const sprites = calls.filter((call) => call.kind === 'sprite');
 		expect(sprites.map((call) => call.id)).toEqual([
@@ -221,7 +215,7 @@ describe('vehicle moving foreground', () => {
 			HEADING_ICON,
 			SILENT_ICON,
 		]);
-		// The stale marker uses its standalone offset while status badges are hidden.
+		// The stale marker uses its standalone offset while crowding badges are hidden.
 		const scale = 0.78 + (1.3 - 0.78) / 4;
 		const [left, , size] = sprites.at(-1)!.values!;
 		expect(left + size / 2).toBeCloseTo(
@@ -237,7 +231,7 @@ describe('vehicle moving foreground', () => {
 
 	it('paints full-feature passes and the near-target pin last with the GL backing ratio', () => {
 		const { overlay, calls, container, setCamera } = harness();
-		setCamera({ zoom: STATUS_BADGE_MIN_ZOOM });
+		setCamera({ zoom: CROWDING_BADGE_MIN_ZOOM });
 		overlay.setScene(false, { lon: 3, lat: 0, label: 'Near' }, null, null);
 		overlay.draw({
 			type: 'FeatureCollection',
@@ -312,7 +306,7 @@ describe('vehicle moving foreground', () => {
 
 	it('keeps badge and heading size separate from body pitch scaling, with global stale dim only on the first three sprite passes', () => {
 		const { overlay, calls, setCamera } = harness();
-		setCamera({ zoom: STATUS_BADGE_MIN_ZOOM, pitch: 40, bearing: 45 });
+		setCamera({ zoom: CROWDING_BADGE_MIN_ZOOM, pitch: 40, bearing: 45 });
 		overlay.setScene(true, null, null, null);
 		overlay.draw({ type: 'FeatureCollection', features: [feature('a', 0, { stale: 1 })] });
 		const sprites = calls.filter((call) => call.kind === 'sprite');

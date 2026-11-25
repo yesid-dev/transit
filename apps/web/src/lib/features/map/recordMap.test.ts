@@ -5,7 +5,9 @@ import {
 	recordColours,
 	recordCorridors,
 	recordMapSampleText,
+	recordStopIsVisible,
 	recordStops,
+	scheduleTerminals,
 } from './recordMap';
 
 const stops = [
@@ -127,9 +129,12 @@ it('assigns separate legend marks to every non-value state and readable theme co
 		recordColourIndex(0, null, true),
 		recordColourIndex(1, null, true),
 		recordColourIndex(2, null, true),
-	]).toEqual([4, 5, 6]);
-	expect([0, 100, 250, 500].map((value) => recordColourIndex(3, value, true))).toEqual([
-		0, 1, 2, 3,
+	]).toEqual([5, 6, 7]);
+	expect([0, 100, 150, 200, 250].map((value) => recordColourIndex(3, value, true))).toEqual([
+		0, 1, 2, 3, 4,
+	]);
+	expect([-1, 0, 0.5, 30, 60, 120].map((value) => recordColourIndex(3, value, false))).toEqual([
+		0, 0, 1, 2, 3, 4,
 	]);
 	const luminance = (hex: string) =>
 		[0.2126, 0.7152, 0.0722].reduce((sum, weight, channel) => {
@@ -140,10 +145,44 @@ it('assigns separate legend marks to every non-value state and readable theme co
 		[recordColours.light, '#ffffff'],
 		[recordColours.dark, '#20232a'],
 	] as const) {
+		const ramp = palette.slice(0, 5).map(luminance);
+		const ordered = [...ramp].sort((a, b) => (background === '#ffffff' ? b - a : a - b));
+		expect(ramp).toEqual(ordered);
 		for (const colour of palette) {
 			const light = Math.max(luminance(colour), luminance(background));
 			const dark = Math.min(luminance(colour), luminance(background));
 			expect((light + 0.05) / (dark + 0.05)).toBeGreaterThanOrEqual(3);
 		}
 	}
+});
+
+it('keeps terminal, transfer and rail stops at network zoom and adds other stops on zoom in', () => {
+	const terminalIds = scheduleTerminals({
+		line: [
+			{
+				stops: [
+					{ id: 'A', seq: 1 },
+					{ id: 'B', seq: 2 },
+					{ id: 'C', seq: 3 },
+				],
+			},
+		],
+	});
+	const marks = recordStops(
+		[
+			...stops,
+			{ id: 'E', name: 'Transfer', lat: 45.5, lon: -73.56, routes: ['1', '2'] },
+			{ id: 'F', name: 'Rail', lat: 45.5, lon: -73.55, mode: 'rail' },
+		],
+		null,
+		() => false,
+		terminalIds,
+	);
+	expect(marks.filter((mark) => recordStopIsVisible(mark, 12.99)).map(({ id }) => id)).toEqual([
+		'A',
+		'C',
+		'E',
+		'F',
+	]);
+	expect(marks.filter((mark) => recordStopIsVisible(mark, 13))).toEqual(marks);
 });

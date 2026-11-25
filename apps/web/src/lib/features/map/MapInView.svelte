@@ -1,12 +1,14 @@
 <script lang="ts">
+	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Button } from '@yesid/ui/button';
 	import { Separator } from '@yesid/ui/separator';
-	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
+	import { ChevronToggle, RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import MapPanelAnswer from './MapPanelAnswer.svelte';
+	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import { delayReading, mapDirectionReading } from '#lib/site/presenter.ts';
+	import { dateAndClock, delayReading, mapDirectionReading } from '#lib/site/presenter.ts';
 	import { mapReportsCopy } from './mapReports.copy';
 	import { mapReportsCsv } from './mapReportsCsv';
 	import { mapStatusLabel } from './mapStatusLabels';
@@ -65,16 +67,6 @@
 	);
 	const csv = $derived(actions && model ? mapReportsCsv(model) : null);
 	const uid = $props.id();
-	let copyState = $state('');
-	async function copyView() {
-		if (!liveViewHref) return;
-		try {
-			await navigator.clipboard.writeText(liveViewHref);
-			copyState = t.copied;
-		} catch {
-			copyState = t.copyFailed;
-		}
-	}
 </script>
 
 {#if model}
@@ -140,26 +132,57 @@
 			</Button>
 		{/if}
 		{#if !rows.length}<p>{french ? 'Aucun véhicule en vue.' : 'No vehicles in view.'}</p>{/if}
-		<details bind:open={actions} class="text-sm">
-			<summary class="min-h-11 py-3">Actions</summary>
-			{#if liveViewHref}<Button
-					variant="outline"
-					size="cta-sm"
-					class="min-h-11 max-w-full"
-					wrap
-					onclick={copyView}>{t.copyLiveView}</Button
-				>{/if}
-			{#if liveViewHref}<p class="text-muted-foreground">{t.copyDisclaimer}</p>{/if}
-			{#if csv}<Button
-					variant="outline"
-					size="cta-sm"
-					class="min-h-11 max-w-full"
-					href={csv.href}
-					download={csv.filename}
-					wrap>{t.downloadCsv}</Button
-				>{/if}
-			<p role="status">{copyState}</p>
-		</details>
+		{#if liveViewHref}
+			<Collapsible.Root bind:open={actions} class="text-sm" data-map-in-view-actions>
+				<Collapsible.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="sm"
+							class="min-h-11 gap-2"
+							data-map-in-view-actions-trigger
+							wrap
+						>
+							{french ? 'Actions de la vue' : 'Actions'}
+							<ChevronToggle open={actions} size="sm" />
+						</Button>
+					{/snippet}
+				</Collapsible.Trigger>
+				<Collapsible.Content>
+					{#if csv}
+						<p class="text-muted-foreground">{t.copyDisclaimer}</p>
+						<RecordActionGroup
+							{locale}
+							href={liveViewHref}
+							groupLabel={french ? 'Actions de la vue en direct' : 'Live view actions'}
+							directDownload
+							files={[{ href: csv.href, label: t.downloadCsv, filename: csv.filename }]}
+						>
+							{#snippet citation()}
+								<p>
+									{model.providerName} · {french ? 'V\u00e9hicules en vue' : 'Vehicles in view'}
+								</p>
+								<p>
+									<time datetime={model.generatedUtc}
+										>{dateAndClock(model.generatedUtc, locale, model.timeZone, true)}</time
+									>
+								</p>
+								{#if model.methodologyVersion}<p>
+										{french ? 'M\u00e9thode' : 'Method'}
+										{model.methodologyVersion}
+									</p>{/if}
+								{#if model.attribution}<p>{model.attribution}</p>{/if}
+								<p>{t.copyDisclaimer}</p>
+								<a class="text-primary underline" href={liveViewHref}
+									>{french ? 'Vue en direct' : 'Live view'}</a
+								>
+							{/snippet}
+						</RecordActionGroup>
+					{/if}
+				</Collapsible.Content>
+			</Collapsible.Root>
+		{/if}
 	{:else if view.kind === 'unavailable'}
 		<p role="status">
 			{view.reason === 'alerts' ? t.unavailableAlerts : t.unavailableSource}

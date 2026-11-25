@@ -12,7 +12,7 @@
 		mapRecordSourceDateContext,
 	} from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
-	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
+	import { ChevronToggle, SegmentedChoice, Stamp } from '@yesid/ui/brand';
 	import { MapFrame } from '@yesid/ui/map';
 	import { Card } from '@yesid/ui/card';
 	import { Sheet, SheetContent, SheetTitle, type SheetDetent } from '@yesid/ui/sheet';
@@ -39,7 +39,7 @@
 	import { frameClock, parseFrameState } from '#lib/site/frameState.ts';
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
-	import type { RecordMapLayer } from './recordMap';
+	import { scheduleTerminals, type RecordMapLayer } from './recordMap';
 	import { goto } from '$app/navigation';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import type { MapStageFailure } from '#lib/components/map/MapStage.svelte';
@@ -48,6 +48,7 @@
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	const dataClock = getV1Runtime().clock;
 	import { StateNotice } from '@yesid/ui/feedback';
+	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Button } from '@yesid/ui/button';
 	import { livePresentation } from '#lib/v1/live/livePresentation.ts';
 	import { LIVE_FAMILIES, createLiveStore } from '#lib/v1/live/store.svelte.ts';
@@ -71,6 +72,7 @@
 	import { motionMode } from '#lib/stores/index.ts';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import MapFilters from './MapFilters.svelte';
+	import MapLinePicker from './MapLinePicker.svelte';
 	import MapMotionControl from './MapMotionControl.svelte';
 	import { detailStopName } from './mapSelectionDetail.logic';
 	import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
@@ -393,6 +395,7 @@
 	});
 	const stopList = $derived(session.stops);
 	let mapDirections = $state.raw<ScheduleEdition['route_directions']>();
+	const terminals = $derived(scheduleTerminals(mapDirections));
 	onMount(() => {
 		let active = true;
 		void import('#lib/v1/adapter/r2.static.ts')
@@ -455,6 +458,7 @@
 			: stampText(liveTime, locale, timeZone),
 	);
 
+	let mapFiltersOpen = $state(false);
 	let reportCamera = $state.raw<MapReportCamera | null>(null);
 	let pendingViewHint: MapViewHint | null = null;
 	let ingestedViewHint = false;
@@ -939,42 +943,52 @@
 				}}
 				onclear={nearMeController.clear}
 			/>
-			<details class="w-full">
-				<summary class="min-h-11 py-3 text-sm font-medium"
-					>{tr('Map filters', 'Filtres de la carte')}</summary
-				>
-				<label class="grid gap-1 text-sm">
-					{tr('Add a line filter', 'Ajouter une ligne au filtre')}
-					<select
-						class="min-h-11 min-w-0 rounded-sm border border-border bg-card px-2"
-						onchange={(event) => {
-							const value = event.currentTarget.value;
+			<Collapsible.Root bind:open={mapFiltersOpen} class="w-full" data-map-filter-disclosure>
+				<Collapsible.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="sm"
+							class="min-h-11 w-full justify-between"
+							data-map-filter-trigger
+							wrap
+						>
+							{tr('Map filters', 'Filtres de la carte')}
+							<ChevronToggle open={mapFiltersOpen} size="sm" />
+						</Button>
+					{/snippet}
+				</Collapsible.Trigger>
+				<Collapsible.Content>
+					<MapLinePicker
+						routes={session.routesIndex}
+						{locale}
+						label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
+						placeholder={tr('Choose a line', 'Choisir une ligne')}
+						additive
+						onchange={(value) => {
 							if (value) applyDetailFilter({ kind: 'route', value });
-							event.currentTarget.value = '';
 						}}
-					>
-						<option value="">{tr('Choose a line', 'Choisir une ligne')}</option>
-						{#each session.routesIndex as route (route.id)}
-							<option value={route.id}>{route.short}{route.long ? ` · ${route.long}` : ''}</option>
+					/>
+					<MapFilters
+						{occupancyAvailable}
+						store={filters}
+						{alertsAvailable}
+						{locale}
+						routes={session.routesIndex}
+						stops={stopList}
+						header={motionHeader}
+					/>
+					<ul class="grid list-none gap-1 p-0 text-sm text-muted-foreground">
+						{#each legendDetails.groups.slice(1).flatMap((group) => group.rows) as row (row.id)}
+							<li>{row.label}{row.definition ? ` · ${row.definition}` : ''}</li>
 						{/each}
-					</select>
-				</label>
-				<MapFilters
-					{occupancyAvailable}
-					store={filters}
-					{alertsAvailable}
-					{locale}
-					routes={session.routesIndex}
-					stops={stopList}
-					header={motionHeader}
-				/>
-				<ul class="grid list-none gap-1 p-0 text-sm text-muted-foreground">
-					{#each legendDetails.groups.slice(1).flatMap((group) => group.rows) as row (row.id)}
-						<li>{row.label}{row.definition ? ` · ${row.definition}` : ''}</li>
-					{/each}
-				</ul>
-				<p class="text-sm text-muted-foreground">{legendDetails.note}</p>
-			</details>
+					</ul>
+					{#if legendDetails.note}<p class="text-sm text-muted-foreground">
+							{legendDetails.note}
+						</p>{/if}
+				</Collapsible.Content>
+			</Collapsible.Root>
 		</div>
 	{/if}
 {/snippet}
@@ -1265,6 +1279,7 @@
 		url={recordUrl}
 		{locale}
 		stops={stopList}
+		{terminals}
 		routes={session.routesIndex}
 		onscope={changeRecordScope}
 		children={mapContent}

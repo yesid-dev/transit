@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { FilterState } from '#lib/filters/index.ts';
-import { STATUS_CODES, LiveVehicleSchema } from '#lib/v1/schemas/index.ts';
+import { STATUS_CODES, LiveVehicleSchema, type StatusCode } from '#lib/v1/schemas/index.ts';
 import type { VehicleSilenceContext } from './vehicleLayer';
 import { toVehicleFeatures } from './vehicleLayer';
-import { BUS_ICON, bodyIconId, stateBadgeIconId, VEHICLE_MARKER_GEOMETRY } from './vehicleSprites';
+import {
+	VEHICLE_ICON,
+	statusBodyIconId,
+	occupancyBodyIconId,
+	occupancyBadgeIconId,
+	VEHICLE_MARKER_GEOMETRY,
+} from './vehicleSprites';
 import { STALE_CUTOFF_S } from './vehicleProjection';
 
 const EMPTY_FILTER: FilterState = {
@@ -33,7 +39,7 @@ const vehicles = [
 ].map((vehicle) => LiveVehicleSchema.parse({ trip: 'assigned-trip', ...vehicle }));
 
 describe('toVehicleFeatures entity filtering', () => {
-	it('serializes the exact state badge mark for every filter mode with status precedence', () => {
+	it('serializes the status body and optional crowding badge for every filter mode with status precedence', () => {
 		const [vehicle] = [
 			{
 				id: 'stateful',
@@ -45,36 +51,30 @@ describe('toVehicleFeatures entity filtering', () => {
 			},
 		].map((candidate) => LiveVehicleSchema.parse({ trip: 'assigned-trip', ...candidate }));
 		const cases = [
-			['default', EMPTY_FILTER, stateBadgeIconId('status', 'on_time'), 1, 'veh-s-on_time'],
+			['default', EMPTY_FILTER, '', 1, 'veh-s-on_time'],
 			[
 				'entity-only',
 				{ ...EMPTY_FILTER, entities: ['bus'] } as FilterState,
-				stateBadgeIconId('status', 'on_time'),
+				'',
 				1,
 				'veh-s-on_time',
 			],
-			[
-				'status',
-				{ ...EMPTY_FILTER, status: ['on_time'] } as FilterState,
-				stateBadgeIconId('status', 'on_time'),
-				1,
-				'veh-s-on_time',
-			],
+			['status', { ...EMPTY_FILTER, status: ['on_time'] } as FilterState, '', 1, 'veh-s-on_time'],
 			[
 				'occupancy',
 				{ ...EMPTY_FILTER, occupancy: ['full'] } as FilterState,
-				stateBadgeIconId('occupancy', 'full'),
+				occupancyBadgeIconId('full'),
 				1,
-				'veh-o-full',
+				'veh-o-full-on_time',
 			],
 			[
 				'both-active status precedence',
 				{ ...EMPTY_FILTER, status: ['on_time'], occupancy: ['full'] } as FilterState,
-				stateBadgeIconId('status', 'on_time'),
+				'',
 				1,
 				'veh-s-on_time',
 			],
-			['unmatched', { ...EMPTY_FILTER, status: ['early'] } as FilterState, '', 0, BUS_ICON],
+			['unmatched', { ...EMPTY_FILTER, status: ['early'] } as FilterState, '', 0, VEHICLE_ICON],
 		] as const;
 
 		for (const [name, filter, mark, matched, body] of cases) {
@@ -88,11 +88,11 @@ describe('toVehicleFeatures entity filtering', () => {
 			...EMPTY_FILTER,
 			occupancy: ['full'],
 		}).features[0].properties;
-		expect(nullProperties).toMatchObject({ mark: '', matched: 0, body: BUS_ICON });
+		expect(nullProperties).toMatchObject({ mark: '', matched: 0, body: VEHICLE_ICON });
 		expect(nullProperties).toHaveProperty('mark');
 	});
 
-	it('colours buses by status when no filter is active', () => {
+	it('colours vehicles by status when no filter is active', () => {
 		const fleet = STATUS_CODES.map((status) =>
 			LiveVehicleSchema.parse({
 				id: `bus-${status}`,
@@ -112,9 +112,9 @@ describe('toVehicleFeatures entity filtering', () => {
 			status: 'on_time',
 			updated_utc: '2026-06-15T00:00:00Z',
 		});
-		const statusLook = (status: string) => ({
-			body: bodyIconId('status', status),
-			mark: stateBadgeIconId('status', status),
+		const statusLook = (status: StatusCode) => ({
+			body: statusBodyIconId(status),
+			mark: '',
 			matched: 1,
 		});
 
@@ -125,7 +125,7 @@ describe('toVehicleFeatures entity filtering', () => {
 		STATUS_CODES.forEach((status, index) => {
 			expect(plain.features[index].properties, status).toMatchObject(statusLook(status));
 		});
-		expect(plain.features.at(-1)!.properties).toMatchObject({ body: BUS_ICON, mark: '' });
+		expect(plain.features.at(-1)!.properties).toMatchObject({ body: VEHICLE_ICON, mark: '' });
 
 		const ticked = toVehicleFeatures(fleet, { ...EMPTY_FILTER, status: ['late'] });
 		for (const [index, status] of STATUS_CODES.entries()) {
@@ -135,17 +135,17 @@ describe('toVehicleFeatures entity filtering', () => {
 		}
 
 		const crowding = toVehicleFeatures(fleet, { ...EMPTY_FILTER, occupancy: ['full'] });
-		for (const feature of crowding.features) {
+		for (const [index, feature] of crowding.features.entries()) {
 			expect(feature.properties).toMatchObject({
-				body: bodyIconId('occupancy', 'full'),
-				mark: stateBadgeIconId('occupancy', 'full'),
+				body: occupancyBodyIconId(STATUS_CODES[index]!, 'full'),
+				mark: occupancyBadgeIconId('full'),
 				matched: 1,
 			});
 		}
 	});
 
-	it('keeps every bearing outside the upright bus silhouette', () => {
-		const bodyRadius = Math.hypot(6.5 - 4, 9.5 - 4) + 4 + 1;
+	it('keeps every bearing outside the upright status glyph', () => {
+		const bodyRadius = ((6 + 0.75) * VEHICLE_MARKER_GEOMETRY.box) / 16;
 		expect(VEHICLE_MARKER_GEOMETRY.chevronAnnulus.inner).toBeGreaterThan(bodyRadius);
 	});
 

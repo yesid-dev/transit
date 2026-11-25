@@ -84,7 +84,7 @@ for (const provider of providers.providers)
 						? ['default', 'filters-open', 'right-open']
 						: ['default', 'filters-open'];
 				for (const state of states) {
-					if (state === 'filters-open') await page.locator('[data-map-controls] summary').click();
+					if (state === 'filters-open') await page.locator('[data-map-filter-trigger]').click();
 					if (state === 'right-open') {
 						await page.goto(`${mapPath}?provider=${provider.id}&focus=vehicle:layout-bus`, {
 							waitUntil: 'networkidle',

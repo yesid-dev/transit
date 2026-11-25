@@ -9,6 +9,8 @@
 		locale,
 		href,
 		files,
+		groupLabel,
+		directDownload = false,
 		citation,
 		print,
 	}: {
@@ -18,19 +20,23 @@
 			href?: string;
 			label: string;
 			download?: string;
+			filename?: string;
 			columns?: readonly string[];
 		}[];
+		groupLabel?: string;
+		directDownload?: boolean;
 		citation: Snippet;
 		print?: () => void;
 	} = $props();
 	const fr = $derived(locale === 'fr');
+	const directFile = $derived(directDownload && files.length === 1 ? files[0] : null);
 </script>
 
 {#key href}
 	<div
 		class="flex min-w-0 flex-wrap items-start gap-2"
 		role="group"
-		aria-label={fr ? 'Actions du bilan' : 'Record actions'}
+		aria-label={groupLabel ?? (fr ? 'Actions du bilan' : 'Record actions')}
 	>
 		<CopyAction
 			size="cta-sm"
@@ -40,7 +46,16 @@
 			fallback={fr ? 'Copiez le lien ci-dessous.' : 'Copy the link below.'}
 			fallbackLabel={fr ? 'Lien vers cette vue' : 'Link to this view'}
 		/>
-		{#if files.length}
+		{#if directFile?.href}
+			<Button
+				href={directFile.href}
+				download={directFile.filename ?? ''}
+				title={directFile.label}
+				variant="outline"
+				size="sm"
+				class="min-h-11">{fr ? 'Télécharger' : 'Download'}</Button
+			>
+		{:else if files.length}
 			<Sheet.Root>
 				<Sheet.Trigger>
 					{#snippet child({ props })}<Button
@@ -59,7 +74,7 @@
 								{#if file.href}<a
 										class="inline-flex min-h-11 items-center text-primary underline"
 										href={file.href}
-										download={file.download ?? true}>{file.label}</a
+										download={file.download ?? file.filename ?? true}>{file.label}</a
 									>{:else}<p>{file.label}</p>{/if}
 								{#if file.columns?.length}
 									<details>

@@ -33,7 +33,7 @@ export interface LegendGroup {
 
 export interface MapLegendModel {
 	groups: readonly LegendGroup[];
-	note: string;
+	note: string | null;
 }
 
 const NB = ' ';
@@ -112,7 +112,7 @@ export function mapLegend(
 				],
 			},
 		],
-		note: colourBy === 'occupancy' ? t.zoomCrowdingBadges : t.zoomBadges,
+		note: colourBy === 'occupancy' ? t.zoomCrowdingBadges : null,
 	};
 }
 

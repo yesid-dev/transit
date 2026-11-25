@@ -3,8 +3,8 @@ import { copy, mapReportsCopy } from './mapReports.copy';
 
 describe('map reports copy', () => {
 	it('carries the approved anchors in both languages', () => {
-		expect(copy.en.copyLiveView).toBe('Copy live view link');
-		expect(copy.fr.copyLiveView).toBe('Copier le lien de la vue en direct');
+		expect(copy.en.copyLiveView).toBe('Copy link');
+		expect(copy.fr.copyLiveView).toBe('Copier le lien');
 		expect(copy.en.copyDisclaimer).toBe('This link opens the live view, which changes.');
 		expect(copy.fr.copyDisclaimer).toBe('Ce lien ouvre la vue en direct, dont le contenu change.');
 		expect(copy.en.downloadCsv).toBe('Download displayed reports (CSV)');

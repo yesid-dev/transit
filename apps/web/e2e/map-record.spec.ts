@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type Locator } from '@playwright/test';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
 import {
 	closeMapControls,
@@ -6,6 +6,16 @@ import {
 	openMapControls,
 	openMapInView,
 } from './map-frame-controls';
+
+async function pickLine(page: Page, input: Locator, code: string) {
+	await input.press('ArrowDown');
+	await input.fill(code);
+	await page
+		.getByRole('listbox')
+		.getByRole('option')
+		.filter({ hasText: new RegExp(`^${code}\\b`) })
+		.click();
+}
 
 for (const locale of ['en', 'fr'] as const) {
 	const fr = locale === 'fr';
@@ -81,8 +91,9 @@ for (const locale of ['en', 'fr'] as const) {
 				.getByRole('link'),
 		).toHaveAttribute('href', /\/lines\/24.*recordTo=2026-11-21/);
 		const line = page.getByRole('combobox', { name: fr ? 'Ligne' : 'Line', exact: true });
-		await line.selectOption('24');
-		await page.getByRole('combobox', { name: 'Direction', exact: true }).selectOption('0');
+		await pickLine(page, line, '24');
+		await page.getByRole('combobox', { name: 'Direction', exact: true }).press('ArrowDown');
+		await page.getByRole('listbox', { name: 'Direction' }).getByRole('option').first().click();
 		await expect.poll(() => received.at(-1)?.get('direction')).toBe('0');
 		await expect(
 			page.getByRole('heading', { name: fr ? 'Corridors en vue' : 'Corridors in view' }),
@@ -108,7 +119,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect.poll(() => received.at(-1)?.get('from')).toBe('2026-11-22');
 		expect(received.at(-1)?.get('line')).toBe('24');
 		await openMapInView(page);
-		await line.selectOption('');
+		await page.getByRole('button', { name: fr ? 'Effacer la ligne' : 'Clear line' }).click();
 		await expect(segment).toBeVisible();
 		await expect.poll(() => received.at(-1)?.get('layer')).toBe('corridors');
 		await page.reload();
@@ -170,7 +181,7 @@ test('the corridor layer still asks for a line when the engine refuses the netwo
 	await page.goto(`/map?${recordMapPeriod}&mapLayer=corridors`);
 	await openMapInView(page);
 	await expect(page.getByText('Choose a line to see time lost between its stops.')).toBeVisible();
-	await page.getByRole('combobox', { name: 'Line', exact: true }).selectOption('24');
+	await pickLine(page, page.getByRole('combobox', { name: 'Line', exact: true }), '24');
 	await expect(page.getByRole('searchbox', { name: 'Find a segment' })).toBeVisible();
 });
 

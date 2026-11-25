@@ -194,10 +194,12 @@ async function openReports(page: Page) {
 }
 
 async function openActions(page: Page) {
-	const actions = page.locator('[data-slot="map-in-view"] details');
-	await expect(actions.locator('summary')).toBeVisible();
-	if ((await actions.getAttribute('open')) === null) await actions.locator('summary').click();
+	const trigger = page.locator('[data-map-in-view-actions-trigger]');
+	await expect(trigger).toBeVisible();
+	if ((await trigger.getAttribute('aria-expanded')) !== 'true') await trigger.click();
 }
+
+const downloadAction = /^(Download|T\u00e9l\u00e9charger)$/;
 async function rendererCamera(page: Page): Promise<number[]> {
 	return (await rendererTransform(page)).slice(4, 9).map(Number);
 }
@@ -267,7 +269,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		const t = reportsCopy[locale];
 		const panel = await openReports(page);
 		await expect.poll(() => rendererCamera(page)).toEqual(hint);
-		const downloaded = parseCsv((await downloadCsv(page, t)).bytes);
+		const downloaded = parseCsv((await downloadCsv(page)).bytes);
 		const header = downloaded[0];
 		// Fixed fixture oracles for the three owning project viewports. The old report
 		// is outside the smaller rotated views, rather than removed because of its age.
@@ -404,7 +406,7 @@ for (const provider of ['stm', 'octranspo'])
 					const panel = await openReports(page);
 					await expect(panel.locator('[data-report-row]')).toHaveCount(2);
 					await expect(panel.locator('[data-slot="map-in-view-count"]')).toHaveText('2');
-					const rows = parseCsv((await downloadCsv(page, t)).bytes),
+					const rows = parseCsv((await downloadCsv(page)).bytes),
 						header = rows[0];
 					expect(rows.slice(1).map((row) => row[header.indexOf('vehicle_id')])).toEqual(
 						file.vehicles.map((row) => row.id),
@@ -441,15 +443,15 @@ for (const provider of ['stm', 'octranspo'])
 				const panel = await openReports(page);
 				await expect(panel.getByText(/No vehicles in view|Aucun véhicule en vue/)).toBeVisible();
 				await expect(panel.locator('[data-report-row]')).toHaveCount(0);
-				expect(parseCsv((await downloadCsv(page, t)).bytes)).toHaveLength(1);
+				expect(parseCsv((await downloadCsv(page)).bytes)).toHaveLength(1);
 			});
 		});
 	}
 
-async function downloadCsv(page: Page, t: (typeof reportsCopy)['en'] | (typeof reportsCopy)['fr']) {
+async function downloadCsv(page: Page) {
 	await openActions(page);
 	const download = page.waitForEvent('download');
-	await page.getByRole('link', { name: t.downloadCsv }).click();
+	await page.getByRole('link', { name: downloadAction }).click();
 	const file = await download;
 	const path = await file.path();
 	if (!path) throw new Error('the CSV download has no readable bytes');
@@ -471,7 +473,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(panel.locator('[data-slot="map-in-view-count"]')).toHaveText('3');
 		await expect(panel.locator('[data-report-row]')).toHaveCount(3);
 
-		const csv = await downloadCsv(page, reports);
+		const csv = await downloadCsv(page);
 		expect(csv.filename).toBe(`map-reports-stm-${locale}.csv`);
 		const rows = parseCsv(csv.bytes);
 		expect(rows[0]).toEqual([...MAP_REPORT_CSV_COLUMNS]);
@@ -563,16 +565,16 @@ test('live filters and a camera pan move the list, counts and CSV together', asy
 		return new URL(href).searchParams.get('mapview');
 	};
 	const beforeHint = await copyHint();
-	const beforePan = await downloadCsv(page, reports);
+	const beforePan = await downloadCsv(page);
 
 	// Removing the explicit status filter widens the same snapshot and its export.
 	if (testInfo.project.name === 'desktop') {
 		await openMapControls(page);
-		await page.locator('[data-map-controls] summary').click();
+		await page.getByRole('button', { name: 'Map filters', exact: true }).click();
 		await page.getByRole('checkbox', { name: 'Late', exact: true }).first().click();
 		await expect(count).toHaveText('5');
 		await expect(rows).toHaveCount(5);
-		const filtered = await downloadCsv(page, reports);
+		const filtered = await downloadCsv(page);
 		expect(parseCsv(filtered.bytes).slice(1)).toHaveLength(5);
 	}
 
@@ -592,7 +594,7 @@ test('live filters and a camera pan move the list, counts and CSV together', asy
 	expect(await copyHint()).not.toBe(beforeHint);
 	expect(afterCount).toBeLessThan(beforeCount);
 	await expect(rows).toHaveCount(afterCount);
-	const panned = await downloadCsv(page, reports);
+	const panned = await downloadCsv(page);
 	const pannedCells = parseCsv(panned.bytes);
 	expect(pannedCells.slice(1)).toHaveLength(afterCount);
 	const beforeCells = parseCsv(beforePan.bytes);
@@ -609,7 +611,6 @@ test('a newer source generation moves the list, count and CSV together', async (
 	let file = fleet();
 	await serveFleet(page, () => file);
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm&status=late`);
-	const reports = reportsCopy.en;
 	const panel = await openReports(page);
 	const count = panel.locator('[data-slot="map-in-view-count"]');
 	await expect(count).toHaveText('3');
@@ -621,7 +622,7 @@ test('a newer source generation moves the list, count and CSV together', async (
 	await expect(
 		page.locator('[data-slot="map-frame"] [data-slot="freshness-stamp"] time'),
 	).toHaveAttribute('datetime', '2026-06-15T12:00:20Z');
-	const updated = await downloadCsv(page, reports);
+	const updated = await downloadCsv(page);
 	expect(parseCsv(updated.bytes).slice(1)).toHaveLength(4);
 });
 
@@ -667,7 +668,7 @@ test('loading, unavailable and retained states never show a reassuring zero @mot
 	await page.clock.fastForward('00:35');
 	await expect(panel.getByText('No vehicles in view.')).toBeVisible();
 	await expect(panel.locator('[data-slot="map-in-view-count"]')).toHaveText('0');
-	const empty = await downloadCsv(page, reports);
+	const empty = await downloadCsv(page);
 	expect(parseCsv(empty.bytes)).toHaveLength(1);
 });
 
@@ -692,7 +693,7 @@ test('unknown alert-filter evidence does not turn valid vehicle reports into a r
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm&alert=has_alert`);
 	const panel = await openReports(page);
 	await expect(panel.getByText('No vehicles in view.')).toHaveCount(0);
-	await expect(panel.getByRole('link', { name: reportsCopy.en.downloadCsv })).toHaveCount(0);
+	await expect(panel.getByRole('link', { name: downloadAction })).toHaveCount(0);
 	await expect(panel.getByRole('status')).toContainText(/alert/i);
 });
 
@@ -729,11 +730,10 @@ test('retained alert matches keep their own source identity and recover to a kno
 		return route.fulfill({ json: snapshot });
 	});
 	await page.goto(`${localizeHref(map, 'en')}?provider=stm&alert=has_alert`);
-	const t = reportsCopy.en;
 	const panel = await openReports(page);
 	await expect(panel.locator('[data-report-row]')).toHaveCount(2);
 
-	const current = parseCsv((await downloadCsv(page, t)).bytes);
+	const current = parseCsv((await downloadCsv(page)).bytes);
 	let header = current[0];
 	for (const row of current.slice(1)) {
 		expect(row[header.indexOf('source_generated_utc')]).toBe(GENERATED);
@@ -746,7 +746,7 @@ test('retained alert matches keep their own source identity and recover to a kno
 	await page.clock.fastForward('00:35');
 
 	await expect(panel.locator('[data-report-row]')).toHaveCount(2);
-	const retained = parseCsv((await downloadCsv(page, t)).bytes);
+	const retained = parseCsv((await downloadCsv(page)).bytes);
 	header = retained[0];
 	for (const row of retained.slice(1)) {
 		expect(row[header.indexOf('alert_filter_generated_utc')]).toBe(alertTime);
@@ -758,7 +758,7 @@ test('retained alert matches keep their own source identity and recover to a kno
 	await page.clock.fastForward('00:35');
 	await expect(panel.getByText('No vehicles in view.')).toBeVisible();
 
-	expect(parseCsv((await downloadCsv(page, t)).bytes)).toHaveLength(1);
+	expect(parseCsv((await downloadCsv(page)).bytes)).toHaveLength(1);
 });
 
 test('report list holds 320px French, a short laptop and 200% text with reachable focus @theme', async ({
@@ -767,7 +767,6 @@ test('report list holds 320px French, a short laptop and 200% text with reachabl
 	await page.clock.install({ time: Date.parse(GENERATED) + 30_000 });
 	await serveFleet(page, () => fleet());
 	await page.goto(`${localizeHref(map, 'fr')}?provider=stm&status=late`);
-	const reports = reportsCopy.fr;
 
 	for (const [width, height] of [
 		[320, 720],
@@ -793,7 +792,7 @@ test('report list holds 320px French, a short laptop and 200% text with reachabl
 	await expectTapTargets(page, { exclude: ['.maplibregl-ctrl'] });
 	await expectAccessible(page);
 	await openActions(page);
-	await page.getByRole('link', { name: reports.downloadCsv }).focus();
+	await page.getByRole('link', { name: downloadAction }).focus();
 	await expectFocusedTargetUncovered(page);
 	await page.evaluate(() => {
 		document.documentElement.style.fontSize = '';
