@@ -8,7 +8,7 @@ import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
 import { networkEngine, networkFixtures } from './network-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
-import { departureDailyEngine } from './departure-daily-engine.mjs';
+import { departureCaptureStops, departureDailyEngine } from './departure-daily-engine.mjs';
 import { alertsEngine } from './alerts-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
@@ -572,6 +572,11 @@ const server = createServer((request, response) => {
 			).values(),
 		);
 		const editionStops = new Map(stops.stops.map((stop) => [stop.id, stop]));
+		if (kind === 'schedule-index' && process.env.TRANSIT_E2E_DEPARTURE_NAMED === '1') {
+			for (const { id, name, code } of departureCaptureStops) {
+				editionStops.set(id, { id, name, code, lat: 45.5, lon: -73.6, routes: ['24'] });
+			}
+		}
 		const editionRoutes = new Map(data.routes.map((entry) => [entry.id, entry]));
 		const routeDirections = { 24: route.directions };
 		if (kind === 'search-index') {

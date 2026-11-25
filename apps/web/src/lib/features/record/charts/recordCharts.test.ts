@@ -134,4 +134,35 @@ describe('record charts', () => {
 			{ id: 'A/1', value: null, state: 'Aucune donnée en direct' },
 		]);
 	});
+	it.each([
+		['en', '1 min early', 'Not measured'],
+		['fr', '1 min d’avance', 'Non mesuré'],
+	] as const)(
+		'uses the chosen day’s reported delay and labels missing stops in %s',
+		(locale, delay, missing) => {
+			const chart = stopLadderChart(
+				series(
+					cell(
+						{ stop: 'B' },
+						{
+							state: 'too_few_to_judge',
+							evidence: {
+								counts: { classified: 1 },
+								days_included: [],
+								observed_delay_seconds: -61,
+							},
+						},
+					),
+					cell({ stop: 'A' }, { state: 'not_measured' }),
+				),
+				'Delay',
+				locale,
+				(id) => ({ name: id }),
+				true,
+			);
+			expect(chart.table.columns.label).toBe(locale === 'fr' ? 'Arrêt' : 'Stop');
+			expect(chart.props.stops[0]).toMatchObject({ value: -61, valueLabel: delay });
+			expect(chart.props.stops[1]).toMatchObject({ value: null, state: '□ ' + missing });
+		},
+	);
 });

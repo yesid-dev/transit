@@ -20,6 +20,7 @@ import {
 	scheduledClock,
 	serviceTime,
 	tripsInHours,
+	vehiclePositionsCapture,
 	versionNumber,
 } from './presenter.ts';
 
@@ -183,3 +184,15 @@ it.each(['en', 'fr'] as const)('shares the date across a same-day alert period i
 		locale === 'fr' ? '1 trajet en 1 heure' : '1 trip in 1 hour',
 	);
 });
+
+it.each([
+	['en', 8, 'Vehicle positions: 8 s ago.'],
+	['fr', 8, 'Positions des véhicules : il y a 8 s.'],
+	['en', 0, 'Vehicle positions: now.'],
+	['fr', 0, 'Positions des véhicules : à l’instant.'],
+] as const)(
+	'writes a complete vehicle capture sentence in %s at %i seconds',
+	(locale, age, expected) => {
+		expect(vehiclePositionsCapture(age, locale).replace(/[\u00a0\u202f]/g, ' ')).toBe(expected);
+	},
+);

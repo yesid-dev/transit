@@ -34,28 +34,30 @@ for (const width of [390, 1440]) {
 			await expect(page).toHaveURL(/\/departure\//);
 			const main = page.getByRole('main');
 			await expect(main.getByRole('heading', { level: 1 })).toContainText('07:00');
-			await expect(main).toContainText(fr ? '1 des 5 jours observés' : '1 of 5 observed days');
+			await expect(main).toContainText(fr ? '1 sur 5' : '1 of 5');
 			await expect(main).toContainText(fr ? '6 min de retard' : '6 min late');
 			await expect(
 				main
-					.getByRole('region', {
+					.getByRole('article', {
 						name: fr ? 'Départs annulés et manquants' : 'Cancelled and missing departures',
 					})
 					.getByRole('rowheader'),
 			).toHaveCount(2);
-			const stops = main.getByRole('region', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' });
+			const stops = main.getByRole('article', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' });
 			await expect(stops).toContainText(fr ? '5,3 min de retard' : '5.3 min late');
-			await expect(
-				stops.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
-			).toBeVisible();
-			await stops.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
-			await expect(stops.getByText(/v1.*day=2026-11-20.*#stops/)).toBeVisible();
-			await stops.getByLabel(fr ? 'Date de service' : 'Service date').fill('2026-11-18');
-			await stops
-				.getByRole('button', { name: fr ? 'Afficher cette journée' : 'Show this day' })
-				.click();
+			await main.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
+			await expect(page.getByRole('dialog')).toContainText(/v1[\s\S]*day=2026-11-20[^ ]*#stops/);
+			await page.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true }).click();
+			await expect(main.locator('input[type=date]')).toHaveCount(0);
+			await stops.getByRole('link', { name: fr ? '18 novembre 2026' : '18 November 2026' }).click();
 			await expect(stops).toContainText(fr ? '1 min d’avance' : '1 min early');
-			const csv = await stops.getByRole('link', { name: /CSV/ }).getAttribute('href');
+			await main
+				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
+				.click();
+			const csv = await page
+				.getByRole('dialog')
+				.getByRole('link', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' })
+				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
 			const csvText = await csvResponse.text();
@@ -64,6 +66,12 @@ for (const width of [390, 1440]) {
 			await expect(main).not.toContainText(
 				/\b(?:\d+ s (?:late|early)|seconds|secondes|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
 			);
+			await page.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true }).click();
+			await stops.getByRole('link', { name: fr ? '19 novembre 2026' : '19 November 2026' }).click();
+			await expect(
+				stops.getByRole('list', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' }),
+			).toContainText(fr ? 'Non mesuré' : 'Not measured');
+			await expect(stops).not.toContainText(/0%|0 min/);
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});
 
@@ -175,4 +183,13 @@ test('a ranked departure links to its exact line, direction, time and range', as
 	expect(target.searchParams.get('frameMode')).toBe('record');
 	expect(target.searchParams.get('recordFrom')).toBe('2026-11-08');
 	expect(target.searchParams.get('recordTo')).toBe('2026-11-14');
+});
+
+test('a departure on an unknown line has a single timetable state', async ({ page }) => {
+	await page.goto(`/departure/${key('not-published')}?${departurePeriod}`);
+	const main = page.getByRole('main');
+	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+		'This line is not in the current timetable.',
+	);
+	await expect(main.locator('[data-slot="record-card"]')).toHaveCount(0);
 });

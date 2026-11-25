@@ -38,6 +38,7 @@
 		lowCoverageText,
 	} from '../record/recordText.ts';
 	import { periodDays } from './periodComparison.ts';
+	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import OverviewLiveCard from './OverviewLiveCard.svelte';
 	import RecordRanking from './RecordRanking.svelte';
 	import {
@@ -119,6 +120,7 @@
 		file('lines', t.downloadRankings),
 		file('stops', t.downloadStops),
 	]);
+	let liveCaptureAge = $state<number | null>(null);
 </script>
 
 {#snippet citeMeasure(promise: Measure, period: DateWindow)}
@@ -343,7 +345,13 @@
 		{/snippet}
 		{#snippet liveCard()}
 			{#key record.manifest?.provider}
-				<OverviewLiveCard {locale} manifest={record.manifest ?? null} {alertsAvailable} {link} />
+				<OverviewLiveCard
+					{locale}
+					manifest={record.manifest ?? null}
+					{alertsAvailable}
+					{link}
+					onCaptureAge={(age) => (liveCaptureAge = age)}
+				/>
 			{/key}
 		{/snippet}
 		<DashboardGrid gutter={false} minTile="22rem" data-slot="screen-answer">
@@ -432,18 +440,11 @@
 			/>
 		{/snippet}
 		{#if mode === 'live'}
-			<AboutFigures
-				title={t.aboutLive}
-				fields={[
-					{ key: 'shows', label: t.liveShows, text: t.liveScope },
-					{ key: 'means', label: t.liveStatus, text: t.liveDefinition },
-					{
-						key: 'source',
-						label: t.source,
-						text: t.liveFeeds(operator),
-						link: { href: link('/status', true), label: t.dataHealth },
-					},
-				]}
+			<AboutLiveFigures
+				{locale}
+				{operator}
+				healthLink={link('/status', true)}
+				captureAge={liveCaptureAge}
 			/>
 		{:else}
 			{#await record.punctuality then current}

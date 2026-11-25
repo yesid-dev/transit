@@ -707,339 +707,6 @@
 				}
 			}
 		},
-		"vehicle-record/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3559,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3295,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2410,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 48,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1919,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 57,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1893,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 61,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 46,
-					"order": "71aa4ed88b0f1b09",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 6
-				},
-				"1440": {
-					"stops": 53,
-					"order": "1767c395851edcce",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 6
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 14083,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 5069,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 48,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"vehicle-live/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 2259,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 4,
-					"targetDeficit": 92,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 2203,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 4,
-					"targetDeficit": 92,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 1353,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 4,
-					"targetDeficit": 92,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 910,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 39,
-					"shortTargets": 4,
-					"targetDeficit": 92,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 908,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 43,
-					"shortTargets": 4,
-					"targetDeficit": 92,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 35,
-					"order": "4bdb3c4ba5fd6096",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				},
-				"1440": {
-					"stops": 40,
-					"order": "66f2266c8ad0fcd1",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 0
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 4331,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 36,
-					"shortTargets": 1,
-					"targetDeficit": 5,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1583,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 37,
-					"shortTargets": 3,
-					"targetDeficit": 15,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
-		"departure/stm/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3955,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3723,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2492,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 2002,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 56,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1864,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 60,
-					"shortTargets": 1,
-					"targetDeficit": 20,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 48,
-					"order": "1a678d73ea4a1ee3",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 14
-				},
-				"1440": {
-					"stops": 55,
-					"order": "b2f578725aa94fed",
-					"withoutRing": 2,
-					"outOfOrder": 0,
-					"beforeFigure": 14
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 15362,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 2,
-					"brokenWords": 0,
-					"textDefects": [
-						"clipped [data-slot=\"card\"] CSV",
-						"clipped [data-slot=\"card\"] Transit · Line 24, 07:00 departure. Stop by stop. 20 Nov 2026. Method v1, cleaning v8. http://127.0.0.1:4317/departure/%5B%2224%22%2C0%2C%2207%3A00%3A00%22%5D?provider=stm&day=2026-11-20&frameMode=record&recordFrom=2026-11-16&recordTo=2026-11-20#stops"
-					]
-				},
-				"1440": {
-					"height": 5228,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
 		"hotspots/stm/en": {
 			"content": {
 				"titles": 1,
@@ -3531,116 +3198,6 @@
 				}
 			}
 		},
-		"vehicle-record/octranspo/en": {
-			"content": {
-				"titles": 1,
-				"answerFirst": false
-			},
-			"widths": {
-				"320": {
-					"height": 3507,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"390": {
-					"height": 3259,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"768": {
-					"height": 2358,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1024": {
-					"height": 1919,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 56,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 1874,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 60,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			},
-			"keyboard": {
-				"390": {
-					"stops": 45,
-					"order": "9161e5c540c89ca8",
-					"withoutRing": 0,
-					"outOfOrder": 0,
-					"beforeFigure": 6
-				},
-				"1440": {
-					"stops": 52,
-					"order": "76e0db87c2f43a94",
-					"withoutRing": 1,
-					"outOfOrder": 0,
-					"beforeFigure": 6
-				}
-			},
-			"zoom": {
-				"390": {
-					"height": 14022,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 46,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				},
-				"1440": {
-					"height": 5178,
-					"overflow": 0,
-					"edges": 0,
-					"edgeCount": 0,
-					"targets": 47,
-					"shortTargets": 0,
-					"targetDeficit": 0,
-					"clipped": 0,
-					"brokenWords": 0,
-					"textDefects": []
-				}
-			}
-		},
 		"vehicles/octranspo/en": {
 			"content": {
 				"titles": 1,
@@ -3827,14 +3384,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 46,
-					"order": "b4a92583afddee75",
+					"order": "4668658bd8cf1ea9",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 54,
-					"order": "dceb8f33d9cca939",
+					"order": "3eb6e8f2d2aa86b3",
 					"withoutRing": 2,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -4179,14 +3736,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 35,
-					"order": "be5c7ac534fd11e1",
+					"order": "1384a0f2352e6382",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 0
 				},
 				"1440": {
 					"stops": 41,
-					"order": "e1a1ff751e6b2b40",
+					"order": "34f56c5d2570b1b2",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 0
@@ -4298,14 +3855,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 53,
-					"order": "3d95866b283ccca7",
+					"order": "7cb8db923fb519b3",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 60,
-					"order": "dac70e4b709e7a84",
+					"order": "0316a8b6461366e3",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1
@@ -4408,14 +3965,14 @@
 			"keyboard": {
 				"390": {
 					"stops": 43,
-					"order": "51350f77aed86900",
+					"order": "2e0ab16168af6be6",
 					"withoutRing": 0,
 					"outOfOrder": 0,
 					"beforeFigure": 1
 				},
 				"1440": {
 					"stops": 49,
-					"order": "a53ee46ffff0252a",
+					"order": "ea3c2dee93cb155b",
 					"withoutRing": 1,
 					"outOfOrder": 0,
 					"beforeFigure": 1

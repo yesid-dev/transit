@@ -49,7 +49,6 @@ it('keeps known English labels and voyage out of French copy objects', () => {
 			) {
 				if (ts.isPropertyAssignment(node.parent) && node.parent.name === node) return;
 				// This one navigation label follows the approved French wireframe.
-				if (path === 'content/nav.ts' && node.text === 'Pires voyages et véhicules') return;
 				const text = properNouns.reduce((value, name) => value.replaceAll(name, ''), node.text);
 				const matches = text.match(forbidden);
 				if (matches) findings.push(`${path}: ${matches.join(', ')} in ${node.text}`);

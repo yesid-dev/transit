@@ -17,3 +17,16 @@ export type RecordState = keyof typeof states;
 export function recordState(state: RecordState) {
 	return states[state];
 }
+
+export function recordStateFor(state: string | undefined): RecordState {
+	switch (state) {
+		case 'no_live_data':
+		case 'not_tracked':
+		case 'not_measured':
+		case 'too_few_to_judge':
+		case 'not_reporting':
+			return state;
+		default:
+			return 'unknown';
+	}
+}

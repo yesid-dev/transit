@@ -6,6 +6,7 @@
 		title,
 		fields,
 		versionsLink,
+		compact = false,
 	}: {
 		title: string;
 		fields: readonly {
@@ -14,12 +15,17 @@
 			text: string | null;
 			link?: { href: string; label: string };
 		}[];
+		compact?: boolean;
 		versionsLink?: { href: string; label: string };
 	} = $props();
 </script>
 
 <RecordCard {title}>
-	<DashboardGrid gutter={false} minTile="17rem">
+	<DashboardGrid
+		gutter={false}
+		minTile="17rem"
+		style={compact ? 'row-gap: calc(var(--space-card-gap) / 3)' : undefined}
+	>
 		{#each fields.filter(({ text }) => text) as field (field.key)}
 			{@const link = field.link ?? (field.key === 'versions' ? versionsLink : undefined)}
 			<dl class="min-w-0">

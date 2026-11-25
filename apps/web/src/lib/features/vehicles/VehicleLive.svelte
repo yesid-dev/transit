@@ -1,8 +1,15 @@
 <script lang="ts">
-	import { dateAndClock } from '#lib/site/presenter.ts';
+	import { DashboardGrid } from '@yesid/ui/layout';
+	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
+	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
+	import RecordCard from '#lib/features/record/RecordCard.svelte';
+	import StateMark from '#lib/features/record/StateMark.svelte';
+	import AboutLiveFigures from '#lib/features/record/AboutLiveFigures.svelte';
+	import VehicleStillMap from './VehicleStillMap.svelte';
+	import { delayReading, liveStampAge, relativeReportAge } from '#lib/site/presenter.ts';
 	import { Card } from '@yesid/ui/card';
 	import * as Sheet from '@yesid/ui/sheet';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { choose } from '#lib/features/record/recordText.ts';
@@ -11,6 +18,7 @@
 	import LiveTripPredictions from '#lib/features/trips/LiveTripPredictions.svelte';
 	import { liveAbsenceReason } from '#lib/site/absence.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
+	import { bestShapeForPoint, routeShapes } from '#lib/components/map/vehicleShapes.ts';
 	import { notReporting } from '#lib/components/map/vehicleProjection.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -18,12 +26,13 @@
 	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
 	import { createLiveStore } from '#lib/v1/live/store.svelte.ts';
 	import { isInService } from '#lib/v1/live/vehicleService.ts';
+	import { getScheduleShapes, withScheduleShapes } from '#lib/v1/repositories/scheduleShapes.ts';
 	import { getRoute, getStopsIndexSlim } from '#lib/v1/repositories/static.ts';
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import type { Manifest, RouteFile, Vehicle } from '#lib/v1/schemas/index.ts';
 	import type { SlimStopsIndex } from '#lib/v1/repositories/stopsSlim.ts';
 	import { vehicleHref } from './vehicleLinks.ts';
-	import { vehicleHeadline, vehicleStatus } from './vehicleText.ts';
+	import { vehicleStatus } from './vehicleText.ts';
 
 	let {
 		manifest,
@@ -32,6 +41,9 @@
 		locale,
 		url,
 		city,
+		operator,
+		recordHref,
+		titleBlock,
 	}: {
 		manifest: Manifest;
 		timeZone: string;
@@ -39,6 +51,9 @@
 		locale: Locale;
 		url: URL;
 		city: string;
+		operator?: string;
+		recordHref?: string;
+		titleBlock?: Snippet<[string | null | undefined]>;
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -98,26 +113,33 @@
 			if (routes.has(route)) continue;
 			routes.set(route, null);
 			void getRoute(route, { manifest })
-				.then((file) => routes.set(route, file))
+				.then(async (file) => {
+					routes.set(route, file);
+					if (id && file)
+						routes.set(
+							route,
+							withScheduleShapes(file, await getScheduleShapes([route], { manifest })),
+						);
+				})
 				.catch(() => {});
 		}
 	});
 
-	function direction(vehicle: Vehicle): string {
+	function directionName(vehicle: Vehicle): string | null {
 		const file = vehicle.route ? routes.get(vehicle.route) : null;
 		const trip = vehicle.trip ? live.index.byTripId.get(vehicle.trip) : null;
 		const variants = file?.directions ?? [];
 		const inferred = tripDirection(trip?.stops?.map((stop) => stop.stop) ?? [], variants);
-		if (inferred) return display.directionName(inferred, locale);
+		if (inferred) return inferred;
 		const reported = variants.filter((variant) => variant.dir === vehicle.direction_id);
-		if (reported.length === 1 && reported[0]?.headsign)
-			return display.directionName(reported[0].headsign, locale);
+		if (reported.length === 1 && reported[0]?.headsign) return reported[0].headsign;
 		const matching = variants.filter((variant) =>
 			variant.stops?.some((stop) => stop.id === vehicle.next_stop),
 		);
-		return display.directionName(matching.length === 1 ? matching[0].headsign : null, locale);
+		return matching.length === 1 ? (matching[0].headsign ?? null) : null;
 	}
 
+	const direction = (vehicle: Vehicle) => display.directionName(directionName(vehicle), locale);
 	const href = (path: string) => vehicleHref(path, url, locale, city);
 	const predictionsLabel = $derived(t('View predictions', 'Voir les prévisions'));
 	const report = $derived(selected?.reported_utc || selected?.updated_utc);
@@ -129,183 +151,351 @@
 	const silent = $derived(
 		selected ? notReporting(selected, clock.serverNow, cutoff) !== null : false,
 	);
-</script>
 
-<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
-	<section aria-labelledby="vehicle-live-title" class="grid min-w-0 gap-3">
-		<h2 id="vehicle-live-title">
-			{#if !id}
-				{t('Vehicles in service now', 'Véhicules en service maintenant')}
-			{:else if selected && !silent && !health.isStale}
-				{vehicleHeadline(selected, locale)}
-			{:else}
-				{t('Current report', 'Signalement actuel')}
-			{/if}
-		</h2>
-		{#if !live.vehicles}
-			<p role="status">
-				{live.familyStates.vehicles.phase === 'failed'
+	const liveReading = $derived(selected && !silent && !health.isStale ? selected : null);
+	const liveDelay = $derived(
+		liveReading?.delay_min == null
+			? null
+			: liveReading.delay_min === 0
+				? t('On time', 'À l’heure')
+				: delayReading(liveReading.delay_min * 60, locale),
+	);
+	const destination = $derived(
+		liveReading && directionName(liveReading) ? direction(liveReading) : null,
+	);
+	const toward = $derived(destination ? t(` toward ${destination}`, ` vers ${destination}`) : '');
+	const liveMeta = $derived(
+		t(
+			'Its delay at its last report, not an average.',
+			'L’écart à l’horaire au dernier signalement, pas une moyenne.',
+		),
+	);
+	const liveTime = $derived(
+		report && Number.isFinite(Date.parse(report))
+			? {
+					kind: 'live' as const,
+					label: liveStampAge(null, locale),
+					updatedAt: new Date(report),
+					agoLabel: (seconds: number) => liveStampAge(seconds, locale),
+					late: !liveReading,
+				}
+			: undefined,
+	);
+	const next = $derived.by(() => {
+		if (!liveReading?.next_stop) return undefined;
+		const stop = stops?.stops.find(({ id }) => id === liveReading?.next_stop);
+		if (stop) return stop;
+		const { next_stop_lat: lat, next_stop_lon: lon } = liveReading;
+		return lat != null && lon != null
+			? { lat, lon, name: nextStop ?? liveReading.next_stop }
+			: undefined;
+	});
+
+	const shape = $derived.by(() => {
+		if (!liveReading?.route) return null;
+		const route = routes.get(liveReading.route);
+		return route ? bestShapeForPoint(routeShapes(route), [liveReading.lon, liveReading.lat]) : null;
+	});
+	const previous = $derived.by(() => {
+		if (!liveReading?.next_stop) return undefined;
+		const trip = liveReading.trip ? live.index.byTripId.get(liveReading.trip) : null;
+		const list = trip?.stops?.map(({ stop }) => stop) ?? [];
+		const index = list.indexOf(liveReading.next_stop);
+		if (index > 0) return stops?.stops.find(({ id }) => id === list[index - 1]);
+		const route = liveReading.route ? routes.get(liveReading.route) : null;
+		const matching =
+			route?.directions?.filter(
+				({ dir, stops }) =>
+					dir === liveReading.direction_id && stops?.some(({ id }) => id === liveReading.next_stop),
+			) ?? [];
+		if (matching.length !== 1) return undefined;
+		const ordered = [...(matching[0].stops ?? [])].sort((a, b) => a.seq - b.seq);
+		const nextIndex = ordered.findIndex(({ id }) => id === liveReading.next_stop);
+		const previousId = ordered[nextIndex - 1]?.id;
+		return previousId ? stops?.stops.find(({ id }) => id === previousId) : undefined;
+	});
+	const readingState = $derived(
+		liveReading
+			? 'delay_unknown'
+			: live.vehicles && !health.isStale
+				? 'not_reporting'
+				: 'no_live_data',
+	);
+	const liveSentence = $derived(
+		liveReading
+			? [
+					liveDelay
+						? t('against the timetable', 'par rapport à l’horaire')
+						: t('Delay unknown', 'Retard inconnu'),
+					liveReading.route
+						? t(
+								`on line ${display.line(liveReading.route)}${toward}`,
+								`sur la ligne ${display.line(liveReading.route)}${toward}`,
+							)
+						: null,
+				]
+					.filter(Boolean)
+					.join(', ') + '.'
+			: !live.vehicles
+				? live.familyStates.vehicles.phase === 'failed'
 					? t(
 							'Live reports are temporarily unavailable.',
 							'Les signalements en direct sont temporairement indisponibles.',
 						)
-					: t('Loading live reports…', 'Chargement des signalements en direct…')}
-			</p>
-		{:else if health.isStale}
-			<p>
-				{t(
-					'The latest feed is delayed. Current vehicle activity is unknown.',
-					'Le flux est en retard. L’activité actuelle des véhicules est inconnue.',
-				)}
-			</p>
-		{:else if id}
-			{#if selected && !silent}
-				<dl class="grid gap-2 sm:grid-cols-2">
-					<div>
-						<dt>{t('Location', 'Position')}</dt>
-						<dd>
-							<a href={href(routeFor({ kind: 'vehicle', id }))}
-								>{t('See this vehicle on the map', 'Voir ce véhicule sur la carte')}</a
-							>
-						</dd>
+					: t('Loading live reports…', 'Chargement des signalements en direct…')
+				: health.isStale
+					? t(
+							'The latest feed is delayed. Current vehicle activity is unknown.',
+							'Le flux est en retard. L’activité actuelle des véhicules est inconnue.',
+						)
+					: t(
+							'This vehicle is not reporting now. The feed cannot tell whether it is still in service.',
+							'Ce véhicule ne se signale pas en ce moment. Le flux n’indique pas s’il est toujours en service.',
+						),
+	);
+</script>
+
+{#if id}
+	{@render titleBlock?.(liveReading?.route)}
+	<div class="grid min-w-0 gap-6" data-slot="screen-content">
+		<div data-slot="screen-answer">
+			<RecordAnswer
+				value={liveDelay}
+				state={readingState}
+				sentence={liveSentence}
+				{locale}
+				time={liveTime}
+				comparison={liveReading && liveDelay ? liveMeta : undefined}
+			/>
+			{#if readingState === 'not_reporting' && report}<p>
+					{t('Last report', 'Dernier signalement')} · {@render reportedAt()}
+				</p>{/if}
+		</div>
+		{#if liveReading}
+			{@const running = liveReading}
+			<DashboardGrid gutter={false} minTile="20rem">
+				<RecordCard title={t('Where it is', 'Où il se trouve')} stamp={liveTime}>
+					<div class="grid gap-3">
+						<VehicleStillMap
+							vehicle={running}
+							line={running.route ? display.line(running.route) : undefined}
+							{next}
+							{previous}
+							{shape}
+							{locale}
+						/>
+						{#if previous && next}
+							<p>
+								{t(
+									`Between ${previous.name} and ${next.name}${destination ? ', heading toward ' + destination : ''}.`,
+									`Entre ${previous.name} et ${next.name}${destination ? ', en direction de ' + destination : ''}.`,
+								)}
+							</p>
+						{/if}
 					</div>
-					<div>
-						<dt>{t('Line', 'Ligne')}</dt>
-						<dd>
-							{#if selected.route}<a href={href(routeFor({ kind: 'line', id: selected.route }))}
-									>{display.lineName(selected.route).label}</a
-								>{:else}{unknown}{/if}
-						</dd>
-					</div>
-					<div>
-						<dt>{t('Direction', 'Direction')}</dt>
-						<dd>{direction(selected)}</dd>
-					</div>
-					<div>
-						<dt>{t('Departure', 'Départ')}</dt>
-						<dd>
-							{#if selected.trip}
-								<Sheet.Root>
-									<Sheet.Trigger class="text-primary underline">{predictionsLabel}</Sheet.Trigger>
-									<Sheet.Content
-										side="bottom"
-										closeLabel={t('Close', 'Fermer')}
-										class="max-h-[90dvh] overflow-y-auto"
+					{#snippet footer()}
+						<a
+							class="inline-flex min-h-11 w-full items-center border-t border-border text-primary underline"
+							href={href(routeFor({ kind: 'vehicle', id }))}
+						>
+							{t('Open the full map on this vehicle', 'Ouvrir la carte sur ce véhicule')}
+						</a>
+					{/snippet}
+				</RecordCard>
+				<RecordCard title={t('What it is running', 'Son service en cours')} stamp={liveTime}>
+					<dl class="running-details divide-y divide-border">
+						{#if running.route}
+							{@const line = display.lineName(running.route)}
+							<div class="flex flex-wrap items-center justify-between gap-2 py-2">
+								<dt>{t('Line', 'Ligne')}</dt>
+								<dd class="running-line grid min-w-0 items-center gap-x-2">
+									<RoutePlate code={line.number ?? running.route} />
+									<a
+										class="inline-flex min-h-11 items-center text-primary underline"
+										href={href(routeFor({ kind: 'line', id: running.route }))}
+										>{line.name ?? line.label}</a
 									>
-										<Sheet.Title
-											>{t(`Trip ${selected.trip}`, `Trajet ${selected.trip}`)}</Sheet.Title
-										>
-										{#if live.trips}
-											<LiveTripPredictions
-												id={selected.trip}
-												report={live.trips}
-												{locale}
-												provider={city}
-												{timeZone}
-												{stopNames}
-												current={live.familyStates.trips.health.state === 'live'}
-												absenceReason={liveAbsenceReason('trip-delay', {
-													familyStates: live.familyStates,
-												})}
-											/>
-										{:else}
-											<p role="status">
-												{live.familyStates.trips.phase === 'failed'
-													? t(
-															'Predictions are temporarily unavailable.',
-															'Les prévisions sont temporairement indisponibles.',
-														)
-													: t('Loading predictions…', 'Chargement des prévisions…')}
-											</p>
-										{/if}
-									</Sheet.Content>
-								</Sheet.Root>
-							{:else}
-								{unknown}
-							{/if}
-						</dd>
-					</div>
-					<div>
-						<dt>{t('Status', 'État')}</dt>
-						<dd>{vehicleStatus(selected, locale)}</dd>
-					</div>
-					<div>
-						<dt>{t('Next stop', 'Prochain arrêt')}</dt>
-						<dd>
-							{#if selected.next_stop}<a
-									href={href(routeFor({ kind: 'stop', id: selected.next_stop }))}>{nextStop}</a
-								>{:else}{unknown}{/if}
-						</dd>
-					</div>
-					<div>
-						<dt>{t('How full it is', 'Achalandage')}</dt>
-						<dd>{selected.occupancy ? OCCUPANCY_LABELS[locale][selected.occupancy] : unknown}</dd>
-					</div>
-					<div>
-						<dt>{t('Last report', 'Dernier signalement')}</dt>
-						<dd>{@render reportedAt()}</dd>
-					</div>
-				</dl>
-			{:else}
-				<p>
-					{t(
-						'This vehicle is not reporting now. The feed cannot tell whether it is still in service.',
-						'Ce véhicule ne se signale pas en ce moment. Le flux n’indique pas s’il est toujours en service.',
-					)}
-				</p>
-				{#if report}<p>{t('Last report', 'Dernier signalement')} · {@render reportedAt()}</p>{/if}
-			{/if}
+								</dd>
+							</div>
+						{/if}
+						<div class="flex flex-wrap justify-between gap-2 py-2">
+							<dt>{t('Direction', 'Direction')}</dt>
+							<dd>{direction(running)}</dd>
+						</div>
+						{#if running.trip}
+							<div class="flex flex-wrap items-center justify-between gap-2 py-2">
+								<dt>{t('Departure', 'Départ')}</dt>
+								<dd>
+									{#if running.trip}
+										<Sheet.Root>
+											<Sheet.Trigger
+												class="inline-flex min-h-11 items-center text-primary underline"
+												>{predictionsLabel}</Sheet.Trigger
+											>
+											<Sheet.Content
+												side="bottom"
+												closeLabel={t('Close', 'Fermer')}
+												class="max-h-[90dvh] overflow-y-auto"
+											>
+												<Sheet.Title
+													>{t(`Trip ${running.trip}`, `Trajet ${running.trip}`)}</Sheet.Title
+												>
+												{#if live.trips}
+													<LiveTripPredictions
+														id={running.trip}
+														report={live.trips}
+														{locale}
+														provider={city}
+														{timeZone}
+														{stopNames}
+														current={live.familyStates.trips.health.state === 'live'}
+														absenceReason={liveAbsenceReason('trip-delay', {
+															familyStates: live.familyStates,
+														})}
+													/>
+												{:else}
+													<p role="status">
+														{live.familyStates.trips.phase === 'failed'
+															? t(
+																	'Predictions are temporarily unavailable.',
+																	'Les prévisions sont temporairement indisponibles.',
+																)
+															: t('Loading predictions…', 'Chargement des prévisions…')}
+													</p>
+												{/if}
+											</Sheet.Content>
+										</Sheet.Root>
+									{:else}
+										{unknown}
+									{/if}
+								</dd>
+							</div>
+						{/if}
+						<div class="flex flex-wrap justify-between gap-2 py-2">
+							<dt>{t('Status', 'État')}</dt>
+							<dd>
+								{#if running.status === 'unknown'}<StateMark state="delay_unknown" {locale} />
+								{:else}<StatusMark
+										status={running.status}
+										label={vehicleStatus(running, locale)}
+									/>{#if liveDelay && running.delay_min !== 0}<span
+											class="ml-2 text-muted-foreground">{liveDelay}</span
+										>{/if}{/if}
+							</dd>
+						</div>
+						{#if running.next_stop}
+							<div class="flex flex-wrap items-center justify-between gap-2 py-2">
+								<dt>{t('Next stop', 'Prochain arrêt')}</dt>
+								<dd>
+									<a
+										class="inline-flex min-h-11 items-center text-primary underline"
+										href={href(routeFor({ kind: 'stop', id: running.next_stop }))}>{nextStop}</a
+									>
+								</dd>
+							</div>
+						{/if}
+						{#if running.occupancy}
+							<div class="flex flex-wrap justify-between gap-2 py-2">
+								<dt>{t('How full it is', 'Achalandage')}</dt>
+								<dd>{OCCUPANCY_LABELS[locale][running.occupancy]}</dd>
+							</div>
+						{/if}
+						{#if report}
+							<div class="flex flex-wrap justify-between gap-2 py-2">
+								<dt>{t('Last report', 'Dernier signalement')}</dt>
+								<dd>{@render reportedAt()}</dd>
+							</div>
+						{/if}
+					</dl>
+					{#snippet footer()}<div class="w-full border-t border-border">
+							{@render viewRecord()}
+						</div>{/snippet}
+				</RecordCard>
+			</DashboardGrid>
 		{:else}
-			<label class="grid max-w-sm gap-1">
-				{t('Find by vehicle number', 'Rechercher par numéro de véhicule')}
-				<input
-					class="min-h-11 rounded-md border border-border px-3"
-					type="search"
-					bind:value={search}
-					oninput={() => (limit = 25)}
-				/>
-			</label>
-			{#if visible.length}
+			{@render viewRecord()}
+		{/if}
+		<AboutLiveFigures
+			{locale}
+			{operator}
+			healthLink={href('/status')}
+			captureAge={health.ageSeconds}
+		/>
+	</div>
+{:else}
+	<Card edge="neutral" textSize="inherit" class="min-w-0 px-4 sm:px-6">
+		<section aria-labelledby="vehicle-live-title" class="grid min-w-0 gap-3">
+			<h2 id="vehicle-live-title">
+				{t('Vehicles in service now', 'Véhicules en service maintenant')}
+			</h2>
+			{#if !live.vehicles}
+				<p role="status">
+					{live.familyStates.vehicles.phase === 'failed'
+						? t(
+								'Live reports are temporarily unavailable.',
+								'Les signalements en direct sont temporairement indisponibles.',
+							)
+						: t('Loading live reports…', 'Chargement des signalements en direct…')}
+				</p>
+			{:else if health.isStale}
 				<p>
 					{t(
-						`${active.length} vehicles reporting on a trip`,
-						`${active.length} véhicules se signalent pendant un voyage`,
+						'The latest feed is delayed. Current vehicle activity is unknown.',
+						'Le flux est en retard. L’activité actuelle des véhicules est inconnue.',
 					)}
 				</p>
-				<RecordTable
-					title={t('Vehicles in service now', 'Véhicules en service maintenant')}
-					headers={[
-						t('Vehicle', 'Véhicule'),
-						t('Line', 'Ligne'),
-						t('Direction', 'Direction'),
-						t('Status', 'État'),
-					]}
-					rows={visible.map((vehicle) => [
-						vehicle.id,
-						vehicle.route ? display.lineName(vehicle.route).label : unknown,
-						direction(vehicle),
-						vehicleStatus(vehicle, locale),
-					])}
-					rowLabel={vehicleLink}
-				/>
-				{#if active.length > limit}
-					<button class="min-h-11 justify-self-start underline" onclick={() => (limit += 25)}
-						>{t('Show more vehicles', 'Afficher plus de véhicules')}</button
-					>
-				{/if}
 			{:else}
-				<p role="status">
-					{search.trim()
-						? t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')
-						: t(
-								'No vehicles are currently reporting on a trip.',
-								'Aucun véhicule ne se signale pendant un voyage en ce moment.',
-							)}
-				</p>
+				<label class="grid max-w-sm gap-1">
+					{t('Find by vehicle number', 'Rechercher par numéro de véhicule')}
+					<input
+						class="min-h-11 rounded-md border border-border px-3"
+						type="search"
+						bind:value={search}
+						oninput={() => (limit = 25)}
+					/>
+				</label>
+				{#if visible.length}
+					<p>
+						{t(
+							`${active.length} vehicles reporting on a trip`,
+							`${active.length} véhicules se signalent pendant un trajet`,
+						)}
+					</p>
+					<RecordTable
+						title={t('Vehicles in service now', 'Véhicules en service maintenant')}
+						headers={[
+							t('Vehicle', 'Véhicule'),
+							t('Line', 'Ligne'),
+							t('Direction', 'Direction'),
+							t('Status', 'État'),
+						]}
+						rows={visible.map((vehicle) => [
+							vehicle.id,
+							vehicle.route ? display.lineName(vehicle.route).label : unknown,
+							direction(vehicle),
+							vehicleStatus(vehicle, locale),
+						])}
+						rowLabel={vehicleLink}
+					/>
+					{#if active.length > limit}
+						<button class="min-h-11 justify-self-start underline" onclick={() => (limit += 25)}
+							>{t('Show more vehicles', 'Afficher plus de véhicules')}</button
+						>
+					{/if}
+				{:else}
+					<p role="status">
+						{search.trim()
+							? t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')
+							: t(
+									'No vehicles are currently reporting on a trip.',
+									'Aucun véhicule ne se signale pendant un trajet en ce moment.',
+								)}
+					</p>
+				{/if}
 			{/if}
-		{/if}
-	</section>
-</Card>
+		</section>
+	</Card>
+{/if}
 
 {#snippet vehicleLink(number: string)}
 	<a class="inline-flex min-h-11 items-center" href={href(`/vehicle/${encodeURIComponent(number)}`)}
@@ -313,10 +503,35 @@
 	>
 {/snippet}
 
+{#snippet viewRecord()}
+	{#if recordHref}<a
+			class="inline-flex min-h-11 items-center text-primary underline"
+			href={recordHref}
+			>{t('Its record over the chosen dates', 'Son bilan pour les dates choisies')}</a
+		>{/if}
+{/snippet}
+
 {#snippet reportedAt()}
 	{#if report && Number.isFinite(Date.parse(report))}
-		<time datetime={report}>{dateAndClock(report, locale, timeZone)}</time>
+		<time datetime={report}
+			>{relativeReportAge((clock.serverNow - Date.parse(report)) / 1000, locale)}</time
+		>
 	{:else}
 		{unknown}
 	{/if}
 {/snippet}
+
+<style>
+	.running-details {
+		container-type: inline-size;
+	}
+	.running-line {
+		grid-template-columns: auto minmax(0, 1fr);
+	}
+	@container (max-width: 13rem) {
+		.running-line {
+			grid-template-columns: minmax(0, 1fr);
+			justify-items: start;
+		}
+	}
+</style>

@@ -22,11 +22,13 @@
 		manifest,
 		alertsAvailable,
 		link,
+		onCaptureAge,
 	}: {
 		locale: Locale;
 		manifest: Manifest | null;
 		alertsAvailable: boolean;
 		link: (path: string, live?: boolean) => string;
+		onCaptureAge?: (age: number | null) => void;
 	} = $props();
 
 	const t = $derived(overviewCopy[locale]);
@@ -50,6 +52,7 @@
 	const pulse = $derived(selectLivePulse(live?.network ?? null, locale));
 	const health = $derived(live?.familyStates.network.health);
 	const alertHealth = $derived(live?.familyStates.alerts.health);
+	$effect(() => onCaptureAge?.(health?.ageSeconds ?? null));
 	const stale = (health: LiveFamilyState['health'] | undefined) =>
 		!!health?.retained && (health.isStale || health.notice != null);
 	const networkStale = $derived(stale(health));

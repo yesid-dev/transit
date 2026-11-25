@@ -47,6 +47,7 @@ it('starts all detail sections without awaiting the slow line breakdown', async 
 		{ vehicle: '40061', measure: 'vehicle_reporting_gaps_per_100_hours' },
 		{ vehicle: '40061', measure: 'vehicle_unfinished_trips' },
 		{ vehicle: '40061', measure: 'vehicle_on_time' },
+		{ vehicle: '40061', measure: 'vehicles', group: 'day' },
 	]);
 	for (const [, period] of getRecordAnswer.mock.calls) expect(period).toMatchObject(scope);
 });

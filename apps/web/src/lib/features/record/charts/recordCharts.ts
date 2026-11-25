@@ -11,7 +11,7 @@ import type {
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
-import { countedUnit, delayReading } from '#lib/site/presenter.ts';
+import { countedUnit, delayReading, sampleWithMinimum } from '#lib/site/presenter.ts';
 import { dateRange } from '#lib/site/presenter.ts';
 import { choose, measuredShare, percent, tally } from '../recordText.ts';
 import { recordState, type RecordState } from '../recordStates.ts';
@@ -415,11 +415,25 @@ export function stopLadderChart(
 	title: string,
 	locale: Locale,
 	stop: (id: string) => Pick<StopLadderStop, 'name' | 'code' | 'href' | 'timingPoint'>,
+	observed = false,
 ): ChartReading<StopLadderProps> {
 	const stops = series.cells.flatMap((cell, index) => {
 		if (typeof cell.key.stop !== 'string') return [];
-		const value = cell.state === 'measured' ? (cell.value.median_delay ?? null) : null;
-		const state = value === null ? recordState(chartState(cell.state))[locale] : undefined;
+		const median = cell.state === 'measured' ? (cell.value.median_delay ?? null) : null;
+		const value = observed ? (cell.evidence.observed_delay_seconds ?? median) : median;
+		const mark = recordState(chartState(cell.state));
+		const minimum = minimumSample(series, 'punctuality');
+		const count = cell.evidence.counts.classified;
+		const sample =
+			observed && cell.state === 'too_few_to_judge' && count != null && minimum != null
+				? sampleWithMinimum(countedUnit(count, 'event', locale), minimum, locale)
+				: null;
+		const state =
+			value === null
+				? [observed ? `${mark.glyph} ${mark[locale]}` : mark[locale], sample]
+						.filter(Boolean)
+						.join(' · ')
+				: undefined;
 		return [
 			{
 				...stop(cell.key.stop),
@@ -431,18 +445,23 @@ export function stopLadderChart(
 		];
 	});
 	const columns = {
-		stop: choose(locale, 'Stop', 'Arrêt'),
-		value: choose(locale, 'Median delay', 'Retard médian'),
+		stop: observed ? '' : choose(locale, 'Stop', 'Arrêt'),
+		value: observed
+			? choose(locale, 'Delay', 'Retard')
+			: choose(locale, 'Median delay', 'Retard médian'),
 	};
 	return {
 		props: {
 			label: title,
 			columns,
 			stops,
-			max: Math.max(1, ...stops.map(({ value }) => value ?? 0)),
+			max: Math.max(observed ? 360 : 1, ...stops.map(({ value }) => value ?? 0)),
+			threshold: observed
+				? { value: 300, label: choose(locale, 'Late beyond 5 min', 'En retard au-delà de 5 min') }
+				: undefined,
 		},
 		table: {
-			columns: { label: columns.stop, value: columns.value },
+			columns: { label: choose(locale, 'Stop', 'Arrêt'), value: columns.value },
 			rows: stops.map(({ id, name, valueLabel }) => ({ id, label: name, value: valueLabel })),
 			pageSize: 12,
 		},
