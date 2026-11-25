@@ -48,7 +48,7 @@
 	import { ArticleSectionStack, type ArticleMetaEntry } from '#lib/components/layout/index.ts';
 
 	import { CollapsibleSection, type TocEntry, SectionHeading } from '@yesid/ui/brand';
-	import { articleNavigationCopy } from '#lib/components/shared/index.ts';
+	import { articleNavigationCopy } from '#lib/components/shared/articleNavigation.copy.ts';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
 
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
