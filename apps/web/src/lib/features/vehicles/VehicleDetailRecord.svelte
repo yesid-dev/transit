@@ -1,6 +1,5 @@
 <script lang="ts">
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
-	import { RoutePlate } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { DayStrip } from '@yesid/ui/chart';
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
@@ -28,7 +27,11 @@
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
+	import RecordDataTable, {
+		type RecordTableRow,
+	} from '#lib/features/record/RecordDataTable.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordTableValue from '#lib/features/record/RecordTableValue.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import { recordState, recordStateFor } from '#lib/features/record/recordStates.ts';
@@ -72,6 +75,30 @@
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+	type VehicleLineRow = RecordTableRow & {
+		count: string | null;
+		state: ReturnType<typeof recordStateFor>;
+	};
+	function lineRows(answer: RecordSeries, trips: number | null): VehicleLineRow[] {
+		return vehicleLines(answer).flatMap((cell) => {
+			const line = cell.key.line;
+			if (typeof line !== 'string') return [];
+			const name = display.lineName(line);
+			const count = cell.state === 'measured' ? (cell.value.vehicle_trips_run ?? null) : null;
+			const share = count != null && trips ? percent(count / trips, locale) : null;
+			return [
+				{
+					id: line,
+					label: name.name ?? name.label,
+					plate: { code: name.number ?? line },
+					href: vehicleHref(`/lines/${encodeURIComponent(line)}`, url, locale, data.city),
+					detail: share ? t(`${share} of its trips`, `${share} de ses trajets`) : undefined,
+					count: count != null ? countedUnit(count, 'trip', locale) : null,
+					state: recordStateFor(cell.state),
+				},
+			];
+		});
+	}
 	const term = $derived(overviewCopy[locale]);
 	const noReport = $derived(
 		t(
@@ -301,50 +328,24 @@
 										<RecordPending {locale} answer={lines.answer} />
 									{:then series}
 										{#if series.kind === 'answer' && 'cells' in series.answer && series.answer.cells.length}
-											<ul>
-												{#each vehicleLines(series.answer) as cell (cell.key.line)}
-													{@const line = cell.key.line}
-													{@const count =
-														cell.state === 'measured' ? cell.value.vehicle_trips_run : null}
-													{#if typeof line === 'string'}
-														{@const name = display.lineName(line)}
-														<li
-															class="line-row grid items-start gap-x-3 border-t border-border py-2"
-														>
-															<div class="w-12 pt-2"><RoutePlate code={name.number ?? line} /></div>
-															<div>
-																<a
-																	class="inline-flex min-h-11 items-center text-primary underline"
-																	href={vehicleHref(
-																		`/lines/${encodeURIComponent(line)}`,
-																		url,
-																		locale,
-																		data.city,
-																	)}>{name.name ?? name.label}</a
-																>
-																{#if count != null && trips}<p
-																		class="text-small text-muted-foreground"
-																	>
-																		{t(
-																			`${percent(count / trips, locale)} of its trips`,
-																			`${percent(count / trips, locale)} de ses trajets`,
-																		)}
-																	</p>{/if}
-															</div>
-															<span class="line-count pt-2 text-right tabular-nums"
-																>{#if count != null}{countedUnit(
-																		count,
-																		'trip',
-																		locale,
-																	)}{:else}<StateMark
-																		state={recordStateFor(cell.state)}
-																		{locale}
-																	/>{/if}</span
-															>
-														</li>
-													{/if}
-												{/each}
-											</ul>
+											{#snippet lineCount(row: VehicleLineRow)}
+												<RecordTableValue {locale} text={row.count} state={row.state} />
+											{/snippet}
+											<RecordDataTable
+												{locale}
+												title={lines.title}
+												rowHeader={t('Line', 'Ligne')}
+												rows={lineRows(series.answer, trips)}
+												columns={[
+													{
+														key: 'trips',
+														header: t('Trips', 'Trajets'),
+														numeric: true,
+														cell: lineCount,
+													},
+												]}
+												value="trips"
+											/>
 											{#if series.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 										{:else}{@render absent(series)}{/if}
 									{/await}
@@ -645,35 +646,3 @@
 		</div>
 	</RecordGroup>
 {/if}
-
-<style>
-	.vehicle-lines {
-		container-type: inline-size;
-	}
-	.line-row {
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-	.line-count {
-		grid-column: 2;
-		justify-self: start;
-		text-align: start;
-	}
-	@container (max-width: 13rem) {
-		.line-row {
-			grid-template-columns: minmax(0, 1fr);
-		}
-		.line-count {
-			grid-column: 1;
-		}
-	}
-	@container (min-width: 23rem) {
-		.line-row {
-			grid-template-columns: auto minmax(0, 1fr) auto;
-		}
-		.line-count {
-			grid-column: auto;
-			justify-self: end;
-			text-align: end;
-		}
-	}
-</style>

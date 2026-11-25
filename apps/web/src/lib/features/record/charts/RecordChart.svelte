@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		BandBar,
 		HourGrid,
 		StopLadder,
 		type StopLadderStop,
@@ -17,6 +16,7 @@
 	import { countedUnit } from '#lib/site/presenter.ts';
 	import { choose, tally } from '../recordText.ts';
 	import StateMark from '../StateMark.svelte';
+	import RecordBandBar from './RecordBandBar.svelte';
 	import {
 		bandChart,
 		chartState,
@@ -112,22 +112,9 @@
 			}}
 		/>
 	{:else if reading.kind === 'bands'}
-		<BandBar {...reading.props} rows={false}>
+		<RecordBandBar {...reading.props}>
 			{#snippet absent()}<StateMark state={chartState(input.answer.state)} {locale} />{/snippet}
-		</BandBar>
-		<dl class="grid gap-2">
-			{#each reading.props.bands as band (band.id)}
-				<div
-					class="flex flex-wrap justify-between gap-2 border-b border-border pb-2 last:border-b-0"
-				>
-					<dt><StatusMark status={band.status} label={band.label} /></dt>
-					<dd class="ml-auto text-right tabular-nums">
-						<strong>{band.valueLabel}</strong>
-						<span class="block text-small text-muted-foreground">{band.detail}</span>
-					</dd>
-				</div>
-			{/each}
-		</dl>
+		</RecordBandBar>
 	{:else if reading.kind === 'ladder'}
 		<StopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}

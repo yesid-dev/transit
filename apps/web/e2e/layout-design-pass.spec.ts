@@ -160,7 +160,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			await expect(page.locator('[data-record-disclosure]').first()).toBeVisible();
 		}
 		if (screen.startsWith('overview')) {
-			await expect(page.locator('[data-slot="record-ranking"] li')).toHaveCount(6);
+			await expect(page.locator('[data-slot="record-ranking"] tbody tr')).toHaveCount(6);
 			await expect(page.locator('[data-slot="chart-line-series"]')).toBeVisible();
 		}
 		if (health) {

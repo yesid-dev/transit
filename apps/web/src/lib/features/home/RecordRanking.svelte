@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { RoutePlate } from '@yesid/ui/brand';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
@@ -7,6 +6,7 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
+	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { lastGoodNote, coverageText } from '../record/recordText.ts';
@@ -36,37 +36,52 @@
 	const title = $derived(
 		kind === 'line' ? (locale === 'fr' ? 'Lignes' : 'Lines') : locale === 'fr' ? 'Arrêts' : 'Stops',
 	);
+	type Row = RecordTableRow & { code: string; sample: string; share: string };
+
+	function rankRows(answer: RankingAnswer, stops: ScheduleEdition['stops']): Row[] {
+		return answer.rows.slice(0, 3).map((row) => {
+			const line = kind === 'line' ? display.lineName(row.id) : null;
+			const stop = kind === 'stop' ? stops.find((item) => item.id === row.id) : undefined;
+			const coverage = row.low_coverage ? coverageText(row, locale) : null;
+			return {
+				id: row.id,
+				label:
+					line?.name ??
+					line?.label ??
+					(stop ? stopDisplayName(stop.name) : stopNameFallback(row.id, locale)),
+				code: stop?.code || row.id,
+				plate: line ? { code: line.number ?? row.id } : undefined,
+				href: link((kind === 'line' ? '/lines/' : '/stop/') + encodeURIComponent(row.id)),
+				sample: countedUnit(row.sample, 'event', locale) + (coverage ? ` · ${coverage}` : ''),
+				share: formatShare?.(row.value) ?? percent(row.value, locale),
+			};
+		});
+	}
 </script>
 
+{#snippet stopHeading(row: Row)}
+	<div class="flex flex-wrap items-center gap-x-2">
+		<span class="font-mono text-sm" class:stop-code={outlineStopCode}>{row.code}</span>
+		<a class="inline-flex min-h-11 min-w-11 items-center text-primary underline" href={row.href}
+			>{row.label}</a
+		>
+	</div>
+{/snippet}
+{#snippet sample(row: Row)}{row.sample}{/snippet}
+{#snippet share(row: Row)}{row.share}{/snippet}
 {#snippet rows(answer: RankingAnswer, stops: ScheduleEdition['stops'] = [])}
-	<ol>
-		{#each answer.rows.slice(0, 3) as row (row.id)}
-			{@const line = kind === 'line' ? display.lineName(row.id) : null}
-			{@const stop = kind === 'stop' ? stops.find((item) => item.id === row.id) : undefined}
-			{@const name =
-				line?.name ??
-				line?.label ??
-				(stop ? stopDisplayName(stop.name) : stopNameFallback(row.id, locale))}
-			{@const coverage = row.low_coverage ? coverageText(row, locale) : null}
-			<li>
-				<span class="plate">
-					{#if line}<RoutePlate code={line.number ?? row.id} />
-					{:else}<span class="font-mono text-sm" class:stop-code={outlineStopCode}
-							>{stop?.code || row.id}</span
-						>{/if}
-				</span>
-				<a
-					class="inline-flex min-h-11 min-w-11 items-center font-semibold text-primary underline"
-					href={link((kind === 'line' ? '/lines/' : '/stop/') + encodeURIComponent(row.id))}
-					>{name}</a
-				>
-				<p class="text-muted-foreground">
-					{countedUnit(row.sample, 'event', locale)}{coverage ? ` · ${coverage}` : ''}
-				</p>
-				<strong>{formatShare?.(row.value) ?? percent(row.value, locale)}</strong>
-			</li>
-		{/each}
-	</ol>
+	<RecordDataTable
+		{locale}
+		title={heading ?? title}
+		rowHeader={title}
+		rows={rankRows(answer, stops)}
+		columns={[
+			{ key: 'share', header: overviewCopy[locale].onTime, numeric: true, cell: share },
+			{ key: 'sample', header: overviewCopy[locale].counted, cell: sample },
+		]}
+		value="share"
+		rowHeading={kind === 'stop' ? stopHeading : undefined}
+	/>
 	{#if answer.coverage_note}<p>{answer.coverage_note[locale]}</p>{/if}
 {/snippet}
 
@@ -95,50 +110,10 @@
 </div>
 
 <style>
-	[data-slot='record-ranking'] {
-		container-type: inline-size;
-	}
 	.stop-code {
 		display: inline-block;
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
 		padding-inline: 0.25em;
-	}
-	li {
-		display: grid;
-		grid-template-columns: 3.5rem minmax(0, 1fr) auto;
-		align-items: baseline;
-		column-gap: var(--space-card-gap);
-		border-block-start: 1px solid var(--border);
-		padding-block-end: 0.5em;
-		overflow-wrap: anywhere;
-	}
-	li p {
-		grid-column: 2 / -1;
-		grid-row: 2;
-	}
-	li strong {
-		grid-column: 3;
-		grid-row: 1;
-	}
-	@media (max-width: 25em) {
-		li {
-			column-gap: 0.5em;
-		}
-	}
-	@container (max-width: 12rem) {
-		li {
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-		li a,
-		li p {
-			grid-column: 1 / -1;
-		}
-		li p {
-			grid-row: 3;
-		}
-		li strong {
-			grid-column: 2;
-		}
 	}
 </style>

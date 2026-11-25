@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
-	import { RoutePlate, type StampProps } from '@yesid/ui/brand';
+	import type { StampProps } from '@yesid/ui/brand';
 	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -13,6 +13,7 @@
 	import FactRow from '../record/FactRow.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { recordState } from '../record/recordStates';
 	import { overviewCopy } from './overviewRecord.copy';
@@ -170,19 +171,24 @@
 	</FactList>
 	{#if lines.length}
 		<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
-		<ul class="late-lines">
-			{#each lines as row (row.id)}
-				{@const line = display.lineName(row.id)}
-				<li class="late-line border-t border-border">
-					<span><RoutePlate code={line.number ?? row.id} /></span>
-					<a
-						class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
-						href={link('/lines/' + encodeURIComponent(row.id), true)}>{line.name ?? line.label}</a
-					>
-					<span>{recordRatio(row.late, countedUnit(row.total, 'vehicle', locale), locale)}</span>
-				</li>
-			{/each}
-		</ul>
+		{#snippet late(row: RecordTableRow & { late: string })}{row.late}{/snippet}
+		<RecordDataTable
+			{locale}
+			title={t.lateLines}
+			rowHeader={locale === 'fr' ? 'Ligne' : 'Line'}
+			rows={lines.map((row) => {
+				const line = display.lineName(row.id);
+				return {
+					id: row.id,
+					label: line.name ?? line.label,
+					plate: { code: line.number ?? row.id },
+					href: link('/lines/' + encodeURIComponent(row.id), true),
+					late: recordRatio(row.late, countedUnit(row.total, 'vehicle', locale), locale),
+				};
+			})}
+			columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}
+			value="late"
+		/>
 	{/if}
 	{#snippet links()}
 		<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/map', true)}
@@ -194,31 +200,3 @@
 			>{/if}
 	{/snippet}
 </RecordCard>
-
-<style>
-	.late-lines {
-		container-type: inline-size;
-	}
-	.late-line {
-		display: grid;
-		grid-template-columns: 3.5rem minmax(0, 1fr) minmax(0, 1fr);
-		align-items: baseline;
-		gap: 0.5em;
-	}
-	.late-line > :last-child {
-		text-align: end;
-	}
-	@container (max-width: 14rem) {
-		.late-line {
-			grid-template-columns: 3.5rem minmax(0, 1fr);
-		}
-		.late-line a {
-			grid-column: 1 / -1;
-			grid-row: 2;
-		}
-		.late-line > :last-child {
-			grid-column: 2;
-			grid-row: 1;
-		}
-	}
-</style>
