@@ -18,7 +18,8 @@ export function rankingsEngine(url, city) {
 		const header = get('lang') === 'fr' ? 'Rang,Type,Identifiant' : 'Rank,Kind,ID';
 		return { csv: `${header}\n1,${kind},${JSON.stringify(ids[kind])}\n` };
 	}
-	const classes = kind === 'line' ? ['3:frequent', '3:regular'] : [];
+	const classes =
+		kind === 'line' ? (from === '2026-11-01' ? ['3:frequent'] : ['3:frequent', '3:regular']) : [];
 	const serviceClass = kind === 'line' ? (get('class') ?? '3:frequent') : null;
 	const entry = {
 		id: ids[kind],
@@ -38,6 +39,7 @@ export function rankingsEngine(url, city) {
 						early: 4,
 						scheduled: 250,
 						classified: 100,
+						observed_trips: 12,
 						on_time: 48,
 						late: 48,
 						vehicle_stopped: 50,

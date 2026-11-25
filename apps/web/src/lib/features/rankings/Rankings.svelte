@@ -1,12 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { tick } from 'svelte';
 	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
-	import { RoutePlate, SegmentedChoice } from '@yesid/ui/brand';
+	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
 	import { RangeMark } from '@yesid/ui/chart';
-	import { Combobox } from '@yesid/ui/combobox';
 	import { Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
-	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { RankingsRecord } from '#lib/server/engine.ts';
 	import type { loadRankingsRecord, RankingIdentities } from '#lib/server/rankingsRecord.ts';
@@ -52,21 +51,24 @@
 		rankingLists,
 		rankingMeasures,
 		reporting,
-		worseIsHigher,
 		type RankingKind,
+		type RankingMeasure,
 		type RankingSelection,
 	} from './rankingSelection.ts';
 	import {
 		classText,
 		exclusionText,
 		lineRankingFloor,
+		rankOptionLabels,
 		rankingCitation,
+		rankingCountLines,
+		rankingLead,
 		rankingRange,
 		rankingReference,
-		rankingSample,
 		rankingValue,
 		rankingVerdict,
 		sampleText,
+		serviceClassDefinition,
 	} from './rankingText.ts';
 
 	let {
@@ -104,7 +106,11 @@
 		rankingKinds.map((key) => ({ key, label: rankingLists[key].label[locale] })),
 	);
 	const byOptions = $derived(
-		rankingMeasures[kind].map((key) => ({ key, label: measures[key][locale] })),
+		rankingMeasures[kind].map((key) => ({
+			key,
+			label: measures[key][locale],
+			compactLabel: rankOptionLabels[key]?.[locale],
+		})),
 	);
 	const pinned = $derived.by(() => {
 		const params = new SvelteURLSearchParams(url.searchParams);
@@ -114,26 +120,64 @@
 		return new URL(frameHref(target, { mode: 'record', period }), url);
 	});
 	const links = $derived(recordSectionLinks(pinned, 'ranking'));
+	let rankingControls: HTMLDivElement | undefined = $state();
+	let referenceResult = $state<{
+		query: NonNullable<typeof record.reference>;
+		answer: Awaited<typeof record.reference>;
+	}>();
+	const settledReference = $derived(
+		referenceResult?.query === record.reference ? referenceResult?.answer : undefined,
+	);
+	$effect(() => {
+		const query = record.reference;
+		let active = true;
+		if (!query) return;
+		const accept = (answer: Awaited<typeof query> | null) => {
+			if (active) referenceResult = { query, answer };
+		};
+		void query.then(accept, () => accept(null));
+		return () => {
+			active = false;
+		};
+	});
 
-	function select(selection: RankingSelection) {
+	async function select(selection: RankingSelection) {
 		if (
 			selection.kind === kind &&
 			selection.measure === measure &&
 			selection.serviceClass === serviceClass
 		)
 			return;
-		void goto(rankingHref(selection, locale, url.searchParams), { reset: false });
+		const focused = document.activeElement;
+		const group = focused?.closest('[role="radiogroup"]');
+		const label =
+			group && rankingControls?.contains(group) ? group.getAttribute('aria-label') : null;
+		await goto(rankingHref(selection, locale, url.searchParams), { reset: false });
+		if (!label) return;
+		// The class choices depend on the ranking answer that is still streaming.
+		await record.answer;
+		await tick();
+		if (
+			document.activeElement !== document.body ||
+			kind !== selection.kind ||
+			measure !== selection.measure ||
+			serviceClass !== selection.serviceClass
+		)
+			return;
+		const groups = rankingControls?.querySelectorAll('[role="radiogroup"]') ?? [];
+		const next = [...groups].find((item) => item.getAttribute('aria-label') === label);
+		next
+			?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')
+			?.focus({ preventScroll: true });
 	}
 	function selectKind(next: RankingKind) {
 		const nextMeasure = rankingMeasures[next].includes(measure)
 			? measure
 			: rankingMeasures[next][0];
-		select({ kind: next, measure: nextMeasure, serviceClass: null });
+		void select({ kind: next, measure: nextMeasure, serviceClass: null });
 	}
-	function selectMeasure(next: string | null) {
-		const selected =
-			rankingMeasures[kind].find((option) => option === next) ?? rankingMeasures[kind][0];
-		select({ kind, measure: selected, serviceClass });
+	function selectMeasure(next: RankingMeasure) {
+		void select({ kind, measure: next, serviceClass });
 	}
 	function entityHref(path: string) {
 		return frameHref(new URL(localizeHref(path, locale, record.city), url), {
@@ -149,15 +193,25 @@
 		const id = row.id;
 		if (kind === 'line') {
 			const line = display.lineName(id);
+			const heads = identities.headsigns[id];
+			const direction =
+				heads?.[0] && heads?.[1] && heads[0] !== heads[1]
+					? t(`${heads[1]} to ${heads[0]}`, `De ${heads[1]} à ${heads[0]}`)
+					: undefined;
 			return {
 				id,
 				label: line.name ?? line.label,
 				plate: { code: line.number ?? id },
 				href: entityHref(`/lines/${encodeURIComponent(id)}`),
 				detail:
-					serviceClass === 'all'
-						? row.classes.map((key) => classText(key, locale)).join(', ')
-						: undefined,
+					[
+						direction,
+						serviceClass === 'all'
+							? row.classes.map((key) => classText(key, locale, row.classes)).join(', ')
+							: '',
+					]
+						.filter(Boolean)
+						.join(' · ') || undefined,
 			};
 		}
 		if (kind === 'stop') {
@@ -201,24 +255,14 @@
 			`${tally(data.ranked_count, locale)} ${noun} avec assez de données pour conclure`,
 		);
 	}
-	function answerSentence(data: RankingsRecord, entry: Ranked['entry']) {
-		const higher = worseIsHigher(measure);
-		const extreme =
-			data.rows.length === data.ranked_count &&
-			data.rows.every((row) => (higher ? row.value <= entry.value : row.value >= entry.value));
-		const label =
-			measure === reporting ? t('rate', 'taux') : measureLabel.toLocaleLowerCase(locale);
-		const description = extreme
-			? t(
-					`is the ${higher ? 'highest' : 'lowest'} ${label}`,
-					`est la valeur ${higher ? 'la plus élevée' : 'la plus faible'} pour ${label}`,
-				)
-			: t(`is the first-ranked ${label}`, `est la valeur en tête pour ${label}`);
-		const unit =
-			measure === reporting
-				? t('times per 100 hours in service ', 'fois par 100 heures en service ')
-				: '';
-		return `${unit}${description} ${t('among', 'parmi')} ${rankedCount(data)}.`;
+	function leader(entry: RecordTableRow) {
+		const number = entry.plate?.code;
+		if (!number) return entry.label;
+		const line = t(`line ${number}`, `ligne ${number}`);
+		if (kind === 'departure') return `${entry.label}, ${line}`;
+		return kind === 'line' && display.lineName(entry.id).name
+			? `${line} ${entry.label}`
+			: entry.label;
 	}
 	function exclusions(data: RankingsRecord) {
 		const groups = new SvelteMap<string, { count: number; label: string }>();
@@ -250,8 +294,29 @@
 	}
 </script>
 
+{#snippet classControl(data: RankingsRecord)}
+	{@const classes = [...new Set(data.available_classes)]}
+	{#if data.kind === 'line' && classes.length > 1}
+		<div class="grid min-w-0 gap-1 @max-[13rem]:w-full">
+			<p>{t('Compare lines', 'Comparer les lignes')}</p>
+			<SegmentedChoice
+				options={['all', ...classes].map((key) => ({
+					key,
+					label: classText(key, locale, classes),
+				}))}
+				value={serviceClass ?? data.class ?? 'all'}
+				label={t('Compare lines', 'Comparer les lignes')}
+				onSelect={(next) => {
+					if (next !== (serviceClass ?? data.class))
+						void select({ kind, measure, serviceClass: next });
+				}}
+			/>
+		</div>
+	{/if}
+{/snippet}
+
 {#snippet controls()}
-	<div class="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
+	<div bind:this={rankingControls} class="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
 		<div class="grid min-w-0 gap-1 @max-[13rem]:w-full">
 			<p>{t('Rank', 'Classer')}</p>
 			<SegmentedChoice
@@ -264,30 +329,16 @@
 		</div>
 		<div class="grid min-w-0 gap-1 @max-[13rem]:w-full">
 			<p>{t('By', 'Par')}</p>
-			{#if byOptions.length > 5}
-				<Combobox
-					options={byOptions.map(({ key, label }) => ({
-						value: key,
-						label,
-						search: foldSearchText(label),
-					}))}
-					value={measure}
-					onValueChange={selectMeasure}
-					label={t('By', 'Par')}
-					clearLabel={t('Reset measure', 'Réinitialiser la mesure')}
-					emptyLabel={t('No matching measures', 'Aucune mesure correspondante')}
-					fold={foldSearchText}
-				/>
-			{:else}
-				<SegmentedChoice
-					variant="fit-row"
-					options={byOptions}
-					value={measure}
-					label={t('By', 'Par')}
-					onSelect={selectMeasure}
-				/>
-			{/if}
+			<SegmentedChoice
+				options={byOptions}
+				value={measure}
+				label={t('By', 'Par')}
+				onSelect={selectMeasure}
+			/>
 		</div>
+		{#await record.answer then result}
+			{#if result?.kind === 'answer'}{@render classControl(result.answer)}{/if}
+		{/await}
 	</div>
 {/snippet}
 
@@ -325,76 +376,88 @@
 				</p>{/snippet}
 		</RecordActionGroup>
 	{/snippet}
-	<RecordAnswer
-		{locale}
-		value={first ? rankingValue(first.value, measure, locale) : null}
-		sentence={first
-			? answerSentence(data, first)
-			: t(
-					'No entries can be ranked on these dates.',
-					'Aucune entrée ne peut être classée à ces dates.',
-				)}
-		state={first ? undefined : resultState(data)}
-		time={stamp}
-	>
-		{#snippet meta()}
-			<div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-				{#if entry}<div class="flex flex-wrap items-center gap-x-2">
-						{#if entry.plate}<RoutePlate code={entry.plate.code} />{/if}
-						{#if entry.href}<a
-								class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
-								href={entry.href}>{entry.label}</a
-							>{:else}{entry.label}{/if}
-					</div>{/if}
-				{@render actions()}
-			</div>
-			{#if lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-		{/snippet}
-	</RecordAnswer>
+	{#if first && entry}
+		<div class="grid min-w-0 gap-3">
+			<p class="text-body">
+				<span
+					class="block font-heading text-title leading-none font-extrabold text-accent-text tabular-nums sm:mr-2 sm:inline"
+					>{rankingValue(first.value, measure, locale)}</span
+				>
+				{rankingLead(data, first, measure, rankedCount(data), locale)}
+				{#if entry.href}<a class="text-primary underline" href={entry.href}>{leader(entry)}</a
+					>{:else}{leader(entry)}{/if}.
+			</p>
+			{#if stamp}<div><Stamp {...stamp} /></div>{/if}
+			{@render actions()}
+			{#if lastGood}<p class="text-small text-muted-foreground">{lastGoodNote[locale]}</p>{/if}
+		</div>
+	{:else}
+		<RecordAnswer
+			{locale}
+			value={null}
+			sentence={t(
+				'No entries can be ranked on these dates.',
+				'Aucune entrée ne peut être classée à ces dates.',
+			)}
+			state={resultState(data)}
+			time={stamp}
+			{actions}
+		/>
+	{/if}
 {/snippet}
 
 {#snippet tableCard(data: RankingsRecord, identities: RankingIdentities)}
-	{@const rows = data.rows.map((entry): Ranked => ({ ...name(entry, identities), entry }))}
+	{@const rows = data.rows.map((entry): Ranked => {
+		const row = name(entry, identities);
+		return {
+			...row,
+			entry,
+			detail:
+				[row.detail, coverageText(entry, locale, recordPercent)].filter(Boolean).join(' · ') ||
+				undefined,
+		};
+	})}
 	{@const plates = rows.some((row) => row.plate || row.leadingCode)}
-	{@const classes = [
-		...new Set(['all', ...data.available_classes, ...(serviceClass ? [serviceClass] : [])]),
-	]}
+	{@const bounded = rows.filter(
+		({ entry }) => entry.range.lower != null && entry.range.upper != null,
+	)}
+	{@const ref = bounded.length
+		? rankingReference(settledReference ?? null, data, measure, locale)
+		: null}
+	{@const wilson = bounded.some(({ entry }) => entry.range.method.endsWith('wilson_95'))}
 	{@const scale = domain(data)}
 	{#snippet value(row: Ranked)}{rankingValue(row.entry.value, measure, locale)}{/snippet}
-	{#snippet counted(row: Ranked)}<span class="text-small"
-			>{rankingSample(row.entry, measure, locale)}</span
-		>{/snippet}
+	{#snippet counted(row: Ranked)}
+		{#each rankingCountLines(row.entry, measure, locale) as reading (reading)}<span
+				class="block font-sans text-small text-right">{reading}</span
+			>{/each}
+	{/snippet}
 	{#snippet range(row: Ranked)}
 		{@const { lower, upper } = row.entry.range}
 		{#if lower != null && upper != null}
 			{@const caption = rankingRange(row.entry, measure, locale)}
-			{#snippet mark(ref: ReturnType<typeof rankingReference>)}
-				{@const range = ref
-					? ([Math.min(scale[0], ref.value), Math.max(scale[1], ref.value)] as const)
-					: scale}
-				{@const verdict = rankingVerdict(
-					row.entry,
-					ref,
-					data.evidence.method_version,
-					measure,
-					locale,
-				)}
-				<div class="inline-grid min-w-0 max-w-full">
-					<RangeMark
-						low={lower}
-						high={upper}
-						value={row.entry.value}
-						domain={range}
-						reference={ref ?? undefined}
-						label={`${t('Range', 'Intervalle')}: ${caption}`}
-						{caption}
-					/>
-					{#if verdict}<span class="text-small text-muted-foreground">{verdict}</span>{/if}
-				</div>
-			{/snippet}
-			{#await record.reference}{@render mark(null)}{:then ref}{@render mark(
-					rankingReference(ref, data, measure, locale),
-				)}{/await}
+			{@const range = ref
+				? ([Math.min(scale[0], ref.value), Math.max(scale[1], ref.value)] as const)
+				: scale}
+			{@const verdict = rankingVerdict(
+				row.entry,
+				ref,
+				data.evidence.method_version,
+				measure,
+				locale,
+			)}
+			<div class="inline-grid min-w-0 max-w-full">
+				<RangeMark
+					low={lower}
+					high={upper}
+					value={row.entry.value}
+					domain={range}
+					reference={ref ?? undefined}
+					label={`${t('Range', 'Intervalle')}: ${caption}`}
+					{caption}
+				/>
+				{#if verdict}<span class="text-small text-muted-foreground">{verdict}</span>{/if}
+			</div>
 		{:else}<span class="text-small text-muted-foreground"
 				>{t('Range unavailable', 'Intervalle indisponible')}</span
 			>{/if}
@@ -402,12 +465,21 @@
 	{@const columns = [
 		{
 			key: 'value',
-			header: measure === reporting ? t('Per 100 h', 'Par 100 h') : measureLabel,
+			header: measure === reporting ? t('per 100 h', 'par 100 h') : measureLabel,
 			numeric: true,
 			cell: value,
 		},
-		{ key: 'counted', header: t('Counted', 'Ce qui est compté'), cell: counted },
-		{ key: 'range', header: t('Range', 'Plage'), cell: range },
+		{ key: 'counted', header: t('Counted', 'Ce qui est compté'), align: 'end', cell: counted },
+		{
+			key: 'range',
+			header: ref
+				? t(
+						`Range, against the network (${rankingValue(ref.value, measure, locale)})`,
+						`Plage, réseau (${rankingValue(ref.value, measure, locale)})`,
+					)
+				: t('Range', 'Plage'),
+			cell: range,
+		},
 	] satisfies DataTableColumn<Ranked>[]}
 	{#snippet heading(row: Ranked)}
 		<div
@@ -422,40 +494,15 @@
 	<RecordCard
 		title={`${title}, ${by}`}
 		{stamp}
-		interactive={rows.some((row) => row.href) || (kind === 'line' && classes.length > 1)}
+		interactive={rows.some((row) => row.href) || rows.length > 20}
 	>
 		<div id="ranking" class="grid min-w-0 grid-cols-1 gap-3">
-			{#if kind === 'line' && classes.length > 1}
-				{@const defaultClass = t('Default class', 'Classe par défaut')}
-				{@const options = [
-					{ key: 'default', label: defaultClass },
-					...classes.map((key) => ({
-						key,
-						label: key === 'all' ? t('All classes', 'Toutes les classes') : classText(key, locale),
-					})),
-				]}
-				<div class="grid min-w-0 grid-cols-1 gap-1 sm:w-72">
-					<p>{t('Service class', 'Classe de service')}</p>
-					<Combobox
-						options={options.map(({ key, label }) => ({
-							value: key,
-							label,
-							search: foldSearchText(label),
-						}))}
-						value={serviceClass}
-						placeholder={defaultClass}
-						label={t('Service class', 'Classe de service')}
-						clearLabel={t('Reset service class', 'Réinitialiser la classe de service')}
-						emptyLabel={t('No matching classes', 'Aucune classe correspondante')}
-						fold={foldSearchText}
-						onValueChange={(next) =>
-							select({ kind, measure, serviceClass: next === 'default' ? null : next })}
-					/>
-				</div>
-			{/if}
 			{#if rows.length}
-				{#if rows.some(({ entry }) => entry.ranking_bound != null)}<p class="text-small">
-						{cautiousRanking[locale]}
+				{#if bounded.length}<p class="text-small">
+						{t(
+							'Nearby positions may not really differ. When the ranges of two rows overlap, the gap between them can be chance.',
+							'Deux rangs proches peuvent se valoir. Quand leurs plages se chevauchent, l’écart peut être dû au hasard.',
+						)}
 					</p>{/if}
 				<RecordDataTable
 					{locale}
@@ -468,6 +515,19 @@
 					pageSize={rows.length > 20 ? 20 : undefined}
 					rowHeading={heading}
 				/>
+				{#if bounded.length}<p class="text-small text-muted-foreground">
+						{#if ref}{t(
+								'The dashed tick is the network over the same dates.',
+								'Le trait pointillé représente le réseau aux mêmes dates.',
+							)}
+						{/if}
+						{wilson
+							? t(
+									'The line is the range in which the value would fall about 95 times in 100 for another equal period.',
+									'Le trait indique la plage où la valeur tomberait environ 95 fois sur 100 sur une autre période de même durée.',
+								)
+							: data.range_notes[bounded[0].entry.range.method]?.[locale]}
+					</p>{/if}
 			{:else}<StateMark state={resultState(data)} {locale} />{/if}
 			{#if data.coverage_note}<p class="text-muted-foreground">{data.coverage_note[locale]}</p>{/if}
 		</div>
@@ -524,6 +584,17 @@
 							: null,
 				},
 				{ key: 'means', label: measureLabel, text: info.text[locale].definition },
+				{
+					key: 'ordering',
+					label: t('Rank order', 'Ordre du classement'),
+					text: data.rows.some((row) => row.ranking_bound != null) ? cautiousRanking[locale] : null,
+				},
+				{
+					key: 'class',
+					label: data.class ? classText(data.class, locale, data.available_classes) : '',
+					text:
+						data.kind === 'line' && data.class ? serviceClassDefinition(data.class, locale) : null,
+				},
 				{
 					key: 'minimum',
 					label: t('Minimum', 'Minimum'),

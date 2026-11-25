@@ -58,7 +58,26 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						const table = main.getByRole('table', { name: fr ? frList : enList, exact: true });
 						await expect(table.locator('tbody tr')).toHaveCount(1);
 						await expect(table.getByRole('link')).toHaveCount(1);
+						const lead = main
+							.locator('[data-slot="screen-answer"] p')
+							.filter({ has: page.getByRole('link') });
+						await expect(lead).toHaveCount(1);
+						await expect(lead.getByRole('link')).toHaveAttribute(
+							'href',
+							(await table.getByRole('link').getAttribute('href')) ?? '',
+						);
 						await expect(table).toContainText(kind === 'vehicle' ? /24[,.]4/u : /48[,.]0\s*%/u);
+						if (kind === 'line') {
+							await expect(table.getByRole('rowheader')).toContainText(
+								fr ? 'De East B9 à West B9' : 'East B9 to West B9',
+							);
+							await expect(table.getByRole('rowheader')).toContainText(
+								fr ? 'Faible couverture' : 'Low coverage',
+							);
+							await expect(
+								table.getByRole('cell', { name: fr ? /12 trajets/u : /12 trips/u }),
+							).toBeVisible();
+						}
 						if (kind === 'departure') {
 							await expect(table.getByRole('link')).toHaveAttribute('href', /\/departure\//u);
 							if (provider === 'stm')
@@ -68,14 +87,22 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						}
 						if (kind === 'stop' && provider === 'stm')
 							await expect(table.getByRole('link')).toContainText('Fixture stop');
-						if (kind === 'vehicle')
+						if (kind === 'vehicle') {
 							await expect(
 								table.getByText(fr ? 'Intervalle indisponible' : 'Range unavailable'),
 							).toBeVisible();
-						else
+							await expect(table).toContainText(fr ? 'par 100 h' : 'per 100 h');
+						} else {
 							await expect(
 								table.getByText(fr ? 'Moins bien que le réseau' : 'Worse than the network'),
 							).toBeVisible();
+							if (width === 1440)
+								await expect(
+									table.getByRole('columnheader', {
+										name: fr ? /^Plage, réseau/u : /^Range, against the network/u,
+									}),
+								).toBeVisible();
+						}
 					}
 					expect(await main.evaluate((node) => node.scrollWidth)).toBeLessThanOrEqual(width);
 					const axe = await new AxeBuilder({ page })
@@ -169,6 +196,30 @@ test('keeps one history entry per rank and measure choice', async ({ page }) => 
 	await expect(page).toHaveURL(
 		(url) => url.pathname === '/rankings' && !url.searchParams.has('kind'),
 	);
+});
+
+test('uses segmented measures and explains an available choice of line classes', async ({
+	page,
+}) => {
+	await page.goto(`/rankings?provider=stm&${dates}`);
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	const main = page.getByRole('main');
+	await expect(
+		main.getByRole('radiogroup', { name: 'By', exact: true }).getByRole('radio'),
+	).toHaveCount(7);
+	await expect(main.getByRole('combobox')).toHaveCount(0);
+	const classes = main.getByRole('radiogroup', { name: 'Compare lines' });
+	await expect(classes.getByRole('radio', { name: 'Frequent lines' })).toBeChecked();
+	await expect(main.getByText('10 minutes or less.', { exact: false })).toBeVisible();
+	const allLines = classes.getByRole('radio', { name: 'All lines' });
+	await allLines.focus();
+	await allLines.press('Enter');
+	await expect(page).toHaveURL(/class=all/u);
+	await expect(allLines).toBeChecked();
+	await expect(allLines).toBeFocused();
+	await page.goto('/rankings?provider=stm&recordFrom=2026-11-01&recordTo=2026-11-07');
+	await expect(main.getByRole('table', { name: 'Lines' })).toBeVisible();
+	await expect(classes).toHaveCount(0);
 });
 
 test('pages in groups of twenty and withholds a mismatched reference', async ({ page }) => {

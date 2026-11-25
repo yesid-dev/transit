@@ -38,7 +38,11 @@ function rankingIdentities(
 	const rows = [...data.rows, ...data.excluded];
 	const stops = new Set(kind === 'stop' ? rows.map(({ id }) => id) : []);
 	const lines = new Set(
-		kind === 'departure' ? rows.flatMap(({ line }) => (line ? [line] : [])) : [],
+		kind === 'line'
+			? rows.map(({ id }) => id)
+			: kind === 'departure'
+				? rows.flatMap(({ line }) => (line ? [line] : []))
+				: [],
 	);
 	return {
 		stops: Object.fromEntries(
