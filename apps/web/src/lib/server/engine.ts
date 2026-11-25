@@ -525,6 +525,7 @@ export function getScorecardAnswer({ path, parameters }: RecordQuery, period: En
 }
 
 const finderSeries = recordEnvelope.extend({
+	info: recordSeries.shape.info,
 	cells: z.array(
 		recordSeries.shape.cells.element.extend({
 			evidence: rateCoverage.omit({ share_occupancy_readings: true }).extend({

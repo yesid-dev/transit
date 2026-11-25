@@ -22,6 +22,7 @@ const cohesionScreens = new Set<Screen>([
 	'alerts-live',
 	'overview',
 	'overview-live',
+	'lines',
 	'line-record',
 	'line-live',
 	'stop-record',
@@ -156,6 +157,24 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 					.first(),
 			).toBeVisible();
 		}
+		if (screen === 'lines') {
+			await expect(page.locator('#line-performance tbody tr')).toHaveCount(20);
+			const [measured, scheduleOnly, excluded] = await Promise.all([
+				page.locator('#line-performance').getByRole('article').boundingBox(),
+				page.locator('#lines-without-live-data').getByRole('article').boundingBox(),
+				page
+					.getByRole('article', {
+						name: /^(Lines that cannot be judged on these dates|Lignes impossibles à évaluer pour ces dates)$/,
+					})
+					.boundingBox(),
+			]);
+			if (!measured || !scheduleOnly || !excluded)
+				throw new Error('Expected all three Lines cards');
+			expect([scheduleOnly.x, scheduleOnly.width]).toEqual([measured.x, measured.width]);
+			expect([excluded.x, excluded.width]).toEqual([measured.x, measured.width]);
+			expect(scheduleOnly.y).toBeGreaterThanOrEqual(measured.y + measured.height);
+			expect(excluded.y).toBeGreaterThanOrEqual(scheduleOnly.y + scheduleOnly.height);
+		}
 		if (screen.startsWith('map-')) {
 			// The app exposes the live map and makes the poster inert at this handoff.
 			// Later source updates can make MapLibre's loaded() false again.
@@ -235,7 +254,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				screen === 'download' ||
 				screen === 'roadmap' ||
 				screen.startsWith('search') ||
-				screen === 'line-record',
+				screen === 'line-record' ||
+				screen === 'lines',
 		});
 		await info.attach('design-pass-measurements', {
 			body: JSON.stringify({

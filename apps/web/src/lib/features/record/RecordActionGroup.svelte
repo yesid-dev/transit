@@ -14,7 +14,12 @@
 	}: {
 		locale: Locale;
 		href: string;
-		files: readonly { href?: string; label: string; columns?: readonly string[] }[];
+		files: readonly {
+			href?: string;
+			label: string;
+			download?: string;
+			columns?: readonly string[];
+		}[];
 		citation: Snippet;
 		print?: () => void;
 	} = $props();
@@ -54,7 +59,7 @@
 								{#if file.href}<a
 										class="inline-flex min-h-11 items-center text-primary underline"
 										href={file.href}
-										download>{file.label}</a
+										download={file.download ?? true}>{file.label}</a
 									>{:else}<p>{file.label}</p>{/if}
 								{#if file.columns?.length}
 									<details>

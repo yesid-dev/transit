@@ -86,22 +86,28 @@ for (const provider of ['stm', 'octranspo'])
 				await page.goto(
 					localizeHref('/lines', locale, provider) + '&recordFrom=2026-11-08&recordTo=2026-11-14',
 				);
-				const row = page
-					.getByRole('row')
-					.filter({ has: page.getByRole('link', { name: /24 · Sherbrooke/ }) });
+				const row = page.locator('#line-performance tbody tr').filter({
+					has: page.getByRole('link', { name: /^24\s+Sherbrooke\b/ }),
+				});
+				const name = row.getByRole('link');
+				const label = name.getByText('Sherbrooke', { exact: true });
+				const plate = name.locator('[data-slot="route-plate"]');
 				for (const width of [320, 390, 470, 743, 1280]) {
 					await page.setViewportSize({ width, height: 900 });
 					await expect(row).toBeVisible();
-					await expect(row).toContainText(/80\s?%/u);
+					await expect(row).toContainText(locale === 'fr' ? /80,0\s+%/u : '80.0%');
 					await expect(row).toContainText(locale === 'fr' ? 'Faible couverture' : 'Low coverage');
-					const name = row.getByRole('link');
-					await expect(name).toContainText('Sherbrooke');
+					await expect(plate).toHaveText('24');
+					await expect(plate).toBeVisible();
+					await expect(label).toBeVisible();
+					expect((await name.boundingBox())?.height).toBeGreaterThanOrEqual(44);
 					expect(
-						await name.evaluate(
+						await label.evaluate(
 							(element) =>
 								element.scrollWidth <= element.clientWidth + 1 &&
 								getComputedStyle(element).wordBreak !== 'break-all',
 						),
+						`Line name stays whole at ${width}px`,
 					).toBe(true);
 					await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
 				}

@@ -245,16 +245,6 @@ export function reportHours(start: number, end: number, locale: Locale) {
 	return [clockFace(start, 0), clockFace(end, 0)].join(locale === 'fr' ? ' à ' : ' to ');
 }
 
-export function reportPercent(value: number, locale: Locale) {
-	return intl
-		.number(locale, {
-			style: 'percent',
-			minimumFractionDigits: 1,
-			maximumFractionDigits: 1,
-		})
-		.format(value);
-}
-
 export function fileSize(bytes: number | null | undefined, locale: Locale): string | null {
 	if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return null;
 	return intl
@@ -321,6 +311,16 @@ export function registryUnitText(text: string, locale: Locale) {
 
 export function recordStamp(period: { from: string; to: string }, locale: Locale) {
 	return `${locale === 'fr' ? 'Bilan' : 'Record'} · ${dateRange(period, locale)}`;
+}
+
+export function recordPercent(value: number, locale: Locale) {
+	return intl
+		.number(locale, {
+			style: 'percent',
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})
+		.format(value);
 }
 
 export function countedUnit(

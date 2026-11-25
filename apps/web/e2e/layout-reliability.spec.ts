@@ -11,13 +11,13 @@ for (const locale of ['en', 'fr'] as const)
 			await page.goto(localizeHref('/lines', locale, 'stm') + query);
 			const row = page
 				.getByRole('row')
-				.filter({ has: page.getByRole('link', { name: /24 · Sherbrooke/ }) });
+				.filter({ has: page.getByRole('link', { name: /^24 Sherbrooke/ }) });
 			await expect(row).toBeVisible();
-			await expect(row).toContainText(/80\s?%/u);
+			await expect(row).toContainText(/80[.,]0\s?%/u);
 			await expect(row).toContainText(locale === 'fr' ? 'Faible couverture' : 'Low coverage');
 			await expect(
 				page.getByRole('row').filter({ has: page.getByRole('link', { name: /99/ }) }),
-			).toContainText(locale === 'fr' ? 'Trop peu pour juger' : 'Too few to judge');
+			).toContainText(locale === 'fr' ? 'Trop peu de données pour conclure' : 'Too few to judge');
 			await page.evaluate(() => document.fonts.ready);
 			await expectLayout(page, info, []);
 		},

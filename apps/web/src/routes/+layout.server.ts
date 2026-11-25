@@ -36,12 +36,13 @@ function scheduleForPage(
 ): ScheduleEdition {
 	const { date, routes, stops, route_directions } = schedule;
 	switch (route.id) {
+		case localRoute + '/lines':
 		case localRoute + '/network':
 			return {
 				date,
 				routes,
 				stops: [],
-				...(!networkRecordView(url) && route_directions
+				...((route.id === localRoute + '/lines' || !networkRecordView(url)) && route_directions
 					? {
 							route_directions: Object.fromEntries(
 								Object.entries(route_directions).map(([id, directions]) => [

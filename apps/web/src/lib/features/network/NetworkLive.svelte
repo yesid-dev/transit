@@ -3,7 +3,7 @@
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
-	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import type { DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
@@ -17,6 +17,7 @@
 	import { choose, tally } from '../record/recordText.ts';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { selectSilentTripRows } from './silentTripRows.ts';
@@ -51,9 +52,8 @@
 	const term = $derived(overviewCopy[locale]);
 	const display = transitDisplay();
 	const silentTripLimit = 8;
-	type SilentTrip = NonNullable<ReturnType<typeof selectSilentTripRows>>[number];
+	type SilentTrip = NonNullable<ReturnType<typeof selectSilentTripRows>>[number] & RecordTableRow;
 	const columns = $derived<DataTableColumn<SilentTrip>[]>([
-		{ key: 'line', header: t('Line', 'Ligne'), cell: line, rowHeader: true },
 		{ key: 'departure', header: t('Departure', 'Départ'), cell: departure },
 		{ key: 'toward', header: t('Toward', 'Vers'), cell: toward },
 		{
@@ -242,21 +242,20 @@
 								)}
 							</p>
 							{#if silentTrips?.length}
-								<DataTable
-									caption={term.silent}
+								<RecordDataTable
+									{locale}
+									title={term.silent}
+									rowHeader={t('Line', 'Ligne')}
+									rowHeading={line}
 									{columns}
-									rows={silentTrips.slice(0, silentTripLimit)}
-									key={(row) => String(silentTrips.indexOf(row))}
-									responsive={{ mode: 'scroll', minWidth: '28rem' }}
+									rows={silentTrips.map((row) => ({
+										...row,
+										id: row.tripId,
+										label: row.line,
+									}))}
+									scrollMinWidth="28rem"
+									pageSize={silentTrips.length > silentTripLimit ? silentTripLimit : undefined}
 								/>
-								{#if silentCount != null && silentCount > silentTripLimit}
-									<p class="mt-3 text-small text-muted-foreground">
-										{t(
-											`Showing ${tally(Math.min(silentTrips.length, silentTripLimit), locale)} of ${tally(silentCount, locale)}.`,
-											`${tally(Math.min(silentTrips.length, silentTripLimit), locale)} sur ${tally(silentCount, locale)}.`,
-										)}
-									</p>
-								{/if}
 							{:else}
 								{#if silentCount != null}<p>{countedUnit(silentCount, 'trip', locale)}</p>{/if}
 								{#if silentTrips == null && silentCount !== 0}

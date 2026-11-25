@@ -97,6 +97,7 @@ export const designPassCases = [
 	['alerts', 'octranspo', 'fr'] as const,
 	['alerts-live', 'octranspo', 'fr'] as const,
 	['overview', 'octranspo', 'fr'] as const,
+	['lines', 'octranspo', 'fr'] as const,
 	['overview-live', 'octranspo', 'fr'] as const,
 	['line-live', 'octranspo', 'fr'] as const,
 	['stop-record', 'octranspo', 'fr'] as const,
@@ -125,7 +126,9 @@ export const designPassCases = [
 						? ['2026-11-18', '2026-11-20']
 						: screen === 'departure'
 							? ['2026-11-16', '2026-11-20']
-							: ['2026-11-08', '2026-11-14'];
+							: screen === 'lines'
+								? ['2026-11-04', '2026-11-10']
+								: ['2026-11-08', '2026-11-14'];
 	url.searchParams.set('recordFrom', from);
 	url.searchParams.set('recordTo', to);
 	return {

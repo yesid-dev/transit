@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { lineEngine } from './line-engine.mjs';
 import { installLineRecordFixtures, lineRecordFixture } from './line-record-fixtures.mjs';
-import { finderEngine } from './finder-engine.mjs';
+import { finderEngine, linesFixtureRoutes } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
@@ -596,6 +596,15 @@ const server = createServer((request, response) => {
 				editionStops.set(stop.id, { ...stop, lat: 45.5, lon: -73.6 });
 		}
 		const routeDirections = { 24: route.directions };
+		if (process.env.TRANSIT_E2E_LINES_PICTURES === '1' && kind === 'schedule-index') {
+			for (const entry of linesFixtureRoutes(city)) {
+				editionRoutes.set(entry.id, entry);
+				routeDirections[entry.id] = [
+					{ dir: 0, headsign: 'Terminus Central' },
+					{ dir: 1, headsign: entry.long },
+				];
+			}
+		}
 		if (kind === 'search-index') {
 			editionRoutes.set('display-names', {
 				id: 'display-names',

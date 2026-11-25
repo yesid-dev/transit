@@ -5,7 +5,7 @@ import {
 	countedUnit,
 	dateRange,
 	reportHours,
-	reportPercent,
+	recordPercent,
 	sampleWithMinimum,
 } from '#lib/site/presenter.ts';
 import { recordStateFor, type RecordState } from './recordStates.ts';
@@ -113,7 +113,7 @@ export function dailyPeriods(answer: RecordSeries | null, locale: Locale) {
 			start,
 			label: choose(locale, en, fr),
 			hours: reportHours(start, end, locale),
-			value: state ? null : reportPercent(late / classified, locale),
+			value: state ? null : recordPercent(late / classified, locale),
 			count: classified ? tally(classified, locale) : null,
 			state,
 			detail,

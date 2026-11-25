@@ -4,6 +4,7 @@
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { DashboardGrid } from '@yesid/ui/layout';
+	import type { DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { loadNetworkRecord } from '#lib/server/networkRecord.ts';
 	import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
@@ -40,7 +41,7 @@
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import AboutFigures from '../record/AboutFigures.svelte';
-	import HealthTable from './HealthTable.svelte';
+	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import NetworkRecordReading from './NetworkRecordReading.svelte';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 
@@ -90,6 +91,36 @@
 
 	const number = (count: number | null | undefined) =>
 		count == null ? t('Unknown', 'Inconnu') : tally(count, locale);
+	function deliveryDay(day: string, cell: RecordSeries['cells'][number]) {
+		const value = (key: string) =>
+			cell.state === 'measured'
+				? number(cell.evidence.counts[key])
+				: recordState(chartState(cell.state))[locale];
+		return {
+			id: day,
+			label: shortServiceDay(day, locale),
+			scheduled: value('scheduled'),
+			ran: value('ran'),
+			cancelled: value('cancelled'),
+			missing: value('missing'),
+		};
+	}
+	type DeliveryDay = ReturnType<typeof deliveryDay>;
+	type CrowdingRow = { id: string; label: string; share: string };
+	const deliveryColumns = $derived<DataTableColumn<DeliveryDay>[]>([
+		{ key: 'scheduled', header: t('Scheduled', 'Prévus'), numeric: true, cell: scheduledCell },
+		{ key: 'ran', header: t('Ran', 'Effectués'), numeric: true, cell: ranCell },
+		{ key: 'cancelled', header: t('Cancelled', 'Annulés'), numeric: true, cell: cancelledCell },
+		{ key: 'missing', header: t('Missing', 'Manquants'), numeric: true, cell: missingCell },
+	]);
+	const crowdingColumns = $derived<DataTableColumn<CrowdingRow>[]>([
+		{
+			key: 'share',
+			header: t('Share of measured time', 'Part du temps mesuré'),
+			numeric: true,
+			cell: crowdingCell,
+		},
+	]);
 	function sample(cell: Pick<RecordCell, 'evidence'>) {
 		const count = cell.evidence.counts.classified;
 		const days = countedUnit(cell.evidence.days_included.length, 'day', locale);
@@ -118,6 +149,12 @@
 		};
 	}
 </script>
+
+{#snippet scheduledCell(row: DeliveryDay)}{row.scheduled}{/snippet}
+{#snippet ranCell(row: DeliveryDay)}{row.ran}{/snippet}
+{#snippet cancelledCell(row: DeliveryDay)}{row.cancelled}{/snippet}
+{#snippet missingCell(row: DeliveryDay)}{row.missing}{/snippet}
+{#snippet crowdingCell(row: CrowdingRow)}{row.share}{/snippet}
 
 <RecordScreen class="min-w-0">
 	<RecordGroup
@@ -391,31 +428,16 @@
 							{:else}<StateMark state={chartState(result.state)} {locale} />{/if}
 							{#await record.deliveryDays then days}
 								{#if days.kind === 'answer' && 'cells' in days.answer && days.answer.cells.length}
-									<HealthTable
+									<RecordDataTable
+										{locale}
 										title={copy.delivery}
-										headers={[
-											t('Service date', 'Date de service'),
-											t('Scheduled', 'Prévus'),
-											t('Ran', 'Effectués'),
-											t('Cancelled', 'Annulés'),
-											t('Missing', 'Manquants'),
-										]}
+										rowHeader={t('Service date', 'Date de service')}
+										columns={deliveryColumns}
 										rows={days.answer.cells.flatMap((cell) =>
-											typeof cell.key.day !== 'string'
-												? []
-												: [
-														[
-															shortServiceDay(cell.key.day, locale),
-															...['scheduled', 'ran', 'cancelled', 'missing'].map((key) =>
-																cell.state === 'measured'
-																	? number(cell.evidence.counts[key])
-																	: recordState(chartState(cell.state))[locale],
-															),
-														],
-													],
+											typeof cell.key.day !== 'string' ? [] : [deliveryDay(cell.key.day, cell)],
 										)}
-										numeric={[1, 2, 3, 4]}
-										paging={{ size: 7, locale }}
+										pageSize={7}
+										scrollMinWidth="24rem"
 									/>
 								{:else if days.kind === 'busy'}<RecordPending {locale} busy />{/if}
 							{/await}
@@ -447,12 +469,11 @@
 				>
 					{#snippet reading(result)}
 						{#if !('cells' in result) && result.state === 'measured'}
-							<HealthTable
+							<RecordDataTable
+								{locale}
 								title={copy.crowding}
-								headers={[
-									t('Space on board', 'Place à bord'),
-									t('Share of measured time', 'Part du temps mesuré'),
-								]}
+								rowHeader={t('Space on board', 'Place à bord')}
+								columns={crowdingColumns}
 								rows={[
 									['empty', t('Empty', 'Vide')],
 									['many_seats', t('Many seats available', 'Beaucoup de places assises libres')],
@@ -462,9 +483,13 @@
 									['full', t('Full', 'Plein')],
 								].map(([id, label]) => {
 									const share = result.value['crowding_' + id];
-									return [label, share == null ? t('Unknown', 'Inconnu') : percent(share, locale)];
+									return {
+										id,
+										label,
+										share: share == null ? t('Unknown', 'Inconnu') : percent(share, locale),
+									};
 								})}
-								numeric={[1]}
+								scrollMinWidth="24rem"
 							/>
 						{:else if result.state === 'not_tracked'}
 							<p>
