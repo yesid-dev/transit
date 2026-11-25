@@ -32,6 +32,7 @@ class TripSpan:
     first: int
     last: int
     direction_id: int | None = None
+    headsign: str | None = None
 
 
 def count_silent_trips(

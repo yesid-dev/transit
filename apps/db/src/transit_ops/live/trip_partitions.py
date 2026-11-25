@@ -64,6 +64,9 @@ def trip_partitions(rows: list[Row], vehicles: list[Row] | None) -> TripPartitio
                             stop["arrival_delay"],
                             stop["departure_delay"],
                             stop["relationship"],
+                            stop.get("scheduled_arrival"),
+                            stop.get("scheduled_departure"),
+                            row.get("trip_headsign"),
                         ]
                     )
 

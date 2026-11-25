@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import logging
 import sqlite3
+import sys
 import zlib
 from collections import defaultdict
 from collections.abc import Iterator
@@ -53,6 +54,7 @@ DAY_OFFSETS = (0, -1, -2, 1)
 MAX_SERVICE_SECONDS = 48 * 3600
 
 type Stop = tuple[int, str, int | None, int | None]
+type ScheduledTrip = tuple[str, str, int | None, str | None]
 
 
 @dataclass(frozen=True)
@@ -133,7 +135,7 @@ def _calendar(archive: ZipFile) -> Calendar:
 
 def _selected_trips(
     archive: ZipFile, manifest: ProviderManifest, services: set[str]
-) -> dict[str, tuple[str, str, int | None]]:
+) -> dict[str, ScheduledTrip]:
     gaps = manifest.realtime.lines_without_live_data
     excluded_routes = {route for gap in gaps for route in gap.route_ids}
     excluded_types = {kind for gap in gaps for kind in gap.route_types}
@@ -146,7 +148,13 @@ def _selected_trips(
         if not trip or trip in selected:
             raise ValueError("Invalid scheduled trip identity")
         direction = row.get("direction_id") or None
-        selected[trip] = (service, route, None if direction is None else int(direction))
+        headsign = (row.get("trip_headsign") or "").strip()
+        selected[trip] = (
+            service,
+            route,
+            None if direction is None else int(direction),
+            sys.intern(headsign) if headsign else None,
+        )
     if any(
         r["trip_id"] in selected for r in _archive_rows(archive, "frequencies.txt", optional=True)
     ):
@@ -155,7 +163,7 @@ def _selected_trips(
 
 
 def _stop_rows(
-    archive: ZipFile, trips: dict[str, tuple[str, str, int | None]]
+    archive: ZipFile, trips: dict[str, ScheduledTrip]
 ) -> Iterator[tuple[str, int, str, int | None, int | None]]:
     members = [
         name for name in archive.namelist() if PurePosixPath(name).name.lower() == "stop_times.txt"
@@ -208,11 +216,11 @@ def build_days(
                 )
             }
     by_service: dict[str, list[TripSpan]] = defaultdict(list)
-    for trip, (service, route, direction) in trips.items():
+    for trip, (service, route, direction, headsign) in trips.items():
         first, last = ends[trip]
         if first is None or last is None or not first <= last <= MAX_SERVICE_SECONDS:
             raise ValueError("Unsupported or missing scheduled service span")
-        by_service[service].append(TripSpan(trip, route, first, last, direction))
+        by_service[service].append(TripSpan(trip, route, first, last, direction, headsign))
     return {
         day: None
         if value is None

@@ -215,6 +215,12 @@ for that same stop. A fresh feed can carry an unchanged prediction for the
 dated trip regardless of feed direction, and delay expires when the last
 predicted arrival or departure is more than the feed's freshness window in
 the past, allowing the vehicle to use its next usable upcoming call.
+Live trip updates include `trip_headsign` from the matched schedule edition's
+`trips.txt`. Each matched stop includes `scheduled_arrival` and
+`scheduled_departure` as Unix epoch seconds from the dated service-day
+schedule. Skipped and no-data stops keep their scheduled times, even when
+delays are unavailable. Missing timetable values and unmatched or duplicate
+trip updates carry nulls. Earlier publications omit these fields.
 On time is from one minute early through five minutes late, inclusive.
 
 ## Analytics
