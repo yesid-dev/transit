@@ -121,7 +121,9 @@
 			interactOutsideBehavior="close"
 			showCloseButton={false}
 			portalProps={{ to: trigger?.closest<HTMLElement>('[data-slot="app-shell"]') ?? 'body' }}
-			class="map-legend-sheet"
+			class={content
+				? 'map-legend-sheet map-legend-sheet-with-card border-0 bg-transparent p-0 shadow-none'
+				: 'map-legend-sheet'}
 			data-slot="map-legend-sheet"
 			onInteractOutside={(event) => {
 				// The trigger's click owns the toggle; outside dismissal must not close first.
@@ -145,7 +147,7 @@
 
 <style>
 	:global(.map-legend-card.map-legend-card),
-	:global(.map-legend-sheet.map-legend-sheet) {
+	:global(.map-legend-sheet.map-legend-sheet:not(.map-legend-sheet-with-card)) {
 		padding: 0;
 		gap: 0;
 		background: color-mix(in srgb, var(--card) 92%, transparent);
@@ -208,8 +210,10 @@
 		);
 		overflow-y: auto;
 		overscroll-behavior: contain;
-		padding: calc(var(--spacing) * 3);
 		transform-origin: left bottom;
+	}
+	:global(.map-legend-sheet.map-legend-sheet:not(.map-legend-sheet-with-card)) {
+		padding: calc(var(--spacing) * 3);
 	}
 	:global(.map-legend-sheet-title) {
 		margin: 0 0 calc(var(--spacing) * 2);

@@ -107,7 +107,7 @@
 						{#if vehicle}
 							{@const label = tr(`Vehicle ${vehicle.id}`, `Véhicule ${vehicle.id}`)}
 							<a
-								class="prediction-vehicle"
+								class="prediction-vehicle text-primary underline"
 								href={vehicleLiveHref(vehicle.id, url, locale, city)}
 								aria-label={`${label}, ${clock}`}>{label}</a
 							>
@@ -156,8 +156,6 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: var(--size-tap-min);
-		color: var(--accent-text);
-		text-decoration: underline;
 	}
 	.stop-code {
 		border: 1px solid var(--border);

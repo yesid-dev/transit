@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
+	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
 	import GaugeIcon from '@lucide/svelte/icons/gauge';
 	import MapPinnedIcon from '@lucide/svelte/icons/map-pinned';
@@ -26,6 +27,7 @@
 </script>
 
 <fieldset class="mf-group" data-filter-group={kind} aria-label={label}>
+	{#if kind !== 'markers'}<Separator decorative />{/if}
 	<Button
 		variant="ghost"
 		size="sm"

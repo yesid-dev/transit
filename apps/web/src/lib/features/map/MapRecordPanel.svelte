@@ -426,6 +426,7 @@
 			{/if}
 			{#if marks.length > 0}
 				{#if children && reportCamera}
+					<Separator decorative />
 					<section
 						aria-label={stopLayer
 							? tr('Stops in view', 'Arrêts en vue')
@@ -446,7 +447,6 @@
 								{@const stopCode = mark.stop ? stopCodes.get(mark.stop) : undefined}
 								{@const target = mark.stop ?? lineId}
 								<li class="record-in-view-row">
-									<Separator class="col-span-full" />
 									<span>
 										{#if lineId}<RoutePlate
 												code={display.lineName(lineId, routeNames.get(lineId)).number ?? lineId}
@@ -456,6 +456,7 @@
 									<div class="record-in-view-name">
 										{#if target}
 											<a
+												class="text-primary underline"
 												href={recordLink(target, mark.direction)}
 												onclick={(event) => {
 													if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
@@ -488,7 +489,7 @@
 							{/each}
 						</ul>
 						{#if visible.length > limit}
-							<Button variant="outline" size="sm" class="min-h-11" onclick={() => (limit += 12)}
+							<Button variant="outline" size="cta-sm" class="min-h-11" onclick={() => (limit += 12)}
 								>{tr('Show 12 more', 'Afficher 12 de plus')}</Button
 							>
 						{/if}
@@ -545,7 +546,7 @@
 			{/if}
 		</div>
 		{#if selected && recordHref}
-			<a class="record-link" href={recordHref}
+			<a class="record-link text-primary underline" href={recordHref}
 				>{stopLayer
 					? tr('Stop Record', 'Bilan de l’arrêt')
 					: tr('Line Record', 'Bilan de la ligne')}</a
@@ -555,7 +556,7 @@
 			<ul aria-label={tr('Lines serving this segment', 'Lignes qui desservent ce segment')}>
 				{#each selected.lines as id (id)}
 					<li>
-						<a class="record-link" href={recordLink(id)}
+						<a class="record-link text-primary underline" href={recordLink(id)}
 							>{display.lineName(id, routeNames.get(id)).label}</a
 						>
 					</li>
@@ -570,7 +571,7 @@
 		{#if children}
 			{@render recordBody(stamp)}
 		{:else}
-			<Card edge="neutral" class="p-3">{@render recordBody(stamp)}</Card>
+			<Card edge="neutral" interactive class="p-3">{@render recordBody(stamp)}</Card>
 		{/if}
 	</div>
 {/snippet}
@@ -617,8 +618,6 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: var(--size-tap-min);
-		color: var(--accent-text);
-		text-decoration: underline;
 	}
 	.record-in-view-name small {
 		color: var(--muted-foreground);
@@ -726,7 +725,6 @@
 		display: inline-flex;
 		align-items: center;
 		width: fit-content;
-		text-decoration: underline;
 	}
 	.results {
 		max-height: 8rem;

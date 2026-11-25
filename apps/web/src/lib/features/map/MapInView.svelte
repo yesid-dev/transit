@@ -85,6 +85,7 @@
 {@render stamp?.()}
 {@render detail?.()}
 
+<Separator decorative />
 <section aria-labelledby={uid} data-slot="map-in-view">
 	<div class="flex items-baseline justify-between gap-2">
 		<h2 id={uid} class="text-lg font-semibold" tabindex="-1" data-map-in-view-title>
@@ -100,7 +101,6 @@
 			{#each rows.slice(0, limit) as row (`${row.vehicleId}:${row.index}`)}
 				{@const heading = headsign(row)}
 				<li class="map-in-view-row" data-report-row data-report-id={row.vehicleId}>
-					<Separator class="col-span-full" />
 					<span
 						>{#if row.routeId}<RoutePlate code={line(row.routeId)} />{/if}</span
 					>
@@ -113,7 +113,7 @@
 						{#if heading}<small>{mapDirectionReading(heading, locale)}</small>{/if}
 					</span>
 					<a
-						class="map-in-view-link"
+						class="map-in-view-link text-primary underline"
 						data-in-view-vehicle={row.vehicleId}
 						href={localizeHref(
 							`/vehicle/${encodeURIComponent(row.vehicleId)}?frameMode=live`,
@@ -135,7 +135,7 @@
 					? `${count(limit)} sur ${count(rows.length)}`
 					: `Showing ${count(limit)} of ${count(rows.length)}`}
 			</p>
-			<Button variant="outline" size="sm" class="min-h-11" onclick={() => (limit += PAGE_SIZE)}>
+			<Button variant="outline" size="cta-sm" class="min-h-11" onclick={() => (limit += PAGE_SIZE)}>
 				{french ? 'Afficher 12 de plus' : 'Show 12 more'}
 			</Button>
 		{/if}
@@ -144,7 +144,7 @@
 			<summary class="min-h-11 py-3">Actions</summary>
 			{#if liveViewHref}<Button
 					variant="outline"
-					size="sm"
+					size="cta-sm"
 					class="min-h-11 max-w-full"
 					wrap
 					onclick={copyView}>{t.copyLiveView}</Button
@@ -152,7 +152,7 @@
 			{#if liveViewHref}<p class="text-muted-foreground">{t.copyDisclaimer}</p>{/if}
 			{#if csv}<Button
 					variant="outline"
-					size="sm"
+					size="cta-sm"
 					class="min-h-11 max-w-full"
 					href={csv.href}
 					download={csv.filename}
@@ -185,8 +185,6 @@
 		min-height: var(--size-tap-min);
 		min-width: var(--size-tap-min);
 		margin-inline-start: auto;
-		color: var(--accent-text);
 		font-family: var(--font-mono);
-		text-decoration: underline;
 	}
 </style>

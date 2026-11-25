@@ -860,7 +860,8 @@
 
 {#snippet detailPanel()}
 	<Card
-		edge="brand"
+		edge="neutral"
+		interactive
 		class="gap-2 p-3"
 		data-slot="map-detail-overlay"
 		data-selection-kind={session.selected?.kind}
@@ -1099,7 +1100,7 @@
 				{#if wide}<MapFeedStallBanner {presentation} />{/if}
 				{#if hoverPeek && wide && !peekRepeatsDetail(hoverPeek, detailOpen ? session.selected : null)}
 					<div class="map-peek" data-slot="map-hover-peek">
-						<Card class="p-3"><MapHoverPeek peek={hoverPeek} {locale} /></Card>
+						<Card edge="neutral" class="p-3"><MapHoverPeek peek={hoverPeek} {locale} /></Card>
 					</div>
 				{/if}
 			{/if}
@@ -1123,8 +1124,10 @@
 		{@render stage()}
 		{#if !wide}
 			<div class="map-mobile-head map-head">
-				<Card class="gap-1 p-[min(0.75rem,12px)] [--text-small:var(--text-caption)]" edge="neutral"
-					>{@render titleCard(true)}</Card
+				<Card
+					class="gap-1 p-[min(0.75rem,12px)] [--text-small:var(--text-caption)]"
+					edge="neutral"
+					interactive={!isRecordLayer && presentation.stamp.visible}>{@render titleCard(true)}</Card
 				>
 			</div>
 		{/if}

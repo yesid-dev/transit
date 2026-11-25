@@ -237,7 +237,6 @@
 		align-items: baseline;
 		column-gap: 0.5rem;
 		padding-block-start: 0.5rem;
-		border-top: 1px solid var(--border-subtle);
 		line-height: 1.35;
 	}
 	:global(.map-peek-alert .map-alert-severity) {

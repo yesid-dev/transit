@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Badge } from '@yesid/ui/badge';
+	import { Separator } from '@yesid/ui/separator';
 	import { isInService, vehicleServiceCopy } from '#lib/v1/live/vehicleService.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
@@ -78,6 +79,7 @@
 				class="map-peek-stale"
 			/>
 		{/if}
+		<Separator decorative />
 		<dl class="peek-facts">
 			<div>
 				<dt>{t.status}</dt>
@@ -135,6 +137,7 @@
 			>
 			{#if peek.labelInferred}<AbsentValue reason="inferred" {locale} />{/if}
 		</p>
+		<Separator decorative />
 		<dl class="peek-facts">
 			<div>
 				<dt>{t.direction}</dt>
@@ -155,6 +158,7 @@
 			</div>
 		</dl>
 	{:else}
+		<Separator decorative />
 		<dl class="peek-facts">
 			<div>
 				<dt>{t.stopCode}</dt>
@@ -243,7 +247,6 @@
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		margin: 0;
-		border-top: 1px solid var(--border-subtle);
 	}
 	.peek-facts > div {
 		display: grid;
@@ -251,10 +254,6 @@
 		column-gap: 0.75rem;
 		align-items: baseline;
 		padding-block: 0.375rem;
-		border-bottom: 1px solid var(--border-subtle);
-	}
-	.peek-facts > div:last-child {
-		border-bottom: 0;
 	}
 	dt {
 		min-width: 0;

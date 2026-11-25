@@ -288,6 +288,7 @@
 				{/if}
 			</div>
 			{#if header}
+				<Separator decorative />
 				<div class="mf-header" data-testid="map-filter-header">
 					{@render header(!panelOpen)}
 				</div>
@@ -863,12 +864,10 @@
 		z-index: 1;
 		padding: 0.75rem 1rem 0.625rem;
 		background: color-mix(in srgb, var(--card) 96%, transparent);
-		border-bottom: 1px solid color-mix(in srgb, var(--mf-edge) 70%, transparent);
 	}
 
 	:global(.map-filters[data-presentation='drawer'] .mf-header) {
 		padding: 0.5rem 1rem 0.625rem;
-		border-bottom: 1px solid color-mix(in srgb, var(--mf-edge) 70%, transparent);
 	}
 
 	:global(.map-filters[data-presentation='drawer'] .mf-body) {
@@ -896,14 +895,6 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0 0.375rem;
-	}
-	/* One hairline between groups; a group's last row needs no rule of its own. */
-	:global(.mf-body > .mf-group + .mf-group) {
-		padding-top: 0.25rem;
-		border-top: 1px solid var(--border-subtle);
-	}
-	:global(.mf-group-content .transit-checkbox-row:last-child) {
-		border-bottom: 0;
 	}
 
 	:global(.mf-clear:focus-visible),
