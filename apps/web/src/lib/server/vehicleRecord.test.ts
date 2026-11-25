@@ -57,7 +57,10 @@ it('starts all detail sections without awaiting the slow line breakdown', async 
 	await expect(detail.sections[0].answer).resolves.toEqual({ kind: 'answer' });
 	expect(detail.days).toBe(days);
 	expect(detail.sections[1].answer).toBe(pending);
-	expect(getVehicleDayAnswers).toHaveBeenCalledExactlyOnceWith('40061', scope);
+	expect(getVehicleDayAnswers).toHaveBeenCalledExactlyOnceWith(
+		'40061',
+		expect.objectContaining(scope),
+	);
 	expect(getRecordAnswer.mock.calls.map(([query]) => query.parameters)).toEqual([
 		{ vehicle: '40061', measure: 'vehicle_trips_run', group: 'line' },
 		{ vehicle: '40061', measure: 'vehicle_reporting_gaps_per_100_hours' },

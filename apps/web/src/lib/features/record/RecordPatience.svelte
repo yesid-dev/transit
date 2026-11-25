@@ -89,8 +89,8 @@
 			body={waiting
 				? `${reading} ${
 						french
-							? 'Vous pouvez attendre ici ou revenir à ce lien plus tard. Les réponses sont conservées.'
-							: 'You can wait here or return to this link later. Completed answers are kept.'
+							? 'Les résultats déjà affichés restent visibles. Si des lectures manquent, vous pouvez revenir à ce lien plus tard.'
+							: 'Completed readings stay visible. If readings are still missing, you can return to this link later.'
 					}`
 				: french
 					? 'La réponse est conservée.'

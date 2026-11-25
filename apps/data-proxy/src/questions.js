@@ -13,6 +13,7 @@ const VERSION_HEADER = "x-transit-cleaning-version";
 const REVISION_HEADER = "x-transit-answer-revision";
 const PENDING_DAYS_HEADER = "x-transit-days-pending";
 const STALE_HEADER = "x-transit-answer";
+const MAX_RECORD_BUDGET_MS = 45_000;
 const PUBLIC_HEADERS = {
   ...CORS_HEADERS,
   "access-control-expose-headers":
@@ -152,7 +153,9 @@ export function serveQuestion(request, env, ctx) {
 }
 
 export function serveBoundQuestion(request, env, ctx) {
-  return answerQuestion(request, env, ctx, request.headers.get("x-transit-visitor-ip"));
+  const deadline = Number(request.headers.get("x-transit-record-deadline"));
+  return answerQuestion(request, env, ctx, request.headers.get("x-transit-visitor-ip"),
+    deadline > Date.now() ? Math.min(deadline, Date.now() + MAX_RECORD_BUDGET_MS) : undefined);
 }
 
 export async function probeEngine(env, signal) {
@@ -219,7 +222,7 @@ async function serveLive(env, ctx, origin, question, visitorIp) {
   }
 }
 
-async function answerQuestion(request, env, ctx, visitorIp) {
+async function answerQuestion(request, env, ctx, visitorIp, deadline) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") {
     return new Response(null, {
@@ -281,15 +284,24 @@ async function answerQuestion(request, env, ctx, visitorIp) {
   let matchesCatalog;
   let settled = false;
   const headers = { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` };
+  if (deadline) headers["x-transit-record-deadline"] = String(deadline);
   const requirePublicCity = question.end && !catalog;
   if (requirePublicCity) headers["x-transit-require-public-city"] = "1";
   try {
-    const response = await env.ENGINE.fetch(new Request(question.upstream, { headers }));
+    const signal = deadline
+      ? AbortSignal.any([request.signal, AbortSignal.timeout(Math.max(0, deadline - Date.now()))])
+      : request.signal;
+    const response = await env.ENGINE.fetch(
+      new Request(question.upstream, { headers, signal, redirect: "manual" }),
+    );
     const reportedRevision = answerRevision(response.headers.get(REVISION_HEADER));
     // Older engines do not validate public city membership for dated questions.
     if (requirePublicCity && !reportedRevision) return cities.error;
     const retryAfter = response.headers.get("retry-after");
-    if (response.status === 503 && retryAfter) return busy(retryAfter);
+    if (response.status === 503 && retryAfter) {
+      await response.body?.cancel();
+      return busy(retryAfter);
+    }
     if (question.networkCorridors && response.status === 409) {
       const { reason, message } = await response.json();
       if (["segment_runs_version_required", "segment_runs_missing"].includes(reason)) {

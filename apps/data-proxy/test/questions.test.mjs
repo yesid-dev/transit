@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { QUESTION_PARAMS } from "../src/question-params.js";
 import { probeEngine, serveBoundQuestion } from "../src/questions.js";
 import worker from "../src/worker.js";
+import { fetchEngine } from "../../engine/upstream.js";
 
 const WINDOW = "from=2020-01-01&to=2020-01-02";
 const HEALTH = `/v2/demo/data-health?${WINDOW}`;
@@ -693,6 +694,44 @@ test("engine busy keeps Retry-After even with a last good answer", async (t) => 
   assert.equal(response.headers.get("retry-after"), "3");
   assert.equal(response.headers.get("x-transit-answer"), null);
   assert.deepEqual(await response.json(), { message: "busy, try again" });
+});
+
+test("a bound record read retries engine contention under its original admission", async (t) => {
+  let attempts = 0;
+  const f = fixture(t, (request) => fetchEngine(
+    request,
+    { ENGINE_ORIGIN: "https://local-engine.invalid" },
+    async () => ++attempts === 1
+      ? new Response(null, { status: 503, headers: { "retry-after": "0" } })
+      : Response.json(ANSWER),
+  ));
+  let admissions = 0;
+  f.env.QUESTION_LIMIT.limit = async () => ({ success: ++admissions === 1 });
+  const response = await f.fetch(MEASURE, {
+    "x-transit-record-deadline": String(Date.now() + 10_000),
+  }, "GET", true);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), ANSWER);
+  assert.equal(f.requests.length, 1);
+  assert.equal(attempts, 2);
+  assert.equal(admissions, 1);
+  const cached = await f.fetch(MEASURE, {
+    "x-transit-record-deadline": String(Date.now() + 10_000),
+  }, "GET", true);
+  assert.equal(cached.headers.get("cache-status"), "Transit; hit");
+  assert.equal(attempts, 2);
+  assert.equal(admissions, 1);
+});
+
+test("public callers cannot opt in to retries and short record budgets are respected", async (t) => {
+  const f = fixture(t, () =>
+    new Response(null, { status: 503, headers: { "retry-after": "2" } }));
+  const headers = { "x-transit-record-deadline": String(Date.now() + 10_000) };
+  assert.equal((await f.fetch(MEASURE, headers)).status, 503);
+  assert.equal(f.requests.length, 1);
+  const short = { "x-transit-record-deadline": String(Date.now() + 1_000) };
+  assert.equal((await f.fetch(MEASURE, short, "GET", true)).status, 503);
+  assert.equal(f.requests.length, 2);
 });
 
 test("rate limiting keys on hashed client IP and only runs for cache misses", async (t) => {
