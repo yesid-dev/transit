@@ -1,4 +1,6 @@
 <script lang="ts">
+	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
+	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { tick, untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { afterNavigate } from '$app/navigation';
@@ -147,110 +149,113 @@
 </script>
 
 <Surface>
-	<div class="search-title"><ScreenTitle title={words.sheetTitle} {subtitle} compact /></div>
-	<div data-slot="screen-content">
-		<section class="search-content" data-slot="screen-state" {id} aria-label={words.sheetTitle}>
-			<p class="search-lede">{t.lede}</p>
-			<div class="search-field">
-				<SearchInput
-					label={t.inputLabel}
-					placeholder={t.inputPlaceholder}
-					visibleLabel
-					textSize="body"
-					autocomplete="off"
-					bind:value={
-						() => query,
-						(next) => {
-							query = next;
-							rows = PAGE_SIZE;
-						}
-					}
-				/>
-			</div>
-			{#if queryState === 'empty'}
-				<div class="search-idle" role="note">
-					<StateMark state="unknown" {locale} hiddenLabel />
-					<div>
-						<p class="font-semibold">{words.idleTitle}</p>
-						<p>{words.idleBody}</p>
+	<RecordScreen>
+		<RecordGroup><ScreenTitle title={words.sheetTitle} {subtitle} compact /></RecordGroup>
+		<RecordGroup
+			><div data-slot="screen-content">
+				<section class="search-content" data-slot="screen-state" {id} aria-label={words.sheetTitle}>
+					<p class="search-lede">{t.lede}</p>
+					<div class="search-field">
+						<SearchInput
+							label={t.inputLabel}
+							placeholder={t.inputPlaceholder}
+							visibleLabel
+							textSize="body"
+							autocomplete="off"
+							bind:value={
+								() => query,
+								(next) => {
+									query = next;
+									rows = PAGE_SIZE;
+								}
+							}
+						/>
 					</div>
-				</div>
-			{:else if queryState === 'short'}
-				<SearchResultsList
-					id={`${id}-results`}
-					label={words.results}
-					list={shown}
-					query={text}
-					{locale}
-					{hrefs}
-					page={resultPage}
-				/>
-			{:else}
-				<Tabs
-					value={scope}
-					onValueChange={(next) => {
-						rows = PAGE_SIZE;
-						scope = searchScope(next);
-					}}
-				>
-					<TabsList
-						variant="line"
-						class="flex h-auto w-full flex-wrap justify-start gap-1"
-						aria-label={words.results}
-					>
-						{#each tabs as tab (tab.key)}
-							<TabsTrigger
-								value={tab.key}
-								class="h-auto min-h-11 min-w-11 flex-none px-3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-								>{tab.label}</TabsTrigger
-							>
-						{/each}
-					</TabsList>
-					{#each tabs as tab (tab.key)}
-						<TabsContent
-							value={tab.key}
-							class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+					{#if queryState === 'empty'}
+						<div class="search-idle" role="note">
+							<StateMark state="unknown" {locale} hiddenLabel />
+							<div>
+								<p class="font-semibold">{words.idleTitle}</p>
+								<p>{words.idleBody}</p>
+							</div>
+						</div>
+					{:else if queryState === 'short'}
+						<SearchResultsList
+							id={`${id}-results`}
+							label={words.results}
+							list={shown}
+							query={text}
+							{locale}
+							{hrefs}
+							page={resultPage}
+						/>
+					{:else}
+						<Tabs
+							value={scope}
+							onValueChange={(next) => {
+								rows = PAGE_SIZE;
+								scope = searchScope(next);
+							}}
 						>
-							{#if scope === tab.key}
-								<SearchResultsList
-									id={`${id}-results`}
-									label={words.results}
-									list={shown}
-									query={text}
-									{locale}
-									{hrefs}
-									page={resultPage}
-								/>
-								{#if address}
-									<p class="sr-only" role="status">{address === 'ask' ? '' : addressText}</p>
-									<Button
-										variant="outline"
-										wrap
-										type="button"
-										aria-describedby={address === 'ask' ? `${id}-address-notice` : undefined}
-										aria-disabled={address === 'ask' ? undefined : 'true'}
-										onclick={ask}>{addressText}</Button
+							<TabsList
+								variant="line"
+								class="flex h-auto w-full flex-wrap justify-start gap-1"
+								aria-label={words.results}
+							>
+								{#each tabs as tab (tab.key)}
+									<TabsTrigger
+										value={tab.key}
+										class="h-auto min-h-11 min-w-11 flex-none px-3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+										>{tab.label}</TabsTrigger
 									>
-									{#if address === 'ask'}
-										<p id={`${id}-address-notice`} class="mt-2 text-small text-muted-foreground">
-											{words.addressNotice}
-										</p>
+								{/each}
+							</TabsList>
+							{#each tabs as tab (tab.key)}
+								<TabsContent
+									value={tab.key}
+									class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+								>
+									{#if scope === tab.key}
+										<SearchResultsList
+											id={`${id}-results`}
+											label={words.results}
+											list={shown}
+											query={text}
+											{locale}
+											{hrefs}
+											page={resultPage}
+										/>
+										{#if address}
+											<p class="sr-only" role="status">{address === 'ask' ? '' : addressText}</p>
+											<Button
+												variant="outline"
+												wrap
+												type="button"
+												aria-describedby={address === 'ask' ? `${id}-address-notice` : undefined}
+												aria-disabled={address === 'ask' ? undefined : 'true'}
+												onclick={ask}>{addressText}</Button
+											>
+											{#if address === 'ask'}
+												<p
+													id={`${id}-address-notice`}
+													class="mt-2 text-small text-muted-foreground"
+												>
+													{words.addressNotice}
+												</p>
+											{/if}
+										{/if}
 									{/if}
-								{/if}
-							{/if}
-						</TabsContent>
-					{/each}
-				</Tabs>
-			{/if}
-		</section>
-	</div>
+								</TabsContent>
+							{/each}
+						</Tabs>
+					{/if}
+				</section>
+			</div></RecordGroup
+		>
+	</RecordScreen>
 </Surface>
 
 <style>
-	.search-title {
-		padding-block-end: var(--space-card-gap);
-		border-block-end: 1px solid var(--border);
-	}
 	.search-content {
 		display: grid;
 		gap: var(--space-card-gap);
