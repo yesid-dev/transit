@@ -180,6 +180,15 @@ export function compactServiceDay(date: string, locale: Locale): string {
 	return formatDateKey(date, locale, false, 'day-first');
 }
 
+export function shortServiceDay(date: string, locale: Locale) {
+	const parts = intl
+		.dateTime(locale, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+		.formatToParts(new Date(date));
+	return ['weekday', 'day', 'month']
+		.map((key) => parts.find((part) => part.type === key)?.value)
+		.join(' ');
+}
+
 export function dateRange({ from, to }: { from: string; to: string }, locale: Locale): string {
 	const end = formatDateKey(to, locale, true, 'day-first');
 	if (from === to) return end;

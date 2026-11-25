@@ -14,6 +14,8 @@
 		expandable = false,
 		open = $bindable(true),
 		compactPrint = false,
+		fill = false,
+		compact = false,
 	}: {
 		title: string;
 		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
@@ -23,6 +25,8 @@
 		expandable?: boolean;
 		open?: boolean;
 		compactPrint?: boolean;
+		fill?: boolean;
+		compact?: boolean;
 	} = $props();
 	const id = $props.id();
 </script>
@@ -32,7 +36,7 @@
 {/snippet}
 
 {#snippet body()}
-	<div class="min-w-0">{@render children()}</div>
+	<div class="min-w-0" class:fill>{@render children()}</div>
 	{@render cardFooter()}
 {/snippet}
 
@@ -95,7 +99,7 @@
 		edge="neutral"
 		textSize="inherit"
 		class={[
-			disclosure ? 'min-w-0 px-2 sm:px-6' : 'min-w-0 px-4 sm:px-6',
+			disclosure || compact ? 'min-w-0 px-2 sm:px-6' : 'min-w-0 px-4 sm:px-6',
 			compactPrint && 'print:p-2',
 		]}
 		spread
@@ -117,6 +121,11 @@
 		margin: 0;
 		font-size: var(--text-subheading);
 		font-weight: 600;
+	}
+	.fill {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
 	}
 	.record-disclosure {
 		scroll-margin-block-start: var(--space-page-x);

@@ -88,7 +88,7 @@ beforeEach(() => {
 	harness.bootProvider.mockReset();
 	harness.bootProvider.mockResolvedValue(selection(null));
 	harness.serverV1Context.mockReset();
-	harness.getScheduleEdition.mockReset().mockResolvedValue({ routes: [] });
+	harness.getScheduleEdition.mockReset().mockResolvedValue({ routes: [], stops: [] });
 });
 
 describe('root server layout boot', () => {
@@ -98,12 +98,18 @@ describe('root server layout boot', () => {
 		['/lines/[id]', '/lines/24?tab=schedule'],
 		['/stop/[id]', '/stop/S1'],
 		['/status', '/status'],
+		['/network', '/network?frameMode=record'],
+		['/network', '/network?frameMode=live'],
 		['/receipt', '/receipt?date=2026-08-30'],
 		['/metrics/archive', '/metrics/archive'],
 	])('leaves snapshot transport idle on %s', async (route, path) => {
 		const request = serverEvent(undefined, path);
 		Object.assign(request.route, { id: '/[[lang=locale]]' + route });
-		await expect(loadServerLayout(request)).resolves.toMatchObject({ loadSnapshots: false });
+		harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
+		await expect(loadServerLayout(request)).resolves.toMatchObject({
+			loadSnapshots: false,
+			v1: null,
+		});
 		expect(harness.serverV1Context).not.toHaveBeenCalled();
 		expect(harness.bootProvider.mock.calls[0]?.[5]).toBe(false);
 	});
@@ -118,6 +124,23 @@ describe('root server layout boot', () => {
 		harness.getScheduleEdition.mockResolvedValueOnce(schedule);
 		const request = serverEvent(undefined, '/network?frameMode=record');
 		await expect(loadServerLayout(request)).resolves.toMatchObject({ schedule, v1: null });
+		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null);
+	});
+	it('keeps the live Network headsigns and trims the schedule stops', async () => {
+		harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
+		const headsign = { dir: 0, headsign: 'Terminus' };
+		harness.getScheduleEdition.mockResolvedValue({
+			date: '2026-11-21',
+			routes: [{ id: 'A', short: 'A' }],
+			stops: [{ id: 'one', name: 'One', routes: ['A'] }],
+			route_directions: { A: [{ ...headsign, stops: [{ id: 'one', seq: 1 }] }] },
+		});
+		await expect(
+			loadServerLayout(serverEvent(undefined, '/network?frameMode=live')),
+		).resolves.toMatchObject({
+			v1: null,
+			schedule: { stops: [], route_directions: { A: [headsign] } },
+		});
 		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null);
 	});
 	it.each([
@@ -187,7 +210,7 @@ describe('root server layout boot', () => {
 	it.each([true, false])(
 		'builds live context from the city declaration without a snapshot read (binding: %s)',
 		async (binding) => {
-			const request = serverEvent('fr', '/network', binding);
+			const request = serverEvent('fr', '/map?frameMode=live', binding);
 			harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
 			harness.getScheduleEdition.mockResolvedValue({ date: '2026-11-21', routes: [], stops: [] });
 
@@ -256,7 +279,7 @@ describe('root universal layout boot', () => {
 	});
 
 	it('reloads server provider data on every invocation so invalidateAll stays effective', async () => {
-		const request = serverEvent('fr', '/network', false);
+		const request = serverEvent('fr', '/map?frameMode=live', false);
 		harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
 		harness.getScheduleEdition
 			.mockResolvedValueOnce({ date: '2026-11-21', routes: [], stops: [] })

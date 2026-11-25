@@ -12,7 +12,7 @@ import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.t
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
 import { calendarClock, frameClock } from '#lib/site/frameState.ts';
-import { getDelayDistribution, getScheduleEdition } from './engine.ts';
+import { getScheduleEdition } from './engine.ts';
 import { GET as mapRecord } from '../../routes/api/map-record/+server.ts';
 
 const { fetcher } = vi.hoisted(() => ({
@@ -73,7 +73,6 @@ it.each([
 		visit(alerts, '/alerts'),
 		visit(health, '/status'),
 		visit(methods, '/metrics'),
-		getDelayDistribution({ city: provider.id, ...period }),
 		getScheduleEdition(provider.id),
 		...['', '&layer=corridors'].map((layer) =>
 			mapRecord({

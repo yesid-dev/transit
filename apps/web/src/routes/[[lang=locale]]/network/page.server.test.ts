@@ -1,174 +1,75 @@
-import { createMemoryLiveReader } from '#lib/v1/live/__fixtures__/reader.ts';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 
-const harness = vi.hoisted(() => ({
-	ctx: { fetch: vi.fn(), providerId: 'octranspo', manifest: { provider: 'octranspo' } },
-	getNetwork: vi.fn(),
-	getNetworkTrend: vi.fn(),
-	getHistoricAvailability: vi.fn(),
-	getProvenance: vi.fn(),
-	serverV1Context: vi.fn(),
-	getScorecardAnswer: vi.fn(),
+const ports = vi.hoisted(() => ({
+	bucket: vi.fn(),
+	legacy: vi.fn(),
+	engine: vi.fn<(request: Request) => Promise<Response>>(),
+}));
+vi.mock('cloudflare:workers', () => ({
+	env: {
+		SNAPSHOTS: { get: ports.bucket },
+		DATA: { fetch: ports.legacy },
+		QUESTION_PROXY: { fetch: ports.engine },
+	},
 }));
 
-vi.mock('#lib/server/engine.ts', () => ({
-	getScorecardAnswer: (...args: unknown[]) => harness.getScorecardAnswer(...args),
-}));
+import { GET as live } from '../../api/live/+server';
+import { load } from './+page.server';
 
-vi.mock('#lib/v1/repositories/historic.ts', () => ({
-	getHistoricAvailability: (...args: unknown[]) => harness.getHistoricAvailability(...args),
-	getNetworkTrend: (...args: unknown[]) => harness.getNetworkTrend(...args),
-}));
-
-vi.mock('#lib/v1/repositories/provenance.ts', () => ({
-	getProvenance: (...args: unknown[]) => harness.getProvenance(...args),
-}));
-
-vi.mock('#lib/v1/serverContext.ts', () => ({
-	serverV1Context: (...args: unknown[]) => harness.serverV1Context(...args),
-}));
-
-import { _loadWithReader, load as loadPage } from './+page.server';
-const reader = createMemoryLiveReader();
-harness.getNetwork = reader.network;
-const load = (event: Parameters<typeof _loadWithReader>[0]) => _loadWithReader(event, reader);
-
-function deferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((done) => {
-		resolve = done;
-	});
-	return { promise, resolve };
-}
-
-function event(rawUrl = 'https://transit.yesid.dev/network'): Parameters<typeof load>[0] {
-	return {
-		params: { lang: undefined },
-		url: new URL(rawUrl),
-		request: new Request(rawUrl, { headers: { 'cf-connecting-ip': '192.0.2.24' } }),
-		fetch: vi.fn(),
-		locals: { v1Cache: new Map() },
-		platform: undefined,
-		parent: async () => ({ v1: { manifest: harness.ctx.manifest } }),
-	} as unknown as Parameters<typeof load>[0];
-}
-
-beforeEach(() => {
-	harness.getNetwork.mockReset();
-	harness.getNetworkTrend.mockReset();
-	harness.getProvenance.mockReset();
-	harness.serverV1Context.mockReset().mockReturnValue(harness.ctx);
-});
-
-describe('/network server seeds', () => {
-	it('does not fetch any provider data before root discovery succeeds', async () => {
-		const request = event();
-		request.parent = vi.fn().mockResolvedValue({ v1: null, providerId: 'octranspo' });
-		await expect(load(request)).resolves.toEqual({
-			networkSeed: null,
-			trendSeed: null,
-			provenanceSeed: null,
-			historicAvailabilitySeed: null,
+it.each(['live', 'record'] as const)(
+	'serves Network %s without the old snapshots bucket or /v1',
+	async (mode) => {
+		vi.clearAllMocks();
+		ports.engine.mockImplementation(async (request) => {
+			const path = new URL(request.url).pathname;
+			if (path.endsWith('/live'))
+				return Response.json({
+					version: 2,
+					city: 'stm',
+					published_at: '2026-11-24T12:00:00Z',
+					feeds: {},
+					stable_vehicle_ids: true,
+					vehicle_positions: [],
+					alerts: null,
+				});
+			return new Response(null, { status: 503 });
 		});
-		expect(harness.getNetwork).not.toHaveBeenCalled();
-		expect(harness.getNetworkTrend).not.toHaveBeenCalled();
-		expect(harness.getProvenance).not.toHaveBeenCalled();
-	});
-	it('starts all three reads concurrently through one request-scoped context', async () => {
-		const network = { generated_utc: '2026-07-14T12:00:00Z', on_time_pct: 91 };
-		const trend = { generated_utc: '2026-07-14T12:00:00Z', series: [] };
-		const provenance = { generated_utc: '2026-07-14T12:00:00Z', freshness: [] };
-		const networkRead = deferred<typeof network>();
-		const trendRead = deferred<typeof trend>();
-		const provenanceRead = deferred<typeof provenance>();
-		harness.getNetwork.mockReturnValue(networkRead.promise);
-		harness.getNetworkTrend.mockReturnValue(trendRead.promise);
-		harness.getProvenance.mockReturnValue(provenanceRead.promise);
-
-		const pending = load(event());
-		await Promise.resolve();
-
-		expect(harness.serverV1Context).toHaveBeenCalledTimes(1);
-		expect(harness.getNetwork).toHaveBeenCalledWith(harness.ctx);
-		expect(harness.getNetworkTrend).toHaveBeenCalledWith(harness.ctx);
-		expect(harness.getProvenance).toHaveBeenCalledWith(harness.ctx);
-
-		networkRead.resolve(network);
-		trendRead.resolve(trend);
-		provenanceRead.resolve(provenance);
-
-		await expect(pending).resolves.toEqual({
-			networkSeed: network,
-			trendSeed: { key: 'network-trend', data: trend },
-			provenanceSeed: { key: 'provenance', data: provenance },
-			historicAvailabilitySeed: null,
-		});
-	});
-
-	it('keeps successful seeds when one independent read fails', async () => {
-		const network = { generated_utc: '2026-07-14T12:00:00Z', on_time_pct: 91 };
-		const provenance = { generated_utc: '2026-07-14T12:00:00Z', freshness: [] };
-		harness.getNetwork.mockResolvedValue(network);
-		harness.getNetworkTrend.mockRejectedValue(new Error('historic tier unavailable'));
-		harness.getProvenance.mockResolvedValue(provenance);
-
-		await expect(load(event())).resolves.toEqual({
-			networkSeed: network,
-			trendSeed: null,
-			provenanceSeed: { key: 'provenance', data: provenance },
-			historicAvailabilitySeed: null,
-		});
-	});
-});
-
-it('seeds the history root beside the trend', async () => {
-	const index = { families: [] };
-	const trend = { series: [] };
-	harness.getHistoricAvailability.mockResolvedValue(index);
-	harness.getNetworkTrend.mockResolvedValue(trend);
-	expect(await load(event())).toMatchObject({
-		historicAvailabilitySeed: { key: 'historic-availability', data: index },
-		trendSeed: { key: 'network-trend', data: trend },
-	});
-	harness.getHistoricAvailability.mockRejectedValue(new Error('absent'));
-	expect(await load(event())).toMatchObject({
-		historicAvailabilitySeed: null,
-		trendSeed: { key: 'network-trend', data: trend },
-	});
-});
-
-it('streams independent scorecard measures for a dated city even without v1', async () => {
-	const input = event(
-		'https://transit1.yesid.dev/fr/network?provider=octranspo&recordFrom=2026-11-19&recordTo=2026-11-20',
-	);
-	input.parent = vi.fn().mockResolvedValue({ v1: null, providerId: 'octranspo' });
-	harness.getScorecardAnswer
-		.mockReset()
-		.mockImplementation(({ parameters }) =>
-			parameters.measure === 'prediction_error'
-				? new Promise(() => {})
-				: Promise.resolve({ kind: 'answer', answer: { measure: parameters.measure } }),
+		const url = new URL(
+			`https://transit.yesid.dev/network?provider=stm&frameMode=${mode}&recordFrom=2026-11-08&recordTo=2026-11-14`,
 		);
-	const data = await loadPage(input);
-	expect(data?.view).toBe('record');
-	expect(harness.getScorecardAnswer.mock.calls).toEqual(
-		[
-			'poll_success',
-			'feed_age_at_capture',
-			'feed_update_interval',
-			'live_trip_coverage',
-			'vehicle_field_completeness',
-			'prediction_error',
-		].map((measure) => [
-			{ path: '/measure', parameters: { measure } },
-			{
-				from: '2026-11-19',
-				to: '2026-11-20',
-				preset: null,
-				city: 'octranspo',
-				visitorIp: '192.0.2.24',
-			},
-		]),
-	);
-	expect(harness.getNetwork).not.toHaveBeenCalled();
-});
+		const appFetch = vi.fn(async (input: RequestInfo | URL) => {
+			const target = new URL(String(input), url);
+			if (target.pathname !== '/api/live') throw new Error(`Unexpected app request ${target}`);
+			return live({ url: target, request: new Request(target) } as Parameters<typeof live>[0]);
+		});
+		const data = await load({
+			url,
+			request: new Request(url),
+			fetch: appFetch,
+			locals: {},
+			parent: async () => ({
+				providerId: 'stm',
+				provider: { inputs: { vehicle_positions: true } },
+				v1: { manifest: { provider: 'stm' } },
+			}),
+		} as unknown as Parameters<typeof load>[0]);
+		expect(data?.view).toBe(mode);
+		if (data?.view === 'live')
+			await expect(data.capture).resolves.toMatchObject({ city: 'stm', version: 2 });
+		if (data?.view === 'record' && data.networkRecord)
+			await Promise.all(Object.values(data.networkRecord));
+		expect(ports.bucket).not.toHaveBeenCalled();
+		expect(ports.legacy).not.toHaveBeenCalled();
+		expect(appFetch.mock.calls.map(([input]) => String(input))).toEqual(
+			mode === 'live' ? ['/api/live?city=stm'] : [],
+		);
+		const urls = ports.engine.mock.calls.map(([request]) => new URL(request.url));
+		expect(urls.map(({ pathname }) => pathname)).toEqual(
+			mode === 'live' ? ['/v2/stm/live'] : Array(8).fill('/v2/stm/measure'),
+		);
+		if (mode === 'record')
+			expect(
+				urls.filter((request) => request.searchParams.get('measure') === 'delay_distribution'),
+			).toHaveLength(1);
+	},
+);

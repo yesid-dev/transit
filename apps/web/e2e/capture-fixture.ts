@@ -1,3 +1,7 @@
+import { expect, type Page } from '@playwright/test';
+import { localizeHref } from '../src/lib/i18n/routing';
+import silentTripLines from './health-silent-trip-lines.json' with { type: 'json' };
+
 import type {
 	CaptureFamily,
 	CaptureSnapshot,
@@ -87,6 +91,85 @@ export function captureFleet(at: number, city: string, delays: readonly (number 
 			captureVehicle(at, { id: `report-${i}`, vehicle_id: `fixture-${i}`, delay }),
 		),
 	});
+}
+
+export async function installHealthCapture(page: Page, { namedTrips = false } = {}) {
+	await page.clock.install();
+	await page.route(captureUrl, async (route) => {
+		const at = await page.evaluate(() => Date.now());
+		const delays = Array.from({ length: 364 }, (_, index) =>
+			index < 20 ? -120 : index < 297 ? 0 : index < 351 ? 480 : null,
+		);
+		const snapshot = captureFleet(at, 'stm', delays);
+		Object.assign(snapshot.feeds.vehicle_positions!, { expected_every_seconds: 30, bytes: 412000 });
+		Object.assign(snapshot.feeds.trip_updates!, { expected_every_seconds: 30, bytes: 1900000 });
+		const alerts = snapshot.feeds.i3_alerts!;
+		alerts.captured_at = alerts.source_at = new Date(at - 120_000).toISOString();
+		alerts.fresh_for_seconds = 60;
+		Object.assign(alerts, { expected_every_seconds: 60, bytes: 12000 });
+		const scheduleAt = new Date(at - 3 * 86_400_000).toISOString();
+		await route.fulfill({
+			json: {
+				...snapshot,
+				scheduled_now: 1306,
+				non_responding: 44,
+				cancelled_now: 8,
+				schedule: {
+					captured_at: scheduleAt,
+					effective_date: scheduleAt.slice(0, 10),
+					bytes: 64000000,
+				},
+				silent_trips: Array.from({ length: 12 }, (_, index) => {
+					const example = namedTrips ? silentTripLines[index] : undefined;
+					return {
+						trip_id: `silent-${index}`,
+						route_id:
+							example?.line ?? (index === 0 ? '24' : index === 1 ? '99999' : String(24 + index)),
+						direction_id: example?.direction ?? (index === 1 ? null : 0),
+						departure: { service_seconds: 27000 + index * 60, local_time: `07:${30 + index}` },
+						silent_since: null,
+						silent_for_seconds: 2400 - index * 60 + 12,
+					};
+				}),
+			},
+		});
+	});
+	return async () => {
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
+		await expect(
+			page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]'),
+		).toBeVisible();
+		const refreshed = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await page.clock.fastForward(21_000);
+		await refreshed;
+	};
+}
+
+export async function openNetworkCapture(
+	page: Page,
+	locale: 'en' | 'fr',
+	delays: readonly (number | null)[],
+) {
+	const at = Date.parse('2026-11-22T12:00:00Z');
+	let fleet = delays;
+	await page.clock.install({ time: at });
+	await page.route(captureUrl, async (route) => {
+		const capturedAt = await page.evaluate(() => Date.now());
+		await route.fulfill({ json: captureFleet(capturedAt, 'stm', fleet) });
+	});
+	await page.goto(localizeHref('/network?frameMode=live', locale, 'stm'));
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
+	const answer = page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]');
+	await expect(answer).toBeVisible();
+	const refresh = async (nextFleet: readonly (number | null)[]) => {
+		fleet = nextFleet;
+		const refreshed = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await page.clock.fastForward(21_000);
+		await refreshed;
+		await expect(answer.locator('.answer-value')).toHaveText(String(fleet.length));
+	};
+	await refresh(delays);
+	return refresh;
 }
 
 export function layoutCapture(city: string, overrides: Partial<Vehicle> = {}) {

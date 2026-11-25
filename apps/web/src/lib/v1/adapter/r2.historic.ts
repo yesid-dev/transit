@@ -6,7 +6,6 @@ import { AlertHistorySchema } from '#lib/v1/schemas/alert_history.ts';
 import { RouteReliabilityIndexSchema } from '#lib/v1/schemas/route_reliability_index.ts';
 import { RouteReliabilitySchema } from '#lib/v1/schemas/route_reliability.ts';
 import { StopReliabilitySchema } from '#lib/v1/schemas/stop_reliability.ts';
-import { NetworkTrendSchema } from '#lib/v1/schemas/network_trend.ts';
 import { AlertArchiveIndexSchema, AlertArchivePageSchema } from '#lib/v1/schemas/alert_archive.ts';
 import {
 	HistoricAvailabilityIndexSchema,
@@ -220,16 +219,6 @@ export const historicPort = {
 			},
 		);
 		return value ?? null;
-	},
-	networkTrend: async (ctx?: AdapterCtx) => {
-		const manifest = await loadManifest(ctx);
-		return readWhole(
-			manifest.files.historic?.network_trend ?? DEFAULTS.historic.network_trend,
-			NetworkTrendSchema,
-			'historic.networkTrend',
-			MUTABLE_CACHE,
-			ctx,
-		);
 	},
 	hotspots: async (ctx?: AdapterCtx) => {
 		const manifest = await loadManifest(ctx);

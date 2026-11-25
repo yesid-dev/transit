@@ -6,7 +6,7 @@ import { finderEngine } from './finder-engine.mjs';
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
-import { networkEngine, networkFixtures } from './network-engine.mjs';
+import { networkEngine, networkFixtures, networkServiceFixture } from './network-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
 import {
 	departureCaptureStops,
@@ -658,6 +658,17 @@ const server = createServer((request, response) => {
 			for (const line of places.lines) editionRoutes.set(line.id, line);
 			for (const stop of places.stops) editionStops.set(stop.id, stop);
 		}
+		if (city === 'stm' && kind === 'schedule-index' && process.env.TRANSIT_E2E_HEALTH_SCREENSHOTS) {
+			const examples = JSON.parse(read('health-silent-trip-lines.json'));
+			const namedDirections = new Map();
+			for (const { line, name, direction, toward } of examples) {
+				editionRoutes.set(line, { id: line, short: line, long: name, type: 3 });
+				const branches = namedDirections.get(line) ?? [];
+				branches.push({ dir: direction, headsign: toward });
+				namedDirections.set(line, branches);
+			}
+			Object.assign(routeDirections, Object.fromEntries(namedDirections));
+		}
 		if (
 			kind === 'schedule-index' &&
 			process.env.TRANSIT_E2E_STOP_RECORD_NAMED === '1' &&
@@ -780,25 +791,27 @@ const server = createServer((request, response) => {
 				? { status: 503, body: {} }
 				: reportFixture && reportDate === '2026-11-15'
 					? departureDailyEngine(url, undefined, true)
-					: isNetwork
-						? networkEngine(url)
-						: alertFixture
-							? alertsEngine(url)
-							: question[2] === 'measure' && url.searchParams.get('measure')?.startsWith('vehicle')
-								? vehicleEngine(url)
-								: url.searchParams.has('departure')
-									? departureDailyEngine(url)
-									: url.searchParams.has('stop')
-										? stopEngine(url)
-										: url.searchParams.has('line')
-											? lineEngine(url)
-											: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
-												? rankingsEngine(url)
-												: finderFixture
-													? finderEngine(url)
-													: dailyFixture
-														? departureDailyEngine(url, dailyMessageHold)
-														: overviewEngine(url, scope);
+					: (networkServiceFixture(url) ??
+						(isNetwork
+							? networkEngine(url)
+							: alertFixture
+								? alertsEngine(url)
+								: question[2] === 'measure' &&
+									  url.searchParams.get('measure')?.startsWith('vehicle')
+									? vehicleEngine(url)
+									: url.searchParams.has('departure')
+										? departureDailyEngine(url)
+										: url.searchParams.has('stop')
+											? stopEngine(url)
+											: url.searchParams.has('line')
+												? lineEngine(url)
+												: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
+													? rankingsEngine(url)
+													: finderFixture
+														? finderEngine(url)
+														: dailyFixture
+															? departureDailyEngine(url, dailyMessageHold)
+															: overviewEngine(url, scope)));
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);

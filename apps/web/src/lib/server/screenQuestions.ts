@@ -76,6 +76,16 @@ export function dailyQuestions(period: DateWindow) {
 	return { questions, messagesLimited };
 }
 
+export const networkRecordQuestions = {
+	punctuality: { measure: 'punctuality' },
+	dayTypes: { measure: 'on_time', group: 'day_type' },
+	trend: { measure: 'on_time', group: 'day' },
+	delivery: { measure: 'service_delivered' },
+	deliveryDays: { measure: 'service_delivered', group: 'day' },
+	hours: { measure: 'late', group: 'weekday_hour' },
+	crowding: { measure: 'crowding' },
+} satisfies Record<string, RecordQuery['parameters']>;
+
 export function networkRecordQuery(measure: NetworkMeasure): RecordQuery {
 	return { path: '/measure', parameters: { measure } };
 }

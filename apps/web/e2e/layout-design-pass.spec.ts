@@ -11,8 +11,9 @@ const time = Date.parse('2026-11-23T16:00:00Z');
 
 for (const { screen, provider, locale, key, href } of designPassCases) {
 	test(`${screen} ${provider} ${locale} @layout`, async ({ page }, info) => {
+		const health = screen.startsWith('network-health');
 		await setWidth(page, 1440);
-		await page.clock.setFixedTime(time);
+		if (!(health && screen.endsWith('-live'))) await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 		await page.route(captureUrl, (route) => {
 			const city = new URL(route.request().url()).searchParams.get('city')!;
@@ -32,6 +33,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		if (screen.startsWith('overview')) {
 			await expect(page.locator('[data-slot="record-ranking"] li')).toHaveCount(6);
 			await expect(page.locator('[data-slot="chart-line-series"]')).toBeVisible();
+		}
+		if (health) {
+			await expect(page.locator('[data-slot="record-card"]').first()).toBeVisible();
 		}
 		if (screen === 'stop-record') {
 			await expect(page.locator('[data-slot="hour-grid"]')).toBeVisible();
@@ -78,6 +82,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
 		const { report, focusSequences } = await measureDesignPass(page, {
 			countShadowRings:
+				health ||
 				redesignedDetail ||
 				screen.startsWith('overview') ||
 				screen === 'stop-record' ||

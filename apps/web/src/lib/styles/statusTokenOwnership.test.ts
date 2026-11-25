@@ -18,7 +18,6 @@ const TRANSPORT_STATUS_FILES = new Set([
 	'lib/components/dataviz/chart/marks/SparklineMark.svelte',
 	'lib/components/dataviz/chart/marks/TrendMark.svelte',
 	'lib/features/map/MapDelayTag.svelte',
-	'lib/features/network/reliability/selectors/trendChart.ts',
 ]);
 
 const src = resolve('src');

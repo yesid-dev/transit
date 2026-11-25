@@ -1,7 +1,7 @@
 import { test } from './layout-test';
 import { expect, type Page } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
-import { captureFleet, captureUrl } from './capture-fixture';
+import { openNetworkCapture } from './capture-fixture';
 import { settled } from './design-pass-measure';
 import type { SearchIndex } from '../src/lib/search/searchIndex';
 
@@ -108,78 +108,45 @@ for (const provider of ['stm', 'octranspo'])
 			},
 		);
 
-// Shown (30 of 40, 40 of 80) and held (29 of 40, 40 of 81) live on-time shares, across both floors.
-const liveShares = [
+// Keep the reporting figure and following content steady as the known and unknown delay counts change.
+const fleets = [
 	[40, 30],
 	[40, 29],
 	[80, 40],
 	[81, 40],
 ] as const;
+const fleet = ([total, measured]: readonly [number, number]) =>
+	Array.from({ length: total }, (_, index) => (index < measured ? 0 : null));
+
 for (const locale of ['en', 'fr'] as const)
-	for (const [path, block, next, figure] of [
-		[
-			'/network',
-			'[data-network-section="network-live-headline"]',
-			'[data-network-section="network-reporting"]',
-			'[data-network-section="network-live-headline"] [data-slot="metric-display"] >> nth=0',
-		],
-	] as const)
-		test(`${locale} ${path} live on-time share keeps one size shown or held`, async ({ page }) => {
-			await page.clock.setFixedTime(Date.parse('2026-06-15T12:00:30Z'));
-			let live: { inService: number; readings: number } = { inService: 40, readings: 30 };
-			await page.route('**/v1/**', async (route) => {
-				const url = new URL(route.request().url());
-				url.pathname = `/__layout/fresh${url.pathname}`;
-				await route.fulfill({ response: await route.fetch({ url: url.href }) });
-			});
-			await page.route(captureUrl, (route) => {
-				const delays = Array.from({ length: live.inService }, (_, i) =>
-					i < Math.round(live.readings * 0.75) ? 0 : i < live.readings ? 360 : null,
+	test(`${locale} Network live reporting keeps its place as status counts change`, async ({
+		page,
+	}) => {
+		const refresh = await openNetworkCapture(page, locale, fleet(fleets[0]));
+		const answer = page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]');
+		const statusTitle = locale === 'en' ? 'Vehicles by status' : 'Véhicules par état';
+		const status = page.getByRole('article', { name: statusTitle });
+		const unknown = status.locator('div:has(> dt [data-status="unknown"]) > dd');
+		for (const width of [320, 390, 1440]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.evaluate(() => document.fonts.ready);
+			const sizes = [];
+			for (const sample of fleets) {
+				await refresh(fleet(sample));
+				await expect(unknown).toContainText(
+					new RegExp(`^${sample[0] - sample[1]} (?:vehicle|véhicule)`),
 				);
-				return route.fulfill({
-					json: captureFleet(Date.parse('2026-06-15T12:00:00Z'), 'stm', delays),
+				sizes.push({
+					height: (await answer.boundingBox())!.height,
+					next: (await status.boundingBox())!.y,
 				});
-			});
-			// This spec owns its widths: two phones and the desktop grid.
-			for (const width of [320, 390, 1440]) {
-				await page.setViewportSize({ width, height: 900 });
-				const sizes = [];
-				for (const [inService, readings] of liveShares) {
-					live = { inService, readings };
-					await page.goto(`${localizeHref(path, locale)}?provider=stm`, {
-						waitUntil: 'networkidle',
-					});
-					const held = readings < 30 || readings * 2 < inService;
-					// Inner text only: the held wording's hidden reserve must not satisfy the wait.
-					await expect(page.locator(figure).first()).toContainText(
-						held
-							? locale === 'en'
-								? 'Not enough readings'
-								: 'Pas assez de relevés'
-							: String(Math.round((100 * Math.round(readings * 0.75)) / readings)),
-						{ useInnerText: true },
-					);
-					await page.evaluate(() => document.fonts.ready);
-					sizes.push(
-						await page.evaluate(
-							([block, next]) => {
-								const top = (selector: string) =>
-									document.querySelector(selector)!.getBoundingClientRect().top + window.scrollY;
-								return {
-									height: document.querySelector(block)!.getBoundingClientRect().height,
-									next: top(next),
-								};
-							},
-							[block, next],
-						),
-					);
-				}
-				for (const [i, size] of sizes.entries()) {
-					const at = `${width}px, ${liveShares[i].join(' in service, ')} readings`;
-					expect(Math.abs(size.height - sizes[0].height), `${at}: headline height`).toBeLessThan(
-						0.5,
-					);
-					expect(Math.abs(size.next - sizes[0].next), `${at}: content below`).toBeLessThan(0.5);
-				}
 			}
-		});
+			for (const [i, size] of sizes.entries()) {
+				const at = `${width}px, ${fleets[i].join(' in service, ')} readings`;
+				expect(Math.abs(size.height - sizes[0].height), `${at}: answer height`).toBeLessThan(0.5);
+				expect(Math.abs(size.next - sizes[0].next), `${at}: status card position`).toBeLessThan(
+					0.5,
+				);
+			}
+		}
+	});

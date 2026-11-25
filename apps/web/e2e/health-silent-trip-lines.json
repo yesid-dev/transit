@@ -1,0 +1,10 @@
+[
+	{ "line": "18", "name": "Beaubien", "direction": 0, "toward": "Station Beaubien" },
+	{ "line": "24", "name": "Sherbrooke", "direction": 0, "toward": "Sherbrooke / Davidson" },
+	{ "line": "161", "name": "Van Horne", "direction": 0, "toward": "Côte-Saint-Luc" },
+	{ "line": "427", "name": "Express Saint-Joseph", "direction": 0, "toward": "Centre-ville" },
+	{ "line": "97", "name": "Avenue-du-Mont-Royal", "direction": 0, "toward": "Station Pie-IX" },
+	{ "line": "197", "name": "Rosemont", "direction": 0, "toward": "Station Langelier" },
+	{ "line": "197", "name": "Rosemont", "direction": 1, "toward": "Station Rosemont" },
+	{ "line": "80", "name": "Avenue du Parc", "direction": 0, "toward": "Station Place-des-Arts" }
+]

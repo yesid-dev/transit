@@ -48,7 +48,6 @@ export const r2Adapter = {
 		stopHistoryPartition: true,
 		alertArchiveIndex: true,
 		alertArchivePage: true,
-		networkTrend: true,
 		hotspots: true,
 		alertHistory: true,
 		routeReliabilityIndex: true,

@@ -48,7 +48,6 @@ const PORT_METHODS = {
 		'stopHistoryPartition',
 		'alertArchiveIndex',
 		'alertArchivePage',
-		'networkTrend',
 		'hotspots',
 		'alertHistory',
 		'routeReliabilityIndex',

@@ -27,7 +27,7 @@ export function selectSilentTripRows(
 			line: lines.get(trip.route_id)?.trim() || trip.route_id,
 			departure: trip.departure.local_time,
 			toward: names.size === 1 ? directionName(toward, locale, nameSeparators) : null,
-			silentFor: minuteReading(trip.silent_for_seconds / 60, locale),
+			silentFor: minuteReading(Math.floor(trip.silent_for_seconds / 60), locale),
 		};
 	});
 }

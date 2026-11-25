@@ -31,7 +31,6 @@ import type {
 	HistoricFamilyAvailability,
 	Hotspots,
 	LineHistoryPartition,
-	NetworkTrend,
 	NetworkHistoryPartition,
 	RouteReliability,
 	StopReliability,
@@ -503,9 +502,6 @@ export async function getAlertArchiveRange(
 export function clearAlertArchivePageMemoForTest(): void {
 	alertArchivePageMemo.clear();
 }
-
-export const getNetworkTrend: (ctx?: AdapterCtx) => Promise<NetworkTrend> = (ctx) =>
-	adapter.historic.networkTrend(ctx);
 
 export const getHotspots: (ctx?: AdapterCtx) => Promise<Hotspots> = (ctx) =>
 	adapter.historic.hotspots(ctx);

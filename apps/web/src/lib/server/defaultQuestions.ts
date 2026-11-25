@@ -20,7 +20,7 @@ import {
 import {
 	alertQuestions,
 	dailyQuestions,
-	networkQuestions,
+	networkRecordQuestions,
 	overviewSelection,
 	rankingsQuery,
 } from './screenQuestions.ts';
@@ -65,8 +65,11 @@ export function defaultCityQuestions(
 		...dailyQuestions(dailyScope)
 			.questions.filter(({ section }) => tracked || section !== 'messages')
 			.map(({ query: { path, parameters } }) => periodQuestion(dailyScope, path, parameters)),
-		...[...networkQuestions(), ...(tracked ? alertQuestions(scope) : [])].map(
-			({ query: { path, parameters } }) => periodQuestion(scope, path, parameters),
+		...(tracked ? alertQuestions(scope) : []).map(({ query: { path, parameters } }) =>
+			periodQuestion(scope, path, parameters),
+		),
+		...Object.values(networkRecordQuestions).map((parameters) =>
+			periodQuestion(scope, '/measure', parameters),
 		),
 		dataHealthQuestion({ ...healthPeriod, city: city.id }),
 		mapRecordQuestion(scope),
