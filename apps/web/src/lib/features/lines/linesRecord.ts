@@ -1,13 +1,12 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { FinderCell } from '#lib/server/engine.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
-import { routeNameFallback } from '#lib/site/nameFallback.ts';
+import { routeNameFallback } from '#lib/site/absence.ts';
 import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 import { finderCells, finderShare, finderTrips, type FinderResult } from '../record/finderText.ts';
-import { percent } from '../record/recordText.ts';
-import type { RecordState } from '../record/recordStates.ts';
+import { recordPercent } from '#lib/site/presenter.ts';
 
 export const lineSortKeys = ['line', 'onTime', 'late', 'trips'] as const;
 export type LineSortKey = (typeof lineSortKeys)[number];
@@ -67,20 +66,9 @@ export function orderedLines<T extends Reading>(
 export function lineSpread(rows: readonly { onTime: number | null }[], locale: Locale) {
 	const values = rows.flatMap(({ onTime }) => (onTime == null ? [] : [onTime]));
 	if (!values.length) return null;
-	const low = percent(Math.min(...values), locale);
-	const high = percent(Math.max(...values), locale);
+	const low = recordPercent(Math.min(...values), locale);
+	const high = recordPercent(Math.max(...values), locale);
 	return low === high ? low : locale === 'fr' ? `${low} à ${high}` : `${low} to ${high}`;
-}
-
-export function lineReadingState(cell: FinderCell | undefined): RecordState {
-	switch (cell?.state) {
-		case 'too_few_to_judge':
-		case 'no_live_data':
-		case 'not_measured':
-			return cell.state;
-		default:
-			return 'unknown';
-	}
 }
 
 export function lineRecordRows(

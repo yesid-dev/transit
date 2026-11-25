@@ -127,8 +127,8 @@ export const designPassCases = [
 						: screen === 'departure'
 							? ['2026-11-16', '2026-11-20']
 							: screen === 'lines'
-							? ['2026-11-04', '2026-11-10']
-						: ['2026-11-08', '2026-11-14'];
+								? ['2026-11-04', '2026-11-10']
+								: ['2026-11-08', '2026-11-14'];
 	url.searchParams.set('recordFrom', from);
 	url.searchParams.set('recordTo', to);
 	return {

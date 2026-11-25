@@ -23,7 +23,7 @@ for (const locale of ['en', 'fr'] as const) {
 			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
 		});
 		const timing = measured.getByRole('row', { name: /Sherbrooke/ });
-		await expect(timing).toContainText(fr ? /80\s%/ : '80%');
+		await expect(timing).toContainText(fr ? /80,0\s%/ : '80.0%');
 		await expect(timing).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 		if (!fr) {
 			await expect(page.locator('[data-slot="record-patience"]').getByRole('status')).toBeVisible();
@@ -47,7 +47,9 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(page.locator('#lines-without-live-data [data-slot="stamp"]')).toHaveCount(0);
 		await expect(
 			page.getByText(
-				fr ? /40\s% des 500 passages prévus/ : /40% of 500 scheduled stop events have a reading/,
+				fr
+					? /40,0\s% des 500 passages prévus/
+					: /40\.0% of 500 scheduled stop events have a reading/,
 			),
 		).toBeVisible();
 		await expect(measured.getByRole('link', { name: /Confederation|99/ })).toHaveCount(0);
@@ -170,7 +172,7 @@ for (const locale of ['en', 'fr'] as const) {
 		for (const width of [390, 1440]) {
 			await test.step(`${width}px`, async () => {
 				await page.setViewportSize({ width, height: 900 });
-				await expect(row).toContainText(fr ? /80\s%/ : '80%');
+				await expect(row).toContainText(fr ? /80,0\s%/ : '80.0%');
 				await expect(row).toContainText('100');
 				await expect(row).toContainText(
 					fr ? 'des 250 passages prévus observés' : 'of 250 scheduled stops observed',

@@ -14,7 +14,12 @@
 	}: {
 		locale: Locale;
 		href: string;
-		files: readonly { href?: string; label: string; download?: string; columns?: readonly string[] }[];
+		files: readonly {
+			href?: string;
+			label: string;
+			download?: string;
+			columns?: readonly string[];
+		}[];
 		citation: Snippet;
 		print?: () => void;
 	} = $props();

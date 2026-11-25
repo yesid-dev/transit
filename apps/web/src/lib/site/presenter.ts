@@ -323,6 +323,16 @@ export function recordStamp(period: { from: string; to: string }, locale: Locale
 	return `${locale === 'fr' ? 'Bilan' : 'Record'} · ${dateRange(period, locale)}`;
 }
 
+export function recordPercent(value: number, locale: Locale) {
+	return intl
+		.number(locale, {
+			style: 'percent',
+			minimumFractionDigits: 1,
+			maximumFractionDigits: 1,
+		})
+		.format(value);
+}
+
 export function countedUnit(
 	value: number,
 	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle',

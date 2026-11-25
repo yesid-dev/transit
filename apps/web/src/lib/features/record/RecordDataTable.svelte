@@ -3,10 +3,9 @@
 
 	export type RecordTableRow = {
 		id: string;
-		href: string;
 		label: string;
-		plate?: string;
-		scheduleOnly?: boolean;
+		href?: string;
+		plate?: { code: string; scheduleOnly?: boolean };
 		detail?: string;
 	};
 
@@ -14,11 +13,10 @@
 		key: string;
 		direction: 'asc' | 'desc';
 		onSort: (key: string) => void;
-		onSelect: (key: string) => void;
-		label: (header: string) => string;
-		choices: readonly { key: string; label: string }[];
-		choiceLabel: string;
-		nameKey?: string;
+		choices?: {
+			options: readonly { key: string; label: string }[];
+			onSelect: (key: string) => void;
+		};
 	};
 
 	type Column<Row> = DataTableColumn<Row>;
@@ -30,6 +28,14 @@
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import RecordTableName from './RecordTableName.svelte';
 
+	/**
+	 * Pass keyed rows in display order and a caption. The table owns the linked row heading
+	 * (reserved key `name`), the shared plate track, compact rows and paging in groups of 20.
+	 * Supply kit columns for readings, marking figures numeric and using RecordTableValue for
+	 * values and states. `value` names the column paired with the name on a narrow screen.
+	 * When sorting is enabled, the caller reads and writes the URL and supplies the resulting
+	 * order and direction. Headers request a direction change; optional choices select a column.
+	 */
 	let {
 		locale,
 		title,
@@ -38,7 +44,6 @@
 		columns = [],
 		value,
 		sort,
-		plates = false,
 	}: {
 		locale: Locale;
 		title: string;
@@ -47,11 +52,10 @@
 		columns?: readonly Column<Row>[];
 		value?: string;
 		sort?: RecordTableSort;
-		plates?: boolean;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
 		{
-			key: sort?.nameKey ?? 'name',
+			key: 'name',
 			header: rowHeader,
 			rowHeader: true,
 			sortable: !!sort,
@@ -59,11 +63,13 @@
 		},
 		...columns,
 	]);
+	const plates = $derived(rows.some(({ plate }) => plate !== undefined));
 	const number = $derived(intl.number(locale));
+	const sortBy = $derived(locale === 'fr' ? 'Trier par' : 'Sort by');
 	const pageLabels = $derived({
 		showing: (shown: number, total: number) =>
 			locale === 'fr'
-				? `${number.format(shown)} sur ${number.format(total)} affichées`
+				? `${number.format(shown)} sur ${number.format(total)}`
 				: `Showing ${number.format(shown)} of ${number.format(total)}`,
 		more: (count: number) =>
 			locale === 'fr'
@@ -75,18 +81,18 @@
 {#snippet nameCell(row: Row)}
 	<RecordTableName {row} {plates} />
 {/snippet}
-{#if sort}
-	<div class="sort-choices mb-2 flex flex-wrap items-center gap-2">
-		<span>{sort.choiceLabel}</span>
+{#if sort?.choices}
+	<div class="mb-2 flex flex-wrap items-center gap-2">
+		<span class="basis-full sm:basis-auto">{sortBy}</span>
 		<SegmentedChoice
-			label={sort.choiceLabel}
-			options={sort.choices.map((choice) =>
+			label={sortBy}
+			options={sort.choices.options.map((choice) =>
 				choice.key === sort.key
 					? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
 					: choice,
 			)}
 			value={sort.key}
-			onSelect={sort.onSelect}
+			onSelect={sort.choices.onSelect}
 		/>
 	</div>
 {/if}
@@ -98,8 +104,8 @@
 	key={(row) => row.id}
 	{sort}
 	onSort={sort?.onSort}
-	sortLabels={sort ? { by: sort.label } : undefined}
+	sortLabels={sort ? { by: (header) => `${sortBy} ${header}` } : undefined}
 	pageSize={sort || rows.length > 20 ? 20 : undefined}
 	{pageLabels}
-	responsive={{ mode: 'rows', primary: sort?.nameKey ?? 'name', value: value ?? '' }}
+	responsive={{ mode: 'rows', primary: 'name', value: value ?? '' }}
 />

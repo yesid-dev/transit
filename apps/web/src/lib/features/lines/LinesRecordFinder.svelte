@@ -1,13 +1,16 @@
 <script lang="ts">
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { routeModeKey } from '#lib/search/stopMode.ts';
 	import { carryFrameState, RECORD_START } from '#lib/site/frameState.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
 		countedUnit,
 		dateRange,
 		methodEvidence,
+		recordPercent,
 		recordRatio,
 		recordStamp,
 	} from '#lib/site/presenter.ts';
@@ -16,23 +19,24 @@
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
+	import { recordCounts } from '../home/overviewRecord.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
+	import RecordEvidenceFooter from '../record/RecordEvidenceFooter.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordTableName from '../record/RecordTableName.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { finderCsv, finderRecordUrl, type FinderResult } from '../record/finderText.ts';
-	import { recordState } from '../record/recordStates.ts';
+	import { recordState, recordStateFor } from '../record/recordStates.ts';
 	import {
 		choose,
 		lastGoodNote,
 		lowCoverageText,
-		percent,
 		pooledDays,
 		punctualityWeighting,
 		recordConnection,
@@ -40,7 +44,6 @@
 		timingBasis,
 	} from '../record/recordText.ts';
 	import {
-		lineReadingState,
 		lineRecordRows,
 		lineSpread,
 		observedLineReadings,
@@ -69,6 +72,8 @@
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const display = transitDisplay();
+	const terms = $derived(transitTerms[locale]);
 	const about = $derived(overviewCopy[locale]);
 	const operator = $derived(provider?.labels[locale].operator);
 	const title = $derived(t('Lines', 'Lignes'));
@@ -83,26 +88,26 @@
 			'Aucune ligne ne peut être mesurée pour ces dates.',
 		),
 	);
-	const lineHeader = $derived(t('Line', 'Ligne'));
-	const lateHeader = $derived(t('Late', 'En retard'));
-	const tripsHeader = $derived(t('Trips that ran', 'Voyages effectués'));
+	const lineHeader = $derived(terms.line);
+	const lateHeader = $derived(terms.band.late);
+	const tripsHeader = $derived(t('Trips that ran', 'Trajets effectués'));
 	const eventsHeader = $derived(t('Stop events', 'Passages aux arrêts'));
 	const statusHeader = $derived(t('Status', 'État'));
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(record.period, locale) });
 	const pinned = $derived(finderRecordUrl(url, record.city, record.period));
 	const sortChoices = $derived({
-		...sort,
-		nameKey: 'line',
-		onSort: (key: string) => setSort(key, true),
-		onSelect: (key: string) => setSort(key, false),
-		label: (header: string) => t(`Sort by ${header}`, `Trier par ${header}`),
-		choiceLabel: t('Sort by', 'Trier par'),
-		choices: [
-			{ key: 'line', label: t('Line number', 'Numéro de ligne') },
-			{ key: 'onTime', label: t('On-time share', 'Part à l’heure') },
-			{ key: 'late', label: t('Late share', 'Part en retard') },
-			{ key: 'trips', label: tripsHeader },
-		],
+		key: sort.key === 'line' ? 'name' : sort.key,
+		direction: sort.direction,
+		onSort: (key: string) => setSort(key === 'name' ? 'line' : key, true),
+		choices: {
+			onSelect: (key: string) => setSort(key === 'name' ? 'line' : key, false),
+			options: [
+				{ key: 'name', label: t('Line number', 'Numéro de ligne') },
+				{ key: 'onTime', label: t('On-time share', 'Part à l’heure') },
+				{ key: 'late', label: t('Late share', 'Part en retard') },
+				{ key: 'trips', label: t('Trips that ran', 'Trajets assurés') },
+			],
+		},
 	});
 
 	let punctuality = $state.raw<FinderResult | null>(null);
@@ -123,9 +128,13 @@
 		};
 	});
 
-	function endpoints(id: string) {
+	function endpoints(id: string): string | undefined {
 		const heads = [
-			...new Set(directions?.[id]?.map(({ headsign }) => headsign?.trim()).filter(Boolean)),
+			...new Set(
+				directions?.[id]
+					?.map(({ headsign }) => display.directionName(headsign, locale))
+					.filter(Boolean),
+			),
 		];
 		return heads.length === 2
 			? t(`${heads[0]} to ${heads[1]}`, `${heads[0]} à ${heads[1]}`)
@@ -133,17 +142,19 @@
 	}
 
 	const all = $derived(
-		lineRecordRows(routes, provider, punctuality, delivery, locale).map((row) => ({
-			...row,
-			href: carryFrameState(
-				localizeHref(routeFor({ kind: 'line', id: row.id }), locale, record.city),
-				pinned,
-			),
-			label: row.name.name ?? row.name.label,
-			plate: row.name.number ?? undefined,
-			scheduleOnly: row.noLive,
-			detail: endpoints(row.id),
-		})),
+		lineRecordRows(routes, provider, punctuality, delivery, locale).map((row) => {
+			const { number, name, label } = display.lineName(row.id);
+			return {
+				...row,
+				href: carryFrameState(
+					localizeHref(routeFor({ kind: 'line', id: row.id }), locale, record.city),
+					pinned,
+				),
+				label: name ?? label,
+				plate: number ? { code: number, scheduleOnly: row.noLive } : undefined,
+				detail: endpoints(row.id),
+			};
+		}),
 	);
 	type Row = (typeof all)[number];
 
@@ -155,7 +166,11 @@
 			locale,
 		),
 	);
-	const excluded = $derived(all.filter((row) => !row.noLive && row.onTime === null));
+	const excluded = $derived(
+		all
+			.filter((row) => !row.noLive && row.onTime === null)
+			.map((row) => ({ ...row, detail: undefined })),
+	);
 	const spread = $derived(lineSpread(measured, locale));
 	const answer = $derived(
 		measured.length === 1
@@ -246,10 +261,31 @@
 	]);
 
 	const measuredColumns = $derived<DataTableColumn<Row>[]>([
-		{ key: 'onTime', header: about.onTime, sortable: true, numeric: true, cell: onTimeCell },
-		{ key: 'late', header: lateHeader, sortable: true, numeric: true, cell: lateCell },
-		{ key: 'trips', header: tripsHeader, sortable: true, numeric: true, cell: tripsCell },
-		{ key: 'events', header: eventsHeader, numeric: true, cell: eventsCell },
+		{
+			key: 'onTime',
+			header: about.onTime,
+			sortable: true,
+			numeric: true,
+			width: '16ch',
+			cell: onTimeCell,
+		},
+		{
+			key: 'late',
+			header: lateHeader,
+			sortable: true,
+			numeric: true,
+			width: '12ch',
+			cell: lateCell,
+		},
+		{
+			key: 'trips',
+			header: tripsHeader,
+			sortable: true,
+			numeric: true,
+			width: '19ch',
+			cell: tripsCell,
+		},
+		{ key: 'events', header: eventsHeader, numeric: true, width: '13ch', cell: eventsCell },
 	]);
 	const stateColumns = $derived<DataTableColumn<Row>[]>([
 		{ key: 'status', header: statusHeader, cell: stateCell },
@@ -292,8 +328,8 @@
 	);
 
 	const subtitle = $derived.by(() => {
-		if (!all.length) return undefined;
-		const count = countedUnit(all.length, 'line', locale);
+		if (!routes.length) return undefined;
+		const count = countedUnit(routes.length, 'line', locale);
 		return operator ? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${count}` : count;
 	});
 </script>
@@ -316,14 +352,14 @@
 {/snippet}
 
 {#snippet onTimeCell(row: Row)}
-	<strong class="text-base">{percent(row.onTime!, locale)}</strong>
+	<strong class="text-base">{recordPercent(row.onTime!, locale)}</strong>
 	{#if row.timing?.evidence.low_coverage}<small class="block text-muted-foreground"
 			>{lowCoverageText(locale)}</small
 		>{/if}
 {/snippet}
 
 {#snippet lateCell(row: Row)}
-	<RecordTableValue {locale} text={row.late === null ? null : percent(row.late, locale)} />
+	<RecordTableValue {locale} text={row.late === null ? null : recordPercent(row.late, locale)} />
 {/snippet}
 
 {#snippet tripsCell(row: Row)}
@@ -331,9 +367,11 @@
 	<RecordTableValue
 		{locale}
 		text={row.trips === null
-			? null
+			? tripsFailure
+				? t('Unavailable', 'Indisponible')
+				: null
 			: recordRatio(counts!.ran!, tally(counts!.scheduled!, locale), locale)}
-		state={lineReadingState(row.delivery)}
+		state={recordStateFor(row.delivery?.state)}
 	/>
 {/snippet}
 
@@ -343,7 +381,7 @@
 {/snippet}
 
 {#snippet stateCell(row: Row)}
-	{@const state = lineReadingState(row.timing)}
+	{@const state = recordStateFor(row.timing?.state)}
 	<StateMark {state} {locale} />
 	{#if state === 'too_few_to_judge' && row.timing?.evidence.counts.classified != null}
 		<p class="text-muted-foreground">
@@ -392,6 +430,20 @@
 
 		<div id="line-performance">
 			<RecordCard title={measuredTitle} {stamp}>
+				{#snippet footer()}
+					{#if timingEvidence && measured.length}
+						<RecordEvidenceFooter
+							{locale}
+							evidence={timingEvidence}
+							sample={recordCounts(
+								totals.events,
+								null,
+								countedUnit(timingEvidence.days_included.length, 'day', locale),
+								locale,
+							)}
+						/>
+					{/if}
+				{/snippet}
 				{#if timingFailure || tripsFailure}
 					<p>{recordConnection.unreachable[locale]}</p>
 				{/if}
@@ -404,7 +456,6 @@
 						columns={measuredColumns}
 						value="onTime"
 						sort={sortChoices}
-						plates
 					/>
 				{:else if timingAnswer}
 					<p>{t('No measured lines.', 'Aucune ligne mesurée.')}</p>
@@ -452,6 +503,11 @@
 		</div>
 
 		<RecordCard title={excludedTitle} {stamp}>
+			{#snippet footer()}
+				{#if timingEvidence && excluded.some(({ timing }) => timing)}
+					<RecordEvidenceFooter {locale} evidence={timingEvidence} />
+				{/if}
+			{/snippet}
 			{#if timingFailure}
 				<p>{recordConnection.unreachable[locale]}</p>
 			{:else if timingAnswer}
@@ -462,7 +518,6 @@
 						rowHeader={lineHeader}
 						rows={excluded}
 						columns={stateColumns}
-						plates
 					/>
 				{:else}
 					<p>
@@ -498,7 +553,7 @@
 					text: [
 						observation
 							? about.observedShare(
-									percent(observation.share, locale),
+									recordPercent(observation.share, locale),
 									observation.scheduled === undefined
 										? undefined
 										: tally(observation.scheduled, locale),

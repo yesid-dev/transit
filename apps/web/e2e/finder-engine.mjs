@@ -161,7 +161,7 @@ export function finderEngine(url) {
 											{},
 											'not_measured',
 											'The feed carried this line without trip identifiers on these dates.',
-											'Le flux contenait cette ligne sans identifiants de voyage pour ces dates.',
+											'Le flux contenait cette ligne sans identifiants de trajet pour ces dates.',
 										),
 										cell({ line: '716' }, { on_time: null }, {}, 'unknown', 'Unknown', 'Inconnu'),
 									]),
