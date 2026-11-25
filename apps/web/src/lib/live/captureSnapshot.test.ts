@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { captureDepartures, captureNetwork, captureVehicles } from './captureProjection';
+import {
+	captureDepartures,
+	captureNetwork,
+	captureTrips,
+	captureVehicles,
+} from './captureProjection';
+import { selectLivePulse } from '#lib/features/home/homePulse.ts';
 import {
 	captureSnapshotSchema,
 	captureTripScopeSchema,
@@ -79,6 +85,42 @@ const scoped = captureTripScopeSchema.parse({
 });
 
 describe('capture-backed Live projection', () => {
+	it('accepts both publisher versions and preserves the measured pair, including zero', () => {
+		const current = {
+			...snapshot,
+			scheduled_now: 1306,
+			non_responding: 0,
+			non_responding_by_route: [],
+			cancelled_now: 2,
+		};
+		const previousReader = captureSnapshotSchema.pick({
+			version: true,
+			city: true,
+			published_at: true,
+			stable_vehicle_ids: true,
+			feeds: true,
+			vehicle_positions: true,
+			alerts: true,
+		});
+		expect(previousReader.parse(current)).toEqual(snapshot);
+		const old = captureNetwork(captureSnapshotSchema.parse(snapshot), now);
+		expect(old).toMatchObject({ non_responding: null, scheduled_now: null });
+		const measured = captureNetwork(captureSnapshotSchema.parse(current), now);
+		expect(measured).toMatchObject({
+			scheduled_now: 1306,
+			non_responding: 0,
+			non_responding_by_route: [],
+			cancelled_now: 2,
+		});
+		expect(selectLivePulse(measured, 'en')?.silentReading).toEqual({
+			value: '0',
+			detail: 'of 1,306 trips scheduled now',
+		});
+		expect(selectLivePulse(old, 'en')?.silentReading).toBeUndefined();
+		expect(captureNetwork({ ...current, scheduled_now: null }, now).non_responding).toBeNull();
+		expect(captureNetwork(current, now + 60_000).scheduled_now).toBeNull();
+	});
+
 	it('keeps no capture, unsupported capabilities and stale capture separate', () => {
 		const feed = snapshot.feeds.positions;
 		expect(feedState(undefined, now)).toBe('not_tracked');
@@ -144,6 +186,36 @@ describe('capture-backed Live projection', () => {
 				now,
 			);
 			expect(result.stops?.['stop-1']?.[0]).toMatchObject({ delay_min: 5, status });
+		}
+	});
+
+	it('uses inclusive schedule bands for the selected stop and clears stale delay', () => {
+		for (const [delay, status] of [
+			[-61, 'early'],
+			[-60, 'on_time'],
+			[300, 'on_time'],
+			[301, 'late'],
+		] as const) {
+			const report = scoped.trip_updates[0];
+			const next = {
+				...scoped,
+				trip_updates: [
+					{
+						...report,
+						delay,
+						stops: [{ ...report.stops[0], departure_delay: delay }],
+					},
+				],
+			};
+			expect(captureTrips(next, now).trips['trip-1']).toMatchObject({
+				status,
+				stops: [{ status }],
+			});
+			expect(captureTrips(next, now + 60_000).trips['trip-1']).toMatchObject({
+				status: 'unknown',
+				delay_min: null,
+				stops: [{ status: 'unknown', delay_min: null }],
+			});
 		}
 	});
 

@@ -10,6 +10,14 @@ export type StatusDist = z.infer<typeof LiveStatusDistSchema>;
 
 export const NetworkFileSchema = PublishedNetworkFileSchema.extend({
 	non_responding: PublishedNetworkFileSchema.shape.non_responding.nullable(),
+	scheduled_now: PublishedNetworkFileSchema.shape.non_responding
+		.nonnegative()
+		.nullable()
+		.optional(),
+	cancelled_now: PublishedNetworkFileSchema.shape.non_responding
+		.nonnegative()
+		.nullable()
+		.optional(),
 });
 export const LiveNetworkFileSchema = NetworkFileSchema.extend({
 	status_dist: LiveStatusDistSchema,

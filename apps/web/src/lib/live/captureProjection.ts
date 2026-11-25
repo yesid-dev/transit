@@ -77,12 +77,19 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 	};
 }
 
-function stopEta(stop: CaptureTripReport['trip_updates'][number]['stops'][number]) {
+function stopEta(
+	stop: CaptureTripReport['trip_updates'][number]['stops'][number],
+	usableDelay: boolean,
+) {
 	const seconds = stop.departure ?? stop.arrival;
-	if (!stop.stop_id || seconds == null || seconds > 8.64e12 || stop.relationship === 1) {
+	if (!stop.stop_id || seconds == null || seconds > 8.64e12 || [1, 2].includes(stop.relationship)) {
 		return null;
 	}
-	const delay = stop.departure_delay ?? stop.arrival_delay;
+	const delay = usableDelay
+		? stop.departure == null
+			? stop.arrival_delay
+			: stop.departure_delay
+		: null;
 	return {
 		stop: stop.stop_id,
 		eta_utc: new Date(seconds * 1000).toISOString(),
@@ -91,8 +98,9 @@ function stopEta(stop: CaptureTripReport['trip_updates'][number]['stops'][number
 	};
 }
 
-export function captureTrips(report: CaptureTripReport) {
+export function captureTrips(report: CaptureTripReport, now: number) {
 	const feed = report.feed;
+	const usableDelay = feedState(feed, now) === 'live';
 	const captured = feed.captured_at;
 	if (!captured) throw new Error('Trip updates unavailable');
 	const payload = LiveTripsFileSchema.parse({
@@ -103,21 +111,21 @@ export function captureTrips(report: CaptureTripReport) {
 				update.trip_id,
 				{
 					route: update.route_id,
-					status: classifyDelay(update.delay),
-					delay_min: minute(update.delay),
+					status: classifyDelay(usableDelay ? update.delay : null),
+					delay_min: minute(usableDelay ? update.delay : null),
 					stops: update.stops.flatMap((stop) => {
-						const eta = stopEta(stop);
+						const eta = stopEta(stop, usableDelay);
 						return eta ? [eta] : [];
 					}),
 				},
 			]),
 		),
 	});
-	return { ...payload, captureFeed: feed, captureRevision: JSON.stringify(feed) };
+	return { ...payload, captureFeed: feed, captureRevision: JSON.stringify([feed, usableDelay]) };
 }
 
 export function captureDepartures(report: CaptureTripReport, now: number) {
-	const trips = captureTrips(report);
+	const trips = captureTrips(report, now);
 	const stops = new Map<
 		string,
 		{
@@ -219,6 +227,15 @@ export function captureAlerts(snapshot: CaptureSnapshot, now: number) {
 
 export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 	const positions = captureVehicles(snapshot, now);
+	const scheduled = snapshot.scheduled_now;
+	const silent = snapshot.non_responding;
+	const measured =
+		scheduled != null &&
+		silent != null &&
+		silent <= scheduled &&
+		Object.values(snapshot.feeds).every(
+			(feed) => feed.family === 'alerts' || feedState(feed, now) === 'live',
+		);
 	const status_dist = { on_time: 0, early: 0, late: 0, unknown: 0 };
 	const occupancy = { empty: 0, many_seats: 0, few_seats: 0, standing: 0, full: 0 };
 	let occupancyTotal = 0;
@@ -255,7 +272,10 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 						Object.entries(occupancy).map(([key, count]) => [key, count / occupancyTotal]),
 					)
 				: null,
-		non_responding: null,
+		scheduled_now: measured ? scheduled : null,
+		non_responding: measured ? silent : null,
+		cancelled_now: measured ? (snapshot.cancelled_now ?? null) : null,
+		non_responding_by_route: measured ? (snapshot.non_responding_by_route ?? null) : null,
 		feed_freshness_s: null,
 		coverage_pct: positions.vehicles.length
 			? percentage(classified, positions.vehicles.length)
@@ -264,6 +284,6 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 	return {
 		...payload,
 		captureFeed: positions.captureFeed,
-		captureRevision: positions.captureRevision,
+		captureRevision: JSON.stringify([positions.captureRevision, measured]),
 	};
 }

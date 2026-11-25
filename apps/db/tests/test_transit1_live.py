@@ -60,7 +60,7 @@ def test_live_projection_retains_measurements_and_uses_the_previous_utc_day(tmp_
         VehiclePosition.EMPTY,
     )
     assert row["bearing"] is None
-    assert row["delay"] == 0
+    assert row["delay"] is None
     assert snapshot["trip_updates"][0]["stops"][0]["departure_delay"] == 0
     assert snapshot["alerts"] is None
     assert snapshot["feeds"]["i3_alerts"]["captured_at"] is None
@@ -107,10 +107,22 @@ def test_city_poll_publishes_no_inline_updates_and_scopes_durable_trip_ranges(
             update.trip.route_id = route_id
         stop = update.stop_time_update.add(stop_id=stop_id, stop_sequence=1)
         stop.departure.time = int(NOW.timestamp()) + 600
+    past = updates.entity[0].trip_update.stop_time_update.add(stop_id="past", stop_sequence=2)
+    past.arrival.time = int(NOW.timestamp()) - 600
+    dwelling = updates.entity[0].trip_update.stop_time_update.add(
+        stop_id="dwelling", stop_sequence=3
+    )
+    dwelling.arrival.time = int(NOW.timestamp()) - 600
+    dwelling.departure.time = int(NOW.timestamp()) + 60
     capture(tmp_path, "trip_updates", updates, NOW)
     source = LocalBronzeStorage("local", tmp_path)
     publisher = LivePublisher(declaration_for("stm"), source)
     observed = publisher.poll(NOW)
+    assert [stop["stop_id"] for stop in observed["trip_updates"][0]["stops"]] == [
+        "common",
+        "past",
+        "dwelling",
+    ]
     monkeypatch.setattr(publisher, "poll", lambda _: observed)
     dest = LocalBronzeStorage("local", tmp_path / "published")
     publisher.run(dest, "", once=True)
@@ -128,6 +140,8 @@ def test_city_poll_publishes_no_inline_updates_and_scopes_durable_trip_ranges(
     assert read("trip:unassigned")["trip_id"] == "unassigned"
     assert [row[0] for row in read("stop:common")] == ["linked", "other"]
     assert [row["trip_id"] for row in read("line:24")] == ["linked"]
+    assert "stop:past" not in index["ranges"]
+    assert [row[0] for row in read("stop:dwelling")] == ["linked"]
 
     # A scoped publication failure must leave the main city report available.
     monkeypatch.setattr("transit_ops.live.playback.MAX_TRIP_BUNDLE_BYTES", 1)

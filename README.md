@@ -186,6 +186,29 @@ The read variables are `CLEAN_SOURCE_S3_ENDPOINT`,
 `CLEAN_SOURCE_S3_ACCESS_KEY_ID`, `CLEAN_SOURCE_S3_SECRET_ACCESS_KEY` and
 optionally `CLEAN_SOURCE_S3_REGION` and `CLEAN_SOURCE_S3_SESSION_TOKEN`.
 
+### Public live answer
+
+`GET /v2/{city}/live` serves the capture publisher's city snapshot. Its optional
+`scheduled_now` and `non_responding` counts describe trips scheduled now and
+trips without a reporting vehicle. `cancelled_now` counts agency cancellations
+on measured lines, and `non_responding_by_route` lists silent counts as
+`{route_id, count}` per line. The publisher uses GTFS elapsed service time in
+the city's zone, including times after midnight. The denominator starts at
+first departure, ends at last arrival and excludes cancellations and lines
+declared without live data. A trip becomes eligible to be silent after its
+first five minutes, with no grace after arrival. A fresh matching position
+is one reported within 90 seconds plus the declared source lag. The counts are
+null when the schedule, fresh movement feeds or vehicle trip IDs are unavailable.
+
+The city answer and `GET /v2/{city}/live-trips` use the same dated schedule
+to resolve vehicle and stop delays. A delay uses a fresh feed delay when
+supplied, or an absolute prediction minus the scheduled arrival or departure
+for that same stop. A fresh feed can carry an unchanged prediction for the
+dated trip regardless of feed direction, and delay expires when the last
+predicted arrival or departure is more than the feed's freshness window in
+the past, allowing the vehicle to use its next usable upcoming call.
+On time is from one minute early through five minutes late, inclusive.
+
 ## Analytics
 
 The production site counts visits and a few named interactions with cookieless
