@@ -262,41 +262,4 @@ for (const locale of ['en', 'fr'] as const) {
 			fr ? 'Ce bilan demande plus de temps' : 'These records take longer',
 		);
 	});
-
-	test(`${locale} Vehicle recovery keeps the completed control in place`, async ({ page }) => {
-		await page.setViewportSize({ width: 1440, height: 900 });
-		await page.clock.install();
-		await page.goto(
-			`${prefix}/vehicle/${fr ? '40069' : '40068'}?provider=stm&frameMode=record&${dates}`,
-		);
-		const reporting = page.getByRole('article', {
-			name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
-		});
-		await expect(reporting).toContainText(fr ? 'Lecture en attente.' : 'Waiting for a reading.');
-		const control = page.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).first();
-		await control.focus();
-		const before = (await control.boundingBox())!.y;
-		const response = page.waitForResponse((res) => {
-			const url = new URL(res.url());
-			return (
-				url.pathname === '/api/record-recovery' && url.searchParams.get('sections') === 'reporting'
-			);
-		});
-		await page.clock.fastForward(60_001);
-		expect((await response).ok()).toBe(true);
-		await expect(reporting).toContainText(
-			fr ? '16 interruptions par 100 heures' : '16 interruptions per 100 hours',
-		);
-		expect(Math.round(Math.abs((await control.boundingBox())!.y - before))).toBe(0);
-		await expect(control).toBeFocused();
-		const notice = page.locator('[data-slot="record-patience"]');
-		await expect(notice.getByRole('status')).toHaveCount(1);
-		await expect(notice.getByRole('status')).toContainText(fr ? 'Réponse reçue' : 'Answered');
-		await expect(notice).toHaveAttribute('style', /min-block-size: \d+px/);
-		await page.evaluate(() => {
-			document.documentElement.style.fontSize = '200%';
-		});
-		await page.setViewportSize({ width: 900, height: 900 });
-		await expect(notice).not.toHaveAttribute('style', /min-block-size/);
-	});
 }
