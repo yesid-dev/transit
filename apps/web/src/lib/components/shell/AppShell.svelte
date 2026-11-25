@@ -6,6 +6,7 @@
 	import type { SearchList } from '#lib/search/transitSearch.ts';
 	import { AppFrame, AnnouncementBanner, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
+	import { formatDateKey } from '#lib/utils/time.ts';
 	import { frameToday } from '#lib/site/frameState.ts';
 	import type { PublicProvider } from '#lib/v1/providers.ts';
 	import NavPill from './NavPill.svelte';
@@ -23,6 +24,7 @@
 		url: URL;
 		providerId?: string;
 		timeZone?: string;
+		recordThrough?: string | null;
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
@@ -42,6 +44,7 @@
 		url,
 		providerId,
 		timeZone,
+		recordThrough,
 		providers,
 		discoveryError,
 		search = $bindable(''),
@@ -58,7 +61,7 @@
 	let announcementHeight = $state(0);
 	let now = $state(new Date());
 	const today = $derived(frameToday(timeZone, now));
-	const frame = $derived(frameControlsState(url, today));
+	const frame = $derived(frameControlsState(url, today, recordThrough));
 	let surfaceControls = $state.raw<Snippet<[SurfaceRailContext]>[]>([]);
 	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail) => {
 		surfaceControls = [...surfaceControls, rail];
@@ -87,6 +90,7 @@
 		{url}
 		{providerId}
 		{timeZone}
+		{recordThrough}
 		{providers}
 		{discoveryError}
 		bind:search
@@ -96,7 +100,7 @@
 {/snippet}
 
 {#snippet rail(context: SurfaceRailContext)}
-	<FrameControls {context} {locale} {url} {today} {frame} />
+	<FrameControls {context} {locale} {url} {today} {recordThrough} {frame} />
 	{#if context.presentation === 'mobile'}
 		{#each surfaceControls as controls (controls)}
 			{@render controls(context)}
@@ -130,7 +134,15 @@
 			mobileVisible: mobileControlsVisible,
 		}}
 	>
-		{#if fullViewport}
+		{#if frame.waitingForYesterday && (frame.usesFrameRecord || frame.map)}
+			<div class="mx-auto w-full max-w-5xl px-4 py-8">
+				<p data-slot="record-yesterday-pending">
+					{copy.waitingForDay(
+						formatDateKey(frame.waitingForYesterday, locale, false, 'day-first', 'long'),
+					)}
+				</p>
+			</div>
+		{:else if fullViewport}
 			{@render main()}
 		{:else}
 			<RecordPatience {locale} period={frame.period} scope={url.pathname + url.search}>

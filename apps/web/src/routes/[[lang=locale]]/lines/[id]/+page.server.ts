@@ -36,7 +36,11 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const { v1, schedule, lang, providerId, provider } = await event.parent();
-	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	const { period } = parseFrameState(
+		url.searchParams,
+		frameToday(provider?.timezone),
+		provider?.record_through,
+	);
 	if (!frameLive) {
 		const directory = createLineDirectory(schedule?.routes ?? null, {
 			line: (routeId) => routeNameFallback(routeId, lang),

@@ -7,6 +7,7 @@ import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { v1, providerId: city, provider } = await event.parent();
+	// The calendar window includes recent dates even when their clean files are late.
 	const { mode, period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
 	if (mode === 'record') {
 		const visitorIp = event.request.headers.get('cf-connecting-ip');

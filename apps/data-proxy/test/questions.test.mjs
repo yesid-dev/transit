@@ -851,3 +851,20 @@ test("engine health distinguishes missing configuration from an unavailable engi
   assert.equal(unreachable.status, 503);
   assert.deepEqual(await unreachable.json(), { engine: "unavailable" });
 });
+
+test("the catalog refresh after a mirror copy keeps each provider's record date", async (t) => {
+  const f = fixture(t);
+  f.cities.providers[0].record_through = "2026-11-23";
+  f.cities.providers[1].record_through = null;
+  const catalog = async (headers) => (await f.fetch("/v2/cities", headers)).json();
+  assert.deepEqual((await catalog()).providers.map((city) => city.record_through), [
+    "2026-11-23", null,
+  ]);
+  f.cities.providers[0].record_through = "2026-11-24";
+  assert.equal((await catalog()).providers[0].record_through, "2026-11-23");
+  assert.equal((await catalog({ "cache-control": "no-cache" })).providers[0].record_through, "2026-11-24");
+  assert.equal((await catalog()).providers[0].record_through, "2026-11-24");
+  assert.equal(f.cityRequests.length, 2);
+  assert.equal(JSON.parse(f.saved.get("transit-city-catalog").value).providers[0].record_through,
+    "2026-11-24");
+});

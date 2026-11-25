@@ -24,7 +24,11 @@ export async function loadRankingsRecord(
 	const { url, request, parent } = event;
 	const selection = rankingSelection(path, url.searchParams);
 	const { providerId: city, provider, schedule } = await parent();
-	const { period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	const { period } = parseFrameState(
+		url.searchParams,
+		frameToday(provider?.timezone),
+		provider?.record_through,
+	);
 	return {
 		selection,
 		period,

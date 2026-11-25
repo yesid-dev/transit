@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { frameToday, periodError } from '#lib/site/frameState.ts';
+import { frameDateLimit, frameToday, periodError } from '#lib/site/frameState.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 import { getCityCatalog, getRecordCsv, type RecordQuery } from './engine.ts';
 
@@ -18,7 +18,11 @@ export async function recordCsvResponse(
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	const catalog = await getCityCatalog(visitorIp).catch(() => error(503));
 	const provider = catalog.providers.find(({ id }) => id === city);
-	if (!provider || periodError(period, frameToday(provider.timezone))) error(400);
+	if (
+		!provider ||
+		periodError(period, frameDateLimit(frameToday(provider.timezone), provider.record_through))
+	)
+		error(400);
 	const upstream = await getRecordCsv(
 		query,
 		{ ...(selectPeriod?.(period) ?? period), city, visitorIp },

@@ -25,8 +25,13 @@ export function loadVehiclePage(
 	now = new Date(),
 	id?: string,
 	timeZone?: string,
+	recordThrough?: string | null,
 ) {
-	const { mode, period } = parseFrameState(url.searchParams, frameToday(timeZone, now));
+	const { mode, period } = parseFrameState(
+		url.searchParams,
+		frameToday(timeZone, now),
+		recordThrough,
+	);
 	const scope = period && { ...period, city, visitorIp: request.headers.get('cf-connecting-ip') };
 	const sections: VehicleSection[] = id
 		? ['service', 'lines', 'reporting', 'completion', 'punctuality']

@@ -29,7 +29,11 @@ export const load: PageServerLoad = async (event) => {
 	const { v1, lang, providerId, schedule, provider } = await event.parent();
 	const period =
 		view === 'record'
-			? parseFrameState(event.url.searchParams, frameToday(provider?.timezone)).period
+			? parseFrameState(
+					event.url.searchParams,
+					frameToday(provider?.timezone),
+					provider?.record_through,
+				).period
 			: null;
 	const scheduledStop = schedule?.stops.find((stop) => stop.id === id);
 	const frame = period

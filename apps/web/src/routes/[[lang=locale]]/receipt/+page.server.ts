@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { frameToday, parseFrameState, periodError } from '#lib/site/frameState.ts';
+import { frameDateLimit, frameToday, parseFrameState, periodError } from '#lib/site/frameState.ts';
 import { loadDailyRecord } from '#lib/server/departureDailyRecord.ts';
 
 export const load: PageServerLoad = async (event) => {
@@ -8,10 +8,10 @@ export const load: PageServerLoad = async (event) => {
 	const date = event.url.searchParams.has('recordFrom') ? null : event.url.searchParams.get('date');
 	const legacyPeriod = date == null ? null : { from: date, to: date, preset: null };
 	const period = legacyPeriod
-		? periodError(legacyPeriod, today)
+		? periodError(legacyPeriod, frameDateLimit(today, provider?.record_through))
 			? null
 			: legacyPeriod
-		: parseFrameState(event.url.searchParams, today).period;
+		: parseFrameState(event.url.searchParams, today, provider?.record_through).period;
 	const scope = period && {
 		...period,
 		city: providerId,

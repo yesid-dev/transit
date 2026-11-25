@@ -31,6 +31,14 @@ export function frameToday(timeZone: string | undefined, now = new Date()): stri
 	return providerLocalDateKey(now.toISOString(), timeZone)!;
 }
 
+const shiftDay = (day: string, offset: number) =>
+	isoDay(new Date(Date.parse(day) + offset * 86_400_000));
+const minDay = (a: string, b: string) => (a < b ? a : b);
+
+export function frameDateLimit(today: string, recordThrough?: string | null) {
+	return recordThrough ? shiftDay(today, -1) : today;
+}
+
 function isDay(key: string): boolean {
 	const date = new Date(key + 'T00:00:00Z');
 	return Number.isFinite(date.getTime()) && isoDay(date) === key;
@@ -45,28 +53,37 @@ export function periodError({ from, to }: DateWindow, today: string): PeriodErro
 	return null;
 }
 
-export function presetPeriod(preset: Preset, today: string): FramePeriod | null {
+export function presetPeriod(
+	preset: Preset,
+	today: string,
+	recordThrough?: string | null,
+): FramePeriod | null {
 	const date = new Date(today + 'T00:00:00Z');
-	const daysAgo = (days: number) =>
-		isoDay(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - days)));
+	const yesterday = shiftDay(today, -1);
+	const through = recordThrough && isDay(recordThrough) ? minDay(recordThrough, yesterday) : null;
+	const end = through ?? yesterday;
+	const yearEnd = through ? new Date(shiftDay(through, 1) + 'T00:00:00Z') : date;
 	const monthStart = (offset: number) =>
 		isoDay(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1)));
 	const lastDayOfPreviousMonth = isoDay(
 		new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 0)),
 	);
-	const year = date.getUTCFullYear() - 1;
-	const month = date.getUTCMonth();
+	const year = yearEnd.getUTCFullYear() - 1;
+	const month = yearEnd.getUTCMonth();
 	const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
 	const lastYear = isoDay(
-		new Date(Date.UTC(year, month, Math.min(date.getUTCDate(), daysInMonth))),
+		new Date(Date.UTC(year, month, Math.min(yearEnd.getUTCDate(), daysInMonth))),
 	);
 	const periods = {
-		yesterday: { from: daysAgo(1), to: daysAgo(1) },
-		'7-days': { from: daysAgo(7), to: daysAgo(1) },
-		'28-days': { from: daysAgo(28), to: daysAgo(1) },
-		'this-month': { from: monthStart(0), to: today },
-		'last-month': { from: monthStart(-1), to: lastDayOfPreviousMonth },
-		'12-months': { from: lastYear, to: daysAgo(1) },
+		yesterday: { from: yesterday, to: yesterday },
+		'7-days': { from: shiftDay(end, -6), to: end },
+		'28-days': { from: shiftDay(end, -27), to: end },
+		'this-month': { from: monthStart(0), to: through ?? today },
+		'last-month': {
+			from: monthStart(-1),
+			to: through ? minDay(lastDayOfPreviousMonth, through) : lastDayOfPreviousMonth,
+		},
+		'12-months': { from: lastYear, to: end },
 	};
 	const period = { ...periods[preset], preset };
 	if (
@@ -77,14 +94,23 @@ export function presetPeriod(preset: Preset, today: string): FramePeriod | null 
 	return periodError(period, today) ? null : period;
 }
 
-export function parseFrameState(params: URLSearchParams, today: string): FrameState {
+export function parseFrameState(
+	params: URLSearchParams,
+	today: string,
+	recordThrough?: string | null,
+): FrameState {
 	const mode = params.get('frameMode') === 'live' ? 'live' : 'record';
 	const preset = PRESETS.find((option) => option === params.get('period')) ?? null;
 	const from = params.get('recordFrom') ?? '';
 	const to = params.get('recordTo') ?? '';
 	const period = { preset, from, to };
-	if (!periodError(period, today)) return { mode, period };
-	return { mode, period: presetPeriod('7-days', today) ?? presetPeriod('yesterday', today) };
+	if (!periodError(period, frameDateLimit(today, recordThrough))) return { mode, period };
+	return {
+		mode,
+		period:
+			presetPeriod('7-days', today, recordThrough) ??
+			presetPeriod(recordThrough ? '12-months' : 'yesterday', today, recordThrough),
+	};
 }
 
 /** Keep the frame separate from the date, mode and range filters on existing pages. */

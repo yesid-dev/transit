@@ -21,7 +21,7 @@ export const load: PageServerLoad = async (event) => {
 				: 'This departure is not in the timetable.',
 		);
 	const today = frameToday(provider?.timezone);
-	const { period, mode } = parseFrameState(event.url.searchParams, today);
+	const { period, mode } = parseFrameState(event.url.searchParams, today, provider?.record_through);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const day = period ? departureDay(event.url.searchParams, period) : today;
 	const scope = { city: providerId, visitorIp };

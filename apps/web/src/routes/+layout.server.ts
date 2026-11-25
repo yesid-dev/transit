@@ -104,7 +104,11 @@ export const load: LayoutServerLoad = async (event) => {
 	const provider = selection.provider;
 	const period =
 		!loadSnapshots && needsSchedule && provider?.download_licence?.source_date_required
-			? parseFrameState(event.url.searchParams, frameToday(provider.timezone)).period
+			? parseFrameState(
+					event.url.searchParams,
+					frameToday(provider.timezone),
+					provider.record_through,
+				).period
 			: null;
 	const recordSourceDate = period
 		? getRecordDataHealth({ ...period, city: selection.providerId, visitorIp }).then((result) =>

@@ -2,8 +2,8 @@ import { frameToday, parseFrameState } from '#lib/site/frameState.ts';
 import { finderQuestions } from './engineQuestion.ts';
 import { getFinderSeries } from './engine.ts';
 
-function finderPeriod(url: URL, timeZone: string | undefined) {
-	return parseFrameState(url.searchParams, frameToday(timeZone)).period;
+function finderPeriod(url: URL, timeZone: string | undefined, recordThrough?: string | null) {
+	return parseFrameState(url.searchParams, frameToday(timeZone), recordThrough).period;
 }
 
 export function loadLinesRecord(
@@ -11,8 +11,9 @@ export function loadLinesRecord(
 	city: string,
 	request: Request,
 	timeZone: string | undefined,
+	recordThrough?: string | null,
 ) {
-	const period = finderPeriod(url, timeZone);
+	const period = finderPeriod(url, timeZone, recordThrough);
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	return period
 		? {
@@ -33,8 +34,9 @@ export function loadStopsRecord(
 	city: string,
 	request: Request,
 	timeZone: string | undefined,
+	recordThrough?: string | null,
 ) {
-	const period = finderPeriod(url, timeZone);
+	const period = finderPeriod(url, timeZone, recordThrough);
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	return period
 		? {

@@ -13,7 +13,11 @@ export const load: PageServerLoad = async (event) => {
 		return { view: 'live' as const, ...(await _loadWithReader(event, adapter.live)) };
 
 	const { providerId: city, provider } = await event.parent();
-	const { period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
+	const { period } = parseFrameState(
+		event.url.searchParams,
+		frameToday(provider?.timezone),
+		provider?.record_through,
+	);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	return {
 		view: 'record' as const,

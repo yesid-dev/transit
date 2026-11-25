@@ -1,9 +1,10 @@
 import asyncio
 import json
+import shutil
 from pathlib import Path
 
 import pytest
-from test_engine import http
+from test_engine import _build_store, http
 
 from transit_engine.cities import UnknownCity, city_catalog, public_declaration
 from transit_engine.server import Engine
@@ -29,6 +30,7 @@ def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     cities = {city["id"]: city for city in catalog["providers"]}
     assert catalog["default_provider"] == "stm"
     assert "sto" not in cities
+    assert all(city["record_through"] is None for city in cities.values())
     assert cities["stm"]["labels"]["fr"]["city"] == "Montréal"
     assert cities["stm"]["inputs"]["i3_alerts"] is True
     assert cities["stm"]["inputs"]["occupancy"] is True
@@ -111,3 +113,35 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     (tmp_path / "default-city.txt").write_text("hidden\n", encoding="utf8")
     with pytest.raises(RuntimeError, match="default city must be a public provider"):
         city_catalog()
+
+
+def test_record_through_tracks_the_latest_complete_edition_after_a_mirror_copy(
+    tmp_path: Path,
+) -> None:
+    store = _build_store(tmp_path, cleaning_version=9)
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=10)
+    city = tmp_path / "stm"
+    original = max(city.iterdir())
+    for day, version, missing in (
+        ("2026-11-25", 9, None),
+        ("2026-11-27", 9, "feed_polls.parquet"),
+        ("2026-11-28", 8, None),
+    ):
+        target = city / day / f"v{version}"
+        shutil.copytree(original / "v9", target)
+        receipt = target / "manifest.json"
+        manifest = json.loads(receipt.read_bytes())
+        manifest.update(service_date=day, cleaning_version=str(version))
+        receipt.write_text(json.dumps(manifest), encoding="utf-8")
+        if missing:
+            (target / missing).unlink()
+
+    def anchors() -> dict[str, str | None]:
+        status, _, body = asyncio.run(http(app, "/cities"))
+        assert status == 200
+        return {row["id"]: row["record_through"] for row in json.loads(body)["providers"]}
+
+    assert anchors() == {"stm": "2026-11-25", "octranspo": None}
+    shutil.copyfile(original / "v9/feed_polls.parquet", city / "2026-11-27/v9/feed_polls.parquet")
+    (tmp_path / ".record-v9").touch()
+    assert anchors() == {"stm": "2026-11-27", "octranspo": None}

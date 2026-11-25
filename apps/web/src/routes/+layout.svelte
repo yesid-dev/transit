@@ -416,6 +416,7 @@
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
 		timeZone={data.provider?.timezone}
+		recordThrough={data.provider?.record_through}
 		providers={data.providers}
 		discoveryError={data.discoveryError}
 		bind:search={topSearch}

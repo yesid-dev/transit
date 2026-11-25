@@ -19,6 +19,22 @@ describe('frame control state', () => {
 		expect(state('/map?mapLayer=corridors&recordLine=24').mode).toBe('record');
 	});
 
+	it('replaces an unavailable Yesterday answer while keeping the diagnostic screens usable', () => {
+		const url = new URL(
+			'https://transit.test/lines/51?period=yesterday&recordFrom=2026-11-21&recordTo=2026-11-21',
+		);
+		expect(frameControlsState(url, today, '2026-11-20').waitingForYesterday).toBe('2026-11-21');
+		expect(frameControlsState(url, today, '2026-11-21').waitingForYesterday).toBeNull();
+		expect(frameControlsState(url, today).waitingForYesterday).toBeNull();
+		for (const path of ['/status', '/download']) {
+			url.pathname = path;
+			expect(frameControlsState(url, today, '2026-11-20')).toMatchObject({
+				waitingForYesterday: null,
+				period: { from: '2026-11-21', to: '2026-11-21' },
+			});
+		}
+	});
+
 	it('describes pinned dates and their inclusive duration in either language', () => {
 		const { period } = state('/?period=7-days&recordFrom=2026-11-01&recordTo=2026-11-07');
 		expect(framePeriodSummary(period, 'en')).toEqual({

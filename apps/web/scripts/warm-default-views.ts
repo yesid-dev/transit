@@ -68,7 +68,10 @@ export async function warmQuestions(
 }
 
 async function publicCities(): Promise<WarmCity[]> {
-	const response = await fetch(questionUrl(citiesQuestion), requestOptions());
+	const response = await fetch(questionUrl(citiesQuestion), {
+		...requestOptions(),
+		headers: { 'cache-control': 'no-cache' },
+	});
 	if (!response.ok) throw new Error(`Public city catalog returned HTTP ${response.status}`);
 	const { providers } = (await response.json()) as { providers?: WarmCity[] };
 	if (
@@ -110,8 +113,9 @@ async function main(args: string[]) {
 	const missing: string[] = [];
 	const urls: string[] = [];
 	for (const city of cities) {
-		const period = defaultPeriod(now, city.timezone);
-		if (!period) throw new Error('Default Record period unavailable');
+		const period = defaultPeriod(now, city.timezone, city.record_through);
+		const healthPeriod = defaultPeriod(now, city.timezone);
+		if (!period || !healthPeriod) throw new Error('Default Record period unavailable');
 		periods.push(period);
 		if (root && version && !dryRun) {
 			try {
@@ -121,7 +125,7 @@ async function main(args: string[]) {
 				continue;
 			}
 		}
-		const cityUrls = defaultCityQuestions(city, period);
+		const cityUrls = defaultCityQuestions(city, period, healthPeriod);
 		counts[city.id] = cityUrls.length;
 		urls.push(...cityUrls);
 	}

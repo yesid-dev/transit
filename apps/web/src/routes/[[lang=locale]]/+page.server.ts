@@ -11,7 +11,11 @@ function scheduleTotals(edition: ScheduleEdition | null) {
 
 export const load: PageServerLoad = async ({ url, parent, request, locals }) => {
 	const { providerId: city, provider, lang, schedule } = await parent();
-	const { mode, period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
+	const { mode, period } = parseFrameState(
+		url.searchParams,
+		frameToday(provider?.timezone),
+		provider?.record_through,
+	);
 	if (!period) return { mode, record: null };
 
 	const visitorIp = request.headers.get('cf-connecting-ip');

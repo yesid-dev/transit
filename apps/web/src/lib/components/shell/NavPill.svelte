@@ -48,6 +48,7 @@
 		url?: URL;
 		providerId?: string;
 		timeZone?: string;
+		recordThrough?: string | null;
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
@@ -62,6 +63,7 @@
 		url = new URL('https://transit.local/'),
 		providerId = v1Provider(url),
 		timeZone,
+		recordThrough,
 		providers = [],
 		discoveryError = false,
 		search = $bindable(''),
@@ -83,7 +85,7 @@
 	const hrefFor = (href: string) => {
 		const localized = localizeHref(href, locale, providerId);
 		if (href !== '/receipt') return carryFrameState(localized, url);
-		const { period } = parseFrameState(url.searchParams, frameToday(timeZone));
+		const { period } = parseFrameState(url.searchParams, frameToday(timeZone), recordThrough);
 		return frameHref(new URL(localized, url), { mode: 'record', period });
 	};
 	const home = $derived(hrefFor('/'));

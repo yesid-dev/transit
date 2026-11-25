@@ -70,6 +70,7 @@ def test_sync_publishes_only_verified_days_and_skips_them_on_next_run(tmp_path: 
     with pytest.raises(RuntimeError, match="Digest mismatch"):
         sync(remote, tmp_path, 3, 0)
     assert not (tmp_path / MANIFEST).exists()
+    assert not (tmp_path / ".record-v3").exists()
     assert not list(tmp_path.rglob("*.part"))
 
     remote.objects[key] = original
@@ -79,6 +80,8 @@ def test_sync_publishes_only_verified_days_and_skips_them_on_next_run(tmp_path: 
     assert (tmp_path / SEARCH).read_bytes() == b"{}"
     assert not (tmp_path / "stm/2026-11-22").exists()
 
+    stamp = (tmp_path / ".record-v3").stat().st_mtime_ns
     remote.reads.clear()
     sync(remote, tmp_path, 3, 0)
     assert remote.reads == []
+    assert (tmp_path / ".record-v3").stat().st_mtime_ns == stamp

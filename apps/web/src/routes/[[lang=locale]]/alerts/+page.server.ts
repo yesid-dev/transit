@@ -5,7 +5,11 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async (event) => {
 	const { providerId, lang, provider } = await event.parent();
-	const { mode, period } = parseFrameState(event.url.searchParams, frameToday(provider?.timezone));
+	const { mode, period } = parseFrameState(
+		event.url.searchParams,
+		frameToday(provider?.timezone),
+		provider?.record_through,
+	);
 	if (mode === 'live') return { alertRecord: null };
 	const tracked = providerHasAlerts(provider);
 	return {

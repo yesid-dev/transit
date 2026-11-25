@@ -98,3 +98,47 @@ describe('app frame URL state', () => {
 		});
 	});
 });
+
+it('ties record presets to the complete day but keeps Yesterday and pinned dates by the city clock', () => {
+	const today = '2026-11-25';
+	const through = '2026-11-23';
+	expect(parseFrameState(new URLSearchParams(), today, through).period).toEqual({
+		preset: '7-days',
+		from: '2026-11-17',
+		to: through,
+	});
+	expect(presetPeriod('28-days', today, through)).toMatchObject({
+		from: '2026-10-27',
+		to: through,
+	});
+	expect(presetPeriod('this-month', today, through)).toMatchObject({
+		from: '2026-11-01',
+		to: through,
+	});
+	expect(presetPeriod('last-month', today, through)).toMatchObject({
+		from: RECORD_START,
+		to: '2026-10-31',
+	});
+	expect(presetPeriod('12-months', today, through)).toMatchObject({
+		from: RECORD_START,
+		to: through,
+	});
+	expect(presetPeriod('yesterday', today, through)).toMatchObject({
+		from: '2026-11-24',
+		to: '2026-11-24',
+	});
+	const pinned = new URLSearchParams({ recordFrom: '2026-11-23', recordTo: '2026-11-24' });
+	expect(parseFrameState(pinned, today, through).period).toEqual({
+		preset: null,
+		from: '2026-11-23',
+		to: '2026-11-24',
+	});
+});
+
+it('waits for the first complete day of this month and caps last month at the record', () => {
+	expect(presetPeriod('this-month', '2026-12-01', '2026-11-29')).toBeNull();
+	expect(presetPeriod('last-month', '2026-12-01', '2026-11-29')).toMatchObject({
+		from: '2026-11-01',
+		to: '2026-11-29',
+	});
+});

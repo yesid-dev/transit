@@ -289,7 +289,8 @@
 		{ key: 'corridors', label: 'Corridors' },
 	];
 	const recordPeriod = $derived(
-		parseFrameState(recordUrl.searchParams, frameToday(timeZone)).period,
+		parseFrameState(recordUrl.searchParams, frameToday(timeZone), v1.provider?.record_through)
+			.period,
 	);
 	const recordLine = $derived(
 		recordUrl.searchParams.get('recordLine') ??
