@@ -1,6 +1,7 @@
 import { test } from './layout-test';
 import { expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { closeMapControls, mapControlsPill, openMapControls } from './map-frame-controls';
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr']) {
@@ -10,7 +11,8 @@ for (const provider of ['stm', 'octranspo'])
 			await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?provider=${provider}`, {
 				waitUntil: 'networkidle',
 			});
-			if (page.viewportSize()!.width < 1024) await page.getByTestId('map-filter-pill').click();
+			await openMapControls(page);
+			await page.locator('[data-map-controls] summary').click();
 			const panel = page.locator('.map-filters:visible');
 			const stop = panel.getByRole('checkbox', {
 				name: locale === 'fr' ? 'Arrêt' : 'Stop',
@@ -42,15 +44,15 @@ for (const locale of ['en', 'fr'])
 		const name = locale === 'fr' ? 'Légende' : 'Legend';
 		const card = phone
 			? page.locator('[data-slot="map-legend-sheet"]')
-			: page.locator('[data-slot="map-legend-card"]');
+			: page.locator('[data-map-legend="desktop"]');
 		if (phone) {
 			const fab = page.getByTestId('map-legend-button');
 			const button = (await fab.boundingBox())!;
-			const controls = (await page.getByTestId('map-filter-pill').boundingBox())!;
+			const controls = (await mapControlsPill(page).boundingBox())!;
 			expect(button.width).toBeGreaterThanOrEqual(44);
 			expect(button.height).toBeGreaterThanOrEqual(44);
-			expect(controls.x - button.x - button.width).toBeCloseTo(8, 0);
-			expect(Math.abs(controls.y - button.y)).toBeLessThanOrEqual(1);
+			expect(button.y + button.height).toBeLessThan(controls.y);
+
 			for (const other of await page
 				.locator('.map-near-toggle, [data-slot="map-north"], .maplibregl-ctrl-attrib')
 				.all()) {
@@ -66,31 +68,26 @@ for (const locale of ['en', 'fr'])
 			await fab.click();
 			await expect(fab).toHaveAttribute('aria-expanded', 'true');
 		} else {
-			const panel = (await page.locator('.map-filter-panel .map-filters').boundingBox())!;
+			const panel = (await page.locator('[data-frame-controls="desktop"]').boundingBox())!;
 			const box = (await card.boundingBox())!;
 			expect(box.y).toBeGreaterThan(panel.y + panel.height);
 			expect(Math.abs(box.x - panel.x)).toBeLessThanOrEqual(1);
 			expect(Math.abs(box.width - panel.width)).toBeLessThanOrEqual(1);
 		}
-		await expect(card.getByRole('list', { name })).toBeVisible();
+		await expect(card.getByRole('list').first()).toBeVisible();
 		const geometry = await card.evaluate((root) => {
 			const box = root.getBoundingClientRect();
-			const rows = [...root.querySelectorAll('[data-legend-entry]')];
+			const rows = [...root.querySelectorAll('ul > li')];
 			return {
 				x: box.x,
 				right: box.right,
 				top: box.top,
 				bottom: box.bottom,
 				centres: rows.map((row) => {
-					const mark = row.querySelector('.mf-legend-mark')!.getBoundingClientRect();
+					const mark = row.firstElementChild!.getBoundingClientRect();
 					return mark.x + mark.width / 2;
 				}),
-				labels: rows.map(
-					(row) => row.querySelector('[data-slot="map-legend-label"]')!.getBoundingClientRect().x,
-				),
-				glyphs: [...root.querySelectorAll('.mf-legend-glyph')].map(
-					(el) => el.getBoundingClientRect().x,
-				),
+				labels: rows.map((row) => row.lastElementChild!.getBoundingClientRect().x),
 				clipped: [root, ...rows].some((row) => row.scrollWidth > row.clientWidth + 1),
 			};
 		});
@@ -98,8 +95,6 @@ for (const locale of ['en', 'fr'])
 			expect(Math.abs(value - geometry.centres[0])).toBeLessThanOrEqual(1);
 		for (const value of geometry.labels)
 			expect(Math.abs(value - geometry.labels[0])).toBeLessThanOrEqual(1);
-		for (const value of geometry.glyphs)
-			expect(Math.abs(value - geometry.glyphs[0])).toBeLessThanOrEqual(1);
 		expect(geometry.clipped).toBe(false);
 		expect(geometry.x).toBeGreaterThanOrEqual(0);
 		expect(geometry.right).toBeLessThanOrEqual(page.viewportSize()!.width);
@@ -108,21 +103,22 @@ for (const locale of ['en', 'fr'])
 		expect(
 			(
 				await new AxeBuilder({ page })
-					.include(phone ? '[data-slot="map-legend-sheet"]' : '[data-slot="map-legend-card"]')
+					.include(phone ? '[data-slot="map-legend-sheet"]' : '[data-map-legend="desktop"]')
 					.analyze()
 			).violations,
 		).toEqual([]);
 		if (phone) {
 			await page.getByTestId('map-legend-button').click();
 			await expect(card).toBeHidden();
-			await page.getByTestId('map-filter-pill').click();
+			await openMapControls(page);
+			await closeMapControls(page);
 			await page.getByTestId('map-legend-button').click();
-			await expect(page.getByTestId('map-filter-drawer')).toBeHidden();
+			await expect(mapControlsPill(page)).toHaveAttribute('aria-expanded', 'false');
 			await expect(card).toBeVisible();
 		} else {
 			await card.getByRole('button', { name }).click();
 			await expect(card.getByRole('button', { name })).toHaveAttribute('aria-expanded', 'false');
 			await expect(card.getByRole('list')).toBeHidden();
-			await expect.poll(async () => (await card.boundingBox())!.height).toBeLessThanOrEqual(46);
+			expect((await card.boundingBox())!.height).toBeLessThan(geometry.bottom - geometry.top);
 		}
 	});

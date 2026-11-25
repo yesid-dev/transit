@@ -3,7 +3,7 @@ import { settled, tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toStopFeatures } from '#lib/components/map/stopsLayer.ts';
 import { RouteFileSchema, type RouteFile } from '#lib/v1/schemas/route.ts';
-import MapHero from './MapHero.svelte';
+import MapHero from './__fixtures__/MapHeroRailHarness.svelte';
 import MapHeroNavigationHarness from '../../../routes/__fixtures__/MapHeroNavigationHarness.svelte';
 import { mapHeroReceiptSignals } from './__fixtures__/MapHeroReceiptSignals.svelte';
 import type { PublicProvider } from '#lib/v1/providers.ts';
@@ -1012,7 +1012,6 @@ describe('MapHero near-me device location', () => {
 		});
 		render(MapHero);
 		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
 		await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledOnce());
 		const focusCalls = harness.focusCoordinate.mock.calls.length;
 		const gotoCalls = harness.goto.mock.calls.length;
@@ -1052,7 +1051,6 @@ describe('MapHero near-me device location', () => {
 
 		render(MapHero);
 		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
 
 		await waitFor(() => expect(getCurrentPosition).toHaveBeenCalledTimes(1));
 		for (const [target] of harness.goto.mock.calls) {
@@ -1094,7 +1092,6 @@ describe('MapHero near-me device location', () => {
 
 		render(MapHero);
 		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
 		await waitFor(() =>
 			expect(screen.getByRole('button', { name: 'Clear location' })).toBeTruthy(),
 		);
@@ -1129,7 +1126,6 @@ describe('MapHero near-me device location', () => {
 
 		render(MapHero);
 		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
 		await fireEvent.click(
 			await screen.findByRole('button', { name: /Sherbrooke \/ Saint-Denis/u }),
 		);
@@ -1183,9 +1179,9 @@ describe('MapHero one-shot focus readiness', () => {
 });
 
 describe('MapHero detail-panel camera isolation (protect #11)', () => {
-	it('drag, keyboard resize, and collapse never touch the camera', async () => {
+	it('returning to the list from a vehicle detail leaves the camera in place', async () => {
 		harness.isDesktop = true;
-		const { container } = render(MapHero);
+		render(MapHero);
 		await tick();
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
 		await tick();
@@ -1203,17 +1199,10 @@ describe('MapHero detail-panel camera isolation (protect #11)', () => {
 		const baselineFocus = focusCalls();
 		const baselineFit = fitCalls();
 
-		const separator = container.querySelector('[role="separator"]') as HTMLElement;
-		expect(separator).not.toBeNull();
-		await fireEvent.pointerDown(separator, { clientX: 900 });
-		await fireEvent.pointerMove(separator, { clientX: 780 });
-		await fireEvent.pointerUp(separator, { clientX: 780 });
-		await fireEvent.keyDown(separator, { key: 'ArrowLeft' });
-		await fireEvent.keyDown(separator, { key: 'ArrowRight' });
-		await tick();
-		await fireEvent.click(screen.getByRole('button', { name: 'Collapse panel' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 		await tick();
 
+		expect(screen.getByRole('heading', { name: 'Vehicles in view' })).toBeVisible();
 		expect(cameraCounts()).toEqual(baselineStub);
 		expect(focusCalls()).toBe(baselineFocus);
 		expect(fitCalls()).toBe(baselineFit);
@@ -1273,7 +1262,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 		harness.isDesktop = isDesktop;
 		render(MapHeroNavigationHarness);
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-		const closeLabel = isDesktop ? 'Close panel' : 'Close details';
+		const closeLabel = 'Back to the map list';
 		const close = await screen.findByRole('button', { name: closeLabel });
 		const selectionIdentity = (await screen.findAllByRole('heading', { level: 2 })).find(
 			(heading) => heading.textContent === 'Vehicle bus-1',
@@ -1436,9 +1425,12 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 				expect(before.selectionIdentity).toHaveTextContent('Vehicle bus-1');
 				// Picking never restricts the map: no vehicle is written to the live filter scope.
 				expect([...(harness.toVehicleFeatures.mock.lastCall?.[1].vehicles ?? [])]).toEqual([]);
-				expect(document.activeElement).toBe(
-					winner.focus === 'close' ? before.close : document.body,
-				);
+				if (!desktop && winner.focus !== 'close')
+					expect(before.surface?.contains(document.activeElement)).toBe(true);
+				else
+					expect(document.activeElement).toBe(
+						winner.focus === 'close' ? before.close : document.body,
+					);
 				expect(harness.goto).toHaveBeenCalledTimes(gotoCalls);
 				expect(beforeCallbacks).toHaveLength(shape === 'echo' || shape === 'adopt' ? 1 : 2);
 				if (
@@ -1550,33 +1542,21 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 		}
 	});
 
-	it('contains and reports a rail-offset disposer fault during route unmount', async () => {
+	it('releases the map rail and its runtime without changing the header inset', async () => {
 		const pageErrors = capturePageErrors();
-		const cleanupError = new Error('rail offset cleanup failed before mutation');
-		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-		const rootStyle = document.documentElement.style;
-		const setProperty = rootStyle.setProperty.bind(rootStyle);
-		let armed = false;
-		let targetCleanupCalls = 0;
-		const setPropertySpy = vi
-			.spyOn(rootStyle, 'setProperty')
-			.mockImplementation((property: string, value: string | null, priority?: string) => {
-				if (armed && property === '--site-header-inset-end' && value === '0px') {
-					targetCleanupCalls += 1;
-					if (targetCleanupCalls === 1) throw cleanupError;
-				}
-				setProperty(property, value, priority);
-			});
+		const headerInset = () =>
+			document.documentElement.style.getPropertyValue('--site-header-inset-end');
 		try {
+			const inset = headerInset();
 			const before = await openDetail(true);
-			armed = true;
+			expect(document.querySelector('[data-map-controls]')).toBeInTheDocument();
 
 			await commitLines(before.currentUrl);
 
 			expect(pageErrors.values).toEqual([]);
 			expect(screen.getByRole('heading', { level: 1, name: 'Lines' })).toBeInTheDocument();
-			expect(targetCleanupCalls).toBe(2);
-			expect(consoleError).toHaveBeenCalledWith('MapHero cleanup failed', cleanupError);
+			expect(headerInset()).toBe(inset);
+			expect(document.querySelector('[data-map-controls]')).toBeNull();
 			expect(mapHeroReceiptSignals.mapStageListenerCounts).toEqual(releasedListeners);
 			expect(mapHeroReceiptSignals.mapStageSourceCounts).toEqual({});
 			expect(mapHeroReceiptSignals.mapStageFeatureStateCount).toBe(0);
@@ -1584,7 +1564,6 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 			expect(harness.releaseLease).toHaveBeenCalledOnce();
 			expect(harness.activeLeaseCount()).toBe(0);
 		} finally {
-			setPropertySpy.mockRestore();
 			pageErrors.dispose();
 		}
 	});
@@ -1755,7 +1734,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 					await harness.commitNavigation('http://localhost/map');
 				}
 				await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-				await screen.findByRole('button', { name: 'Close panel' });
+				await screen.findByRole('button', { name: 'Back to the map list' });
 				expect(mapHeroReceiptSignals.mapStageListenerCounts).toEqual(activeListeners);
 				expect(mapHeroReceiptSignals.mapStageSourceCounts).toEqual(activeSources);
 				expect(mapHeroReceiptSignals.mapStageFeatureStateCount).toBe(0);
@@ -1795,7 +1774,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 					await harness.commitNavigation('http://localhost/map');
 				}
 				await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-				await screen.findByRole('button', { name: 'Close panel' });
+				await screen.findByRole('button', { name: 'Back to the map list' });
 				await fireEvent.click(screen.getByTestId('map-stage-stub-hover-stop'));
 				await tick();
 				expect(harness.activeLeaseCount()).toBe(1);
@@ -1843,17 +1822,10 @@ describe('MapHero reports in this view', () => {
 	it('lists the current view and opens a picked report without filtering or zooming', async () => {
 		harness.isDesktop = true;
 		render(MapHero);
-		await fireEvent.click(await screen.findByRole('radio', { name: 'Reports' }));
-		expect(
-			(await screen.findAllByRole('heading', { name: 'Reports in this view' })).length,
-		).toBeGreaterThan(0);
-		expect(
-			screen.getByText('Matching vehicle reports in the current map view'),
-		).toBeInTheDocument();
-		expect(screen.getByText(/^1 report\. Of these,/u)).toBeInTheDocument();
+		expect(await screen.findByRole('heading', { name: 'Vehicles in view' })).toBeInTheDocument();
 
 		const gotoCalls = harness.goto.mock.calls.length;
-		await fireEvent.click(screen.getByRole('button', { name: 'Select vehicle bus-1' }));
+		await fireEvent.click(screen.getByRole('link', { name: 'bus-1' }));
 		expect(await screen.findByRole('heading', { name: 'Vehicle bus-1' })).toBeInTheDocument();
 		expect(harness.goto).toHaveBeenCalledTimes(gotoCalls);
 		expect(harness.focusCoordinate).not.toHaveBeenCalled();
@@ -1861,26 +1833,19 @@ describe('MapHero reports in this view', () => {
 		expect([...(filter?.vehicles ?? [])]).toEqual([]);
 		expect([...(filter?.routes ?? [])]).toEqual([]);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
-		const select = await screen.findByRole('button', { name: 'Select vehicle bus-1' });
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
+		const select = await screen.findByRole('link', { name: 'bus-1' });
 		await waitFor(() => expect(select).toHaveFocus());
 	});
 
 	it('covers the phone map body while the camera stays mounted, and returns by its own switch', async () => {
 		harness.isDesktop = false;
 		render(MapHero);
-		await fireEvent.click(await screen.findByRole('radio', { name: 'Reports' }));
-		const surface = document.querySelector<HTMLElement>('[data-slot="map-surface"]');
-		expect(surface).toHaveAttribute('inert');
+		await fireEvent.click(await screen.findByRole('button', { name: /In view|What is in view/ }));
+		expect(await screen.findByRole('dialog', { name: 'What is in view' })).toBeVisible();
 		expect(screen.getByTestId('map-stage-stub')).toBeInTheDocument();
-		const group = screen.getAllByRole('radiogroup', { name: 'Map view' }).at(-1)!;
-		const mapTab = [...group.querySelectorAll<HTMLElement>('[role="radio"]')].find(
-			(radio) => radio.textContent?.trim() === 'Map',
-		)!;
-		await fireEvent.click(mapTab);
-		await waitFor(() =>
-			expect(document.querySelector('[data-slot="map-surface"]')).not.toHaveAttribute('inert'),
-		);
+		await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 		expect(screen.getByTestId('map-stage-stub')).toBeInTheDocument();
 	});
 });
@@ -1928,7 +1893,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
 		await waitFor(() => expect(harness.getRoute).toHaveBeenCalled());
 		await settled();
-		await fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 		await settled();
 		const selectionRequests = harness.getRoute.mock.calls.length;
 
@@ -2022,7 +1987,8 @@ describe('MapHero map-layer feed lifecycle', () => {
 		for (const [index, feed] of feedSpies.entries())
 			expect(feed).toHaveBeenCalledTimes(initialFeeds[index] + 1);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Map filters, 0 active' }));
+		const filters = screen.getByText('Map filters', { selector: 'summary' });
+		if (filters.parentElement instanceof HTMLDetailsElement) filters.parentElement.open = true;
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Late' }));
 		await tick();
 		for (const install of installSpies) expect(install).toHaveBeenCalledTimes(2);
@@ -2094,7 +2060,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		).toBe(1);
 
 		const beforeClose = bulkCounts();
-		await fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 		await waitFor(() =>
 			expect(bulkCounts()).toEqual({
 				routes: beforeClose.routes,
@@ -2119,7 +2085,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		harness.getRoute.mockImplementation(() => new Promise<null>(() => {}) as never);
 		render(MapHero);
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-		await screen.findByRole('button', { name: 'Close details' });
+		await screen.findByRole('button', { name: 'Back to the map list' });
 		// The pick itself writes no URL; only the explicit detail action does.
 		expect(harness.goto).not.toHaveBeenCalled();
 		const detailFilter = await waitFor(() => {
@@ -2135,7 +2101,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		const navigationCount = harness.goto.mock.calls.length;
 		expect(navigationCount).toBe(1);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 		await tick();
 		// Closing a user-authored filter neither removes nor rewrites it.
 		expect(harness.goto).toHaveBeenCalledTimes(navigationCount);
@@ -2160,7 +2126,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		expect(harness.goto).not.toHaveBeenCalled();
 
 		const beforeClose = bulkCounts();
-		await fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 		await waitFor(() =>
 			expect(bulkCounts()).toEqual({
 				routes: beforeClose.routes,
@@ -2202,7 +2168,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		await tick();
 
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
-		await screen.findByRole('button', { name: 'Close details' });
+		await screen.findByRole('button', { name: 'Back to the map list' });
 		// Selection opens detail only: no vehicle or route is written, so no URL navigation happens.
 		expect(harness.goto).not.toHaveBeenCalled();
 
@@ -2210,7 +2176,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		expect([...(beforeCloseFeed?.vehicles ?? [])]).toEqual([]);
 		expect([...(beforeCloseFeed?.routes ?? [])]).toEqual(['24']);
 
-		await fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 		await tick();
 		expect(harness.goto).not.toHaveBeenCalled();
 		const afterCloseFeed = harness.toVehicleFeatures.mock.lastCall?.[1];
@@ -2285,7 +2251,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		});
 
 		mapHeroReceiptSignals.clearFeatureStateEvents();
-		await fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+		await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 		await waitFor(() =>
 			expect(mapHeroReceiptSignals.featureStateEvents).toContainEqual({
 				operation: 'remove',
@@ -2392,7 +2358,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 			// The open panel shows this selection, so the peek steps aside while it is open.
 			const during = peekText(container);
 
-			await fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+			await fireEvent.click(screen.getByRole('button', { name: 'Back to the map list' }));
 			await waitFor(() => expect(harness.releaseLease).toHaveBeenCalledTimes(1));
 			const after = peekText(container);
 
@@ -2550,9 +2516,8 @@ describe('MapHero mobile alert drilldown orchestrator', () => {
 		const firstBody = await waitFor(() => {
 			const body = document.querySelector<HTMLElement>('[data-slot="bottom-sheet-body"]');
 			expect(body).toBeInTheDocument();
-			expect(within(body!).queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
 			expect(
-				screen.getByRole('heading', { level: 2, name: 'Stop Sherbrooke / Saint-Denis' }),
+				within(body!).getByRole('heading', { level: 2, name: 'Stop Sherbrooke / Saint-Denis' }),
 			).toBeInTheDocument();
 			return body!;
 		});
@@ -2573,9 +2538,8 @@ describe('MapHero mobile alert drilldown orchestrator', () => {
 		await waitFor(() => {
 			const body = document.querySelector<HTMLElement>('[data-slot="bottom-sheet-body"]');
 			expect(body).toBe(firstBody);
-			expect(within(body!).queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
 			expect(
-				screen.getByRole('heading', { level: 2, name: 'Stop Temporary stop / Clark' }),
+				within(body!).getByRole('heading', { level: 2, name: 'Stop Temporary stop / Clark' }),
 			).toBeInTheDocument();
 		});
 
@@ -2604,9 +2568,8 @@ describe('MapHero mobile alert drilldown orchestrator', () => {
 		await waitFor(() => {
 			const body = document.querySelector<HTMLElement>('[data-slot="bottom-sheet-body"]');
 			expect(body).toBe(firstBody);
-			expect(within(body!).queryByRole('heading', { level: 2 })).not.toBeInTheDocument();
 			expect(
-				screen.getByRole('heading', { level: 2, name: 'Stop Sherbrooke / Saint-Denis' }),
+				within(body!).getByRole('heading', { level: 2, name: 'Stop Sherbrooke / Saint-Denis' }),
 			).toBeInTheDocument();
 		});
 		expect(harness.goto).toHaveBeenCalledTimes(navigationCountBeforeBack);
@@ -2681,7 +2644,6 @@ describe('MapHero retained state during Stage-only recovery', () => {
 		harness.setPageUrl('http://localhost/map?focus=stop:stop-1');
 		await tick();
 		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
 		await tick();
 		expect(harness.focusCoordinate).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByTestId('map-stage-stub-complete-recovery'));
@@ -2730,7 +2692,6 @@ describe('MapHero retained state during Stage-only recovery', () => {
 		expect(onrecovering).toHaveBeenCalledOnce();
 		expect(onready).toHaveBeenCalledOnce();
 		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
-		await fireEvent.click(screen.getByRole('button', { name: 'Use my location' }));
 		await tick();
 		expect(harness.focusCoordinate).not.toHaveBeenCalled();
 		await fireEvent.click(screen.getByTestId('map-stage-stub-complete-recovery'));

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import MapHero from '#lib/features/map/MapHero.svelte';
+	import MapHero from '#lib/features/map/__fixtures__/MapHeroRailHarness.svelte';
 
 	const isMap = $derived(/^\/(?:fr\/)?map\/?$/u.test(page.url.pathname));
 </script>

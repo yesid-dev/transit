@@ -16,6 +16,8 @@ import {
 	fileSize,
 	liveStampAge,
 	longDate,
+	mapRecordReading,
+	dailyReportTitle,
 	methodEvidence,
 	minuteReading,
 	registryUnitText,
@@ -255,3 +257,20 @@ it.each([
 		expect(vehiclePositionsCapture(age, locale).replace(/[\u00a0\u202f]/g, ' ')).toBe(expected);
 	},
 );
+it.each([
+	['en', '2026-11-25', '2026-11-25', 'Report for Wednesday 25 November 2026'],
+	['fr', '2026-11-25', '2026-11-25', 'Rapport du mercredi 25 novembre 2026'],
+	['en', '2026-11-16', '2026-11-22', 'Report for 16 to 22 November 2026'],
+	['fr', '2026-11-16', '2026-11-22', 'Rapport du 16 au 22 novembre 2026'],
+] as const)('formats the dated report title in %s (%s to %s)', (locale, from, to, title) => {
+	expect(dailyReportTitle({ from, to }, locale)).toBe(title);
+});
+
+it.each([
+	['en', 202, true, '20.2%'],
+	['fr', 202, true, '20,2\u00a0%'],
+	['en', 42, false, '42 s'],
+	['en', 258, false, '4.3 min'],
+] as const)('formats %s map reading %s', (locale, value, stops, expected) => {
+	expect(mapRecordReading(value, stops, locale)).toBe(expected);
+});
