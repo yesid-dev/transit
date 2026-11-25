@@ -25,6 +25,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 
 	await answer.getByRole('button', { name: 'Citer', exact: true }).click();
 	await expect(page.getByRole('dialog')).toContainText(/v1.*recordFrom=2026-11-14.*#answer/);
+	await expect(page.getByRole('dialog')).toContainText(/Avis de l’agence.*#messages/);
 	await page.keyboard.press('Escape');
 	await answer.getByRole('button', { name: 'Télécharger' }).click();
 	for (const [name, section] of [

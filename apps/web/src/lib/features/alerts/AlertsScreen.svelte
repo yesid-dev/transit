@@ -178,6 +178,13 @@
 				</p>
 			{:else if result?.kind === 'answer'}
 				<p>{formatCitation('answer', result.answer, result.lastGood)}</p>
+				{#each data.sections.filter(({ section }) => section !== 'answer') as { section, answer } (section)}
+					{#await answer then cut}
+						{#if cut.kind === 'answer'}
+							<p>{formatCitation(section, cut.answer, cut.lastGood)}</p>
+						{/if}
+					{/await}
+				{/each}
 			{/if}
 		{/snippet}
 	</RecordActionGroup>
