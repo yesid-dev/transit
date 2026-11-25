@@ -1121,16 +1121,14 @@
 
 {#snippet mapContent(recordContent: Snippet<[Snippet | undefined]> | undefined)}
 	{#snippet desktopPanel()}
-		{#if wide}
-			<div class="map-head">{@render titleCard(false)}</div>
-			{@render inViewPanel(recordContent)}
-		{/if}
+		<div class="map-head">{@render titleCard(false)}</div>
+		{@render inViewPanel(recordContent)}
 	{/snippet}
 	<MapFrame
 		label={t.mapLabel}
 		class="map-hero-frame absolute inset-x-0 bottom-0"
 		style="top: var(--map-frame-top)"
-		details={{ label: viewLabel, content: desktopPanel }}
+		details={wide ? { label: viewLabel, content: desktopPanel } : undefined}
 	>
 		{@render stage()}
 		{#if !wide}

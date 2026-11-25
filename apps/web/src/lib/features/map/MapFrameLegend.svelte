@@ -146,9 +146,14 @@
 	});
 </script>
 
-{#snippet lineMark()}<span class="map-key-line"></span>{/snippet}
-{#snippet railMark()}<span class="map-key-line map-key-rail"></span>{/snippet}
-{#snippet selectedMark()}<span class="map-key-line map-key-selected"></span>{/snippet}
+{#snippet networkLine(ink: string, dash?: string)}
+	<svg class="map-key-line" viewBox="0 0 32 12" aria-hidden="true">
+		<line x1="0" y1="8" x2="32" y2="8" stroke={ink} stroke-width="2" stroke-dasharray={dash} />
+	</svg>
+{/snippet}
+{#snippet lineMark()}{@render networkLine('var(--muted-foreground)')}{/snippet}
+{#snippet railMark()}{@render networkLine('var(--muted-foreground)', '4 3')}{/snippet}
+{#snippet selectedMark()}{@render networkLine('var(--accent-text)')}{/snippet}
 {#snippet numberMark()}<RoutePlate code="51" />{/snippet}
 {#snippet emptyMark()}{/snippet}
 {#snippet lowSampleMark()}<span>●</span>{/snippet}
@@ -167,14 +172,7 @@
 
 <style>
 	.map-key-line {
-		width: 100%;
-		margin-block-start: 0.65em;
-		border-block-start: 0.18em solid var(--muted-foreground);
-	}
-	.map-key-rail {
-		border-block-start-style: dashed;
-	}
-	.map-key-selected {
-		border-color: var(--accent-text);
+		inline-size: 100%;
+		block-size: 0.75rem;
 	}
 </style>
