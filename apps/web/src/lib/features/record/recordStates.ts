@@ -1,6 +1,7 @@
 const states = {
 	no_live_data: { glyph: '⊘', en: 'No live data', fr: 'Aucune donnée en direct' },
 	not_measured: { glyph: '□', en: 'Not measured', fr: 'Non mesuré' },
+	not_published: { glyph: '□', en: 'Not published', fr: 'Non publié' },
 	too_few_to_judge: { glyph: '△', en: 'Too few to judge', fr: 'Trop peu de données pour conclure' },
 	unknown: { glyph: '○', en: 'Unknown', fr: 'Inconnu' },
 	delay_unknown: { glyph: '○', en: 'Delay unknown', fr: 'Retard inconnu' },
@@ -23,6 +24,7 @@ export function recordStateFor(state: string | undefined): RecordState {
 		case 'no_live_data':
 		case 'not_tracked':
 		case 'not_measured':
+		case 'not_published':
 		case 'too_few_to_judge':
 		case 'not_reporting':
 			return state;

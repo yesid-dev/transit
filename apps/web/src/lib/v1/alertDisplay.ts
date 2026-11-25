@@ -128,7 +128,16 @@ const GENERIC_ALERT_HEADERS = new Set([
 	'votre ligne',
 ]);
 
-function stripHtml(value: string): string {
+export function isGenericAlertHeading(text: string) {
+	return GENERIC_ALERT_HEADERS.has(
+		text
+			.trim()
+			.toLowerCase()
+			.replace(/[\s.!:…]+$/u, ''),
+	);
+}
+
+export function stripAlertHtml(value: string): string {
 	return value
 		.replace(/<[^>]*>/g, ' ')
 		.replace(/&nbsp;/gi, ' ')
@@ -144,7 +153,7 @@ function stripHtml(value: string): string {
 
 function cleanText(value: string | null | undefined): string | null {
 	if (value == null) return null;
-	const text = stripHtml(String(value));
+	const text = stripAlertHtml(String(value));
 	if (!text) return null;
 
 	const normalized = text.toLowerCase();
@@ -163,7 +172,7 @@ function cleanText(value: string | null | undefined): string | null {
 function meaningfulHeader(value: string | null | undefined): string | null {
 	const text = cleanText(value);
 	if (!text) return null;
-	return GENERIC_ALERT_HEADERS.has(text.toLowerCase()) ? null : text;
+	return isGenericAlertHeading(text) ? null : text;
 }
 
 export function alertDisplayText(alert: AlertDisplaySource, locale: Locale): AlertDisplayResult {

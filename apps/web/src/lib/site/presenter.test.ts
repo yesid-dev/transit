@@ -2,13 +2,12 @@ import { expect, it } from 'vitest';
 import { routeNameFallback } from './absence.ts';
 import { createLineDirectory } from './lineDirectory.ts';
 import {
-	agencyMessageDates,
-	agencyMessageHeading,
+	alertAnswerSentence,
+	alertPaging,
 	clockRange,
 	clockTime,
 	dateAndClock,
 	dateRange,
-	dailyReportTitle,
 	countedUnit,
 	delayReading,
 	directionLabel,
@@ -27,36 +26,26 @@ import {
 	versionNumber,
 } from './presenter.ts';
 
-it.each(['en', 'fr'] as const)(
-	'uses the agency’s first sentence for a generic %s heading',
-	(locale) => {
-		expect(
-			agencyMessageHeading(
-				{
-					header: { en: 'Your line', fr: 'Votre arrêt :' },
-					description: { en: null, fr: 'Travaux près du terminus. Consultez l’avis complet.' },
-				},
-				locale,
-			),
-		).toEqual({ title: 'Travaux près du terminus.', language: 'fr' });
-	},
-);
-
 it.each([
-	['en', '17 to 23 Nov 2026 · 25 Nov 2026'],
-	['fr', 'du 17 au 23 nov. 2026 · 25 nov. 2026'],
-] as const)('combines overlapping local calendar dates in %s', (locale, label) => {
-	expect(
-		agencyMessageDates(
-			[
-				{ start: '2026-11-20T10:00:00Z', end: '2026-11-24T05:00:00Z' },
-				{ start: '2026-11-25T10:00:00Z', end: '2026-11-25T17:00:00Z' },
-				{ start: '2026-11-17T10:00:00Z', end: '2026-11-20T23:00:00Z' },
-			],
-			locale,
-			'America/Toronto',
-		),
-	).toBe(label);
+	[
+		'en',
+		'alert is in effect now.',
+		'alerts were in effect at some point in these dates.',
+		'Show 12 more',
+		'Showing 12 of 426',
+	],
+	[
+		'fr',
+		'avis est en vigueur.',
+		'avis ont été en vigueur à un moment de cette période.',
+		'Afficher 12 de plus',
+		'12 sur 426',
+	],
+] as const)('formats alert counts and paging in %s', (locale, singular, plural, more, showing) => {
+	expect(alertAnswerSentence(1, locale, true)).toBe(singular);
+	expect(alertAnswerSentence(426, locale, false)).toBe(plural);
+	expect(alertPaging(locale).more(12)).toBe(more);
+	expect(alertPaging(locale).showing(12, 426)).toBe(showing);
 });
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
@@ -231,11 +220,3 @@ it.each([
 		expect(vehiclePositionsCapture(age, locale).replace(/[\u00a0\u202f]/g, ' ')).toBe(expected);
 	},
 );
-it.each([
-	['en', '2026-11-25', '2026-11-25', 'Report for Wednesday 25 November 2026'],
-	['fr', '2026-11-25', '2026-11-25', 'Rapport du mercredi 25 novembre 2026'],
-	['en', '2026-11-16', '2026-11-22', 'Report for 16 to 22 November 2026'],
-	['fr', '2026-11-16', '2026-11-22', 'Rapport du 16 au 22 novembre 2026'],
-] as const)('formats the dated report title in %s (%s to %s)', (locale, from, to, title) => {
-	expect(dailyReportTitle({ from, to }, locale)).toBe(title);
-});

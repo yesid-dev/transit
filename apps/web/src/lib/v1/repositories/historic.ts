@@ -4,13 +4,8 @@ import type { DateWindow } from '../history/window';
 import {
 	HistoryArtifactContractError,
 	HistoryTransientPublicationError,
-	assertSafeHistoryArtifactPath,
 	loadHistoryPartitions,
-	mergeAlertArchivePages,
-	selectAlertEntriesForWindow,
-	selectAlertPageRefs,
 } from '#lib/v1/history/partitions.ts';
-import { alertArchivePageMemo } from '#lib/v1/history/alertPageMemo.ts';
 import { encodeHistoryEntityId } from '#lib/v1/history/entity.ts';
 import { isHistoryEntityIndexPath, isHistoryFamilyIndexPath } from '#lib/v1/history/pointers.ts';
 import {
@@ -20,9 +15,6 @@ import {
 	validateStopHistoryPartition,
 } from '#lib/v1/history/families.ts';
 import type {
-	AlertArchiveEntry,
-	AlertArchiveIndex,
-	AlertHistory,
 	HistoricAvailabilityIndex,
 	HistoricCollectionIndex,
 	HistoricEntityDirectoryIndex,
@@ -396,49 +388,8 @@ export async function loadStopHistoryRange(
 	);
 }
 
-export const getAlertArchiveIndex: (ctx?: AdapterCtx) => Promise<AlertArchiveIndex | null> = (
-	ctx,
-) => adapter.historic.alertArchiveIndex(ctx);
-
-export async function getAlertArchiveRange(
-	index: AlertArchiveIndex,
-	window: DateWindow,
-	{ timeZone, ...ctx }: AdapterCtx & { timeZone?: string } = {},
-): Promise<AlertArchiveEntry[]> {
-	const refs = selectAlertPageRefs(index, window);
-	for (const ref of refs) assertSafeHistoryArtifactPath(ref.path);
-
-	const pages = await loadHistoryPartitions(
-		refs,
-		async (ref, signal) => {
-			const memoized = alertArchivePageMemo.get(ref.path);
-			if (memoized !== undefined) return memoized;
-
-			const page = await adapter.historic.alertArchivePage(ref.path, { ...ctx, signal });
-			if (page === null) {
-				throw new HistoryArtifactContractError(ref.path, 'advertised history artifact not found');
-			}
-			alertArchivePageMemo.remember(ref.path, page);
-			return page;
-		},
-		{ signal: ctx?.signal },
-	);
-	return selectAlertEntriesForWindow(
-		mergeAlertArchivePages(pages),
-		window,
-		timeZone ?? ctx.manifest?.tz,
-	);
-}
-
-export function clearAlertArchivePageMemoForTest(): void {
-	alertArchivePageMemo.clear();
-}
-
 export const getHotspots: (ctx?: AdapterCtx) => Promise<Hotspots> = (ctx) =>
 	adapter.historic.hotspots(ctx);
-
-export const getAlertHistory: (ctx?: AdapterCtx) => Promise<AlertHistory> = (ctx) =>
-	adapter.historic.alertHistory(ctx);
 
 export async function getRouteReliabilityIndex(ctx?: AdapterCtx): Promise<Set<string> | null> {
 	const idx = await adapter.historic.routeReliabilityIndex(ctx);

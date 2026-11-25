@@ -21,7 +21,6 @@ function usesLiveSnapshots(route: string | null, url: URL): boolean {
 		case localRoute + '/stop/[id]':
 			return stopFrameView(url) === 'live';
 		case localRoute:
-		case localRoute + '/alerts':
 		case localRoute + '/vehicles':
 		case localRoute + '/vehicle/[id]':
 		case localRoute + '/departure/[key]':
@@ -110,9 +109,12 @@ export const load: LayoutServerLoad = async (event) => {
 	);
 	if (selection.redirectHref) redirect(307, selection.redirectHref);
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });
+	const fixtureScope = event.request.headers.get('x-transit-fixture-scope');
 	const schedule =
 		needsSchedule && selection.provider
-			? await getScheduleEdition(selection.providerId, visitorIp)
+			? fixtureScope
+				? await getScheduleEdition(selection.providerId, visitorIp, fixtureScope)
+				: await getScheduleEdition(selection.providerId, visitorIp)
 			: null;
 	// Overview combines schedule totals with a small set of ranked stop names.
 	// Keep the untrimmed schedule on the server for its page loader.

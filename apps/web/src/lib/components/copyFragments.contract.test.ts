@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, test } from 'vitest';
-import { alertHistoryCopy } from '../features/alerts/alerts.copy';
 import { reliabilityCopy } from '../features/lines/reliability/reliability.copy';
 import { metricsCopy } from '../features/metrics/metrics.copy';
 import { networkReliabilityCopy } from '../features/network/reliability/network-reliability.copy';
@@ -11,8 +10,6 @@ import * as surface from './surface';
 
 const FRAGMENTS = {
 	article: {
-		alertsFr: alertHistoryCopy.fr.article,
-		alertsEn: alertHistoryCopy.en.article,
 		metricsFr: metricsCopy.fr.article,
 		metricsEn: metricsCopy.en.article,
 		networkFr: networkReliabilityCopy.fr.article,
@@ -21,8 +18,6 @@ const FRAGMENTS = {
 		stopEn: stopDetailCopy.en.article,
 	},
 	history: {
-		alertsFr: alertHistoryCopy.fr.filters.history.navigator,
-		alertsEn: alertHistoryCopy.en.filters.history.navigator,
 		lineFr: reliabilityCopy.fr.history.navigator,
 		lineEn: reliabilityCopy.en.history.navigator,
 		networkFr: networkReliabilityCopy.fr.history.navigator,
@@ -62,8 +57,6 @@ describe('shared copy fragment characterization', () => {
 
 	test('locks HistoryNavigator copy values, functions, shapes, and key order', () => {
 		expect(fingerprints(FRAGMENTS.history)).toEqual({
-			alertsEn: 'b06d260de93851f8865d6061d1f2c474a93d75a46b983deaab40f313f2eb60e8',
-			alertsFr: 'f090737d084890ceb378df908875221c59de05152405792e061da9798f3ec8f3',
 			lineEn: '1f052828d1622166f5fa4bc7c5acbbfb050987ba2e3b42df24a0c520e4110e6a',
 			lineFr: '6238ee96f5bdf9762200f746035319845b95edb9886ad27f582e1869f096ed26',
 			networkEn: 'bc3092953ff1688e88af70b87f9623a2bf5ef7c0fd45c8a2057621dc50131aee',

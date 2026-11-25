@@ -15,6 +15,7 @@ import {
 	dailyReportStops,
 } from './departure-daily-engine.mjs';
 import { alertsEngine } from './alerts-engine.mjs';
+import { alertLines } from './alert-fixture.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 const methodCatalog = read('method-catalog.json');
@@ -686,6 +687,13 @@ const server = createServer((request, response) => {
 			Object.assign(routeDirections, Object.fromEntries(namedDirections));
 		}
 		if (
+			city === 'stm' &&
+			kind === 'schedule-index' &&
+			request.headers['x-transit-fixture-scope'] === 'alerts'
+		) {
+			for (const line of alertLines) editionRoutes.set(line.id, line);
+		}
+		if (
 			kind === 'schedule-index' &&
 			process.env.TRANSIT_E2E_STOP_RECORD_NAMED === '1' &&
 			editionStops.has('S1')
@@ -829,7 +837,8 @@ const server = createServer((request, response) => {
 		const alertFixture =
 			question[2] === 'measure' &&
 			url.searchParams.get('measure') === 'alert_counts' &&
-			!['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from')) &&
+			(scope === 'alerts' ||
+				!['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from'))) &&
 			!url.searchParams.has('line') &&
 			!url.searchParams.has('stop');
 		const isNetwork =

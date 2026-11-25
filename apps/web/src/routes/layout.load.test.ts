@@ -101,6 +101,8 @@ describe('root server layout boot', () => {
 		['/status', '/status?frameMode=live'],
 		['/network', '/network?frameMode=record'],
 		['/network', '/network?frameMode=live'],
+		['/alerts', '/alerts?frameMode=record'],
+		['/alerts', '/alerts?frameMode=live'],
 		['/receipt', '/receipt?date=2026-08-30'],
 		['/metrics/archive', '/metrics/archive'],
 	])('leaves snapshot transport idle on %s', async (route, path) => {
@@ -143,6 +145,13 @@ describe('root server layout boot', () => {
 			schedule: { stops: [], route_directions: { A: [headsign] } },
 		});
 		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null);
+	});
+	it('passes the requested fixture scope to the schedule loader', async () => {
+		harness.bootProvider.mockResolvedValue({ ...selection(null), provider: city });
+		const event = serverEvent(undefined, '/lines');
+		event.request.headers.set('x-transit-fixture-scope', 'named-lines');
+		await loadServerLayout(event);
+		expect(harness.getScheduleEdition).toHaveBeenCalledExactlyOnceWith('stm', null, 'named-lines');
 	});
 	it.each([
 		['/stops', {}, ['one', 'two', 'three'], true],

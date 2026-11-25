@@ -1,6 +1,5 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import { causeLabel, effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
-import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
+import type { RecordCell } from '#lib/server/engine.ts';
 import { choose, tally } from '#lib/features/record/recordText.ts';
 
 export const alertSections = {
@@ -41,46 +40,5 @@ export function alertReadings(cell: RecordCell, locale: Locale) {
 			}
 		}
 		return { id, label: alertMetrics[id][locale], reading };
-	});
-}
-
-type Group = Exclude<keyof typeof alertSections, 'answer' | 'messages'>;
-
-export function alertDay(day: string, locale: Locale) {
-	return intl.dateTime(locale, { dateStyle: 'medium', timeZone: 'UTC' }).format(new Date(day));
-}
-
-export function alertRecordRows(
-	series: RecordSeries,
-	group: Group,
-	locale: Locale,
-	lineName: (id: string) => string,
-) {
-	const unknown = choose(locale, 'Unknown', 'Inconnu');
-	return series.cells.map((cell) => {
-		const key = cell.key[group];
-		let label = unknown;
-		if (typeof key === 'string') {
-			switch (group) {
-				case 'day':
-					label = alertDay(key, locale);
-					break;
-				case 'line':
-					label = lineName(key);
-					break;
-				case 'stop':
-					label = choose(locale, `Stop ${key}`, `Arrêt ${key}`);
-					break;
-				case 'effect':
-					label = effectLabel(key, locale) ?? unknown;
-					break;
-				case 'cause':
-					label = causeLabel(key, locale) ?? unknown;
-					break;
-			}
-		} else if (group === 'hour' && typeof key === 'number') {
-			label = `${String(key).padStart(2, '0')}:00`;
-		}
-		return [label, ...alertReadings(cell, locale).map(({ reading }) => reading)];
 	});
 }

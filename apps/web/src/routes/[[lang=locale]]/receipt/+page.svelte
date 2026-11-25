@@ -34,8 +34,11 @@
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
 	import {
-		agencyMessageDates,
-		agencyMessageHeading,
+		agencyMessage,
+		agencyMessagePeriods,
+		agencyMessagePreview,
+	} from '#lib/site/agencyMessages.ts';
+	import {
 		countedUnit,
 		dateRange,
 		longDate,
@@ -569,11 +572,12 @@
 								{:else if messages.evidence.alert_messages?.length}
 									<ul class="message-rows">
 										{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version], ))}
-											{@const heading = agencyMessageHeading(message, lang)}
-											{@const dates = agencyMessageDates(
-												message.periods ?? [],
+											{@const { title, body } = agencyMessage(message, lang)}
+											{@const dates = agencyMessagePeriods(
+												message.periods,
 												lang,
 												data.timeZone,
+												false,
 											)}
 											<li
 												class="message-row grid min-w-0 gap-x-4 border-b border-border py-2 print:py-0.5"
@@ -589,18 +593,17 @@
 													{/each}
 												</div>
 												<div class="min-w-0">
-													<h3 class="font-semibold" lang={heading.language}>
-														{heading.title}
+													<h3 class="font-semibold" lang={title.lang}>
+														{title.text}
 													</h3>
-													{#if dates}
-														<p class="text-muted-foreground">{dates}</p>
+													{#if dates.length}
+														<p class="text-muted-foreground" data-slot="agency-message-dates">
+															{dates.join(' · ')}
+														</p>
 													{/if}
-													{#if heading.preview}
-														<p
-															class="text-muted-foreground print:hidden"
-															lang={heading.previewLanguage}
-														>
-															{heading.preview}
+													{#if body}
+														<p class="text-muted-foreground print:hidden" lang={body.lang}>
+															{agencyMessagePreview(body)}
 														</p>
 													{/if}
 												</div>

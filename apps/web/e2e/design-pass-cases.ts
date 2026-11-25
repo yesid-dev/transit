@@ -20,6 +20,7 @@ const screens = {
 	rankings: '/repeat-offenders',
 	daily: '/receipt',
 	alerts: '/alerts',
+	'alerts-live': '/alerts?frameMode=live',
 	'network-health': '/network',
 	'network-health-live': '/network?frameMode=live',
 	'data-health': '/status',
@@ -42,6 +43,7 @@ export type Screen = keyof typeof screens;
 
 const ottawa: Screen[] = [
 	'alerts',
+	'alerts-live',
 	'how-we-measure',
 	'download',
 	'departure',
@@ -64,6 +66,8 @@ const ottawa: Screen[] = [
 	'vehicles',
 ];
 const french: Screen[] = [
+	'alerts',
+	'alerts-live',
 	'daily',
 	'vehicle-record',
 	'vehicle-live',
@@ -90,6 +94,8 @@ export const designPassCases = [
 	...Object.keys(screens).map((screen) => [screen as Screen, 'stm', 'en'] as const),
 	...ottawa.map((screen) => [screen, 'octranspo', 'en'] as const),
 	...french.map((screen) => [screen, 'stm', 'fr'] as const),
+	['alerts', 'octranspo', 'fr'] as const,
+	['alerts-live', 'octranspo', 'fr'] as const,
 	['overview', 'octranspo', 'fr'] as const,
 	['overview-live', 'octranspo', 'fr'] as const,
 	['line-live', 'octranspo', 'fr'] as const,
@@ -108,15 +114,18 @@ export const designPassCases = [
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';
-	const [from, to] = screen.startsWith('network-health')
-		? ['2026-11-20', '2026-11-22']
-		: screen.startsWith('data-health')
-			? ['2026-10-26', '2026-11-22']
-			: screen === 'daily'
-				? ['2026-11-18', '2026-11-20']
-				: screen === 'departure'
-					? ['2026-11-16', '2026-11-20']
-					: ['2026-11-08', '2026-11-14'];
+	const [from, to] =
+		screen === 'alerts' || screen === 'alerts-live'
+			? ['2026-11-17', '2026-11-23']
+			: screen.startsWith('network-health')
+				? ['2026-11-20', '2026-11-22']
+				: screen.startsWith('data-health')
+					? ['2026-10-26', '2026-11-22']
+					: screen === 'daily'
+						? ['2026-11-18', '2026-11-20']
+						: screen === 'departure'
+							? ['2026-11-16', '2026-11-20']
+							: ['2026-11-08', '2026-11-14'];
 	url.searchParams.set('recordFrom', from);
 	url.searchParams.set('recordTo', to);
 	return {

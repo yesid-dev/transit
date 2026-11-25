@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { alertUnavailableCopy } from '../src/lib/components/surface/alertAvailabilityCopy';
-import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import { alertFixtures } from './alert-fixture.mjs';
+import {
+	captureFixture,
+	captureUrl,
+	captureVehicle,
+	refreshAlertsCapture,
+} from './capture-fixture';
 
 test('the Transit1 live vehicle reads the capture snapshot in English and French', async ({
 	page,
@@ -93,39 +98,108 @@ test('Departure Live shows the redirected prediction report and preserves its CS
 test('Live alerts display capture evidence and distinguish unsupported coverage', async ({
 	page,
 }) => {
-	const at = Date.now();
+	await page.clock.install();
+	let hasCapture = true;
 	const header = { en: 'Elevator closed for repair', fr: 'Ascenseur fermé pour réparation' };
-	await page.route(captureUrl, (route) => {
+	await page.route(captureUrl, async (route) => {
+		const at = await page.evaluate(() => Date.now());
 		const city = new URL(route.request().url()).searchParams.get('city')!;
-		return route.fulfill({
-			json: captureFixture(at, {
-				city,
-				alerts: [
-					{
-						id: 'elevator-closure',
-						header,
-						description: {},
-						url: {},
-						cause: null,
-						effect: null,
-						severity: 'WARNING',
-						routes: ['24'],
-						stops: ['S1'],
-						periods: [[new Date(at - 60_000).toISOString(), new Date(at + 300_000).toISOString()]],
-					},
-				],
-			}),
+		const snapshot = captureFixture(at, {
+			city,
+			alerts: [
+				{
+					id: 'elevator-closure',
+					header,
+					description: {},
+					url: {},
+					cause: null,
+					effect: null,
+					severity: 'WARNING',
+					routes: ['24'],
+					stops: ['S1'],
+					periods: [[new Date(at - 60_000).toISOString(), new Date(at + 300_000).toISOString()]],
+				},
+			],
 		});
+		snapshot.feeds.i3_alerts.captured_at = hasCapture ? new Date(at - 21_000).toISOString() : null;
+		snapshot.feeds.i3_alerts.source_at = snapshot.feeds.i3_alerts.captured_at;
+		snapshot.feeds.vehicle_positions.captured_at = null;
+		return route.fulfill({ json: snapshot });
 	});
 	for (const locale of ['en', 'fr'] as const) {
+		hasCapture = true;
+		const fr = locale === 'fr';
 		const href = locale === 'fr' ? '/fr/alerts' : '/alerts';
 		await page.goto(`${href}?provider=stm&frameMode=live`);
+		await refreshAlertsCapture(page);
 		await expect(page.getByText(header[locale], { exact: true })).toBeVisible();
+		await expect(page.locator('#alerts-breakdown')).toContainText(
+			locale === 'fr' ? 'Non publié' : 'Not published',
+		);
+		await expect(page.locator('#alerts-log').getByRole('combobox')).toHaveCount(1);
+		await expect(page.locator('#alerts-log').getByText(/(?:Until|Jusqu’au) /)).toBeVisible();
+		const about = page.getByRole('article', {
+			name: fr ? 'À propos des chiffres en direct' : 'About live figures',
+		});
+		await expect(about).toContainText(
+			fr
+				? 'Les avis en vigueur en ce moment, dans le dernier relevé du flux.'
+				: 'Alerts in effect at this moment, in the latest feed capture.',
+		);
+		await expect(about).toContainText(fr ? 'Quand un avis compte' : 'How an alert counts');
+		await expect(about).toContainText(
+			fr
+				? 'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand l’agence ne publie aucune période.'
+				: 'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
+		);
+		await expect(about).toContainText(
+			fr ? /Avis\s*:\s*il y a [2-5]\d\s+s\./u : /Alerts: [2-5]\d\s+s ago\./u,
+		);
+		hasCapture = false;
+		await refreshAlertsCapture(page);
+		await expect(about).toContainText(fr ? 'Avis : indisponibles.' : 'Alerts: unavailable.');
 		await page.goto(`${href}?provider=octranspo&frameMode=live`);
 		await expect(
-			page.getByRole('status').filter({ hasText: alertUnavailableCopy[locale].title }),
+			page.getByRole('status').filter({ hasText: locale === 'fr' ? 'Non suivi' : 'Not tracked' }),
 		).toBeVisible();
 	}
+});
+
+test('Live alerts share effect and line filters and exclude future notices from the count', async ({
+	page,
+}) => {
+	await page.clock.install();
+	const at = Date.now();
+	const start = new Date(at - 60_000).toISOString();
+	const future = new Date(at + 86_400_000).toISOString();
+	await page.route(captureUrl, (route) =>
+		route.fulfill({
+			json: captureFixture(at, {
+				alerts: alertFixtures(13).map((alert, index) => ({
+					...alert,
+					periods: [[index === 12 ? future : start, null]],
+				})),
+			}),
+		}),
+	);
+	await page.goto('/alerts?provider=stm&frameMode=live');
+	await refreshAlertsCapture(page);
+	const list = page.locator('#alerts-log');
+	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12');
+	await expect(page.locator('#alerts-window')).toContainText('12 alerts are in effect now.');
+	await expect(page.locator('#alerts-breakdown')).toContainText('Not stated');
+	await expect(page.locator('#alerts-breakdown')).toContainText(
+		'Effects are the agency’s own categories, kept as published.',
+	);
+	await list.getByRole('combobox', { name: 'Effect' }).selectOption('DETOUR');
+	await list.getByRole('combobox', { name: 'Line' }).selectOption('24');
+	await list.getByRole('button', { name: 'Filter alerts' }).click();
+	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
+	await expect(page).toHaveURL(/route=24.*effect=DETOUR/);
+	await page.reload();
+	await refreshAlertsCapture(page);
+	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
+	await expect(list.getByRole('combobox', { name: 'Effect' })).toHaveValue('DETOUR');
 });
 
 test('data health distinguishes an aged capture from an unavailable response', async ({ page }) => {

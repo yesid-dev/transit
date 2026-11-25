@@ -7,7 +7,6 @@ vi.mock('$app/env', () => ({ browser: true }));
 
 const ISO = '2026-03-31T12:00:00Z';
 const GENERATION = 'a'.repeat(64);
-const SAFE_PAGE = `historic/alerts/generations/${GENERATION}/2026-03/page-0001.json`;
 
 function manifest(historic: Record<string, unknown> = {}) {
 	return {
@@ -20,10 +19,6 @@ function manifest(historic: Record<string, unknown> = {}) {
 		files: { live: { generated_utc: ISO }, historic },
 		surfaces: [],
 	};
-}
-
-function historyIndex() {
-	return { generated_utc: ISO, families: [] };
 }
 
 function collectionIndex(family: 'network' | 'lines' | 'stops', entityId?: string) {
@@ -48,32 +43,6 @@ function directory(family: 'lines' | 'stops') {
 	};
 }
 
-function alertIndex() {
-	return {
-		generated_utc: ISO,
-		collection_generation_id: GENERATION,
-		first_available_date: null,
-		last_available_date: null,
-		total_alerts: 0,
-		months: [],
-	};
-}
-
-function alertPage() {
-	return {
-		generated_utc: ISO,
-		month: '2026-03',
-		page: 1,
-		alerts: [
-			{
-				id: 'alert-1',
-				first_seen_utc: ISO,
-				last_seen_utc: ISO,
-			},
-		],
-	};
-}
-
 function json(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -86,159 +55,18 @@ async function payloadSha(value: unknown): Promise<string> {
 }
 
 describe('r2 historic collection ports', () => {
-	it('retries one server error for an immutable alert page and returns the second response', async () => {
-		let attempt = 0;
-		const page = alertPage();
-		const request = vi.fn(async () => {
-			attempt += 1;
-			if (attempt === 1) {
-				return new Response('{}', { status: 500, statusText: 'first failure' });
-			}
-			return json(page);
-		});
-
-		await expect(
-			r2Adapter.historic.alertArchivePage(SAFE_PAGE, {
-				fetch: request as unknown as typeof fetch,
-			}),
-		).resolves.toEqual(page);
-		expect(request).toHaveBeenCalledTimes(2);
-	});
-
-	it('propagates the second server error after one immutable alert-page retry', async () => {
-		let attempt = 0;
-		const request = vi.fn(async () => {
-			attempt += 1;
-			return new Response('{}', {
-				status: 500,
-				statusText: attempt === 1 ? 'first failure' : 'second failure',
-			});
-		});
-
-		await expect(
-			r2Adapter.historic.alertArchivePage(SAFE_PAGE, {
-				fetch: request as unknown as typeof fetch,
-			}),
-		).rejects.toThrow('HTTP 500 second failure');
-		expect(request).toHaveBeenCalledTimes(2);
-	});
-
-	it('does not retry a 429 response for an immutable alert page', async () => {
-		const request = vi.fn(
-			async () => new Response('{}', { status: 429, statusText: 'Too Many Requests' }),
-		);
-
-		await expect(
-			r2Adapter.historic.alertArchivePage(SAFE_PAGE, {
-				fetch: request as unknown as typeof fetch,
-			}),
-		).rejects.toThrow('HTTP 429 Too Many Requests');
-		expect(request).toHaveBeenCalledOnce();
-	});
-
-	it('uses normal revalidation for mutable roots and cache-first for immutable alert pages', async () => {
-		const observed: Array<{ path: string; cache: RequestCache | undefined }> = [];
-		const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-			const path = String(input).replace('/data/v1/stm/', '');
-			observed.push({ path, cache: init?.cache });
-			if (path === 'manifest.json') {
-				return json(
-					manifest({
-						alerts_index: 'historic/alerts/index.json',
-						alert_history: 'historic/alert_history.json',
-					}),
-				);
-			}
-			if (path === 'historic/alerts/index.json') return json(alertIndex());
-			if (path === 'historic/alert_history.json') {
-				return json({ generated_utc: ISO, alerts: [] });
-			}
-			if (path === SAFE_PAGE) {
-				return json({
-					generated_utc: ISO,
-					month: '2026-03',
-					page: 1,
-					alerts: [
-						{
-							id: 'alert-1',
-							first_seen_utc: ISO,
-							last_seen_utc: ISO,
-						},
-					],
-				});
-			}
-			throw new Error(`unexpected URL ${String(input)}`);
-		});
-		const ctx = {
-			fetch: request as unknown as typeof fetch,
-			cache: new Map<string, unknown>(),
-		};
-
-		await r2Adapter.manifest.get(ctx);
-		await r2Adapter.historic.alertArchiveIndex(ctx);
-		await r2Adapter.historic.alertHistory(ctx);
-		await r2Adapter.historic.alertArchivePage(SAFE_PAGE, ctx);
-
-		expect(observed).toEqual([
-			{ path: 'manifest.json', cache: 'default' },
-			{ path: 'historic/alerts/index.json', cache: 'default' },
-			{ path: 'historic/alert_history.json', cache: 'default' },
-			{ path: SAFE_PAGE, cache: 'force-cache' },
-		]);
-	});
-
-	it('keeps history root fixed, preserves Alert manifest pointers, forwards signals, and keeps page 404 transport-null', async () => {
-		const controller = new AbortController();
-		const request = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-			const url = String(input);
-			expect(init?.signal).toBe(controller.signal);
-			if (url.endsWith('/manifest.json')) {
-				return json(
-					manifest({
-						history_index: 'historic/custom-history.json',
-						alerts_index: 'historic/custom-alerts.json',
-					}),
-				);
-			}
-			if (url.endsWith('/historic/history/index.json')) return json(historyIndex());
-			if (url.endsWith('/historic/custom-alerts.json')) return json(alertIndex());
-			if (url.endsWith(`/${SAFE_PAGE}`)) return json({}, 404);
-			throw new Error(`unexpected URL ${url}`);
-		});
-		const ctx = {
-			fetch: request as unknown as typeof fetch,
-			cache: new Map<string, unknown>(),
-			signal: controller.signal,
-		};
-
-		await expect(r2Adapter.historic.historyIndex(ctx)).resolves.toMatchObject({ families: [] });
-		await expect(r2Adapter.historic.alertArchiveIndex(ctx)).resolves.toMatchObject({ months: [] });
-		await expect(r2Adapter.historic.alertArchivePage(SAFE_PAGE, ctx)).resolves.toBeNull();
-		expect(request.mock.calls.map(([input]) => String(input))).toEqual([
-			'/data/v1/stm/historic/history/index.json',
-			'/data/v1/stm/manifest.json',
-			'/data/v1/stm/historic/custom-alerts.json',
-			`/data/v1/stm/${SAFE_PAGE}`,
-		]);
-	});
-
 	it('uses contract-default index paths and returns null only for 404', async () => {
 		const request = vi.fn(async (input: RequestInfo | URL) => {
 			const url = String(input);
 			if (url.endsWith('/manifest.json')) return json(manifest());
 			if (url.endsWith('/historic/history/index.json')) return json({}, 404);
-			if (url.endsWith('/historic/alerts/index.json')) return json({}, 404);
 			throw new Error(`unexpected URL ${url}`);
 		});
 		const ctx = { fetch: request as unknown as typeof fetch, cache: new Map<string, unknown>() };
 
 		await expect(r2Adapter.historic.historyIndex(ctx)).resolves.toBeNull();
-		await expect(r2Adapter.historic.alertArchiveIndex(ctx)).resolves.toBeNull();
 		expect(request.mock.calls.map(([input]) => String(input))).toContain(
 			'/data/v1/stm/historic/history/index.json',
-		);
-		expect(request.mock.calls.map(([input]) => String(input))).toContain(
-			'/data/v1/stm/historic/alerts/index.json',
 		);
 	});
 
@@ -255,17 +83,6 @@ describe('r2 historic collection ports', () => {
 				cache: new Map<string, unknown>(),
 			}),
 		).rejects.toThrow('HTTP 500');
-	});
-
-	it('rejects an unsafe advertised page path before fetching even the manifest', async () => {
-		const request = vi.fn(async () => json(manifest()));
-
-		await expect(
-			r2Adapter.historic.alertArchivePage('https://evil.test/page.json', {
-				fetch: request as unknown as typeof fetch,
-			}),
-		).rejects.toBeInstanceOf(HistoryArtifactContractError);
-		expect(request).not.toHaveBeenCalled();
 	});
 
 	it('uses exact fixed family discovery paths and lowercase UTF-8 entity IDs', async () => {

@@ -8,6 +8,10 @@ type Budget = Record<(typeof budgetWidths)[number], { height: number; beforeFigu
 
 // A screen PR supplies its budgets here once all of its fixture variants leave the debt list.
 const budgets: Partial<Record<Screen, Budget>> = {
+	alerts: {
+		390: { height: 5900, beforeFigure: 1 },
+		1440: { height: 4000, beforeFigure: 1 },
+	},
 	search: {
 		390: { height: 2740, beforeFigure: 1 },
 		1440: { height: 1750, beforeFigure: 1 },
@@ -108,7 +112,8 @@ export function expectDesignPass(screen: Screen, key: string, report: Report) {
 		return;
 	}
 
-	const budget = budgets[screen === 'overview-live' ? 'overview' : screen];
+	const budget =
+		budgets[screen === 'overview-live' ? 'overview' : screen === 'alerts-live' ? 'alerts' : screen];
 	if (!budget) throw new Error(`${key} needs measured debt or a screen budget.`);
 	expect(report.content, `${key} C1`).toEqual({ titles: 1, answerFirst: true });
 	for (const width of widths) {

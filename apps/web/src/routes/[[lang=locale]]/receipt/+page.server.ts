@@ -16,7 +16,7 @@ import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { dailyReportTitle } from '#lib/site/presenter.ts';
 
 export const load: PageServerLoad = async (event) => {
-	const { providerId, lang, provider } = await event.parent();
+	const { providerId, lang, provider, schedule } = await event.parent();
 	const clock = frameClock(provider);
 	const params = event.url.searchParams;
 	const date = params.has('recordFrom') ? null : params.get('date');
@@ -41,6 +41,7 @@ export const load: PageServerLoad = async (event) => {
 	const unpublished = Boolean(unpublishedYesterday(period, clock));
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const tracked = !provider || providerHasAlerts(provider);
+	const lineNumbers = new Map(schedule?.routes.map(({ id, short }) => [id, short || id]));
 	const scope = !unpublished &&
 		period && {
 			...period,
@@ -49,7 +50,7 @@ export const load: PageServerLoad = async (event) => {
 			fixtureScope: event.request.headers.get('x-transit-fixture-scope'),
 		};
 	const { sections, messagesLimited } = scope
-		? loadDailyRecord(scope, tracked, lang)
+		? loadDailyRecord(scope, tracked, lang, (id) => lineNumbers.get(id) ?? id)
 		: { sections: [], messagesLimited: false };
 	const ranking = sections.find(({ section }) => section === 'stops')?.answer;
 	const directory = ranking?.then(async (result) => {

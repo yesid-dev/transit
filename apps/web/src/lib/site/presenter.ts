@@ -86,6 +86,31 @@ export function clockRange(start: string, end: string, locale: Locale, timeZone 
 	return [from, to].join('–');
 }
 
+export function alertAnswerSentence(count: number, locale: Locale, live: boolean) {
+	if (locale === 'fr') {
+		if (live) return count === 1 ? `avis est en vigueur.` : `avis sont en vigueur.`;
+		return count === 1
+			? `avis a été en vigueur à un moment de cette période.`
+			: `avis ont été en vigueur à un moment de cette période.`;
+	}
+	if (live) return count === 1 ? 'alert is in effect now.' : 'alerts are in effect now.';
+	return count === 1
+		? 'alert was in effect at some point in these dates.'
+		: 'alerts were in effect at some point in these dates.';
+}
+
+export function alertPaging(locale: Locale) {
+	const { format } = intl.number(locale);
+	return {
+		showing: (shown: number, total: number) =>
+			locale === 'fr'
+				? `${format(shown)} sur ${format(total)}`
+				: `Showing ${format(shown)} of ${format(total)}`,
+		more: (count: number) =>
+			locale === 'fr' ? `Afficher ${format(count)} de plus` : `Show ${format(count)} more`,
+	};
+}
+
 export function serviceTime(value: unknown, locale: Locale): string | null {
 	const parts = serviceClockParts(value);
 	if (!parts) return null;
@@ -228,54 +253,6 @@ export function reportPercent(value: number, locale: Locale) {
 			maximumFractionDigits: 1,
 		})
 		.format(value);
-}
-
-function agencyMessagePreview(text: string, locale: Locale) {
-	const segmenter = new Intl.Segmenter(locale, { granularity: 'sentence' });
-	return segmenter.segment(text.trim())[Symbol.iterator]().next().value?.segment.trim() ?? '';
-}
-
-export function agencyMessageHeading(
-	message: {
-		header: Record<Locale, string | null>;
-		description: Record<Locale, string | null>;
-	},
-	locale: Locale,
-) {
-	const other = locale === 'fr' ? 'en' : 'fr';
-	const headingLanguage = message.header[locale]?.trim() ? locale : other;
-	const heading = message.header[headingLanguage]?.trim();
-	const textLanguage = message.description[locale]?.trim() ? locale : other;
-	const preview = agencyMessagePreview(message.description[textLanguage] ?? '', textLanguage);
-	const generic = /^(?:your (?:line|stop)|votre (?:ligne|arrêt))[\s.!:…]*$/iu;
-	if (heading && !generic.test(heading)) {
-		return { title: heading, language: headingLanguage, preview, previewLanguage: textLanguage };
-	}
-	if (preview) return { title: preview, language: textLanguage };
-	return { title: locale === 'fr' ? 'Avis de l’agence' : 'Agency message', language: locale };
-}
-
-export function agencyMessageDates(
-	periods: readonly { start: string; end: string }[],
-	locale: Locale,
-	timeZone?: string,
-) {
-	const ranges = periods.flatMap(({ start, end }) => {
-		const exclusiveEnd = Date.parse(end);
-		if (exclusiveEnd <= Date.parse(start)) return [];
-		const from = providerLocalDateKey(start, timeZone);
-		const to = providerLocalDateKey(new Date(exclusiveEnd - 1).toISOString(), timeZone);
-		return from && to ? [{ from, to }] : [];
-	});
-	ranges.sort((a, b) => a.from.localeCompare(b.from));
-	const merged: typeof ranges = [];
-	for (const range of ranges) {
-		const prior = merged.at(-1);
-		if (prior && range.from <= prior.to) {
-			if (range.to > prior.to) prior.to = range.to;
-		} else merged.push(range);
-	}
-	return merged.map((range) => dateRange(range, locale)).join(' · ');
 }
 
 export function fileSize(bytes: number | null | undefined, locale: Locale): string | null {

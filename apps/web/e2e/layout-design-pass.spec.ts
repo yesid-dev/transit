@@ -1,7 +1,13 @@
 import { expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { test } from './layout-test';
-import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import { stmLiveAlertFixtures } from './alert-fixture.mjs';
+import {
+	captureFixture,
+	captureUrl,
+	captureVehicle,
+	refreshAlertsCapture,
+} from './capture-fixture';
 import { designPassCases } from './design-pass-cases';
 import { recordMapFixture } from './map-record-fixture';
 import { measureDesignPass, setWidth } from './design-pass-measure';
@@ -12,14 +18,26 @@ const time = Date.parse('2026-11-23T16:00:00Z');
 for (const { screen, provider, locale, key, href } of designPassCases) {
 	test(`${screen} ${provider} ${locale} @layout`, async ({ page }, info) => {
 		const health = screen.startsWith('network-health') || screen.startsWith('data-health');
+		const alerts = screen === 'alerts' || screen === 'alerts-live';
+		if (alerts) await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
 		await setWidth(page, 1440);
-		if (screen !== 'line-live' && !(health && screen.endsWith('-live')))
+		const liveAlerts = screen === 'alerts-live' && provider === 'stm';
+		if (liveAlerts) await page.clock.install({ time });
+		else if (screen !== 'line-live' && !(health && screen.endsWith('-live')))
 			await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 		await page.route(captureUrl, (route) => {
 			const city = new URL(route.request().url()).searchParams.get('city')!;
 			return route.fulfill({
-				json: captureFixture(time, { city, vehicle_positions: [captureVehicle(time)] }),
+				json: captureFixture(time, {
+					city,
+					vehicle_positions: [captureVehicle(time)],
+					...(screen === 'alerts-live'
+						? {
+								alerts: stmLiveAlertFixtures(time),
+							}
+						: {}),
+				}),
 			});
 		});
 		if (screen.startsWith('map-record')) await recordMapFixture(page);
@@ -27,6 +45,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		expect(response?.status(), href).toBe(screen === 'error' ? 404 : 200);
 		await expect(page.locator('html')).toHaveAttribute('lang', locale);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		if (liveAlerts) await refreshAlertsCapture(page);
 		await expect(page.getByRole('main')).toBeVisible();
 		if (screen === 'how-we-measure') {
 			await expect(page.locator('[data-record-disclosure]').first()).toBeVisible();
@@ -70,6 +89,8 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				).toBeVisible();
 			}
 		}
+		if (alerts && provider === 'stm')
+			await expect(page.locator('[data-slot="show-more"]').first()).toBeVisible();
 		const start = performance.now();
 		const redesignedDetail =
 			screen === 'departure' ||
@@ -86,6 +107,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			countShadowRings:
 				health ||
 				redesignedDetail ||
+				alerts ||
 				screen.startsWith('overview') ||
 				screen === 'stop-record' ||
 				screen === 'how-we-measure' ||
@@ -104,7 +126,9 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			contentType: 'application/json',
 		});
 		const seconds =
-			screen === 'how-we-measure' ? String.raw`(?<!\b90 )(?:seconds|secondes)` : 'seconds|secondes';
+			screen === 'how-we-measure' || screen === 'alerts-live'
+				? String.raw`(?<!\b90 )(?:seconds|secondes)`
+				: 'seconds|secondes';
 		const machineUnits = new RegExp(
 			String.raw`\b(?:\d+ s (?:late|early)|${seconds}|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b`,
 			'i',
@@ -112,6 +136,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.getByRole('main')).not.toContainText(machineUnits);
 		expectDesignPass(screen, key, report);
 		if (
+			alerts ||
 			redesignedDetail ||
 			screen === 'download' ||
 			screen === 'roadmap' ||
@@ -120,12 +145,17 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			for (const theme of ['light', 'dark'] as const) {
 				await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 				await page.reload();
+				if (liveAlerts) {
+					await refreshAlertsCapture(page);
+					await expect(page.locator('#alerts-log [data-slot="show-more"]')).toBeVisible();
+				}
+				const answer = page.locator(
+					screen.startsWith('search')
+						? '[data-slot="screen-state"]'
+						: '[data-slot="screen-answer"]',
+				);
 				await expect(
-					page.locator(
-						screen.startsWith('search')
-							? '[data-slot="screen-state"]'
-							: '[data-slot="screen-answer"]',
-					),
+					alerts ? answer.or(page.locator('[data-slot="screen-state"]')).first() : answer,
 				).toBeVisible();
 				if (screen === 'search-query') {
 					await expect(

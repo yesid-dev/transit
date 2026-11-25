@@ -16,6 +16,8 @@
 		compactPrint = false,
 		fill = false,
 		compact = false,
+		edge = 'neutral',
+		interactive = false,
 	}: {
 		title: string;
 		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
@@ -27,6 +29,8 @@
 		compactPrint?: boolean;
 		fill?: boolean;
 		compact?: boolean;
+		edge?: 'brand' | 'neutral';
+		interactive?: boolean;
 	} = $props();
 	const id = $props.id();
 </script>
@@ -96,7 +100,8 @@
 	{@render content()}
 {:else}
 	<Card
-		edge="neutral"
+		{edge}
+		{interactive}
 		textSize="inherit"
 		class={[
 			disclosure || compact ? 'min-w-0 px-2 sm:px-6' : 'min-w-0 px-4 sm:px-6',

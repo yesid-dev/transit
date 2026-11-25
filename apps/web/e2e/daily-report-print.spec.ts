@@ -17,6 +17,7 @@ test.describe('Daily report print', () => {
 				fr ? 'dark' : 'light',
 			);
 			await page.goto((fr ? '/fr' : '') + report);
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const main = page.getByRole('main');
 			const title = fr
 				? 'Rapport du dimanche 15 novembre 2026'
@@ -32,6 +33,15 @@ test.describe('Daily report print', () => {
 			await expect(main.locator('#messages h3').first()).toHaveText(
 				'Le service est réduit sur Sauvé en raison de travaux.',
 			);
+			const dates = main.locator('#messages [data-slot="agency-message-dates"]').first();
+			await expect(dates).toHaveText(
+				fr ? '15 nov. 2026, de 08:00 à 18:00' : '15 Nov 2026, 08:00 to 18:00',
+			);
+			const preview = main
+				.locator('#messages')
+				.getByText('Consultez l’avis de service', { exact: false })
+				.first();
+			await expect(preview).toBeVisible();
 			await expect(main.locator('#messages a[href*="/alerts"]')).toContainText(/1[\s,]690/u);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
 			await expect(main.locator('#punctuality')).toContainText(fr ? /97,2\s%/u : '97.2%');
@@ -54,6 +64,8 @@ test.describe('Daily report print', () => {
 			).toBeVisible();
 			await page.evaluate(() => document.fonts.ready);
 			await page.emulateMedia({ media: 'print' });
+			await expect(dates).toBeVisible();
+			await expect(preview).toBeHidden();
 			await expect(main.locator('.daily-report')).toHaveCSS('print-color-adjust', 'exact');
 			await expect(page.getByRole('banner')).toBeHidden();
 			await expect(
@@ -127,9 +139,9 @@ if (process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
 				);
 			}
 			if (name === 'range-1440') {
-				await expect(content.locator('#messages li').first().locator('p')).toHaveText(
-					'15 to 21 Nov 2026',
-				);
+				await expect(
+					content.locator('#messages [data-slot="agency-message-dates"]').first(),
+				).toHaveText('15 to 21 Nov 2026');
 			}
 			await page.evaluate(() => document.fonts.ready);
 			await page.screenshot({
