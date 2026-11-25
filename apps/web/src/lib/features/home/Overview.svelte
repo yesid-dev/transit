@@ -60,6 +60,7 @@
 		locale,
 		city,
 		operator = city,
+		mode = 'record',
 		provider,
 		href,
 		alertsAvailable = false,
@@ -68,6 +69,7 @@
 		locale: Locale;
 		city: string;
 		operator?: string;
+		mode?: 'live' | 'record';
 		provider: string;
 		href: string;
 		alertsAvailable?: boolean;
@@ -188,7 +190,7 @@
 	{/await}
 {/snippet}
 
-<div class="overview-record grid min-w-0 gap-6">
+<div class="overview grid min-w-0 gap-6">
 	{#await record.totals}
 		<ScreenTitle title={t.title(city)} />
 	{:then totals}
@@ -202,7 +204,7 @@
 	<p class="border-t border-border pt-4">{t.intro}</p>
 
 	<div class="grid min-w-0 gap-6" data-slot="screen-content">
-		<DashboardGrid gutter={false} minTile="22rem" data-slot="screen-answer">
+		{#snippet recordCard()}
 			<RecordCard title={t.record} {stamp}>
 				{#await record.punctuality}
 					{#key record.punctuality}<RecordPending {locale} answer={record.punctuality} />{/key}
@@ -338,9 +340,16 @@
 					{/if}
 				{/snippet}
 			</RecordCard>
+		{/snippet}
+		{#snippet liveCard()}
 			{#key record.manifest?.provider}
 				<OverviewLiveCard {locale} manifest={record.manifest ?? null} {alertsAvailable} {link} />
 			{/key}
+		{/snippet}
+		<DashboardGrid gutter={false} minTile="22rem" data-slot="screen-answer">
+			{#each mode === 'live' ? [liveCard, recordCard] : [recordCard, liveCard] as card (card)}
+				{@render card()}
+			{/each}
 		</DashboardGrid>
 
 		<RecordCard title={t.rankings} {stamp}>
@@ -422,19 +431,35 @@
 				versionsLink={{ href: link('/metrics'), label: t.method }}
 			/>
 		{/snippet}
-		{#await record.punctuality then current}
-			{#await record.delivery then delivery}
-				{@render evidence(
-					current.kind === 'answer' ? current.answer : null,
-					delivery.kind === 'answer' ? delivery.answer : null,
-				)}
+		{#if mode === 'live'}
+			<AboutFigures
+				title={t.aboutLive}
+				fields={[
+					{ key: 'shows', label: t.liveShows, text: t.liveScope },
+					{ key: 'means', label: t.liveStatus, text: t.liveDefinition },
+					{
+						key: 'source',
+						label: t.source,
+						text: t.liveFeeds(operator),
+						link: { href: link('/status', true), label: t.dataHealth },
+					},
+				]}
+			/>
+		{:else}
+			{#await record.punctuality then current}
+				{#await record.delivery then delivery}
+					{@render evidence(
+						current.kind === 'answer' ? current.answer : null,
+						delivery.kind === 'answer' ? delivery.answer : null,
+					)}
+				{/await}
 			{/await}
-		{/await}
+		{/if}
 	</div>
 </div>
 
 <style>
-	.overview-record {
+	.overview {
 		overflow-wrap: break-word;
 	}
 	.readings {

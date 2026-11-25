@@ -8,22 +8,27 @@
 		versionsLink,
 	}: {
 		title: string;
-		fields: readonly { key: string; label: string; text: string | null }[];
-		versionsLink: { href: string; label: string };
+		fields: readonly {
+			key: string;
+			label: string;
+			text: string | null;
+			link?: { href: string; label: string };
+		}[];
+		versionsLink?: { href: string; label: string };
 	} = $props();
 </script>
 
 <RecordCard {title}>
 	<DashboardGrid gutter={false} minTile="17rem">
 		{#each fields.filter(({ text }) => text) as field (field.key)}
+			{@const link = field.link ?? (field.key === 'versions' ? versionsLink : undefined)}
 			<dl class="min-w-0">
 				<dt class="font-semibold text-muted-foreground">{field.label}</dt>
 				<dd>
 					{field.text}
-					{#if field.key === 'versions'}
-						<a
-							class="inline-flex min-h-11 items-center text-primary underline"
-							href={versionsLink.href}>{versionsLink.label}</a
+					{#if link}
+						<a class="inline-flex min-h-11 items-center text-primary underline" href={link.href}
+							>{link.label}</a
 						>
 					{/if}
 				</dd>

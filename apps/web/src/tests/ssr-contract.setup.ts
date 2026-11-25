@@ -3,7 +3,6 @@ import type { TestProject } from 'vitest/node';
 
 declare module 'vitest' {
 	export interface ProvidedContext {
-		homeSsr: string;
 		methodologySsr: string;
 		detailSsr: { open: boolean; html: string }[];
 	}
@@ -27,30 +26,6 @@ export default async function setup(project: TestProject) {
 			const { createRawSnippet } = (await server.ssrLoadModule(
 				'svelte',
 			)) as typeof import('svelte');
-
-			const { default: Home } = await server.ssrLoadModule(
-				'/src/routes/[[lang=locale]]/+page.svelte',
-			);
-			const label = { city: 'Montréal', operator: 'STM' };
-			const { body } = render(Home, {
-				context: new Map([[Symbol.for('@yesid/ui/locale'), () => 'en']]),
-				props: {
-					data: {
-						provider: {
-							id: 'fixture',
-							labels: { en: label, fr: label },
-							inputs: {},
-							timezone: 'America/Toronto',
-							bounds: null,
-							lines_without_live_data: [],
-							alert_links: {},
-						},
-						providerId: 'fixture',
-						v1: null,
-					},
-				},
-			});
-			project.provide('homeSsr', body);
 
 			const { default: MetricsExplainer } = await server.ssrLoadModule(
 				'/src/lib/features/metrics/MetricsExplainer.svelte',

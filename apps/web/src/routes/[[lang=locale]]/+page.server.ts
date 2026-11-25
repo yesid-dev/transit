@@ -12,7 +12,7 @@ function scheduleTotals(edition: ScheduleEdition | null) {
 export const load: PageServerLoad = async ({ url, parent, request, locals }) => {
 	const { providerId: city, provider, lang, schedule } = await parent();
 	const { mode, period } = parseFrameState(url.searchParams, frameToday(provider?.timezone));
-	if (!period) return { record: null, liveRecord: null };
+	if (!period) return { mode, record: null };
 
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	const questions = overviewSelection({
@@ -22,7 +22,6 @@ export const load: PageServerLoad = async ({ url, parent, request, locals }) => 
 		fixtureScope: request.headers.get('x-transit-fixture-scope'),
 	});
 	const punctuality = getMeasure(...questions.punctuality);
-	if (mode === 'live') return { record: null, liveRecord: { period, punctuality } };
 	const stops = getRanking(...questions.stops);
 	// On a client navigation the layout can be reused without running its server loader.
 	const edition: ScheduleEdition | Promise<ScheduleEdition | null> | null =
@@ -35,7 +34,7 @@ export const load: PageServerLoad = async ({ url, parent, request, locals }) => 
 		return schedule.stops.filter((stop) => ids.has(stop.id));
 	});
 	return {
-		liveRecord: null,
+		mode,
 		record: {
 			period,
 			previous: questions.previous,

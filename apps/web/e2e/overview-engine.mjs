@@ -1,6 +1,6 @@
 // Contract fixtures for the Worker-side engine fetches. Fixed dates keep the page
 // independent of the browser clock and distinguish its previous period.
-export const overviewNamedLines =
+const overviewNamedLines =
 	process.env.TRANSIT_E2E_OVERVIEW_NAMED_LINES === '1'
 		? [
 				{ id: '24', short: '24', long: 'Sherbrooke', type: 3 },
@@ -8,6 +8,30 @@ export const overviewNamedLines =
 				{ id: '165', short: '165', long: 'Côte-des-Neiges', type: 3 },
 			]
 		: [];
+
+export function overviewCapturePlaces(city) {
+	if (!overviewNamedLines.length) return { lines: [], stops: [] };
+	const ottawa = city === 'octranspo';
+	const lines = ottawa
+		? [
+				{ id: '6', short: '6', long: 'Greenboro / Rockcliffe', type: 3 },
+				{ id: '7', short: '7', long: 'Carleton / St-Laurent', type: 3 },
+				{ id: '14', short: '14', long: 'St-Laurent / Tunney’s Pasture', type: 3 },
+			]
+		: overviewNamedLines;
+	const names = ottawa
+		? ['Greenboro Station', 'Bank / Sunnyside', 'St-Laurent Station']
+		: ['Sherbrooke / Saint-Laurent', 'Saint-Michel / Iberville', 'Côte-des-Neiges / Frontenac'];
+	const stops = names.map((name, index) => ({
+		id: 'S' + (index + 1),
+		name,
+		code: String((ottawa ? 3000 : 51749) + index),
+		lat: ottawa ? 45.41 : 45.5,
+		lon: ottawa ? -75.69 : -73.6,
+		routes: [lines[index].id],
+	}));
+	return { lines, stops };
+}
 
 export function overviewEngine(url, scope) {
 	const from = url.searchParams.get('from');
@@ -43,11 +67,10 @@ export function overviewEngine(url, scope) {
 	}
 
 	if (url.pathname === '/ranking') {
+		const lines = kind === 'line' ? overviewCapturePlaces(city).lines : [];
 		const rows = measured
 			? [0.4, 0.45, 0.5].map((value, index) => ({
-					id:
-						(city === 'stm' && kind === 'line' && overviewNamedLines[index]?.id) ||
-						`${kind === 'line' ? 'L' : 'S'}${index + 1}`,
+					id: lines[index]?.id ?? `${kind === 'line' ? 'L' : 'S'}${index + 1}`,
 					rank: index + 1,
 					value,
 					sample: 100,

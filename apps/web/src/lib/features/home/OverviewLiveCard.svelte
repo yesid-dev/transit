@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import { RoutePlate, StatusMark, type StampProps } from '@yesid/ui/brand';
+	import { BandBar } from '@yesid/ui/chart';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
@@ -15,7 +16,6 @@
 	import { overviewCopy } from './overviewRecord.copy';
 	import { lateLines, tally } from './overviewRecord';
 	import { selectLivePulse } from './homePulse';
-	import { homePulseCopy } from './homePulse.copy';
 
 	let {
 		locale,
@@ -30,8 +30,7 @@
 	} = $props();
 
 	const t = $derived(overviewCopy[locale]);
-	const unavailable = $derived(homePulseCopy[locale].liveUnavailable);
-	const networkAvailable = $derived(manifest?.capabilities?.live_map !== 'unavailable');
+	const networkAvailable = $derived(manifest?.capabilities?.live_map === 'enabled');
 	const display = transitDisplay();
 	const live = untrack(() =>
 		manifest
@@ -68,22 +67,41 @@
 		value: number | null | undefined,
 		family: LiveFamilyState | undefined,
 		available: boolean,
+		missing: 'not_measured' | 'no_live_data' = 'not_measured',
 	) {
 		if (!available) return { kind: 'absent', state: 'no_live_data' } as const;
 		if (value != null) return { kind: 'value', value } as const;
 		if (!family || family.health.state === 'failed-no-data') return { kind: 'failed' } as const;
 		if (!family.health.retained && (family.phase === 'idle' || family.phase === 'loading'))
 			return { kind: 'pending' } as const;
-		return { kind: 'absent', state: 'not_measured' } as const;
+		return { kind: 'absent', state: missing } as const;
 	}
 	const reporting = $derived(
 		reading(pulse?.reporting, live?.familyStates.network, networkAvailable),
 	);
-	const silent = $derived(reading(pulse?.silent, live?.familyStates.network, networkAvailable));
+	const silent = $derived(
+		reading(pulse?.silent, live?.familyStates.network, networkAvailable, 'no_live_data'),
+	);
 	const alerts = $derived(
 		reading(live?.alerts?.alerts.length, live?.familyStates.alerts, alertsAvailable),
 	);
 	const statuses = ['early', 'on_time', 'late', 'unknown'] as const;
+	const bands = $derived(
+		distribution
+			? statuses.map((status) => ({
+					id: status,
+					status,
+					label:
+						status === 'unknown'
+							? recordState('delay_unknown')[locale]
+							: status === 'on_time'
+								? t.onTime
+								: t[status],
+					share: distribution[status],
+					valueLabel: countedUnit(distribution[status], 'vehicle', locale),
+				}))
+			: [],
+	);
 </script>
 
 {#snippet readingValue(entry: ReturnType<typeof reading>)}
@@ -103,7 +121,7 @@
 				state={reporting.kind === 'absent' ? reporting.state : undefined}
 				value={reporting.kind === 'value' ? tally(reporting.value, locale) : null}
 				sentence={reporting.kind === 'failed'
-					? unavailable
+					? t.liveUnavailable
 					: reporting.kind === 'absent'
 						? recordState(reporting.state)[locale]
 						: singularCount(reporting.value, locale)
@@ -112,20 +130,24 @@
 			/>
 		{/if}
 	</div>
-	{#if distribution}
-		<dl class="mt-3 grid gap-2">
-			{#each statuses as status (status)}
-				<div
-					class="flex flex-wrap items-baseline justify-between gap-x-2 border-b border-border pb-2"
-				>
-					<dt>
-						{#if status === 'unknown'}<StateMark state="delay_unknown" {locale} />
-						{:else}<StatusMark {status} label={status === 'on_time' ? t.onTime : t[status]} />{/if}
-					</dt>
-					<dd>{countedUnit(distribution[status], 'vehicle', locale)}</dd>
-				</div>
-			{/each}
-		</dl>
+	{#if bands.length}
+		<div class="mt-3">
+			<BandBar
+				label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
+				{bands}
+				rows={false}
+			/>
+			<dl class="mt-3 grid gap-2">
+				{#each bands as { status, label, valueLabel } (status)}
+					<div
+						class="flex flex-wrap items-baseline justify-between gap-x-2 border-b border-border pb-2"
+					>
+						<dt><StatusMark {status} {label} /></dt>
+						<dd class="tabular-nums">{valueLabel}</dd>
+					</div>
+				{/each}
+			</dl>
+		</div>
 	{/if}
 	<dl class="mt-3 grid gap-2">
 		<div class="flex flex-wrap items-baseline justify-between gap-x-2">

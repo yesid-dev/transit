@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 import { recordConnection } from '../record/recordText';
 import { recordState, type RecordState } from '../record/recordStates';
-import OverviewRecord from './OverviewRecord.svelte';
+import Overview from './Overview.svelte';
 import RecordAnswer from '../record/RecordAnswer.svelte';
 import { delivered, measure, period, ranking, stateText } from './overviewRecord.fixture.ts';
 import { previousPeriod } from './overviewRecord.ts';
@@ -25,7 +25,7 @@ it.each(['unconfigured', 'unreachable', 'timeout', 'busy'] as const)(
 	'shows the French %s connection once per card',
 	async (kind) => {
 		const failed = Promise.resolve<EngineResult<never>>({ kind });
-		const { container } = render(OverviewRecord, {
+		const { container } = render(Overview, {
 			props: {
 				city: 'Ottawa',
 				locale: 'fr',
@@ -61,7 +61,7 @@ it.each(['unconfigured', 'unreachable', 'timeout', 'busy'] as const)(
 it('shows the sample and any supplied minimum, and keeps mixed ranking reasons unknown', async () => {
 	const low = measure('too_few_to_judge');
 	low.evidence.counts.classified = 12;
-	const { container } = render(OverviewRecord, {
+	const { container } = render(Overview, {
 		props: {
 			city: 'Montréal',
 			locale: 'en',
@@ -101,7 +101,7 @@ it('shows the sample and any supplied minimum, and keeps mixed ranking reasons u
 for (const locale of ['en', 'fr'] as const) {
 	const copy = overviewCopy[locale];
 	it(`renders the record, evidence and rankings in ${locale}`, async () => {
-		render(OverviewRecord, {
+		render(Overview, {
 			props: {
 				city: 'Montréal',
 				locale,
