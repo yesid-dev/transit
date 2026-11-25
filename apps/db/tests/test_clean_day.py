@@ -23,6 +23,7 @@ from transit_ops.clean_day import CLEANING_VERSION, CleanDay, Reading, Stop, Tri
 from transit_ops.clean_day_inputs import archived_captures
 from transit_ops.clean_day_output import version_key, write_clean_day
 from transit_ops.clean_day_realtime import DayCapture, FeedPoll
+from transit_ops.clean_day_summary import summarize
 from transit_ops.cli import app
 from transit_ops.history.manifest import build_manifest, encode_manifest
 from transit_ops.history.pack import write_pack
@@ -486,8 +487,8 @@ def _capture_fixture(root: Path) -> None:
     forecast.trip.trip_id = "forecast"
     forecast.trip.start_date = "20260601"
     forecast.stop_time_update.add(stop_sequence=1).arrival.time = int(stamp.timestamp()) + 60
-    extra = feed.entity.add(id="extra").trip_update
-    extra.trip.trip_id = "extra"
+    extra = feed.entity.add(id="TR123").trip_update
+    extra.trip.trip_id = "TR123"
     extra.trip.route_id = "r"
     extra.trip.start_date = "20260601"
     extra.trip.schedule_relationship = TripDescriptor.ADDED
@@ -984,11 +985,29 @@ def _verify_schedule(
             assert row[f"scheduled_{event}_seconds"] == seconds
 
 
+def test_private_summary_reports_an_unmeasured_day_without_table_counts(tmp_path: Path) -> None:
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {"provider": "test", "service_date": "2026-06-01", "status": "no_raw_captures"}
+        ),
+        encoding="utf-8",
+    )
+    summary = StringIO()
+    assert not summarize(tmp_path, summary)
+    assert "Recorded as unmeasured: `no_raw_captures`." in summary.getvalue()
+    assert "| Table |" not in summary.getvalue()
+
+
 def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
     editions = _index(tmp_path)
     _capture_fixture(tmp_path)
     first = _run(tmp_path, DAY)
     later = _run(tmp_path, NEXT)
+    summary = StringIO()
+    assert summarize(first, summary)
+    assert f"**Scheduled trips** {len(TRIPS)}, including 1 schedule-only." in summary.getvalue()
+    assert "**Ran with no vehicle ID** 0 of 1." in summary.getvalue()
+    assert "| trip_updates | duplicate |" in summary.getvalue()
     with duckdb.connect(config={"TimeZone": "UTC"}) as db:
         trips = _rows(db, first / "trip_days.parquet")
         stops = _rows(db, first / "stop_events.parquet")
@@ -1057,7 +1076,7 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
         ("night", 2): ("trip_update_passed", -40),
         ("night", 3): ("vehicle_stopped", 33),
         ("night", 4): ("trip_update_reported", 25),
-        ("extra", 1): ("trip_update_reported", None),
+        ("TR123", 1): ("trip_update_reported", None),
     }
     expected_bases = Counter(basis for basis, _ in evidence.values())
     expected_bases["not_observed"] = sum(len(times) for _, times in TRIPS.values()) - 4
@@ -1070,10 +1089,10 @@ def test_clean_day_math_and_edition_switch(tmp_path: Path) -> None:
         "forecast": "unconfirmed",
         "gap": "not_measured",
         "capture_gap": "not_measured",
-        "extra": "added",
+        "TR123": "added",
     }
     assert Counter(row["state"] for row in trips) == Counter(
-        public_states.get(trip) for trip in (*TRIPS, "extra")
+        public_states.get(trip) for trip in (*TRIPS, "TR123")
     )
     states = {r["trip_id"]: r for r in trips}
     assert len(states) == len(trips) == len(TRIPS) + 1

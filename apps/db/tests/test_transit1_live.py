@@ -13,6 +13,15 @@ from transit_ops.live.playback import LivePublisher, _publish
 NOW = datetime(2026, 11, 23, 0, 0, 5, tzinfo=UTC)
 
 
+def test_private_live_publisher_refuses_destination(tmp_path):
+    raw = LocalBronzeStorage(storage_backend="local", root=tmp_path / "raw")
+    destination = LocalBronzeStorage(storage_backend="local", root=tmp_path / "destination")
+    publisher = LivePublisher(declaration_for("sto"), raw, "")
+    with pytest.raises(ValueError, match="requires an active public city"):
+        publisher.run(destination, "", once=True)
+    assert not destination.root.exists()
+
+
 def message() -> FeedMessage:
     feed = FeedMessage()
     feed.header.gtfs_realtime_version = "2.0"
