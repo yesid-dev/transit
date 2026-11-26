@@ -1,4 +1,5 @@
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
+import { linePatterns } from '#lib/site/linePatterns.ts';
 import { stopPageTitle } from '#lib/seo/riderPageTitle.ts';
 import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
@@ -81,6 +82,11 @@ export const load: PageServerLoad = async (event) => {
 		seed: { id, name: name || id },
 		stopCode: scheduledStop?.code,
 		stopLines: lines,
+		// Only this stop's lines: their termini name where a compass headsign goes.
+		linePatterns:
+			schedule && lines.length
+				? Object.fromEntries(lines.flatMap((line) => Object.entries(linePatterns(schedule, line))))
+				: undefined,
 		outsideCurrentTimetable,
 		frameLive,
 		scheduleOnly,

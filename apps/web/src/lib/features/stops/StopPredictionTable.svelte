@@ -11,6 +11,7 @@
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 	import { choose } from '../record/recordText.ts';
 	import { riderToward, type StopPrediction } from './stopLiveReadings.ts';
+	import type { LinePattern } from '#lib/site/linePatterns.ts';
 
 	let {
 		rows,
@@ -20,6 +21,7 @@
 		url,
 		timeZone,
 		now,
+		patterns,
 	}: {
 		rows: StopPrediction[];
 		caption: string;
@@ -28,6 +30,7 @@
 		url: URL;
 		timeZone: string;
 		now: number;
+		patterns?: Readonly<Record<string, LinePattern>>;
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -76,7 +79,7 @@
 
 {#snippet toward(row: Row)}
 	<span class="prediction-cell wrap-normal"
-		>{riderToward(display, row, locale) ?? t('Unavailable', 'Indisponible')}</span
+		>{riderToward(display, row, locale, 'cell', patterns) ?? t('Unavailable', 'Indisponible')}</span
 	>
 {/snippet}
 

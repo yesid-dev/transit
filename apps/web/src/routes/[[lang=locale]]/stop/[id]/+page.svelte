@@ -121,6 +121,7 @@
 					city={data.providerId}
 					timeZone={data.provider?.timezone ?? 'UTC'}
 					directions={data.schedule?.route_directions}
+					patterns={data.linePatterns}
 					capture={data.capture}
 					trips={data.trips}
 					scheduleOnly={data.scheduleOnly}

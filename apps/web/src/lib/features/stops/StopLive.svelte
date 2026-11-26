@@ -26,6 +26,7 @@
 	import { choose, tally } from '../record/recordText.ts';
 	import StopPredictionTable from './StopPredictionTable.svelte';
 	import { riderToward, stopLiveReadings, type StopPrediction } from './stopLiveReadings.ts';
+	import type { LinePattern } from '#lib/site/linePatterns.ts';
 
 	let {
 		id,
@@ -37,6 +38,7 @@
 		url,
 		timeZone,
 		directions,
+		patterns,
 		capture,
 		trips,
 		scheduleOnly,
@@ -52,6 +54,8 @@
 		url: URL;
 		timeZone: string;
 		directions?: ScheduleEdition['route_directions'];
+		/** Termini of this stop's lines, so a compass headsign names where the vehicle goes. */
+		patterns?: Readonly<Record<string, LinePattern>>;
 		capture: Promise<CaptureSnapshot | null> | null;
 		trips: Promise<CaptureTripReport | null> | null;
 		scheduleOnly: boolean;
@@ -66,7 +70,7 @@
 		return stopNextVehicleSentence(
 			{
 				line: row.line ? display.line(row.line) : null,
-				toward: riderToward(display, row, locale, 'sentence'),
+				toward: riderToward(display, row, locale, 'sentence', patterns),
 				scheduled:
 					row.scheduledAt === null ? null : clockTime(new Date(row.scheduledAt), locale, timeZone),
 			},
@@ -173,6 +177,7 @@
 						{url}
 						{timeZone}
 						{now}
+						{patterns}
 					/>
 					{#snippet evidence()}
 						<p class="text-small text-muted-foreground">
