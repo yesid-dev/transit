@@ -81,13 +81,13 @@ export async function serveCleanBasemap(request, env, city, file) {
   try {
     const response = await readCleanBasemap(request, read, basemapKey(city, file));
     if (request.signal.aborted) {
-      await response.body?.cancel().catch(() => {});
+      await response?.body?.cancel().catch(() => {});
       request.signal.throwIfAborted();
     }
     return response;
   } catch (error) {
     request.signal.throwIfAborted();
-    console.warn("Clean basemap fallback", error instanceof CleanBasemapFailure ? error.message : "read error");
+    console.warn("Clean basemap read failed", error instanceof CleanBasemapFailure ? error.message : "read error");
     return null;
   }
 }
@@ -105,6 +105,10 @@ async function readCleanBasemap(request, read, key) {
 
   const response = await read(request.method, key, upstream, request.signal);
   const headers = new Headers({ "accept-ranges": "bytes" });
+  if (response.status === 404) {
+    await response.body?.cancel().catch(() => {});
+    return null;
+  }
   if (response.status === 416) {
     await response.body?.cancel();
     headers.set("cache-control", "no-store");

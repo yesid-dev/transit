@@ -6,6 +6,6 @@ when the provider has no matching basemap declaration. The existing
 `basemap_url` field retains its published value.
 
 `GET` and `HEAD /v2/{city}/basemap/{file}.pmtiles` support byte ranges and
-conditional requests. The response exposes `X-Transit-Source` to browser
-clients. It is `clean` when served by clean storage and `legacy` when
-served by the snapshot fallback. A proxy-generated 404 has no source header.
+conditional requests. The route serves PMTiles from clean storage and
+exposes `X-Transit-Source: clean` to browser clients. A missing object
+returns HTTP 404 with the proxy's standard empty body and no source header.
