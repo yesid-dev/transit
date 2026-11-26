@@ -1,9 +1,8 @@
 <script lang="ts">
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
-	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
-	import { DashboardGrid, Surface } from '@yesid/ui/layout';
+	import { DashboardGrid } from '@yesid/ui/layout';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
@@ -13,7 +12,6 @@
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
@@ -37,22 +35,22 @@
 	import type { loadStopRecord, StopSection } from '#lib/server/stopRecord.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
-	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import StopRecordLines from './StopRecordLines.svelte';
 	import {
 		stopAccessibility,
+		stopBoardingNotPublished,
 		stopCitation,
 		stopComparison,
 		stopEvidenceSample,
+		stopLowCoverage,
 		stopSectionTitles,
 	} from './stopRecordText.ts';
 
 	let {
 		stop,
 		code,
-		lines,
 		operator,
 		locale,
 		url,
@@ -60,20 +58,17 @@
 	}: {
 		stop: { id: string; name: string };
 		code?: string | null;
-		lines?: readonly string[];
 		operator: string;
 		locale: Locale;
 		url: URL;
 		record: ReturnType<typeof loadStopRecord>;
 	} = $props();
-	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const term = $derived(overviewCopy[locale]);
 	const stopCode = $derived(code || stop.id);
 	const stopLabel = $derived(t(`Stop ${stopCode}`, `Arrêt ${stopCode}`));
 	const name = $derived(stop.name === stop.id ? null : stopDisplayName(stop.name));
 	const subject = $derived(name ? `${stopLabel} · ${name}` : stopLabel);
-	const lineList = $derived(lines?.length ? lines.map(display.line).join(', ') : null);
 	const pinned = $derived.by(() => {
 		const link = stopViewHref(url, 'record');
 		link.searchParams.set('provider', record.city);
@@ -103,6 +98,12 @@
 		t(
 			'of observed stop events here were on time.',
 			'des passages observés à cet arrêt étaient à l’heure.',
+		),
+	);
+	const insufficientCoverage = $derived(
+		t(
+			'There are too few observed stop events to measure punctuality for these dates.',
+			'Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates.',
 		),
 	);
 	let bandsTable = $state(false);
@@ -184,7 +185,9 @@
 											: tally(answer.evidence.counts.scheduled, locale),
 									),
 							timingBasis(answer.evidence.counts, locale),
-							answer.coverage_note?.[locale],
+							answer.evidence.coverage_reason === 'insufficient_coverage'
+								? null
+								: answer.coverage_note?.[locale],
 						]
 							.filter(Boolean)
 							.join(' ')
@@ -220,327 +223,386 @@
 	{/await}
 {/snippet}
 
-<Surface>
-	<RecordScreen>
-		<RecordGroup>
-			<ScreenTitle
-				title={name ?? stopLabel}
-				stopCode={name ? stopCode : undefined}
-				subtitle={lineList
-					? t(
-							`${stopLabel}, ${lines?.length === 1 ? 'line' : 'lines'} ${lineList}`,
-							`${stopLabel}, ${lines?.length === 1 ? 'ligne' : 'lignes'} ${lineList}`,
-						)
-					: name
-						? stopLabel
-						: undefined}
-				back={{ href: link('/stops'), label: t('All stops', 'Tous les arrêts') }}
-			/>
-		</RecordGroup>
-		<div class="min-w-0" data-slot="screen-content">
-			<RecordGroup>
-				<div id="punctuality" data-slot="screen-answer">
-					{#await answers.punctuality}
-						{@render pending(answers.punctuality)}
-					{:then result}
-						{#if result.kind === 'answer' && 'value' in result.answer}
-							{@const data = result.answer}
-							{@const share = measuredShare(data, 'on_time')}
-							{@const evidence = {
-								sample: counted(data),
-								record: data.evidence,
-								lastGood: result.lastGood,
-							}}
-							{#snippet comparisonActions()}
-								<RecordActionGroup {locale} href={pinned.href} {files} {citation} />
-							{/snippet}
-							{#await record.network}
-								<RecordAnswer
-									value={share === null ? null : percent(share, locale)}
-									sentence={share === null ? rateStateText(data, locale) : sentence}
-									state={chartState(data.state)}
-									time={stamp}
-									{locale}
-									{evidence}
-									actions={comparisonActions}
-								/>
-							{:then network}
-								<RecordAnswer
-									value={share === null ? null : percent(share, locale)}
-									sentence={share === null ? rateStateText(data, locale) : sentence}
-									state={chartState(data.state)}
-									time={stamp}
-									{locale}
-									{evidence}
-									actions={comparisonActions}
-									comparison={stopComparison(data, network, locale)}
-								/>
+{#snippet bandsCard(result?: EngineResult<EngineAnswer>)}
+	<RecordCard
+		interactive={result?.kind === 'answer' &&
+			'value' in result.answer &&
+			result.answer.state === 'measured'}
+		title={bands}
+		{stamp}
+	>
+		{#if result === undefined}
+			{@render pending(answers.punctuality)}
+		{:else}
+			{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+				<RecordChart
+					title={bands}
+					input={{ kind: 'bands', answer: result.answer }}
+					{locale}
+					id="stop-bands-chart"
+					table={bandsTable}
+				/>
+				<p class="mt-3 text-small text-muted-foreground">
+					{t(
+						'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.',
+						'En avance signifie plus de 1 minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
+					)}
+				</p>
+			{:else if !stopLowCoverage(result)}{@render gap(result)}{/if}
+		{/if}
+		{#snippet evidence()}
+			{@render evidenceFooter('punctuality')}
+		{/snippet}
+		{#snippet toggle()}
+			{#if result?.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+				<RecordChartToggle bind:table={bandsTable} controls="stop-bands-chart" {locale} />
+			{/if}
+		{/snippet}
+	</RecordCard>
+{/snippet}
+
+<div class="min-w-0" data-slot="screen-content">
+	<RecordGroup>
+		<div id="punctuality" data-slot="screen-answer">
+			<span id="stop-rel-pane" class="absolute" aria-hidden="true"></span>
+			{#await answers.punctuality}
+				{@render pending(answers.punctuality)}
+			{:then result}
+				{#if result.kind === 'answer' && 'value' in result.answer}
+					{@const data = result.answer}
+					{@const share = measuredShare(data, 'on_time')}
+					{@const evidence = {
+						sample: counted(data),
+						record: data.evidence,
+						lastGood: result.lastGood,
+					}}
+					{#snippet comparisonActions()}
+						<RecordActionGroup {locale} href={pinned.href} {files} {citation} />
+					{/snippet}
+					{#await record.network}
+						<RecordAnswer
+							value={share === null ? null : percent(share, locale)}
+							sentence={share === null
+								? stopLowCoverage(result)
+									? insufficientCoverage
+									: rateStateText(data, locale)
+								: sentence}
+							state={chartState(data.state)}
+							time={stamp}
+							{locale}
+							{evidence}
+							actions={comparisonActions}
+						/>
+					{:then network}
+						<RecordAnswer
+							value={share === null ? null : percent(share, locale)}
+							sentence={share === null
+								? stopLowCoverage(result)
+									? insufficientCoverage
+									: rateStateText(data, locale)
+								: sentence}
+							state={chartState(data.state)}
+							time={stamp}
+							{locale}
+							{evidence}
+							actions={comparisonActions}
+							comparison={stopComparison(data, network, locale)}
+						/>
+					{/await}
+				{:else}
+					{@render gap(result, false)}
+				{/if}
+			{/await}
+		</div>
+
+		<DashboardGrid gutter={false} minTile="20rem">
+			{#await answers.punctuality}
+				{@render bandsCard()}
+			{:then result}
+				{@render bandsCard(result)}
+			{/await}
+			<RecordCard title={titleFor('delay')} {stamp}>
+				{#snippet evidence()}
+					{@render evidenceFooter('delay')}
+				{/snippet}
+				<div id="delay" class="grid gap-4">
+					<span id="stop-rel-percentiles" class="absolute" aria-hidden="true"></span>
+					{#snippet delayFacts(measure?: RecordMeasure)}
+						<FactList leading={false}>
+							{#if measure}
+								<FactRow
+									label={t('Median delay', 'Retard médian')}
+									emphasis
+									detail={t(
+										'Half of the vehicles were later than this.',
+										'La moitié des véhicules sont passés plus tard.',
+									)}
+								>
+									{delayReading(measure.value.median_delay, locale)}
+								</FactRow>
+								<FactRow
+									label={t('90th percentile', '90e centile')}
+									emphasis
+									detail={t(
+										'1 vehicle in 10 was later than this.',
+										'1 véhicule sur 10 est passé plus tard.',
+									)}
+								>
+									{delayReading(measure.value.p90_delay, locale)}
+								</FactRow>
+							{/if}
+							{#await answers.accessibility}
+								<FactRow id="accessibility" label={titleFor('accessibility')}>
+									{@render pending(answers.accessibility)}
+								</FactRow>
+							{:then result}
+								{#if result.kind === 'answer' && 'value' in result.answer}
+									{@const notPublished = stopBoardingNotPublished(result.answer)}
+									<FactRow
+										id="accessibility"
+										label={titleFor('accessibility')}
+										detail={notPublished
+											? t(
+													'The agency does not declare it for this stop.',
+													'L’exploitant ne le déclare pas pour cet arrêt.',
+												)
+											: undefined}
+									>
+										{#if notPublished}
+											<StateMark state="not_published" {locale} />
+										{:else}
+											{stopAccessibility(result.answer, locale)}
+										{/if}
+									</FactRow>
+								{:else}
+									<FactRow id="accessibility" label={titleFor('accessibility')}>
+										{@render gap(result)}
+									</FactRow>
+								{/if}
 							{/await}
+						</FactList>
+					{/snippet}
+					{#await answers.delay}
+						{@render pending(answers.delay)}
+						{@render delayFacts()}
+					{:then result}
+						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+							{@render delayFacts(result.answer)}
 						{:else}
-							{@render gap(result, false)}
+							{#if !stopLowCoverage(result)}{@render gap(result)}{/if}
+							{@render delayFacts()}
 						{/if}
 					{/await}
 				</div>
-
-				<DashboardGrid gutter={false} minTile="20rem">
-					<RecordCard interactive title={bands} {stamp}>
-						{#await answers.punctuality}
-							{@render pending(answers.punctuality)}
-						{:then result}
-							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-								<RecordChart
-									title={bands}
-									input={{ kind: 'bands', answer: result.answer }}
-									{locale}
-									id="stop-bands-chart"
-									table={bandsTable}
-								/>
-								<p class="mt-3 text-small text-muted-foreground">
-									{t(
-										'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.',
-										'En avance signifie plus de 1 minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
-									)}
-								</p>
-							{:else}{@render gap(result)}{/if}
-						{/await}
-						{#snippet evidence()}
-							{@render evidenceFooter('punctuality')}
-						{/snippet}
-						{#snippet toggle()}
-							{#await answers.punctuality then result}
-								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-									<RecordChartToggle bind:table={bandsTable} controls="stop-bands-chart" {locale} />
-								{/if}
-							{/await}
-						{/snippet}
-					</RecordCard>
-					<RecordCard title={titleFor('delay')} {stamp}>
-						{#snippet evidence()}
-							{@render evidenceFooter('delay')}
-						{/snippet}
-						<div id="delay" class="grid gap-4">
-							{#snippet delayFacts(measure?: RecordMeasure)}
-								<FactList leading={false}>
-									{#if measure}
-										<FactRow
-											label={t('Median delay', 'Retard médian')}
-											emphasis
-											detail={t(
-												'Half of the vehicles were later than this.',
-												'La moitié des véhicules sont passés plus tard.',
-											)}
-										>
-											{delayReading(measure.value.median_delay, locale)}
-										</FactRow>
-										<FactRow
-											label={t('90th percentile', '90e centile')}
-											emphasis
-											detail={t(
-												'1 vehicle in 10 was later than this.',
-												'1 véhicule sur 10 est passé plus tard.',
-											)}
-										>
-											{delayReading(measure.value.p90_delay, locale)}
-										</FactRow>
-									{/if}
-									{#await answers.accessibility}
-										<FactRow id="accessibility" label={titleFor('accessibility')}>
-											{@render pending(answers.accessibility)}
-										</FactRow>
-									{:then result}
-										{#if result.kind === 'answer' && 'value' in result.answer}
-											{@const notPublished =
-												result.answer.evidence.counts.stops_no_information === 1 ||
-												result.answer.state === 'not_published'}
-											<FactRow
-												id="accessibility"
-												label={titleFor('accessibility')}
-												detail={notPublished
-													? t(
-															'The agency does not declare it for this stop.',
-															'L’exploitant ne le déclare pas pour cet arrêt.',
-														)
-													: undefined}
-											>
-												{#if notPublished}
-													{t('Not published', 'Non publié')}
-												{:else}
-													{stopAccessibility(result.answer, locale)}
-												{/if}
-											</FactRow>
-										{:else}
-											<FactRow id="accessibility" label={titleFor('accessibility')}>
-												{@render gap(result)}
-											</FactRow>
-										{/if}
-									{/await}
-								</FactList>
-							{/snippet}
-							{#await answers.delay}
-								{@render pending(answers.delay)}
-								{@render delayFacts()}
-							{:then result}
-								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-									{@render delayFacts(result.answer)}
-								{:else}
-									{@render gap(result)}
-									{@render delayFacts()}
-								{/if}
-							{/await}
-						</div>
-					</RecordCard>
-				</DashboardGrid>
-			</RecordGroup>
-			<RecordGroup>
-				<div id="byLine" class="min-w-0">
-					<RecordCard interactive title={titleFor('byLine')} {stamp}>
-						{#snippet evidence()}
-							{@render evidenceFooter('byLine')}
-						{/snippet}
-						{#await answers.byLine}
-							{@render pending(answers.byLine)}
-						{:then result}
-							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-								<StopRecordLines
-									series={result.answer}
-									{locale}
-									city={record.city}
-									{pinned}
-									title={titleFor('byLine')}
-								/>
-							{:else}{@render gap(result)}{/if}
-						{/await}
-					</RecordCard>
-				</div>
-
-				<div id="hourly">
-					<RecordCard interactive title={hourly} {stamp}>
-						{#await record.grid}
-							{@render pending(record.grid)}
-						{:then result}
-							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-								<RecordChart
-									title={hourly}
-									input={{ kind: 'hours', answer: result.answer }}
-									{locale}
-									id="stop-hours-chart"
-									table={hoursTable}
-								/>
-							{:else}{@render gap(result)}{/if}
-						{/await}
-						{#snippet evidence()}
-							{@render evidenceFooter('hourly')}
-						{/snippet}
-						{#snippet toggle()}
-							{#await record.grid then result}
-								{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-									<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
-								{/if}
-							{/await}
-						{/snippet}
-					</RecordCard>
-				</div>
-
-				<div id="waiting">
-					<RecordCard interactive title={titleFor('waiting')} {stamp}>
-						{#snippet evidence()}
-							{@render evidenceFooter('waiting')}
-						{/snippet}
-						{#await answers.waiting}
-							{@render pending(answers.waiting)}
-						{:then result}
-							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-								<StopRecordLines
-									series={result.answer}
-									{locale}
-									city={record.city}
-									{pinned}
-									title={titleFor('waiting')}
-									waiting
-								/>
-							{:else}{@render gap(result)}{/if}
-						{/await}
-					</RecordCard>
-				</div>
-
-				<div id="daily">
-					<RecordCard interactive title={titleFor('daily')} {stamp}>
-						{#await answers.daily}
-							{@render pending(answers.daily)}
-						{:then result}
-							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-								{#await record.networkDaily}
-									<RecordChart
-										title={titleFor('daily')}
-										id="stop-daily-chart"
-										table={dailyTable}
-										input={{ kind: 'trend', answer: result.answer }}
-										{locale}
-									/>
-								{:then network}
-									<RecordChart
-										title={titleFor('daily')}
-										id="stop-daily-chart"
-										table={dailyTable}
-										input={{
-											kind: 'trend',
-											answer: result.answer,
-											network:
-												network.kind === 'answer' && 'cells' in network.answer
-													? network.answer
-													: undefined,
-										}}
-										{locale}
-									/>
-								{/await}
-							{:else}{@render gap(result)}{/if}
-						{/await}
-						{#snippet evidence()}
-							{@render evidenceFooter('daily')}
-						{/snippet}
-						{#snippet toggle()}
-							{#await answers.daily then result}
-								{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-									<RecordChartToggle bind:table={dailyTable} controls="stop-daily-chart" {locale} />
-								{/if}
-							{/await}
-						{/snippet}
-					</RecordCard>
-				</div>
-
-				<div id="alerts">
-					<RecordCard title={titleFor('alerts')} {stamp}>
-						{#snippet evidence()}
-							{@render evidenceFooter('alerts')}
-						{/snippet}
-						{#await answers.alerts}
-							{@render pending(answers.alerts)}
-						{:then result}
-							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-								<FactList leading={false}>
-									<FactRow label={t('Distinct alerts', 'Avis distincts')}>
-										{result.answer.value.alerts == null
-											? t('Unknown', 'Inconnu')
-											: tally(result.answer.value.alerts, locale)}
-									</FactRow>
-									<FactRow label={t('Versions of those alerts', 'Versions de ces avis')}>
-										{result.answer.value.alert_versions == null
-											? t('Unknown', 'Inconnu')
-											: tally(result.answer.value.alert_versions, locale)}
-									</FactRow>
-								</FactList>
-							{:else}{@render gap(result)}{/if}
-						{/await}
-					</RecordCard>
-				</div>
-			</RecordGroup>
-			<RecordGroup>
-				{#await answers.punctuality then result}
-					{@render about(
-						result.kind === 'answer' && 'value' in result.answer ? result.answer : null,
-					)}
-				{/await}
-			</RecordGroup>
+			</RecordCard>
+		</DashboardGrid>
+	</RecordGroup>
+	<RecordGroup>
+		<div id="byLine" class="min-w-0">
+			<span id="stop-rel-by-route" class="absolute" aria-hidden="true"></span>
+			{#snippet byLineCard(result?: EngineResult<EngineAnswer>)}
+				<RecordCard
+					interactive={result?.kind === 'answer' &&
+						'cells' in result.answer &&
+						result.answer.cells.some(
+							(cell) => typeof cell.key.line === 'string' && cell.state !== 'no_frequent_periods',
+						)}
+					title={titleFor('byLine')}
+					{stamp}
+				>
+					{#snippet evidence()}
+						{@render evidenceFooter('byLine')}
+					{/snippet}
+					{#if result === undefined}
+						{@render pending(answers.byLine)}
+					{:else}
+						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+							<StopRecordLines
+								series={result.answer}
+								{locale}
+								city={record.city}
+								{pinned}
+								title={titleFor('byLine')}
+							/>
+						{:else}{@render gap(result)}{/if}
+					{/if}
+				</RecordCard>
+			{/snippet}
+			{#await answers.byLine}
+				{@render byLineCard()}
+			{:then result}
+				{@render byLineCard(result)}
+			{/await}
 		</div>
-	</RecordScreen>
-</Surface>
+
+		<div id="hourly">
+			<span id="stop-rel-habits" class="absolute" aria-hidden="true"></span>
+			<span id="stop-rel-weekday" class="absolute" aria-hidden="true"></span>
+			<span id="stop-rel-time" class="absolute" aria-hidden="true"></span>
+			{#snippet hourlyCard(result?: EngineResult<EngineAnswer>)}
+				<RecordCard
+					interactive={result?.kind === 'answer' &&
+						'cells' in result.answer &&
+						result.answer.cells.length > 0}
+					title={hourly}
+					{stamp}
+				>
+					{#if result === undefined}
+						{@render pending(record.grid)}
+					{:else}
+						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+							<RecordChart
+								title={hourly}
+								input={{ kind: 'hours', answer: result.answer }}
+								{locale}
+								id="stop-hours-chart"
+								table={hoursTable}
+							/>
+						{:else}{@render gap(result)}{/if}
+					{/if}
+					{#snippet evidence()}
+						{@render evidenceFooter('hourly')}
+					{/snippet}
+					{#snippet toggle()}
+						{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+							<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
+						{/if}
+					{/snippet}
+				</RecordCard>
+			{/snippet}
+			{#await record.grid}
+				{@render hourlyCard()}
+			{:then result}
+				{@render hourlyCard(result)}
+			{/await}
+		</div>
+
+		<div id="waiting">
+			<span id="stop-schedule-service" class="absolute" aria-hidden="true"></span>
+			{#snippet waitingCard(result?: EngineResult<EngineAnswer>)}
+				<RecordCard
+					interactive={result?.kind === 'answer' &&
+						'cells' in result.answer &&
+						result.answer.cells.length > 0}
+					title={titleFor('waiting')}
+					{stamp}
+				>
+					{#snippet evidence()}
+						{@render evidenceFooter('waiting')}
+					{/snippet}
+					{#if result === undefined}
+						{@render pending(answers.waiting)}
+					{:else}
+						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+							<StopRecordLines
+								series={result.answer}
+								{locale}
+								city={record.city}
+								{pinned}
+								title={titleFor('waiting')}
+								waiting
+							/>
+						{:else}{@render gap(result)}{/if}
+					{/if}
+				</RecordCard>
+			{/snippet}
+			{#await answers.waiting}
+				{@render waitingCard()}
+			{:then result}
+				{@render waitingCard(result)}
+			{/await}
+		</div>
+
+		<div id="daily">
+			<span id="stop-rel-trend" class="absolute" aria-hidden="true"></span>
+			{#snippet dailyCard(result?: EngineResult<EngineAnswer>)}
+				<RecordCard
+					interactive={result?.kind === 'answer' &&
+						'cells' in result.answer &&
+						result.answer.cells.length > 0}
+					title={titleFor('daily')}
+					{stamp}
+				>
+					{#if result === undefined}
+						{@render pending(answers.daily)}
+					{:else}
+						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+							{#await record.networkDaily}
+								<RecordChart
+									title={titleFor('daily')}
+									id="stop-daily-chart"
+									table={dailyTable}
+									input={{ kind: 'trend', answer: result.answer }}
+									{locale}
+								/>
+							{:then network}
+								<RecordChart
+									title={titleFor('daily')}
+									id="stop-daily-chart"
+									table={dailyTable}
+									input={{
+										kind: 'trend',
+										answer: result.answer,
+										network:
+											network.kind === 'answer' && 'cells' in network.answer
+												? network.answer
+												: undefined,
+									}}
+									{locale}
+								/>
+							{/await}
+						{:else}{@render gap(result)}{/if}
+					{/if}
+					{#snippet evidence()}
+						{@render evidenceFooter('daily')}
+					{/snippet}
+					{#snippet toggle()}
+						{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+							<RecordChartToggle bind:table={dailyTable} controls="stop-daily-chart" {locale} />
+						{/if}
+					{/snippet}
+				</RecordCard>
+			{/snippet}
+			{#await answers.daily}
+				{@render dailyCard()}
+			{:then result}
+				{@render dailyCard(result)}
+			{/await}
+		</div>
+
+		<div id="alerts">
+			<RecordCard title={titleFor('alerts')} {stamp}>
+				{#snippet evidence()}
+					{@render evidenceFooter('alerts')}
+				{/snippet}
+				{#await answers.alerts}
+					{@render pending(answers.alerts)}
+				{:then result}
+					{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+						<FactList leading={false}>
+							<FactRow label={t('Distinct alerts', 'Avis distincts')}>
+								{result.answer.value.alerts == null
+									? t('Unknown', 'Inconnu')
+									: tally(result.answer.value.alerts, locale)}
+							</FactRow>
+							<FactRow label={t('Versions of those alerts', 'Versions de ces avis')}>
+								{result.answer.value.alert_versions == null
+									? t('Unknown', 'Inconnu')
+									: tally(result.answer.value.alert_versions, locale)}
+							</FactRow>
+						</FactList>
+					{:else}{@render gap(result)}{/if}
+				{/await}
+			</RecordCard>
+		</div>
+	</RecordGroup>
+	<RecordGroup>
+		{#await answers.punctuality then result}
+			<div id="stop-rel-source">
+				<span id="stop-rel-crowding" class="absolute" aria-hidden="true"></span>{@render about(
+					result.kind === 'answer' && 'value' in result.answer ? result.answer : null,
+				)}
+			</div>
+		{/await}
+	</RecordGroup>
+</div>

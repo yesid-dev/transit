@@ -11,6 +11,7 @@ import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation, detailTabFromSearchParams } from '#lib/site/detailTabs.ts';
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
 import { selectMainStops } from '#lib/features/lines/lineLiveReadings.ts';
+import { uniqueDirectionHeadsigns } from '#lib/live/stopPrediction.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { url } = event;
@@ -64,6 +65,7 @@ export const load: PageServerLoad = async (event) => {
 		outsideCurrentTimetable,
 		scheduleOnly,
 		directionHeadsigns: directionHeadsigns(directions),
+		predictionHeadsigns: uniqueDirectionHeadsigns(directions),
 		stopNames: Object.fromEntries(stops.map((stop) => [stop.id, stop.name])),
 		stopCodes: Object.fromEntries(
 			stops.flatMap((stop) => (stop.code ? [[stop.id, stop.code]] : [])),

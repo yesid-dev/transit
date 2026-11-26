@@ -40,7 +40,7 @@ it.each(['no_live_data', 'not_measured', 'too_few_to_judge', 'not_tracked', 'unk
 it.each<[Record<string, number>, string, string]>([
 	[{ stops_accessible: 1 }, 'Accessible', 'Accessible'],
 	[{ stops_not_accessible: 1 }, 'Not accessible', 'Non accessible'],
-	[{ stops_no_information: 1 }, 'No information', 'Aucune information'],
+	[{ stops_no_information: 1 }, 'Not published', 'Non publié'],
 ])('reads the schedule declaration from %j', (counts, en, fr) => {
 	const data = {
 		...answer,
@@ -58,6 +58,7 @@ it('preserves the unpublished state for stops whose schedule omits the field', (
 		state_text: { en: 'Not published', fr: 'Non publié' },
 	};
 	expect(stopAccessibility(data, 'en')).toBe('Not published');
+	expect(stopAccessibility(data, 'fr')).toBe('Non publié');
 });
 
 it('cites the stop, dates, scope, and versions and marks older results', () => {

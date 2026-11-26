@@ -3,66 +3,70 @@ import { stopPageTitle } from '#lib/seo/riderPageTitle.ts';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
-import { stopFileFromSchedule } from '#lib/v1/adapter/r2.static.ts';
 import { loadStopRecord } from '#lib/server/stopRecord.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { stopFrameView, stopViewHref } from '#lib/site/stopFrame.ts';
+import { lineIsScheduleOnly, providerHasAlerts } from '#lib/site/providerCapabilities.ts';
+import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
 
 export const load: PageServerLoad = async (event) => {
-	const canonicalLocation = canonicalDetailTabLocation(event.url);
+	const { url } = event;
+	const canonicalLocation = canonicalDetailTabLocation(url);
 	if (canonicalLocation) redirect(308, canonicalLocation);
 
-	const view = stopFrameView(event.url);
-	const frameLive = view === 'live';
-	if (
-		frameLive &&
-		(event.url.searchParams.get('tab') !== 'detail' ||
-			event.url.searchParams.get('frameMode') !== 'live')
-	) {
-		const live = stopViewHref(event.url, 'live');
-		redirect(307, live.pathname + live.search);
+	const frameLive = stopFrameView(url) === 'live';
+	if (url.searchParams.get('tab') === 'detail') {
+		const live = stopViewHref(url, 'live');
+		redirect(308, live.pathname + live.search);
 	}
 
 	const id = event.params.id.trim() || event.params.id;
-	const fallback = { id, name: id };
-	const { v1, lang, providerId, schedule, provider } = await event.parent();
-	const period =
-		view === 'record'
-			? parseAnswerFrameState(event.url.searchParams, frameClock(provider)).period
-			: null;
+	const { lang, providerId, schedule, provider } = await event.parent();
 	const scheduledStop = schedule?.stops.find((stop) => stop.id === id);
-	const frame = period
-		? {
-				record: loadStopRecord(
+	const outsideCurrentTimetable = schedule != null && !scheduledStop;
+	const name = scheduledStop?.name.trim();
+	const lines = scheduledStop?.routes ?? [];
+	const scheduleOnly =
+		lines.length > 0 &&
+		lines.every((line) =>
+			lineIsScheduleOnly(
+				provider,
+				line,
+				schedule?.routes.find((route) => route.id === line)?.type ?? null,
+			),
+		);
+	const hasAlerts = providerHasAlerts(provider);
+	const tripUpdatesPublished = provider?.inputs.trip_updates !== false;
+	const live = frameLive && !outsideCurrentTimetable && provider;
+	const signal = event.request.signal;
+	const period = !frameLive
+		? parseAnswerFrameState(url.searchParams, frameClock(provider)).period
+		: null;
+	return {
+		seed: { id, name: name || id },
+		stopCode: scheduledStop?.code,
+		stopLines: lines,
+		outsideCurrentTimetable,
+		frameLive,
+		scheduleOnly,
+		tripUpdatesPublished,
+		hasAlerts,
+		...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) } : {}),
+		record: period
+			? loadStopRecord(
 					{ ...period, city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') },
 					id,
-				),
-			}
-		: frameLive
-			? { frameLive }
-			: {};
-	if (!frameLive) {
-		const name = scheduledStop?.name.trim();
-		return {
-			...frame,
-			seed: name ? { id, name } : fallback,
-			stopSeed: null,
-			stopCode: scheduledStop?.code,
-			stopLines: scheduledStop?.routes,
-			...(name
-				? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) }
-				: {}),
-		};
-	}
-	if (!v1) return { ...frame, seed: fallback, stopSeed: null };
-
-	const stop =
-		schedule && scheduledStop ? stopFileFromSchedule(scheduledStop, schedule.date) : null;
-	const name = stop?.name.trim();
-	return {
-		...frame,
-		seed: name ? { id, name } : fallback,
-		stopSeed: schedule ? { key: id, data: stop } : null,
-		...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), stop?.code, lang) } : {}),
+				)
+			: null,
+		capture:
+			live && (hasAlerts || (tripUpdatesPublished && !scheduleOnly))
+				? fetchCaptureSnapshot(providerId, signal, event.fetch).catch(() => null)
+				: null,
+		trips:
+			live && tripUpdatesPublished && !scheduleOnly
+				? fetchCaptureTripScope(providerId, { kind: 'stop', id }, signal, event.fetch).catch(
+						() => null,
+					)
+				: null,
 	};
 };

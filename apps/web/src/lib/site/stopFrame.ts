@@ -10,6 +10,5 @@ export function stopViewHref(url: URL, view: 'record' | 'live'): URL {
 	target.hash = '';
 	target.searchParams.set('frameMode', view);
 	target.searchParams.delete('tab');
-	if (view === 'live') target.searchParams.set('tab', 'detail');
 	return target;
 }

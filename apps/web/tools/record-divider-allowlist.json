@@ -1,16 +1,6 @@
 {
-	"lib/features/lines/LineLivePredictions.svelte": {
-		"border-t": 1
-	},
 	"lib/features/metrics/MetricsExplainer.svelte": {
 		"border-block-start:": 2
-	},
-	"lib/features/stops/StopLivePredictions.svelte": {
-		"border-bottom:": 1
-	},
-	"lib/components/schedule/ScheduleTable.svelte": {
-		"border-bottom:": 2,
-		"border-top:": 1
 	},
 	"lib/components/shell/BottomSheet.svelte": {
 		"border-b": 1,

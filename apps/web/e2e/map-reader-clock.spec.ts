@@ -180,7 +180,7 @@ for (const provider of ['stm', 'octranspo'] as const) {
 				detail.getByRole('link', { name: vehicleNames[locale], exact: true }),
 			).toBeVisible();
 			// The Stop page carries the remaining predictions using the selected provider and locale.
-			const expectedStopHref = `${locale === 'en' ? '' : `/${locale}`}/stop/${encodeURIComponent(network.stop.id)}?provider=${provider}&frameMode=live&tab=detail`;
+			const expectedStopHref = `${locale === 'en' ? '' : `/${locale}`}/stop/${encodeURIComponent(network.stop.id)}?provider=${provider}&frameMode=live`;
 			const moreAction = detail.getByRole('link', {
 				name: locale === 'fr' ? 'Arrêt en direct' : 'Stop now',
 			});

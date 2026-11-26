@@ -69,7 +69,38 @@ export function stopEngine(url) {
 		}),
 	).flat();
 	const coverage_note = null;
-	if (get('stop') !== 'S1') return { status: 400, body: { message: 'Wrong stop cut' } };
+	const named = process.env.TRANSIT_E2E_STOP_RECORD_NAMED === '1';
+	const stm = get('city') === 'stm';
+	if (get('stop') === '57135') {
+		const state = 'unknown';
+		const state_text = { en: 'Unknown', fr: 'Inconnu' };
+		return {
+			body: {
+				...(group ? { cells: [] } : { value: {} }),
+				state,
+				state_text,
+				coverage_note,
+				evidence: { ...evidence, counts: {}, days_included: [], days_measured: [] },
+			},
+		};
+	}
+	if (!['S1', 'archived-stop'].includes(get('stop')))
+		return { status: 400, body: { message: 'Wrong stop cut' } };
+	if (measure === 'punctuality' && from === '2026-10-24') {
+		return {
+			body: {
+				value: {},
+				state: 'not_measured',
+				state_text: { en: 'Not measured', fr: 'Non mesuré' },
+				coverage_note: { en: 'Low coverage', fr: 'Faible couverture' },
+				evidence: {
+					...evidence,
+					counts: { classified: 5, scheduled: 100 },
+					coverage_reason: 'insufficient_coverage',
+				},
+			},
+		};
+	}
 	if (get('format') === 'csv') {
 		const header = get('lang') === 'fr' ? 'Mesure,Valeur' : 'Measure,Value';
 		const value = measure === 'accessible_stops' ? (get('city') === 'octranspo' ? 0 : 1) : 0.8;
@@ -84,9 +115,17 @@ export function stopEngine(url) {
 	if (group) {
 		const cells = {
 			line: [
-				cell({ line: '80' }, { on_time: 6605 / 8252 }, { classified: 8252, on_time: 6605 }),
+				cell(
+					{ line: named && stm ? '51' : '80' },
+					{ on_time: 6605 / 8252 },
+					{ classified: 8252, on_time: 6605 },
+				),
 				{
-					...cell({ line: '24' }, { on_time: null }, { classified: 33 }),
+					...cell(
+						{ line: named ? (stm ? '368' : '111') : '24' },
+						{ on_time: null },
+						{ classified: 33 },
+					),
 					state: 'too_few_to_judge',
 					state_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
 				},
@@ -118,7 +157,7 @@ export function stopEngine(url) {
 	}
 	let row = cell(null);
 	if (measure === 'accessible_stops') {
-		const accessible = get('city') === 'octranspo' ? 0 : 1;
+		const accessible = stm && !named ? 1 : 0;
 		row = cell(
 			null,
 			{ accessible_stops: accessible },

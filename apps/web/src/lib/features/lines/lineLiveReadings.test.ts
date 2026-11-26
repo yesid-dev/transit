@@ -72,7 +72,7 @@ describe('Line Live readings', () => {
 			]);
 		const report = captureTripReport('stm', new Date(now).toISOString(), [
 			call('later', 420_000, 2),
-			call('next', 270_000, null),
+			{ ...call('next', 270_000, null), direction_id: 1 },
 			call('past', -1_000, 0),
 			{ ...call('cancelled', 120_000, 0), relationship: 3 },
 			{
@@ -85,20 +85,34 @@ describe('Line Live readings', () => {
 			predictedAt: now + 270_000,
 			delay: null,
 			scheduledAt: null,
+			toward: null,
 		});
 		expect(nextStopPredictions(report, now + 91_000).size).toBe(0);
 	});
 
-	it('withholds a scheduled clock when the stop delay could be a trip-wide fallback', () => {
+	it('uses the shared timetable and destination reading for the first live call', () => {
 		const stop = { stop: 'snowdon', eta_utc: new Date(now + 300_000).toISOString(), delay_min: 2 };
-		const predict = (tripDelay: number | null) =>
+		const predict = (scheduled: string | null | undefined, headsign?: string | null) =>
 			nextStopPredictions(
 				captureTripReport('stm', new Date(now).toISOString(), [
-					captureTrip('next', '51', [stop], tripDelay),
+					{
+						...captureTrip('next', '51', [{ ...stop, scheduled_utc: scheduled }], 120),
+						direction_id: 1,
+						trip_headsign: headsign,
+					},
 				]),
 				now,
+				{ 1: 'Station Laurier' },
 			).get(stop.stop);
-		expect(predict(120)?.scheduledAt).toBeNull();
-		expect(predict(null)?.scheduledAt).toBe(now + 180_000);
+		expect(predict(new Date(now + 180_000).toISOString(), 'Gare Montréal-Ouest')).toMatchObject({
+			scheduledAt: now + 180_000,
+			toward: 'Gare Montréal-Ouest',
+		});
+		for (const scheduled of [undefined, null]) {
+			expect(predict(scheduled)).toMatchObject({
+				scheduledAt: null,
+				toward: 'Station Laurier',
+			});
+		}
 	});
 });

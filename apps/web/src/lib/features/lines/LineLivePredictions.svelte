@@ -1,11 +1,9 @@
 <script lang="ts">
 	import { StatusMark, type StampProps } from '@yesid/ui/brand';
+	import { Badge } from '@yesid/ui/badge';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import {
-		fetchCaptureTripScope,
-		feedState,
-		type CaptureTripReport,
-	} from '#lib/live/captureSnapshot.ts';
+	import { feedState, type CaptureTripReport } from '#lib/live/captureSnapshot.ts';
+	import LiveTripReport from '#lib/live/LiveTripReport.svelte';
 	import {
 		clockTime,
 		delayReading,
@@ -13,8 +11,10 @@
 		liveStampAge,
 		predictedIn,
 	} from '#lib/site/presenter.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { presenterCopy } from '#lib/site/presenter.copy.ts';
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
-	import { nextStopPredictions } from './lineLiveReadings.ts';
+	import { nextStopPredictions, type LineMainStop } from './lineLiveReadings.ts';
 	import { choose } from '../record/recordText.ts';
 	import RecordCard from '../record/RecordCard.svelte';
 
@@ -22,6 +22,7 @@
 		city,
 		line,
 		stops,
+		headsigns,
 		seed,
 		refreshed,
 		now,
@@ -31,7 +32,8 @@
 	}: {
 		city: string;
 		line: string;
-		stops: { id: string; name: string }[];
+		stops: LineMainStop[];
+		headsigns: Readonly<Record<number, string>>;
 		seed: Promise<CaptureTripReport | null>;
 		refreshed: boolean;
 		now: number;
@@ -39,19 +41,8 @@
 		timeZone: string;
 		stopHref: (id: string) => string;
 	} = $props();
+	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
-	let result = $state<{ clock: number; report: CaptureTripReport | null }>();
-	$effect(() => {
-		if (!refreshed) return;
-		const clock = now;
-		const controller = new AbortController();
-		void fetchCaptureTripScope(city, { kind: 'line', id: line }, controller.signal)
-			.catch(() => null)
-			.then((report) => {
-				if (!controller.signal.aborted) result = { clock, report };
-			});
-		return () => controller.abort();
-	});
 	function stamp(report: CaptureTripReport | null): StampProps | undefined {
 		const at = report?.feed.captured_at;
 		return at && feedState(report?.feed, now) === 'live'
@@ -61,7 +52,7 @@
 </script>
 
 {#snippet readings(report: CaptureTripReport | null)}
-	{@const predictions = nextStopPredictions(report, now)}
+	{@const predictions = nextStopPredictions(report, now, headsigns)}
 	<RecordCard
 		interactive
 		title={t('Next vehicles at its main stops', 'Prochains véhicules à ses principaux arrêts')}
@@ -70,17 +61,25 @@
 		<ul class="grid gap-x-6 md:grid-cols-2">
 			{#each stops as stop (stop.id)}
 				{@const estimate = predictions.get(stop.id)}
-				<li class="grid min-w-0 content-start gap-1 border-t border-border py-2">
+				<li class="grid min-w-0 content-start gap-1 py-2">
 					<a
-						class="inline-flex min-h-11 min-w-11 w-fit items-center text-primary underline"
-						href={stopHref(stop.id)}>{stop.name}</a
+						class="inline-flex min-h-11 min-w-11 w-fit max-w-full flex-wrap items-center gap-2 text-primary underline"
+						href={stopHref(stop.id)}
 					>
+						<Badge variant="outline" class="shrink-0 font-mono">{stop.code || stop.id}</Badge>
+						<span class="wrap-normal">{display.readName(stop.name, locale)}</span>
+					</a>
 					{#if estimate}
 						{@const status = classifyDelay(estimate.delay)}
 						{@const scheduled =
 							estimate.scheduledAt === null
 								? null
 								: clockTime(new Date(estimate.scheduledAt), locale, timeZone)}
+						<p class="text-small text-muted-foreground">
+							{estimate.toward
+								? presenterCopy[locale].toward(display.directionName(estimate.toward, locale))
+								: t('Destination unavailable.', 'Destination indisponible.')}
+						</p>
 						<div class="flex flex-wrap justify-between gap-x-3">
 							<span class="inline-flex flex-wrap items-baseline gap-x-2"
 								><StatusMark
@@ -121,10 +120,4 @@
 	</RecordCard>
 {/snippet}
 
-{#if refreshed && result?.clock === now}
-	{@render readings(result.report)}
-{:else}
-	{#await seed then initial}
-		{@render readings(initial)}
-	{/await}
-{/if}
+<LiveTripReport {city} kind="line" id={line} {seed} {now} {refreshed} children={readings} />

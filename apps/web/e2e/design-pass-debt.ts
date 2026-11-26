@@ -95,6 +95,10 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		390: { height: 4767, beforeFigure: 1 },
 		1440: { height: 2232, beforeFigure: 1 },
 	},
+	'stop-live': {
+		390: { height: 5767, beforeFigure: 1 },
+		1440: { height: 2686, beforeFigure: 1 },
+	},
 	'stop-record': {
 		390: { height: 7863, beforeFigure: 1 },
 		1440: { height: 3900, beforeFigure: 1 },

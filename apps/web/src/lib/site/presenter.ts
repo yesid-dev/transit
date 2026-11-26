@@ -40,8 +40,11 @@ export function delayReading(
 ): string {
 	if (seconds == null || !Number.isFinite(seconds)) return fallback;
 	const copy = presenterCopy[locale];
-	const magnitude = minuteReading(Math.abs(seconds) / 60, locale)!;
-	return seconds < 0 ? copy.early(magnitude) : seconds > 0 ? copy.late(magnitude) : copy.onSchedule;
+	const minutes = Math.abs(seconds) / 60;
+	// The display rounds to a tenth of a minute.
+	if (minutes < 0.05) return copy.onSchedule;
+	const magnitude = minuteReading(minutes, locale)!;
+	return seconds < 0 ? copy.early(magnitude) : copy.late(magnitude);
 }
 
 export function mapRecordReading(value: number, stops: boolean, locale: Locale): string | null {
@@ -203,7 +206,10 @@ export function lineRecordHeading(
 	const { number, name, label } = line;
 	if (!name || !number || !/^\d+$/u.test(number) || name === number) return name ?? label;
 	const prefix = locale === 'fr' ? 'Ligne' : 'Line';
-	return `${prefix} ${number} ${name}`;
+	const leading = /^(?:line|ligne)[\s\p{P}\p{S}]+(\d+)(?=$|[\s\p{P}\p{S}])/iu.exec(name);
+	const remainder =
+		leading?.[1] === number ? name.slice(leading[0].length).replace(/^[\s\p{P}\p{S}]+/u, '') : name;
+	return [prefix, number, remainder].filter(Boolean).join(' ');
 }
 
 export function directionLabel(

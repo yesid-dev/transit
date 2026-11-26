@@ -5,6 +5,7 @@
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
+		captureFamily,
 		feedState,
 		type CaptureSnapshot,
 		type CaptureTripReport,
@@ -33,11 +34,11 @@
 	import LineLivePredictions from './LineLivePredictions.svelte';
 	import LineLiveNotices from './LineLiveNotices.svelte';
 	import {
-		captureFamily,
 		delayStatuses,
 		lineSilentCount,
 		lineVehicleRows,
 		vehicleCounts,
+		type LineMainStop,
 	} from './lineLiveReadings.ts';
 	import { lineTimetableOnly } from './lineRecordText.ts';
 	import type { RecordMeasure } from '#lib/server/engine.ts';
@@ -52,6 +53,7 @@
 		timeZone,
 		scheduleOnly,
 		knownLine,
+		tracksVehicles,
 		hasAlerts,
 		mainStops,
 		capture,
@@ -59,6 +61,7 @@
 		record,
 		stopNames,
 		headsigns,
+		predictionHeadsigns,
 	}: {
 		line: string;
 		name: string;
@@ -69,13 +72,15 @@
 		timeZone: string;
 		scheduleOnly: boolean;
 		knownLine: boolean;
+		tracksVehicles: boolean;
 		hasAlerts: boolean;
-		mainStops: { id: string; name: string }[];
+		mainStops: LineMainStop[];
 		capture: Promise<CaptureSnapshot | null> | null;
 		trips: Promise<CaptureTripReport | null> | null;
 		record: ReturnType<typeof loadLineRecord> | null | undefined;
 		stopNames: Record<string, string>;
 		headsigns: Record<number, string>;
+		predictionHeadsigns: Record<number, string>;
 	} = $props();
 	const labels = $derived(liveDelayLabels(locale));
 	const title = $derived(choose(locale, 'Its vehicles now', 'Ses véhicules en ce moment'));
@@ -99,8 +104,8 @@
 			lineVehicleRows(snapshot, line, now)?.map((row) => ({
 				...row,
 				href:
-					snapshot?.stable_vehicle_ids === true
-						? vehicleLiveHref(row.id, url, locale, city)
+					tracksVehicles && row.vehicleId
+						? vehicleLiveHref(row.vehicleId, url, locale, city)
 						: undefined,
 				destination:
 					row.toward === null ? null : display.directionLabel(row.toward, headsigns, locale),
@@ -254,7 +259,8 @@
 				<LineLivePredictions
 					{city}
 					{line}
-					stops={mainStops.map(({ id, name }) => ({ id, name: display.readName(name, locale) }))}
+					stops={mainStops}
+					headsigns={predictionHeadsigns}
 					seed={trips}
 					{refreshed}
 					{now}
@@ -269,7 +275,7 @@
 		{#if !limits}
 			<div id="alerts">
 				<LineLiveNotices
-					{line}
+					scope={{ kind: 'line', id: line }}
 					{snapshot}
 					{now}
 					{locale}

@@ -36,6 +36,7 @@
 	 * Supply kit columns for readings, marking figures numeric and using RecordTableValue for
 	 * values and states. `value` names the column paired with the name on a narrow screen.
 	 * Use `scrollMinWidth` for a table that needs to keep its columns at small widths.
+	 * Use `stackAt` to stack each row into labelled key/value rows below the kit breakpoint.
 	 * Optional `pageSize` and `rowHeading` preserve established page sizes and row-heading content.
 	 * Use `pageSize={0}` when the caller fetches additional rows a page at a time.
 	 * `leadingColumn` puts an identifier before the name on wide screens.
@@ -54,6 +55,7 @@
 		value,
 		sort,
 		scrollMinWidth,
+		stackAt,
 		pageSize,
 		rowHeading,
 	}: {
@@ -67,6 +69,7 @@
 		value?: string;
 		sort?: RecordTableSort;
 		scrollMinWidth?: string;
+		stackAt?: 'compact' | 'tablet';
 		pageSize?: number;
 		rowHeading?: Snippet<[Row]>;
 	} = $props();
@@ -160,7 +163,9 @@
 	{pageLabels}
 	responsive={scrollMinWidth
 		? { mode: 'scroll', minWidth: scrollMinWidth }
-		: { mode: 'rows', primary: 'name', value: value ?? '' }}
+		: stackAt
+			? { mode: 'stack', at: stackAt }
+			: { mode: 'rows', primary: 'name', value: value ?? '' }}
 />
 
 <style>

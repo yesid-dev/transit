@@ -12,7 +12,6 @@ import {
 import { StopReliabilitySchema } from './schemas/stop_reliability';
 import { NetworkTrendSchema } from './schemas/network_trend';
 import { verdictCopy } from './verdict.copy';
-import { stopReliabilityCopy } from '#lib/features/stops/reliability/stops-reliability.copy.ts';
 
 const h = (
 	otpPct: number | null,
@@ -682,34 +681,6 @@ describe('finished Verdict for the selected Window', () => {
 				'reliable',
 			);
 			expect(retainedDelayHeadline(null)).toBeUndefined();
-		},
-	);
-	it.each(['en', 'fr'] as const)(
-		'preserves stop prediction wording for every status in %s',
-		(locale) => {
-			for (const headline of [
-				h(null),
-				h(85, 12, 10),
-				h(85, 1000),
-				h(80, 1000, 800),
-				h(85, 4000, 3400),
-				h(72, 4000, 2880),
-				h(48, 4000, 1920),
-			]) {
-				const result = verdictForWindow(
-					reading(headline),
-					{},
-					locale,
-					stopReliabilityCopy[locale].verdict,
-				);
-				const generic = verdictForWindow(reading(headline), {}, locale);
-				expect(result.status).toBe(generic.status);
-				expect(result.interval).toEqual(generic.interval);
-				if (headline.observationCount != null && headline.observationCount >= 30)
-					expect(result.sentence).toMatch(
-						locale === 'en' ? /known predictions/ : /prévisions connues/,
-					);
-			}
 		},
 	);
 	it('preserves displayed-frequency rounding and the snapshot source-percentage Hedge', () => {

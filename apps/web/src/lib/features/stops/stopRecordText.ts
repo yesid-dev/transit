@@ -9,13 +9,45 @@ import {
 	tally,
 } from '#lib/features/record/recordText.ts';
 import { countedUnit, dateRange, methodEvidence, singularCount } from '#lib/site/presenter.ts';
+import { recordState } from '../record/recordStates.ts';
 import type {
 	EngineResult,
 	RecordAnswer,
 	RecordMeasure,
 	RecordSeries,
 } from '#lib/server/engine.ts';
-import type { StopSection } from '#lib/server/stopRecord.ts';
+import type { loadStopRecord, StopSection } from '#lib/server/stopRecord.ts';
+
+export function stopLowCoverage(result: EngineResult<RecordAnswer>) {
+	return (
+		result.kind === 'answer' &&
+		'value' in result.answer &&
+		result.answer.state === 'not_measured' &&
+		result.answer.evidence.coverage_reason === 'insufficient_coverage'
+	);
+}
+
+export async function stopArchiveAvailability(record: ReturnType<typeof loadStopRecord>) {
+	const results = await Promise.all([...record.sections.map(({ answer }) => answer), record.grid]);
+	const hasReading = (answer: RecordMeasure | RecordSeries | RecordSeries['cells'][number]) =>
+		('counts' in answer.evidence &&
+			Object.values(answer.evidence.counts).some((value) => value != null && value > 0)) ||
+		('value' in answer &&
+			answer.state === 'measured' &&
+			Object.values(answer.value).some((value) => typeof value === 'number' && value !== 0));
+	if (
+		results.some(
+			(result) =>
+				result.kind === 'answer' &&
+				('value' in result.answer || 'cells' in result.answer) &&
+				(hasReading(result.answer) ||
+					('cells' in result.answer && result.answer.cells.some(hasReading))),
+		)
+	)
+		return 'available';
+	if (results.some((result) => result.kind === 'busy')) return 'busy';
+	return results.every((result) => result.kind === 'answer') ? 'empty' : 'unavailable';
+}
 
 export const stopSectionTitles = {
 	waiting: ['Waiting by line', 'Attente par ligne'],
@@ -94,10 +126,14 @@ export const stopAccessibilityDescription = {
 	fr: 'Il s’agit de la déclaration de l’exploitant dans l’horaire pour cet arrêt à sa dernière date de service dans la période choisie.',
 };
 
+export function stopBoardingNotPublished(answer: RecordMeasure) {
+	return answer.state === 'not_published' || answer.evidence.counts.stops_no_information === 1;
+}
+
 export function stopAccessibility(answer: RecordMeasure, locale: Locale): string {
+	if (stopBoardingNotPublished(answer)) return recordState('not_published')[locale];
 	if (answer.state !== 'measured') return answer.state_text[locale];
-	const { stops_accessible, stops_not_accessible, stops_no_information } = answer.evidence.counts;
-	if (stops_no_information === 1) return choose(locale, 'No information', 'Aucune information');
+	const { stops_accessible, stops_not_accessible } = answer.evidence.counts;
 	if (stops_accessible === 1) return choose(locale, 'Accessible', 'Accessible');
 	if (stops_not_accessible === 1) return choose(locale, 'Not accessible', 'Non accessible');
 	return choose(locale, 'Unknown', 'Inconnu');

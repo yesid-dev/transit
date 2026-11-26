@@ -5,6 +5,7 @@
 	import { Surface } from '@yesid/ui/layout';
 	import { SvelteURL } from 'svelte/reactivity';
 	import { getLocale } from '#lib/i18n/index.ts';
+	import { vehicleTrackingDisabled } from '#lib/site/providerCapabilities.ts';
 	import { choose } from '#lib/features/record/recordText.ts';
 	import AboutLiveFigures from '#lib/features/record/AboutLiveFigures.svelte';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -37,10 +38,7 @@
 		return new URL(frameHref(url, { mode: data.mode, period: data.period }), url);
 	});
 	const title = $derived(data.seoTitle);
-	const notTrackedLive = $derived(
-		data.provider?.inputs.vehicle_positions === false ||
-			data.provider?.inputs.stable_vehicle_ids === false,
-	);
+	const notTrackedLive = $derived(vehicleTrackingDisabled(data.provider));
 	const display = transitDisplay();
 	const operator = $derived(data.provider?.labels[locale].operator);
 	const lineAnswer = $derived(data.sections.find(({ section }) => section === 'lines')?.answer);

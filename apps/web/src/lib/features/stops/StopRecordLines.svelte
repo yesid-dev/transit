@@ -6,6 +6,7 @@
 		type RecordTableRow,
 	} from '#lib/features/record/RecordDataTable.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
+	import RecordTableName from '#lib/features/record/RecordTableName.svelte';
 	import { chartState, minimumSample } from '#lib/features/record/charts/recordCharts.ts';
 	import {
 		choose,
@@ -143,7 +144,14 @@
 		{columns}
 		{rows}
 		pageSize={rows.length > 12 ? 12 : undefined}
-	/>
+	>
+		{#snippet rowHeading(row)}<RecordTableName
+				{row}
+				plates
+				columnCount={columns.length + 1}
+				inlinePlate
+			/>{/snippet}
+	</RecordDataTable>
 {:else if series.cells[0]}<p>{series.cells[0].state_text[locale]}</p>{/if}
 
 {#if waiting}

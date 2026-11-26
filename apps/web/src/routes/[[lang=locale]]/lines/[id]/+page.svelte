@@ -11,6 +11,7 @@
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import { recoverRecord } from '#lib/features/record/recordRecovery.svelte.ts';
 	import { lineRecordHeading, lineSubtitle } from '#lib/site/presenter.ts';
+	import { vehicleTrackingDisabled } from '#lib/site/providerCapabilities.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { PageData } from './$types';
@@ -91,6 +92,7 @@
 					timeZone={data.provider?.timezone ?? 'UTC'}
 					scheduleOnly={data.scheduleOnly}
 					knownLine={data.knownLine}
+					tracksVehicles={!vehicleTrackingDisabled(data.provider)}
 					hasAlerts={data.hasAlerts}
 					mainStops={data.mainStops}
 					capture={data.capture}
@@ -98,6 +100,7 @@
 					{record}
 					stopNames={data.stopNames}
 					headsigns={data.directionHeadsigns}
+					predictionHeadsigns={data.predictionHeadsigns}
 				/>
 			{/key}
 		{:else if record}
