@@ -444,9 +444,10 @@
 		text={row.days == null ? null : daysInService(row.days, periodDays, locale)}
 		state={row.state}
 	/>{/snippet}
-{#snippet phonePlate({ vehicle }: LiveRow)}{#if vehicle.route}<RoutePlate
-			code={display.lineName(vehicle.route).number ?? vehicle.route}
-		/>{/if}{/snippet}
+{#snippet phonePlate({ vehicle }: LiveRow)}{#if vehicle.route}<span
+			class="inline-block whitespace-nowrap"
+			><RoutePlate code={display.lineName(vehicle.route).number ?? vehicle.route} /></span
+		>{/if}{/snippet}
 {#snippet reportCell({ vehicle }: LiveRow)}
 	{@const report = vehicle.reported_utc || vehicle.updated_utc}
 	{#if report && Number.isFinite(Date.parse(report))}<time datetime={report}

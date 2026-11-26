@@ -471,6 +471,9 @@
 		{#each row.lineCodes as code (code)}<li><RoutePlate {code} /></li>{/each}
 	</ul>
 {/snippet}
+{#snippet phonePlates(row: Row)}{#each row.lineCodes as code, index (code)}{index ? ' ' : ''}<span
+			class="inline-block whitespace-nowrap"><RoutePlate {code} /></span
+		>{/each}{/snippet}
 {#snippet shareCell(row: Row)}
 	{#if row.share !== null}<strong>{recordPercent(row.share, locale)}</strong>
 	{:else}<RecordTableValue
@@ -697,7 +700,7 @@
 								pageSize={0}
 								phone={{
 									code: (row) => row.code,
-									after: linesCell,
+									after: phonePlates,
 									line: (row) =>
 										rowSentence(
 											[

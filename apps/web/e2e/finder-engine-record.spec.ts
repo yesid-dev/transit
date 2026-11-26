@@ -431,6 +431,50 @@ for (const locale of ['en', 'fr'] as const) {
 		).toBeVisible();
 	});
 
+	test(`${locale} Stops phone rows lay out alike and keep plates inline after the name`, async ({
+		page,
+	}) => {
+		for (const width of [320, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(`${prefix}/stops?provider=stm`);
+			const rows = page.locator('#stop-results tbody tr');
+			await expect(rows).toHaveCount(20);
+			// Names of one length lay out the same way: the same row height, the name beside its code.
+			const heights = [];
+			for (let sample = 1; sample <= 9; sample++) {
+				const row = rows.filter({
+					has: page.getByRole('link', { name: `Pagination sample ${sample}`, exact: true }),
+				});
+				const box = await row.boundingBox();
+				heights.push(Math.round(box!.height));
+			}
+			expect(new Set(heights).size, `${width}px row heights ${heights}`).toBe(1);
+			// Plates flow after the name like words: each shares its line with another plate or with
+			// the name's last line, so none sits alone on a line of its own.
+			const row = rows.filter({
+				has: page.getByRole('link', { name: 'B9 Atwater', exact: true }),
+			});
+			const plates = row.locator('[data-slot="route-plate"]');
+			await expect(plates).toHaveText(['24', '51', '99']);
+			const alone = await row.evaluate((element) => {
+				const span = (rect: DOMRect) => [rect.top, rect.bottom] as const;
+				const plateSpans = [...element.querySelectorAll('[data-slot="route-plate"]')].map((plate) =>
+					span(plate.getBoundingClientRect()),
+				);
+				const label = element.querySelector('a .name-label, a')!;
+				const nameLine = span([...label.getClientRects()].at(-1)!);
+				const overlaps = (a: readonly [number, number], b: readonly [number, number]) =>
+					Math.min(a[1], b[1]) - Math.max(a[0], b[0]) > 4;
+				return plateSpans.filter(
+					(plate, index) =>
+						!overlaps(plate, nameLine) &&
+						!plateSpans.some((other, j) => j !== index && overlaps(plate, other)),
+				).length;
+			});
+			expect(alone, `${width}px plates alone on a line`).toBe(0);
+		}
+	});
+
 	test(`${locale} Stops keeps the stop-event sample beside one state on phones`, async ({
 		page,
 	}) => {

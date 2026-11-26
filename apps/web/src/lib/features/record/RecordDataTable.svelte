@@ -26,6 +26,8 @@
 	 * No column name repeats in a row. `empty` rows have no value: their sentence follows the name.
 	 * The row's `detail` is not printed under the name: include it in `line` when it matters.
 	 * `before` precedes the name (a rank); `below` follows the sentence on its own line (a range).
+	 * `after` renders items (plates) that flow after the name like words, separated by spaces;
+	 * wrap each in a no-wrap span so it never breaks inside.
 	 */
 	export type RecordPhoneRow<Row> = {
 		line?: (row: Row) => string | null | undefined;
@@ -41,7 +43,7 @@
 </script>
 
 <script lang="ts" generics="Row extends RecordTableRow">
-	import { SegmentedChoice } from '@yesid/ui/brand';
+	import { RoutePlate, SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import type { Snippet } from 'svelte';
 	import { DataTable } from '@yesid/ui/table';
@@ -154,32 +156,40 @@
 		<RecordTableName {row} {plates} columnCount={allColumns.length} />
 	{/if}
 {/snippet}
+{#snippet phoneValue(row: Row)}
+	{#if phone?.value}{@render phone.value(row)}{:else if valueColumn}{@render valueColumn.cell(
+			row,
+		)}{/if}
+{/snippet}
 {#snippet phoneCell(row: Row)}
 	{@const code = phone?.code?.(row)}
 	{@const line = phone?.line?.(row)}
 	{@const empty = phone?.empty?.(row) ?? false}
-	{@const named = { ...row, detail: undefined }}
+	{@const valued = !empty && !!(phone?.value || valueColumn)}
 	<div class="phone-row">
-		<div class="phone-head" class:ranked={!!phone?.before}>
-			{#if phone?.before}<span class="phone-before">{@render phone.before(row)}</span>{/if}
-			<div class="phone-name">
+		<!-- The name and its plates read like a line of text: they wrap word by word, under the
+		rank and code box too, while the value keeps its own column at the end. -->
+		<div class="phone-head">
+			<div class="phone-text">
+				{#if phone?.before}<span class="phone-before">{@render phone.before(row)}</span>{/if}
 				{#if code}<span class="phone-code">{code}</span>{/if}
-				<RecordTableName row={named} {plates} columnCount={1} plateOnName />
-				{#if phone?.after}<span class="phone-after">{@render phone.after(row)}</span>{/if}
-				{#if empty && line}<span class="phone-line">{line}</span>{/if}
+				{#if row.href}<a class="phone-link" href={row.href}>{@render phoneName(row)}</a>{:else}<span
+						class="phone-link">{@render phoneName(row)}</span
+					>{/if}{#if phone?.after}
+					<span class="phone-after">{@render phone.after(row)}</span>{/if}{#if empty && line}
+					<span class="phone-line">{line}</span>{/if}
 			</div>
-			{#if !empty && (phone?.value || valueColumn)}
-				<span class="phone-value"
-					>{#if phone?.value}{@render phone.value(
-							row,
-						)}{:else if valueColumn}{@render valueColumn.cell(row)}{/if}</span
-				>
-			{/if}
+			{#if valued}<span class="phone-value">{@render phoneValue(row)}</span>{/if}
 		</div>
 		{#if line && !empty}<p class="phone-line">{line}</p>{/if}
 		{#if phone?.below}{@render phone.below(row)}{/if}
 	</div>
 {/snippet}
+{#snippet phoneName(row: RecordTableRow)}{#if row.plate}<span class="phone-plate"
+			><RoutePlate {...row.plate} /></span
+		>{:else if row.leadingCode}<span class="phone-plate" class:phone-code={row.leadingCode.outline}
+			>{row.leadingCode.text}</span
+		>{/if}<span class="name-label">{row.label}</span>{/snippet}
 {#snippet wideTable()}
 	<DataTable
 		caption={title}
@@ -288,48 +298,76 @@
 		display: grid;
 		/* A long state as the value wraps within half the row; the name keeps the rest. */
 		grid-template-columns: minmax(0, 1fr) fit-content(50%);
-		align-items: baseline;
+		align-items: start;
 		column-gap: 0.5rem;
+		line-height: 1.5;
 	}
-	.phone-head.ranked {
-		grid-template-columns: auto minmax(0, 1fr) fit-content(50%);
-	}
-	.phone-name {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		column-gap: 0.5rem;
-		row-gap: 0.125rem;
+	.phone-text {
+		display: flow-root;
 		min-inline-size: 0;
 	}
-	/* The name keeps its longest word and its tap size; the row wraps around it. */
-	.phone-name > :global(.name-cell) {
-		flex: 0 1 auto;
-		min-inline-size: min-content;
-	}
+	.phone-before,
 	.phone-code {
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding-inline: 0.25em;
-		font-family: var(--font-mono);
-		font-size: var(--text-small);
+		float: inline-start;
+		margin-inline-end: 0.5rem;
 	}
 	.phone-before {
 		font-family: var(--font-mono);
 		font-size: var(--text-small);
 		font-variant-numeric: tabular-nums;
 	}
-	.phone-after {
-		display: inline-flex;
-		flex-wrap: wrap;
-		gap: 0.25rem;
-		/* A plate wraps as a whole, never between its digits. */
-		white-space: nowrap;
+	/* Exactly one line tall with its border, so only line 1 makes room for it. */
+	.phone-code {
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding-inline: 0.25em;
+		font-family: var(--font-mono);
+		font-size: var(--text-small);
+		line-height: calc(1.5em - 2px);
 	}
 	.phone-value {
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 		text-align: end;
+	}
+	/* The name is one word of the line: it follows the code box when it fits there, otherwise the
+	whole name takes the next line, so names of one length always land the same way. */
+	.phone-link {
+		display: inline-block;
+		min-block-size: var(--size-tap-min);
+		min-inline-size: min(var(--size-tap-min), 100%);
+		max-inline-size: 100%;
+		margin-inline-end: 0.25rem;
+		overflow-wrap: normal;
+	}
+	a.phone-link {
+		color: var(--primary);
+	}
+	a.phone-link .name-label {
+		text-decoration: underline;
+	}
+	/* Equal digits keep names of one length on one width, so they wrap at the same place. */
+	.phone-link .name-label {
+		font-variant-numeric: tabular-nums;
+	}
+	a.phone-link:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+	.phone-plate {
+		display: inline-block;
+		min-inline-size: 3.75em;
+		margin-inline-end: 0.375rem;
+		white-space: nowrap;
+	}
+	.phone-plate.phone-code {
+		float: none;
+		min-inline-size: 0;
+	}
+	/* Plates are words of the line: each wraps as a whole, never between its digits. */
+	.phone-after {
+		margin-inline-start: 0.125rem;
+		word-spacing: 0.125rem;
 	}
 	.phone-line {
 		color: var(--muted-foreground);
