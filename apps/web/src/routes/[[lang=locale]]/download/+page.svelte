@@ -21,7 +21,6 @@
 		longDate,
 		recordStamp,
 		registryUnitText,
-		versionNumber,
 	} from '#lib/site/presenter.ts';
 	import { recordConnection, tally } from '#lib/features/record/recordText.ts';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
@@ -215,9 +214,89 @@
 						</nav>
 					{/if}
 
+					{#if notices.length}
+						<RecordCard interactive title={t('Licence and attribution', 'Licence et attribution')}>
+							<div class="grid gap-3">
+								{#each notices as group (group![0].service_date)}
+									{@const licence = group![0].licence}
+									{@const changes = [
+										...new Set(
+											group!
+												.filter((day) => day.status === 'complete')
+												.map((day) => day.licence.changes[locale]),
+										),
+									]}
+									<div class="grid gap-2">
+										<p>
+											<a
+												class="inline-flex min-h-11 items-center text-primary underline"
+												href={licence.url[locale]}>{licence.attribution[locale]}</a
+											>
+										</p>
+										{#if changes.length}
+											<div class="grid gap-1" data-slot="source-changes">
+												<h3 class="m-0 text-body font-semibold">
+													{t('Changes to the source data', 'Modifications aux données sources')}
+												</h3>
+												<p>
+													{t(
+														'Transit cleaned and joined the agency’s files: it matched the live readings to the timetable, built the tables below for each service day and wrote times in UTC.',
+														'Transit a nettoyé et joint les fichiers de la société de transport\u00a0: il a rapproché les relevés en temps réel de l’horaire, bâti les tables ci-dessous pour chaque journée de service et inscrit les heures en UTC.',
+													)}
+												</p>
+												<p>
+													{t(
+														'The data was modified and is unofficial.',
+														'Les données ont été modifiées et sont non officielles.',
+													)}
+												</p>
+											</div>
+										{/if}
+										<p>{licence.non_endorsement[locale]} {licence.limits[locale]}</p>
+										<p>
+											{licence.name[locale]} · {t('Licence checked on', 'Licence vérifiée le')}
+											<time datetime={licence.checked_on}
+												>{longDate(licence.checked_on, locale)}</time
+											>
+										</p>
+										<p>
+											{t('Removal requests', 'Demandes de retrait')}
+											<a class="text-primary underline" href={'mailto:' + licence.contact}
+												>{licence.contact}</a
+											>
+										</p>
+									</div>
+								{/each}
+								{#if complete.some((day) => day.readme_url)}
+									{#snippet readmeFiles()}
+										<ul class="flex flex-wrap gap-x-4">
+											{#each complete as day (day.service_date)}
+												{#if day.readme_url}
+													<li>
+														<a
+															class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
+															href={day.readme_url}>{compactServiceDay(day.service_date, locale)}</a
+														>
+													</li>
+												{/if}
+											{/each}
+										</ul>
+									{/snippet}
+									{@render disclosure(
+										t(
+											'Download README with licence and checksums',
+											'Télécharger le fichier README avec la licence et les sommes de contrôle',
+										),
+										readmeFiles,
+									)}
+								{/if}
+							</div>
+						</RecordCard>
+					{/if}
+
 					{#if coverage.tables.length}
 						<div class="download-grid">
-							{#each coverage.tables as { table: key, files: rows, gaps, sources } (key)}
+							{#each coverage.tables as { table: key, files: rows, gaps } (key)}
 								<RecordCard interactive title={downloadLayouts[key][locale]} {stamp}>
 									<div class="grid min-w-0 grid-cols-1 gap-2">
 										<p>{downloadTables[key][locale]}</p>
@@ -289,15 +368,6 @@
 											layoutAndFiles,
 										)}
 									</div>
-									{#snippet evidence()}
-										<p class="font-mono text-sm text-muted-foreground">
-											{[...new Set(sources.map((day) => day.licence.name[locale]))].join(' · ')}
-											· {t('Cleaning', 'Nettoyage')}
-											{[...new Set(sources.map((day) => versionNumber(day.cleaning_version)))].join(
-												', ',
-											)}
-										</p>
-									{/snippet}
 								</RecordCard>
 							{/each}
 						</div>
@@ -315,80 +385,6 @@
 						{#each [...new Set(listings.flatMap((day) => day.reason ?? []))] as reason (reason)}
 							<p>{missingDayReasons[reason][locale]}</p>
 						{/each}
-					{/if}
-
-					{#if notices.length}
-						<RecordCard interactive title={t('Licence and attribution', 'Licence et attribution')}>
-							<div class="grid gap-3">
-								{#each notices as group (group![0].service_date)}
-									{@const licence = group![0].licence}
-									{@const changes = [
-										...new Set(
-											group!
-												.filter((day) => day.status === 'complete')
-												.map((day) => day.licence.changes[locale]),
-										),
-									]}
-									<div class="grid gap-2">
-										<p>
-											<a
-												class="inline-flex min-h-11 items-center text-primary underline"
-												href={licence.url[locale]}>{licence.attribution[locale]}</a
-											>
-										</p>
-										{#if changes.length === 1}
-											<p>{changes[0]}</p>
-										{:else if changes.length}
-											{#snippet sourceChanges()}
-												<ul class="grid gap-2">
-													{#each changes as change (change)}<li>{change}</li>{/each}
-												</ul>
-											{/snippet}
-											{@render disclosure(
-												t('Changes to the source data', 'Modifications aux données sources'),
-												sourceChanges,
-											)}
-										{/if}
-										<p>{licence.non_endorsement[locale]} {licence.limits[locale]}</p>
-										<p>
-											{licence.name[locale]} · {t('Licence checked on', 'Licence vérifiée le')}
-											<time datetime={licence.checked_on}
-												>{longDate(licence.checked_on, locale)}</time
-											>
-										</p>
-										<p>
-											{t('Removal requests', 'Demandes de retrait')}
-											<a class="text-primary underline" href={'mailto:' + licence.contact}
-												>{licence.contact}</a
-											>
-										</p>
-									</div>
-								{/each}
-								{#if complete.some((day) => day.readme_url)}
-									{#snippet readmeFiles()}
-										<ul class="flex flex-wrap gap-x-4">
-											{#each complete as day (day.service_date)}
-												{#if day.readme_url}
-													<li>
-														<a
-															class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
-															href={day.readme_url}>{compactServiceDay(day.service_date, locale)}</a
-														>
-													</li>
-												{/if}
-											{/each}
-										</ul>
-									{/snippet}
-									{@render disclosure(
-										t(
-											'Download README with licence and checksums',
-											'Télécharger le fichier README avec la licence et les sommes de contrôle',
-										),
-										readmeFiles,
-									)}
-								{/if}
-							</div>
-						</RecordCard>
 					{/if}
 				{/await}
 			</RecordGroup>

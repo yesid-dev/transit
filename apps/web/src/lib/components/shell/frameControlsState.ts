@@ -4,14 +4,29 @@ import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { mapLayerFor } from '#lib/site/mapFrame.ts';
-import { dateRange } from '#lib/site/presenter.ts';
-import { parseFrameState, unpublishedYesterday, type FrameClock } from '#lib/site/frameState.ts';
+import { dateRange, longDate } from '#lib/site/presenter.ts';
+import {
+	RECORD_START,
+	frameDateLimit,
+	parseFrameState,
+	periodError,
+	unpublishedYesterday,
+	type FrameClock,
+} from '#lib/site/frameState.ts';
 import { frameCopy } from './frameCopy.ts';
 
 export { frameCopy };
 
-// Reading documents have no View or Period to choose.
-const readingPaths = ['/roadmap', '/privacy', '/terms', '/accessibility', '/metrics/archive'];
+// Reading documents, the definitions and search read no record: no View or Period to choose.
+const readingPaths = [
+	'/roadmap',
+	'/privacy',
+	'/terms',
+	'/accessibility',
+	'/metrics',
+	'/metrics/archive',
+	'/search',
+];
 
 export function frameControlsState(url: URL, clock: FrameClock, errorPage = false) {
 	const path = delocalizePath(url.pathname).replace(/\/$/, '') || '/';
@@ -30,6 +45,20 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 	else if (stop) mode = stopFrameView(url);
 	else if (map) mode = mapLayerFor(url.searchParams) === 'live' ? 'live' : 'record';
 	else if (path === '/network') mode = networkRecordView(url) ? 'record' : 'live';
+	const usesFrameRecord =
+		recordOnly ||
+		line ||
+		stop ||
+		path.startsWith('/departure/') ||
+		['/', '/alerts', '/network', '/status', '/vehicles'].includes(path) ||
+		path.startsWith('/vehicle/');
+	const start = clock.recordStart ?? RECORD_START;
+	const askedFrom = url.searchParams.get('recordFrom');
+	const askedTo = url.searchParams.get('recordTo');
+	const askedBeforeRecord =
+		askedFrom !== null &&
+		askedTo !== null &&
+		periodError({ from: askedFrom, to: askedTo }, frameDateLimit(clock), start) === 'beforeRecord';
 	return {
 		...parsed,
 		mode,
@@ -43,14 +72,28 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		map,
 		waitingForYesterday:
 			mode === 'record' && path !== '/download' ? unpublishedYesterday(parsed.period, clock) : null,
-		usesFrameRecord:
-			recordOnly ||
-			line ||
-			stop ||
-			path.startsWith('/departure/') ||
-			['/', '/alerts', '/network', '/status', '/vehicles'].includes(path) ||
-			path.startsWith('/vehicle/'),
+		usesFrameRecord,
+		// A link whose dates fall before the city's record is answered with other dates: say so once.
+		beforeRecord:
+			!errorPage && askedBeforeRecord && mode === 'record' && usesFrameRecord && parsed.period
+				? { start, period: parsed.period }
+				: null,
+
 	} as const;
+}
+
+/** The one sentence a screen shows when its link's dates fell before the record. */
+export function recordStartNotice(
+	beforeRecord: ReturnType<typeof frameControlsState>['beforeRecord'],
+	locale: Locale,
+): string | null {
+	if (!beforeRecord) return null;
+	const copy = frameCopy[locale];
+	const { start, period } = beforeRecord;
+	return [
+		copy.recordStarts(longDate(start, locale)),
+		period.preset === '7-days' ? copy.showingLast7 : copy.showing(dateRange(period, locale)),
+	].join(' ');
 }
 
 export function framePeriodSummary(

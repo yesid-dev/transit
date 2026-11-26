@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frameControlsState, framePeriodSummary } from './frameControlsState.ts';
+import { frameControlsState, framePeriodSummary, recordStartNotice } from './frameControlsState.ts';
 
 const today = '2026-11-22';
 const clock = (recordThrough: string | null = null) => ({ today, recordThrough });
@@ -32,9 +32,17 @@ describe('frame control state', () => {
 		expect(state(path)).toMatchObject({ showViewHint: false }),
 	);
 
-	it.each(['/privacy', '/fr/terms', '/accessibility', '/roadmap', '/fr/metrics/archive/'])(
-		'keeps the controls rail off the reading page %s',
-		(path) => expect(state(path)).toMatchObject({ showRail: false }),
+	it.each([
+		'/privacy',
+		'/fr/terms',
+		'/accessibility',
+		'/roadmap',
+		'/fr/metrics/archive/',
+		'/metrics',
+		'/fr/metrics?frameMode=record',
+		'/search?q=51',
+	])('keeps the controls rail off the page %s, which reads no record', (path) =>
+		expect(state(path)).toMatchObject({ showRail: false }),
 	);
 
 	it('keeps the controls rail off an error page at any path', () => {
@@ -44,7 +52,7 @@ describe('frame control state', () => {
 			showViewHint: false,
 		});
 		expect(frameControlsState(url, clock())).toMatchObject({ showRail: true });
-		expect(state('/metrics')).toMatchObject({ showRail: true });
+		expect(state('/network')).toMatchObject({ showRail: true });
 	});
 
 	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/rankings', '/fr/download'])(
@@ -102,5 +110,28 @@ describe('frame control state', () => {
 		expect(framePeriodSummary({ from: today, to: today, preset: null }, 'fr')?.duration).toBe(
 			'1 jour',
 		);
+	});
+	it.each([
+		['en', 'The record starts 13 October 2026. Showing the last 7 complete days.'],
+		['fr', 'Le bilan commence le 13 octobre 2026. Affichage des 7 derniers jours complets.'],
+	] as const)('says once in %s when a link asks for dates before the record', (locale, text) => {
+		const before = state('/lines/24?recordFrom=2026-09-01&recordTo=2026-09-07');
+		expect(before.period).toMatchObject({ preset: '7-days', from: '2026-11-15', to: '2026-11-21' });
+		expect(recordStartNotice(before.beforeRecord, locale)).toBe(text);
+	});
+
+	it('names the city’s own first day and stays quiet otherwise', () => {
+		const url = new URL('/stops?recordFrom=2026-10-20&recordTo=2026-10-26', 'https://transit.test');
+		const city = frameControlsState(url, { ...clock(), recordStart: '2026-11-01' });
+		expect(recordStartNotice(city.beforeRecord, 'en')).toMatch(
+			/^The record starts 1 November 2026\./,
+		);
+		for (const href of [
+			'/lines/24?recordFrom=2026-11-01&recordTo=2026-11-07',
+			'/lines/24?recordFrom=2026-11-07&recordTo=2026-11-01',
+			'/roadmap?recordFrom=2026-09-01&recordTo=2026-09-07',
+			'/lines/24?frameMode=live&tab=detail&recordFrom=2026-09-01&recordTo=2026-09-07',
+		])
+			expect(state(href).beforeRecord).toBeNull();
 	});
 });

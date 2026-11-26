@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { RoutePlate, SectionHeading } from '@yesid/ui/brand';
+	import { recordStartNoticeReader } from '#lib/site/recordStartNoticeContext.ts';
 
 	let {
 		title,
@@ -24,6 +25,8 @@
 		/** The brand dot after the title. A line, stop, vehicle or departure has none. */
 		dot?: boolean;
 	} = $props();
+	const readNotice = recordStartNoticeReader();
+	const notice = $derived(readNotice());
 </script>
 
 <header
@@ -46,6 +49,7 @@
 		{#if subtitle}<p class="text-muted-foreground" class:invisible={hideSubtitle}>
 				{subtitle}
 			</p>{/if}
+		{#if notice}<p data-slot="record-start-notice">{notice}</p>{/if}
 	</hgroup>
 	{#if back}<a class="record-link" href={back.href}>{back.label}</a>{/if}
 </header>

@@ -308,7 +308,12 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				await expect(main.locator('[data-record-state="not_tracked"]')).toBeVisible();
 			else await expect(main.locator('#ranking table')).toBeVisible();
 		}
-		if (screen === 'roadmap' || reading) {
+		if (
+			screen === 'roadmap' ||
+			screen === 'how-we-measure' ||
+			screen.startsWith('search') ||
+			reading
+		) {
 			await expect(
 				page.locator('[data-slot="surface-rail"], [data-slot="surface-rail-mobile"]'),
 			).toHaveCount(0);
