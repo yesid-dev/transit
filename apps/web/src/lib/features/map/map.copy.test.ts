@@ -12,6 +12,7 @@ describe('map copy', () => {
 					'staticImageAlt',
 					'staticKicker',
 					'mapLabel',
+					'recordMapLabel',
 					'mapBooting',
 					'mapImportError',
 					'staticUnavailable',

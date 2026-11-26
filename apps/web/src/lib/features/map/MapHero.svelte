@@ -21,6 +21,7 @@
 	import { recordStamp } from '#lib/site/presenter.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
+	import { livePause } from '#lib/live/livePause.svelte.ts';
 	import { formatRelativeSeconds } from '#lib/utils/time.ts';
 	import {
 		FrameControlsExtensionContext,
@@ -474,6 +475,8 @@
 		isRecordLayer ? tr('Map of the record', 'Carte du bilan') : tr('Live map', 'Carte en direct'),
 	);
 	const viewLabel = tr('What is in view', 'Ce qui est en vue');
+	// The map region is named for what it draws: vehicles live, the record of stops otherwise.
+	const regionLabel = $derived(isRecordLayer ? t.recordMapLabel : t.mapLabel);
 	const providerName = $derived(
 		v1.provider?.labels[locale].operator ?? manifest.city ?? manifest.provider,
 	);
@@ -725,7 +728,8 @@
 	const motionFrame = $derived(
 		vehicleMotion.read(isRecordLayer ? null : mapVehicles, {
 			preference: motionMode.current,
-			reducedMotion: $prefersReducedMotion,
+			// Paused live updates (WCAG 2.2.2) also stop vehicles gliding between reports.
+			reducedMotion: $prefersReducedMotion || livePause.paused,
 			ready: hasFirstIdle,
 			stale: live.familyStates.vehicles.health.isStale,
 			ttlS: manifest.files.live.ttl_s,
@@ -853,7 +857,7 @@
 			'Map.Title': t.mapCanvasLabel,
 			'AttributionControl.ToggleAttribution': t.attributionToggle,
 		}}
-		label={t.mapLabel}
+		label={regionLabel}
 	/>
 {/snippet}
 
@@ -1069,7 +1073,14 @@
 
 {#snippet titleCard(showStamp: boolean)}
 	<div class="grid gap-1">
-		<h1 class={wide ? 'text-xl font-bold' : 'text-lg font-bold leading-tight'}>{title}</h1>
+		<!-- The page heading itself comes before the map in reading order (see mapContent). -->
+		<p
+			aria-hidden="true"
+			data-slot="map-title"
+			class={wide ? 'text-xl font-bold' : 'text-lg font-bold leading-tight'}
+		>
+			{title}
+		</p>
 		{#if wide}<p class="text-sm text-muted-foreground">{city}</p>{/if}
 		{#if showStamp}{@render stamp()}{/if}
 		{#if !wide && !isRecordLayer}
@@ -1139,8 +1150,10 @@
 		<div class="map-head">{@render titleCard(false)}</div>
 		{@render inViewPanel(recordContent)}
 	{/snippet}
+	<!-- First in reading order (WCAG 1.3.2): the visible title sits in the panel over the map. -->
+	<h1 class="sr-only" data-slot="map-heading">{title}</h1>
 	<MapFrame
-		label={t.mapLabel}
+		label={regionLabel}
 		class="map-hero-frame absolute inset-x-0 bottom-0"
 		style="top: var(--map-frame-top)"
 		details={wide ? { label: viewLabel, content: desktopPanel } : undefined}

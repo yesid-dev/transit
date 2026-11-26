@@ -37,3 +37,30 @@ it.each([
 	expect(screen.getByRole('status')).toHaveTextContent(notice);
 	expect(screen.getAllByText(pending)).toHaveLength(1);
 });
+
+it.each([
+	['en', 'Calculating…', 'Still calculating the record for 8 to 14 Nov 2026.'],
+	[
+		'fr',
+		'Calcul en cours…',
+		'Le calcul du bilan pour la période du 8 au 14 nov. 2026 se poursuit.',
+	],
+] as const)(
+	'says it is still calculating in each waiting card, and keeps the notice out of the layout, in %s',
+	async (locale, calculating, still) => {
+		vi.useFakeTimers();
+		try {
+			const pending = Promise.withResolvers<{ kind: string }>();
+			const { container } = render(RecordPatienceHarness, {
+				locale,
+				readings: [pending.promise],
+			});
+			expect(screen.getByText(calculating)).toBeInTheDocument();
+			await vi.advanceTimersByTimeAsync(3_000);
+			expect(screen.getByText(still)).toBeInTheDocument();
+			expect(container.querySelector('[data-slot="record-patience"]')).toHaveClass('sr-only');
+		} finally {
+			vi.useRealTimers();
+		}
+	},
+);

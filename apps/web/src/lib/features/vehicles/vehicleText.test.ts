@@ -66,7 +66,7 @@ function dailyCell(
 }
 
 it.each([
-	['en', '1 of 2', '2.5', 'Did not report', '130.8'],
+	['en', '1 of 2', '2.5', 'No report that day', '130.8'],
 	['fr', '1 sur 2', '2,5', 'Aucun signalement', '130,8'],
 ] as const)(
 	'uses measured dates and distinguishes unmeasured days in %s',
@@ -101,3 +101,25 @@ it.each([
 		expect(days.slice(2).every(({ dateLabel }) => !dateLabel.includes(noReport))).toBe(true);
 	},
 );
+
+it.each([
+	['en', 'No report that day'],
+	['fr', 'Aucun signalement ce jour-là'],
+] as const)('reads a measured day without a row as a day with no report, in %s', (locale, said) => {
+	const days = vehicleReportDays(
+		{
+			evidence: { ...evidence, days_measured: [...evidence.days_measured, '2026-11-11'] },
+			coverage_note: null,
+			cells: [dailyCell('2026-11-08', 1)],
+		},
+		period,
+		locale,
+	);
+	expect(days.map(({ state }) => state)).toEqual([
+		'in_service',
+		'not_reporting',
+		'not_measured',
+		'not_reporting',
+	]);
+	expect(days[3].dateLabel).toContain(said);
+});

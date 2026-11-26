@@ -32,8 +32,26 @@ function show(query: string, at = '/', locale: 'en' | 'fr' = 'en') {
 	const view = render(HeaderSearch, {
 		props: { locale, providerId: 'stm', url, list, query },
 	});
-	return { ...view, input: view.getByRole('combobox', { name: /^(Search|Rechercher)/ }) };
+	const input = view.getByRole('combobox', { name: /^(Search|Rechercher)/ });
+	// A reader types in the field, so it holds focus; only the field in use speaks.
+	input.focus();
+	return { ...view, input };
 }
+
+it('stays silent when its field is not in use, so the other search does not speak twice', async () => {
+	vi.useFakeTimers();
+	try {
+		const view = show('zzqxv');
+		view.input.blur();
+		await vi.advanceTimersByTimeAsync(500);
+		expect(view.getByRole('status').textContent).toBe('');
+		view.input.focus();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(view.getByRole('status').textContent).toMatch(/Nothing found/);
+	} finally {
+		vi.useRealTimers();
+	}
+});
 
 it('shows true totals in each heading and links each row to its record', () => {
 	const view = show('van');
@@ -190,6 +208,7 @@ it.each([
 			const view = render(HeaderSearch, {
 				props: { locale, providerId: 'stm', url, list, query: 'van' },
 			});
+			view.getByRole('combobox').focus();
 			await vi.advanceTimersByTimeAsync(500);
 			expect(view.getByRole('status').textContent).toBe(said);
 		} finally {

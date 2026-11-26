@@ -40,8 +40,9 @@ for (const locale of ['en', 'fr']) {
 		});
 		expect(scrolled).toBeGreaterThan(0);
 		const daily = page.locator('#daily');
-		await daily.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
-		const control = daily.getByRole('button', { name: fr ? 'Graphique' : 'Chart', exact: true });
+		const control = daily.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true });
+		await control.click();
+		await expect(control).toHaveAttribute('aria-pressed', 'true');
 		await control.focus();
 		await expect(control).toBeFocused();
 		await expect(daily.getByRole('table')).toBeVisible();

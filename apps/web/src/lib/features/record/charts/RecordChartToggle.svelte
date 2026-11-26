@@ -14,13 +14,14 @@
 	} = $props();
 </script>
 
+<!-- One name for what it does, and its state: "Table, pressed" while the table shows. -->
 <Button
 	class="min-h-11 w-fit"
 	size="cta-sm"
 	variant="outline"
 	aria-controls={controls}
-	aria-expanded={table}
+	aria-pressed={table}
 	onclick={() => (table = !table)}
 >
-	{table ? choose(locale, 'Chart', 'Graphique') : choose(locale, 'Table', 'Tableau')}
+	{choose(locale, 'Table', 'Tableau')}
 </Button>

@@ -20,3 +20,14 @@ export function setRecordRecovered(recovered: () => void) {
 export function getRecordRecovered() {
 	return getContext<(() => void) | undefined>(recoveryKey);
 }
+
+const slowKey = Symbol('record slow');
+
+/** The words a waiting card shows once the screen's records take longer, or null before. */
+export function setRecordSlow(read: () => string | null) {
+	setContext(slowKey, read);
+}
+
+export function getRecordSlow() {
+	return getContext<(() => string | null) | undefined>(slowKey);
+}

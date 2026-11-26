@@ -456,9 +456,10 @@
 		state="not_published"
 	/>{/snippet}
 {#snippet linesCell(row: Row)}
-	<span class="inline-flex flex-wrap gap-1"
-		>{#each row.lineCodes as code (code)}<RoutePlate {code} />{/each}</span
-	>
+	<!-- A list, so each plate is heard on its own: "90", "198", never "90 198". -->
+	<ul class="m-0 inline-flex list-none flex-wrap gap-1 p-0" role="list">
+		{#each row.lineCodes as code (code)}<li><RoutePlate {code} /></li>{/each}
+	</ul>
 {/snippet}
 {#snippet shareCell(row: Row)}
 	{#if row.share !== null}<strong>{recordPercent(row.share, locale)}</strong>

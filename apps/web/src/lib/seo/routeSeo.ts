@@ -4,6 +4,7 @@ import type { Locale } from '../i18n/config';
 import { roadmapTitle } from '../features/roadmap/roadmap.copy';
 import cards from '../../../static/og/manifest.json';
 import { upcomingPage } from '#lib/content/nav.ts';
+import { mapLayerFor } from '#lib/site/mapFrame.ts';
 import {
 	rankingPath,
 	rankingPathForKind,
@@ -120,12 +121,18 @@ const LINE_DETAIL: BilingualSeo = {
 	title: { en: 'Line detail', fr: 'Détail de la ligne' },
 };
 
+// The map's Record view shows the record of stops and corridors, not live vehicles (WCAG 2.4.2).
+export const MAP_RECORD: BilingualSeo = {
+	title: { en: 'Map of the record', fr: 'Carte du bilan' },
+};
+
 const STOP_DETAIL: BilingualSeo = {
 	title: { en: 'Stop detail', fr: "Détail de l'arrêt" },
 };
 
-function entryFor(path: string): BilingualSeo {
+function entryFor(path: string, params: URLSearchParams): BilingualSeo {
 	if (path === '/') return HOME;
+	if (path === '/map' && mapLayerFor(params) !== 'live') return MAP_RECORD;
 	if (SURFACES[path]) return SURFACES[path];
 	if (path.startsWith('/lines/')) return LINE_DETAIL;
 	if (path.startsWith('/stop/')) return STOP_DETAIL;
@@ -160,7 +167,7 @@ export function resolveRouteSeo(
 ): RouteSeo {
 	const request = typeof url === 'string' ? new URL(url, 'https://transit.local') : url;
 	const path = delocalizePath(request.pathname);
-	const entry = entryFor(path);
+	const entry = entryFor(path, request.searchParams);
 	const requested = request.searchParams.getAll('provider');
 	// The caller supplies identity only from successful provider discovery.
 	const providerId =
@@ -261,5 +268,5 @@ export function breadcrumbItemsForHead(
 }
 
 export function resolveCardTitle(path: string, locale: Locale): string {
-	return entryFor(path).title[locale];
+	return entryFor(path, new URLSearchParams()).title[locale];
 }

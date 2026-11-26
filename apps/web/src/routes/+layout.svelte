@@ -51,6 +51,7 @@
 		isEphemeralPath,
 		breadcrumbItemsForHead,
 		resolveDatasetSeo,
+		MAP_RECORD,
 	} from '#lib/seo/routeSeo.ts';
 	import {
 		breadcrumbJsonLd,
@@ -123,14 +124,14 @@
 	const isFullBleed = $derived(seoPath === '/map');
 	const dataIndependentRoute = $derived(isDataIndependentRoute(seoPath));
 
-	const mainLabel = $derived(mainLandmarkLabel(seoPath));
-
 	const v1 = $derived(data.v1);
 	setV1Context(() => v1 ?? undefined);
 	const legalRoute = $derived(FOOTER_INFO_NAV.some((item) => item.href === seoPath));
 	const recordMap = $derived(
 		isFullBleed && mapLayerFor(currentMirrorUrl().searchParams) !== 'live',
 	);
+	// The Record map is named as the record, never as the live map (WCAG 2.4.2).
+	const mainLabel = $derived(recordMap ? MAP_RECORD.title : mainLandmarkLabel(seoPath));
 	let mapRecordSourceDate = $state<string | null>(null);
 	let mapCreditHeight = $state(0);
 	let mapPanelOpen = $state(false);

@@ -296,15 +296,24 @@ for (const provider of read('providers').providers) {
 				await page.clock.setFixedTime(epoch + 900_000);
 				await page.goto((locale === 'fr' ? '/fr' : '') + '/map?provider=' + provider.id);
 				const frame = page.locator('[data-slot="map-frame"]');
-				const title = frame.getByRole('heading', { level: 1 });
+				const title = frame.locator('[data-slot="map-title"]');
 				const stamp = frame.locator('[data-slot="freshness-stamp"]');
 				await expect(title).toBeVisible();
 				await expect(page.locator('h1')).toHaveCount(1);
+				// The page heading is read before the map; the panel shows the same words.
+				const heading = page.getByRole('heading', { level: 1 });
+				await expect(heading).toHaveText(await title.innerText());
+				expect(
+					await heading.evaluate(
+						(h1, map) => !!(h1.compareDocumentPosition(map!) & Node.DOCUMENT_POSITION_FOLLOWING),
+						await frame.elementHandle(),
+					),
+				).toBe(true);
 				await expect(page.getByText(/NETWORK · LIVE|RÉSEAU · EN DIRECT/)).toHaveCount(0);
 				await expect(stamp).toBeVisible();
 				const phone = page.viewportSize()!.width < 1024;
 				const panel = frame.locator(phone ? '.map-mobile-head' : '[data-slot="map-details"]');
-				await expect(panel.getByRole('heading', { level: 1 })).toHaveCount(1);
+				await expect(panel.locator('[data-slot="map-title"]')).toHaveCount(1);
 				await expect(panel.locator('[data-slot="freshness-stamp"]')).toHaveCount(1);
 				const head = (await title.boundingBox())!;
 				const time = (await stamp.boundingBox())!;
