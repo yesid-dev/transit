@@ -213,6 +213,8 @@ async function main() {
       const forwarded = new URL(url.pathname + url.search, web);
       const headers = new Headers(request.headers);
       headers.delete("host");
+      // fetch decodes a compressed body, so ask for none: forwarded length headers stay true.
+      headers.set("accept-encoding", "identity");
       return fetch(forwarded, {
         method: request.method,
         headers,
