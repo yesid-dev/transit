@@ -355,17 +355,20 @@
 		return untrack(() => {
 			let timer: ReturnType<typeof setTimeout> | undefined;
 			const capture = () => {
-				timer = undefined;
+				if (timer !== undefined) {
+					clearTimeout(timer);
+					timer = undefined;
+				}
 				reportCamera = captureMapReportCamera(instance);
 			};
 			const schedule = () => {
 				if (timer === undefined) timer = setTimeout(capture, 150);
 			};
-			instance.on('moveend', schedule);
+			instance.on('moveend', capture);
 			instance.on('resize', schedule);
 			capture();
 			return () => {
-				instance.off('moveend', schedule);
+				instance.off('moveend', capture);
 				instance.off('resize', schedule);
 				if (timer !== undefined) clearTimeout(timer);
 			};

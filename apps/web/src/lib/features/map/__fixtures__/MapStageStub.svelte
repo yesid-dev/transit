@@ -46,6 +46,7 @@
 	let flyToCount = $state(0);
 	let setMaxBoundsCount = $state(0);
 	let pickLayer = STOPS_LAYER;
+	let center = { lng: -73.57, lat: 45.51 };
 	let container: HTMLDivElement;
 	const sources = new SvelteMap<string, { setData: (data: unknown) => void }>();
 	const featureStates = new SvelteSet<string>();
@@ -107,7 +108,7 @@
 		},
 		getCanvas: () => fakeCanvas,
 		getContainer: () => container,
-		getCenter: () => ({ lng: -73.57, lat: 45.51 }),
+		getCenter: () => center,
 		getZoom: () => 11,
 		getMinZoom: () => 7,
 		getMaxZoom: () => 16,
@@ -245,6 +246,11 @@
 		for (const handler of canvasHandlers.get('mouseleave') ?? []) handler({});
 	}
 
+	function moveEnd(): void {
+		center = { lng: -73.61, lat: 45.49 };
+		for (const handler of handlers.get('moveend') ?? []) handler({});
+	}
+
 	function reportCleanupFailure(error: unknown): void {
 		try {
 			if (!oncleanupfailure) {
@@ -374,5 +380,8 @@
 	</button>
 	<button type="button" data-testid="map-stage-stub-mouseleave" onclick={leave} hidden>
 		mouseleave
+	</button>
+	<button type="button" data-testid="map-stage-stub-moveend" onclick={moveEnd} hidden>
+		moveend
 	</button>
 </div>

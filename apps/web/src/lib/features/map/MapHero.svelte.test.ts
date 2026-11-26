@@ -8,6 +8,7 @@ import MapHeroNavigationHarness from '../../../routes/__fixtures__/MapHeroNaviga
 import { mapHeroReceiptSignals } from './__fixtures__/MapHeroReceiptSignals.svelte';
 import type { PublicProvider } from '#lib/v1/providers.ts';
 import type { Chip } from '#lib/filters/index.ts';
+import { parseMapViewHint } from './mapViewHint';
 
 const providerContext = vi.hoisted(() => ({ value: undefined as PublicProvider | undefined }));
 
@@ -2639,6 +2640,36 @@ describe('MapHero retained state during Stage-only recovery', () => {
 			expect(document.activeElement).toBe(outside);
 		} finally {
 			outside.remove();
+		}
+	});
+
+	it('updates the live-view report link immediately when moveend settles', async () => {
+		harness.isDesktop = true;
+		const originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+		const writeText = vi.fn<(text: string) => Promise<void>>(async () => {});
+		Object.defineProperty(navigator, 'clipboard', {
+			configurable: true,
+			value: { writeText },
+		});
+		try {
+			render(MapHero);
+			await tick();
+			await fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+			const initial = parseMapViewHint(
+				new URL(String(writeText.mock.lastCall?.[0]), 'http://localhost').searchParams,
+			);
+			expect(initial?.center).toEqual([-73.57, 45.51]);
+
+			await fireEvent.click(screen.getByTestId('map-stage-stub-moveend'));
+			await tick();
+			await fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+			const moved = parseMapViewHint(
+				new URL(String(writeText.mock.lastCall?.[0]), 'http://localhost').searchParams,
+			);
+			expect(moved?.center).toEqual([-73.61, 45.49]);
+		} finally {
+			if (originalClipboard) Object.defineProperty(navigator, 'clipboard', originalClipboard);
+			else Reflect.deleteProperty(navigator, 'clipboard');
 		}
 	});
 });
