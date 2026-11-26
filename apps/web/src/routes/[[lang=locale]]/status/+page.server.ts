@@ -1,21 +1,45 @@
 import type { PageServerLoad } from './$types';
 import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
-import { getMethodCatalog, getRecordDataHealth, getScorecardAnswer } from '#lib/server/engine.ts';
-import { healthDiagnosticQuestions } from '#lib/server/screenQuestions.ts';
-import { calendarClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
+import {
+	getMeasure,
+	getMethodCatalog,
+	getRecordDataHealth,
+	getRecordMeasure,
+	getRecordSeries,
+	getScorecardAnswer,
+} from '#lib/server/engine.ts';
+import { agencyHealthQuestions } from '#lib/server/screenQuestions.ts';
+import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
+import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 
 export const load = (async (event) => {
-	const { providerId: city, provider } = await event.parent();
-	// The calendar window includes recent dates even when their clean files are late.
-	const { mode, period } = parseAnswerFrameState(event.url.searchParams, calendarClock(provider));
+	const { providerId: city, provider, lang } = await event.parent();
+	// Data health reads the same last complete days as every other screen.
+	const { mode, period } = parseAnswerFrameState(event.url.searchParams, frameClock(provider));
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	if (mode === 'record') {
+		const alertsTracked = providerHasAlerts(provider);
+		const scope = period && { ...period, city, visitorIp };
+		const questions = agencyHealthQuestions();
 		return {
 			view: 'record' as const,
-			record: period && {
+			alerts: { tracked: alertsTracked, officialUrl: provider?.alert_links[lang] },
+			record: scope && {
 				city,
-				period,
-				health: getRecordDataHealth({ ...period, city, visitorIp }),
+				period: { from: scope.from, to: scope.to },
+				coverage: getMeasure('punctuality', scope),
+				accessibility: getRecordMeasure(questions.accessibility, scope),
+				alertEffects: alertsTracked ? getRecordSeries(questions.alertEffects, scope) : null,
+				scorecard: Object.fromEntries(
+					questions.scorecard.map(({ measure, query }) => [
+						measure,
+						getScorecardAnswer(query, scope),
+					]),
+				) as Record<
+					(typeof questions.scorecard)[number]['measure'],
+					ReturnType<typeof getScorecardAnswer>
+				>,
+				health: getRecordDataHealth(scope),
 				methods: getMethodCatalog(visitorIp),
 			},
 		};
@@ -25,13 +49,5 @@ export const load = (async (event) => {
 		capture: provider
 			? fetchCaptureSnapshot(city, event.request.signal, event.fetch).catch(() => null)
 			: Promise.resolve(null),
-		diagnostics: period && {
-			period,
-			city,
-			sections: healthDiagnosticQuestions().map(({ measure, query }) => ({
-				measure,
-				answer: getScorecardAnswer(query, { ...period, city, visitorIp }),
-			})),
-		},
 	};
 }) satisfies PageServerLoad;

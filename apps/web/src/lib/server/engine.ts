@@ -448,6 +448,16 @@ export function getRecordAnswer({ path, parameters }: RecordQuery, period: Engin
 	return periodQuery(path, period, parameters, schema);
 }
 
+/** One /measure answer without a group, with its counts by name. */
+export function getRecordMeasure(parameters: Record<string, string>, period: EnginePeriod) {
+	return periodQuery('/measure', period, parameters, recordMeasure);
+}
+
+/** One grouped /measure answer: a cell for each key. */
+export function getRecordSeries(parameters: Record<string, string>, period: EnginePeriod) {
+	return periodQuery('/measure', period, parameters, recordSeries);
+}
+
 type DelayDistributionCuts = Partial<
 	Record<'line' | 'direction' | 'stop' | 'hour' | 'day_type' | 'departure', string>
 >;

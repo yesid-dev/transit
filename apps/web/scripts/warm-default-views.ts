@@ -7,7 +7,7 @@ import {
 	sharedDefaultQuestion,
 	type WarmCity,
 } from '../src/lib/server/defaultQuestions.ts';
-import { calendarClock, frameClock } from '../src/lib/site/frameState.ts';
+import { frameClock } from '../src/lib/site/frameState.ts';
 import { citiesQuestion, questionUrl } from '../src/lib/server/engineQuestion.ts';
 
 // Keep one request in flight and leave room below the public limit of 30 new
@@ -115,8 +115,7 @@ async function main(args: string[]) {
 	const urls: string[] = [];
 	for (const city of cities) {
 		const period = defaultPeriod(frameClock(city, now));
-		const healthPeriod = defaultPeriod(calendarClock(city, now));
-		if (!period || !healthPeriod) throw new Error('Default Record period unavailable');
+		if (!period) throw new Error('Default Record period unavailable');
 		periods.push(period);
 		if (root && version && !dryRun) {
 			try {
@@ -126,7 +125,7 @@ async function main(args: string[]) {
 				continue;
 			}
 		}
-		const cityUrls = defaultCityQuestions(city, period, healthPeriod);
+		const cityUrls = defaultCityQuestions(city, period);
 		counts[city.id] = cityUrls.length;
 		urls.push(...cityUrls);
 	}

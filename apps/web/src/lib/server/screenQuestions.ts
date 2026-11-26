@@ -1,6 +1,6 @@
 import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
 import { previousPeriod } from '#lib/features/home/periodComparison.ts';
-import { networkMeasures, type NetworkMeasure } from '#lib/features/network/networkMeasures.ts';
+import type { NetworkMeasure } from '#lib/features/network/networkMeasures.ts';
 import type { RankingSelection } from '#lib/features/rankings/rankingSelection.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 import type { EnginePeriod, RecordQuery } from './engineQuestion.ts';
@@ -90,11 +90,26 @@ export function healthDiagnosticQuery(measure: NetworkMeasure): RecordQuery {
 	return { path: '/measure', parameters: { measure } };
 }
 
-export function healthDiagnosticQuestions() {
-	return (Object.keys(networkMeasures) as NetworkMeasure[]).map((measure) => ({
-		measure,
-		query: healthDiagnosticQuery(measure),
-	}));
+/** The agency's own figures that Data health reads, in the order of its cards. */
+export const agencyScorecardMeasures = [
+	'vehicle_field_completeness',
+	'live_trip_coverage',
+	'prediction_error',
+	'poll_success',
+] as const satisfies readonly NetworkMeasure[];
+
+export type AgencyScorecardMeasure = (typeof agencyScorecardMeasures)[number];
+
+export function agencyHealthQuestions() {
+	return {
+		scorecard: agencyScorecardMeasures.map((measure) => ({
+			measure,
+			query: healthDiagnosticQuery(measure),
+		})),
+		// One answer carries the trip and the stop counts.
+		accessibility: { measure: 'accessible_trips' },
+		alertEffects: alertQuery('effect')!.parameters,
+	};
 }
 
 export function rankingsQuery({ kind, measure, serviceClass }: RankingSelection): RecordQuery {

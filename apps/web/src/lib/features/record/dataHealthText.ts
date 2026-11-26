@@ -4,13 +4,13 @@ import { choose } from './recordText.ts';
 
 const tables: Record<string, [string, string]> = {
 	stop_events: ['Stop events', 'Passages aux arrêts'],
-	trip_days: ['Trip days', 'Trajets par jour'],
-	scheduled_stop_times: ['Scheduled stop times', 'Heures de passage prévues'],
+	trip_days: ['Trips run each day', 'Trajets effectués par jour'],
+	scheduled_stop_times: ['Timetable', 'Horaire'],
 	vehicle_positions: ['Vehicle positions', 'Positions des véhicules'],
 	feed_polls: ['Feed checks', 'Vérifications des flux'],
 	alerts: ['Service alerts', 'Avis de service'],
-	prediction_samples: ['Prediction samples', 'Échantillons de prévisions'],
-	segment_runs: ['Stop-to-stop runs', 'Parcours entre arrêts'],
+	prediction_samples: ['Arrival predictions', 'Prévisions d’arrivée'],
+	segment_runs: ['Travel between stops', 'Parcours entre les arrêts'],
 };
 
 const states: Record<TableHealth['status'], [string, string]> = {

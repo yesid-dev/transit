@@ -1,6 +1,13 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { expect, it } from 'vitest';
-import type { DataHealthAnswer, EngineResult, MethodEntry } from '#lib/server/engine.ts';
+import type {
+	DataHealthAnswer,
+	EngineResult,
+	MeasureAnswer,
+	MethodEntry,
+	RecordMeasure,
+	ScorecardAnswer,
+} from '#lib/server/engine.ts';
 import health from '../../../../e2e/clean-table-health.json';
 import catalog from '../../../../e2e/method-catalog.json';
 import MethodCatalog from './MethodCatalog.svelte';
@@ -8,6 +15,21 @@ import RecordDataHealth from './RecordDataHealth.svelte';
 import { recordState } from './recordStates';
 
 const period = { from: health.from, to: health.to };
+// The agency's figures stay pending so these tests read the days in the record alone.
+const agencyWaiting = () => {
+	const waiting = <T>() => new Promise<EngineResult<T>>(() => {});
+	return {
+		coverage: waiting<MeasureAnswer>(),
+		accessibility: waiting<RecordMeasure>(),
+		alertEffects: null,
+		scorecard: {
+			vehicle_field_completeness: waiting<ScorecardAnswer>(),
+			live_trip_coverage: waiting<ScorecardAnswer>(),
+			prediction_error: waiting<ScorecardAnswer>(),
+			poll_success: waiting<ScorecardAnswer>(),
+		},
+	};
+};
 const fixtureDelay = catalog.find(({ id }) => id === 'fixture_delay')!;
 
 it.each([
@@ -323,6 +345,7 @@ it('renders absent readings and both not-measured reasons while methods can fail
 		locale: 'en',
 		url,
 		record: {
+			...agencyWaiting(),
 			city: health.city,
 			period,
 			health: new Promise<EngineResult<DataHealthAnswer>>((resolve) => {
@@ -331,8 +354,8 @@ it('renders absent readings and both not-measured reasons while methods can fail
 			methods: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'busy' }),
 		},
 	});
-	expect(await screen.findByText('Waiting for a reading.')).toBeVisible();
-	expect(screen.getByText('Calculating…')).toBeVisible();
+	expect((await screen.findAllByText('Waiting for a reading.'))[0]).toBeVisible();
+	expect(screen.getAllByText('Calculating…')[0]).toBeVisible();
 	finish({ kind: 'answer', answer });
 	const table = await screen.findByRole('table');
 	for (const label of [
@@ -349,14 +372,11 @@ it('renders absent readings and both not-measured reasons while methods can fail
 	}
 	expect(within(table).queryByRole('cell', { name: '0' })).toBeNull();
 	expect(screen.getByText('Present', { exact: true })).toBeVisible();
-	expect(
-		screen.getByText(
-			'of the 7 table days in these dates are present. 2 are missing and 4 could not be measured.',
-		),
-	).toBeVisible();
+	expect(screen.getByText('3 of 4 days have a gap.')).toBeVisible();
+	expect(document.body).not.toHaveTextContent(/table days|clean tables?/iu);
 	expect(screen.getByText('Not tracked', { exact: true })).toBeVisible();
 	expect(screen.queryByText('Incomplete', { exact: true })).not.toBeInTheDocument();
-	expect(screen.getByRole('list', { name: 'Table-day states' })).not.toHaveTextContent('Unknown');
+	expect(screen.getByRole('list', { name: 'Day states' })).not.toHaveTextContent('Unknown');
 });
 
 it.each([
@@ -381,6 +401,7 @@ it.each([
 		locale,
 		url: new URL(path, 'https://transit1.yesid.dev'),
 		record: {
+			...agencyWaiting(),
 			city: answer.city,
 			period,
 			health: Promise.resolve<EngineResult<DataHealthAnswer>>({ kind: 'answer', answer }),
@@ -392,3 +413,88 @@ it.each([
 	expect(readings).toHaveLength(1);
 	for (const reading of readings) expect(reading).toBeVisible();
 });
+
+it.each([
+	[
+		'en',
+		'65.1%',
+		'of scheduled stop events have a reading.',
+		'What OC Transpo publishes',
+		'Transit does not collect OC Transpo’s alerts yet.',
+		'Check official service alerts',
+	],
+	[
+		'fr',
+		/^65,1\s%$/u,
+		'des passages prévus aux arrêts ont un relevé.',
+		'Ce que publie OC Transpo',
+		'Transit ne collecte pas encore les avis d’OC Transpo.',
+		'Consulter les avis officiels',
+	],
+] as const)(
+	'leads with the agency in %s',
+	async (locale, value, sentence, publishes, notCollected, official) => {
+		const waiting = agencyWaiting();
+		render(RecordDataHealth, {
+			locale,
+			url: new URL('https://transit1.yesid.dev/status'),
+			operator: 'OC Transpo',
+			subject: 'OC Transpo, Ottawa',
+			alerts: { tracked: false, officialUrl: 'https://example.test/alerts' },
+			record: {
+				...waiting,
+				city: 'octranspo',
+				period,
+				coverage: Promise.resolve<EngineResult<MeasureAnswer>>({
+					kind: 'answer',
+					answer: {
+						measure: 'punctuality',
+						state: 'measured',
+						state_text: { en: '', fr: '' },
+						value: { on_time: 0.8 },
+						coverage_note: null,
+						evidence: {
+							start_date: period.from,
+							end_date: period.to,
+							days_included: [period.from],
+							days_measured: [period.from],
+							days_not_measured: [],
+							method_version: 'punctuality-v3',
+							cleaning_versions: [12],
+							query_ms: 1,
+							share_observed: 0.651,
+							counts: { scheduled: 1000, classified: 651 },
+							excluded: {},
+						},
+					},
+				}),
+				accessibility: Promise.resolve<EngineResult<RecordMeasure>>({ kind: 'unreachable' }),
+				scorecard: {
+					...waiting.scorecard,
+					vehicle_field_completeness: Promise.resolve<EngineResult<ScorecardAnswer>>({
+						kind: 'unreachable',
+					}),
+				},
+				health: Promise.resolve<EngineResult<DataHealthAnswer>>({
+					kind: 'answer',
+					answer: health as DataHealthAnswer,
+				}),
+				methods: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: [] }),
+			},
+		});
+		expect(await screen.findByText(value)).toBeVisible();
+		expect(screen.getByText(sentence)).toBeVisible();
+		expect(screen.getByRole('heading', { name: publishes })).toBeVisible();
+		expect(await screen.findByText(notCollected)).toBeVisible();
+		expect(screen.getByRole('link', { name: official })).toHaveAttribute(
+			'href',
+			'https://example.test/alerts',
+		);
+		// Transit's own files come last, in plain words.
+		const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+		expect(headings.indexOf(publishes)).toBeLessThan(
+			headings.indexOf(locale === 'fr' ? 'Jours dans le bilan' : 'Days in the record'),
+		);
+		expect(document.body).not.toHaveTextContent(/feed diagnostics|diagnostic des flux/iu);
+	},
+);

@@ -22,10 +22,7 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 	const map = path === '/map';
 	const liveOnly = path.startsWith('/trip/');
 	const showRail = !errorPage && !readingPaths.includes(path);
-	const parsed = parseFrameState(
-		url.searchParams,
-		path === '/status' ? { ...clock, recordThrough: null } : clock,
-	);
+	const parsed = parseFrameState(url.searchParams, clock);
 	let mode = parsed.mode;
 	if (recordOnly) mode = 'record';
 	else if (liveOnly) mode = 'live';
@@ -45,9 +42,7 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		detail: line || stop,
 		map,
 		waitingForYesterday:
-			mode === 'record' && path !== '/download' && path !== '/status'
-				? unpublishedYesterday(parsed.period, clock)
-				: null,
+			mode === 'record' && path !== '/download' ? unpublishedYesterday(parsed.period, clock) : null,
 		usesFrameRecord:
 			recordOnly ||
 			line ||

@@ -54,10 +54,6 @@ export function frameClock(provider: FrameProvider, now = new Date()): FrameCloc
 	};
 }
 
-export function calendarClock(provider: FrameProvider, now = new Date()): FrameClock {
-	return { ...frameClock(provider, now), recordThrough: null };
-}
-
 const shiftDay = (day: string, offset: number) =>
 	isoDay(new Date(Date.parse(day) + offset * 86_400_000));
 const minDay = (a: string, b: string) => (a < b ? a : b);

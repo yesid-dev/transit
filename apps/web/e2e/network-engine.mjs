@@ -263,3 +263,54 @@ export function networkEngine(url) {
 		},
 	};
 }
+
+/** Wheelchair declarations: Montréal declares every stop and trip, Ottawa declares no stop. */
+export function accessibilityEngine(url) {
+	const from = url.searchParams.get('from');
+	const to = url.searchParams.get('to');
+	const ottawa = url.searchParams.get('city') === 'octranspo';
+	const counts = ottawa
+		? {
+				trips_accessible: 540,
+				trips_not_accessible: 0,
+				trips_no_information: 1,
+				trips_not_published: 0,
+				stops_accessible: 0,
+				stops_not_accessible: 0,
+				stops_no_information: 120,
+				stops_not_published: 0,
+			}
+		: {
+				trips_accessible: 700,
+				trips_not_accessible: 300,
+				trips_no_information: 0,
+				trips_not_published: 0,
+				stops_accessible: 180,
+				stops_not_accessible: 20,
+				stops_no_information: 0,
+				stops_not_published: 0,
+			};
+	return {
+		body: {
+			measure: 'accessible_trips',
+			value: { accessible_trips: ottawa ? 540 / 541 : 0.7 },
+			state: 'measured',
+			state_text: enFr('Measured', 'Mesuré'),
+			coverage_note: null,
+			evidence: {
+				start_date: from,
+				end_date: to,
+				days_measured: [from],
+				days_included: [from],
+				days_not_measured: [],
+				method_version: 'accessibility-v2',
+				cleaning_versions: [9],
+				query_ms: 3,
+				counts,
+				excluded: {},
+				measure_states: { accessible_trips: 'measured' },
+			},
+			info: [{ id: 'accessible_trips', minimum_sample: 1 }],
+		},
+	};
+}

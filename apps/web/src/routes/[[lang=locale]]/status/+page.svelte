@@ -20,17 +20,16 @@
 			{url}
 			subject={names.operatorCity}
 			operator={names.short}
+			alerts={data.alerts}
 			record={data.record}
 		/>
 	{:else}
 		<DataHealthLive
 			{locale}
-			{url}
 			subject={names.operatorCity}
 			operator={names.short}
 			city={data.provider ? data.providerId : null}
 			capture={data.capture}
-			diagnostics={data.diagnostics}
 		/>
 	{/if}
 </Surface>

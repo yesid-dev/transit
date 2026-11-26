@@ -6,7 +6,12 @@ import { finderEngine, linesFixtureRoutes, stopsFixture } from './finder-engine.
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingReferenceFixture, rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
-import { networkEngine, networkFixtures, networkServiceFixture } from './network-engine.mjs';
+import {
+	accessibilityEngine,
+	networkEngine,
+	networkFixtures,
+	networkServiceFixture,
+} from './network-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
 import {
 	departureCaptureStops,
@@ -921,26 +926,28 @@ const server = createServer((request, response) => {
 					? departureDailyEngine(url, undefined, true)
 					: ((reportFixture && question[2] === 'measure' ? rankingReferenceFixture(url) : null) ??
 						networkServiceFixture(url) ??
-						(isNetwork
-							? networkEngine(url)
-							: alertFixture
-								? alertsEngine(url)
-								: question[2] === 'measure' &&
-									  url.searchParams.get('measure')?.startsWith('vehicle')
-									? vehicleEngine(url)
-									: url.searchParams.has('departure')
-										? departureDailyEngine(url)
-										: url.searchParams.has('stop')
-											? stopEngine(url)
-											: url.searchParams.has('line')
-												? lineEngine(url)
-												: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
-													? rankingsEngine(url, question[1])
-													: finderFixture
-														? finderEngine(url)
-														: dailyFixture
-															? departureDailyEngine(url, dailyMessageHold)
-															: overviewEngine(url, scope)));
+						(url.searchParams.get('measure') === 'accessible_trips'
+							? accessibilityEngine(url)
+							: isNetwork
+								? networkEngine(url)
+								: alertFixture
+									? alertsEngine(url)
+									: question[2] === 'measure' &&
+										  url.searchParams.get('measure')?.startsWith('vehicle')
+										? vehicleEngine(url)
+										: url.searchParams.has('departure')
+											? departureDailyEngine(url)
+											: url.searchParams.has('stop')
+												? stopEngine(url)
+												: url.searchParams.has('line')
+													? lineEngine(url)
+													: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
+														? rankingsEngine(url, question[1])
+														: finderFixture
+															? finderEngine(url)
+															: dailyFixture
+																? departureDailyEngine(url, dailyMessageHold)
+																: overviewEngine(url, scope)));
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);
