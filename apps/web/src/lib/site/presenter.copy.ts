@@ -22,7 +22,8 @@ export const presenterCopy = defineCopy({
 			text
 				.replace(/\b60 seconds early\b/g, '1 minute early')
 				.replace(/\b300 seconds late\b/g, '5 minutes late')
-				.replace(/\bseconds?\b/gi, 's'),
+				.replace(/(\d)-seconds?\b/gi, '$1-s')
+				.replace(/(\d)\s+seconds?\b/gi, '$1 s'),
 		tripsInHours: (trips: string, hours: string, oneTrip: boolean, oneHour: boolean) =>
 			`${trips} ${oneTrip ? 'trip' : 'trips'} in ${hours} ${oneHour ? 'hour' : 'hours'}`,
 	},
@@ -45,9 +46,12 @@ export const presenterCopy = defineCopy({
 		unknownVersion: 'inconnu',
 		registryUnitText: (text: string) =>
 			text
+				.replace(/\bplus de 60 secondes d[’']avance\b/gi, (match) =>
+					match[0] === 'P' ? 'Plus d’une minute d’avance' : 'plus d’une minute d’avance',
+				)
 				.replace(/\b60 secondes d[’']avance\b/g, '1 minute d’avance')
 				.replace(/\b300 secondes de retard\b/g, '5 minutes de retard')
-				.replace(/\bsecondes?\b/gi, 's'),
+				.replace(/(\d)\s+secondes?\b/gi, '$1\u00a0s'),
 		tripsInHours: (trips: string, hours: string, oneTrip: boolean, oneHour: boolean) =>
 			`${trips} ${oneTrip ? 'trajet' : 'trajets'} en ${hours} ${oneHour ? 'heure' : 'heures'}`,
 	},

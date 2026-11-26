@@ -120,9 +120,20 @@ for (const width of [390, 1440]) {
 			await expect(measure).toHaveAttribute('data-open', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
 			await expect(measure).not.toContainText(/\bv2\b/u);
+			await expect(main).not.toContainText(
+				fr
+					? 'Le registre des méthodes ne le précise pas.'
+					: 'The method registry does not specify this.',
+			);
 			await expect(measure.locator('time')).toHaveText(
 				fr ? '10 novembre 2026' : '10 November 2026',
 			);
+			const notesTrigger = measure.getByRole('button', {
+				name: fr ? 'Pour les utilisateurs de données' : 'For data users',
+			});
+			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'false');
+			await notesTrigger.click();
+			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'true');
 			await expect(main.locator('#ranking-range').getByRole('button').first()).toHaveAccessibleName(
 				fr
 					? 'L’intervalle dans un classement L’intervalle montre l’incertitude autour d’une valeur du classement.'

@@ -278,6 +278,15 @@ it('keeps technical raw units legible without using them for the on-time thresho
 	expect(registryUnitText('60 secondes d’avance à 300 secondes de retard', 'fr')).toBe(
 		'1 minute d’avance à 5 minutes de retard',
 	);
+	expect(registryUnitText('plus de 60 secondes d’avance', 'fr')).toBe('plus d’une minute d’avance');
+	expect(registryUnitText('Reads a histogram in 15-second steps.', 'en')).toBe(
+		'Reads a histogram in 15-s steps.',
+	);
+	expect(registryUnitText('tranches de 15 secondes', 'fr')).toBe('tranches de 15\u00a0s');
+	expect(registryUnitText('Delay is signed seconds.', 'en')).toBe('Delay is signed seconds.');
+	expect(registryUnitText('Secondes d’avis et classes d’une seconde.', 'fr')).toBe(
+		'Secondes d’avis et classes d’une seconde.',
+	);
 });
 
 it.each(['en', 'fr'] as const)('shares the date across a same-day alert period in %s', (locale) => {

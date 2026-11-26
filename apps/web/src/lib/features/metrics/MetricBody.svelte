@@ -37,7 +37,7 @@
 		label={t.sections.sql}
 		code={entry.sql}
 		codeHtml={sqlHtml}
-		codeAriaLabel={`${t.sqlAria}: ${entry.sciName}`}
+		codeAriaLabel={`${t.sqlAria}${locale === 'fr' ? '\u00a0: ' : ': '}${entry.sciName}`}
 	/>
 
 	<div class="metric__paired-information">

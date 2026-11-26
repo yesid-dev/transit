@@ -23,7 +23,7 @@ export const historyDepthCopy = defineCopy({
 		aggregation: 'Combining days',
 		published: 'Date list published',
 		method: 'Date-list method',
-		generation: 'Publication generation',
+		generation: 'Published edition',
 		scroll: (family: string) => `${family}: published metric history (scroll horizontally)`,
 		details: 'Data health: full record-family inventory',
 	},
@@ -31,9 +31,9 @@ export const historyDepthCopy = defineCopy({
 		title: 'Historique publié',
 		question: 'Jusqu’où remontent ces mesures ?',
 		intro:
-			'Voici les dates publiées pour chaque groupe de mesures et dimension : le réseau entier, les lignes ou les arrêts. Elles ne garantissent pas que chaque mesure, ligne ou arrêt possède des données sur toute cette période.',
+			'Voici les dates publiées pour chaque groupe de mesures et dimension\u00a0: le réseau entier, les lignes ou les arrêts. Elles ne garantissent pas que chaque mesure, ligne ou arrêt possède des données sur toute cette période.',
 		limits:
-			'Les groupes additifs combinent leurs décomptes sous-jacents sur plusieurs jours ; il ne s’agit pas de faire la moyenne des pourcentages quotidiens. Les valeurs quotidiennes restent distinctes. En particulier, les percentiles quotidiens ne peuvent être moyennés ni regroupés pour obtenir le percentile d’une autre période.',
+			'Les groupes additifs combinent leurs décomptes sous-jacents sur plusieurs jours; il ne s’agit pas de faire la moyenne des pourcentages quotidiens. Les valeurs quotidiennes restent distinctes. En particulier, les centiles quotidiens ne peuvent être moyennés ni regroupés pour obtenir le centile d’une autre période.',
 		unknown: 'Non publié',
 		noList:
 			'La liste des dates historiques n’est pas publiée. La profondeur disponible est inconnue, et non nulle.',
@@ -42,7 +42,7 @@ export const historyDepthCopy = defineCopy({
 		noGaps: 'Aucun jour manquant déclaré',
 		unknownGaps: 'Jours manquants non publiés',
 		retained:
-			'La liste des dates n’a pas pu être actualisée. Voici la dernière liste chargée ici ; ses détails de publication figurent ci-dessous.',
+			'La liste des dates n’a pas pu être actualisée. Voici la dernière liste chargée ici; ses détails de publication figurent ci-dessous.',
 		first: 'Première date',
 		last: 'Dernière date',
 		metric: 'Groupe de mesures',
@@ -50,8 +50,9 @@ export const historyDepthCopy = defineCopy({
 		aggregation: 'Combinaison des jours',
 		published: 'Liste des dates publiée',
 		method: 'Méthode de la liste',
-		generation: 'Génération de publication',
-		scroll: (family: string) => `${family} : historique des mesures publié (défilement horizontal)`,
-		details: 'État des données : inventaire complet des familles',
+		generation: 'Édition publiée',
+		scroll: (family: string) =>
+			`${family}\u00a0: historique des mesures publié (défilement horizontal)`,
+		details: 'Santé des données\u00a0: inventaire complet des familles',
 	},
 });
