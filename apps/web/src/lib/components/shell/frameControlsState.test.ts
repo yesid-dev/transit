@@ -6,18 +6,17 @@ const clock = (recordThrough: string | null = null) => ({ today, recordThrough }
 const state = (href: string) => frameControlsState(new URL(href, 'https://transit.test'), clock());
 
 describe('frame control state', () => {
-	it.each([
-		'/',
-		'/fr/network',
-		'/lines/24',
-		'/stop/S1',
-		'/vehicles',
-		'/vehicle/1',
-		'/alerts',
-		'/map',
-	])('shows the View hint in both modes on %s', (path) => {
-		for (const mode of ['live', 'record'])
-			expect(state(`${path}?frameMode=${mode}`)).toMatchObject({ mode, showViewHint: true });
+	it.each(['/', '/fr/network', '/lines/24', '/stop/S1', '/vehicles', '/vehicle/1', '/alerts'])(
+		'shows the View hint in both modes on %s',
+		(path) => {
+			for (const mode of ['live', 'record'])
+				expect(state(`${path}?frameMode=${mode}`)).toMatchObject({ mode, showViewHint: true });
+		},
+	);
+
+	it('leaves the map to explain its modes in its Period card and layer line', () => {
+		for (const href of ['/map?frameMode=live', '/fr/map?mapLayer=stops&frameMode=record'])
+			expect(state(href)).toMatchObject({ showRail: true, showViewHint: false });
 	});
 
 	it.each([
