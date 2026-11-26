@@ -2,7 +2,7 @@ import type { Map as MapLibreMap, PointLike } from 'maplibre-gl';
 import { VEHICLE_HIGHLIGHT_STYLE, type VehicleFC, type VehicleFeature } from './vehicleLayer';
 import type { NearTarget } from './nearTargetLayer';
 import {
-	BUS_ICON,
+	VEHICLE_ICON,
 	HEADING_ICON,
 	SILENT_ICON,
 	VEHICLE_MARKER_GEOMETRY,
@@ -11,11 +11,11 @@ import {
 } from './vehicleSprites';
 
 export const VEHICLE_OVERLAY_RECEIPT = Symbol.for('transit.map.vehicleOverlayReceipt');
-export const STATUS_BADGE_MIN_ZOOM = 13;
+export const CROWDING_BADGE_MIN_ZOOM = 13;
 
 /** The state badge a vehicle shows at this zoom, if any. */
 export function visibleBadge(mark: string | undefined, zoom: number): string {
-	return mark && zoom >= STATUS_BADGE_MIN_ZOOM ? mark : '';
+	return mark && zoom >= CROWDING_BADGE_MIN_ZOOM ? mark : '';
 }
 
 export interface VehicleOverlayReceipt {
@@ -331,7 +331,7 @@ export function createVehicleOverlay(
 		}
 		for (const { feature, x, y, bodySizeFactor } of symbols) {
 			const bodySize = BOX * bodySizeFactor;
-			if (!drawSprite(feature.properties.body || BUS_ICON, x, y, bodySize, opacityFor(feature)))
+			if (!drawSprite(feature.properties.body || VEHICLE_ICON, x, y, bodySize, opacityFor(feature)))
 				continue;
 			const halfBox = collisionHalfBox(y, height, zoom);
 			if (halfBox > 0)

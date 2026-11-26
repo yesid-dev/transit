@@ -9,6 +9,8 @@
 		locale,
 		href,
 		files,
+		groupLabel,
+		createDownload,
 		citation,
 		print,
 	}: {
@@ -20,17 +22,33 @@
 			download?: string;
 			columns?: readonly string[];
 		}[];
+		groupLabel?: string;
+		createDownload?: () => { href: string; filename: string } | null;
 		citation: Snippet;
 		print?: () => void;
 	} = $props();
 	const fr = $derived(locale === 'fr');
+	function download(): void {
+		const file = createDownload?.();
+		if (!file) return;
+		const link = document.createElement('a');
+		link.href = file.href;
+		link.download = file.filename;
+		link.hidden = true;
+		document.body.append(link);
+		try {
+			link.click();
+		} finally {
+			link.remove();
+		}
+	}
 </script>
 
 {#key href}
 	<div
 		class="flex min-w-0 flex-wrap items-start gap-2"
 		role="group"
-		aria-label={fr ? 'Actions du bilan' : 'Record actions'}
+		aria-label={groupLabel ?? (fr ? 'Actions du bilan' : 'Record actions')}
 	>
 		<CopyAction
 			size="cta-sm"
@@ -40,7 +58,11 @@
 			fallback={fr ? 'Copiez le lien ci-dessous.' : 'Copy the link below.'}
 			fallbackLabel={fr ? 'Lien vers cette vue' : 'Link to this view'}
 		/>
-		{#if files.length}
+		{#if createDownload}
+			<Button onclick={download} variant="outline" size="cta-sm" class="min-h-11"
+				>{fr ? 'Télécharger' : 'Download'}</Button
+			>
+		{:else if files.length}
 			<Sheet.Root>
 				<Sheet.Trigger>
 					{#snippet child({ props })}<Button

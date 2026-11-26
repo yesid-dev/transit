@@ -93,7 +93,7 @@ for (const provider of ['stm', 'octranspo'])
 					expect(await headerOverlaps(page), 'header after fonts load').toEqual([]);
 					await page.emulateMedia({ reducedMotion: 'reduce' });
 					await openMapControls(page);
-					await page.locator('[data-map-controls] summary').click();
+					await page.locator('[data-map-filter-trigger]').click();
 					const panel = page.locator('.map-filters:visible');
 					const sw = panel.getByRole('switch', {
 						name: locale === 'fr' ? 'Positions estimées' : 'Estimated positions',

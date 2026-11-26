@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render } from '@testing-library/svelte';
+import { StatusMark } from '@yesid/ui/brand';
 import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/index.ts';
 import { occupancyVar, statusVar } from '#lib/components/dataviz/index.ts';
 
 import {
-	BUS_FILL_TOKEN,
-	BUS_HALO_TOKEN,
-	BUS_ICON,
+	VEHICLE_FILL_TOKEN,
+	VEHICLE_HALO_TOKEN,
+	VEHICLE_ICON,
 	HEADING_FILL_TOKEN,
 	HEADING_HALO_TOKEN,
 	HEADING_ICON,
@@ -16,7 +18,9 @@ import {
 	STOP_ICON,
 	bakeVehicleSprites,
 	countStateBadgePaintedPixels,
-	stateBadgeIconId,
+	occupancyBadgeIconId,
+	statusBodyIconId,
+	occupancyBodyIconId,
 	VEHICLE_MARKER_GEOMETRY,
 } from './vehicleSprites';
 
@@ -94,8 +98,9 @@ function canvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 		arc: (...args: unknown[]) => record('arc', ...args),
 		bezierCurveTo: (...args: unknown[]) => record('bezierCurveTo', ...args),
 		closePath: () => record('closePath'),
-		fill: () => record('fill'),
-		stroke: () => record('stroke'),
+		fill: (...args: unknown[]) => record('fill', ...args),
+		stroke: (...args: unknown[]) => record('stroke', ...args),
+		translate: (...args: unknown[]) => record('translate', ...args),
 		save: () => record('save'),
 		restore: () => record('restore'),
 		drawImage: (source: HTMLCanvasElement, x: number, y: number) => {
@@ -311,6 +316,12 @@ for (const [index, code] of OCCUPANCY_CODES.entries()) {
 }
 
 beforeEach(() => {
+	vi.stubGlobal(
+		'Path2D',
+		class {
+			constructor(readonly path: string) {}
+		},
+	);
 	renderedImages.length = 0;
 	pixelReads.length = 0;
 	fixedAlphaSchedule = [];
@@ -347,23 +358,23 @@ afterEach(() => {
 });
 
 describe('vehicle sprite palette contract', () => {
-	it('keeps buses orange while stops use the dedicated map-stop fill with the same outline token as buses', () => {
-		expect(BUS_FILL_TOKEN).toBe('var(--primary)');
-		expect(BUS_HALO_TOKEN).toBe('var(--background)');
+	it('gives unscheduled vehicles and stops distinct fills with the same outline', () => {
+		expect(VEHICLE_FILL_TOKEN).toBe('var(--primary)');
+		expect(VEHICLE_HALO_TOKEN).toBe('var(--background)');
 		expect(STOP_FILL_TOKEN).toBe('var(--map-stop-fill)');
-		expect(STOP_HALO_TOKEN).toBe(BUS_HALO_TOKEN);
-		expect(STOP_FILL_TOKEN).not.toBe(BUS_FILL_TOKEN);
+		expect(STOP_HALO_TOKEN).toBe(VEHICLE_HALO_TOKEN);
+		expect(STOP_FILL_TOKEN).not.toBe(VEHICLE_FILL_TOKEN);
 	});
 
-	it('paints the directional chevron with a neutral foreground tick so it reads on any bus colour', () => {
+	it('paints the directional chevron with a neutral foreground tick so it reads on any vehicle colour', () => {
 		expect(HEADING_FILL_TOKEN).toBe('var(--foreground)');
-		expect(HEADING_HALO_TOKEN).toBe(BUS_HALO_TOKEN);
+		expect(HEADING_HALO_TOKEN).toBe(VEHICLE_HALO_TOKEN);
 	});
 
-	it('keeps a single consolidated bus sprite plus a stop pin and a heading chevron with distinct ids', () => {
-		const ids = [BUS_ICON, STOP_ICON, HEADING_ICON];
+	it('keeps a fallback vehicle sprite plus a stop pin and a heading chevron with distinct ids', () => {
+		const ids = [VEHICLE_ICON, STOP_ICON, HEADING_ICON];
 		expect(new Set(ids).size).toBe(ids.length);
-		expect(BUS_ICON).toBe('veh-bus');
+		expect(VEHICLE_ICON).toBe('veh-unknown');
 		expect(STOP_ICON).toBe('veh-stop');
 		expect(HEADING_ICON).toBe('veh-heading');
 	});
@@ -379,22 +390,17 @@ describe('vehicle state badge baker', () => {
 				images.push(image);
 			},
 		} as never);
-		expect(images).toHaveLength(22);
+		expect(images).toHaveLength(
+			STATUS_CODES.length * (1 + OCCUPANCY_CODES.length) + OCCUPANCY_CODES.length + 4,
+		);
 		expect(pixelReads).toHaveLength(1);
 	});
 
-	it('registers exactly one reachable vector badge for every schema state and never a no-data badge', () => {
+	it('registers exactly one reachable vector badge for every crowding state and never a no-data badge', () => {
 		const { images, receipt } = bakeReceipt();
-		const ids = [
-			...STATUS_CODES.map((code) => stateBadgeIconId('status', code)),
-			...OCCUPANCY_CODES.map((code) => stateBadgeIconId('occupancy', code)),
-		];
+		const ids = [...OCCUPANCY_CODES.map((code) => occupancyBadgeIconId(code))];
 
 		expect(ids).toEqual([
-			'veh-m-s-early',
-			'veh-m-s-on_time',
-			'veh-m-s-late',
-			'veh-m-s-unknown',
 			'veh-m-o-empty',
 			'veh-m-o-many_seats',
 			'veh-m-o-few_seats',
@@ -410,16 +416,12 @@ describe('vehicle state badge baker', () => {
 			'sprites',
 			'pixelRatio',
 		]);
-		expect(receipt.sprites[BUS_ICON]).toBe(images.get(BUS_ICON));
+		expect(receipt.sprites[VEHICLE_ICON]).toBe(images.get(VEHICLE_ICON));
 		expect(Object.keys(receipt.stateBadges)).toEqual(ids);
 		expect(Object.keys(receipt.stateBadgeImages)).toEqual(ids);
 		expect(Object.keys(receipt.stateGlyphMasks)).toEqual(ids);
 		expect(Object.keys(receipt.stateGlyphMaskImages)).toEqual(ids);
 		expect(receipt.stateBadges).toEqual({
-			'veh-m-s-early': 3.6,
-			'veh-m-s-on_time': 3.6,
-			'veh-m-s-late': 3.6,
-			'veh-m-s-unknown': 3.6,
 			'veh-m-o-empty': 3.6,
 			'veh-m-o-many_seats': 3.6,
 			'veh-m-o-few_seats': 3.6,
@@ -447,11 +449,8 @@ describe('vehicle state badge baker', () => {
 	});
 
 	it('derives every receipt from a separate vector-only glyph mask rather than the registered plate', () => {
-		const ids = [
-			...STATUS_CODES.map((code) => stateBadgeIconId('status', code)),
-			...OCCUPANCY_CODES.map((code) => stateBadgeIconId('occupancy', code)),
-		];
-		const bodyCount = 9;
+		const ids = [...OCCUPANCY_CODES.map((code) => occupancyBadgeIconId(code))];
+		const bodyCount = STATUS_CODES.length * (1 + OCCUPANCY_CODES.length);
 		fixedAlphaSchedule = [
 			...Array<number>(bodyCount).fill(40),
 			...ids.flatMap(() => [20, 40]),
@@ -460,7 +459,7 @@ describe('vehicle state badge baker', () => {
 		const { images, receipt } = bakeReceipt();
 		const glyphMasks = ids.map((_, index) => renderedImages[bodyCount + 1 + index * 2]);
 
-		expect(renderedImages).toHaveLength(31);
+		expect(renderedImages).toHaveLength(38);
 		for (const [index, id] of ids.entries()) {
 			expect(countStateBadgePaintedPixels(images.get(id)!)).toBe(1.8);
 			expect(receipt.stateBadges[id]).toBe(1.8);
@@ -474,72 +473,40 @@ describe('vehicle state badge baker', () => {
 				commands.some(({ method }) => ['fillText', 'strokeText', 'setFont'].includes(method)),
 			).toBe(false);
 		}
-		expect(
-			glyphMasks[ids.indexOf(stateBadgeIconId('status', 'unknown'))]!.commands.some(
-				({ method, args }) =>
-					method === 'setGlobalCompositeOperation' && args[0] === 'destination-out',
-			),
-		).toBe(true);
 	});
 
 	it('uses only the neutral silent-badge token pair while vector shape distinguishes every state', () => {
 		const { images, receipt } = bakeReceipt();
-		const expectModeBadges = <Code extends string>(
-			mode: 'status' | 'occupancy',
-			codes: readonly Code[],
-		) => {
+		const expectCrowdingBadges = () => {
 			const neutralColors = [
 				resolvedColors.get(SILENT_FILL_TOKEN),
 				resolvedColors.get(SILENT_HALO_TOKEN),
 			];
 			const signatures = new Set<string>();
-			for (const code of codes) {
-				const id = stateBadgeIconId(mode, code);
+			for (const code of OCCUPANCY_CODES) {
+				const id = occupancyBadgeIconId(code);
 				const commands = images.get(id)!.commands;
 				const glyphCommands = (receipt.stateGlyphMaskImages[id] as LoggedImageData).commands;
 				expect(commands.some(({ method }) => method === 'beginPath')).toBe(true);
 				expect(
 					commands.some(({ method }) => ['moveTo', 'lineTo', 'arc', 'arcTo'].includes(method)),
 				).toBe(true);
-				expect(commands.some(({ method }) => ['fillText', 'strokeText'].includes(method))).toBe(
-					false,
-				);
-				expect(commands.some(({ method }) => method === 'setFont')).toBe(false);
 				expect(
-					commands
-						.filter(({ method }) => method === 'setFillStyle' || method === 'setStrokeStyle')
-						.map(({ args }) => args[0]),
-				).toEqual(expect.arrayContaining(neutralColors));
-				expect(
-					commands
-						.filter(({ method }) => method === 'setFillStyle' || method === 'setStrokeStyle')
-						.every(({ args }) => neutralColors.includes(args[0] as string)),
-				).toBe(true);
+					commands.some(({ method }) => ['fillText', 'strokeText', 'setFont'].includes(method)),
+				).toBe(false);
+				const paints = commands
+					.filter(({ method }) => method === 'setFillStyle' || method === 'setStrokeStyle')
+					.map(({ args }) => args[0]);
+				expect(paints).toEqual(expect.arrayContaining(neutralColors));
+				expect(paints.every((paint) => neutralColors.includes(paint as string))).toBe(true);
 				signatures.add(visibleDrawSignature(glyphCommands));
 			}
-			expect(signatures.size).toBe(codes.length);
+			expect(signatures.size).toBe(OCCUPANCY_CODES.length);
 		};
+		expectCrowdingBadges();
 
-		expectModeBadges('status', STATUS_CODES);
-		expectModeBadges('occupancy', OCCUPANCY_CODES);
-
-		const onTime = (
-			receipt.stateGlyphMaskImages[stateBadgeIconId('status', 'on_time')] as LoggedImageData
-		).commands;
-		expect(
-			onTime.some(
-				({ method, args }) =>
-					method === 'arc' &&
-					args[0] === 13 &&
-					args[1] === 13 &&
-					Number(args[2]) > 0 &&
-					Number(args[3]) !== Number(args[4]),
-			),
-		).toBe(true);
-
-		const full = (
-			receipt.stateGlyphMaskImages[stateBadgeIconId('occupancy', 'full')] as LoggedImageData
-		).commands;
+		const full = (receipt.stateGlyphMaskImages[occupancyBadgeIconId('full')] as LoggedImageData)
+			.commands;
 		expect(full.filter(({ method }) => method === 'stroke')).toHaveLength(2);
 		expect(
 			full.some(({ method, args }) => method === 'moveTo' && args[0] === 5.2 && args[1] === 5.2),
@@ -575,6 +542,31 @@ describe('vehicle state badge baker', () => {
 		expect(visibleDrawSignature(triangleWithEmptySubpath)).toBe(visibleDrawSignature(triangle));
 	});
 
+	it('bakes vehicle bodies with the status mark path and even-odd fill rule', () => {
+		bakeReceipt();
+		const statusGlyphs = renderedImages.slice(0, STATUS_CODES.length);
+		for (const [index, status] of STATUS_CODES.entries()) {
+			const mark = render(StatusMark, { status, label: status });
+			const path = mark.container.querySelector('svg path')?.getAttribute('d');
+			expect(path).toBeTruthy();
+			mark.unmount();
+			const images = [
+				statusGlyphs[index],
+				...OCCUPANCY_CODES.map(
+					(_, occupancy) => renderedImages[(occupancy + 1) * STATUS_CODES.length + index],
+				),
+			];
+			for (const image of images) {
+				expect(image?.commands).toContainEqual(
+					expect.objectContaining({ method: 'fill', args: [{ path }, 'evenodd'] }),
+				);
+			}
+		}
+		const { receipt } = bakeReceipt();
+		expect(receipt.sprites[statusBodyIconId('late')]).toBeDefined();
+		expect(receipt.sprites[occupancyBodyIconId('late', 'full')]).toBeDefined();
+	});
+
 	it('exports the immutable frozen marker geometry used by the next map layer and full-size badge baker', () => {
 		expect(VEHICLE_MARKER_GEOMETRY).toEqual({
 			box: 26,
@@ -590,7 +582,7 @@ describe('vehicle state badge baker', () => {
 
 		const { images } = bakeReceipt();
 		const plateMove = images
-			.get('veh-m-s-early')!
+			.get(occupancyBadgeIconId('empty'))!
 			.commands.find(({ method }) => method === 'moveTo')!;
 		expect(plateMove.args).toEqual([8.336, 2.4]);
 	});

@@ -1,5 +1,11 @@
-import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
-import type { RecordFeatures } from './recordMap';
+import type { ExpressionSpecification, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
+import {
+	OTHER_STOPS_MIN_ZOOM,
+	recordCorridorWidths,
+	recordStopRadii,
+	recordUnmeasuredLine,
+	type RecordFeatures,
+} from './recordMap';
 
 const sourceId = 'record-map';
 const pointsId = 'record-map-stops';
@@ -10,7 +16,23 @@ const segmentIds = [
 	'record-map-no-live',
 	'record-map-measured',
 ];
-const allIds = [pointDetailId, pointsId, ...segmentIds];
+const allIds = [
+	pointDetailId,
+	pointsId,
+	`${pointDetailId}-other`,
+	`${pointsId}-other`,
+	...segmentIds,
+];
+
+function rampSize([first, second, third, fourth, fifth]: readonly [
+	number,
+	number,
+	number,
+	number,
+	number,
+]): ExpressionSpecification {
+	return ['match', ['get', 'step'], 0, first, 1, second, 2, third, 3, fourth, fifth];
+}
 
 export function attachRecordMap(
 	map: MapLibreMap,
@@ -21,48 +43,75 @@ export function attachRecordMap(
 	function draw() {
 		if (map.getSource(sourceId)) return;
 		map.addSource(sourceId, { type: 'geojson', data: features });
-		[[1, 1.8], [3, 1.5], [5, 3], null].forEach((dash, state) => {
+		for (const [state, id] of segmentIds.entries()) {
+			const dash = recordUnmeasuredLine.dashes[state];
 			map.addLayer({
-				id: segmentIds[state]!,
+				id,
 				type: 'line',
 				source: sourceId,
 				filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'state'], state]],
 				layout: { 'line-cap': 'round', 'line-join': 'round' },
 				paint: {
 					'line-color': ['get', 'colour'],
-					'line-width': network
-						? ['interpolate', ['linear'], ['zoom'], 10, 1, 14, 2, 16, state === 3 ? 5 : 4]
-						: state === 3
-							? 5
-							: 4,
+					'line-width': dash
+						? recordUnmeasuredLine.width
+						: network
+							? [
+									'interpolate',
+									['linear'],
+									['zoom'],
+									10,
+									rampSize(recordCorridorWidths.network),
+									16,
+									rampSize(recordCorridorWidths.detail),
+								]
+							: rampSize(recordCorridorWidths.detail),
 					'line-offset': network
 						? ['interpolate', ['linear'], ['zoom'], 12, 0, 15, 3, 16, 5]
 						: ['get', 'offset'],
-					...(dash ? { 'line-dasharray': dash } : {}),
+					...(dash ? { 'line-dasharray': [...dash] } : {}),
 				},
 			});
-		});
-		map.addLayer({
-			id: pointsId,
-			type: 'circle',
-			source: sourceId,
-			filter: ['==', ['geometry-type'], 'Point'],
-			layout: { 'circle-sort-key': ['get', 'state'] },
-			paint: {
-				'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 2.5, 15, 5],
-				'circle-color': ['get', 'colour'],
-				'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
-				'circle-stroke-color': ['get', 'colour'],
-				'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 1.5],
-			},
-		});
-		map.addLayer({
-			id: pointDetailId,
-			type: 'circle',
-			source: sourceId,
-			filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'state'], 2]],
-			paint: { 'circle-color': ['get', 'colour'], 'circle-radius': 1.25 },
-		});
+		}
+		for (const main of [true, false]) {
+			const minzoom = main ? 0 : OTHER_STOPS_MIN_ZOOM;
+			map.addLayer({
+				id: main ? pointsId : `${pointsId}-other`,
+				minzoom,
+				type: 'circle',
+				source: sourceId,
+				filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'main'], main]],
+				layout: { 'circle-sort-key': ['get', 'state'] },
+				paint: {
+					'circle-radius': [
+						'interpolate',
+						['linear'],
+						['zoom'],
+						9,
+						['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.network), 3],
+						15,
+						['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.detail), 5],
+					],
+					'circle-color': ['get', 'colour'],
+					'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
+					'circle-stroke-color': ['get', 'colour'],
+					'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 1.5],
+				},
+			});
+			map.addLayer({
+				id: main ? pointDetailId : `${pointDetailId}-other`,
+				minzoom,
+				type: 'circle',
+				source: sourceId,
+				filter: [
+					'all',
+					['==', ['geometry-type'], 'Point'],
+					['==', ['get', 'main'], main],
+					['==', ['get', 'state'], 2],
+				],
+				paint: { 'circle-color': ['get', 'colour'], 'circle-radius': 1.25 },
+			});
+		}
 	}
 	function pick(event: MapMouseEvent) {
 		const layers = allIds.filter((id) => map.getLayer(id));

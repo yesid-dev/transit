@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { mapRecordReading, methodEvidence } from '#lib/site/presenter.ts';
+	import { resolveColor } from '#lib/components/map/vehicleSprites.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack, type Snippet } from 'svelte';
 	import { Separator } from '@yesid/ui/separator';
+	import { Combobox } from '@yesid/ui/combobox';
+	import { foldSearchText } from '#lib/search/normalize.ts';
+	import MapLinePicker from './MapLinePicker.svelte';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { theme } from '@yesid/ui/state';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -32,6 +36,7 @@
 		recordFeatures,
 		recordMapSampleText,
 		recordStops,
+		recordStopIsVisible,
 		type RecordMapLayer,
 		type RecordMark,
 	} from './recordMap';
@@ -46,6 +51,7 @@
 		url: URL;
 		locale: Locale;
 		stops: readonly StopIndexEntry[];
+		terminals: ReadonlySet<string>;
 		routes: readonly RouteIndexEntry[];
 		onscope: (line: string, direction: string) => void;
 		onsourcedate: (date: string | null) => void;
@@ -63,6 +69,7 @@
 		url,
 		locale,
 		stops,
+		terminals,
 		routes,
 		onscope,
 		onsourcedate,
@@ -153,11 +160,15 @@
 		if (!answer) return [];
 		if (!stopLayer)
 			return recordCorridors(stops, route?.directions ?? [], answer, direction, scheduleOnly);
-		return recordStops(stops, answer, (stop) =>
-			Boolean(
-				stop.routes?.length &&
-				stop.routes.every((id) => lineIsScheduleOnly(provider, id, routeTypes.get(id) ?? null)),
-			),
+		return recordStops(
+			stops,
+			answer,
+			(stop) =>
+				Boolean(
+					stop.routes?.length &&
+					stop.routes.every((id) => lineIsScheduleOnly(provider, id, routeTypes.get(id) ?? null)),
+				),
+			terminals,
 		);
 	});
 	const markById = $derived(new Map(marks.map((mark) => [mark.id, mark])));
@@ -166,10 +177,11 @@
 		const camera = reportCamera;
 		if (!camera) return [];
 		return marks
-			.filter(({ geometry }) =>
-				geometry.type === 'Point'
-					? isCoordinateInCapturedView(camera, geometry.coordinates)
-					: isLineInCapturedView(camera, geometry.coordinates),
+			.filter((mark) =>
+				mark.geometry.type === 'Point'
+					? recordStopIsVisible(mark, camera.zoom) &&
+						isCoordinateInCapturedView(camera, mark.geometry.coordinates)
+					: isLineInCapturedView(camera, mark.geometry.coordinates),
 			)
 			.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
 	});
@@ -196,9 +208,14 @@
 	);
 	$effect(() => {
 		if (!map || !marks.length) return;
+		const palette = theme.current === 'dark' ? 'dark' : 'light';
+		const mutedInk = resolveColor(
+			'var(--muted-foreground)',
+			palette === 'dark' ? '#949494' : '#545e75',
+		);
 		return attachRecordMap(
 			map,
-			recordFeatures(marks, theme.current === 'dark' ? 'dark' : 'light', stopLayer),
+			recordFeatures(marks, palette, stopLayer, mutedInk),
 			(id) => (selectedId = id),
 			network,
 		);
@@ -239,6 +256,12 @@
 	});
 
 	const heads = $derived(directionHeadsigns(route?.directions));
+	const directionOptions = $derived(
+		[0, 1].map((id) => {
+			const label = display.directionLabel(id, heads, locale);
+			return { value: String(id), label, search: foldSearchText(label) };
+		}),
+	);
 	const stateLabels = $derived([
 		notMeasuredLabel[locale],
 		tr('Too few to judge', 'Trop peu pour juger'),
@@ -310,28 +333,33 @@
 	{/if}
 	{#if !stopLayer}
 		<div class="scope">
-			<label>
-				{tr('Line', 'Ligne')}
-				<select value={line} onchange={(event) => onscope(event.currentTarget.value, '')}>
-					<option value=""
-						>{chooseLine
-							? tr('Choose a line', 'Choisir une ligne')
-							: tr('All lines', 'Toutes les lignes')}</option
-					>
-					{#each routes as item (item.id)}
-						<option value={item.id}>{display.lineName(item.id, item.long).label}</option>
-					{/each}
-				</select>
-			</label>
+			<div class="scope-field">
+				<span>{tr('Line', 'Ligne')}</span>
+				<MapLinePicker
+					{routes}
+					{locale}
+					label={tr('Line', 'Ligne')}
+					placeholder={chooseLine
+						? tr('Choose a line', 'Choisir une ligne')
+						: tr('All lines', 'Toutes les lignes')}
+					value={line || null}
+					onchange={(id) => onscope(id ?? '', '')}
+				/>
+			</div>
 			{#if line}
-				<label>
-					{tr('Direction', 'Direction')}
-					<select value={direction} onchange={(event) => onscope(line, event.currentTarget.value)}>
-						<option value="">{tr('Both directions', 'Les deux directions')}</option>
-						<option value="0">{display.directionLabel(0, heads, locale)}</option>
-						<option value="1">{display.directionLabel(1, heads, locale)}</option>
-					</select>
-				</label>
+				<div class="scope-field">
+					<span>{tr('Direction', 'Direction')}</span>
+					<Combobox
+						options={directionOptions}
+						label={tr('Direction', 'Direction')}
+						placeholder={tr('Both directions', 'Les deux directions')}
+						clearLabel={tr('Show both directions', 'Afficher les deux directions')}
+						emptyLabel={tr('No matching directions', 'Aucune direction correspondante')}
+						fold={foldSearchText}
+						value={direction || null}
+						onValueChange={(id) => onscope(line, id ?? '')}
+					/>
+				</div>
 			{/if}
 		</div>
 	{/if}
@@ -565,16 +593,16 @@
 		flex-wrap: wrap;
 		gap: 0.5rem;
 	}
-	label {
+	label,
+	.scope-field {
 		display: grid;
 		gap: 0.2rem;
 		min-width: 0;
 		font-weight: 600;
 	}
-	.scope label {
+	.scope-field {
 		flex: 1 1 8rem;
 	}
-	select,
 	input {
 		width: 100%;
 		min-width: 0;

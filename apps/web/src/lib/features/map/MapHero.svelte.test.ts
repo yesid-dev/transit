@@ -2003,8 +2003,8 @@ describe('MapHero map-layer feed lifecycle', () => {
 		for (const [index, feed] of feedSpies.entries())
 			expect(feed).toHaveBeenCalledTimes(initialFeeds[index] + 1);
 
-		const filters = screen.getByText('Map filters', { selector: 'summary' });
-		if (filters.parentElement instanceof HTMLDetailsElement) filters.parentElement.open = true;
+		const filters = screen.getByRole('button', { name: 'Map filters' });
+		await fireEvent.click(filters);
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Late' }));
 		await tick();
 		for (const install of installSpies) expect(install).toHaveBeenCalledTimes(2);
@@ -2607,6 +2607,7 @@ describe('MapHero retained state during Stage-only recovery', () => {
 			const onrecovering = vi.fn();
 			const view = render(MapHero, { props: { onrecovering } });
 			if (insideShell) view.container.setAttribute('data-slot', 'map-stage');
+			await fireEvent.click(screen.getByRole('button', { name: 'Map filters' }));
 			const estimated = screen.getAllByTestId('map-motion-switch')[0] as HTMLElement;
 			estimated.focus();
 			expect(document.activeElement).toBe(estimated);
@@ -2627,6 +2628,7 @@ describe('MapHero retained state during Stage-only recovery', () => {
 		document.body.append(outside);
 		try {
 			render(MapHero);
+			await fireEvent.click(screen.getByRole('button', { name: 'Map filters' }));
 			const estimated = screen.getAllByTestId('map-motion-switch')[0] as HTMLElement;
 			estimated.focus();
 			await fireEvent.click(screen.getByTestId('map-stage-stub-begin-recovery'));

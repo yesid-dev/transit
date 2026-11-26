@@ -33,7 +33,7 @@ describe('mapLegend', () => {
 			['heading', 'Direction of travel', null],
 			['stop', 'Stop', null],
 		]);
-		expect(legend.note).toBe('Zoom in to see the status badges.');
+		expect(legend.note).toBeNull();
 	});
 
 	it('says the same in French', () => {

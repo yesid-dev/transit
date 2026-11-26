@@ -87,6 +87,7 @@ it('draws a line answer before shapes arrive and uses straight segments for unav
 			url: new URL('https://transit.example/map'),
 			locale: 'en',
 			stops,
+			terminals: new Set<string>(),
 			routes: [],
 			children: createRawSnippet(() => ({ render: () => '<div></div>' })),
 			onscope: vi.fn(),

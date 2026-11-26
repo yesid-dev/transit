@@ -1,19 +1,14 @@
 <script lang="ts">
 	import { createRawSnippet } from 'svelte';
-	import { RoutePlate } from '@yesid/ui/brand';
+	import { RoutePlate, statusGlyphSvg } from '@yesid/ui/brand';
 	import { MapLegend, type MapLegendItem, type MapLegendProps } from '@yesid/ui/map';
 	import { theme } from '@yesid/ui/state';
-	import {
-		OCCUPANCY_GLYPH,
-		STATUS_GLYPH,
-		occupancyVar,
-		statusVar,
-	} from '#lib/components/dataviz/tokens.ts';
+	import { OCCUPANCY_GLYPH, occupancyVar, statusVar } from '#lib/components/dataviz/tokens.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 	import { mapLegend, type LegendColourBy, type LegendMark } from './mapLegend';
 	import { copy } from './map.copy';
-	import { recordColours, type RecordMapLayer } from './recordMap';
+	import { recordColours, recordUnmeasuredLine, type RecordMapLayer } from './recordMap';
 
 	let {
 		locale,
@@ -55,16 +50,22 @@
 	});
 
 	function symbol(mark: LegendMark) {
-		if (mark.kind === 'status' || mark.kind === 'occupancy') {
-			const ink = mark.kind === 'status' ? statusVar(mark.code) : occupancyVar(mark.code);
-			const badge = mark.kind === 'status' ? STATUS_GLYPH[mark.code] : OCCUPANCY_GLYPH[mark.code];
+		if (mark.kind === 'status') {
+			const glyph = statusGlyphSvg(mark.code, { size: 16, ink: 'currentColor' });
 			return createRawSnippet(() => ({
 				render: () =>
-					`<span class="inline-flex items-center gap-1" style="color:${ink}"><svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><rect width="12" height="14" rx="3" fill="currentColor"/><rect x="2" y="2" width="8" height="4" rx="1" fill="var(--card)"/><circle cx="3" cy="11" r="1" fill="var(--card)"/><circle cx="9" cy="11" r="1" fill="var(--card)"/></svg>${badge}</span>`,
+					`<span class="inline-flex" aria-hidden="true" style="color:${statusVar(mark.code)}">${glyph}</span>`,
+			}));
+		}
+		if (mark.kind === 'occupancy') {
+			return createRawSnippet(() => ({
+				render: () =>
+					`<span style="color:${occupancyVar(mark.code)}" aria-hidden="true">${OCCUPANCY_GLYPH[mark.code]}</span>`,
 			}));
 		}
 		return emptyMark;
 	}
+
 	const groups = $derived.by(() => {
 		const network = {
 			title: tr('The network', 'Le réseau'),
@@ -111,22 +112,24 @@
 			network,
 		];
 	});
+	const palette = $derived(recordColours[theme.current === 'dark' ? 'dark' : 'light']);
 	const scale = $derived.by((): MapLegendProps['scale'] => {
 		if (layer === 'live') return undefined;
-		const palette = recordColours[theme.current === 'dark' ? 'dark' : 'light'];
 		const labels =
 			layer === 'stops'
 				? [
 						tr('Under 10%', 'Moins de 10 %'),
-						tr('10 to <25%', '10 à <25 %'),
-						tr('25 to <50%', '25 à <50 %'),
-						tr('50% and over', '50 % et plus'),
+						tr('10 to under 15%', '10 à moins de 15 %'),
+						tr('15 to under 20%', '15 à moins de 20 %'),
+						tr('20 to under 25%', '20 à moins de 25 %'),
+						tr('25% and over', '25 % et plus'),
 					]
 				: [
-						tr('0 s or less', '0 s ou moins'),
-						tr('>0 to <30 s', '>0 à <30 s'),
-						tr('30 to <60 s', '30 à <60 s'),
-						tr('60 s and over', '60 s et plus'),
+						tr('No time lost', 'Aucun temps perdu'),
+						tr('Under 30\u00a0s', 'Moins de 30\u00a0s'),
+						tr('30 to under 60\u00a0s', '30 à moins de 60\u00a0s'),
+						tr('1 to under 2\u00a0min', '1 à moins de 2\u00a0min'),
+						tr('2\u00a0min and over', '2\u00a0min et plus'),
 					];
 		return {
 			title:
@@ -156,9 +159,37 @@
 {#snippet selectedMark()}{@render networkLine('var(--accent-text)')}{/snippet}
 {#snippet numberMark()}<RoutePlate code="51" />{/snippet}
 {#snippet emptyMark()}{/snippet}
-{#snippet lowSampleMark()}<span>●</span>{/snippet}
-{#snippet noSampleMark()}<span>○</span>{/snippet}
-{#snippet scheduleMark()}<span>⊙</span>{/snippet}
+{#snippet unmeasuredMark(state: 0 | 1 | 2)}
+	<svg class="record-state-mark text-muted-foreground" viewBox="0 0 32 12" aria-hidden="true">
+		{#if layer === 'stops'}
+			<circle
+				cx="16"
+				cy="6"
+				r="3"
+				fill={state === 1 ? 'currentColor' : 'none'}
+				stroke={state === 1 ? 'none' : 'currentColor'}
+				stroke-width="1.5"
+			/>
+			{#if state === 2}<circle cx="16" cy="6" r="1.25" fill="currentColor" />{/if}
+		{:else}
+			<line
+				x1="1"
+				y1="6"
+				x2="31"
+				y2="6"
+				stroke="currentColor"
+				stroke-linecap="round"
+				stroke-width={recordUnmeasuredLine.width}
+				stroke-dasharray={recordUnmeasuredLine.dashes[state]
+					.map((length) => length * recordUnmeasuredLine.width)
+					.join(' ')}
+			/>
+		{/if}
+	</svg>
+{/snippet}
+{#snippet lowSampleMark()}{@render unmeasuredMark(1)}{/snippet}
+{#snippet noSampleMark()}{@render unmeasuredMark(0)}{/snippet}
+{#snippet scheduleMark()}{@render unmeasuredMark(2)}{/snippet}
 
 <MapLegend
 	class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)]"
@@ -168,9 +199,45 @@
 	{collapsible}
 	persistKey={collapsible ? 'transit:map-legend-open' : undefined}
 	data-map-legend={collapsible ? 'desktop' : 'phone'}
+	data-map-record-legend={scale ? '' : undefined}
 />
 
 <style>
+	:global([data-map-record-legend]) {
+		container: record-legend / inline-size;
+	}
+
+	:global([data-map-record-legend][data-map-legend] :is(button, p, li, ol)) {
+		overflow-wrap: normal;
+		word-break: normal;
+		hyphens: none;
+	}
+
+	@container record-legend (inline-size < 14rem) {
+		:global([data-map-record-legend] ol[role='list']) {
+			grid-template-columns: minmax(0, 1fr);
+			gap: 0.25rem;
+			text-align: start;
+		}
+
+		:global([data-map-record-legend] ol[role='list'] > li) {
+			display: grid;
+			grid-template-columns: 1.5em minmax(0, 1fr);
+			align-items: center;
+			gap: 0.5em;
+		}
+
+		:global([data-map-record-legend] ol[role='list'] > li > [aria-hidden='true']) {
+			margin-block-end: 0;
+			border-radius: var(--radius-sm);
+		}
+	}
+
+	.record-state-mark {
+		inline-size: 2rem;
+		block-size: 0.75rem;
+		margin-block-start: 0.15em;
+	}
 	.map-key-line {
 		inline-size: 100%;
 		block-size: 0.75rem;

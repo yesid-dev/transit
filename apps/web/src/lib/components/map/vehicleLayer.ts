@@ -1,7 +1,12 @@
 import { isInService } from '#lib/v1/live/vehicleService.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
 import type { EntityKind, FilterState } from '#lib/filters/index.ts';
-import { bodyIconId, BUS_ICON, stateBadgeIconId } from './vehicleSprites';
+import {
+	statusBodyIconId,
+	occupancyBodyIconId,
+	occupancyBadgeIconId,
+	VEHICLE_ICON,
+} from './vehicleSprites';
 import { notReporting } from './vehicleProjection';
 
 export const VEHICLE_BODY_LAYER = 'vehicle-body';
@@ -84,22 +89,22 @@ function iconFor(
 	matched: number;
 } {
 	const matched = matchesFilter(v, f, alertVehicleIds);
-	if (!isInService(v)) return { body: BUS_ICON, mark: '', matched: matched ? 1 : 0 };
+	if (!isInService(v)) return { body: VEHICLE_ICON, mark: '', matched: matched ? 1 : 0 };
 	if (matched && dim === 'status') {
 		return {
-			body: bodyIconId('status', v.status),
-			mark: stateBadgeIconId('status', v.status),
+			body: statusBodyIconId(v.status),
+			mark: '',
 			matched: 1,
 		};
 	}
 	if (matched && dim === 'occupancy' && v.occupancy != null) {
 		return {
-			body: bodyIconId('occupancy', v.occupancy),
-			mark: stateBadgeIconId('occupancy', v.occupancy),
+			body: occupancyBodyIconId(v.status, v.occupancy),
+			mark: occupancyBadgeIconId(v.occupancy),
 			matched: 1,
 		};
 	}
-	return { body: BUS_ICON, mark: '', matched: matched ? 1 : 0 };
+	return { body: VEHICLE_ICON, mark: '', matched: matched ? 1 : 0 };
 }
 
 export interface VehicleSilenceContext {

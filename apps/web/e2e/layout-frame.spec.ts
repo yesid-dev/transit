@@ -435,7 +435,7 @@ test('the legend clears Controls on compact maps and filters stay inside Control
 	}
 	await page.setViewportSize({ width: 390, height: 900 });
 	await page.evaluate(() => (document.documentElement.style.fontSize = '100%'));
-	const filters = page.locator('[data-map-controls] summary');
+	const filters = page.locator('[data-map-filter-trigger]');
 	await expect(filters).toBeHidden();
 	await frameControls.click();
 	await expect(filters).toBeVisible();

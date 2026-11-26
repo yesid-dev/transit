@@ -1,16 +1,12 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
+import { statusGlyph } from '@yesid/ui/brand';
 import {
 	STATUS_CODES,
 	OCCUPANCY_CODES,
 	type StatusCode,
 	type OccupancyCode,
 } from '#lib/v1/schemas/types.ts';
-import {
-	STATUS_GLYPH,
-	occupancyGlyph,
-	occupancyVar,
-	statusVar,
-} from '#lib/components/dataviz/tokens.ts';
+import { occupancyGlyph, occupancyVar, statusVar } from '#lib/components/dataviz/tokens.ts';
 
 export const VEHICLE_MARKER_GEOMETRY = Object.freeze({
 	box: 26,
@@ -34,20 +30,20 @@ const SIZE = VEHICLE_MARKER_GEOMETRY.box;
 const RATIO =
 	typeof window !== 'undefined' ? Math.max(2, Math.ceil(window.devicePixelRatio || 1)) : 2;
 
-export const BUS_ICON = 'veh-bus';
+export const VEHICLE_ICON = 'veh-unknown';
 export const HEADING_ICON = 'veh-heading';
 export const SILENT_ICON = 'veh-silent';
 export const STOP_ICON = 'veh-stop';
 
-export const BUS_FILL_TOKEN = 'var(--primary)';
-export const BUS_FILL_FALLBACK = 'rgb(224, 120, 0)';
-export const BUS_HALO_TOKEN = 'var(--background)';
-export const BUS_HALO_FALLBACK = '#141414';
+export const VEHICLE_FILL_TOKEN = 'var(--primary)';
+export const VEHICLE_FILL_FALLBACK = 'rgb(224, 120, 0)';
+export const VEHICLE_HALO_TOKEN = 'var(--background)';
+export const VEHICLE_HALO_FALLBACK = '#141414';
 export const STOP_FILL_TOKEN = 'var(--map-stop-fill)';
 export const STOP_FILL_FALLBACK = 'rgb(255, 182, 39)';
-export const STOP_HALO_TOKEN = BUS_HALO_TOKEN;
+export const STOP_HALO_TOKEN = VEHICLE_HALO_TOKEN;
 export const HEADING_FILL_TOKEN = 'var(--foreground)';
-export const HEADING_HALO_TOKEN = BUS_HALO_TOKEN;
+export const HEADING_HALO_TOKEN = VEHICLE_HALO_TOKEN;
 export const SILENT_FILL_TOKEN = 'var(--foreground)';
 export const SILENT_FILL_FALLBACK = '#f5f5f5';
 export const SILENT_HALO_TOKEN = 'var(--background)';
@@ -91,36 +87,20 @@ function roundedRect(
 	ctx.closePath();
 }
 
-function busCanvas(fill: string, halo: string): HTMLCanvasElement {
+function statusCanvas(code: StatusCode, fill: string, halo: string): HTMLCanvasElement {
 	const ctx = spriteContext();
+	const { path, viewBox } = statusGlyph(code);
+	const [left, top, width, height] = viewBox.split(' ').map(Number);
+	const scale = SIZE / Math.max(width!, height!);
+	const shape = new Path2D(path);
+	ctx.scale(scale, scale);
+	ctx.translate((SIZE / scale - width!) / 2 - left!, (SIZE / scale - height!) / 2 - top!);
 	ctx.lineJoin = 'round';
-
-	const bx = 6.5;
-	const by = 3.5;
-	const bw = SIZE - bx * 2;
-	const bh = SIZE - by * 2;
-	roundedRect(ctx, bx, by, bw, bh, 4);
-	ctx.fillStyle = fill;
-	ctx.fill();
-	ctx.lineWidth = 2;
+	ctx.lineWidth = 1.5;
 	ctx.strokeStyle = halo;
-	ctx.stroke();
-
-	const wm = 2.4;
-	roundedRect(ctx, bx + wm, by + 2.4, bw - wm * 2, 5.6, 2);
-	ctx.fillStyle = halo;
-	ctx.globalAlpha = 0.9;
-	ctx.fill();
-	ctx.globalAlpha = 1;
-
-	const ly = SIZE - by - 3.4;
-	for (const lx of [bx + wm + 1.2, bx + bw - wm - 1.2]) {
-		ctx.beginPath();
-		ctx.arc(lx, ly, 1.15, 0, Math.PI * 2);
-		ctx.fillStyle = halo;
-		ctx.fill();
-	}
-
+	ctx.stroke(shape);
+	ctx.fillStyle = fill;
+	ctx.fill(shape, 'evenodd');
 	return ctx.canvas;
 }
 
@@ -211,11 +191,12 @@ function silentBadgeCanvas(fill: string, halo: string): HTMLCanvasElement {
 	return ctx.canvas;
 }
 
-export const bodyIconId = (mode: 'status' | 'occupancy', code: string): string =>
-	`veh-${mode === 'status' ? 's' : 'o'}-${code}`;
+export const statusBodyIconId = (code: StatusCode): string => `veh-s-${code}`;
 
-export const stateBadgeIconId = (mode: 'status' | 'occupancy', code: string): string =>
-	`veh-m-${mode === 'status' ? 's' : 'o'}-${code}`;
+export const occupancyBodyIconId = (status: StatusCode, occupancy: OccupancyCode): string =>
+	`veh-o-${occupancy}-${status}`;
+
+export const occupancyBadgeIconId = (code: OccupancyCode): string => `veh-m-o-${code}`;
 
 export type StateBadgeReceipt = Readonly<{
 	stateBadges: Readonly<Record<string, number>>;
@@ -244,59 +225,12 @@ export function countStateBadgePaintedPixels(image: ImageData): number {
 	);
 }
 
-function drawStateGlyph(
-	ctx: CanvasRenderingContext2D,
-	glyph: string,
-	paint: string,
-	holeFill: string | null,
-): void {
-	const c = SIZE / 2;
+function drawStateGlyph(ctx: CanvasRenderingContext2D, glyph: string, paint: string): void {
 	const side = SIZE - VEHICLE_MARKER_GEOMETRY.plateMargin * 2;
 	const left = VEHICLE_MARKER_GEOMETRY.plateMargin;
 	const top = left;
 	ctx.fillStyle = paint;
 
-	if (glyph === STATUS_GLYPH.early) {
-		ctx.beginPath();
-		ctx.moveTo(c, top + side * 0.72);
-		ctx.lineTo(left + side * 0.27, top + side * 0.3);
-		ctx.lineTo(left + side * 0.73, top + side * 0.3);
-		ctx.closePath();
-		ctx.fill();
-		return;
-	}
-	if (glyph === STATUS_GLYPH.on_time) {
-		ctx.beginPath();
-		ctx.arc(c, c, side * 0.18, 0, Math.PI * 2);
-		ctx.fill();
-		return;
-	}
-	if (glyph === STATUS_GLYPH.late) {
-		ctx.beginPath();
-		ctx.moveTo(c, top + side * 0.28);
-		ctx.lineTo(left + side * 0.27, top + side * 0.7);
-		ctx.lineTo(left + side * 0.73, top + side * 0.7);
-		ctx.closePath();
-		ctx.fill();
-		return;
-	}
-	if (glyph === STATUS_GLYPH.unknown) {
-		ctx.beginPath();
-		ctx.arc(c, c, side * 0.22, 0, Math.PI * 2);
-		ctx.fill();
-		ctx.beginPath();
-		ctx.arc(c, c, side * 0.11, 0, Math.PI * 2);
-		if (holeFill === null) {
-			ctx.save();
-			ctx.globalCompositeOperation = 'destination-out';
-			ctx.fill();
-			ctx.restore();
-		} else {
-			ctx.fillStyle = holeFill;
-			ctx.fill();
-		}
-		return;
-	}
 	if (glyph === occupancyGlyph('full')) {
 		const inset = 2.8;
 		const near = Math.round((left + inset) * 10) / 10;
@@ -343,7 +277,7 @@ function stateBadgeCanvas(glyph: string, fill: string, halo: string): HTMLCanvas
 	ctx.lineWidth = 2;
 	ctx.strokeStyle = halo;
 	ctx.stroke();
-	drawStateGlyph(ctx, glyph, halo, fill);
+	drawStateGlyph(ctx, glyph, halo);
 
 	return ctx.canvas;
 }
@@ -352,7 +286,7 @@ function stateGlyphMaskCanvas(glyph: string, fill: string): HTMLCanvasElement {
 	const ctx = spriteContext();
 	ctx.lineJoin = 'round';
 	ctx.lineCap = 'round';
-	drawStateGlyph(ctx, glyph, fill, null);
+	drawStateGlyph(ctx, glyph, fill);
 	return ctx.canvas;
 }
 
@@ -360,7 +294,7 @@ export function bakeVehicleSprites(
 	map: MapLibreMap,
 	registerVehicleImages = true,
 ): VehicleSpriteReceipt {
-	const background = resolveColor(BUS_HALO_TOKEN, BUS_HALO_FALLBACK);
+	const background = resolveColor(VEHICLE_HALO_TOKEN, VEHICLE_HALO_FALLBACK);
 	const forced = window.matchMedia('(forced-colors: active)').matches;
 	// Canvas keeps its pixels when the browser forces DOM colours. Resolve an explicit
 	// system-colour pair so the plate and the glyph do not both resolve to CanvasText.
@@ -379,29 +313,20 @@ export function bakeVehicleSprites(
 		return index;
 	};
 
-	for (const code of STATUS_CODES as readonly StatusCode[]) {
+	for (const status of STATUS_CODES) {
 		add(
-			bodyIconId('status', code),
-			busCanvas(vehicleFill(statusVar(code), '#8a8a8a'), vehicleHalo),
+			statusBodyIconId(status),
+			statusCanvas(status, vehicleFill(statusVar(status), '#8a8a8a'), vehicleHalo),
 		);
 	}
-	for (const code of OCCUPANCY_CODES as readonly OccupancyCode[]) {
-		add(
-			bodyIconId('occupancy', code),
-			busCanvas(vehicleFill(occupancyVar(code), '#7a5fb0'), vehicleHalo),
-		);
-	}
-	for (const code of STATUS_CODES as readonly StatusCode[]) {
-		const id = stateBadgeIconId('status', code);
-		const glyph = STATUS_GLYPH[code];
-		badges.push({
-			id,
-			image: add(id, stateBadgeCanvas(glyph, foreground, vehicleHalo)),
-			mask: queue(stateGlyphMaskCanvas(glyph, vehicleHalo)),
-		});
+	for (const occupancy of OCCUPANCY_CODES) {
+		const fill = vehicleFill(occupancyVar(occupancy), '#7a5fb0');
+		for (const status of STATUS_CODES) {
+			add(occupancyBodyIconId(status, occupancy), statusCanvas(status, fill, vehicleHalo));
+		}
 	}
 	for (const code of OCCUPANCY_CODES as readonly OccupancyCode[]) {
-		const id = stateBadgeIconId('occupancy', code);
+		const id = occupancyBadgeIconId(code);
 		const glyph = occupancyGlyph(code);
 		badges.push({
 			id,
@@ -409,7 +334,10 @@ export function bakeVehicleSprites(
 			mask: queue(stateGlyphMaskCanvas(glyph, vehicleHalo)),
 		});
 	}
-	add(BUS_ICON, busCanvas(vehicleFill(BUS_FILL_TOKEN, BUS_FILL_FALLBACK), vehicleHalo));
+	add(
+		VEHICLE_ICON,
+		statusCanvas('unknown', vehicleFill(VEHICLE_FILL_TOKEN, VEHICLE_FILL_FALLBACK), vehicleHalo),
+	);
 	add(HEADING_ICON, chevronCanvas(foreground, vehicleHalo));
 	add(SILENT_ICON, silentBadgeCanvas(foreground, vehicleHalo));
 	add(STOP_ICON, stopPinCanvas(resolveColor(STOP_FILL_TOKEN, STOP_FILL_FALLBACK), background));

@@ -2,22 +2,18 @@ import { defineCopy, type Locale } from '#lib/i18n/copy.ts';
 
 export const copy = defineCopy({
 	en: {
-		copyLiveView: 'Copy live view link',
+		copyLiveView: 'Copy link',
 		copyDisclaimer: 'This link opens the live view, which changes.',
-		downloadCsv: 'Download displayed reports (CSV)',
 		copied: 'Link copied.',
-		copyFailed: 'Could not copy the link.',
 		loading: 'Loading vehicle reports…',
 		unavailableSource: 'Live vehicle reports are unavailable right now.',
 		unavailableAlerts: 'The alert filter is unavailable right now.',
 		timeZone: 'Time zone',
 	},
 	fr: {
-		copyLiveView: 'Copier le lien de la vue en direct',
+		copyLiveView: 'Copier le lien',
 		copyDisclaimer: 'Ce lien ouvre la vue en direct, dont le contenu change.',
-		downloadCsv: 'Télécharger les relevés affichés (CSV)',
 		copied: 'Lien copié.',
-		copyFailed: 'Impossible de copier le lien.',
 		loading: 'Chargement des relevés de véhicules…',
 		unavailableSource: 'Les relevés de véhicules en direct sont indisponibles pour l’instant.',
 		unavailableAlerts: 'Le filtre d’alertes est indisponible pour l’instant.',

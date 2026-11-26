@@ -126,7 +126,10 @@
 	async function clearFilters(): Promise<void> {
 		store.clear();
 		await tick();
-		rootEl?.closest('details')?.querySelector('summary')?.focus();
+		rootEl
+			?.closest('[data-map-filter-disclosure]')
+			?.querySelector<HTMLElement>('[data-map-filter-trigger]')
+			?.focus();
 	}
 
 	async function removeRoute(route: RouteIndexEntry): Promise<void> {

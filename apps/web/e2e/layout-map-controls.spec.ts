@@ -12,7 +12,7 @@ for (const provider of ['stm', 'octranspo'])
 				waitUntil: 'networkidle',
 			});
 			await openMapControls(page);
-			await page.locator('[data-map-controls] summary').click();
+			await page.locator('[data-map-filter-trigger]').click();
 			const panel = page.locator('.map-filters:visible');
 			const stop = panel.getByRole('checkbox', {
 				name: locale === 'fr' ? 'Arrêt' : 'Stop',
