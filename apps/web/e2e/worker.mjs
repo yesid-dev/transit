@@ -12,12 +12,15 @@ const { Miniflare, convertV4MiniflareOptions, Log, LogLevel } = createRequire(wr
 // DIAGNOSTIC (do not merge): log every answered request with a timestamp beside the failure evidence.
 class FileLog extends Log {
 	log(message) {
-		const line = `${new Date().toISOString()} ${message.replace(/\x1b\[[0-9;]*m/g, '')}\n`;
+		const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g');
+		const line = `${new Date().toISOString()} ${message.replace(ansi, '')}\n`;
 		const directory = resolve(import.meta.dirname, '../test-results');
 		try {
 			mkdirSync(directory, { recursive: true });
 			appendFileSync(join(directory, `worker-requests-${port}.log`), line);
-		} catch {}
+		} catch {
+			// Diagnostic logging must never break the test server.
+		}
 	}
 }
 
