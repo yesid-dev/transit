@@ -155,6 +155,19 @@ export function feedState(
 	return feed.read_failed ? 'refresh_unavailable' : 'live';
 }
 
+/** Public capture status uses the declared vehicle capture cadence, without delivery grace. */
+export function captureDisplayState(
+	feed: CaptureFeed | undefined,
+	now: number,
+): ReturnType<typeof feedState> {
+	if (feed?.family !== 'vehicle_positions' || !feed.captured_at || !feed.expected_every_seconds)
+		return feedState(feed, now);
+	const age = now - Date.parse(feed.captured_at);
+	if (!Number.isFinite(age) || age < -5_000) return 'unknown';
+	if (age > 3 * feed.expected_every_seconds * 1_000) return 'stale';
+	return feed.read_failed ? 'refresh_unavailable' : 'live';
+}
+
 export async function fetchCaptureSnapshot(
 	city: string,
 	signal: AbortSignal | undefined,

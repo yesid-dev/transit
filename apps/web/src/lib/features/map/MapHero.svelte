@@ -18,7 +18,7 @@
 	import { Sheet, SheetContent, SheetTitle, type SheetDetent } from '@yesid/ui/sheet';
 	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
-	import { recordStamp } from '#lib/site/presenter.ts';
+	import { recordStamp, searchCount } from '#lib/site/presenter.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import { livePause } from '#lib/live/livePause.ts';
@@ -296,13 +296,6 @@
 		publishRecordSourceDate?.(isRecordLayer ? recordSourceDate : null);
 		return () => publishRecordSourceDate?.(null);
 	});
-	const datedMapNotice = $derived(
-		datedProviderAttribution(
-			v1.provider,
-			locale,
-			isRecordLayer ? recordSourceDate : live.sourceDate,
-		),
-	);
 	const recordOptions: { key: Exclude<RecordMapLayer, 'live'>; label: string }[] = [
 		{ key: 'stops', label: locale === 'fr' ? 'Arrêts' : 'Stops' },
 		{ key: 'corridors', label: 'Corridors' },
@@ -399,6 +392,20 @@
 	});
 	const stopList = $derived(session.stops);
 	let mapDirections = $state.raw<ScheduleEdition['route_directions']>();
+	const fitFraming = $derived.by(() => {
+		if (v1.provider?.fit_bounds || !stopList.length) return framing;
+		const routeTypes = new Map(session.routesIndex.map(({ id, type }) => [id, type ?? null]));
+		return initialCamera(
+			{
+				...v1,
+				stops: stopList,
+				routeDirections: mapDirections,
+				hasLiveLine: (id) => !lineIsScheduleOnly(v1.provider, id, routeTypes.get(id) ?? null),
+			},
+			mapWidthPx,
+			wide,
+		);
+	});
 	const terminals = $derived(scheduleTerminals(mapDirections));
 	onMount(() => {
 		let active = true;
@@ -457,7 +464,11 @@
 		liveStamp({ ...presentation.stamp, notResponding: presentation.stamp.ageLabel != null }),
 	);
 	const liveStampLabel = $derived(
-		!wide && remWidth >= 24 && liveTime.ageSeconds !== null && liveTime.state === 'current'
+		!wide &&
+			remWidth >= 24 &&
+			!livePause.paused &&
+			liveTime.ageSeconds !== null &&
+			liveTime.state === 'current'
 			? `${tr('Live', 'En direct')} · ${formatRelativeSeconds(liveTime.ageSeconds, locale)}`
 			: stampText(liveTime, locale, timeZone),
 	);
@@ -472,7 +483,7 @@
 		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
 	);
 	const title = $derived(
-		isRecordLayer ? tr('Map of the record', 'Carte du bilan') : tr('Live map', 'Carte en direct'),
+		isRecordLayer ? tr('Record map', 'Carte du bilan') : tr('Live map', 'Carte en direct'),
 	);
 	const viewLabel = tr('What is in view', 'Ce qui est en vue');
 	// The map region is named for what it draws: vehicles live, the record of stops otherwise.
@@ -773,6 +784,7 @@
 	// Opening/resizing detail surfaces refits only while the camera is fit-owned.
 	$effect(() => {
 		const instance = map;
+		const target = fitFraming;
 		void detailOpen;
 		void wide;
 		if (!instance) return;
@@ -785,9 +797,9 @@
 			if (import.meta.env.MODE === 'e2e')
 				heroEl.dataset.cameraPadding = JSON.stringify(inset.fitPadding);
 			// Without published bounds MapStage constructs no map; never refit a fabricated camera.
-			if (!framing) return;
+			if (!target) return;
 			camera.update(instance, {
-				...framing,
+				...target,
 				size: { width: inset.containerWidth, height: inset.containerHeight },
 				fitPadding: inset.fitPadding,
 			});
@@ -795,6 +807,7 @@
 		const observer = new ResizeObserver(update);
 		void tick().then(() => {
 			if (disposed) return;
+			if (heroEl) observer.observe(heroEl);
 			for (const el of document.querySelectorAll(
 				'.map-head, [data-slot="map-details"], [data-frame-controls], [data-slot="surface-rail-mobile"]',
 			))
@@ -807,12 +820,12 @@
 		};
 	});
 	function wholeNetwork(): void {
-		if (!map || !framing) return;
+		if (!map || !fitFraming) return;
 		const inset = measureMapFocusInset(map);
 		camera.update(
 			map,
 			{
-				...framing,
+				...fitFraming,
 				size: { width: inset.containerWidth, height: inset.containerHeight },
 				fitPadding: inset.fitPadding,
 			},
@@ -839,10 +852,10 @@
 		class="map-hero-stage"
 		basemapLoader={({ signal }) => getBasemap({ signal })}
 		theme={theme.current}
-		center={framing?.center}
-		bounds={framing?.bounds}
-		maxBounds={framing?.maxBounds}
-		fitPadding={framing?.fitPadding}
+		center={fitFraming?.center}
+		bounds={fitFraming?.bounds}
+		maxBounds={fitFraming?.maxBounds}
+		fitPadding={fitFraming?.fitPadding}
 		onready={onMapReady}
 		onorientation={onMapOrientation}
 		onrecovering={onMapRecovering}
@@ -851,8 +864,9 @@
 		onthemerepaint={runtime.repaint}
 		onerror={onMapFailure}
 		onbeforeremove={runtime.release}
-		customAttribution={datedMapNotice ??
-			providerAttribution(manifest.provider, manifest.attribution, locale)}
+		customAttribution={v1.provider?.download_licence?.source_date_required
+			? null
+			: providerAttribution(manifest.provider, manifest.attribution, locale)}
 		locale={{
 			'Map.Title': t.mapCanvasLabel,
 			'AttributionControl.ToggleAttribution': t.attributionToggle,
@@ -1132,7 +1146,9 @@
 				/>
 			</div>
 		{:else}
-			<MapNorthControl copy={t} {...orientation} status={northStatus} onreset={turnNorth} />
+			{#if !wide}
+				<MapNorthControl copy={t} {...orientation} status={northStatus} onreset={turnNorth} />
+			{/if}
 			{#if !isRecordLayer}
 				{#if wide}<MapFeedStallBanner {presentation} />{/if}
 				{#if hoverPeek && wide && !peekRepeatsDetail(hoverPeek, detailOpen ? session.selected : null)}
@@ -1173,9 +1189,19 @@
 			aria-label={tr('Map navigation', 'Navigation de la carte')}
 			role="group"
 		>
+			{#if wide && !mapFailure}
+				<MapNorthControl
+					copy={t}
+					{...orientation}
+					status={northStatus}
+					onreset={turnNorth}
+					docked
+				/>
+			{/if}
 			<Button
 				variant="outline"
 				size="icon-tap"
+				class="border-foreground bg-card hover:border-foreground hover:bg-card"
 				style="width: var(--size-tap-min); height: var(--size-tap-min);"
 				aria-label={tr('Zoom in', 'Zoom avant')}
 				disabled={!map || recovering}
@@ -1187,6 +1213,7 @@
 			<Button
 				variant="outline"
 				size="icon-tap"
+				class="border-foreground bg-card hover:border-foreground hover:bg-card"
 				style="width: var(--size-tap-min); height: var(--size-tap-min);"
 				aria-label={tr('Zoom out', 'Zoom arrière')}
 				disabled={!map || recovering}
@@ -1199,7 +1226,7 @@
 				variant="outline"
 				size={wide ? 'sm' : 'icon-tap'}
 				wrap
-				class="map-whole-network min-h-[var(--size-tap-min)]"
+				class="map-whole-network min-h-[var(--size-tap-min)] border-foreground bg-card hover:border-foreground hover:bg-card"
 				style={wide ? undefined : 'width: var(--size-tap-min); height: var(--size-tap-min);'}
 				aria-label={tr('Whole network', 'Tout le réseau')}
 				disabled={!map || recovering}
@@ -1220,7 +1247,9 @@
 			wrap
 			onclick={() => (inViewOpen = true)}
 		>
-			{inViewCount === null ? viewLabel : `${tr('In view:', 'En vue :')} ${inViewCount}`}
+			{inViewCount === null
+				? viewLabel
+				: `${tr('In view:', 'En vue :')} ${searchCount(inViewCount, locale)}`}
 		</Button>
 		<Sheet
 			open={inViewOpen || detailOpen}
@@ -1402,9 +1431,6 @@
 		gap: 0.5rem;
 		z-index: 1;
 	}
-	.map-camera-actions :global(.button) {
-		background: var(--card);
-	}
 	@media (orientation: landscape) and (max-height: 32rem) {
 		.map-hero[data-map-wide='false'] .map-camera-actions {
 			grid-auto-flow: column;
@@ -1434,6 +1460,7 @@
 		place-items: center;
 	}
 	.map-hero[data-map-wide='true'] .map-camera-actions {
+		grid-auto-flow: column;
 		inset-block-start: auto;
 		inset-inline-end: calc(min(20rem, 31%) + 1.5rem);
 		inset-block-end: calc(var(--map-source-clearance, 0px) + 0.75rem);
@@ -1441,5 +1468,8 @@
 	.map-hero[data-map-wide='true'] {
 		--map-frame-top: calc(var(--chrome-offset) - 0.75rem);
 		--map-detail-offset: min(20rem, 31%);
+		--map-attribution-bottom: calc(
+			var(--map-source-clearance, 0px) + var(--size-tap-min) + 1.25rem
+		);
 	}
 </style>

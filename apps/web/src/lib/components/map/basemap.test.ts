@@ -639,24 +639,12 @@ describe('vectorStyleFromBasemap (Protomaps schema)', () => {
 		});
 	});
 
-	it('draws minor roads strongly enough by the time stops appear', () => {
+	it('keeps minor roads quieter near network zoom and strengthens them for street detail', () => {
 		expect(layerOf('roads-minor')).toMatchObject({
 			minzoom: 8,
 			paint: {
 				'line-width': ['interpolate', ['linear'], ['zoom'], 8, 0.35, 10, 0.65, 12, 0.9, 14, 1.05],
-				'line-opacity': [
-					'interpolate',
-					['linear'],
-					['zoom'],
-					8,
-					0.36,
-					10,
-					0.64,
-					12,
-					0.78,
-					13,
-					0.82,
-				],
+				'line-opacity': ['interpolate', ['linear'], ['zoom'], 8, 0.18, 10, 0.32, 12, 0.5, 14, 0.72],
 			},
 		});
 	});

@@ -211,7 +211,12 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		await page.clock.install({ time: generated });
-		await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(generated) }));
+		let capturedAt = generated;
+		await page.route(captureUrl, (route) => {
+			const capture = captureFixture(capturedAt);
+			capture.feeds.vehicle_positions!.expected_every_seconds = 30;
+			return route.fulfill({ json: capture });
+		});
 		const snapshot = page.waitForResponse((response) => captureUrl.test(response.url()));
 		await page.goto(localizeHref(map, locale));
 		await snapshot;
@@ -239,7 +244,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(banner).toBeVisible();
 
 		const attribution = page.getByLabel(t.attributionToggle, { exact: true }).locator('..');
-		const controls = [banner, nearMe, page.locator('[data-slot="map-north"]')];
+		const controls = [
+			banner,
+			nearMe,
+			page.getByRole('group', {
+				name: locale === 'fr' ? 'Navigation de la carte' : 'Map navigation',
+			}),
+		];
 		if (await attribution.isVisible()) controls.push(attribution);
 		else await expect(attribution).toHaveClass(/maplibregl-attrib-empty/);
 		for (const control of controls) await expect(control).toBeVisible();
@@ -261,5 +272,16 @@ for (const locale of PUBLISHED_LOCALES) {
 		}
 		await openMapControls(page);
 		await openNearMe(page, locale === 'fr' ? 'Près d’une adresse' : 'Near an address');
+
+		capturedAt = await page.evaluate(() => Date.now());
+		const recovered = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await page.clock.fastForward(20_000);
+		await recovered;
+		await expect(stamp.locator('time')).toHaveAttribute(
+			'datetime',
+			new Date(capturedAt).toISOString(),
+		);
+		await expect(stamp).toHaveAttribute('data-stale', 'false');
+		await expect(banner).toHaveCount(0);
 	});
 }

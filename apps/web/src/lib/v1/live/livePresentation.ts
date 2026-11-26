@@ -221,7 +221,7 @@ function mapStamp(
 	degraded: boolean,
 ): StampPresentation {
 	const ageLabel =
-		result.bannerState === 'global-stall' && stamp.ageSeconds != null
+		result.bannerState === 'global-stall' && stamp.isStale && stamp.ageSeconds != null
 			? mapCopy[locale].feedNotRespondingShort
 			: null;
 	return {

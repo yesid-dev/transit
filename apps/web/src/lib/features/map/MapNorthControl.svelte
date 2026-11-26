@@ -8,17 +8,19 @@
 		pitch,
 		onreset,
 		status = '',
+		docked = false,
 	}: {
 		copy: MapCopy;
 		bearing: number;
 		pitch: number;
 		onreset: () => void;
 		status?: string;
+		docked?: boolean;
 	} = $props();
 	const visible = $derived(Math.abs(bearing) >= 1 || Math.abs(pitch) >= 1);
 </script>
 
-<div class="map-north" data-slot="map-north">
+<div class="map-north" class:docked hidden={!visible && !docked} data-slot="map-north">
 	<Button
 		type="button"
 		variant="outline"
@@ -52,14 +54,16 @@
 <span class="sr-only" role={status ? 'status' : undefined} aria-live="polite">{status}</span>
 
 <style>
-	.map-north {
+	.map-north:not(.docked) {
 		position: absolute;
 		right: calc(var(--map-detail-offset, 0rem) + 1rem);
 		bottom: calc(var(--map-north-clearance) - 0.75rem - 2.75rem);
 		z-index: var(--z-map-overlay);
+		transition: right var(--duration-normal) var(--ease-out);
+	}
+	.map-north {
 		min-width: 44px;
 		min-height: 44px;
-		transition: right var(--duration-normal) var(--ease-out);
 	}
 	.map-north :global(.map-north-button) {
 		width: 44px;

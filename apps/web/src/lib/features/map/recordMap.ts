@@ -5,6 +5,8 @@ import { choose, lowCoverageLabel, tally } from '#lib/features/record/recordText
 
 export type RecordMapLayer = 'live' | 'stops' | 'corridors';
 export const OTHER_STOPS_MIN_ZOOM = 13;
+export const ALL_CORRIDORS_MIN_ZOOM = 13;
+const NETWORK_CORRIDOR_LIMIT = 300;
 type Coordinate = [number, number];
 type Geometry =
 	| { type: 'Point'; coordinates: Coordinate }
@@ -77,6 +79,14 @@ export function recordRampStep(state: MapRecordState, value: number | null, stop
 
 export function recordStopIsVisible(mark: Pick<RecordMark, 'main'>, zoom: number): boolean {
 	return mark.main === true || zoom >= OTHER_STOPS_MIN_ZOOM;
+}
+
+/** Keep the most time lost legible when neighbouring corridors overlap. */
+export function overviewCorridors(marks: readonly RecordMark[]): readonly RecordMark[] {
+	if (marks.length <= NETWORK_CORRIDOR_LIMIT) return marks;
+	const measured = marks.filter((mark) => mark.state === 3 && mark.value !== null);
+	if (!measured.length) return marks;
+	return measured.sort((a, b) => b.value! - a.value!).slice(0, NETWORK_CORRIDOR_LIMIT);
 }
 
 export function scheduleTerminals(

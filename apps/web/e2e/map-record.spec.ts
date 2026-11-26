@@ -159,7 +159,7 @@ for (const [label, params] of [
 			`/map?provider=stm&recordFrom=2026-11-18&recordTo=2026-11-21&${params}`,
 		);
 		expect(response?.request().redirectedFrom()).toBeNull();
-		await expect(page.getByRole('heading', { name: 'Map of the record' })).toBeVisible();
+		await expect(page.getByRole('heading', { name: 'Record map' })).toBeVisible();
 		await expect
 			.poll(() => Object.fromEntries(received.at(-1) ?? []))
 			.toEqual({ city: 'stm', from: '2026-11-18', to: '2026-11-21' });

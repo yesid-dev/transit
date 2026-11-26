@@ -7,6 +7,7 @@ export const MIN_VISIBLE_SPAN_PX = 240;
 interface MapChromeInsets {
 	left: number;
 	bottom: number;
+	fitTop?: number;
 	fitLeft?: number;
 	fitBesideNorth?: { right: number; bottom: number };
 	fitBesideHeading?: { top: number; right: number; bottom: number; left: number };
@@ -51,9 +52,12 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 		const panel = pairedControls?.width ? pairedControls : null;
 		const north = rect('[data-slot="map-north"]');
 		const heading = rect('.map-head');
+		const wide = hero?.getAttribute('data-map-wide') === 'true';
 		const cameraActions = hero?.querySelector('.map-camera-actions');
+		const actions = rect('.map-camera-actions');
+		const attribution = rect('.maplibregl-ctrl-attrib');
 		const landscapeDock =
-			cameraActions && getComputedStyle(cameraActions).gridAutoFlow === 'column';
+			!wide && cameraActions && getComputedStyle(cameraActions).gridAutoFlow === 'column';
 		const headingOnRight = heading && heading.left > box.left + box.width / 2;
 		const header = frame?.querySelector('[data-slot="app-frame-chrome"]')?.getBoundingClientRect();
 		const framePill = frame
@@ -61,12 +65,24 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			?.getBoundingClientRect();
 		const credit = frame?.querySelector('[data-slot="map-source-footer"]')?.getBoundingClientRect();
 		const legendButton = rect('[data-slot="map-legend-fab"]');
+		const fitTop =
+			wide && header
+				? header.bottom
+				: !landscapeDock && heading && actions
+					? Math.max(heading.bottom, actions.bottom)
+					: undefined;
 		return {
 			left: panel ? panel.right - box.left : 0,
 			// The narrow controls rail leaves the provider framing viewport-centered.
 			// Point and route focus still clear its actual covered edge.
 			fitLeft: panel && panel.width > 56 ? panel.right - box.left : 0,
-			bottom: north ? Math.max(0, box.bottom - north.top) : 0,
+			fitTop: fitTop === undefined ? undefined : Math.max(0, fitTop - box.top),
+			bottom: Math.max(
+				0,
+				...(wide ? [actions, attribution] : [north, attribution, legendButton]).map((r) =>
+					r ? box.bottom - r.top : 0,
+				),
+			),
 			fitBesideNorth:
 				north && !landscapeDock ? { right: box.right - north.left, bottom: 0 } : undefined,
 			fitBesideHeading:
@@ -101,7 +117,7 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			'.map-hero[data-map-wide="true"] [data-slot="map-details"], [data-slot="map-detail-overlay"]',
 		);
 		return panel
-			? panel.getBoundingClientRect().width + 'px'
+			? Math.max(0, hero.getBoundingClientRect().right - panel.getBoundingClientRect().left) + 'px'
 			: getComputedStyle(hero).getPropertyValue('--map-detail-offset');
 	},
 	rootFontSize: () => Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
@@ -168,7 +184,7 @@ export function measureMapFocusInset(
 	}
 	// Keep actual chrome clearance whenever the fit has room for both 16px margins.
 	// Only overfull axes need the point-focus budget to keep geographic fitting valid.
-	let fitTop = rawTop;
+	let fitTop = chrome.fitTop ?? rawTop;
 	// Short landscape viewports can fit to the left of a right-aligned title card.
 	const besideHeading = chrome.fitBesideHeading;
 	if (measuredSheetHeight === null && besideHeading && fitTop + fitBottom + 32 >= containerHeight) {

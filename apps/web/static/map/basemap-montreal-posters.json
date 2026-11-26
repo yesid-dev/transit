@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "provider_id": "stm",
-  "rendered_utc": "2026-11-09T23:21:40.231Z",
+  "rendered_utc": "2026-11-26T15:54:29.469Z",
   "source": {
     "pmtiles_url": "/data/v1/stm/static/basemap/montreal.pmtiles",
     "sha256": "acd31096ae3d0666ffe8d806483bc1a336b2323fda57978f8563a25615c0c482",
@@ -32,7 +32,7 @@
     },
     {
       "path": "src/lib/components/map/basemap.ts",
-      "sha256": "7bc4fd936886fd10358a850d6fe2d3393f5442be8995516d5c0bec1de24ce0a7"
+      "sha256": "0399a4fdea1a3c7c87a79d919bb675f1c26bcf445eb6e697dbe3983eecb36908"
     },
     {
       "path": "src/lib/components/map/viewport.ts",
@@ -40,7 +40,7 @@
     },
     {
       "path": "src/lib/features/map/mapCameraFraming.ts",
-      "sha256": "90e862550efd3bd20e2f69d4c80454683c2c883254189581b5162d8b6569d0ba"
+      "sha256": "069ef437c209c77e4ba160cae893b625d600c53070c8b8b8e64a574536f0a9c7"
     },
     {
       "path": "../db/config/providers/stm.yaml",
@@ -54,8 +54,8 @@
       "width": 390,
       "height": 844,
       "format": "avif",
-      "bytes": 23100,
-      "sha256": "1e4fdd24fcf1cdeeaa6eaed62e7208b2131e6d9f65eafad79cdfb7aad44dc07b"
+      "bytes": 20939,
+      "sha256": "1d5be00135f170dd4624ed725229ab1961686cae28cb9cec37a12ce7cc52b4d8"
     },
     {
       "filename": "basemap-montreal-dark-desktop-acd31096ae3d.avif",
@@ -63,8 +63,8 @@
       "width": 1280,
       "height": 720,
       "format": "avif",
-      "bytes": 98102,
-      "sha256": "c329217659236f5422e305eb1c0659059a0f958dea090287ecd163f89df2a614"
+      "bytes": 84821,
+      "sha256": "5146b66746a9d92b2363dfacbe13e8eb1e4df7e39a1e95455e67de33536b83c5"
     },
     {
       "filename": "basemap-montreal-light-mobile-acd31096ae3d.avif",
@@ -72,8 +72,8 @@
       "width": 390,
       "height": 844,
       "format": "avif",
-      "bytes": 26059,
-      "sha256": "aaa29483dae17c787631ba4dd749e6ee8f7725111c9f85409c7ef266e9d4a364"
+      "bytes": 23162,
+      "sha256": "85e6256cf4b0bf5876f4e61892e56a952ea3f6bfafe78076f248e260aa9a14e0"
     },
     {
       "filename": "basemap-montreal-light-desktop-acd31096ae3d.avif",
@@ -81,8 +81,8 @@
       "width": 1280,
       "height": 720,
       "format": "avif",
-      "bytes": 117637,
-      "sha256": "add87d62cf60a06ba3d4f32d1062f9876aecd8c3800d11b75c67505d1f99c2c6"
+      "bytes": 96334,
+      "sha256": "31bf2e4cf5f237947ff65d55be70151bebea106327135d80ba5eba11867135d5"
     }
   ]
 }

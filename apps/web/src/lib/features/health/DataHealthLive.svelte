@@ -3,7 +3,7 @@
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { type CaptureSnapshot, feedState } from '#lib/live/captureSnapshot.ts';
+	import { type CaptureSnapshot, captureDisplayState } from '#lib/live/captureSnapshot.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
 		healthFeedName,
@@ -62,7 +62,7 @@
 		age: string | null;
 		cadence: string | null;
 		size: string | null;
-		state: ReturnType<typeof feedState>;
+		state: ReturnType<typeof captureDisplayState>;
 	}[] {
 		return Object.entries(snapshot?.feeds ?? {}).map(([id, feed]) => ({
 			id,
@@ -70,7 +70,7 @@
 			age: captureAge(feed.captured_at, now, locale),
 			cadence: captureCadence(feed.expected_every_seconds, locale),
 			size: captureSize(feed.bytes, locale),
-			state: feedState(feed, now),
+			state: captureDisplayState(feed, now),
 		}));
 	}
 	type FeedRow = {

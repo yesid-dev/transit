@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { mapRecordReading } from '#lib/site/presenter.ts';
+	import { mapRecordReading, searchCount } from '#lib/site/presenter.ts';
 	import { resolveColor } from '#lib/components/map/vehicleSprites.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
@@ -11,7 +11,7 @@
 	import MapLinePicker from './MapLinePicker.svelte';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { theme } from '@yesid/ui/state';
-	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { choose, notMeasuredLabel } from '#lib/features/record/recordText.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import MapPanelAnswer from './MapPanelAnswer.svelte';
@@ -32,6 +32,9 @@
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { attachRecordMap } from './recordMapLayers';
 	import {
+		ALL_CORRIDORS_MIN_ZOOM,
+		OTHER_STOPS_MIN_ZOOM,
+		overviewCorridors,
 		recordCorridors,
 		recordFeatures,
 		recordMapSampleText,
@@ -173,10 +176,22 @@
 	});
 	const markById = $derived(new Map(marks.map((mark) => [mark.id, mark])));
 	const selected = $derived(selectedId === null ? null : (markById.get(selectedId) ?? null));
+	const corridorOverview = $derived(network ? overviewCorridors(marks) : marks);
+	const atCorridorOverview = $derived((reportCamera?.zoom ?? 0) < ALL_CORRIDORS_MIN_ZOOM);
+	const drawn = $derived(atCorridorOverview ? corridorOverview : marks);
+	const showStopScope = $derived(
+		stopLayer &&
+			reportCamera &&
+			reportCamera.zoom < OTHER_STOPS_MIN_ZOOM &&
+			marks.some((mark) => !mark.main),
+	);
+	const overviewIncludesOtherStops = $derived(
+		stopLayer && marks.some((mark) => mark.main && !terminals.has(mark.id)),
+	);
 	const visible = $derived.by(() => {
 		const camera = reportCamera;
 		if (!camera) return [];
-		return marks
+		return drawn
 			.filter((mark) =>
 				mark.geometry.type === 'Point'
 					? recordStopIsVisible(mark, camera.zoom) &&
@@ -207,7 +222,7 @@
 			: [],
 	);
 	$effect(() => {
-		if (!map || !marks.length) return;
+		if (!map || !drawn.length) return;
 		const palette = theme.current === 'dark' ? 'dark' : 'light';
 		const mutedInk = resolveColor(
 			'var(--muted-foreground)',
@@ -215,7 +230,7 @@
 		);
 		return attachRecordMap(
 			map,
-			recordFeatures(marks, palette, stopLayer, mutedInk),
+			recordFeatures(drawn, palette, stopLayer, mutedInk),
 			(id) => (selectedId = id),
 			network,
 		);
@@ -270,7 +285,7 @@
 	]);
 	const routeNames = $derived(new Map(routes.map((route) => [route.id, route.long])));
 	const stopCodes = $derived(new Map(stops.map((stop) => [stop.id, stop.code ?? stop.id])));
-	const shownCount = (value: number) => intl.number(locale).format(value);
+	const shownCount = (value: number) => searchCount(value, locale);
 	function measuredLine(mark: RecordMark) {
 		return stopLayer ? undefined : line || (mark.lines?.length === 1 ? mark.lines[0] : undefined);
 	}
@@ -394,6 +409,26 @@
 							</h2>
 							<span class="tabular-nums text-muted-foreground">{shownCount(visible.length)}</span>
 						</div>
+						{#if showStopScope}
+							<p class="text-muted-foreground">
+								{overviewIncludesOtherStops
+									? tr(
+											'Showing stops served by more than one line, métro and rail stations, and the first and last stops on routes. Zoom in for all stops.',
+											'Seuls les arrêts desservis par plusieurs lignes, les stations de métro et de train et les terminus sont affichés. Zoomez pour voir tous les arrêts.',
+										)
+									: tr(
+											'Showing the first and last stops on routes. Zoom in for all stops.',
+											'Seuls les terminus sont affichés. Zoomez pour voir tous les arrêts.',
+										)}
+							</p>
+						{:else if drawn !== marks}
+							<p class="text-muted-foreground">
+								{tr(
+									`Showing the ${shownCount(drawn.length)} stretches that lose the most time. Zoom in for all.`,
+									`Affichage des ${shownCount(drawn.length)} tronçons où le temps perdu est le plus élevé. Zoomez pour les voir tous.`,
+								)}
+							</p>
+						{/if}
 						<ul>
 							{#each visible.slice(0, limit) as mark (mark.id)}
 								{@const lineId = measuredLine(mark)}

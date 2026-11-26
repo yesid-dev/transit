@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { mapRecordAnswer } from './recordMapAnswer';
 import {
+	overviewCorridors,
 	recordColours,
 	recordCorridorWidths,
 	recordCorridors,
@@ -11,6 +12,7 @@ import {
 	recordStopIsVisible,
 	recordStops,
 	scheduleTerminals,
+	type RecordMark,
 } from './recordMap';
 
 const stops = [
@@ -20,6 +22,32 @@ const stops = [
 	{ id: 'D', name: 'Delta', lat: 45.5, lon: -73.57 },
 ];
 const evidence = { days_not_measured: [] };
+
+it('keeps the 300 measured corridors with the most time lost in a dense overview', () => {
+	const marks = Array.from(
+		{ length: 1000 },
+		(_, value): RecordMark => ({
+			id: String(value),
+			name: String(value),
+			value,
+			sample: 30,
+			state: 3,
+			geometry: {
+				type: 'LineString',
+				coordinates: [
+					[-73.6, 45.5],
+					[-73.59, 45.5],
+				],
+			},
+		}),
+	);
+	expect(overviewCorridors(marks).map(({ value }) => value)).toEqual(
+		Array.from({ length: 300 }, (_, index) => 999 - index),
+	);
+	expect(marks[0]?.value).toBe(0);
+	const sparse = marks.slice(0, 4);
+	expect(overviewCorridors(sparse)).toBe(sparse);
+});
 
 it.each([
 	['en', false, 'Low coverage · 110 observed runs', 'No comparable runs observed'],

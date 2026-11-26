@@ -211,12 +211,12 @@
 		}
 	}
 	.app-shell-root[data-full-viewport='true'] {
+		--map-touch-controls-clearance: max(
+			calc(1.625rem + env(safe-area-inset-bottom, 0px) + var(--size-tap-min)),
+			calc(var(--floating-pill-clearance) + 0.5rem)
+		);
 		--map-touch-row-bottom: calc(
-			var(--map-source-clearance, 0px) +
-				max(
-					calc(1.625rem + env(safe-area-inset-bottom, 0px) + var(--size-tap-min)),
-					calc(var(--floating-pill-clearance) + 0.5rem)
-				)
+			var(--map-source-clearance, 0px) + var(--map-touch-controls-clearance)
 		);
 	}
 	/* Keep transparent map chrome from blocking the map or its panels. */

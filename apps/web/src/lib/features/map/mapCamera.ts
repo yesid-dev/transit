@@ -312,6 +312,8 @@ export function createMapCamera<Selection = unknown>() {
 					} else if (boundsChanged) m.setMaxBounds(viewport.maxBounds);
 					if (cameraOwner === 'fit') {
 						m.fitBounds(viewport.bounds, { ...viewport.fitBoundsOptions, duration: 0 });
+						activeCameraKey = cameraKey(center, zoom);
+						return;
 					}
 				}
 			}

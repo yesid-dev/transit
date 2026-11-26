@@ -139,7 +139,7 @@ for (const locale of ['en', 'fr'] as const) {
 		for (const width of [390, 768, 1023]) {
 			await page.setViewportSize({ width, height: 844 });
 			await open(page, localizeHref('/privacy', locale, 'stm'));
-			await page.evaluate(() => document.fonts.ready);
+			await waitForFrameClearance(page);
 			const pill = page.getByTestId('nav-pill');
 			const network = pill.locator('[data-slot="site-header-network"]');
 			const search = pill.getByRole('button', { name: words.searchAria.all });
@@ -151,7 +151,17 @@ for (const locale of ['en', 'fr'] as const) {
 			await page.evaluate(() => window.scrollTo({ top: 300, behavior: 'instant' }));
 			await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThanOrEqual(240);
 			await expect.poll(async () => (await network.boundingBox())!.y).toBeLessThan(0);
-			expect((await pill.boundingBox())!.y).toBeCloseTo(pillStart.y, 0);
+			// The city row can leave the viewport before WebKit paints the sticky chrome.
+			await page.evaluate(
+				() =>
+					new Promise<void>((resolve) =>
+						requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+					),
+			);
+			expect((await pill.boundingBox())!.y, `${locale} ${width}px sticky pill`).toBeCloseTo(
+				pillStart.y,
+				0,
+			);
 
 			const vacated = await page.evaluate(() => {
 				const pr = document.querySelector('[data-testid="nav-pill"]')!.getBoundingClientRect();
