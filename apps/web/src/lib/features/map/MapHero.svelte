@@ -5,7 +5,7 @@
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
-	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
+	import { hasScheduleOnlyLines, lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { getContext, onMount, tick, untrack, type Snippet } from 'svelte';
 	import {
 		mapPanelOpenContext,
@@ -1026,6 +1026,7 @@
 		layer={recordLayer}
 		{colourBy}
 		{railName}
+		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
 		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
 		collapsible
 	/>
@@ -1037,6 +1038,7 @@
 		layer={recordLayer}
 		{colourBy}
 		{railName}
+		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
 		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
 	/>
 {/snippet}

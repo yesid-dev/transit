@@ -17,6 +17,7 @@
 		staleCutoffS,
 		collapsible = false,
 		railName,
+		scheduleOnlyLines = true,
 	}: {
 		locale: Locale;
 		layer: RecordMapLayer;
@@ -24,6 +25,8 @@
 		staleCutoffS: number;
 		collapsible?: boolean;
 		railName?: string;
+		/** False hides the rail key for a city that declares no line without live data. */
+		scheduleOnlyLines?: boolean;
 	} = $props();
 
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
@@ -78,13 +81,17 @@
 					),
 					symbol: numberMark,
 				},
-				{
-					label: tr(
-						`Rail${railName ? ` (${railName})` : ''}: schedule only, no live data`,
-						`Rail${railName ? ` (${railName})` : ''}\u00a0: horaire seulement, aucune donnée en direct`,
-					),
-					symbol: railMark,
-				},
+				...(scheduleOnlyLines
+					? [
+							{
+								label: tr(
+									`Rail${railName ? ` (${railName})` : ''}: schedule only, no live data`,
+									`Rail${railName ? ` (${railName})` : ''}\u00a0: horaire seulement, aucune donnée en direct`,
+								),
+								symbol: railMark,
+							},
+						]
+					: []),
 				{ label: tr('Selected', 'Sélection'), symbol: selectedMark },
 			] satisfies MapLegendItem[],
 		};
