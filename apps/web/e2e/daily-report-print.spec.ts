@@ -46,7 +46,8 @@ test.describe('Daily report print', () => {
 			await expect(main.locator('#messages a[href*="/alerts"]')).toContainText(/1[\s,]690/u);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
 			await expect(main.locator('#punctuality')).toContainText(fr ? /97,2\s%/u : '97.2%');
-			await expect(main.locator('#delivery [data-slot="fact-row"]')).toHaveCount(5);
+			// Scheduled, no live data, status unknown, ran, cancelled, missing: the five under Scheduled add up to it.
+			await expect(main.locator('#delivery [data-slot="fact-row"]')).toHaveCount(6);
 			const actions = main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' });
 			await expect(actions.getByRole('button')).toHaveCount(4);
 			const actionTops = await actions

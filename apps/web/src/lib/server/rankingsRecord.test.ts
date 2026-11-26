@@ -29,7 +29,7 @@ it('keeps published destinations only when a direction has a single destination'
 });
 
 it.each([
-	['/hotspots', '', { kind: 'line', measure: 'on_time' }],
+	['/hotspots', '', { kind: 'line', measure: 'on_time', class: 'all' }],
 	['/hotspots', 'class=all&measure=late', { kind: 'line', measure: 'late', class: 'all' }],
 	['/hotspots', 'class=3%3Afrequent', { kind: 'line', measure: 'on_time', class: '3:frequent' }],
 	['/hotspots', 'kind=stops&class=all&measure=missing_trips', { kind: 'stop', measure: 'on_time' }],

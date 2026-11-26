@@ -528,3 +528,109 @@ export function predictedIn(predictedAt: number, now: number, locale: Locale) {
 	const minutes = minuteReading(Math.max(0, Math.ceil((predictedAt - now) / 60_000)), locale);
 	return locale === 'fr' ? `dans ${minutes}` : `in ${minutes}`;
 }
+
+/** Labels for the five columns that add up to the scheduled trips. */
+export function tripOutcomeLabels(locale: Locale) {
+	return locale === 'fr'
+		? {
+				scheduled: 'Trajets prévus',
+				noLiveData: 'Sans données en direct',
+				statusUnknown: 'État inconnu',
+				known: 'État connu',
+				ran: 'Effectués',
+				cancelled: 'Annulés, avec avis de la société de transport',
+				missing: 'Manquants, sans véhicule ni avis',
+			}
+		: {
+				scheduled: 'Scheduled trips',
+				noLiveData: 'No live data',
+				statusUnknown: 'Status unknown',
+				known: 'Known status',
+				ran: 'Ran',
+				cancelled: 'Cancelled, announced by the agency',
+				missing: 'Missing, no vehicle and no notice',
+			};
+}
+
+/** Short column headers for the day-by-day table. */
+export function tripOutcomeHeaders(locale: Locale) {
+	return locale === 'fr'
+		? {
+				scheduled: 'Prévus',
+				noLiveData: 'Sans données en direct',
+				statusUnknown: 'État inconnu',
+				ran: 'Effectués',
+				cancelled: 'Annulés',
+				missing: 'Manquants',
+			}
+		: {
+				scheduled: 'Scheduled',
+				noLiveData: 'No live data',
+				statusUnknown: 'Status unknown',
+				ran: 'Ran',
+				cancelled: 'Cancelled',
+				missing: 'Missing',
+			};
+}
+
+/** What the two columns outside the rate mean, in plain words. */
+export function tripOutcomeNote(locale: Locale) {
+	return locale === 'fr'
+		? 'Sans données en direct : lignes pour lesquelles la société de transport ne publie aucune donnée en direct. État inconnu : aucun arrêt du trajet n’a été confirmé, il ne compte donc ni comme effectué ni comme manquant. Le taux porte sur les trajets à l’état connu.'
+		: 'No live data: lines the agency publishes no live data for. Status unknown: no stop of the trip was confirmed, so it counts as neither run nor missing. The rate counts the trips with a known status.';
+}
+
+/** "105,961 of the 106,816 trips with a known status" */
+export function tripsRunBase(ran: number, known: number, locale: Locale) {
+	const count = intl.number(locale).format(ran);
+	const base = intl.number(locale).format(known);
+	return locale === 'fr'
+		? `${count} des ${base} trajets à l’état connu`
+		: `${count} of the ${base} trips with a known status`;
+}
+
+/** "99.2% of the 106,816 trips with a known status ran." without the figure. */
+export function tripsRunSentence(known: number | null | undefined, locale: Locale) {
+	if (known == null)
+		return locale === 'fr'
+			? 'des trajets prévus dont l’état est connu ont été effectués'
+			: 'of scheduled trips with a known status ran';
+	const base = intl.number(locale).format(known);
+	return locale === 'fr'
+		? `des ${base} trajets à l’état connu ont été effectués`
+		: `of the ${base} trips with a known status ran`;
+}
+
+/**
+ * Why an entity under its low-coverage limit is left out of a ranking:
+ * "Low coverage: 33.1% of scheduled stop events observed".
+ */
+export function lowCoverageReason(
+	evidence: {
+		share_observed?: number | null;
+		share_eligible?: number | null;
+		counts?: Record<string, number | null> | null;
+	},
+	locale: Locale,
+) {
+	const label = locale === 'fr' ? 'Faible couverture' : 'Low coverage';
+	const fr = locale === 'fr';
+	let detail = '';
+	if (evidence.share_eligible != null) {
+		const rate = recordPercent(evidence.share_eligible, locale);
+		detail = fr
+			? `état connu pour ${rate} des trajets prévus`
+			: `status known for ${rate} of scheduled trips`;
+	} else if (evidence.share_observed != null) {
+		const rate = recordPercent(evidence.share_observed, locale);
+		detail =
+			evidence.counts?.frequent_headways != null
+				? fr
+					? `${rate} des intervalles prévus observés`
+					: `${rate} of scheduled intervals observed`
+				: fr
+					? `${rate} des passages prévus observés`
+					: `${rate} of scheduled stop events observed`;
+	}
+	return detail ? `${label}${fr ? ' : ' : ': '}${detail}` : label;
+}

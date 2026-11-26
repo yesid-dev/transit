@@ -457,6 +457,29 @@ async function readBandRows(bands) {
 	);
 }
 
+// The first day's trips as the engine answers them: Scheduled, then the five parts that add up
+// to it (no live data, status unknown, ran, cancelled, missing), in the table's column order.
+function deliveryBreakdown(cell) {
+	const page = new URL(cell.path, 'http://fixture');
+	const query = new URL('http://fixture/measure');
+	query.searchParams.set('city', 'stm');
+	query.searchParams.set('measure', 'service_delivered');
+	query.searchParams.set('group', 'day');
+	query.searchParams.set('from', page.searchParams.get('recordFrom'));
+	query.searchParams.set('to', page.searchParams.get('recordTo'));
+	const [first] = networkServiceFixture(query).body.cells;
+	const { counts, excluded = {} } = first.evidence;
+	const noLiveData = excluded.route_without_live_data ?? 0;
+	return [
+		counts.scheduled,
+		noLiveData,
+		counts.scheduled - counts.eligible - noLiveData,
+		counts.ran,
+		counts.cancelled,
+		counts.missing,
+	];
+}
+
 async function verifyNetwork(page, cell, fixture, replay, errors, html) {
 	const label = `${cell.fixture}/${cell.locale}/${cell.surface}`;
 	const main = page.locator('main');
@@ -495,11 +518,20 @@ async function verifyNetwork(page, cell, fixture, replay, errors, html) {
 		const deliveryValues = (await delivery.first().locator('td').allTextContents()).map(
 			parseNumber,
 		);
-		actual.push(shares, counts, deliveryValues);
+		const expectedDelivery = deliveryBreakdown(cell);
 		invariant(
-			JSON.stringify(actual) ===
-				JSON.stringify([80.7, [5.6, 80.7, 13.7], [3120, 44966, 7634], [15861, 15476, 125, 260]]),
-			`${label} Record answer, bands, counts or delivery values drifted: ${JSON.stringify(actual)}`,
+			JSON.stringify(deliveryValues) === JSON.stringify(expectedDelivery),
+			`${label} delivery row diverged from the engine answer: ${JSON.stringify(deliveryValues)} against ${JSON.stringify(expectedDelivery)}`,
+		);
+		const [scheduled, ...parts] = deliveryValues;
+		invariant(
+			parts.reduce((sum, part) => sum + part, 0) === scheduled,
+			`${label} delivery row does not add up to Scheduled: ${JSON.stringify(deliveryValues)}`,
+		);
+		actual.push(shares, counts);
+		invariant(
+			JSON.stringify(actual) === JSON.stringify([80.7, [5.6, 80.7, 13.7], [3120, 44966, 7634]]),
+			`${label} Record answer, bands or counts drifted: ${JSON.stringify(actual)}`,
 		);
 		const trend = main.locator('#network-trend [data-slot="chart-frame"]');
 		await trend.locator('svg polyline').waitFor();

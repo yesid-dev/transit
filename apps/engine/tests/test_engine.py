@@ -1141,13 +1141,14 @@ def _long_range_answers(
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Canonical JSON digests with the revised statistics and plain-language method text.
     # The fixture spans two query batches, a DST transition, and one missing day.
+    # Stop "first" (46.7% observed) is excluded for low coverage, not ranked.
     expected = {
         "network": "fde3487d0ed9355c77ebe9ec08942978da9fc6cab6f7b50323175598ea5d330c",
         "line": "593bf1b219641c436bd064dd44b1f540f4cfe05b629ef0bd1ddca5bd2ca3a4db",
         "grid": "5226080f8614f441aeeeaffb8e0012565ebf2a869c9768cc8ca55903d24601ae",
         "delivery": "588ca59f1841ed4aec345434dff6759665b514e8958dd2926eb8cbcf8eb99491",
         "line_rank": "cdd6e4bc96e6a294d6ee1e33ed73df8a845f28914f7405855d73d483a819cd04",
-        "stop_rank": "002b869610c597a3034ade00817b36260a4490c22bd0b349f1d4e4b1b2ad554f",
+        "stop_rank": "d326f00dc0e7cea6345e9ce359c58567f4dab8888d4243fb2f3b1f4e4c186049",
         "departure_rank": "f4cbf1fdfe9a3797b0c75a2385c462ec1ff34c3ee59d15b972fc95e4df553485",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)

@@ -12,7 +12,7 @@ import type { DateWindow } from '#lib/v1/history/window.ts';
 
 import { rateStateText, coverageText, recordConnection, tally } from '../record/recordText.ts';
 import { comparePeriods, periodDays } from './periodComparison.ts';
-import { recordState, type RecordState } from '../record/recordStates';
+import { recordState, recordStateFor, type RecordState } from '../record/recordStates';
 export { dateRange, tally };
 
 export { previousPeriod } from './periodComparison.ts';
@@ -158,7 +158,7 @@ export function rankingState(answer: RankingAnswer, locale: Locale) {
 			: answer.state && answer.state !== 'measured'
 				? answer.state
 				: answer.excluded[0]?.reason && answer.excluded[0].reason !== 'measured'
-					? answer.excluded[0].reason
+					? recordStateFor(answer.excluded[0].reason)
 					: answer.evidence.days_included.length
 						? 'unknown'
 						: 'not_measured';
@@ -219,4 +219,19 @@ export function lateLines(vehicles: readonly { route?: string | null; status: st
 		.filter((line) => line.late > 0)
 		.sort((a, b) => b.late - a.late || a.id.localeCompare(b.id))
 		.slice(0, 3);
+}
+
+/**
+ * The three preview rows: never a low-coverage row (the engine leaves them out of
+ * the ranking; this also holds against an older engine), sorted by the on-time
+ * share they show, lowest first. The ranking itself orders by the cautious bound.
+ */
+export function previewRows<Row extends { value: number; rank: number; low_coverage?: boolean }>(
+	rows: readonly Row[],
+	size = 3,
+): Row[] {
+	return rows
+		.filter((row) => !row.low_coverage)
+		.slice(0, size)
+		.sort((a, b) => a.value - b.value || a.rank - b.rank);
 }

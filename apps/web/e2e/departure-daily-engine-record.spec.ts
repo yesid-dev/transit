@@ -34,7 +34,11 @@ for (const width of [390, 1440]) {
 			await expect(page).toHaveURL(/\/departure\//);
 			const main = page.getByRole('main');
 			await expect(main.getByRole('heading', { level: 1 })).toContainText('07:00');
-			await expect(main).toContainText(fr ? '1 sur 5' : '1 of 5');
+			// The answer is the late share of stop events; the days count is its detail.
+			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+				fr ? /1,0\s%/u : '1.0%',
+			);
+			await expect(main).toContainText(fr ? '1 des 5 jours' : '1 of the 5 days');
 			await expect(main).toContainText(fr ? '6 min de retard' : '6 min late');
 			await expect(
 				main

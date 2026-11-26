@@ -22,7 +22,13 @@ export function networkServiceFixture(url) {
 		(_, i) => new Date(Date.parse(from) + i * 86_400_000).toISOString().slice(0, 10),
 	);
 	const counts = { classified: 55720, scheduled: 58338, early: 3120, on_time: 44966, late: 7634 };
-	const delivery = { scheduled: 15861, eligible: 15861, ran: 15476, cancelled: 125, missing: 260 };
+	// Scheduled = no live data + status unknown + ran + cancelled + missing, as the engine answers.
+	const delivery = { scheduled: 18515, eligible: 15861, ran: 15476, cancelled: 125, missing: 260 };
+	const tripExclusions = { route_without_live_data: 1654, unconfirmed: 1000, capture_gap: 0 };
+	const trips = (days_included) => ({
+		...measured({ trips_run: delivery.ran / delivery.eligible }, delivery, days_included),
+		evidence: { counts: delivery, excluded: tripExclusions, days_included },
+	});
 	const evidence = {
 		start_date: from,
 		end_date: to,
@@ -112,12 +118,12 @@ export function networkServiceFixture(url) {
 			cells: days.map((day, i) => ({
 				key: { day },
 				...(measure === 'service_delivered'
-					? measured({ trips_run: delivery.ran / delivery.eligible }, delivery, [day])
+					? trips([day])
 					: measured({ on_time: share + Math.sin(i * 1.3) * 0.025 }, counts, [day])),
 			})),
 		};
 	} else if (measure === 'service_delivered') {
-		result = measured({ trips_run: delivery.ran / delivery.eligible }, delivery);
+		result = trips(days);
 	} else if (measure === 'crowding') {
 		result = measured(
 			{

@@ -17,11 +17,19 @@
 		delayReading,
 		longDate,
 		methodEvidence,
-		recordRatio,
+		recordPercent,
 		recordStamp,
+		sampleWithMinimum,
 		scheduledClock,
 	} from '#lib/site/presenter.ts';
-	import { departureDays, departureTitles } from '#lib/features/record/departureDailyText.ts';
+	import {
+		departureDays,
+		departureLateDetail,
+		departureLateSentence,
+		departureLateShare,
+		departureLateStatement,
+		departureTitles,
+	} from '#lib/features/record/departureDailyText.ts';
 	import {
 		coverageText,
 		lastGoodNote,
@@ -124,11 +132,7 @@
 		return url.pathname + url.search;
 	}
 	function observedStatement(answer: RecordSeries) {
-		const { late, observed } = departureDays(answer);
-		return t(
-			`${late} of ${observed} observed days had a late stop.`,
-			`Au moins un retard à un arrêt sur ${late} des ${observed} jours observés.`,
-		);
+		return departureLateStatement(answer, data.lang);
 	}
 	const stop = (id: string) => ({
 		name: data.stopNames[id] || id,
@@ -253,25 +257,36 @@
 									{#if result.kind === 'answer' && 'cells' in result.answer}
 										{@const answer = result.answer}
 										{@const days = departureDays(answer)}
+										{@const lateShare = departureLateShare(answer)}
+										{@const lateDetail = departureLateDetail(answer, data.lang)}
 										{@const absent = recordStateFor(
 											answer.state ?? answer.cells[0]?.state ?? 'not_measured',
 										)}
+										{@const tooFew = days.observed > 0 && lateShare.share == null}
 										<div id="observed">
 											<RecordAnswer
-												value={days.observed
-													? recordRatio(days.late, String(days.observed), data.lang)
-													: null}
-												state={absent}
+												value={lateShare.share == null
+													? null
+													: recordPercent(lateShare.share, data.lang)}
+												state={tooFew ? 'too_few_to_judge' : absent}
 												locale={data.lang}
 												time={recordTime}
-												sentence={days.observed
-													? t(
-															'observed days had a late stop.',
-															'jours observés avec au moins un retard.',
-														)
-													: recordState(absent)[data.lang]}
+												sentence={lateShare.share != null
+													? departureLateSentence(data.lang)
+													: recordState(tooFew ? 'too_few_to_judge' : absent)[data.lang]}
 												{actions}
-											></RecordAnswer>
+											>
+												{#snippet meta()}
+													{#if tooFew && lateShare.minimum != null}<p>
+															{sampleWithMinimum(
+																countedUnit(lateShare.classified, 'event', data.lang),
+																lateShare.minimum,
+																data.lang,
+															)}
+														</p>
+													{:else if lateDetail}<p>{lateDetail}</p>{/if}
+												{/snippet}
+											</RecordAnswer>
 										</div>
 										{#snippet actions()}
 											<RecordActionGroup
@@ -517,8 +532,8 @@
 												key: 'counted',
 												label: t('Counted', 'Décompte'),
 												text: t(
-													'An observed day has at least one classified stop event. The answer counts days with at least one observed late stop.',
-													'Jour observé : au moins un passage classé. Le bilan compte les jours avec un retard observé à un arrêt.',
+													'The answer is the late share of the observed stop events of this departure on these dates. An observed day has at least one classified stop event.',
+													'La réponse est la part des passages observés de ce départ qui étaient en retard à ces dates. Jour observé : au moins un passage classé.',
 												),
 											},
 											{

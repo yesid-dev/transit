@@ -6,6 +6,8 @@ import { rankingMeasures, rankingSelection, reporting } from './rankingSelection
 import {
 	classText,
 	exclusionText,
+	measureMeaning,
+	rankedNoun,
 	rankingCountLines,
 	rankingLead,
 	rankingRange,
@@ -103,10 +105,10 @@ it.each([
 	).toBe(`${fr} parmi les 20 lignes avec assez de données pour conclure\u00a0:`);
 });
 
-it('says first-ranked when the engine order differs from the order of values', () => {
+it('says ranked lowest, never top-ranked, when the engine order differs from the order of values', () => {
 	const ranked = { rows: [row, { ...row, value: 0.44 }], ranked_count: 2 };
 	expect(rankingLead(ranked, row, 'on_time', '2 lines with enough to judge', 'en')).toBe(
-		'is the top-ranked on-time share among the 2 lines with enough to judge:',
+		'is the on-time share ranked lowest among the 2 lines with enough to judge:',
 	);
 });
 
@@ -160,4 +162,57 @@ it('distinguishes no recorded days from an unknown result on recorded days', () 
 		),
 	).toBe('Not measured');
 	expect(recordMessage({ kind: 'answer', answer: { ...answer, rows: [row] } }, 'en')).toBeNull();
+});
+
+it('names a low-coverage exclusion with its observed share, as the engine reports it', () => {
+	// Line 872, STM, 18 to 24 Nov 2026: 516 of 1,560 scheduled stop events observed.
+	const excluded = {
+		...entry,
+		id: '872',
+		sample: 516,
+		counts: { scheduled: 1560, classified: 516 },
+		share_observed: 516 / 1560,
+		low_coverage: true,
+		reason: 'low_coverage' as const,
+		reason_text: { en: 'Low coverage', fr: 'Faible couverture' },
+	};
+	expect(exclusionText(excluded, 'on_time', 'en')).toBe(
+		'Low coverage: 33.1% of scheduled stop events observed',
+	);
+	expect(exclusionText(excluded, 'on_time', 'fr').replace(/\s/g, ' ')).toBe(
+		'Faible couverture : 33,1 % des passages prévus observés',
+	);
+	const trips = { ...excluded, share_observed: undefined, share_eligible: 0.72 };
+	expect(exclusionText(trips, 'cancelled_trips', 'en')).toBe(
+		'Low coverage: status known for 72.0% of scheduled trips',
+	);
+});
+
+it('says the on-time window as every other screen does and names a chosen class', () => {
+	const engine = 'Share of stops from 60 seconds early to 300 seconds late, including both limits.';
+	expect(measureMeaning('on_time', engine, 'en')).toBe(
+		'Between 1 minute early and 5 minutes late, counted at each scheduled stop of each trip.',
+	);
+	expect(measureMeaning('on_time', engine, 'fr')).toContain('1 minute');
+	expect(rankedNoun('line', '3:regular', ['3:regular', '3:night'], 'en')).toBe('regular lines');
+	expect(rankedNoun('line', '3:regular', ['3:regular'], 'fr')).toBe('lignes régulières');
+	expect(rankedNoun('line', 'all', [], 'en')).toBeNull();
+	expect(rankedNoun('line', '3:regular', ['3:regular'], 'en', 1)).toBe('regular line');
+	expect(rankedNoun('line', '3:frequent', ['3:frequent'], 'fr', 1)).toBe('ligne fréquente');
+	expect(rankedNoun('line', '3:night', ['3:night'], 'fr', 1)).toBe('ligne de nuit');
+	expect(rankedNoun('stop', null, [], 'en')).toBeNull();
+});
+
+it('never says top-ranked in either language', () => {
+	for (const measure of rankingMeasures.line)
+		for (const locale of ['en', 'fr'] as const) {
+			const text = rankingLead(
+				{ rows: [row, { ...row, value: 0.1 }], ranked_count: 2 },
+				row,
+				measure,
+				'x',
+				locale,
+			);
+			expect(text).not.toMatch(/top-ranked|en tête/);
+		}
 });

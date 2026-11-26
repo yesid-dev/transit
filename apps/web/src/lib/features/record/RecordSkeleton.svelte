@@ -3,6 +3,7 @@
 		| 'answer'
 		| 'reading'
 		| 'facts'
+		| 'trip-facts'
 		| 'bands'
 		| 'band-comparison'
 		| 'comparison-facts'
@@ -88,6 +89,14 @@
 		{/if}
 	{:else if shape === 'comparison-facts'}
 		{@render comparisonFacts()}
+	{:else if shape === 'trip-facts'}
+		<!-- The trips card: Scheduled and the five parts that add up to it, rows touching as in FactList. -->
+		{#each [1, 2, 3, 4, 5, 6] as row (row)}
+			<div class="grid h-11 grid-cols-[2fr_1fr] items-center gap-4">
+				<Skeleton class="h-4 w-3/4" />
+				<Skeleton class="h-5 w-2/3 justify-self-end" />
+			</div>
+		{/each}
 	{:else if shape === 'facts'}
 		{#each [1, 2, 3] as row (row)}
 			<div class="grid h-11 grid-cols-[2fr_1fr] items-center gap-4">
@@ -113,6 +122,9 @@
 	[data-waiting-shape='answer'],
 	[data-waiting-shape='reading'] {
 		gap: 0.75rem;
+	}
+	[data-waiting-shape='trip-facts'] {
+		gap: 0;
 	}
 	[data-waiting-shape='listing'] {
 		align-content: start;

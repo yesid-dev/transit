@@ -39,6 +39,8 @@ const engineState = z.enum([
 	'not_tracked',
 	'unknown',
 ]);
+// A ranking leaves out an entity under its low-coverage limit; older engines never send it.
+const exclusionReason = engineState.or(z.literal('low_coverage'));
 const share = z.number().min(0).max(1);
 const count = z.int().nonnegative();
 const counts = z.record(z.string(), count.nullable());
@@ -107,7 +109,9 @@ const rankingAnswer = rankingEnvelope.extend({
 	),
 	excluded: z.array(
 		z.object({
-			reason: engineState,
+			...rateCoverage.shape,
+			id: z.string().optional(),
+			reason: exclusionReason,
 			reason_text: bilingual,
 			sample: count.nullable().optional(),
 			counts: counts.optional(),
@@ -407,7 +411,7 @@ const rankingsRecord = rankingEnvelope.extend({
 			}),
 		}),
 	),
-	excluded: z.array(rankingIdentity.extend({ reason: engineState, reason_text: bilingual })),
+	excluded: z.array(rankingIdentity.extend({ reason: exclusionReason, reason_text: bilingual })),
 	range_notes: z.record(z.string(), bilingual),
 	info: z
 		.array(

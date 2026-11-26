@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { recordPercent } from '#lib/site/presenter.ts';
+	import {
+		recordPercent,
+		tripOutcomeHeaders,
+		tripOutcomeLabels,
+		tripOutcomeNote,
+		tripsRunBase,
+	} from '#lib/site/presenter.ts';
+	import { tripOutcomes } from '../record/tripOutcomes.ts';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
@@ -92,14 +99,18 @@
 	const number = (count: number | null | undefined) =>
 		count == null ? t('Unknown', 'Inconnu') : tally(count, locale);
 	function deliveryDay(day: string, cell: RecordSeries['cells'][number]) {
-		const value = (key: string) =>
-			cell.state === 'measured'
-				? number(cell.evidence.counts[key])
-				: recordState(chartState(cell.state))[locale];
+		// Every column comes from one breakdown, so the row adds up to Scheduled.
+		const outcomes = cell.state === 'measured' ? tripOutcomes(cell.evidence) : null;
+		const value = (key: Exclude<keyof NonNullable<typeof outcomes>, 'known'>) =>
+			outcomes
+				? number(outcomes[key])
+				: recordState(chartState(cell.state === 'measured' ? 'unknown' : cell.state))[locale];
 		return {
 			id: day,
 			label: shortServiceDay(day, locale),
 			scheduled: value('scheduled'),
+			noLiveData: value('noLiveData'),
+			statusUnknown: value('statusUnknown'),
 			ran: value('ran'),
 			cancelled: value('cancelled'),
 			missing: value('missing'),
@@ -107,11 +118,20 @@
 	}
 	type DeliveryDay = ReturnType<typeof deliveryDay>;
 	type CrowdingRow = { id: string; label: string; share: string };
+	const headers = $derived(tripOutcomeHeaders(locale));
+	const outcomeLabels = $derived(tripOutcomeLabels(locale));
 	const deliveryColumns = $derived<DataTableColumn<DeliveryDay>[]>([
-		{ key: 'scheduled', header: t('Scheduled', 'Prévus'), numeric: true, cell: scheduledCell },
-		{ key: 'ran', header: t('Ran', 'Effectués'), numeric: true, cell: ranCell },
-		{ key: 'cancelled', header: t('Cancelled', 'Annulés'), numeric: true, cell: cancelledCell },
-		{ key: 'missing', header: t('Missing', 'Manquants'), numeric: true, cell: missingCell },
+		{ key: 'scheduled', header: headers.scheduled, numeric: true, cell: scheduledCell },
+		{ key: 'noLiveData', header: headers.noLiveData, numeric: true, cell: noLiveDataCell },
+		{
+			key: 'statusUnknown',
+			header: headers.statusUnknown,
+			numeric: true,
+			cell: statusUnknownCell,
+		},
+		{ key: 'ran', header: headers.ran, numeric: true, cell: ranCell },
+		{ key: 'cancelled', header: headers.cancelled, numeric: true, cell: cancelledCell },
+		{ key: 'missing', header: headers.missing, numeric: true, cell: missingCell },
 	]);
 	const crowdingColumns = $derived<DataTableColumn<CrowdingRow>[]>([
 		{
@@ -151,6 +171,8 @@
 </script>
 
 {#snippet scheduledCell(row: DeliveryDay)}{row.scheduled}{/snippet}
+{#snippet noLiveDataCell(row: DeliveryDay)}{row.noLiveData}{/snippet}
+{#snippet statusUnknownCell(row: DeliveryDay)}{row.statusUnknown}{/snippet}
 {#snippet ranCell(row: DeliveryDay)}{row.ran}{/snippet}
 {#snippet cancelledCell(row: DeliveryDay)}{row.cancelled}{/snippet}
 {#snippet missingCell(row: DeliveryDay)}{row.missing}{/snippet}
@@ -363,7 +385,8 @@
 						</RecordCard>
 					</section>
 				</DashboardGrid>
-				<DashboardGrid gutter={false} minTile="24rem">
+				<!-- The trips table has six counts: a tile under 40rem would cut it off. -->
+				<DashboardGrid gutter={false} minTile="40rem">
 					<NetworkRecordReading
 						id="trend"
 						title={copy.trend}
@@ -396,12 +419,14 @@
 						answer={record.delivery}
 					>
 						{#snippet reading(result)}
-							{#if !('cells' in result) && result.state === 'measured'}
+							{@const outcomes =
+								!('cells' in result) && result.state === 'measured'
+									? tripOutcomes(result.evidence)
+									: null}
+							{#if outcomes && !('cells' in result)}
 								<dl class="mb-4 grid gap-2">
 									<div class="flex flex-wrap justify-between gap-x-3">
-										<dt>
-											{term.delivery}
-										</dt>
+										<dt>{term.delivery}</dt>
 										<dd class="ml-auto text-right tabular-nums">
 											<strong
 												>{result.value.trips_run == null
@@ -409,34 +434,26 @@
 													: recordPercent(result.value.trips_run, locale)}</strong
 											>
 											<span class="block text-small text-muted-foreground"
-												>{t(
-													`${number(result.evidence.counts.ran)} of ${number(result.evidence.counts.eligible)}`,
-													`${number(result.evidence.counts.ran)} sur ${number(result.evidence.counts.eligible)}`,
-												)}</span
+												>{tripsRunBase(outcomes.ran, outcomes.known, locale)}</span
 											>
 										</dd>
 									</div>
-									<div class="flex flex-wrap justify-between gap-x-3">
-										<dt>
-											{t(
-												'Cancelled, announced by the agency',
-												'Annulés, avec avis de l’exploitant',
-											)}
-										</dt>
-										<dd class="ml-auto text-right tabular-nums">
-											{number(result.evidence.counts.cancelled)}
-										</dd>
-									</div>
-									<div class="flex flex-wrap justify-between gap-x-3">
-										<dt>
-											{t('Missing, no vehicle and no notice', 'Manquants, sans véhicule ni avis')}
-										</dt>
-										<dd class="ml-auto text-right tabular-nums">
-											{number(result.evidence.counts.missing)}
-										</dd>
-									</div>
+									{#each [['cancelled', outcomes.cancelled], ['missing', outcomes.missing], ['statusUnknown', outcomes.statusUnknown], ['noLiveData', outcomes.noLiveData], ['scheduled', outcomes.scheduled]] as const as [key, count] (key)}
+										<div class="flex flex-wrap justify-between gap-x-3">
+											<dt>{outcomeLabels[key]}</dt>
+											<dd class="ml-auto text-right tabular-nums">
+												{#if key === 'scheduled'}<strong>{number(count)}</strong>{:else}{number(
+														count,
+													)}{/if}
+											</dd>
+										</div>
+									{/each}
 								</dl>
-							{:else}<StateMark state={chartState(result.state)} {locale} />{/if}
+								<p class="mb-4 text-small text-muted-foreground">{tripOutcomeNote(locale)}</p>
+							{:else}<StateMark
+									state={chartState(result.state === 'measured' ? 'unknown' : result.state)}
+									{locale}
+								/>{/if}
 							{#await record.deliveryDays then days}
 								{#if days.kind === 'answer' && 'cells' in days.answer && days.answer.cells.length}
 									{@const rows = days.answer.cells.flatMap((cell) =>
@@ -449,7 +466,7 @@
 										columns={deliveryColumns}
 										{rows}
 										pageSize={rows.length > 7 ? 7 : undefined}
-										scrollMinWidth="24rem"
+										scrollMinWidth="30rem"
 									/>
 								{:else if days.kind === 'busy'}<RecordPending {locale} busy />{/if}
 							{/await}

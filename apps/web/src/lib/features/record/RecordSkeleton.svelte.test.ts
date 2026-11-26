@@ -8,6 +8,8 @@ const shapes: [RecordWaitingShape, number][] = [
 	['answer', 7],
 	['reading', 5],
 	['facts', 6],
+	// The Daily report trips card: six rows, a label and a value each.
+	['trip-facts', 12],
 	['bands', 7],
 	['band-comparison', 18],
 	['comparison-facts', 6],

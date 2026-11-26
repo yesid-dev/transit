@@ -9,9 +9,9 @@
 	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import StateMark from '../record/StateMark.svelte';
-	import { lastGoodNote, coverageText } from '../record/recordText.ts';
+	import { lastGoodNote } from '../record/recordText.ts';
 	import { overviewCopy } from './overviewRecord.copy';
-	import { rankingState } from './overviewRecord.ts';
+	import { previewRows, rankingState } from './overviewRecord.ts';
 
 	let {
 		locale,
@@ -40,10 +40,9 @@
 	type Row = RecordTableRow & { share: string };
 
 	function rankRows(answer: RankingAnswer, stops: ScheduleEdition['stops']): Row[] {
-		return answer.rows.slice(0, 3).map((row) => {
+		return previewRows(answer.rows).map((row) => {
 			const line = kind === 'line' ? display.lineName(row.id) : null;
 			const stop = kind === 'stop' ? stops.find((item) => item.id === row.id) : undefined;
-			const coverage = row.low_coverage ? coverageText(row, locale) : null;
 			return {
 				id: row.id,
 				label:
@@ -54,7 +53,7 @@
 					kind === 'stop' ? { text: stop?.code || row.id, outline: outlineStopCode } : undefined,
 				plate: line ? { code: line.number ?? row.id } : undefined,
 				href: link((kind === 'line' ? '/lines/' : '/stop/') + encodeURIComponent(row.id)),
-				detail: countedUnit(row.sample, 'event', locale) + (coverage ? ` · ${coverage}` : ''),
+				detail: countedUnit(row.sample, 'event', locale),
 				share: recordPercent(row.value, locale),
 			};
 		});

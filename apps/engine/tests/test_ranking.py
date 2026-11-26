@@ -229,3 +229,33 @@ def test_legacy_cleaning_marks_route_type_unknown(
     store = Store.from_env()
     request = Ranking(Question("on_time", "stm", THURSDAY, THURSDAY), "line")
     assert rank(store, request)["rows"][0]["class"] == "unknown:frequent"
+
+
+def test_low_coverage_lines_are_excluded_and_unrankable_classes_are_not_offered(
+    tmp_path: Path,
+) -> None:
+    # 3 of 8 scheduled stops observed (37.5%): above the 25% minimum, under the 50% limit.
+    sparse = (0, 0, 0, None, None, None, None, None)
+    trips = (
+        *_service("A", 24, (0, 0, 0, 301) * 2),
+        *_service("L", 40, sparse),
+        *_service("M", 20, (None,) * 8, route_type=1, reason="route_without_live_data"),
+    )
+    store = _build_store(tmp_path, 9, {THURSDAY: trips})
+    answer = _json(store, **{"class": "all"})
+    assert [row["id"] for row in answer["rows"]] == ["A"]
+    assert answer["ranked_count"] == 1
+    excluded = {row["id"]: row for row in answer["excluded"]}
+    assert excluded["L"]["reason"] == "low_coverage"
+    assert excluded["L"]["reason_text"] == {"en": "Low coverage", "fr": "Faible couverture"}
+    assert excluded["L"]["share_observed"] == pytest.approx(3 / 8)
+    assert excluded["L"]["counts"]["scheduled"] == 320
+    assert excluded["L"]["low_coverage"] is True
+    assert "value" not in excluded["L"]
+    assert excluded["M"]["reason"] == "no_live_data"
+    # The métro-like class has no line with live data, so it is never offered.
+    assert answer["available_classes"] == ["3:frequent"]
+    # Stops follow the same rule: no ranked stop is under the limit.
+    stops = _json(store, kind="stop")
+    assert stops["rows"]
+    assert all(row["share_observed"] >= 0.5 for row in stops["rows"])
