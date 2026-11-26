@@ -49,7 +49,9 @@
 			};
 		}),
 	);
+	const hasPlates = $derived(readings.some(({ plate }) => plate !== undefined));
 	let container = $state<HTMLDivElement>();
+	let narrow = $state(false);
 	let needsScroll = $state(false);
 	$effect(() => {
 		const element = container;
@@ -57,18 +59,41 @@
 		const root = element.ownerDocument.documentElement;
 		const measure = () => {
 			const rem = Number.parseFloat(getComputedStyle(root).fontSize);
-			// Below this width in text units, the two lead cells need a scrollable table.
+			// Below this width in text units, narrow rows need a scrollable five-column table.
 			needsScroll = element.clientWidth < 12 * rem;
+			// Match DataTable's 28rem rows breakpoint: five columns on desktop, stacked detail on phone.
+			narrow = !needsScroll && element.clientWidth <= 28 * rem;
 		};
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(element);
 		return () => observer.disconnect();
 	});
-	const columns = $derived<DataTableColumn<Row>[]>([
-		{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected },
-	]);
+	const columns = $derived<DataTableColumn<Row>[]>(
+		narrow
+			? [{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected }]
+			: [
+					{ key: 'toward', header: t('Toward', 'Vers'), cell: toward },
+					{ key: 'scheduled', header: t('Scheduled', 'Horaire'), cell: scheduled },
+					{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected },
+					{ key: 'status', header: t('Status', 'État'), cell: statusCell },
+				],
+	);
 </script>
+
+{#snippet toward(row: Row)}
+	<span class="inline-flex min-h-11 items-center wrap-normal"
+		>{row.toward ? display.readName(row.toward, locale) : t('Unavailable', 'Indisponible')}</span
+	>
+{/snippet}
+
+{#snippet scheduled(row: Row)}
+	<span class="inline-flex min-h-11 items-center tabular-nums wrap-normal">
+		{row.scheduledAt === null
+			? t('Unavailable', 'Indisponible')
+			: clockTime(new Date(row.scheduledAt), locale, timeZone)}
+	</span>
+{/snippet}
 
 {#snippet expected(row: Row)}
 	{@const time = predictedIn(row.predictedAt, now, locale)}
@@ -77,10 +102,11 @@
 			? departureHref(url, locale, city, row.line, row.direction, row.start, 'live', row.trip)
 			: null}
 	{#if href}
-		<a class="inline-flex min-h-11 min-w-11 items-center text-primary underline tabular-nums" {href}
-			>{time}</a
+		<a
+			class="inline-flex min-h-11 min-w-11 items-center text-primary underline tabular-nums wrap-normal"
+			{href}>{time}</a
 		>
-	{:else}<span class="tabular-nums">{time}</span>{/if}
+	{:else}<span class="tabular-nums wrap-normal">{time}</span>{/if}
 {/snippet}
 
 {#snippet status(row: StopPrediction)}
@@ -95,6 +121,10 @@
 	/>
 {/snippet}
 
+{#snippet statusCell(row: Row)}
+	<span class="inline-flex min-h-11 items-center">{@render status(row)}</span>
+{/snippet}
+
 <div class="min-w-0" bind:this={container}>
 	<RecordDataTable
 		{locale}
@@ -103,28 +133,36 @@
 		value="expected"
 		{columns}
 		rows={readings}
-		scrollMinWidth={needsScroll ? '25rem' : undefined}
+		scrollMinWidth={needsScroll ? '36rem' : undefined}
 	>
 		{#snippet rowHeading(row)}
-			<RecordTableName {row} plates columnCount={2} inlinePlate>
-				{#snippet detailContent()}
-					<span
-						>{t('Toward', 'Vers')}
-						{row.toward
-							? display.readName(row.toward, locale)
-							: t('Unavailable', 'Indisponible')}</span
-					>
-					<span aria-hidden="true"> · </span>
-					<span class="tabular-nums"
-						>{t('Scheduled', 'Horaire')}
-						{row.scheduledAt === null
-							? t('Unavailable', 'Indisponible')
-							: clockTime(new Date(row.scheduledAt), locale, timeZone)}</span
-					>
-					<span aria-hidden="true"> · </span>
-					{@render status(row)}
-				{/snippet}
-			</RecordTableName>
+			{#if narrow}
+				<RecordTableName {row} plates={hasPlates} columnCount={2} inlinePlate>
+					{#snippet detailContent()}
+						<span
+							>{row.toward
+								? t(
+										`Toward ${display.readName(row.toward, locale)}`,
+										`Vers ${display.readName(row.toward, locale)}`,
+									)
+								: t('Destination unavailable', 'Destination indisponible')}</span
+						>
+						<span aria-hidden="true"> · </span>
+						<span class="tabular-nums"
+							>{row.scheduledAt === null
+								? t('Scheduled time unavailable', 'Horaire indisponible')
+								: t(
+										`Scheduled ${clockTime(new Date(row.scheduledAt), locale, timeZone)}`,
+										`Horaire ${clockTime(new Date(row.scheduledAt), locale, timeZone)}`,
+									)}</span
+						>
+						<span aria-hidden="true"> · </span>
+						{@render status(row)}
+					{/snippet}
+				</RecordTableName>
+			{:else}
+				<RecordTableName {row} plates={hasPlates} columnCount={5} inlinePlate />
+			{/if}
 		{/snippet}
 	</RecordDataTable>
 </div>

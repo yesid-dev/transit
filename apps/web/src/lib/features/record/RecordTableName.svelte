@@ -22,7 +22,7 @@
 {#snippet contents()}
 	{#if hasTrack}
 		<span class="plate">
-			{#if row.plate}<RoutePlate {...row.plate} class={inlinePlate ? 'min-w-0!' : undefined} />
+			{#if row.plate}<RoutePlate {...row.plate} />
 			{:else if row.leadingCode}<span
 					class="font-mono text-sm"
 					class:outlined={row.leadingCode.outline}>{row.leadingCode.text}</span
@@ -129,16 +129,25 @@
 		}
 	}
 	.name-cell.with-plate.inline-plate {
-		grid-template-columns: max-content minmax(0, 1fr);
-		column-gap: 0.5em;
+		grid-template-columns: 3.75em minmax(0, 1fr);
+		column-gap: calc(var(--space-card-gap) / 2);
 	}
 	.name-cell.with-plate.inline-plate .plate {
 		grid-row: 1 / span 2;
-		align-self: start;
+		align-self: center;
 	}
 	@media (max-width: 40rem) {
 		.name-cell.with-plate.inline-plate {
-			column-gap: 0.25em;
+			grid-template-columns: max-content minmax(0, 1fr);
+			column-gap: 0.375em;
+			row-gap: 0.25rem;
+		}
+		.name-cell.with-plate.inline-plate .plate {
+			grid-row: 1;
+			align-self: center;
+		}
+		.name-cell.with-plate.inline-plate .detail {
+			grid-column: 1 / -1;
 		}
 		.name-cell.with-plate.inline-plate .name-label {
 			font-size: var(--text-caption);

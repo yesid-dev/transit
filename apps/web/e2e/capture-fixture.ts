@@ -120,7 +120,7 @@ export async function installStopCapture(page: Page, city: string, stop: string,
 				},
 			]),
 			...(index === 0
-				? { trip_headsign: 'Gare Montréal-Ouest' }
+				? { trip_headsign: 'Gare Montréal-Ouest', direction_id: 0, start_time: '08:00:00' }
 				: index === 1
 					? { trip_headsign: null }
 					: {}),
