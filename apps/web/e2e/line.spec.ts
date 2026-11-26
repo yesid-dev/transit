@@ -183,7 +183,9 @@ for (const locale of PUBLISHED_LOCALES) {
 			await refresh;
 		}
 		await refreshLive();
-		const notices = page.getByRole('article', { name: fr ? 'Avis de l’agence' : 'Agency notices' });
+		const notices = page.getByRole('article', {
+			name: fr ? 'Avis de la société de transport' : 'Agency notices',
+		});
 		await expect(
 			notices.getByRole('heading', { name: 'Détour près du terminus.' }),
 		).toHaveAttribute('lang', 'fr');

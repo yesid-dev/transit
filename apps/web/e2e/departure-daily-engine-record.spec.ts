@@ -100,7 +100,7 @@ for (const width of [390, 1440]) {
 			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five parts');
 			await expect(periods.getByRole('rowheader')).toHaveCount(5);
 			await expect(periods).toContainText(fr ? 'Couverture insuffisante' : 'Insufficient coverage');
-			const messages = section(fr ? 'Avis de l’agence' : 'Agency messages');
+			const messages = section(fr ? 'Avis de la société de transport' : 'Agency messages');
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveCount(1);
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveAttribute('lang', lang);
 			await expect(messages).toContainText(fr ? 'Détour sur la ligne 24' : 'Detour on 24');

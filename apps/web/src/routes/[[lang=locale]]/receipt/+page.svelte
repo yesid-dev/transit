@@ -600,7 +600,12 @@
 						</div>
 
 						<div id="messages">
-							<RecordCard interactive compactPrint title={t(...dailyTitles.messages)} {stamp}>
+							<RecordCard
+								interactive
+								compactPrint
+								title={t(dailyTitles.messages[0], 'Avis de la société de transport')}
+								{stamp}
+							>
 								{#if !data.tracked}
 									{@render messagesNotTracked()}
 								{:else}

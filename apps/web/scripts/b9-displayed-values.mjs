@@ -693,7 +693,7 @@ async function verifyLineReadings(page, cell, onTime, label) {
 	await check('#boundaries dd', [[5, 44], [1, 15], [16]]);
 	const direction = new URL(cell.path, 'http://b9.local').searchParams.get('direction');
 	await check('#frequency tbody td', [[7, 0, 9, 0], [direction ? 8 : 12]]);
-	await check('#alerts dd', [[3], [4]]);
+	await check('#alerts [data-slot="record-card-body"] > p:first-child', [[3]]);
 	return readings;
 }
 
@@ -803,7 +803,7 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 				{ measure: 'on_time', group: 'hour' },
 				{ measure: 'on_time', group: 'day' },
 				{ measure: 'accessible_stops' },
-				{ measure: 'alert_counts' },
+				{ measure: 'alert_counts', alert_details: '1' },
 				{ measure: 'late', group: 'weekday_hour' },
 				{ measure: 'on_time', network: true },
 				{ measure: 'on_time', group: 'day', network: true },
