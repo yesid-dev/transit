@@ -95,17 +95,18 @@ for (const locale of PUBLISHED_LOCALES) {
 		page,
 	}) => {
 		const refresh = await installStopCapture(page, provider, 'S1', at);
+		// Use the same date for the snapshot's receipt and the later trip response.
+		await page.clock.setFixedTime(at);
 		await page.route('**/api/live-trips?city=stm&stop=S1', async (route) => {
-			const now = await page.evaluate(() => Date.now());
 			await route.fulfill({
-				json: captureTripReport(provider, new Date(now).toISOString(), [
+				json: captureTripReport(provider, new Date(at).toISOString(), [
 					{
 						...captureTrip('late-trip', '24', [
 							{
 								stop: 'S1',
-								eta_utc: new Date(now + 20 * 60_000).toISOString(),
+								eta_utc: new Date(at + 20 * 60_000).toISOString(),
 								delay_min: 4,
-								scheduled_utc: new Date(now + 16 * 60_000).toISOString(),
+								scheduled_utc: new Date(at + 16 * 60_000).toISOString(),
 							},
 						]),
 						trip_headsign: 'Nord',
