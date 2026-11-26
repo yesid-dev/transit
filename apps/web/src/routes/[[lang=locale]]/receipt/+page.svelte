@@ -601,7 +601,7 @@
 										{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
 										{:else if messages.evidence.alert_messages?.length}
 											<ul class="message-rows">
-												{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version] ))}
+												{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version], ))}
 													{@const { title, body } = agencyMessage(message, lang)}
 													{@const dates = agencyMessagePeriods(
 														message.periods,

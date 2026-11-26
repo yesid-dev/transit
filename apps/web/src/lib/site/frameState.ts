@@ -29,7 +29,9 @@ const KEYS = ['frameMode', 'period', 'recordFrom', 'recordTo'] as const;
 const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
 type FrameProvider =
-	Pick<PublicCity, 'timezone' | 'record_through' | 'record_from'> | null | undefined;
+	| Pick<PublicCity, 'timezone' | 'record_through' | 'record_from'>
+	| null
+	| undefined;
 
 export interface FrameClock {
 	today: string;
