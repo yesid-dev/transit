@@ -454,6 +454,24 @@ for (const screen of ['daily', 'overview-live'] as const) {
 	});
 }
 
+test('French Daily keeps the completed-trips value beside its label at 390px @layout', async ({
+	page,
+}) => {
+	await setWidth(page, 390);
+	const fixture = designPassCases.find(({ key }) => key === 'daily/stm/fr')!;
+	await page.goto(fixture.href);
+	const fact = page.locator('[data-slot="fact-row"]').filter({
+		has: page.getByText('Effectués', { exact: true }),
+	});
+	await expect(fact.locator('dd')).toBeVisible();
+	const boxes = await fact.evaluate((row) => ({
+		label: row.querySelector('dt')!.getBoundingClientRect().toJSON(),
+		value: row.querySelector('dd')!.getBoundingClientRect().toJSON(),
+	}));
+	expect(Math.abs(boxes.label.top - boxes.value.top)).toBeLessThanOrEqual(1);
+	expect(boxes.value.left).toBeGreaterThan(boxes.label.right);
+});
+
 test('Overview Live late lines keep the plate, linked name and value together @layout', async ({
 	page,
 }) => {
