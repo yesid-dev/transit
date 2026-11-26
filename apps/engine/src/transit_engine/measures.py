@@ -91,10 +91,10 @@ from transit_engine.vehicles import (
     MIN_VEHICLE_TERMINUS_SHARE,
     TRACKED_VEHICLES_SQL,
     VEHICLE_COUNTS,
-    VEHICLE_POLL_SECONDS,
-    VEHICLE_REPORTING_GAP_SECONDS,
-    VEHICLE_TAIL_CAP_SECONDS,
+    vehicle_cadence_join,
+    vehicle_cadence_sql,
     vehicle_end_sql,
+    vehicle_gap_us_sql,
     vehicle_hour_weight_sql,
     vehicle_stats_query,
     vehicle_tail_sql,
@@ -1620,10 +1620,6 @@ _SERVICE_DELIVERED = Family(
     ),
 )
 
-# The cleaner starts a fresh interval after a reporting gap of more than 60 seconds.
-CROWDING_TAIL_CAP_SECONDS = VEHICLE_TAIL_CAP_SECONDS
-# With no next reading in the clean day, assume one nominal vehicle-feed poll.
-CROWDING_FINAL_TAIL_SECONDS = VEHICLE_POLL_SECONDS
 MIN_CROWDING_VEHICLE_HOURS = 1
 _US_PER_HOUR = 3_600_000_000
 _OCCUPANCY_LEVELS = {
@@ -1713,11 +1709,11 @@ def _crowding_rows(
         weight = vehicle_hour_weight_sql(segment_hour)
         reading_cut = f"matches AND {start_hour} = ?"
         arguments.extend([question.hour] * 2)
-    cap_us = CROWDING_TAIL_CAP_SECONDS * 1_000_000
-    tail = vehicle_tail_sql("v.next_start", "v.last_seen_at_utc")
+    tail = vehicle_tail_sql("v.next_start", "v.last_seen_at_utc", "cadence.cadence_us")
     rows = conn.execute(
         f"""
-        WITH sequenced AS (
+        WITH cadence AS ({vehicle_cadence_sql()}
+        ), sequenced AS (
             SELECT provider, cleaning_version, service_date, trip_id, route_id, stop_id,
                 captured_at_utc, last_seen_at_utc, readings, occupancy_status,
                 occupancy_percentage, lead(captured_at_utc) OVER (
@@ -1728,11 +1724,15 @@ def _crowding_rows(
             SELECT v.route_id, v.stop_id, {direction} AS direction_id,
                 v.captured_at_utc, v.readings,
                 {tail} AS tail_us,
-                {vehicle_end_sql("v.captured_at_utc", "v.last_seen_at_utc", "tail_us")} AS ends_at,
+                {vehicle_gap_us_sql("cadence.cadence_us")} AS cap_us,
+                {vehicle_end_sql(
+                    "v.captured_at_utc", "v.last_seen_at_utc", "tail_us", "cadence.cadence_us"
+                )} AS ends_at,
                 CASE WHEN v.occupancy_status BETWEEN 0 AND 5 THEN v.occupancy_status END AS status,
                 CASE WHEN status IS NULL AND v.occupancy_percentage >= 0
                      THEN v.occupancy_percentage END AS percentage
             FROM sequenced v
+            {vehicle_cadence_join("v.last_seen_at_utc")}
             {join}
             WHERE (?::VARCHAR IS NULL OR v.route_id = ?)
         ), cuts AS (
@@ -1746,11 +1746,14 @@ def _crowding_rows(
             coalesce(sum(readings) FILTER (reading_cut), 0) AS readings,
             coalesce(sum(weight) FILTER (matches), 0) AS vehicle_us,
             coalesce(sum(weight::HUGEINT * weight) FILTER (matches), 0) AS squared_us,
-            count(*) FILTER (tail_us > {cap_us} AND (reading_cut OR (matches AND weight > 0))),
+            count(*) FILTER (tail_us > cap_us AND (reading_cut OR (matches AND weight > 0))),
             count(*)
         FROM cuts GROUP BY entity, status, percentage
         """,
         [
+            paths[FEED_POLLS],
+            question.city,
+            version,
             *inputs,
             question.line,
             question.line,
@@ -1783,9 +1786,9 @@ def _crowding_rows(
 _CROWDING = Family(
     id=_CROWDING_ID,
     label=Text("Crowding", "Achalandage à bord"),
-    method_version="crowding-v3",
+    method_version="crowding-v4",
     since="2026-11-22",
-    tables=(VEHICLE_POSITIONS, TRIP_DAYS),
+    tables=(VEHICLE_POSITIONS, TRIP_DAYS, FEED_POLLS),
     minimum_sample=MIN_CROWDING_VEHICLE_HOURS,
     ranking_floors={"line": {"occupancy_vehicle_hours": 10}},
     query=_crowding_rows,
@@ -1820,18 +1823,20 @@ _CROWDING = Family(
     limits=Text(
         "We count the span from the first to the last capture of a state. We then "
         "carry the last reading forward to the next interval for that vehicle, up to "
-        f"{CROWDING_TAIL_CAP_SECONDS} seconds, to limit the weight of stale readings. The "
-        f"final interval for each vehicle gets {CROWDING_FINAL_TAIL_SECONDS} seconds, one "
-        "scheduled feed poll. The one-vehicle-hour floor keeps a few minutes of reports "
+        "three reporting intervals, to limit the weight of stale readings. The final "
+        "interval for each vehicle gets one reporting interval. The reporting interval is "
+        "the median spacing between the feed's publications that day. "
+        "The one-vehicle-hour floor keeps a few minutes of reports "
         "from determining the share. "
         "We use the published status when usable and report exact percentages separately "
         "when only a percentage is usable. The full share also includes percentage-only "
         "values at or above 100%.",
         "On compte la durée entre la première et la dernière collecte d’un état. On "
         "prolonge ensuite le dernier relevé jusqu’au prochain intervalle du même véhicule, "
-        f"avec un maximum de {CROWDING_TAIL_CAP_SECONDS} secondes pour limiter le poids des "
-        f"relevés périmés. Le dernier intervalle de chaque véhicule reçoit "
-        f"{CROWDING_FINAL_TAIL_SECONDS} secondes, soit la cadence de collecte prévue. "
+        "avec un maximum de trois intervalles de signalement pour limiter le poids des "
+        "relevés périmés. Le dernier intervalle de chaque véhicule reçoit un intervalle de "
+        "signalement. L’intervalle de signalement est l’écart médian entre les publications "
+        "du flux ce jour-là. "
         "Le seuil d’une heure-véhicule évite de juger l’achalandage à partir de quelques "
         "minutes de relevés. On utilise l’état publié s’il est utilisable. "
         "Les pourcentages seuls restent distincts et ceux d’au moins 100 % entrent aussi "
@@ -2917,9 +2922,9 @@ def _vehicle_rows(
 _VEHICLES = Family(
     id=_VEHICLES_ID,
     label=Text("Vehicles", "Véhicules"),
-    method_version="vehicles-v3",
+    method_version="vehicles-v4",
     since="2026-11-22",
-    tables=(VEHICLE_POSITIONS, TRIP_DAYS),
+    tables=(VEHICLE_POSITIONS, TRIP_DAYS, FEED_POLLS),
     query=_vehicle_rows,
     minimum_sample=1,
     counts=Text(
@@ -2954,11 +2959,12 @@ _VEHICLES = Family(
             "vehicle_hours_in_service",
             "hours",
             Text(
-                f"Trip-linked observed time plus up to {VEHICLE_TAIL_CAP_SECONDS} seconds to the "
-                f"next state, or {VEHICLE_POLL_SECONDS} seconds for the final reading.",
-                f"Temps observé lié à un trajet, plus au plus {VEHICLE_TAIL_CAP_SECONDS} secondes "
-                f"jusqu’à l’état suivant, ou {VEHICLE_POLL_SECONDS} secondes "
-                "pour le dernier relevé.",
+                "Trip-linked observed time plus up to three reporting intervals to the next "
+                "state, or one reporting interval for the final reading. The reporting interval "
+                "is the median spacing between the feed's publications that day.",
+                "Temps observé lié à un trajet, plus au plus trois intervalles de signalement "
+                "jusqu’à l’état suivant, ou un intervalle pour le dernier relevé. L’intervalle "
+                "de signalement est l’écart médian entre les publications du flux ce jour-là.",
             ),
             ranking_kinds=(),
         ),
@@ -2985,12 +2991,14 @@ _VEHICLES = Family(
             "vehicle_reporting_gaps",
             "count",
             Text(
-                f"Silences longer than {VEHICLE_REPORTING_GAP_SECONDS} seconds between consecutive "
-                "sightings on the same trip. The expected poll interval is "
-                f"{VEHICLE_POLL_SECONDS} seconds.",
-                f"Silences de plus de {VEHICLE_REPORTING_GAP_SECONDS} secondes entre deux relevés "
-                f"successifs du même trajet. L’intervalle de collecte prévu est de "
-                f"{VEHICLE_POLL_SECONDS} secondes.",
+                "Silences longer than three reporting intervals, so more than two missed "
+                "reports, between consecutive sightings on the same trip. The reporting interval "
+                "is the median spacing between the feed's publications that day, so each "
+                "network is held to its own cadence.",
+                "Silences de plus de trois intervalles de signalement, soit plus de deux relevés "
+                "manqués, entre deux relevés successifs du même trajet. L’intervalle de "
+                "signalement est l’écart médian entre les publications du flux ce jour-là. "
+                "Chaque réseau est donc jugé selon sa propre cadence.",
             ),
             extra_tables=(FEED_POLLS,),
             exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
@@ -3012,11 +3020,11 @@ _VEHICLES = Family(
             "per_100_vehicle_hours",
             Text(
                 "Times reporting stopped per 100 observed vehicle-hours in service. "
-                f"Silence must exceed {VEHICLE_REPORTING_GAP_SECONDS} seconds between two "
-                "consecutive sightings on the same trip.",
+                "Silence must exceed three reporting intervals, so more than two missed "
+                "reports, between two consecutive sightings on the same trip.",
                 "Interruptions de signalement par 100 heures-véhicules observées en service. "
-                f"Le silence doit dépasser {VEHICLE_REPORTING_GAP_SECONDS} secondes entre deux "
-                "relevés successifs du même trajet.",
+                "Le silence doit dépasser trois intervalles de signalement, soit plus de deux "
+                "relevés manqués, entre deux relevés successifs du même trajet.",
             ),
             counts=Text(
                 f"Rankings require {MIN_VEHICLE_RANKING_HOURS} hours in service. One gap then "
@@ -3255,18 +3263,20 @@ _FEED_HISTOGRAM_LIMITS = Text(
     "10 minutes.",
 )
 _VEHICLE_SCORECARD_LIMITS = Text(
-    "Time follows each vehicle’s captured state, with at most 60 seconds after the last "
-    "capture of a state and up to the next capture. The final interval adds 20 seconds. "
-    "The hour cut includes only time in that local hour.",
+    "Time follows each vehicle’s captured state, with at most three reporting intervals "
+    "after the last capture of a state and up to the next capture. The final interval adds "
+    "one reporting interval. The reporting interval is the median spacing between the "
+    "feed's publications that day. The hour cut includes only time in that local hour.",
     "La durée suit l’état du véhicule à la collecte. Elle se prolonge jusqu’à la collecte "
-    "suivante, au plus 60 secondes après la dernière collecte de cet état. Le dernier "
-    "intervalle ajoute 20 secondes. Le filtre "
+    "suivante, au plus trois intervalles de signalement après la dernière collecte de cet "
+    "état. Le dernier intervalle ajoute un intervalle de signalement. L’intervalle de "
+    "signalement est l’écart médian entre les publications du flux ce jour-là. Le filtre "
     "horaire retient uniquement la durée comprise dans cette heure locale.",
 )
 _SCORECARD = Family(
     id=SCORECARD,
     label=Text("Open data scorecard", "Bilan des données ouvertes"),
-    method_version="2",
+    method_version="3",
     since="2026-11-22",
     tables=(),
     minimum_sample=MIN_SCORECARD_SAMPLES,
@@ -3375,7 +3385,7 @@ _SCORECARD = Family(
                 "Une déclaration peut indiquer qu’un champ est non publié.",
             ),
             limits=_VEHICLE_SCORECARD_LIMITS,
-            extra_tables=(VEHICLE_POSITIONS,),
+            extra_tables=(VEHICLE_POSITIONS, FEED_POLLS),
         ),
         Measure(
             "live_trip_coverage",
@@ -3428,7 +3438,7 @@ _SCORECARD = Family(
                 "dans les observations nettoyées des véhicules.",
             ),
             limits=_VEHICLE_SCORECARD_LIMITS,
-            extra_tables=(VEHICLE_POSITIONS,),
+            extra_tables=(VEHICLE_POSITIONS, FEED_POLLS),
         ),
         Measure(
             "prediction_error",
@@ -4419,6 +4429,7 @@ def _scorecard_answer(
                 counts, ids = vehicle_counts(
                     conn,
                     paths[VEHICLE_POSITIONS],
+                    paths[FEED_POLLS],
                     paths.get(TRIP_DAYS),
                     question.city,
                     [str(window.versions[day])],
