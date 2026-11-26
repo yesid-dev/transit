@@ -124,3 +124,60 @@ export function dailyPeriods(answer: RecordSeries | null, locale: Locale) {
 export function shortDay(day: string, locale: Locale) {
 	return dateRange({ from: day, to: day }, locale);
 }
+
+/**
+ * The departure's answer: the late share of its observed stop events, pooled over
+ * the same observed days as departureDays. A day late at one stop of forty weighs
+ * one fortieth of a day late at all forty; the days count stays as detail.
+ */
+export function departureLateShare(answer: RecordSeries) {
+	const included = new Set(answer.evidence.days_included);
+	let classified = 0;
+	let late = 0;
+	for (const cell of answer.cells)
+		if (
+			typeof cell.key.day === 'string' &&
+			included.has(cell.key.day) &&
+			(cell.state === 'measured' || cell.state === 'too_few_to_judge')
+		) {
+			classified += cell.evidence.counts.classified ?? 0;
+			late += cell.evidence.counts.late ?? 0;
+		}
+	const minimum = answer.info?.[0]?.minimum_sample;
+	const enough = classified > 0 && (minimum == null || classified >= minimum);
+	return { classified, late, minimum, share: enough ? late / classified : null };
+}
+
+export function departureLateSentence(locale: Locale) {
+	return choose(
+		locale,
+		'of the observed stop events of this departure were late.',
+		'des passages observés de ce départ étaient en retard.',
+	);
+}
+
+/** "2,310 observed stop events over 6 days. 3 of the 6 days had a late stop." */
+export function departureLateDetail(answer: RecordSeries, locale: Locale) {
+	const { classified } = departureLateShare(answer);
+	const { late, observed } = departureDays(answer);
+	if (!observed) return null;
+	const events = tally(classified, locale);
+	const days = tally(observed, locale);
+	return choose(
+		locale,
+		`${events} observed stop events over ${countedUnit(observed, 'day', locale)}. ${tally(late, locale)} of the ${days} days had a late stop.`,
+		`${events} passages observés sur ${countedUnit(observed, 'day', locale)}. Au moins un retard à un arrêt pendant ${tally(late, locale)} des ${days} jours.`,
+	);
+}
+
+/** Cite text: "12.3% of the observed stop events of this departure were late. ..." */
+export function departureLateStatement(answer: RecordSeries, locale: Locale) {
+	const { share } = departureLateShare(answer);
+	const detail = departureLateDetail(answer, locale);
+	return [
+		share == null ? null : `${recordPercent(share, locale)} ${departureLateSentence(locale)}`,
+		detail,
+	]
+		.filter(Boolean)
+		.join(' ');
+}

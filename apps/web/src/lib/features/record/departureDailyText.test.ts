@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { RecordSeries } from '#lib/server/engine.ts';
-import { dailyPeriods, departureDays } from './departureDailyText.ts';
+import {
+	dailyPeriods,
+	departureDays,
+	departureLateShare,
+	departureLateStatement,
+} from './departureDailyText.ts';
 import { departureFromKey, departureHref } from './departureIdentity.ts';
 
 const evidence = {
@@ -109,5 +114,25 @@ describe('Departure and Daily report text', () => {
 		expect(target.searchParams.get('frameMode')).toBe('record');
 		expect(target.searchParams.get('recordFrom')).toBe('2026-11-18');
 		expect(departureHref(source, 'en', 'demo', '36', null, '07:42:00')).toBeNull();
+	});
+});
+
+describe('Departure answer', () => {
+	it('leads with the late share of observed stop events, not with days', () => {
+		// One late stop of 40 on one day and none on the other: one of two days had a late
+		// stop, but only 1 of 80 stop events (1.3%) was late.
+		const answer = series([cell({ day: '2026-11-18' }, 40, 1), cell({ day: '2026-11-20' }, 40, 0)]);
+		expect(departureLateShare(answer)).toMatchObject({ classified: 80, late: 1, share: 1 / 80 });
+		expect(departureLateStatement(answer, 'en')).toBe(
+			'1.3% of the observed stop events of this departure were late. 80 observed stop events over 2 days. 1 of the 2 days had a late stop.',
+		);
+		expect(departureLateStatement(answer, 'fr').replace(/\s/g, ' ')).toBe(
+			'1,3 % des passages observés de ce départ étaient en retard. 80 passages observés sur 2 jours. Au moins un retard à un arrêt pendant 1 des 2 jours.',
+		);
+	});
+
+	it('says too few to judge below the minimum instead of a share', () => {
+		const answer = series([cell({ day: '2026-11-18' }, 6, 1), cell({ day: '2026-11-20' }, 8, 0)]);
+		expect(departureLateShare(answer)).toMatchObject({ classified: 14, share: null, minimum: 30 });
 	});
 });

@@ -1,6 +1,7 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import { describe, expect, it } from 'vitest';
 import {
+	lineExclusion,
 	lineMatches,
 	lineQuery,
 	lineSort,
@@ -83,4 +84,23 @@ describe('Lines Record', () => {
 			expect(lineSpread([], locale)).toBeNull();
 		},
 	);
+});
+
+describe('lines that cannot be judged', () => {
+	it('names a timetable line without an engine cell as having no trip on these dates', () => {
+		// STM 18 to 24 Nov 2026: 26E, 51E and 767 have no cell in the line answer.
+		expect(lineExclusion(undefined)).toEqual({
+			state: 'not_measured',
+			text: { en: 'No trip scheduled on these dates.', fr: 'Aucun trajet prévu à ces dates.' },
+		});
+	});
+
+	it('never leaves a bare Unknown without its reason', () => {
+		const unknown = lineExclusion({ state: 'unknown', evidence: { counts: { classified: 0 } } });
+		expect(unknown.state).toBe('unknown');
+		expect(unknown.text?.en).toBe('No stop event of this line had a reading on these dates.');
+		expect(
+			lineExclusion({ state: 'too_few_to_judge', evidence: { counts: { classified: 40 } } }),
+		).toEqual({ state: 'too_few_to_judge', text: null });
+	});
 });

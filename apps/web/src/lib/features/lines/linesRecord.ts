@@ -7,6 +7,7 @@ import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 import { finderCells, finderShare, finderTrips, type FinderResult } from '../record/finderText.ts';
 import { recordPercent } from '#lib/site/presenter.ts';
+import { recordStateFor, type RecordState } from '../record/recordStates.ts';
 import { foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 
 export const lineSortKeys = ['line', 'onTime', 'late', 'trips'] as const;
@@ -133,4 +134,32 @@ export function lineRecordRows(
 		};
 	});
 	return orderedLines(rows, { key: 'line', direction: 'asc' }, locale);
+}
+
+/**
+ * The state and plain reason of a line left out of "Lines that cannot be judged".
+ * The engine answers one cell per line with scheduled trips in the window, so a
+ * timetable line without a cell had no trip scheduled on these dates.
+ */
+export function lineExclusion(
+	timing: { state: string; evidence: { counts: Record<string, number | null> } } | undefined,
+): {
+	state: RecordState;
+	text: { en: string; fr: string } | null;
+} {
+	if (!timing)
+		return {
+			state: 'not_measured',
+			text: { en: 'No trip scheduled on these dates.', fr: 'Aucun trajet prévu à ces dates.' },
+		};
+	const state = recordStateFor(timing.state);
+	if (state === 'unknown' && timing.evidence.counts.classified === 0)
+		return {
+			state,
+			text: {
+				en: 'No stop event of this line had a reading on these dates.',
+				fr: 'Aucun passage de cette ligne n’a de relevé à ces dates.',
+			},
+		};
+	return { state, text: null };
 }

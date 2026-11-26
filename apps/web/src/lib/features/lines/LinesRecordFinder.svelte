@@ -38,6 +38,7 @@
 	import StateMark from '../record/StateMark.svelte';
 	import { finderCsv, finderRecordUrl, type FinderResult } from '../record/finderText.ts';
 	import { recordState, recordStateFor } from '../record/recordStates.ts';
+	import { lineExclusion } from './linesRecord.ts';
 	import {
 		choose,
 		lastGoodNote,
@@ -179,7 +180,8 @@
 					pinned,
 				),
 				label: name ?? label,
-				plate: number ? { code: number, scheduleOnly: row.noLive } : undefined,
+				// Every row carries its plate, the route ID when the timetable gives no number.
+				plate: { code: number ?? row.id, scheduleOnly: row.noLive },
 				detail: endpoints(row.id),
 			};
 		}),
@@ -475,11 +477,14 @@
 {/snippet}
 
 {#snippet stateCell(row: Row)}
-	{@const state = recordStateFor(row.timing?.state)}
+	{@const reason = lineExclusion(row.timing)}
 	{#if timingPending}{pendingText}
 	{:else}
+		{@const state = reason.state}
 		<StateMark {state} {locale} />
-		{#if state === 'too_few_to_judge' && row.timing?.evidence.counts.classified != null}
+		{#if reason.text}
+			<p class="text-muted-foreground">{reason.text[locale]}</p>
+		{:else if state === 'too_few_to_judge' && row.timing?.evidence.counts.classified != null}
 			<p class="text-muted-foreground">
 				{countedUnit(row.timing.evidence.counts.classified, 'event', locale)}{minimum == null
 					? '.'
