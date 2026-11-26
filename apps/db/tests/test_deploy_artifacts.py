@@ -739,9 +739,11 @@ def test_refresh_basemap_copy_is_read_only_on_legacy_storage() -> None:
         "Install go-pmtiles",
         "Extract provider area from the latest Protomaps daily build",
         "Verify the extract (fail loudly on regress)",
-        "Replace the stable R2 object with verified backup and readback",
     ):
         assert steps[name]["if"] == "${{ !inputs.copy_current }}"
+    # A clean-only city's extract never reaches the legacy public bucket.
+    replace = steps["Replace the stable R2 object with verified backup and readback"]
+    assert replace["if"] == "${{ !inputs.copy_current && matrix.legacy }}"
     copy = steps["Read the current legacy basemap"]
     assert copy["if"] == "${{ inputs.copy_current }}"
     assert 'https://transit.yesid.dev/data/${R2_KEY}' in copy["run"]

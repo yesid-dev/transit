@@ -163,6 +163,8 @@ class ProviderPublicConfig(BaseModel):
     geocode_context: str | None = None
     stable_vehicle_ids: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     basemap_url: str | None = None
+    # False: the extract lives in clean storage only, never in the legacy public bucket.
+    basemap_legacy: bool = Field(default=True, exclude=True)
     posters_url: str | None = None
     alert_links: dict[Literal["en", "fr"], AnyHttpUrl] = Field(default_factory=dict)
     download_licence: DownloadLicence | None = Field(
