@@ -85,6 +85,9 @@ test('the vehicle fleet sends only the first page and marks an absent report', a
 	expect(html).not.toContain('49-346');
 	await page.goto(path);
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	await expect(page.locator('[data-slot="screen-answer"]')).toContainText(
+		/46\s+vehicles reported on a trip on these dates\./,
+	);
 	const rows = page.locator('#fleet tbody tr');
 	await expect(rows).toHaveCount(20);
 	const first = rows.first();
@@ -141,6 +144,11 @@ for (const width of [390, 1440]) {
 			const main = page.getByRole('main');
 			const table = main.getByRole('table');
 			await expect(table.getByRole('rowheader')).toHaveCount(2, { timeout: 15_000 });
+			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+				fr
+					? /2\s+véhicules ont signalé une position pendant un trajet à ces dates\./
+					: /2\s+vehicles reported on a trip on these dates\./,
+			);
 			await main.getByRole('searchbox', { name: search }).fill('0061');
 			await expect(table.getByRole('rowheader')).toHaveCount(1);
 			const first = table
