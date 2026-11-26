@@ -408,7 +408,9 @@ test('Live map keeps pinned dates in the address and shows them again in Record'
 		'/map?provider=stm&frameMode=live&period=7-days&recordFrom=2026-11-08&recordTo=2026-11-14',
 	);
 	const rail = page.getByRole('complementary', { name: 'Controls', exact: true });
-	await expect(rail.getByText('Dates apply to Record')).toBeVisible();
+	// Live shows View only: the dates come back with Record.
+	await expect(rail.getByText('Period', { exact: true })).toHaveCount(0);
+	await expect(rail.getByRole('switch', { name: 'Pause live updates' })).toBeVisible();
 	await expect(rail.getByRole('radiogroup', { name: 'Period' })).toHaveCount(0);
 	await expect(rail.getByRole('button', { name: 'Choose other dates' })).toHaveCount(0);
 	await rail.getByRole('radio', { name: 'Record', exact: true }).click();

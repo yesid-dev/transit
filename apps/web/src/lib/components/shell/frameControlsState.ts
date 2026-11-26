@@ -34,8 +34,8 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		...parsed,
 		mode,
 		showRail,
-		// The map explains each mode itself: its Period card says Live shows this moment only,
-		// and Record names what its layer draws. A second line would push the legend down.
+		// The map explains each mode itself: Record names what its layer draws. A second line
+		// would push the legend down.
 		showViewHint: showRail && !recordOnly && !liveOnly && !map,
 		recordOnly,
 		liveOnly,

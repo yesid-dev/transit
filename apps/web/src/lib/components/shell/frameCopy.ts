@@ -16,8 +16,6 @@ export const frameCopy = {
 		},
 		recordOnly: 'This screen is a record. It has no live view.',
 		liveOnly: 'This screen shows the trip in progress.',
-		recordDates: 'Dates apply to Record',
-		liveMoment: 'Live now shows this moment only.',
 		period: 'Period',
 		waitingForMonth: 'This month’s first complete day is not in the record yet.',
 		waitingForDay: (date: string) =>
@@ -56,8 +54,6 @@ export const frameCopy = {
 		},
 		recordOnly: 'Cet écran présente un bilan. Il n’a pas de vue en direct.',
 		liveOnly: 'Cet écran montre le trajet en cours.',
-		recordDates: 'Les dates s’appliquent au bilan',
-		liveMoment: 'La vue en direct montre seulement la situation actuelle.',
 		period: 'Période',
 		waitingForMonth: 'Le premier jour complet de ce mois-ci ne figure pas encore au bilan.',
 		waitingForDay: (date: string) =>

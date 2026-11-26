@@ -156,81 +156,75 @@
 	{/if}
 {/snippet}
 
+<!-- Live shows View only (S5): dates apply to Record, so Live has no Period card. -->
 {#snippet periodContent()}
-	{#if frame.mode === 'live'}
-		<p class="w-full text-sm">
-			<strong class="block">{copy.recordDates}</strong>
-			<span class="text-muted-foreground">{copy.liveMoment}</span>
-		</p>
-	{:else}
-		{#if !extension}<SegmentedChoice
-				options={presets}
-				value={frame.period?.preset ?? ''}
-				label={copy.period}
-				onSelect={selectPreset}
-				variant="joined-grid"
-			/>{/if}
-		{#if recordThrough && recordThrough.slice(0, 7) < today.slice(0, 7)}
-			<p class="w-full text-sm text-muted-foreground">{copy.waitingForMonth}</p>
-		{/if}
-		{#if summary}
-			<p class="w-full text-sm" data-slot="frame-period-summary">
-				{#if summary.title}<strong class="block">{summary.title}</strong>{/if}
-				<span>{summary.dates} · {summary.duration}</span>
-			</p>
-		{/if}
-		<Sheet
-			bind:open
-			onOpenChange={(value) => {
-				if (value) tooLong = false;
-			}}
-		>
-			<SheetTrigger>
-				{#snippet child({ props })}
-					<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11 max-w-full">
-						{copy.custom}
-					</Button>
-				{/snippet}
-			</SheetTrigger>
-			<SheetContent closeLabel={copy.close} class="overflow-y-auto p-4" data-lenis-prevent>
-				<div class="mx-auto grid w-full max-w-xl gap-4 pr-8">
-					<SheetTitle>{copy.period}</SheetTitle>
-					<SheetDescription>{copy.note(startLabel)}</SheetDescription>
-					{#if extension}
-						<SegmentedChoice
-							options={presets}
-							value={frame.period?.preset ?? ''}
-							label={copy.period}
-							onSelect={(key) => {
-								open = false;
-								selectPreset(key);
-							}}
-							variant="joined-grid"
-						/>
-					{/if}
-					<DateRangePicker
-						presets={[]}
-						value={{ start: frame.period?.from ?? '', end: frame.period?.to ?? '' }}
-						min={start}
-						max={dateLimit}
-						labels={{
-							legend: copy.custom,
-							presets: copy.period,
-							custom: copy.custom,
-							start: copy.from,
-							end: copy.to,
-							apply: copy.apply,
-							missing: copy.missing,
-							bounds: dateLimit === today ? copy.bounds : copy.completeBounds,
-							order: copy.order,
-						}}
-						onValueChange={applyDates}
-					/>
-					{#if tooLong}<p role="alert">{copy.tooLong(MAX_RECORD_DAYS)}</p>{/if}
-				</div>
-			</SheetContent>
-		</Sheet>
+	{#if !extension}<SegmentedChoice
+			options={presets}
+			value={frame.period?.preset ?? ''}
+			label={copy.period}
+			onSelect={selectPreset}
+			variant="joined-grid"
+		/>{/if}
+	{#if recordThrough && recordThrough.slice(0, 7) < today.slice(0, 7)}
+		<p class="w-full text-sm text-muted-foreground">{copy.waitingForMonth}</p>
 	{/if}
+	{#if summary}
+		<p class="w-full text-sm" data-slot="frame-period-summary">
+			{#if summary.title}<strong class="block">{summary.title}</strong>{/if}
+			<span>{summary.dates} · {summary.duration}</span>
+		</p>
+	{/if}
+	<Sheet
+		bind:open
+		onOpenChange={(value) => {
+			if (value) tooLong = false;
+		}}
+	>
+		<SheetTrigger>
+			{#snippet child({ props })}
+				<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11 max-w-full">
+					{copy.custom}
+				</Button>
+			{/snippet}
+		</SheetTrigger>
+		<SheetContent closeLabel={copy.close} class="overflow-y-auto p-4" data-lenis-prevent>
+			<div class="mx-auto grid w-full max-w-xl gap-4 pr-8">
+				<SheetTitle>{copy.period}</SheetTitle>
+				<SheetDescription>{copy.note(startLabel)}</SheetDescription>
+				{#if extension}
+					<SegmentedChoice
+						options={presets}
+						value={frame.period?.preset ?? ''}
+						label={copy.period}
+						onSelect={(key) => {
+							open = false;
+							selectPreset(key);
+						}}
+						variant="joined-grid"
+					/>
+				{/if}
+				<DateRangePicker
+					presets={[]}
+					value={{ start: frame.period?.from ?? '', end: frame.period?.to ?? '' }}
+					min={start}
+					max={dateLimit}
+					labels={{
+						legend: copy.custom,
+						presets: copy.period,
+						custom: copy.custom,
+						start: copy.from,
+						end: copy.to,
+						apply: copy.apply,
+						missing: copy.missing,
+						bounds: dateLimit === today ? copy.bounds : copy.completeBounds,
+						order: copy.order,
+					}}
+					onValueChange={applyDates}
+				/>
+				{#if tooLong}<p role="alert">{copy.tooLong(MAX_RECORD_DAYS)}</p>{/if}
+			</div>
+		</SheetContent>
+	</Sheet>
 	<p class="w-full text-sm text-muted-foreground">{copy.note(startLabel)}</p>
 {/snippet}
 
@@ -242,16 +236,20 @@
 		>
 			{@render viewContent()}
 			{@render extension.between?.()}
-			<p class="w-full text-sm font-medium text-muted-foreground">{copy.period}</p>
-			{@render periodContent()}
+			{#if frame.mode !== 'live'}
+				<p class="w-full text-sm font-medium text-muted-foreground">{copy.period}</p>
+				{@render periodContent()}
+			{/if}
 			{@render extension.extra?.(context)}
 		</ControlsRail>
 	{:else}
 		<ControlsRail label={copy.view}>
 			{@render viewContent()}
 		</ControlsRail>
-		<ControlsRail label={copy.period}>
-			{@render periodContent()}
-		</ControlsRail>
+		{#if frame.mode !== 'live'}
+			<ControlsRail label={copy.period}>
+				{@render periodContent()}
+			</ControlsRail>
+		{/if}
 	{/if}
 </div>
