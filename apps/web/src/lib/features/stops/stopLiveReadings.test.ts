@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { captureTripScopeSchema, type CaptureTripReport } from '#lib/live/captureSnapshot.ts';
-import { stopLiveReadings } from './stopLiveReadings.ts';
+import { createLineDirectory } from '#lib/site/lineDirectory.ts';
+import { directionName, stopNextVehicleSentence } from '#lib/site/presenter.ts';
+import { formatTransitName } from '#lib/site/transitDisplay.ts';
+import { riderToward, stopLiveReadings } from './stopLiveReadings.ts';
 
 const now = Date.parse('2026-11-25T13:12:00Z');
 const captured = new Date(now).toISOString();
@@ -118,5 +121,51 @@ describe('Stop trip predictions', () => {
 			{ toward: null, scheduledAt: null, delay: 120 },
 			{ toward: null, scheduledAt: null, delay: 120 },
 		]);
+	});
+});
+
+describe('riderToward', () => {
+	const directory = createLineDirectory([{ id: '24', short: '24' }], {
+		line: (id) => id,
+		patterns: { 24: { termini: { nord: 'Station Laurier' } } },
+	});
+	const display = {
+		directory,
+		directionName: (name: string | null | undefined, lang: 'en' | 'fr') =>
+			directionName(name, lang),
+		readName: (name: string, lang: 'en' | 'fr') => formatTransitName(name, lang),
+	};
+
+	it.each([
+		['en', 'Station Laurier (Nord)'],
+		['fr', 'Station Laurier (nord)'],
+	] as const)(
+		'names a compass headsign by its terminus, as the line pages do, in %s',
+		(locale, said) => {
+			expect(riderToward(display, { line: '24', toward: 'Nord' }, locale)).toBe(said);
+			expect(
+				stopNextVehicleSentence(
+					{
+						line: '24',
+						toward: riderToward(display, { line: '24', toward: 'Nord' }, locale, 'sentence'),
+						scheduled: '04:32',
+					},
+					locale,
+				),
+			).toContain(
+				locale === 'fr'
+					? 'vers Station Laurier (nord), prévu à 04:32.'
+					: 'toward Station Laurier (Nord), scheduled 04:32.',
+			);
+		},
+	);
+
+	it('keeps any other headsign as published and says nothing without one', () => {
+		expect(riderToward(display, { line: '24', toward: 'Gare Montréal-Ouest' }, 'en')).toBe(
+			'Gare Montréal-Ouest',
+		);
+		expect(riderToward(display, { line: '80', toward: 'Nord' }, 'en')).toBe('Nord');
+		expect(riderToward(display, { line: '24', toward: null }, 'en')).toBeNull();
+		expect(riderToward(display, { line: '80', toward: 'Nord' }, 'fr', 'sentence')).toBe('le nord');
 	});
 });

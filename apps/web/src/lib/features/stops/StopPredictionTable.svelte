@@ -10,7 +10,7 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 	import { choose } from '../record/recordText.ts';
-	import type { StopPrediction } from './stopLiveReadings.ts';
+	import { riderToward, type StopPrediction } from './stopLiveReadings.ts';
 
 	let {
 		rows,
@@ -76,7 +76,7 @@
 
 {#snippet toward(row: Row)}
 	<span class="prediction-cell wrap-normal"
-		>{row.toward ? display.readName(row.toward, locale) : t('Unavailable', 'Indisponible')}</span
+		>{riderToward(display, row, locale) ?? t('Unavailable', 'Indisponible')}</span
 	>
 {/snippet}
 

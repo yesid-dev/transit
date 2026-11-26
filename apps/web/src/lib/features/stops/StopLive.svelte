@@ -24,7 +24,7 @@
 	import RecordCard from '../record/RecordCard.svelte';
 	import { choose, tally } from '../record/recordText.ts';
 	import StopPredictionTable from './StopPredictionTable.svelte';
-	import { stopLiveReadings, type StopPrediction } from './stopLiveReadings.ts';
+	import { riderToward, stopLiveReadings, type StopPrediction } from './stopLiveReadings.ts';
 
 	let {
 		id,
@@ -63,7 +63,7 @@
 		return stopNextVehicleSentence(
 			{
 				line: row.line ? display.line(row.line) : null,
-				toward: row.toward ? display.readName(row.toward, locale) : null,
+				toward: riderToward(display, row, locale, 'sentence'),
 				scheduled:
 					row.scheduledAt === null ? null : clockTime(new Date(row.scheduledAt), locale, timeZone),
 			},

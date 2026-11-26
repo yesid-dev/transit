@@ -1,3 +1,5 @@
+import type { Locale } from '#lib/i18n/index.ts';
+import type { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 import type { CaptureTripReport } from '#lib/live/captureSnapshot.ts';
 import { stopPrediction, uniqueDirectionHeadsigns } from '#lib/live/stopPrediction.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
@@ -53,4 +55,25 @@ export function stopLiveReadings(
 	const count = new Set(rows.filter((row) => row.predictedAt <= cutoff).map((row) => row.instance))
 		.size;
 	return { rows, count };
+}
+
+/**
+ * Where a predicted trip goes, in the rider's words: a compass headsign becomes the line's
+ * terminus with the agency's word in brackets ("Station Laurier (Est)", "(est)" in French), as
+ * on the line pages. In a sentence any compass word reads as W8's direction ("the north"); in a
+ * table cell a sign with no known terminus reads as published.
+ */
+export function riderToward(
+	display: Pick<ReturnType<typeof transitDisplay>, 'directory' | 'directionName' | 'readName'>,
+	row: Pick<StopPrediction, 'line' | 'toward'>,
+	locale: Locale,
+	place: 'cell' | 'sentence' = 'cell',
+): string | null {
+	const toward = row.toward?.trim();
+	if (!toward) return null;
+	const sign = display.directory.headsign(row.line, toward);
+	if (place === 'sentence') return display.directionName(sign ?? toward, locale);
+	return sign && sign !== toward
+		? display.directionName(sign, locale)
+		: display.readName(toward, locale);
 }

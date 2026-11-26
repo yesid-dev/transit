@@ -119,10 +119,12 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(answer).toContainText(fr ? 'dans 20 min' : 'in 20 min');
 		await expect(answer).toContainText(
 			fr
-				? /Aucun véhicule dans les 15 prochaines minutes\. Prochain\u00a0: ligne \S+ vers Nord, prévu à .+\./u
-				: /No vehicle in the next 15 minutes\. Next: line \S+ toward Nord, scheduled .+\./u,
+				? /Aucun véhicule dans les 15 prochaines minutes\. Prochain\u00a0: ligne \S+ vers .+, prévu à .+\./u
+				: /No vehicle in the next 15 minutes\. Next: line \S+ toward .+, scheduled .+\./u,
 		);
 		await expect(answer).not.toContainText(fr ? 'pourcentage' : 'percentage');
+		// The rider's direction, as on the line pages: never the bare compass word.
+		await expect(answer).not.toContainText(fr ? 'vers Nord' : 'toward Nord');
 		const predictions = page.locator('[data-slot="stop-live-predictions"]');
 		await expect(predictions.locator('tbody [data-column="status"]').first()).toContainText(
 			fr ? /À l’heure\s*\(4 min de retard\)/u : /On time\s*\(4 min behind\)/u,
