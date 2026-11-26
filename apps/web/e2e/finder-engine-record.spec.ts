@@ -141,6 +141,58 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(timing).toBeVisible();
 	});
 
+	test(`${locale} lines find a line by number or name and keep the sort and history`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 900 });
+		await page.goto(`${prefix}/lines?${query}&sort=late&direction=desc`);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		const measured = page.getByRole('table', {
+			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
+		});
+		const scheduleOnly = page.locator('#lines-without-live-data');
+		const field = page.getByRole('searchbox', {
+			name: fr ? 'Numéro ou nom de ligne' : 'Line number or name',
+		});
+		await expect(measured.getByRole('row', { name: /Sherbrooke/ })).toBeVisible();
+		const everyLine = await measured.getByRole('link').count();
+		const noMatch = fr
+			? 'Aucune ligne de cette liste ne correspond à ce numéro ou à ce nom.'
+			: 'No line in this list matches this number or name.';
+
+		await field.fill('24');
+		await expect(page).toHaveURL(/sort=late&direction=desc&q=24$/);
+		const rows = measured.getByRole('row').filter({ has: page.getByRole('link') });
+		await expect(rows.filter({ has: page.locator('a[href*="/lines/24?"]') })).toHaveCount(1);
+		for (const text of await rows.allTextContents()) expect(text).toContain('24');
+		await expect(scheduleOnly).toContainText(noMatch);
+		await expect(page.getByRole('status').filter({ hasText: fr ? /ligne/ : /line/ })).toHaveText(
+			fr ? /^\d+ lignes?$/ : /^\d+ lines?$/,
+		);
+
+		await field.focus();
+		await page.keyboard.press('ControlOrMeta+a');
+		await page.keyboard.type('Confederation');
+		await page.keyboard.press('Enter');
+		await expect(page).toHaveURL(/q=Confederation$/);
+		await expect(scheduleOnly.getByRole('link', { name: /Confederation/ })).toBeVisible();
+		await expect(page.locator('#line-performance')).toContainText(noMatch);
+		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+			390,
+		);
+
+		await page.goBack();
+		await expect(page).toHaveURL(/sort=late&direction=desc&q=24$/);
+		await expect(field).toHaveValue('24');
+		await expect(rows.filter({ has: page.locator('a[href*="/lines/24?"]') })).toHaveCount(1);
+
+		await page.getByRole('button', { name: fr ? 'Effacer les filtres' : 'Clear filters' }).click();
+		await expect(page).toHaveURL(/sort=late&direction=desc$/);
+		await expect(field).toHaveValue('');
+		await expect(measured.getByRole('link')).toHaveCount(everyLine);
+		await expect(scheduleOnly.getByRole('link', { name: /Confederation/ })).toBeVisible();
+	});
+
 	test(`${locale} lines page and sort from the address, with keyboard access and copy`, async ({
 		page,
 		context,
