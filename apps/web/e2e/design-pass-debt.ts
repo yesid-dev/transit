@@ -119,22 +119,73 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		390: { height: 7392, beforeFigure: 3 },
 		1440: { height: 4300, beforeFigure: 3 },
 	},
-	// Reading pages: the tallest of both cities and languages, French privacy at 390 px.
-	privacy: {
-		390: { height: 15300, beforeFigure: 0 },
-		1440: { height: 9000, beforeFigure: 0 },
+};
+// Reading pages vary by city and language, so each case keeps its own ceiling: the measured
+// height plus 1%, never above the debt value it replaced (STM English).
+const caseBudgets: Partial<Record<string, Budget>> = {
+	'privacy/stm/en': {
+		390: { height: 12868, beforeFigure: 0 },
+		1440: { height: 7710, beforeFigure: 0 },
 	},
-	terms: {
-		390: { height: 7000, beforeFigure: 0 },
-		1440: { height: 4150, beforeFigure: 0 },
+	'terms/stm/en': {
+		390: { height: 6120, beforeFigure: 0 },
+		1440: { height: 3640, beforeFigure: 0 },
 	},
-	accessibility: {
-		390: { height: 3700, beforeFigure: 0 },
-		1440: { height: 1910, beforeFigure: 0 },
+	'accessibility/stm/en': {
+		390: { height: 3340, beforeFigure: 0 },
+		1440: { height: 1720, beforeFigure: 0 },
 	},
-	error: {
-		390: { height: 2370, beforeFigure: 0 },
-		1440: { height: 1290, beforeFigure: 0 },
+	'error/stm/en': {
+		390: { height: 2303, beforeFigure: 0 },
+		1440: { height: 1250, beforeFigure: 0 },
+	},
+	'privacy/octranspo/en': {
+		390: { height: 12860, beforeFigure: 0 },
+		1440: { height: 7710, beforeFigure: 0 },
+	},
+	'terms/octranspo/en': {
+		390: { height: 6060, beforeFigure: 0 },
+		1440: { height: 3640, beforeFigure: 0 },
+	},
+	'accessibility/octranspo/en': {
+		390: { height: 3290, beforeFigure: 0 },
+		1440: { height: 1720, beforeFigure: 0 },
+	},
+	'error/octranspo/en': {
+		390: { height: 2290, beforeFigure: 0 },
+		1440: { height: 1250, beforeFigure: 0 },
+	},
+	'privacy/stm/fr': {
+		390: { height: 15170, beforeFigure: 0 },
+		1440: { height: 8910, beforeFigure: 0 },
+	},
+	'terms/stm/fr': {
+		390: { height: 6920, beforeFigure: 0 },
+		1440: { height: 4090, beforeFigure: 0 },
+	},
+	'accessibility/stm/fr': {
+		390: { height: 3660, beforeFigure: 0 },
+		1440: { height: 1890, beforeFigure: 0 },
+	},
+	'error/stm/fr': {
+		390: { height: 2350, beforeFigure: 0 },
+		1440: { height: 1270, beforeFigure: 0 },
+	},
+	'privacy/octranspo/fr': {
+		390: { height: 15120, beforeFigure: 0 },
+		1440: { height: 8910, beforeFigure: 0 },
+	},
+	'terms/octranspo/fr': {
+		390: { height: 6870, beforeFigure: 0 },
+		1440: { height: 4090, beforeFigure: 0 },
+	},
+	'accessibility/octranspo/fr': {
+		390: { height: 3610, beforeFigure: 0 },
+		1440: { height: 1890, beforeFigure: 0 },
+	},
+	'error/octranspo/fr': {
+		390: { height: 2310, beforeFigure: 0 },
+		1440: { height: 1270, beforeFigure: 0 },
 	},
 };
 // Defects inside a kit part, reported upstream with the exact rule. Each matches one defect
@@ -188,6 +239,7 @@ export function expectDesignPass(screen: Screen, key: string, report: Report) {
 	}
 
 	const budget =
+		caseBudgets[key] ??
 		budgets[screen === 'overview-live' ? 'overview' : screen === 'alerts-live' ? 'alerts' : screen];
 	if (!budget) throw new Error(`${key} needs measured debt or a screen budget.`);
 	// Reading and error pages have a title and no Record answer to lead with.
