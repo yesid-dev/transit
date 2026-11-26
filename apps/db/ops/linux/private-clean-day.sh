@@ -21,7 +21,7 @@ chmod 0755 "$release"
 check_space || { echo 'Release preparation left less than 33 GiB free in /var/lib' >&2; exit 1; }
 unit=transit-private-clean-${release##*.}
 printf 'Verified revision %s\nPrivate local result /var/lib/private/%s\n' "$sha" "$unit"
-systemd-run --pipe --wait --collect --unit="$unit" \
+systemd-run --pipe --wait --collect --expand-environment=no --unit="$unit" \
   -p EnvironmentFile=/etc/transit-live/r2-read.env -p DynamicUser=yes -p PrivateTmp=yes \
   -p ProtectHome=yes -p ProtectSystem=strict -p UMask=0077 -p "MemoryMax=$cap" -p MemoryAccounting=yes \
   -p "StateDirectory=$unit" -p StateDirectoryMode=0700 \
