@@ -405,7 +405,7 @@
 		<RecordGroup>
 			<p data-screen-intro>{t.intro}</p>
 
-			<DashboardGrid gutter={false} minTile="22rem" data-slot="screen-answer">
+			<DashboardGrid gutter={false} minTile="22rem" class="items-start" data-slot="screen-answer">
 				{#each mode === 'live' ? [liveCard, recordCard] : [recordCard, liveCard] as card (card)}
 					{@render card()}
 				{/each}

@@ -7,6 +7,26 @@ import type { SearchIndex } from '../src/lib/search/searchIndex';
 
 const searchLineName = 'Sherbrooke / Boulevard des Anciens-Combattants';
 
+for (const [path, names] of [
+	['/', ['Record', 'Live now']],
+	['/network', ['Early, on time and late', 'How late, how early']],
+] as const) {
+	test(`${path} record cards fit their own content in a desktop row`, async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto(
+			`${path}?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
+		);
+		const cards = names.map((name) => page.getByRole('article', { name, exact: true }));
+		for (const card of cards) await expect(card).toBeVisible();
+		await expect(page.locator('main [data-record-pending]')).toHaveCount(0);
+		await settled(page);
+		const [first, second] = await Promise.all(cards.map((card) => card.boundingBox()));
+		expect(first!.y).toBeCloseTo(second!.y, 0);
+		expect(second!.x).toBeGreaterThan(first!.x);
+		expect(Math.abs(first!.height - second!.height)).toBeGreaterThan(1);
+	});
+}
+
 async function serveSearchCards(page: Page) {
 	await page.route('**/api/search-index?*', async (route) => {
 		const response = await route.fetch();

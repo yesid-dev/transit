@@ -180,6 +180,11 @@
 </div>
 
 <style>
+	/* Reserve equal space on both sides when classic scrollbars take up viewport width. */
+	:global(html):has(.app-shell-root[data-full-viewport='false']) {
+		scrollbar-gutter: stable both-edges;
+	}
+
 	/* The content slot inherits AppFrame's measured header height (including its SSR fallback). */
 	.streaming-main:has(:global([data-record-pending])) {
 		min-block-size: calc(100dvh - var(--app-frame-header-height) + var(--space-card-gap));
