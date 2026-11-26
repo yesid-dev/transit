@@ -78,7 +78,7 @@ it('explains the grouped and published units using the declared French agency na
 		'213 notices, from 1,707 alerts as STM published them, one per line and reissue.',
 	);
 	expect(normalize(noticeCountEvidence(213, 1707, agency, 'fr'))).toBe(
-		'213 avis, à partir de 1 707 avis que la STM a publiés, à raison d’un par ligne et par republication.',
+		'213 avis, issus de 1 707 avis publiés par la STM, un par ligne et par mise à jour.',
 	);
 	expect(publishedAlertCount(1707, 'en')).toBe('1,707 alerts as published');
 	expect(normalize(publishedAlertCount(1707, 'fr'))).toBe('1 707 avis tels que publiés');

@@ -48,7 +48,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(page.getByRole('heading', { name: 'Avis de service', level: 1 })).toBeVisible();
 	const answer = page.locator('#answer');
 	await expect(answer).toContainText('213 avis étaient en vigueur à un moment donné à ces dates.');
-	await expect(answer).toContainText(/213 avis, à partir de 1\s707 avis que la STM a publiés/);
+	await expect(answer).toContainText(/213 avis, issus de 1\s707 avis publiés par la STM/);
 	await expect(answer).not.toContainText('12,5');
 	await expect(page.getByRole('heading', { name: 'Par effet', exact: true })).toHaveCount(0);
 	await expect(

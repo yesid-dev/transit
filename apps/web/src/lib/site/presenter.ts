@@ -154,7 +154,7 @@ export function noticeCountEvidence(
 ) {
 	const total = intl.number(locale).format(published);
 	return locale === 'fr'
-		? `${noticeCount(grouped, locale)}, à partir de ${total} avis que ${frenchAgency(agency).subject} a publié${published === 1 ? '' : 's'}, à raison d’un par ligne et par republication.`
+		? `${noticeCount(grouped, locale)}, issu${grouped === 1 ? '' : 's'} de ${total} avis publié${published === 1 ? '' : 's'} par ${frenchAgency(agency).subject}, un par ligne et par mise à jour.`
 		: `${noticeCount(grouped, locale)}, from ${total} ${published === 1 ? 'alert' : 'alerts'} as ${agency.name} published ${published === 1 ? 'it' : 'them'}, one per line and reissue.`;
 }
 
