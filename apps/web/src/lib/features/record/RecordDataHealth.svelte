@@ -415,7 +415,6 @@
 													.filter(Boolean)
 													.join(' ')}
 											/>
-
 										{/snippet}
 									</RecordActionGroup>
 								{/snippet}

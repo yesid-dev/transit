@@ -78,7 +78,6 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 			!errorPage && askedBeforeRecord && mode === 'record' && usesFrameRecord && parsed.period
 				? { start, period: parsed.period }
 				: null,
-
 	} as const;
 }
 
