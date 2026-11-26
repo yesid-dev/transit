@@ -8,7 +8,13 @@
 		sortAgencyMessages,
 	} from '#lib/site/agencyMessages.ts';
 	import { page } from '$app/state';
-	import { alertsNotTrackedLine, liveStampAge, officialAlertsLabel } from '#lib/site/presenter.ts';
+	import {
+		agencyName,
+		alertsNotTrackedLine,
+		liveStampAge,
+		officialAlertsLabel,
+	} from '#lib/site/presenter.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { alertEffect, liveAlertCards } from '../alerts/alertCards.ts';
 	import { choose } from '../record/recordText.ts';
 	import RecordCard from '../record/RecordCard.svelte';
@@ -34,10 +40,8 @@
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	// The city's declaration names its official alerts page; Transit links to it when it does not collect them.
-	const officialAlertsUrl = $derived(
-		(page.data.provider as { alert_links?: Partial<Record<Locale, string>> } | null | undefined)
-			?.alert_links?.[locale],
-	);
+	const city = $derived(page.data.provider as PublicCity | null | undefined);
+	const officialAlertsUrl = $derived(city?.alert_links?.[locale]);
 	const feed = $derived(captureFamily(snapshot, 'alerts'));
 	const ready = $derived(tracked && feedState(feed, now) === 'live' && snapshot?.alerts != null);
 	const stamp = $derived(
@@ -83,7 +87,7 @@
 	{stamp}
 >
 	{#if !tracked}
-		{@render empty(alertsNotTrackedLine(operator ?? '', locale))}
+		{@render empty(alertsNotTrackedLine(agencyName(operator ?? '', city), locale))}
 	{:else if !ready}
 		{@render empty(
 			t(

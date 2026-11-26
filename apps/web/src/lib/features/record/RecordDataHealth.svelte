@@ -20,8 +20,7 @@
 	import {
 		countedUnit,
 		dateRange,
-		frenchOperatorName,
-		frenchOperatorOf,
+		frenchAgency,
 		longDate,
 		methodEvidence,
 		officialAlertsLabel,
@@ -71,6 +70,7 @@
 		url,
 		record,
 		alerts = { tracked: true },
+		operatorOf = null,
 		subject = '',
 		operator = '',
 	}: {
@@ -87,6 +87,8 @@
 			methods: Result<MethodEntry[]>;
 		} | null;
 		alerts?: { tracked: boolean; officialUrl?: string };
+		/** The French form of the agency after "de", as the city declares it. */
+		operatorOf?: string | null;
 		subject?: string;
 		operator?: string;
 	} = $props();
@@ -96,9 +98,11 @@
 	const start = $derived(recordStart(page.data.provider));
 	const term = $derived(overviewCopy[locale]);
 	const title = $derived(t('Data health', 'Santé des données'));
-	const agency = $derived(operator || subject);
+	const agencyLabel = $derived(operator || subject);
+	const agency = $derived({ name: agencyLabel, frenchOf: operatorOf });
+	const french = $derived(frenchAgency(agency));
 	const titles = $derived({
-		publishes: t(`What ${agency} publishes`, `Ce que publie ${frenchOperatorName(agency)}`),
+		publishes: t(`What ${agencyLabel} publishes`, `Ce que publie ${french.subject}`),
 		coverage: t('Live trip coverage', 'Couverture des trajets en direct'),
 		reports: t('Details in vehicle reports', 'Détails transmis par les véhicules'),
 		predictions: t('Arrival predictions', 'Prévisions d’arrivée'),
@@ -638,8 +642,8 @@
 							key: 'counted',
 							label: term.counted,
 							text: t(
-								`Every stop event in ${agency}’s timetable for these dates, and its live feeds.`,
-								`Chaque passage prévu à l’horaire ${frenchOperatorOf(agency)} à ces dates, et ses flux en direct.`,
+								`Every stop event in ${agencyLabel}’s timetable for these dates, and its live feeds.`,
+								`Chaque passage prévu à l’horaire ${french.of} à ces dates, et ses flux en direct.`,
 							),
 						},
 						{

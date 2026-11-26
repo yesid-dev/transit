@@ -34,6 +34,7 @@
 		alertsAvailable,
 		operator,
 		officialAlertsUrl,
+		operatorOf,
 		link,
 		onCaptureAge,
 	}: {
@@ -42,6 +43,8 @@
 		alertsAvailable: boolean;
 		operator: string;
 		officialAlertsUrl?: string;
+		/** The French form of the agency after "de", as the city declares it. */
+		operatorOf?: string | null;
 		link: (path: string, live?: boolean) => string;
 		onCaptureAge?: (age: number | null) => void;
 	} = $props();
@@ -183,7 +186,7 @@
 				label={t.alerts}
 				busy={alerts.kind === 'pending'}
 				detail={!alertsAvailable
-					? alertsNotCollected(operator, locale)
+					? alertsNotCollected({ name: operator, frenchOf: operatorOf }, locale)
 					: stale(alertHealth)
 						? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
 						: undefined}

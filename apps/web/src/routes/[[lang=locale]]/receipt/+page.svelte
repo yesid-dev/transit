@@ -47,6 +47,7 @@
 	import {
 		countedUnit,
 		dailyAlertsLink,
+		agencyName,
 		alertsNotTrackedLine,
 		alertsNotTrackedOnDates,
 		dateRange,
@@ -321,8 +322,8 @@
 		<StateMark state="alerts_not_tracked" locale={lang} hiddenLabel />
 		<span
 			>{onDates
-				? alertsNotTrackedOnDates(operator ?? cityName, lang)
-				: alertsNotTrackedLine(operator ?? cityName, lang)}</span
+				? alertsNotTrackedOnDates(agencyName(operator ?? cityName, routeData.provider), lang)
+				: alertsNotTrackedLine(agencyName(operator ?? cityName, routeData.provider), lang)}</span
 		>
 	</p>
 {/snippet}

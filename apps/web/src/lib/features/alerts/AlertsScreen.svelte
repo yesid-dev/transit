@@ -77,6 +77,8 @@
 			timeZone?: string;
 			cityName: string;
 			operator?: string;
+			/** The French form of the agency after "de", as the city declares it. */
+			operatorOf?: string | null;
 			capture: Promise<CaptureSnapshot | null> | null;
 			sections: ReturnType<typeof loadAlertRecord>;
 		};
@@ -429,7 +431,10 @@
 							title={t('Not tracked', 'Non suivi')}
 							glyph="⊠"
 							role="status"
-							body={alertsNotCollected(data.operator ?? data.cityName, locale)}
+							body={alertsNotCollected(
+								{ name: data.operator ?? data.cityName, frenchOf: data.operatorOf },
+								locale,
+							)}
 						>
 							{#snippet action()}
 								{#if data.officialAlertsUrl}

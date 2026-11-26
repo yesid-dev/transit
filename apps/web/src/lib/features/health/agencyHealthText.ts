@@ -8,6 +8,7 @@ import type {
 } from '#lib/server/engine.ts';
 import {
 	alertsNotCollected,
+	type AgencyName,
 	compactServiceDay,
 	countedUnit,
 	hoursReading,
@@ -115,7 +116,7 @@ function accessibilityRow(
 
 function alertRows(
 	effects: EngineResult<RecordSeries> | null,
-	operator: string,
+	agency: AgencyName,
 	locale: Locale,
 ): HealthRow[] {
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -123,7 +124,7 @@ function alertRows(
 	const effect = { id: 'alert_effects', label: t('Effect of each alert', 'Effet de chaque avis') };
 	// One row says it once: the effects of alerts Transit does not collect are not tracked either.
 	if (!effects)
-		return [{ ...alerts, state: 'alerts_not_tracked', note: alertsNotCollected(operator, locale) }];
+		return [{ ...alerts, state: 'alerts_not_tracked', note: alertsNotCollected(agency, locale) }];
 	const answer = answerOf(effects);
 	if (!answer)
 		return [
@@ -219,11 +220,11 @@ export function publishingRows(
 		alertEffects: EngineResult<RecordSeries> | null;
 		completeness: EngineResult<ScorecardAnswer>;
 	},
-	operator: string,
+	agency: AgencyName,
 	locale: Locale,
 ): HealthRow[] {
 	return [
-		...alertRows(alertEffects, operator, locale),
+		...alertRows(alertEffects, agency, locale),
 		accessibilityRow('stops', accessibility, locale),
 		accessibilityRow('trips', accessibility, locale),
 		occupancyRow(completeness, locale),

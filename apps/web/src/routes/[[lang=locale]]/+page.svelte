@@ -25,6 +25,7 @@
 			href={page.url.href}
 			alertsAvailable={data.provider != null && providerHasAlerts(data.provider)}
 			officialAlertsUrl={data.provider?.alert_links[locale]}
+			operatorOf={data.provider?.download_licence?.source?.fr}
 			record={data.record}
 		/>
 	{:else}

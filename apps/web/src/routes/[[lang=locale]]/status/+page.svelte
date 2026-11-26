@@ -21,6 +21,7 @@
 			subject={names.operatorCity}
 			operator={names.short}
 			alerts={data.alerts}
+			operatorOf={data.provider?.download_licence?.source?.fr}
 			record={data.record}
 		/>
 	{:else}

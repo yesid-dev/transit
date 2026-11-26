@@ -635,37 +635,65 @@ export function lowCoverageReason(
 	return detail ? `${label}${fr ? ' : ' : ': '}${detail}` : label;
 }
 
-/** French subject: an acronym takes the article "la", another name stands alone. */
-export function frenchOperatorName(operator: string) {
-	return /^\p{Lu}{2,}$/u.test(operator) ? `la ${operator}` : operator;
+/**
+ * An agency's name with the French form its city declares after "de" (the source line of its
+ * download licence). The subject form comes from that declared form; a city that declares none
+ * keeps its bare name.
+ */
+export type AgencyName = { name: string; frenchOf?: string | null };
+
+export function agencyName(
+	name: string,
+	provider?: { download_licence?: { source?: { fr: string } } | null } | null,
+): AgencyName {
+	return { name, frenchOf: provider?.download_licence?.source?.fr ?? null };
 }
 
-/** French "of <operator>": "de la" before an acronym, "d’" before a vowel, else "de". */
-export function frenchOperatorOf(operator: string) {
-	if (/^\p{Lu}{2,}$/u.test(operator)) return `de la ${operator}`;
-	if (/^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(operator)) return `d’${operator}`;
-	return `de ${operator}`;
+const frenchContractions: [RegExp, string][] = [
+	[/^de la /u, 'la '],
+	[/^de l['’]/u, 'l’'],
+	[/^du /u, 'le '],
+	[/^des /u, 'les '],
+	[/^d['’]/u, ''],
+	[/^de /u, ''],
+];
+
+/** The agency as a French subject ("la …") and after "de" ("de la …", "d’…"). */
+export function frenchAgency({ name, frenchOf }: AgencyName) {
+	const declared = frenchOf?.trim();
+	if (declared) {
+		const rule = frenchContractions.find(([pattern]) => pattern.test(declared));
+		return {
+			subject: rule ? declared.replace(rule[0], rule[1]) : name,
+			of: rule ? declared : `de ${name}`,
+		};
+	}
+	// Without a declared form, only French elision applies; no article is guessed.
+	return {
+		subject: name,
+		of: /^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(name) ? `d’${name}` : `de ${name}`,
+	};
 }
 
 /** The one sentence for a city whose alerts Transit does not collect. */
-export function alertsNotCollected(operator: string, locale: Locale) {
+export function alertsNotCollected(agency: AgencyName, locale: Locale) {
 	return locale === 'fr'
-		? `Transit ne collecte pas encore les avis ${frenchOperatorOf(operator)}.`
-		: `Transit does not collect ${operator}’s alerts yet.`;
+		? `Transit ne collecte pas encore les avis ${frenchAgency(agency).of}.`
+		: `Transit does not collect ${agency.name}’s alerts yet.`;
 }
 
 /** The state and its sentence on one line: "Not tracked: Transit does not collect …". */
-export function alertsNotTrackedLine(operator: string, locale: Locale) {
+export function alertsNotTrackedLine(agency: AgencyName, locale: Locale) {
 	return locale === 'fr'
-		? `Non suivi\u00a0: ${alertsNotCollected(operator, locale)}`
-		: `Not tracked: ${alertsNotCollected(operator, locale)}`;
+		? `Non suivi\u00a0: ${alertsNotCollected(agency, locale)}`
+		: `Not tracked: ${alertsNotCollected(agency, locale)}`;
 }
 
 /** A city whose alerts Transit collects, on dates the record holds none of them. */
-export function alertsNotTrackedOnDates(operator: string, locale: Locale) {
+export function alertsNotTrackedOnDates(agency: AgencyName, locale: Locale) {
 	return locale === 'fr'
-		? `Non suivi\u00a0: Transit n’a pas collecté les avis ${frenchOperatorOf(operator)} à ces dates.`
-		: `Not tracked: Transit did not collect ${operator}’s alerts on these dates.`;
+		? `Non suivi\u00a0: Transit n’a pas collecté les avis ${frenchAgency(agency).of} à ces dates.`
+		: `Not tracked: Transit did not collect ${agency.name}’s alerts on these dates.`;
 }
 
 export function officialAlertsLabel(locale: Locale) {

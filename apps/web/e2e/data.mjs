@@ -283,6 +283,11 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 // browser loads it: the layout spec serves the real file there, late.
 files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
+// The source line each declaration carries; French gives the form after "de".
+const declaredSources = {
+	stm: { en: 'STM', fr: 'de la STM' },
+	octranspo: { en: 'OC Transpo', fr: 'd’OC Transpo' },
+};
 const sourceCredits = {
 	stm: {
 		en: 'Source: Société de transport de Montréal (STM), CC BY 4.0.',
@@ -399,7 +404,10 @@ const server = createServer((request, response) => {
 					...(process.env.TRANSIT_E2E_DAILY_ARTWORK === '1'
 						? { record_through: '2026-11-23' }
 						: {}),
-					download_licence: { attribution: sourceCredits[provider.id] },
+					download_licence: {
+						attribution: sourceCredits[provider.id],
+						source: declaredSources[provider.id],
+					},
 					bounds: provider.max_bounds,
 					...(provider.id === 'octranspo'
 						? { name_separators: { ends: '<>', languages: '~', language_order: ['en', 'fr'] } }

@@ -73,6 +73,7 @@
 		href,
 		alertsAvailable = false,
 		officialAlertsUrl,
+		operatorOf,
 		record,
 	}: {
 		locale: Locale;
@@ -83,6 +84,7 @@
 		href: string;
 		alertsAvailable?: boolean;
 		officialAlertsUrl?: string;
+		operatorOf?: string | null;
 		record: {
 			period: DateWindow;
 			previous: DateWindow;
@@ -327,6 +329,7 @@
 			{alertsAvailable}
 			{operator}
 			{officialAlertsUrl}
+			{operatorOf}
 			{link}
 			onCaptureAge={(age) => (liveCaptureAge = age)}
 		/>

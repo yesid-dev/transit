@@ -7,9 +7,11 @@ import type {
 	ScorecardAnswer,
 } from '#lib/server/engine.ts';
 import {
+	agencyName,
 	alertsNotCollected,
 	alertsNotTrackedLine,
 	alertsNotTrackedOnDates,
+	frenchAgency,
 } from '#lib/site/presenter.ts';
 import {
 	collectionGaps,
@@ -121,7 +123,7 @@ describe('what the agency publishes', () => {
 				alertEffects: effects([[null, 1_602]]),
 				completeness: completeness(0.999),
 			},
-			'STM',
+			{ name: 'STM', frenchOf: 'de la STM' },
 			'en',
 		);
 		expect(readable(rows, 'en')).toEqual([
@@ -149,7 +151,7 @@ describe('what the agency publishes', () => {
 				alertEffects: null,
 				completeness: completeness(0),
 			},
-			'OC Transpo',
+			{ name: 'OC Transpo', frenchOf: 'd’OC Transpo' },
 			'fr',
 		);
 		expect(spaces(readable(rows, 'fr'))).toEqual(
@@ -173,7 +175,7 @@ describe('what the agency publishes', () => {
 				alertEffects: { kind: 'unreachable' },
 				completeness: { kind: 'unreachable' },
 			},
-			'STM',
+			{ name: 'STM', frenchOf: 'de la STM' },
 			'en',
 		);
 		expect(rows.every(({ state }) => state === 'unavailable')).toBe(true);
@@ -182,13 +184,54 @@ describe('what the agency publishes', () => {
 });
 
 describe('the alerts sentence', () => {
+	// The French forms come from each city's declaration (its download licence source line).
+	const declared = {
+		montreal: { name: 'STM', frenchOf: 'de la STM' },
+		ottawa: { name: 'OC Transpo', frenchOf: 'd’OC Transpo' },
+		gatineau: { name: 'STO', frenchOf: 'de la STO' },
+	};
 	it.each([
-		['en', 'OC Transpo', 'Not tracked: Transit does not collect OC Transpo’s alerts yet.'],
-		['fr', 'OC Transpo', 'Non suivi\u00a0: Transit ne collecte pas encore les avis d’OC Transpo.'],
-		['fr', 'STM', 'Non suivi\u00a0: Transit ne collecte pas encore les avis de la STM.'],
-	] as const)('reads one sentence in %s for %s', (locale, operator, line) => {
-		expect(alertsNotTrackedLine(operator, locale)).toBe(line);
-		expect(line.endsWith(alertsNotCollected(operator, locale))).toBe(true);
+		['en', declared.ottawa, 'Not tracked: Transit does not collect OC Transpo’s alerts yet.'],
+		[
+			'fr',
+			declared.ottawa,
+			'Non suivi\u00a0: Transit ne collecte pas encore les avis d’OC Transpo.',
+		],
+		[
+			'fr',
+			declared.montreal,
+			'Non suivi\u00a0: Transit ne collecte pas encore les avis de la STM.',
+		],
+		[
+			'fr',
+			declared.gatineau,
+			'Non suivi\u00a0: Transit ne collecte pas encore les avis de la STO.',
+		],
+	] as const)('reads one sentence in %s for %o', (locale, agency, line) => {
+		expect(alertsNotTrackedLine(agency, locale)).toBe(line);
+		expect(line.endsWith(alertsNotCollected(agency, locale))).toBe(true);
+	});
+
+	it.each([
+		[declared.montreal, 'la STM', 'de la STM'],
+		[declared.ottawa, 'OC Transpo', 'd’OC Transpo'],
+		[declared.gatineau, 'la STO', 'de la STO'],
+		[{ name: 'Le Réseau', frenchOf: 'du Réseau' }, 'le Réseau', 'du Réseau'],
+		[{ name: 'Lignes', frenchOf: 'des Lignes' }, 'les Lignes', 'des Lignes'],
+	])('takes the declared French forms for %o', (agency, subject, of) => {
+		expect(frenchAgency(agency)).toEqual({ subject, of });
+	});
+
+	it('guesses no article for a city that declares none', () => {
+		expect(frenchAgency({ name: 'XYZ' })).toEqual({ subject: 'XYZ', of: 'de XYZ' });
+		expect(frenchAgency({ name: 'Ombre', frenchOf: null })).toEqual({
+			subject: 'Ombre',
+			of: 'd’Ombre',
+		});
+		expect(agencyName('STO', { download_licence: { source: { fr: 'de la STO' } } })).toEqual(
+			declared.gatineau,
+		);
+		expect(agencyName('XYZ', null)).toEqual({ name: 'XYZ', frenchOf: null });
 	});
 });
 
@@ -329,6 +372,8 @@ it.each([
 	['en', 'Not tracked: Transit did not collect STM’s alerts on these dates.'],
 	['fr', 'Non suivi\u00a0: Transit n’a pas collecté les avis de la STM à ces dates.'],
 ] as const)('separates dates without alerts from a city never collected in %s', (locale, line) => {
-	expect(alertsNotTrackedOnDates('STM', locale)).toBe(line);
-	expect(alertsNotTrackedOnDates('STM', locale)).not.toBe(alertsNotTrackedLine('STM', locale));
+	expect(alertsNotTrackedOnDates({ name: 'STM', frenchOf: 'de la STM' }, locale)).toBe(line);
+	expect(alertsNotTrackedOnDates({ name: 'STM', frenchOf: 'de la STM' }, locale)).not.toBe(
+		alertsNotTrackedLine({ name: 'STM', frenchOf: 'de la STM' }, locale),
+	);
 });
