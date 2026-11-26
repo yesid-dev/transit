@@ -5,13 +5,17 @@
 # custom domain. The more expensive Worker route remains a backwards-compatible
 # `/data/*` surface and still owns `/api/v1/*`.
 #
-# Usage: bash apps/data-proxy/smoke.sh
+# Usage: bash apps/data-proxy/smoke.sh [v2]
 #   CANONICAL_BASE / FALLBACK_BASE / APEX_BASE override the probed hosts.
 set -euo pipefail
 
 CANONICAL_BASE="${CANONICAL_BASE:-https://data.yesid.dev}"
 FALLBACK_BASE="${FALLBACK_BASE:-https://transit.yesid.dev/data}"
 BROWSER_ORIGIN="${BROWSER_ORIGIN:-https://transit.yesid.dev}"
+if [[ "${1:-}" == v2 ]]; then
+  CANONICAL_BASE="$CANONICAL_BASE" exec node "$(dirname "${BASH_SOURCE[0]}")/scripts/probe-v2.mjs"
+fi
+
 MAX_TIME=15
 EDGE_MAX_ATTEMPTS="${EDGE_MAX_ATTEMPTS:-12}"
 EDGE_RETRY_DELAY_S="${EDGE_RETRY_DELAY_S:-3}"
@@ -301,4 +305,3 @@ vitals_status="$(status_of -X POST -H 'content-type: application/json' -d '{}' \
 ok "/api/vitals still reaches the web app (status $vitals_status)"
 
 echo "SMOKE OK: direct R2 + compatibility serving, kpis live, negatives clean"
-CANONICAL_BASE="$CANONICAL_BASE" node "$(dirname "${BASH_SOURCE[0]}")/scripts/probe-v2.mjs"

@@ -1045,6 +1045,7 @@ jobs:
           node ../../.github/scripts/post-deploy-layout.mjs policy
           # The smoke script also verifies legacy /data and /api/v1 routes.
           bash smoke.sh
+          bash smoke.sh v2
 
       - name: Alert immediately on failed deployment verification
         if: ${{ always() && steps.deploy.outputs.deployed == 'true' && (steps.identity.outcome != 'success' || steps.smoke.outcome != 'success') }}
