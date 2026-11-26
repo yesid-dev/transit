@@ -97,3 +97,8 @@ jobs:
 
       - name: Run production smoke
         run: bash smoke.sh
+
+      - name: Run public v2 smoke
+        env:
+          V2_WEB_ORIGIN: https://transit1.yesid.dev
+        run: bash smoke.sh v2

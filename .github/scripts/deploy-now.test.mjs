@@ -247,6 +247,7 @@ test("older application refs use deployment control files preserved from the mai
     ".bun-version",
     "apps/data-proxy/r2-cors.json",
     "apps/data-proxy/scripts/configure-data-edge.mjs",
+    "apps/data-proxy/scripts/probe-v2.mjs",
   ];
   function step(name) {
     const block = workflow
@@ -331,6 +332,10 @@ test("older application refs use deployment control files preserved from the mai
     assert.match(
       workflow,
       /node "\$RUNNER_TEMP\/transit-deploy-control\/apps\/data-proxy\/scripts\/configure-data-edge.mjs"/,
+    );
+    assert.match(
+      workflow,
+      /node "\$RUNNER_TEMP\/transit-deploy-control\/apps\/data-proxy\/scripts\/probe-v2.mjs"/,
     );
     assert.ok(
       workflow.indexOf("Preserve main deployment controls") <

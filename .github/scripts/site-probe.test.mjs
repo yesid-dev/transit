@@ -157,8 +157,14 @@ test("all public targets must pass before resolving the shared outage", async ()
     fetchFn: async (url, init) => {
       visited.push(url);
       assert.equal(init.redirect, "manual");
-      assert.equal(init.headers["cache-control"], "no-cache");
       assert.ok(init.signal instanceof AbortSignal);
+      if (url.endsWith("/v2/cities")) {
+        return Response.json({ default_provider: "fixture", providers: [{ id: "fixture", inputs: {} }] });
+      }
+      assert.equal(init.headers["cache-control"], "no-cache");
+      if (url === "https://transit1.yesid.dev/health") {
+        return Response.json({ ...await healthy().json(), service: "transit1-web", engine: "ok", proxy: "ok" });
+      }
       return url.endsWith("/health")
         ? healthy()
         : url.endsWith("/api/v1/kpis")
@@ -175,6 +181,8 @@ test("all public targets must pass before resolving the shared outage", async ()
     "https://transit.yesid.dev/",
     "https://yesid.dev/",
     "https://transit.yesid.dev/api/v1/kpis",
+    "https://transit1.yesid.dev/health",
+    "https://data.yesid.dev/v2/cities",
   ]);
   assert.equal(alerts[0][0], "resolve");
 });
