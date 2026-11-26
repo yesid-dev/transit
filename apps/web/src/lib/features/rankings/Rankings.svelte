@@ -509,7 +509,7 @@
 				/>
 				{#if !bounded.length}<p class="text-small text-muted-foreground">
 						{t(
-							'No range is available for these positions.',
+							'No range is available for these ranks.',
 							'Aucune plage n’est disponible pour ces rangs.',
 						)}
 					</p>{:else}<p class="text-small text-muted-foreground">
@@ -525,7 +525,7 @@
 								)
 							: data.range_notes[bounded[0].entry.range.method]?.[locale]}
 						{#if bounded.length < rows.length}{t(
-								'A blank range means none is available for that position.',
+								'A blank range means none is available for that rank.',
 								'Une plage vide signifie qu’aucune n’est disponible pour ce rang.',
 							)}{/if}
 					</p>{/if}

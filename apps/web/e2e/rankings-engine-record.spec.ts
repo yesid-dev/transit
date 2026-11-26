@@ -92,7 +92,7 @@ for (const provider of ['stm', 'octranspo'] as const) {
 								main.getByText(
 									fr
 										? 'Aucune plage n’est disponible pour ces rangs.'
-										: 'No range is available for these positions.',
+										: 'No range is available for these ranks.',
 									{ exact: true },
 								),
 							).toHaveCount(1);
