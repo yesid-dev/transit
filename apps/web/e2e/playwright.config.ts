@@ -123,6 +123,8 @@ export default defineConfig({
 							// Polish owns a phone matrix or a desktop matrix, selected by width.
 							...(width === 390 || width === 1440 ? [] : [/layout-map-polish\.spec\.ts/]),
 							...(width === 390 || width === 1440 ? [] : [/layout-map-record\.spec\.ts/]),
+							// Only the phone header has the compact network picker.
+							...(width === 390 ? [] : [/layout-network-picker\.spec\.ts/]),
 							// The footer brand owns its narrow and desktop matrix in every case; a
 							// project viewport would only run each case again.
 							...(width === 1440 ? [] : [/layout-footer-brand\.spec\.ts/]),

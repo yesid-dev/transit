@@ -1,4 +1,5 @@
 import { openMapControls } from './map-frame-controls';
+import { waitForStableHeader } from './layout-header-settle';
 import { test } from './layout-test';
 import { expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
@@ -12,42 +13,6 @@ test.describe.configure({ mode: 'parallel' });
 const epoch = Date.parse(
 	JSON.parse(readFileSync(new URL('./departures.json', import.meta.url), 'utf8')).generated_utc,
 );
-
-async function stable(page: Page) {
-	await page.evaluate(() => document.fonts.ready);
-	await expect
-		.poll(() =>
-			page.evaluate(
-				() =>
-					document
-						.getAnimations()
-						.filter(
-							(a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity,
-						).length,
-			),
-		)
-		.toBe(0);
-	let previous = '';
-	let unchanged = 0;
-	await expect
-		.poll(
-			async () => {
-				const current = await page.getByTestId('nav-pill').evaluate((nav) =>
-					JSON.stringify(
-						[...nav.querySelectorAll('a, input, [data-slot^="wordmark-"]')].map((el) => {
-							const r = el.getBoundingClientRect();
-							return [r.x, r.y, r.width, r.height];
-						}),
-					),
-				);
-				unchanged = current === previous ? unchanged + 1 : 0;
-				previous = current;
-				return unchanged;
-			},
-			{ intervals: [100] },
-		)
-		.toBeGreaterThanOrEqual(2);
-}
 
 async function headerOverlaps(page: Page) {
 	return page.getByTestId('nav-pill').evaluate((nav) => {
@@ -89,7 +54,7 @@ for (const provider of ['stm', 'octranspo'])
 						`${locale === 'fr' ? '/fr' : ''}/map?provider=${provider}${active ? '&route=24&vehicle=layout-bus' : ''}`,
 						{ waitUntil: 'networkidle' },
 					);
-					await stable(page);
+					await waitForStableHeader(page);
 					expect(await headerOverlaps(page), 'header after fonts load').toEqual([]);
 					await page.emulateMedia({ reducedMotion: 'reduce' });
 					await openMapControls(page);
@@ -133,7 +98,7 @@ for (const provider of ['stm', 'octranspo'])
 								.analyze()
 						).violations,
 					).toEqual([]);
-					await stable(page);
+					await waitForStableHeader(page);
 					if (process.env.TRANSIT_POLISH_SHOTS) {
 						const dir = fileURLToPath(
 							new URL('../../../.cache/cohesion/after/controls', import.meta.url),

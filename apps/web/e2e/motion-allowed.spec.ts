@@ -43,6 +43,15 @@ async function runningMotion(page: Page) {
 			if (timing.iterations !== Infinity && Number(timing.duration) <= 10_000) return [];
 			const target = animation.effect.target;
 			const matches = (selector: string) => target instanceof Element && target.matches(selector);
+			// The compact network picker follows scrolling, so it never runs on its own.
+			if (
+				typeof ScrollTimeline !== 'undefined' &&
+				animation.timeline instanceof ScrollTimeline &&
+				animation instanceof CSSAnimation &&
+				/^(?:svelte-[a-z0-9]+-)?scroll-compact-network$/u.test(animation.animationName) &&
+				matches('[data-slot="site-header-network"]')
+			)
+				return [];
 			return [
 				{
 					owner: product.some(matches) ? 'product' : 'unexpected',
