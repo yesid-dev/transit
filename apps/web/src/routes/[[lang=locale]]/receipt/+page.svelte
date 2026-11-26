@@ -11,7 +11,7 @@
 	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
 	import RecordRanking from '#lib/features/home/RecordRanking.svelte';
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
-	import { recordCounts } from '#lib/features/home/overviewRecord.ts';
+	import { previewRows, recordCounts } from '#lib/features/home/overviewRecord.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
@@ -53,7 +53,11 @@
 		recordStamp,
 		recordPercent,
 		sampleWithMinimum,
+		tripOutcomeLabels,
+		tripOutcomeNote,
+		tripsRunSentence,
 	} from '#lib/site/presenter.ts';
+	import { tripOutcomes } from '#lib/features/record/tripOutcomes.ts';
 	import { carryFrameState, frameHref, RECORD_START } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { DailySection } from '#lib/server/departureDailyRecord.ts';
@@ -172,7 +176,8 @@
 			return [
 				{
 					label,
-					events: answer.rows.reduce((total, row) => total + row.sample, 0),
+					// The footer counts the rows the preview shows.
+					events: previewRows(answer.rows).reduce((total, row) => total + row.sample, 0),
 					dates: answer.evidence.days_included,
 					version: methodEvidence(answer.evidence, lang, true),
 					lastGood,
@@ -239,13 +244,16 @@
 		{ key: 'late', header: t('Late share', 'Part en retard'), numeric: true, cell: late },
 		{ key: 'events', header: t('Stop events', 'Passages aux arrêts'), numeric: true, cell: events },
 	]);
-	const deliveryLabels = $derived({
-		scheduled: t('Scheduled trips', 'Trajets prévus'),
-		ran: t('Ran', 'Effectués'),
-		eligible: t('Known status', 'État connu'),
-		cancelled: t('Cancelled, announced by the agency', 'Annulés, avec avis de l’agence'),
-		missing: t('Missing, no vehicle and no notice', 'Manquants, sans véhicule ni avis'),
-	});
+	const deliveryLabels = $derived(tripOutcomeLabels(lang));
+	// The order reads as a sum: the five rows under Scheduled add up to it.
+	const deliveryRows = [
+		'scheduled',
+		'noLiveData',
+		'statusUnknown',
+		'ran',
+		'cancelled',
+		'missing',
+	] as const;
 </script>
 
 {#snippet hours(row: PeriodRow)}<span class="font-mono">{row.hours}</span>{/snippet}
@@ -334,10 +342,7 @@
 			? t('Share of trips that ran', 'Part des trajets effectués') + ' · ' + readingText(delivery)
 			: recordPercent(trips, lang) +
 				' ' +
-				t(
-					'of scheduled trips with a known status ran',
-					'des trajets prévus dont l’état est connu ont été effectués',
-				)}
+				tripsRunSentence(service?.evidence.counts.eligible, lang)}
 	{@const sentence =
 		value != null && trips != null
 			? [punctualityText, t(', and ', ', et '), deliveryText, '.'].join('')
@@ -446,23 +451,28 @@
 										{#if !service}{@render failure(result)}
 										{:else if service.state !== 'measured'}{@render missingMeasure(service, true)}
 										{:else}
-											<FactList
-												leading={false}
-												class="print:[&_[data-slot=fact-row]]:min-h-0 print:[&_[data-slot=fact-row]]:py-0.5"
-											>
-												{#each Object.entries(deliveryLabels) as [key, label] (key)}
-													{@const count = service.evidence.counts[key]}
-													{@const share = key === 'ran' ? tripsRun(service) : null}
-													<FactRow
-														{label}
-														detail={share == null ? undefined : recordPercent(share, lang)}
-													>
-														{#if count != null}<strong>{tally(count, lang)}</strong>{:else}
-															<StateMark state="unknown" locale={lang} />
-														{/if}
-													</FactRow>
-												{/each}
-											</FactList>
+											{@const outcomes = tripOutcomes(service.evidence)}
+											{#if outcomes}
+												<FactList
+													leading={false}
+													class="print:[&_[data-slot=fact-row]]:min-h-0 print:[&_[data-slot=fact-row]]:py-0.5"
+												>
+													{#each deliveryRows as key (key)}
+														{@const share = key === 'ran' ? tripsRun(service) : null}
+														<FactRow
+															label={deliveryLabels[key]}
+															detail={share == null
+																? undefined
+																: recordPercent(share, lang) +
+																	' ' +
+																	tripsRunSentence(outcomes.known, lang)}
+														>
+															<strong>{tally(outcomes[key], lang)}</strong>
+														</FactRow>
+													{/each}
+												</FactList>
+											{:else}<StateMark state="unknown" locale={lang} />{/if}
+											<p class="mt-3 text-muted-foreground">{tripOutcomeNote(lang)}</p>
 											<p class="mt-3 text-muted-foreground">
 												{t(
 													'A cancelled trip comes with a notice from the agency. A missing trip has no vehicle reporting and no notice.',
