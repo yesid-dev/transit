@@ -250,6 +250,27 @@ for (const width of [390, 1440]) {
 				selector.startsWith('#table-health'),
 			);
 			expect(tableHealthDefects).toEqual([]);
+			const healthGrid = main.locator('#table-health [data-slot="hour-grid"]');
+			await expect(healthGrid.locator('.legend')).toHaveCount(0);
+			const gridMetrics = await healthGrid.evaluate((rootEl) => {
+				const scroller = rootEl.querySelector<HTMLElement>('[role="region"]')!;
+				const labelId = scroller.getAttribute('aria-labelledby');
+				const tds = [...rootEl.querySelectorAll('tbody td')];
+				return {
+					role: scroller.getAttribute('role'),
+					tabindex: scroller.getAttribute('tabindex'),
+					labelled: Boolean(labelId && document.getElementById(labelId)?.textContent?.trim()),
+					tdsCount: tds.length,
+					tdsMissingAria: tds.filter((td) => !td.getAttribute('aria-label')?.trim()).length,
+					pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+				};
+			});
+			expect(gridMetrics.role).toBe('region');
+			expect(gridMetrics.tabindex).toBe('0');
+			expect(gridMetrics.labelled).toBe(true);
+			expect(gridMetrics.tdsCount).toBeGreaterThan(0);
+			expect(gridMetrics.tdsMissingAria).toBe(0);
+			expect(gridMetrics.pageOverflow).toBeLessThanOrEqual(0);
 			const changes = main.locator('[data-slot="record-card"]').filter({
 				has: page.getByRole('heading', {
 					name: fr ? 'Mises à jour des méthodes' : 'Method changes',

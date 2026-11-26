@@ -132,3 +132,91 @@ test('Network shows the unavailable state when the live capture fails after a su
 		});
 	}
 });
+
+for (const locale of ['en', 'fr'] as const) {
+	const fr = locale === 'fr';
+	const root = fr ? '/fr' : '';
+	test(`Network 24-hour grid keeps 23h, word states, legend and phone scroll region in ${locale}`, async ({
+		page,
+	}) => {
+		// This week's fixture has all 24 hours and every named state.
+		const fullDayPeriod = 'recordFrom=2026-10-19&recordTo=2026-10-25';
+		for (const width of [1440, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(`${root}/network?provider=stm&frameMode=record&${fullDayPeriod}`);
+			const grid = page.locator('#hours [data-slot="hour-grid"]');
+			await expect(grid.locator('tbody td')).toHaveCount(7 * 24);
+			await page.evaluate(() => document.fonts.ready);
+			const headers = grid.locator('thead th');
+			await expect(headers).toHaveCount(24);
+			await expect(headers.first()).toHaveText(fr ? '0 h' : '00h');
+			await expect(headers.last()).toHaveText(fr ? '23 h' : '23h');
+
+			const metrics = await grid.evaluate((rootEl) => {
+				const region = rootEl.querySelector<HTMLElement>('[role="region"]')!;
+				const last = rootEl.querySelector('thead th:last-child')!;
+				const inside = () => {
+					const cell = last.getBoundingClientRect();
+					const box = region.getBoundingClientRect();
+					return cell.left >= box.left - 1 && cell.right <= box.right + 1;
+				};
+				const visibleInitially = inside();
+				region.scrollLeft = region.scrollWidth;
+				const visibleAfterScroll = inside();
+				region.scrollLeft = 0;
+				const tds = [...rootEl.querySelectorAll('tbody td')];
+				const stateWords = (state: string) =>
+					[...rootEl.querySelectorAll(`tbody td [data-state="${state}"]`)].map(
+						(cell) => cell.textContent?.trim() ?? '',
+					);
+				const keys = [...rootEl.querySelectorAll<HTMLElement>('.legend li')].map((item) => {
+					const swatch = item.querySelector<HTMLElement>('.swatch')!;
+					const style = getComputedStyle(swatch);
+					const filled = !['rgba(0, 0, 0, 0)', 'transparent'].includes(style.backgroundColor);
+					const outlined = style.borderStyle !== 'none' && parseFloat(style.borderWidth) > 0;
+					return { text: item.textContent?.trim() ?? '', drawn: filled || outlined };
+				});
+				return {
+					labelled: Boolean(
+						document
+							.getElementById(region.getAttribute('aria-labelledby') ?? '')
+							?.textContent?.trim(),
+					),
+					tabindex: region.getAttribute('tabindex'),
+					unnamedCells: tds.filter((td) => !td.getAttribute('aria-label')?.trim()).length,
+					few: stateWords('few'),
+					none: stateWords('none'),
+					unmeasured: stateWords('unmeasured').length,
+					keys,
+					scrolls: region.scrollWidth > region.clientWidth,
+					visibleInitially,
+					visibleAfterScroll,
+					pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+				};
+			});
+
+			expect(metrics.pageOverflow, `${locale} ${width}px page overflow`).toBeLessThanOrEqual(0);
+			expect(metrics.labelled).toBe(true);
+			expect(metrics.tabindex).toBe('0');
+			expect(metrics.unnamedCells).toBe(0);
+			expect(metrics.few.length).toBeGreaterThan(0);
+			expect(new Set(metrics.few)).toEqual(new Set([fr ? 'peu' : 'few']));
+			expect(metrics.none.length).toBeGreaterThan(0);
+			expect(new Set(metrics.none)).toEqual(new Set([fr ? 'aucun' : 'none']));
+			expect(metrics.unmeasured).toBeGreaterThan(0);
+			// Five scale steps and the three named states, each with a drawn key and its words.
+			expect(metrics.keys).toHaveLength(8);
+			for (const key of metrics.keys) {
+				expect(key.text, `${locale} legend key`).not.toBe('');
+				expect(key.drawn, `${locale} legend swatch for "${key.text}"`).toBe(true);
+			}
+			expect(metrics.visibleAfterScroll, `${locale} ${width}px 23h reachable`).toBe(true);
+			if (width === 1440) {
+				expect(metrics.scrolls, `${locale} 1440px grid fits its card`).toBe(false);
+				expect(metrics.visibleInitially, `${locale} 1440px 23h in view`).toBe(true);
+			} else {
+				expect(metrics.scrolls, `${locale} 390px grid scrolls in its own region`).toBe(true);
+			}
+		}
+	});
+}

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { textDefects } from './layout-helpers';
 
 test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
@@ -525,5 +526,106 @@ for (const locale of ['en', 'fr'] as const) {
 			fr ? 'Non publié' : 'Not published',
 		);
 		await expect(row.locator('[data-column="code"]')).not.toContainText('T6-NONE');
+	});
+
+	test(`${locale} narrow lines and stops tables keep usable name tracks, plates and 44px links`, async ({
+		page,
+	}) => {
+		const richDates = 'provider=stm&frameMode=record&recordFrom=2026-11-04&recordTo=2026-11-10';
+		const cases = [
+			{
+				label: 'lines',
+				scope: 'lines-named',
+				url: `${prefix}/lines?${richDates}&sort=line&direction=asc`,
+				table: '#line-performance table',
+				expectedText: 'Édouard-Montpetit',
+			},
+			{
+				label: 'stops',
+				scope: 'stops',
+				url: `${prefix}/stops?${query}&route=24`,
+				table: '#stop-results table',
+				expectedText: 'Côte-des-Neiges',
+			},
+		] as const;
+
+		for (const item of cases) {
+			await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': item.scope });
+			for (const width of [320, 390]) {
+				await page.setViewportSize({ width, height: 900 });
+				await page.goto(item.url);
+				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+				const table = page.locator(item.table);
+				await expect(table).toContainText(item.expectedText);
+				await page.evaluate(() => document.fonts.ready);
+
+				const check = await table.evaluate((tableEl) => {
+					const rows = [...tableEl.querySelectorAll('tbody tr')].slice(0, 8);
+					let minPrimaryWidth = Infinity;
+					let minLinkHeight = Infinity;
+					let labelOverlapsValue = false;
+					let plateOverlapsLabel = false;
+					for (const row of rows) {
+						const primary = row.querySelector<HTMLElement>('[data-row-position="primary"]');
+						const value = row.querySelector<HTMLElement>('[data-row-position="value"]');
+						const link = row.querySelector<HTMLElement>('a.name-cell');
+						const name = row.querySelector<HTMLElement>('.name-label');
+						const plate = row.querySelector<HTMLElement>('.plate');
+						if (primary)
+							minPrimaryWidth = Math.min(minPrimaryWidth, primary.getBoundingClientRect().width);
+						if (link) minLinkHeight = Math.min(minLinkHeight, link.getBoundingClientRect().height);
+						if (name && value) {
+							const nr = name.getBoundingClientRect();
+							const vr = value.getBoundingClientRect();
+							if (nr.right > vr.left + 1 && nr.top < vr.bottom - 1 && nr.bottom > vr.top + 1) {
+								labelOverlapsValue = true;
+							}
+						}
+						if (plate && name) {
+							const pr = plate.getBoundingClientRect();
+							const nr = name.getBoundingClientRect();
+							if (pr.right > nr.left + 1 && pr.top < nr.bottom - 1 && pr.bottom > nr.top + 1) {
+								plateOverlapsLabel = true;
+							}
+						}
+					}
+					return {
+						rowCount: rows.length,
+						pageOverflow:
+							document.documentElement.scrollWidth - document.documentElement.clientWidth,
+						minPrimaryWidth: Math.round(minPrimaryWidth),
+						minLinkHeight: Math.round(minLinkHeight),
+						labelOverlapsValue,
+						plateOverlapsLabel,
+					};
+				});
+				expect(check.rowCount, `${locale} ${item.label} ${width}px rows`).toBeGreaterThan(0);
+				expect(
+					check.pageOverflow,
+					`${locale} ${item.label} ${width}px overflow`,
+				).toBeLessThanOrEqual(0);
+				expect(
+					check.minPrimaryWidth,
+					`${locale} ${item.label} ${width}px name track`,
+				).toBeGreaterThanOrEqual(100);
+				expect(
+					check.minLinkHeight,
+					`${locale} ${item.label} ${width}px link height`,
+				).toBeGreaterThanOrEqual(44);
+				expect(
+					check.labelOverlapsValue,
+					`${locale} ${item.label} ${width}px label/value overlap`,
+				).toBe(false);
+				expect(
+					check.plateOverlapsLabel,
+					`${locale} ${item.label} ${width}px plate/label overlap`,
+				).toBe(false);
+				const tablePrefix = item.table.split(' ')[0];
+				const defects = (await textDefects(page)).filter(
+					({ kind, selector }) => kind === 'broken-word' && selector.startsWith(tablePrefix),
+				);
+				expect(defects, `${locale} ${item.label} ${width}px broken words`).toEqual([]);
+			}
+		}
 	});
 }

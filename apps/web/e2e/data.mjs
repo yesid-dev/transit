@@ -612,7 +612,11 @@ const server = createServer((request, response) => {
 				editionStops.set(stop.id, { ...stop, lat: 45.5, lon: -73.6 });
 		}
 		const routeDirections = { 24: route.directions };
-		if (process.env.TRANSIT_E2E_LINES_PICTURES === '1' && kind === 'schedule-index') {
+		if (
+			(process.env.TRANSIT_E2E_LINES_PICTURES === '1' ||
+				request.headers['x-transit-fixture-scope'] === 'lines-named') &&
+			kind === 'schedule-index'
+		) {
 			for (const entry of linesFixtureRoutes(city)) {
 				editionRoutes.set(entry.id, entry);
 				routeDirections[entry.id] = [

@@ -145,6 +145,43 @@ describe('record charts', () => {
 		);
 	});
 
+	it.each([
+		['en', '00h', '23h', 'few', 'none'],
+		['fr', '0 h', '23 h', 'peu', 'aucun'],
+	] as const)(
+		'keeps all 24 active hours and every named state in %s',
+		(locale, firstHour, lastHour, fewWord, noneWord) => {
+			const data = series(
+				...Array.from({ length: 24 }, (_, hour) => {
+					if (hour === 0) return cell({ weekday: 1, hour }, { state: 'not_measured' });
+					if (hour === 1) return cell({ weekday: 1, hour }, { state: 'too_few_to_judge' });
+					if (hour === 2)
+						return cell(
+							{ weekday: 1, hour },
+							{
+								state: 'unknown',
+								evidence: { counts: { scheduled: 0 }, days_included: [] },
+							},
+						);
+					return cell({ weekday: 1, hour });
+				}),
+				...Array.from({ length: 24 }, (_, hour) => cell({ weekday: 2, hour })),
+			);
+			const grid = hourChart(
+				{ ...data, info: [{ id: 'late', minimum_sample: 60 }] },
+				'Hours',
+				locale,
+			).props;
+			expect(grid.columns).toHaveLength(24);
+			expect(grid.columns[0]?.label).toBe(firstHour);
+			expect(grid.columns[23]?.label).toBe(lastHour);
+			expect(grid.rows[0]?.cells[0]).toMatchObject({ state: 'unmeasured', level: null });
+			expect(grid.rows[0]?.cells[1]).toMatchObject({ state: 'few', text: fewWord, level: null });
+			expect(grid.rows[0]?.cells[2]).toMatchObject({ state: 'none', text: noneWord, level: null });
+			expect(grid.rows[0]?.cells[23]).toMatchObject({ text: '17' });
+		},
+	);
+
 	it('keeps gaps in daily readings and aligns the reference to the same dates', () => {
 		const data = series(
 			cell({ day: '2026-11-08' }),
