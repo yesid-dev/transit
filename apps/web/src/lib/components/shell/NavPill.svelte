@@ -322,6 +322,12 @@
 		padding-block-end: var(--chrome-gap);
 		pointer-events: none;
 	}
+	/* Below 1024px AppFrame measures SiteHeader directly for the transparent vacated network band. */
+	@media (width < 1024px) {
+		.frame-nav {
+			display: contents;
+		}
+	}
 
 	/* The full brand leaves too little room for French search and the controls at 414px.
 	   Keep the product name on phones. The house link is in the menu. */
