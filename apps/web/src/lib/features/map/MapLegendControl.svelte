@@ -77,7 +77,7 @@
 	.map-legend-fab {
 		position: fixed;
 		left: calc(var(--spacing) * 3);
-		bottom: var(--map-touch-row-bottom);
+		bottom: calc(var(--map-touch-row-bottom) + var(--expanded-map-credit, 0px));
 		z-index: calc(var(--z-sheet) + 2);
 		pointer-events: auto;
 	}
