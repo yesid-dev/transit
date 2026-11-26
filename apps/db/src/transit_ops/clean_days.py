@@ -304,6 +304,9 @@ def run_clean_days(
             zone = ZoneInfo(declaration.provider.timezone)
             end_day = scheduled_at.astimezone(zone).date()
             start_day = end_day - timedelta(days=_LOOKBACK_DAYS)
+        if declaration.clean_days_from is not None:
+            # Days before capture began are neither built nor recorded as not measured.
+            start_day = max(start_day, declaration.clean_days_from)
         raw, raw_prefix = _storage(source, "SOURCE")
         clean, clean_prefix = _storage(dest, "DEST")
     except (ValueError, OSError, BotoCoreError, ClientError) as error:

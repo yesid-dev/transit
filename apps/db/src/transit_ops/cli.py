@@ -170,15 +170,45 @@ def clean_day_command(
 @app.command("clean-days")
 def clean_days_command(
     provider: Annotated[str, typer.Option("--provider")],
-    first: Annotated[str, typer.Option("--from", help="First service date, inclusive.")],
-    last: Annotated[str, typer.Option("--to", help="Last service date, inclusive.")],
     source: Annotated[str, typer.Option("--source", help="Raw archive directory or s3:// URL.")],
     dest: Annotated[str, typer.Option("--dest", help="Clean output directory or s3:// URL.")],
+    first: Annotated[
+        str | None, typer.Option("--from", help="First service date, inclusive.")
+    ] = None,
+    last: Annotated[str | None, typer.Option("--to", help="Last service date, inclusive.")] = None,
+    scheduled_at: Annotated[
+        str | None,
+        typer.Option(
+            "--scheduled-at",
+            help="Catch up the last 14 days as of this ISO timestamp instead of --from/--to.",
+        ),
+    ] = None,
+    summary: Annotated[
+        Path | None, typer.Option("--summary", help="Append a Markdown summary to this file.")
+    ] = None,
 ) -> None:
     """Build clean Parquet tables for an inclusive range of provider service days."""
     from transit_ops.clean_days import run_clean_days
 
-    run_clean_days(provider, source, dest, selection=(first, last))
+    selection: tuple[str, str] | datetime
+    if scheduled_at is not None:
+        if first is not None or last is not None:
+            raise typer.BadParameter("Use either --scheduled-at or --from/--to")
+        try:
+            selection = datetime.fromisoformat(scheduled_at)
+        except ValueError:
+            raise typer.BadParameter("--scheduled-at must be an ISO timestamp") from None
+        if selection.utcoffset() is None:
+            raise typer.BadParameter("--scheduled-at needs a UTC offset")
+    elif first is None or last is None:
+        raise typer.BadParameter("Give --from and --to, or --scheduled-at")
+    else:
+        selection = (first, last)
+    if summary is None:
+        run_clean_days(provider, source, dest, selection=selection)
+        return
+    with summary.open("a", encoding="utf-8") as output:
+        run_clean_days(provider, source, dest, selection=selection, summary=output)
 
 
 class DailyJob(StrEnum):

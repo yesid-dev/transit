@@ -121,6 +121,69 @@ def test_delayed_cleaning_skips_built_days_and_ignores_dates_before_window(tmp_p
     assert "2026-11-08" not in report
 
 
+@pytest.mark.parametrize("scheduled", [True, False])
+def test_days_before_the_declared_first_day_are_neither_built_nor_marked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scheduled: bool
+) -> None:
+    raw, dest = tmp_path / "raw", tmp_path / "clean"
+    today = date(2026, 11, 23)
+    _seed_current_manifests(dest, today)
+    declaration = clean_days.declaration_for("stm").model_copy(
+        update={"clean_days_from": date(2026, 11, 20)}
+    )
+    monkeypatch.setattr(clean_days, "declaration_for", lambda _: declaration)
+    summary = StringIO()
+
+    clean_days.run_clean_days(
+        "stm",
+        str(raw),
+        str(dest),
+        selection=(
+            datetime(2026, 11, 24, 2, 56, tzinfo=UTC)
+            if scheduled
+            else ("2026-11-15", "2026-11-22")
+        ),
+        summary=summary,
+    )
+
+    report = summary.getvalue()
+    assert "- Skipped as already built: 2026-11-20, 2026-11-21, 2026-11-22\n" in report
+    assert "2026-11-19" not in report
+    assert "- Built: none\n" in report
+    assert "- Recorded as not measured: none\n" in report
+
+
+def test_clean_days_command_takes_one_kind_of_selection(tmp_path: Path) -> None:
+    common = ["clean-days", "--provider", "stm", "--source", str(tmp_path), "--dest", str(tmp_path)]
+    for extra in (
+        [],
+        ["--from", "2026-06-01"],
+        ["--from", "2026-06-01", "--to", "2026-06-01", "--scheduled-at", "2026-06-02T16:17:00Z"],
+        ["--scheduled-at", "2026-06-02T16:17:00"],
+    ):
+        result = CliRunner().invoke(app, [*common, *extra])
+        assert result.exit_code == 2, (extra, result.output)
+
+
+def test_clean_days_command_appends_its_summary(tmp_path: Path) -> None:
+    dest = tmp_path / "clean"
+    _seed_current_manifests(dest, date(2026, 11, 23))
+    summary = tmp_path / "summary.md"
+    summary.write_text("Earlier\n", encoding="utf-8")
+    result = CliRunner().invoke(
+        app,
+        [
+            "clean-days", "--provider", "stm", "--source", str(tmp_path / "raw"),
+            "--dest", str(dest), "--scheduled-at", "2026-11-24T02:56:00+00:00",
+            "--summary", str(summary),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    report = summary.read_text(encoding="utf-8")
+    assert report.startswith("Earlier\n## Clean service days for stm\n")
+    assert "- Built: none\n" in report
+
+
 @pytest.mark.parametrize(
     ("zone", "hour", "minute", "ready"),
     [
@@ -1002,6 +1065,9 @@ def test_private_details_reports_alert_languages_and_unmatched_stop_ids(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("TRANSIT_CLEAN_BUILDER_COMMIT", "7" * 40)
+    # The synthetic day predates the declared first day; lift the cut-off for this check.
+    private = clean_days.declaration_for("sto").model_copy(update={"clean_days_from": None})
+    monkeypatch.setattr(clean_days, "declaration_for", lambda _: private)
     archive = tmp_path / "archive" / "v1" / "schedules" / "sto"
     archive.mkdir(parents=True)
     edition = _edition(tmp_path / "schedule.zip", TRIPS, DAY)

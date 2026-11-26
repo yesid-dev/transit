@@ -85,6 +85,8 @@ public:
 
 # Applies across all files, including the keyless schedule.
 capture_enabled: true
+# First complete captured service day. Clean days never cover earlier dates.
+clean_days_from: "2026-11-25"
 capture_download_limit: {requests: 120, window_seconds: 600}
 
 feeds:

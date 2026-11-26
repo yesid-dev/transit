@@ -122,6 +122,7 @@ def manifest_from_declaration(declaration: Declaration) -> ProviderManifest:
             },
             "public": _public(declaration),
             "capture_enabled": declaration.capture_enabled,
+            "clean_days_from": declaration.clean_days_from,
             "realtime": {
                 "unpublished_vehicle_fields": declaration.unpublished_vehicle_fields,
                 "lines_without_live_data": [
