@@ -21,6 +21,67 @@ function terminalPanelAsset(): string {
 
 test.use({ bypassCSP: true });
 test.describe.configure({ mode: 'parallel' });
+
+// DIAGNOSTIC (do not merge): on failure, attach which unfinished requests ever reached the wire.
+type Probe = {
+	url: string;
+	priority: string;
+	created: number;
+	sent?: number;
+	response?: number;
+	finished?: number;
+	failed?: string;
+};
+const probes = new WeakMap<object, Map<string, Probe>>();
+test.beforeEach(async ({ page }) => {
+	const cdp = await page.context().newCDPSession(page);
+	const rows = new Map<string, Probe>();
+	probes.set(page, rows);
+	const at = () => Date.now();
+	cdp.on('Network.requestWillBeSent', (e) =>
+		rows.set(e.requestId, {
+			url: e.request.url.replace(/^https?:\/\/[^/]+/, ''),
+			priority: e.request.initialPriority,
+			created: at(),
+		}),
+	);
+	cdp.on('Network.requestWillBeSentExtraInfo', (e) => {
+		const row = rows.get(e.requestId);
+		if (row) row.sent = at();
+	});
+	cdp.on('Network.responseReceived', (e) => {
+		const row = rows.get(e.requestId);
+		if (row) row.response = at();
+	});
+	cdp.on('Network.loadingFinished', (e) => {
+		const row = rows.get(e.requestId);
+		if (row) row.finished = at();
+	});
+	cdp.on('Network.loadingFailed', (e) => {
+		const row = rows.get(e.requestId);
+		if (row) row.failed = e.errorText;
+	});
+	await cdp.send('Network.enable');
+});
+test.afterEach(async ({ page }, testInfo) => {
+	if (testInfo.status === testInfo.expectedStatus) return;
+	const rows = [...(probes.get(page)?.values() ?? [])];
+	const open = rows.filter((row) => !row.finished && !row.failed);
+	const summary = {
+		total: rows.length,
+		open: open.length,
+		openSent: open.filter((row) => row.sent).length,
+		openWithResponse: open.filter((row) => row.response).length,
+		lastFinished: Math.max(0, ...rows.map((row) => row.finished ?? 0)),
+		rows,
+	};
+	await testInfo.attach('request-probe.json', {
+		body: JSON.stringify(summary, null, 1),
+		contentType: 'application/json',
+	});
+	console.log('request-probe', JSON.stringify({ ...summary, rows: open.slice(0, 12) }));
+});
+
 test.beforeEach(async ({ page }) => {
 	await page.addInitScript(() => {
 		Object.defineProperty(navigator, 'clipboard', {

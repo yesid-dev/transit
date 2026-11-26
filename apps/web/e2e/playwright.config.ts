@@ -35,7 +35,8 @@ const dataURL = `http://127.0.0.1:${dataPort}`;
 // DIAGNOSTIC (do not merge): record each CI browser's network log next to the failure evidence.
 if (process.env.CI && process.env.TEST_WORKER_INDEX)
 	mkdirSync(new URL('../test-results/', import.meta.url), { recursive: true });
-const netLogArgs = process.env.CI
+// Off for now: four runs with net logs on never stalled; test whether the log hides the race.
+const netLogArgs = process.env.TRANSIT_E2E_NETLOG
 	? [
 			`--log-net-log=${fileURLToPath(new URL(`../test-results/netlog-${process.env.TEST_WORKER_INDEX ?? 'main'}-${process.pid}.json`, import.meta.url))}`,
 			'--net-log-capture-mode=Default',
