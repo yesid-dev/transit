@@ -69,6 +69,10 @@ export function listStops(schedule: ScheduleEdition, params: URLSearchParams, lo
 
 export type StopListing = ReturnType<typeof listStops>;
 
+export function stopLineCodes(codes: readonly string[], locale: Locale): string[] {
+	return [...new Set(codes)].sort(intl.collator(locale, { numeric: true }).compare);
+}
+
 export function stopReading(cell: FinderCell | undefined) {
 	return {
 		state: cell?.state,

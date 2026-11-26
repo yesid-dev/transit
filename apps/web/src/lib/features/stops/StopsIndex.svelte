@@ -55,6 +55,7 @@
 	import {
 		stopPageSize,
 		stopReading,
+		stopLineCodes,
 		type NearbyStop,
 		stopListingView,
 		type StopListing,
@@ -373,6 +374,7 @@
 			return {
 				...stop,
 				label: stopDisplayName(stop.name),
+				lineCodes: stopLineCodes(stop.lineCodes, locale),
 				href: stopHref(stop.id),
 				state,
 				share: reading.share,
@@ -451,7 +453,7 @@
 	/>{/snippet}
 {#snippet linesCell(row: Row)}
 	<span class="inline-flex flex-wrap gap-1"
-		>{#each new Set(row.lineCodes) as code (code)}<RoutePlate {code} />{/each}</span
+		>{#each row.lineCodes as code (code)}<RoutePlate {code} />{/each}</span
 	>
 {/snippet}
 {#snippet shareCell(row: Row)}

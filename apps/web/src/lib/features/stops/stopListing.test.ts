@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
-import { listStops, stopReading } from './stopListing.ts';
+import { listStops, stopLineCodes, stopReading } from './stopListing.ts';
 
 const schedule: ScheduleEdition = {
 	date: '2026-11-10',
@@ -25,6 +25,10 @@ const schedule: ScheduleEdition = {
 		],
 	},
 };
+
+it.each(['en', 'fr'] as const)('orders unique line plates like numbers in %s', (locale) => {
+	expect(stopLineCodes(['105', '51A', '51', '51'], locale)).toEqual(['51', '51A', '105']);
+});
 
 it.each(['en', 'fr'] as const)(
 	'pages the current timetable and filters by name, code or line in %s',
