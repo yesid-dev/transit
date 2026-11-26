@@ -22,12 +22,12 @@ const states: Record<TableHealth['status'], [string, string]> = {
 };
 
 const reasons: Record<string, [string, string]> = {
-	no_manifest: ['No cleaning manifest', 'Aucun manifeste de nettoyage'],
-	invalid_manifest: ['Invalid cleaning manifest', 'Manifeste de nettoyage invalide'],
+	no_manifest: ['No file list for that day', 'Aucune liste de fichiers pour ce jour'],
+	invalid_manifest: ['File list unreadable', 'Liste de fichiers illisible'],
 	file_missing: ['File missing', 'Fichier manquant'],
 	size_mismatch: [
-		'File size differs from the manifest',
-		'La taille du fichier diffère de celle du manifeste',
+		'File size differs from the file list',
+		'La taille du fichier diffère de la liste de fichiers',
 	],
 	no_raw_captures: ['No raw captures', 'Aucune capture brute'],
 	no_schedule_edition: ['No schedule edition', 'Aucune édition de l’horaire'],

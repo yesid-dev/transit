@@ -270,11 +270,7 @@
 														)
 													: recordState(absent)[data.lang]}
 												{actions}
-											>
-												{#snippet meta()}<p class="font-mono text-small text-muted-foreground">
-														{methodEvidence(answer.evidence, data.lang, true)}
-													</p>{/snippet}
-											</RecordAnswer>
+											></RecordAnswer>
 										</div>
 										{#snippet actions()}
 											<RecordActionGroup
@@ -537,9 +533,13 @@
 											},
 											{ key: 'means', label: term.means, text: term.definition },
 											{
-												key: 'versions',
-												label: t('Versions', 'Versions'),
-												text: methodEvidence(evidence, data.lang),
+												key: 'method',
+												label: t('Method', 'Méthode'),
+												text: null,
+												link: {
+													href: local('/metrics'),
+													label: t('How we measure', 'Comment on mesure'),
+												},
 											},
 											{
 												key: 'source',
@@ -549,10 +549,6 @@
 													: null,
 											},
 										]}
-										versionsLink={{
-											href: local('/metrics'),
-											label: t('How we measure', 'Comment on mesure'),
-										}}
 									/>
 								</RecordGroup>
 							{/if}

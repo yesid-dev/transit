@@ -12,30 +12,40 @@
 	const is404 = $derived(status === 404);
 
 	const copy = $derived(errorPageCopy[locale]);
+	const missingStop = $derived(is404 && page.error?.code === 'STOP_NOT_FOUND');
 	const view = $derived(
-		is404
+		missingStop
 			? {
-					label: copy.notFound.label,
-					heading: copy.notFound.heading,
-					body:
-						page.error?.code === 'STOP_NOT_FOUND' ? page.error.message : copy.notFound.description,
-					statusNote: copy.notFound.statusNote,
-					signLabel: 'STATION',
-					suggestions: copy.notFound.suggestions.map((suggestion) => ({
+					heading: copy.stopNotFound.heading,
+					body: copy.stopNotFound.body,
+					illustration: 'none' as const,
+					suggestions: copy.stopNotFound.suggestions.map((suggestion) => ({
 						...suggestion,
 						href: localizeHref(suggestion.href, locale),
 					})),
 				}
-			: {
-					label: copy.generic.label,
-					heading: copy.generic.heading,
-					body: copy.generic.body,
-					detail: page.error?.message,
-					suggestions: [{ href: localizeHref('/', locale), label: copy.generic.home }],
-				},
+			: is404
+				? {
+						label: copy.notFound.label,
+						heading: copy.notFound.heading,
+						body: copy.notFound.description,
+						statusNote: copy.notFound.statusNote,
+						signLabel: 'STATION',
+						suggestions: copy.notFound.suggestions.map((suggestion) => ({
+							...suggestion,
+							href: localizeHref(suggestion.href, locale),
+						})),
+					}
+				: {
+						label: copy.generic.label,
+						heading: copy.generic.heading,
+						body: copy.generic.body,
+						detail: page.error?.message,
+						suggestions: [{ href: localizeHref('/', locale), label: copy.generic.home }],
+					},
 	);
 
-	const documentHead = $derived(errorDocumentHead(status, locale));
+	const documentHead = $derived(errorDocumentHead(status, locale, page.error?.code));
 	let tracked404: string | undefined;
 	$effect(() => {
 		const path = page.url.pathname;

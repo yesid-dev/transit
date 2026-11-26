@@ -178,7 +178,6 @@
 		{locale}
 		evidence={{
 			sample: lineEvidenceSample(answer.evidence, locale),
-			record: answer.evidence,
 			lastGood,
 		}}
 		{actions}

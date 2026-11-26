@@ -365,9 +365,10 @@
 			},
 			{ key: 'means', label: t.means, text: t.definition },
 			{
-				key: 'versions',
-				label: t.versions,
-				text: current ? methodEvidence(current.evidence, locale) : null,
+				key: 'method',
+				label: t.methodRow,
+				text: null,
+				link: { href: link('/metrics'), label: t.method },
 			},
 			{
 				key: 'source',
@@ -375,7 +376,6 @@
 				text: `${t.feeds(operator)} ${t.recordStart(locale === 'fr' ? longDate(RECORD_START, locale) : dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`,
 			},
 		]}
-		versionsLink={{ href: link('/metrics'), label: t.method }}
 	/>
 {/snippet}
 
@@ -426,9 +426,6 @@
 						class="inline-flex min-h-11 items-center text-primary underline"
 						href={link('/rankings')}>{t.allRankings}</a
 					>
-				{/snippet}
-				{#snippet evidence()}
-					{@render evidenceFooter()}
 				{/snippet}
 			</RecordCard>
 		</RecordGroup>

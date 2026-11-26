@@ -15,9 +15,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const open = main.locator('[data-record-disclosure]:not([id$="-notes"])[data-open="true"]');
 		const collapse = main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' });
 		const expand = main.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all' });
-		await expect(
-			main.getByText(fr ? 'méthode v3, nettoyage v12' : 'method v3, cleaning v12'),
-		).toBeVisible();
+		await expect(main).not.toContainText(fr ? 'méthode v' : 'method v');
 		await expect(open).toHaveCount(1);
 		await expect(open).toHaveAttribute('id', 'on_time');
 		await expect(collapse).toBeVisible();
@@ -121,7 +119,7 @@ for (const width of [390, 1440]) {
 			const measure = main.locator('#fixture_delay');
 			await expect(measure).toHaveAttribute('data-open', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
-			await expect(measure.getByText(/^v2, /)).toBeVisible();
+			await expect(measure).not.toContainText(/\bv2\b/u);
 			await expect(measure.locator('time')).toHaveText(
 				fr ? '10 novembre 2026' : '10 November 2026',
 			);
@@ -219,14 +217,17 @@ for (const width of [390, 1440]) {
 				selector.startsWith('#table-health'),
 			);
 			expect(tableHealthDefects).toEqual([]);
-			const versions = main.locator('[data-slot="record-card"]').filter({
+			const changes = main.locator('[data-slot="record-card"]').filter({
 				has: page.getByRole('heading', {
-					name: fr ? 'Versions en vigueur' : 'Versions in force',
+					name: fr ? 'Mises à jour des méthodes' : 'Method changes',
 				}),
 			});
 			await expect(
-				versions.getByText(fr ? 'méthode v3' : 'method v3', { exact: true }),
+				changes.getByRole('columnheader', {
+					name: fr ? 'Dernier changement' : 'Last changed',
+				}),
 			).toBeVisible();
+			await expect(main).not.toContainText(fr ? 'méthode v' : 'method v');
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});
 	}

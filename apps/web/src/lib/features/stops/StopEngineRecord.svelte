@@ -195,9 +195,10 @@
 			},
 			{ key: 'means', label: term.means, text: term.definition },
 			{
-				key: 'versions',
-				label: term.versions,
-				text: answer ? methodEvidence(answer.evidence, locale) : null,
+				key: 'method',
+				label: term.methodRow,
+				text: null,
+				link: { href: link('/metrics'), label: term.method },
 			},
 			{
 				key: 'source',
@@ -205,7 +206,6 @@
 				text: term.feeds(operator),
 			},
 		]}
-		versionsLink={{ href: link('/metrics'), label: term.method }}
 	/>
 {/snippet}
 

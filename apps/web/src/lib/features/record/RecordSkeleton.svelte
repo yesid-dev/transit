@@ -38,9 +38,10 @@
 				<Skeleton class="h-5 w-96 max-w-full" />
 			</div>
 			<Skeleton class="h-7 w-56 max-w-full" />
+			<!-- An answer carries one evidence line ("Counted: …"); versions are never on screen. -->
 			<div class="grid gap-2">
 				<Skeleton class="h-4 w-72 max-w-full" />
-				<Skeleton class="h-4 w-60 max-w-full" />
+				{#if shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
 			</div>
 		</div>
 		{#if shape === 'answer'}

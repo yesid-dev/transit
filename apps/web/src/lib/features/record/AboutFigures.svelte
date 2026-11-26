@@ -5,7 +5,6 @@
 	let {
 		title,
 		fields,
-		versionsLink,
 		compact = false,
 		compactPrint = false,
 		edge,
@@ -22,7 +21,6 @@
 		compactPrint?: boolean;
 		edge?: 'brand' | 'neutral';
 		interactive?: boolean;
-		versionsLink?: { href: string; label: string };
 	} = $props();
 </script>
 
@@ -30,16 +28,15 @@
 	{title}
 	{compactPrint}
 	{edge}
-	interactive={interactive ||
-		fields.some(({ key, text, link }) => text && (link || (key === 'versions' && versionsLink)))}
+	interactive={interactive || fields.some(({ link }) => link)}
 >
 	<DashboardGrid
 		gutter={false}
 		minTile="17rem"
 		style={compact ? 'row-gap: calc(var(--space-card-gap) / 3)' : undefined}
 	>
-		{#each fields.filter(({ text }) => text) as field (field.key)}
-			{@const link = field.link ?? (field.key === 'versions' ? versionsLink : undefined)}
+		{#each fields.filter(({ text, link }) => text || link) as field (field.key)}
+			{@const link = field.link}
 			<dl class="min-w-0">
 				<dt class="font-semibold text-muted-foreground">{field.label}</dt>
 				<dd>

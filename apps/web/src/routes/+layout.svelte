@@ -205,7 +205,7 @@
 
 	const seoSiteName = $derived(seo.siteName);
 	const isErrorStatus = $derived((page.status ?? 200) >= 400);
-	const errorHead = $derived(errorDocumentHead(page.status ?? 500, locale));
+	const errorHead = $derived(errorDocumentHead(page.status ?? 500, locale, page.error?.code));
 	const headTitle = $derived(
 		resolvePageTitle(
 			isErrorStatus ? errorHead.title : null,

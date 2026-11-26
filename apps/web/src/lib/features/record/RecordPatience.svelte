@@ -139,17 +139,17 @@
 					? 'Ce bilan demande plus de temps'
 					: 'These records take longer'
 				: french
-					? 'Réponse reçue'
-					: 'Answered'}
+					? 'Lectures reçues'
+					: 'Readings arrived'}
 			body={waiting
 				? `${reading} ${
 						french
-							? 'Les résultats déjà affichés restent visibles. Si des lectures manquent, vous pouvez revenir à ce lien plus tard.'
-							: 'Completed readings stay visible. If readings are still missing, you can return to this link later.'
+							? 'Les lectures terminées restent affichées. S’il en manque, revenez à ce lien plus tard.'
+							: 'Finished readings stay on screen. If some are still missing, come back to this link later.'
 					}`
 				: french
-					? 'La réponse est conservée.'
-					: 'The answer is kept.'}
+					? 'Les lectures qui tardaient sont maintenant affichées.'
+					: 'The readings that took longer are now on screen.'}
 		/>
 	</div>
 {/if}

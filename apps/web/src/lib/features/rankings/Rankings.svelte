@@ -11,13 +11,7 @@
 	import type { loadRankingsRecord, RankingIdentities } from '#lib/server/rankingsRecord.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
-	import {
-		countedUnit,
-		dateRange,
-		methodEvidence,
-		recordStamp,
-		scheduledClock,
-	} from '#lib/site/presenter.ts';
+	import { countedUnit, dateRange, recordStamp, scheduledClock } from '#lib/site/presenter.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
@@ -449,14 +443,12 @@
 					value={row.entry.value}
 					domain={range}
 					reference={ref ?? undefined}
-					label={`${t('Range', 'Intervalle')}: ${caption}`}
+					label={`${t('Range:', 'Plage\u00a0:')} ${caption}`}
 					{caption}
 				/>
 				{#if verdict}<span class="text-small text-muted-foreground">{verdict}</span>{/if}
 			</div>
-		{:else}<span class="text-small text-muted-foreground"
-				>{t('Range unavailable', 'Intervalle indisponible')}</span
-			>{/if}
+		{:else}<span class="sr-only">{t('Range unavailable', 'Plage indisponible')}</span>{/if}
 	{/snippet}
 	{@const columns = [
 		{
@@ -466,16 +458,20 @@
 			cell: value,
 		},
 		{ key: 'counted', header: t('Counted', 'Ce qui est compté'), align: 'end', cell: counted },
-		{
-			key: 'range',
-			header: ref
-				? t(
-						`Range, against the network (${rankingValue(ref.value, measure, locale)})`,
-						`Plage, réseau (${rankingValue(ref.value, measure, locale)})`,
-					)
-				: t('Range', 'Plage'),
-			cell: range,
-		},
+		...(bounded.length
+			? [
+					{
+						key: 'range',
+						header: ref
+							? t(
+									`Range, against the network (${rankingValue(ref.value, measure, locale)})`,
+									`Plage, réseau (${rankingValue(ref.value, measure, locale)})`,
+								)
+							: t('Range', 'Plage'),
+						cell: range,
+					},
+				]
+			: []),
 	] satisfies DataTableColumn<Ranked>[]}
 	{#snippet heading(row: Ranked)}
 		<div
@@ -488,7 +484,7 @@
 		</div>
 	{/snippet}
 	<RecordCard
-		title={`${title}, ${by}`}
+		title={measure === reporting ? title : `${title}, ${by}`}
 		{stamp}
 		interactive={rows.some((row) => row.href) || rows.length > 20}
 	>
@@ -511,7 +507,12 @@
 					pageSize={rows.length > 20 ? 20 : undefined}
 					rowHeading={heading}
 				/>
-				{#if bounded.length}<p class="text-small text-muted-foreground">
+				{#if !bounded.length}<p class="text-small text-muted-foreground">
+						{t(
+							'No range is available for these ranks.',
+							'Aucune plage n’est disponible pour ces rangs.',
+						)}
+					</p>{:else}<p class="text-small text-muted-foreground">
 						{#if ref}{t(
 								'The dashed tick is the network over the same dates.',
 								'Le trait pointillé représente le réseau aux mêmes dates.',
@@ -523,6 +524,10 @@
 									'Le trait indique la plage où la valeur tomberait environ 95 fois sur 100 sur une autre période de même durée.',
 								)
 							: data.range_notes[bounded[0].entry.range.method]?.[locale]}
+						{#if bounded.length < rows.length}{t(
+								'A blank range means none is available for that rank.',
+								'Une plage vide signifie qu’aucune n’est disponible pour ce rang.',
+							)}{/if}
 					</p>{/if}
 			{:else}<StateMark state={resultState(data)} {locale} />{/if}
 			{#if data.coverage_note}<p class="text-muted-foreground">{data.coverage_note[locale]}</p>{/if}
@@ -607,16 +612,13 @@
 						),
 				},
 				{
-					key: 'versions',
-					label: t('Versions', 'Versions'),
-					text: methodEvidence(data.evidence, locale, true),
+					key: 'method',
+					label: t('Method', 'Méthode'),
+					text: null,
+					link: { href: entityHref('/metrics'), label: t('How we measure', 'Comment on mesure') },
 				},
 				{ key: 'source', label: t('Source', 'Source'), text: operator ?? record.city },
 			]}
-			versionsLink={{
-				href: entityHref('/metrics'),
-				label: t('How we measure', 'Comment on mesure'),
-			}}
 		/>
 	{/await}
 {/snippet}

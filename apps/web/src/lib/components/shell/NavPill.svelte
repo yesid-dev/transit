@@ -223,7 +223,7 @@
 	<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
 	{#if useKitNetworkPicker}
 		<NetworkPicker
-			label={`${navCopy.network}: ${providerLabel}`}
+			label={`${navCopy.network}${locale === 'fr' ? '\u00a0' : ''}: ${providerLabel}`}
 			networks={networkOptions}
 			value={providerId}
 			onValueChange={(id) => location.assign(providerHref(url, id, locale))}
@@ -238,7 +238,7 @@
 			>
 			<select
 				class="nav-provider-select"
-				aria-label={`${navCopy.network}: ${providerLabel}`}
+				aria-label={`${navCopy.network}${locale === 'fr' ? '\u00a0' : ''}: ${providerLabel}`}
 				title={providerLabel}
 				value={providerId}
 				onchange={(event) => {

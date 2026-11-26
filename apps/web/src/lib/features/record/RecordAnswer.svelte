@@ -3,8 +3,6 @@
 	import type { StampProps } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import type { RecordEvidence } from '#lib/server/engine.ts';
-	import { methodEvidence } from '#lib/site/presenter.ts';
 	import { choose, lastGoodNote } from './recordText.ts';
 	import StateMark from './StateMark.svelte';
 	import type { RecordState } from './recordStates';
@@ -28,7 +26,7 @@
 		comparison?: string;
 		actions?: Snippet;
 		meta?: Snippet;
-		evidence?: { sample: string; record: RecordEvidence; lastGood?: boolean };
+		evidence?: { sample: string; lastGood?: boolean };
 	} = $props();
 </script>
 
@@ -39,9 +37,6 @@
 		{#if evidence.sample}<p>
 				{`${choose(locale, 'Counted:', 'Ce qui est compté :')} ${evidence.sample}`}
 			</p>{/if}
-		<p class="font-mono text-small text-muted-foreground">
-			{methodEvidence(evidence.record, locale, true)}
-		</p>
 		{#if evidence.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 	{/if}
 	{@render meta?.()}

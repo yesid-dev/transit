@@ -15,6 +15,11 @@ export interface ErrorPageLocaleCopy {
 		statusNote: string;
 		suggestions: readonly { label: string; href: string }[];
 	};
+	stopNotFound: {
+		heading: string;
+		body: string;
+		suggestions: readonly { label: string; href: string }[];
+	};
 }
 
 export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
@@ -38,6 +43,14 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 				{ label: 'Réseau', href: '/network' },
 			],
 		},
+		stopNotFound: {
+			heading: 'Cet arrêt est introuvable',
+			body: 'Vérifiez le code de l’arrêt ou cherchez-le dans la liste des arrêts.',
+			suggestions: [
+				{ label: 'Trouver un arrêt', href: '/stops' },
+				{ label: 'Lignes', href: '/lines' },
+			],
+		},
 	},
 	en: {
 		suggestionsLabel: 'Suggested destinations',
@@ -59,17 +72,31 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 				{ label: 'Network', href: '/network' },
 			],
 		},
+		stopNotFound: {
+			heading: 'This stop could not be found',
+			body: 'Check the stop code, or find the stop in the list of stops.',
+			suggestions: [
+				{ label: 'Find a stop', href: '/stops' },
+				{ label: 'Lines', href: '/lines' },
+			],
+		},
 	},
 };
 
 export function errorDocumentHead(
 	status: number,
 	locale: Locale,
+	code?: App.Error['code'],
 ): {
 	title: string;
 	description: string;
 } {
 	const copy = errorPageCopy[locale];
+	if (status === 404 && code === 'STOP_NOT_FOUND')
+		return {
+			title: `${status} · ${copy.stopNotFound.heading}`,
+			description: copy.stopNotFound.body,
+		};
 	return status === 404
 		? {
 				title: `${status} · ${copy.notFound.heading}`,

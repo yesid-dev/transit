@@ -134,7 +134,7 @@
 			`Transit · ${title}, ${data.cityName}. ${alertSections[key][locale]}. ${dateRange({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
 			key === 'answer' && 'value' in result && result.state === 'measured'
 				? alertReadings(result, locale)
-						.map(({ label, reading }) => `${label}: ${reading}.`)
+						.map(({ label, reading }) => `${label}${locale === 'fr' ? '\u00a0' : ''}: ${reading}.`)
 						.join(' ')
 				: '',
 			methodEvidence(evidence, locale),
@@ -391,9 +391,13 @@
 					text: untracked.join(' · '),
 				},
 				{
-					key: 'versions',
-					label: t('Versions', 'Versions'),
-					text: methodEvidence(evidence, locale, true),
+					key: 'method',
+					label: t('Method', 'Méthode'),
+					text: null,
+					link: {
+						href: localizeHref('/metrics', locale, data.city),
+						label: t('How we measure', 'Comment on mesure'),
+					},
 				},
 				{
 					key: 'source',
@@ -406,10 +410,6 @@
 						: null,
 				},
 			]}
-			versionsLink={{
-				href: localizeHref('/metrics', locale, data.city),
-				label: t('How we measure', 'Comment on mesure'),
-			}}
 		/>
 	</div>
 {/snippet}
@@ -560,7 +560,6 @@
 									time={stamp}
 									evidence={{
 										sample: labelCount(count),
-										record: result.answer.evidence,
 										lastGood: result.lastGood,
 									}}
 									actions={recordActions}

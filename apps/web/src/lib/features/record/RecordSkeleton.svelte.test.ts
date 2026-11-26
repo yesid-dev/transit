@@ -4,7 +4,8 @@ import RecordPending from './RecordPending.svelte';
 import type { RecordWaitingShape } from './RecordSkeleton.svelte';
 
 const shapes: [RecordWaitingShape, number][] = [
-	['answer', 8],
+	// One evidence line under an answer: versions never show on screen.
+	['answer', 7],
 	['reading', 5],
 	['facts', 6],
 	['bands', 7],

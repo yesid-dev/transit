@@ -101,21 +101,15 @@ for (const width of [390, 1440]) {
 					? /8\s285 passages aux arrêts, 230 trajets, 7 jours/
 					: '8,285 stop events, 230 trips, 7 days',
 			);
-			await expect(waiting.locator('footer').locator('span')).toHaveText(
-				fr
-					? ['27 intervalles observés, 7 jours', 'méthode v4, nettoyage v13']
-					: ['27 observed intervals, 7 days', 'method v4, cleaning v13'],
-			);
+			await expect(waiting.locator('footer').locator('span')).toHaveText([
+				fr ? '27 intervalles observés, 7 jours' : '27 observed intervals, 7 days',
+			]);
 			await expect(main.locator('#daily footer span').first()).toHaveText(
 				fr ? '700 passages aux arrêts, 7 jours' : '700 stop events, 7 days',
 			);
 			const alertsFooter = main.locator('#alerts footer');
 			if (fr) await expect(alertsFooter).toBeHidden();
-			else
-				await expect(alertsFooter.locator('span')).toHaveText([
-					'4 days',
-					'method v5, cleaning v14',
-				]);
+			else await expect(alertsFooter.locator('span')).toHaveText(['4 days']);
 			await expect(
 				waiting.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /\b80\b/ }) }),
 			).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');

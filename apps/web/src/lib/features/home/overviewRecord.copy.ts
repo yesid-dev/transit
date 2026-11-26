@@ -31,7 +31,7 @@ export const overviewCopy = {
 		means: 'On time means',
 		definition:
 			'Between 1 minute early and 5 minutes late, counted at each scheduled stop of each trip.',
-		versions: 'Versions',
+		methodRow: 'Method',
 		method: 'How we measure',
 		source: 'Source',
 		feeds: (operator: string) => `GTFS and GTFS-Realtime feeds published by ${operator}.`,
@@ -87,7 +87,7 @@ export const overviewCopy = {
 		means: 'À l’heure signifie',
 		definition:
 			'Entre 1 minute d’avance et 5 minutes de retard, à chaque arrêt prévu de chaque trajet.',
-		versions: 'Versions',
+		methodRow: 'Méthode',
 		method: 'Comment on mesure',
 		source: 'Source',
 		feeds: (operator: string) => `Flux GTFS et GTFS-Realtime publiés par ${operator}.`,

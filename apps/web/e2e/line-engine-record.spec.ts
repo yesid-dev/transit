@@ -23,7 +23,7 @@ for (const width of [390, 1440]) {
 			);
 			const meta = answer.locator('.answer-meta');
 			await expect(meta.locator('p').first()).toContainText(fr ? 'Ce qui est compté' : 'Counted:');
-			await expect(meta.locator('p').nth(1)).toContainText(fr ? 'nettoyage v7' : 'cleaning v7');
+			await expect(meta).not.toContainText(fr ? 'nettoyage' : 'cleaning');
 			await expect(main.locator('#directions dd').first()).toContainText(fr ? /80,0\s%/u : '80.0%');
 
 			const trend = main.locator('#daily');

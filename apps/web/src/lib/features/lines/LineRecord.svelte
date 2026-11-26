@@ -19,7 +19,7 @@
 		tally,
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
-	import { recordPercent, dateRange, methodEvidence, recordStamp } from '#lib/site/presenter.ts';
+	import { recordPercent, dateRange, recordStamp } from '#lib/site/presenter.ts';
 	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
 	import type { EngineResult, RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
@@ -210,7 +210,6 @@
 {#snippet about(answer: RecordMeasure | null)}
 	<AboutFigures
 		title={term.about}
-		versionsLink={{ href: link('/metrics'), label: term.method }}
 		fields={[
 			{ key: 'period', label: term.period, text: dateRange(record.period, locale) },
 			{
@@ -247,9 +246,10 @@
 			},
 			{ key: 'means', label: term.means, text: term.definition },
 			{
-				key: 'versions',
-				label: term.versions,
-				text: answer ? methodEvidence(answer.evidence, locale) : null,
+				key: 'method',
+				label: term.methodRow,
+				text: null,
+				link: { href: link('/metrics'), label: term.method },
 			},
 			{ key: 'source', label: term.source, text: term.feeds(operator) },
 		]}

@@ -212,9 +212,7 @@ for (const locale of ['en', 'fr'] as const) {
 				? /Ce qui est compté\s*:\s*250\s000 passages aux arrêts, 30\s225 trajets, 7 jours/
 				: 'Counted: 250,000 stop events, 30,225 trips, 7 days',
 		);
-		await expect(answer).toContainText(
-			fr ? 'méthode v3, nettoyage v12' : 'method v3, cleaning v12',
-		);
+		await expect(answer).not.toContainText(fr ? 'nettoyage' : 'cleaning');
 		const more = page.getByRole('button', {
 			name: fr ? 'Afficher 5 de plus' : 'Show 5 more',
 			exact: true,
@@ -425,7 +423,14 @@ for (const locale of ['en', 'fr'] as const) {
 		const missing = await page.goto(`${prefix}/stop/57135?${period}`);
 		expect(missing?.status()).toBe(404);
 		await expect(
-			page.getByText(fr ? 'Cet arrêt est introuvable.' : 'This stop could not be found.'),
+			page.getByRole('heading', {
+				level: 1,
+				name: fr ? 'Cet arrêt est introuvable' : 'This stop could not be found',
+			}),
+		).toBeVisible();
+		await expect(page.getByTestId('construction-scene')).toHaveCount(0);
+		await expect(
+			page.getByRole('link', { name: fr ? 'Trouver un arrêt' : 'Find a stop' }),
 		).toBeVisible();
 	});
 

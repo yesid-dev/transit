@@ -117,8 +117,8 @@
 	);
 	const sentence = $derived(
 		t(
-			'Find a stop by its name, its code or its line. Each one opens on its own record.',
-			'Trouvez un arrêt par son nom, son code ou sa ligne. Chaque arrêt ouvre sur son propre bilan.',
+			'Find a stop by its name, code or line.',
+			'Trouvez un arrêt par son nom, son code ou sa ligne.',
 		),
 	);
 
@@ -560,7 +560,6 @@
 					evidence={evidence
 						? {
 								sample: sample ?? '',
-								record: evidence,
 								lastGood: result?.kind === 'answer' && result.lastGood,
 							}
 						: undefined}
@@ -590,10 +589,6 @@
 							placeholder={t(
 								'For example Laurier, 52847 or 51…',
 								'Par exemple Laurier, 52847 ou 51…',
-							)}
-							description={t(
-								'The list narrows as you type.',
-								'La liste se précise pendant la saisie.',
 							)}
 							value={query}
 							oninput={(event) => queueSearch(event.currentTarget.value)}
@@ -757,9 +752,10 @@
 					},
 					{ key: 'means', label: about.means, text: about.definition },
 					{
-						key: 'versions',
-						label: about.versions,
-						text: evidence ? methodEvidence(evidence, locale) : null,
+						key: 'method',
+						label: about.methodRow,
+						text: null,
+						link: { href: localizeHref('/metrics', locale, provider?.id), label: about.method },
 					},
 					{
 						key: 'source',
@@ -769,10 +765,6 @@
 							: null,
 					},
 				]}
-				versionsLink={{
-					href: localizeHref('/metrics', locale, provider?.id),
-					label: about.method,
-				}}
 			/>
 		</RecordGroup>
 	</div>

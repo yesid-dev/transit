@@ -11,24 +11,24 @@ const period = { from: health.from, to: health.to };
 const fixtureDelay = catalog.find(({ id }) => id === 'fixture_delay')!;
 
 it.each([
-	['en', undefined, 'method v3'],
-	['en', 12, 'method v3, cleaning v12'],
-	['fr', undefined, 'méthode v3'],
-	['fr', 12, 'méthode v3, nettoyage v12'],
-] as const)(
-	'renders the method versions in %s with cleaning version %s',
-	async (locale, cleaningVersion, label) => {
-		render(MethodCatalog, {
-			locale,
-			url: new URL('https://transit1.yesid.dev/metrics'),
-			city: 'stm',
-			period,
-			cleaningVersion,
-			catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: catalog }),
-		});
-		expect(await screen.findByText(label, { exact: true })).toBeVisible();
-	},
-);
+	['en', 'In use since', /(method|cleaning) v\d/iu],
+	['fr', 'En vigueur depuis', /(méthode|nettoyage) v\d/iu],
+] as const)('dates each method without version codes in %s', async (locale, since, code) => {
+	render(MethodCatalog, {
+		locale,
+		url: new URL('https://transit1.yesid.dev/metrics'),
+		city: 'stm',
+		period,
+		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: catalog }),
+	});
+	const labels = await screen.findAllByText(since, { exact: true });
+	const dates = new Set(catalog.map((entry) => entry.since));
+	const dated = labels.map((label) => label.parentElement!.querySelector('dd time'));
+	expect(dated.some((time) => time && dates.has(time.getAttribute('datetime')!))).toBe(true);
+	for (const time of dated.filter(Boolean))
+		expect(time!.parentElement).toHaveTextContent(/^\d{1,2} \S+ \d{4}$|^\S+ \d{1,2}, \d{4}$/u);
+	expect(document.body.textContent).not.toMatch(code);
+});
 
 it('renders localized registry content and marks a last-good catalog', async () => {
 	const url = new URL('https://transit1.yesid.dev/fr/metrics');
@@ -161,7 +161,11 @@ it('renders absent readings and both not-measured reasons while methods can fail
 	expect(screen.getByText('Calculating…')).toBeVisible();
 	finish({ kind: 'answer', answer });
 	const table = await screen.findByRole('table');
-	for (const label of ['Present', 'Not tracked', 'Missing (File size differs from the manifest)']) {
+	for (const label of [
+		'Present',
+		'Not tracked',
+		'Missing (File size differs from the file list)',
+	]) {
 		expect(within(table).getAllByRole('cell', { name: label })[0]).toBeVisible();
 	}
 	for (const reason of ['No raw captures', 'No schedule edition']) {
