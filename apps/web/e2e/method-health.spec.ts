@@ -245,6 +245,14 @@ for (const width of [390, 1440]) {
 					? '90 prévisions sur 100 faites une minute à l’avance étaient justes à une minute près.'
 					: '90 predictions in 100 made a minute ahead were right within a minute.',
 			);
+			// Each coverage label keeps the row's width: its counts sit under it, not beside it.
+			for (const row of await main.locator('#live_trip_coverage [data-slot="fact-row"]').all()) {
+				const [label, whole] = await Promise.all([
+					row.locator('dt').boundingBox(),
+					row.boundingBox(),
+				]);
+				expect(label!.width).toBeGreaterThan(whole!.width * 0.55);
+			}
 			const table = main.locator('#days-in-record').getByRole('table');
 			await expect(table.getByRole('rowheader')).toHaveCount(2);
 			for (const state of fr

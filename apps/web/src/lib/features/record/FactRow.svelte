@@ -7,6 +7,7 @@
 		label,
 		busy,
 		detail,
+		labelDetail,
 		emphasis = false,
 		children,
 	}: {
@@ -14,19 +15,28 @@
 		label: string;
 		busy?: boolean;
 		detail?: string;
+		/** A muted line under the label, so a long label keeps the row's width. */
+		labelDetail?: string;
 		emphasis?: boolean;
 		children: Snippet;
 	} = $props();
 </script>
 
-<div {id} class="fact relative" class:has-detail={!!detail} data-slot="fact-row">
+<div
+	{id}
+	class="fact relative"
+	class:has-detail={!!detail}
+	class:has-label-detail={!!labelDetail}
+	data-slot="fact-row"
+>
 	<dt class="py-2 print:py-0">
 		<div class="fact-stroke">
 			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
 		</div>
 		{label}
+		{#if labelDetail}<span class="block text-small text-muted-foreground">{labelDetail}</span>{/if}
 	</dt>
-	<dd class={['tabular-nums', detail && 'py-2 print:py-0']} aria-busy={busy}>
+	<dd class={['tabular-nums', (detail || labelDetail) && 'py-2 print:py-0']} aria-busy={busy}>
 		{#if emphasis}
 			<strong class="font-heading text-heading font-extrabold">{@render children()}</strong>
 		{:else}
@@ -50,6 +60,10 @@
 	}
 	.fact.has-detail {
 		grid-template-columns: minmax(min-content, 1fr) minmax(0, max-content);
+		align-items: start;
+	}
+	/* The label and its line take the free width; the value sits on the label's first line. */
+	.fact.has-label-detail {
 		align-items: start;
 	}
 	dt {

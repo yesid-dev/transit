@@ -281,7 +281,7 @@
 {#snippet coverageBody(answer: ScorecardAnswer)}
 	<FactList>
 		{#each tripCoverageFacts(answer, locale).facts as fact (fact.id)}
-			<FactRow label={fact.label} detail={fact.detail ?? undefined}>
+			<FactRow label={fact.label} labelDetail={fact.detail ?? undefined}>
 				{#if fact.value}<span class="font-semibold">{fact.value}</span>
 				{:else}<StateMark state="unknown" {locale} />{/if}
 			</FactRow>
