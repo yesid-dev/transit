@@ -54,7 +54,7 @@ for (const locale of ['en', 'fr']) {
 		const recovered = await response;
 		expect(recovered.ok()).toBe(true);
 		expect(new URL(recovered.url()).searchParams.get('sections')).toBe('crowding');
-		await expect(crowding).toContainText(fr ? /25\s%/u : '25%');
+		await expect(crowding).toContainText(fr ? /25,0\s%/u : '25.0%');
 		await expect(control).toBeFocused();
 		expect(Math.round(Math.abs((await control.boundingBox())!.y - position))).toBe(0);
 		await expect(daily.getByRole('table')).toBeVisible();

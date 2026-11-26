@@ -9,14 +9,19 @@ import type {
 } from '#lib/server/engine.ts';
 import {
 	choose,
-	percent,
 	rateStateText,
 	timingBasis,
 	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
 import { waitingReadingParts } from '#lib/features/record/waitingText.ts';
-import { dateRange, methodEvidence, scheduleHours, serviceTime } from '#lib/site/presenter.ts';
+import {
+	recordPercent,
+	dateRange,
+	methodEvidence,
+	scheduleHours,
+	serviceTime,
+} from '#lib/site/presenter.ts';
 import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
 
 export const lineSectionTitles = {
@@ -83,7 +88,7 @@ export function departureFinding(
 	const top = answer.rows[0];
 	const time = serviceTime(top?.departure, locale);
 	if (!top || !time) return null;
-	const value = percent(top.value, locale);
+	const value = recordPercent(top.value, locale);
 	return choose(
 		locale,
 		`The ${time} departure${end ? ` toward ${end}` : ''} ranked first, with ${value} of its observed stop events late.`,
@@ -180,7 +185,7 @@ export function lineAnswer(cell: RecordCell, evidence: RecordEvidence, locale: L
 	const { on_time, classified } = cell.evidence.counts;
 	if (share == null || on_time == null || !classified) return choose(locale, 'Unknown', 'Inconnu');
 	const dates = dateRange({ from: evidence.start_date, to: evidence.end_date }, locale);
-	const value = percent(share, locale);
+	const value = recordPercent(share, locale);
 	const n = tally(on_time, locale);
 	const total = tally(classified, locale);
 	const reading = choose(
@@ -213,7 +218,7 @@ export function lineCitation(
 }
 
 export function lateDepartureReading(row: DepartureRanking['rows'][number], locale: Locale) {
-	const rate = percent(row.value, locale);
+	const rate = recordPercent(row.value, locale);
 	const total = tally(row.sample, locale);
 	const late = row.counts.late;
 	const reading =

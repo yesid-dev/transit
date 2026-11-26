@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
-import { recordPercent } from '#lib/site/presenter.ts';
 import {
 	bandChart,
 	histogramChart,
@@ -25,13 +24,20 @@ const series = (...cells: RecordSeries['cells']) =>
 
 describe('record charts', () => {
 	it.each([
-		['en', 'More than 5 min early', '+5:01 to +5:59', '15 min late or more', '24%', 'Stop events'],
+		[
+			'en',
+			'More than 5 min early',
+			'+5:01 to +5:59',
+			'15 min late or more',
+			'24.0%',
+			'Stop events',
+		],
 		[
 			'fr',
 			'Plus de 5 min d’avance',
 			'+5:01 à +5:59',
 			'15 min de retard ou plus',
-			'24 %',
+			'24,0 %',
 			'Passages aux arrêts',
 		],
 	] as const)(
@@ -168,8 +174,6 @@ describe('record charts', () => {
 				),
 				'Daily',
 				locale,
-				undefined,
-				recordPercent,
 			);
 			expect(chart.props.yTicks.map(({ label }) => label.replace(/\s/gu, ' '))).toEqual(ticks);
 			expect(chart.props.last?.label.replace(/\s/gu, ' ')).toBe(last);

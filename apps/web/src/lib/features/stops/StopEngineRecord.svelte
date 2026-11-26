@@ -18,7 +18,6 @@
 	import {
 		choose,
 		measuredShare,
-		percent,
 		pooledDays,
 		punctualityWeighting,
 		rateStateText,
@@ -26,7 +25,13 @@
 		tally,
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
-	import { dateRange, delayReading, methodEvidence, recordStamp } from '#lib/site/presenter.ts';
+	import {
+		dateRange,
+		delayReading,
+		methodEvidence,
+		recordPercent,
+		recordStamp,
+	} from '#lib/site/presenter.ts';
 	import type {
 		EngineResult,
 		RecordAnswer as EngineAnswer,
@@ -174,7 +179,7 @@
 							answer.evidence.share_observed == null
 								? null
 								: term.observedShare(
-										percent(answer.evidence.share_observed, locale),
+										recordPercent(answer.evidence.share_observed, locale),
 										answer.evidence.counts.scheduled == null
 											? undefined
 											: tally(answer.evidence.counts.scheduled, locale),
@@ -288,7 +293,7 @@
 					{/snippet}
 					{#await record.network}
 						<RecordAnswer
-							value={share === null ? null : percent(share, locale)}
+							value={share === null ? null : recordPercent(share, locale)}
 							sentence={reading}
 							state={chartState(data.state)}
 							time={stamp}
@@ -298,7 +303,7 @@
 						/>
 					{:then network}
 						<RecordAnswer
-							value={share === null ? null : percent(share, locale)}
+							value={share === null ? null : recordPercent(share, locale)}
 							sentence={reading}
 							state={chartState(data.state)}
 							time={stamp}

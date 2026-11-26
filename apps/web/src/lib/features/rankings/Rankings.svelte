@@ -15,7 +15,6 @@
 		countedUnit,
 		dateRange,
 		methodEvidence,
-		recordPercent,
 		recordStamp,
 		scheduledClock,
 	} from '#lib/site/presenter.ts';
@@ -411,9 +410,7 @@
 		return {
 			...row,
 			entry,
-			detail:
-				[row.detail, coverageText(entry, locale, recordPercent)].filter(Boolean).join(' · ') ||
-				undefined,
+			detail: [row.detail, coverageText(entry, locale)].filter(Boolean).join(' · ') || undefined,
 		};
 	})}
 	{@const plates = rows.some((row) => row.plate || row.leadingCode)}
@@ -579,7 +576,7 @@
 					label: t('Observed', 'Ce qui est observé'),
 					text:
 						reference && result?.kind === 'answer' && 'value' in result.answer
-							? coverageText(result.answer.evidence, locale, recordPercent) || null
+							? coverageText(result.answer.evidence, locale) || null
 							: null,
 				},
 				{ key: 'means', label: measureLabel, text: info.text[locale].definition },

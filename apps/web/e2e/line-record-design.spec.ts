@@ -14,7 +14,7 @@ test('Line Record places the answer and two charts at the top', async ({ page })
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const main = page.getByRole('main');
 	await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
-	await expect(main.locator('[data-slot="screen-answer"]')).toContainText('80%');
+	await expect(main.locator('[data-slot="screen-answer"]')).toContainText('80.0%');
 	for (const title of ['Early, on time and late', 'Day by day']) {
 		const bounds = await main.getByRole('heading', { name: title, exact: true }).boundingBox();
 		expect(bounds!.y + bounds!.height).toBeLessThan(900);

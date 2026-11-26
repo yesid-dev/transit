@@ -3,12 +3,17 @@ import {
 	choose,
 	lastGoodNote,
 	measuredShare,
-	percent,
 	rateStateText,
 	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
-import { countedUnit, dateRange, methodEvidence, singularCount } from '#lib/site/presenter.ts';
+import {
+	recordPercent,
+	countedUnit,
+	dateRange,
+	methodEvidence,
+	singularCount,
+} from '#lib/site/presenter.ts';
 import { recordState } from '../record/recordStates.ts';
 import type {
 	EngineResult,
@@ -111,7 +116,7 @@ export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
 		{ from: answer.evidence.start_date, to: answer.evidence.end_date },
 		locale,
 	);
-	const value = percent(share, locale);
+	const value = recordPercent(share, locale);
 	const onTime = tally(on_time, locale);
 	const total = tally(classified, locale);
 	const reading = choose(
@@ -147,8 +152,8 @@ export function stopCoverageGap(
 			? null
 			: choose(
 					locale,
-					`minimum ${percent(minimum, locale)}`,
-					`minimum de ${percent(minimum, locale)}`,
+					`minimum ${recordPercent(minimum, locale)}`,
+					`minimum de ${recordPercent(minimum, locale)}`,
 				);
 	const detail = [sample, floor].filter(Boolean).join(', ');
 	const sentence = waiting
@@ -223,7 +228,7 @@ export function stopComparison(
 	if (stopShare == null || networkShare == null) return undefined;
 	const difference = Math.round(Math.abs(stopShare - networkShare) * 1000) / 10;
 	const points = intl.number(locale, { maximumFractionDigits: 1 }).format(difference);
-	const baseline = percent(networkShare, locale);
+	const baseline = recordPercent(networkShare, locale);
 	if (difference === 0)
 		return choose(
 			locale,

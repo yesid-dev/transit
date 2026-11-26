@@ -135,7 +135,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page).toHaveURL(
 			(url) => url.searchParams.get('frameMode') === 'record' && url.search.includes(dates),
 		);
-		await expect(answer).toContainText(fr ? '80 %' : '80%');
+		await expect(answer).toContainText(fr ? /80,0\s%/u : '80.0%');
 		// An id the record never held is not a page of empty cards.
 		const missing = await page.goto(path('57135', 'frameMode=record'));
 		expect(missing?.status()).toBe(404);

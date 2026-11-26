@@ -601,7 +601,7 @@ async function verifyLineReadings(page, cell, onTime, label) {
 		exact: true,
 	});
 	// Coverage is displayed once, alongside the denominator that used to appear in every band.
-	const coverage = about.getByText(fr ? /^50\s*% des 200 /u : /^50% of 200 /u);
+	const coverage = about.getByText(fr ? /^50,0\s*% des 200 /u : /^50\.0% of 200 /u);
 	const actual = await displayedRecordNumbers(
 		coverage,
 		[[50, 200, 50, 50]],
@@ -626,7 +626,8 @@ async function verifyLineReadings(page, cell, onTime, label) {
 	await measuredHour.waitFor();
 	const hour = await measuredHour.getAttribute('aria-label');
 	invariant(
-		JSON.stringify(hour?.match(/\d+/gu)?.map(Number)) === JSON.stringify([7, late, 100]),
+		JSON.stringify(hour?.match(/\d+(?:[.,]\d+)?/gu)?.map(parseNumber)) ===
+			JSON.stringify([7, late, 100]),
 		`${label} hourly late share or stop count drifted: ${hour}`,
 	);
 	readings.push({ selector: 'hourly accessible reading', actual: hour });

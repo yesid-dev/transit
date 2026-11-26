@@ -18,8 +18,9 @@ import {
 	delayRange,
 	delayReading,
 	sampleWithMinimum,
+	recordPercent,
 } from '#lib/site/presenter.ts';
-import { choose, measuredShare, percent, tally } from '../recordText.ts';
+import { choose, measuredShare, tally } from '../recordText.ts';
 import { recordState, type RecordState } from '../recordStates.ts';
 
 export type ChartTable = {
@@ -30,6 +31,9 @@ export type ChartTable = {
 
 type ChartReading<Props> = { props: Props; table: ChartTable };
 type SeriesCell = RecordSeries['cells'][number];
+
+const axisPercent = (value: number, locale: Locale) =>
+	intl.number(locale, { style: 'percent', maximumFractionDigits: 1 }).format(value);
 
 export function chartState(state?: RecordCell['state']): RecordState {
 	switch (state) {
@@ -48,7 +52,6 @@ export function bandChart(
 	cell: RecordCell,
 	title: string,
 	locale: Locale,
-	formatShare = percent,
 ): ChartReading<BandBarProps> {
 	const { band } = transitTerms[locale];
 	const bands = (
@@ -68,7 +71,7 @@ export function bandChart(
 						label,
 						share,
 						status: id,
-						valueLabel: formatShare(share, locale),
+						valueLabel: recordPercent(share, locale),
 						detail: countedUnit(count, 'event', locale),
 					},
 				];
@@ -106,7 +109,6 @@ export function histogramChart(
 	},
 	title: string,
 	locale: Locale,
-	formatShare = percent,
 ) {
 	const bins = answer.state === 'measured' ? answer.cells : [];
 	const points = bins.map(({ key: { min_seconds, max_seconds }, value }) => ({
@@ -130,7 +132,7 @@ export function histogramChart(
 			id: String(key.min_seconds),
 			label: delayRange(key.min_seconds, key.max_seconds, locale),
 			value: tally(value.stop_events, locale),
-			detail: formatShare(value.delay_distribution, locale),
+			detail: recordPercent(value.delay_distribution, locale),
 		})),
 	};
 	return {
@@ -148,7 +150,7 @@ export function histogramChart(
 				value,
 				label: value > 0 ? `+${value}` : String(value),
 			})),
-			yTicks: y.ticks(4).map((value) => ({ value, label: percent(value, locale) })),
+			yTicks: y.ticks(4).map((value) => ({ value, label: axisPercent(value, locale) })),
 			boundaries: [-1, 5],
 			bands: [
 				{ status: 'early', label: band.early },
@@ -210,7 +212,6 @@ export function hourChart(
 	series: RecordSeries,
 	title: string,
 	locale: Locale,
-	formatShare = percent,
 ): ChartReading<HourGridProps> {
 	const minimum = minimumSample(series, 'late');
 	const few = recordState('too_few_to_judge')[locale];
@@ -252,7 +253,7 @@ export function hourChart(
 				const detail = count == null ? undefined : countedUnit(count, 'event', locale);
 				const separator = choose(locale, ': ', ' : ');
 				if (value !== null) {
-					const share = formatShare(value, locale);
+					const share = recordPercent(value, locale);
 					const status = choose(locale, `${share} late`, `${share} en retard`);
 					tableRows.push({ id: context, label: context, value: share, detail });
 					return {
@@ -346,7 +347,6 @@ export function trendChart(
 	title: string,
 	locale: Locale,
 	network?: RecordSeries,
-	formatShare = percent,
 ): ChartReading<TrendProps> {
 	const keyed = (cells: SeriesCell[]) =>
 		new Map(
@@ -364,7 +364,7 @@ export function trendChart(
 	const label = (day: string, options: Intl.DateTimeFormatOptions) =>
 		intl.dateTime(locale, { ...options, timeZone: 'UTC' }).format(new Date(day));
 	const reading = (value: number | null, cell?: SeriesCell) =>
-		value === null ? recordState(chartState(cell?.state))[locale] : formatShare(value, locale);
+		value === null ? recordState(chartState(cell?.state))[locale] : recordPercent(value, locale);
 	const rows = dates.map((day, index) => ({
 		id: day,
 		label: label(day, { dateStyle: 'long' }),
@@ -410,10 +410,10 @@ export function trendChart(
 				{ length: Math.max(0, Math.floor((end - start) / step) + 1) },
 				(_, index) => {
 					const value = (start + index * step) / 100;
-					return { value, label: percent(value, locale) };
+					return { value, label: axisPercent(value, locale) };
 				},
 			),
-			last: last ? { ...last, label: formatShare(last.y, locale) } : undefined,
+			last: last ? { ...last, label: recordPercent(last.y, locale) } : undefined,
 			xDomain: [-0.5, Math.max(0.5, dates.length - 0.5)],
 		},
 		table: {
@@ -440,18 +440,18 @@ export function rangeChart(
 	} = reading;
 	const interval = choose(
 		locale,
-		`${percent(low, locale)} to ${percent(high, locale)}`,
-		`${percent(low, locale)} à ${percent(high, locale)}`,
+		`${recordPercent(low, locale)} to ${recordPercent(high, locale)}`,
+		`${recordPercent(low, locale)} à ${recordPercent(high, locale)}`,
 	);
 	const comparison =
 		network == null
 			? undefined
 			: choose(
 					locale,
-					`network at ${percent(network, locale)}`,
-					`réseau à ${percent(network, locale)}`,
+					`network at ${recordPercent(network, locale)}`,
+					`réseau à ${recordPercent(network, locale)}`,
 				);
-	const figure = percent(value, locale);
+	const figure = recordPercent(value, locale);
 	return {
 		props: {
 			low,

@@ -16,12 +16,12 @@
 		choose,
 		coverageText,
 		departureRankingFloor,
-		percent,
 		tally,
 	} from '#lib/features/record/recordText.ts';
 	import { departureHref } from '#lib/features/record/departureIdentity.ts';
 	import { waitingMeasures, waitingReadingParts } from '#lib/features/record/waitingText.ts';
 	import {
+		recordPercent,
 		minuteReading,
 		scheduleHours,
 		scheduledClock,
@@ -54,7 +54,7 @@
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const n = (value: number) => tally(value, locale);
-	const p = (value: number) => percent(value, locale);
+	const p = (value: number) => recordPercent(value, locale);
 	const display = transitDisplay();
 	const dir = (value: string | number | null | undefined) =>
 		display.directionLabel(value, headsigns, locale);

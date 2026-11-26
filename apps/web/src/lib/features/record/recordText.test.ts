@@ -9,7 +9,7 @@ it('shows the share and scheduled stop count alongside the low-coverage warning'
 			/\s/g,
 			' ',
 		),
-	).toBe('40 % des 434 854 passages prévus observés · Faible couverture');
+	).toBe('40,0 % des 434 854 passages prévus observés · Faible couverture');
 });
 
 it('keeps the reason for an engine-gated rate and its known coverage', () => {
@@ -25,17 +25,17 @@ it('keeps the reason for an engine-gated rate and its known coverage', () => {
 		},
 	} as const;
 	expect(rateStateText(answer, 'en')).toBe(
-		'Not measured (insufficient coverage) · Status known for 20% of 400 scheduled trips on lines with live data · Low coverage',
+		'Not measured (insufficient coverage) · Status known for 20.0% of 400 scheduled trips on lines with live data · Low coverage',
 	);
 	expect(rateStateText(answer, 'fr')).toContain('Non mesuré (couverture insuffisante)');
 });
 
 it('shows all timing sources and warns only when most times are predictions', () => {
 	expect(timingBasis({ vehicle_stopped: 50, trip_update_passed: 50 }, 'en')).toBe(
-		'Observed times: 50% vehicle reported stopped, 50% last prediction before the vehicle passed.',
+		'Observed times: 50.0% vehicle reported stopped, 50.0% last prediction before the vehicle passed.',
 	);
 	expect(timingBasis({ vehicle_nearby: 60, trip_update_passed: 40 }, 'en')).toBe(
-		'Observed times: 60% vehicle GPS near the stop, 40% last prediction before the vehicle passed.',
+		'Observed times: 60.0% vehicle GPS near the stop, 40.0% last prediction before the vehicle passed.',
 	);
 	expect(
 		timingBasis(
@@ -47,6 +47,6 @@ it('shows all timing sources and warns only when most times are predictions', ()
 			'fr',
 		).replace(/\s/g, ' '),
 	).toBe(
-		'Heures observées : 20 % véhicule signalé à l’arrêt, 20 % heure signalée par l’agence, 60 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.',
+		'Heures observées : 20,0 % véhicule signalé à l’arrêt, 20,0 % heure signalée par l’agence, 60,0 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.',
 	);
 });

@@ -1,6 +1,6 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
-import { choose, percent, rateStateText, tally, withCoverage } from './recordText.ts';
+import { choose, rateStateText, tally, withCoverage } from './recordText.ts';
 import {
 	countedUnit,
 	dateRange,
@@ -37,7 +37,7 @@ export function onTimeStatement(cell: RecordCell, locale: Locale) {
 	const rate = cell.value.on_time;
 	const { on_time, classified } = cell.evidence.counts;
 	if (rate == null || on_time == null || !classified) return choose(locale, 'Unknown', 'Inconnu');
-	const share = percent(rate, locale);
+	const share = recordPercent(rate, locale);
 	const top = tally(on_time, locale);
 	const total = tally(classified, locale);
 	const reading = choose(

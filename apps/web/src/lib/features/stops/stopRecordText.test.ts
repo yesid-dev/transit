@@ -28,21 +28,21 @@ it('explains low coverage once and retains the sample and threshold in both lang
 		evidence: { ...answer.evidence, coverage_reason: 'insufficient_coverage', low_coverage: true },
 	};
 	expect(stopCoverageGap(gap, 'en', false, 0.6)).toBe(
-		'There are too few observed stop events to measure punctuality for these dates (100 of 200, minimum 60%).',
+		'There are too few observed stop events to measure punctuality for these dates (100 of 200, minimum 60.0%).',
 	);
 	expect(stopCoverageGap(gap, 'fr', false, 0.6)).toMatch(
-		/^Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates \(100 sur 200, minimum de 60\s%\)\.$/,
+		/^Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates \(100 sur 200, minimum de 60,0\s%\)\.$/,
 	);
 	expect(stopCoverageGap(answer, 'en')).toBeNull();
 });
 
 it('uses the engine dates, count and denominator in both locales', () => {
-	expect(stopAnswer(answer, 'en')).toMatch(/8 to 14 Nov 2026, 80%.*\(80 of 100\)/);
-	expect(stopAnswer(answer, 'fr')).toMatch(/du 8 au 14 nov. 2026, 80\s%.*\(80 sur 100\)/);
+	expect(stopAnswer(answer, 'en')).toMatch(/8 to 14 Nov 2026, 80\.0%.*\(80 of 100\)/);
+	expect(stopAnswer(answer, 'fr')).toMatch(/du 8 au 14 nov. 2026, 80,0\s%.*\(80 sur 100\)/);
 	expect(punctualityBands(answer, 'en').map(({ reading }) => reading)).toEqual([
-		'0% (0/100) · 50% of 200 scheduled stops observed',
-		'80% (80/100) · 50% of 200 scheduled stops observed',
-		'20% (20/100) · 50% of 200 scheduled stops observed',
+		'0.0% (0/100) · 50.0% of 200 scheduled stops observed',
+		'80.0% (80/100) · 50.0% of 200 scheduled stops observed',
+		'20.0% (20/100) · 50.0% of 200 scheduled stops observed',
 	]);
 });
 

@@ -217,10 +217,10 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(titleBlock.getByText(notice, { exact: true })).toBeVisible();
 		await expect(titleBoundary).toHaveCount(1);
 		expect((await titleBlock.boundingBox())?.height).toBe(headerHeight);
-		await expect(answer).toContainText(fr ? '80 %' : '80%');
+		await expect(answer).toContainText(fr ? '80,0 %' : '80.0%');
 
 		const record = await page.reload();
 		expect(record?.status()).toBe(200);
-		await expect(answer).toContainText(fr ? '80 %' : '80%');
+		await expect(answer).toContainText(fr ? '80,0 %' : '80.0%');
 	});
 }

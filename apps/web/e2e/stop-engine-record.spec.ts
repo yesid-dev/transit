@@ -19,7 +19,7 @@ for (const width of [390, 1440]) {
 			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			const main = page.getByRole('main');
 			const answer = main.locator('[data-slot="screen-answer"]');
-			await expect(answer).toContainText(fr ? /80\s%/ : '80%');
+			await expect(answer).toContainText(fr ? /80,0\s%/ : '80.0%');
 			await expect(answer).toContainText(fr ? 'calcul précédent' : 'older answer');
 			await expect(answer).toContainText(fr ? /10 points au-dessus/ : /1.2 points below/);
 			await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
@@ -29,8 +29,8 @@ for (const width of [390, 1440]) {
 			});
 			await expect(bands.getByRole('img')).toHaveAccessibleName(
 				fr
-					? /À l’heure: 80\s%, 6[ \u00a0\u202f]628 passages aux arrêts/
-					: /On time: 80%, 6,628 stop events/,
+					? /À l’heure: 80,0\s%, 6[ \u00a0\u202f]628 passages aux arrêts/
+					: /On time: 80\.0%, 6,628 stop events/,
 			);
 			await bands.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
 			await expect(bands.getByRole('table')).toBeVisible();
@@ -170,7 +170,7 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 	const path = '/stop/S1?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15';
 	const response = await page.goto(path, { waitUntil: 'commit' });
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
-	await expect(page.locator('[data-slot="screen-answer"]')).toContainText('80%');
+	await expect(page.locator('[data-slot="screen-answer"]')).toContainText('80.0%');
 	await expect(page.locator('#hourly')).toContainText('Calculating');
 	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
 		'These records take longer',

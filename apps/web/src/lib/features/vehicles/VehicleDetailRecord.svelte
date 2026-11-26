@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { recordPercent as percent } from '#lib/site/presenter.ts';
+	import { recordPercent } from '#lib/site/presenter.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
 	import { DayStrip } from '@yesid/ui/chart';
@@ -85,7 +85,7 @@
 			if (typeof line !== 'string') return [];
 			const name = display.lineName(line);
 			const count = cell.state === 'measured' ? (cell.value.vehicle_trips_run ?? null) : null;
-			const share = count != null && trips ? percent(count / trips, locale) : null;
+			const share = count != null && trips ? recordPercent(count / trips, locale) : null;
 			return [
 				{
 					id: line,
@@ -491,7 +491,7 @@
 											{#if reading.state === 'measured' && reading.value.vehicle_on_time != null && count}
 												<p>
 													<strong class="text-title tabular-nums"
-														>{percent(reading.value.vehicle_on_time, locale)}</strong
+														>{recordPercent(reading.value.vehicle_on_time, locale)}</strong
 													>
 													{t(
 														'of observed stop events were on time.',
@@ -500,7 +500,6 @@
 												</p>
 												{@const chart = punctualityBands(reading)}
 												{#if chart}<RecordChart
-														formatShare={percent}
 														input={{ kind: 'bands', answer: chart }}
 														title={timing.title}
 														{locale}
@@ -584,8 +583,8 @@
 								label: t('Observed', 'Observations'),
 								text: evidence
 									? [
-											coverageText(evidence, locale, percent).replace(/([^.!?])$/, '$1.'),
-											timingBasis(evidence.counts, locale, percent),
+											coverageText(evidence, locale).replace(/([^.!?])$/, '$1.'),
+											timingBasis(evidence.counts, locale),
 										]
 											.filter(Boolean)
 											.join(' ')

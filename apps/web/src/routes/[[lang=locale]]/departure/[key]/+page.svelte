@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { recordPercent } from '#lib/site/presenter.ts';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { page } from '$app/state';
@@ -375,7 +374,6 @@
 													{#if result.lastGood}<p>{lastGoodNote[data.lang]}</p>{/if}
 													{#if section === 'stops' && 'cells' in reading && reading.cells.length}
 														<RecordChart
-															formatShare={recordPercent}
 															input={{ kind: 'ladder', answer: reading, stop, observed: true }}
 															title={heading}
 															locale={data.lang}
@@ -512,11 +510,8 @@
 												key: 'observed',
 												label: t('Observed', 'Observations'),
 												text: [
-													coverageText(evidence, data.lang, recordPercent).replace(
-														/([^.!?])$/,
-														'$1.',
-													),
-													timingBasis(evidence.counts, data.lang, recordPercent),
+													coverageText(evidence, data.lang).replace(/([^.!?])$/, '$1.'),
+													timingBasis(evidence.counts, data.lang),
 												]
 													.filter(Boolean)
 													.join(' '),

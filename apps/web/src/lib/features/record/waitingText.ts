@@ -1,7 +1,7 @@
-import { minuteReading } from '#lib/site/presenter.ts';
+import { recordPercent, minuteReading } from '#lib/site/presenter.ts';
 import { type Locale } from '#lib/i18n/index.ts';
 import type { RecordCell } from '#lib/server/engine.ts';
-import { choose, percent, tally } from './recordText.ts';
+import { choose, tally } from './recordText.ts';
 
 export const waitingMeasures = [
 	['excess_wait_time', 'Excess wait time', 'Attente excédentaire'],
@@ -60,7 +60,7 @@ export function waitingReadingParts(cell: RecordCell, measure: WaitingMeasure, l
 	if (count == null) return { value: unknown };
 	const n = tally(count, locale);
 	return {
-		value: percent(value, locale),
+		value: recordPercent(value, locale),
 		detail: choose(locale, `${n} of ${total}`, `${n} sur ${total}`),
 	};
 }

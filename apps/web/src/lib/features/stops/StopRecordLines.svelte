@@ -8,16 +8,10 @@
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import RecordTableName from '#lib/features/record/RecordTableName.svelte';
 	import { chartState, minimumSample } from '#lib/features/record/charts/recordCharts.ts';
-	import {
-		choose,
-		coverageText,
-		measuredShare,
-		percent,
-		tally,
-	} from '#lib/features/record/recordText.ts';
+	import { choose, coverageText, measuredShare, tally } from '#lib/features/record/recordText.ts';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { RecordSeries } from '#lib/server/engine.ts';
-	import { countedUnit } from '#lib/site/presenter.ts';
+	import { recordPercent, countedUnit } from '#lib/site/presenter.ts';
 	import { waitingMeasures, waitingReadingParts } from '#lib/features/record/waitingText.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -116,7 +110,7 @@
 
 {#snippet value(row: Row)}
 	{#if row.share === null}<StateMark state={row.state} {locale} />
-	{:else}{percent(row.share, locale)}{/if}
+	{:else}{recordPercent(row.share, locale)}{/if}
 {/snippet}
 {#snippet count(row: Row)}
 	{@const minimum = minimumSample(series, 'on_time')}
