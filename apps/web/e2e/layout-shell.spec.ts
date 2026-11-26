@@ -191,7 +191,10 @@ for (const locale of ['en', 'fr'] as const)
 			const language = pill.getByTestId('language-toggle');
 			const menu = pill.getByRole('button', { name: copy.openMenu, exact: true });
 			for (const control of [theme, language, menu]) await targetFits(control, page);
-			await expect(language).toHaveAccessibleName(new RegExp(copy.names[locale]));
+			// The toggle is named by the language it leads to (yesid.design 0.58.1).
+			await expect(language).toHaveAccessibleName(
+				new RegExp(copy.names[locale === 'en' ? 'fr' : 'en']),
+			);
 			const refresh = pill.getByRole('button', { name: copy.refresh, exact: true });
 			await expect(refresh).toHaveCount(0);
 			if (width < 1024) {

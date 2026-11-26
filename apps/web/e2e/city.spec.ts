@@ -75,7 +75,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the language switch keeps the chosen provider`, async ({ page }) => {
 		await page.goto(localizeHref(status, locale, other));
 		await page
-			.getByRole('link', { name: new RegExp(`^${literal(navPillCopy[locale].language)}:`) })
+			.getByRole('link', { name: new RegExp(`^${literal(navPillCopy[locale].language)}\\s?:`) })
 			.click();
 		await expect(page).toHaveURL(
 			(url) => url.pathname + url.search === localizeHref(status, next, other),

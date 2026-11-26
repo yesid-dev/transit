@@ -119,7 +119,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(home(locale));
 		for (const from of [locale, next(locale)]) {
 			await page
-				.getByRole('link', { name: new RegExp(`^${literal(navPillCopy[from].language)}:`) })
+				.getByRole('link', { name: new RegExp(`^${literal(navPillCopy[from].language)}\\s?:`) })
 				.click();
 			await expect(page.locator('html')).toHaveAttribute('lang', next(from));
 			await expect(page).toHaveURL(samePath(home(next(from))));
@@ -169,7 +169,7 @@ for (const locale of PUBLISHED_LOCALES) {
 
 	test(`${locale}: the language switch loads the other locale`, async ({ page }) => {
 		await page.goto(start(locale));
-		await page.getByRole('link', { name: new RegExp(`^${literal(copy.language)}:`) }).click();
+		await page.getByRole('link', { name: new RegExp(`^${literal(copy.language)}\\s?:`) }).click();
 
 		await expect(page).toHaveURL(samePath(start(next(locale))));
 		await expect(page.locator('html')).toHaveAttribute('lang', next(locale));
