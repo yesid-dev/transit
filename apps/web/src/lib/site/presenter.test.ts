@@ -8,7 +8,9 @@ import {
 	clockRange,
 	clockTime,
 	dateAndClock,
+	citeDates,
 	dateRange,
+	pageCitation,
 	countedUnit,
 	dailyAlertsLink,
 	delayReading,
@@ -417,3 +419,16 @@ it.each([
 		}
 	},
 );
+
+it.each([
+	['en', 'Transit · 24 · Sherbrooke. 19 to 25 Nov 2026. https://t.test/lines/24'],
+	['fr', 'Transit · 24 · Sherbrooke. Du 19 au 25 nov. 2026. https://t.test/lines/24'],
+] as const)('opens a %s citation sentence with a capital, even on a date', (locale, text) => {
+	const period = { from: '2026-11-19', to: '2026-11-25' };
+	expect(citeDates(period, locale)).toBe(
+		locale === 'fr' ? 'Du 19 au 25 nov. 2026' : '19 to 25 Nov 2026',
+	);
+	expect(pageCitation('24 · Sherbrooke', period, 'https://t.test/lines/24', locale)).toBe(text);
+	// Mid-sentence dates keep their lowercase.
+	expect(dateRange(period, 'fr')).toBe('du 19 au 25 nov. 2026');
+});

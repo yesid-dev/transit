@@ -26,7 +26,6 @@
 				}
 			: is404
 				? {
-						label: copy.notFound.label,
 						heading: copy.notFound.heading,
 						body: copy.notFound.description,
 						statusNote: copy.notFound.statusNote,

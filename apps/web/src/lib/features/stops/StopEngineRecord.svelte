@@ -6,6 +6,7 @@
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
+	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
@@ -29,6 +30,7 @@
 		dateRange,
 		delayReading,
 		methodEvidence,
+		pageCitation,
 		recordPercent,
 		recordStamp,
 	} from '#lib/site/presenter.ts';
@@ -134,11 +136,16 @@
 {/snippet}
 
 {#snippet citation()}
+	<CiteBlock {locale} text={pageCitation(subject, record.period, pinned.href, locale)} />
+{/snippet}
+
+{#snippet figures()}
 	{#each record.sections as { section, answer } (section)}
 		{#await answer then result}
 			{#if result.kind === 'answer'}
-				<p>
-					{stopCitation(
+				<CiteBlock
+					{locale}
+					text={stopCitation(
 						subject,
 						section,
 						result.answer,
@@ -146,7 +153,7 @@
 						recordSectionLinks(pinned, section).share,
 						result.lastGood,
 					)}
-				</p>
+				/>
 			{/if}
 		{/await}
 	{/each}
@@ -289,7 +296,7 @@
 						lastGood: result.lastGood,
 					}}
 					{#snippet comparisonActions()}
-						<RecordActionGroup {locale} href={pinned.href} {files} {citation} />
+						<RecordActionGroup {locale} href={pinned.href} {files} {citation} {figures} />
 					{/snippet}
 					{#await record.network}
 						<RecordAnswer

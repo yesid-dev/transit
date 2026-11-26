@@ -1,13 +1,31 @@
 import { defineCopy } from '#lib/i18n/copy.ts';
 import type { Locale } from '#lib/i18n/config.ts';
 
-type RoadmapState = 'planned' | 'in-progress' | 'done';
+export type RoadmapState = 'done' | 'in-progress' | 'next';
+
+/** The screens an entry links to, by their menu key; the page resolves labels and paths. */
+export type RoadmapScreen =
+	| 'overview'
+	| 'map'
+	| 'network'
+	| 'alerts'
+	| 'lines'
+	| 'stops'
+	| 'vehicles'
+	| 'search'
+	| 'hotspots'
+	| 'repeatOffenders'
+	| 'receipt'
+	| 'metrics'
+	| 'status'
+	| 'download';
 
 interface RoadmapEntry {
 	readonly id: string;
 	readonly state: RoadmapState;
 	readonly title: Readonly<Record<Locale, string>>;
 	readonly description: Readonly<Record<Locale, string>>;
+	readonly screens?: readonly RoadmapScreen[];
 }
 
 export const roadmapTitle = {
@@ -15,20 +33,18 @@ export const roadmapTitle = {
 	fr: 'Feuille de route',
 } satisfies Readonly<Record<Locale, string>>;
 
+export const ROADMAP_STATES: readonly RoadmapState[] = ['done', 'in-progress', 'next'];
+
 export const roadmapCopy = defineCopy({
 	en: {
-		heading: 'What is changing in Transit',
 		introduction:
-			'Thank you for all the feedback. We read every message. It showed that fixing pages one at a time would not give you what you asked for, so Transit is being rebuilt as an app.',
-		currentHeading: 'What stays the same meanwhile',
-		current: [
-			'This site keeps running, and its data keeps updating every day.',
-			'Real problems are still fixed.',
-			'The new version replaces this one only when it is complete.',
-		],
-		entriesHeading: 'Entries',
-		entriesIntroduction:
-			'No dates are promised. Each item below is named by what it will let you do.',
+			'What Transit does today, what is being built and what comes next. No dates are promised.',
+		states: {
+			done: 'Available now',
+			'in-progress': 'In progress',
+			next: 'Next',
+		},
+		screensLabel: 'Open',
 		contributeHeading: 'Follow or contribute',
 		follow: {
 			before: 'Transit is open source. Follow the work or suggest an idea on ',
@@ -37,25 +53,16 @@ export const roadmapCopy = defineCopy({
 			contact: 'contact link',
 			after: '.',
 		},
-		states: {
-			planned: 'Planned',
-			'in-progress': 'In progress',
-			done: 'Done',
-		},
 	},
 	fr: {
-		heading: 'Ce qui change dans Transit',
 		introduction:
-			"Merci pour tous vos commentaires. Nous les avons tous lus. Ils ont montré qu'en corrigeant les pages une à une, nous n'arriverions pas à vous offrir ce que vous demandiez. Transit est donc reconstruit sous forme d'application.",
-		currentHeading: "Ce qui ne change pas d'ici là",
-		current: [
-			"Ce site reste en ligne et ses données continuent d'être mises à jour chaque jour.",
-			'Les vrais problèmes sont toujours corrigés.',
-			"La nouvelle version ne remplacera celle-ci que lorsqu'elle sera complète.",
-		],
-		entriesHeading: 'Éléments',
-		entriesIntroduction:
-			"Aucune date n'est promise. Chaque élément ci-dessous est nommé selon ce qu'il vous permettra de faire.",
+			'Ce que Transit fait aujourd’hui, ce qui est en cours et ce qui suit. Aucune date n’est promise.',
+		states: {
+			done: 'Disponible maintenant',
+			'in-progress': 'En cours',
+			next: 'À venir',
+		},
+		screensLabel: 'Ouvrir',
 		contributeHeading: 'Suivre ou contribuer',
 		follow: {
 			before: 'Transit est un logiciel libre. Suivez le travail ou proposez une idée sur ',
@@ -64,108 +71,83 @@ export const roadmapCopy = defineCopy({
 			contact: 'lien de contact',
 			after: '.',
 		},
-		states: {
-			planned: 'Prévu',
-			'in-progress': 'En cours',
-			done: 'Terminé',
-		},
 	},
 });
 
 export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 	{
-		id: 'transit-app',
-		state: 'in-progress',
+		id: 'right-now',
+		state: 'done',
 		title: {
-			en: 'Transit becomes an app.',
-			fr: 'Transit devient une application.',
+			en: 'The network right now.',
+			fr: 'Le réseau en ce moment.',
 		},
 		description: {
-			en: "One app to read your city's transit: how the network is running right now, and how it ran on any dates the record covers, from one day to a full year.",
-			fr: "Une seule application pour suivre le transport collectif de votre ville : comment le réseau roule en ce moment, et comment il a roulé aux dates de votre choix couvertes par l'historique, d'une journée à une année complète.",
+			en: 'Where each vehicle is, how late it runs and the agency’s service alerts, as its live feed reports them.',
+			fr: 'Où se trouve chaque véhicule, son retard et les avis de service de la société de transport, tels que son flux en temps réel les donne.',
 		},
+		screens: ['overview', 'map', 'network', 'alerts'],
 	},
 	{
-		id: 'measure-definitions',
-		state: 'planned',
+		id: 'record',
+		state: 'done',
 		title: {
-			en: 'One definition for every number.',
-			fr: 'Une seule définition pour chaque chiffre.',
+			en: 'Every line, stop and vehicle, on the dates you choose.',
+			fr: 'Chaque ligne, chaque arrêt et chaque véhicule, aux dates de votre choix.',
 		},
 		description: {
-			en: 'Every number shows the counts behind it. Each measure has one definition, the same on every page and in every download. When data is missing, the page says so instead of showing a zero.',
-			fr: "Chaque chiffre montre les décomptes sur lesquels il repose. Chaque mesure a une seule définition, la même sur toutes les pages et dans tous les téléchargements. Quand des données manquent, la page le dit au lieu d'afficher un zéro.",
+			en: 'How each one ran over one day or up to a full year of the record, and what it is doing now. The record grows every day.',
+			fr: 'Comment chacun a roulé, d’une journée à une année complète du bilan, et ce qu’il fait maintenant. Le bilan s’allonge chaque jour.',
 		},
-	},
-	{
-		id: 'date-ranges',
-		state: 'planned',
-		title: {
-			en: 'Any dates you choose.',
-			fr: 'Les dates de votre choix.',
-		},
-		description: {
-			en: 'Pick yesterday, the last week, a month, or your own dates. The record starts in October 2026 and grows every day.',
-			fr: "Choisissez hier, la dernière semaine, un mois ou vos propres dates. L'historique commence en octobre 2026 et s'allonge chaque jour.",
-		},
-	},
-	{
-		id: 'vehicles',
-		state: 'planned',
-		title: {
-			en: 'Vehicles.',
-			fr: 'Véhicules.',
-		},
-		description: {
-			en: 'Find a vehicle by its number: where it is now, which line and trip it is running, and its days in service.',
-			fr: "Trouvez un véhicule par son numéro : où il se trouve maintenant, la ligne et le trajet qu'il assure, et ses jours en service.",
-		},
+		screens: ['lines', 'stops', 'vehicles', 'search'],
 	},
 	{
 		id: 'rankings',
-		state: 'planned',
+		state: 'done',
 		title: {
-			en: 'Rankings for any dates.',
-			fr: 'Classements pour toutes les dates.',
+			en: 'Rankings and a daily report.',
+			fr: 'Des classements et un rapport quotidien.',
 		},
 		description: {
-			en: 'The lines, stops, departures and vehicles that do worst over the dates you choose, with how many observations each result rests on.',
-			fr: "Les lignes, arrêts, départs et véhicules les moins fiables aux dates choisies, avec le nombre d'observations sur lequel repose chaque résultat.",
+			en: 'The lines, stops, trips and vehicles that do worst over the dates you choose, each with the count it rests on, and a report you can print or cite.',
+			fr: 'Les lignes, arrêts, trajets et véhicules les moins fiables aux dates choisies, chacun avec le décompte sur lequel il repose, et un rapport à imprimer ou à citer.',
 		},
+		screens: ['hotspots', 'repeatOffenders', 'receipt'],
 	},
 	{
-		id: 'map-history',
-		state: 'planned',
+		id: 'open-data',
+		state: 'done',
 		title: {
-			en: 'The record on the map.',
-			fr: "L'historique sur la carte.",
+			en: 'Open about its own numbers.',
+			fr: 'Transparent sur ses propres chiffres.',
 		},
 		description: {
-			en: 'Map layers that show where delays build up: stops coloured by how often vehicles are late there, and the stretches between stops where time is lost.',
-			fr: "Des couches de carte qui montrent où les retards s'accumulent : les arrêts colorés selon la fréquence des retards, et les tronçons entre deux arrêts où le temps se perd.",
+			en: 'One definition for every number, how complete the agency’s data is each day, and the cleaned files themselves under the agency’s licence.',
+			fr: 'Une seule définition pour chaque chiffre, l’état des données de la société de transport chaque jour, et les fichiers nettoyés eux-mêmes, sous la licence de la société de transport.',
 		},
+		screens: ['metrics', 'status', 'download'],
 	},
 	{
-		id: 'data-downloads',
-		state: 'planned',
+		id: 'gatineau',
+		state: 'in-progress',
 		title: {
-			en: 'Download the data.',
-			fr: 'Télécharger les données.',
+			en: 'Gatineau.',
+			fr: 'Gatineau.',
 		},
 		description: {
-			en: "The cleaned records themselves, by city and by day, with their layout explained and each agency's licence stated, once each licence allows it.",
-			fr: 'Les données nettoyées elles-mêmes, par ville et par jour, avec leur structure expliquée et la licence de chaque société de transport indiquée, dès que chaque licence le permet.',
+			en: 'Transit already collects the STO’s data. Gatineau opens here once its record has been checked.',
+			fr: 'Transit recueille déjà les données de la STO. Gatineau s’ajoutera ici une fois son bilan vérifié.',
 		},
 	},
 	{
 		id: 'new-cities',
-		state: 'planned',
+		state: 'next',
 		title: {
-			en: 'Any city that publishes its data.',
-			fr: 'Toute ville qui publie ses données.',
+			en: 'More cities.',
+			fr: 'D’autres villes.',
 		},
 		description: {
-			en: 'Any transit agency that publishes its schedule and live data in the standard open formats (GTFS and GTFS-Realtime) can be added.',
+			en: 'Any transit agency that publishes its timetable and live data in the standard open formats (GTFS and GTFS-Realtime) can be added.',
 			fr: 'Toute société de transport qui publie ses horaires et ses données en temps réel dans les formats ouverts standards (GTFS et GTFS-Realtime) pourra être ajoutée.',
 		},
 	},

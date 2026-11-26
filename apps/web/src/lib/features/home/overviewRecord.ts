@@ -4,6 +4,7 @@ import {
 	methodEvidence,
 	recordPercent,
 	sampleWithMinimum,
+	sentenceStart,
 	singularCount,
 } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
@@ -106,7 +107,7 @@ function comparisonSample({ evidence, value }: MeasureAnswer) {
 
 export function citationText(answer: MeasureAnswer, period: DateWindow, locale: Locale): string {
 	const reading = measureText({ kind: 'answer', answer }, period, locale);
-	return `${reading} ${methodEvidence(answer.evidence, locale)}`;
+	return `${sentenceStart(reading)} ${methodEvidence(answer.evidence, locale)}`;
 }
 
 export function overviewValue(result: EngineResult<MeasureAnswer>, measure: string) {

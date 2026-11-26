@@ -12,7 +12,6 @@ const cityPreset = (providers: readonly string[]) =>
 			'Locate Me',
 			'Address Pick',
 			'Nearby Stop',
-			'Receipt Copy',
 			'Portfolio Click',
 			'Repo Click',
 			'404',

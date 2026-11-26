@@ -9,7 +9,6 @@ export interface ErrorPageLocaleCopy {
 		home: string;
 	};
 	notFound: {
-		label: string;
 		heading: string;
 		description: string;
 		statusNote: string;
@@ -32,15 +31,15 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 			home: 'Retour à l’accueil',
 		},
 		notFound: {
-			label: 'ROUTE INTROUVABLE',
-			heading: 'Cette station est en construction',
-			description:
-				'La route demandée n’existe pas ou a été redirigée. Voici quelques destinations actives :',
-			statusNote: '// chemin demandé hors service',
+			heading: 'Cette page n’existe pas',
+			description: 'Vérifiez l’adresse ou ouvrez l’une de ces pages.',
+			statusNote: '// aucune page à cette adresse',
 			suggestions: [
+				{ label: 'Aperçu', href: '/' },
+				{ label: 'Recherche', href: '/search' },
 				{ label: 'Lignes', href: '/lines' },
 				{ label: 'Arrêts', href: '/stops' },
-				{ label: 'Réseau', href: '/network' },
+				{ label: 'Santé du réseau', href: '/network' },
 			],
 		},
 		stopNotFound: {
@@ -61,15 +60,15 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 			home: 'Back to home',
 		},
 		notFound: {
-			label: 'ROUTE NOT FOUND',
-			heading: 'This station is under construction',
-			description:
-				"The route you requested doesn't exist or has been rerouted. Here are some active destinations:",
-			statusNote: '// requested path not in service',
+			heading: 'This page does not exist',
+			description: 'Check the address, or open one of these pages.',
+			statusNote: '// no page at this address',
 			suggestions: [
+				{ label: 'Overview', href: '/' },
+				{ label: 'Search', href: '/search' },
 				{ label: 'Lines', href: '/lines' },
 				{ label: 'Stops', href: '/stops' },
-				{ label: 'Network', href: '/network' },
+				{ label: 'Network health', href: '/network' },
 			],
 		},
 		stopNotFound: {

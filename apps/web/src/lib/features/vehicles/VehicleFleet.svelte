@@ -18,6 +18,7 @@
 	import { getLocale, intl } from '#lib/i18n/index.ts';
 	import { frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
+		citeDates,
 		dateRange,
 		hoursReading,
 		tickingLiveStamp,
@@ -45,6 +46,7 @@
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
@@ -434,15 +436,13 @@
 	{:else}<StateMark state="unknown" {locale} />{/if}
 {/snippet}
 {#snippet citation()}
-	{#if record && data.period}<p>
-			Transit. {data.seoTitle}. {sectionTitles.fleet[locale === 'fr' ? 1 : 0]}. {dateRange(
+	{#if record && data.period}<CiteBlock
+			{locale}
+			text={`Transit. ${data.seoTitle}. ${sectionTitles.fleet[locale === 'fr' ? 1 : 0]}. ${citeDates(
 				data.period,
 				locale,
-			)}. {methodEvidence(record.evidence, locale)}
-			<a class="inline-flex min-h-11 items-center text-primary underline" href={archiveLinks.share}
-				>{t('Link to this view', 'Lien vers cette vue')}</a
-			>
-		</p>{/if}
+			)}. ${methodEvidence(record.evidence, locale)} ${archiveLinks.share}`}
+		/>{/if}
 {/snippet}
 {#snippet actions()}
 	{#if liveMode}<a

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { StatusMark, type StampProps } from '@yesid/ui/brand';
 	import { Badge } from '@yesid/ui/badge';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -66,7 +67,7 @@
 						href={stopHref(stop.id)}
 					>
 						<Badge variant="outline" class="shrink-0 font-mono">{stop.code || stop.id}</Badge>
-						<span class="wrap-normal">{display.readName(stop.name, locale)}</span>
+						<span class="wrap-normal">{stopDisplayName(display.readName(stop.name, locale))}</span>
 					</a>
 					{#if estimate}
 						{@const status = classifyDelay(estimate.delay)}

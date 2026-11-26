@@ -20,6 +20,7 @@
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		delayReading,
 		methodEvidence,
@@ -45,6 +46,7 @@
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import AboutFigures from '../record/AboutFigures.svelte';
@@ -231,13 +233,13 @@
 								{#snippet actions()}
 									<RecordActionGroup {locale} href={pinned.href} files={csv}>
 										{#snippet citation()}
-											<p>
-												Transit. {t('Network health', 'Santé du réseau')} ({record.city}). {dateRange(
+											<CiteBlock
+												{locale}
+												text={`Transit. ${t('Network health', 'Santé du réseau')} (${record.city}). ${citeDates(
 													record.period,
 													locale,
-												)}. {methodEvidence(answer.evidence, locale)}
-												{pinned.href}
-											</p>
+												)}. ${methodEvidence(answer.evidence, locale)} ${pinned.href}`}
+											/>
 										{/snippet}
 									</RecordActionGroup>
 								{/snippet}

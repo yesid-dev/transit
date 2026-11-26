@@ -99,8 +99,7 @@ for (const locale of ['en', 'fr'] as const) {
 	}) => {
 		const path = locale === 'en' ? '/roadmap' : '/fr/roadmap';
 		const title = locale === 'en' ? 'Roadmap' : 'Feuille de route';
-		const introduction =
-			locale === 'en' ? 'What is changing in Transit' : 'Ce qui change dans Transit';
+		const introduction = locale === 'en' ? 'Available now' : 'Disponible maintenant';
 		const response = await request.get(path);
 		expect(response.ok()).toBe(true);
 		const html = await response.text();
@@ -170,7 +169,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const missing = await request.get(`${prefix}/trip/retired-trip?${query}`);
 		expect(missing.status()).toBe(404);
 		expect(await missing.text()).toContain(
-			locale === 'fr' ? 'Cette station est en construction' : 'This station is under construction',
+			locale === 'fr' ? 'Cette page n’existe pas' : 'This page does not exist',
 		);
 	});
 }

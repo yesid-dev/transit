@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -28,6 +29,7 @@
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import LineScheduleCard from './LineScheduleCard.svelte';
@@ -117,7 +119,10 @@
 					row.toward === null ? null : display.directionLabel(row.toward, headsigns, locale),
 				nextStop:
 					row.stop && stopNames[row.stop]
-						? { name: display.readName(stopNames[row.stop], locale), href: stopHref(row.stop) }
+						? {
+								name: stopDisplayName(display.readName(stopNames[row.stop], locale)),
+								href: stopHref(row.stop),
+							}
 						: undefined,
 			})) ?? null
 		);
@@ -176,9 +181,16 @@
 		<div id="line-detail-profile" data-slot="screen-answer">
 			{#if live && rows && !limits}
 				{#snippet citation()}
-					<p>{name} · {t('Vehicle positions', 'Positions des véhicules')} · {operator}</p>
-					{#if feed?.captured_at}<p>{dateAndClock(feed.captured_at, locale, timeZone)}</p>{/if}
-					<p class="wrap-break-word">{share}</p>
+					<CiteBlock
+						{locale}
+						text={[
+							`${name} · ${t('Vehicle positions', 'Positions des véhicules')} · ${operator}`,
+							feed?.captured_at ? dateAndClock(feed.captured_at, locale, timeZone) : '',
+							share,
+						]
+							.filter(Boolean)
+							.join(' ')}
+					/>
 				{/snippet}
 				{#snippet actions()}<RecordActionGroup
 						{locale}

@@ -55,7 +55,19 @@ export function transitNameAliases(
 	return transitNameParts(name, rule)?.flatMap((part) => (part.length === 2 ? part : [])) ?? [];
 }
 
-const abbreviations = new Set(['NB', 'SB', 'EB', 'WB', 'O-TRAIN', 'UOTTAWA', 'H.S.', 'AD.']);
+// Short tokens and codes the agency writes in capitals stay as published.
+const abbreviations = new Set([
+	'NB',
+	'SB',
+	'EB',
+	'WB',
+	'O-TRAIN',
+	'UOTTAWA',
+	'H.S.',
+	'AD.',
+	'TD',
+	'OC',
+]);
 const particles = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'au', 'aux', 'sur']);
 
 export function stopDisplayName(name: string): string {

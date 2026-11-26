@@ -17,6 +17,7 @@ import {
 import { waitingReadingParts } from '#lib/features/record/waitingText.ts';
 import {
 	recordPercent,
+	citeDates,
 	dateRange,
 	methodEvidence,
 	scheduleHours,
@@ -179,7 +180,12 @@ export function delayBuilds(cells: RecordSeries['cells']) {
 	return largest;
 }
 
-export function lineAnswer(cell: RecordCell, evidence: RecordEvidence, locale: Locale): string {
+export function lineAnswer(
+	cell: RecordCell,
+	evidence: RecordEvidence,
+	locale: Locale,
+	withDates = true,
+): string {
 	if (cell.state !== 'measured') return rateStateText(cell, locale);
 	const share = cell.value.on_time;
 	const { on_time, classified } = cell.evidence.counts;
@@ -190,10 +196,11 @@ export function lineAnswer(cell: RecordCell, evidence: RecordEvidence, locale: L
 	const total = tally(classified, locale);
 	const reading = choose(
 		locale,
-		`${dates}, ${value} of observed stop events were on time (${n} of ${total})`,
-		`${dates}, ${value} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`,
+		`${value} of observed stop events were on time (${n} of ${total})`,
+		`${value} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`,
 	);
-	return `${withCoverage(reading, cell.evidence, locale)}.`;
+	const dated = withDates ? `${dates}, ${reading}` : reading;
+	return `${withCoverage(dated, cell.evidence, locale)}.`;
 }
 
 export function lineCitation(
@@ -204,11 +211,11 @@ export function lineCitation(
 	href: string,
 ): string {
 	const evidence = answer.evidence;
-	const dates = dateRange({ from: evidence.start_date, to: evidence.end_date }, locale);
+	const dates = citeDates({ from: evidence.start_date, to: evidence.end_date }, locale);
 	return [
 		`Transit · ${subject}. ${section}. ${dates}.`,
 		'value' in answer && section === choose(locale, ...lineSectionTitles.punctuality)
-			? lineAnswer(answer, evidence, locale)
+			? lineAnswer(answer, evidence, locale, false)
 			: '',
 		methodEvidence(evidence, locale),
 		href,

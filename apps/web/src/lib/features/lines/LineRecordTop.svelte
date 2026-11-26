@@ -7,6 +7,7 @@
 	import { tick } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
+	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
@@ -23,7 +24,7 @@
 	} from '#lib/features/record/recordText.ts';
 	import type { EngineResult, RecordAnswer as Answer, RecordMeasure } from '#lib/server/engine.ts';
 	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
-	import { recordPercent, countedUnit, recordStamp } from '#lib/site/presenter.ts';
+	import { recordPercent, countedUnit, recordStamp, pageCitation } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopComparison } from '#lib/features/stops/stopRecordText.ts';
 	import {
@@ -137,18 +138,23 @@
 {/snippet}
 
 {#snippet citation()}
+	<CiteBlock {locale} text={pageCitation(name, record.period, pinned.href, locale)} />
+{/snippet}
+
+{#snippet figures()}
 	{#each record.sections as { section, answer } (section)}
 		{#await answer then result}
 			{#if result.kind === 'answer'}
-				<p>
-					{lineCitation(
+				<CiteBlock
+					{locale}
+					text={lineCitation(
 						name,
 						title(section),
 						result.answer,
 						locale,
 						recordSectionLinks(pinned, section).share,
 					)}
-				</p>
+				/>
 			{/if}
 		{/await}
 	{/each}
@@ -160,6 +166,7 @@
 		href={recordSectionLinks(pinned, scheduleOnly ? 'schedule' : 'punctuality').share}
 		{files}
 		{citation}
+		{figures}
 	/>
 {/snippet}
 

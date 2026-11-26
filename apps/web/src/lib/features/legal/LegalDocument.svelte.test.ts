@@ -118,16 +118,34 @@ describe('LegalDocument', () => {
 		}
 	});
 
-	it('binds both localized documents to the actual publication date', () => {
+	it('binds both localized documents to the actual publication date, written as the app writes dates', () => {
 		expect(LEGAL_EFFECTIVE_DATES).toEqual({
-			privacy: '2026-11-11',
+			privacy: '2026-11-26',
 			terms: '2026-10-29',
 			accessibility: '2026-10-29',
 		});
-		expect(legalDocument('en', 'privacy').effectiveDate).toBe('November 11, 2026');
-		expect(legalDocument('en', 'terms').effectiveDate).toBe('October 29, 2026');
-		expect(legalDocument('fr', 'privacy').effectiveDate).toBe('11 novembre 2026');
+		expect(legalDocument('en', 'privacy').effectiveDate).toBe('26 November 2026');
+		expect(legalDocument('en', 'terms').effectiveDate).toBe('29 October 2026');
+		expect(legalDocument('fr', 'privacy').effectiveDate).toBe('26 novembre 2026');
 		expect(legalDocument('fr', 'terms').effectiveDate).toBe('29 octobre 2026');
+	});
+
+	it('describes only what this app stores and sends, without the old site', () => {
+		for (const locale of ['en', 'fr'] as const) {
+			const text = JSON.stringify([
+				legalDocument(locale, 'privacy'),
+				legalDocument(locale, 'terms'),
+			]);
+			for (const gone of ['receipt', 'reçu', ' /v1', ' /data', 'sections-choice', 'snapshot'])
+				expect(text).not.toContain(gone);
+			expect(text).not.toContain('instantané');
+			expect(text).toContain('localStorage');
+			expect(text).toContain('sessionStorage');
+		}
+		expect(JSON.stringify(legalDocument('en', 'privacy'))).toContain('map legend');
+		expect(JSON.stringify(legalDocument('fr', 'privacy'))).toContain(
+			'Tout déplier ou Tout replier',
+		);
 	});
 });
 
@@ -165,7 +183,7 @@ describe('generated source credits', () => {
 		for (const locale of ['en', 'fr'] as const) {
 			const text = JSON.stringify(legalDocument(locale, 'terms', providers));
 			expect(text).not.toMatch(/inacti|aucune donnée|no .* data is published/i);
-			expect(legalDocument(locale, 'privacy', providers)).toBe(legalDocument(locale, 'privacy'));
+			expect(legalDocument(locale, 'privacy', providers)).toEqual(legalDocument(locale, 'privacy'));
 		}
 	});
 

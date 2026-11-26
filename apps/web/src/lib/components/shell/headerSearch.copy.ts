@@ -22,8 +22,6 @@ export const headerSearchCopy = {
 		more: 'Show more',
 		results: 'Results by kind',
 		searched: { route: 'lines', stop: 'stops', vehicle: 'vehicles', page: 'pages' },
-		/** The phone search button's visible word; its spoken name stays the field's own. */
-		trigger: 'Search',
 		sheetTitle: 'Search',
 		closeSheet: 'Close search',
 		heading: (kind: Kind, n: number | null) =>
@@ -64,7 +62,6 @@ export const headerSearchCopy = {
 			vehicle: 'les véhicules',
 			page: 'les pages',
 		},
-		trigger: 'Rechercher',
 		sheetTitle: 'Recherche',
 		closeSheet: 'Fermer la recherche',
 		heading: (kind: Kind, n: number | null) =>

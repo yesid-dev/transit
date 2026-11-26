@@ -14,6 +14,7 @@
 	import { carryFrameState, recordStart } from '#lib/site/frameState.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		methodEvidence,
 		recordPercent,
@@ -34,6 +35,7 @@
 	import { recordCounts } from '../home/overviewRecord.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
@@ -512,16 +514,12 @@
 			row.share === null ? finderShare(cells.get(row.id), result, 'on_time', locale).text : '',
 		])}
 		{#snippet citation()}
-			<p>
-				Transit. {tableTitle}. {dateRange(record.period, locale)}.{evidence
-					? ` ${methodEvidence(evidence, locale)}`
-					: ''}
-			</p>
-			<a class="inline-flex min-h-11 items-center text-primary underline" {href}>
-				<span
-					>{#each href.split(/(?<=[/?&=#_.:%-])/u) as part, index (index)}{part}<wbr />{/each}</span
-				>
-			</a>
+			<CiteBlock
+				{locale}
+				text={`Transit. ${tableTitle}. ${citeDates(record.period, locale)}.${
+					evidence ? ` ${methodEvidence(evidence, locale)}` : ''
+				} ${href}`}
+			/>
 		{/snippet}
 		<RecordActionGroup
 			{locale}

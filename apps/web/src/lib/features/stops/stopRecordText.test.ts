@@ -88,7 +88,7 @@ it('cites the stop, dates, scope, and versions and marks older results', () => {
 	const text = stopCitation('Arrêt S1', 'punctuality', answer, 'fr', link, true);
 	for (const expected of [
 		'Arrêt S1',
-		'du 8 au 14 nov. 2026',
+		'Ponctualité. Du 8 au 14 nov. 2026.',
 		'80 sur 100',
 		'Méthode v2',
 		'nettoyage v6',
@@ -97,6 +97,10 @@ it('cites the stop, dates, scope, and versions and marks older results', () => {
 	]) {
 		expect(text).toContain(expected);
 	}
+	expect(text.split('Du 8 au 14 nov. 2026')).toHaveLength(2);
+	expect(
+		stopCitation('Stop S1', 'punctuality', answer, 'en', link).split('8 to 14 Nov 2026'),
+	).toHaveLength(2);
 });
 
 it('compares measured shares over the same dates in both languages', () => {

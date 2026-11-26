@@ -2,7 +2,6 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { test } from './layout-test';
 import { waitForFrameClearance } from './layout-helpers';
 import { navPillCopy } from '../src/lib/i18n/messages';
-import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 async function targetFits(control: Locator, page: Page) {
@@ -71,6 +70,24 @@ for (const [surface, path] of [
 				Math.max(...centers) - Math.min(...centers),
 				`${path} at ${width}px`,
 			).toBeLessThanOrEqual(1);
+			// "yesid. | Transit |": no brand word touches a divider, at the 320px floor too.
+			const gaps = await pill.evaluate((element) => {
+				const parts = [
+					'[data-slot="wordmark"]',
+					'.product-brand-divider',
+					'[data-slot="product-brand-name"]',
+				].map((selector) => element.querySelector(selector)!.getBoundingClientRect());
+				const next = [...element.querySelectorAll('.nav-divider')]
+					.map((divider) => divider.getBoundingClientRect())
+					.find((box) => box.width > 0 && box.left >= parts[2]!.right);
+				return [
+					parts[1]!.left - parts[0]!.right,
+					parts[2]!.left - parts[1]!.right,
+					...(next ? [next.left - parts[2]!.right] : []),
+				];
+			});
+			for (const gap of gaps)
+				expect(gap, `${path} brand gaps at ${width}px`).toBeGreaterThanOrEqual(3.5);
 		}
 		await info.attach('navbar-navigation', {
 			body: JSON.stringify(navigation),
@@ -200,8 +217,11 @@ for (const locale of ['en', 'fr'] as const)
 			if (width < 1024) {
 				const search = pill.getByRole('button', { name: copy.searchAria.all, exact: true });
 				await targetFits(search, page);
-				await expect(search).toHaveText(headerSearchCopy[locale].trigger);
-				await singleLine(search.locator('span'));
+				// An icon button, as on yesid.dev: the brand keeps "yesid. | Transit" beside it.
+				await expect(search).toHaveText('');
+				await expect(
+					pill.locator('[data-slot="product-brand"] a[data-slot="wordmark"]'),
+				).toBeVisible();
 			} else if (width < 1280) {
 				// Beside the page links the search is the icon button that opens the sheet.
 				const search = pill.getByRole('button', { name: copy.searchAria.all, exact: true });

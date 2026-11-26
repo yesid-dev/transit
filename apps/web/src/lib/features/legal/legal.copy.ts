@@ -1,9 +1,10 @@
 import { defineCopy, type Locale } from '#lib/i18n/index.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
+import { longDate } from '#lib/site/presenter.ts';
 
 export type LegalPageKind = 'privacy' | 'terms' | 'accessibility';
 export const LEGAL_EFFECTIVE_DATES: Readonly<Record<LegalPageKind, string>> = {
-	privacy: '2026-11-11',
+	privacy: '2026-11-26',
 	terms: '2026-10-29',
 	accessibility: '2026-10-29',
 };
@@ -25,9 +26,13 @@ export interface LegalDocumentCopy {
 	readonly kicker: string;
 	readonly title: string;
 	readonly effectiveLabel: string;
-	readonly effectiveDate: string;
 	readonly summary: string;
 	readonly sections: readonly LegalSectionCopy[];
+}
+
+/** A document as shown: its effective date written the way the rest of the app writes dates. */
+export interface LegalDocument extends LegalDocumentCopy {
+	readonly effectiveDate: string;
 }
 
 export const legalCopy = defineCopy({
@@ -47,7 +52,6 @@ const documents = {
 			kicker: 'LEGAL',
 			title: 'Privacy Policy',
 			effectiveLabel: 'Effective and last updated',
-			effectiveDate: 'November 11, 2026',
 			summary:
 				'This policy explains the limited personal information processing involved when you use Transit. Transit has no user accounts, payments, advertising, newsletter or direct marketing.',
 			sections: [
@@ -65,7 +69,7 @@ const documents = {
 					paragraphs: [
 						'Cloudflare delivers and protects the site. It processes ordinary network request information, such as an IP address, request path, headers and security signals, to route requests, prevent abuse and operate the service.',
 						'Transit also keeps server error logs in Cloudflare to diagnose reliability. Application error entries contain the route template, without search text, query strings, headers, IP addresses, error messages or stack traces. Automatic request invocation logs, traces and Workers Issues are disabled, and query strings are redacted from log metadata. Cloudflare retains Workers Logs for up to seven days. Scheduled checks of public pages and data access open a GitHub issue on repeated failure; those reports contain only the fixed public check URL, failure category and workflow link, with no visitor data.',
-						"Transit counts visits with Plausible Analytics Cloud, operated by Plausible Insights OÜ in Estonia, to see which pages and sources are used so the service can improve. Measurement is always on. When a page loads, your browser sends the page path, the referring site (its address without the path), campaign tags in the link, and your browser, operating-system and device category to Transit's own address, which passes them on to Plausible; the rest of the page address, including searches and selected map locations, is removed in your browser before anything is sent. Transit also sends Plausible the name of a few interactions: choosing a search result, using “Use my location”, picking an address suggestion or a nearby stop, copying a daily receipt, following a link to yesid.dev or Transit’s GitHub repository, and opening a page that does not exist. Every page view and event also carries the interface language (English or French) and the transit network shown; a search result adds its type (line, stop, vehicle or address) and a link adds where it sat on the page (menu, footer or page body). Nothing else is attached, never the search text, address, coordinates or stop. Transit passes your IP address and User-Agent on with each request: Plausible derives an approximate country, region and city from the IP address, combines both values with a salt that changes every day to count that day's visitors, then discards them. They are never stored. Visitor data is processed and stored in the European Union.",
+						"Transit counts visits with Plausible Analytics Cloud, operated by Plausible Insights OÜ in Estonia, to see which pages and sources are used so the service can improve. Measurement is always on. When a page loads, your browser sends the page path, the referring site (its address without the path), campaign tags in the link, and your browser, operating-system and device category to Transit's own address, which passes them on to Plausible; the rest of the page address, including searches and selected map locations, is removed in your browser before anything is sent. Transit also sends Plausible the name of a few interactions: choosing a search result, using “Use my location”, picking an address suggestion or a nearby stop, following a link to yesid.dev or Transit’s GitHub repository, and opening a page that does not exist. Every page view and event also carries the interface language (English or French) and the transit network shown; a search result adds its type (line, stop, vehicle or address) and a link adds where it sat on the page (menu, footer or page body). Nothing else is attached, never the search text, address, coordinates or stop. Transit passes your IP address and User-Agent on with each request: Plausible derives an approximate country, region and city from the IP address, combines both values with a salt that changes every day to count that day's visitors, then discards them. They are never stored. Visitor data is processed and stored in the European Union.",
 						"Plausible uses no cookies, no browser storage and no persistent identifier, and does not follow you across sites, devices or apps. It has no function that identifies, locates or profiles you within the meaning of section 8.1 of the Act respecting the protection of personal information in the private sector, so there is nothing to switch on and no banner. For visitors covered by the EU General Data Protection Regulation, the basis is Transit's legitimate interest in understanding how the site is used (Article 6(1)(f)). Plausible keeps aggregate statistics while the account is active and no record of individual visitors. You can object by writing to contact@yesid.dev.",
 						'Transit also uses Cloudflare Web Analytics, a free feature of the Cloudflare service that already delivers the site, to measure page speed and visits. When a page loads and when you move between pages, a Cloudflare script in your browser sends Cloudflare the full page address, the previous page address, browser and device information, and timing measurements such as load time and Core Web Vitals. Unlike Plausible, the address is not shortened first, so it can include a selected map location written in the URL as described below. Cloudflare receives your IP address with the request, may use it for an approximate country, and states that it discards it at the receiving data centre without storing it. The script sets no cookies, uses no browser storage and keeps no identifier between visits. Like Plausible, it has no function that identifies, locates or profiles you, and the same legitimate-interest basis applies. You can block static.cloudflareinsights.com in your browser.',
 					],
@@ -99,9 +103,9 @@ const documents = {
 					id: 'device-storage',
 					title: 'Storage on your device',
 					paragraphs: [
-						'Transit uses localStorage to remember your theme, motion setting, and the size and open or closed state of map panels. The sections-choice key stores your Expand all or Collapse all choice across pages and visits. The first visit starts content sections expanded on pages with at least two sections and the bulk control; the table of contents and independent tools keep their declared state. Individual section toggles apply to the current view. These preferences remain until you change them or clear site data. Navigation scroll positions are kept in sessionStorage for the browser session.',
+						'Transit uses localStorage to remember your theme, the map’s motion setting and whether the map legend is open. On the archived method page, it also remembers your Expand all or Collapse all choice. These preferences remain until you change them or clear site data. Navigation scroll positions are kept in sessionStorage for the browser session.',
 						'When you close a site announcement, Transit remembers that choice in localStorage using the announcement’s ID.',
-						'A service worker may cache application-shell and static files for speed and offline-safe loading until an update, removal or browser-data clearing. It excludes live /data and /v1 transit snapshots and does not retain them as a personal history.',
+						'A service worker may keep the application’s code, fonts and icons in your browser for speed and to show an offline page, until an update, its removal or the clearing of browser data. It never keeps transit data: live positions, the record and search results are fetched fresh each time.',
 					],
 				},
 				{
@@ -169,7 +173,6 @@ const documents = {
 			kicker: 'LEGAL',
 			title: 'Terms of Use',
 			effectiveLabel: 'Effective and last updated',
-			effectiveDate: 'October 29, 2026',
 			summary:
 				'These terms govern the hosted Transit website and public data endpoints. Repository source is licensed separately. Transit is an independent informational project, not an official transit-agency service.',
 			sections: [
@@ -262,7 +265,6 @@ const documents = {
 			kicker: 'LEGAL',
 			title: 'Accessibility',
 			effectiveLabel: 'Last updated',
-			effectiveDate: 'October 29, 2026',
 			summary:
 				'Transit aims to meet the Web Content Accessibility Guidelines (WCAG) 2.2, level AA. It is built on yesid.design, the same shared packages as yesid.dev, so the header, menu, footer, colors, focus and motion are checked on every release.',
 			sections: [
@@ -305,7 +307,6 @@ const documents = {
 			kicker: 'JURIDIQUE',
 			title: 'Politique de confidentialité',
 			effectiveLabel: 'Entrée en vigueur et dernière mise à jour',
-			effectiveDate: '11 novembre 2026',
 			summary:
 				'La présente politique explique le traitement limité de renseignements personnels lié à l’utilisation de Transit. Transit ne propose aucun compte, paiement, publicité, infolettre ni marketing direct.',
 			sections: [
@@ -323,7 +324,7 @@ const documents = {
 					paragraphs: [
 						'Cloudflare livre et protège le site. L’entreprise traite des renseignements ordinaires liés aux requêtes réseau, comme l’adresse IP, le chemin demandé, les en-têtes et les signaux de sécurité, afin d’acheminer les requêtes, de prévenir les abus et d’exploiter le service.',
 						'Transit conserve aussi des journaux d’erreurs serveur chez Cloudflare pour diagnostiquer la fiabilité. Les entrées d’erreur de l’application contiennent le modèle de route, sans texte recherché, paramètres d’URL, en-têtes, adresse IP, message d’erreur ni trace de pile. Les journaux automatiques de requêtes, les traces et Workers Issues sont désactivés, et les paramètres d’URL sont masqués dans les métadonnées des journaux. Cloudflare conserve Workers Logs pendant au plus sept jours. Des vérifications planifiées de pages publiques et de l’accès aux données ouvrent un signalement GitHub après un échec répété; ces rapports contiennent seulement l’URL publique fixe vérifiée, la catégorie d’échec et le lien du workflow, sans données de visiteur.',
-						"Transit compte les visites avec Plausible Analytics Cloud, exploité par Plausible Insights OÜ en Estonie, pour voir quelles pages et quelles sources sont utilisées et améliorer le service. La mesure est toujours active. Au chargement d'une page, votre navigateur envoie le chemin de la page, le site d'origine (son adresse sans le chemin), les balises de campagne du lien et les catégories de navigateur, de système d'exploitation et d'appareil à l'adresse même de Transit, qui les transmet à Plausible; le reste de l'adresse de la page, y compris les recherches et les lieux sélectionnés sur la carte, est retiré dans votre navigateur avant tout envoi. Transit envoie aussi à Plausible le nom de quelques interactions : le choix d'un résultat de recherche, l'utilisation de « Utiliser ma position », le choix d'une adresse suggérée ou d'un arrêt à proximité, la copie d'un reçu quotidien, le suivi d'un lien vers yesid.dev ou le dépôt GitHub de Transit et l'ouverture d'une page qui n'existe pas. Chaque page vue et chaque événement indiquent aussi la langue de l'interface (anglais ou français) et le réseau affiché; un résultat de recherche ajoute son type (ligne, arrêt, véhicule ou adresse) et un lien ajoute son emplacement dans la page (menu, pied de page ou corps de la page). Rien d'autre n'est joint, jamais le texte recherché, l'adresse, les coordonnées ni l'arrêt. Transit transmet aussi votre adresse IP et votre agent utilisateur avec chaque requête : Plausible déduit de l'adresse IP un pays, une région et une ville approximatifs, combine les deux valeurs à un sel renouvelé chaque jour pour compter les visiteurs de la journée, puis les élimine. Elles ne sont jamais conservées. Les données de visite sont traitées et conservées dans l'Union européenne.",
+						"Transit compte les visites avec Plausible Analytics Cloud, exploité par Plausible Insights OÜ en Estonie, pour voir quelles pages et quelles sources sont utilisées et améliorer le service. La mesure est toujours active. Au chargement d'une page, votre navigateur envoie le chemin de la page, le site d'origine (son adresse sans le chemin), les balises de campagne du lien et les catégories de navigateur, de système d'exploitation et d'appareil à l'adresse même de Transit, qui les transmet à Plausible; le reste de l'adresse de la page, y compris les recherches et les lieux sélectionnés sur la carte, est retiré dans votre navigateur avant tout envoi. Transit envoie aussi à Plausible le nom de quelques interactions : le choix d'un résultat de recherche, l'utilisation de « Utiliser ma position », le choix d'une adresse suggérée ou d'un arrêt à proximité, le suivi d'un lien vers yesid.dev ou le dépôt GitHub de Transit et l'ouverture d'une page qui n'existe pas. Chaque page vue et chaque événement indiquent aussi la langue de l'interface (anglais ou français) et le réseau affiché; un résultat de recherche ajoute son type (ligne, arrêt, véhicule ou adresse) et un lien ajoute son emplacement dans la page (menu, pied de page ou corps de la page). Rien d'autre n'est joint, jamais le texte recherché, l'adresse, les coordonnées ni l'arrêt. Transit transmet aussi votre adresse IP et votre agent utilisateur avec chaque requête : Plausible déduit de l'adresse IP un pays, une région et une ville approximatifs, combine les deux valeurs à un sel renouvelé chaque jour pour compter les visiteurs de la journée, puis les élimine. Elles ne sont jamais conservées. Les données de visite sont traitées et conservées dans l'Union européenne.",
 						"Plausible n'utilise ni témoins, ni stockage du navigateur, ni identifiant persistant, et ne vous suit pas d'un site, d'un appareil ou d'une application à l'autre. Il ne comporte aucune fonction permettant de vous identifier, de vous localiser ou d'effectuer votre profilage au sens de l'article 8.1 de la Loi sur la protection des renseignements personnels dans le secteur privé; il n'y a donc rien à activer et aucune bannière. Pour les personnes visées par le Règlement général sur la protection des données de l'Union européenne, le fondement est l'intérêt légitime de Transit à comprendre l'utilisation du site (article 6(1)(f)). Plausible conserve des statistiques agrégées tant que le compte est actif et aucun dossier sur les visiteurs individuels. Vous pouvez vous y opposer en écrivant à contact@yesid.dev.",
 						"Transit utilise aussi Cloudflare Web Analytics, une fonction gratuite du service Cloudflare qui livre déjà le site, pour mesurer la vitesse des pages et les visites. Au chargement d'une page et lors du passage d'une page à l'autre, un script Cloudflare dans votre navigateur envoie à Cloudflare l'adresse complète de la page, l'adresse de la page précédente, des renseignements sur le navigateur et l'appareil, ainsi que des mesures de temps comme le temps de chargement et les signaux Web essentiels. Contrairement à Plausible, l'adresse n'est pas raccourcie avant l'envoi; elle peut donc contenir un lieu sélectionné sur la carte et inscrit dans l'adresse, comme décrit ci-dessous. Cloudflare reçoit votre adresse IP avec la requête, peut en déduire un pays approximatif et indique l'éliminer au centre de données qui la reçoit, sans la conserver. Le script ne crée aucun témoin, n'utilise pas le stockage du navigateur et ne conserve aucun identifiant d'une visite à l'autre. Comme Plausible, il ne comporte aucune fonction permettant de vous identifier, de vous localiser ou d'effectuer votre profilage, et le même fondement d'intérêt légitime s'applique. Vous pouvez bloquer static.cloudflareinsights.com dans votre navigateur.",
 					],
@@ -363,9 +364,9 @@ const documents = {
 					id: 'device-storage',
 					title: 'Stockage sur votre appareil',
 					paragraphs: [
-						'Transit utilise localStorage pour mémoriser le thème, le réglage des animations ainsi que la taille et l’état ouvert ou fermé des panneaux de la carte. La clé sections-choice conserve votre choix Tout développer ou Tout réduire entre les pages et les visites. À la première visite, les sections de contenu sont développées sur les pages qui en comptent au moins deux et disposent de la commande groupée ; la table des matières et les outils indépendants gardent leur état déclaré. Les commandes de section individuelles s’appliquent à la vue actuelle. Ces préférences restent jusqu’à leur modification ou l’effacement des données du site. Les positions de défilement utilisées pour la navigation sont conservées dans sessionStorage pendant la session du navigateur.',
+						'Transit utilise localStorage pour mémoriser le thème, le réglage des animations de la carte et l’état ouvert ou fermé de sa légende. Sur la page archivée de la méthode, il mémorise aussi votre choix Tout déplier ou Tout replier. Ces préférences restent jusqu’à leur modification ou l’effacement des données du site. Les positions de défilement utilisées pour la navigation sont conservées dans sessionStorage pendant la session du navigateur.',
 						'Lorsque vous fermez une annonce du site, Transit mémorise ce choix dans localStorage à l’aide de l’identifiant de l’annonce.',
-						'Un service worker peut mettre en cache l’enveloppe de l’application et des fichiers statiques afin d’accélérer le chargement et de fournir un repli hors ligne, jusqu’à une mise à jour, son retrait ou l’effacement des données du navigateur. Il exclut les instantanés de transport en direct sous /data et /v1 et ne les conserve pas comme historique personnel.',
+						'Un service worker peut garder dans votre navigateur le code, les polices et les icônes de l’application, pour accélérer le chargement et afficher une page hors ligne, jusqu’à une mise à jour, son retrait ou l’effacement des données du navigateur. Il ne garde jamais de données de transport\u00a0: les positions en direct, le bilan et les résultats de recherche sont chargés à neuf chaque fois.',
 					],
 				},
 				{
@@ -436,7 +437,6 @@ const documents = {
 			kicker: 'JURIDIQUE',
 			title: 'Conditions d’utilisation',
 			effectiveLabel: 'Entrée en vigueur et dernière mise à jour',
-			effectiveDate: '29 octobre 2026',
 			summary:
 				'Les présentes conditions régissent le site Transit hébergé et ses points de terminaison publics. Le code du dépôt est offert sous une licence distincte. Transit est un projet d’information indépendant, et non un service officiel d’une société de transport.',
 			sections: [
@@ -529,7 +529,6 @@ const documents = {
 			kicker: 'JURIDIQUE',
 			title: 'Accessibilité',
 			effectiveLabel: 'Dernière mise à jour',
-			effectiveDate: '29 octobre 2026',
 			summary:
 				'Transit vise les Règles pour l’accessibilité des contenus Web (WCAG) 2.2, niveau AA. Le site repose sur yesid.design, les mêmes paquets partagés que yesid.dev : l’en-tête, le menu, le pied de page, les couleurs, le focus et les animations sont vérifiés à chaque version.',
 			sections: [
@@ -590,8 +589,11 @@ export function legalDocument(
 	locale: Locale,
 	kind: LegalPageKind,
 	providers: readonly LicensedCity[] = [],
-): LegalDocumentCopy {
-	const document: LegalDocumentCopy = documents[locale][kind];
+): LegalDocument {
+	const document: LegalDocument = {
+		...documents[locale][kind],
+		effectiveDate: longDate(LEGAL_EFFECTIVE_DATES[kind], locale),
+	};
 	const credits = sourceCreditLinks(locale, providers);
 	if (kind !== 'terms' || credits.length === 0) return document;
 	return {

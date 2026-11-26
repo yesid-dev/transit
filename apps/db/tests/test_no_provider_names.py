@@ -48,6 +48,16 @@ LEGACY = {
             r"octranspo: \{ en: 'O-Train is excluded\.', fr: 'L’O-Train est exclu\.' \},",
         ),
     ),
+    "apps/web/src/lib/features/roadmap/roadmap.copy.ts": (
+        "Roadmap names the city whose record is in progress; editorial copy, not a code path; "
+        "it moves to Available at the switch.",
+        (
+            r"en: 'Transit already collects the STO’s data\. Gatineau opens here once its record "
+            r"has been checked\.',",
+            r"fr: 'Transit recueille déjà les données de la STO\. Gatineau s’ajoutera ici une fois "
+            r"son bilan vérifié\.',",
+        ),
+    ),
     "apps/web/src/lib/features/metrics/easterWords.ts": (
         "Decorative terms used by the archived v1 metrics explainer.",
         (r"'(?:stm|octranspo|sto)',",),

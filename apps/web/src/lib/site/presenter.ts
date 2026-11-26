@@ -825,3 +825,25 @@ export function alertsNotTrackedOnDates(agency: AgencyName, locale: Locale) {
 export function officialAlertsLabel(locale: Locale) {
 	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check official service alerts';
 }
+
+/** The citation for a whole page: who published it, what, which dates and where to find it. */
+export function pageCitation(
+	subject: string,
+	period: { from: string; to: string } | null | undefined,
+	href: string,
+	locale: Locale,
+): string {
+	return [`Transit · ${subject}.`, period ? `${citeDates(period, locale)}.` : '', href]
+		.filter(Boolean)
+		.join(' ');
+}
+
+/** Dates that begin a sentence of cite text: "Du 19 au 25 nov. 2026." in French. */
+export function citeDates(period: { from: string; to: string }, locale: Locale): string {
+	return sentenceStart(dateRange(period, locale));
+}
+
+/** A sentence's first letter in capitals, as when generated text opens it. */
+export function sentenceStart(text: string): string {
+	return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+}

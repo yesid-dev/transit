@@ -17,7 +17,6 @@ import { navPillCopy } from '#lib/i18n/messages.ts';
 // The owner's approved menu (R4.26, S0.4 Design E): four labelled groups, plain labels.
 const MENU = {
 	en: {
-		search: 'Search',
 		groups: [
 			['Now', ['Overview', 'Live map', 'Network health']],
 			['Explore', ['Lines', 'Stops', 'Vehicles']],
@@ -29,7 +28,6 @@ const MENU = {
 		],
 	},
 	fr: {
-		search: 'Rechercher',
 		groups: [
 			['Maintenant', ['Aperçu', 'Carte en direct', 'Santé du réseau']],
 			['Explorer', ['Lignes', 'Arrêts', 'Véhicules']],
@@ -54,14 +52,14 @@ it.each(['en', 'fr'] as const)(
 	'names both search buttons and the menu in four labelled groups in %s',
 	async (locale) => {
 		const view = render(NavPill, { props: { locale } });
-		// The phone trigger carries its word; beside the page links (1024 to 1279 px) the icon
-		// button opens the same sheet under the same name. CSS shows one at a time.
+		// Both are icon buttons under the field's name: the phone one below 1024 px, the other beside
+		// the page links (1024 to 1279 px). CSS shows one at a time.
 		const buttons = view.getAllByRole('button', { name: navPillCopy[locale].searchAria.all });
 		const slot = (name: string) => buttons.filter((button) => button.dataset.slot === name);
 		const [phone] = slot('nav-compact-search');
 		const [beside] = slot('nav-search-button');
 		expect(buttons).toHaveLength(2);
-		expect(phone).toHaveTextContent(MENU[locale].search);
+		expect(phone).toHaveTextContent('');
 		expect(beside).toHaveTextContent('');
 		await fireEvent.click(view.getByRole('button', { name: navPillCopy[locale].openMenu }));
 		const menu = within(view.getByRole('dialog'));

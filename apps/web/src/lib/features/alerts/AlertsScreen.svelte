@@ -20,6 +20,7 @@
 		alertsNotCollected,
 		officialAlertsLabel,
 		captureAge,
+		citeDates,
 		dateRange,
 		tickingLiveStamp,
 		methodEvidence,
@@ -32,6 +33,7 @@
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
@@ -135,7 +137,7 @@
 	function formatCitation(key: keyof typeof alertSections, result: EngineAnswer, lastGood?: true) {
 		const evidence = result.evidence;
 		return [
-			`Transit · ${title}, ${data.cityName}. ${alertSections[key][locale]}. ${dateRange({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
+			`Transit · ${title}, ${data.cityName}. ${alertSections[key][locale]}. ${citeDates({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
 			key === 'answer' && 'value' in result && result.state === 'measured'
 				? alertReadings(result, locale)
 						.map(({ label, reading }) => `${label}${locale === 'fr' ? '\u00a0' : ''}: ${reading}.`)
@@ -151,22 +153,36 @@
 </script>
 
 {#snippet actions(result?: EngineResult<EngineAnswer>, liveTime?: string | null)}
-	<RecordActionGroup {locale} href={share.href} {files}>
+	{#snippet figures()}
+		{#each data.sections.filter(({ section }) => section !== 'answer') as { section, answer } (section)}
+			{#await answer then cut}
+				{#if cut.kind === 'answer'}
+					<CiteBlock {locale} text={formatCitation(section, cut.answer, cut.lastGood)} />
+				{/if}
+			{/await}
+		{/each}
+	{/snippet}
+	<RecordActionGroup
+		{locale}
+		href={share.href}
+		{files}
+		figures={!liveMode && result?.kind === 'answer' ? figures : undefined}
+	>
 		{#snippet citation()}
 			{#if liveMode}
-				<p>
-					Transit · {title}, {data.cityName}. {t('Live now', 'En direct')}. {liveTime ?? ''}
-					{share.href}
-				</p>
+				<CiteBlock
+					{locale}
+					text={[
+						`Transit · ${title}, ${data.cityName}.`,
+						`${t('Live now', 'En direct')}.`,
+						liveTime ?? '',
+						share.href,
+					]
+						.filter(Boolean)
+						.join(' ')}
+				/>
 			{:else if result?.kind === 'answer'}
-				<p>{formatCitation('answer', result.answer, result.lastGood)}</p>
-				{#each data.sections.filter(({ section }) => section !== 'answer') as { section, answer } (section)}
-					{#await answer then cut}
-						{#if cut.kind === 'answer'}
-							<p>{formatCitation(section, cut.answer, cut.lastGood)}</p>
-						{/if}
-					{/await}
-				{/each}
+				<CiteBlock {locale} text={formatCitation('answer', result.answer, result.lastGood)} />
 			{/if}
 		{/snippet}
 	</RecordActionGroup>

@@ -11,8 +11,10 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		methodEvidence,
+		pageCitation,
 		recordPercent,
 		recordRatio,
 		recordStamp,
@@ -24,6 +26,7 @@
 	import { recordCounts } from '../home/overviewRecord.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
@@ -404,19 +407,29 @@
 </script>
 
 {#snippet citation()}
-	<p>Transit. {title}. {dateRange(record.period, locale)}.</p>
-	{#if timingEvidence}<p>{csvTiming}. {methodEvidence(timingEvidence, locale)}</p>{/if}
-	{#if deliveryEvidence}<p>{csvTrips}. {methodEvidence(deliveryEvidence, locale)}</p>{/if}
-	<p>
-		<a class="inline-flex min-h-11 items-center text-primary underline" href={pinned.href}
-			>{t('Link to this view', 'Lien vers cette vue')}</a
-		>
-	</p>
+	<CiteBlock {locale} text={pageCitation(title, record.period, pinned.href, locale)} />
+{/snippet}
+
+{#snippet figures()}
+	{#if timingEvidence}<CiteBlock
+			{locale}
+			text={`Transit. ${title}. ${csvTiming}. ${citeDates(record.period, locale)}. ${methodEvidence(timingEvidence, locale)}`}
+		/>{/if}
+	{#if deliveryEvidence}<CiteBlock
+			{locale}
+			text={`Transit. ${title}. ${csvTrips}. ${citeDates(record.period, locale)}. ${methodEvidence(deliveryEvidence, locale)}`}
+		/>{/if}
 {/snippet}
 
 {#snippet actions()}
 	{#if punctuality || delivery}
-		<RecordActionGroup {locale} href={pinned.href} {files} {citation} />
+		<RecordActionGroup
+			{locale}
+			href={pinned.href}
+			{files}
+			{citation}
+			figures={timingEvidence || deliveryEvidence ? figures : undefined}
+		/>
 	{/if}
 {/snippet}
 

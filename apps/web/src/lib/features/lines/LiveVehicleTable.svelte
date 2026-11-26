@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { StatusMark } from '@yesid/ui/brand';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -56,7 +57,7 @@
 			class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
 			href={row.nextStop.href}
 		>
-			{row.nextStop.name}
+			{stopDisplayName(row.nextStop.name)}
 		</a>
 	{:else}
 		<StateMark state="unknown" {locale} />

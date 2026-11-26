@@ -393,8 +393,8 @@
 		}
 	}
 
-	/* The full brand leaves too little room for French search and the controls at 414px.
-	   Keep the product name on phones. The house link is in the menu. */
+	/* "yesid. | Transit" at every width, as on yesid.dev and in the wireframe: on phones the search
+	   is an icon button, which leaves the brand its room. */
 	:global(.nav-product-brand) {
 		flex-shrink: 0;
 		white-space: nowrap;
@@ -403,9 +403,18 @@
 		:global(.nav-product-brand) {
 			font-size: 1rem;
 		}
-		:global(.nav-product-brand > [data-slot='wordmark']),
-		:global(.nav-product-brand > [aria-hidden='true']) {
-			display: none;
+	}
+	/* Below 360px the pill tightens every split to 2px, which sets "yesid." and "Transit" against
+	   their dividers. The brand keeps the phone tier's 4px (as at 390px), and the divider after it
+	   gets 4px on both sides from the brand and the search button; the pill still holds every
+	   control on one row at 320px. */
+	@media (max-width: 359px) {
+		:global(.nav-product-brand) {
+			--nav-split-space: 4px;
+			margin-inline-end: 2px;
+		}
+		:global(.nav-compact-search) {
+			margin-inline-start: 2px;
 		}
 	}
 

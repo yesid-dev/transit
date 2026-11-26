@@ -521,8 +521,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		const citation = page
 			.getByRole('dialog')
 			.filter({ has: page.getByRole('heading', { name: citeLabel, exact: true }) });
-		await expect(citation.locator('time')).toHaveAttribute('datetime', GENERATED);
-		await expect(citation.getByRole('link')).toHaveAttribute('href', copied);
+		// One citation block that carries the copied live link and its own Copy button.
+		const block = citation.locator('[data-slot="cite-block"]');
+		await expect(block).toHaveCount(1);
+		await expect(block.locator('[data-slot="cite-text"]')).toContainText(copied);
+		await expect(
+			block.getByRole('button', { name: locale === 'fr' ? 'Copier' : 'Copy', exact: true }),
+		).toBeVisible();
 		await citation.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close' }).click();
 
 		// Selecting a report opens detail only: no implicit filter and no camera change.

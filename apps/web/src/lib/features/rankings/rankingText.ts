@@ -1,5 +1,5 @@
 import {
-	dateRange,
+	citeDates,
 	lowCoverageReason,
 	methodEvidence,
 	registryUnitText,
@@ -323,7 +323,7 @@ export function rankingCitation(
 	lastGood?: true,
 ) {
 	const { evidence } = answer;
-	const dates = dateRange({ from: evidence.start_date, to: evidence.end_date }, locale);
+	const dates = citeDates({ from: evidence.start_date, to: evidence.end_date }, locale);
 	const days = number(evidence.days_measured.length, locale);
 	const measured = choose(locale, `Days measured (${days}).`, `Jours mesurés (${days}).`);
 	const service =

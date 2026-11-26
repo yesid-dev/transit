@@ -113,7 +113,16 @@ it.each(cases)(
 			}),
 		).toHaveTextContent(locale === 'en' ? /19 Nov.*Missing/i : /19 nov.*Manquant/i);
 		expect(card.querySelector('[data-record-state="not_measured"]')).toBeVisible();
-		expect(screen.getByText(licence.changes[locale])).toBeVisible();
+		// The licence asks to say what changed: once, in plain words, above the tables.
+		const changes = document.querySelector('[data-slot="source-changes"]')!;
+		expect(changes).toHaveTextContent(
+			locale === 'en'
+				? /Transit cleaned and joined the agency’s files: .*The data was modified and is unofficial\./
+				: /Transit a nettoyé et joint les fichiers de la société de transport\s: .*Les données ont été modifiées et sont non officielles\./,
+		);
+		expect(changes.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		// The licence and the cleaning version are not repeated on each table's card.
+		expect(card).not.toHaveTextContent(/CC BY|Cleaning|Nettoyage|v1[12]/);
 		expect(
 			screen.getByText(
 				locale === 'en'

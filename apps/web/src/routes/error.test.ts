@@ -30,16 +30,21 @@ describe('error route', () => {
 
 		expect(screen.getByTestId('hazard-tape')).toBeInTheDocument();
 		expect(screen.getByTestId('construction-scene')).toBeInTheDocument();
-		expect(screen.getByText('ROUTE NOT FOUND')).toBeInTheDocument();
+		expect(screen.queryByTestId('error-label')).not.toBeInTheDocument();
 		expect(
-			screen.getByRole('heading', { level: 1, name: 'This station is under construction' }),
+			screen.getByRole('heading', { level: 1, name: 'This page does not exist' }),
 		).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: /Overview/ })).toHaveAttribute('href', '/');
+		expect(screen.getByRole('link', { name: /Search/ })).toHaveAttribute('href', '/search');
 		expect(screen.getByRole('link', { name: /Lines/ })).toHaveAttribute('href', '/lines');
 		expect(screen.getByRole('link', { name: /Stops/ })).toHaveAttribute('href', '/stops');
-		expect(screen.getByRole('link', { name: /Network/ })).toHaveAttribute('href', '/network');
+		expect(screen.getByRole('link', { name: /Network health/ })).toHaveAttribute(
+			'href',
+			'/network',
+		);
 		expect(screen.getByTestId('terminal-line')).toHaveTextContent('route --status 404');
 		expect(container.querySelectorAll('[data-testid="hazard-tape"]')).toHaveLength(1);
-		expect(document.title).toBe('404 · This station is under construction · Transit');
+		expect(document.title).toBe('404 · This page does not exist · Transit');
 		// The layout owns robots; the built-page spec verifies the single noindex tag.
 		expect(document.head.querySelector('meta[name="robots"]')).toBeNull();
 	});
@@ -53,10 +58,17 @@ describe('error route', () => {
 
 		render(ErrorPage);
 
-		expect(screen.getByText('ROUTE INTROUVABLE')).toBeInTheDocument();
+		expect(
+			screen.getByRole('heading', { level: 1, name: 'Cette page n’existe pas' }),
+		).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: /Aperçu/ })).toHaveAttribute('href', '/fr');
+		expect(screen.getByRole('link', { name: /Recherche/ })).toHaveAttribute('href', '/fr/search');
 		expect(screen.getByRole('link', { name: /Lignes/ })).toHaveAttribute('href', '/fr/lines');
 		expect(screen.getByRole('link', { name: /Arrêts/ })).toHaveAttribute('href', '/fr/stops');
-		expect(screen.getByRole('link', { name: /Réseau/ })).toHaveAttribute('href', '/fr/network');
+		expect(screen.getByRole('link', { name: /Santé du réseau/ })).toHaveAttribute(
+			'href',
+			'/fr/network',
+		);
 	});
 
 	it.each([

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { Separator } from '@yesid/ui/separator';
 	import { tick } from 'svelte';
 	import { RoutePlate } from '@yesid/ui/brand';
@@ -157,6 +158,10 @@
 		event.preventDefault();
 		follow(href);
 	}
+	/** Stop names the agency writes in capitals read in title case; the search keys stay as published. */
+	function shownLabel(hit: { kind: string; label: string }): string {
+		return hit.kind === 'stop' ? stopDisplayName(hit.label) : hit.label;
+	}
 </script>
 
 {#snippet option(optionKey: string, href: string, text: string, hit?: SearchHit)}
@@ -167,7 +172,7 @@
 		tabindex={page ? undefined : -1}
 		aria-selected={page ? undefined : active === optionKey}
 		aria-label={!page && hit?.kind === 'stop'
-			? [copy.kind.stop, hit.label, hit.code].filter(Boolean).join(' ')
+			? [copy.kind.stop, shownLabel(hit), hit.code].filter(Boolean).join(' ')
 			: undefined}
 		class="search-list-option"
 		class:coded={hit?.kind === 'route' || hit?.kind === 'stop'}
@@ -227,7 +232,7 @@
 					</h2>
 					<ul>
 						{#each group.hits as hit (hit.id)}
-							<li>{@render option(optionId(hit), hrefs.hit(hit), hit.label, hit)}</li>
+							<li>{@render option(optionId(hit), hrefs.hit(hit), shownLabel(hit), hit)}</li>
 						{/each}
 					</ul>
 					{#if group.kind !== 'address' && group.total > page.pageSize}
@@ -261,7 +266,7 @@
 							{heading(group.kind, group.total)}
 						</div>
 						{#each group.hits as hit (hit.id)}
-							{@render option(optionId(hit), hrefs.hit(hit), hit.label, hit)}
+							{@render option(optionId(hit), hrefs.hit(hit), shownLabel(hit), hit)}
 						{/each}
 					</div>
 				{/each}

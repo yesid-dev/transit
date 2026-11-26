@@ -47,4 +47,13 @@ describe('Line Record text', () => {
 		for (const text of ['24 · Sherbrooke', '80 sur 100', 'Méthode v2', 'nettoyage v6', href])
 			expect(citation).toContain(text);
 	});
+
+	it.each(['en', 'fr'] as const)('says the dates once in a %s citation', (locale) => {
+		const title = locale === 'en' ? 'On-time performance' : 'Ponctualité';
+		const citation = lineCitation('24 · Sherbrooke', title, answer, locale, 'x');
+		const dates = locale === 'en' ? '8 to 14 Nov 2026' : 'Du 8 au 14 nov. 2026';
+		expect(citation).toContain(`${title}. ${dates}.`);
+		expect(citation.split(dates)).toHaveLength(2);
+		expect(citation).toContain(locale === 'en' ? '80 of 100' : '80 sur 100');
+	});
 });
