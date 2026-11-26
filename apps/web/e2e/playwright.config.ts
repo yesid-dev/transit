@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { registerHooks, stripTypeScriptTypes } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from '@playwright/test';
@@ -32,7 +32,19 @@ const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 const baseURL = `http://127.0.0.1:${port}`;
 const dataURL = `http://127.0.0.1:${dataPort}`;
 
-const httpSpecs = /(?:^|[\\/])(?:head-ssr|health|favicon)\.spec\.ts$/;
+// DIAGNOSTIC (do not merge): record each CI browser's network log next to the failure evidence.
+if (process.env.CI && process.env.TEST_WORKER_INDEX)
+	mkdirSync(new URL('../test-results/', import.meta.url), { recursive: true });
+const netLogArgs = process.env.CI
+	? [
+			`--log-net-log=${fileURLToPath(new URL(`../test-results/netlog-${process.env.TEST_WORKER_INDEX ?? 'main'}-${process.pid}.json`, import.meta.url))}`,
+			'--net-log-capture-mode=Default',
+			// Keep the newest events: a stalled test is followed by its worker closing the browser.
+			'--net-log-max-size-mb=60',
+		]
+	: [];
+
+const httpSpecs =/(?:^|[\\/])(?:head-ssr|health|favicon)\.spec\.ts$/;
 const jsonReporter: ['json'][] = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ? [['json']] : [];
 
 export default defineConfig({
@@ -61,7 +73,7 @@ export default defineConfig({
 		contextOptions: { reducedMotion: 'reduce' },
 		serviceWorkers: 'block',
 		trace: 'retain-on-failure',
-		launchOptions: { executablePath },
+		launchOptions: { executablePath, args: netLogArgs },
 	},
 	projects: [
 		{

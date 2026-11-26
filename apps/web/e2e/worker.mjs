@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import config from './wrangler.json' with { type: 'json' };
@@ -6,7 +7,19 @@ import config from './wrangler.json' with { type: 'json' };
 const require = createRequire(import.meta.url);
 const wrangler = require.resolve('wrangler/package.json');
 // Use the same pinned workerd and asset handling as Wrangler.
-const { Miniflare, convertV4MiniflareOptions } = createRequire(wrangler)('miniflare');
+const { Miniflare, convertV4MiniflareOptions, Log, LogLevel } = createRequire(wrangler)('miniflare');
+
+// DIAGNOSTIC (do not merge): log every answered request with a timestamp beside the failure evidence.
+class FileLog extends Log {
+	log(message) {
+		const line = `${new Date().toISOString()} ${message.replace(/\x1b\[[0-9;]*m/g, '')}\n`;
+		const directory = resolve(import.meta.dirname, '../test-results');
+		try {
+			mkdirSync(directory, { recursive: true });
+			appendFileSync(join(directory, `worker-requests-${port}.log`), line);
+		} catch {}
+	}
+}
 
 const port = Number(process.env.TRANSIT_E2E_PORT ?? 4317);
 const fixture = `http://127.0.0.1:${process.env.TRANSIT_E2E_DATA_PORT ?? 4318}`;
@@ -30,6 +43,7 @@ const worker = new Miniflare(
 	convertV4MiniflareOptions({
 		host: '127.0.0.1',
 		port,
+		...(process.env.CI ? { log: new FileLog(LogLevel.INFO) } : {}),
 		workers: [
 			{
 				name: config.name,
