@@ -825,3 +825,15 @@ export function alertsNotTrackedOnDates(agency: AgencyName, locale: Locale) {
 export function officialAlertsLabel(locale: Locale) {
 	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check official service alerts';
 }
+
+/** The citation for a whole page: who published it, what, which dates and where to find it. */
+export function pageCitation(
+	subject: string,
+	period: { from: string; to: string } | null | undefined,
+	href: string,
+	locale: Locale,
+): string {
+	return [`Transit · ${subject}.`, period ? `${dateRange(period, locale)}.` : '', href]
+		.filter(Boolean)
+		.join(' ');
+}

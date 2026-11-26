@@ -97,6 +97,10 @@ it('cites the stop, dates, scope, and versions and marks older results', () => {
 	]) {
 		expect(text).toContain(expected);
 	}
+	expect(text.split('du 8 au 14 nov. 2026')).toHaveLength(2);
+	expect(
+		stopCitation('Stop S1', 'punctuality', answer, 'en', link).split('8 to 14 Nov 2026'),
+	).toHaveLength(2);
 });
 
 it('compares measured shares over the same dates in both languages', () => {

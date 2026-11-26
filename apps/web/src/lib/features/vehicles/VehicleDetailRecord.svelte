@@ -18,6 +18,7 @@
 		dateRange,
 		hoursReading,
 		methodEvidence,
+		pageCitation,
 		recordStamp,
 		sampleWithMinimum,
 	} from '#lib/site/presenter.ts';
@@ -25,6 +26,7 @@
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
+	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
@@ -173,16 +175,19 @@
 		files={records.map(({ title, links }) => ({ label: title, href: links.csv }))}
 	>
 		{#snippet citation()}
+			<CiteBlock {locale} text={pageCitation(title, data.period, url.href, locale)} />
+		{/snippet}
+		{#snippet figures()}
 			{#each records as { section, citeTitle, answer, links } (section)}
 				{#await answer then result}
 					{#if result.kind === 'answer'}
-						<p>
-							Transit. {title}. {citeTitle}. {data.period ? dateRange(data.period, locale) : ''}. {methodEvidence(
+						<CiteBlock
+							{locale}
+							text={`Transit. ${title}. ${citeTitle}. ${data.period ? dateRange(data.period, locale) : ''}. ${methodEvidence(
 								result.answer.evidence,
 								locale,
-							)}
-							{links.share}
-						</p>
+							)} ${links.share}`}
+						/>
 					{/if}
 				{/await}
 			{/each}

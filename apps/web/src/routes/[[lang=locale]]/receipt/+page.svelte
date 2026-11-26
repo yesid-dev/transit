@@ -16,6 +16,7 @@
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
+	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordDataTable from '#lib/features/record/RecordDataTable.svelte';
@@ -53,6 +54,7 @@
 		dateRange,
 		longDate,
 		methodEvidence,
+		pageCitation,
 		recordStamp,
 		recordPercent,
 		sampleWithMinimum,
@@ -273,9 +275,23 @@
 {/snippet}
 
 {#snippet citation()}
+	<CiteBlock
+		locale={lang}
+		text={pageCitation(
+			t('Daily report', 'Rapport quotidien') + ', ' + cityName,
+			period,
+			pinned.href,
+			lang,
+		)}
+	/>
+{/snippet}
+{#snippet figures()}
 	{#each data.sections as { section, answer } (section)}
 		{#await answer then result}
-			{#if result.kind === 'answer'}<p>{citationText(section, result)}</p>{/if}
+			{#if result.kind === 'answer'}<CiteBlock
+					locale={lang}
+					text={citationText(section, result)}
+				/>{/if}
 		{/await}
 	{/each}
 {/snippet}
@@ -286,7 +302,12 @@
 			href={pinned.href}
 			{files}
 			{citation}
+			{figures}
 			print={() => window.print()}
+			printNote={t(
+				'A one-day report prints on one sheet.',
+				'Le rapport d’une journée tient sur une feuille.',
+			)}
 		/>
 	</div>
 {/snippet}
@@ -433,8 +454,8 @@
 							{/await}
 							<p class="print:hidden">
 								{t(
-									'A summary you can cite, for one day or several. A one-day report prints on one sheet.',
-									'Un résumé à citer, pour une journée ou plusieurs. Le rapport d’une journée tient sur une feuille.',
+									'A summary you can cite, for one day or several.',
+									'Un résumé à citer, pour une journée ou plusieurs.',
 								)}
 							</p>
 						</section>

@@ -18,6 +18,7 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
@@ -394,8 +395,9 @@
 	{@const entry = first ? name(first, identities) : null}
 	{#snippet actions()}
 		<RecordActionGroup {locale} href={links.share} files={[{ href: links.csv, label: listLabel }]}>
-			{#snippet citation()}<p>
-					{rankingCitation(
+			{#snippet citation()}<CiteBlock
+					{locale}
+					text={rankingCitation(
 						listLabel,
 						measureLabel,
 						record.city,
@@ -404,7 +406,7 @@
 						links.share,
 						lastGood,
 					)}
-				</p>{/snippet}
+				/>{/snippet}
 		</RecordActionGroup>
 	{/snippet}
 	{#if first && entry}

@@ -107,7 +107,7 @@ export function stopEvidenceSample(
 		.join(', ');
 }
 
-export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
+export function stopAnswer(answer: RecordMeasure, locale: Locale, withDates = true): string {
 	if (answer.state !== 'measured') return rateStateText(answer, locale);
 	const share = answer.value.on_time;
 	const { on_time, classified } = answer.evidence.counts;
@@ -121,10 +121,11 @@ export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
 	const total = tally(classified, locale);
 	const reading = choose(
 		locale,
-		`${dates}, ${value} of observed stop events here were on time (${onTime} of ${total})`,
-		`${dates}, ${value} des passages observés à cet arrêt étaient à l’heure (${onTime} sur ${total})`,
+		`${value} of observed stop events here were on time (${onTime} of ${total})`,
+		`${value} des passages observés à cet arrêt étaient à l’heure (${onTime} sur ${total})`,
 	);
-	return `${withCoverage(reading, answer.evidence, locale)}.`;
+	const dated = withDates ? `${dates}, ${reading}` : reading;
+	return `${withCoverage(dated, answer.evidence, locale)}.`;
 }
 
 export function stopCoverageGap(
@@ -200,7 +201,7 @@ export function stopCitation(
 	const dates = dateRange({ from: evidence.start_date, to: evidence.end_date }, locale);
 	return [
 		`Transit · ${subject}. ${choose(locale, ...stopSectionTitles[section])}. ${dates}.`,
-		section === 'punctuality' && 'value' in answer ? stopAnswer(answer, locale) : '',
+		section === 'punctuality' && 'value' in answer ? stopAnswer(answer, locale, false) : '',
 		section === 'accessibility' && 'value' in answer
 			? `${stopAccessibilityDescription[locale]} ${stopAccessibility(answer, locale)}.`
 			: '',

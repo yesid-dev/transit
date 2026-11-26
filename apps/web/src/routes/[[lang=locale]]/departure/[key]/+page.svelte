@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { page } from '$app/state';
@@ -17,6 +18,7 @@
 		delayReading,
 		longDate,
 		methodEvidence,
+		pageCitation,
 		recordPercent,
 		recordStamp,
 		sampleWithMinimum,
@@ -41,6 +43,7 @@
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
+	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
@@ -135,7 +138,7 @@
 		return departureLateStatement(answer, data.lang);
 	}
 	const stop = (id: string) => ({
-		name: data.stopNames[id] || id,
+		name: data.stopNames[id] ? stopDisplayName(data.stopNames[id]) : id,
 		code: data.stopCodes[id],
 		href: stopHref(id),
 	});
@@ -298,22 +301,33 @@
 												}))}
 											>
 												{#snippet citation()}
+													<CiteBlock
+														locale={data.lang}
+														text={pageCitation(data.seoTitle, data.period, pinned.href, data.lang)}
+													/>
+												{/snippet}
+												{#snippet figures()}
 													{#each answers as { section, answer: pending, title, links } (section)}
 														{#await pending then entry}
 															{#if entry.kind === 'answer'}
 																{@const evidence = entry.answer.evidence}
-																<p>
-																	Transit · {data.seoTitle}. {title}. {dateRange(
-																		{ from: evidence.start_date, to: evidence.end_date },
-																		data.lang,
-																	)}.
-																	{section === 'observed' && days.observed
-																		? observedStatement(answer)
-																		: ''}
-																	{methodEvidence(evidence, data.lang)}
-																	{entry.lastGood ? lastGoodNote[data.lang] : ''}
-																	{links.share}
-																</p>
+																<CiteBlock
+																	locale={data.lang}
+																	text={[
+																		`Transit · ${data.seoTitle}. ${title}. ${dateRange(
+																			{ from: evidence.start_date, to: evidence.end_date },
+																			data.lang,
+																		)}.`,
+																		section === 'observed' && days.observed
+																			? observedStatement(answer)
+																			: '',
+																		methodEvidence(evidence, data.lang),
+																		entry.lastGood ? lastGoodNote[data.lang] : '',
+																		links.share,
+																	]
+																		.filter(Boolean)
+																		.join(' ')}
+																/>
 															{/if}
 														{/await}
 													{/each}

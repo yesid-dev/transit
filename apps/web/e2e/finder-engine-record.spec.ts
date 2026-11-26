@@ -358,8 +358,7 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(
 					citation.getByText(fr ? /Méthode v1, nettoyage v8\./ : /Method v1, cleaning v8\./),
 				).toBeVisible();
-				await expect(citation.getByRole('link')).toHaveAttribute(
-					'href',
+				await expect(citation.locator('[data-slot="cite-text"]')).toContainText(
 					/q=Fixture.*#stop-results/,
 				);
 				await citation.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();

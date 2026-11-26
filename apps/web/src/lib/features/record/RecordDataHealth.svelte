@@ -50,6 +50,7 @@
 	import FactList from './FactList.svelte';
 	import FactRow from './FactRow.svelte';
 	import RecordActionGroup from './RecordActionGroup.svelte';
+	import CiteBlock from './CiteBlock.svelte';
 	import RecordAnswer from './RecordAnswer.svelte';
 	import AboutFigures from './AboutFigures.svelte';
 	import RecordCard from './RecordCard.svelte';
@@ -403,14 +404,18 @@
 								{#snippet actions()}
 									<RecordActionGroup {locale} href={share} files={[]}>
 										{#snippet citation()}
-											<p>
-												Transit. {title} ({subject || record.city}). {dateRange(
-													record.period,
-													locale,
-												)}. {coverage ? `${coverage.value} ${coverage.sentence}` : ''}
-												{methodEvidence(answer.evidence, locale)}
-												{share}
-											</p>
+											<CiteBlock
+												{locale}
+												text={[
+													`Transit. ${title} (${subject || record.city}). ${dateRange(record.period, locale)}.`,
+													coverage ? `${coverage.value} ${coverage.sentence}` : '',
+													methodEvidence(answer.evidence, locale),
+													share,
+												]
+													.filter(Boolean)
+													.join(' ')}
+											/>
+
 										{/snippet}
 									</RecordActionGroup>
 								{/snippet}

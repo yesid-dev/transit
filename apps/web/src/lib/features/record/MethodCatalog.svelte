@@ -8,9 +8,10 @@
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, MethodEntry } from '#lib/server/engine.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
-	import { longDate, registryUnitText, versionNumber } from '#lib/site/presenter.ts';
+	import { longDate, pageCitation, registryUnitText, versionNumber } from '#lib/site/presenter.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import RecordActionGroup from './RecordActionGroup.svelte';
+	import CiteBlock from './CiteBlock.svelte';
 	import RecordAnswer from './RecordAnswer.svelte';
 	import RecordCard from './RecordCard.svelte';
 	import RecordPending from './RecordPending.svelte';
@@ -235,23 +236,25 @@
 {/snippet}
 
 {#snippet actions(entries: MethodEntry[])}
+	{#snippet pageCite()}
+		<CiteBlock {locale} text={pageCitation(title, null, canonical.href, locale)} />
+	{/snippet}
 	{#snippet citations()}
-		<ul class="grid gap-2">
-			{#each entries as entry (entry.id)}
-				{@const share = recordSectionLinks(canonical, entry.id).share}
-				<li>
-					Transit. {title}. {registryUnitText(entry.text[locale].definition, locale)} ({versionNumber(
-						entry.method_version,
-					)}, {longDate(entry.since, locale)}).
-					{#each share.split(/(?<=[/?&=#_.:%-])/u) as part, index (index)}{part}<wbr />{/each}
-				</li>
-			{/each}
-		</ul>
+		{#each entries as entry (entry.id)}
+			{@const share = recordSectionLinks(canonical, entry.id).share}
+			<CiteBlock
+				{locale}
+				text={`Transit. ${title}. ${registryUnitText(entry.text[locale].definition, locale)} (${versionNumber(
+					entry.method_version,
+				)}, ${longDate(entry.since, locale)}). ${share}`}
+			/>
+		{/each}
 	{/snippet}
 	<RecordActionGroup
 		{locale}
 		href={canonical.href}
-		citation={citations}
+		citation={pageCite}
+		figures={citations}
 		files={entries
 			.filter((entry) => entry.csv_columns[locale].length)
 			.map((entry) => ({

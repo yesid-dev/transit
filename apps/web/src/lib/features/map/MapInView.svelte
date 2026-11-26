@@ -6,6 +6,7 @@
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import MapPanelAnswer from './MapPanelAnswer.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
+	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import { dateAndClock, liveStatusWords, mapDirectionReading } from '#lib/site/presenter.ts';
 	import { mapReportsCopy } from './mapReports.copy';
@@ -143,23 +144,21 @@
 				files={[]}
 			>
 				{#snippet citation()}
-					<p>
-						{model.providerName} · {french ? 'V\u00e9hicules en vue' : 'Vehicles in view'}
-					</p>
-					<p>
-						<time datetime={model.generatedUtc}
-							>{dateAndClock(model.generatedUtc, locale, model.timeZone, true)}</time
-						>
-					</p>
-					{#if model.methodologyVersion}<p>
-							{french ? 'M\u00e9thode' : 'Method'}
-							{model.methodologyVersion}
-						</p>{/if}
-					{#if model.attribution}<p>{model.attribution}</p>{/if}
-					<p>{t.copyDisclaimer}</p>
-					<a class="text-primary underline" href={liveViewHref}
-						>{french ? 'Vue en direct' : 'Live view'}</a
-					>
+					<CiteBlock
+						{locale}
+						text={[
+							`${model.providerName} · ${french ? 'Véhicules en vue' : 'Vehicles in view'}.`,
+							`${dateAndClock(model.generatedUtc, locale, model.timeZone, true)}.`,
+							model.methodologyVersion
+								? `${french ? 'Méthode' : 'Method'} ${model.methodologyVersion}.`
+								: '',
+							model.attribution ?? '',
+							t.copyDisclaimer,
+							liveViewHref,
+						]
+							.filter(Boolean)
+							.join(' ')}
+					/>
 				{/snippet}
 			</RecordActionGroup>
 			<p class="text-sm text-muted-foreground">{t.copyDisclaimer}</p>

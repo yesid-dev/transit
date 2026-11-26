@@ -8,6 +8,7 @@
 		countedUnit,
 		longDate,
 		methodEvidence,
+		pageCitation,
 		recordDenominator,
 		recordPercent,
 		recordRatio,
@@ -24,6 +25,7 @@
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
+	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
@@ -143,20 +145,31 @@
 {#snippet citeMeasure(promise: Measure, period: DateWindow)}
 	{#await promise then result}
 		{#if result.kind === 'answer' && result.answer.state === 'measured'}
-			<p>{citationText(result.answer, period, locale)}</p>
+			<CiteBlock {locale} text={citationText(result.answer, period, locale)} />
 		{/if}
 	{/await}
 {/snippet}
 
 {#snippet citation()}
-	<p>Transit{city ? ` · ${city}` : ''}. {dateRange(record.period, locale)}.</p>
+	<CiteBlock
+		{locale}
+		text={pageCitation(
+			city || (locale === 'fr' ? 'Aperçu' : 'Overview'),
+			record.period,
+			href,
+			locale,
+		)}
+	/>
+{/snippet}
+
+{#snippet figures()}
 	{@render citeMeasure(record.punctuality, record.period)}
 	{@render citeMeasure(record.baseline, record.previous)}
 	{@render citeMeasure(record.delivery, record.period)}
 {/snippet}
 
 {#snippet actions()}
-	<RecordActionGroup {locale} {href} {files} {citation} />
+	<RecordActionGroup {locale} {href} {files} {citation} {figures} />
 {/snippet}
 
 {#snippet lead(current: EngineResult<MeasureAnswer>)}
