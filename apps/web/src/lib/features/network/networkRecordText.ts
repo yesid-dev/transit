@@ -1,4 +1,4 @@
-import { recordPercent as percent } from '#lib/site/presenter.ts';
+import { recordPercent } from '#lib/site/presenter.ts';
 import { minuteReading } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { healthReading } from '#lib/features/record/dataHealthText.ts';
@@ -76,7 +76,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				const { attempts, successful } = object(counts[feed]);
 				const reading =
 					dimensions[feed] === 'measured' && typeof value === 'number'
-						? percent(value, locale)
+						? recordPercent(value, locale)
 						: !Object.hasOwn(values, feed) && !noMeasuredDays
 							? stateText('not_tracked')
 							: missing(feed);
@@ -131,7 +131,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				[
 					t('Seen on lines with live data', 'Vus sur les lignes avec des données en direct'),
 					answer.state === 'measured' && typeof value === 'number'
-						? percent(value, locale)
+						? recordPercent(value, locale)
 						: missing(measure),
 					ratio(appeared, eligible),
 				],
@@ -141,7 +141,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 						'Prévus sur les lignes jamais vues en direct',
 					),
 					typeof never_seen_share === 'number' && !noMeasuredDays
-						? percent(never_seen_share, locale)
+						? recordPercent(never_seen_share, locale)
 						: missing(measure),
 					!noMeasuredDays ? ratio(never_seen, scheduled) : '',
 				],
@@ -161,7 +161,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				const measured = dimensions[field] === 'measured' && typeof value === 'number';
 				return [
 					t(...label),
-					measured ? percent(value, locale) : missing(field),
+					measured ? recordPercent(value, locale) : missing(field),
 					measured && typeof present_us === 'number' && typeof reporting_us === 'number'
 						? `${hours(present_us)} / ${hours(reporting_us)}`
 						: '',
@@ -185,7 +185,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				`${horizon} min`,
 				measured ? duration(data.median_signed_seconds, true) : missing(horizon),
 				measured ? duration(data.p90_absolute_seconds) : missing(horizon),
-				measured && typeof within === 'number' ? percent(within, locale) : missing(horizon),
+				measured && typeof within === 'number' ? recordPercent(within, locale) : missing(horizon),
 				samples(data.sample_count),
 			];
 		}),

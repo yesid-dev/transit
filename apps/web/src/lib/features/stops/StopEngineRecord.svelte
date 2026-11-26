@@ -18,7 +18,6 @@
 	import {
 		choose,
 		measuredShare,
-		percent,
 		pooledDays,
 		punctualityWeighting,
 		rateStateText,
@@ -26,7 +25,13 @@
 		tally,
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
-	import { dateRange, delayReading, methodEvidence, recordStamp } from '#lib/site/presenter.ts';
+	import {
+		dateRange,
+		delayReading,
+		methodEvidence,
+		recordPercent,
+		recordStamp,
+	} from '#lib/site/presenter.ts';
 	import type {
 		EngineResult,
 		RecordAnswer as EngineAnswer,
@@ -43,6 +48,7 @@
 		stopBoardingNotPublished,
 		stopCitation,
 		stopComparison,
+		stopCoverageGap,
 		stopEvidenceSample,
 		stopLowCoverage,
 		stopSectionTitles,
@@ -98,12 +104,6 @@
 		t(
 			'of observed stop events here were on time.',
 			'des passages observés à cet arrêt étaient à l’heure.',
-		),
-	);
-	const insufficientCoverage = $derived(
-		t(
-			'There are too few observed stop events to measure punctuality for these dates.',
-			'Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates.',
 		),
 	);
 	let bandsTable = $state(false);
@@ -179,7 +179,7 @@
 							answer.evidence.share_observed == null
 								? null
 								: term.observedShare(
-										percent(answer.evidence.share_observed, locale),
+										recordPercent(answer.evidence.share_observed, locale),
 										answer.evidence.counts.scheduled == null
 											? undefined
 											: tally(answer.evidence.counts.scheduled, locale),
@@ -271,6 +271,18 @@
 				{#if result.kind === 'answer' && 'value' in result.answer}
 					{@const data = result.answer}
 					{@const share = measuredShare(data, 'on_time')}
+					{@const reading =
+						share !== null
+							? sentence
+							: stopLowCoverage(result)
+								? (stopCoverageGap(
+										data,
+										locale,
+										false,
+										(data.info?.find(({ id }) => id === 'on_time') ?? data.info?.[0])
+											?.minimum_coverage,
+									) ?? rateStateText(data, locale))
+								: rateStateText(data, locale)}
 					{@const evidence = {
 						sample: counted(data),
 						record: data.evidence,
@@ -281,12 +293,8 @@
 					{/snippet}
 					{#await record.network}
 						<RecordAnswer
-							value={share === null ? null : percent(share, locale)}
-							sentence={share === null
-								? stopLowCoverage(result)
-									? insufficientCoverage
-									: rateStateText(data, locale)
-								: sentence}
+							value={share === null ? null : recordPercent(share, locale)}
+							sentence={reading}
 							state={chartState(data.state)}
 							time={stamp}
 							{locale}
@@ -295,12 +303,8 @@
 						/>
 					{:then network}
 						<RecordAnswer
-							value={share === null ? null : percent(share, locale)}
-							sentence={share === null
-								? stopLowCoverage(result)
-									? insufficientCoverage
-									: rateStateText(data, locale)
-								: sentence}
+							value={share === null ? null : recordPercent(share, locale)}
+							sentence={reading}
 							state={chartState(data.state)}
 							time={stamp}
 							{locale}

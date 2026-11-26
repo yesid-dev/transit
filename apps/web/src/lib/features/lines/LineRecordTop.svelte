@@ -18,13 +18,12 @@
 	import {
 		choose,
 		measuredShare,
-		percent,
 		rateStateText,
 		recordMessage,
 	} from '#lib/features/record/recordText.ts';
 	import type { EngineResult, RecordAnswer as Answer, RecordMeasure } from '#lib/server/engine.ts';
 	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
-	import { countedUnit, recordStamp } from '#lib/site/presenter.ts';
+	import { recordPercent, countedUnit, recordStamp } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopComparison } from '#lib/features/stops/stopRecordText.ts';
 	import {
@@ -167,7 +166,7 @@
 {#snippet lead(answer: RecordMeasure, lastGood: boolean, comparison?: string)}
 	{@const share = measuredShare(answer, 'on_time')}
 	<RecordAnswer
-		value={share === null ? null : percent(share, locale)}
+		value={share === null ? null : recordPercent(share, locale)}
 		sentence={share === null
 			? rateStateText(answer, locale)
 			: t(
@@ -302,7 +301,7 @@
 														: ', ' + countedUnit(classified, 'event', locale))}
 										>
 											{#if share !== null}
-												<strong>{percent(share, locale)}</strong>
+												<strong>{recordPercent(share, locale)}</strong>
 											{:else}
 												<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
 												{rateStateText(cell, locale)}

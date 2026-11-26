@@ -135,13 +135,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page).toHaveURL(
 			(url) => url.searchParams.get('frameMode') === 'record' && url.search.includes(dates),
 		);
-		await expect(answer).toContainText(fr ? '80 %' : '80%');
+		await expect(answer).toContainText(fr ? /80,0\s%/u : '80.0%');
+		// An id the record never held is not a page of empty cards.
 		const missing = await page.goto(path('57135', 'frameMode=record'));
-		expect(missing?.status()).toBe(200);
-		await expect(page.getByText(notice, { exact: true })).toBeVisible();
-		await expect(answer).toContainText(
-			fr ? 'Aucune lecture n’a été publiée' : 'No readings were published',
-		);
+		expect(missing?.status()).toBe(404);
+		await expect(
+			page.getByText(fr ? 'Cet arrêt est introuvable.' : 'This stop could not be found.'),
+		).toBeVisible();
 		await expect(page.getByRole('main').locator('[data-slot="record-card"]')).toHaveCount(0);
 	});
 }
@@ -167,9 +167,10 @@ test('stale and empty trip captures have different states', async ({ page }) => 
 
 test('Record shows the low coverage explanation once', async ({ page }) => {
 	await page.goto('/stop/S1?provider=stm&recordFrom=2026-10-24&recordTo=2026-10-24');
+	// One sentence, with the sample it was judged on.
 	await expect(
 		page.getByText(
-			'There are too few observed stop events to measure punctuality for these dates.',
+			'There are too few observed stop events to measure punctuality for these dates (5 of 100).',
 			{ exact: true },
 		),
 	).toHaveCount(1);

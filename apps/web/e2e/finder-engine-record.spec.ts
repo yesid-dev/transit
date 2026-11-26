@@ -365,6 +365,58 @@ for (const locale of ['en', 'fr'] as const) {
 			page.getByRole('link', { name: fr ? 'Ouvrir son bilan' : 'Open its record' }),
 		).toHaveAttribute('href', /\/stop\/57430\?/);
 		await expect(table).toHaveCount(0);
+		await page.getByRole('link', { name: fr ? 'Ouvrir son bilan' : 'Open its record' }).click();
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+			fr ? 'Arrêt 57430' : 'Stop 57430',
+		);
+
+		const missing = await page.goto(`${prefix}/stop/57135?${period}`);
+		expect(missing?.status()).toBe(404);
+		await expect(
+			page.getByText(fr ? 'Cet arrêt est introuvable.' : 'This stop could not be found.'),
+		).toBeVisible();
+	});
+
+	test(`${locale} Stops keeps the stop-event sample beside one state on phones`, async ({
+		page,
+	}) => {
+		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops' });
+		for (const width of [320, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(
+				`${prefix}/stops?provider=octranspo&recordFrom=2026-11-04&recordTo=2026-11-10&q=8th`,
+			);
+			const row = page.getByRole('row').filter({ hasText: '8th Line / Byron' });
+			await expect(row.getByRole('link', { name: '8th Line / Byron' })).toBeVisible();
+			await expect(row.locator('[data-column="lines"] [data-slot="route-plate"]')).toHaveText([
+				'51',
+				'51A',
+				'105',
+			]);
+			await expect(row.locator('[data-record-state]')).toHaveCount(1);
+			await expect(row.locator('[data-record-state]')).toHaveAttribute(
+				'data-record-state',
+				'too_few_to_judge',
+			);
+			await expect(row.locator('[data-column="events"]')).toContainText(
+				fr ? '29 (minimum de 500)' : '29 (minimum 500)',
+			);
+		}
+	});
+
+	test(`${locale} Stop explains each uncovered reading once`, async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 900 });
+		await page.goto(`${prefix}/stop/S1?provider=stm&recordFrom=2026-11-10&recordTo=2026-11-10`);
+		const answer = page.locator('[data-slot="screen-answer"]');
+		await expect(answer).toContainText(fr ? /24 sur 100, minimum de 40/ : /24 of 100, minimum 40/);
+		const waiting = page.locator('#waiting');
+		const gap = fr
+			? 'Trop peu d’intervalles prévus ont été observés'
+			: 'Too few scheduled intervals were observed';
+		await expect(waiting.getByText(gap, { exact: false })).toHaveCount(1);
+		await expect(waiting.getByText(gap, { exact: false })).toContainText(
+			fr ? '3 sur 20' : '3 of 20',
+		);
 	});
 
 	test(`${locale} stops accepts a search without JavaScript`, async ({ browser, baseURL }) => {

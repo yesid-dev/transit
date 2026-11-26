@@ -8,6 +8,7 @@
 		longDate,
 		methodEvidence,
 		recordDenominator,
+		recordPercent,
 		recordRatio,
 		recordStamp,
 	} from '#lib/site/presenter.ts';
@@ -53,7 +54,6 @@
 		dateRange,
 		overviewState,
 		overviewValue,
-		percent,
 		recordCounts,
 		tally,
 	} from './overviewRecord.ts';
@@ -158,7 +158,7 @@
 	{@const gap = overviewState(current, locale)}
 	<RecordAnswer
 		{locale}
-		value={value == null ? null : percent(value, locale)}
+		value={value == null ? null : recordPercent(value, locale)}
 		sentence={value != null ? t.answer : gap.sentence}
 		state={gap.state}
 		{actions}
@@ -236,7 +236,7 @@
 				{@const range = dateRange(record.previous, locale)}
 				<FactRow
 					label={previousLabel}
-					detail={share == null ? range : `${percent(share, locale)}, ${range}`}
+					detail={share == null ? range : `${recordPercent(share, locale)}, ${range}`}
 				>
 					{#if share == null}
 						{@render gap(previous)}
@@ -256,10 +256,10 @@
 							? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
 							: undefined}
 					>
-						<strong>{percent(deliveryShare, locale)}</strong>
+						<strong>{recordPercent(deliveryShare, locale)}</strong>
 						{#if delivery.answer.evidence.low_coverage}
 							<p class="text-muted-foreground">
-								{coverageText(delivery.answer.evidence, locale, percent)}
+								{coverageText(delivery.answer.evidence, locale)}
 							</p>
 						{/if}
 						{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
@@ -279,7 +279,6 @@
 					{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
 					{:else if 'cells' in trend.answer && trend.answer.cells.length}
 						<RecordChart
-							formatShare={percent}
 							title={t.trend}
 							id="overview-record-trend"
 							table={trendTable}
@@ -334,7 +333,7 @@
 	{@const trips = delivery?.evidence.counts.ran}
 	{@const observed = current?.evidence.share_observed}
 	{@const scheduled = counts?.scheduled ?? counts?.punctuality_scheduled}
-	{@const basis = timingBasis(counts, locale, percent)}
+	{@const basis = timingBasis(counts, locale)}
 	<AboutFigures
 		title={t.about}
 		fields={[
@@ -351,14 +350,14 @@
 					observed == null
 						? null
 						: t.observedShare(
-								percent(observed, locale),
+								recordPercent(observed, locale),
 								scheduled == null ? undefined : tally(scheduled, locale),
 							),
 					current?.evidence.low_coverage ? lowCoverageText(locale) + '.' : null,
 					basis,
 					current?.coverage_note?.[locale],
 					delivery && !delivery.evidence.low_coverage && (delivery.evidence.share_eligible ?? 1) < 1
-						? coverageText(delivery.evidence, locale, percent) + '.'
+						? coverageText(delivery.evidence, locale) + '.'
 						: null,
 				]
 					.filter(Boolean)

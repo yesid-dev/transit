@@ -500,10 +500,15 @@
 							time={stamp}
 							value={record?.fleet ? tally(record.active, locale) : null}
 							sentence={record?.fleet
-								? t(
-										`of the ${tally(record.fleet, locale)} listed vehicles were in service at least once on these dates.`,
-										`des ${tally(record.fleet, locale)} véhicules de la liste étaient en service au moins une fois pour ces dates.`,
-									)
+								? record.active === 1
+									? t(
+											'vehicle reported on a trip on these dates.',
+											'véhicule a signalé une position pendant un trajet à ces dates.',
+										)
+									: t(
+											'vehicles reported on a trip on these dates.',
+											'véhicules ont signalé une position pendant un trajet à ces dates.',
+										)
 								: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
 							evidence={record
 								? {

@@ -17,14 +17,14 @@ const answer: RecordMeasure = {
 
 describe('Line Record text', () => {
 	it('explains the exact dates and counts and keeps a measured zero', () => {
-		expect(lineAnswer(answer, answer.evidence, 'en')).toContain('8 to 14 Nov 2026, 80%');
+		expect(lineAnswer(answer, answer.evidence, 'en')).toContain('8 to 14 Nov 2026, 80.0%');
 		expect(lineAnswer(answer, answer.evidence, 'en')).toContain('(80 of 100)');
 		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('du 8 au 14 nov. 2026');
 		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('(80 sur 100)');
 		expect(punctualityBands(answer, 'en').map(({ reading }) => reading)).toEqual([
-			'0% (0/100) · 50% of 200 scheduled stops observed',
-			'80% (80/100) · 50% of 200 scheduled stops observed',
-			'20% (20/100) · 50% of 200 scheduled stops observed',
+			'0.0% (0/100) · 50.0% of 200 scheduled stops observed',
+			'80.0% (80/100) · 50.0% of 200 scheduled stops observed',
+			'20.0% (20/100) · 50.0% of 200 scheduled stops observed',
 		]);
 	});
 

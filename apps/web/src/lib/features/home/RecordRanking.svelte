@@ -2,7 +2,7 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
-	import { countedUnit } from '#lib/site/presenter.ts';
+	import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
@@ -11,7 +11,7 @@
 	import StateMark from '../record/StateMark.svelte';
 	import { lastGoodNote, coverageText } from '../record/recordText.ts';
 	import { overviewCopy } from './overviewRecord.copy';
-	import { percent, rankingState } from './overviewRecord.ts';
+	import { rankingState } from './overviewRecord.ts';
 
 	let {
 		locale,
@@ -20,7 +20,6 @@
 		link,
 		directory,
 		heading,
-		formatShare,
 		outlineStopCode = false,
 	}: {
 		locale: Locale;
@@ -29,7 +28,6 @@
 		link: (path: string) => string;
 		directory?: Promise<ScheduleEdition['stops']>;
 		heading?: string;
-		formatShare?: (value: number) => string;
 		outlineStopCode?: boolean;
 	} = $props();
 	const display = transitDisplay();
@@ -45,7 +43,7 @@
 		return answer.rows.slice(0, 3).map((row) => {
 			const line = kind === 'line' ? display.lineName(row.id) : null;
 			const stop = kind === 'stop' ? stops.find((item) => item.id === row.id) : undefined;
-			const coverage = row.low_coverage ? coverageText(row, locale, percent) : null;
+			const coverage = row.low_coverage ? coverageText(row, locale) : null;
 			return {
 				id: row.id,
 				label:
@@ -57,7 +55,7 @@
 				plate: line ? { code: line.number ?? row.id } : undefined,
 				href: link((kind === 'line' ? '/lines/' : '/stop/') + encodeURIComponent(row.id)),
 				detail: countedUnit(row.sample, 'event', locale) + (coverage ? ` · ${coverage}` : ''),
-				share: formatShare?.(row.value) ?? percent(row.value, locale),
+				share: recordPercent(row.value, locale),
 			};
 		});
 	}

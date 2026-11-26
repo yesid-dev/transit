@@ -48,24 +48,22 @@
 	.fact:first-child .fact-stroke {
 		display: var(--fact-leading, block);
 	}
+	.fact.has-detail {
+		grid-template-columns: minmax(min-content, 1fr) minmax(0, max-content);
+		align-items: start;
+	}
 	dt {
 		min-inline-size: 0;
 		overflow-wrap: normal;
 		word-break: normal;
 	}
 	dd {
+		min-inline-size: 0;
 		text-align: end;
 	}
-	@container (width < 22rem) {
-		.fact.has-detail {
-			grid-template-columns: minmax(0, 1fr);
-		}
-		.fact.has-detail dd {
-			text-align: start;
-		}
-	}
 	@container (width < 16rem) {
-		.fact {
+		.fact,
+		.fact.has-detail {
 			grid-template-columns: minmax(0, 1fr);
 		}
 		dd {

@@ -111,7 +111,7 @@
 	const periodsAnswer = $derived(answers.get('periods'));
 	const messagesAnswer = $derived(answers.get('messages'));
 	const bandTitle = $derived(t('Early, on time and late', 'En avance, à l’heure et en retard'));
-	const formatShare = (value: number) => recordPercent(value, lang);
+
 	async function ranked(
 		answer: Promise<EngineResult<EngineAnswer>> | undefined,
 	): Promise<EngineResult<RankingAnswer>> {
@@ -497,7 +497,6 @@
 										{:else}
 											{#if ['early', 'on_time', 'late'].every((band) => measuredShare(punctuality, band) != null)}
 												<RecordChart
-													formatShare={recordPercent}
 													title={bandTitle}
 													id="punctuality-bands"
 													locale={lang}
@@ -675,7 +674,6 @@
 									<RecordRanking
 										locale={lang}
 										kind="line"
-										{formatShare}
 										ranking={lineRanking}
 										{link}
 										heading={t(
@@ -687,7 +685,6 @@
 										<RecordRanking
 											locale={lang}
 											kind="stop"
-											{formatShare}
 											outlineStopCode
 											ranking={stopRanking}
 											directory={data.directory}
@@ -748,7 +745,7 @@
 															counts?.scheduled == null ? undefined : tally(counts.scheduled, lang),
 														),
 												current?.evidence.low_coverage ? lowCoverageText(lang) + '.' : null,
-												timingBasis(counts, lang, recordPercent),
+												timingBasis(counts, lang),
 												current?.coverage_note?.[lang],
 											]
 												.filter(Boolean)

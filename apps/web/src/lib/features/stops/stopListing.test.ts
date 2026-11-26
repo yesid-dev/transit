@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
-import { listStops, stopReading } from './stopListing.ts';
+import { listStops, stopLineCodes, stopReading } from './stopListing.ts';
 
 const schedule: ScheduleEdition = {
 	date: '2026-11-10',
@@ -26,6 +26,10 @@ const schedule: ScheduleEdition = {
 	},
 };
 
+it.each(['en', 'fr'] as const)('orders unique line plates like numbers in %s', (locale) => {
+	expect(stopLineCodes(['105', '51A', '51', '51'], locale)).toEqual(['51', '51A', '105']);
+});
+
 it.each(['en', 'fr'] as const)(
 	'pages the current timetable and filters by name, code or line in %s',
 	(locale) => {
@@ -47,14 +51,32 @@ it.each(['en', 'fr'] as const)(
 	},
 );
 
-it('keeps the numeric fields absent for a stop that cannot be judged', () => {
+it('shows a reported count and its minimum without an on-time share for a small sample', () => {
+	expect(
+		stopReading(
+			{
+				state: 'too_few_to_judge',
+				key: { stop: '1' },
+				value: { on_time: 0 },
+				evidence: { counts: { classified: 3, on_time: 0 } },
+				state_text: { en: '', fr: '' },
+			},
+			{ info: [{ id: 'on_time', minimum_sample: 30 }] },
+		),
+	).toEqual({ state: 'too_few_to_judge', share: null, events: 3, onTime: null, minimum: 30 });
+});
+
+it.each([
+	['unknown', null],
+	['measured', 0],
+] as const)('gives a zero count only when it was measured (%s)', (state, events) => {
 	expect(
 		stopReading({
-			state: 'too_few_to_judge',
+			state,
 			key: { stop: '1' },
-			value: { on_time: 0 },
+			value: { on_time: null },
 			evidence: { counts: { classified: 0, on_time: 0 } },
 			state_text: { en: '', fr: '' },
-		}),
-	).toEqual({ state: 'too_few_to_judge', share: null, events: null, onTime: null });
+		}).events,
+	).toBe(events);
 });

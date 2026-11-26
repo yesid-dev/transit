@@ -64,10 +64,13 @@ export const stopsFixture = (city) => {
 	return names.map((name, index) => ({
 		id: `finder-stop-${index + 1}`,
 		code: String(52840 + index),
-		name: `${city === 'octranspo' ? 'Bank' : 'Beaubien'} / ${name}`,
+		name:
+			city === 'octranspo' && index === 0
+				? '8TH Line / Byron'
+				: `${city === 'octranspo' ? 'Bank' : 'Beaubien'} / ${name}`,
 		lat: city === 'octranspo' ? 45.42 : 45.53,
 		lon: city === 'octranspo' ? -75.7 : -73.6,
-		routes: ['24'],
+		routes: city === 'octranspo' && index === 0 ? ['105', '51A', '51', '51'] : ['24'],
 	}));
 };
 
@@ -143,12 +146,19 @@ export function finderEngine(url) {
 		body: {
 			cells: richStops
 				? [
-						...stopsFixture(url.searchParams.get('city')).map(({ id }, i) =>
-							cell(
-								{ stop: id },
-								{ on_time: (780 + 4 * i) / 1000 },
-								{ classified: 2456 + i, scheduled: 2972 + i, on_time: 1900 + i },
-							),
+						...stopsFixture(url.searchParams.get('city')).map(({ id, name }, i) =>
+							name === '8TH Line / Byron'
+								? cell(
+										{ stop: id },
+										{ on_time: null },
+										{ classified: 29, scheduled: 42 },
+										'too_few_to_judge',
+									)
+								: cell(
+										{ stop: id },
+										{ on_time: (780 + 4 * i) / 1000 },
+										{ classified: 2456 + i, scheduled: 2972 + i, on_time: 1900 + i },
+									),
 						),
 						cell(
 							{ stop: '57430' },

@@ -1,8 +1,9 @@
 <script lang="ts">
+	import { recordPercent } from '#lib/site/presenter.ts';
 	import { DayStrip } from '@yesid/ui/chart';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import type { RecordSeries } from '#lib/server/engine.ts';
-	import { choose, percent, measuredShare } from './recordText.ts';
+	import { choose, measuredShare } from './recordText.ts';
 
 	let {
 		title,
@@ -28,7 +29,7 @@
 				id: day,
 				label: date(day, { day: 'numeric', month: 'short' }),
 				dateLabel: date(day, { dateStyle: 'long' }),
-				report: share === null ? null : { value: percent(share, locale), fraction: share },
+				report: share === null ? null : { value: recordPercent(share, locale), fraction: share },
 			};
 		});
 	});

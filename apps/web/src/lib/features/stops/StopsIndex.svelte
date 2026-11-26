@@ -18,6 +18,7 @@
 		methodEvidence,
 		recordPercent,
 		recordStamp,
+		sampleWithMinimum,
 	} from '#lib/site/presenter.ts';
 	import { formatTransitName, stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import {
@@ -55,8 +56,9 @@
 	import {
 		stopPageSize,
 		stopReading,
+		stopLineCodes,
 		type NearbyStop,
-		type stopListingView,
+		stopListingView,
 		type StopListing,
 		type StopListingResult,
 	} from './stopListing.ts';
@@ -81,7 +83,9 @@
 			: undefined,
 	);
 	const listing = $derived(loadedSearch ? loadedSearch.listing : initialListing);
-	const view = $derived(loadedSearch?.view ?? initialView);
+	const view = $derived(
+		loadedSearch?.view ?? initialView ?? stopListingView(new URLSearchParams(location.search)),
+	);
 	const record = $derived(
 		loadedSearch
 			? loadedSearch.finderRecord && {
@@ -135,6 +139,7 @@
 		};
 	});
 	const cells = $derived(finderCells(result, 'stop'));
+	const answer = $derived(result?.kind === 'answer' ? result.answer : undefined);
 	const evidence = $derived(result?.kind === 'answer' ? result.answer.evidence : undefined);
 	const counts = $derived(result?.totals?.counts);
 	const observed = $derived(result?.totals?.observed);
@@ -363,7 +368,7 @@
 	);
 	const rows = $derived(
 		stops.map((stop) => {
-			const reading = stop.reading ?? stopReading(cells.get(stop.id));
+			const reading = stop.reading ?? stopReading(cells.get(stop.id), answer);
 			const state =
 				!reading.state && stop.routeIds.length && stop.routeIds.every((id) => declared.has(id))
 					? 'no_live_data'
@@ -371,11 +376,14 @@
 			return {
 				...stop,
 				label: stopDisplayName(stop.name),
+				lineCodes: stopLineCodes(stop.lineCodes, locale),
 				href: stopHref(stop.id),
 				state,
 				share: reading.share,
 				events: reading.events,
 				onTime: reading.onTime,
+				minimum: reading.minimum,
+				measured: reading.state === 'measured',
 			};
 		}),
 	);
@@ -449,22 +457,28 @@
 	/>{/snippet}
 {#snippet linesCell(row: Row)}
 	<span class="inline-flex flex-wrap gap-1"
-		>{#each new Set(row.lineCodes) as code (code)}<RoutePlate {code} />{/each}</span
+		>{#each row.lineCodes as code (code)}<RoutePlate {code} />{/each}</span
 	>
 {/snippet}
 {#snippet shareCell(row: Row)}
 	{#if row.share !== null}<strong>{recordPercent(row.share, locale)}</strong>
 	{:else}<RecordTableValue
 			{locale}
-			text={!result && record ? t('Calculating…', 'Calcul en cours…') : null}
+			text={record && (!result || result.kind === 'busy')
+				? t('Calculating…', 'Calcul en cours…')
+				: result && result.kind !== 'answer'
+					? t('Unavailable', 'Indisponible')
+					: null}
 			state={row.state}
 		/>{/if}
 {/snippet}
-{#snippet eventsCell(row: Row)}<RecordTableValue
-		{locale}
-		text={row.events === null ? null : tally(row.events, locale)}
-		state={row.state}
-	/>{/snippet}
+{#snippet eventsCell(row: Row)}
+	{#if row.events !== null}
+		{row.minimum === null
+			? tally(row.events, locale)
+			: sampleWithMinimum(tally(row.events, locale), row.minimum, locale)}
+	{/if}
+{/snippet}
 {#snippet evidenceFoot()}
 	{#if evidence}<RecordEvidenceLine
 			{locale}
@@ -492,7 +506,7 @@
 			row.code ?? '',
 			row.label,
 			row.share,
-			row.events,
+			row.measured ? row.events : null,
 			row.onTime,
 			row.share === null ? finderShare(cells.get(row.id), result, 'on_time', locale).text : '',
 		])}

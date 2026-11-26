@@ -3,16 +3,22 @@ import {
 	choose,
 	lastGoodNote,
 	measuredShare,
-	percent,
 	rateStateText,
 	withCoverage,
 	tally,
 } from '#lib/features/record/recordText.ts';
-import { countedUnit, dateRange, methodEvidence, singularCount } from '#lib/site/presenter.ts';
+import {
+	recordPercent,
+	countedUnit,
+	dateRange,
+	methodEvidence,
+	singularCount,
+} from '#lib/site/presenter.ts';
 import { recordState } from '../record/recordStates.ts';
 import type {
 	EngineResult,
 	RecordAnswer,
+	RecordCell,
 	RecordMeasure,
 	RecordSeries,
 } from '#lib/server/engine.ts';
@@ -110,7 +116,7 @@ export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
 		{ from: answer.evidence.start_date, to: answer.evidence.end_date },
 		locale,
 	);
-	const value = percent(share, locale);
+	const value = recordPercent(share, locale);
 	const onTime = tally(on_time, locale);
 	const total = tally(classified, locale);
 	const reading = choose(
@@ -119,6 +125,49 @@ export function stopAnswer(answer: RecordMeasure, locale: Locale): string {
 		`${dates}, ${value} des passages observés à cet arrêt étaient à l’heure (${onTime} sur ${total})`,
 	);
 	return `${withCoverage(reading, answer.evidence, locale)}.`;
+}
+
+export function stopCoverageGap(
+	answer: Pick<RecordCell, 'state' | 'evidence'>,
+	locale: Locale,
+	waiting = false,
+	minimum?: number,
+) {
+	if (answer.state === 'measured' || answer.evidence.coverage_reason !== 'insufficient_coverage')
+		return null;
+
+	const { counts } = answer.evidence;
+	const observed = waiting ? counts.observed_headways : counts.classified;
+	const scheduled = waiting ? counts.frequent_headways : counts.scheduled;
+	const sample =
+		observed != null && scheduled
+			? choose(
+					locale,
+					`${tally(observed, locale)} of ${tally(scheduled, locale)}`,
+					`${tally(observed, locale)} sur ${tally(scheduled, locale)}`,
+				)
+			: null;
+	const floor =
+		minimum == null
+			? null
+			: choose(
+					locale,
+					`minimum ${recordPercent(minimum, locale)}`,
+					`minimum de ${recordPercent(minimum, locale)}`,
+				);
+	const detail = [sample, floor].filter(Boolean).join(', ');
+	const sentence = waiting
+		? choose(
+				locale,
+				'Too few scheduled intervals were observed',
+				'Trop peu d’intervalles prévus ont été observés',
+			)
+		: choose(
+				locale,
+				'There are too few observed stop events to measure punctuality for these dates',
+				'Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates',
+			);
+	return detail ? `${sentence} (${detail}).` : `${sentence}.`;
 }
 
 export const stopAccessibilityDescription = {
@@ -179,7 +228,7 @@ export function stopComparison(
 	if (stopShare == null || networkShare == null) return undefined;
 	const difference = Math.round(Math.abs(stopShare - networkShare) * 1000) / 10;
 	const points = intl.number(locale, { maximumFractionDigits: 1 }).format(difference);
-	const baseline = percent(networkShare, locale);
+	const baseline = recordPercent(networkShare, locale);
 	if (difference === 0)
 		return choose(
 			locale,

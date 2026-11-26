@@ -8,19 +8,14 @@
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import RecordTableName from '#lib/features/record/RecordTableName.svelte';
 	import { chartState, minimumSample } from '#lib/features/record/charts/recordCharts.ts';
-	import {
-		choose,
-		coverageText,
-		measuredShare,
-		percent,
-		tally,
-	} from '#lib/features/record/recordText.ts';
+	import { choose, coverageText, measuredShare, tally } from '#lib/features/record/recordText.ts';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { RecordSeries } from '#lib/server/engine.ts';
-	import { countedUnit } from '#lib/site/presenter.ts';
+	import { recordPercent, countedUnit } from '#lib/site/presenter.ts';
 	import { waitingMeasures, waitingReadingParts } from '#lib/features/record/waitingText.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { stopCoverageGap } from './stopRecordText.ts';
 
 	let {
 		series,
@@ -39,12 +34,16 @@
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const waitingCoverageMinimum = $derived(
+		series.info?.find(({ id }) => id === waitingMeasures[0][0])?.minimum_coverage,
+	);
 	type Row = RecordTableRow & {
 		name: ReturnType<typeof display.lineName>;
 		state: ReturnType<typeof chartState>;
 		share: number | null;
 		sample: number | null;
 		cell: RecordSeries['cells'][number];
+		coverageGap: string | null;
 	};
 	const rows = $derived(
 		series.cells.flatMap((cell): Row[] => {
@@ -65,6 +64,7 @@
 					share: measuredShare(cell, 'on_time'),
 					sample: cell.evidence.counts.classified ?? null,
 					cell,
+					coverageGap: waiting ? stopCoverageGap(cell, locale, true, waitingCoverageMinimum) : null,
 				},
 			];
 		}),
@@ -110,7 +110,7 @@
 
 {#snippet value(row: Row)}
 	{#if row.share === null}<StateMark state={row.state} {locale} />
-	{:else}{percent(row.share, locale)}{/if}
+	{:else}{recordPercent(row.share, locale)}{/if}
 {/snippet}
 {#snippet count(row: Row)}
 	{@const minimum = minimumSample(series, 'on_time')}
@@ -126,10 +126,14 @@
 {/snippet}
 
 {#snippet waitingValue(row: Row, id: (typeof waitingMeasures)[number][0])}
-	{@const reading = waitingReadingParts(row.cell, id, locale)}
-	{reading.value}
-	{#if reading.detail}<span class="block text-small text-muted-foreground">{reading.detail}</span
-		>{/if}
+	{#if row.coverageGap}
+		{#if id === waitingMeasures[0][0]}{row.coverageGap}{/if}
+	{:else}
+		{@const reading = waitingReadingParts(row.cell, id, locale)}
+		{reading.value}
+		{#if reading.detail}<span class="block text-small text-muted-foreground">{reading.detail}</span
+			>{/if}
+	{/if}
 {/snippet}
 {#snippet excess(row: Row)}{@render waitingValue(row, 'excess_wait_time')}{/snippet}
 {#snippet gaps(row: Row)}{@render waitingValue(row, 'long_gaps')}{/snippet}
@@ -171,7 +175,7 @@
 					{#if definition}<p><strong>{t(en, fr)}</strong> {definition}</p>{/if}
 				{/each}
 				{#each rows as row (row.id)}
-					{@const coverage = coverageText(row.cell.evidence, locale)}
+					{@const coverage = row.coverageGap ? '' : coverageText(row.cell.evidence, locale)}
 					{#if coverage}<p>{row.name.label}: {coverage}</p>{/if}
 				{/each}
 			</div>

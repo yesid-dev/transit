@@ -17,14 +17,14 @@ for (const width of [390, 1440]) {
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			const main = page.getByRole('main');
 			const answer = main.locator('#punctuality');
-			await expect(answer).toContainText(fr ? /80\s%/u : '80%');
+			await expect(answer).toContainText(fr ? /80,0\s%/u : '80.0%');
 			await expect(main.getByRole('heading', { level: 1 })).toContainText(
 				fr ? 'Ligne 24' : 'Line 24',
 			);
 			const meta = answer.locator('.answer-meta');
 			await expect(meta.locator('p').first()).toContainText(fr ? 'Ce qui est compté' : 'Counted:');
 			await expect(meta.locator('p').nth(1)).toContainText(fr ? 'nettoyage v7' : 'cleaning v7');
-			await expect(main.locator('#directions dd').first()).toContainText(fr ? /80\s%/u : '80%');
+			await expect(main.locator('#directions dd').first()).toContainText(fr ? /80,0\s%/u : '80.0%');
 
 			const trend = main.locator('#daily');
 			await trend.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
@@ -59,7 +59,7 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#delivery')).not.toContainText(fr ? '1 sur 1' : 'Showing 1 of 1');
 			await expect(main.locator('#late').getByRole('link', { name: /07:00/ })).toBeVisible();
 			await expect(main.locator('#late')).toContainText(fr ? 'se classe premier' : 'ranked first');
-			await expect(main.locator('#crowding')).toContainText(fr ? 'Non suivi' : '25%');
+			await expect(main.locator('#crowding')).toContainText(fr ? 'Non suivi' : '25.0%');
 			await expect(main.locator('#alerts').getByText('3', { exact: true })).toBeVisible();
 
 			await main
@@ -84,7 +84,7 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#schedule')).toContainText(
 				fr ? '01:15, le lendemain' : '01:15, next day',
 			);
-			await expect(main.locator('#punctuality')).toContainText(fr ? /40\s%/u : '40%');
+			await expect(main.locator('#punctuality')).toContainText(fr ? /40,0\s%/u : '40.0%');
 			await main
 				.locator('#schedule')
 				.getByRole('radio', { name: fr ? 'Samedi' : 'Saturday' })
@@ -104,7 +104,7 @@ test('Line shows patience for a slow stop query while punctuality is already rea
 		'/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-09&recordTo=2026-11-15',
 		{ waitUntil: 'commit' },
 	);
-	await expect(page.locator('#punctuality')).toContainText('80%');
+	await expect(page.locator('#punctuality')).toContainText('80.0%');
 	await expect(page.getByText('These records take longer')).toBeVisible();
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect(

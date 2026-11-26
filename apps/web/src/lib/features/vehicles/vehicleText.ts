@@ -1,4 +1,4 @@
-import { recordPercent as percent } from '#lib/site/presenter.ts';
+import { recordPercent } from '#lib/site/presenter.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import { intl } from '#lib/i18n/index.ts';
 import { choose, tally } from '#lib/features/record/recordText.ts';
@@ -55,7 +55,7 @@ export function vehicleReading(answer: RecordMeasure, measure: string, locale: L
 		return vehicleRecordState(answer.state, answer.state_text[locale], locale);
 	const value = answer.value[measure];
 	if (value == null) return choose(locale, 'Unknown', 'Inconnu');
-	if (measure === 'vehicle_on_time') return percent(value, locale);
+	if (measure === 'vehicle_on_time') return recordPercent(value, locale);
 	return intl
 		.number(locale, {
 			maximumFractionDigits: measure === 'vehicle_reporting_gaps_per_100_hours' ? 1 : 2,

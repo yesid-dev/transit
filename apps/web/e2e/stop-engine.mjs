@@ -71,20 +71,13 @@ export function stopEngine(url) {
 	const coverage_note = null;
 	const named = process.env.TRANSIT_E2E_STOP_RECORD_NAMED === '1';
 	const stm = get('city') === 'stm';
-	if (get('stop') === '57135') {
-		const state = 'unknown';
-		const state_text = { en: 'Unknown', fr: 'Inconnu' };
-		return {
-			body: {
-				...(group ? { cells: [] } : { value: {} }),
-				state,
-				state_text,
-				coverage_note,
-				evidence: { ...evidence, counts: {}, days_included: [], days_measured: [] },
-			},
-		};
+	// The Stop page's identity question: which stop ids have any reading in the record.
+	if (group === 'stop_id') {
+		const stop = get('stop');
+		const known = ['S1', 'archived-stop', '57430'].includes(stop);
+		return { body: { cells: known ? [cell({ stop })] : [], evidence, coverage_note } };
 	}
-	if (!['S1', 'archived-stop'].includes(get('stop')))
+	if (!['S1', 'archived-stop', '57430'].includes(get('stop')))
 		return { status: 400, body: { message: 'Wrong stop cut' } };
 	if (measure === 'punctuality' && from === '2026-10-24') {
 		return {
@@ -182,11 +175,24 @@ export function stopEngine(url) {
 					}
 				: cell(null, { alerts: 3, alert_versions: 4 }, { alerts: 3, alert_versions: 4 });
 	}
+	const lowCoverage = measure === 'punctuality' && from === '2026-11-10';
+	if (lowCoverage)
+		row = {
+			...cell(null, { on_time: null }, { classified: 24, scheduled: 100 }),
+			state: 'not_measured',
+			state_text: { en: 'Not measured', fr: 'Non mesuré' },
+			evidence: {
+				counts: { classified: 24, scheduled: 100 },
+				coverage_reason: 'insufficient_coverage',
+				low_coverage: true,
+			},
+		};
 	return {
 		headers: measure === 'punctuality' ? { 'x-transit-answer': 'last-good' } : {},
 		body: {
 			...row,
 			coverage_note,
+			...(lowCoverage ? { info: [{ id: 'on_time', minimum_coverage: 0.4 }] } : {}),
 			evidence: {
 				...evidence,
 				...row.evidence,
@@ -201,7 +207,7 @@ export function stopEngine(url) {
 							}
 					: {}),
 				...(measure === 'punctuality'
-					? { share_observed: counts.classified / counts.scheduled }
+					? { share_observed: lowCoverage ? 0.24 : counts.classified / counts.scheduled }
 					: {}),
 			},
 		},

@@ -13,14 +13,13 @@
 	import {
 		choose,
 		lastGoodNote,
-		percent,
 		punctualityWeighting,
 		pooledDays,
 		recordMessage,
 		tally,
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
-	import { dateRange, methodEvidence, recordStamp } from '#lib/site/presenter.ts';
+	import { recordPercent, dateRange, methodEvidence, recordStamp } from '#lib/site/presenter.ts';
 	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
 	import type { EngineResult, RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
@@ -234,7 +233,7 @@
 							answer.evidence.share_observed == null
 								? null
 								: term.observedShare(
-										percent(answer.evidence.share_observed, locale),
+										recordPercent(answer.evidence.share_observed, locale),
 										answer.evidence.counts.scheduled == null
 											? undefined
 											: tally(answer.evidence.counts.scheduled, locale),

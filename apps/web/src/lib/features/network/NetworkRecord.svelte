@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { recordPercent as percent } from '#lib/site/presenter.ts';
+	import { recordPercent } from '#lib/site/presenter.ts';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
@@ -191,7 +191,7 @@
 							{@const share = measuredShare(answer, 'on_time')}
 							<RecordAnswer
 								{locale}
-								value={share == null ? null : percent(share, locale)}
+								value={share == null ? null : recordPercent(share, locale)}
 								state={share == null ? chartState(answer.state) : undefined}
 								sentence={share == null
 									? recordState(chartState(answer.state))[locale]
@@ -238,7 +238,6 @@
 						{#snippet reading(result)}
 							{#if !('cells' in result)}
 								<RecordChart
-									formatShare={percent}
 									input={{ kind: 'bands', answer: result }}
 									title={copy.bands}
 									{locale}
@@ -277,7 +276,7 @@
 														state={reading.state}
 														{locale}
 													/>{:else}
-													<strong>{percent(reading.share, locale)}</strong>
+													<strong>{recordPercent(reading.share, locale)}</strong>
 												{/if}
 											</FactRow>
 										{/each}
@@ -299,7 +298,6 @@
 								{#if distribution.kind === 'answer'}
 									<div class="grid gap-3">
 										<RecordChart
-											formatShare={percent}
 											input={{ kind: 'histogram', answer: distribution.answer }}
 											title={copy.delay}
 											{locale}
@@ -377,7 +375,6 @@
 					>
 						{#snippet reading(result)}
 							{#if 'cells' in result}<RecordChart
-									formatShare={percent}
 									input={{ kind: 'trend', answer: result }}
 									title={copy.trend}
 									{locale}
@@ -410,7 +407,7 @@
 											<strong
 												>{result.value.trips_run == null
 													? t('Unknown', 'Inconnu')
-													: percent(result.value.trips_run, locale)}</strong
+													: recordPercent(result.value.trips_run, locale)}</strong
 											>
 											<span class="block text-small text-muted-foreground"
 												>{t(
@@ -463,7 +460,6 @@
 				<NetworkRecordReading id="hours" title={copy.hours} {locale} {stamp} answer={record.hours}>
 					{#snippet reading(result)}
 						{#if 'cells' in result}<RecordChart
-								formatShare={percent}
 								input={{ kind: 'hours', answer: result }}
 								title={copy.hours}
 								{locale}
@@ -503,7 +499,7 @@
 									return {
 										id,
 										label,
-										share: share == null ? t('Unknown', 'Inconnu') : percent(share, locale),
+										share: share == null ? t('Unknown', 'Inconnu') : recordPercent(share, locale),
 									};
 								})}
 								scrollMinWidth="24rem"
@@ -554,12 +550,12 @@
 											answer.evidence.share_observed == null
 												? null
 												: term.observedShare(
-														percent(answer.evidence.share_observed, locale),
+														recordPercent(answer.evidence.share_observed, locale),
 														answer.evidence.counts.scheduled == null
 															? undefined
 															: tally(answer.evidence.counts.scheduled, locale),
 													),
-											timingBasis(answer.evidence.counts, locale, percent),
+											timingBasis(answer.evidence.counts, locale),
 											answer.coverage_note?.[locale],
 										]
 											.filter(Boolean)
