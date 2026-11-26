@@ -1,21 +1,44 @@
 import { centerFromProviderBbox, type MapFitPadding } from '../../components/map/viewport';
 import type { Manifest } from '#lib/v1/schemas/index.ts';
 import type { PublicProvider } from '#lib/v1/providers.ts';
+import type { StopIndexEntry } from '#lib/v1/schemas/index.ts';
 
 /** First valid published candidate, in priority order. */
 function published(...candidates: Array<readonly number[] | null | undefined>) {
 	return candidates.find((candidate) => centerFromProviderBbox(candidate) !== null);
 }
 
-/** Catalogue framing, then the manifest's service bounds; none valid means no camera. */
+function servedStopBounds(stops: readonly StopIndexEntry[], hasLiveLine?: (id: string) => boolean) {
+	let west = Infinity;
+	let south = Infinity;
+	let east = -Infinity;
+	let north = -Infinity;
+	for (const { lon, lat, routes } of stops) {
+		if (!routes?.some((id) => !hasLiveLine || hasLiveLine(id))) continue;
+		if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+		west = Math.min(west, lon);
+		south = Math.min(south, lat);
+		east = Math.max(east, lon);
+		north = Math.max(north, lat);
+	}
+	return [west, south, east, north];
+}
+
+/** Prefer the declared service framing, then the network's served stops. */
 export function mapCameraFraming({
 	manifest,
 	provider,
+	stops = [],
+	hasLiveLine,
 }: {
 	manifest: Pick<Manifest, 'bbox'>;
 	provider?: Pick<PublicProvider, 'fit_bounds' | 'max_bounds'> | null;
+	stops?: readonly StopIndexEntry[];
+	hasLiveLine?: (id: string) => boolean;
 }) {
-	const bounds = published(provider?.fit_bounds, manifest.bbox);
+	const bounds =
+		published(provider?.fit_bounds) ??
+		published(servedStopBounds(stops, hasLiveLine), servedStopBounds(stops), manifest.bbox);
 	const center = centerFromProviderBbox(bounds);
 	if (!bounds || !center) return null;
 	return {

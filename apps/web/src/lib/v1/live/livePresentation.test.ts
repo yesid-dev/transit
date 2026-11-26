@@ -8,8 +8,32 @@ import type { FeedHealth, LiveFamilyState } from './store.svelte';
 import { copy as mapCopy } from '#lib/features/map/map.copy.ts';
 import { tripCopy } from '#lib/features/trips/trips.copy.ts';
 import { formatUtc } from '#lib/utils/time.ts';
+import { captureDisplayState, type CaptureFeed } from '#lib/live/captureSnapshot.ts';
 
 const timestamp = '2026-06-21T12:00:00Z';
+
+it.each(['en', 'fr'] as const)('uses the capture clock and cadence on the map in %s', (locale) => {
+	const feed: CaptureFeed = {
+		family: 'vehicle_positions',
+		captured_at: timestamp,
+		source_at: '2026-06-21T11:58:30Z',
+		fresh_for_seconds: 180,
+		source_lag_seconds: 90,
+		expected_every_seconds: 30,
+		read_failed: false,
+	};
+	const vehicle = family({ ageSeconds: 121, ageTimestamp: feed.source_at });
+	for (const [ageSeconds, late] of [
+		[31, false],
+		[90, false],
+		[91, true],
+	] as const) {
+		const now = Date.parse(timestamp) + ageSeconds * 1000;
+		const result = present({ vehicles: vehicle }, { locale, vehicleCapture: { feed, now } });
+		expect(result.stamp).toMatchObject({ ageSeconds, generatedUtc: timestamp, isStale: late });
+		expect(captureDisplayState(feed, now)).toBe(late ? 'stale' : 'live');
+	}
+});
 
 it('keeps the map counter on vehicles while preserving selected trip-feed failure notices', () => {
 	const result = present(

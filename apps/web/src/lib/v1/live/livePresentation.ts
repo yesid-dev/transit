@@ -1,6 +1,7 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import { formatRelativeSeconds, formatUtc } from '#lib/utils/time.ts';
 import { freshnessAgeSeconds } from '#lib/v1/freshness.ts';
+import { captureDisplayState, type CaptureFeed } from '#lib/live/captureSnapshot.ts';
 import { copy as mapCopy } from '#lib/features/map/map.copy.ts';
 import { tripCopy } from '#lib/features/trips/trips.copy.ts';
 import { networkReliabilityCopy } from '#lib/features/network/reliability/network-reliability.copy.ts';
@@ -44,6 +45,7 @@ export interface LivePresentationInput {
 	readonly page?: 'map' | 'trip' | 'network';
 	readonly selection?: { readonly kind: 'vehicle' | 'stop' | 'route' | 'route-line' } | null;
 	readonly vehicleCount?: number | null;
+	readonly vehicleCapture?: { readonly feed: CaptureFeed; readonly now: number };
 	readonly networkFeedAgeAtPublication?: number | null;
 }
 
@@ -221,7 +223,7 @@ function mapStamp(
 	degraded: boolean,
 ): StampPresentation {
 	const ageLabel =
-		result.bannerState === 'global-stall' && stamp.ageSeconds != null
+		result.bannerState === 'global-stall' && stamp.isStale && stamp.ageSeconds != null
 			? mapCopy[locale].feedNotRespondingShort
 			: null;
 	return {
@@ -294,7 +296,27 @@ export function livePresentation(input: LivePresentationInput): LivePresentation
 	};
 	if (input.page === 'map') {
 		const result = mapNotice(input, shownHealth, isPartialStale);
-		return { ...base, stamp: mapStamp(stamp, result, input.locale, degraded), ...result };
+		const capture = input.vehicleCapture;
+		const displayed = capture
+			? publicationPresentation(capture.feed.captured_at, capture.now, input.locale, input.timeZone)
+			: stamp;
+		const status = capture && captureDisplayState(capture.feed, capture.now);
+		return {
+			...base,
+			stamp: mapStamp(
+				capture
+					? {
+							...displayed,
+							ageSource: displayed.ageSeconds == null ? null : 'serving-capture',
+							isStale: status === 'stale' || status === 'unknown' || status === 'no_live_data',
+						}
+					: stamp,
+				result,
+				input.locale,
+				degraded,
+			),
+			...result,
+		};
 	}
 	if (input.page === 'trip') return { ...base, ...tripPresentation(input, stamp) };
 	if (input.page === 'network')

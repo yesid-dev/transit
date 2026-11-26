@@ -92,7 +92,7 @@ export interface LiveStoreOptions {
 
 export interface LiveStore {
 	readonly sourceDate: string | null;
-	readonly vehicles: VehiclesFile | null;
+	readonly vehicles: (VehiclesFile & CaptureEvidence) | null;
 	readonly trips: TripsFile | null;
 	readonly departures: StopDeparturesFile | null;
 	readonly alerts: AlertsFile | null;

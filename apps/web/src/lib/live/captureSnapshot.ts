@@ -155,6 +155,15 @@ export function feedState(
 	return feed.read_failed ? 'refresh_unavailable' : 'live';
 }
 
+/** Public capture status uses the declared vehicle capture cadence, without delivery grace. */
+export function captureDisplayState(feed: CaptureFeed, now: number): ReturnType<typeof feedState> {
+	const state = feedState(feed, now);
+	if (feed.family !== 'vehicle_positions' || !feed.captured_at || !feed.expected_every_seconds)
+		return state;
+	const age = now - Date.parse(feed.captured_at);
+	return age > 3_000 * feed.expected_every_seconds ? 'stale' : state;
+}
+
 export async function fetchCaptureSnapshot(
 	city: string,
 	signal: AbortSignal | undefined,

@@ -7,6 +7,7 @@
 </script>
 
 <script lang="ts">
+	import * as Collapsible from '@yesid/ui/collapsible';
 	import { setPageTitleContext, resolvePageTitle } from '#lib/seo/pageTitle.ts';
 	const clientTitle = setPageTitleContext();
 	import { publishedNetwork } from '#lib/site/providerDisplay.ts';
@@ -134,6 +135,8 @@
 	const mainLabel = $derived(recordMap ? MAP_RECORD.title : mainLandmarkLabel(seoPath));
 	let mapRecordSourceDate = $state<string | null>(null);
 	let mapCreditHeight = $state(0);
+	let mapCreditOpen = $state(false);
+	const datedMapCredit = $derived(Boolean(data.provider?.download_licence?.source_date_required));
 	let mapPanelOpen = $state(false);
 	setContext(mapPanelOpenContext, (open: boolean) => {
 		mapPanelOpen = open;
@@ -427,7 +430,10 @@
 			<div
 				id="main-flow"
 				style:overflow-anchor={seoPath === '/' && !isOverviewRecord ? 'none' : undefined}
-				class="flex w-full flex-col {isFullBleed ? 'map-flow h-full overflow-hidden' : 'page-flow'}"
+				style:--expanded-map-credit={datedMapCredit && mapCreditOpen
+					? `${mapCreditHeight}px`
+					: undefined}
+				class="flex w-full flex-col {isFullBleed ? 'map-flow overflow-hidden' : 'page-flow'}"
 			>
 				{#if data.loadSnapshots && !v1 && !dataIndependentRoute}
 					<div class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6">
@@ -449,15 +455,28 @@
 			{#if isFullBleed}
 				<footer
 					class="map-source-footer bg-card px-3 py-2 text-center text-xs text-muted-foreground"
+					class:dated-map-credit={datedMapCredit}
 					data-slot="map-source-footer"
 					bind:clientHeight={mapCreditHeight}
 				>
 					<Separator decorative class="absolute inset-x-0 top-0" />
-					{#if footerAttribution}<span data-slot="source-credit">{footerAttribution}</span
-						>{footerSeparator}{/if}
-					<span class="footer-disclaimer" data-slot="agency-disclaimer"
-						>{footerWords.disclaimer(footerAgency)}</span
-					>
+					{#snippet fullCredit()}
+						{#if footerAttribution}<span data-slot="source-credit">{footerAttribution}</span
+							>{footerSeparator}{/if}
+						<span class="footer-disclaimer" data-slot="agency-disclaimer"
+							>{footerWords.disclaimer(footerAgency)}</span
+						>
+					{/snippet}
+					{#if datedMapCredit}
+						<Collapsible.Root bind:open={mapCreditOpen}>
+							<Collapsible.Trigger class="min-h-11 underline">
+								{locale === 'fr' ? 'Source des données' : 'Data source'}
+							</Collapsible.Trigger>
+							<Collapsible.Content>{@render fullCredit()}</Collapsible.Content>
+						</Collapsible.Root>
+					{:else}
+						{@render fullCredit()}
+					{/if}
 				</footer>
 			{:else}
 				{#if seoPath === '/' && !isOverviewRecord}
@@ -526,6 +545,7 @@
 	.map-flow {
 		position: fixed;
 		inset: 0;
+		inset-block-end: var(--expanded-map-credit, 0px);
 		--chrome-offset: calc(
 			var(--app-frame-chrome-height, var(--nav-clearance)) + var(--app-frame-paired, 0) * 1rem
 		);
@@ -537,6 +557,11 @@
 		inset-block-end: 0;
 		z-index: var(--z-content);
 		pointer-events: none;
+	}
+	.dated-map-credit {
+		max-block-size: 35dvh;
+		overflow: auto;
+		pointer-events: auto;
 	}
 	@media (min-width: 1024px) {
 		.page-flow {
