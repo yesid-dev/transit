@@ -44,11 +44,13 @@ for (const locale of ['en', 'fr']) {
 		await expect(notice.getByRole('status')).toContainText(
 			fr ? 'Lectures reçues' : 'Readings arrived',
 		);
-		await expect(notice).toHaveAttribute('style', /min-block-size: \d+(?:\.\d+)?px/);
+		// The notice is for screen readers only: it takes no room, so nothing reserves or moves.
+		const box = (await notice.boundingBox())!;
+		expect(box.height).toBeLessThanOrEqual(1);
 		await page.evaluate(() => {
 			document.documentElement.style.fontSize = '200%';
 		});
 		await page.setViewportSize({ ...viewport, width: viewport.width > 900 ? 768 : 320 });
-		await expect(notice).not.toHaveAttribute('style', /min-block-size/);
+		expect((await notice.boundingBox())!.height).toBeLessThanOrEqual(1);
 	});
 }
