@@ -503,7 +503,7 @@ async function verifyNetwork(page, cell, fixture, replay, errors, html) {
 				]),
 			`${label} capture headcount or status values drifted: ${JSON.stringify(actual)}`,
 		);
-		const silentTitle = cell.locale === 'fr' ? 'Trajets sans signalement' : 'Silent trips';
+		const silentTitle = cell.locale === 'fr' ? 'Trajets silencieux' : 'Silent trips';
 		const silent = main.getByRole('article', { name: silentTitle, exact: true });
 		await silent.locator('[data-record-state="not_measured"]').waitFor();
 		expectedPaths.push('/v2/stm/live');
@@ -686,13 +686,15 @@ async function verifyLineReadings(page, cell, onTime, label) {
 		[8, 8, 1],
 		[0, 1],
 	]);
+	// Vehicle time reads in hours (30 and 90 minutes).
 	await check('#crowding tbody td', [
-		[25, 30],
-		[75, 90],
+		[25, 0.5],
+		[75, 1.5],
 	]);
 	await check('#boundaries dd', [[5, 44], [1, 15], [16]]);
 	const direction = new URL(cell.path, 'http://b9.local').searchParams.get('direction');
-	await check('#frequency tbody td', [[7, 0, 9, 0], [direction ? 8 : 12]]);
+	// Québec French writes the hours as "7 h à 9 h"; English keeps "07:00 to 09:00".
+	await check('#frequency tbody td', [fr ? [7, 9] : [7, 0, 9, 0], [direction ? 8 : 12]]);
 	await check('#alerts [data-slot="record-card-body"] > p:first-child', [[3]]);
 	return readings;
 }

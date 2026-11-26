@@ -133,7 +133,7 @@ describe('verdictForWindow — FR canonical voice', () => {
 		const v = verdictForWindow(reading(h(85, 4000, 3400), 'week'), { grain: 'week' }, 'fr');
 		expect(v.status).toBe('reliable');
 		expect(v.sentence).toContain('Service fiable cette semaine');
-		expect(v.sentence).toContain('IC 95 % :');
+		expect(v.sentence).toContain('IC 95\u00a0%\u00a0:');
 	});
 	it('FR absent voice', () => {
 		expect(verdictForWindow(reading(h(null), 'day'), { grain: 'day' }, 'fr').sentence).toContain(
@@ -366,7 +366,7 @@ describe('one reliability verdict', () => {
 		expect(result.status).toBe('unreliable');
 		expect(result.interval).toEqual({ lo: 48, hi: 62 });
 		expect(result.hedge).toContain('48–62%');
-		expect(verdictForWindow(reading(result), {}, 'fr').sentence).toContain('48–62 %');
+		expect(verdictForWindow(reading(result), {}, 'fr').sentence).toContain('48–62\u00a0%');
 	});
 	it('keeps an explicitly selected grain and never borrows an unavailable window', () => {
 		const file = {

@@ -966,8 +966,9 @@ const frenchContractions: [RegExp, string][] = [
 ];
 
 /**
- * The agency in a French sentence: as its subject ("la STM", "OC Transpo"), after "de" ("de la
- * STM", "d’OC Transpo"), after "par" and "avec", and capitalized to start a sentence.
+ * The agency in a French sentence, from the form its city declares after "de": as its subject
+ * ("la …" for a declared "de la …"), after "de", after "par" and "avec", and capitalized to start
+ * a sentence.
  */
 export function frenchAgency({ name, frenchOf }: AgencyName) {
 	const declared = frenchOf?.trim();
