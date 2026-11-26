@@ -44,7 +44,7 @@ const netLogArgs = process.env.CI
 		]
 	: [];
 
-const httpSpecs =/(?:^|[\\/])(?:head-ssr|health|favicon)\.spec\.ts$/;
+const httpSpecs = /(?:^|[\\/])(?:head-ssr|health|favicon)\.spec\.ts$/;
 const jsonReporter: ['json'][] = process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ? [['json']] : [];
 
 export default defineConfig({

@@ -7,7 +7,8 @@ import config from './wrangler.json' with { type: 'json' };
 const require = createRequire(import.meta.url);
 const wrangler = require.resolve('wrangler/package.json');
 // Use the same pinned workerd and asset handling as Wrangler.
-const { Miniflare, convertV4MiniflareOptions, Log, LogLevel } = createRequire(wrangler)('miniflare');
+const { Miniflare, convertV4MiniflareOptions, Log, LogLevel } =
+	createRequire(wrangler)('miniflare');
 
 // DIAGNOSTIC (do not merge): log every answered request with a timestamp beside the failure evidence.
 class FileLog extends Log {
