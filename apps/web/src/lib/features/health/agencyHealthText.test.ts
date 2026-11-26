@@ -6,7 +6,11 @@ import type {
 	RecordSeries,
 	ScorecardAnswer,
 } from '#lib/server/engine.ts';
-import { alertsNotCollected, alertsNotTrackedLine } from '#lib/site/presenter.ts';
+import {
+	alertsNotCollected,
+	alertsNotTrackedLine,
+	alertsNotTrackedOnDates,
+} from '#lib/site/presenter.ts';
 import {
 	collectionGaps,
 	predictionReadings,
@@ -319,4 +323,12 @@ describe('gaps in collection', () => {
 			'No gap in collection in these dates.',
 		);
 	});
+});
+
+it.each([
+	['en', 'Not tracked: Transit did not collect STM’s alerts on these dates.'],
+	['fr', 'Non suivi\u00a0: Transit n’a pas collecté les avis de la STM à ces dates.'],
+] as const)('separates dates without alerts from a city never collected in %s', (locale, line) => {
+	expect(alertsNotTrackedOnDates('STM', locale)).toBe(line);
+	expect(alertsNotTrackedOnDates('STM', locale)).not.toBe(alertsNotTrackedLine('STM', locale));
 });

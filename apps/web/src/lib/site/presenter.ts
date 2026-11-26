@@ -635,12 +635,12 @@ export function lowCoverageReason(
 	return detail ? `${label}${fr ? ' : ' : ': '}${detail}` : label;
 }
 
-/** French subject: an acronym takes its article ("la STM"), another name stands alone. */
+/** French subject: an acronym takes the article "la", another name stands alone. */
 export function frenchOperatorName(operator: string) {
 	return /^\p{Lu}{2,}$/u.test(operator) ? `la ${operator}` : operator;
 }
 
-/** French "of <operator>": "de la STM" for an acronym, "d’OC Transpo" before a vowel. */
+/** French "of <operator>": "de la" before an acronym, "d’" before a vowel, else "de". */
 export function frenchOperatorOf(operator: string) {
 	if (/^\p{Lu}{2,}$/u.test(operator)) return `de la ${operator}`;
 	if (/^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(operator)) return `d’${operator}`;
@@ -659,6 +659,13 @@ export function alertsNotTrackedLine(operator: string, locale: Locale) {
 	return locale === 'fr'
 		? `Non suivi\u00a0: ${alertsNotCollected(operator, locale)}`
 		: `Not tracked: ${alertsNotCollected(operator, locale)}`;
+}
+
+/** A city whose alerts Transit collects, on dates the record holds none of them. */
+export function alertsNotTrackedOnDates(operator: string, locale: Locale) {
+	return locale === 'fr'
+		? `Non suivi\u00a0: Transit n’a pas collecté les avis ${frenchOperatorOf(operator)} à ces dates.`
+		: `Not tracked: Transit did not collect ${operator}’s alerts on these dates.`;
 }
 
 export function officialAlertsLabel(locale: Locale) {

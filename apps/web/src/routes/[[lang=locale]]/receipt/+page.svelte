@@ -48,6 +48,7 @@
 		countedUnit,
 		dailyAlertsLink,
 		alertsNotTrackedLine,
+		alertsNotTrackedOnDates,
 		dateRange,
 		longDate,
 		methodEvidence,
@@ -315,10 +316,14 @@
 		/>
 	{/if}
 {/snippet}
-{#snippet messagesNotTracked()}
+{#snippet messagesNotTracked(onDates = false)}
 	<p class="flex min-w-0 items-baseline gap-2">
 		<StateMark state="alerts_not_tracked" locale={lang} hiddenLabel />
-		<span>{alertsNotTrackedLine(operator ?? cityName, lang)}</span>
+		<span
+			>{onDates
+				? alertsNotTrackedOnDates(operator ?? cityName, lang)
+				: alertsNotTrackedLine(operator ?? cityName, lang)}</span
+		>
 	</p>
 {/snippet}
 {#snippet lead(
@@ -585,7 +590,7 @@
 										{@const count = messages?.evidence.counts.alerts}
 										{#if !messages}{@render failure(result)}
 										{:else if messages.state === 'not_tracked'}
-											{@render messagesNotTracked()}
+											{@render messagesNotTracked(true)}
 										{:else if messages.state !== 'measured'}{@render missingMeasure(messages)}
 										{:else if count === 0}
 											<p>
