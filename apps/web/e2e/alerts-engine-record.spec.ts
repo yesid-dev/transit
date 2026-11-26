@@ -135,7 +135,16 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	const stop = filter.getByRole('combobox', { name: 'Stop' });
 	await stop.fill('51234');
 	await stop.press('ArrowDown');
-	await page.getByRole('option', { name: 'Stop 51234' }).click();
+	// Pick with the keyboard once the option is the active one. The kit listbox is placed in
+	// document coordinates beside a fixed rail, so a pointer click's scroll-into-view moves it
+	// for a frame and the click can land on the rail instead.
+	const stopOption = page.getByRole('option', { name: 'Stop 51234' });
+	await expect(stopOption).toBeVisible();
+	await expect(stop).toHaveAttribute(
+		'aria-activedescendant',
+		(await stopOption.getAttribute('id'))!,
+	);
+	await stop.press('Enter');
 	await expect(page).toHaveURL(/route=24.*stop=51234/);
 	await expect(filter.getByText(/^\d+ notices?$/)).not.toHaveText('213 notices');
 	await closeCompactFrameControls(page);
