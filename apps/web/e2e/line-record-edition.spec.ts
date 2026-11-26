@@ -40,57 +40,61 @@ const cases = ['stm', 'octranspo'].flatMap((provider) =>
 	),
 );
 
-for (const { provider, locale, width } of cases) {
-	test(
-		provider +
-			' ' +
-			locale +
-			' ' +
-			width +
-			': a copied Line Record link preserves its scope and evidence',
-		async ({ page }) => {
-			await page.setViewportSize({ width, height: 1000 });
-			const path = localizeHref('/lines/24', locale, provider);
-			await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14&direction=1');
-			const section = page.locator('#punctuality');
-			const cite = section.getByText(locale === 'fr' ? 'Citer' : 'Cite', { exact: true });
-			const dialog = page.getByRole('dialog');
-			const evidence = dialog.getByText(
-				locale === 'fr'
-					? /40 sur 100.*Méthode v1, nettoyage v7/u
-					: /40 of 100.*Method v1, cleaning v7/u,
-			);
-			await cite.click();
-			await expect(evidence).toBeVisible();
-			await dialog.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close' }).click();
-			const copy = section.getByRole('button', { name: transitTerms[locale].action.copyLink });
-			expect((await copy.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
-			await copy.focus();
-			await expect(copy).toBeFocused();
-			await copy.press('Enter');
-			const link = () =>
-				page.evaluate(() => (window as unknown as { __recordLink?: string }).__recordLink ?? '');
-			await expect.poll(link).not.toBe('');
-			const copied = new URL(await link());
-			expect(copied.pathname).toBe(locale === 'fr' ? '/fr/lines/24' : '/lines/24');
-			expect(copied.searchParams.get('provider')).toBe(provider);
-			expect(copied.searchParams.get('recordFrom')).toBe('2026-11-08');
-			expect(copied.searchParams.get('recordTo')).toBe('2026-11-14');
-			expect(copied.searchParams.get('direction')).toBe('1');
-			expect(copied.hash).toBe('#punctuality');
-
-			if (provider === 'octranspo' && locale === 'en' && width === 320) {
-				// A method/health widget must not gate hydration of a copied Line Record link.
-				await page.route(`**/_app/immutable/${terminalPanelAsset()}`, (route) =>
-					route.abort('failed'),
+// DIAGNOSTIC (do not merge): repeat in CI to catch the stalled chunk loads with net logs on.
+const rounds = process.env.CI ? [1, 2, 3, 4, 5] : [1];
+for (const round of rounds)
+	for (const { provider, locale, width } of cases) {
+		test(
+			`#${round} ` +
+				provider +
+				' ' +
+				locale +
+				' ' +
+				width +
+				': a copied Line Record link preserves its scope and evidence',
+			async ({ page }) => {
+				await page.setViewportSize({ width, height: 1000 });
+				const path = localizeHref('/lines/24', locale, provider);
+				await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14&direction=1');
+				const section = page.locator('#punctuality');
+				const cite = section.getByText(locale === 'fr' ? 'Citer' : 'Cite', { exact: true });
+				const dialog = page.getByRole('dialog');
+				const evidence = dialog.getByText(
+					locale === 'fr'
+						? /40 sur 100.*Méthode v1, nettoyage v7/u
+						: /40 of 100.*Method v1, cleaning v7/u,
 				);
-			}
-			await page.goto(copied.href);
-			await cite.click();
-			await expect(evidence).toBeVisible();
-			expect(
-				(await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations,
-			).toEqual([]);
-		},
-	);
-}
+				await cite.click();
+				await expect(evidence).toBeVisible();
+				await dialog.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close' }).click();
+				const copy = section.getByRole('button', { name: transitTerms[locale].action.copyLink });
+				expect((await copy.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+				await copy.focus();
+				await expect(copy).toBeFocused();
+				await copy.press('Enter');
+				const link = () =>
+					page.evaluate(() => (window as unknown as { __recordLink?: string }).__recordLink ?? '');
+				await expect.poll(link).not.toBe('');
+				const copied = new URL(await link());
+				expect(copied.pathname).toBe(locale === 'fr' ? '/fr/lines/24' : '/lines/24');
+				expect(copied.searchParams.get('provider')).toBe(provider);
+				expect(copied.searchParams.get('recordFrom')).toBe('2026-11-08');
+				expect(copied.searchParams.get('recordTo')).toBe('2026-11-14');
+				expect(copied.searchParams.get('direction')).toBe('1');
+				expect(copied.hash).toBe('#punctuality');
+
+				if (provider === 'octranspo' && locale === 'en' && width === 320) {
+					// A method/health widget must not gate hydration of a copied Line Record link.
+					await page.route(`**/_app/immutable/${terminalPanelAsset()}`, (route) =>
+						route.abort('failed'),
+					);
+				}
+				await page.goto(copied.href);
+				await cite.click();
+				await expect(evidence).toBeVisible();
+				expect(
+					(await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations,
+				).toEqual([]);
+			},
+		);
+	}
