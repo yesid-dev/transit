@@ -137,6 +137,7 @@
 	let mapCreditHeight = $state(0);
 	let mapCreditOpen = $state(false);
 	const datedMapCredit = $derived(Boolean(data.provider?.download_licence?.source_date_required));
+	const mapCreditExpanded = $derived(datedMapCredit && mapCreditOpen);
 	let mapPanelOpen = $state(false);
 	setContext(mapPanelOpenContext, (open: boolean) => {
 		mapPanelOpen = open;
@@ -430,8 +431,10 @@
 			<div
 				id="main-flow"
 				style:overflow-anchor={seoPath === '/' && !isOverviewRecord ? 'none' : undefined}
-				style:--expanded-map-credit={datedMapCredit && mapCreditOpen
-					? `${mapCreditHeight}px`
+				style:--expanded-map-credit={mapCreditExpanded ? `${mapCreditHeight}px` : undefined}
+				style:--map-source-clearance={mapCreditExpanded ? '0px' : undefined}
+				style:--map-touch-row-bottom={mapCreditExpanded
+					? 'var(--map-touch-controls-clearance)'
 					: undefined}
 				class="flex w-full flex-col {isFullBleed ? 'map-flow overflow-hidden' : 'page-flow'}"
 			>
