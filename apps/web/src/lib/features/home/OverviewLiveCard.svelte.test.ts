@@ -49,7 +49,7 @@ function renderLive(
 		},
 	});
 	render(OverviewLiveCard, {
-		props: { locale, manifest, alertsAvailable: false, link: (path) => path },
+		props: { locale, manifest, alertsAvailable: false, operator: 'STM', link: (path) => path },
 	});
 	return within(screen.getByText(overviewCopy[locale].silent).parentElement!);
 }

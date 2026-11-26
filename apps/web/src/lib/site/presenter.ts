@@ -634,3 +634,33 @@ export function lowCoverageReason(
 	}
 	return detail ? `${label}${fr ? ' : ' : ': '}${detail}` : label;
 }
+
+/** French subject: an acronym takes its article ("la STM"), another name stands alone. */
+export function frenchOperatorName(operator: string) {
+	return /^\p{Lu}{2,}$/u.test(operator) ? `la ${operator}` : operator;
+}
+
+/** French "of <operator>": "de la STM" for an acronym, "d’OC Transpo" before a vowel. */
+export function frenchOperatorOf(operator: string) {
+	if (/^\p{Lu}{2,}$/u.test(operator)) return `de la ${operator}`;
+	if (/^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(operator)) return `d’${operator}`;
+	return `de ${operator}`;
+}
+
+/** The one sentence for a city whose alerts Transit does not collect. */
+export function alertsNotCollected(operator: string, locale: Locale) {
+	return locale === 'fr'
+		? `Transit ne collecte pas encore les avis ${frenchOperatorOf(operator)}.`
+		: `Transit does not collect ${operator}’s alerts yet.`;
+}
+
+/** The state and its sentence on one line: "Not tracked: Transit does not collect …". */
+export function alertsNotTrackedLine(operator: string, locale: Locale) {
+	return locale === 'fr'
+		? `Non suivi\u00a0: ${alertsNotCollected(operator, locale)}`
+		: `Not tracked: ${alertsNotCollected(operator, locale)}`;
+}
+
+export function officialAlertsLabel(locale: Locale) {
+	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check official service alerts';
+}

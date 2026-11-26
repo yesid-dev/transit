@@ -17,6 +17,8 @@
 	import {
 		alertAnswerSentence,
 		alertPaging,
+		alertsNotCollected,
+		officialAlertsLabel,
 		captureAge,
 		dateRange,
 		liveStampAge,
@@ -427,10 +429,7 @@
 							title={t('Not tracked', 'Non suivi')}
 							glyph="⊠"
 							role="status"
-							body={t(
-								'Transit does not track service alerts for this network.',
-								'Transit ne suit pas les avis de service de ce réseau.',
-							)}
+							body={alertsNotCollected(data.operator ?? data.cityName, locale)}
 						>
 							{#snippet action()}
 								{#if data.officialAlertsUrl}
@@ -438,7 +437,7 @@
 										class="inline-flex min-h-11 max-w-[calc(100cqi-2.5rem)] items-center text-primary underline"
 										href={data.officialAlertsUrl}
 									>
-										{t('Check official service alerts', 'Consulter les avis officiels')}
+										{officialAlertsLabel(locale)}
 									</a>
 								{/if}
 							{/snippet}</StateNotice

@@ -72,6 +72,7 @@
 		provider,
 		href,
 		alertsAvailable = false,
+		officialAlertsUrl,
 		record,
 	}: {
 		locale: Locale;
@@ -81,6 +82,7 @@
 		provider: string;
 		href: string;
 		alertsAvailable?: boolean;
+		officialAlertsUrl?: string;
 		record: {
 			period: DateWindow;
 			previous: DateWindow;
@@ -323,6 +325,8 @@
 			{locale}
 			manifest={record.manifest ?? null}
 			{alertsAvailable}
+			{operator}
+			{officialAlertsUrl}
 			{link}
 			onCaptureAge={(age) => (liveCaptureAge = age)}
 		/>

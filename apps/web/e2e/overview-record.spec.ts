@@ -424,10 +424,15 @@ test('the header carries the Live view and dates through city and language chang
 	await expect(
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
 	).toContainText('Not measured');
-	await expect(live.getByText('Alerts in effect', { exact: true }).locator('..')).toContainText(
-		'No live data',
-	);
+	// A city whose alerts Transit does not collect says so, and blames no one else.
+	const alerts = live.getByText('Alerts in effect', { exact: true }).locator('..');
+	await expect(alerts).toContainText('Not tracked');
+	await expect(alerts).toContainText('Transit does not collect OC Transpo’s alerts yet.');
 	await expect(live.getByRole('link', { name: 'Read the alerts' })).toHaveCount(0);
+	await expect(live.getByRole('link', { name: 'Check official service alerts' })).toHaveAttribute(
+		'href',
+		'https://www.octranspo.com/en/alerts/',
+	);
 
 	await page.getByTestId('language-toggle').click();
 	await expect(page).toHaveURL((url) => url.pathname === '/fr' && isOttawaLive(url));

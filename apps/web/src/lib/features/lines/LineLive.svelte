@@ -280,6 +280,7 @@
 					{now}
 					{locale}
 					{timeZone}
+					{operator}
 					tracked={hasAlerts}
 					href={link('/alerts?frameMode=live&' + new URLSearchParams({ route: line }))}
 				/>
