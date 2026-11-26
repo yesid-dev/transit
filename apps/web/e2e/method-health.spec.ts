@@ -285,7 +285,7 @@ for (const width of [390, 1440]) {
 				selector.startsWith('#days-in-record'),
 			);
 			expect(tableHealthDefects).toEqual([]);
-			const healthGrid = main.locator('#table-health [data-slot="hour-grid"]');
+			const healthGrid = main.locator('#days-in-record [data-slot="hour-grid"]');
 			await expect(healthGrid.locator('.legend')).toHaveCount(0);
 			const gridMetrics = await healthGrid.evaluate((rootEl) => {
 				const scroller = rootEl.querySelector<HTMLElement>('[role="region"]')!;
