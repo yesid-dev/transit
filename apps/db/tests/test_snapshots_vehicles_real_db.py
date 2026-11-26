@@ -227,6 +227,27 @@ def test_vehicle_next_stop_index_paths_are_available(
 def test_vehicle_next_stop_lookup_can_use_stop_times_primary_key(conn, record_property):
     _add_trip_update(conn, entity_index=0, trip_id="capture-order-trip", route_id="51")
     _stop(conn, entity_index=0, stu_index=0, stop_id="next-stop", seq=1, mins=5)
+    # A real trip-updates snapshot carries many entities, not one. The filler
+    # entities share the snapshot and the provider, so the provider/stop index
+    # that also matches this lookup crosses every entity, while the primary
+    # key (rt_feed_snapshot_id, entity_index, ...) reaches only the looked-up
+    # entity. One lone row ties the two index costs and the planner's pick
+    # followed whatever statistics the surrounding CI run happened to have.
+    for entity_index in range(1, 26):
+        _add_trip_update(
+            conn, entity_index=entity_index, trip_id=f"filler-trip-{entity_index}", route_id="51"
+        )
+        _stop(
+            conn,
+            entity_index=entity_index,
+            stu_index=0,
+            stop_id=f"filler-stop-{entity_index}",
+            seq=1,
+            mins=5,
+        )
+    # Analyze only what this transaction seeded, so the cost comparison below
+    # runs on fixed statistics instead of ambient CI table state.
+    conn.execute(text("ANALYZE silver.rt_trip_update_stop_times"))
     # Derive the actual stop-times predicates, ordering and LIMIT from production.
     # Bind the outer-row values so neither fleet ordering nor join costing can
     # influence this check. Changed fragment boundaries fail instead of drifting.
