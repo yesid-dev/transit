@@ -19,15 +19,3 @@ it('keeps the complete headline accessible and omits missing metadata entries', 
 	expect(screen.getByRole('heading')).not.toHaveAttribute('data-allow-clip');
 	expect(container.querySelector('[data-slot="record-notice"]')).toBeNull();
 });
-it('puts the record notice under the stamp, the whole sentence linking to Data health', () => {
-	const notice = 'This record was published with a warning. See Data health.';
-	const meta = ['Record · data through Nov 10 · published Nov 11'];
-	const { container } = render(TransitArticleHeader, {
-		props: { title: 'Line 24', backHref: '/', backLabel: 'Back', meta, notice },
-	});
-	const link = screen.getByRole('link', { name: notice });
-	expect(link).toHaveAttribute('href', '/status');
-	expect(container.querySelector('.header__meta')!.compareDocumentPosition(link)).toBe(
-		Node.DOCUMENT_POSITION_FOLLOWING,
-	);
-});

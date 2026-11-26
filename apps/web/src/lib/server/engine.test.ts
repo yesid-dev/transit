@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { measure, period, ranking, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import {
+	getCaptureResponse,
 	getDelayDistribution,
 	getMeasure,
 	getRanking,
@@ -28,6 +29,16 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.unstubAllEnvs();
+});
+
+it('Vite development reads from the public v2 proxy when a local service binding is present', async () => {
+	vi.stubEnv('MODE', 'development');
+	const direct = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null));
+	await getCaptureResponse('stm', new AbortController().signal);
+	expect(fetcher).not.toHaveBeenCalled();
+	const request = direct.mock.calls[0]?.[0] as Request;
+	expect(request.url).toBe('https://data.yesid.dev/v2/stm/live');
 });
 
 it('reads the distribution as a series and treats deploy skew as unavailable', async () => {

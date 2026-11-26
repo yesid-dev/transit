@@ -146,16 +146,20 @@ function engineFetch(
 	fixtureScope?: string | null,
 	recordDeadline?: number,
 ) {
-	const proxy = env.QUESTION_PROXY;
+	// Vite has no deployed Questions service, even when its local Worker exposes the binding.
+	const local = import.meta.env.MODE === 'development';
+	const proxy = local ? undefined : env.QUESTION_PROXY;
 	const fixture = env.QUESTION_FIXTURE_ORIGIN;
-	if (!proxy && !fixture) return null;
-	const url = questionUrl(question, proxy ? QUESTION_ORIGIN : fixture);
+	const direct = fixture ?? (local ? QUESTION_ORIGIN : undefined);
+	if (!proxy && !direct) return null;
+	const url = questionUrl(question, proxy ? QUESTION_ORIGIN : direct);
 	const headers = new Headers();
 	if (proxy && visitorIp) headers.set('x-transit-visitor-ip', visitorIp);
 	if (proxy && recordDeadline) headers.set('x-transit-record-deadline', String(recordDeadline));
 	// The loopback test binding lets a fixture opt in to holding its own request.
 	if (
 		!proxy &&
+		fixture &&
 		fixtureScope &&
 		(question.parameters.measure === 'alert_counts' ||
 			question.path.endsWith('/schedule-index') ||

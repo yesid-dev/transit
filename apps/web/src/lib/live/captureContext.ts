@@ -22,8 +22,16 @@ export function captureContext(
 	const tile = /^\/data\/v1\/([^/]+)\/static\/basemap\/([a-zA-Z0-9_-]+\.pmtiles)$/.exec(
 		provider.basemap_url ?? '',
 	);
+	const publishedTile =
+		/^https:\/\/data\.yesid\.dev\/v2\/([^/]+)\/basemap\/[a-zA-Z0-9_-]+\.pmtiles$/.exec(
+			provider.basemap_v2_url ?? '',
+		);
 	const basemap =
-		tile?.[1] === provider.id ? `${origin}/v2/${provider.id}/basemap/${tile[2]}` : null;
+		publishedTile?.[1] === provider.id
+			? publishedTile[0]
+			: tile?.[1] === provider.id
+				? `${origin}/v2/${provider.id}/basemap/${tile[2]}`
+				: null;
 	const position = provider.inputs.vehicle_positions === true;
 	return {
 		lang,

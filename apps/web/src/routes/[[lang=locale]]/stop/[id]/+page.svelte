@@ -28,10 +28,5 @@
 	/>
 {:else if data.frameLive && data.v1}
 	{#if data.frameLive}<StopViewNav {locale} {url} view="live" />{/if}
-	<StopDetail
-		id={data.seed.id}
-		seed={data.seed}
-		stopSeed={data.stopSeed ?? undefined}
-		frameLive={data.frameLive}
-	/>
+	<StopDetail id={data.seed.id} seed={data.seed} stopSeed={data.stopSeed ?? undefined} />
 {/if}

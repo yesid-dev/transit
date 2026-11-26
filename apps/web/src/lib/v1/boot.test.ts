@@ -1,16 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Manifest } from '#lib/v1/schemas/index.ts';
+import { describe, expect, it, vi } from 'vitest';
 import readyProviders from '../../../e2e/providers.json';
 
-const mocks = vi.hoisted(() => ({
-	getManifest: vi.fn(),
-	getLabels: vi.fn(),
-}));
-
-vi.mock('#lib/v1/repositories/manifest.ts', () => ({ getManifest: mocks.getManifest }));
-vi.mock('#lib/v1/repositories/labels.ts', () => ({ getLabels: mocks.getLabels }));
-
-import { bootV1, bootProvider, resolveLabel } from './boot';
+import { bootProvider, resolveLabel } from './boot';
 import { CityCatalogSchema, PublicCitySchema } from './schemas/providers';
 
 const cities = CityCatalogSchema.parse({
@@ -65,12 +56,7 @@ const unavailable = async () => {
 	throw new Error('catalog unavailable');
 };
 
-describe('bootV1 request reuse', () => {
-	beforeEach(() => {
-		mocks.getManifest.mockReset();
-		mocks.getLabels.mockReset();
-	});
-
+describe('boot provider from the public catalog', () => {
 	it.each([
 		['/lines/7?tab=reliability', '/lines/7?tab=reliability&provider=octranspo'],
 		['/stop/3009', '/stop/3009?provider=octranspo'],
@@ -88,9 +74,9 @@ describe('bootV1 request reuse', () => {
 			const url = new URL(path, 'https://transit.test');
 			const result = await bootProvider(
 				url,
-				path.startsWith('/fr/') ? 'fr' : 'en',
+
 				loadCities,
-				undefined,
+
 				{
 					lat: 45.42,
 					lon: -75.7,
@@ -98,7 +84,6 @@ describe('bootV1 request reuse', () => {
 			);
 			expect(result.redirectHref).toBe(expected);
 			expect(url.pathname + url.search).toBe(path);
-			expect(mocks.getManifest).not.toHaveBeenCalled();
 		},
 	);
 
@@ -112,9 +97,9 @@ describe('bootV1 request reuse', () => {
 		async (path, location) => {
 			const result = await bootProvider(
 				new URL(path, 'https://transit.test'),
-				'en',
+
 				loadCities,
-				undefined,
+
 				location,
 			);
 			expect(result.redirectHref).toBeNull();
@@ -126,9 +111,9 @@ describe('bootV1 request reuse', () => {
 		async (query) => {
 			const result = await bootProvider(
 				new URL(`https://transit.test/fr/lines/7?tab=reliability&${query}&q=7&tag=a&tag=b`),
-				'fr',
+
 				loadCities,
-				undefined,
+
 				{ lat: 45.42, lon: -75.7 },
 			);
 			expect(result.providerId).toBe('stm');
@@ -136,39 +121,33 @@ describe('bootV1 request reuse', () => {
 		},
 	);
 
-	it('redirects an Ottawa arrival before reading any default-city manifest or labels', async () => {
+	it('redirects an Ottawa arrival from the catalog', async () => {
 		const result = await bootProvider(
 			new URL('https://transit.test/fr/map'),
-			'fr',
+
 			loadCities,
-			undefined,
+
 			{ lat: 45.42, lon: -75.7 },
 		);
 		expect(result).toMatchObject({
 			providerId: 'octranspo',
 			redirectHref: '/fr/map?provider=octranspo',
-			v1: null,
+
 			discoveryError: false,
 		});
-		expect(mocks.getManifest).not.toHaveBeenCalled();
-		expect(mocks.getLabels).not.toHaveBeenCalled();
 	});
 
-	it('keeps the STM compatibility fallback when discovery fails for an Ottawa arrival', async () => {
-		mocks.getManifest.mockResolvedValue({ provider: 'stm', city: 'Montréal', display_name: 'STM' });
-		mocks.getLabels.mockResolvedValue({});
-		const fetch = vi.fn(async () => new Response(null, { status: 503 }));
-		const result = await bootProvider(
-			new URL('https://transit.test/'),
-			'en',
-			unavailable,
-			{ fetch },
-			{ lat: 45.42, lon: -75.7 },
-		);
-		expect(result.providerId).toBe('stm');
-		expect(result.discoveryError).toBe(true);
-		expect(result.redirectHref).toBeNull();
-		expect(result.v1?.manifest.provider).toBe('stm');
+	it('retains the local default city id if catalog discovery fails', async () => {
+		const result = await bootProvider(new URL('https://transit.test/'), unavailable, {
+			lat: 45.42,
+			lon: -75.7,
+		});
+		expect(result).toMatchObject({
+			providerId: 'stm',
+			provider: null,
+			discoveryError: true,
+			redirectHref: null,
+		});
 	});
 
 	it.each([503, 200])(
@@ -178,78 +157,28 @@ describe('bootV1 request reuse', () => {
 			const url = new URL('https://transit.test/fr/map?provider=octranspo');
 			const result = await bootProvider(
 				url,
-				'fr',
+
 				async () => {
 					const response = await fetch();
 					if (!response.ok) throw new Error('unavailable');
 					return CityCatalogSchema.parse(await response.json());
 				},
-				{ fetch },
 			);
 			expect(result).toMatchObject({
 				providerId: 'octranspo',
-				v1: null,
+
 				discoveryError: true,
 				redirectHref: null,
 			});
 			expect(url.search).toBe('?provider=octranspo');
-			expect(mocks.getManifest).not.toHaveBeenCalled();
+
 			expect(fetch).toHaveBeenCalledExactlyOnceWith();
 		},
 	);
+});
 
-	it('limits discovery-outage compatibility to the default provider manifest', async () => {
-		mocks.getManifest.mockResolvedValue({ provider: 'stm', city: 'Montréal', display_name: 'STM' });
-		mocks.getLabels.mockResolvedValue({});
-		const fetch = vi.fn(async () => new Response(null, { status: 503 }));
-		const result = await bootProvider(new URL('https://transit.test/network'), 'en', unavailable, {
-			fetch,
-		});
-		expect(result.v1?.manifest.provider).toBe('stm');
-		expect(result.provider).toBeNull();
-		expect(result.providers).toEqual([]);
-		expect(mocks.getManifest).toHaveBeenCalledWith({ fetch, providerId: 'stm' });
-	});
-
-	it('keeps manifest label pointers out of the resolved label table', async () => {
-		const manifest = {
-			labels: { fr: 'labels/fr.json', en: 'labels/en.json' },
-			files: { live: { generated_utc: '2026-07-15T12:00:00Z' } },
-		} as unknown as Manifest;
-		const request = vi.fn();
-		const cache = new Map<string, unknown>();
-		mocks.getManifest.mockResolvedValue(manifest);
-		mocks.getLabels.mockResolvedValue({
-			'metric.local': 'Local metric',
-			'status.local': 'Local status',
-			'severity.local': 'Local severity',
-			'occupancy.local': 'Local occupancy',
-			'methodology.local': 'Local methodology',
-		});
-
-		const context = await bootV1('en', { fetch: request, cache });
-
-		expect(context.manifest).toBe(manifest);
-		expect(context.labels).not.toHaveProperty('fr');
-		expect(context.labels).not.toHaveProperty('en');
-		expect([
-			resolveLabel('metric.local', context.labels),
-			resolveLabel('status.local', context.labels),
-			resolveLabel('severity.local', context.labels),
-			resolveLabel('occupancy.local', context.labels),
-			resolveLabel('methodology.local', context.labels),
-		]).toEqual([
-			'Local metric',
-			'Local status',
-			'Local severity',
-			'Local occupancy',
-			'Local methodology',
-		]);
-
-		expect(mocks.getLabels).toHaveBeenCalledWith('en', {
-			fetch: request,
-			cache,
-			manifest,
-		});
-	});
+it('resolves labels only from the local label table', () => {
+	const labels = { 'status.local': 'Local status', local: 'Unrelated' };
+	expect(resolveLabel('status.local', labels)).toBe('Local status');
+	expect(resolveLabel('local', labels)).toBe('local');
 });

@@ -102,11 +102,8 @@ export const load: LayoutServerLoad = async (event) => {
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const selection = await bootProvider(
 		event.url,
-		lang,
 		() => getCityCatalog(visitorIp),
-		undefined,
 		locals.approximateLocation,
-		false,
 	);
 	if (selection.redirectHref) redirect(307, selection.redirectHref);
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });

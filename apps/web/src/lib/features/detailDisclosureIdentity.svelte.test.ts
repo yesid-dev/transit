@@ -43,11 +43,6 @@ vi.mock('$app/navigation', () => ({
 vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getStop: ports.getStop,
 }));
-vi.mock('#lib/v1/repositories/historic.ts', () => ({
-	getStopReliability: ports.getStopReliability,
-	getStopHistoryIndex: async () => null,
-	loadStopHistoryRange: vi.fn(),
-}));
 vi.mock('#lib/v1/repositories/provenance.ts', () => ({
 	getProvenance: async () => ({ gaps: [] }),
 }));
@@ -126,37 +121,23 @@ async function expectResetOnIdChange(
 }
 
 describe.each([false, true])('entity disclosure identity with seeded static data=%s', (seeded) => {
-	it.each(['detail', 'schedule', 'reliability'] as const)(
-		'StopDetail resets %s cards on an id change',
-		async (tab) => {
-			const props = (id: string) => ({
-				id,
-				seed: { id, name: `Stop ${id}` },
-				stopSeed: seeded ? { key: id, data: { ...stop, id } } : undefined,
-			});
-			navigation.setPath(`/stop/52095?tab=${tab}`);
-			const view = render(StopDetail, { props: props('52095') });
-			const selector =
-				tab === 'reliability'
-					? '.stop-reliability [data-toc^="stop-rel-"] [data-section-trigger]'
-					: `[data-toc^="stop-${tab === 'schedule' ? 'schedule' : 'detail'}-"] [data-section-trigger]`;
-			const defaults = await expectResetOnIdChange(
-				view.container,
-				selector,
-				() => view.rerender(props('52095')),
-				async () => {
-					navigation.setPath(`/stop/52096?tab=${tab}`);
-					await view.rerender(props('52096'));
-				},
-			);
-			// The record opens Day by day and keeps its breakdowns closed (UX-T6.4); the other
-			// views open every card.
-			if (tab === 'reliability') expect(defaults.length).toBeGreaterThan(1);
-			expect(defaults).toEqual(
-				tab === 'reliability'
-					? ['true', ...Array<string>(defaults.length - 1).fill('false')]
-					: defaults.map(() => 'true'),
-			);
-		},
-	);
+	it('resets the Live stop cards on an id change', async () => {
+		const props = (id: string) => ({
+			id,
+			seed: { id, name: `Stop ${id}` },
+			stopSeed: seeded ? { key: id, data: { ...stop, id } } : undefined,
+		});
+		navigation.setPath('/stop/52095?frameMode=live&tab=detail');
+		const view = render(StopDetail, { props: props('52095') });
+		const defaults = await expectResetOnIdChange(
+			view.container,
+			'[data-toc^="stop-detail-"] [data-section-trigger]',
+			() => view.rerender(props('52095')),
+			async () => {
+				navigation.setPath('/stop/52096?frameMode=live&tab=detail');
+				await view.rerender(props('52096'));
+			},
+		);
+		expect(defaults).toEqual(defaults.map(() => 'true'));
+	});
 });

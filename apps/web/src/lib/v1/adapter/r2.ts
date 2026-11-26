@@ -1,5 +1,3 @@
-import { labelsPort, manifestPort } from './r2.core';
-
 function deferredPort<Module, Port extends object>(
 	load: () => Promise<Module>,
 	select: (module: Module) => Port,
@@ -18,11 +16,8 @@ function deferredPort<Module, Port extends object>(
 
 const loadLive = () => import('./r2.live');
 const loadStatic = () => import('./r2.static');
-const loadHistoric = () => import('./r2.historic');
 
 export const r2Adapter = {
-	manifest: manifestPort,
-	labels: labelsPort,
 	live: deferredPort(loadLive, (module) => module.livePort, {
 		vehicles: true,
 		trips: true,
@@ -36,23 +31,5 @@ export const r2Adapter = {
 		stopsIndex: true,
 		stop: true,
 	}),
-	historic: deferredPort(loadHistoric, (module) => module.historicPort, {
-		historyIndex: true,
-		lineHistoryDirectory: true,
-		stopHistoryDirectory: true,
-		lineHistoryIndex: true,
-		stopHistoryIndex: true,
-		lineHistoryPartition: true,
-		stopHistoryPartition: true,
-		hotspots: true,
-		routeReliabilityIndex: true,
-		routeReliability: true,
-		stopReliability: true,
-	}),
 	basemap: deferredPort(loadStatic, (module) => module.basemapPort, { get: true }),
-	dataHealth: deferredPort(
-		() => import('./r2.dataHealth'),
-		(module) => module.dataHealthPort,
-		{ get: true },
-	),
 };

@@ -2,17 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
 	bootProvider: vi.fn(),
-	serverV1Context: vi.fn(),
 	getScheduleEdition: vi.fn(),
 	getCityCatalog: vi.fn(),
 }));
 
 vi.mock('#lib/v1/boot.ts', () => ({
 	bootProvider: (...args: unknown[]) => harness.bootProvider(...args),
-}));
-
-vi.mock('#lib/v1/serverContext.ts', () => ({
-	serverV1Context: (...args: unknown[]) => harness.serverV1Context(...args),
 }));
 
 import { load as loadServerLayout } from './+layout.server';
@@ -63,10 +58,7 @@ function serverEvent(lang: 'fr' | undefined, pathname: string, binding = true) {
 		fetch: vi.fn(),
 		request: new Request(`https://transit.yesid.dev${pathname}`),
 		route: { id: '/[[lang=locale]]' + new URL(pathname, 'http://localhost').pathname },
-		locals: { v1Cache: new Map<string, unknown>() } as {
-			v1Cache: Map<string, unknown>;
-			locale?: 'en' | 'fr';
-		},
+		locals: {},
 		platform: binding ? { env: { DATA: { fetch: vi.fn() } } } : undefined,
 	} as unknown as Parameters<typeof loadServerLayout>[0];
 }
@@ -87,7 +79,6 @@ function universalEvent(
 beforeEach(() => {
 	harness.bootProvider.mockReset();
 	harness.bootProvider.mockResolvedValue(selection(null));
-	harness.serverV1Context.mockReset();
 	harness.getScheduleEdition.mockReset().mockResolvedValue({ routes: [], stops: [] });
 });
 
@@ -113,8 +104,6 @@ describe('root server layout boot', () => {
 			loadSnapshots: false,
 			v1: null,
 		});
-		expect(harness.serverV1Context).not.toHaveBeenCalled();
-		expect(harness.bootProvider.mock.calls[0]?.[5]).toBe(false);
 	});
 	it('loads the clean edition for the selected city even without snapshot boot', async () => {
 		const selected = { ...selection(null), provider: city };
@@ -196,14 +185,7 @@ describe('root server layout boot', () => {
 		const location = { lat: 45.42, lon: -75.7 };
 		Object.assign(request.locals, { approximateLocation: location });
 		const result = await loadServerLayout(request);
-		expect(harness.bootProvider).toHaveBeenCalledWith(
-			request.url,
-			'fr',
-			expect.any(Function),
-			undefined,
-			location,
-			false,
-		);
+		expect(harness.bootProvider).toHaveBeenCalledWith(request.url, expect.any(Function), location);
 		expect(JSON.stringify(result)).not.toContain('45.42');
 	});
 	it('prevents caching a successful fallback boot when catalog discovery failed', async () => {
@@ -226,14 +208,10 @@ describe('root server layout boot', () => {
 				v1: { lang: 'fr', manifest: { provider: 'stm', dataset_version: '2026-11-21' } },
 				serverBoot: 'succeeded',
 			});
-			expect(harness.serverV1Context).not.toHaveBeenCalled();
 			expect(harness.bootProvider).toHaveBeenCalledWith(
 				request.url,
-				'fr',
 				expect.any(Function),
-				undefined,
-				undefined,
-				false,
+				request.locals.approximateLocation,
 			);
 		},
 	);
@@ -261,7 +239,6 @@ describe('root server layout boot', () => {
 
 	it('records one failed bound boot so the universal loader does not repeat it server-side', async () => {
 		const request = serverEvent(undefined, '/network');
-		harness.serverV1Context.mockReturnValue({ fetch: vi.fn(), cache: request.locals.v1Cache });
 		harness.bootProvider.mockResolvedValue(selection(null));
 
 		await expect(loadServerLayout(request)).resolves.toMatchObject({

@@ -3,8 +3,7 @@ import { stopPageTitle } from '#lib/seo/riderPageTitle.ts';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
-import { getStop } from '#lib/v1/repositories/static.ts';
-import { serverV1Context, type IdentitySeed } from '#lib/v1/serverContext.ts';
+import { stopFileFromSchedule } from '#lib/v1/adapter/r2.static.ts';
 import { loadStopRecord } from '#lib/server/stopRecord.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { stopFrameView, stopViewHref } from '#lib/site/stopFrame.ts';
@@ -25,7 +24,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const id = event.params.id.trim() || event.params.id;
-	const fallback: IdentitySeed = { id, name: id };
+	const fallback = { id, name: id };
 	const { v1, lang, providerId, schedule, provider } = await event.parent();
 	const period =
 		view === 'record'
@@ -57,20 +56,13 @@ export const load: PageServerLoad = async (event) => {
 	}
 	if (!v1) return { ...frame, seed: fallback, stopSeed: null };
 
-	try {
-		const stop = await getStop(id, {
-			...serverV1Context(event),
-			providerId: v1.manifest.provider,
-			manifest: v1.manifest,
-		});
-		const name = stop?.name.trim();
-		return {
-			...frame,
-			seed: name ? { id, name } : fallback,
-			stopSeed: { key: id, data: stop },
-			...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), stop?.code, lang) } : {}),
-		};
-	} catch {
-		return { ...frame, seed: fallback, stopSeed: null };
-	}
+	const stop =
+		schedule && scheduledStop ? stopFileFromSchedule(scheduledStop, schedule.date) : null;
+	const name = stop?.name.trim();
+	return {
+		...frame,
+		seed: name ? { id, name } : fallback,
+		stopSeed: schedule ? { key: id, data: stop } : null,
+		...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), stop?.code, lang) } : {}),
+	};
 };

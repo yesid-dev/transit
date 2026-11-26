@@ -264,7 +264,6 @@ async function startPreview(replay, captureClock) {
 				compatibility_date: '2025-01-01',
 				compatibility_flags: ['nodejs_compat'],
 				vars: {
-					PUBLIC_V1_BASE: replay.base,
 					PUBLIC_V1_PROVIDER: 'stm',
 					QUESTION_FIXTURE_ORIGIN: replay.origin,
 					CAPTURE_FIXTURE_CLOCK: captureClock,

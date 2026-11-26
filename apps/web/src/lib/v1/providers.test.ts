@@ -10,7 +10,6 @@ import {
 
 vi.mock('$app/env/public', async () => ({
 	...(await import('./../../tests/publicEnv.ts')).PUBLIC_ENV,
-	...{ PUBLIC_V1_BASE: '/data/v1' },
 }));
 
 const provider = {

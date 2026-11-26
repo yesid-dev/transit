@@ -1,16 +1,8 @@
 import { browser } from '$app/env';
 import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
-import type { Manifest } from '#lib/v1/schemas/index.ts';
 import { dataRefresh } from './refresh.svelte';
 
-async function loadGetManifestFresh(): Promise<() => Promise<Manifest>> {
-	const mod = await import('#lib/v1/repositories/manifest.ts');
-	return mod.getManifestFresh;
-}
-
-const MIN_INTERVAL_MS = 5 * 60 * 1000;
-
-const DEFAULT_INTERVAL_MS = MIN_INTERVAL_MS;
+const INTERVAL_MS = 5 * 60 * 1000;
 
 let subscribers = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -21,113 +13,22 @@ let queuedGeneration: number | null = null;
 let lifecycleGeneration = 0;
 let lastCheckAtMs: number | null = null;
 let lastSeenMs: number | null = null;
-let seeded = false;
 let captureCity: string | null = null;
-let lastSeenByTier: Record<'static' | 'historic', number | null> = {
-	static: null,
-	historic: null,
-};
-
-function tierMs(generatedUtc: string | null | undefined): number | null {
-	if (!generatedUtc) return null;
-	const ms = Date.parse(generatedUtc);
-	return Number.isNaN(ms) ? null : ms;
-}
-
-function observedRefreshTiers(manifest: Manifest): Record<'static' | 'historic', number | null> {
-	return {
-		static: tierMs(manifest.files.static?.generated_utc),
-		historic: tierMs(manifest.files.historic?.generated_utc),
-	};
-}
-
-function updateLastSeenMs(): void {
-	const newest = Object.values(lastSeenByTier).filter((value): value is number => value != null);
-	lastSeenMs = newest.length > 0 ? Math.max(...newest) : null;
-}
-
-function seedFromBootManifest(manifest: Manifest): void {
-	const observed = observedRefreshTiers(manifest);
-	if (!seeded) {
-		seeded = true;
-		lastSeenByTier = observed;
-		updateLastSeenMs();
-		return;
-	}
-	for (const tier of ['static', 'historic'] as const) {
-		const next = observed[tier];
-		if (next != null && (lastSeenByTier[tier] == null || next > lastSeenByTier[tier])) {
-			lastSeenByTier[tier] = next;
-		}
-	}
-	updateLastSeenMs();
-}
-
-function observeRefreshTiers(manifest: Manifest): boolean {
-	const observed = observedRefreshTiers(manifest);
-
-	if (!seeded) {
-		seedFromBootManifest(manifest);
-		return false;
-	}
-
-	let advanced = false;
-	for (const tier of ['static', 'historic'] as const) {
-		const next = observed[tier];
-		if (next != null && (lastSeenByTier[tier] == null || next > lastSeenByTier[tier])) {
-			lastSeenByTier[tier] = next;
-			advanced = true;
-		}
-	}
-	updateLastSeenMs();
-	return advanced;
-}
-
-function intervalMsFor(manifest: Manifest): number {
-	const files = manifest.files;
-	const ttls = [files.static?.ttl_s, files.historic?.ttl_s]
-		.filter((v): v is number => typeof v === 'number' && v > 0)
-		.map((s) => s * 1000);
-	const base = ttls.length > 0 ? Math.min(...ttls) : DEFAULT_INTERVAL_MS;
-	return Math.max(MIN_INTERVAL_MS, base);
-}
 
 async function pollOnce(generation: number): Promise<void> {
-	if (!browser || generation !== lifecycleGeneration || !shouldRun()) return;
-	if (captureCity) {
-		const city = captureCity;
-		try {
-			const snapshot = await fetchCaptureSnapshot(city, AbortSignal.timeout(20_000));
-			if (generation !== lifecycleGeneration || !shouldRun() || captureCity !== city) return;
-			const timestamp = Date.parse(snapshot.published_at);
-			const advanced = lastSeenMs !== null && timestamp > lastSeenMs;
-			if (lastSeenMs === null || advanced) lastSeenMs = timestamp;
-			if (advanced) dataRefresh.bumpEpoch();
-		} catch {
-			// A later poll can recover without replacing the last observed capture.
-		}
-		return;
-	}
-	let manifest: Manifest;
+	const city = captureCity;
+	if (!browser || !city || generation !== lifecycleGeneration || !shouldRun()) return;
 	try {
-		const getManifestFresh = await loadGetManifestFresh();
-		if (generation !== lifecycleGeneration || !shouldRun()) return;
-		manifest = await getManifestFresh();
+		const snapshot = await fetchCaptureSnapshot(city, AbortSignal.timeout(20_000));
+		if (generation !== lifecycleGeneration || !shouldRun() || captureCity !== city) return;
+		const timestamp = Date.parse(snapshot.published_at);
+		const advanced = lastSeenMs !== null && timestamp > lastSeenMs;
+		if (lastSeenMs === null || advanced) lastSeenMs = timestamp;
+		if (advanced) dataRefresh.bumpEpoch();
 	} catch {
-		return;
-	}
-	if (generation !== lifecycleGeneration || !shouldRun()) return;
-	const wanted = intervalMsFor(manifest);
-	if (wanted !== currentIntervalMs) {
-		currentIntervalMs = wanted;
-	}
-
-	if (observeRefreshTiers(manifest)) {
-		dataRefresh.bumpEpoch();
+		// A later poll can recover without replacing the last observed capture.
 	}
 }
-
-let currentIntervalMs = DEFAULT_INTERVAL_MS;
 
 function isVisible(): boolean {
 	return typeof document !== 'undefined' && document.visibilityState !== 'hidden';
@@ -168,7 +69,7 @@ function requestPoll(): Promise<void> {
 
 function remainingDelayMs(): number {
 	if (lastCheckAtMs === null) return 0;
-	return Math.max(0, currentIntervalMs - Math.max(0, Date.now() - lastCheckAtMs));
+	return Math.max(0, INTERVAL_MS - Math.max(0, Date.now() - lastCheckAtMs));
 }
 
 function scheduleNextPoll(delayMs = remainingDelayMs()): void {
@@ -226,12 +127,14 @@ export const dataPulse = {
 		return lastSeenMs;
 	},
 
-	subscribe(bootManifest?: Manifest | null): () => void {
-		if (!browser || bootManifest === null) return () => {};
-		if (bootManifest) {
-			seedFromBootManifest(bootManifest);
-			currentIntervalMs = intervalMsFor(bootManifest);
-			if (subscribers === 0) lastCheckAtMs = Date.now();
+	subscribeCapture(city: string | null): () => void {
+		if (!browser || !city) return () => {};
+		if (city !== captureCity) {
+			invalidateLifecycle();
+			stopTimer();
+			captureCity = city;
+			lastSeenMs = null;
+			lastCheckAtMs = Date.now();
 		}
 		wireLifecycle();
 		subscribers += 1;
@@ -249,19 +152,6 @@ export const dataPulse = {
 		};
 	},
 
-	subscribeCapture(city: string | null): () => void {
-		if (!browser || !city) return () => {};
-		if (city !== captureCity) {
-			invalidateLifecycle();
-			stopTimer();
-			captureCity = city;
-			lastSeenMs = null;
-			lastCheckAtMs = Date.now();
-			currentIntervalMs = DEFAULT_INTERVAL_MS;
-		}
-		return dataPulse.subscribe();
-	},
-
 	_resetForTests(): void {
 		invalidateLifecycle();
 		stopTimer();
@@ -270,10 +160,7 @@ export const dataPulse = {
 		inFlight = null;
 		inFlightGeneration = null;
 		lastSeenMs = null;
-		seeded = false;
 		captureCity = null;
-		lastSeenByTier = { static: null, historic: null };
-		currentIntervalMs = DEFAULT_INTERVAL_MS;
 		lastCheckAtMs = null;
 	},
 };

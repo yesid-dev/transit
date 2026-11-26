@@ -1,11 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import { browser } from '$app/env';
 import type { Locale } from '#lib/i18n/index.ts';
-import { DEFAULT_LOCALE } from '#lib/i18n/index.ts';
-import type { AdapterCtx } from '#lib/v1/adapter/index.ts';
 import type { Manifest } from '#lib/v1/schemas/manifest.ts';
-import { getLabels } from '#lib/v1/repositories/labels.ts';
-import { getManifest } from '#lib/v1/repositories/manifest.ts';
 import { installBrowserAdapterManifest } from '#lib/v1/adapter/browserManifest.ts';
 import { resolveProvider } from './providers';
 import { v1Provider } from './config';
@@ -29,26 +25,10 @@ const RESOLVABLE_NAMESPACES = [
 
 const KEY = Symbol.for('transit.v1.context');
 
-export async function loadManifest(ctx?: AdapterCtx): Promise<Manifest> {
-	return getManifest(ctx);
-}
-
-export async function bootV1(lang: Locale = DEFAULT_LOCALE, ctx?: AdapterCtx): Promise<V1Context> {
-	const manifest = await loadManifest(ctx);
-	const langLabels = await getLabels(lang, { ...ctx, manifest }).catch(
-		() => ({}) as Record<string, string>,
-	);
-	const labels: Record<string, string> = langLabels;
-	return { manifest, labels, lang };
-}
-
 export async function bootProvider(
 	url: URL,
-	lang: Locale,
 	loadCatalog: () => Promise<CityCatalog>,
-	ctx?: AdapterCtx,
 	location?: ApproximateLocation | null,
-	loadSnapshots = true,
 ) {
 	const requested = url.searchParams.getAll('provider');
 	let defaultProviderId = v1Provider();
@@ -70,20 +50,12 @@ export async function bootProvider(
 	} catch {
 		discoveryError = true;
 	}
-	let v1: V1Context | null = null;
-	const unavailableSelection =
-		discoveryError && (requested.length > 1 || requested.some((id) => id !== defaultProviderId));
-	if (loadSnapshots && !redirectHref && !unavailableSelection) {
-		v1 = await bootV1(lang, { ...ctx, providerId }).catch(() => null);
-		if (v1 && provider) v1 = { ...v1, provider };
-	}
 	return {
 		providerId,
 		defaultProviderId,
 		provider,
 		providers,
 		...(cleaningVersion === undefined ? {} : { cleaningVersion }),
-		v1,
 		discoveryError,
 		redirectHref,
 	};

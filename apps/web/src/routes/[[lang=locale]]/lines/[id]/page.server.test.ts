@@ -4,17 +4,12 @@ const harness = vi.hoisted(() => ({
 	ctx: { fetch: vi.fn(), providerId: 'octranspo', manifest: { provider: 'octranspo' } },
 	getRoute: vi.fn(),
 	getRecordAnswer: vi.fn(),
-	serverV1Context: vi.fn(),
 }));
 
 vi.mock('#lib/server/engine.ts', () => ({ getRecordAnswer: harness.getRecordAnswer }));
 
 vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoute: (...args: unknown[]) => harness.getRoute(...args),
-}));
-
-vi.mock('#lib/v1/serverContext.ts', () => ({
-	serverV1Context: (...args: unknown[]) => harness.serverV1Context(...args),
 }));
 
 import { load } from './+page.server';
@@ -24,7 +19,6 @@ function event(id = '24'): Parameters<typeof load>[0] {
 		params: { id },
 		url: new URL(`https://transit.yesid.dev/lines/${id}`),
 		fetch: vi.fn(),
-		locals: { v1Cache: new Map() },
 		platform: undefined,
 		parent: async () => ({
 			v1: { manifest: harness.ctx.manifest },
@@ -44,7 +38,6 @@ function event(id = '24'): Parameters<typeof load>[0] {
 beforeEach(() => {
 	harness.getRoute.mockReset().mockResolvedValue(null);
 	harness.getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unconfigured' });
-	harness.serverV1Context.mockReset().mockReturnValue(harness.ctx);
 });
 
 describe('Line Record and Schedule on transit1', () => {
@@ -147,7 +140,6 @@ describe('Line Record and Schedule on transit1', () => {
 			'/api/live-trips?city=octranspo&line=24',
 		]);
 		expect(harness.getRoute).not.toHaveBeenCalled();
-		expect(harness.serverV1Context).not.toHaveBeenCalled();
 	});
 
 	it('keeps old live addresses and only reads the selected mode', async () => {
