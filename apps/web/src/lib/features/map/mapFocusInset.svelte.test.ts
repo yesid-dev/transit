@@ -274,6 +274,19 @@ describe('map focus inset arithmetic', () => {
 		});
 		sheet.dataset.state = 'closed';
 		expect(measureMapFocusInset(map).bottomOcclusion).toBe(0);
+
+		sheet.dataset.state = 'open';
+		sheet.dataset.mapSheetMode = 'in-view';
+		expect(measureMapFocusInset(map)).toMatchObject({
+			bottomOcclusion: 0,
+			fitPadding: { bottom: 16 },
+		});
+
+		sheet.dataset.mapSheetMode = 'detail';
+		expect(measureMapFocusInset(map)).toMatchObject({
+			bottomOcclusion: 320,
+			fitPadding: { bottom: 336 },
+		});
 	});
 });
 
