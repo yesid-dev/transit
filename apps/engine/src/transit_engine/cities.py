@@ -128,6 +128,12 @@ def city_catalog() -> dict[str, Any]:
                 "inputs": inputs,
                 "download_licence": (public if legacy else declaration).get("download_licence"),
                 **({"name_separators": name_separators} if name_separators is not None else {}),
+                # The declared first complete day; earlier dates are outside the city's record.
+                **(
+                    {"record_from": str(declaration["clean_days_from"])}
+                    if declaration.get("clean_days_from")
+                    else {}
+                ),
                 "lines_without_live_data": [
                     {key: gap.get(key, []) for key in ("route_types", "route_ids")}
                     for gap in realtime.get("lines_without_live_data") or []

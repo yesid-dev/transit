@@ -98,7 +98,8 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
         "stage: public\ntimezone: Europe/Paris\nname: Example\n"
         'name_separators: {ends: "<>", languages: "~", language_order: [fr, en]}\n'
         "labels:\n  en: {city: Example, operator: Rail}\n"
-        "  fr: {city: Exemple, operator: Rail}\n",
+        "  fr: {city: Exemple, operator: Rail}\n"
+        "clean_days_from: 2026-06-01\n",
         encoding="utf8",
     )
     for city in ("hidden", "candidate", "unknown"):
@@ -107,6 +108,7 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     cities = city_catalog()
     assert cities["default_provider"] == "example"
     assert [provider["id"] for provider in cities["providers"]] == ["example"]
+    assert cities["providers"][0]["record_from"] == "2026-06-01"
     assert cities["providers"][0]["name_separators"] == {
         "ends": "<>",
         "languages": "~",

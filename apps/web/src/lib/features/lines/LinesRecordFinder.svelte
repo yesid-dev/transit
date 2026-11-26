@@ -7,7 +7,7 @@
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { routeModeKey } from '#lib/search/stopMode.ts';
-	import { carryFrameState, RECORD_START } from '#lib/site/frameState.ts';
+	import { carryFrameState, recordStart } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
 		countedUnit,
@@ -773,7 +773,7 @@
 						key: 'source',
 						label: about.source,
 						text: operator
-							? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`
+							? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
 							: null,
 					},
 				]}

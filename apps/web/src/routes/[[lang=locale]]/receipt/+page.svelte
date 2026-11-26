@@ -58,7 +58,7 @@
 		tripsRunSentence,
 	} from '#lib/site/presenter.ts';
 	import { tripOutcomes } from '#lib/features/record/tripOutcomes.ts';
-	import { carryFrameState, frameHref, RECORD_START } from '#lib/site/frameState.ts';
+	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { DailySection } from '#lib/server/departureDailyRecord.ts';
 	import type {
@@ -601,7 +601,7 @@
 										{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
 										{:else if messages.evidence.alert_messages?.length}
 											<ul class="message-rows">
-												{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version], ))}
+												{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version] ))}
 													{@const { title, body } = agencyMessage(message, lang)}
 													{@const dates = agencyMessagePeriods(
 														message.periods,
@@ -771,7 +771,7 @@
 											label: copy.source,
 											text: [
 												copy.feeds(operator ?? cityName),
-												copy.recordStart(longDate(RECORD_START, lang)),
+												copy.recordStart(longDate(recordStart(page.data.provider), lang)),
 											].join(' '),
 										},
 									]}

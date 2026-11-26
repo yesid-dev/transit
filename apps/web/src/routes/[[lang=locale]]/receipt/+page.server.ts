@@ -34,7 +34,7 @@ export const load: PageServerLoad = async (event) => {
 		if (period) redirect(307, frameHref(event.url, { mode: 'record', period }));
 	}
 	const period = legacyPeriod
-		? periodError(legacyPeriod, frameDateLimit(clock))
+		? periodError(legacyPeriod, frameDateLimit(clock), clock.recordStart)
 			? null
 			: legacyPeriod
 		: parseFrameState(params, clock).period;

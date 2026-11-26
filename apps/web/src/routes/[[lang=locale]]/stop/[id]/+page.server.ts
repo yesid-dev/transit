@@ -53,12 +53,13 @@ export const load: PageServerLoad = async (event) => {
 		// One question over the whole record tells an archived stop, which keeps its Record even
 		// for dates without readings, from an id the network never published.
 		const to = frameDateLimit(clock);
+		const start = clock.recordStart ?? RECORD_START;
 		const earliest = new Date(Date.parse(to) - (MAX_RECORD_DAYS - 1) * 86_400_000)
 			.toISOString()
 			.slice(0, 10);
 		const history = await getRecordAnswer(
 			{ path: '/measure', parameters: { measure: 'on_time', group: 'stop_id', stop: id } },
-			{ ...scope, from: earliest > RECORD_START ? earliest : RECORD_START, to },
+			{ ...scope, from: earliest > start ? earliest : start, to },
 		);
 		const unavailable = () =>
 			error(

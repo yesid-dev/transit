@@ -11,7 +11,7 @@
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
-	import { carryFrameState, RECORD_START } from '#lib/site/frameState.ts';
+	import { carryFrameState, recordStart } from '#lib/site/frameState.ts';
 	import {
 		countedUnit,
 		dateRange,
@@ -761,7 +761,7 @@
 						key: 'source',
 						label: about.source,
 						text: operator
-							? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`
+							? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
 							: null,
 					},
 				]}
