@@ -136,9 +136,12 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		await page.goto(`${href}?provider=stm&frameMode=live`);
 		await refreshAlertsCapture(page);
 		await expect(page.getByText(header[locale], { exact: true })).toBeVisible();
-		await expect(page.locator('#alerts-breakdown')).toContainText(
-			locale === 'fr' ? 'Non publié' : 'Not published',
-		);
+		await expect(
+			page.getByRole('article', {
+				name: fr ? 'Par effet' : 'By effect',
+				exact: true,
+			}),
+		).toHaveCount(0);
 		const controls = await openFrameControls(page, locale);
 		const filter = controls.getByRole('group', { name: fr ? 'Filtrer' : 'Filter', exact: true });
 		await expect(filter.getByRole('combobox')).toHaveCount(2);
@@ -149,13 +152,18 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		});
 		await expect(about).toContainText(
 			fr
+				? 'La société de transport ne publie pas l’effet de ses avis.'
+				: 'The agency does not publish the effect of its notices.',
+		);
+		await expect(about).toContainText(
+			fr
 				? 'Les avis en vigueur en ce moment, dans le dernier relevé du flux.'
 				: 'Alerts in effect at this moment, in the latest feed capture.',
 		);
 		await expect(about).toContainText(fr ? 'Quand un avis compte' : 'How an alert counts');
 		await expect(about).toContainText(
 			fr
-				? 'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand l’agence ne publie aucune période.'
+				? 'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand la société de transport ne publie aucune période.'
 				: 'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
 		);
 		await expect(about).toContainText(

@@ -1,5 +1,8 @@
 <script lang="ts">
 	import FactList from '#lib/features/record/FactList.svelte';
+	import { page } from '$app/state';
+	import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
+	import NoticeRows from '#lib/features/alerts/NoticeRows.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { DashboardGrid } from '@yesid/ui/layout';
@@ -27,13 +30,16 @@
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
 	import {
+		agencyName,
 		dateRange,
 		delayReading,
 		methodEvidence,
+		noPublishedNotices,
 		pageCitation,
 		recordPercent,
 		recordStamp,
 	} from '#lib/site/presenter.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import type {
 		EngineResult,
 		RecordAnswer as EngineAnswer,
@@ -73,6 +79,7 @@
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const term = $derived(overviewCopy[locale]);
+	const provider = $derived(page.data.provider as PublicCity | undefined);
 	const stopCode = $derived(code || stop.id);
 	const stopLabel = $derived(t(`Stop ${stopCode}`, `Arrêt ${stopCode}`));
 	const name = $derived(stop.name === stop.id ? null : stopDisplayName(stop.name));
@@ -591,18 +598,38 @@
 					{@render pending(answers.alerts)}
 				{:then result}
 					{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-						<FactList leading={false}>
-							<FactRow label={t('Distinct alerts', 'Avis distincts')}>
-								{result.answer.value.alerts == null
-									? t('Unknown', 'Inconnu')
-									: tally(result.answer.value.alerts, locale)}
-							</FactRow>
-							<FactRow label={t('Versions of those alerts', 'Versions de ces avis')}>
-								{result.answer.value.alert_versions == null
-									? t('Unknown', 'Inconnu')
-									: tally(result.answer.value.alert_versions, locale)}
-							</FactRow>
-						</FactList>
+						{@const count = result.answer.value.alerts}
+						{@const notices = groupAlertCards(
+							recordAlertCards(result.answer.evidence.alert_messages).filter((notice) =>
+								notice.stops.includes(stop.id),
+							),
+						)}
+						{#if count === 0}
+							<p>
+								{noPublishedNotices(
+									agencyName(operator, provider),
+									'stop',
+									locale,
+									!result.answer.evidence.days_not_measured.length &&
+										!result.answer.evidence.days_not_tracked?.length,
+								)}
+							</p>
+						{:else if notices.length}
+							<NoticeRows
+								cards={notices}
+								{locale}
+								timeZone={provider?.timezone}
+								stopName={(id) => (id === stop.id ? (name ?? stopCode) : id)}
+							/>
+						{:else if count != null}
+							<FactList leading={false}>
+								<FactRow label={t('Distinct alerts', 'Avis distincts')}
+									>{tally(count, locale)}</FactRow
+								>
+							</FactList>
+						{:else}
+							<StateMark state="unknown" {locale} />
+						{/if}
 					{:else}{@render gap(result)}{/if}
 				{/await}
 			</RecordCard>

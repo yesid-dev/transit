@@ -9,6 +9,7 @@
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
+	import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
 	import RecordRanking from '#lib/features/home/RecordRanking.svelte';
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
 	import { previewRows, recordCounts } from '#lib/features/home/overviewRecord.ts';
@@ -625,8 +626,8 @@
 										{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
 										{:else if messages.evidence.alert_messages?.length}
 											<ul class="message-rows">
-												{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version], ))}
-													{@const { title, body } = agencyMessage(message, lang)}
+												{#each groupAlertCards(recordAlertCards(messages.evidence.alert_messages)) as message (message.key)}
+													{@const { title, body } = agencyMessage(message, lang, message.stops)}
 													{@const dates = agencyMessagePeriods(
 														message.periods,
 														lang,
@@ -635,7 +636,7 @@
 													)}
 													<li class="message-row grid min-w-0 gap-x-4 py-2 print:py-0.5">
 														<div class="flex flex-wrap items-start gap-x-2">
-															{#each message.routes.slice(0, 3) as id (id)}
+															{#each message.routes as id (id)}
 																{@const line = display.lineName(id)}
 																<a
 																	class="inline-flex min-h-11 min-w-11 items-center"
@@ -649,6 +650,12 @@
 															<h3 class="font-semibold" lang={title.lang}>
 																{title.text}
 															</h3>
+															{#if message.stops.length > 1}
+																<p class="text-muted-foreground">
+																	{t('Stops:', 'Arrêts\u00a0:')}
+																	{message.stops.join(' · ')}
+																</p>
+															{/if}
 															{#if dates.length}<p
 																	class="text-muted-foreground"
 																	data-slot="agency-message-dates"

@@ -29,6 +29,7 @@
 	let {
 		id,
 		lines,
+		name,
 		operator,
 		locale,
 		city,
@@ -43,6 +44,7 @@
 	}: {
 		id: string;
 		lines: readonly string[];
+		name: string;
 		operator: string;
 		locale: Locale;
 		city: string;
@@ -199,6 +201,7 @@
 				{locale}
 				{timeZone}
 				{operator}
+				stopNames={{ [id]: name }}
 				scope={{ kind: 'stop', id, lines }}
 				tracked={hasAlerts}
 				href={link('/alerts?frameMode=live')}

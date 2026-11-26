@@ -378,6 +378,54 @@ export function lineName(
 	return { number, name, label: missing, spoken: missing };
 }
 
+/** A route plate already prints the number supplied at the start of some line names. */
+export function noticeLineName(number: string, name: string | null) {
+	if (!name || name === number) return null;
+	if (!name.startsWith(number)) return name;
+	return name.slice(number.length).match(/^\s*[/·:\-]\s*(.+)$/u)?.[1] ?? name;
+}
+
+export function noticeStopName(text: string, stop: string, locale: Locale) {
+	return locale === 'fr'
+		? text.replace(/^Cet arrêt\b/iu, `L’arrêt ${stop}`)
+		: text.replace(/^This stop\b/iu, `Stop ${stop}`);
+}
+
+export const countedNotice = {
+	en: 'Each notice counts once, however many times the agency reissued it.',
+	fr: 'Chaque avis compte une fois, même si la société de transport l’a republié.',
+};
+
+export function noticesForLines(lines: readonly string[], locale: Locale) {
+	const list = new Intl.ListFormat(locale).format(lines);
+	if (locale === 'fr') return `Avis pour ${lines.length === 1 ? 'la ligne' : 'les lignes'} ${list}`;
+	return `Notices for ${lines.length === 1 ? 'line' : 'lines'} ${list}`;
+}
+
+export function noLiveStopNotices(agency: AgencyName, locale: Locale) {
+	if (locale === 'en') return `${agency.name} has no notice in effect for this stop.`;
+	const subject = frenchAgency(agency).subject;
+	return `${subject.charAt(0).toLocaleUpperCase('fr')}${subject.slice(1)} n’a aucun avis en vigueur pour cet arrêt.`;
+}
+
+export function noPublishedNotices(
+	agency: AgencyName,
+	scope: 'stop' | 'line' | 'network',
+	locale: Locale,
+	complete = true,
+) {
+	if (!complete)
+		return locale === 'fr'
+			? 'Aucun avis dans le bilan disponible pour ces dates.'
+			: 'No notices in the available record for these dates.';
+	if (locale === 'en') {
+		return `${agency.name} published no alert${scope === 'network' ? '' : ` for this ${scope}`} on these dates.`;
+	}
+	const subject = frenchAgency(agency).subject;
+	const forScope = { stop: ' pour cet arrêt', line: ' pour cette ligne', network: '' }[scope];
+	return `${subject.charAt(0).toLocaleUpperCase('fr')}${subject.slice(1)} n’a publié aucun avis${forScope} à ces dates.`;
+}
+
 export function tripsInHours(trips: number, hours: number, locale: Locale): string {
 	const format = intl.number(locale);
 	return presenterCopy[locale].tripsInHours(

@@ -6,7 +6,7 @@ import {
 	stripAlertHtml,
 } from '#lib/v1/alertDisplay.ts';
 import { providerLocalDateKey } from '#lib/utils/time.ts';
-import { clockTime, dateRange } from './presenter.ts';
+import { clockTime, dateRange, noticeStopName } from './presenter.ts';
 import { presenterCopy } from './presenter.copy.ts';
 
 type AgencyTranslation = Partial<Record<Locale, string | null>>;
@@ -54,7 +54,27 @@ export function agencyMessagePreview({ text, lang }: AgencyReading) {
 	);
 }
 
-export function agencyMessage(card: AgencyMessage, locale: Locale) {
+export function agencyMessage(
+	card: AgencyMessage,
+	locale: Locale,
+	stops: readonly string[] = [],
+	stopName: (id: string) => string = (id) => id,
+) {
+	const reading = readAgencyMessage(card, locale);
+	if (stops.length !== 1) return reading;
+	const name = stopName(stops[0]);
+	const title = {
+		...reading.title,
+		text: noticeStopName(reading.title.text, name, reading.title.lang),
+	};
+	const body = reading.body && {
+		...reading.body,
+		text: noticeStopName(reading.body.text, name, reading.body.lang),
+	};
+	return { title, body };
+}
+
+function readAgencyMessage(card: AgencyMessage, locale: Locale) {
 	const heading = agencyText(card.header, locale);
 	const other = locale === 'en' ? 'fr' : 'en';
 	const alternate = agencyText({ [other]: card.header[other] }, other);

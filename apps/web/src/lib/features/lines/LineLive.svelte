@@ -323,6 +323,7 @@
 					{locale}
 					{timeZone}
 					{operator}
+					{stopNames}
 					tracked={hasAlerts}
 					href={link('/alerts?frameMode=live&' + new URLSearchParams({ route: line }))}
 				/>

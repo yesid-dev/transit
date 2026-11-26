@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { page } from '$app/state';
 	import { Button } from '@yesid/ui/button';
-	import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
+	import { alertDetailsAllowed, alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
+	import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
+	import NoticeRows from '#lib/features/alerts/NoticeRows.svelte';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import {
@@ -27,6 +31,8 @@
 		scheduledClock,
 		countedUnit,
 		tripsInHours,
+		agencyName,
+		noPublishedNotices,
 	} from '#lib/site/presenter.ts';
 	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
 	import type { LineSection } from '#lib/server/lineRecord.ts';
@@ -41,6 +47,8 @@
 		url,
 		line,
 		city,
+		stopNames,
+		operator,
 	}: {
 		answer: RecordAnswer;
 		section: LineSection;
@@ -50,6 +58,8 @@
 		url: URL;
 		line: string;
 		city: string;
+		stopNames: Record<string, string>;
+		operator: string;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -63,7 +73,8 @@
 		return name ? display.toward(name, locale, false) : undefined;
 	}
 	const unknown = $derived(t('Unknown', 'Inconnu'));
-	const otherLocale = $derived(locale === 'en' ? 'fr' : 'en');
+	const provider = $derived(page.data.provider as PublicCity | undefined);
+	const stopName = (id: string) => (stopNames[id] ? display.readName(stopNames[id], locale) : id);
 	let noticeLimit = $state(3);
 	const count = (cell: RecordCell, key: string, trip = false) => {
 		const value = cell.evidence.counts[key];
@@ -127,40 +138,23 @@
 
 {#if 'value' in answer}
 	{#if section === 'alerts'}
-		<dl class="grid gap-4 sm:grid-cols-2 tabular-nums">
-			<div>
-				<dt>{t('Distinct alerts', 'Avis distincts')}</dt>
-				<dd>{count(answer, 'alerts')}</dd>
-			</div>
-			<div>
-				<dt>{t('Versions of those alerts', 'Versions de ces avis')}</dt>
-				<dd>{count(answer, 'alert_versions')}</dd>
-			</div>
-		</dl>
-		{@const messages = answer.evidence.alert_messages ?? []}
-		{#if messages.length}
-			<ul class="mt-4 grid gap-3">
-				{#each messages.slice(0, noticeLimit) as message (JSON.stringify( [message.source, message.id, message.version], ))}
-					{@const header = message.header[locale] || message.header[otherLocale]}
-					{@const description = message.description[locale] || message.description[otherLocale]}
-					<li class="pt-3">
-						<h3
-							class="font-semibold"
-							lang={header && !message.header[locale] ? otherLocale : undefined}
-						>
-							{header || t(`Alert ${message.id}`, `Avis ${message.id}`)}
-						</h3>
-						{#if description}
-							<p
-								class="whitespace-pre-wrap"
-								lang={message.description[locale] ? undefined : otherLocale}
-							>
-								{description}
-							</p>
-						{/if}
-					</li>
-				{/each}
-			</ul>
+		{@const messages = groupAlertCards(recordAlertCards(answer.evidence.alert_messages))}
+		{#if answer.value.alerts === 0}
+			<p>
+				{noPublishedNotices(
+					agencyName(operator, provider),
+					'line',
+					locale,
+					!answer.evidence.days_not_measured.length && !answer.evidence.days_not_tracked?.length,
+				)}
+			</p>
+		{:else if messages.length}
+			<NoticeRows
+				cards={messages.slice(0, noticeLimit)}
+				{locale}
+				timeZone={provider?.timezone}
+				{stopName}
+			/>
 			{#if messages.length > noticeLimit}
 				<Button
 					class="mt-3 min-h-11"
@@ -171,8 +165,10 @@
 					{t('Show more notices', 'Afficher d’autres avis')}
 				</Button>
 			{/if}
-		{:else if (answer.value.alerts ?? 0) > 0 && alertDetailsAllowed( { from: answer.evidence.start_date, to: answer.evidence.end_date }, )}
-			<p class="mt-3">{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}</p>
+		{:else if !alertDetailsAllowed( { from: answer.evidence.start_date, to: answer.evidence.end_date }, )}
+			<p>{alertDetailsLimit[locale]}</p>
+		{:else}
+			<p>{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}</p>
 		{/if}
 	{:else if section === 'waiting'}
 		{@render opening(waitingFinding(answer, locale))}

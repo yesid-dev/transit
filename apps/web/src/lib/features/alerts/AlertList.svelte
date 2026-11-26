@@ -18,14 +18,21 @@
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { alertPaging } from '#lib/site/presenter.ts';
+	import { alertPaging, noticeLineName } from '#lib/site/presenter.ts';
 	import {
 		agencyMessage,
 		agencyMessageLink,
 		agencyMessagePeriods,
 		sortAgencyMessages,
 	} from '#lib/site/agencyMessages.ts';
-	import { alertEffect, alertTarget, unstatedEffect, type AlertCard } from './alertCards.ts';
+	import {
+		alertEffect,
+		alertTarget,
+		groupAlertCards,
+		unstatedEffect,
+		type AlertCard,
+		type NoticeCard,
+	} from './alertCards.ts';
 
 	let {
 		cards,
@@ -68,7 +75,13 @@
 			a.localeCompare(b, locale, { numeric: true }),
 		),
 	);
-	const lineOptions = $derived(choices(lines, line, (id) => display.lineName(id).label));
+	const lineOptions = $derived(
+		choices(lines, line, (id) => {
+			const { number, name } = display.lineName(id);
+			const detail = noticeLineName(number ?? id, name);
+			return detail ? `${number ?? id} · ${detail}` : (number ?? id);
+		}),
+	);
 	const stopOptions = $derived(choices(stops, stop, (id) => t(`Stop ${id}`, `Arrêt ${id}`)));
 	const effectOptions = $derived(choices(effects, selectedEffect, (id) => alertEffect(id, locale)));
 	const activeFilters = $derived(Boolean(line || stop || selectedEffect));
@@ -80,7 +93,8 @@
 	const target = $derived(alertTarget(new URL(location.href)));
 	const filtered = $derived(
 		sortAgencyMessages(
-			cards.filter(
+			groupAlertCards(
+				cards,
 				(card) =>
 					(!line || card.routes.includes(line)) &&
 					(!stop || card.stops.includes(stop)) &&
@@ -91,15 +105,22 @@
 		),
 	);
 	const ordered = $derived.by(() => {
-		const index = filtered.findIndex((card) => card.id === target);
+		const index = target ? filtered.findIndex((card) => card.ids.includes(target)) : -1;
 		if (index < pageSize) return filtered;
 		return [filtered[index], ...filtered.slice(0, index), ...filtered.slice(index + 1)];
 	});
 	const selectedOutsideFilters = $derived(
-		target && !filtered.some(({ id }) => id === target)
-			? cards.find(({ id }) => id === target)
+		target && !filtered.some(({ ids }) => ids.includes(target))
+			? groupAlertCards(cards).find(({ ids }) => ids.includes(target))
 			: undefined,
 	);
+	const anchorOwners = $derived.by(() => {
+		const owners = new Map<string, string>();
+		for (const { key, ids } of ordered) {
+			for (const id of ids) if (!owners.has(id)) owners.set(id, key);
+		}
+		return owners;
+	});
 
 	let paging = $state<{ line: string; stop: string; effect: string; shown: number }>();
 	const shown = $derived(
@@ -238,11 +259,12 @@
 	</ControlsRail>
 {/snippet}
 
-{#snippet item(card: AlertCard, anchorId: string | undefined)}
-	{@const { title, body } = agencyMessage(card, locale)}
+{#snippet item(card: NoticeCard, ids: string[])}
+	{@const { title, body } = agencyMessage(card, locale, card.stops)}
 	{@const source = agencyMessageLink(card, locale)}
 	{@const periods = agencyMessagePeriods(card.periods, locale, timeZone, live)}
-	<li id={anchorId} tabindex="-1" class="min-w-0 scroll-mt-24">
+	<li id={ids[0] ? anchor(ids[0]) : undefined} tabindex="-1" class="min-w-0 scroll-mt-24">
+		{#each ids.slice(1) as id (id)}<span id={anchor(id)} class="block scroll-mt-24"></span>{/each}
 		<Card
 			textSize="inherit"
 			interactive={Boolean(card.routes.length || card.stops.length || source)}
@@ -256,12 +278,14 @@
 					{#if card.routes.length}
 						<div class="flex min-w-0 flex-wrap items-center gap-x-1">
 							{#each [...new Set(card.routes)] as route (route)}
+								{@const code = display.line(route)}
+								{@const name = noticeLineName(code, display.lineName(route).name)}
 								<a
 									class="inline-flex min-h-11 min-w-11 items-center justify-center"
 									href={localizeHref(`/lines/${encodeURIComponent(route)}`, locale, city)}
+									aria-label={display.directory.spoken(name ? `${code} · ${name}` : code)}
 								>
-									<RoutePlate code={display.line(route)} />
-									<span class="sr-only"> {display.lineName(route).label}</span>
+									<RoutePlate {code} />
 								</a>
 							{/each}
 						</div>
@@ -305,7 +329,7 @@
 					href={source.href}
 					hreflang={source.lang}
 				>
-					{t('Agency notice', 'Avis de l’agence')}
+					{t('Agency notice', 'Avis de la société de transport')}
 				</a>
 			{/if}
 		</Card>
@@ -315,15 +339,15 @@
 {#if cards.length}
 	{#if selectedOutsideFilters}
 		<ul class="alert-list">
-			{@render item(selectedOutsideFilters, anchor(selectedOutsideFilters.id))}
+			{@render item(selectedOutsideFilters, [target!])}
 		</ul>
 	{/if}
 	{#if ordered.length}
 		<ul bind:this={list} class="alert-list grid gap-[var(--space-card-gap)]">
-			{#each ordered.slice(0, shown) as card, index (card.key)}
+			{#each ordered.slice(0, shown) as card (card.key)}
 				{@render item(
 					card,
-					ordered.findIndex(({ id }) => id === card.id) === index ? anchor(card.id) : undefined,
+					card.ids.filter((id) => anchorOwners.get(id) === card.key),
 				)}
 			{/each}
 		</ul>

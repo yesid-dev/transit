@@ -45,7 +45,10 @@ for (const locale of ['en', 'fr'] as const)
 								...notice,
 								id: 'notice-for-another-stop',
 								stops: ['S2'],
-								description: { en: 'This notice is for another stop.' },
+								description: {
+									en: 'This stop is closed for roadworks.',
+									fr: 'Cet arrêt est fermé pour travaux.',
+								},
 							},
 						],
 					}),
@@ -59,9 +62,24 @@ for (const locale of ['en', 'fr'] as const)
 			await expect(page.getByTestId('stop-alerts')).toContainText(
 				locale === 'fr' ? /Depuis le 23 nov\. 2026/ : /Since 23 Nov 2026/,
 			);
-			await expect(page.getByTestId('stop-alerts')).not.toContainText(
-				'This notice is for another stop.',
+			const cards = page.getByTestId('stop-alerts').locator('[data-slot="record-card"]');
+			const direct = cards.filter({
+				has: page.getByRole('heading', {
+					name: locale === 'fr' ? 'Avis pour cet arrêt' : 'Notices for this stop',
+					exact: true,
+				}),
+			});
+			await expect(direct).not.toContainText(locale === 'fr' ? 'L’arrêt S2' : 'Stop S2');
+			const related = cards.filter({
+				has: page.getByRole('heading', {
+					name: locale === 'fr' ? 'Avis pour la ligne 24' : 'Notices for line 24',
+					exact: true,
+				}),
+			});
+			await expect(related).toContainText(
+				locale === 'fr' ? 'L’arrêt S2 est fermé pour travaux.' : 'Stop S2 is closed for roadworks.',
 			);
+			await expect(related).not.toContainText(locale === 'fr' ? 'L’ascenseur' : 'The elevator');
 			expect((await first.boundingBox())?.y).toBe(before);
 			await page.unroute(captureUrl, capture);
 		}

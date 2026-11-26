@@ -22,7 +22,7 @@ const metricKeys = Object.keys(alertMetrics) as (keyof typeof alertMetrics)[];
 
 export const alertDetailsLimit = {
 	en: 'Agency messages are listed for 7 days or fewer. Pick a shorter period.',
-	fr: 'Les avis de l’agence sont affichés pour 7 jours ou moins. Choisissez une période plus courte.',
+	fr: 'Les avis de la société de transport sont affichés pour 7 jours ou moins. Choisissez une période plus courte.',
 };
 
 export { alertDetailsAllowed } from './alertDetailsAllowed.ts';

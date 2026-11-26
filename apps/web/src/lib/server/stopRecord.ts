@@ -1,4 +1,5 @@
 import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.ts';
+import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
 
 export const stopRecordQueries = {
 	punctuality: { measure: 'punctuality' },
@@ -26,6 +27,8 @@ export function loadStopRecord(scope: EnginePeriod, stop: string) {
 	const { from, to, city } = scope;
 	// The engine already computes both delay percentiles alongside the three bands.
 	const punctuality = getRecordAnswer(stopRecordQuery('punctuality', stop), scope);
+	const alerts = stopRecordQuery('alerts', stop);
+	if (alertDetailsAllowed(scope)) alerts.parameters.alert_details = '1';
 	const sections: StopSection[] = [
 		'punctuality',
 		'byLine',
@@ -44,7 +47,7 @@ export function loadStopRecord(scope: EnginePeriod, stop: string) {
 			answer:
 				section === 'punctuality' || section === 'delay'
 					? punctuality
-					: getRecordAnswer(stopRecordQuery(section, stop), scope),
+					: getRecordAnswer(section === 'alerts' ? alerts : stopRecordQuery(section, stop), scope),
 		})),
 		// Keep the existing export queries and stream the display cuts independently.
 		grid: getRecordAnswer(

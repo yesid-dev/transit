@@ -150,6 +150,8 @@
 					url={pinned}
 					line={record.line}
 					city={record.city}
+					{stopNames}
+					{operator}
 				/>
 			{/if}
 			{#if result.lastGood}<p class="mt-3 text-small text-muted-foreground">
