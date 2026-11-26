@@ -143,6 +143,65 @@ for (const locale of ['en', 'fr'] as const)
 			expect(within(label).getByText(operator, { exact: true })).toBeInTheDocument();
 		});
 
+// WCAG 3.2.2: a city is never chosen by arrow keys alone. Keys preview it; Enter or a pointer
+// switches; Escape or leaving the picker keeps the current city.
+describe.each([
+	['en', 'Press Enter to switch to Ottawa · OC Transpo.'],
+	['fr', 'Appuyez sur Entrée pour passer à Ottawa · OC Transpo.'],
+] as const)('city picker in %s', (locale, confirm) => {
+	const providers = PublicProviderCatalogSchema.parse(catalog).providers;
+	const setups = [
+		['kit picker', { providers }],
+		['fallback select', { providers, discoveryError: true }],
+	] as const;
+	const picker = (container: HTMLElement) =>
+		within(container).getByRole('combobox', { name: new RegExp(navPillCopy[locale].network) });
+	const arrowTo = async (select: HTMLElement, id: string) => {
+		await fireEvent.keyDown(select, { key: 'ArrowUp' });
+		await fireEvent.change(select, { target: { value: id } });
+	};
+
+	it.each(setups)('arrow keys only preview the city; Enter switches (%s)', async (_, props) => {
+		const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+		const view = render(NavPill, { props: { locale, providerId: 'stm', ...props } });
+		const select = picker(view.container);
+		await arrowTo(select, 'octranspo');
+		expect(assign).not.toHaveBeenCalled();
+		await waitFor(() => expect(select).toHaveValue('octranspo'));
+		expect(
+			view.container.querySelector('[data-slot="network-choice"] [role="status"]'),
+		).toHaveTextContent(confirm);
+		await fireEvent.keyDown(select, { key: 'Enter' });
+		expect(assign).toHaveBeenCalledOnce();
+		expect(assign.mock.calls[0]![0]).toMatch(/provider=octranspo/);
+	});
+
+	it.each(setups)('Escape and leaving keep the current city (%s)', async (_, props) => {
+		const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+		const view = render(NavPill, { props: { locale, providerId: 'stm', ...props } });
+		const select = picker(view.container);
+		await arrowTo(select, 'octranspo');
+		await fireEvent.keyDown(select, { key: 'Escape' });
+		await waitFor(() => expect(select).toHaveValue('stm'));
+		await arrowTo(select, 'octranspo');
+		await fireEvent.focusOut(select);
+		await waitFor(() => expect(select).toHaveValue('stm'));
+		await fireEvent.keyDown(select, { key: 'Enter' });
+		expect(assign).not.toHaveBeenCalled();
+		expect(view.container).not.toHaveTextContent(confirm);
+	});
+
+	it.each(setups)('a pointer choice switches at once (%s)', async (_, props) => {
+		const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => {});
+		const view = render(NavPill, { props: { locale, providerId: 'stm', ...props } });
+		const select = picker(view.container);
+		await fireEvent.pointerDown(select);
+		await fireEvent.change(select, { target: { value: 'octranspo' } });
+		expect(assign).toHaveBeenCalledOnce();
+		expect(assign.mock.calls[0]![0]).toMatch(/provider=octranspo/);
+	});
+});
+
 it.each([
 	['en', 'yesid. (opens in a new tab)', '/?provider=stm'],
 	['fr', 'yesid. (nouvel onglet)', '/fr?provider=stm'],

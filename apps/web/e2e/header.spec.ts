@@ -208,6 +208,37 @@ for (const locale of PUBLISHED_LOCALES) {
 	});
 }
 
+// WCAG 3.2.2: arrow keys on the city picker never change the page; Enter does.
+for (const locale of PUBLISHED_LOCALES)
+	test(`${locale} city picker previews on arrow keys and switches only on Enter`, async ({ page }, {
+		project,
+	}) => {
+		test.skip(project.name !== 'desktop', 'one keyboard walk on the desktop header');
+		const words = navPillCopy[locale];
+		const confirm = { en: 'Press Enter to switch to', fr: 'Appuyez sur Entrée pour passer à' }[
+			locale
+		];
+		await page.goto(start(locale));
+		await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
+		const choice = page.locator('[data-slot="network-choice"]');
+		const city = choice.getByRole('combobox', { name: new RegExp(words.network) });
+		const status = choice.getByRole('status');
+		await city.focus();
+		for (const key of ['ArrowUp', 'ArrowDown', 'ArrowUp']) {
+			await page.keyboard.press(key);
+			await expect(city).toBeFocused();
+		}
+		await expect(page).toHaveURL((url) => url.searchParams.get('provider') === 'stm');
+		await expect(city).toHaveValue('octranspo');
+		await expect(status).toHaveText(`${confirm} Ottawa · OC Transpo.`);
+		await page.keyboard.press('Escape');
+		await expect(city).toHaveValue('stm');
+		await expect(status).toHaveText('');
+		await page.keyboard.press('ArrowUp');
+		await page.keyboard.press('Enter');
+		await expect(page).toHaveURL((url) => url.searchParams.get('provider') === 'octranspo');
+	});
+
 test('the kit network changes on legal pages and custom dates change a record route', async ({
 	page,
 }) => {

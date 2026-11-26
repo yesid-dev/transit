@@ -30,6 +30,7 @@ export const navPillCopy = defineCopy({
 		defaultNetwork: 'Réseau par défaut',
 		unknownNetwork: 'Réseau inconnu',
 		otherNetworksUnavailable: 'Autres réseaux indisponibles',
+		networkConfirm: 'Appuyez sur Entrée pour passer à',
 		newTab: '(nouvel onglet)',
 	},
 	en: {
@@ -57,6 +58,7 @@ export const navPillCopy = defineCopy({
 		defaultNetwork: 'Default network',
 		unknownNetwork: 'Unknown network',
 		otherNetworksUnavailable: 'Other networks unavailable',
+		networkConfirm: 'Press Enter to switch to',
 		newTab: '(opens in a new tab)',
 	},
 });
