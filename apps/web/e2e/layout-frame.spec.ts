@@ -18,6 +18,8 @@ const cities = {
 };
 
 const agencyByCity: Record<string, string> = { stm: 'STM', octranspo: 'OC Transpo' };
+// French names the agency with the article its city declares: "la STM", "OC Transpo".
+const frenchAgencyByCity: Record<string, string> = { stm: 'la STM', octranspo: 'OC Transpo' };
 const taglines = {
 	en: 'An independent public record of the transit service delivered. Not a trip planner.',
 	fr: 'Un bilan public et indépendant du service de transport effectué. Pas un planificateur de trajets.',
@@ -218,7 +220,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const agency = agencyByCity[city];
 			const disclaimer =
 				locale === 'fr'
-					? `Site non officiel, sans affiliation avec ${agency}.`
+					? `Site non officiel, sans affiliation avec ${frenchAgencyByCity[city]}.`
 					: `Unofficial website, not affiliated with ${agency}.`;
 			for (const href of ['/', '/?frameMode=live', '/map']) {
 				await open(page, localizeHref(href, locale, city));

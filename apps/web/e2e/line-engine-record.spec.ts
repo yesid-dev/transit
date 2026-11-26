@@ -33,10 +33,10 @@ for (const width of [390, 1440]) {
 			await trend.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
 			await expect(trend.getByRole('rowheader')).toHaveCount(2);
 			const waiting = main.locator('#waiting');
+			await expect(waiting).toContainText(fr ? 'Les usagers ont attendu' : 'Riders waited');
 			await expect(waiting).toContainText(
-				fr ? 'L’attente excédentaire était de' : 'Excess wait time was',
+				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
 			);
-			await expect(waiting).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
 			await expect(waiting).toContainText(fr ? 'des 48 intervalles prévus' : 'of 48 planned gaps');
 			const offered = main.locator('#offered');
 			await expect(offered).toContainText(

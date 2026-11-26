@@ -424,7 +424,7 @@ for (const locale of ['en', 'fr'] as const) {
 			page.getByRole('article', {
 				name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
 			}),
-		).toContainText(fr ? '130,8' : '130.8');
+		).toContainText(fr ? 'environ 1,3 par heure' : 'about 1.3 an hour');
 		await page.goto(`${prefix}/vehicle/40065?provider=stm&frameMode=record&${dates}`);
 		await expect(answer).toContainText(fr ? '5 sur 6' : '5 of 6');
 		await expect(answer).toContainText(fr ? 'Le jour restant' : 'On the other day');

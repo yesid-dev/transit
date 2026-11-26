@@ -141,7 +141,9 @@ for (const width of [390, 1440]) {
 			else await expect(alertsFooter.locator('span')).toHaveText(['4 days']);
 			await expect(
 				waiting.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /\b80\b/ }) }),
-			).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
+			).toContainText(
+				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
+			);
 			await expect(
 				waiting.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /\b24\b/ }) }),
 			).toContainText(fr ? 'Trop peu pour juger' : 'Too few to judge');
