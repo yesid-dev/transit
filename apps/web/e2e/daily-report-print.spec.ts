@@ -139,9 +139,11 @@ if (process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
 				await expect(content.locator('#stops')).toContainText('Express Saint-Joseph / Bélanger');
 			}
 			if (name === 'oc-en-390-light') {
-				await expect(content.locator('#messages [data-record-state="not_tracked"]')).toBeVisible();
+				await expect(
+					content.locator('#messages [data-record-state="alerts_not_tracked"]'),
+				).toBeVisible();
 				await expect(content.locator('#messages')).toContainText(
-					'Agency messages are not tracked in this city.',
+					'Not tracked: Transit does not collect OC Transpo’s alerts yet.',
 				);
 			}
 			if (name === 'range-1440') {

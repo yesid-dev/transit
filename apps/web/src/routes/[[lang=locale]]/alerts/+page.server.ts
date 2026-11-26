@@ -20,6 +20,7 @@ export const load: PageServerLoad = async (event) => {
 			timeZone: provider?.timezone,
 			cityName: provider?.labels[lang].city ?? providerId,
 			operator: provider?.labels[lang].operator,
+			operatorOf: provider?.download_licence?.source?.fr ?? null,
 			capture:
 				mode === 'live' && tracked
 					? fetchCaptureSnapshot(providerId, event.request.signal, event.fetch).catch(() => null)

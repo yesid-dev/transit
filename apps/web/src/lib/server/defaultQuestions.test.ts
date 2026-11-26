@@ -10,7 +10,7 @@ import { load as health } from '../../routes/[[lang=locale]]/status/+page.server
 import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
-import { calendarClock, frameClock } from '#lib/site/frameState.ts';
+import { frameClock } from '#lib/site/frameState.ts';
 import { getScheduleEdition } from './engine.ts';
 import { GET as mapRecord } from '../../routes/api/map-record/+server.ts';
 
@@ -42,7 +42,6 @@ it.each([
 	const now = new Date('2026-11-22T06:30:00Z');
 	vi.setSystemTime(now);
 	const period = defaultPeriod(frameClock(provider, now))!;
-	const healthPeriod = defaultPeriod(calendarClock(provider, now))!;
 	expect(period).toMatchObject(
 		provider.id === 'fixture-north'
 			? { from: '2026-11-14', to: '2026-11-20' }
@@ -97,7 +96,7 @@ it.each([
 		url.searchParams.sort();
 		return url.href;
 	});
-	const warm = [...defaultCityQuestions(provider, period, healthPeriod), sharedDefaultQuestion];
+	const warm = [...defaultCityQuestions(provider, period), sharedDefaultQuestion];
 	expect(captureFetch).toHaveBeenCalledExactlyOnceWith(
 		`/api/live?city=${provider.id}`,
 		expect.anything(),
@@ -132,8 +131,7 @@ it('warms the same ranges and questions overnight and in the afternoon on the sa
 	const at = (utc: string) => {
 		const now = new Date(utc);
 		const period = defaultPeriod(frameClock(city, now))!;
-		const healthPeriod = defaultPeriod(calendarClock(city, now))!;
-		return { period, questions: defaultCityQuestions(city, period, healthPeriod) };
+		return { period, questions: defaultCityQuestions(city, period) };
 	};
 	const overnight = at('2026-11-25T05:30:00Z');
 	expect(overnight.period).toMatchObject({ from: '2026-11-17', to: '2026-11-23' });
@@ -143,7 +141,7 @@ it('warms the same ranges and questions overnight and in the afternoon on the sa
 			.map((url) => new URL(url))
 			.find(({ pathname }) => pathname === '/v2/fixture/data-health')
 			?.searchParams.get('to'),
-	).toBe('2026-11-24');
+	).toBe('2026-11-23');
 });
 
 it.each([

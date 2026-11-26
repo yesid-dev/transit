@@ -70,20 +70,21 @@ describe('frame control state', () => {
 		expect(state('/map?recordFrom=2026-11-17&recordTo=2026-11-21').mode).toBe('live');
 	});
 
-	it('replaces an unavailable Yesterday answer while keeping the diagnostic screens usable', () => {
+	it('replaces an unavailable Yesterday answer on every screen but downloads', () => {
 		const url = new URL(
 			'https://transit.test/lines/51?period=yesterday&recordFrom=2026-11-21&recordTo=2026-11-21',
 		);
 		expect(frameControlsState(url, clock('2026-11-20')).waitingForYesterday).toBe('2026-11-21');
 		expect(frameControlsState(url, clock('2026-11-21')).waitingForYesterday).toBeNull();
 		expect(frameControlsState(url, clock()).waitingForYesterday).toBeNull();
-		for (const path of ['/status', '/download']) {
-			url.pathname = path;
-			expect(frameControlsState(url, clock('2026-11-20'))).toMatchObject({
-				waitingForYesterday: null,
-				period: { from: '2026-11-21', to: '2026-11-21' },
-			});
-		}
+		url.pathname = '/download';
+		expect(frameControlsState(url, clock('2026-11-20'))).toMatchObject({
+			waitingForYesterday: null,
+			period: { from: '2026-11-21', to: '2026-11-21' },
+		});
+		// Data health reads the same complete days as every other screen.
+		url.pathname = '/status';
+		expect(frameControlsState(url, clock('2026-11-20')).waitingForYesterday).toBe('2026-11-21');
 	});
 
 	it('describes pinned dates and their inclusive duration in either language', () => {

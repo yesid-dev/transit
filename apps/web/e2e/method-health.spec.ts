@@ -104,17 +104,21 @@ test('Data health reads late feed details, expected cadence, sizes and the sched
 	await expect(schedule.getByRole('cell', { name: '64 MB' })).toBeVisible();
 	await expect(schedule.getByRole('cell', { name: 'when the agency publishes' })).toBeVisible();
 	await expect(schedule.getByRole('cell', { name: 'In use' })).toBeVisible();
-	await expect(main.locator('#feed-diagnostics')).toHaveAttribute('data-open', 'false');
+	// The agency's figures for the selected dates live in Record.
+	await expect(main.locator('#feed-diagnostics')).toHaveCount(0);
+	await expect(main).not.toContainText('Feed diagnostics');
 });
 
-test('Data health opens feed diagnostics from a previously copied Network link', async ({
+test('Data health opens the agency figures from a previously copied Network link', async ({
 	page,
 	request,
 }) => {
 	const period = 'provider=stm&frameMode=record&recordFrom=2026-11-11&recordTo=2026-11-14';
 	await page.goto(`/network?${period}#poll_success`);
-	await expect(page).toHaveURL(/\/status\?.*frameMode=live.*#poll_success$/);
-	await expect(page.locator('#poll_success').getByText('20 / 25', { exact: true })).toBeVisible();
+	await expect(page).toHaveURL(/\/status\?.*frameMode=record.*#poll_success$/);
+	await expect(
+		page.locator('#poll_success').getByText('20 / 25 checks', { exact: true }),
+	).toBeVisible();
 	await expect(page.locator('#poll_success')).toContainText('At least 20 samples per reading.');
 	const csv = await request.get(`/network/record.csv?${period}&section=poll_success`);
 	expect(csv.headers()['content-disposition']).toContain('network-poll-success.csv');
@@ -218,7 +222,38 @@ for (const width of [390, 1440]) {
 			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 				fr ? 'Santé des données' : 'Data health',
 			);
-			const table = main.locator('#table-health').getByRole('table');
+			const publishes = main.locator('#publishes');
+			await expect(
+				publishes.getByRole('heading', {
+					name: fr ? 'Ce que publie OC Transpo' : 'What STM publishes',
+				}),
+			).toBeVisible();
+			const stops = publishes.getByRole('row').filter({
+				hasText: fr ? 'Accès en fauteuil roulant aux arrêts' : 'Wheelchair boarding at stops',
+			});
+			await expect(stops).toContainText(fr ? 'Non publié' : 'Published');
+			if (fr) {
+				await expect(publishes).toContainText(
+					'Transit ne collecte pas encore les avis d’OC Transpo.',
+				);
+				await expect(
+					publishes.getByRole('link', { name: 'Consulter les avis officiels' }),
+				).toHaveAttribute('href', 'https://www.octranspo.com/fr/alertes/');
+			}
+			await expect(main.locator('#prediction_error')).toContainText(
+				fr
+					? '90 prévisions sur 100 faites une minute à l’avance étaient justes à une minute près.'
+					: '90 predictions in 100 made a minute ahead were right within a minute.',
+			);
+			// Each coverage label keeps the row's width: its counts sit under it, not beside it.
+			for (const row of await main.locator('#live_trip_coverage [data-slot="fact-row"]').all()) {
+				const [label, whole] = await Promise.all([
+					row.locator('dt').boundingBox(),
+					row.boundingBox(),
+				]);
+				expect(label!.width).toBeGreaterThan(whole!.width * 0.55);
+			}
+			const table = main.locator('#days-in-record').getByRole('table');
 			await expect(table.getByRole('rowheader')).toHaveCount(2);
 			for (const state of fr
 				? [
@@ -244,13 +279,13 @@ for (const width of [390, 1440]) {
 			).toBeVisible();
 			await main.getByText(fr ? 'Citer' : 'Cite', { exact: true }).click();
 			await expect(
-				page.getByRole('dialog').getByText(/recordFrom=2026-11-11.*#table-health/),
+				page.getByRole('dialog').getByText(/recordFrom=2026-11-11.*#stop-events/),
 			).toBeVisible();
 			const tableHealthDefects = (await textDefects(page)).filter(({ selector }) =>
-				selector.startsWith('#table-health'),
+				selector.startsWith('#days-in-record'),
 			);
 			expect(tableHealthDefects).toEqual([]);
-			const healthGrid = main.locator('#table-health [data-slot="hour-grid"]');
+			const healthGrid = main.locator('#days-in-record [data-slot="hour-grid"]');
 			await expect(healthGrid.locator('.legend')).toHaveCount(0);
 			const gridMetrics = await healthGrid.evaluate((rootEl) => {
 				const scroller = rootEl.querySelector<HTMLElement>('[role="region"]')!;
@@ -276,11 +311,13 @@ for (const width of [390, 1440]) {
 					name: fr ? 'Mises à jour des méthodes' : 'Method changes',
 				}),
 			});
-			await expect(
-				changes.getByRole('columnheader', {
-					name: fr ? 'Dernier changement' : 'Last changed',
-				}),
-			).toBeVisible();
+			// One date for every measure reads as one sentence, not a table of the same date.
+			await expect(changes).toContainText(
+				fr
+					? 'Toutes les mesures ont changé pour la dernière fois le 22 novembre 2026.'
+					: 'Every measure last changed on 22 November 2026.',
+			);
+			await expect(changes.getByRole('table')).toHaveCount(0);
 			await expect(main).not.toContainText(fr ? 'méthode v' : 'method v');
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 		});

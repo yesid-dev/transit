@@ -37,8 +37,8 @@ for (const locale of ['en', 'fr'] as const)
 					await expect(
 						message.getByText(
 							locale === 'fr'
-								? 'Les avis de l’agence ne sont pas suivis dans cette ville.'
-								: 'Agency messages are not tracked in this city.',
+								? 'Non suivi\u00a0: Transit n’a pas collecté les avis de la STM à ces dates.'
+								: 'Not tracked: Transit did not collect STM’s alerts on these dates.',
 						),
 					).toHaveCount(0);
 					const before = await frame();
@@ -55,8 +55,8 @@ for (const locale of ['en', 'fr'] as const)
 					await expect(
 						message.getByText(
 							locale === 'fr'
-								? 'Les avis de l’agence ne sont pas suivis dans cette ville.'
-								: 'Agency messages are not tracked in this city.',
+								? 'Non suivi\u00a0: Transit n’a pas collecté les avis de la STM à ces dates.'
+								: 'Not tracked: Transit did not collect STM’s alerts on these dates.',
 						),
 					).toBeVisible();
 					await waitForFrameClearance(page);

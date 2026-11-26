@@ -7,7 +7,14 @@
 		agencyMessagePeriods,
 		sortAgencyMessages,
 	} from '#lib/site/agencyMessages.ts';
-	import { liveStampAge } from '#lib/site/presenter.ts';
+	import { page } from '$app/state';
+	import {
+		agencyName,
+		alertsNotTrackedLine,
+		liveStampAge,
+		officialAlertsLabel,
+	} from '#lib/site/presenter.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { alertEffect, liveAlertCards } from '../alerts/alertCards.ts';
 	import { choose } from '../record/recordText.ts';
 	import RecordCard from '../record/RecordCard.svelte';
@@ -32,6 +39,9 @@
 		href: string;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	// The city's declaration names its official alerts page; Transit links to it when it does not collect them.
+	const city = $derived(page.data.provider as PublicCity | null | undefined);
+	const officialAlertsUrl = $derived(city?.alert_links?.[locale]);
 	const feed = $derived(captureFamily(snapshot, 'alerts'));
 	const ready = $derived(tracked && feedState(feed, now) === 'live' && snapshot?.alerts != null);
 	const stamp = $derived(
@@ -70,19 +80,14 @@
 {/snippet}
 
 <RecordCard
-	interactive={tracked}
+	interactive={tracked || !!officialAlertsUrl}
 	title={scope.kind === 'stop'
 		? t('Notices for this stop', 'Avis pour cet arrêt')
 		: t('Agency notices', 'Avis de l’agence')}
 	{stamp}
 >
 	{#if !tracked}
-		{@render empty(
-			t(
-				'Agency notices are not tracked in this city.',
-				'Les avis de l’agence ne sont pas suivis dans cette ville.',
-			),
-		)}
+		{@render empty(alertsNotTrackedLine(agencyName(operator ?? '', city), locale))}
 	{:else if !ready}
 		{@render empty(
 			t(
@@ -125,6 +130,10 @@
 		{#if tracked}
 			<a class="inline-flex min-h-11 items-center text-primary underline" {href}
 				>{t('All alerts in effect', 'Tous les avis en vigueur')}</a
+			>
+		{:else if officialAlertsUrl}
+			<a class="inline-flex min-h-11 items-center text-primary underline" href={officialAlertsUrl}
+				>{officialAlertsLabel(locale)}</a
 			>
 		{/if}
 	{/snippet}

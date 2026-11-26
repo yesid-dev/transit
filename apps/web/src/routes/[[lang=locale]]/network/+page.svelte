@@ -20,7 +20,7 @@
 		carryFrameState(localizeHref('/status', locale, data.providerId), url),
 	);
 
-	// Links copied before the feed diagnostics moved still open the same section.
+	// Links copied before the feed diagnostics moved open the same figures in Data health's Record.
 	afterNavigate(({ to }) => {
 		if (
 			!to?.url.pathname.endsWith('/network') ||
@@ -29,7 +29,7 @@
 			return;
 		const destination = new SvelteURL(to.url);
 		destination.pathname = destination.pathname.replace(/\/network$/, '/status');
-		destination.searchParams.set('frameMode', 'live');
+		destination.searchParams.set('frameMode', 'record');
 		void goto(destination, { replaceState: true });
 	});
 </script>

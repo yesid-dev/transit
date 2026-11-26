@@ -6,6 +6,7 @@ const states = {
 	unknown: { glyph: '○', en: 'Unknown', fr: 'Inconnu' },
 	delay_unknown: { glyph: '○', en: 'Delay unknown', fr: 'Retard inconnu' },
 	not_reporting: { glyph: '◇', en: 'Not reporting', fr: 'Aucun signal' },
+	alerts_not_tracked: { glyph: '⊠', en: 'Not tracked', fr: 'Non suivi' },
 	not_tracked: {
 		glyph: '⊠',
 		en: 'Vehicles are not tracked in this city',

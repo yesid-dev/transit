@@ -47,6 +47,9 @@
 	import {
 		countedUnit,
 		dailyAlertsLink,
+		agencyName,
+		alertsNotTrackedLine,
+		alertsNotTrackedOnDates,
 		dateRange,
 		longDate,
 		methodEvidence,
@@ -314,14 +317,13 @@
 		/>
 	{/if}
 {/snippet}
-{#snippet messagesNotTracked()}
+{#snippet messagesNotTracked(onDates = false)}
 	<p class="flex min-w-0 items-baseline gap-2">
-		<StateMark state="not_tracked" locale={lang} hiddenLabel />
+		<StateMark state="alerts_not_tracked" locale={lang} hiddenLabel />
 		<span
-			>{t(
-				'Agency messages are not tracked in this city.',
-				'Les avis de l’agence ne sont pas suivis dans cette ville.',
-			)}</span
+			>{onDates
+				? alertsNotTrackedOnDates(agencyName(operator ?? cityName, routeData.provider), lang)
+				: alertsNotTrackedLine(agencyName(operator ?? cityName, routeData.provider), lang)}</span
 		>
 	</p>
 {/snippet}
@@ -589,7 +591,7 @@
 										{@const count = messages?.evidence.counts.alerts}
 										{#if !messages}{@render failure(result)}
 										{:else if messages.state === 'not_tracked'}
-											{@render messagesNotTracked()}
+											{@render messagesNotTracked(true)}
 										{:else if messages.state !== 'measured'}{@render missingMeasure(messages)}
 										{:else if count === 0}
 											<p>

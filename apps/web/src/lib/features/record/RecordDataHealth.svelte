@@ -1,22 +1,54 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { HourGrid, type HourGridCell } from '@yesid/ui/chart';
+	import { DashboardGrid } from '@yesid/ui/layout';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
-	import type { DataHealthAnswer, EngineResult, MethodEntry } from '#lib/server/engine.ts';
-	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
+	import type {
+		DataHealthAnswer,
+		EngineResult,
+		MeasureAnswer,
+		MethodEntry,
+		RecordMeasure,
+		RecordSeries,
+		ScorecardAnswer,
+	} from '#lib/server/engine.ts';
+	import type { AgencyScorecardMeasure } from '#lib/server/screenQuestions.ts';
 	import { page } from '$app/state';
+	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
-		dateRange,
 		countedUnit,
+		dateRange,
+		frenchAgency,
 		longDate,
+		methodEvidence,
+		officialAlertsLabel,
 		recordStamp,
+		sampleWithMinimum,
 		singularCount,
-		versionNumber,
-		healthTableDays,
 	} from '#lib/site/presenter.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
+	import {
+		collectionGaps,
+		feedCheckRows,
+		feedCheckSample,
+		minimumNote,
+		minimumSample,
+		predictionReadings,
+		publishingRows,
+		publishingSample,
+		publishStateText,
+		scorecardDays,
+		scorecardState,
+		stopEventCoverage,
+		tripCoverageFacts,
+		vehicleReportRows,
+		type HealthRow,
+	} from '../health/agencyHealthText.ts';
 	import { healthReading, tableName } from './dataHealthText.ts';
+	import FactList from './FactList.svelte';
+	import FactRow from './FactRow.svelte';
 	import RecordActionGroup from './RecordActionGroup.svelte';
 	import RecordAnswer from './RecordAnswer.svelte';
 	import AboutFigures from './AboutFigures.svelte';
@@ -31,10 +63,14 @@
 	import { choose, lastGoodNote, recordConnection, tally } from './recordText.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 
+	type Result<T> = Promise<EngineResult<T>>;
+
 	let {
 		locale,
 		url,
 		record,
+		alerts = { tracked: true },
+		operatorOf = null,
 		subject = '',
 		operator = '',
 	}: {
@@ -43,21 +79,37 @@
 		record: {
 			city: string;
 			period: DateWindow;
-			health: Promise<EngineResult<DataHealthAnswer>>;
-			methods: Promise<EngineResult<MethodEntry[]>>;
+			coverage: Result<MeasureAnswer>;
+			accessibility: Result<RecordMeasure>;
+			alertEffects: Result<RecordSeries> | null;
+			scorecard: Record<AgencyScorecardMeasure, Result<ScorecardAnswer>>;
+			health: Result<DataHealthAnswer>;
+			methods: Result<MethodEntry[]>;
 		} | null;
+		alerts?: { tracked: boolean; officialUrl?: string };
+		/** The French form of the agency after "de", as the city declares it. */
+		operatorOf?: string | null;
 		subject?: string;
 		operator?: string;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	// Each city's record starts on its own declared first day.
+	const start = $derived(recordStart(page.data.provider));
 	const term = $derived(overviewCopy[locale]);
 	const title = $derived(t('Data health', 'Santé des données'));
-	const dailyTitle = $derived(
-		t('Each clean table, day by day', 'État des tables nettoyées, jour par jour'),
-	);
-	const methodLabel = $derived(term.method);
-	const changesTitle = $derived(t('Method changes', 'Mises à jour des méthodes'));
+	const agencyLabel = $derived(operator || subject);
+	const agency = $derived({ name: agencyLabel, frenchOf: operatorOf });
+	const french = $derived(frenchAgency(agency));
+	const titles = $derived({
+		publishes: t(`What ${agencyLabel} publishes`, `Ce que publie ${french.subject}`),
+		coverage: t('Live trip coverage', 'Couverture des trajets en direct'),
+		reports: t('Details in vehicle reports', 'Détails transmis par les véhicules'),
+		predictions: t('Arrival predictions', 'Prévisions d’arrivée'),
+		feeds: t('Feed checks and outages', 'Vérifications des flux et interruptions'),
+		days: t('Days in the record', 'Jours dans le bilan'),
+		changes: t('Method changes', 'Mises à jour des méthodes'),
+	});
 	const stamp = $derived(
 		record ? { kind: 'record' as const, label: recordStamp(record.period, locale) } : undefined,
 	);
@@ -69,14 +121,17 @@
 			url,
 		);
 	});
-	const share = $derived(recordSectionLinks(pinned, 'table-health').share);
+	const share = $derived(recordSectionLinks(pinned, 'stop-events').share);
 	const methodHref = $derived(
 		carryFrameState(localizeHref('/metrics', locale, record?.city), pinned),
 	);
 
 	const labels = $derived({
 		present: t('Present', 'Présent'),
-		missing: t('Missing: no file for that day', 'Manquant : aucun fichier pour ce jour'),
+		missing: t(
+			'Missing: not in the record for that day',
+			'Manquant\u00a0: absent du bilan pour ce jour',
+		),
 		not_measured: t('Not measured: its source was missing', 'Non mesuré : la source manquait'),
 		incomplete: t('Incomplete', 'Incomplet'),
 		not_tracked: t('Not tracked', 'Non suivi'),
@@ -97,45 +152,31 @@
 				.map((entry) => [entry.family, entry]),
 		).values(),
 	];
-	const methodVersion = (entries: MethodEntry[]) =>
-		versionNumber(
-			(
-				entries.find(({ id }) => id === 'punctuality') ??
-				entries.find(({ family }) => family === 'punctuality')
-			)?.method_version,
-		);
-	const versionText = (type: string, version: string | null) =>
-		version ? `${type} ${version}` : null;
-	const cleaningText = (answer: DataHealthAnswer) =>
-		versionText(t('cleaning', 'nettoyage'), versionNumber(answer.cleaning_version));
-	const methodText = (entries: MethodEntry[]) =>
-		versionText(t('method', 'méthode'), methodVersion(entries));
-	const versionsText = (answer: DataHealthAnswer, entries: MethodEntry[]) =>
-		[methodText(entries), cleaningText(answer)].filter(Boolean).join(', ');
 	const tablesFor = (answer: DataHealthAnswer) => [
 		...new Set(answer.days.flatMap((day) => Object.keys(day.tables))),
 	];
 
-	function sample(answer: DataHealthAnswer) {
-		const tables = new Set(
-			answer.days.flatMap(({ tables }) =>
-				Object.entries(tables).flatMap(([id, cell]) => (cell.status === 'not_tracked' ? [] : [id])),
-			),
-		).size;
-		const days = countedUnit(answer.days.length, 'day', locale);
+	function daysSummary(answer: DataHealthAnswer) {
+		const days = answer.days.length;
+		const gaps = answer.days.filter(({ tables }) =>
+			Object.values(tables).some(({ status }) => status !== 'present' && status !== 'not_tracked'),
+		).length;
+		if (!gaps)
+			return t(
+				'Every day of these dates is in the record.',
+				'Chaque jour de cette période est dans le bilan.',
+			);
 		return t(
-			`${tally(tables, locale)} ${singularCount(tables, locale) ? 'clean table' : 'clean tables'} over ${days}`,
-			`${tally(tables, locale)} ${singularCount(tables, locale) ? 'table nettoyée' : 'tables nettoyées'} sur ${days}`,
+			`${tally(gaps, locale)} of ${countedUnit(days, 'day', locale)} ${gaps === 1 ? 'has' : 'have'} a gap.`,
+			`${tally(gaps, locale)} ${singularCount(gaps, locale) ? 'jour' : 'jours'} sur ${tally(days, locale)} ${singularCount(gaps, locale) ? 'a une lacune' : 'ont une lacune'}.`,
 		);
 	}
 
-	function coverage(totals: ReturnType<typeof healthTableDays>) {
-		const tracked = tally(totals.tracked, locale);
-		const missing = tally(totals.missing, locale);
-		const unmeasured = tally(totals.notMeasured, locale);
+	function daysSample(answer: DataHealthAnswer) {
+		const kinds = tablesFor(answer).length;
 		return t(
-			`of the ${tracked} table days in these dates are present. ${missing} ${totals.missing === 1 ? 'is' : 'are'} missing and ${unmeasured} could not be measured.`,
-			`jours de données sur ${tracked} sont présents pour cette période. ${missing} ${singularCount(totals.missing, locale) ? 'jour manque' : 'jours manquent'} et ${unmeasured} ${singularCount(totals.notMeasured, locale) ? 'jour n’a pas pu être mesuré' : 'jours n’ont pas pu être mesurés'}.`,
+			`${tally(kinds, locale)} ${kinds === 1 ? 'kind' : 'kinds'} of data, ${countedUnit(answer.days.length, 'day', locale)}`,
+			`${tally(kinds, locale)} ${singularCount(kinds, locale) ? 'type' : 'types'} de données, ${countedUnit(answer.days.length, 'day', locale)}`,
 		);
 	}
 
@@ -171,19 +212,168 @@
 			states,
 		};
 	}
+
+	function tooFewNote(answer: ScorecardAnswer, measure: string, sample: string) {
+		const minimum = minimumSample(answer, measure);
+		return minimum == null ? sample : sampleWithMinimum(sample, minimum, locale);
+	}
 </script>
+
+{#snippet unavailable(result: { kind: string })}
+	{#if result.kind === 'busy'}<RecordPending {locale} busy />
+	{:else}<p>{recordConnection.unreachable[locale]}</p>{/if}
+{/snippet}
+
+{#snippet stateCell(row: RecordTableRow & HealthRow)}
+	{#if row.state === 'published'}<span class="font-semibold"
+			>{publishStateText(row.state, locale)}</span
+		>
+	{:else if row.state === 'unavailable'}{publishStateText(row.state, locale)}
+	{:else}<StateMark state={row.state} {locale} />{/if}
+{/snippet}
+{#snippet shareCell(row: RecordTableRow & { share: string })}{row.share}{/snippet}
+{#snippet rightCell(row: RecordTableRow & { right: string })}{row.right}{/snippet}
+{#snippet answeredCell(row: RecordTableRow & { answered: string })}{row.answered}{/snippet}
+{#snippet checkedCell(row: RecordTableRow & { checked: string })}{row.checked}{/snippet}
+
+<!-- One card for each scorecard answer: the waiting, failing and one-state cases are shared. -->
+{#snippet scorecardCard(
+	id: AgencyScorecardMeasure,
+	cardTitle: string,
+	result: Result<ScorecardAnswer>,
+	body: Snippet<[ScorecardAnswer]>,
+	sample: (answer: ScorecardAnswer) => string | null,
+)}
+	<section {id} class="min-w-0">
+		<RecordCard title={cardTitle} {stamp}>
+			{#await result}
+				{#key result}<RecordPending {locale} answer={result} shape="table" />{/key}
+			{:then settled}
+				{#if settled.kind === 'answer'}
+					{@const answer = settled.answer}
+					{@const only = scorecardState(answer, id)}
+					{#if only}
+						<p><StateMark state={only} {locale} /></p>
+						{#if only === 'too_few_to_judge'}
+							<p class="mt-2 text-small text-muted-foreground">
+								{tooFewNote(answer, id, sample(answer) ?? scorecardDays(answer, locale))}
+							</p>
+						{/if}
+					{:else}
+						{@render body(answer)}
+						{@const note = minimumNote(answer, id, locale)}
+						{#if note}<p class="mt-2 text-small text-muted-foreground">{note}</p>{/if}
+					{/if}
+					{#if settled.lastGood}<p class="mt-2">{lastGoodNote[locale]}</p>{/if}
+				{:else}{@render unavailable(settled)}{/if}
+			{/await}
+			{#snippet evidence()}
+				{#await result then settled}
+					{#if settled.kind === 'answer'}
+						<RecordEvidenceLine
+							{locale}
+							evidence={settled.answer.evidence}
+							sample={sample(settled.answer)}
+						/>
+					{/if}
+				{/await}
+			{/snippet}
+		</RecordCard>
+	</section>
+{/snippet}
+
+{#snippet coverageBody(answer: ScorecardAnswer)}
+	<FactList>
+		{#each tripCoverageFacts(answer, locale).facts as fact (fact.id)}
+			<FactRow label={fact.label} labelDetail={fact.detail ?? undefined}>
+				{#if fact.value}<span class="font-semibold">{fact.value}</span>
+				{:else}<StateMark state="unknown" {locale} />{/if}
+			</FactRow>
+		{/each}
+	</FactList>
+{/snippet}
+
+{#snippet reportsBody(answer: ScorecardAnswer)}
+	<p class="mb-3">
+		{t(
+			'Share of vehicle reporting time with each detail.',
+			'Part du temps de signalement où chaque détail était fourni.',
+		)}
+	</p>
+	<RecordDataTable
+		{locale}
+		title={titles.reports}
+		rowHeader={t('Detail', 'Détail')}
+		rows={vehicleReportRows(answer, locale).rows}
+		columns={[
+			{
+				key: 'share',
+				header: t('Share of the time', 'Part du temps'),
+				numeric: true,
+				cell: shareCell,
+			},
+		]}
+		value="share"
+	/>
+{/snippet}
+
+{#snippet predictionsBody(answer: ScorecardAnswer)}
+	{@const readings = predictionReadings(answer, locale)}
+	{#if readings.sentence}<p class="mb-3 text-subheading font-semibold">{readings.sentence}</p>{/if}
+	<RecordDataTable
+		{locale}
+		title={titles.predictions}
+		rowHeader={t('Made', 'Faite')}
+		rows={readings.rows}
+		columns={[
+			{
+				key: 'right',
+				header: t('Right within a minute', 'Juste à une minute près'),
+				numeric: true,
+				cell: rightCell,
+			},
+			{
+				key: 'checked',
+				header: t('Arrivals checked', 'Arrivées vérifiées'),
+				numeric: true,
+				cell: checkedCell,
+			},
+		]}
+		value="right"
+	/>
+{/snippet}
+
+{#snippet feedsBody(answer: ScorecardAnswer)}
+	{@const gaps = collectionGaps(answer, locale)}
+	<RecordDataTable
+		{locale}
+		title={titles.feeds}
+		rowHeader={t('Feed', 'Flux')}
+		rows={feedCheckRows(answer, locale)}
+		columns={[
+			{
+				key: 'answered',
+				header: t('Answered', 'Réussies'),
+				numeric: true,
+				cell: answeredCell,
+			},
+		]}
+		value="answered"
+	/>
+	<p class="mt-3">{gaps}</p>
+{/snippet}
 
 <RecordScreen class="min-w-0">
 	<RecordGroup><ScreenTitle {title} subtitle={subject} /></RecordGroup>
 	<div data-slot="screen-content">
 		<RecordGroup>
-			<div class="table-days-answer" data-slot="screen-answer">
+			<div id="stop-events" data-slot="screen-answer">
 				{#if record}
-					{#await record.health}
-						{#key record.health}<RecordPending
+					{#await record.coverage}
+						{#key record.coverage}<RecordPending
 								shape="answer"
 								{locale}
-								answer={record.health}
+								answer={record.coverage}
 							/>{/key}
 					{:then result}
 						{#if result.kind === 'busy'}<RecordPending {locale} busy />
@@ -196,29 +386,30 @@
 							/>
 						{:else}
 							{@const answer = result.answer}
-							{@const totals = healthTableDays(answer.days)}
+							{@const coverage = stopEventCoverage(answer, locale)}
 							<RecordAnswer
 								{locale}
-								value={totals.tracked ? tally(totals.present, locale) : null}
-								state={totals.tracked ? undefined : 'not_measured'}
-								sentence={totals.tracked ? coverage(totals) : t('Not measured', 'Non mesuré')}
+								value={coverage?.value ?? null}
+								state={coverage ? undefined : 'not_measured'}
+								sentence={coverage?.sentence ?? t('Not measured', 'Non mesuré')}
 								time={stamp}
+								evidence={coverage
+									? { sample: coverage.counted, lastGood: result.lastGood }
+									: undefined}
 							>
 								{#snippet meta()}
-									{#if totals.tracked}
-										<p>{term.counted}{t(':', ' :')} {sample(answer)}</p>
-									{/if}
-									{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+									{#if coverage}<p>{coverage.rest}</p>{/if}
 								{/snippet}
 								{#snippet actions()}
 									<RecordActionGroup {locale} href={share} files={[]}>
 										{#snippet citation()}
 											<p>
-												Transit. {title} ({record.city}). {dateRange(record.period, locale)}. {t(
-													'Cleaning version',
-													'Version du nettoyage',
-												)}
-												{versionNumber(answer.cleaning_version)}. {share}
+												Transit. {title} ({subject || record.city}). {dateRange(
+													record.period,
+													locale,
+												)}. {coverage ? `${coverage.value} ${coverage.sentence}` : ''}
+												{methodEvidence(answer.evidence, locale)}
+												{share}
 											</p>
 										{/snippet}
 									</RecordActionGroup>
@@ -237,17 +428,107 @@
 			</div>
 
 			{#if record}
-				<section id="table-health" class="min-w-0">
-					<RecordCard interactive title={dailyTitle} {stamp}>
+				{@const publishing = Promise.all([
+					record.accessibility,
+					record.alertEffects ?? Promise.resolve(null),
+					record.scorecard.vehicle_field_completeness,
+				])}
+				<section id="publishes" class="min-w-0">
+					<RecordCard
+						interactive={!alerts.tracked && !!alerts.officialUrl}
+						title={titles.publishes}
+						{stamp}
+					>
+						{#await publishing}
+							<RecordSkeleton shape="table" />
+						{:then [accessibility, alertEffects, completeness]}
+							{@const rows = publishingRows(
+								{ accessibility, alertEffects, completeness },
+								agency,
+								locale,
+							)}
+							{#if rows.every(({ state }) => state === 'unavailable')}
+								<p>{recordConnection.unreachable[locale]}</p>
+							{:else}
+								{#if rows.some(({ state }) => state === 'unavailable')}
+									<p class="mb-3">{recordConnection.unreachable[locale]}</p>
+								{/if}
+								<RecordDataTable
+									{locale}
+									title={titles.publishes}
+									rowHeader={t('What riders rely on', 'Ce dont les usagers ont besoin')}
+									rows={rows.map((row) => ({ ...row, detail: row.note ?? undefined }))}
+									columns={[{ key: 'state', header: t('State', 'État'), cell: stateCell }]}
+									value="state"
+								/>
+							{/if}
+						{/await}
+						{#snippet links()}
+							{#if !alerts.tracked && alerts.officialUrl}
+								<a
+									class="inline-flex min-h-11 items-center text-primary underline"
+									href={alerts.officialUrl}>{officialAlertsLabel(locale)}</a
+								>
+							{/if}
+						{/snippet}
+						{#snippet evidence()}
+							{#await record.accessibility then accessibility}
+								{@const sample = publishingSample(accessibility, locale)}
+								{#if sample}<RecordEvidenceLine {locale} {sample} versions="" />{/if}
+							{/await}
+						{/snippet}
+					</RecordCard>
+				</section>
+
+				<DashboardGrid gutter={false} minTile="24rem">
+					{@render scorecardCard(
+						'live_trip_coverage',
+						titles.coverage,
+						record.scorecard.live_trip_coverage,
+						coverageBody,
+						(answer) => tripCoverageFacts(answer, locale).sample,
+					)}
+					{@render scorecardCard(
+						'vehicle_field_completeness',
+						titles.reports,
+						record.scorecard.vehicle_field_completeness,
+						reportsBody,
+						(answer) => vehicleReportRows(answer, locale).sample,
+					)}
+				</DashboardGrid>
+				<DashboardGrid gutter={false} minTile="24rem">
+					{@render scorecardCard(
+						'prediction_error',
+						titles.predictions,
+						record.scorecard.prediction_error,
+						predictionsBody,
+						(answer) => predictionReadings(answer, locale).sample,
+					)}
+					{@render scorecardCard(
+						'poll_success',
+						titles.feeds,
+						record.scorecard.poll_success,
+						feedsBody,
+						(answer) => feedCheckSample(answer, locale),
+					)}
+				</DashboardGrid>
+			{/if}
+		</RecordGroup>
+
+		{#if record}
+			<RecordGroup>
+				<section id="days-in-record" class="min-w-0">
+					<RecordCard interactive title={titles.days} {stamp}>
 						{#await record.health}
 							<RecordSkeleton shape="table" />
 						{:then result}
 							{#if result.kind === 'answer'}
 								{@const display = grid(result.answer)}
 								{#if display.from && display.to && display.rows.length}
+									<p class="mb-3">{daysSummary(result.answer)}</p>
 									<div>
 										<HourGrid
-											label={dailyTitle}
+											label={titles.days}
 											columns={display.columns}
 											rows={display.rows}
 											scale={{ label: '', steps: [] }}
@@ -256,7 +537,7 @@
 										<ul
 											class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-small text-muted-foreground"
 											role="list"
-											aria-label={t('Table-day states', 'États par table et par jour')}
+											aria-label={t('Day states', 'États des jours')}
 										>
 											{#each [...display.states] as state (state)}
 												<li class="flex gap-2">
@@ -276,89 +557,81 @@
 											)}
 										</p>
 									{/if}
+									<p class="mt-3">
+										{t(
+											'A day with a gap is left out of the figures that need it, and each figure says how many days it counted.',
+											'Un jour avec une lacune est exclu des résultats qui en dépendent, et chaque résultat indique combien de jours il compte.',
+										)}
+									</p>
 								{:else}<StateMark state="not_measured" {locale} />{/if}
-							{:else if result.kind !== 'busy'}<p>{recordConnection.unreachable[locale]}</p>{/if}
+								{#if result.lastGood}<p class="mt-2">{lastGoodNote[locale]}</p>{/if}
+							{:else}{@render unavailable(result)}{/if}
 						{/await}
+						{#snippet links()}
+							<a class="inline-flex min-h-11 items-center text-primary underline" href={methodHref}
+								>{term.method}</a
+							>
+						{/snippet}
 						{#snippet evidence()}
 							{#await record.health then result}
 								{#if result.kind === 'answer'}
-									{#await record.methods then methods}
-										<RecordEvidenceLine
-											{locale}
-											sample={sample(result.answer)}
-											versions={versionsText(
-												result.answer,
-												methods.kind === 'answer' ? methods.answer : [],
-											)}
-										/>
-									{/await}
+									<RecordEvidenceLine {locale} sample={daysSample(result.answer)} versions="" />
 								{/if}
 							{/await}
 						{/snippet}
 					</RecordCard>
 				</section>
-				<RecordCard interactive title={changesTitle}>
-					<dl class="mb-4 grid gap-3 sm:grid-cols-2">
-						<div>
-							<dt class="font-semibold">{t('Record starts', 'Début du bilan')}</dt>
-							<dd>{longDate(recordStart(page.data.provider), locale)}</dd>
-						</div>
-						<div>
-							<dt class="font-semibold">{t('Rebuilt', 'Recalcul')}</dt>
-							<dd>
-								{t(
-									'Each night, after the service day closes',
-									'Chaque nuit, après la fin de la journée de service',
-								)}
-							</dd>
-						</div>
-					</dl>
+				<RecordCard title={titles.changes}>
 					{#await record.methods}
 						{#key record.methods}<RecordPending {locale} answer={record.methods} />{/key}
 					{:then result}
-						{#if result.kind === 'busy'}<RecordPending {locale} busy />
-						{:else if result.kind !== 'answer'}<p>{recordConnection.unreachable[locale]}</p>
+						{#if result.kind !== 'answer'}{@render unavailable(result)}
 						{:else if result.answer.length}
+							{@const families = familiesFor(result.answer)}
+							{@const dates = new Set(families.map(({ since }) => since))}
 							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-							{#snippet since(row: RecordTableRow & { since: string })}
-								<time datetime={row.since}>{longDate(row.since, locale)}</time>
-							{/snippet}
-							<RecordDataTable
-								{locale}
-								title={changesTitle}
-								rowHeader={t('Measure family', 'Famille de mesures')}
-								rows={familiesFor(result.answer).map((entry) => ({
-									id: entry.family,
-									label: entry.family_text?.[locale] ?? entry.family,
-									href: `${methodHref}#${entry.id}`,
-									since: entry.since,
-								}))}
-								columns={[
-									{ key: 'since', header: t('Last changed', 'Dernier changement'), cell: since },
-								]}
-								value="since"
-							/>
+							{#if dates.size === 1}
+								<p>
+									{t(
+										`Every measure last changed on ${longDate(families[0].since, locale)}.`,
+										`Toutes les mesures ont changé pour la dernière fois le ${longDate(families[0].since, locale)}.`,
+									)}
+									{t(
+										`The record starts ${longDate(start, locale)} and is rebuilt each night, after the service day closes.`,
+										`Le bilan commence le ${longDate(start, locale)} et est recalculé chaque nuit, après la fin de la journée de service.`,
+									)}
+								</p>
+							{:else}
+								<p class="mb-3">
+									{t(
+										`The record starts ${longDate(start, locale)} and is rebuilt each night, after the service day closes.`,
+										`Le bilan commence le ${longDate(start, locale)} et est recalculé chaque nuit, après la fin de la journée de service.`,
+									)}
+								</p>
+								{#snippet since(row: RecordTableRow & { since: string })}
+									<time datetime={row.since}>{longDate(row.since, locale)}</time>
+								{/snippet}
+								<RecordDataTable
+									{locale}
+									title={titles.changes}
+									rowHeader={t('Measure family', 'Famille de mesures')}
+									rows={families.map((entry) => ({
+										id: entry.family,
+										label: entry.family_text?.[locale] ?? entry.family,
+										href: `${methodHref}#${entry.id}`,
+										since: entry.since,
+									}))}
+									columns={[
+										{ key: 'since', header: t('Last changed', 'Dernier changement'), cell: since },
+									]}
+									value="since"
+								/>
+							{/if}
 						{:else}<StateMark state="not_measured" {locale} />{/if}
 					{/await}
 				</RecordCard>
-				<RecordCard
-					interactive
-					title={t('What a missing day does', 'Ce que change un jour manquant')}
-				>
-					<p>
-						{t(
-							'A day with a missing table is left out of every figure that needs it. The figure then says how many days it counted, so a gap never looks like a good day.',
-							'Un jour où une table manque est exclu de chaque résultat qui en dépend. Le résultat indique ensuite combien de jours ont été comptés, pour qu’un jour sans données ne soit jamais pris pour un bon jour.',
-						)}
-					</p>
-					{#snippet links()}
-						<a class="inline-flex min-h-11 items-center text-primary underline" href={methodHref}
-							>{methodLabel}</a
-						>
-					{/snippet}
-				</RecordCard>
-			{/if}
-		</RecordGroup>
+			</RecordGroup>
+		{/if}
 		{#if record && stamp}
 			<RecordGroup>
 				<AboutFigures
@@ -369,23 +642,15 @@
 							key: 'counted',
 							label: term.counted,
 							text: t(
-								'One reading for each clean table and service day. Tables outside the published coverage are excluded.',
-								'Un état par table nettoyée et par jour de service. Les tables hors de la couverture publiée sont exclues.',
-							),
-						},
-						{
-							key: 'observed',
-							label: term.observed,
-							text: t(
-								'The files available for each table and service day.',
-								'Les fichiers disponibles pour chaque table et jour de service.',
+								`Every stop event in ${agencyLabel}’s timetable for these dates, and its live feeds.`,
+								`Chaque passage prévu à l’horaire ${french.of} à ces dates, et ses flux en direct.`,
 							),
 						},
 						{
 							key: 'method',
 							label: term.methodRow,
 							text: null,
-							link: { href: methodHref, label: methodLabel },
+							link: { href: methodHref, label: term.method },
 						},
 						{
 							key: 'source',
@@ -398,9 +663,3 @@
 		{/if}
 	</div>
 </RecordScreen>
-
-<style>
-	.table-days-answer :global(.answer-value) {
-		flex-shrink: 0;
-	}
-</style>

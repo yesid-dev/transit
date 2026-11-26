@@ -21,7 +21,7 @@ import {
 import {
 	alertQuestions,
 	dailyQuestions,
-	healthDiagnosticQuestions,
+	agencyHealthQuestions,
 	networkRecordQuestions,
 	overviewSelection,
 	rankingsQuery,
@@ -41,12 +41,10 @@ export function defaultPeriod(clock: FrameClock) {
 export function defaultCityQuestions(
 	city: WarmCity,
 	period: NonNullable<ReturnType<typeof defaultPeriod>>,
-	healthPeriod = period,
 ) {
 	const scope = { ...period, city: city.id };
 	const dailyScope = { ...scope, from: scope.to };
 	const tracked = providerHasAlerts(city);
-	const healthScope = { ...healthPeriod, city: city.id };
 	const overview = overviewSelection(scope);
 	const [trend, trendPeriod] = overview.trend;
 	const questions = [
@@ -79,10 +77,12 @@ export function defaultCityQuestions(
 		...Object.values(networkRecordQuestions).map((parameters) =>
 			periodQuestion(scope, '/measure', parameters),
 		),
-		...healthDiagnosticQuestions().map(({ query: { path, parameters } }) =>
-			periodQuestion(healthScope, path, parameters),
+		...agencyHealthQuestions().scorecard.map(({ query: { path, parameters } }) =>
+			periodQuestion(scope, path, parameters),
 		),
-		dataHealthQuestion(healthScope),
+		periodQuestion(scope, '/measure', agencyHealthQuestions().accessibility),
+		...(tracked ? [periodQuestion(scope, '/measure', agencyHealthQuestions().alertEffects)] : []),
+		dataHealthQuestion(scope),
 		mapRecordQuestion(scope),
 		mapRecordQuestion(scope, undefined, undefined, 'corridors'),
 		scheduleQuestion(city.id),

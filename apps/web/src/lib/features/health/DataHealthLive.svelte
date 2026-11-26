@@ -1,11 +1,8 @@
 <script lang="ts">
-	import { Stamp } from '@yesid/ui/brand';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
-	import { DashboardGrid } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import type { EngineResult, ScorecardAnswer } from '#lib/server/engine.ts';
 	import { type CaptureSnapshot, feedState } from '#lib/live/captureSnapshot.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
@@ -15,74 +12,37 @@
 		captureSize,
 		liveStampAge,
 		recordRatio,
-		recordStamp,
 	} from '#lib/site/presenter.ts';
-	import { frameHref } from '#lib/site/frameState.ts';
-	import {
-		networkMeasures,
-		type NetworkMeasure,
-		networkRows,
-	} from '../network/networkRecordText.ts';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
-	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
-	import RecordActionGroup from '../record/RecordActionGroup.svelte';
-	import RecordPending from '../record/RecordPending.svelte';
-	import RecordTable from '../record/RecordTable.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
-	import { choose, lastGoodNote, recordConnection, tally } from '../record/recordText.ts';
-	import { recordSectionLinks } from '../record/recordLinks.ts';
-	import { countedUnit, dateRange, methodEvidence } from '#lib/site/presenter.ts';
-
-	let diagnosticsExpanded = $state<boolean>();
+	import { choose } from '../record/recordText.ts';
 
 	let {
 		city,
 		capture,
-		diagnostics,
 		subject,
 		operator,
 		locale,
-		url,
 	}: {
 		city: string | null;
 		capture: Promise<CaptureSnapshot | null>;
-		diagnostics: {
-			period: { from: string; to: string };
-			city: string;
-			sections: { measure: NetworkMeasure; answer: Promise<EngineResult<ScorecardAnswer>> }[];
-		} | null;
 		subject: string;
 		operator: string;
 		locale: Locale;
-		url: URL;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const table = $derived(t('Each feed, at its last capture', 'Dernière collecte de chaque flux'));
-	const diagnosticsTitle = $derived(
-		t('Feed diagnostics for the selected dates', 'Diagnostic des flux pour les dates choisies'),
-	);
 	const hold = $derived(
 		t(
 			'A late feed is held: the screens keep showing what was last received, and say so.',
 			'Si un flux est en retard, les écrans conservent les dernières données reçues et le signalent.',
 		),
 	);
-	const pinned = $derived.by(() => {
-		const link = new URL(url.pathname.replace(/\/status$/, '/network'), url);
-		if (diagnostics) link.searchParams.set('provider', diagnostics.city);
-		return new URL(
-			frameHref(link, {
-				mode: 'record',
-				period: diagnostics && { ...diagnostics.period, preset: null },
-			}),
-			url,
-		);
-	});
 	const labels = $derived({
 		live: t('Fresh', 'À jour'),
 		stale: t('Late', 'En retard'),
@@ -133,113 +93,6 @@
 {#snippet cadenceCell(row: FeedRow)}{row.cadence}{/snippet}
 {#snippet sizeCell(row: FeedRow)}{row.size}{/snippet}
 {#snippet stateCell(row: FeedRow)}{row.state}{/snippet}
-
-{#snippet diagnosticsGroup()}
-	{#if diagnostics}
-		{@const stamp = { kind: 'record' as const, label: recordStamp(diagnostics.period, locale) }}
-		<RecordGroup>
-			<RecordCard
-				title={diagnosticsTitle}
-				bind:open={diagnosticsExpanded}
-				disclosure={{
-					id: 'feed-diagnostics',
-					initiallyOpen: Object.hasOwn(networkMeasures, url.hash.slice(1)),
-				}}
-			>
-				{#if diagnosticsExpanded ?? Object.hasOwn(networkMeasures, url.hash.slice(1))}
-					<div class="grid min-w-0 gap-4">
-						<DashboardGrid gutter={false} minTile="32rem">
-							{#each diagnostics.sections as { measure, answer } (measure)}
-								{@const copy = networkMeasures[measure]}
-								{@const title = t(...copy.title)}
-								<section id={measure} class="min-w-0">
-									<div class="grid gap-4">
-										<header class="flex flex-wrap justify-between gap-2">
-											<h3 class="text-subheading font-semibold">{title}</h3>
-											<Stamp {...stamp} />
-										</header>
-										{#await answer}
-											{#key answer}<RecordPending {locale} {answer} />{/key}
-										{:then result}
-											{#if result.kind === 'answer'}
-												{@const minimum = result.answer.info.find(
-													(entry) => entry.id === measure,
-												)?.minimum_sample}
-												{@const states = Object.values(
-													result.answer.evidence.dimension_states[measure] ?? {},
-												)}
-												<RecordTable
-													{title}
-													{...networkRows(measure, result.answer, locale)}
-													stack
-												/>
-												{#if minimum != null && (result.answer.state === 'too_few_to_judge' || states.includes('too_few_to_judge'))}
-													<p class="mt-2 text-small text-muted-foreground">
-														{measure === 'prediction_error'
-															? t(
-																	`At least ${tally(minimum, locale)} observed arrivals per lead time.`,
-																	`Au moins ${tally(minimum, locale)} arrivées observées par temps d’avance.`,
-																)
-															: t(
-																	`At least ${tally(minimum, locale)} samples per reading.`,
-																	`Au moins ${tally(minimum, locale)} observations par résultat.`,
-																)}
-													</p>
-												{/if}
-												{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-											{:else if result.kind === 'busy'}<RecordPending {locale} busy />
-											{:else}<p>{recordConnection.unreachable[locale]}</p>{/if}
-										{/await}
-
-										{#await answer then result}
-											{#if result.kind === 'answer'}
-												<RecordEvidenceLine
-													{locale}
-													evidence={result.answer.evidence}
-													sample={countedUnit(
-														result.answer.evidence.days_included.length,
-														'day',
-														locale,
-													)}
-												/>
-											{/if}
-										{/await}
-									</div>
-								</section>
-							{/each}
-						</DashboardGrid>
-						<RecordActionGroup
-							{locale}
-							href={url.href}
-							files={diagnostics.sections.map(({ measure }) => ({
-								label: t(...networkMeasures[measure].title),
-								href: recordSectionLinks(pinned, measure).csv,
-							}))}
-						>
-							{#snippet citation()}
-								{#each diagnostics.sections as { measure, answer } (measure)}
-									{#await answer then result}
-										{#if result.kind === 'answer'}
-											{@const { evidence } = result.answer}
-											<p>
-												Transit · {subject}. {t(...networkMeasures[measure].title)}. {dateRange(
-													{ from: evidence.start_date, to: evidence.end_date },
-													locale,
-												)}. {methodEvidence(evidence, locale)}
-												{result.lastGood ? lastGoodNote[locale] : ''}
-												{recordSectionLinks(pinned, measure).share}
-											</p>
-										{/if}
-									{/await}
-								{/each}
-							{/snippet}
-						</RecordActionGroup>
-					</div>
-				{/if}
-			</RecordCard>
-		</RecordGroup>
-	{/if}
-{/snippet}
 
 <RecordScreen class="min-w-0">
 	<RecordGroup
@@ -344,7 +197,6 @@
 						</RecordCard>
 					</div>
 				</RecordGroup>
-				{@render diagnosticsGroup()}
 				<RecordGroup>
 					<AboutLiveFigures
 						{locale}

@@ -157,7 +157,9 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 		});
 
 		expect((await hold.release()).status()).toBe(204);
-		await expect(messages).toContainText('Agency messages are not tracked in this city.');
+		await expect(messages).toContainText(
+			'Not tracked: Transit did not collect STM’s alerts on these dates.',
+		);
 	} finally {
 		await hold.release();
 	}

@@ -17,6 +17,8 @@
 	import {
 		alertAnswerSentence,
 		alertPaging,
+		alertsNotCollected,
+		officialAlertsLabel,
 		captureAge,
 		dateRange,
 		liveStampAge,
@@ -75,6 +77,8 @@
 			timeZone?: string;
 			cityName: string;
 			operator?: string;
+			/** The French form of the agency after "de", as the city declares it. */
+			operatorOf?: string | null;
 			capture: Promise<CaptureSnapshot | null> | null;
 			sections: ReturnType<typeof loadAlertRecord>;
 		};
@@ -427,9 +431,9 @@
 							title={t('Not tracked', 'Non suivi')}
 							glyph="⊠"
 							role="status"
-							body={t(
-								'Transit does not track service alerts for this network.',
-								'Transit ne suit pas les avis de service de ce réseau.',
+							body={alertsNotCollected(
+								{ name: data.operator ?? data.cityName, frenchOf: data.operatorOf },
+								locale,
 							)}
 						>
 							{#snippet action()}
@@ -438,7 +442,7 @@
 										class="inline-flex min-h-11 max-w-[calc(100cqi-2.5rem)] items-center text-primary underline"
 										href={data.officialAlertsUrl}
 									>
-										{t('Check official service alerts', 'Consulter les avis officiels')}
+										{officialAlertsLabel(locale)}
 									</a>
 								{/if}
 							{/snippet}</StateNotice

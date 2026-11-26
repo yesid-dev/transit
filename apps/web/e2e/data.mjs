@@ -6,7 +6,12 @@ import { finderEngine, linesFixtureRoutes, stopsFixture } from './finder-engine.
 import { overviewEngine, overviewCapturePlaces } from './overview-engine.mjs';
 import { rankingReferenceFixture, rankingsEngine } from './rankings-engine.mjs';
 import { stopEngine } from './stop-engine.mjs';
-import { networkEngine, networkFixtures, networkServiceFixture } from './network-engine.mjs';
+import {
+	accessibilityEngine,
+	networkEngine,
+	networkFixtures,
+	networkServiceFixture,
+} from './network-engine.mjs';
 import { vehicleEngine } from './vehicle-engine.mjs';
 import {
 	departureCaptureStops,
@@ -278,6 +283,11 @@ for (const family of ['static/routes', 'historic/route_reliability']) {
 // browser loads it: the layout spec serves the real file there, late.
 files['/v1/stm/static/stops/UNSEEDED.json'] = '{}';
 
+// The source line each declaration carries; French gives the form after "de".
+const declaredSources = {
+	stm: { en: 'STM', fr: 'de la STM' },
+	octranspo: { en: 'OC Transpo', fr: 'd’OC Transpo' },
+};
 const sourceCredits = {
 	stm: {
 		en: 'Source: Société de transport de Montréal (STM), CC BY 4.0.',
@@ -394,7 +404,10 @@ const server = createServer((request, response) => {
 					...(process.env.TRANSIT_E2E_DAILY_ARTWORK === '1'
 						? { record_through: '2026-11-23' }
 						: {}),
-					download_licence: { attribution: sourceCredits[provider.id] },
+					download_licence: {
+						attribution: sourceCredits[provider.id],
+						source: declaredSources[provider.id],
+					},
 					bounds: provider.max_bounds,
 					...(provider.id === 'octranspo'
 						? { name_separators: { ends: '<>', languages: '~', language_order: ['en', 'fr'] } }
@@ -921,26 +934,28 @@ const server = createServer((request, response) => {
 					? departureDailyEngine(url, undefined, true)
 					: ((reportFixture && question[2] === 'measure' ? rankingReferenceFixture(url) : null) ??
 						networkServiceFixture(url) ??
-						(isNetwork
-							? networkEngine(url)
-							: alertFixture
-								? alertsEngine(url)
-								: question[2] === 'measure' &&
-									  url.searchParams.get('measure')?.startsWith('vehicle')
-									? vehicleEngine(url)
-									: url.searchParams.has('departure')
-										? departureDailyEngine(url)
-										: url.searchParams.has('stop')
-											? stopEngine(url)
-											: url.searchParams.has('line')
-												? lineEngine(url)
-												: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
-													? rankingsEngine(url, question[1])
-													: finderFixture
-														? finderEngine(url)
-														: dailyFixture
-															? departureDailyEngine(url, dailyMessageHold)
-															: overviewEngine(url, scope)));
+						(url.searchParams.get('measure') === 'accessible_trips'
+							? accessibilityEngine(url)
+							: isNetwork
+								? networkEngine(url)
+								: alertFixture
+									? alertsEngine(url)
+									: question[2] === 'measure' &&
+										  url.searchParams.get('measure')?.startsWith('vehicle')
+										? vehicleEngine(url)
+										: url.searchParams.has('departure')
+											? departureDailyEngine(url)
+											: url.searchParams.has('stop')
+												? stopEngine(url)
+												: url.searchParams.has('line')
+													? lineEngine(url)
+													: question[2] === 'ranking' && url.searchParams.get('limit') === '500'
+														? rankingsEngine(url, question[1])
+														: finderFixture
+															? finderEngine(url)
+															: dailyFixture
+																? departureDailyEngine(url, dailyMessageHold)
+																: overviewEngine(url, scope)));
 		if (result.csv) {
 			response.setHeader('content-type', 'text/csv; charset=utf-8');
 			response.end(result.csv);

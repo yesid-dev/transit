@@ -8,7 +8,14 @@
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { createLiveStore, type LiveFamilyState } from '#lib/v1/live/store.svelte.ts';
-	import { countedUnit, liveStampAge, recordRatio, singularCount } from '#lib/site/presenter.ts';
+	import {
+		alertsNotCollected,
+		countedUnit,
+		liveStampAge,
+		officialAlertsLabel,
+		recordRatio,
+		singularCount,
+	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import FactList from '../record/FactList.svelte';
 	import FactRow from '../record/FactRow.svelte';
@@ -25,12 +32,19 @@
 		locale,
 		manifest,
 		alertsAvailable,
+		operator,
+		officialAlertsUrl,
+		operatorOf,
 		link,
 		onCaptureAge,
 	}: {
 		locale: Locale;
 		manifest: Manifest | null;
 		alertsAvailable: boolean;
+		operator: string;
+		officialAlertsUrl?: string;
+		/** The French form of the agency after "de", as the city declares it. */
+		operatorOf?: string | null;
 		link: (path: string, live?: boolean) => string;
 		onCaptureAge?: (age: number | null) => void;
 	} = $props();
@@ -93,7 +107,9 @@
 		),
 	);
 	const alerts = $derived(
-		reading(live?.alerts?.alerts.length, live?.familyStates.alerts, alertsAvailable),
+		alertsAvailable
+			? reading(live?.alerts?.alerts.length, live?.familyStates.alerts, true)
+			: ({ kind: 'absent', state: 'alerts_not_tracked' } as const),
 	);
 	const statuses = ['early', 'on_time', 'late', 'unknown'] as const;
 	const bands = $derived(
@@ -114,7 +130,9 @@
 	);
 </script>
 
-{#snippet readingValue(entry: ReturnType<typeof reading>)}
+{#snippet readingValue(
+	entry: ReturnType<typeof reading> | { kind: 'absent'; state: 'alerts_not_tracked' },
+)}
 	{#if entry.kind === 'value'}{tally(entry.value, locale)}
 	{:else if entry.kind === 'pending'}<Skeleton class="h-lh w-16 max-w-full" />
 	{:else if entry.kind === 'failed'}<span>{t.unavailable}</span>
@@ -167,9 +185,11 @@
 			<FactRow
 				label={t.alerts}
 				busy={alerts.kind === 'pending'}
-				detail={stale(alertHealth)
-					? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
-					: undefined}
+				detail={!alertsAvailable
+					? alertsNotCollected({ name: operator, frenchOf: operatorOf }, locale)
+					: stale(alertHealth)
+						? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
+						: undefined}
 			>
 				{@render readingValue(alerts)}
 			</FactRow>
@@ -203,6 +223,9 @@
 		{#if alertsAvailable}<a
 				class="inline-flex min-h-11 items-center text-primary underline"
 				href={link('/alerts', true)}>{t.readAlerts}</a
+			>{:else if officialAlertsUrl}<a
+				class="inline-flex min-h-11 items-center text-primary underline"
+				href={officialAlertsUrl}>{officialAlertsLabel(locale)}</a
 			>{/if}
 	{/snippet}
 </RecordCard>
