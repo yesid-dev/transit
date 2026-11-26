@@ -151,15 +151,9 @@ test("GET missing key returns 404", async () => {
   assert.equal(response.status, 404);
 });
 
-test("v2 basemap exposes only the public tile archive and supports a byte range", async () => {
-  const url = BASEMAP_URL;
-  const result = await worker.fetch(new Request(url, { headers: { range: "bytes=0-15" } }), makeEnv());
-  assert.equal(result.status, 206);
-  assert.equal(result.headers.get("x-transit-source"), "legacy");
-  assert.match(result.headers.get("access-control-expose-headers"), /\bX-Transit-Source\b/);
-  assert.equal(result.headers.get("content-range"), "bytes 0-15/200");
-  assert.equal(await result.text(), "P".repeat(16));
-  const invalid = await worker.fetch(new Request(url.replace("montreal.pmtiles", "%2fmanifest.json")), makeEnv());
+test("the v2 basemap route rejects non-tile paths", async () => {
+  const url = BASEMAP_URL.replace("montreal.pmtiles", "%2fmanifest.json");
+  const invalid = await worker.fetch(new Request(url), makeEnv());
   assert.equal(invalid.status, 404);
 });
 
@@ -185,22 +179,17 @@ test("a private city's basemap is hidden even when both storage locations contai
   assert.equal(legacy.mock.callCount(), 0);
 });
 
-test("v2 basemap replays the same responses before and after the clean copy", async (t) => {
-  t.mock.method(console, "warn", () => {});
-  const legacyEnv = makeEnv();
-  const legacy = legacyEnv.SNAPSHOTS;
+test("Montréal reads ranges and validators only from clean storage", async (t) => {
+  const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+  const legacy = env.SNAPSHOTS;
   const object = legacy.objects.get("v1/stm/static/basemap/montreal.pmtiles");
   const legacyGet = t.mock.method(legacy, "get");
   const legacyHead = t.mock.method(legacy, "head");
-  const cleanEnv = { ...legacyEnv, ...CLEAN_STORAGE_ENV };
-  let copied = false;
   const fetch = t.mock.method(globalThis, "fetch", async (url, init) => {
     assert.equal(url.host, "fixture.r2.cloudflarestorage.com");
     assert.match(init.headers.get("authorization"), /Credential=test-key\//);
     assert.equal(init.cache, "no-store");
-    if (url.pathname.endsWith("/missing.pmtiles")) return new Response("missing", { status: 404 });
     assert.equal(url.pathname, "/transit-clean/basemaps/v1/stm/montreal.pmtiles");
-    if (!copied) return new Response("missing", { status: 404 });
 
     const range = init.headers.get("range");
     if (init.headers.get("if-none-match") === object.httpEtag) return new Response(null, { status: 304 });
@@ -225,7 +214,6 @@ test("v2 basemap replays the same responses before and after the clean copy", as
     }), { status: 206, headers });
   });
 
-  const path = "https://data.yesid.dev/v2/stm/basemap/";
   const cases = [
     [{}, 200, object.body],
     [{ method: "HEAD", headers: { range: "bytes=0-15" } }, 200, ""],
@@ -238,32 +226,18 @@ test("v2 basemap replays the same responses before and after the clean copy", as
     [{ headers: { range: "bytes=200-" } }, 416, ""],
     [{ headers: { "if-none-match": object.httpEtag } }, 304, ""],
     [{ method: "HEAD", headers: { "if-match": '"different"' } }, 412, ""],
-    [{ headers: { range: "bytes=0-15" } }, 404, ""],
   ];
   for (const [init, status, body, contentRange] of cases) {
-    const request = new Request(path + (status === 404 ? "missing.pmtiles" : "montreal.pmtiles"), init);
-    copied = false;
-    const legacyResponse = await worker.fetch(request, legacyEnv);
-    assert.equal(legacyResponse.status, status);
-    assert.equal(legacyResponse.headers.get("x-transit-source"), status === 404 ? null : "legacy");
-    assert.equal(await legacyResponse.text(), body);
-    assert.equal(legacyResponse.headers.get("content-range"), contentRange ?? null);
-
-    for (const afterCopy of [false, true]) {
-      copied = afterCopy;
-      fetch.mock.resetCalls();
-      legacyGet.mock.resetCalls();
-      legacyHead.mock.resetCalls();
-      const result = await worker.fetch(request, cleanEnv);
-      assert.equal(result.status, status);
-      assert.equal(result.headers.get("x-transit-source"), status === 404 ? null : afterCopy ? "clean" : "legacy");
-      const otherHeaders = (response) => [...response.headers].filter(([name]) => name !== "x-transit-source");
-      assert.deepEqual(otherHeaders(result), otherHeaders(legacyResponse));
-      assert.equal(await result.text(), body);
-      assert.equal(fetch.mock.callCount(), afterCopy && [304, 412].includes(status) ? 2 : 1);
-      assert.equal(legacyGet.mock.callCount() + legacyHead.mock.callCount(), !afterCopy || status === 404 ? 1 : 0);
-    }
+    fetch.mock.resetCalls();
+    const result = await worker.fetch(new Request(BASEMAP_URL, init), env);
+    assert.equal(result.status, status);
+    assert.equal(result.headers.get("x-transit-source"), "clean");
+    assert.match(result.headers.get("access-control-expose-headers"), /\bX-Transit-Source\b/);
+    assert.equal(result.headers.get("content-range"), contentRange ?? null);
+    assert.equal(await result.text(), body);
+    assert.equal(fetch.mock.callCount(), [304, 412].includes(status) ? 2 : 1);
   }
+  assert.equal(legacyGet.mock.callCount() + legacyHead.mock.callCount(), 0);
 });
 
 const partialMetadata = {
@@ -292,6 +266,26 @@ test("Ottawa basemap ranges identify clean storage", async (t) => {
   assert.equal(legacy.mock.callCount(), 0);
 });
 
+test("a clean basemap miss returns the usual 404 even if the legacy file exists", async (t) => {
+  const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+  const legacyGet = t.mock.method(env.SNAPSHOTS, "get");
+  const legacyHead = t.mock.method(env.SNAPSHOTS, "head");
+  const fetch = t.mock.method(globalThis, "fetch", (url) => {
+    assert.equal(url.pathname, "/transit-clean/basemaps/v1/stm/montreal.pmtiles");
+    return new Response("private upstream detail", { status: 404 });
+  });
+  for (const method of ["GET", "HEAD"]) {
+    const response = await worker.fetch(new Request(BASEMAP_URL, { method }), env);
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.equal(response.headers.get("access-control-allow-origin"), "*");
+    assert.equal(response.headers.get("x-transit-source"), null);
+    assert.equal(await response.text(), "");
+  }
+  assert.equal(fetch.mock.callCount(), 2);
+  assert.equal(legacyGet.mock.callCount() + legacyHead.mock.callCount(), 0);
+});
+
 for (const [failure, warning, fetchClean] of [
   ["thrown fetch", "read error", () => { throw new Error("private upstream detail"); }],
   ["forbidden", "4xx", () => new Response("private upstream detail", { status: 403 })],
@@ -310,7 +304,7 @@ for (const [failure, warning, fetchClean] of [
     });
   }],
 ]) {
-  test(`v2 basemap preserves legacy results on clean storage ${failure}`, async (t) => {
+  test(`v2 basemap leaves the legacy bucket alone on clean storage ${failure}`, async (t) => {
     const warn = t.mock.method(console, "warn", () => {});
     const fetch = t.mock.method(globalThis, "fetch", fetchClean);
     const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
@@ -318,28 +312,37 @@ for (const [failure, warning, fetchClean] of [
     const legacyRead = t.mock.method(env.SNAPSHOTS, "get");
 
     const response = await worker.fetch(request, env);
-    assert.equal(response.status, 206);
-    assert.equal(response.headers.get("etag"), '"basemap-rev-1"');
-    assert.equal(response.headers.get("content-range"), "bytes 196-199/200");
-    assert.equal(await response.text(), "TAIL");
-    assert.equal(legacyRead.mock.callCount(), 1);
-
-    env.SNAPSHOTS.objects.clear();
-    const missing = await worker.fetch(request, env);
-    assert.equal(missing.status, 404);
-    assert.equal(missing.headers.get("cache-control"), "no-store");
-    assert.equal(missing.headers.get("access-control-allow-origin"), "*");
-    assert.equal(legacyRead.mock.callCount(), 2);
-
-    const legacyError = new Error("Legacy storage unavailable");
-    legacyRead.mock.mockImplementation(() => { throw legacyError; });
-    await assert.rejects(() => worker.fetch(request, env), (error) => error === legacyError);
-    assert.equal(legacyRead.mock.callCount(), 3);
-    assert.equal(fetch.mock.callCount(), 3);
-    assert.deepEqual(warn.mock.calls.map(({ arguments: args }) => args),
-      Array.from({ length: 3 }, () => ["Clean basemap fallback", warning]));
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get("retry-after"), "30");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.match(response.headers.get("access-control-expose-headers"), /\bRetry-After\b/);
+    assert.equal(await response.text(), "");
+    assert.equal(legacyRead.mock.callCount(), 0);
+    assert.equal(fetch.mock.callCount(), 1);
+    assert.deepEqual(warn.mock.calls.map(({ arguments: args }) => args), [["Clean basemap read failed", warning]]);
   });
 }
+
+test("a clean basemap read that times out returns a retryable 503", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(console, "warn", () => {});
+  const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+  const legacy = t.mock.method(env.SNAPSHOTS, "get");
+  const { promise: started, resolve: start } = Promise.withResolvers();
+  t.mock.method(globalThis, "fetch", (_url, { signal }) => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    start();
+  }));
+  const pending = worker.fetch(new Request(BASEMAP_URL), env);
+  await started;
+  t.mock.timers.tick(10_000);
+  const response = await pending;
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "30");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(await response.text(), "");
+  assert.equal(legacy.mock.callCount(), 0);
+});
 
 test("v2 basemap propagates a client abort during the first clean body read", async (t) => {
   const warn = t.mock.method(console, "warn", () => {});

@@ -17,6 +17,7 @@ const OBJECT_HEADERS = [
   "etag", "cache-control", "content-type", "content-disposition", "content-encoding",
   "content-language", "expires",
 ];
+const READ_START_TIMEOUT_MS = 10_000;
 
 class CleanBasemapFailure extends Error {}
 
@@ -77,22 +78,29 @@ async function readyBody(body, length) {
 export async function serveCleanBasemap(request, env, city, file) {
   request.signal.throwIfAborted();
   const read = cleanObjectReader(env);
-  if (!read) return null;
+  const controller = new AbortController();
+  const signal = AbortSignal.any([request.signal, controller.signal]);
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException("Clean basemap read timed out", "TimeoutError"));
+  }, READ_START_TIMEOUT_MS);
   try {
-    const response = await readCleanBasemap(request, read, basemapKey(city, file));
-    if (request.signal.aborted) {
-      await response.body?.cancel().catch(() => {});
-      request.signal.throwIfAborted();
+    if (!read) throw new CleanBasemapFailure("not configured");
+    const response = await readCleanBasemap(request, read, basemapKey(city, file), signal);
+    if (signal.aborted) {
+      await response?.body?.cancel().catch(() => {});
+      signal.throwIfAborted();
     }
     return response;
   } catch (error) {
     request.signal.throwIfAborted();
-    console.warn("Clean basemap fallback", error instanceof CleanBasemapFailure ? error.message : "read error");
-    return null;
+    console.warn("Clean basemap read failed", error instanceof CleanBasemapFailure ? error.message : "read error");
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-async function readCleanBasemap(request, read, key) {
+async function readCleanBasemap(request, read, key, signal) {
   const upstream = new Headers();
   for (const name of CONDITIONAL_HEADERS) {
     if (request.headers.has(name)) upstream.set(name, request.headers.get(name));
@@ -103,8 +111,12 @@ async function readCleanBasemap(request, read, key) {
     upstream.set("range", range);
   }
 
-  const response = await read(request.method, key, upstream, request.signal);
+  const response = await read(request.method, key, upstream, signal);
   const headers = new Headers({ "accept-ranges": "bytes" });
+  if (response.status === 404) {
+    await response.body?.cancel().catch(() => {});
+    return null;
+  }
   if (response.status === 416) {
     await response.body?.cancel();
     headers.set("cache-control", "no-store");
@@ -115,7 +127,7 @@ async function readCleanBasemap(request, read, key) {
   if (response.status === 304 || response.status === 412) {
     await response.body?.cancel();
     // Conditional S3 responses can omit the HTTP metadata that the binding returns.
-    const head = await read("HEAD", key, new Headers(), request.signal);
+    const head = await read("HEAD", key, new Headers(), signal);
     if (head.status !== 200) return unusable(head);
     metadata = head.headers;
   } else if (response.status !== (upstream.has("range") ? 206 : 200)) {
