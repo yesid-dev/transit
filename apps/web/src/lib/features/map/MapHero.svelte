@@ -458,9 +458,6 @@
 			page: 'map',
 			selection: session.selected,
 			vehicleCount: live.vehicles?.vehicles.length ?? null,
-			vehicleCapture: live.vehicles?.captureFeed
-				? { feed: live.vehicles.captureFeed, now: dataClock.serverNow }
-				: undefined,
 		}),
 	);
 	const liveTime = $derived(

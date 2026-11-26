@@ -127,9 +127,9 @@ describe('Live age excludes service alerts', () => {
 
 describe('partial feed capture health', () => {
 	it.each([
-		[70, false],
-		[94, false],
-		[95, true],
+		[49, false],
+		[90, false],
+		[91, true],
 	] as const)(
 		'reports a retained vehicle capture aged %s seconds (stalled: %s)',
 		async (age, stalled) => {
@@ -148,7 +148,7 @@ describe('partial feed capture health', () => {
 					fresh_for_seconds: 60,
 					source_lag_seconds: 0,
 					read_failed: false,
-					expected_every_seconds: 20,
+					expected_every_seconds: 30,
 				},
 			});
 			const mounted = mountLiveStore(30, ['vehicles']);
@@ -201,7 +201,7 @@ describe('partial feed capture health', () => {
 		}
 	});
 
-	it('ages the source reading independently of a newly captured copy', async () => {
+	it('uses the vehicle capture timestamp and reports a failed refresh separately', async () => {
 		mocks.browser = true;
 		const capturedAt = '2026-06-21T12:00:00Z';
 		mocks.nowMs = Date.parse(capturedAt);
@@ -214,6 +214,7 @@ describe('partial feed capture health', () => {
 			source_at: sourceAt,
 			fresh_for_seconds: 60,
 			source_lag_seconds: 30,
+			expected_every_seconds: 30,
 			read_failed: false,
 		};
 		mocks.vehicles.mockResolvedValue({
@@ -226,12 +227,12 @@ describe('partial feed capture health', () => {
 		try {
 			await mounted.store.refresh();
 			expect(mounted.store.familyStates.vehicles.health).toMatchObject({
-				state: 'retained-stale',
+				state: 'live',
 				ageSource: 'serving-capture',
-				ageTimestamp: sourceAt,
-				isStale: true,
-				ageSeconds: 90,
-				notice: 'stale',
+				ageTimestamp: capturedAt,
+				isStale: false,
+				ageSeconds: 0,
+				notice: null,
 			});
 			mocks.vehicles.mockResolvedValue({
 				generated_utc: capturedAt,

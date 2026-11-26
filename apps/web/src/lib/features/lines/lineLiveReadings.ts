@@ -4,6 +4,7 @@ import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 import { stopPrediction } from '#lib/live/stopPrediction.ts';
 import {
+	captureDisplayState,
 	captureFamily,
 	feedState,
 	type CaptureSnapshot,
@@ -35,7 +36,11 @@ export function selectMainStops(
 
 export function lineVehicleRows(snapshot: CaptureSnapshot | null, line: string, now: number) {
 	const feed = captureFamily(snapshot, 'vehicle_positions');
-	if (!snapshot?.vehicle_positions || !feed?.captured_at || feedState(feed, now) !== 'live')
+	if (
+		!snapshot?.vehicle_positions ||
+		!feed?.captured_at ||
+		captureDisplayState(feed, now) !== 'live'
+	)
 		return null;
 	const delayReady = feedState(captureFamily(snapshot, 'trip_updates'), now) === 'live';
 	const rows = new Map<string, LiveVehicleRow>();
@@ -74,7 +79,7 @@ export type LiveVehicleRow = {
 export function lineSilentCount(snapshot: CaptureSnapshot | null, line: string, now: number) {
 	if (
 		!snapshot?.non_responding_by_route ||
-		feedState(captureFamily(snapshot, 'vehicle_positions'), now) !== 'live' ||
+		captureDisplayState(captureFamily(snapshot, 'vehicle_positions'), now) !== 'live' ||
 		feedState(captureFamily(snapshot, 'trip_updates'), now) !== 'live'
 	)
 		return null;

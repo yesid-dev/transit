@@ -9,7 +9,7 @@
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import { captureNetwork } from '#lib/live/captureProjection.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
-	import { feedState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
+	import { captureDisplayState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import { countedUnit, liveStampAge, singularCount } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -67,7 +67,7 @@
 		feed: CaptureSnapshot['feeds'][string] | undefined,
 		now: number,
 	) {
-		if (!snapshot?.vehicle_positions || feedState(feed, now) !== 'live') return null;
+		if (!snapshot?.vehicle_positions || captureDisplayState(feed, now) !== 'live') return null;
 		return captureNetwork(snapshot, now);
 	}
 

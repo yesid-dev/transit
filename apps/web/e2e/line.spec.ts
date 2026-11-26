@@ -43,6 +43,57 @@ for (const locale of PUBLISHED_LOCALES) {
 	});
 }
 for (const locale of PUBLISHED_LOCALES) {
+	test(`${locale}: Line Live uses the vehicle capture cadence for its notice and stamp`, async ({
+		page,
+	}) => {
+		const fr = locale === 'fr';
+		const staleNotice = fr
+			? 'Les positions des véhicules ne sont plus à jour.'
+			: 'Vehicle positions are out of date.';
+		const lateStamp = fr ? 'pas à jour' : 'not current';
+		let captureAge = 49;
+		await page.clock.install();
+		await page.route(captureUrl, async (route) => {
+			const now = await page.evaluate(() => Date.now());
+			const captured = now - captureAge * 1_000;
+			const capture = captureFixture(now, {
+				vehicle_positions: [captureVehicle(captured, { route_id: '9003', trip_id: 'trip-1' })],
+			});
+			const timestamp = new Date(captured).toISOString();
+			Object.assign(capture.feeds.vehicle_positions!, {
+				captured_at: timestamp,
+				source_at: timestamp,
+				expected_every_seconds: 30,
+				fresh_for_seconds: 40,
+			});
+			await route.fulfill({ json: capture });
+		});
+		await page.goto(localizeHref('/lines/9003?frameMode=live', locale, provider), {
+			waitUntil: 'networkidle',
+		});
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		const answer = page.locator('#line-detail-profile');
+		await expect(answer).toBeVisible();
+		await expect(
+			answer.getByText(fr ? 'Vérification des signalements en direct…' : 'Checking live reports…'),
+		).toHaveCount(0);
+		async function refresh() {
+			const response = page.waitForResponse((reply) => captureUrl.test(reply.url()));
+			await page.clock.fastForward(21_000);
+			await response;
+		}
+		await refresh();
+		await expect(page.locator('#line-detail-live')).toBeVisible();
+		await expect(answer).toContainText(fr ? 'En direct · mis à jour' : 'Live · updated');
+		await expect(answer).not.toContainText(staleNotice);
+		await expect(answer).not.toContainText(lateStamp);
+
+		captureAge = 91;
+		await refresh();
+		await expect(answer).toContainText(staleNotice);
+		await expect(answer).toContainText(lateStamp);
+	});
+
 	test(`${locale}: Line Live shows a paged roster, predictions, and the same title as Record`, async ({
 		page,
 	}) => {

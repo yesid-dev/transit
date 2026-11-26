@@ -74,7 +74,7 @@
 	$effect(() => onCaptureAge?.(health?.ageSeconds ?? null));
 	const stale = (health: LiveFamilyState['health'] | undefined) =>
 		!!health?.retained && (health.isStale || health.notice != null);
-	const networkStale = $derived(stale(health));
+	const networkStale = $derived(health?.retained === true && health.isStale);
 	const distribution = $derived(live?.network?.status_dist);
 	const lines = $derived(lateLines(live?.vehicles?.vehicles ?? []));
 	const generated = $derived(live?.network?.generated_utc);

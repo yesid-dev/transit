@@ -1,6 +1,7 @@
 import { browser } from '$app/env';
 import {
 	CaptureScopeRefreshing,
+	captureDisplayState,
 	feedState,
 	type CaptureEvidence,
 	type LiveTripScope,
@@ -92,7 +93,7 @@ export interface LiveStoreOptions {
 
 export interface LiveStore {
 	readonly sourceDate: string | null;
-	readonly vehicles: (VehiclesFile & CaptureEvidence) | null;
+	readonly vehicles: VehiclesFile | null;
 	readonly trips: TripsFile | null;
 	readonly departures: StopDeparturesFile | null;
 	readonly alerts: AlertsFile | null;
@@ -173,22 +174,30 @@ export function createLiveStore(
 			const payload = currentFamilyPayload(family);
 			const now = runtime.clock.serverNow;
 			const feed = payload?.captureFeed;
-			const captureState = feed && feedState(feed, now, CAPTURE_PROXY_CACHE_S + ttlMs / 1_000);
+			// Overview's network counts and the vehicle list both come from the same capture.
+			const vehicleCapture = feed?.family === 'vehicle_positions';
+			const captureState = vehicleCapture
+				? captureDisplayState(feed, now)
+				: feed && feedState(feed, now, CAPTURE_PROXY_CACHE_S + ttlMs / 1_000);
 			const publicationAge = freshnessAgeSeconds(payload?.generated_utc, now, ttlMs / 1000);
 			const legacyCapture =
 				payload != null && 'feed_captured_utc' in payload && family in CAPTURE_STALE_SECONDS;
 			const captureTimestamp = feed
-				? (feed.source_at ?? feed.captured_at)
+				? vehicleCapture
+					? feed.captured_at
+					: (feed.source_at ?? feed.captured_at)
 				: legacyCapture
 					? payload.feed_captured_utc
 					: null;
 			const captureEnabled = !!feed || legacyCapture;
 			const captureAge = freshnessAgeSeconds(captureTimestamp, now, feed ? 5 : ttlMs / 1000);
-			const age = captureEnabled
-				? publicationAge == null || captureAge == null
-					? null
-					: Math.max(publicationAge, captureAge)
-				: publicationAge;
+			let age = publicationAge;
+			if (vehicleCapture) age = captureAge;
+			else if (captureEnabled)
+				age =
+					publicationAge == null || captureAge == null
+						? null
+						: Math.max(publicationAge, captureAge);
 			const captureLimit = CAPTURE_STALE_SECONDS[family as keyof typeof CAPTURE_STALE_SECONDS];
 			const ageIsStale = feed
 				? captureState === 'stale' || captureState === 'unknown' || captureState === 'no_live_data'
@@ -210,17 +219,18 @@ export function createLiveStore(
 			if (failed) notice = 'refresh-unavailable';
 			else if (unknownAge) notice = 'stale';
 			else if (retained && isStale) notice = 'stale';
-			const captureIsOlder =
-				captureEnabled &&
-				captureAge != null &&
-				publicationAge != null &&
-				captureAge > publicationAge;
+			const useCaptureAge =
+				vehicleCapture ||
+				(captureEnabled &&
+					captureAge != null &&
+					publicationAge != null &&
+					captureAge > publicationAge);
 			const health: FeedHealth = {
-				ageSource: age == null ? null : captureIsOlder ? 'serving-capture' : 'publication',
+				ageSource: age == null ? null : useCaptureAge ? 'serving-capture' : 'publication',
 				ageTimestamp:
 					age == null
 						? null
-						: captureIsOlder
+						: useCaptureAge
 							? (captureTimestamp ?? null)
 							: (payload?.generated_utc ?? null),
 				state: verdict,

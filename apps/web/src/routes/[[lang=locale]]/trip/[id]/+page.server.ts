@@ -1,8 +1,8 @@
 import { error, redirect } from '@sveltejs/kit';
 import {
+	captureDisplayState,
 	captureSnapshotSchema,
 	captureTripScopeSchema,
-	feedState,
 } from '#lib/live/captureSnapshot.ts';
 import { fixAgeS, isVehicleStale, STALE_CUTOFF_S } from '#lib/components/map/vehicleProjection.ts';
 import { departureHref } from '#lib/features/record/departureIdentity.ts';
@@ -33,7 +33,7 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 			(entry) => entry.family === 'vehicle_positions',
 		);
 		const captured = feed?.captured_at;
-		if (captured && feedState(feed, now) === 'live') {
+		if (captured && captureDisplayState(feed, now) === 'live') {
 			const vehicle = positions.answer.vehicle_positions?.find(
 				(row) =>
 					row.trip_id === id &&

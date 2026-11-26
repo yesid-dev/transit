@@ -5,8 +5,8 @@
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
+		captureDisplayState,
 		captureFamily,
-		feedState,
 		type CaptureSnapshot,
 		type CaptureTripReport,
 	} from '#lib/live/captureSnapshot.ts';
@@ -143,7 +143,7 @@
 	refreshed: boolean,
 )}
 	{@const feed = captureFamily(snapshot, 'vehicle_positions')}
-	{@const state = feedState(feed, now)}
+	{@const state = captureDisplayState(feed, now)}
 	{@const rows = describeRows(snapshot, now)}
 	{@const live = rows !== null && (!!rows.length || knownLine)}
 	{@const counts = vehicleCounts(rows ?? [])}
@@ -160,8 +160,8 @@
 			? undefined
 			: {
 					kind: 'live' as const,
-					label: liveStampAge(age, locale, live ? 'current' : 'behind'),
-					late: !live,
+					label: liveStampAge(age, locale, state === 'stale' ? 'behind' : 'current'),
+					late: state === 'stale',
 				}}
 	{@const silent = lineSilentCount(snapshot, line, now)}
 	{@const limits =
