@@ -298,9 +298,7 @@ class Engine:
             return
         require_public_city = (b"x-transit-require-public-city", b"1") in scope["headers"]
         if scope["path"] == "/data-health":
-            await self._data_health(
-                scope["query_string"], send, require_public_city=require_public_city
-            )
+            await self._data_health(scope["query_string"], send)
             return
         route = scope["path"]
         schedule_routes = {"/search-index", "/schedule-index", "/schedule-map"}
@@ -421,13 +419,11 @@ class Engine:
                 days_pending=days_pending,
             )
 
-    async def _data_health(
-        self, raw: bytes, send: ASGISendCallable, *, require_public_city: bool
-    ) -> None:
+    async def _data_health(self, raw: bytes, send: ASGISendCallable) -> None:
         try:
             city, start, end = _health(raw)
-            if require_public_city:
-                await asyncio.to_thread(public_declaration, city)
+            # A private city has no answer, whoever asks, like /measure and /ranking.
+            await asyncio.to_thread(public_declaration, city)
         except UnicodeError:
             await respond(send, 400, {"message": "invalid query encoding"})
             return
