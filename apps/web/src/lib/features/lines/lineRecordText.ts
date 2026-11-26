@@ -17,6 +17,7 @@ import {
 import { waitingReadingParts } from '#lib/features/record/waitingText.ts';
 import {
 	recordPercent,
+	citeDates,
 	dateRange,
 	methodEvidence,
 	scheduleHours,
@@ -210,7 +211,7 @@ export function lineCitation(
 	href: string,
 ): string {
 	const evidence = answer.evidence;
-	const dates = dateRange({ from: evidence.start_date, to: evidence.end_date }, locale);
+	const dates = citeDates({ from: evidence.start_date, to: evidence.end_date }, locale);
 	return [
 		`Transit · ${subject}. ${section}. ${dates}.`,
 		'value' in answer && section === choose(locale, ...lineSectionTitles.punctuality)

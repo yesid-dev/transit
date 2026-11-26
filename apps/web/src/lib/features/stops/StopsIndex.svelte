@@ -14,6 +14,7 @@
 	import { carryFrameState, recordStart } from '#lib/site/frameState.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		methodEvidence,
 		recordPercent,
@@ -515,7 +516,7 @@
 		{#snippet citation()}
 			<CiteBlock
 				{locale}
-				text={`Transit. ${tableTitle}. ${dateRange(record.period, locale)}.${
+				text={`Transit. ${tableTitle}. ${citeDates(record.period, locale)}.${
 					evidence ? ` ${methodEvidence(evidence, locale)}` : ''
 				} ${href}`}
 			/>

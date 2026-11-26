@@ -10,6 +10,7 @@ import {
 import {
 	recordPercent,
 	countedUnit,
+	citeDates,
 	dateRange,
 	methodEvidence,
 	singularCount,
@@ -198,7 +199,7 @@ export function stopCitation(
 	lastGood?: true,
 ): string {
 	const { evidence } = answer;
-	const dates = dateRange({ from: evidence.start_date, to: evidence.end_date }, locale);
+	const dates = citeDates({ from: evidence.start_date, to: evidence.end_date }, locale);
 	return [
 		`Transit · ${subject}. ${choose(locale, ...stopSectionTitles[section])}. ${dates}.`,
 		section === 'punctuality' && 'value' in answer ? stopAnswer(answer, locale, false) : '',

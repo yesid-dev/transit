@@ -19,6 +19,7 @@
 	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		frenchAgency,
 		longDate,
@@ -407,7 +408,7 @@
 											<CiteBlock
 												{locale}
 												text={[
-													`Transit. ${title} (${subject || record.city}). ${dateRange(record.period, locale)}.`,
+													`Transit. ${title} (${subject || record.city}). ${citeDates(record.period, locale)}.`,
 													coverage ? `${coverage.value} ${coverage.sentence}` : '',
 													methodEvidence(answer.evidence, locale),
 													share,

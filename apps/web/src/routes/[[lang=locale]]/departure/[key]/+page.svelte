@@ -14,6 +14,7 @@
 	import {
 		compactServiceDay,
 		countedUnit,
+		citeDates,
 		dateRange,
 		delayReading,
 		longDate,
@@ -314,7 +315,7 @@
 																<CiteBlock
 																	locale={data.lang}
 																	text={[
-																		`Transit · ${data.seoTitle}. ${title}. ${dateRange(
+																		`Transit · ${data.seoTitle}. ${title}. ${citeDates(
 																			{ from: evidence.start_date, to: evidence.end_date },
 																			data.lang,
 																		)}.`,

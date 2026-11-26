@@ -20,6 +20,7 @@
 		alertsNotCollected,
 		officialAlertsLabel,
 		captureAge,
+		citeDates,
 		dateRange,
 		tickingLiveStamp,
 		methodEvidence,
@@ -136,7 +137,7 @@
 	function formatCitation(key: keyof typeof alertSections, result: EngineAnswer, lastGood?: true) {
 		const evidence = result.evidence;
 		return [
-			`Transit · ${title}, ${data.cityName}. ${alertSections[key][locale]}. ${dateRange({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
+			`Transit · ${title}, ${data.cityName}. ${alertSections[key][locale]}. ${citeDates({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
 			key === 'answer' && 'value' in result && result.state === 'measured'
 				? alertReadings(result, locale)
 						.map(({ label, reading }) => `${label}${locale === 'fr' ? '\u00a0' : ''}: ${reading}.`)

@@ -51,6 +51,7 @@
 		agencyName,
 		alertsNotTrackedLine,
 		alertsNotTrackedOnDates,
+		citeDates,
 		dateRange,
 		longDate,
 		methodEvidence,
@@ -221,7 +222,7 @@
 	) {
 		const { answer, lastGood } = result;
 		const subject = t('Daily report', 'Rapport quotidien') + ', ' + cityName;
-		const range = dateRange(
+		const range = citeDates(
 			{ from: answer.evidence.start_date, to: answer.evidence.end_date },
 			lang,
 		);

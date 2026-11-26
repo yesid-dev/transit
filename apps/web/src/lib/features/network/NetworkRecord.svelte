@@ -20,6 +20,7 @@
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		delayReading,
 		methodEvidence,
@@ -234,7 +235,7 @@
 										{#snippet citation()}
 											<CiteBlock
 												{locale}
-												text={`Transit. ${t('Network health', 'Santé du réseau')} (${record.city}). ${dateRange(
+												text={`Transit. ${t('Network health', 'Santé du réseau')} (${record.city}). ${citeDates(
 													record.period,
 													locale,
 												)}. ${methodEvidence(answer.evidence, locale)} ${pinned.href}`}

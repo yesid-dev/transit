@@ -18,6 +18,7 @@
 	import { getLocale, intl } from '#lib/i18n/index.ts';
 	import { frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
+		citeDates,
 		dateRange,
 		hoursReading,
 		tickingLiveStamp,
@@ -437,7 +438,7 @@
 {#snippet citation()}
 	{#if record && data.period}<CiteBlock
 			{locale}
-			text={`Transit. ${data.seoTitle}. ${sectionTitles.fleet[locale === 'fr' ? 1 : 0]}. ${dateRange(
+			text={`Transit. ${data.seoTitle}. ${sectionTitles.fleet[locale === 'fr' ? 1 : 0]}. ${citeDates(
 				data.period,
 				locale,
 			)}. ${methodEvidence(record.evidence, locale)} ${archiveLinks.share}`}

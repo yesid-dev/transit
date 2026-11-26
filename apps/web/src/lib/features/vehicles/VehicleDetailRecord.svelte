@@ -15,6 +15,7 @@
 	import type { loadVehiclePage } from '#lib/server/vehicleRecord.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		hoursReading,
 		methodEvidence,
@@ -183,7 +184,7 @@
 					{#if result.kind === 'answer'}
 						<CiteBlock
 							{locale}
-							text={`Transit. ${title}. ${citeTitle}. ${data.period ? dateRange(data.period, locale) : ''}. ${methodEvidence(
+							text={`Transit. ${title}. ${citeTitle}. ${data.period ? citeDates(data.period, locale) : ''}. ${methodEvidence(
 								result.answer.evidence,
 								locale,
 							)} ${links.share}`}

@@ -8,7 +8,7 @@
 	import RecordPending from './RecordPending.svelte';
 	import { recordSectionLinks } from './recordLinks.ts';
 	import { lastGoodNote, recordConnection } from './recordText.ts';
-	import { dateRange, methodEvidence } from '#lib/site/presenter.ts';
+	import { citeDates, methodEvidence } from '#lib/site/presenter.ts';
 
 	let {
 		section,
@@ -38,7 +38,7 @@
 	function citation(result: Answer, lastGood?: true) {
 		const evidence = result.evidence;
 		return [
-			`Transit · ${subject}. ${title}. ${dateRange({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
+			`Transit · ${subject}. ${title}. ${citeDates({ from: evidence.start_date, to: evidence.end_date }, locale)}.`,
 			statement?.(result),
 			methodEvidence(evidence, locale),
 			lastGood ? lastGoodNote[locale] : '',

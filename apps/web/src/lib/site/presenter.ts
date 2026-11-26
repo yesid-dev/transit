@@ -833,7 +833,17 @@ export function pageCitation(
 	href: string,
 	locale: Locale,
 ): string {
-	return [`Transit · ${subject}.`, period ? `${dateRange(period, locale)}.` : '', href]
+	return [`Transit · ${subject}.`, period ? `${citeDates(period, locale)}.` : '', href]
 		.filter(Boolean)
 		.join(' ');
+}
+
+/** Dates that begin a sentence of cite text: "Du 19 au 25 nov. 2026." in French. */
+export function citeDates(period: { from: string; to: string }, locale: Locale): string {
+	return sentenceStart(dateRange(period, locale));
+}
+
+/** A sentence's first letter in capitals, as when generated text opens it. */
+export function sentenceStart(text: string): string {
+	return text.charAt(0).toLocaleUpperCase() + text.slice(1);
 }

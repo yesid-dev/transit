@@ -11,6 +11,7 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
 		countedUnit,
+		citeDates,
 		dateRange,
 		methodEvidence,
 		pageCitation,
@@ -412,11 +413,11 @@
 {#snippet figures()}
 	{#if timingEvidence}<CiteBlock
 			{locale}
-			text={`Transit. ${title}. ${csvTiming}. ${dateRange(record.period, locale)}. ${methodEvidence(timingEvidence, locale)}`}
+			text={`Transit. ${title}. ${csvTiming}. ${citeDates(record.period, locale)}. ${methodEvidence(timingEvidence, locale)}`}
 		/>{/if}
 	{#if deliveryEvidence}<CiteBlock
 			{locale}
-			text={`Transit. ${title}. ${csvTrips}. ${dateRange(record.period, locale)}. ${methodEvidence(deliveryEvidence, locale)}`}
+			text={`Transit. ${title}. ${csvTrips}. ${citeDates(record.period, locale)}. ${methodEvidence(deliveryEvidence, locale)}`}
 		/>{/if}
 {/snippet}
 
