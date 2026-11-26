@@ -2,6 +2,7 @@
 	import { Button } from '@yesid/ui/button';
 	import { readableName } from '#lib/components/surface/readableName.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
+	import { distanceReading } from '#lib/site/presenter.ts';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { tick } from 'svelte';
 	import XIcon from '@lucide/svelte/icons/x';
@@ -102,11 +103,6 @@
 
 	function handleWindowKeydown(event: KeyboardEvent): void {
 		if (event.key === 'Escape') closeSuggestions();
-	}
-
-	function formatDistance(distanceM: number): string {
-		if (distanceM < 1_000) return `${Math.round(distanceM)} m`;
-		return `${(distanceM / 1_000).toFixed(1)} km`;
 	}
 
 	$effect(() => {
@@ -254,7 +250,7 @@
 								<span class="readable-name" title={stopDisplayName(stop.name)} use:readableName
 									>{stopDisplayName(stop.name)}</span
 								>
-								<small>{formatDistance(stop.distanceM)}</small>
+								<small>{distanceReading(stop.distanceM, locale)}</small>
 							</Button>
 						{/each}
 					</div>

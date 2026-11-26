@@ -165,7 +165,7 @@ export const copy = defineCopy({
 		mapErrorBody: 'La carte n’a pas pu démarrer. Réessayez.',
 		mapRetry: 'Réessayer la carte',
 		modeStatus: 'Statut',
-		modeOccupancy: 'Achalandage',
+		modeOccupancy: 'Places à bord',
 		modeAlerts: 'Alertes',
 		modeRoutes: 'Lignes',
 		modeStops: 'Arrêts',

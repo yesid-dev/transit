@@ -89,7 +89,7 @@ it.each(['en', 'fr'] as const)(
 
 it.each(['en', 'fr'] as const)('keeps full nearby stop names available in %s', (locale) => {
 	const name = 'Boulevard Saint-Laurent et Avenue du Mont-Royal';
-	const { getByRole, getByTitle } = render(MapNearMeControl, {
+	const { container, getByRole, getByTitle } = render(MapNearMeControl, {
 		props: {
 			locale,
 			copy: copy[locale],
@@ -99,6 +99,27 @@ it.each(['en', 'fr'] as const)('keeps full nearby stop names available in %s', (
 			stops: [{ id: 'S1', name, lat: 45.5, lon: -73.6, distanceM: 100 }],
 		},
 	});
-	expect(getByRole('button', { name: new RegExp(name) })).toHaveAccessibleName(name + ' 100 m');
+	expect(getByRole('button', { name: new RegExp(name) })).toHaveTextContent(name);
+	expect(container.querySelector('small')?.textContent).toBe(
+		locale === 'fr' ? '100\u00a0m' : '100 m',
+	);
 	expect(getByTitle(name)).toHaveTextContent(name);
+});
+
+it.each([
+	['en', '1.4 km'],
+	['fr', '1,4\u00a0km'],
+] as const)('formats nearby stop distances in %s', (locale, distance) => {
+	const { container } = render(MapNearMeControl, {
+		props: {
+			locale,
+			copy: copy[locale],
+			...handlers(),
+			open: true,
+			origin: { lat: 45.5, lon: -73.6, label: 'Origin' },
+			stops: [{ id: 'S1', name: 'Sherbrooke', lat: 45.5, lon: -73.6, distanceM: 1400 }],
+		},
+	});
+
+	expect(container.querySelector('small')?.textContent).toBe(distance);
 });

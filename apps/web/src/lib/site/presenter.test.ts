@@ -17,6 +17,7 @@ import {
 	daysInService,
 	deliveryFacts,
 	dailyAlertsLink,
+	distanceReading,
 	noticeCountEvidence,
 	publishedAlertCount,
 	delayReading,
@@ -89,7 +90,7 @@ it.each([
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
 
-it('explains the grouped and published units using the declared French agency name', () => {
+it('explains the grouped and published units only when their counts differ', () => {
 	const agency = { name: 'STM', frenchOf: 'de la STM' };
 	expect(noticeCountEvidence(213, 1707, agency, 'en')).toBe(
 		'213 notices, from 1,707 alerts as STM published them, one per line and reissue.',
@@ -99,6 +100,25 @@ it('explains the grouped and published units using the declared French agency na
 	);
 	expect(publishedAlertCount(1707, 'en')).toBe('1,707 alerts as published');
 	expect(normalize(publishedAlertCount(1707, 'fr'))).toBe('1 707 avis tels que publiés');
+});
+
+it.each([
+	['en', '3 notices.'],
+	['fr', '3 avis.'],
+] as const)(
+	'omits repeated publication detail when both alert counts match in %s',
+	(locale, expected) => {
+		const agency = { name: 'STM', frenchOf: 'de la STM' };
+		expect(noticeCountEvidence(3, 3, agency, locale)).toBe(expected);
+	},
+);
+
+it.each([
+	['en', '100 m', '1.4 km'],
+	['fr', '100\u00a0m', '1,4\u00a0km'],
+] as const)('formats map distances in %s', (locale, metres, kilometres) => {
+	expect(distanceReading(100, locale)).toBe(metres);
+	expect(distanceReading(1400, locale)).toBe(kilometres);
 });
 
 it('uses the published interval and a matching reference method for the ranking verdict', () => {
