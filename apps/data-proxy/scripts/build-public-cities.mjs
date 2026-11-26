@@ -24,4 +24,4 @@ const defaultCity = (await readFile(new URL("default-city.txt", directory), "utf
 if (!cities.includes(defaultCity)) throw new Error("Default city must be a public provider");
 
 await writeFile(new URL("../src/.generated-public-cities.json", import.meta.url),
-  JSON.stringify({ cities, retiredBasemaps }));
+  JSON.stringify({ cities, defaultCity, retiredBasemaps }));

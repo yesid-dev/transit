@@ -9,7 +9,7 @@ const retiredBasemaps = new Map(Object.entries(publicAssets.retiredBasemaps));
 
 export default {
   fetch(request, env, ctx) {
-    return worker.fetch(request, env, ctx, publicCities, retiredBasemaps);
+    return worker.fetch(request, env, ctx, publicCities, retiredBasemaps, publicAssets.defaultCity);
   },
 };
 

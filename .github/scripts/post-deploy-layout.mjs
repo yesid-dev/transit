@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { setupFailureDetails } from "./layout-setup-result.mjs";
 import { liveProductionSha, WEB_ORIGIN } from "./deploy-scope.mjs";
-import { WEB_ORIGIN as CANONICAL_ORIGIN } from "../../apps/data-proxy/scripts/probe-v2.mjs";
+import { DATA_ORIGIN, WEB_ORIGIN as CANONICAL_ORIGIN } from "../../apps/data-proxy/scripts/probe-v2.mjs";
 
 export async function verifyDeployedSha(
   sha,
@@ -52,10 +52,16 @@ export async function verifySitePolicy(fetcher = fetch) {
     signal: AbortSignal.timeout(20_000),
     ...options,
   });
+  const catalog = await request(DATA_ORIGIN, "/v2/cities");
+  const city = catalog.ok ? (await catalog.json())?.default_provider : null;
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city ?? ""))
+    throw new Error("Cannot identify the default public city for the indexing check");
+  // Explicit city selection makes this independent of the runner's location.
+  const query = `?provider=${city}`;
   for (const origin of [CANONICAL_ORIGIN, WEB_ORIGIN]) {
     const indexable = origin === CANONICAL_ORIGIN;
     const [page, robots, sitemap] = await Promise.all([
-      request(origin, "/"),
+      request(origin, `/${query}`),
       request(origin, "/robots.txt"),
       request(origin, "/sitemap.xml"),
     ]);
@@ -64,12 +70,13 @@ export async function verifySitePolicy(fetcher = fetch) {
     const robotsTag = page.headers.get("x-robots-tag");
     const hasNoindex = /\bnoindex\b/i.test(robotsTag ?? "");
     if (hasNoindex === indexable) throw new Error("Unexpected Transit indexing header");
-    const head = (await page.text()).split("</head>")[0];
-    if (!head.includes(`rel="canonical" href="${CANONICAL_ORIGIN}/"`) ||
-        !head.includes(`hreflang="fr" href="${CANONICAL_ORIGIN}/fr"`) ||
+    const html = await page.text();
+    const head = html.split("</head>")[0];
+    if (!head.includes(`rel="canonical" href="${CANONICAL_ORIGIN}/${query}"`) ||
+        !head.includes(`hreflang="fr" href="${CANONICAL_ORIGIN}/fr${query}"`) ||
         /name="robots" content="[^"]*\bnoindex\b/.test(head) === indexable)
       throw new Error("Unexpected Transit canonical, hreflang or robots metadata");
-    if (/static\.cloudflareinsights\.com\/beacon|\/cdn-cgi\/rum/i.test(head))
+    if (/static\.cloudflareinsights\.com\/beacon|\/cdn-cgi\/rum/i.test(html))
       throw new Error("Cloudflare Web Analytics beacon found on Transit");
 
     const robotsTxt = await robots.text();

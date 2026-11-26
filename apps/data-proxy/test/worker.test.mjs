@@ -253,7 +253,6 @@ test("old namespaces return 410 without redirecting unlisted tiles", async () =>
     "https://data.yesid.dev/v1/stm/%zz.json",
     "https://transit.yesid.dev/data/v1%2Fstm/manifest.json",
     "https://transit.yesid.dev/v1/stm/manifest.json",
-    "https://transit.yesid.dev/api/v1/kpis",
     "https://transit.yesid.dev/api/v1/anything",
   ]) {
     const response = await worker.fetch(new Request(url), {});

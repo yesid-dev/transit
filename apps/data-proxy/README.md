@@ -13,3 +13,6 @@ HTTP 503 with `Cache-Control: no-store` and `Retry-After: 30`.
 
 Legacy public data URLs return HTTP 410 and point to Transit Downloads.
 Declared basemap bookmarks redirect with HTTP 308 to their current PMTiles URLs.
+The brand site's exact `/api/v1/kpis` URL serves a live summary from the
+default city's v2 vehicle capture and schedule. Its 30-second Worker cache
+is rechecked for feed freshness on every response.

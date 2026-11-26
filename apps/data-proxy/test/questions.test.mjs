@@ -74,6 +74,76 @@ test("serves the per-city live object with a short edge cache through public and
   assert.equal(get.mock.callCount(), 1);
 });
 
+test("brand KPIs derive their contract from the declared city's v2 capture and schedule", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-26T17:00:00Z") });
+  const f = fixture(t, (request) => {
+    assert.equal(new URL(request.url).pathname, "/schedule-index");
+    assert.equal(new URL(request.url).searchParams.get("city"), "other-city");
+    return Response.json({ schedule: { routes: [{ type: 3 }, { type: 3 }, { type: 1 }] } });
+  });
+  const feed = (family, age, limit) => ({
+    family,
+    captured_at: new Date(Date.now() - age * 1000).toISOString(),
+    source_at: null,
+    source_lag_seconds: 0,
+    fresh_for_seconds: limit,
+    read_failed: false,
+  });
+  const body = JSON.stringify({
+    city: "other-city", version: 2,
+    feeds: {
+      vehicle_positions: feed("vehicle_positions", 37, 60),
+      trip_updates: feed("trip_updates", 85, 90),
+    },
+    vehicle_positions: [
+      { route_id: "10", delay: -16 },
+      { route_id: "10", delay: -5 },
+      { route_id: "22", delay: null },
+    ],
+  });
+  const read = stubLiveStorage(t, f.env, (request) => {
+    assert.equal(new URL(request.url).pathname, "/transit-clean/live/v2/other-city.json");
+    return new Response(body, { headers: { "content-length": String(Buffer.byteLength(body)) } });
+  });
+  const request = async (method = "GET") => {
+    const tasks = [];
+    const response = await worker.fetch(new Request("https://transit.yesid.dev/api/v1/kpis", {
+      method, headers: { origin: "https://yesid.dev" },
+    }), f.env, { waitUntil: (task) => tasks.push(task) }, new Set(["demo", "other-city"]),
+    new Map(), "other-city");
+    await Promise.all(tasks);
+    return response;
+  };
+  const response = await request();
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("access-control-allow-origin"), "*");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const live = {
+    snapshotAt: "2026-11-26T16:59:23Z", freshnessS: 37, vehicles: 3,
+    avgDelayS: -11, coverage: 2 / 3, routesLive: 2, routesTotal: 2,
+    topRoutes: [
+      { route: "10", vehicles: 2, avgDelayS: -11 },
+      { route: "22", vehicles: 1, avgDelayS: null },
+    ],
+  };
+  assert.deepEqual(await response.json(), live);
+  const aggregate = f.answers.get("https://transit.yesid.dev/__transit_live_kpis/v2/other-city");
+  assert.equal(aggregate.ttl, 30);
+  assert.equal((await request("OPTIONS")).status, 204);
+  assert.equal(await (await request("HEAD")).text(), "");
+  t.mock.timers.tick(6_000);
+  assert.deepEqual(await (await request()).json(), {
+    ...live, freshnessS: 43, avgDelayS: null, coverage: null,
+    topRoutes: live.topRoutes.map((route) => ({ ...route, avgDelayS: null })),
+  });
+  t.mock.timers.tick(18_000);
+  assert.deepEqual(await (await request()).json(), {
+    snapshotAt: null, freshnessS: null, vehicles: null, avgDelayS: null,
+    coverage: null, routesLive: null, routesTotal: 2, topRoutes: [],
+  });
+  assert.equal(read.mock.callCount(), 1);
+});
+
 test("keeps the live edge cache independent of engine revision and availability", async (t) => {
   const f = fixture(t);
   delete f.env.ENGINE;

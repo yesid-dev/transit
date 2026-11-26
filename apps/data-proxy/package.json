@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "node --check src/basemap.js && node --check src/cors.js && node --check src/question-params.js && node --check src/questions.js && node --check src/downloads.js && node --check src/clean-download-store.js && node --check src/download-licences.js && node --check src/worker.js && node --check src/entrypoint.js && node --check scripts/probe-v2.mjs",
+    "check": "node --check src/basemap.js && node --check src/cors.js && node --check src/question-params.js && node --check src/questions.js && node --check src/downloads.js && node --check src/clean-download-store.js && node --check src/download-licences.js && node --check src/live-kpis.js && node --check src/worker.js && node --check src/entrypoint.js && node --check scripts/probe-v2.mjs",
     "test": "node --test \"test/*.test.mjs\"",
     "deploy": "node ../../node_modules/wrangler/bin/wrangler.js deploy"
   }

@@ -10,14 +10,16 @@ test("post-deploy policy verifies both hosts and checks analytics without sendin
   const alias = "https://transit1.yesid.dev";
   const check = ({ relay = 404, extraHtml = "", aliasHeader = "noindex, nofollow", aliasSitemap = false } = {}) =>
     verifySitePolicy(async (url, options) => {
-      const { origin, pathname } = new URL(url);
+      const { origin, pathname, search } = new URL(url);
       assert.equal(options.redirect, "error");
+      if (url === "https://data.yesid.dev/v2/cities") return Response.json({ default_provider: "fixture" });
       assert.ok([canonical, alias].includes(origin));
       const indexable = origin === canonical;
       if (pathname === "/") {
         assert.equal(options.method, undefined);
+        assert.equal(search, "?provider=fixture");
         const robots = indexable ? "max-image-preview:large" : "noindex,nofollow";
-        const html = `<html><head><link rel="canonical" href="${canonical}/"><link rel="alternate" hreflang="fr" href="${canonical}/fr"><meta name="robots" content="${robots}">${extraHtml}</head></html>`;
+        const html = `<html><head><link rel="canonical" href="${canonical}/${search}"><link rel="alternate" hreflang="fr" href="${canonical}/fr${search}"><meta name="robots" content="${robots}">${extraHtml}</head></html>`;
         const headers = { "content-type": "text/html" };
         if (!indexable) headers["x-robots-tag"] = aliasHeader;
         return new Response(html, { headers });

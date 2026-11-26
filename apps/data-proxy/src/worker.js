@@ -1,6 +1,7 @@
 import { serveCleanBasemap } from "./basemap.js";
 import { CORS_HEADERS, PREFLIGHT_HEADERS } from "./cors.js";
 import { isDownloadPath, serveDownload } from "./downloads.js";
+import { serveLiveKpis } from "./live-kpis.js";
 import { serveQuestion } from "./questions.js";
 const DOWNLOADS = "https://transit.yesid.dev/download";
 
@@ -13,8 +14,9 @@ function errorResponse(status, extraHeaders = {}) {
 }
 
 export default {
-  async fetch(request, env, ctx, publicCities, retiredBasemaps) {
+  async fetch(request, env, ctx, publicCities, retiredBasemaps, defaultCity) {
     const { pathname } = new URL(request.url);
+    if (pathname === "/api/v1/kpis") return serveLiveKpis(request, env, ctx, publicCities, defaultCity);
     if (isDownloadPath(pathname)) return serveDownload(request, env, ctx);
     const basemap = /^\/v2\/([a-z0-9][a-z0-9_-]{0,63})\/basemap\/([a-zA-Z0-9_-]+\.pmtiles)$/.exec(pathname);
     if (pathname.startsWith("/v2/") && !basemap) return serveQuestion(request, env, ctx, publicCities);
@@ -29,6 +31,9 @@ export default {
     if (legacy.test(legacyPath)) {
       const bookmark = pathname.startsWith("/data/") ? pathname.slice("/data".length) : pathname;
       const tile = retiredBasemaps?.get(bookmark);
+      if (tile && request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: PREFLIGHT_HEADERS });
+      }
       if (tile && (request.method === "GET" || request.method === "HEAD")) {
         return errorResponse(308, { location: tile });
       }
