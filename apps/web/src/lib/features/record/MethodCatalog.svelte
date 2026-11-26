@@ -321,13 +321,13 @@
 						{/if}
 					</div>
 				{/if}
+				<RecordGroup>
+					<a
+						class="method-link inline-flex min-h-11 items-center justify-self-start"
+						href={localizeHref('/metrics/archive', locale, city)}>{copy.archive}</a
+					>
+				</RecordGroup>
 			{/await}
-			<RecordGroup>
-				<a
-					class="method-link inline-flex min-h-11 items-center justify-self-start"
-					href={localizeHref('/metrics/archive', locale, city)}>{copy.archive}</a
-				>
-			</RecordGroup>
 		</div>
 	</RecordScreen>
 </Surface>

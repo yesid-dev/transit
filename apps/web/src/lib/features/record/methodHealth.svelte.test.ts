@@ -141,6 +141,35 @@ it('renders an honest empty catalog', async () => {
 	expect(await screen.findByText('No measures are listed yet.')).toBeVisible();
 });
 
+it.each([
+	['answer', { kind: 'answer', answer: catalog } as EngineResult<MethodEntry[]>],
+	['unreachable', { kind: 'unreachable' } as EngineResult<MethodEntry[]>],
+] as const)(
+	'waits to mount the archive section until the catalog resolves (%s)',
+	async (_label, settled) => {
+		let finish!: (result: EngineResult<MethodEntry[]>) => void;
+		const pending = new Promise<EngineResult<MethodEntry[]>>((resolve) => {
+			finish = resolve;
+		});
+		render(MethodCatalog, {
+			locale: 'en',
+			url: new URL('https://transit1.yesid.dev/metrics?provider=octranspo'),
+			city: 'octranspo',
+			period,
+			catalog: pending,
+		});
+		expect(screen.getByText('Calculating…')).toBeVisible();
+		expect(screen.queryByRole('link', { name: 'Methodology for the archived record' })).toBeNull();
+		finish(settled);
+		const archive = await screen.findByRole('link', {
+			name: 'Methodology for the archived record',
+		});
+		expect(archive).toHaveAttribute('href', '/metrics/archive?provider=octranspo');
+		const section = archive.closest('[data-slot="page-section"]');
+		expect(section?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
+	},
+);
+
 it('renders absent readings and both not-measured reasons while methods can fail independently', async () => {
 	const url = new URL('https://transit1.yesid.dev/status');
 	const answer = health as DataHealthAnswer;
