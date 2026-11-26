@@ -15,6 +15,7 @@
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import TramFrontIcon from '@lucide/svelte/icons/tram-front';
 	import DownloadIcon from '@lucide/svelte/icons/download';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import {
 		type Locale,
 		DEFAULT_LOCALE,
@@ -154,6 +155,7 @@
 	const defaultProvider = $derived(publishedNetwork(v1Provider()));
 
 	let headerFrame = $state<HTMLDivElement>();
+	let searchSheet = $state<ReturnType<typeof SearchSheet>>();
 
 	// Scroll padding and map overlays use the measured chrome. Page content follows it in flow.
 	$effect(() => {
@@ -209,6 +211,16 @@
 {/snippet}
 
 {#snippet searchField()}
+	<!-- Beside the page links (1024 to 1279 px) the field gives way to this button and the sheet. -->
+	<button
+		type="button"
+		class="tap-press nav-compact-search"
+		aria-label={searchAria}
+		data-slot="nav-search-button"
+		onclick={() => searchSheet?.show()}
+	>
+		<SearchIcon size={17} strokeWidth={1.8} aria-hidden="true" />
+	</button>
 	<HeaderSearch
 		bind:query={search}
 		{locale}
@@ -268,6 +280,7 @@
 
 {#snippet actions()}
 	<SearchSheet
+		bind:this={searchSheet}
 		bind:query={search}
 		{locale}
 		{providerId}
@@ -284,7 +297,6 @@
 		{home}
 		{brand}
 		{links}
-		linkTiers={{ priority3: 1280 }}
 		{menuGroups}
 		labels={navCopy}
 		language={{

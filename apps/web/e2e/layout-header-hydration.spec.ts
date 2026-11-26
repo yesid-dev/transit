@@ -3,10 +3,10 @@ import { test } from './layout-test';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 // The header pill holds still while the app hydrates: the brand, both toggles and the bar links
-// the server shows are the ones the app keeps. Transit's brand, search, refresh and network
-// controls make its pill wider than SiteHeader's default link tiers assume, so the bar links wait
-// for a 1280px header (linkTiers) before and after hydration alike (R1063-1: at 1206px the
-// hydrated header dropped them and both toggles moved 169px).
+// the server shows are the ones the app keeps. The bar links show from SiteHeader's default 1024px
+// tier; below a 1280px header the search field gives way to an icon button, so the links fit
+// before and after hydration alike (R1063-1: at 1206px a hydrated header once dropped them and
+// both toggles moved 169px).
 const parts = {
 	pill: '[data-testid="nav-pill"]',
 	brand: '[data-slot="product-brand"]',
@@ -60,7 +60,7 @@ function heldScripts() {
 }
 
 for (const locale of ['en', 'fr'] as const)
-	for (const width of [320, 360, 390, 768, 1206, 1280] as const)
+	for (const width of [320, 360, 390, 768, 1024, 1206, 1280] as const)
 		test(`${locale} ${width}px header holds still through hydration`, async ({ page }) => {
 			await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 			await page.route('**/v1/**', async (route) => {
@@ -82,7 +82,7 @@ for (const locale of ['en', 'fr'] as const)
 				});
 				await expect(page.locator(`${parts.pill}.nav-hydrated`)).toHaveCount(0);
 				const before = await settled(page);
-				expect(before.links, `${width}px bar links`).toHaveLength(width < 1280 ? 0 : 4);
+				expect(before.links, `${width}px bar links`).toHaveLength(width < 1024 ? 0 : 4);
 
 				scripts.release();
 				await expect(page.locator(`${parts.pill}.nav-hydrated`)).toBeVisible();

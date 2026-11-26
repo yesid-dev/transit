@@ -51,11 +51,18 @@ const MENU = {
 } as const;
 
 it.each(['en', 'fr'] as const)(
-	'names the search button with its word and the menu in four labelled groups in %s',
+	'names both search buttons and the menu in four labelled groups in %s',
 	async (locale) => {
 		const view = render(NavPill, { props: { locale } });
-		const search = view.getByRole('button', { name: navPillCopy[locale].searchAria.all });
-		expect(search).toHaveTextContent(MENU[locale].search);
+		// The phone trigger carries its word; beside the page links (1024 to 1279 px) the icon
+		// button opens the same sheet under the same name. CSS shows one at a time.
+		const buttons = view.getAllByRole('button', { name: navPillCopy[locale].searchAria.all });
+		const slot = (name: string) => buttons.filter((button) => button.dataset.slot === name);
+		const [phone] = slot('nav-compact-search');
+		const [beside] = slot('nav-search-button');
+		expect(buttons).toHaveLength(2);
+		expect(phone).toHaveTextContent(MENU[locale].search);
+		expect(beside).toHaveTextContent('');
 		await fireEvent.click(view.getByRole('button', { name: navPillCopy[locale].openMenu }));
 		const menu = within(view.getByRole('dialog'));
 		expect(

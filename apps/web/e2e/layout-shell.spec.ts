@@ -199,6 +199,12 @@ for (const locale of ['en', 'fr'] as const)
 				await targetFits(search, page);
 				await expect(search).toHaveText(headerSearchCopy[locale].trigger);
 				await singleLine(search.locator('span'));
+			} else if (width < 1280) {
+				// Beside the page links the search is the icon button that opens the sheet.
+				const search = pill.getByRole('button', { name: copy.searchAria.all, exact: true });
+				await targetFits(search, page);
+				await expect(search).toHaveText('');
+				await expect(pill.getByRole('combobox', { name: copy.searchAria.all })).toHaveCount(0);
 			}
 			await menu.focus();
 			await page.keyboard.press('Enter');

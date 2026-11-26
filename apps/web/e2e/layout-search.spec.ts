@@ -57,8 +57,8 @@ for (const locale of ['en', 'fr'] as const)
 		test(`${locale} header search list "${query}" stays in view, rows stay put @layout`, async ({
 			page,
 		}, info) => {
-			// The list drops from the header's field from 1024 px; narrower headers open the sheet.
-			const inSheet = page.viewportSize()!.width < 1024;
+			// The list drops from the header's field from 1280 px; narrower headers open the sheet.
+			const inSheet = page.viewportSize()!.width < 1280;
 			let release!: () => void;
 			const addressesArrive = new Promise<void>((resolve) => (release = resolve));
 			await page.clock.setFixedTime(epoch + 30_000);

@@ -73,6 +73,45 @@ for (const locale of ['en', 'fr'] as const) {
 		expect((await city.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 	});
 
+	test(`${locale} from 1024 to 1279px the header keeps the page links and a search button`, async ({
+		page,
+	}) => {
+		const current = { en: 'Lines', fr: 'Lignes' }[locale];
+		for (const width of [1024, 1180, 1279, 1280]) {
+			await page.setViewportSize({ width, height: 900 });
+			await open(page, localizeHref('/lines', locale, 'stm'));
+			await page.evaluate(() => document.fonts.ready);
+			const pill = page.getByTestId('nav-pill');
+			const links = pill.locator('.nav-links a:visible');
+			await expect(links, `${width}px page links`).toHaveCount(4);
+			await expect(pill.locator('.nav-links a[aria-current="page"]')).toHaveText(current);
+			const button = pill.getByRole('button', { name: words.searchAria.all, exact: true });
+			const field = pill.getByRole('combobox', { name: words.searchAria.all });
+			if (width < 1280) {
+				await expect(button).toBeVisible();
+				await expect(field).toHaveCount(0);
+			} else {
+				await expect(button).toHaveCount(0);
+				await expect(field).toBeVisible();
+			}
+			// The city stays in the pill's row, so the chrome keeps the 1280px height.
+			const row = await pill.evaluate((nav) => {
+				const top = (selector: string) =>
+					Math.round(nav.querySelector(selector)!.getBoundingClientRect().top);
+				return {
+					theme: top('[data-testid="theme-toggle"]'),
+					city: top('[data-slot="site-header-network"]'),
+					below: nav.hasAttribute('data-network-below'),
+				};
+			});
+			expect(row.below, `${width}px city below the pill`).toBe(false);
+			expect(row.city).toBe(row.theme);
+			const bounds = (await pill.boundingBox())!;
+			expect(bounds.x).toBeGreaterThanOrEqual(0);
+			expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+		}
+	});
+
 	test(`${locale} the compact search button and city fit at 1024px and 200% text`, async ({
 		page,
 	}) => {
