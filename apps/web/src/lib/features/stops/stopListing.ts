@@ -2,7 +2,7 @@ import { fromSearchParams } from '#lib/filters/index.ts';
 import { foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import type { FinderCell } from '#lib/server/engine.ts';
+import type { FinderCell, FinderSeries } from '#lib/server/engine.ts';
 import type { SlimStopEntry } from '#lib/v1/repositories/stopsSlim.ts';
 import type { FinderResult } from '#lib/features/record/finderText.ts';
 
@@ -73,12 +73,19 @@ export function stopLineCodes(codes: readonly string[], locale: Locale): string[
 	return [...new Set(codes)].sort(intl.collator(locale, { numeric: true }).compare);
 }
 
-export function stopReading(cell: FinderCell | undefined) {
+export function stopReading(cell: FinderCell | undefined, answer?: Pick<FinderSeries, 'info'>) {
+	const measured = cell?.state === 'measured';
+	const classified = cell?.evidence.counts.classified ?? null;
 	return {
 		state: cell?.state,
-		share: cell?.state === 'measured' ? (cell.value.on_time ?? null) : null,
-		events: cell?.state === 'measured' ? (cell.evidence.counts.classified ?? null) : null,
-		onTime: cell?.state === 'measured' ? (cell.evidence.counts.on_time ?? null) : null,
+		share: measured ? (cell.value.on_time ?? null) : null,
+		events: measured || (classified != null && classified > 0) ? classified : null,
+		onTime: measured ? (cell.evidence.counts.on_time ?? null) : null,
+		minimum:
+			cell?.state === 'too_few_to_judge'
+				? ((answer?.info?.find(({ id }) => id === 'on_time') ?? answer?.info?.[0])
+						?.minimum_sample ?? null)
+				: null,
 	};
 }
 

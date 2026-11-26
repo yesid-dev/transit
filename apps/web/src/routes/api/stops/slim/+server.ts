@@ -42,7 +42,9 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		if (url.searchParams.get('details') === 'record') {
 			// Nearby ordering runs in the browser. This edition is shared by every visitor.
 			const record = loadStopsRecord(url, city, request, frameClock(null));
-			const cells = finderCells((await record?.punctuality) ?? null, 'stop');
+			const result = (await record?.punctuality) ?? null;
+			const cells = finderCells(result, 'stop');
+			const answer = result?.kind === 'answer' ? result.answer : undefined;
 			const codes = new Map(edition.routes.map(({ id, short }) => [id, short]));
 			const stops = edition.stops.map((stop): NearbyStop => {
 				const routeIds = stop.routes ?? [];
@@ -51,7 +53,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 					...toSlimStop(stop),
 					routeIds,
 					lineCodes: routeIds.map((id) => codes.get(id) ?? id),
-					...(cell ? { reading: stopReading(cell) } : {}),
+					...(cell ? { reading: stopReading(cell, answer) } : {}),
 				};
 			});
 			return json({ generated_utc: `${edition.date}T00:00:00Z`, stops });

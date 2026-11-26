@@ -377,6 +377,33 @@ for (const locale of ['en', 'fr'] as const) {
 		).toBeVisible();
 	});
 
+	test(`${locale} Stops keeps the stop-event sample beside one state on phones`, async ({
+		page,
+	}) => {
+		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops' });
+		for (const width of [320, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(
+				`${prefix}/stops?provider=octranspo&recordFrom=2026-11-04&recordTo=2026-11-10&q=8th`,
+			);
+			const row = page.getByRole('row').filter({ hasText: '8th Line / Byron' });
+			await expect(row.getByRole('link', { name: '8th Line / Byron' })).toBeVisible();
+			await expect(row.locator('[data-column="lines"] [data-slot="route-plate"]')).toHaveText([
+				'51',
+				'51A',
+				'105',
+			]);
+			await expect(row.locator('[data-record-state]')).toHaveCount(1);
+			await expect(row.locator('[data-record-state]')).toHaveAttribute(
+				'data-record-state',
+				'too_few_to_judge',
+			);
+			await expect(row.locator('[data-column="events"]')).toContainText(
+				fr ? '29 (minimum de 500)' : '29 (minimum 500)',
+			);
+		}
+	});
+
 	test(`${locale} stops accepts a search without JavaScript`, async ({ browser, baseURL }) => {
 		const context = await browser.newContext({ javaScriptEnabled: false, baseURL });
 		try {
