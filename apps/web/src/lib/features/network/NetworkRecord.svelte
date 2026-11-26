@@ -233,7 +233,7 @@
 						{locale}
 						{stamp}
 						answer={record.punctuality}
-						waiting="bands"
+						waiting="band-comparison"
 					>
 						{#snippet reading(result)}
 							{#if !('cells' in result)}
@@ -254,7 +254,13 @@
 							<h3 class="mt-4 font-semibold">
 								{t('Weekdays against weekends', 'Semaine et fin de semaine')}
 							</h3>
-							{#await record.dayTypes then days}
+							{#await record.dayTypes}
+								{#key record.dayTypes}<RecordPending
+										shape="comparison-facts"
+										{locale}
+										answer={record.dayTypes}
+									/>{/key}
+							{:then days}
 								{#if days.kind === 'answer' && 'cells' in days.answer}
 									<FactList>
 										{#each [true, false] as weekday (weekday)}
