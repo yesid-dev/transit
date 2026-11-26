@@ -129,9 +129,18 @@ export type MeasureView = {
 	since: string | null;
 };
 
+export const dataUserFields = ['calculation', 'ordering', 'caveat'] as const;
+export type DataUserField = (typeof dataUserFields)[number];
+
+const dataUserField: Record<ProseField, DataUserField> = {
+	counts: 'calculation',
+	exclusions: 'caveat',
+	limits: 'caveat',
+};
+
 export type DataUserNote = {
 	label?: string;
-	field?: ProseField;
+	field: DataUserField;
 	text: string;
 };
 
@@ -160,12 +169,8 @@ function partKey(part: FieldPart) {
 	return JSON.stringify([part.lead ?? '', part.shared]);
 }
 
-function nonEmptyPart(part: FieldPart, minSample: number | null, rankMin: number | null) {
-	return (
-		Boolean(part.lead) ||
-		part.shared.length > 0 ||
-		(part.field === 'limits' && (minSample != null || rankMin != null))
-	);
+function nonEmptyPart(part: FieldPart) {
+	return Boolean(part.lead) || part.shared.length > 0;
 }
 
 function commonValue<T>(values: readonly T[]): T | null {
@@ -297,7 +302,7 @@ export function buildMethodViews(groups: readonly MethodGroup[], locale: Locale)
 			const since = m.entry.since && m.entry.since !== sharedSince ? m.entry.since : null;
 			const parts = m.parts.filter((part) => {
 				if (isMulti && liftedByField.get(part.field) === partKey(part)) return false;
-				return nonEmptyPart(part, minSample, rankMin);
+				return nonEmptyPart(part);
 			});
 			return {
 				entry: m.entry,
@@ -309,20 +314,12 @@ export function buildMethodViews(groups: readonly MethodGroup[], locale: Locale)
 			};
 		});
 
-		// Ensure limits row exists at group level when a shared minimum sample applies without a shared limits sentence.
-		if (
-			isMulti &&
-			(sharedMinimumSample != null || sharedRankingMinimumSample != null) &&
-			!sharedParts.some((p) => p.field === 'limits')
-		) {
-			sharedParts.push({ field: 'limits', lead: undefined, shared: [] });
-		}
-
 		const dataUsers: DataUserNote[] = [];
 		const distinctDefs = rawMeasures.filter((m) => m.defNotes);
 		for (const m of distinctDefs) {
 			dataUsers.push({
 				label: isMulti ? methodName(m.entry, locale) : undefined,
+				field: 'calculation',
 				text: m.defNotes,
 			});
 		}
@@ -334,10 +331,14 @@ export function buildMethodViews(groups: readonly MethodGroup[], locale: Locale)
 			if (matching.length === 1) {
 				const [{ entry, note }] = matching;
 				const label = isMulti && !liftedByField.has(field) ? methodName(entry, locale) : undefined;
-				dataUsers.push({ field, label, text: note });
+				dataUsers.push({ field: dataUserField[field], label, text: note });
 			} else if (matching.length > 1) {
 				for (const { entry, note } of matching) {
-					dataUsers.push({ field, label: methodName(entry, locale), text: note });
+					dataUsers.push({
+						field: dataUserField[field],
+						label: methodName(entry, locale),
+						text: note,
+					});
 				}
 			}
 		}

@@ -1173,7 +1173,7 @@ _PUNCTUALITY = Family(
         "departure": {"observed_service_dates": 5, "classified": 30},
     },
     counts=Text(
-        "Each scheduled stop on each trip counts once, and each share divides its group by the "
+        "Each scheduled stop on each trip counts once, and each share is out of the "
         "stops with a measured delay. Negative values mean early; positive values mean late. "
         "Long trips and frequent lines carry more weight because each stop counts once, and "
         "multi-day totals pool stop events so busier weekdays weigh more. Since 22 November "
@@ -1185,8 +1185,8 @@ _PUNCTUALITY = Family(
         "departure uses the last fix within 50 m before the vehicle reaches a later stop. "
         "Without a qualifying vehicle observation, Transit uses an exact agency time or the "
         "last prediction before confirmed passage.",
-        "Chaque arrêt prévu de chaque trajet compte une fois, et chaque part divise sa "
-        "catégorie par les arrêts dont le retard a été mesuré. Un nombre négatif indique une "
+        "Chaque arrêt prévu de chaque trajet compte une fois, et chaque part se calcule "
+        "sur les arrêts dont le retard a été mesuré. Un nombre négatif indique une "
         "avance et un nombre positif, un retard. Les trajets longs et les lignes fréquentes "
         "pèsent davantage parce que chaque arrêt compte une fois, et les totaux sur plusieurs "
         "jours regroupent les passages, donc les journées plus achalandées pèsent plus lourd. "

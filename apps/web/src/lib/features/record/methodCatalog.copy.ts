@@ -27,6 +27,9 @@ export const methodCopy = {
 		downloadPage: 'Download the data',
 		cleanTables: 'lists the daily source files.',
 		dataUsers: 'For data users',
+		calculation: 'How it is calculated',
+		ordering: 'How rows are ordered',
+		caveat: 'Caveat',
 		archive: 'Methodology for the archived record',
 		range: {
 			title: 'The range on a ranking row',
@@ -38,11 +41,11 @@ export const methodCopy = {
 			limits:
 				'When two rows have overlapping ranges, the gap between them may be chance rather than a real difference.',
 			dataUsers: {
-				counts:
+				calculation:
 					'Share rankings compute a 95% Wilson score interval from the sample size (or an effective sample size weighted by scheduled duration for service hours, and by vehicle time for occupancy). Delay and corridor percentiles use half the histogram bin width around the estimate (±7 s for 15-s delay bins and ±2 s for 5-s corridor bins).',
-				exclusions:
+				ordering:
 					'Worst-first share rankings sort by the cautious end of the 95% Wilson interval (the upper end for on-time and delivered shares, the lower end for early, late, cancelled, missing, bunched and full shares), while displaying the exact observed share on the row. Ties break by larger sample size, then entity ID. Excess wait, reporting-gap rates and total vehicle-minutes lost show no uncertainty range.',
-				limits:
+				caveat:
 					'Stop events on the same trip, intervals from the same vehicle and trips on the same vehicle can be correlated; treat the 95% Wilson interval as a guide rather than an exact probability guarantee.',
 			},
 		},
@@ -87,6 +90,9 @@ export const methodCopy = {
 		downloadPage: 'Télécharger les données',
 		cleanTables: 'répertorie les fichiers sources quotidiens.',
 		dataUsers: 'Pour les utilisateurs de données',
+		calculation: 'Calcul',
+		ordering: 'Ordre des lignes',
+		caveat: 'Mise en garde',
 		archive: 'Méthode du bilan archivé',
 		range: {
 			title: 'L’intervalle dans un classement',
@@ -98,11 +104,11 @@ export const methodCopy = {
 			limits:
 				'Quand deux intervalles se chevauchent, l’écart observé peut être dû au hasard plutôt qu’à une différence réelle.',
 			dataUsers: {
-				counts:
+				calculation:
 					'Les classements de parts calculent un intervalle de Wilson à 95\u00a0% à partir de l’effectif (ou d’un effectif pondéré par la durée prévue pour les heures de service et par le temps-véhicule pour l’occupation). Les centiles de retard et de corridor utilisent la demi-largeur de classe autour de l’estimation (±7\u00a0s pour les classes de 15\u00a0s et ±2\u00a0s pour les classes de 5\u00a0s).',
-				exclusions:
+				ordering:
 					'Les classements de parts trient selon la borne prudente de l’intervalle de Wilson à 95\u00a0% (borne supérieure pour les parts à l’heure et les trajets effectués; borne inférieure pour les parts en avance, en retard, annulées, manquantes, rapprochées et pleines), tout en affichant la part observée exacte sur la ligne. Les égalités sont départagées par l’effectif décroissant, puis par l’identifiant. L’attente excédentaire, les taux d’interruptions et le total des minutes-véhicules perdues n’affichent aucun intervalle.',
-				limits:
+				caveat:
 					'Les passages aux arrêts d’un même trajet, les intervalles d’un même véhicule et les trajets d’un même véhicule peuvent être dépendants; cet intervalle à 95\u00a0% sert de guide plutôt que de garantie exacte.',
 			},
 		},

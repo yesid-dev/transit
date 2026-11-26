@@ -41,6 +41,28 @@ for (const locale of ['en', 'fr'] as const) {
 		).toHaveCSS('list-style-position', 'outside');
 	});
 
+	test(`How we measure keeps the chevron beside a wrapped title in ${locale}`, async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+		await page.goto(fr ? '/fr/metrics' : '/metrics');
+		const card = page.locator('#fixture_delay');
+		const title = card.locator('.disclosure-title > span').first();
+		await title.evaluate(
+			(node, text) => {
+				node.textContent = text;
+			},
+			fr ? 'Trajets effectués, annulés et manquants' : 'Trips that ran, cancelled and missing',
+		);
+		const chevron = card.locator('.disclosure-title svg').first();
+		const titleBox = await title.boundingBox();
+		const chevronBox = await chevron.boundingBox();
+		expect(titleBox).not.toBeNull();
+		expect(chevronBox).not.toBeNull();
+		expect(titleBox!.height).toBeGreaterThan(40);
+		expect(Math.abs(chevronBox!.y - titleBox!.y)).toBeLessThanOrEqual(2);
+		expect(chevronBox!.x).toBeGreaterThan(titleBox!.x);
+	});
+
 	test(`Download keeps the CSV column names findable in ${locale}`, async ({ page }) => {
 		const path = fr ? '/fr/download' : '/download';
 		await page.goto(`${path}?provider=stm`);

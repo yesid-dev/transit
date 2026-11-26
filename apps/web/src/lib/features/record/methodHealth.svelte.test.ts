@@ -204,6 +204,36 @@ it.each([
 		);
 		const percentilesNotes = document.getElementById('delay-percentiles-notes')!;
 		expect(percentilesNotes).toHaveTextContent(locale === 'fr' ? 'tranches de 15' : '15-s steps');
+		expect(percentilesNotes).toHaveTextContent(locale === 'fr' ? 'Calcul' : 'How it is calculated');
+
+		const onTime = document.getElementById('on_time')!;
+		for (const [label, value] of [
+			[locale === 'fr' ? 'Échantillon minimal' : 'Minimum sample', '30'],
+			[
+				locale === 'fr'
+					? 'Échantillon minimal pour les classements'
+					: 'Minimum sample for rankings',
+				'45',
+			],
+		] as const) {
+			const field = within(onTime).getByText(label, { exact: true, selector: 'dt' }).parentElement!;
+			expect(within(field).getByText(value, { exact: true, selector: 'dd' })).toBeVisible();
+			expect(field).not.toHaveTextContent(
+				locale === 'fr' ? 'Ce que la mesure ne peut pas dire' : 'What it cannot tell',
+			);
+		}
+
+		const rankingNotes = document.getElementById('ranking-range-notes')!;
+		expect(rankingNotes).toHaveTextContent(
+			locale === 'fr' ? 'Ordre des lignes' : 'How rows are ordered',
+		);
+		expect(rankingNotes).toHaveTextContent(locale === 'fr' ? 'Mise en garde' : 'Caveat');
+		for (const riderLabel of locale === 'fr'
+			? ['Ce que la mesure compte', 'Ce que la mesure exclut', 'Ce que la mesure ne peut pas dire']
+			: ['What it counts', 'What it leaves out', 'What it cannot tell']) {
+			expect(percentilesNotes).not.toHaveTextContent(riderLabel);
+			expect(rankingNotes).not.toHaveTextContent(riderLabel);
+		}
 
 		const crowding = document.getElementById('family-crowding')!;
 		expect(crowding).not.toHaveTextContent(

@@ -60,6 +60,15 @@ def test_catalog_definitions_are_full_sentences_and_limits_match_their_label() -
 
 def test_catalog_quebec_french_meaning_terminology_and_typography() -> None:
     by_id = {entry["id"]: entry for entry in measures.methods()}
+    punctuality_counts = by_id["on_time"]["text"]
+    assert (
+        "each share is out of the stops with a measured delay."
+        in punctuality_counts["en"]["counts"]
+    )
+    assert (
+        "chaque part se calcule sur les arrêts dont le retard a été mesuré."
+        in punctuality_counts["fr"]["counts"]
+    )
     assert "qui se chevauchent" in by_id["alerts"]["text"]["fr"]["counts"]
     assert "périodes communes" not in by_id["alerts"]["text"]["fr"]["counts"]
     pred = by_id["prediction_error"]["text"]["fr"]

@@ -23,7 +23,13 @@
 		waiting,
 	}: {
 		title: string;
-		disclosure?: { id: string; description?: string; nested?: boolean; initiallyOpen?: boolean };
+		disclosure?: {
+			id: string;
+			description?: string;
+			nested?: boolean;
+			initiallyOpen?: boolean;
+			chevronBesideTitle?: boolean;
+		};
 		stamp?: StampProps;
 		links?: Snippet;
 		evidence?: Snippet;
@@ -112,8 +118,8 @@
 			<div id={disclosure.id} class="record-disclosure" data-record-disclosure data-open={expanded}>
 				<Collapsible.Root open={expanded} onOpenChange={(value) => (open = value)}>
 					<Collapsible.Trigger class="grid min-h-11 w-full content-center gap-2 text-left">
-						<span {id} class="disclosure-title">
-							<span>{title}</span><ChevronToggle open={expanded} class="ms-auto" />
+						<span {id} class="disclosure-title" class:beside-title={disclosure.chevronBesideTitle}>
+							<span>{title}</span><ChevronToggle open={expanded} class="ms-auto shrink-0" />
 						</span>
 						{#if disclosure.description}<span class="disclosure-description">
 								{disclosure.description}
@@ -183,6 +189,13 @@
 		justify-content: space-between;
 		gap: calc(var(--space-card-gap) / 2);
 		overflow-wrap: normal;
+	}
+	.disclosure-title.beside-title {
+		flex-wrap: nowrap;
+		align-items: flex-start;
+	}
+	.disclosure-title.beside-title > span:first-child {
+		min-inline-size: 0;
 	}
 	.disclosure-description {
 		display: grid;

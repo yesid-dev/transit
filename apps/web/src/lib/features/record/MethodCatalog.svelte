@@ -19,6 +19,7 @@
 	import { methodCopy, methodReferenceStates } from './methodCatalog.copy.ts';
 	import {
 		buildMethodViews,
+		dataUserFields,
 		methodGroups,
 		methodName,
 		sameAsName,
@@ -44,7 +45,6 @@
 	} = $props();
 
 	const copy = $derived(methodCopy[locale]);
-	const colon = $derived(locale === 'fr' ? '\u00a0: ' : ': ');
 	const rangeFields = ['counts', 'exclusions', 'limits'] as const;
 	const title = $derived(choose(locale, 'How we measure', 'Comment on mesure'));
 	const canonical = $derived(new URL(url.pathname, url));
@@ -118,23 +118,18 @@
 								>{/each}.
 						</dd>
 					{/if}
-					{#if part.field === 'limits' && minimumSample != null}
-						<dd>{copy.minimum}{colon}{tally(minimumSample, locale)}</dd>
-					{/if}
-					{#if part.field === 'limits' && rankingMinimumSample != null}
-						<dd>{copy.rankingMinimum}{colon}{tally(rankingMinimumSample, locale)}</dd>
-					{/if}
 				</div>
 			{/each}
-			{#if !parts.some((p) => p.field === 'limits') && (minimumSample != null || rankingMinimumSample != null)}
+			{#if minimumSample != null}
 				<div>
-					<dt>{copy.limits}</dt>
-					{#if minimumSample != null}
-						<dd>{copy.minimum}{colon}{tally(minimumSample, locale)}</dd>
-					{/if}
-					{#if rankingMinimumSample != null}
-						<dd>{copy.rankingMinimum}{colon}{tally(rankingMinimumSample, locale)}</dd>
-					{/if}
+					<dt>{copy.minimum}</dt>
+					<dd>{tally(minimumSample, locale)}</dd>
+				</div>
+			{/if}
+			{#if rankingMinimumSample != null}
+				<div>
+					<dt>{copy.rankingMinimum}</dt>
+					<dd>{tally(rankingMinimumSample, locale)}</dd>
 				</div>
 			{/if}
 			{#if since}
@@ -183,6 +178,7 @@
 			disclosure={{
 				id: item.entry.id,
 				description: item.summary,
+				chevronBesideTitle: true,
 			}}
 		>
 			{@render fieldList(
@@ -198,7 +194,11 @@
 		<RecordCard
 			bind:open={openCards[view.group.id]}
 			title={view.group.name}
-			disclosure={{ id: view.group.id, description: view.group.summary }}
+			disclosure={{
+				id: view.group.id,
+				description: view.group.summary,
+				chevronBesideTitle: true,
+			}}
 		>
 			<div class="grid min-w-0 gap-5">
 				<div class="grid min-w-0 gap-4">
@@ -353,7 +353,7 @@
 										disclosure={{ id: 'ranking-range-notes', nested: true }}
 									>
 										<dl class="method-notes">
-											{#each rangeFields as field (field)}
+											{#each dataUserFields as field (field)}
 												<div>
 													<dt>{copy[field]}</dt>
 													<dd>{copy.range.dataUsers[field]}</dd>
