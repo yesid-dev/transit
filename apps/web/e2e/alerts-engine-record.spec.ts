@@ -103,6 +103,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 		page.getByRole('heading', { name: 'Travaux sur la chaussée de la rue Beaubien.' }),
 	).toHaveAttribute('lang', 'fr');
 	// The compact rail steps aside when the footer is in view.
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	await answer.scrollIntoViewIfNeeded();
 	const controls = await openFrameControls(page);
 	const filter = controls.getByRole('group', { name: 'Filter', exact: true });
@@ -126,6 +127,9 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(messages.getByRole('combobox')).toHaveCount(0);
 
 	await page.reload();
+	// SvelteKit restores the pre-reload scroll when it hydrates; scroll only after that,
+	// or the page can return to the footer, where the compact rail steps aside.
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	await answer.scrollIntoViewIfNeeded();
 	await openFrameControls(page);
 	await expect(stop).toHaveValue('Stop 51234');
