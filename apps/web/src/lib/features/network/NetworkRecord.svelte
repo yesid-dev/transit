@@ -247,7 +247,7 @@
 				{/if}
 			</div>
 			{#if record && stamp}
-				<DashboardGrid gutter={false} minTile="24rem">
+				<DashboardGrid gutter={false} minTile="24rem" class="items-start">
 					<NetworkRecordReading
 						id="bands"
 						title={copy.bands}

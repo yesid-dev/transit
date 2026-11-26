@@ -16,6 +16,24 @@ test.beforeEach(({ browserName }, info) => {
 
 const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 
+for (const locale of ['en', 'fr'] as const) {
+	test(`Vehicle service starts with a short line list in ${locale}`, async ({ page }) => {
+		const fr = locale === 'fr';
+		await page.goto(
+			`${fr ? '/fr' : ''}/vehicle/40061?provider=stm&frameMode=record&recordFrom=2026-11-07&recordTo=2026-11-13`,
+		);
+		const lines = page.getByRole('region', {
+			name: fr ? 'Lignes et trajets effectués' : 'Lines and trips it ran',
+		});
+		const links = lines.getByRole('link');
+		await expect(links).toHaveCount(3);
+		await expect(lines).toContainText(fr ? '3 sur 5' : 'Showing 3 of 5');
+		await lines.getByRole('button', { name: fr ? 'Afficher 2 de plus' : 'Show 2 more' }).click();
+		await expect(links).toHaveCount(5);
+		await expect(lines.locator('tbody tr').nth(3)).toBeFocused();
+	});
+}
+
 test('vehicle live links its scheduled departure and keeps predictions in their sheet', async ({
 	page,
 }) => {

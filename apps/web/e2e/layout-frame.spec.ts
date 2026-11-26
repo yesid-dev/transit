@@ -381,6 +381,13 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 		'/fr/lines?provider=stm&period=7-days&recordFrom=2026-11-08&recordTo=2026-11-14',
 	);
 	const pill = page.getByRole('button', { name: /^Commandes 7 jours.*Ouvrir les commandes/ });
+	await expect(pill).toBeVisible();
+	expect(
+		await pill.evaluate((button) => {
+			const { left, width } = button.getBoundingClientRect();
+			return left + width / 2 - document.documentElement.clientWidth / 2;
+		}),
+	).toBeCloseTo(0, 0);
 	await pill.focus();
 	await page.keyboard.press('Enter');
 	const sheet = page.getByRole('dialog', { name: 'Commandes', exact: true });

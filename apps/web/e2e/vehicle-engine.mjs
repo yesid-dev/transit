@@ -64,12 +64,13 @@ export function vehicleEngine(url) {
 	});
 	const envelope = { evidence, coverage_note: null, info: [{ id: measure, minimum_sample: 30 }] };
 	const noReport = vehicle === '1' || vehicle === '40067';
+	const runsManyLines = vehicle === '40061' && from === '2026-11-07';
 	const activeDays = noReport ? 0 : Math.min(vehicle === '40064' ? 6 : 5, measuredDays.length);
 	const service = cell(
 		{
 			vehicle_days_in_service: activeDays,
 			vehicle_hours_in_service: activeDays * 2.5,
-			vehicle_lines_run: noReport ? 0 : 2,
+			vehicle_lines_run: noReport ? 0 : runsManyLines ? 5 : 2,
 			vehicle_trips_run: noReport ? 0 : 22,
 		},
 		{},
@@ -137,14 +138,26 @@ export function vehicleEngine(url) {
 		return { body: { ...envelope, cells } };
 	}
 	if (group === 'line') {
+		const lineTrips = runsManyLines
+			? [
+					['80', 7],
+					['24', 6],
+					['51', 4],
+					['105', 3],
+					['165', 2],
+				]
+			: [
+					['80', 12],
+					['24', 10],
+				];
 		return {
 			hold: from === '2026-11-09',
 			body: {
 				...envelope,
-				cells: [
-					{ key: { line: '80' }, ...cell({ vehicle_trips_run: 12 }) },
-					{ key: { line: '24' }, ...cell({ vehicle_trips_run: 10 }) },
-				],
+				cells: lineTrips.map(([line, trips]) => ({
+					key: { line },
+					...cell({ vehicle_trips_run: trips }),
+				})),
 			},
 		};
 	}

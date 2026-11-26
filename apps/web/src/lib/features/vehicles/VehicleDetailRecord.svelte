@@ -273,7 +273,7 @@
 				</div>
 				<div id="service">
 					<RecordCard interactive title={service.title} stamp={time}>
-						<DashboardGrid gutter={false} minTile="18rem">
+						<DashboardGrid gutter={false} minTile="18rem" class="items-start">
 							<dl class="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
 								<div>
 									<dt>{t('Days in service', 'Jours en service')}</dt>
@@ -325,6 +325,7 @@
 										<RecordPending {locale} answer={lines.answer} />
 									{:then series}
 										{#if series.kind === 'answer' && 'cells' in series.answer && series.answer.cells.length}
+											{@const rows = lineRows(series.answer, trips)}
 											{#snippet lineCount(row: VehicleLineRow)}
 												<RecordTableValue {locale} text={row.count} state={row.state} />
 											{/snippet}
@@ -332,7 +333,8 @@
 												{locale}
 												title={lines.title}
 												rowHeader={t('Line', 'Ligne')}
-												rows={lineRows(series.answer, trips)}
+												{rows}
+												pageSize={rows.length > 3 ? 3 : undefined}
 												columns={[
 													{
 														key: 'trips',
