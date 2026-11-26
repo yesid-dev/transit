@@ -22,8 +22,10 @@ export function captureContext(
 	const tile = /^\/data\/v1\/([^/]+)\/static\/basemap\/([a-zA-Z0-9_-]+\.pmtiles)$/.exec(
 		provider.basemap_url ?? '',
 	);
+	// The public proxy names its own origin; a local preview gateway serves the same
+	// path from the page's origin.
 	const publishedTile =
-		/^https:\/\/data\.yesid\.dev\/v2\/([^/]+)\/basemap\/[a-zA-Z0-9_-]+\.pmtiles$/.exec(
+		/^(?:https:\/\/data\.yesid\.dev)?\/v2\/([^/]+)\/basemap\/[a-zA-Z0-9_-]+\.pmtiles$/.exec(
 			provider.basemap_v2_url ?? '',
 		);
 	const basemap =
