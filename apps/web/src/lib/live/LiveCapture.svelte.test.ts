@@ -13,7 +13,7 @@ it('stops the 20 s refresh while live updates are paused and refreshes at once o
 	vi.useFakeTimers();
 	const fetcher = vi.fn(async () => new Response(null, { status: 503 }));
 	vi.stubGlobal('fetch', fetcher);
-	render(LiveCaptureHarness, { capture: Promise.resolve(null) });
+	render(LiveCaptureHarness, { city: 'fixture-city', capture: Promise.resolve(null) });
 	await vi.advanceTimersByTimeAsync(20_000);
 	expect(fetcher).toHaveBeenCalledTimes(1);
 
