@@ -135,8 +135,8 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 			fr: 'Gatineau.',
 		},
 		description: {
-			en: 'Transit already collects the STO’s data. Gatineau opens here once its record has been checked.',
-			fr: 'Transit recueille déjà les données de la STO. Gatineau s’ajoutera ici une fois son bilan vérifié.',
+			en: 'Transit already collects Gatineau’s transit data. The city opens here once its record has been checked.',
+			fr: 'Transit recueille déjà les données de transport collectif de Gatineau. La ville s’ajoutera ici une fois son bilan vérifié.',
 		},
 	},
 	{
