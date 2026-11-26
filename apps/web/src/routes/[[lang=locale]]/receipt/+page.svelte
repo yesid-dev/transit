@@ -363,9 +363,6 @@
 					lang,
 				)}
 				{#if sample}<p>{t('Counted:', 'Ce qui est compté :')} {sample}</p>{/if}
-				{#if punctuality}<p class="font-mono text-sm text-muted-foreground">
-						{methodEvidence(punctuality.evidence, lang, true)}
-					</p>{/if}
 				{#if current.kind !== 'answer'}{@render failure(current)}{/if}
 				{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[lang]}</p>{/if}
 				{#if punctuality?.state === 'too_few_to_judge' && punctuality.info?.[0]?.minimum_sample != null && currentSample != null}
@@ -429,8 +426,8 @@
 							{/await}
 							<p class="print:hidden">
 								{t(
-									'One summary that can be cited, for any day or any dates. A report for one day also prints on one sheet.',
-									'Un résumé à citer pour une journée ou une période de votre choix. Le rapport d’une journée s’imprime aussi sur une seule feuille.',
+									'A summary you can cite, for one day or several. A one-day report prints on one sheet.',
+									'Un résumé à citer, pour une journée ou plusieurs. Le rapport d’une journée tient sur une feuille.',
 								)}
 							</p>
 						</section>
@@ -753,9 +750,10 @@
 										},
 										{ key: 'means', label: copy.means, text: copy.definition },
 										{
-											key: 'versions',
-											label: copy.versions,
-											text: current ? methodEvidence(current.evidence, lang, true) : null,
+											key: 'method',
+											label: copy.methodRow,
+											text: null,
+											link: { href: link('/metrics'), label: copy.method },
 										},
 										{
 											key: 'source',
@@ -766,7 +764,6 @@
 											].join(' '),
 										},
 									]}
-									versionsLink={{ href: link('/metrics'), label: copy.method }}
 								/>
 							</div>
 						{/await}

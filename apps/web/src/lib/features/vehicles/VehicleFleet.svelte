@@ -513,7 +513,6 @@
 							evidence={record
 								? {
 										sample,
-										record: record.evidence,
 										lastGood: result?.kind === 'answer' && result.lastGood,
 									}
 								: undefined}
@@ -574,8 +573,8 @@
 									label={t('Vehicle number', 'Numéro de véhicule')}
 									placeholder={t('Vehicle number', 'Numéro de véhicule')}
 									description={t(
-										'The number painted on the vehicle. The list narrows as you type.',
-										'Le numéro inscrit sur le véhicule. La liste se précise pendant la saisie.',
+										'The number painted on the vehicle.',
+										'Le numéro inscrit sur le véhicule.',
 									)}
 									value={query}
 									oninput={(event) => queueSearch(event.currentTarget.value)}
@@ -721,9 +720,10 @@
 									text: record?.coverageNote?.[locale] ?? null,
 								},
 								{
-									key: 'versions',
-									label: about.versions,
-									text: record ? methodEvidence(record.evidence, locale) : null,
+									key: 'method',
+									label: about.methodRow,
+									text: null,
+									link: { href: href('/metrics'), label: about.method },
 								},
 								{
 									key: 'source',
@@ -733,7 +733,6 @@
 										: null,
 								},
 							]}
-							versionsLink={{ href: href('/metrics'), label: about.method }}
 						/>
 					{/if}
 				</RecordGroup>

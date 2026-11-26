@@ -205,7 +205,6 @@
 									{#if answer.evidence.counts.classified != null}
 										<p>{term.counted}{t(':', ' :')} {sample(answer)}</p>
 									{/if}
-									<p class="font-mono">{methodEvidence(answer.evidence, locale, true)}</p>
 								{/snippet}
 								{#snippet actions()}
 									<RecordActionGroup {locale} href={pinned.href} files={csv}>
@@ -568,16 +567,16 @@
 								text: term.definition,
 							},
 							{
-								key: 'versions',
-								label: term.versions,
-								text: answer ? methodEvidence(answer.evidence, locale) : null,
+								key: 'method',
+								label: term.methodRow,
+								text: null,
+								link: {
+									href: carryFrameState(localizeHref('/metrics', locale, record.city), pinned),
+									label: term.method,
+								},
 							},
 							{ key: 'source', label: term.source, text: term.feeds(operator) },
 						]}
-						versionsLink={{
-							href: carryFrameState(localizeHref('/metrics', locale, record.city), pinned),
-							label: term.method,
-						}}
 					/>
 				{/await}
 			</RecordGroup>

@@ -8,12 +8,7 @@
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, MethodEntry } from '#lib/server/engine.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
-	import {
-		longDate,
-		methodEvidence,
-		registryUnitText,
-		versionNumber,
-	} from '#lib/site/presenter.ts';
+	import { longDate, registryUnitText, versionNumber } from '#lib/site/presenter.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
 	import RecordActionGroup from './RecordActionGroup.svelte';
 	import RecordAnswer from './RecordAnswer.svelte';
@@ -32,14 +27,12 @@
 		url,
 		city,
 		period,
-		cleaningVersion,
 	}: {
 		catalog: Promise<EngineResult<MethodEntry[]>>;
 		locale: Locale;
 		url: URL;
 		city: string;
 		period: DateWindow | null;
-		cleaningVersion?: number;
 	} = $props();
 
 	const copy = $derived(methodCopy[locale]);
@@ -92,19 +85,6 @@
 					),
 				);
 	}
-
-	function versions(entries: MethodEntry[], cleaningVersion?: number) {
-		const measure = entries.find(({ id }) => id === 'on_time');
-		if (!measure) return undefined;
-		return methodEvidence(
-			{
-				method_version: measure.method_version,
-				cleaning_versions: cleaningVersion === undefined ? undefined : [cleaningVersion],
-			},
-			locale,
-			true,
-		);
-	}
 </script>
 
 {#snippet measure(
@@ -150,10 +130,7 @@
 			{/each}
 			<div>
 				<dt>{copy.since}</dt>
-				<dd>
-					{versionNumber(entry.method_version)},
-					<time datetime={entry.since}>{longDate(entry.since, locale)}</time>
-				</dd>
+				<dd><time datetime={entry.since}>{longDate(entry.since, locale)}</time></dd>
 			</div>
 		</dl>
 		{#if details.definition || details.parts.some(({ notes }) => notes)}
@@ -257,17 +234,14 @@
 					{@const ordered = [...groups, ...extra].flatMap(({ entries }) => entries)}
 					{@const parts = methodParts(ordered, locale)}
 					{@const byId = new Map(ordered.map((entry) => [entry.id, entry]))}
-					{@const version = versions(result.answer, cleaningVersion)}
 					<RecordGroup>
 						<div data-slot="screen-answer">
 							{#snippet leadActions()}{@render actions(result.answer)}{/snippet}
-							{#snippet meta()}{#if version}<p>{version}</p>{/if}{/snippet}
 							<RecordAnswer
 								value={null}
 								sentence={copy.intro}
 								{locale}
 								actions={result.answer.length ? leadActions : undefined}
-								{meta}
 							/>
 						</div>
 						{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}

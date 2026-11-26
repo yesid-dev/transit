@@ -21,7 +21,7 @@ export const frameCopy = {
 		period: 'Period',
 		waitingForMonth: 'This month’s first complete day is not in the record yet.',
 		waitingForDay: (date: string) =>
-			`${date} is not in the record yet. Each day is added the next day, after cleaning.`,
+			`${date} is not in the record yet. Each day is added the next day.`,
 		presets: {
 			yesterday: 'Yesterday',
 			'7-days': '7 days',
@@ -61,7 +61,7 @@ export const frameCopy = {
 		period: 'Période',
 		waitingForMonth: 'Le premier jour complet de ce mois-ci ne figure pas encore au bilan.',
 		waitingForDay: (date: string) =>
-			`La journée du ${date} ne figure pas encore au bilan. Chaque journée est ajoutée le lendemain, après le nettoyage des données.`,
+			`La journée du ${date} ne figure pas encore au bilan. Chaque journée est ajoutée le lendemain.`,
 		presets: {
 			yesterday: 'Hier',
 			'7-days': '7 jours',

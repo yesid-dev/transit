@@ -15,15 +15,16 @@
 		locale: Locale;
 	} & ({ evidence: RecordEvidence; versions?: never } | { evidence?: never; versions: string }) =
 		$props();
+	// Versions stay machine-readable for downloads and citations; riders read only the sample.
 	const method = $derived(evidence ? methodEvidence(evidence, locale, true) : versions);
 </script>
 
-{#if sample || method || note}
+{#if sample || note}
 	<div
 		class="flex min-w-0 flex-wrap justify-between gap-x-4 gap-y-1 font-mono text-small text-muted-foreground"
+		data-method={method || undefined}
 	>
 		{#if sample}<span>{sample}</span>{/if}
-		{#if method}<span>{method}</span>{/if}
 		{#if note}<span>{note}</span>{/if}
 	</div>
 {/if}

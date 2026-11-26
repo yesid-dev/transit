@@ -89,8 +89,16 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							await expect(table.getByRole('link')).toContainText('Fixture stop');
 						if (kind === 'vehicle') {
 							await expect(
-								table.getByText(fr ? 'Intervalle indisponible' : 'Range unavailable'),
-							).toBeVisible();
+								main.getByText(
+									fr
+										? 'Aucune plage n’est disponible pour ces rangs.'
+										: 'No range is available for these positions.',
+									{ exact: true },
+								),
+							).toHaveCount(1);
+							await expect(
+								table.getByRole('columnheader', { name: fr ? /^Plage/u : /^Range/u }),
+							).toHaveCount(0);
 							await expect(table).toContainText(fr ? 'par 100 h' : 'per 100 h');
 						} else {
 							await expect(

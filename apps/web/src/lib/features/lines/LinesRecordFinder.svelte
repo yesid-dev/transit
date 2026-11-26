@@ -576,7 +576,7 @@
 						time={stamp}
 						value={spread}
 						sentence={answer}
-						evidence={timingEvidence ? { sample: counts ?? '', record: timingEvidence } : undefined}
+						evidence={timingEvidence ? { sample: counts ?? '' } : undefined}
 						{actions}
 					/>
 				{:else if punctuality && punctuality.kind !== 'busy'}
@@ -649,12 +649,12 @@
 								<StateMark state="no_live_data" {locale} hiddenLabel />
 								{operator
 									? t(
-											`${operator} publishes no real-time feed for these lines. These lines are listed apart and never ranked.`,
-											`${operator} ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.`,
+											`${operator} publishes no real-time feed for these lines, so they are listed apart and never ranked.`,
+											`${operator} ne publie aucun flux en temps réel pour ces lignes : elles sont présentées à part et jamais classées.`,
 										)
 									: t(
-											'The agency publishes no real-time feed for these lines. These lines are listed apart and never ranked.',
-											'L’agence ne publie aucun flux en temps réel pour ces lignes. Ces lignes sont présentées à part et ne sont jamais classées.',
+											'The agency publishes no real-time feed for these lines, so they are listed apart and never ranked.',
+											'L’agence ne publie aucun flux en temps réel pour ces lignes : elles sont présentées à part et jamais classées.',
 										)}
 							</p>
 							<RecordDataTable
@@ -759,11 +759,10 @@
 					},
 					{ key: 'means', label: about.means, text: about.definition },
 					{
-						key: 'versions',
-						label: about.versions,
-						text: sources.length
-							? [...new Set(sources.map((evidence) => methodEvidence(evidence, locale)))].join(' ')
-							: null,
+						key: 'method',
+						label: about.methodRow,
+						text: null,
+						link: { href: localizeHref('/metrics', locale, record.city), label: about.method },
 					},
 					{
 						key: 'source',
@@ -773,7 +772,6 @@
 							: null,
 					},
 				]}
-				versionsLink={{ href: localizeHref('/metrics', locale, record.city), label: about.method }}
 			/>
 		</RecordGroup>
 	</div>

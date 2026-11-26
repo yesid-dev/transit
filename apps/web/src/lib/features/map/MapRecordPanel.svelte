@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { mapRecordReading, methodEvidence } from '#lib/site/presenter.ts';
+	import { mapRecordReading } from '#lib/site/presenter.ts';
 	import { resolveColor } from '#lib/components/map/vehicleSprites.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
@@ -319,18 +319,6 @@
 		/>
 	{/if}
 	{@render stamp?.()}
-	{#if answer?.evidence.method_version}
-		<p class="font-mono text-caption text-muted-foreground">
-			{methodEvidence(
-				{
-					method_version: answer.evidence.method_version,
-					cleaning_versions: answer.evidence.cleaning_versions,
-				},
-				locale,
-				true,
-			)}
-		</p>
-	{/if}
 	{#if !stopLayer}
 		<div class="scope">
 			<div class="scope-field">

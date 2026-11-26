@@ -56,6 +56,7 @@
 		t('Each clean table, day by day', 'État des tables nettoyées, jour par jour'),
 	);
 	const methodLabel = $derived(term.method);
+	const changesTitle = $derived(t('Method changes', 'Changements de méthode'));
 	const stamp = $derived(
 		record ? { kind: 'record' as const, label: recordStamp(record.period, locale) } : undefined,
 	);
@@ -206,7 +207,6 @@
 									{#if totals.tracked}
 										<p>{term.counted}{t(':', ' :')} {sample(answer)}</p>
 									{/if}
-									{#if cleaningText(answer)}<p class="font-mono">{cleaningText(answer)}</p>{/if}
 									{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 								{/snippet}
 								{#snippet actions()}
@@ -296,24 +296,8 @@
 						{/snippet}
 					</RecordCard>
 				</section>
-				<RecordCard interactive title={t('Versions in force', 'Versions en vigueur')}>
-					<dl class="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-						<div>
-							<dt class="font-semibold">{t('Method', 'Méthode')}</dt>
-							<dd class="font-mono">
-								{#await record.methods then result}
-									{(result.kind === 'answer' && methodText(result.answer)) || labels.unknown}
-								{/await}
-							</dd>
-						</div>
-						<div>
-							<dt class="font-semibold">{t('Cleaning', 'Nettoyage')}</dt>
-							<dd class="font-mono">
-								{#await record.health then result}
-									{(result.kind === 'answer' && cleaningText(result.answer)) || labels.unknown}
-								{/await}
-							</dd>
-						</div>
+				<RecordCard interactive title={changesTitle}>
+					<dl class="mb-4 grid gap-3 sm:grid-cols-2">
 						<div>
 							<dt class="font-semibold">{t('Record starts', 'Début du bilan')}</dt>
 							<dd>{longDate(RECORD_START, locale)}</dd>
@@ -335,26 +319,23 @@
 						{:else if result.kind !== 'answer'}<p>{recordConnection.unreachable[locale]}</p>
 						{:else if result.answer.length}
 							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-							{#snippet version(row: RecordTableRow & { version: string })}{row.version}{/snippet}
 							{#snippet since(row: RecordTableRow & { since: string })}
 								<time datetime={row.since}>{longDate(row.since, locale)}</time>
 							{/snippet}
 							<RecordDataTable
 								{locale}
-								title={t('Versions in force', 'Versions en vigueur')}
+								title={changesTitle}
 								rowHeader={t('Measure family', 'Famille de mesures')}
 								rows={familiesFor(result.answer).map((entry) => ({
 									id: entry.family,
 									label: entry.family_text?.[locale] ?? entry.family,
 									href: `${methodHref}#${entry.id}`,
-									version: versionNumber(entry.method_version) ?? labels.unknown,
 									since: entry.since,
 								}))}
 								columns={[
-									{ key: 'version', header: t('Version', 'Version'), cell: version },
-									{ key: 'since', header: t('Since', 'Depuis le'), cell: since },
+									{ key: 'since', header: t('Last changed', 'Dernier changement'), cell: since },
 								]}
-								value="version"
+								value="since"
 							/>
 						{:else}<StateMark state="not_measured" {locale} />{/if}
 					{/await}
@@ -379,47 +360,39 @@
 		</RecordGroup>
 		{#if record && stamp}
 			<RecordGroup>
-				{#await record.health then health}
-					{#await record.methods then methods}
-						<AboutFigures
-							title={term.about}
-							fields={[
-								{ key: 'period', label: term.period, text: dateRange(record.period, locale) },
-								{
-									key: 'counted',
-									label: term.counted,
-									text: t(
-										'One reading for each clean table and service day. Tables outside the published coverage are excluded.',
-										'Un état par table nettoyée et par jour de service. Les tables hors de la couverture publiée sont exclues.',
-									),
-								},
-								{
-									key: 'observed',
-									label: term.observed,
-									text: t(
-										'The files available for each table and service day.',
-										'Les fichiers disponibles pour chaque table et jour de service.',
-									),
-								},
-								{ key: 'means', label: term.means, text: term.definition },
-								{
-									key: 'versions',
-									label: term.versions,
-									text:
-										health.kind === 'answer'
-											? versionsText(health.answer, methods.kind === 'answer' ? methods.answer : [])
-											: null,
-								},
-								{
-									key: 'source',
-									label: term.source,
-									text: operator ? term.feeds(operator) : null,
-								},
-							]}
-							versionsLink={{ href: methodHref, label: methodLabel }}
-						/>
-					{/await}
-				{/await}
+				<AboutFigures
+					title={term.about}
+					fields={[
+						{ key: 'period', label: term.period, text: dateRange(record.period, locale) },
+						{
+							key: 'counted',
+							label: term.counted,
+							text: t(
+								'One reading for each clean table and service day. Tables outside the published coverage are excluded.',
+								'Un état par table nettoyée et par jour de service. Les tables hors de la couverture publiée sont exclues.',
+							),
+						},
+						{
+							key: 'observed',
+							label: term.observed,
+							text: t(
+								'The files available for each table and service day.',
+								'Les fichiers disponibles pour chaque table et jour de service.',
+							),
+						},
+						{
+							key: 'method',
+							label: term.methodRow,
+							text: null,
+							link: { href: methodHref, label: methodLabel },
+						},
+						{
+							key: 'source',
+							label: term.source,
+							text: operator ? term.feeds(operator) : null,
+						},
+					]}
+				/>
 			</RecordGroup>
 		{/if}
 	</div>

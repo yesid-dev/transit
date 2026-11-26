@@ -246,9 +246,6 @@
 					>
 						{#snippet meta()}
 							{#if serviceSample}<p>{t('Counted: ', 'Décompte : ')}{serviceSample}</p>{/if}
-							<p class="font-mono text-small text-muted-foreground">
-								{methodEvidence(answer.evidence, locale, true)}
-							</p>
 						{/snippet}
 					</RecordAnswer>
 					{#await dailyAnswer then daily}
@@ -592,16 +589,13 @@
 							},
 							{ key: 'means', label: term.means, text: term.definition },
 							{
-								key: 'versions',
-								label: t('Versions', 'Versions'),
-								text: methodEvidence(answer.evidence, locale),
+								key: 'method',
+								label: t('Method', 'Méthode'),
+								text: null,
+								link: { href: vehicleHref('/metrics', url, locale, data.city), label: term.method },
 							},
 							{ key: 'source', label: term.source, text: operator ? term.feeds(operator) : null },
 						]}
-						versionsLink={{
-							href: vehicleHref('/metrics', url, locale, data.city),
-							label: term.method,
-						}}
 					/>
 				</RecordGroup>
 			{/await}
