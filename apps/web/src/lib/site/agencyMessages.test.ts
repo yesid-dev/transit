@@ -26,6 +26,22 @@ it('keeps agency section breaks and labels the source language on a fallback', (
 	});
 });
 
+it('shows the French description under an English heading when the English one is missing', () => {
+	const message = {
+		...card,
+		header: { en: 'Detour on Main Street', fr: 'Détour sur la rue Principale' },
+		description: { en: null, fr: 'Les véhicules empruntent la rue Laval.' },
+	};
+	expect(agencyMessage(message, 'en')).toEqual({
+		title: { text: 'Detour on Main Street', lang: 'en' },
+		body: { text: 'Les véhicules empruntent la rue Laval.', lang: 'fr' },
+	});
+	expect(agencyMessage(message, 'fr').body).toEqual({
+		text: 'Les véhicules empruntent la rue Laval.',
+		lang: 'fr',
+	});
+});
+
 it('prefers a published heading from either language, and removes it when the body repeats it', () => {
 	expect(
 		agencyMessage(

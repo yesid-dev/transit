@@ -45,6 +45,9 @@ export const PublicCitySchema = PublicProviderSchema.extend({
 		.object({
 			source_date_required: z.boolean().optional(),
 			attribution: z.object({ en: z.string(), fr: z.string() }),
+			name: z.object({ en: z.string(), fr: z.string() }).optional(),
+			url: z.object({ en: z.url(), fr: z.url() }).optional(),
+			source: z.object({ en: z.string(), fr: z.string() }).optional(),
 		})
 		.nullable()
 		.optional(),
