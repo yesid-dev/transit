@@ -54,6 +54,8 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 		const heading = rect('.map-head');
 		const wide = hero?.getAttribute('data-map-wide') === 'true';
 		const cameraActions = hero?.querySelector('.map-camera-actions');
+		const actions = rect('.map-camera-actions');
+		const attribution = rect('.maplibregl-ctrl-attrib');
 		const landscapeDock =
 			!wide && cameraActions && getComputedStyle(cameraActions).gridAutoFlow === 'column';
 		const headingOnRight = heading && heading.left > box.left + box.width / 2;
@@ -63,16 +65,22 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			?.getBoundingClientRect();
 		const credit = frame?.querySelector('[data-slot="map-source-footer"]')?.getBoundingClientRect();
 		const legendButton = rect('[data-slot="map-legend-fab"]');
+		const fitTop =
+			wide && header
+				? header.bottom
+				: !landscapeDock && heading && actions
+					? Math.max(heading.bottom, actions.bottom)
+					: undefined;
 		return {
 			left: panel ? panel.right - box.left : 0,
 			// The narrow controls rail leaves the provider framing viewport-centered.
 			// Point and route focus still clear its actual covered edge.
 			fitLeft: panel && panel.width > 56 ? panel.right - box.left : 0,
-			fitTop: wide && header ? Math.max(0, header.bottom - box.top) : undefined,
+			fitTop: fitTop === undefined ? undefined : Math.max(0, fitTop - box.top),
 			bottom: Math.max(
 				0,
-				...(wide ? [rect('.map-camera-actions'), rect('.maplibregl-ctrl-attrib')] : [north]).map(
-					(r) => (r ? box.bottom - r.top : 0),
+				...(wide ? [actions, attribution] : [north, attribution, legendButton]).map((r) =>
+					r ? box.bottom - r.top : 0,
 				),
 			),
 			fitBesideNorth:

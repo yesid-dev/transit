@@ -391,6 +391,7 @@
 		return () => reportPanelOpen?.(false);
 	});
 	const stopList = $derived(session.stops);
+	let mapDirections = $state.raw<ScheduleEdition['route_directions']>();
 	const fitFraming = $derived.by(() => {
 		if (v1.provider?.fit_bounds || !stopList.length) return framing;
 		const routeTypes = new Map(session.routesIndex.map(({ id, type }) => [id, type ?? null]));
@@ -398,13 +399,13 @@
 			{
 				...v1,
 				stops: stopList,
+				routeDirections: mapDirections,
 				hasLiveLine: (id) => !lineIsScheduleOnly(v1.provider, id, routeTypes.get(id) ?? null),
 			},
 			mapWidthPx,
 			wide,
 		);
 	});
-	let mapDirections = $state.raw<ScheduleEdition['route_directions']>();
 	const terminals = $derived(scheduleTerminals(mapDirections));
 	onMount(() => {
 		let active = true;

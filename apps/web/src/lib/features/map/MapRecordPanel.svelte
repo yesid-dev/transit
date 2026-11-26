@@ -185,6 +185,9 @@
 			reportCamera.zoom < OTHER_STOPS_MIN_ZOOM &&
 			marks.some((mark) => !mark.main),
 	);
+	const overviewIncludesOtherStops = $derived(
+		stopLayer && marks.some((mark) => mark.main && !terminals.has(mark.id)),
+	);
 	const visible = $derived.by(() => {
 		const camera = reportCamera;
 		if (!camera) return [];
@@ -408,10 +411,15 @@
 						</div>
 						{#if showStopScope}
 							<p class="text-muted-foreground">
-								{tr(
-									'Showing stops served by more than one line, métro and rail stations, and the first and last stops on routes. Zoom in for all stops.',
-									'Seuls les arrêts desservis par plusieurs lignes, les stations de métro et de train et les terminus sont affichés. Zoomez pour voir tous les arrêts.',
-								)}
+								{overviewIncludesOtherStops
+									? tr(
+											'Showing stops served by more than one line, métro and rail stations, and the first and last stops on routes. Zoom in for all stops.',
+											'Seuls les arrêts desservis par plusieurs lignes, les stations de métro et de train et les terminus sont affichés. Zoomez pour voir tous les arrêts.',
+										)
+									: tr(
+											'Showing the first and last stops on routes. Zoom in for all stops.',
+											'Seuls les terminus sont affichés. Zoomez pour voir tous les arrêts.',
+										)}
 							</p>
 						{:else if drawn !== marks}
 							<p class="text-muted-foreground">

@@ -20,7 +20,7 @@
 	const visible = $derived(Math.abs(bearing) >= 1 || Math.abs(pitch) >= 1);
 </script>
 
-<div class="map-north" class:docked data-slot="map-north">
+<div class="map-north" class:docked hidden={!visible && !docked} data-slot="map-north">
 	<Button
 		type="button"
 		variant="outline"

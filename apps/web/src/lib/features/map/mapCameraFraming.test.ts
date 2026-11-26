@@ -73,6 +73,24 @@ it('falls back to served stops, preferring those on lines with live data', () =>
 			provider: { fit_bounds: [...ISLAND_FIT_BOUNDS] },
 		})?.bounds,
 	).toEqual(ISLAND_FIT_BOUNDS);
+	expect(
+		mapCameraFraming({
+			manifest,
+			stops: stops.map(({ id, name, lat, lon }) => ({ id, name, lat, lon })),
+			hasLiveLine,
+			routeDirections: {
+				tracked: [
+					{
+						stops: [
+							{ id: 'a', seq: 1 },
+							{ id: 'b', seq: 2 },
+						],
+					},
+				],
+				'schedule-only': [{ stops: [{ id: 'c', seq: 1 }] }],
+			},
+		})?.bounds,
+	).toEqual([-73.8, 45.4, -73.5, 45.6]);
 });
 
 const maplibrePackage = pathToFileURL(
