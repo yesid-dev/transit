@@ -130,3 +130,52 @@ describe('LegalDocument', () => {
 		expect(legalDocument('fr', 'terms').effectiveDate).toBe('29 octobre 2026');
 	});
 });
+
+describe('generated source credits', () => {
+	const licence = (name: string, source: { en: string; fr: string }) => ({
+		attribution: { en: `${name} attribution`, fr: `Attribution ${name}` },
+		name: { en: `${name} Licence`, fr: `Licence ${name}` },
+		url: { en: `https://example.org/${name}/en`, fr: `https://example.org/${name}/fr` },
+		source,
+	});
+	const providers = [
+		{ download_licence: licence('Alpha', { en: 'the Alpha Agency', fr: 'de l’Agence Alpha' }) },
+		{ download_licence: null },
+		{ download_licence: licence('Beta', { en: 'Beta Transit', fr: 'de Beta Transit' }) },
+	];
+
+	it('links each published network’s licence on the terms page, in both languages', () => {
+		const en = legalDocument('en', 'terms', providers).sections.find(({ id }) => id === 'licenses');
+		const fr = legalDocument('fr', 'terms', providers).sections.find(({ id }) => id === 'licenses');
+		expect(en?.links?.slice(0, 2)).toEqual([
+			{ href: 'https://example.org/Alpha/en', label: 'Data from the Alpha Agency: Alpha Licence' },
+			{ href: 'https://example.org/Beta/en', label: 'Data from Beta Transit: Beta Licence' },
+		]);
+		expect(fr?.links?.slice(0, 2)).toEqual([
+			{ href: 'https://example.org/Alpha/fr', label: 'Données de l’Agence Alpha : Licence Alpha' },
+			{ href: 'https://example.org/Beta/fr', label: 'Données de Beta Transit : Licence Beta' },
+		]);
+		expect(en?.links?.length).toBe(
+			(legalDocument('en', 'terms').sections.find(({ id }) => id === 'licenses')?.links?.length ??
+				0) + 2,
+		);
+	});
+
+	it('names no network that is not in the published list', () => {
+		for (const locale of ['en', 'fr'] as const) {
+			const text = JSON.stringify(legalDocument(locale, 'terms', providers));
+			expect(text).not.toMatch(/inacti|aucune donnée|no .* data is published/i);
+			expect(legalDocument(locale, 'privacy', providers)).toBe(legalDocument(locale, 'privacy'));
+		}
+	});
+
+	it('renders the credits as links', () => {
+		const { getByRole } = render(LegalDocument, {
+			props: { locale: 'en', kind: 'terms', providers },
+		});
+		expect(getByRole('link', { name: 'Data from Beta Transit: Beta Licence' })).toHaveAttribute(
+			'href',
+			'https://example.org/Beta/en',
+		);
+	});
+});

@@ -10,17 +10,20 @@
 	import { ReadingFrame, Surface } from '@yesid/ui/layout';
 	import { Separator } from '@yesid/ui/separator';
 	import { getLocale, type Locale } from '#lib/i18n/index.ts';
+	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { LEGAL_EFFECTIVE_DATES, legalDocument, type LegalPageKind } from './legal.copy';
 
 	interface Props {
 		kind: LegalPageKind;
 		locale?: Locale;
+		/** Published networks; each one's licence becomes a credit link on the terms page. */
+		providers?: readonly Pick<PublicCity, 'download_licence'>[];
 	}
 
-	let { kind, locale: localeProp }: Props = $props();
+	let { kind, locale: localeProp, providers = [] }: Props = $props();
 	const contextLocale = getLocale();
 	const locale = $derived(localeProp ?? contextLocale);
-	const document = $derived(legalDocument(locale, kind));
+	const document = $derived(legalDocument(locale, kind, providers));
 </script>
 
 {#snippet wrapping(

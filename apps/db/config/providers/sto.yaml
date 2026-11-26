@@ -27,6 +27,7 @@ provider:
   display_name: Société de transport de l'Outaouais
   short_name: STO
   city: Gatineau
+  live_source_lag_seconds: 60
   timezone: America/Toronto
   default_language: fr
   default_currency: CAD
@@ -65,6 +66,9 @@ public:
   # Clean storage only. The refresh never writes this city to the legacy public bucket.
   basemap_legacy: false
   geocode_context: Gatineau, Québec
+  alert_links:
+    en: https://www.sto.ca/en/schedules-and-routes/system-overview/
+    fr: https://www.sto.ca/horaires-et-trajets/etat-du-reseau/
   download_licence:
     checked_on: "2026-11-25"
     name:

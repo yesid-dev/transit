@@ -21,10 +21,17 @@ it('uses the published v2 basemap URL when it belongs to the selected city', () 
 	expect(captureContext({ ...city, basemap_v2_url: url }, 'en', null).manifest.basemap).toBe(url);
 });
 
+it('keeps a same-origin v2 basemap path from a local preview gateway', () => {
+	const path = '/v2/stm/basemap/montreal.pmtiles';
+	expect(captureContext({ ...city, basemap_v2_url: path }, 'en', null).manifest.basemap).toBe(path);
+});
+
 it.each([
 	undefined,
 	'https://data.yesid.dev/v2/octranspo/basemap/ottawa.pmtiles',
 	'https://transit.yesid.dev/v2/stm/basemap/montreal.pmtiles',
+	'/v2/octranspo/basemap/ottawa.pmtiles',
+	'//elsewhere.example/v2/stm/basemap/montreal.pmtiles',
 ])('builds the public v2 URL if the v2 catalog field is unusable (%s)', (basemap_v2_url) => {
 	const context = captureContext({ ...city, basemap_v2_url }, 'fr', null);
 	expect(context.manifest.basemap).toBe('https://data.yesid.dev/v2/stm/basemap/montreal.pmtiles');

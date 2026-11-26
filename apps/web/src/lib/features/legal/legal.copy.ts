@@ -1,4 +1,5 @@
 import { defineCopy, type Locale } from '#lib/i18n/index.ts';
+import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 
 export type LegalPageKind = 'privacy' | 'terms' | 'accessibility';
 export const LEGAL_EFFECTIVE_DATES: Readonly<Record<LegalPageKind, string>> = {
@@ -201,7 +202,7 @@ const documents = {
 						'These terms govern the hosted website and public endpoints. Use and reuse of repository source are governed by its LICENSE, NOTICE and applicable GitHub terms.',
 						'Original Transit software is available under the MIT License. That license does not relicense transit-agency data, map material, fonts, trademarks or other third-party content.',
 						'The repository NOTICE file, provider manifests and visible map or data credits identify the applicable sources and terms. Those third-party terms control your reuse of their material.',
-						'STM data is credited to Société de transport de Montréal and used under CC BY 4.0. OC Transpo material retains the statement “Contains information licensed under the Open Government Licence – City of Ottawa.” OpenStreetMap data is available under ODbL and credited as © OpenStreetMap contributors; Protomaps basemap credit remains visible. The STO provider is inactive and no STO data is published.',
+						'Each network’s data is used under the licence linked below for that network, and its required attribution appears with that data on every page. OpenStreetMap data is available under ODbL and credited as © OpenStreetMap contributors; Protomaps basemap credit remains visible.',
 					],
 					links: [
 						{
@@ -468,7 +469,7 @@ const documents = {
 						'Les présentes conditions régissent le site hébergé et les points de terminaison publics. L’utilisation et la réutilisation du code du dépôt sont régies par ses fichiers LICENSE et NOTICE ainsi que par les conditions applicables de GitHub.',
 						'Le logiciel original de Transit est offert selon la licence MIT. Cette licence ne remet pas sous licence les données des sociétés de transport, le contenu cartographique, les polices, les marques de commerce ni les autres éléments de tiers.',
 						'Le fichier NOTICE du dépôt, les manifestes de fournisseur et les crédits visibles de carte ou de données indiquent les sources et conditions applicables. Ces conditions de tiers régissent la réutilisation de leur contenu.',
-						'Les données de la STM sont attribuées à la Société de transport de Montréal et utilisées selon CC BY 4.0. Le contenu d’OC Transpo conserve la mention « Contient de l’information visée par la Licence du gouvernement ouvert – Ville d’Ottawa. » Les données OpenStreetMap sont offertes selon l’ODbL et attribuées par la mention © contributeurs OpenStreetMap; le crédit de fond de carte Protomaps demeure visible. Le fournisseur STO est inactif et aucune donnée STO n’est publiée.',
+						'Les données de chaque réseau sont utilisées selon la licence indiquée ci-dessous pour ce réseau, et l’attribution exigée accompagne ces données sur chaque page. Les données OpenStreetMap sont offertes selon l’ODbL et attribuées par la mention © contributeurs OpenStreetMap; le crédit de fond de carte Protomaps demeure visible.',
 					],
 					links: [
 						{
@@ -568,6 +569,37 @@ const documents = {
 	},
 } as const satisfies Record<Locale, Record<LegalPageKind, LegalDocumentCopy>>;
 
-export function legalDocument(locale: Locale, kind: LegalPageKind): LegalDocumentCopy {
-	return documents[locale][kind];
+type LicensedCity = Pick<PublicCity, 'download_licence'>;
+
+/** One link per published network, built from its declared download licence. */
+export function sourceCreditLinks(
+	locale: Locale,
+	providers: readonly LicensedCity[],
+): LegalLinkCopy[] {
+	return providers.flatMap(({ download_licence: licence }) => {
+		if (!licence?.name || !licence.url || !licence.source) return [];
+		const label =
+			locale === 'fr'
+				? `Données ${licence.source.fr}\u00a0: ${licence.name.fr}`
+				: `Data from ${licence.source.en}: ${licence.name.en}`;
+		return [{ href: licence.url[locale], label }];
+	});
+}
+
+export function legalDocument(
+	locale: Locale,
+	kind: LegalPageKind,
+	providers: readonly LicensedCity[] = [],
+): LegalDocumentCopy {
+	const document: LegalDocumentCopy = documents[locale][kind];
+	const credits = sourceCreditLinks(locale, providers);
+	if (kind !== 'terms' || credits.length === 0) return document;
+	return {
+		...document,
+		sections: document.sections.map((section) =>
+			section.id === 'licenses'
+				? { ...section, links: [...credits, ...(section.links ?? [])] }
+				: section,
+		),
+	};
 }
