@@ -4,7 +4,7 @@ import { navPillCopy } from '../src/lib/i18n/messages';
 import { test } from './layout-test';
 import { textDefects, waitForFrameClearance } from './layout-helpers';
 import { openFrameControls } from './frame-controls';
-import { frameCopy } from '../src/lib/components/shell/frameControlsState';
+import { frameCopy } from '../src/lib/components/shell/frameCopy';
 
 const cities = {
 	stm: {
