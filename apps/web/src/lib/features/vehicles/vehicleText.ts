@@ -74,8 +74,8 @@ export function vehicleLines(answer: RecordSeries) {
 }
 
 export const didNotReport = {
-	en: 'Did not report. That is not the same as out of service.',
-	fr: 'Aucun signalement. Cela ne veut pas dire que le véhicule était hors service.',
+	en: 'No report that day. That is not the same as out of service.',
+	fr: 'Aucun signalement ce jour-là. Cela ne veut pas dire que le véhicule était hors service.',
 };
 
 export function vehicleDayState(cell: RecordSeries['cells'][number] | undefined) {
@@ -90,6 +90,8 @@ export function vehicleReportDays(
 	locale: Locale,
 ) {
 	const byDay = new Map(series.cells.map((cell) => [cell.key.day, cell]));
+	// A day the network was measured and this vehicle has no row is a day it sent no report.
+	const measuredDays = new Set(series.evidence.days_measured ?? series.evidence.days_included);
 	const peak = Math.max(
 		0,
 		...series.cells.map((cell) =>
@@ -99,7 +101,7 @@ export function vehicleReportDays(
 	const entries = [];
 	for (let day = period.from; day <= period.to; day = addIsoDays(day, 1)) {
 		const cell = byDay.get(day);
-		const state = vehicleDayState(cell);
+		const state = cell || !measuredDays.has(day) ? vehicleDayState(cell) : 'not_reporting';
 		const hours = cell?.value.vehicle_hours_in_service ?? null;
 		const date = longDate(day, locale);
 		const report =

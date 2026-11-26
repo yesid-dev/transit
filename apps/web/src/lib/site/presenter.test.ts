@@ -16,6 +16,10 @@ import {
 	fileSize,
 	lineRecordHeading,
 	liveStampAge,
+	liveStatusWords,
+	lineNoVehicleSentence,
+	stopNextVehicleSentence,
+	tickingLiveStamp,
 	longDate,
 	mapRecordReading,
 	dailyReportTitle,
@@ -32,6 +36,7 @@ import {
 	vehiclePositionsCapture,
 	versionNumber,
 } from './presenter.ts';
+import { livePause } from '#lib/live/livePause.ts';
 
 it.each([
 	[
@@ -334,3 +339,81 @@ it.each([
 ] as const)('formats %s map reading %s', (locale, value, stops, expected) => {
 	expect(mapRecordReading(value, stops, locale)).toBe(expected);
 });
+
+it.each([
+	['en', 'On time', '(4 min behind)', '14 min late', '2 min early', '(0.5 min ahead)'],
+	[
+		'fr',
+		'À l’heure',
+		'(4 min de retard)',
+		'14 min de retard',
+		'2 min d’avance',
+		'(0,5 min d’avance)',
+	],
+] as const)(
+	'words a live status mark without repeating the band in %s',
+	(locale, onTime, behind, late, early, ahead) => {
+		const words = (status: 'early' | 'on_time' | 'late' | 'unknown', delay: number | null) =>
+			liveStatusWords(status, status === 'on_time' ? onTime : 'Band', delay, locale);
+		expect(words('on_time', 0)).toEqual({ label: onTime });
+		expect(words('on_time', 240)).toEqual({ label: onTime, detail: behind });
+		expect(words('on_time', -30)).toEqual({ label: onTime, detail: ahead });
+		expect(words('late', 840)).toEqual({ label: late });
+		expect(words('early', -120)).toEqual({ label: early });
+		expect(words('unknown', null)).toEqual({ label: 'Band' });
+		expect(words('late', null)).toEqual({ label: 'Band' });
+	},
+);
+
+it.each([
+	[
+		'en',
+		'No vehicle in the next 15 minutes. Next: line 361 toward Nord, scheduled 04:34.',
+		'No vehicle in the next 15 minutes.',
+		'No trip is running now. First trip at 04:48.',
+		'No vehicle is reporting on this line now.',
+	],
+	[
+		'fr',
+		'Aucun véhicule dans les 15 prochaines minutes. Prochain : ligne 361 vers Nord, prévu à 04:34.',
+		'Aucun véhicule dans les 15 prochaines minutes.',
+		'Aucun trajet en cours. Premier trajet à 04:48.',
+		'Aucun véhicule ne transmet sa position sur cette ligne en ce moment.',
+	],
+] as const)(
+	'answers a quiet stop and line with what comes next, never a zero, in %s',
+	(locale, next, bare, first, quiet) => {
+		expect(
+			stopNextVehicleSentence({ line: '361', toward: 'Nord', scheduled: '04:34' }, locale),
+		).toBe(next);
+		expect(stopNextVehicleSentence({ line: null, toward: null, scheduled: null }, locale)).toBe(
+			bare,
+		);
+		expect(lineNoVehicleSentence('04:48', locale)).toBe(first);
+		expect(lineNoVehicleSentence(null, locale)).toBe(quiet);
+		for (const sentence of [next, bare, first, quiet]) expect(sentence).not.toMatch(/\b0\b|—/u);
+	},
+);
+
+it.each([
+	['en', 'Paused · updated 2 minutes ago', 'Live · updated 2 minutes ago'],
+	['fr', 'En pause · mis à jour il y a 2 minutes', 'En direct · mis à jour il y a 2 minutes'],
+] as const)(
+	'says a paused live stamp is paused and stops its ticking, in %s',
+	(locale, paused, live) => {
+		livePause.reset();
+		const updatedAt = new Date(Date.now() - 120_000);
+		const ticking = tickingLiveStamp(updatedAt, locale);
+		expect(ticking.agoLabel?.(120)).toBe(live);
+		livePause.set(true);
+		try {
+			expect(liveStampAge(120, locale)).toBe(paused);
+			const frozen = tickingLiveStamp(updatedAt, locale);
+			expect(frozen.label).toBe(paused);
+			expect(frozen.agoLabel).toBeUndefined();
+			expect(frozen.updatedAt).toBeUndefined();
+		} finally {
+			livePause.reset();
+		}
+	},
+);

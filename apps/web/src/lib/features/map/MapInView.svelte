@@ -7,7 +7,7 @@
 	import MapPanelAnswer from './MapPanelAnswer.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import { dateAndClock, delayReading, mapDirectionReading } from '#lib/site/presenter.ts';
+	import { dateAndClock, liveStatusWords, mapDirectionReading } from '#lib/site/presenter.ts';
 	import { mapReportsCopy } from './mapReports.copy';
 	import { mapReportsCsv } from './mapReportsCsv';
 	import { mapStatusLabel } from './mapStatusLabels';
@@ -97,8 +97,12 @@
 					<span>
 						<StatusMark
 							status={row.status}
-							label={mapStatusLabel(locale, row.status)}
-							detail={row.delayMin === null ? undefined : delayReading(row.delayMin * 60, locale)}
+							{...liveStatusWords(
+								row.status,
+								mapStatusLabel(locale, row.status),
+								row.delayMin === null ? null : row.delayMin * 60,
+								locale,
+							)}
 						/>
 						{#if heading}<small>{mapDirectionReading(heading, locale)}</small>{/if}
 					</span>

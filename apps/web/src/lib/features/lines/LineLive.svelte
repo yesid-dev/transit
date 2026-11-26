@@ -16,7 +16,9 @@
 		dateAndClock,
 		liveDelayLabels,
 		liveStampAge,
+		lineNoVehicleSentence,
 		lineVehicleSentence,
+		scheduledClock,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
@@ -35,6 +37,7 @@
 	import LineLiveNotices from './LineLiveNotices.svelte';
 	import {
 		delayStatuses,
+		firstTripAhead,
 		lineSilentCount,
 		lineVehicleRows,
 		vehicleCounts,
@@ -97,6 +100,9 @@
 	});
 	const punctuality = $derived(
 		record?.sections.find(({ section }) => section === 'punctuality')?.answer,
+	);
+	const boundaries = $derived(
+		record?.sections.find(({ section }) => section === 'boundaries')?.answer,
 	);
 
 	function describeRows(snapshot: CaptureSnapshot | null, now: number) {
@@ -169,12 +175,6 @@
 	<RecordGroup>
 		<div id="line-detail-profile" data-slot="screen-answer">
 			{#if live && rows && !limits}
-				{#snippet meta()}<p>
-						{t(
-							'A count of vehicles at this moment, not a percentage.',
-							'Le nombre de véhicules en ce moment, pas un pourcentage.',
-						)}
-					</p>{/snippet}
 				{#snippet citation()}
 					<p>{name} · {t('Vehicle positions', 'Positions des véhicules')} · {operator}</p>
 					{#if feed?.captured_at}<p>{dateAndClock(feed.captured_at, locale, timeZone)}</p>{/if}
@@ -186,14 +186,44 @@
 						files={[]}
 						{citation}
 					/>{/snippet}
-				<RecordAnswer
-					{locale}
-					value={tally(rows.length, locale)}
-					sentence={lineVehicleSentence(counts, locale)}
-					time={stamp}
-					{meta}
-					{actions}
-				/>
+				{#if rows.length}
+					<RecordAnswer
+						{locale}
+						value={tally(rows.length, locale)}
+						sentence={lineVehicleSentence(counts, locale)}
+						time={stamp}
+						{actions}
+					/>
+				{:else}
+					<!-- At zero the answer says what runs next, never a big 0. -->
+					{#snippet quiet(first: string | null)}
+						<RecordAnswer
+							{locale}
+							value={null}
+							sentence={lineNoVehicleSentence(
+								first === null ? null : scheduledClock(first, locale),
+								locale,
+							)}
+							time={stamp}
+							{actions}
+						/>
+					{/snippet}
+					{#if boundaries}
+						{#await boundaries}
+							{@render quiet(null)}
+						{:then answer}
+							{@render quiet(
+								firstTripAhead(
+									answer.kind === 'answer' && 'cells' in answer.answer ? answer.answer : undefined,
+									now,
+									timeZone,
+								),
+							)}
+						{/await}
+					{:else}
+						{@render quiet(null)}
+					{/if}
+				{/if}
 			{:else if limits && historical}
 				{#snippet reason()}<p>
 						{historical.coverage_note?.[locale] ??

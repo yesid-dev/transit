@@ -1,5 +1,6 @@
 import type { ClockPort } from '#lib/v1/runtime.ts';
 import { createSubscriber } from 'svelte/reactivity';
+import { livePause } from '#lib/live/livePause.ts';
 
 /** A tick-driven clock: `now` advances on each tick, `serverNow` adds the server offset to it. */
 export interface TickingServerClock extends ClockPort {
@@ -36,9 +37,16 @@ export function preciseServerClock(
 ): ClockPort {
 	let sample: ClockSample | null = null;
 	let correction: ClockSample | null = null;
+	// Paused live updates (WCAG 2.2.2) stop the ages counting up; the switch itself redraws them once.
 	const trackTick = createSubscriber((update) => {
-		const timer = setInterval(update, 1000);
-		return () => clearInterval(timer);
+		const timer = setInterval(() => {
+			if (!livePause.paused) update();
+		}, 1000);
+		const unlisten = livePause.listen(update);
+		return () => {
+			clearInterval(timer);
+			unlisten();
+		};
 	});
 	return {
 		get serverNow() {

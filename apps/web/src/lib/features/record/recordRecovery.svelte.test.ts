@@ -21,8 +21,9 @@ it('tries once when visible and preserves the answered control and its focus', a
 			],
 		});
 		await vi.advanceTimersByTimeAsync(0);
+		// The screen-wide notice is for screen readers only, so it never moves the screen title.
 		const notice = container.querySelector<HTMLElement>('[data-slot="record-patience"]')!;
-		vi.spyOn(notice, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1024, 170.25));
+		expect(notice).toHaveClass('sr-only');
 		expect(screen.getByRole('status')).toHaveTextContent('These records take longer');
 		const days = screen.getByRole('button', { name: 'Days' });
 		days.focus();
@@ -40,11 +41,6 @@ it('tries once when visible and preserves the answered control and its focus', a
 		expect(screen.getByRole('button', { name: 'Days' })).toBe(days);
 		expect(days).toHaveFocus();
 		expect(screen.getByRole('button', { name: 'Lines' })).toBeInTheDocument();
-		expect(screen.getByRole('status')).toHaveTextContent('Readings arrived');
-		expect(notice.style.minBlockSize).toBe('170.25px');
-		window.dispatchEvent(new WheelEvent('wheel', { deltaY: 150 }));
-		await vi.advanceTimersByTimeAsync(0);
-		expect(notice.style.minBlockSize).toBe('');
 		expect(screen.getByRole('status')).toHaveTextContent('Readings arrived');
 		await rerender({ scope: '/vehicle/102', sections: [{ section: 'Days', answer }] });
 		await vi.advanceTimersByTimeAsync(0);

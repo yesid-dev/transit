@@ -107,6 +107,7 @@
 		return [counts && (notes ? `${counts}.` : counts), notes].filter(Boolean).join(' ');
 	});
 	let announcement = $state('');
+	let focused = $state(false);
 	$effect(() => {
 		void query; // every edit restarts the wait, a trailing space too, even when the totals stay the same
 		const next = summary;
@@ -163,6 +164,9 @@
 	class:nav-search-sheet={sheet}
 	role="search"
 	onsubmit={(event) => event.preventDefault()}
+	onfocusin={() => (focused = true)}
+	onfocusout={(event) =>
+		(focused = event.relatedTarget instanceof Node && !!form?.contains(event.relatedTarget))}
 	data-slot="nav-search"
 >
 	<SearchIcon class="nav-search-icon" size={14} strokeWidth={1.8} aria-hidden="true" />
@@ -184,7 +188,8 @@
 		oninput={() => (open = true)}
 		onkeydown={keydown}
 	/>
-	<p class="sr-only" role="status">{announcement}</p>
+	<!-- The header and the phone sheet both hold a search; only the one in use speaks. -->
+	<p class="sr-only" role="status">{focused ? announcement : ''}</p>
 	<div class="nav-search-panel" data-slot="nav-search-panel">
 		{#if shown}
 			<div class="nav-search-results">

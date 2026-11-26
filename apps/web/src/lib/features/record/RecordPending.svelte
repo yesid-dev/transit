@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { getRecordPatience } from './recordPatience.ts';
+	import { getRecordPatience, getRecordSlow } from './recordPatience.ts';
 	import RecordSkeleton, { type RecordWaitingShape } from './RecordSkeleton.svelte';
 
 	let {
@@ -16,6 +16,7 @@
 		shape?: RecordWaitingShape;
 	} = $props();
 	const register = getRecordPatience();
+	const slow = getRecordSlow();
 	onMount(() => {
 		const release = register?.(busy);
 		if (!release) return;
@@ -44,7 +45,7 @@
 		{#if busy}
 			{locale === 'fr' ? 'Lecture en attente.' : 'Waiting for a reading.'}
 		{:else}
-			{locale === 'fr' ? 'Calcul en cours…' : 'Calculating…'}
+			{slow?.() ?? (locale === 'fr' ? 'Calcul en cours…' : 'Calculating…')}
 		{/if}
 	</p>
 </div>

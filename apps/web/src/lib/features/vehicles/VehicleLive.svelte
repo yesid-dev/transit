@@ -10,7 +10,12 @@
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import AboutLiveFigures from '#lib/features/record/AboutLiveFigures.svelte';
 	import VehicleStillMap from './VehicleStillMap.svelte';
-	import { delayReading, liveStampAge, relativeReportAge } from '#lib/site/presenter.ts';
+	import {
+		delayReading,
+		tickingLiveStamp,
+		liveStatusWords,
+		relativeReportAge,
+	} from '#lib/site/presenter.ts';
 	import * as Sheet from '@yesid/ui/sheet';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -189,21 +194,9 @@
 				: null;
 		return direct ?? departureByTripHref(url, locale, city, trip);
 	});
-	const liveMeta = $derived(
-		t(
-			'Its delay at its last report, not an average.',
-			'L’écart à l’horaire au dernier signalement, pas une moyenne.',
-		),
-	);
 	const liveTime = $derived(
 		report && Number.isFinite(Date.parse(report))
-			? {
-					kind: 'live' as const,
-					label: liveStampAge(null, locale),
-					updatedAt: new Date(report),
-					agoLabel: (seconds: number) => liveStampAge(seconds, locale),
-					late: !liveReading,
-				}
+			? tickingLiveStamp(new Date(report), locale, { late: !liveReading })
 			: undefined,
 	);
 	const next = $derived.by(() => {
@@ -299,7 +292,6 @@
 						sentence={liveSentence}
 						{locale}
 						time={liveTime}
-						comparison={liveReading && liveDelay ? liveMeta : undefined}
 					/>
 				{/if}
 				{#if readingState === 'not_reporting' && report}<p>
@@ -362,23 +354,33 @@
 									? t(`from ${departureOrigin}`, `depuis ${departureOrigin}`)
 									: undefined}
 							>
-								{@const label = departure.time
-									? departure.time + toward
-									: t('Departure time not published', 'Heure de départ non publiée')}
-								{#if departureLink}<a
+								{#if departure.time && departureLink}<a
 										class="inline-flex min-h-11 items-center text-primary underline [overflow-wrap:normal] [word-break:normal]"
-										href={departureLink}>{label}</a
+										href={departureLink}>{departure.time + toward}</a
 									>
-								{:else}{label}{/if}
+								{:else if departure.time}{departure.time + toward}
+								{:else}
+									<!-- A missing time is a state, not a link; the departure keeps its own link. -->
+									<span data-slot="departure-time-missing"
+										>{t('Departure time not published', 'Heure de départ non publiée')}</span
+									>
+									{#if departureLink}<a
+											class="inline-flex min-h-11 items-center text-primary underline"
+											href={departureLink}>{t('This departure', 'Ce départ')}</a
+										>{/if}
+								{/if}
 							</FactRow>
 							<FactRow label={t('Status', 'État')}>
 								{#if running.status === 'unknown'}<StateMark state="delay_unknown" {locale} />
 								{:else}<StatusMark
 										status={running.status}
-										label={vehicleStatus(running, locale)}
-									/>{#if liveDelay && running.delay_min !== 0}<span
-											class="ml-2 text-muted-foreground">{liveDelay}</span
-										>{/if}{/if}
+										{...liveStatusWords(
+											running.status,
+											vehicleStatus(running, locale),
+											running.delay_min == null ? null : running.delay_min * 60,
+											locale,
+										)}
+									/>{/if}
 							</FactRow>
 							<FactRow label={t('Next stop', 'Prochain arrêt')}>
 								{#if running.next_stop}<a

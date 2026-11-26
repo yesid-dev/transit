@@ -1,10 +1,9 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { dateRange } from '#lib/site/presenter.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
-	import { setRecordPatience, setRecordRecovered } from './recordPatience.ts';
+	import { setRecordPatience, setRecordRecovered, setRecordSlow } from './recordPatience.ts';
 
 	let {
 		locale,
@@ -23,8 +22,6 @@
 	let slow = $state(false);
 	let answered = $state(false);
 	let recovered = $state(false);
-	let notice: HTMLDivElement | undefined = $state();
-	let reservation = $state<{ width: number; height: number } | null>(null);
 	let succeeded = false;
 	let failed = false;
 
@@ -51,18 +48,18 @@
 	});
 
 	setRecordRecovered(() => {
-		if (busy === 0 || !notice) return;
+		if (busy === 0) return;
 		recovered = true;
-		const { width, height } = notice.getBoundingClientRect();
-		reservation = { width, height };
 	});
+	// Each waiting card says it is still calculating, in its own place, so nothing above the
+	// screen title appears or moves (the screen-wide notice is for screen readers only).
+	setRecordSlow(() => (slow && pending > 0 ? stillCalculating : null));
 
 	$effect(() => {
 		void scope;
 		slow = false;
 		answered = false;
 		recovered = false;
-		reservation = null;
 	});
 
 	$effect(() => {
@@ -71,39 +68,18 @@
 		return () => clearTimeout(timer);
 	});
 
-	$effect(() => {
-		const element = notice;
-		const width = reservation?.width;
-		if (!element || width === undefined) return;
-		const observer = new ResizeObserver(() => {
-			if (element.getBoundingClientRect().width !== width) reservation = null;
-		});
-		observer.observe(element);
-		return () => observer.disconnect();
-	});
-
-	function releaseHeight() {
-		if (reservation) reservation = null;
-	}
-
-	function scrollKey(event: KeyboardEvent) {
-		if (
-			!reservation ||
-			!['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '].includes(event.key)
-		)
-			return;
-		const target = event.target;
-		if (
-			target instanceof HTMLElement &&
-			target.closest('input, textarea, select, button, [contenteditable], [role="button"]')
-		)
-			return;
-		releaseHeight();
-	}
-
 	const waiting = $derived(busy > 0 || (slow && pending > 0));
 	const dates = $derived(period ? dateRange(period, locale) : null);
 	const french = $derived(locale === 'fr');
+	const stillCalculating = $derived(
+		dates
+			? french
+				? `Le calcul du bilan pour la période ${dates} se poursuit.`
+				: `Still calculating the record for ${dates}.`
+			: french
+				? 'Le calcul du bilan se poursuit.'
+				: 'Still calculating the record.',
+	);
 	const reading = $derived(
 		dates
 			? french
@@ -115,42 +91,26 @@
 	);
 </script>
 
-<svelte:window
-	onwheel={(event) => {
-		if (event.deltaY && !event.ctrlKey) releaseHeight();
-	}}
-	ontouchmove={releaseHeight}
-	onkeydown={scrollKey}
-/>
-
 {#if waiting || answered || recovered}
-	<div
-		bind:this={notice}
-		class="mx-auto w-full max-w-5xl px-4 pt-3"
-		data-slot="record-patience"
-		style:min-block-size={reservation ? `${reservation.height}px` : undefined}
-	>
-		<StateNotice
-			role="status"
-			presentation="card"
-			tone={waiting ? 'neutral' : 'positive'}
-			title={waiting
+	<div class="sr-only" data-slot="record-patience">
+		<p role="status">
+			{waiting
 				? french
-					? 'Ce bilan demande plus de temps'
-					: 'These records take longer'
+					? 'Ce bilan demande plus de temps.'
+					: 'These records take longer.'
 				: french
-					? 'Lectures reçues'
-					: 'Readings arrived'}
-			body={waiting
+					? 'Lectures reçues.'
+					: 'Readings arrived.'}
+			{waiting
 				? `${reading} ${
 						french
-							? 'Les lectures terminées restent affichées. S’il en manque, revenez à ce lien plus tard.'
-							: 'Finished readings stay on screen. If some are still missing, come back to this link later.'
+							? 'Chaque carte se remplit dès que sa réponse arrive.'
+							: 'Each card fills in when its answer arrives.'
 					}`
 				: french
 					? 'Les lectures qui tardaient sont maintenant affichées.'
 					: 'The readings that took longer are now on screen.'}
-		/>
+		</p>
 	</div>
 {/if}
 {@render children()}

@@ -20,6 +20,7 @@ import type {
 	VehiclesFile,
 } from '#lib/v1/schemas/index.ts';
 import { buildLiveIndex, type LiveIndex } from './index';
+import { livePause } from '#lib/live/livePause.ts';
 
 const STALE_TTL_MULTIPLIER = 3;
 const CAPTURE_STALE_SECONDS = { alerts: 900, trips: 300, departures: 300 } as const;
@@ -725,7 +726,8 @@ export function createLiveStore(
 
 	function schedulePolling(): void {
 		pausePolling();
-		if (!started || forcedController || !canPoll()) return;
+		// The visitor's pause (WCAG 2.2.2) stops timed polling; first loads and Refresh still run.
+		if (!started || forcedController || !canPoll() || livePause.paused) return;
 		const due = activeFamilies()
 			.filter((family) => familyStatesValue[family].phase !== 'loading')
 			.map((family) => nextPollAt.get(family) ?? Date.now() + ttlMs);
@@ -753,13 +755,15 @@ export function createLiveStore(
 
 	function handleLifecycleChange(): void {
 		if (!started) return;
-		if (canPoll()) resumePolling();
+		if (canPoll() && !livePause.paused) resumePolling();
 		else pausePolling();
 	}
 
+	let unlistenPause: (() => void) | null = null;
 	function wireLifecycle(): void {
 		if (lifecycleWired) return;
 		lifecycleWired = true;
+		unlistenPause = livePause.listen(handleLifecycleChange);
 		if (typeof document !== 'undefined') {
 			document.addEventListener('visibilitychange', handleLifecycleChange);
 		}
@@ -772,6 +776,8 @@ export function createLiveStore(
 	function unwireLifecycle(): void {
 		if (!lifecycleWired) return;
 		lifecycleWired = false;
+		unlistenPause?.();
+		unlistenPause = null;
 		if (typeof document !== 'undefined') {
 			document.removeEventListener('visibilitychange', handleLifecycleChange);
 		}

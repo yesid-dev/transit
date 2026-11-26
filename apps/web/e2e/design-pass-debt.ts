@@ -197,6 +197,12 @@ const kitGaps: Partial<Record<Screen, RegExp>> = {
 	// ReadingFrame sizes its title and body headings in rem: at 390 px and 200% text the line is
 	// 326 px, "confidentialité" needs 359 px and "Renseignements" 328 px.
 	privacy: /^broken-word #legal-(?:title confidentialité|processing Renseignements)$/,
+	// StopLadder sets its stop labels with overflow-wrap: anywhere in fit-content columns: at
+	// 390 px and 200% text "Where", "delay", "builds", "Second" and "stop" break mid-word. The
+	// chart's Table switch is no longer a disclosure (aria-pressed), so the measure keeps the
+	// chart in view instead of opening the table, and the kit's break shows.
+	'line-record':
+		/^broken-word \[data-slot="stop-ladder"\] > ol:nth-child\(2\) > li:nth-child\(\d+\) > div:nth-child\(2\) > span:nth-child\(\d\) \S+$/,
 };
 
 const { screens: debt }: { screens: Partial<Record<string, Report>> } = JSON.parse(

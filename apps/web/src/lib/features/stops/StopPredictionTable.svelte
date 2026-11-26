@@ -6,11 +6,11 @@
 	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
 	import RecordTableName from '../record/RecordTableName.svelte';
 	import { carryFrameState } from '#lib/site/frameState.ts';
-	import { clockTime, delayReading, liveDelayLabels, predictedIn } from '#lib/site/presenter.ts';
+	import { clockTime, liveDelayLabels, liveStatusWords, predictedIn } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 	import { choose } from '../record/recordText.ts';
-	import type { StopPrediction } from './stopLiveReadings.ts';
+	import { riderToward, type StopPrediction } from './stopLiveReadings.ts';
 
 	let {
 		rows,
@@ -76,7 +76,7 @@
 
 {#snippet toward(row: Row)}
 	<span class="prediction-cell wrap-normal"
-		>{row.toward ? display.readName(row.toward, locale) : t('Unavailable', 'Indisponible')}</span
+		>{riderToward(display, row, locale) ?? t('Unavailable', 'Indisponible')}</span
 	>
 {/snippet}
 
@@ -107,10 +107,7 @@
 	<StatusMark
 		class="font-sans"
 		status={band}
-		label={liveDelayLabels(locale)[band]}
-		detail={row.delay === null
-			? undefined
-			: delayReading(row.delay, locale).toLocaleLowerCase(locale)}
+		{...liveStatusWords(band, liveDelayLabels(locale)[band], row.delay, locale)}
 	/>
 {/snippet}
 

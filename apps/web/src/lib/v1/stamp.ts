@@ -1,4 +1,5 @@
 import type { Locale } from '#lib/i18n/copy.ts';
+import { livePause } from '#lib/live/livePause.ts';
 import { formatRelativeSeconds, formatDateKey } from '#lib/utils/time.ts';
 import type { DataHealth, HistoricAvailabilityIndex, Manifest } from './schemas/index';
 import { recordClosedThrough } from './closedWindow';
@@ -79,6 +80,7 @@ export function stampText(
 			stamp.subject,
 			stamp.state,
 			stamp.ageSeconds == null ? null : formatRelativeSeconds(stamp.ageSeconds, locale),
+			livePause.paused,
 		);
 	if (!stamp.dataThrough && !stamp.publishedOn) return '';
 	const date = (key: string | null) => (key ? stampDate(key, locale, timeZone) : null);

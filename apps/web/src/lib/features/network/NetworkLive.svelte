@@ -180,16 +180,7 @@
 								? liveAnswer(live.vehicles_in_service, scheduled)
 								: t('No live data', 'Aucune donnée en direct')}
 							time={stamp}
-						>
-							{#snippet meta()}
-								{#if live}<p>
-										{t(
-											'A count of vehicles at this moment, not a percentage.',
-											'Le nombre de véhicules en ce moment, pas un pourcentage.',
-										)}
-									</p>{/if}
-							{/snippet}
-						</RecordAnswer>
+						/>
 					</div>
 					<div class="grid min-w-0 gap-4">
 						<RecordCard title={statusTitle} {stamp}>

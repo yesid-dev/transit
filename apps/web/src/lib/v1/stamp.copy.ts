@@ -2,8 +2,8 @@ export type LiveState = 'current' | 'behind' | 'not-responding' | 'unknown';
 
 export const stampCopy = {
 	en: {
-		live: (subject: 'data' | 'alerts', state: LiveState, age: string | null) =>
-			(subject === 'alerts' ? 'Live alerts' : 'Live') +
+		live: (subject: 'data' | 'alerts', state: LiveState, age: string | null, paused = false) =>
+			(paused ? 'Paused' : subject === 'alerts' ? 'Live alerts' : 'Live') +
 			' · ' +
 			(state === 'not-responding'
 				? 'not responding'
@@ -19,10 +19,15 @@ export const stampCopy = {
 				.filter(Boolean)
 				.join(' · '),
 		warning: 'This record was published with a warning. See Data health.',
+		pause: 'Pause live updates',
+		pausedStatus: 'Live updates paused.',
+		resumedStatus: 'Live updates resumed.',
+		switchOn: 'On',
+		switchOff: 'Off',
 	},
 	fr: {
-		live: (subject: 'data' | 'alerts', state: LiveState, age: string | null) =>
-			(subject === 'alerts' ? 'Avis en direct' : 'En direct') +
+		live: (subject: 'data' | 'alerts', state: LiveState, age: string | null, paused = false) =>
+			(paused ? 'En pause' : subject === 'alerts' ? 'Avis en direct' : 'En direct') +
 			' · ' +
 			(state === 'not-responding'
 				? 'ne répond pas'
@@ -38,5 +43,10 @@ export const stampCopy = {
 				.filter(Boolean)
 				.join(' · '),
 		warning: 'Ce bilan a été publié avec un avertissement. Voir Santé des données.',
+		pause: 'Suspendre les mises à jour',
+		pausedStatus: 'Mises à jour en direct suspendues.',
+		resumedStatus: 'Mises à jour en direct reprises.',
+		switchOn: 'Oui',
+		switchOff: 'Non',
 	},
 };

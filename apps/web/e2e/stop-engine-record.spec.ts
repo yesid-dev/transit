@@ -49,9 +49,13 @@ for (const width of [390, 1440]) {
 					? /À l’heure: 80,0\s%, 6[ \u00a0\u202f]628 passages aux arrêts/
 					: /On time: 80\.0%, 6,628 stop events/,
 			);
-			await bands.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
+			const tableToggle = bands.getByRole('button', {
+				name: fr ? 'Tableau' : 'Table',
+				exact: true,
+			});
+			await tableToggle.click();
 			await expect(bands.getByRole('table')).toBeVisible();
-			await bands.getByRole('button', { name: fr ? 'Graphique' : 'Chart', exact: true }).click();
+			await tableToggle.click();
 			await expect(bands.getByRole('img')).toBeVisible();
 
 			const grid = main.locator('#hourly');

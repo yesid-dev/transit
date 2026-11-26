@@ -7,6 +7,7 @@ import {
 	captureVehicle,
 } from '../../../../e2e/capture-fixture.ts';
 import {
+	firstTripAhead,
 	lineSilentCount,
 	lineVehicleRows,
 	nextStopPredictions,
@@ -114,5 +115,42 @@ describe('Line Live readings', () => {
 				toward: 'Station Laurier',
 			});
 		}
+	});
+});
+
+describe('firstTripAhead', () => {
+	const boundary = (day_type: string, times: string[]) => ({
+		key: { day_type },
+		evidence: {
+			boundary_departures: times.map((scheduled_departure, index) => ({
+				measure: 'first_trip' as const,
+				service_date: `2026-11-${String(16 + index).padStart(2, '0')}`,
+				scheduled_departure,
+				scheduled: 1,
+			})),
+		},
+	});
+	// Thursday 26 November 2026, 04:12 in Montréal.
+	const early = Date.parse('2026-11-26T09:12:00Z');
+	const zone = 'America/Toronto';
+
+	it('names the day type’s first trip before it leaves', () => {
+		const cells = [boundary('weekday', ['04:48:00', '04:48:00']), boundary('sunday', ['06:10:00'])];
+		expect(firstTripAhead({ cells } as never, early, zone)).toBe('04:48:00');
+	});
+
+	it('says nothing once it left, when days disagree or without a record', () => {
+		const cells = [boundary('weekday', ['04:48:00'])];
+		expect(firstTripAhead({ cells } as never, Date.parse('2026-11-26T10:00:00Z'), zone)).toBeNull();
+		expect(
+			firstTripAhead(
+				{ cells: [boundary('weekday', ['04:48:00', '05:30:00'])] } as never,
+				early,
+				zone,
+			),
+		).toBeNull();
+		expect(firstTripAhead(undefined, early, zone)).toBeNull();
+		// Saturday reads the Saturday cell, which this record does not hold.
+		expect(firstTripAhead({ cells } as never, Date.parse('2026-11-28T09:12:00Z'), zone)).toBeNull();
 	});
 });
