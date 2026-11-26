@@ -23,6 +23,8 @@ import { buildLiveIndex, type LiveIndex } from './index';
 
 const STALE_TTL_MULTIPLIER = 3;
 const CAPTURE_STALE_SECONDS = { alerts: 900, trips: 300, departures: 300 } as const;
+// The data proxy's live cache is internal. The same-origin response is no-store.
+const CAPTURE_PROXY_CACHE_S = 5;
 
 export const LIVE_FAMILIES = ['vehicles', 'trips', 'departures', 'alerts', 'network'] as const;
 
@@ -170,7 +172,7 @@ export function createLiveStore(
 			const payload = currentFamilyPayload(family);
 			const now = runtime.clock.serverNow;
 			const feed = payload?.captureFeed;
-			const captureState = feed && feedState(feed, now);
+			const captureState = feed && feedState(feed, now, CAPTURE_PROXY_CACHE_S + ttlMs / 1_000);
 			const publicationAge = freshnessAgeSeconds(payload?.generated_utc, now, ttlMs / 1000);
 			const legacyCapture =
 				payload != null && 'feed_captured_utc' in payload && family in CAPTURE_STALE_SECONDS;

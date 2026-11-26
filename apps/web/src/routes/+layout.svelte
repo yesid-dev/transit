@@ -12,6 +12,7 @@
 	import { publishedNetwork } from '#lib/site/providerDisplay.ts';
 	import { providerSourceAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { setContext } from 'svelte';
+	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import {
 		mapPanelOpenContext,
 		mapRecordSourceDateContext,
@@ -126,8 +127,7 @@
 	setV1Context(() => v1 ?? undefined);
 	const legalRoute = $derived(FOOTER_INFO_NAV.some((item) => item.href === seoPath));
 	const recordMap = $derived(
-		isFullBleed &&
-			['stops', 'corridors'].includes(currentMirrorUrl().searchParams.get('mapLayer') ?? ''),
+		isFullBleed && mapLayerFor(currentMirrorUrl().searchParams) !== 'live',
 	);
 	let mapRecordSourceDate = $state<string | null>(null);
 	let mapCreditHeight = $state(0);

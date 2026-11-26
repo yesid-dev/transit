@@ -37,6 +37,7 @@
 	import { mapLegend, railLegendName } from './mapLegend';
 	import { peekRepeatsDetail } from './mapHoverPeek';
 	import { frameClock, parseFrameState } from '#lib/site/frameState.ts';
+	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
 	import type { RecordMapLayer } from './recordMap';
 	import { goto } from '$app/navigation';
@@ -282,10 +283,7 @@
 	});
 	const map = $derived(runtime.map);
 	const recordUrl = $derived(new URL(currentMapHref()));
-	const recordLayer = $derived.by((): RecordMapLayer => {
-		const layer = recordUrl.searchParams.get('mapLayer');
-		return layer === 'stops' || layer === 'corridors' ? layer : 'live';
-	});
+	const recordLayer = $derived(mapLayerFor(recordUrl.searchParams));
 	const isRecordLayer = $derived(recordLayer !== 'live');
 	let recordSourceDate = $state<string | null>(null);
 	const publishRecordSourceDate = getContext<((date: string | null) => void) | undefined>(
@@ -302,7 +300,7 @@
 			isRecordLayer ? recordSourceDate : live.sourceDate,
 		),
 	);
-	const recordOptions: { key: RecordMapLayer; label: string }[] = [
+	const recordOptions: { key: Exclude<RecordMapLayer, 'live'>; label: string }[] = [
 		{ key: 'stops', label: locale === 'fr' ? 'Arrêts' : 'Stops' },
 		{ key: 'corridors', label: 'Corridors' },
 	];
@@ -330,11 +328,10 @@
 				: ''),
 	);
 
-	function changeRecordLayer(layer: RecordMapLayer): void {
+	function changeRecordLayer(layer: Exclude<RecordMapLayer, 'live'>): void {
 		if (layer === recordLayer) return;
 		const url = urlCoordinator.currentUrl();
-		if (layer === 'live') url.searchParams.delete('mapLayer');
-		else url.searchParams.set('mapLayer', layer);
+		url.searchParams.set('mapLayer', layer);
 		void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
 	}
 
@@ -983,7 +980,7 @@
 {/snippet}
 
 {#snippet layerChoice()}
-	{#if isRecordLayer}
+	{#if recordLayer !== 'live'}
 		<p class="w-full text-sm font-medium text-muted-foreground">{tr('Layer', 'Couche')}</p>
 		<SegmentedChoice
 			options={recordOptions}
