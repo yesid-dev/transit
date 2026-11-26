@@ -321,6 +321,24 @@
 	.lead > .phone-under {
 		grid-column: 2 / -1;
 	}
+	/* On the narrowest phones (320px) the value moves under the name, in the text column, as the kit's
+	own rows mode does below 14rem: beside a code box and a state it would leave the name no room. */
+	@container phone-switch (inline-size < 15rem) {
+		.phone-row {
+			grid-template-columns: minmax(0, 1fr);
+		}
+		.phone-row.lead {
+			grid-template-columns: auto minmax(0, 1fr);
+		}
+		.phone-row > .phone-value {
+			grid-row: 2;
+			grid-column: 1;
+			text-align: start;
+		}
+		.phone-row.lead > .phone-value {
+			grid-column: 2;
+		}
+	}
 	/* With enlarged text the indent would leave too narrow a column: the sentence takes the row. */
 	@container phone-switch (inline-size < 12rem) {
 		.lead > .phone-under {
