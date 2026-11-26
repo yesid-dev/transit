@@ -4,6 +4,8 @@
 		| 'reading'
 		| 'facts'
 		| 'bands'
+		| 'band-comparison'
+		| 'comparison-facts'
 		| 'trend'
 		| 'table'
 		| 'card'
@@ -15,6 +17,18 @@
 
 	let { shape }: { shape: RecordWaitingShape } = $props();
 </script>
+
+{#snippet comparisonFacts()}
+	{#each [1, 2] as row (row)}
+		<div class="grid min-h-20 grid-cols-[2fr_1fr] items-center gap-4">
+			<div class="grid min-w-0 gap-2">
+				<Skeleton class="h-4 w-full" />
+				<Skeleton class="h-4 w-3/4" />
+			</div>
+			<Skeleton class="h-5 w-16 max-w-full justify-self-end" />
+		</div>
+	{/each}
+{/snippet}
 
 <div class="waiting-shape" data-waiting-shape={shape} aria-hidden="true">
 	{#if shape === 'answer' || shape === 'reading'}
@@ -51,7 +65,7 @@
 				<Skeleton class="h-4 w-2/3 justify-self-end" />
 			</div>
 		{/each}
-	{:else if shape === 'bands'}
+	{:else if shape === 'bands' || shape === 'band-comparison'}
 		<Skeleton class="h-7 w-full" />
 		{#each [1, 2, 3] as row (row)}
 			<div class="grid h-9 grid-cols-[2fr_1fr] items-center gap-4">
@@ -59,6 +73,20 @@
 				<Skeleton class="h-4 w-2/3 justify-self-end" />
 			</div>
 		{/each}
+		{#if shape === 'band-comparison'}
+			<div class="mt-3 grid min-w-0 gap-2">
+				<Skeleton class="h-4 w-full" />
+				<Skeleton class="h-4 w-3/4" />
+				<Skeleton class="mt-2 h-5 w-64 max-w-full" />
+				{@render comparisonFacts()}
+				<div class="flex flex-wrap justify-between gap-2 pt-4">
+					<Skeleton class="h-4 w-48 max-w-full" />
+					<Skeleton class="h-4 w-32 max-w-full" />
+				</div>
+			</div>
+		{/if}
+	{:else if shape === 'comparison-facts'}
+		{@render comparisonFacts()}
 	{:else if shape === 'facts'}
 		{#each [1, 2, 3] as row (row)}
 			<div class="grid h-11 grid-cols-[2fr_1fr] items-center gap-4">

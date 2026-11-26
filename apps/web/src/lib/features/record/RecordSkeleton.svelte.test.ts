@@ -8,6 +8,8 @@ const shapes: [RecordWaitingShape, number][] = [
 	['reading', 5],
 	['facts', 6],
 	['bands', 7],
+	['band-comparison', 18],
+	['comparison-facts', 6],
 	['trend', 2],
 	['table', 9],
 	['card', 3],

@@ -6,7 +6,12 @@ import { designPassCases, type Screen } from './design-pass-cases';
 import { settled } from './design-pass-measure';
 import { localizeHref } from '../src/lib/i18n/routing';
 
-type Shift = { at: number; value: number; nodes: string[] };
+type ShiftRect = { x: number; y: number; width: number; height: number };
+type Shift = {
+	at: number;
+	value: number;
+	sources: { node: string; previous: ShiftRect; current: ShiftRect }[];
+};
 type ShiftEntry = PerformanceEntry & {
 	hadRecentInput: boolean;
 	value: number;
@@ -79,6 +84,8 @@ for (const { screen, href } of designPassCases.filter(
 					request,
 				}, info) => {
 					const path = new URL(href, 'http://fixture');
+					if (screen === 'alerts' || screen === 'network-health')
+						path.searchParams.set('frameMode', 'record');
 					if (screen === 'vehicle-record' && city === 'octranspo') path.pathname = '/vehicle/1';
 					const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 					// Give each request an isolated fixture window, distinct from the other layout specs.
@@ -120,6 +127,12 @@ for (const { screen, href } of designPassCases.filter(
 					);
 					await page.addInitScript(() => {
 						const shifts: Shift[] = [];
+						const rect = ({ x, y, width, height }: DOMRectReadOnly): ShiftRect => ({
+							x: Math.round(x),
+							y: Math.round(y),
+							width: Math.round(width),
+							height: Math.round(height),
+						});
 						(window as ShiftWindow).steadyShifts = shifts;
 						new PerformanceObserver((list) => {
 							for (const entry of list.getEntries() as ShiftEntry[]) {
@@ -127,16 +140,16 @@ for (const { screen, href } of designPassCases.filter(
 								shifts.push({
 									at: Math.round(entry.startTime),
 									value: entry.value,
-									nodes: entry.sources.flatMap(({ node, previousRect, currentRect }) => {
+									sources: entry.sources.flatMap(({ node, previousRect, currentRect }) => {
 										const element = node instanceof Element ? node : node?.parentElement;
 										if (!element) return [];
 										const section = element.closest('[id], [data-slot]');
 										const label = section?.id
 											? `${element.tagName} #${section.id}`
 											: `${element.tagName} [${section?.getAttribute('data-slot') ?? ''}]`;
-										const dx = Math.round(currentRect.x - previousRect.x);
-										const dy = Math.round(currentRect.y - previousRect.y);
-										return [`${label} (Δx ${dx}px, Δy ${dy}px)`];
+										return [
+											{ node: label, previous: rect(previousRect), current: rect(currentRect) },
+										];
 									}),
 								});
 							}
@@ -167,6 +180,23 @@ for (const { screen, href } of designPassCases.filter(
 							expect
 								.soft(footerTop, 'footer stays below the first viewport while waiting')
 								.toBeGreaterThanOrEqual(900);
+							const following =
+								screen === 'alerts' && width === 1440
+									? '#line'
+									: screen === 'network-health' && width === 390
+										? '#delay'
+										: null;
+							if (following) {
+								const top = await page
+									.locator(following)
+									.evaluate((node) => node.getBoundingClientRect().top);
+								expect
+									.soft(
+										top,
+										`${following} stays below the first viewport while the preceding reading loads`,
+									)
+									.toBeGreaterThanOrEqual(900);
+							}
 						}
 						const evidence = process.env.TRANSIT_STEADY_EVIDENCE;
 						if (

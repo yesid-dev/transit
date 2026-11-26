@@ -342,7 +342,7 @@
 	{:else if result}
 		{@render resultState(result)}
 	{:else if messages}
-		{#key messages}<RecordPending {locale} answer={messages} />{/key}
+		{#key messages}<RecordPending shape="listing" {locale} answer={messages} />{/key}
 	{:else}
 		<p>{alertDetailsLimit[locale]}</p>
 	{/if}
