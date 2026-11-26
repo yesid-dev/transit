@@ -164,7 +164,7 @@
 			{#if phone?.before}<span class="phone-before">{@render phone.before(row)}</span>{/if}
 			<div class="phone-name">
 				{#if code}<span class="phone-code">{code}</span>{/if}
-				<RecordTableName row={named} {plates} columnCount={1} />
+				<RecordTableName row={named} {plates} columnCount={1} plateOnName />
 				{#if phone?.after}<span class="phone-after">{@render phone.after(row)}</span>{/if}
 				{#if empty && line}<span class="phone-line">{line}</span>{/if}
 			</div>
@@ -224,11 +224,32 @@
 					variant="joined-grid"
 				/>
 			</div>
+			{#if phone}
+				<!-- When the choices no longer fit (large text), each one is a button of its own. -->
+				<div class="sort-stack">
+					{#each sort.choices.options as choice (choice.key)}
+						{@const active = choice.key === sort.key}
+						<Button
+							class="min-h-11"
+							variant={active ? 'default' : 'outline'}
+							size="sm"
+							wrap
+							aria-pressed={active}
+							onclick={() => (active ? sort.onSort(sort.key) : sort.choices?.onSelect(choice.key))}
+							>{choice.label}{active ? (sort.direction === 'asc' ? ' ↑' : ' ↓') : ''}</Button
+						>
+					{/each}
+				</div>
+			{/if}
 			{#if phone && sortedHeader}
 				<!-- Phone rows carry no column headers: this button reverses the order there. -->
 				<span class="sort-reverse">
-					<Button class="min-h-11" variant="outline" size="sm" onclick={() => sort.onSort(sort.key)}
-						>{sortHeaderLabel(sortedHeader)}</Button
+					<Button
+						class="min-h-11"
+						variant="outline"
+						size="sm"
+						wrap
+						onclick={() => sort.onSort(sort.key)}>{sortHeaderLabel(sortedHeader)}</Button
 					>
 				</span>
 			{/if}
@@ -265,12 +286,13 @@
 	}
 	.phone-head {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
+		/* A long state as the value wraps within half the row; the name keeps the rest. */
+		grid-template-columns: minmax(0, 1fr) fit-content(50%);
 		align-items: baseline;
 		column-gap: 0.5rem;
 	}
 	.phone-head.ranked {
-		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-columns: auto minmax(0, 1fr) fit-content(50%);
 	}
 	.phone-name {
 		display: flex;
@@ -280,9 +302,10 @@
 		row-gap: 0.125rem;
 		min-inline-size: 0;
 	}
+	/* The name keeps its longest word and its tap size; the row wraps around it. */
 	.phone-name > :global(.name-cell) {
 		flex: 0 1 auto;
-		min-inline-size: 0;
+		min-inline-size: min-content;
 	}
 	.phone-code {
 		border: 1px solid var(--border);
@@ -300,6 +323,8 @@
 		display: inline-flex;
 		flex-wrap: wrap;
 		gap: 0.25rem;
+		/* A plate wraps as a whole, never between its digits. */
+		white-space: nowrap;
 	}
 	.phone-value {
 		font-weight: 600;
@@ -327,9 +352,20 @@
 		}
 	}
 	/* Column headers retain sorting when the optional choices run out of room. */
+	.sort-stack {
+		display: none;
+	}
 	@container (inline-size < 8rem) {
 		.sort-choice-frame:not(.with-phone) .sort-choices {
 			display: none;
+		}
+		.with-phone :is(.sort-choice-default, .sort-choice-grid, .sort-reverse) {
+			display: none;
+		}
+		.with-phone .sort-stack {
+			display: grid;
+			gap: 0.5rem;
+			inline-size: 100%;
 		}
 	}
 	@container (inline-size > 28rem) {

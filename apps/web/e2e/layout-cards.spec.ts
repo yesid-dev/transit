@@ -116,7 +116,10 @@ for (const provider of ['stm', 'octranspo'])
 					await page.setViewportSize({ width, height: 900 });
 					await expect(row).toBeVisible();
 					await expect(row).toContainText(locale === 'fr' ? /80,0\s+%/u : '80.0%');
-					await expect(row).toContainText(locale === 'fr' ? 'Faible couverture' : 'Low coverage');
+					// On a phone, low coverage joins the row's sentence in lower case.
+					await expect(row).toContainText(
+						locale === 'fr' ? /faible couverture/iu : /low coverage/iu,
+					);
 					await expect(plate).toHaveText('24');
 					await expect(plate).toBeVisible();
 					await expect(label).toBeVisible();

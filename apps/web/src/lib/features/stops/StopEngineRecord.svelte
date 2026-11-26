@@ -275,7 +275,16 @@
 						'En avance signifie plus de 1 minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
 					)}
 				</p>
-			{:else if !stopLowCoverage(result)}{@render gap(result)}{/if}
+			{:else if stopLowCoverage(result)}
+				<!-- The card keeps its place: the state and its reason, once, with no empty chart. -->
+				<p>
+					<StateMark state="not_measured" {locale} />
+					{t(
+						'Too few stop events were observed here to split them into early, on time and late.',
+						'Trop peu de passages ont été observés ici pour les répartir entre en avance, à l’heure et en retard.',
+					)}
+				</p>
+			{:else}{@render gap(result)}{/if}
 		{/if}
 		{#snippet evidence()}
 			{@render evidenceFooter('punctuality')}
@@ -350,7 +359,7 @@
 			{#await answers.punctuality}
 				{@render bandsCard()}
 			{:then result}
-				{#if !stopLowCoverage(result)}{@render bandsCard(result)}{/if}
+				{@render bandsCard(result)}
 			{/await}
 			<RecordCard title={titleFor(delayGap ? 'accessibility' : 'delay')} {stamp}>
 				{#snippet evidence()}

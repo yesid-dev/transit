@@ -550,7 +550,8 @@ test('Overview Live late lines keep the plate, linked name and value together @l
 		await expect(row).toBeVisible();
 		const plate = (await row.locator('[data-slot="route-plate"]').boundingBox())!;
 		const name = (await row.getByRole('link').locator('.name-label').boundingBox())!;
-		const value = (await row.getByRole('cell').boundingBox())!;
+		// A cell on wide screens; on a phone the value sits in the row heading.
+		const value = (await row.getByText(/^\d+ of \d+$/u).boundingBox())!;
 		expect(name.x).toBeGreaterThanOrEqual(plate.x + plate.width);
 		expect(value.x).toBeGreaterThan(name.x);
 		const evidence = process.env.TRANSIT_COHESION_B_EVIDENCE;
