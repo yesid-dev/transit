@@ -139,6 +139,9 @@
 {#if 'value' in answer}
 	{#if section === 'alerts'}
 		{@const messages = groupAlertCards(recordAlertCards(answer.evidence.alert_messages))}
+		{#if answer.value.alerts != null && answer.value.alerts > 0}
+			<p class="mb-3">{countedUnit(answer.value.alerts, 'distinct-alert', locale)}</p>
+		{/if}
 		{#if answer.value.alerts === 0}
 			<p>
 				{noPublishedNotices(

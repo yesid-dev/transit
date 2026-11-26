@@ -507,14 +507,16 @@
 						{@const feeds = Object.values(snapshot?.feeds ?? {})}
 						{@const alertFeed = feeds.find(({ family }) => family === 'alerts')}
 						{@const age = captureAge(alertFeed?.captured_at ?? null, now, locale)}
-						{@const liveCards =
-							snapshot?.alerts && alertFeed?.captured_at && feedState(alertFeed, now) === 'live'
-								? liveAlertCards(snapshot.alerts, now)
-								: null}
+						{@const alertReady = !!(
+							snapshot?.alerts &&
+							alertFeed?.captured_at &&
+							feedState(alertFeed, now) === 'live'
+						)}
+						{@const liveCards = alertReady ? liveAlertCards(snapshot?.alerts ?? [], now) : []}
 						{@const missingEffect = Boolean(
 							liveCards?.length && liveCards.every(({ effect }) => !effect),
 						)}
-						{#if liveCards && alertFeed?.captured_at}
+						{#if alertReady && alertFeed?.captured_at}
 							{@const lineCount = liveCards.filter(({ routes }) => routes.length).length}
 							{@const liveStamp = tickingLiveStamp(new Date(alertFeed.captured_at), locale)}
 							{#snippet liveActions()}{@render actions(undefined, alertFeed.captured_at)}{/snippet}
@@ -528,7 +530,10 @@
 										actions={liveActions}
 									>
 										{#snippet meta()}
-											<p>{t('Counted:', 'Ce qui est compté :')} {labelCount(liveCards.length)}</p>
+											<p>
+												{t('Counted:', 'Ce qui est compté\u00a0:')}
+												{labelCount(liveCards.length)}
+											</p>
 											<p>{scope}</p>
 										{/snippet}
 									</RecordAnswer>

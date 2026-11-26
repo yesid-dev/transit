@@ -72,7 +72,7 @@
 	const related = $derived.by(() => {
 		if (scope.kind !== 'stop') return [];
 		const { id, lines } = scope;
-		const groups = new Map<string, { lines: string[]; notices: NoticeCard[] }>();
+		const groups: Record<string, { lines: string[]; notices: NoticeCard[] }> = Object.create(null);
 		for (const notice of sortAgencyMessages(
 			groupAlertCards(
 				cards.filter(
@@ -84,11 +84,11 @@
 		)) {
 			const affected = lines.filter((line) => notice.routes.includes(line)).map(display.line);
 			const key = JSON.stringify(affected);
-			const group = groups.get(key);
+			const group = groups[key];
 			if (group) group.notices.push(notice);
-			else groups.set(key, { lines: affected, notices: [notice] });
+			else groups[key] = { lines: affected, notices: [notice] };
 		}
-		return [...groups.values()];
+		return Object.values(groups);
 	});
 </script>
 

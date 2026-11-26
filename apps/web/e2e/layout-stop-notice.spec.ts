@@ -7,7 +7,7 @@ import { captureFixture, captureUrl, installStopCapture } from './capture-fixtur
 const notice: NonNullable<CaptureSnapshot['alerts']>[number] = {
 	id: 'layout-stop-notice',
 	severity: 'WARNING',
-	routes: ['24'],
+	routes: ['80'],
 	stops: ['S1'],
 	header: { en: 'Your stop', fr: 'Votre arrêt' },
 	description: {
@@ -72,7 +72,7 @@ for (const locale of ['en', 'fr'] as const)
 			await expect(direct).not.toContainText(locale === 'fr' ? 'L’arrêt S2' : 'Stop S2');
 			const related = cards.filter({
 				has: page.getByRole('heading', {
-					name: locale === 'fr' ? 'Avis pour la ligne 24' : 'Notices for line 24',
+					name: locale === 'fr' ? 'Avis pour la ligne 80' : 'Notices for line 80',
 					exact: true,
 				}),
 			});

@@ -194,7 +194,11 @@
 		{/if}
 	</RecordGroup>
 	<RecordGroup>
-		<div id="stop-detail-notices" data-testid="stop-alerts" class="min-w-0">
+		<div
+			id="stop-detail-notices"
+			data-testid="stop-alerts"
+			class="grid min-w-0 gap-[var(--space-card-gap)]"
+		>
 			<LineLiveNotices
 				{snapshot}
 				{now}

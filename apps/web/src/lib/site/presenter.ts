@@ -380,9 +380,13 @@ export function lineName(
 
 /** A route plate already prints the number supplied at the start of some line names. */
 export function noticeLineName(number: string, name: string | null) {
-	if (!name || name === number) return null;
-	if (!name.startsWith(number)) return name;
-	return name.slice(number.length).match(/^\s*[/·:\-]\s*(.+)$/u)?.[1] ?? name;
+	let detail = name?.trim();
+	while (detail?.startsWith(number)) {
+		const remaining = detail.slice(number.length).match(/^\s*[/·:-]\s*(.+)$/u)?.[1];
+		if (!remaining) break;
+		detail = remaining;
+	}
+	return detail && detail !== number ? detail : null;
 }
 
 export function noticeStopName(text: string, stop: string, locale: Locale) {

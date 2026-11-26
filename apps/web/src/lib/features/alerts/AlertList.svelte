@@ -115,9 +115,9 @@
 			: undefined,
 	);
 	const anchorOwners = $derived.by(() => {
-		const owners = new Map<string, string>();
+		const owners: Record<string, string> = Object.create(null);
 		for (const { key, ids } of ordered) {
-			for (const id of ids) if (!owners.has(id)) owners.set(id, key);
+			for (const id of ids) owners[id] ??= key;
 		}
 		return owners;
 	});
@@ -347,7 +347,7 @@
 			{#each ordered.slice(0, shown) as card (card.key)}
 				{@render item(
 					card,
-					card.ids.filter((id) => anchorOwners.get(id) === card.key),
+					card.ids.filter((id) => anchorOwners[id] === card.key),
 				)}
 			{/each}
 		</ul>

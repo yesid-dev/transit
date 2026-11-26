@@ -84,6 +84,7 @@ it.each([
 
 it('uses a published route number once even when the line name starts with it', () => {
 	expect(noticeLineName('37', '37 · Jolicoeur')).toBe('Jolicoeur');
+	expect(noticeLineName('37', '37 / 37 · Jolicoeur')).toBe('Jolicoeur');
 	expect(noticeLineName('3', '37 · Jolicoeur')).toBe('37 · Jolicoeur');
 	expect(noticeLineName('37', '37')).toBeNull();
 });
