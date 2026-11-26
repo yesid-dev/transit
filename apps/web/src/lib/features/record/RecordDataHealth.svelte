@@ -56,7 +56,7 @@
 		t('Each clean table, day by day', 'État des tables nettoyées, jour par jour'),
 	);
 	const methodLabel = $derived(term.method);
-	const changesTitle = $derived(t('Method changes', 'Changements de méthode'));
+	const changesTitle = $derived(t('Method changes', 'Mises à jour des méthodes'));
 	const stamp = $derived(
 		record ? { kind: 'record' as const, label: recordStamp(record.period, locale) } : undefined,
 	);

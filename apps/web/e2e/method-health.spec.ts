@@ -219,7 +219,7 @@ for (const width of [390, 1440]) {
 			expect(tableHealthDefects).toEqual([]);
 			const changes = main.locator('[data-slot="record-card"]').filter({
 				has: page.getByRole('heading', {
-					name: fr ? 'Changements de méthode' : 'Method changes',
+					name: fr ? 'Mises à jour des méthodes' : 'Method changes',
 				}),
 			});
 			await expect(
