@@ -104,8 +104,8 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(
                 ("i3_alerts", start, None, "ok", 1),
                 *[
                     ("vehicle_positions", stamp, stamp, "ok", 1)
-                    for seconds in range(-300, 181, 60)
-                    if (covered or seconds not in (-120, -60))
+                    for seconds in range(-300, 181, 20)
+                    if (covered or not -180 < seconds < 0)
                     and (stamp := start + timedelta(seconds=seconds))
                 ],
             ],
@@ -263,7 +263,7 @@ def vehicle_history(
                 ],
             )
             polls: list[tuple[object, ...]] = []
-            for seconds in range(-300, 36 * 60 * max(n for _, n in fleet) + 180, 60):
+            for seconds in range(-300, 36 * 60 * max(n for _, n in fleet) + 180, 20):
                 stamp = base + timedelta(seconds=seconds)
                 for feed in ("vehicle_positions", "trip_updates"):
                     # Only the affected endpoint has failed polls on each outage day.
@@ -559,3 +559,90 @@ def test_vehicle_ranking_default_floors_and_exports(
     status, payload = request(store, "/measure", measure="vehicles", format="csv", lang="fr")
     assert status == 200
     assert "Jours sans suivi des véhicules" in payload.decode()
+
+
+def _cadence_stats(tmp_path: Path, cadence: int, missed: list[int]) -> dict[str, Any]:
+    """One trip reporting every `cadence` seconds, skipping `missed[k]` reports in a row."""
+    day = THURSDAY
+    store = _build_store(
+        tmp_path, 10, {day: (Trip("placeholder", "A", 0, "ran", None, True, (0,)),)}
+    )
+    start = utc(day, 6)
+    slots: list[int] = []
+    slot = 0
+    for skip in [*missed, 0]:
+        slots.extend(range(slot, slot + 5))
+        slot += 5 + skip
+    end_slot = slot
+    stamps = [start + timedelta(seconds=cadence * k) for k in slots]
+    with store.connect() as conn:
+        _write_table(
+            conn,
+            store,
+            day,
+            TRIP_DAYS,
+            "trip_id VARCHAR, route_id VARCHAR, vehicle_id VARCHAR, state VARCHAR, "
+            "state_reason VARCHAR, route_has_live_data BOOLEAN, scheduled_start_utc TIMESTAMPTZ, "
+            "last_capture_utc TIMESTAMPTZ",
+            [("t1", "A", "v1", "ran", None, True, start, stamps[-1])],
+        )
+        _write_table(
+            conn,
+            store,
+            day,
+            VEHICLE_POSITIONS,
+            "vehicle_id VARCHAR, trip_id VARCHAR, route_id VARCHAR, "
+            "observed_at_utc TIMESTAMPTZ, captured_at_utc TIMESTAMPTZ, "
+            "last_seen_at_utc TIMESTAMPTZ",
+            [("v1", "t1", "A", stamp, stamp, stamp) for stamp in stamps],
+        )
+        # The feed itself keeps publishing on cadence while the vehicle is silent.
+        _write_table(
+            conn,
+            store,
+            day,
+            FEED_POLLS,
+            "feed VARCHAR, captured_at_utc TIMESTAMPTZ, feed_timestamp_utc TIMESTAMPTZ, "
+            "result VARCHAR, entity_count BIGINT",
+            [
+                ("vehicle_positions", stamp, stamp, result, 1)
+                for k in range(-3, end_slot + 3)
+                if (stamp := start + timedelta(seconds=cadence * k))
+                # Unchanged publications between fresh ones do not set the cadence.
+                for result in ("ok", "duplicate")
+            ],
+        )
+        conn.execute("CREATE TABLE selected_vehicles (vehicle_id VARCHAR)")
+        conn.execute("INSERT INTO selected_vehicles VALUES ('v1')")
+        directory = Path(store.root) / "stm" / day.isoformat() / "v10"
+        paths = {
+            name: [str(directory / name)] for name in (VEHICLE_POSITIONS, TRIP_DAYS, FEED_POLLS)
+        }
+        sql, params = vehicle_stats_query(paths, ["stm", "10", day, day], True, True, False)
+        ((_, _, *counts),) = conn.execute(sql, params).fetchall()
+    result = dict(zip(VEHICLE_COUNTS, counts, strict=True))
+    # Independent recomputation: carry each report to the next, at most three intervals,
+    # and one interval after the final report.
+    spacings = [cadence * (b - a) for a, b in zip(slots, slots[1:], strict=False)]
+    assert result["service_us"] == 1_000_000 * (
+        sum(min(s, 3 * cadence) for s in spacings) + cadence
+    )
+    assert result["silent_us"] == 1_000_000 * sum(s for s in spacings if s > 3 * cadence)
+    return result
+
+
+@pytest.mark.parametrize("cadence", [20, 60])
+def test_reporting_gaps_follow_each_feed_cadence(tmp_path: Path, cadence: int) -> None:
+    on_cadence = _cadence_stats(tmp_path / "steady", cadence, [])
+    assert on_cadence["reporting_gaps"] == on_cadence["silent_us"] == 0
+    # One and two missed reports are allowed; three and five are interruptions.
+    missed = _cadence_stats(tmp_path / "missed", cadence, [1, 2, 3, 5])
+    assert missed["reporting_gaps"] == 2
+    assert missed["reporting_gaps_capture_gap"] == 0
+    assert missed["silent_us"] == 1_000_000 * cadence * (4 + 6)
+    # Service: 20 on-cadence spacings, the 2, 3, 4 and 6 interval silences capped at 3,
+    # and one final interval. The same missed reports cover three times the service time
+    # at a one-minute cadence, so the rate scales with the cadence.
+    hours = missed["service_us"] / 3_600_000_000
+    assert hours == pytest.approx((20 + 2 + 3 + 3 + 3 + 1) * cadence / 3600)
+    assert 100 * missed["reporting_gaps"] / hours == pytest.approx(100 * 2 / (32 * cadence / 3600))

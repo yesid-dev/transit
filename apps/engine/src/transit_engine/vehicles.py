@@ -4,10 +4,10 @@ from transit_engine.capture import MAX_POLL_SPACING_SECONDS, POLL_COVERAGE_SQL
 from transit_engine.clean_manifest import FEED_POLLS, STOP_EVENTS, TRIP_DAYS, VEHICLE_POSITIONS
 from transit_engine.series import LOCAL_HOUR, LOCAL_HOUR_BUCKET
 
-VEHICLE_POLL_SECONDS = 20
-VEHICLE_TAIL_CAP_SECONDS = 3 * VEHICLE_POLL_SECONDS
-# Allow two missed polls. Longer separations also start a new clean state interval.
-VEHICLE_REPORTING_GAP_SECONDS = 3 * VEHICLE_POLL_SECONDS
+# Each feed publishes at its own cadence, so silences are measured in reporting intervals.
+# Allow two missed reports: a gap or a carried-forward tail spans at most three intervals.
+VEHICLE_REPORTING_GAP_INTERVALS = 3
+_DAY_US = 86_400_000_000
 MIN_STABLE_ID_READINGS = 2
 MIN_STABLE_READING_SHARE = 0.5
 MIN_VEHICLE_TERMINUS_SHARE = 0.5
@@ -17,17 +17,46 @@ MIN_VEHICLE_RANKING_HOURS = 10
 TRIP_CAPTURE_LEAD_SECONDS = 300
 
 
-def vehicle_tail_sql(next_start: str, last_seen: str) -> str:
-    return (
-        f"coalesce(epoch_us({next_start}) - epoch_us({last_seen}), "
-        f"{VEHICLE_POLL_SECONDS * 1_000_000})"
-    )
+def vehicle_cadence_sql(version: str = "cleaning_version = ?") -> str:
+    # The reporting interval is the median spacing between fresh vehicle-position
+    # publications on each UTC day, rounded to whole seconds. Parameters: feed polls,
+    # provider and cleaning version.
+    return f"""
+        SELECT day, nullif(round(quantile_disc(spacing_us, 0.5) / 1000000), 0)::BIGINT
+            * 1000000 AS cadence_us
+        FROM (
+            SELECT instant // {_DAY_US} AS day,
+                instant - lag(instant) OVER (ORDER BY instant) AS spacing_us
+            FROM (
+                SELECT DISTINCT epoch_us(captured_at_utc) AS instant
+                FROM read_parquet(?, hive_partitioning = false)
+                WHERE provider = ? AND {version} AND feed = 'vehicle_positions'
+                    AND result = 'ok'
+            )
+        )
+        WHERE spacing_us IS NOT NULL
+        GROUP BY day
+    """
 
 
-def vehicle_end_sql(start: str, last_seen: str, tail: str) -> str:
+def vehicle_cadence_join(last_seen: str, cadence: str = "cadence") -> str:
+    return f"LEFT JOIN {cadence} ON {cadence}.day = epoch_us({last_seen}) // {_DAY_US}"
+
+
+def vehicle_gap_us_sql(cadence_us: str) -> str:
+    # An unknown cadence carries nothing forward and leaves every silence unmeasured.
+    return f"coalesce({VEHICLE_REPORTING_GAP_INTERVALS} * {cadence_us}, 0)"
+
+
+def vehicle_tail_sql(next_start: str, last_seen: str, cadence_us: str) -> str:
+    # With no next reading, assume one reporting interval.
+    return f"coalesce(epoch_us({next_start}) - epoch_us({last_seen}), {cadence_us}, 0)"
+
+
+def vehicle_end_sql(start: str, last_seen: str, tail: str, cadence_us: str) -> str:
     return (
         f"greatest({start}, {last_seen} + "
-        f"least({tail}, {VEHICLE_TAIL_CAP_SECONDS * 1_000_000}) * INTERVAL '1 microsecond')"
+        f"least({tail}, {vehicle_gap_us_sql(cadence_us)}) * INTERVAL '1 microsecond')"
     )
 
 
@@ -107,9 +136,8 @@ def vehicle_stats_query(
     by_line: bool = False,
     vehicle: str | None = None,
 ) -> tuple[str, list[object]]:
-    gap_us = VEHICLE_REPORTING_GAP_SECONDS * 1_000_000
-    tail = vehicle_tail_sql("next_capture", "last_seen_at_utc")
-    end = vehicle_end_sql("captured_at_utc", "last_seen_at_utc", tail)
+    tail = vehicle_tail_sql("next_capture", "last_seen_at_utc", "cadence_us")
+    end = vehicle_end_sql("captured_at_utc", "last_seen_at_utc", tail, "cadence_us")
     entity = "vehicle_id" if by_vehicle else "NULL::VARCHAR"
     silence_entity = entity
     service_entity = entity
@@ -162,6 +190,8 @@ def vehicle_stats_query(
     params: list[object] = [
         paths[VEHICLE_POSITIONS],
         *scope[:2],
+        paths[FEED_POLLS],
+        *scope[:2],
     ]
     position_vehicle_filter = ""
     if vehicle is not None and not by_hour:
@@ -189,7 +219,7 @@ def vehicle_stats_query(
         , silences AS (
             SELECT {silence_entity} AS entity,
                 epoch_us(next_capture) - epoch_us(last_seen_at_utc) AS gap_us,
-                EXISTS (
+                cadence_us IS NOT NULL AND EXISTS (
                     SELECT 1 FROM coverage c
                     WHERE c.service_date = s.service_date AND c.feed = 'vehicle_positions'
                         AND c.covered_from <= s.last_seen_at_utc
@@ -198,7 +228,7 @@ def vehicle_stats_query(
             FROM sequenced s
             WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
                 AND (service_date, trip_id) = (next_service_date, next_trip)
-                AND gap_us > {gap_us}
+                AND gap_us > {vehicle_gap_us_sql("cadence_us")}
         ), reporting AS (
             SELECT entity, count(*) FILTER (covered) AS gaps,
                 sum(gap_us) FILTER (covered) AS silent_us,
@@ -343,6 +373,7 @@ def vehicle_stats_query(
                 last_seen_at_utc, captured_at_utc
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ?
+        ), cadence AS ({vehicle_cadence_sql()}
         ), positions AS (
             SELECT * FROM all_positions {position_vehicle_filter}
         ), trips AS (
@@ -369,10 +400,11 @@ def vehicle_stats_query(
                 AND nullif(trim(p.vehicle_id), '') IS NOT NULL
                 AND (t.state IS NULL OR t.state IN ('ran', 'unconfirmed', 'added'))
         ), sequenced AS (
-            SELECT p.*, lead(trip_id) OVER captured AS next_trip,
+            SELECT p.*, cadence.cadence_us, lead(trip_id) OVER captured AS next_trip,
                 lead(service_date) OVER captured AS next_service_date,
                 lead(captured_at_utc) OVER captured AS next_capture
             FROM positions p JOIN selected USING (vehicle_id)
+            {vehicle_cadence_join("p.last_seen_at_utc")}
             WINDOW captured AS (
                 PARTITION BY vehicle_id ORDER BY captured_at_utc, service_date, trip_id
             )

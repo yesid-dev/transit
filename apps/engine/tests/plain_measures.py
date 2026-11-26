@@ -4,10 +4,10 @@ import json
 from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from itertools import pairwise
 from pathlib import Path
-from statistics import median, quantiles
+from statistics import median, median_low, quantiles
 from typing import Any, cast
 from zoneinfo import ZoneInfo
 
@@ -168,7 +168,23 @@ def alerts(rows: list[Row] | None, line: str) -> Sample:
     )
 
 
-def position_seconds(rows: list[Row]) -> list[tuple[Row, float]]:
+def reporting_interval(polls: list[Row]) -> dict[date, timedelta]:
+    """Median spacing between fresh vehicle-position publications, per UTC day."""
+    instants = sorted(
+        {
+            row["captured_at_utc"]
+            for row in polls
+            if row["feed"] == "vehicle_positions" and row["result"] == "ok"
+        }
+    )
+    spacings: dict[date, list[float]] = defaultdict(list)
+    for earlier, later in pairwise(instants):
+        spacings[later.astimezone(UTC).date()].append(seconds(earlier, later))
+    return {day: timedelta(seconds=round(median_low(s))) for day, s in spacings.items()}
+
+
+def position_seconds(rows: list[Row], polls: list[Row]) -> list[tuple[Row, float]]:
+    cadence = reporting_interval(polls)
     ordered = sorted(rows, key=lambda r: (r["vehicle_id"], r["captured_at_utc"]))
     spans = []
     for row, following in pairwise([*ordered, None]):
@@ -176,10 +192,11 @@ def position_seconds(rows: list[Row]) -> list[tuple[Row, float]]:
         first = row["captured_at_utc"]
         last = row["last_seen_at_utc"]
         assert first <= last
+        interval = cadence[last.astimezone(UTC).date()]
         if following is None or following["vehicle_id"] != row["vehicle_id"]:
-            end = last + timedelta(seconds=20)
+            end = last + interval
         else:
-            end = min(last + timedelta(seconds=60), following["captured_at_utc"])
+            end = min(last + 3 * interval, following["captured_at_utc"])
         spans.append((row, seconds(first, end)))
     return spans
 
@@ -502,7 +519,7 @@ def recompute(
         [position_path, vehicle_id, position_path, line],
     )
     spans = position_seconds(
-        [json.loads(row, object_hook=decode_times) for (row,) in result.fetchall()]
+        [json.loads(row, object_hook=decode_times) for (row,) in result.fetchall()], polls
     )
     coverage = Coverage(polls, receipt["scorecard_declaration"]["live_source_lag_seconds"])
     return {

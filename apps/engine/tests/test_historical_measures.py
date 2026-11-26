@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 import duckdb
 import pytest
-from test_engine import FRIDAY, SATURDAY, THURSDAY, Trip, _build_store, http
+from test_engine import FRIDAY, SATURDAY, THURSDAY, Poll, Trip, _build_store, http
 
 from transit_engine import measures
 from transit_engine.clean_manifest import ALERTS, VEHICLE_POSITIONS
@@ -104,7 +104,9 @@ def history(tmp_path: Path) -> tuple[Store, list[Reading], dict[date, tuple[Noti
         day: tuple(Trip(line, line, 0, "ran", None, True, (0, 0)) for line in lines)
         for day, lines in ((THURSDAY, "ABC"), (SATURDAY, "AD"))
     }
-    store = _build_store(tmp_path, 6, trips)
+    # The vehicle feed publishes every 20 seconds, which sets the vehicle reporting interval.
+    cadence = (Poll("vehicle_positions", 0), Poll("vehicle_positions", 20))
+    store = _build_store(tmp_path, 6, trips, dict.fromkeys(trips, cadence))
     first = utc(THURSDAY, 12)
     readings = [
         *(Reading("A", "first", first, 600, 31, 5) for _ in range(8)),

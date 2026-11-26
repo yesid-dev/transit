@@ -174,6 +174,15 @@ def sample(
     }
     rng = Random(20261122)
     errors = [-60, 60, -61, 61, *(rng.randint(-190, 220) for _ in range(36))]
+    # The vehicle feed publishes every 20 seconds, which sets the vehicle reporting interval.
+    cadence = {
+        day: [
+            Poll("vehicle_positions", stamp, f"c{i}", "ok", stamp)
+            for i in range(2)
+            if (stamp := utc(day, 12, 0, 20 * (i + 1)))
+        ]
+        for day in (THURSDAY, FRIDAY)
+    }
     with duckdb.connect() as conn:
         for day, store in stores.items():
             _write_table(
@@ -183,7 +192,10 @@ def sample(
                 FEED_POLLS,
                 "feed VARCHAR, captured_at_utc TIMESTAMPTZ, attempt_id VARCHAR, "
                 "result VARCHAR, feed_timestamp_utc TIMESTAMPTZ",
-                polls if day == THURSDAY else [polls[1]] if day == FRIDAY else [],
+                [
+                    *(polls if day == THURSDAY else [polls[1]] if day == FRIDAY else []),
+                    *cadence.get(day, []),
+                ],
                 city=CITY,
             )
             _write_table(

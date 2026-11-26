@@ -12,7 +12,13 @@ from transit_engine.capture import MAX_POLL_SPACING_SECONDS
 from transit_engine.clean_manifest import STOP_EVENTS, TRIP_DAYS
 from transit_engine.histogram import DELAY_BIN_SECONDS, percentile
 from transit_engine.series import LOCAL_HOUR, LOCAL_HOUR_BUCKET
-from transit_engine.vehicles import vehicle_end_sql, vehicle_hour_weight_sql, vehicle_tail_sql
+from transit_engine.vehicles import (
+    vehicle_cadence_join,
+    vehicle_cadence_sql,
+    vehicle_end_sql,
+    vehicle_hour_weight_sql,
+    vehicle_tail_sql,
+)
 
 SCORECARD = "open_data_scorecard"
 FEED_MEASURES = ("poll_success", "feed_update_interval", "feed_age_at_capture")
@@ -299,6 +305,7 @@ def feed_results(
 def vehicle_counts(
     conn: duckdb.DuckDBPyConnection,
     paths: list[str],
+    polls: list[str],
     trips: list[str] | None,
     city: str,
     versions: list[str],
@@ -316,7 +323,7 @@ def vehicle_counts(
         if trips
         else ""
     )
-    tail = vehicle_tail_sql("v.next_start", "v.last_seen_at_utc")
+    tail = vehicle_tail_sql("v.next_start", "v.last_seen_at_utc", "cadence.cadence_us")
     weight = "epoch_us(ends_at) - epoch_us(captured_at_utc)"
     reading = "true"
     hour_args: list[object] = []
@@ -338,11 +345,14 @@ def vehicle_counts(
             ) AS next_start
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ANY(?)
+        ), cadence AS ({vehicle_cadence_sql("cleaning_version = ANY(?)")}
         ), vehicles AS (
             SELECT v.*, {direction} AS direction_id,
-                {vehicle_end_sql("v.captured_at_utc", "v.last_seen_at_utc", tail)} AS ends_at,
+                {vehicle_end_sql(
+                    "v.captured_at_utc", "v.last_seen_at_utc", tail, "cadence.cadence_us"
+                )} AS ends_at,
                 {tail} AS tail_us
-            FROM sequenced v {join}
+            FROM sequenced v {vehicle_cadence_join("v.last_seen_at_utc")} {join}
         ), weighted AS (
             SELECT *, {weight} AS weight FROM vehicles WHERE {filters}
         ), selected AS (
@@ -354,6 +364,9 @@ def vehicle_counts(
         """,
         [
             paths,
+            city,
+            versions,
+            polls,
             city,
             versions,
             *([trips] if trips else []),
