@@ -20,7 +20,7 @@ for (const provider of ['stm', 'octranspo'])
 					});
 					await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14');
 					const section = page.locator('#punctuality');
-					await expect(section).toContainText(/80\s?%/u);
+					await expect(section).toContainText(fr ? /80,0\s%/u : '80.0%');
 					await section.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
 					const csv = page
 						.getByRole('dialog')
