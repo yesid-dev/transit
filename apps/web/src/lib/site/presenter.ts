@@ -73,6 +73,12 @@ export function liveStatusWords(
 	return { label: status === 'early' ? copy.early(magnitude) : copy.late(magnitude) };
 }
 
+export function distanceReading(distanceM: number, locale: Locale): string {
+	const separator = locale === 'fr' ? '\u00a0' : ' ';
+	if (distanceM < 1_000) return `${intl.number(locale).format(Math.round(distanceM))}${separator}m`;
+	return `${intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(distanceM / 1_000)}${separator}km`;
+}
+
 export function mapRecordReading(value: number, stops: boolean, locale: Locale): string | null {
 	if (stops)
 		return intl
@@ -164,6 +170,7 @@ export function noticeCountEvidence(
 	agency: AgencyName,
 	locale: Locale,
 ) {
+	if (grouped === published) return `${noticeCount(grouped, locale)}.`;
 	const total = intl.number(locale).format(published);
 	return locale === 'fr'
 		? `${noticeCount(grouped, locale)}, issu${grouped === 1 ? '' : 's'} de ${total} avis publié${published === 1 ? '' : 's'} par ${frenchAgency(agency).subject}, un par ligne et par mise à jour.`

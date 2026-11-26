@@ -53,6 +53,7 @@ describe('map copy', () => {
 		expect(copy.fr.legendTitle).toBe('Marqueurs');
 		expect(copy.en.entityBus).toBe('Vehicle');
 		expect(copy.fr.entityBus).toBe('Véhicule');
+		expect(copy.fr.modeOccupancy).toBe('Places à bord');
 	});
 
 	it('invites precise near-me address searches', () => {

@@ -281,7 +281,7 @@ describe('MapHoverPeek', () => {
 
 	it.each([
 		['en', 'Stop code', 'Approaching', '2 vehicles', 'Departures', '3 departures'],
-		['fr', "Code d'arrêt", 'En approche', '2 véhicules', 'Départs', '3 départs'],
+		['fr', 'Code d’arrêt', 'En approche', '2 véhicules', 'Départs', '3 départs'],
 	] as const)(
 		'gives a stop its code, approaching vehicles and departures as separate rows in %s',
 		(locale, codeTerm, approachingTerm, vehicles, departuresTerm, departures) => {

@@ -50,12 +50,6 @@ const glossary: [RegExp, string, exceptIn?: RegExp][] = [
 	[/, alors les\b/, 'spoken alors'],
 ];
 
-/**
- * The map's words are left to the map's own packet (achalandage, two straight apostrophes). The
- * glossary reads the map files once those are fixed: delete this line then.
- */
-const inFlight = /^features\/map\//;
-
 // Use the Svelte parser, not a regex, to find a component's script blocks.
 function svelteScripts(raw: string): string {
 	const ast = parse(raw, { modern: true });
@@ -185,13 +179,11 @@ describe('French copy', () => {
 	});
 
 	it('follows the Québec glossary and typography', () => {
-		const findings = strings
-			.filter(({ path }) => !inFlight.test(path))
-			.flatMap(({ path, text }) =>
-				glossary
-					.filter(([pattern, , exceptIn]) => pattern.test(text) && !exceptIn?.test(path))
-					.map(([, why]) => `${path}: ${why} in ${text}`),
-			);
+		const findings = strings.flatMap(({ path, text }) =>
+			glossary
+				.filter(([pattern, , exceptIn]) => pattern.test(text) && !exceptIn?.test(path))
+				.map(([, why]) => `${path}: ${why} in ${text}`),
+		);
 		expect(findings).toEqual([]);
 	});
 });
