@@ -312,13 +312,37 @@ for (const [failure, warning, fetchClean] of [
     const legacyRead = t.mock.method(env.SNAPSHOTS, "get");
 
     const response = await worker.fetch(request, env);
-    assert.equal(response.status, 404);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get("retry-after"), "30");
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.match(response.headers.get("access-control-expose-headers"), /\bRetry-After\b/);
     assert.equal(await response.text(), "");
     assert.equal(legacyRead.mock.callCount(), 0);
     assert.equal(fetch.mock.callCount(), 1);
     assert.deepEqual(warn.mock.calls.map(({ arguments: args }) => args), [["Clean basemap read failed", warning]]);
   });
 }
+
+test("a clean basemap read that times out returns a retryable 503", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(console, "warn", () => {});
+  const env = { ...makeEnv(), ...CLEAN_STORAGE_ENV };
+  const legacy = t.mock.method(env.SNAPSHOTS, "get");
+  const { promise: started, resolve: start } = Promise.withResolvers();
+  t.mock.method(globalThis, "fetch", (_url, { signal }) => new Promise((_, reject) => {
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    start();
+  }));
+  const pending = worker.fetch(new Request(BASEMAP_URL), env);
+  await started;
+  t.mock.timers.tick(10_000);
+  const response = await pending;
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "30");
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(await response.text(), "");
+  assert.equal(legacy.mock.callCount(), 0);
+});
 
 test("v2 basemap propagates a client abort during the first clean body read", async (t) => {
   const warn = t.mock.method(console, "warn", () => {});

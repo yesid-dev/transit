@@ -37,7 +37,16 @@ export default {
     if (basemap) {
       const [, city, file] = basemap;
       if (!publicCities?.has(city)) return errorResponse(404);
-      const response = await serveCleanBasemap(request, env, city, file);
+      let response;
+      try {
+        response = await serveCleanBasemap(request, env, city, file);
+      } catch {
+        request.signal.throwIfAborted();
+        return errorResponse(503, {
+          "retry-after": "30",
+          "access-control-expose-headers": `${CORS_HEADERS["access-control-expose-headers"]}, Retry-After`,
+        });
+      }
       if (!response) return errorResponse(404);
       for (const [name, value] of Object.entries(CORS_HEADERS)) response.headers.set(name, value);
       response.headers.set("x-transit-source", "clean");

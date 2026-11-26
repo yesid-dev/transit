@@ -9,3 +9,5 @@ when the provider has no matching basemap declaration. The existing
 conditional requests. The route serves PMTiles from clean storage and
 exposes `X-Transit-Source: clean` to browser clients. A missing object
 returns HTTP 404 with the proxy's standard empty body and no source header.
+A clean-storage failure or timeout before the first bytes returns an empty
+HTTP 503 with `Cache-Control: no-store` and `Retry-After: 30`.
