@@ -1,5 +1,6 @@
 import type { PublicSiteConfig } from './config';
 import { localizeHref } from '#lib/i18n/index.ts';
+import { rankingKinds, rankingPathForKind } from '#lib/features/rankings/rankingSelection.ts';
 import {
 	emitAlternateSitemapEntries,
 	emitSitemapDocument,
@@ -18,7 +19,7 @@ export const PATHS = [
 	'/search',
 	'/metrics',
 	'/status',
-	'/rankings',
+	...rankingKinds.map(rankingPathForKind),
 	'/receipt',
 	'/alerts',
 	'/privacy',

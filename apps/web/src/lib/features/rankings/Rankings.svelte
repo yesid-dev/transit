@@ -108,8 +108,7 @@
 	const byOptions = $derived(
 		rankingMeasures[kind].map((key) => ({
 			key,
-			label: measures[key][locale],
-			compactLabel: rankOptionLabels[key]?.[locale],
+			label: rankOptionLabels[key]?.[locale] ?? measures[key][locale],
 		})),
 	);
 	const pinned = $derived.by(() => {

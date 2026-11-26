@@ -18,6 +18,10 @@ export const rankingLists = {
 } as const;
 
 export type RankingKind = keyof typeof rankingLists;
+
+export function rankingPathForKind(kind: RankingKind) {
+	return kind === 'line' ? rankingPath : (`${rankingPath}?kind=${kind}` as const);
+}
 export type LegacyRankingPath = '/hotspots' | '/repeat-offenders';
 export type RankingPath = typeof rankingPath | LegacyRankingPath;
 export const rankingKinds = Object.keys(rankingLists) as RankingKind[];

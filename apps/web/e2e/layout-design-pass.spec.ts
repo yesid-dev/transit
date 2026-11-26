@@ -297,7 +297,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				.toEqual([]);
 		}
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
-		const { report, focusSequences } = await measureDesignPass(page, {
+		const { report, focusSequences, focusKeys } = await measureDesignPass(page, {
 			countShadowRings:
 				health ||
 				redesignedDetail ||
@@ -321,6 +321,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				ms: Math.round(performance.now() - start),
 				report,
 				focusSequences,
+				focusKeys,
 			}),
 			contentType: 'application/json',
 		});
