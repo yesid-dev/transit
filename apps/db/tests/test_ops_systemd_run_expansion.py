@@ -18,6 +18,20 @@ OPS_DIRS = (
 )
 INLINE_BASH = re.compile(r"\bbash\s+-e?c\b")
 EXPAND_ENVIRONMENT = "--expand-environment=no"
+PRIVATE_CLEAN_DAY = Path("apps/db/ops/linux/private-clean-day.sh")
+DUCKDB_HOME = '"$release/duckdb-home"'
+UNIT_HOME = '--setenv="HOME=$release/duckdb-home"'
+
+
+def _logical_lines(script: Path) -> list[str]:
+    """Return script lines with backslash continuations joined."""
+    lines: list[str] = []
+    for line in script.read_text(encoding="utf-8").splitlines():
+        if lines and lines[-1].rstrip().endswith("\\"):
+            lines[-1] = f"{lines[-1].rstrip()[:-1]} {line.strip()}"
+        else:
+            lines.append(line)
+    return lines
 
 
 def _systemd_run_invocations(script: Path) -> list[str]:
@@ -71,10 +85,44 @@ def test_ops_inline_bash_systemd_run_calls_exist() -> None:
 
 
 def test_private_clean_day_keeps_inline_script_variables() -> None:
-    script = REPO_ROOT / "apps" / "db" / "ops" / "linux" / "private-clean-day.sh"
+    script = REPO_ROOT / PRIVATE_CLEAN_DAY
     invocations = _inline_bash_invocations(script)
     assert invocations, "private-clean-day.sh no longer runs an inline bash script via systemd-run"
     assert all(EXPAND_ENVIRONMENT in invocation for invocation in invocations), (
         "private-clean-day.sh must stop systemd-run from expanding $STATE_DIRECTORY, "
         "positional parameters and ${!CLEAN_DEST_S3_*} inside its inline script"
+    )
+
+
+def test_private_clean_day_installs_duckdb_icu_into_the_release() -> None:
+    """The unit cannot download ICU, so release preparation installs it for DuckDB.
+
+    The unit runs with DynamicUser and ProtectSystem=strict, so DuckDB's ICU
+    extension must already sit in the extension directory under the HOME the
+    unit gets: DuckDB stores extensions in ``$HOME/.duckdb/extensions`` and
+    autoloads them from there without network access.
+    """
+    script = REPO_ROOT / PRIVATE_CLEAN_DAY
+    lines = _logical_lines(script)
+    install = [
+        line
+        for line in lines
+        if 'install_extension("icu")' in line and f"HOME={DUCKDB_HOME}" in line
+    ]
+    assert install, (
+        "private-clean-day.sh must install DuckDB's ICU extension during release "
+        f"preparation with HOME={DUCKDB_HOME} so it lands in the release extension directory"
+    )
+    assert any('chmod -R a+rX "$release/duckdb-home"' in line for line in lines), (
+        "private-clean-day.sh must make the installed ICU extension readable for the DynamicUser"
+    )
+
+
+def test_private_clean_day_unit_home_points_at_the_release_duckdb_home() -> None:
+    script = REPO_ROOT / PRIVATE_CLEAN_DAY
+    invocations = _systemd_run_invocations(script)
+    assert invocations, "private-clean-day.sh no longer runs a systemd-run unit"
+    assert all(UNIT_HOME in invocation for invocation in invocations), (
+        "every systemd-run unit of private-clean-day.sh must get "
+        f"{UNIT_HOME} so DuckDB autoloads ICU from the release"
     )
