@@ -54,6 +54,8 @@ jobs:
           if [[ "$PLAN_ONLY" == true ]]; then
             [[ "$COPY_CURRENT" != true ]] || { echo "Choose either plan_only or copy_current" >&2; exit 1; }
             args+=(--plan-only)
+          elif [[ "$COPY_CURRENT" == true ]]; then
+            args+=(--copy-current)
           fi
           matrix="$(uv run --managed-python --locked python -m transit_ops.providers.basemap_plan "${args[@]}")"
           printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
@@ -112,7 +114,8 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Replace the stable R2 object with verified backup and readback
-        if: ${{ !inputs.copy_current }}
+        # A clean-only city (basemap_legacy: false) never touches the legacy public bucket.
+        if: ${{ !inputs.copy_current && matrix.legacy }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: eccfb9bedd87d413eaf4cac6ae2285d3

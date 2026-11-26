@@ -62,6 +62,8 @@ public:
     max_longitude: -74.20
     max_latitude: 46.40
   basemap_url: /data/v1/sto/static/basemap/gatineau.pmtiles
+  # Clean storage only. The refresh never writes this city to the legacy public bucket.
+  basemap_legacy: false
   geocode_context: Gatineau, Québec
   download_licence:
     checked_on: "2026-11-25"
