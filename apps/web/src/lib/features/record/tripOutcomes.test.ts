@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { tripOutcomeHeaders, tripsRunBase, tripsRunSentence } from '#lib/site/presenter.ts';
+import {
+	tripOutcomeHeaders,
+	tripOutcomeLabels,
+	tripOutcomeNote,
+	tripsRunBase,
+	tripsRunSentence,
+} from '#lib/site/presenter.ts';
 import { realTripsRun } from './tripOutcomes.fixture.ts';
 import { sumTripOutcomes, tripOutcomes, type TripOutcomes } from './tripOutcomes.ts';
 
@@ -67,5 +73,9 @@ describe('trip outcomes on real engine answers', () => {
 			'105 961 des 106 816 trajets à l’état connu',
 		);
 		expect(Object.values(tripOutcomeHeaders('fr'))).not.toContain('Unknown');
+		// French names the agency la société de transport.
+		const french = [...Object.values(tripOutcomeLabels('fr')), tripOutcomeNote('fr')].join(' ');
+		expect(french).not.toMatch(/agence/u);
+		expect(tripOutcomeLabels('fr').cancelled).toBe('Annulés, avec avis de la société de transport');
 	});
 });

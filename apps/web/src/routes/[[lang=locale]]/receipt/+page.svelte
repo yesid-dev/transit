@@ -476,7 +476,7 @@
 											<p class="mt-3 text-muted-foreground">
 												{t(
 													'A cancelled trip comes with a notice from the agency. A missing trip has no vehicle reporting and no notice.',
-													'Un trajet annulé fait l’objet d’un avis de l’agence. Pour un trajet manquant, aucun véhicule ne transmet de données et aucun avis n’a été publié.',
+													'Un trajet annulé fait l’objet d’un avis de la société de transport. Pour un trajet manquant, aucun véhicule ne transmet de données et aucun avis n’a été publié.',
 												)}
 											</p>
 										{/if}
