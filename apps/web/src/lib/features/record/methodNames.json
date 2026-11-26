@@ -3,8 +3,8 @@
 	"early": ["Early share", "Part en avance"],
 	"late": ["Late share", "Part en retard"],
 	"median_delay": ["Median delay", "Retard médian"],
-	"p90_delay": ["90th percentile delay", "90e percentile du retard"],
-	"delay_distribution": ["Delay, minute by minute", "Écart, minute par minute"],
+	"p90_delay": ["90th percentile delay", "90e centile du retard"],
+	"delay_distribution": ["Delay, minute by minute", "Retard, minute par minute"],
 	"trips_run": ["Trips that ran", "Trajets effectués"],
 	"cancelled_trips": ["Cancelled trips", "Trajets annulés"],
 	"missing_trips": ["Missing trips", "Trajets manquants"],
@@ -23,8 +23,8 @@
 	"observed_headway": ["Observed interval", "Intervalle observé"],
 	"scheduled_headway": ["Scheduled interval", "Intervalle prévu"],
 	"bunching": ["Vehicles following too closely", "Véhicules trop rapprochés"],
-	"long_gaps": ["Long gaps", "Longs intervalles"],
-	"excess_wait_time": ["Excess wait", "Attente supplémentaire"],
+	"long_gaps": ["Long gaps", "Intervalles prolongés"],
+	"excess_wait_time": ["Excess wait", "Attente excédentaire"],
 	"scheduled_trips": ["Scheduled trips", "Trajets prévus"],
 	"scheduled_frequency": ["Scheduled frequency", "Fréquence prévue"],
 	"below_minimum_service": ["Periods below minimum service", "Périodes sous le seuil de service"],
@@ -38,21 +38,18 @@
 		"Reporting gaps per 100 hours",
 		"Interruptions par 100 heures"
 	],
-	"vehicle_unfinished_trips": ["Unfinished trips", "Trajets inachevés"],
+	"vehicle_unfinished_trips": ["Unfinished trips", "Trajets non terminés"],
 	"vehicle_unfinished_trips_per_100_trips": [
 		"Unfinished trips per 100 trips",
-		"Trajets inachevés par 100 trajets"
+		"Trajets non terminés par 100 trajets"
 	],
 	"vehicle_early": ["Early share by vehicle", "Part en avance par véhicule"],
 	"vehicle_on_time": ["On-time share by vehicle", "Part à l’heure par véhicule"],
 	"vehicle_late": ["Late share by vehicle", "Part en retard par véhicule"],
 	"vehicle_median_delay": ["Median delay by vehicle", "Retard médian par véhicule"],
-	"vehicle_p90_delay": [
-		"90th percentile delay by vehicle",
-		"90e percentile du retard par véhicule"
-	],
+	"vehicle_p90_delay": ["90th percentile delay by vehicle", "90e centile du retard par véhicule"],
 	"median_time_lost": ["Median time lost", "Temps perdu médian"],
-	"p90_time_lost": ["90th percentile time lost", "90e percentile du temps perdu"],
+	"p90_time_lost": ["90th percentile time lost", "90e centile du temps perdu"],
 	"mean_time_lost": ["Mean time lost", "Temps perdu moyen"],
 	"total_vehicle_minutes_lost": [
 		"Total vehicle-minutes lost",

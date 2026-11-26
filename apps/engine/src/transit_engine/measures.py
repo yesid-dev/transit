@@ -243,16 +243,20 @@ class Family:
     ranking_floors: dict[EntityKind, dict[str, int]] = field(default_factory=dict)
 
 
+def _fr_pct(value: float) -> str:
+    return f"{round(value * 100)}\u00a0%"
+
+
 def _histogram_text(seconds: int) -> Text:
     return Text(
-        f"Bins are {seconds} seconds wide, starting at multiples of "
-        f"{seconds} seconds with the lower edge included. Cumulative counts locate "
-        "the two ranks for the percentile, then we interpolate between the midpoints of "
-        "their bins. The error is at most half a bin.",
-        f"Les classes ont une largeur de {seconds} secondes. Elles commencent aux "
-        f"multiples de {seconds} secondes, borne inférieure incluse. Les effectifs "
-        "cumulés situent les deux rangs du centile, puis on interpole entre les milieux des "
-        "classes correspondantes. L’erreur est d’au plus une demi-classe.",
+        f"Percentiles come from {seconds}-s bins starting at multiples of {seconds} s "
+        "(lower edge included). Cumulative counts locate the two ranks for the percentile, "
+        "then Transit interpolates between their bin midpoints, within half a bin of the "
+        "exact sample value.",
+        f"Les centiles sont calculés à partir de classes de {seconds}\u00a0s commençant aux "
+        f"multiples de {seconds}\u00a0s, borne inférieure incluse. Les effectifs cumulés "
+        "situent les deux rangs du centile, puis Transit interpole entre les milieux des "
+        "classes correspondantes, à au plus une demi-classe de la valeur exacte.",
     )
 
 
@@ -537,13 +541,13 @@ _UNIT_LABELS = {
 
 
 _RANKING_FLOOR_LABELS = {
-    "classified": Text("observed stop events", "événements observés à l’arrêt"),
+    "classified": Text("observed stop events", "passages observés aux arrêts"),
     "observed_trips": Text("observed trips", "trajets observés"),
     "observed_service_dates": Text("observed service dates", "dates de service observées"),
     "observed_trip_pairs": Text("distinct trip pairs", "paires de trajets distinctes"),
-    "observed_headways": Text("observed headways", "intervalles observés"),
+    "observed_headways": Text("observed intervals", "intervalles observés"),
     "occupancy_vehicle_hours": Text(
-        "vehicle-hours with occupancy", "heures-véhicules avec achalandage"
+        "vehicle-hours with occupancy", "heures-véhicules avec occupation"
     ),
     "eligible": Text("eligible trips", "trajets admissibles"),
 }
@@ -553,7 +557,9 @@ _RANKING_FLOOR_KINDS = {
     "departure": Text("Departure rankings", "Les classements par départ"),
 }
 
-_ALERT_MESSAGE_COLUMN = {"alert_messages": Text("Agency messages", "Avis de l’agence")}
+_ALERT_MESSAGE_COLUMN = {
+    "alert_messages": Text("Agency messages", "Avis de la société de transport")
+}
 _DEPARTURE_STOP_COLUMN = {
     "observed_delay_seconds": Text("Observed delay (s)", "Retard observé (s)")
 }
@@ -571,8 +577,8 @@ def _info(
         limits = Text(
             f"{limits.en} Below {minimum:.0%} coverage the result is not measured. "
             f"Below {warning:.0%} coverage the evidence flags low coverage.",
-            f"{limits.fr} Sous {minimum:.0%} de couverture, le résultat est non mesuré. "
-            f"Sous {warning:.0%}, les données signalent une faible couverture.",
+            f"{limits.fr} Sous {_fr_pct(minimum)} de couverture, le résultat est non mesuré. "
+            f"Sous {_fr_pct(warning)}, les données signalent une faible couverture.",
         )
     if family.id == SCORECARD and measure.id != "prediction_error":
         limits = Text(
@@ -583,7 +589,8 @@ def _info(
         limits = Text(
             f"{limits.en} Median cancellation lead time requires "
             f"{MIN_CANCELLATION_NOTICES} notices.",
-            f"{limits.fr} Le préavis médian exige au moins {MIN_CANCELLATION_NOTICES} avis.",
+            f"{limits.fr} Le préavis médian d’annulation exige au moins "
+            f"{MIN_CANCELLATION_NOTICES} avis.",
         )
     ranking_floors = {
         kind: floors for kind, floors in family.ranking_floors.items()
@@ -601,11 +608,12 @@ def _info(
             f"{limits.fr} {label.fr} exigent au moins {fr}.",
         )
     if measure.minimum_sample is not None:
+        per_hours = measure.unit in {"per_100_hours", "per_100_vehicle_hours"}
         limits = Text(
             f"{limits.en} This rate requires at least {measure.minimum_sample} "
-            f"{'vehicle-hours' if measure.unit == 'per_100_hours' else 'assessed trips'}.",
+            f"{'vehicle-hours' if per_hours else 'assessed trips'}.",
             f"{limits.fr} Ce taux exige au moins {measure.minimum_sample} "
-            f"{'heures-véhicules' if measure.unit == 'per_100_hours' else 'trajets évalués'}.",
+            f"{'heures-véhicules' if per_hours else 'trajets évalués'}.",
         )
     return {
         "id": measure.id,
@@ -1165,57 +1173,59 @@ _PUNCTUALITY = Family(
         "departure": {"observed_service_dates": 5, "classified": 30},
     },
     counts=Text(
-        "Each scheduled stop of each trip counts once. Shares divide the band count by the "
-        "number of stops with a measured delay. Delay is signed seconds from the schedule. "
-        "From cleaning v10, the archive calendar and trip timing resolve the service day, "
-        "including trips that cross midnight. At the origin, the last nearby stopped report "
-        "before the vehicle is seen past the stop measures departure. From v11, if a vehicle "
-        "feed never reports a vehicle stopped in the service-day capture window, we estimate "
-        "arrival as the vehicle enters the 50-metre radius between consecutive GPS fixes "
-        "outside and inside the radius, at most 160 seconds apart. At the origin, we use "
-        "the last fix "
-        "within 50 metres before the same vehicle is seen at a later stop. Without a qualifying "
-        "vehicle observation, we use an exact agency time or the last prediction before "
-        "confirmed vehicle passage.",
-        "Chaque arrêt prévu de chaque trajet compte une fois. Pour chaque catégorie, on "
-        "divise son nombre d’arrêts par le nombre d’arrêts dont l’écart a été mesuré. "
-        "L’écart à l’horaire est exprimé en secondes, en négatif pour l’avance. "
-        "Depuis le nettoyage v10, le calendrier archivé et les heures du trajet déterminent "
-        "le jour de service, même après minuit. Au premier arrêt, le départ correspond au "
-        "dernier relevé du véhicule immobilisé à proximité avant qu’il soit vu plus loin. "
-        "Depuis la version 11, si le flux ne signale aucun véhicule à l’arrêt pendant la "
-        "période de collecte du jour de service, on estime l’arrivée à l’entrée dans le rayon "
-        "de 50 mètres entre deux positions GPS successives, l’une à l’extérieur, l’autre à "
-        "l’intérieur, espacées d’au plus 160 secondes. Au premier arrêt, on retient la "
-        "dernière position dans "
-        "ce rayon avant que le même véhicule soit vu à un arrêt suivant. Sans observation "
-        "valide du véhicule, on utilise une heure exacte de l’agence ou la dernière "
-        "prévision avant le passage confirmé.",
+        "Each scheduled stop on each trip counts once, and each share is out of the "
+        "stops with a measured delay. Negative values mean early; positive values mean late. "
+        "Long trips and frequent lines carry more weight because each stop counts once, and "
+        "multi-day totals pool stop events so busier weekdays weigh more. Since 22 November "
+        "2026, the archived timetable and trip timing assign the service day, including trips "
+        "that cross midnight. At a trip’s first stop, departure is taken from the last nearby "
+        "stopped report before the vehicle is seen further along. When a feed never reports "
+        "vehicles as stopped during the day’s capture window, arrival is estimated when "
+        "consecutive GPS fixes at most 160 s apart cross into 50 m of the stop, and first-stop "
+        "departure uses the last fix within 50 m before the vehicle reaches a later stop. "
+        "Without a qualifying vehicle observation, Transit uses an exact agency time or the "
+        "last prediction before confirmed passage.",
+        "Chaque arrêt prévu de chaque trajet compte une fois, et chaque part se calcule "
+        "sur les arrêts dont le retard a été mesuré. Un nombre négatif indique une "
+        "avance et un nombre positif, un retard. Les trajets longs et les lignes fréquentes "
+        "pèsent davantage parce que chaque arrêt compte une fois, et les totaux sur plusieurs "
+        "jours regroupent les passages, donc les journées plus achalandées pèsent plus lourd. "
+        "Depuis le 22 novembre 2026, l’horaire archivé et les heures du trajet déterminent le "
+        "jour de service, même après minuit. Au premier arrêt, le départ correspond au dernier "
+        "relevé du véhicule immobilisé à proximité avant qu’il soit vu plus loin. Si un flux "
+        "ne signale aucun véhicule à l’arrêt pendant la collecte du jour de service, l’arrivée "
+        "est estimée lorsque deux positions GPS espacées d’au plus 160\u00a0s entrent dans un "
+        "rayon de 50\u00a0m de l’arrêt, et le départ au premier arrêt utilise la dernière "
+        "position dans ce rayon avant qu’il soit vu à un arrêt suivant. Sans observation valide "
+        "du véhicule, Transit utilise une heure exacte de la société de transport ou la "
+        "dernière prévision avant le passage confirmé.",
     ),
     exclusions=Text(
-        "Added trips, cancelled trips and lines without live data are excluded. Stops without "
-        "a measured delay stay in the scheduled count. From cleaning v10, an unobserved "
-        "stop is marked as a capture gap if any required feed lacks continuous capture "
-        "at its scheduled time.",
+        "Added trips, cancelled trips and lines without live data are left out of every rate. "
+        "Scheduled stops without a measured delay stay in the scheduled count. Since "
+        "22 November 2026, an unobserved stop is marked as a capture gap when any required "
+        "live feed lacked continuous capture at its scheduled time.",
         "Les trajets ajoutés, les trajets annulés et les lignes sans données en direct sont "
-        "exclus. Les arrêts sans écart mesuré restent dans le total prévu. Depuis le "
-        "nettoyage v10, un arrêt non observé est marqué comme touché par une interruption "
-        "si la collecte d’un flux requis n’est pas continue à l’heure prévue.",
+        "exclus de tous les taux. Les arrêts prévus sans retard mesuré restent dans le total "
+        "prévu. Depuis le 22 novembre 2026, un arrêt non observé est marqué comme touché par "
+        "une interruption si la collecte d’un flux requis n’était pas continue à l’heure prévue.",
     ),
     limits=Text(
-        "The answer covers measured days only. It cannot tell how long riders waited or "
-        "why a vehicle was early or late. A small sample can be dominated by a few stops.",
-        "Le résultat porte seulement sur les jours mesurés. Il ne dit pas combien de temps "
-        "les gens ont attendu ni pourquoi un véhicule était en avance ou en retard. "
-        "Quelques arrêts peuvent peser lourd dans un petit échantillon.",
+        "It cannot tell how long riders waited, how many people were on board or why a vehicle "
+        "was early or late. Results cover measured days only, and a small sample can be "
+        "dominated by a few stops.",
+        "Elle ne dit pas combien de temps les usagers ont attendu, combien de personnes "
+        "étaient à bord ni pourquoi un véhicule était en avance ou en retard. Le résultat "
+        "porte seulement sur les jours mesurés, et quelques arrêts peuvent peser lourd dans "
+        "un petit échantillon.",
     ),
     measures=(
         Measure(
             "early",
             "share",
             Text(
-                f"Share of stops more than {abs(EARLY_LIMIT_SECONDS)} seconds early.",
-                f"Part des arrêts avec plus de {abs(EARLY_LIMIT_SECONDS)} secondes d’avance.",
+                f"Share of measured stops more than {abs(EARLY_LIMIT_SECONDS) // 60} minute early.",
+                "Part des arrêts mesurés avec plus d’une minute d’avance.",
             ),
             band=f"delay_seconds < {EARLY_LIMIT_SECONDS}",
             count_label=Text("Early stops", "Arrêts en avance"),
@@ -1225,10 +1235,10 @@ _PUNCTUALITY = Family(
             "on_time",
             "share",
             Text(
-                f"Share of stops from {abs(EARLY_LIMIT_SECONDS)} seconds early to "
-                f"{LATE_LIMIT_SECONDS} seconds late, including both limits.",
-                f"Part des arrêts entre {abs(EARLY_LIMIT_SECONDS)} secondes d’avance et "
-                f"{LATE_LIMIT_SECONDS} secondes de retard, limites incluses.",
+                f"Share of measured stops from {abs(EARLY_LIMIT_SECONDS) // 60} minute early to "
+                f"{LATE_LIMIT_SECONDS // 60} minutes late, including both limits.",
+                f"Part des arrêts mesurés entre {abs(EARLY_LIMIT_SECONDS) // 60} minute d’avance "
+                f"et {LATE_LIMIT_SECONDS // 60} minutes de retard, limites incluses.",
             ),
             band=f"delay_seconds BETWEEN {EARLY_LIMIT_SECONDS} AND {LATE_LIMIT_SECONDS}",
             count_label=Text("On-time stops", "Arrêts à l’heure"),
@@ -1237,8 +1247,9 @@ _PUNCTUALITY = Family(
             "late",
             "share",
             Text(
-                f"Share of stops more than {LATE_LIMIT_SECONDS} seconds late.",
-                f"Part des arrêts avec plus de {LATE_LIMIT_SECONDS} secondes de retard.",
+                f"Share of measured stops more than {LATE_LIMIT_SECONDS // 60} minutes late.",
+                f"Part des arrêts mesurés avec plus de {LATE_LIMIT_SECONDS // 60} minutes "
+                "de retard.",
             ),
             band=f"delay_seconds > {LATE_LIMIT_SECONDS}",
             count_label=Text("Late stops", "Arrêts en retard"),
@@ -1247,7 +1258,11 @@ _PUNCTUALITY = Family(
         Measure(
             "median_delay",
             "seconds",
-            Text("Median delay across measured stops.", "Écart médian aux arrêts mesurés."),
+            Text(
+                "Middle delay across measured stops: half were at or below it, half at or above.",
+                "Retard médian aux arrêts mesurés\u00a0: la moitié des passages étaient à ce "
+                "niveau ou en dessous, l’autre moitié au-dessus.",
+            ),
             percentile=50,
             worst_first_descending=True,
         ),
@@ -1255,8 +1270,8 @@ _PUNCTUALITY = Family(
             "p90_delay",
             "seconds",
             Text(
-                "The delay at or below which about 90% of measured stops fall.",
-                "L’écart à l’horaire que ne dépassent pas environ 90 % des arrêts mesurés.",
+                "Delay at or below which about 9 in 10 measured stops fall.",
+                "Retard que ne dépassent pas environ 90\u00a0% des arrêts mesurés.",
             ),
             percentile=90,
             worst_first_descending=True,
@@ -1466,20 +1481,21 @@ def _single_day_departure(question: Question) -> bool:
 
 
 _BOUNDARY_COUNTS = Text(
-    "Select a line and day type, with a direction if desired. Each trip tied at the "
-    "first or last scheduled departure time counts. Evidence gives the GTFS departure "
-    "time and run counts by date. "
-    f"At least {MIN_SERVICE_DELIVERED_TRIPS} eligible trips are needed.",
-    "Choisissez une ligne et un type de jour, avec un sens si désiré. Chaque trajet "
-    "prévu à l’heure du premier ou du dernier départ compte. Les données indiquent "
-    "l’heure GTFS et les trajets effectués par date. Il faut au moins "
-    f"{MIN_SERVICE_DELIVERED_TRIPS} trajets admissibles.",
+    "Counts how often the day’s first or last scheduled departure ran for a chosen line and "
+    "day type. All trips tied at that scheduled time count, and at least "
+    f"{MIN_SERVICE_DELIVERED_TRIPS} eligible trips are required. Evidence lists the "
+    "scheduled departure time and run counts by date.",
+    "Compte à quelle fréquence le premier ou le dernier départ prévu de la journée a été "
+    "effectué pour une ligne et un type de jour choisis (avec une direction au besoin). "
+    "Tous les trajets prévus à cette heure comptent, et il faut au moins "
+    f"{MIN_SERVICE_DELIVERED_TRIPS} trajets admissibles. Les données indiquent l’heure "
+    "prévue et les trajets effectués par date.",
 )
 _BOUNDARY_LIMITS = Text(
-    "A confirmed trip does not tell when it actually departed. Dates with no scheduled "
-    "departure contribute no trip.",
-    "Un trajet confirmé ne révèle pas l’heure réelle du départ. Les dates sans départ "
-    "prévu ne contribuent aucun trajet.",
+    "It cannot tell the exact time the trip actually departed, only whether it was confirmed. "
+    "Dates with no scheduled departure add no trip.",
+    "Elle ne révèle pas l’heure réelle du départ, seulement s’il a été confirmé. Les dates "
+    "sans départ prévu n’ajoutent aucun trajet.",
 )
 _SERVICE_DELIVERED = Family(
     id=_SERVICE_DELIVERED_ID,
@@ -1492,40 +1508,38 @@ _SERVICE_DELIVERED = Family(
     coverage=(0.50, 0.80),
     ranking_floors={"line": {"eligible": 30}},
     counts=Text(
-        "Each scheduled trip counts once. Rates use scheduled trips with a known status: "
-        "ran, cancelled or missing. "
-        f"At least {MIN_SERVICE_DELIVERED_TRIPS} trips with a known status are needed so "
-        "one trip cannot change the share by more than five percentage points.",
-        "Chaque trajet prévu compte une fois. Les taux utilisent les trajets prévus dont "
-        "l’état est connu : effectué, annulé ou manquant. Il faut au moins "
-        f"{MIN_SERVICE_DELIVERED_TRIPS} trajets à l’état connu pour qu’un seul trajet "
-        "ne change pas la part de plus de cinq points de pourcentage.",
+        "Each scheduled trip counts once, and rates use trips whose outcome is known: "
+        "ran, cancelled or missing. A trip counts as having run if at least one stop was "
+        f"confirmed. At least {MIN_SERVICE_DELIVERED_TRIPS} trips with a known outcome are "
+        "needed so one trip cannot move the share by more than five percentage points.",
+        "Chaque trajet prévu compte une fois, et les taux utilisent les trajets dont l’issue "
+        "est connue\u00a0: effectué, annulé ou manquant. Un trajet est compté comme effectué "
+        f"s’il a au moins un arrêt confirmé. Il faut au moins {MIN_SERVICE_DELIVERED_TRIPS} "
+        "trajets dont l’issue est connue pour qu’un seul trajet ne déplace pas la part de "
+        "plus de cinq points de pourcentage.",
     ),
     exclusions=Text(
-        "Added trips, trips on lines without live data and trips affected by capture gaps "
-        "are excluded from the rate and shown separately. Trips whose status could not "
-        "be confirmed are also left out of the rate and shown separately.",
-        "Les trajets ajoutés, les trajets sur les lignes sans données en direct et ceux "
-        "touchés par une interruption de la collecte sont exclus du taux et présentés à part. "
-        "Les trajets dont l’état n’a pu être confirmé sont aussi exclus du taux "
-        "et présentés à part.",
+        "Added trips, lines without live data, capture gaps and unconfirmed trips stay out of "
+        "the rate and are shown separately. Unconfirmed trips appeared in the feed without a "
+        "confirmed stop, so they count as neither run nor missing.",
+        "Les trajets ajoutés, les lignes sans données en direct, les interruptions de la "
+        "collecte et les trajets non confirmés sont exclus du taux et présentés à part. Les "
+        "trajets non confirmés ont été vus sans arrêt confirmé; ils ne sont donc comptés ni "
+        "comme effectués ni comme manquants.",
     ),
     limits=Text(
-        "A trip that ran had at least one confirmed stop. Unconfirmed trips were seen "
-        "without a confirmed stop and count as neither run nor missing. The feed does "
-        "not establish whether every stop was served or how many people rode.",
-        "Un trajet effectué a au moins un arrêt confirmé. Les trajets non confirmés ont "
-        "été vus sans arrêt confirmé et ne sont comptés ni comme effectués ni comme manquants. "
-        "Les données ne disent pas si tous les arrêts ont été desservis ni combien de "
-        "personnes sont montées.",
+        "It cannot tell whether a trip served every scheduled stop or how many riders were on "
+        "board.",
+        "Elle ne dit pas si le trajet a desservi tous ses arrêts prévus ni combien d’usagers "
+        "étaient à bord.",
     ),
     measures=(
         Measure(
             "trips_run",
             "share",
             Text(
-                "Share of eligible scheduled trips that ran.",
-                "Part des trajets prévus admissibles qui ont été effectués.",
+                "Share of scheduled trips with a known outcome that ran.",
+                "Part des trajets prévus à l’issue connue qui ont été effectués.",
             ),
             ratio=("ran", "eligible"),
         ),
@@ -1533,24 +1547,23 @@ _SERVICE_DELIVERED = Family(
             "cancelled_trips",
             "share",
             Text(
-                "Share of eligible scheduled trips whose latest status was cancelled.",
-                "Part des trajets prévus admissibles dont le dernier état était annulé.",
+                "Share of scheduled trips with a known outcome that the agency marked cancelled.",
+                "Part des trajets prévus à l’issue connue que la société de transport a marqués "
+                "annulés.",
             ),
             counts=Text(
-                "Counts cancelled trips and estimates the median advance notice from the "
-                "scheduled start minus the notice time. Notice 30 minutes in advance is "
-                "+1,800 seconds. Negative offsets are counted as notices after scheduled start.",
-                "Compte les trajets annulés et estime le préavis médian en soustrayant "
-                "l’heure de l’avis de l’heure du départ prévu. Un avis donné 30 minutes "
-                "à l’avance vaut +1 800 secondes. Un délai négatif correspond à un avis "
-                "donné après le départ prévu, compté à part.",
+                "Counts cancelled trips and estimates the median advance notice before scheduled "
+                "departure. Notice 30 minutes ahead is +30 minutes; negative offsets mark "
+                "notices issued after scheduled start and are counted separately.",
+                "Compte les trajets annulés et estime le préavis médian avant le départ prévu. "
+                "Un avis donné 30 minutes à l’avance vaut +30 minutes; un délai négatif indique "
+                "un avis publié après le départ prévu, compté à part.",
             ),
             limits=Text(
-                "The notice records when the feed announced the cancellation. It does not "
-                "say when riders learned about it. Without a notice time there is no lead time.",
-                "L’avis indique quand les données en direct ont annoncé l’annulation. "
-                "Il ne dit pas quand les gens l’ont apprise. Sans heure d’avis, le délai "
-                "ne peut pas être calculé.",
+                "It cannot tell when riders saw the cancellation, only when the feed published "
+                "it. Cancellations without a notice time have no lead time.",
+                "Elle ne dit pas quand les usagers ont appris l’annulation, seulement quand le "
+                "flux l’a publiée. Sans heure d’avis, le préavis ne peut pas être calculé.",
             ),
             percentile=50,
             ratio=("cancelled", "eligible"),
@@ -1560,8 +1573,10 @@ _SERVICE_DELIVERED = Family(
             "missing_trips",
             "share",
             Text(
-                "Share of eligible scheduled trips never seen while capture was complete.",
-                "Part des trajets prévus admissibles jamais vus malgré une collecte complète.",
+                "Share of scheduled trips with a known outcome that were never seen while "
+                "capture was complete.",
+                "Part des trajets prévus à l’issue connue qui n’ont jamais été vus malgré une "
+                "collecte complète.",
             ),
             ratio=("missing", "eligible"),
             worst_first_descending=True,
@@ -1570,27 +1585,26 @@ _SERVICE_DELIVERED = Family(
             "service_hours",
             "share",
             Text(
-                "Share of eligible scheduled service hours attributed to trips that ran.",
-                "Part des heures de service prévues admissibles attribuée aux trajets effectués.",
+                "Share of scheduled service hours covered by trips that ran.",
+                "Part des heures de service prévues couverte par les trajets effectués.",
             ),
             counts=Text(
-                "Sum the scheduled time from the first timed stop's departure to the last "
-                "timed stop's arrival, using the other time at either stop if needed. "
-                "Compare the hours for trips that ran with all eligible scheduled hours. "
-                f"At least {MIN_SERVICE_DELIVERED_TRIPS} eligible trips with a duration "
-                "are needed.",
-                "On additionne les durées prévues du départ du premier arrêt avec un horaire "
-                "à l’arrivée au dernier, en prenant l’autre heure à l’un ou l’autre arrêt "
-                "au besoin. On compare les heures des trajets effectués aux heures prévues "
-                f"admissibles. Il faut au moins {MIN_SERVICE_DELIVERED_TRIPS} trajets admissibles "
-                "dont la durée est connue.",
+                "Adds scheduled durations for trips that ran and divides by all eligible "
+                "scheduled hours. Each trip’s duration runs from its first timed stop’s "
+                "departure to its last timed stop’s arrival, using the other time at either end "
+                f"if needed. At least {MIN_SERVICE_DELIVERED_TRIPS} eligible trips with a "
+                "usable duration are required.",
+                "Additionne les durées prévues des trajets effectués et les divise par "
+                "l’ensemble des heures prévues admissibles. La durée d’un trajet va du départ "
+                "du premier arrêt horodaté à l’arrivée au dernier, en prenant l’autre heure au "
+                f"besoin. Il faut au moins {MIN_SERVICE_DELIVERED_TRIPS} trajets admissibles "
+                "dotés d’une durée utilisable.",
             ),
             limits=Text(
-                "Trips without a usable scheduled duration contribute no hours. These "
-                "hours use the schedule and cannot establish actual time in service.",
-                "Les trajets sans durée prévue utilisable ne contribuent aucune heure. "
-                "Ces heures proviennent de l’horaire et ne révèlent pas la durée réelle "
-                "du service.",
+                "It cannot establish actual time in service because durations come from the "
+                "timetable. Trips without a usable scheduled duration add no hours.",
+                "Elle ne mesure pas la durée réelle du service parce que les durées proviennent "
+                "de l’horaire. Les trajets sans durée prévue utilisable n’ajoutent aucune heure.",
             ),
             ratio=("ran_seconds", "scheduled_seconds"),
             extra_tables=(SCHEDULED_STOP_TIMES,),
@@ -1599,8 +1613,8 @@ _SERVICE_DELIVERED = Family(
             "first_trip",
             "share",
             Text(
-                "How often the first scheduled departure of the day ran.",
-                "Fréquence à laquelle le premier départ prévu de la journée a été effectué.",
+                "Share of days when the first scheduled departure ran.",
+                "Part des journées où le premier départ prévu a été effectué.",
             ),
             counts=_BOUNDARY_COUNTS,
             limits=_BOUNDARY_LIMITS,
@@ -1610,8 +1624,8 @@ _SERVICE_DELIVERED = Family(
             "last_trip",
             "share",
             Text(
-                "How often the last scheduled departure of the day ran.",
-                "Fréquence à laquelle le dernier départ prévu de la journée a été effectué.",
+                "Share of days when the last scheduled departure ran.",
+                "Part des journées où le dernier départ prévu a été effectué.",
             ),
             counts=_BOUNDARY_COUNTS,
             limits=_BOUNDARY_LIMITS,
@@ -1623,25 +1637,65 @@ _SERVICE_DELIVERED = Family(
 MIN_CROWDING_VEHICLE_HOURS = 1
 _US_PER_HOUR = 3_600_000_000
 _OCCUPANCY_LEVELS = {
-    0: ("crowding_empty", Text("Empty", "Vide")),
-    1: ("crowding_many_seats", Text("Many seats available", "Beaucoup de places assises libres")),
-    2: ("crowding_few_seats", Text("Few seats available", "Peu de places assises libres")),
-    3: ("crowding_standing", Text("Standing room only", "Places debout seulement")),
-    4: ("crowding_crushed", Text("Limited standing room", "Peu de places debout")),
-    5: ("crowding_full", Text("Full", "Plein")),
+    0: (
+        "crowding_empty",
+        Text(
+            "Share of reported vehicle time when vehicles reported being empty.",
+            "Part du temps-véhicule signalé pendant laquelle les véhicules se déclaraient vides.",
+        ),
+    ),
+    1: (
+        "crowding_many_seats",
+        Text(
+            "Share of reported vehicle time when vehicles reported many seats available.",
+            "Part du temps-véhicule signalé pendant laquelle les véhicules déclaraient "
+            "plusieurs places assises libres.",
+        ),
+    ),
+    2: (
+        "crowding_few_seats",
+        Text(
+            "Share of reported vehicle time when vehicles reported few seats available.",
+            "Part du temps-véhicule signalé pendant laquelle les véhicules déclaraient "
+            "peu de places assises libres.",
+        ),
+    ),
+    3: (
+        "crowding_standing",
+        Text(
+            "Share of reported vehicle time when vehicles reported standing room only.",
+            "Part du temps-véhicule signalé pendant laquelle les véhicules déclaraient "
+            "des places debout seulement.",
+        ),
+    ),
+    4: (
+        "crowding_crushed",
+        Text(
+            "Share of reported vehicle time when vehicles reported limited standing room.",
+            "Part du temps-véhicule signalé pendant laquelle les véhicules déclaraient "
+            "peu de places debout.",
+        ),
+    ),
+    5: (
+        "crowding_full",
+        Text(
+            "Share of reported vehicle time when vehicles reported being full.",
+            "Part du temps-véhicule signalé pendant laquelle les véhicules se déclaraient pleins.",
+        ),
+    ),
 }
 _CROWDING_COLUMNS = {
     "intervals": Text("Vehicle state intervals", "Intervalles d’état des véhicules"),
     "readings": Text("Vehicle readings", "Relevés de véhicules"),
-    "occupancy_readings": Text("Readings with occupancy", "Relevés avec achalandage"),
+    "occupancy_readings": Text("Readings with occupancy", "Relevés avec occupation"),
     "occupancy_vehicle_seconds": Text(
-        "Vehicle-seconds with occupancy", "Véhicule-secondes mesurées"
+        "Vehicle-seconds with occupancy", "Secondes-véhicules avec occupation"
     ),
-    "readings_without_occupancy": Text("Readings without occupancy", "Relevés sans achalandage"),
+    "readings_without_occupancy": Text("Readings without occupancy", "Relevés sans occupation"),
     "capped_intervals": Text(
         "Intervals with a capped tail", "Intervalles avec prolongement plafonné"
     ),
-    "level_vehicle_seconds": Text("Vehicle-seconds by level", "Véhicule-secondes par niveau"),
+    "level_vehicle_seconds": Text("Vehicle-seconds by level", "Secondes-véhicules par niveau"),
 }
 
 
@@ -1785,7 +1839,7 @@ def _crowding_rows(
 
 _CROWDING = Family(
     id=_CROWDING_ID,
-    label=Text("Crowding", "Achalandage à bord"),
+    label=Text("Crowding", "Occupation des véhicules"),
     method_version="crowding-v4",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS, FEED_POLLS),
@@ -1795,65 +1849,60 @@ _CROWDING = Family(
     columns=_CROWDING_COLUMNS,
     evidence_columns={
         "share_occupancy_readings": Text(
-            "Share of readings with occupancy", "Part avec achalandage"
+            "Share of readings with occupancy", "Part avec occupation"
         ),
         "percentage_levels": Text("Percentage-only levels", "Niveaux publiés en pourcentage"),
     },
     counts=Text(
-        "Shares divide time at each level by vehicle time with a usable occupancy value. "
-        "Coverage divides readings with occupancy by all readings in the cut. Readings "
-        "belong to the interval’s starting hour. Vehicle time is split at hour boundaries.",
-        "Pour chaque niveau, on divise sa durée par le temps-véhicule avec une valeur "
-        "d’achalandage utilisable. La couverture divise les relevés avec achalandage par "
-        "tous les relevés du filtre. Les relevés sont attribués à l’heure de début de "
-        "l’intervalle. Le temps-véhicule est réparti entre les heures qu’il chevauche.",
+        "Divides vehicle time spent at each level by total vehicle time with a usable occupancy "
+        "report. Coverage divides readings carrying occupancy by all readings in the selection. "
+        "Each state runs from its first capture to its last, then extends toward the vehicle’s "
+        "next report by up to three reporting intervals (or one for the day’s last report), "
+        "where the reporting interval is that day’s median spacing between feed publications. "
+        "Vehicle time splits at hour boundaries; readings count in their interval’s starting "
+        "hour. Published categories take priority over percentages, and percentage-only values "
+        "of 100% or higher also count toward full.",
+        "Divise le temps-véhicule passé à chaque niveau par le temps-véhicule total disposant "
+        "d’un relevé d’occupation utilisable. La couverture divise les relevés comportant "
+        "l’occupation par l’ensemble des relevés de la sélection. Chaque état court de sa "
+        "première à sa dernière collecte, puis se prolonge jusqu’au relevé suivant du véhicule, "
+        "jusqu’à trois intervalles de signalement (ou un seul pour le dernier relevé du jour), "
+        "l’intervalle de signalement étant l’écart médian entre les publications du flux ce "
+        "jour-là. Le temps-véhicule est réparti aux changements d’heure et les relevés sont "
+        "comptés dans l’heure de début de l’intervalle. L’état publié a priorité sur le "
+        "pourcentage, et les pourcentages seuls d’au moins 100\u00a0% entrent aussi dans la "
+        "part des véhicules pleins.",
     ),
     exclusions=Text(
-        "Reports without a usable occupancy level count toward coverage only. "
-        "Boarding restrictions and unavailable status codes do not describe crowds. "
-        "A direction needs a resolved trip and a stop cut uses the reported stop ID. "
-        "The network or line is marked not tracked when no usable occupancy was published.",
-        "Les relevés sans niveau utilisable entrent seulement dans la couverture. "
-        "Les restrictions d’embarquement et les codes d’indisponibilité ne décrivent "
-        "pas l’achalandage. "
-        "La direction exige un trajet identifié et le filtre d’arrêt utilise l’arrêt "
-        "déclaré. Le réseau ou la ligne est indiqué comme non suivi si aucune valeur "
-        "d’achalandage utilisable n’a été publiée.",
+        "Reports without a usable occupancy level, boarding restrictions and unavailable codes "
+        "are left out of the shares. Those reports still count in coverage. Filtering by "
+        "direction requires a matched trip, and filtering by stop uses the stop reported by "
+        "the vehicle. A network or line is marked not tracked when no usable occupancy was "
+        "published.",
+        "Les relevés sans niveau d’occupation utilisable, les restrictions d’embarquement et "
+        "les codes d’indisponibilité sont exclus des parts. Ces relevés restent comptés dans "
+        "la couverture. Le filtre par direction exige un trajet reconnu et le filtre par arrêt "
+        "utilise l’arrêt signalé par le véhicule. Un réseau ou une ligne est marqué comme non "
+        "suivi lorsqu’aucune valeur d’occupation utilisable n’a été publiée.",
     ),
     limits=Text(
-        "We count the span from the first to the last capture of a state. We then "
-        "carry the last reading forward to the next interval for that vehicle, up to "
-        "three reporting intervals, to limit the weight of stale readings. The final "
-        "interval for each vehicle gets one reporting interval. The reporting interval is "
-        "the median spacing between the feed's publications that day. "
-        "The one-vehicle-hour floor keeps a few minutes of reports "
-        "from determining the share. "
-        "We use the published status when usable and report exact percentages separately "
-        "when only a percentage is usable. The full share also includes percentage-only "
-        "values at or above 100%.",
-        "On compte la durée entre la première et la dernière collecte d’un état. On "
-        "prolonge ensuite le dernier relevé jusqu’au prochain intervalle du même véhicule, "
-        "avec un maximum de trois intervalles de signalement pour limiter le poids des "
-        "relevés périmés. Le dernier intervalle de chaque véhicule reçoit un intervalle de "
-        "signalement. L’intervalle de signalement est l’écart médian entre les publications "
-        "du flux ce jour-là. "
-        "Le seuil d’une heure-véhicule évite de juger l’achalandage à partir de quelques "
-        "minutes de relevés. On utilise l’état publié s’il est utilisable. "
-        "Les pourcentages seuls restent distincts et ceux d’au moins 100 % entrent aussi "
-        "dans la part du temps où le véhicule est plein.",
+        "It cannot tell how many riders were on board or guarantee a seat: it reflects vehicle "
+        "time in broad levels reported by the agency. At least one vehicle-hour is required so "
+        "a few minutes of reports do not swing the shares.",
+        "Elle ne dit pas combien d’usagers étaient à bord et ne garantit pas une place "
+        "assise\u00a0: elle reflète le temps-véhicule réparti dans les niveaux publiés par la "
+        "société de transport. Il faut au moins une heure-véhicule pour éviter que quelques "
+        "minutes de relevés ne déterminent les parts.",
     ),
     measures=tuple(
         Measure(
             key,
             "share",
-            Text(
-                f"Share of vehicle time at this occupancy level. {label.en}.",
-                f"Part du temps-véhicule à ce niveau d’achalandage. {label.fr}.",
-            ),
+            definition,
             worst_first_descending=True,
             ranking_kinds=("line",) if status == 5 else (),
         )
-        for status, (key, label) in _OCCUPANCY_LEVELS.items()
+        for status, (key, definition) in _OCCUPANCY_LEVELS.items()
     ),
 )
 
@@ -1984,59 +2033,77 @@ _ALERT_COUNTS = Family(
     minimum_sample=0,
     query=_alert_rows,
     columns={
-        "alerts": Text("Distinct alerts", "Alertes distinctes"),
-        "alert_versions": Text("Distinct alert versions", "Versions d’alertes distinctes"),
+        "alerts": Text("Distinct alerts", "Avis distincts"),
+        "alert_versions": Text("Distinct alert versions", "Versions d’avis distinctes"),
         "active_spans": Text("Distinct active spans", "Périodes actives distinctes"),
-        "alert_seconds": Text("Alert-seconds", "Secondes d’alerte"),
+        "alert_seconds": Text("Alert-seconds", "Secondes d’avis"),
     },
     evidence_columns={
         "days_not_tracked": Text("Days not tracked", "Jours sans suivi"),
-        "days_alerts_tracked": Text("Days with alert tracking", "Jours avec suivi des alertes"),
+        "days_alerts_tracked": Text("Days with alert tracking", "Jours avec suivi des avis"),
     },
     counts=Text(
-        "We count each alert ID and each version once per source. For each alert we "
-        "merge overlapping periods across its versions, clip to the requested local dates, "
-        "and sum its time with that of other alerts.",
-        "On compte chaque identifiant d’alerte et chaque version une fois par source. "
-        "Pour chaque alerte, on fusionne les périodes communes à ses versions, on se limite "
-        "aux dates locales demandées et on additionne les durées de toutes les alertes.",
+        "Counts each distinct service alert, each published revision and the hours those alerts "
+        "stayed in effect during the selected dates. Each alert ID and version counts once per "
+        "source. For each alert, overlapping active periods across its versions are merged into "
+        "one union, clipped to the requested local dates, then summed across alerts.",
+        "Compte chaque avis de service distinct, chaque version publiée et les heures pendant "
+        "lesquelles ces avis sont restés en vigueur aux dates choisies. Chaque identifiant "
+        "d’avis et chaque version comptent une fois par source. Pour chaque avis, on fusionne "
+        "les périodes actives qui se chevauchent entre ses versions, on les limite aux dates "
+        "locales demandées, puis on additionne les durées de tous les avis.",
     ),
     exclusions=Text(
-        "Line and stop filters use the IDs listed by the agency. Alerts without those "
-        "IDs stay in the network total. Effect and cause use the published values. "
-        "Zero alerts means no matching alert in the tracked history. An agency without "
-        "alert tracking is marked not tracked.",
-        "Les filtres de ligne et d’arrêt utilisent les identifiants déclarés par l’agence. "
-        "Les alertes sans ces identifiants restent dans le total du réseau. L’effet et la "
-        "cause reprennent les valeurs publiées. Zéro indique qu’aucune alerte ne correspond "
-        "dans l’historique suivi. Une agence sans suivi des alertes est indiquée comme non suivie.",
+        "Line and stop views include only alerts tagged with that line or stop by the agency; "
+        "untagged alerts stay in the network total. Effect and cause use the agency’s published "
+        "labels. Zero means no matching alert appeared in the tracked record; networks without "
+        "alert capture are marked not tracked.",
+        "Les vues par ligne et par arrêt retiennent uniquement les avis rattachés à cette ligne "
+        "ou à cet arrêt par la société de transport; les autres restent dans le total du "
+        "réseau. L’effet et la cause reprennent les libellés publiés par la société de "
+        "transport. Zéro indique qu’aucun avis correspondant n’a été enregistré; un réseau "
+        "sans collecte des avis est indiqué comme non suivi.",
     ),
     limits=Text(
-        "The result describes published notices. Published bounds can extend outside the "
-        "days when the notice was captured. Missing bounds use the first or last sighting "
-        "of that version on its capture day. Gaps in the archive can omit other notices.",
-        "Le résultat décrit les avis publiés. Les bornes publiées peuvent dépasser les "
-        "jours de capture de l’avis. Une borne manquante est remplacée par la première "
-        "ou la dernière observation de la version ce jour-là. Les lacunes des archives "
-        "peuvent laisser d’autres avis de côté.",
+        "It cannot tell whether a disruption actually occurred on the street or how many riders "
+        "it affected, only what notices were published. Published start and end times can "
+        "extend beyond the days an alert was collected. A missing bound falls back to the first "
+        "or last sighting of that version on its collection day, and archive gaps can miss "
+        "other notices.",
+        "Elle ne dit pas si une perturbation a réellement eu lieu sur le terrain ni combien "
+        "d’usagers ont été touchés, seulement quels avis ont été publiés. Les bornes publiées "
+        "peuvent dépasser les jours de collecte de l’avis. Une borne manquante est remplacée "
+        "par la première ou la dernière observation de cette version ce jour-là, et les "
+        "lacunes des archives peuvent laisser d’autres avis de côté.",
     ),
     measures=(
         Measure(
             "alerts",
             "count",
-            Text("Distinct alerts in effect.", "Alertes distinctes en vigueur."),
+            Text(
+                "Number of distinct service alerts in effect during the selected dates.",
+                "Nombre d’avis de service distincts en vigueur aux dates choisies.",
+            ),
             ranking_kinds=(),
         ),
         Measure(
             "alert_versions",
             "count",
-            Text("Distinct versions in effect.", "Versions distinctes en vigueur."),
+            Text(
+                "Number of distinct alert revisions published during the selected dates.",
+                "Nombre de versions d’avis distinctes publiées aux dates choisies.",
+            ),
             ranking_kinds=(),
         ),
         Measure(
             "alert_hours",
             "hours",
-            Text("Hours of alerts in effect.", "Heures d’alerte en vigueur."),
+            Text(
+                "Total hours that published service alerts were in effect during the selected "
+                "dates.",
+                "Nombre total d’heures pendant lesquelles les avis de service publiés étaient "
+                "en vigueur aux dates choisies.",
+            ),
             worst_first_descending=True,
             ranking_kinds=("line", "stop"),
         ),
@@ -2093,7 +2160,7 @@ _WAITING_COLUMNS = {
     "observed_squared_seconds": Text(
         "Sum of squared observed headways", "Somme des carrés des intervalles observés"
     ),
-    "bunching": Text("Bunched headways", "Intervalles avec regroupement"),
+    "bunching": Text("Bunched headways", "Véhicules trop rapprochés"),
     "long_gaps": Text("Long headways", "Intervalles prolongés"),
     **_WAITING_EXCLUDED,
 }
@@ -2459,57 +2526,67 @@ _WAITING = Family(
     coverage=(0.25, 0.50),
     ranking_floors={"line": {"observed_trip_pairs": 20, "observed_headways": 50}},
     counts=Text(
-        "Evidence gives scheduled and observed headway counts, their sums and squared sums, "
-        "and the counts of bunched and long intervals. Coverage compares the number of "
-        "observed headways with the scheduled count in frequent periods, up to 100%.",
-        "Les données indiquent le nombre d’intervalles prévus et observés, leur somme et "
-        "la somme de leurs carrés, ainsi que le nombre d’intervalles courts et prolongés. "
-        "La couverture rapporte le nombre d’intervalles observés au nombre prévu en période "
-        "fréquente, jusqu’à 100 %.",
+        "Measures time between successive vehicles at a stop during frequent service "
+        f"(scheduled every {FREQUENT_HEADWAY_SECONDS // 60} minutes or less). A period is "
+        "frequent when a line, stop and direction have at least two distinct scheduled times "
+        f"and a mean scheduled gap of at most {FREQUENT_HEADWAY_SECONDS // 60} minutes on that "
+        "service date. Coverage compares observed intervals with scheduled ones in frequent "
+        "periods, up to 100%. For excess wait, each period’s average wait for riders arriving "
+        "without checking the timetable is the sum of squared intervals divided by twice their "
+        "sum; scheduled wait uses complete scheduled intervals inside windows of known observed "
+        "intervals, and periods are weighted by their covered scheduled time. Local periods are "
+        f"{periods_text('en')}.",
+        "Mesure le temps entre deux véhicules successifs à un arrêt en période de service "
+        f"fréquent (horaire prévu aux {FREQUENT_HEADWAY_SECONDS // 60} minutes ou moins). "
+        "Une période est fréquente lorsqu’une ligne, un arrêt et une direction comptent au "
+        "moins deux passages prévus distincts et un intervalle prévu moyen d’au plus "
+        f"{FREQUENT_HEADWAY_SECONDS // 60} minutes à cette date de service. La couverture "
+        "compare le nombre d’intervalles observés au nombre prévu en période fréquente, "
+        "jusqu’à 100\u00a0%. Pour l’attente excédentaire, l’attente moyenne d’un usager "
+        "arrivant sans consulter l’horaire vaut, dans chaque période, la somme des carrés des "
+        "intervalles divisée par deux fois leur somme; l’attente prévue utilise les intervalles "
+        "prévus entièrement compris dans les plages d’intervalles observés connus, et chaque "
+        "période est pondérée selon sa durée prévue couverte. Les périodes locales sont "
+        f"{periods_text('fr')}.",
     ),
     exclusions=Text(
-        "Observed headways are the intervals between successive observed passages for the "
-        "same line, stop and direction. Every recorded observation time can contribute. "
-        "A covered interval is unknown if a trip that ran or could not be confirmed "
-        "was scheduled between the observations and has no observed time at that stop. "
-        "Each recorded vehicle or trip updates feed must cover the entire interval, with "
-        f"at most {MAX_POLL_SPACING_SECONDS} seconds between usable polls and publication "
-        f"age of at most {MAX_POLL_AGE_SECONDS} seconds plus the declared source lag. "
-        "The direction must be known and the line must have live data.",
-        "Les intervalles observés séparent les passages observés successifs pour la même "
-        "ligne, le même arrêt et la même direction. Toute heure de passage observée peut "
-        "être utilisée. Un intervalle couvert est de durée inconnue si un trajet effectué "
-        "ou non confirmé était prévu entre les observations et n’a pas d’heure observée "
-        "à cet arrêt. Chaque flux de positions ou de mises à jour des trajets consigné "
-        "doit couvrir tout l’intervalle, avec au plus "
-        f"{MAX_POLL_SPACING_SECONDS} secondes entre les relevés utilisables et des "
-        f"publications datant d’au plus {MAX_POLL_AGE_SECONDS} secondes plus le délai source "
-        "déclaré. La direction doit être connue et la ligne doit fournir des données en direct.",
+        "Non-frequent periods, lines without live data, stops with unknown direction and gaps "
+        "broken by a missed observation or capture outage are left out. Both passages must fall "
+        "in the same local period, and no unobserved trip that ran or could not be confirmed "
+        "may be scheduled between them. Every recorded vehicle or trip-update feed must cover "
+        f"the entire interval, with usable polls at most {MAX_POLL_SPACING_SECONDS} s apart "
+        f"and publication age at most {MAX_POLL_AGE_SECONDS} s plus the declared source lag. "
+        "The ending passage sets the hour; a departure filter uses the ending trip’s scheduled "
+        "departure.",
+        "Les périodes non fréquentes, les lignes sans données en direct, les arrêts sans "
+        "direction connue et les intervalles rompus par un passage non observé ou une "
+        "interruption de collecte sont exclus. Les deux passages doivent appartenir à la même "
+        "période locale, sans trajet effectué ou non confirmé prévu entre eux qui n’aurait pas "
+        "été observé à cet arrêt. Chaque flux de positions ou de mises à jour des trajets "
+        "enregistré doit couvrir tout l’intervalle, avec des relevés utilisables espacés d’au "
+        f"plus {MAX_POLL_SPACING_SECONDS}\u00a0s et des publications datant d’au plus "
+        f"{MAX_POLL_AGE_SECONDS}\u00a0s plus le décalage déclaré de la source. Le passage qui "
+        "termine l’intervalle détermine l’heure, et un filtre par départ utilise l’heure de "
+        "départ prévue de ce trajet.",
     ),
     limits=Text(
-        f"A frequent period has at least two distinct scheduled times and a mean scheduled "
-        f"interval of at most {FREQUENT_HEADWAY_SECONDS // 60} minutes for the line, stop "
-        f"and direction on that service date. Local periods are {periods_text('en')}. "
-        "Both passages must be in the same period. The ending passage determines the hour. "
-        "A departure "
-        "cut uses the ending trip’s scheduled departure. "
-        f"At least {MIN_OBSERVED_HEADWAYS} observed headways are needed to report a value.",
-        "Une période est fréquente si elle compte au moins deux heures de passage distinctes "
-        f"et un intervalle prévu moyen d’au plus {FREQUENT_HEADWAY_SECONDS // 60} minutes "
-        "pour la ligne, l’arrêt et la direction à cette date de service. "
-        f"Les périodes locales sont {periods_text('fr')}. Les deux passages doivent être "
-        "dans la même période. Le passage qui termine l’intervalle détermine l’heure. "
-        "Un filtre par départ utilise "
-        "l’heure de départ prévue du trajet qui termine l’intervalle. "
-        f"Il faut au moins {MIN_OBSERVED_HEADWAYS} intervalles observés pour publier une valeur.",
+        "It assumes riders arrive without checking the timetable and does not measure lines "
+        f"scheduled wider than {FREQUENT_HEADWAY_SECONDS // 60} minutes. At least "
+        f"{MIN_OBSERVED_HEADWAYS} observed intervals are required to report a value.",
+        "Elle suppose des usagers qui arrivent sans consulter l’horaire et ne mesure pas les "
+        f"lignes dont l’intervalle prévu dépasse {FREQUENT_HEADWAY_SECONDS // 60} minutes. "
+        f"Il faut au moins {MIN_OBSERVED_HEADWAYS} intervalles observés pour publier une "
+        "valeur.",
     ),
     measures=(
         Measure(
             "observed_headway",
             "seconds",
             Text(
-                "Mean time between successive observed passages at a stop.",
-                "Intervalle moyen entre les passages observés successifs à un arrêt.",
+                "Average time between two successive observed vehicles at a stop during "
+                "frequent service.",
+                "Temps moyen entre deux véhicules observés successifs à un arrêt en période "
+                "fréquente.",
             ),
             ratio=("observed_seconds", "observed_headways"),
             ranking_kinds=(),
@@ -2518,9 +2595,10 @@ _WAITING = Family(
             "scheduled_headway",
             "seconds",
             Text(
-                "Mean scheduled interval in capture windows with scheduled and observed headways.",
-                "Intervalle prévu moyen dans les fenêtres de collecte qui contiennent des "
-                "intervalles prévus et observés.",
+                "Average scheduled time between vehicles in the same frequent periods where "
+                "real intervals were observed.",
+                "Temps moyen prévu entre deux véhicules dans les mêmes périodes fréquentes où "
+                "les intervalles ont été observés.",
             ),
             ratio=("scheduled_seconds", "covered_scheduled_headways"),
             ranking_kinds=(),
@@ -2529,9 +2607,9 @@ _WAITING = Family(
             "bunching",
             "share",
             Text(
-                f"Share of observed headways shorter than {BUNCHING_FRACTION:.0%} "
-                "of the period’s mean scheduled headway.",
-                f"Part des intervalles observés inférieurs à {BUNCHING_FRACTION:.0%} "
+                f"Share of observed intervals shorter than {BUNCHING_FRACTION:.0%} of the "
+                "period’s scheduled average.",
+                f"Part des intervalles observés inférieurs à {_fr_pct(BUNCHING_FRACTION)} "
                 "de l’intervalle prévu moyen de la période.",
             ),
             band=f"headway < {BUNCHING_FRACTION} * scheduled_mean",
@@ -2543,8 +2621,8 @@ _WAITING = Family(
             "long_gaps",
             "share",
             Text(
-                f"Share of observed headways longer than {LONG_GAP_MULTIPLE} times "
-                "the period’s mean scheduled headway.",
+                f"Share of observed intervals longer than {LONG_GAP_MULTIPLE} times the "
+                "period’s scheduled average.",
                 f"Part des intervalles observés supérieurs à {LONG_GAP_MULTIPLE} fois "
                 "l’intervalle prévu moyen de la période.",
             ),
@@ -2556,21 +2634,16 @@ _WAITING = Family(
             "excess_wait_time",
             "seconds",
             Text(
-                "Excess wait is observed average wait minus scheduled average wait for "
-                "riders arriving without consulting the timetable. Within each period, "
-                "average wait is the sum of squared headways divided by twice their sum. "
-                "The scheduled calculation uses complete scheduled headways inside the "
-                "windows of known observed headways for each stop, line and direction. "
-                "The result weights "
-                "each period by the sum of its covered scheduled headways.",
-                "L’attente excédentaire est l’attente moyenne observée moins l’attente "
-                "moyenne prévue pour les personnes qui arrivent sans consulter l’horaire. "
-                "Dans chaque période, l’attente moyenne est la somme des carrés des "
-                "intervalles divisée par deux fois leur somme. Le calcul prévu utilise "
-                "les intervalles prévus entièrement compris dans les fenêtres "
-                "d’intervalles observés connus pour chaque arrêt, ligne et direction. "
-                "Chaque période est "
-                "pondérée selon la durée totale de ses intervalles prévus couverts.",
+                "Extra time riders wait on average beyond what the timetable promises during "
+                "frequent service. Within each period, average wait is the sum of squared "
+                "intervals divided by twice their sum, comparing observed intervals with "
+                "complete scheduled intervals inside the same observed windows and weighting "
+                "each period by its covered scheduled time.",
+                "Temps d’attente moyen supplémentaire au-delà de ce que promet l’horaire en "
+                "période fréquente. Dans chaque période, l’attente moyenne est la somme des "
+                "carrés des intervalles divisée par deux fois leur somme, en comparant les "
+                "intervalles observés aux intervalles prévus entièrement compris dans les "
+                "mêmes plages observées, avec une pondération selon la durée prévue couverte.",
             ),
             worst_first_descending=True,
             ranking_kinds=("line",),
@@ -2674,38 +2747,41 @@ _SERVICE_OFFERED = Family(
     tables=(SCHEDULED_STOP_TIMES,),
     minimum_sample=_MIN_SCHEDULE_DAYS,
     counts=Text(
-        "Evidence gives the number of scheduled trips, clock hours and evening or weekend "
-        "periods assessed, with a breakdown by local period and service day type.",
-        "Les données indiquent les nombres de trajets prévus, d’heures à l’horaire et de "
-        "périodes évaluées, par période locale et type de jour de service.",
+        "Counts trips and hourly frequency directly from the published timetable, including "
+        "lines without live data. Each trip is placed at its first timed stop (or its first "
+        "timed visit to a selected stop). Evidence breaks counts down by day type and local "
+        f"period: {periods_text('en')}.",
+        "Compte les trajets et la fréquence horaire directement dans l’horaire publié, y "
+        "compris pour les lignes sans données en direct. Chaque trajet est placé à son premier "
+        "arrêt horodaté (ou à son premier passage horodaté à l’arrêt choisi). Les données "
+        f"détaillent les totaux par type de jour et période locale\u00a0: {periods_text('fr')}.",
     ),
     exclusions=Text(
-        "The schedule includes lines without live data. The count uses the first timed stop "
-        "of each trip, or the first timed visit to the selected stop. Missing schedules are "
-        "excluded. Minimum service is assessed for each line and direction on the dates "
-        "when the published timetable includes it. A period on such a date may have zero trips.",
-        "L’horaire inclut les lignes sans données en direct. Chaque trajet est compté au "
-        "premier arrêt avec une heure prévue ou au premier passage avec une heure prévue "
-        "à l’arrêt choisi. Les horaires manquants sont exclus. Une ligne et une direction "
-        "sont évaluées aux dates où elles figurent dans l’horaire. Une période à cette date "
-        "peut ne compter aucun trajet.",
+        "Dates without a validated timetable are left out. Minimum service is checked for each "
+        "line and direction on dates when the published timetable includes that line; an "
+        "evening or weekend period on such a date may still have zero trips.",
+        "Les dates sans horaire validé sont exclues. Le seuil de service minimal est vérifié "
+        "pour chaque ligne et direction aux dates où l’horaire publié inclut cette ligne; une "
+        "période en soirée ou en fin de semaine à cette date peut tout de même ne compter "
+        "aucun trajet.",
     ),
     limits=Text(
+        "It describes only what was planned on paper, not whether those trips actually ran. "
         f"At least {_MIN_SCHEDULE_DAYS} service day with a validated schedule is required. "
-        f"Local periods are {periods_text('en')}. Frequencies use clock-hour slots, including "
-        "on clock-change days. Overnight trips keep the service date they belong to.",
-        f"Il faut au moins {_MIN_SCHEDULE_DAYS} jour de service avec un horaire validé. "
-        f"Périodes locales : {periods_text('fr')}. Les fréquences utilisent les heures "
-        "de l’horloge, même les jours de changement d’heure. Les trajets de nuit "
-        "conservent leur date de service.",
+        "Frequencies use clock-hour slots, including on clock-change days, and overnight trips "
+        "stay on their service date.",
+        "Elle décrit uniquement ce qui était prévu à l’horaire, et non ce qui a réellement "
+        f"circulé. Il faut au moins {_MIN_SCHEDULE_DAYS} jour de service avec un horaire "
+        "validé. Les fréquences utilisent les tranches horaires de l’horloge, même les jours "
+        "de changement d’heure, et les trajets de nuit conservent leur date de service.",
     ),
     measures=(
         Measure(
             "scheduled_trips",
             "trips",
             Text(
-                "Number of trips in the selected timetable.",
-                "Nombre de trajets dans l’horaire choisi.",
+                "Number of trips planned in the selected timetable.",
+                "Nombre de trajets prévus dans l’horaire choisi.",
             ),
             ranking_kinds=(),
         ),
@@ -2713,8 +2789,8 @@ _SERVICE_OFFERED = Family(
             "scheduled_frequency",
             "trips_per_hour",
             Text(
-                "Scheduled trips divided by clock hours in the selected dates and periods.",
-                "Trajets prévus divisés par le nombre d’heures aux dates et périodes choisies.",
+                "Average number of scheduled trips per hour across the selected dates and periods.",
+                "Nombre moyen de trajets prévus par heure aux dates et périodes choisies.",
             ),
             ranking_kinds=(),
         ),
@@ -2722,14 +2798,13 @@ _SERVICE_OFFERED = Family(
             "below_minimum_service",
             "periods",
             Text(
-                f"Number of evening and weekend periods with fewer than {MIN_TRIPS_PER_HOUR} "
-                "scheduled trips per hour on average, assessed for each date, line and "
-                "direction in scope. The threshold corresponds to a half-hour interval "
-                "if service is evenly spaced.",
-                "Nombre de périodes en soirée ou en fin de semaine comptant en moyenne "
-                f"moins de {MIN_TRIPS_PER_HOUR} trajets prévus par heure, évaluées pour chaque "
-                "date, ligne et direction choisies. Le seuil correspond à un intervalle "
-                "d’une demi-heure si les passages sont réguliers.",
+                f"Number of evening and weekend periods averaging fewer than {MIN_TRIPS_PER_HOUR} "
+                "scheduled trips per hour. That threshold matches a half-hour interval when "
+                "departures are evenly spaced, assessed per date, line and direction.",
+                "Nombre de périodes en soirée ou en fin de semaine comptant en moyenne moins de "
+                f"{MIN_TRIPS_PER_HOUR} trajets prévus par heure. Ce seuil correspond à un "
+                "intervalle d’une demi-heure lorsque les passages sont réguliers, évalué par "
+                "date, ligne et direction.",
             ),
             ranking_kinds=(),
         ),
@@ -2743,8 +2818,8 @@ _SERVICE_OFFERED = Family(
 # Transit R5, "Owner decisions" and "What each screen answers":
 # https://app.notion.com/p/41e3e863069081e193eaeee433839958
 _VEHICLE_PUNCTUALITY_CAUTION = Text(
-    "Lateness mostly reflects the lines and hours the vehicle is assigned to.",
-    "Le retard reflète surtout les lignes et les heures auxquelles le véhicule est affecté.",
+    "A vehicle’s lateness mostly reflects the lines and hours it is assigned to.",
+    "Le retard d’un véhicule reflète surtout les lignes et les heures auxquelles il est affecté.",
 )
 _VEHICLE_PUNCTUALITY = tuple(
     replace(
@@ -2753,8 +2828,8 @@ _VEHICLE_PUNCTUALITY = tuple(
         counts=_PUNCTUALITY.counts,
         exclusions=_PUNCTUALITY.exclusions,
         limits=Text(
-            f"{_PUNCTUALITY.limits.en} {_VEHICLE_PUNCTUALITY_CAUTION.en}",
-            f"{_PUNCTUALITY.limits.fr} {_VEHICLE_PUNCTUALITY_CAUTION.fr}",
+            f"{_VEHICLE_PUNCTUALITY_CAUTION.en} {_PUNCTUALITY.limits.en}",
+            f"{_VEHICLE_PUNCTUALITY_CAUTION.fr} {_PUNCTUALITY.limits.fr}",
         ),
         extra_tables=(STOP_EVENTS,),
         ranking_kinds=(),
@@ -2793,39 +2868,40 @@ _VEHICLE_COLUMNS = {
     },
 }
 _VEHICLE_LIMITS = Text(
-    f"A day is not tracked if fewer than {MIN_STABLE_READING_SHARE:.0%} of clean vehicle "
-    f"readings use an ID seen at least {MIN_STABLE_ID_READINGS} times, or fewer than that "
-    "share of confirmed trips can be linked to those IDs. Repeated IDs are evidence "
-    "of continuity within the day. Vehicle hours use capture times, and an interval "
-    "never extends past the next capture. A gap describes silence in the captured feed.",
-    f"Le suivi est indisponible un jour si moins de {MIN_STABLE_READING_SHARE:.0%} des "
-    f"relevés de véhicules nettoyés ont un identifiant vu au moins {MIN_STABLE_ID_READINGS} "
-    "fois, ou si une part inférieure des trajets confirmés est liée à ces identifiants. "
-    "La répétition d’un identifiant témoigne de sa continuité dans la journée. "
-    "Les heures-véhicules utilisent les heures de collecte. Un intervalle se termine "
-    "au plus tard au relevé suivant. "
-    "Une interruption indique un silence dans le flux capturé.",
+    "A reporting gap shows silence in the captured feed: it cannot tell whether the vehicle "
+    "was in the garage or on the road with a silent transmitter. A day is marked not tracked "
+    f"when fewer than {MIN_STABLE_READING_SHARE:.0%} of vehicle readings carry an ID seen at "
+    f"least {MIN_STABLE_ID_READINGS} times, or when fewer than that share of confirmed trips "
+    "link to those IDs. Repeated IDs provide continuity within the day. Vehicle hours use "
+    "capture times and never extend past the next capture.",
+    "Une interruption signale un silence dans le flux capturé\u00a0: elle ne dit pas si le "
+    "véhicule était au garage ou sur la route avec un émetteur silencieux. Un jour est marqué "
+    f"comme non suivi si moins de {_fr_pct(MIN_STABLE_READING_SHARE)} des relevés portent un "
+    f"identifiant vu au moins {MIN_STABLE_ID_READINGS} fois, ou si une part inférieure des "
+    "trajets confirmés est liée à ces identifiants. La répétition d’un identifiant témoigne "
+    "de sa continuité dans la journée. Les heures-véhicules utilisent les heures de collecte "
+    "et ne dépassent jamais le relevé suivant.",
 )
 _VEHICLE_REPORTING_EXCLUSIONS = Text(
-    "The vehicle-position feed must have continuous capture across the silence. Usable polls "
-    f"contain advancing, nonempty publications at most {MAX_POLL_AGE_SECONDS} seconds old "
-    "plus the declared source lag, "
-    f"and are at most {MAX_POLL_SPACING_SECONDS} seconds apart. Silences across capture gaps "
-    "are excluded from the count and duration and shown in the evidence.",
-    "La collecte du flux de positions doit être continue pendant le silence. Les relevés "
-    "utilisables contiennent des publications non vides plus récentes que les précédentes, "
-    f"vieilles d’au plus {MAX_POLL_AGE_SECONDS} secondes plus le délai source déclaré, "
-    "et espacées d’au plus "
-    f"{MAX_POLL_SPACING_SECONDS} secondes. Les silences pendant une interruption de la "
-    "collecte sont exclus du nombre et de la durée et figurent dans les données justificatives.",
+    "Silences that overlap a capture outage are left out of the count and duration. The "
+    "vehicle-position feed must have continuous capture across the silence, with advancing, "
+    f"nonempty publications at most {MAX_POLL_AGE_SECONDS} s old plus the declared source lag "
+    f"and at most {MAX_POLL_SPACING_SECONDS} s apart. Excluded silences appear separately in "
+    "the evidence.",
+    "Les silences qui coïncident avec une interruption de la collecte sont exclus du nombre "
+    "et de la durée. La collecte du flux de positions doit être continue pendant le silence, "
+    "avec des publications non vides et plus récentes que les précédentes datant d’au plus "
+    f"{MAX_POLL_AGE_SECONDS}\u00a0s plus le décalage déclaré de la source et espacées d’au "
+    f"plus {MAX_POLL_SPACING_SECONDS}\u00a0s. Les silences exclus figurent à part dans les "
+    "données justificatives.",
 )
 # Keep the upstream reassignment rule as diagnostic evidence. Revisit publication when a feed
 # demonstrates confirmed reassignments on real service dates and terminus coverage is sufficient.
 _VEHICLE_COMPLETION_METHOD = Text(
-    "The live feeds do not show reliably when a trip ends early, "
-    "so trips not finished are not tracked.",
-    "Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt, "
-    "alors les trajets non terminés ne sont pas suivis.",
+    "Trips not finished are marked not tracked because live feeds do not reliably show when "
+    "a trip ends early.",
+    "Les trajets non terminés sont marqués comme non suivis parce que les flux en direct ne "
+    "montrent pas de façon fiable quand un trajet se termine tôt.",
 )
 
 
@@ -2928,16 +3004,26 @@ _VEHICLES = Family(
     query=_vehicle_rows,
     minimum_sample=1,
     counts=Text(
-        "City days count dates with any tracked vehicle in service. City hours add vehicle "
-        "time, and routes and dated trips are distinct across vehicles.",
-        "Les jours à l’échelle de la ville comptent les dates où au moins un véhicule suivi "
-        "est en service. Les heures s’additionnent et les lignes et trajets datés sont distincts.",
+        "Follows vehicles carrying a stable identifier during the day across their trip-linked "
+        "reports. Network days count dates with at least one tracked vehicle in service; "
+        "network hours add time across vehicles, while lines and dated trips count once across "
+        "the fleet.",
+        "Suit les véhicules dotés d’un identifiant stable au fil de la journée à partir de "
+        "leurs relevés liés à un trajet. À l’échelle du réseau, les jours comptent les dates "
+        "où au moins un véhicule suivi est en service; les heures s’additionnent entre "
+        "véhicules, tandis que les lignes et les trajets datés sont comptés une seule fois.",
     ),
     exclusions=Text(
-        "Completion diagnostics distinguish observed termini, confirmed upstream reassignments, "
-        "unknown outcomes and capture gaps.",
-        "Les données sur l’achèvement distinguent les terminus observés, les réaffectations "
-        "confirmées avant le terminus, les issues inconnues et les interruptions de collecte.",
+        "Reports without a stable vehicle ID or without a trip link are left out of vehicle "
+        "service totals. Because live feeds cannot reliably confirm early trip endings, "
+        "unfinished-trip measures remain marked not tracked while diagnostic evidence separates "
+        "reached termini, confirmed reassignments, unknown outcomes and capture gaps.",
+        "Les relevés sans identifiant de véhicule stable ou sans trajet associé sont exclus "
+        "des totaux de service par véhicule. Comme les flux en direct ne permettent pas de "
+        "confirmer de façon fiable les fins de trajet anticipées, les mesures sur les trajets "
+        "non terminés restent marquées comme non suivies, tandis que les données de diagnostic "
+        "distinguent les terminus atteints, les réaffectations confirmées, les issues "
+        "inconnues et les interruptions de collecte.",
     ),
     limits=_VEHICLE_LIMITS,
     columns=_VEHICLE_COLUMNS,
@@ -2950,8 +3036,8 @@ _VEHICLES = Family(
             "vehicle_days_in_service",
             "count",
             Text(
-                "Service dates with a vehicle position linked to a trip.",
-                "Dates de service avec une position de véhicule liée à un trajet.",
+                "Days on which a tracked vehicle sent at least one position while on a trip.",
+                "Jours où un véhicule suivi a transmis au moins une position pendant un trajet.",
             ),
             ranking_kinds=(),
         ),
@@ -2959,12 +3045,13 @@ _VEHICLES = Family(
             "vehicle_hours_in_service",
             "hours",
             Text(
-                "Trip-linked observed time plus up to three reporting intervals to the next "
-                "state, or one reporting interval for the final reading. The reporting interval "
-                "is the median spacing between the feed's publications that day.",
-                "Temps observé lié à un trajet, plus au plus trois intervalles de signalement "
-                "jusqu’à l’état suivant, ou un intervalle pour le dernier relevé. L’intervalle "
-                "de signalement est l’écart médian entre les publications du flux ce jour-là.",
+                "Observed time a vehicle spent on trips. Each reading extends up to three "
+                "reporting intervals toward the next state, or one reporting interval for the "
+                "final reading, using that day’s median spacing between feed publications.",
+                "Durée observée pendant laquelle un véhicule a assuré des trajets. Chaque "
+                "relevé est augmenté d’au plus trois intervalles de signalement jusqu’à l’état "
+                "suivant, ou d’un intervalle pour le dernier relevé, selon l’écart médian "
+                "entre les publications du flux ce jour-là.",
             ),
             ranking_kinds=(),
         ),
@@ -2972,9 +3059,9 @@ _VEHICLES = Family(
             "vehicle_lines_run",
             "count",
             Text(
-                "Distinct lines from confirmed trips and trip-linked positions.",
-                "Lignes distinctes tirées des trajets confirmés et des positions "
-                "liées à un trajet.",
+                "Distinct lines a vehicle served on confirmed trips or trip-linked reports.",
+                "Lignes distinctes desservies par un véhicule selon les trajets confirmés et "
+                "les relevés liés à un trajet.",
             ),
             ranking_kinds=(),
         ),
@@ -2982,8 +3069,8 @@ _VEHICLES = Family(
             "vehicle_trips_run",
             "count",
             Text(
-                "Distinct dated trips confirmed or linked to a vehicle position.",
-                "Trajets datés distincts confirmés ou liés à une position de véhicule.",
+                "Distinct dated trips confirmed or linked to a vehicle’s position reports.",
+                "Trajets datés distincts confirmés ou liés aux relevés de position d’un véhicule.",
             ),
             ranking_kinds=(),
         ),
@@ -2991,14 +3078,13 @@ _VEHICLES = Family(
             "vehicle_reporting_gaps",
             "count",
             Text(
-                "Silences longer than three reporting intervals, so more than two missed "
-                "reports, between consecutive sightings on the same trip. The reporting interval "
-                "is the median spacing between the feed's publications that day, so each "
-                "network is held to its own cadence.",
-                "Silences de plus de trois intervalles de signalement, soit plus de deux relevés "
-                "manqués, entre deux relevés successifs du même trajet. L’intervalle de "
-                "signalement est l’écart médian entre les publications du flux ce jour-là. "
-                "Chaque réseau est donc jugé selon sa propre cadence.",
+                "Times a vehicle went silent for more than three reporting intervals during a "
+                "single trip. That equals more than two missed reports, measured against each "
+                "network’s median spacing between feed publications that day.",
+                "Nombre de fois qu’un véhicule est resté silencieux pendant plus de trois "
+                "intervalles de signalement au cours d’un même trajet. Cela correspond à plus "
+                "de deux relevés manqués, mesurés selon la cadence médiane du flux de ce réseau "
+                "ce jour-là.",
             ),
             extra_tables=(FEED_POLLS,),
             exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
@@ -3008,8 +3094,8 @@ _VEHICLES = Family(
             "vehicle_silent_hours",
             "hours",
             Text(
-                "Total elapsed time in counted reporting gaps.",
-                "Durée totale des interruptions de signalement comptées.",
+                "Total time spent inside counted reporting gaps.",
+                "Durée totale passée dans les interruptions de signalement comptées.",
             ),
             extra_tables=(FEED_POLLS,),
             exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
@@ -3019,18 +3105,21 @@ _VEHICLES = Family(
             VEHICLE_RANKING_DEFAULT,
             "per_100_vehicle_hours",
             Text(
-                "Times reporting stopped per 100 observed vehicle-hours in service. "
-                "Silence must exceed three reporting intervals, so more than two missed "
-                "reports, between two consecutive sightings on the same trip.",
-                "Interruptions de signalement par 100 heures-véhicules observées en service. "
-                "Le silence doit dépasser trois intervalles de signalement, soit plus de deux "
-                "relevés manqués, entre deux relevés successifs du même trajet.",
+                "Rate of reporting gaps per 100 observed vehicle-hours in service. A silence "
+                "counts when it exceeds three reporting intervals (more than two missed "
+                "reports) between consecutive sightings on the same trip.",
+                "Taux d’interruptions du signal par 100 heures-véhicules observées en service. "
+                "Un silence compte s’il dépasse trois intervalles de signalement (plus de deux "
+                "relevés manqués) entre deux relevés successifs du même trajet.",
             ),
             counts=Text(
-                f"Rankings require {MIN_VEHICLE_RANKING_HOURS} hours in service. One gap then "
-                "changes the rate by at most ten per 100 hours.",
-                f"Le classement exige {MIN_VEHICLE_RANKING_HOURS} heures en service. Une "
-                "interruption change alors le taux d’au plus dix par 100 heures.",
+                "Divides counted reporting gaps by observed hours in service, scaled to 100 "
+                f"hours. Rankings require at least {MIN_VEHICLE_RANKING_HOURS} hours in "
+                "service so one gap changes the rate by at most 10 per 100 hours.",
+                "Divise le nombre d’interruptions comptées par les heures observées en "
+                "service, ramené à 100 heures. Le classement exige au moins "
+                f"{MIN_VEHICLE_RANKING_HOURS} heures en service afin qu’une interruption ne "
+                "modifie le taux que d’au plus 10 par 100 heures.",
             ),
             extra_tables=(FEED_POLLS,),
             exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
@@ -3174,51 +3263,55 @@ _CORRIDORS = Family(
     coverage=(0.25, 0.50),
     bin_seconds=SEGMENT_BIN_SECONDS,
     counts=Text(
-        "Each run pairs consecutive scheduled stops of the same trip. Time lost is the "
-        "observed elapsed time minus the scheduled elapsed time between the corresponding "
-        "events. An arrival at the first stop or a departure at the second includes that "
-        "stop’s dwell in both durations. "
-        "Hour uses the first stop’s scheduled departure, falling back to arrival. Day type "
-        "uses the trip’s service date.",
-        "Chaque parcours relie deux arrêts prévus consécutifs du même trajet. Le temps perdu "
-        "est la durée observée moins la durée prévue entre les événements correspondants. "
-        "Une arrivée au premier arrêt ou un départ du second inclut le temps d’arrêt "
-        "correspondant dans les deux durées. "
-        "L’heure est celle du départ prévu au premier arrêt, ou de son arrivée à défaut. "
-        "Le type de jour suit la date de service du trajet.",
+        "Compares observed travel time between two consecutive stops of the same trip against "
+        "the timetable. Time lost is observed elapsed time minus scheduled elapsed time between "
+        "matching stop events; an arrival at the first stop or departure at the second includes "
+        "that stop’s dwell in both durations. Hour uses the first stop’s scheduled departure "
+        "(or arrival if missing), and day type uses the trip’s service date.",
+        "Compare le temps de parcours observé entre deux arrêts consécutifs d’un même trajet "
+        "au temps prévu à l’horaire. Le temps perdu correspond à la durée observée moins la "
+        "durée prévue entre les passages correspondants; une arrivée au premier arrêt ou un "
+        "départ au second inclut le temps d’arrêt correspondant dans les deux durées. L’heure "
+        "suit le départ prévu au premier arrêt (ou son arrivée à défaut), et le type de jour "
+        "suit la date de service du trajet.",
     ),
     exclusions=Text(
-        "Both stops must have the same observation basis. Evidence distinguishes stopped "
-        "vehicles, nearby GPS fixes, exact agency reports and estimates backed by vehicle "
-        "progression. We "
-        "exclude cancelled trips, missing observations or live data, nonpositive scheduled "
-        f"durations, negative observed durations and runs over {MAX_SEGMENT_RUN_MULTIPLE} "
-        "times their scheduled duration. Every recorded trip or vehicle feed must cover the "
-        f"observed span with poll intervals of at most {MAX_POLL_SPACING_SECONDS} seconds and "
-        f"publication age of at most {MAX_POLL_AGE_SECONDS} seconds plus the declared source lag.",
-        "Les deux arrêts doivent avoir la même base d’observation. Les données distinguent "
-        "les véhicules vus à l’arrêt, les positions GPS à proximité, les rapports exacts et "
-        "les estimations confirmées par "
-        "la progression du véhicule. Sont exclus les trajets annulés, les observations ou "
-        "données en direct manquantes, les durées prévues non positives, les durées observées "
-        f"négatives et celles dépassant {MAX_SEGMENT_RUN_MULTIPLE} fois la durée prévue. Chaque "
-        "flux de trajets ou de véhicules enregistré doit couvrir l’intervalle observé, avec "
-        f"au plus {MAX_POLL_SPACING_SECONDS} secondes entre relevés et "
-        f"{MAX_POLL_AGE_SECONDS} secondes depuis la publication plus le délai source déclaré.",
+        "Cancelled trips, lines without live data, segments missing an endpoint observation, "
+        "mismatched observation types and capture outages are left out. Both stops must share "
+        "the same observation basis (stopped vehicle, nearby GPS fix, exact agency report or "
+        "passed-stop estimate). Runs with nonpositive scheduled time, negative observed time or "
+        f"observed time above {MAX_SEGMENT_RUN_MULTIPLE} times the schedule are also excluded. "
+        "Every recorded trip or vehicle feed must cover the run with polls at most "
+        f"{MAX_POLL_SPACING_SECONDS} s apart and publication age at most "
+        f"{MAX_POLL_AGE_SECONDS} s plus the declared source lag.",
+        "Les trajets annulés, les lignes sans données en direct, les segments sans observation "
+        "aux deux extrémités, les observations de types non comparables et les interruptions de "
+        "collecte sont exclus. Les deux arrêts doivent reposer sur la même base d’observation "
+        "(véhicule à l’arrêt, GPS à proximité, rapport exact ou estimation après passage). Les "
+        "parcours ayant une durée prévue nulle ou négative, une durée observée négative ou une "
+        f"durée dépassant {MAX_SEGMENT_RUN_MULTIPLE} fois la durée prévue sont aussi exclus. "
+        "Chaque flux de trajets ou de véhicules enregistré doit couvrir le parcours avec des "
+        f"relevés espacés d’au plus {MAX_POLL_SPACING_SECONDS}\u00a0s et une publication "
+        f"datant d’au plus {MAX_POLL_AGE_SECONDS}\u00a0s plus le décalage déclaré de la source.",
     ),
     limits=Text(
-        f"At least {MIN_SEGMENT_RUNS} observed runs per result, so the upper tenth represents "
-        "at least two runs. Line totals pool matched runs across segments. Times are "
-        "calculated from the observed sample.",
-        f"Au moins {MIN_SEGMENT_RUNS} parcours observés par résultat, pour que le dixième "
-        "supérieur représente au moins deux parcours. Les totaux d’une ligne regroupent "
-        "les parcours appariés de ses segments. Les durées portent sur l’échantillon observé.",
+        "It shows where vehicles lose time relative to the schedule, not the cause of delay or "
+        f"how many riders were delayed. At least {MIN_SEGMENT_RUNS} observed runs are required "
+        "per result so the upper tenth represents at least two runs. Line totals pool matched "
+        "runs across segments.",
+        "Elle indique où les véhicules perdent du temps par rapport à l’horaire, sans dire la "
+        f"cause du retard ni le nombre d’usagers touchés. Il faut au moins {MIN_SEGMENT_RUNS} "
+        "parcours observés par résultat afin que le dixième supérieur représente au moins deux "
+        "parcours. Les totaux d’une ligne regroupent les parcours appariés de ses segments.",
     ),
     measures=(
         Measure(
             CORRIDOR_RANKING_DEFAULT,
             "seconds",
-            Text("Median time lost per run.", "Temps perdu médian par parcours."),
+            Text(
+                "Middle time lost per stop-to-stop run compared with the schedule.",
+                "Temps perdu médian par parcours entre deux arrêts par rapport à l’horaire.",
+            ),
             percentile=50,
             worst_first_descending=True,
             ranking_kinds=("segment",),
@@ -3227,7 +3320,9 @@ _CORRIDORS = Family(
             "p90_time_lost",
             "seconds",
             Text(
-                "90th percentile of time lost per run.", "90e centile du temps perdu par parcours."
+                "Time lost per run at or below which about 9 in 10 observed runs fall.",
+                "Temps perdu par parcours que ne dépassent pas environ 90\u00a0% des parcours "
+                "observés.",
             ),
             percentile=90,
             ranking_kinds=(),
@@ -3235,15 +3330,20 @@ _CORRIDORS = Family(
         Measure(
             "mean_time_lost",
             "seconds",
-            Text("Mean time lost per run.", "Temps perdu moyen par parcours."),
+            Text(
+                "Average time lost per stop-to-stop run compared with the schedule.",
+                "Temps perdu moyen par parcours entre deux arrêts par rapport à l’horaire.",
+            ),
             ranking_kinds=(),
         ),
         Measure(
             "total_vehicle_minutes_lost",
             "vehicle_minutes",
             Text(
-                "Net vehicle-minutes lost across observed runs, including time saved.",
-                "Minutes-véhicules nettes perdues, en tenant compte du temps gagné.",
+                "Net vehicle-minutes lost across observed runs, counting time saved against "
+                "time lost.",
+                "Minutes-véhicules nettes perdues sur l’ensemble des parcours observés, en "
+                "tenant compte du temps gagné.",
             ),
             worst_first_descending=True,
             ranking_kinds=("segment", "line"),
@@ -3256,22 +3356,22 @@ _CORRIDORS = Family(
 
 
 _FEED_HISTOGRAM_LIMITS = Text(
-    "Median and 90th percentile use one-second bins through 600 seconds. A percentile "
-    "whose rank reaches the overflow bin is reported as over 10 minutes.",
-    "La médiane et le 90e centile utilisent des classes d’une seconde jusqu’à 600 secondes. "
-    "Un centile dont le rang atteint la classe de dépassement est indiqué comme supérieur à "
-    "10 minutes.",
+    "Percentiles above 10 minutes are reported as over 10 minutes. Median and 90th percentile "
+    "use 1-s bins up to 10 minutes.",
+    "Un centile dépassant 10 minutes est indiqué comme supérieur à 10 minutes. La médiane et "
+    "le 90e centile utilisent des classes de 1\u00a0s jusqu’à 10 minutes.",
 )
 _VEHICLE_SCORECARD_LIMITS = Text(
-    "Time follows each vehicle’s captured state, with at most three reporting intervals "
-    "after the last capture of a state and up to the next capture. The final interval adds "
-    "one reporting interval. The reporting interval is the median spacing between the "
-    "feed's publications that day. The hour cut includes only time in that local hour.",
-    "La durée suit l’état du véhicule à la collecte. Elle se prolonge jusqu’à la collecte "
-    "suivante, au plus trois intervalles de signalement après la dernière collecte de cet "
-    "état. Le dernier intervalle ajoute un intervalle de signalement. L’intervalle de "
-    "signalement est l’écart médian entre les publications du flux ce jour-là. Le filtre "
-    "horaire retient uniquement la durée comprise dans cette heure locale.",
+    "Vehicle reporting time is inferred from captured positions rather than continuous "
+    "tracking. Each state extends to the next capture, capped at three reporting intervals "
+    "after its last sighting (or one interval for the final sighting), using that day’s "
+    "median spacing between feed publications; an hour filter keeps only time within that "
+    "local hour.",
+    "La durée de signalement est estimée à partir des positions captées plutôt que d’un suivi "
+    "continu. Chaque état se prolonge jusqu’à la collecte suivante, au plus trois intervalles "
+    "de signalement après sa dernière collecte (ou un intervalle pour la dernière), selon "
+    "l’écart médian entre les publications du flux ce jour-là; le filtre horaire ne retient "
+    "que la durée comprise dans cette heure locale.",
 )
 _SCORECARD = Family(
     id=SCORECARD,
@@ -3281,38 +3381,40 @@ _SCORECARD = Family(
     tables=(),
     minimum_sample=MIN_SCORECARD_SAMPLES,
     counts=Text(
-        "Counts are shown with each result.", "Les effectifs accompagnent chaque résultat."
+        "Counts accompany each scorecard result.",
+        "Les effectifs accompagnent chaque résultat du bilan.",
     ),
     exclusions=Text(
-        "Days without the needed clean tables are omitted.",
-        "Les jours sans les tables nettoyées requises sont omis.",
+        "Days without the required daily data are left out.",
+        "Les jours sans les données quotidiennes requises sont exclus.",
     ),
     limits=Text(
-        "The scorecard describes the open data the engine captured.",
-        "La fiche décrit les données ouvertes recueillies par le moteur.",
+        "This scorecard reflects only the public feeds Transit collected, not internal agency "
+        "systems.",
+        "Ce bilan porte uniquement sur les flux publics recueillis par Transit, et non sur les "
+        "systèmes internes de la société de transport.",
     ),
     measures=(
         Measure(
             "poll_success",
             "share",
             Text(
-                "Share of recorded capture attempts that returned a valid feed, including "
-                "empty and unchanged feeds.",
-                "Part des tentatives de collecte ayant renvoyé un flux valide, y compris "
-                "les flux vides ou inchangés.",
+                "Share of capture attempts that returned a valid feed, including empty or "
+                "unchanged replies.",
+                "Part des tentatives de collecte ayant renvoyé un flux valide, y compris les "
+                "flux vides ou inchangés.",
             ),
             counts=Text(
-                "Attempts, counts for each result, and share of attempts marked empty.",
-                "Tentatives, effectifs par résultat et part des tentatives ayant renvoyé "
-                "un flux marqué vide.",
+                "Counts capture attempts by outcome and tracks how often a feed came back empty.",
+                "Compte les tentatives par résultat et suit la part des réponses vides.",
             ),
             exclusions=Text(
-                "Attempts duplicated across clean-day windows count once.",
-                "Les tentatives communes à deux fenêtres ne comptent qu’une fois.",
+                "Duplicate attempts spanning two day windows count once.",
+                "Les tentatives communes à deux journées ne comptent qu’une fois.",
             ),
             limits=Text(
-                "Feeds without recorded attempts have no measured share.",
-                "La part est non mesurée pour les flux sans tentative enregistrée.",
+                "Feeds without recorded capture attempts have no measured share.",
+                "La part reste non mesurée pour les flux sans tentative enregistrée.",
             ),
             extra_tables=(FEED_POLLS,),
         ),
@@ -3320,29 +3422,30 @@ _SCORECARD = Family(
             "feed_update_interval",
             "seconds",
             Text(
-                "Time between consecutive changed publication timestamps, by feed.",
-                "Temps entre deux changements successifs de l’horodatage de publication, par flux.",
+                "Time between consecutive changes in a feed’s published timestamp.",
+                "Temps entre deux changements successifs de l’horodatage publié par un flux.",
             ),
             counts=Text(
-                "Successful polls with timestamps, intervals and overflow counts.",
-                "Collectes réussies horodatées, intervalles et dépassements.",
+                "Counts valid timestamped captures, intervals between updates and values over "
+                "10 minutes.",
+                "Compte les collectes valides horodatées, les intervalles entre mises à jour "
+                "et les valeurs dépassant 10 minutes.",
             ),
             exclusions=Text(
-                "Updates use timestamped valid attempts. All attempts, including errors, "
-                "count when checking for gaps of more than 120 seconds. Intervals crossing "
-                "such a gap and backward timestamps are excluded.",
-                "Les mises à jour utilisent les tentatives valides horodatées. Toutes les "
-                "tentatives, y compris les erreurs, servent à repérer les interruptions de plus "
-                "de 120 secondes. Les intervalles qui traversent une telle interruption et les "
-                "horodatages qui reculent sont exclus.",
+                "Intervals crossing a capture gap of more than 2 minutes or moving backward in "
+                "time are left out. Updates use valid timestamped attempts, while all attempts "
+                "(including errors) are checked for gaps.",
+                "Les intervalles qui traversent une interruption de plus de 2 minutes ou dont "
+                "l’horodatage recule sont exclus. Les mises à jour utilisent les tentatives "
+                "valides horodatées, mais toutes les tentatives (erreurs comprises) servent à "
+                "repérer les interruptions.",
             ),
             limits=Text(
-                _FEED_HISTOGRAM_LIMITS.en + " Capture spacing sets the shortest update cadence "
-                "we can resolve. Faster feeds appear to update at the polling interval.",
-                _FEED_HISTOGRAM_LIMITS.fr
-                + " L’espacement des collectes fixe la fréquence maximale "
-                "que l’on peut observer. Un flux plus rapide semble se mettre à jour à chaque "
-                "collecte.",
+                "Transit cannot see updates faster than its own polling interval: faster feeds "
+                "appear to update on every poll. " + _FEED_HISTOGRAM_LIMITS.en,
+                "Transit ne peut pas observer de mises à jour plus rapides que sa propre "
+                "fréquence de collecte\u00a0: un flux plus rapide semble se mettre à jour à "
+                "chaque collecte. " + _FEED_HISTOGRAM_LIMITS.fr,
             ),
             extra_tables=(FEED_POLLS,),
         ),
@@ -3350,18 +3453,20 @@ _SCORECARD = Family(
             "feed_age_at_capture",
             "seconds",
             Text(
-                "Time from publication to capture on valid polls, including empty and unchanged "
-                "feeds, by feed.",
-                "Temps entre la publication et la collecte lors des tentatives valides, "
-                "y compris pour les flux vides ou inchangés, par flux.",
+                "Elapsed time from when a feed says it was published to when Transit collected "
+                "it.",
+                "Temps écoulé entre l’horodatage publié par un flux et sa collecte par Transit.",
             ),
             counts=Text(
-                "Successful polls with timestamps, ages and overflow counts.",
-                "Collectes réussies horodatées, âges et dépassements.",
+                "Counts valid timestamped captures, measured ages and values over 10 minutes.",
+                "Compte les collectes valides horodatées, les âges mesurés et les valeurs "
+                "dépassant 10 minutes.",
             ),
             exclusions=Text(
-                "Missing timestamps and negative ages are counted apart.",
-                "Les horodatages manquants et les âges négatifs sont comptés à part.",
+                "Captures with a missing timestamp or a negative age are left out and counted "
+                "separately.",
+                "Les collectes sans horodatage ou dont l’âge est négatif sont exclues et "
+                "comptées à part.",
             ),
             limits=_FEED_HISTOGRAM_LIMITS,
             extra_tables=(FEED_POLLS,),
@@ -3370,19 +3475,21 @@ _SCORECARD = Family(
             "vehicle_field_completeness",
             "share",
             Text(
-                "Share of vehicle reporting time with each field present: trip, route, stop, "
-                "current status, occupancy status or percentage, and position.",
-                "Part de la durée de signalement des véhicules où chaque champ est présent : "
-                "trajet, ligne, arrêt, statut actuel, statut ou pourcentage d’occupation "
-                "et position.",
+                "Share of vehicle reporting time that includes each field: trip, line, stop, "
+                "current state, occupancy level or percentage, and position.",
+                "Part de la durée de signalement des véhicules où chaque champ est "
+                "présent\u00a0: trajet, ligne, arrêt, état actuel, niveau ou pourcentage "
+                "d’occupation et position.",
             ),
             counts=Text(
-                "Time with the field and total reporting time, in microseconds.",
-                "Durée avec le champ et durée totale de signalement, en microsecondes.",
+                "Compares vehicle reporting time carrying each field against total reporting "
+                "time.",
+                "Compare la durée de signalement comportant chaque champ à la durée totale de "
+                "signalement.",
             ),
             exclusions=Text(
-                "A declaration can indicate that a field is not published.",
-                "Une déclaration peut indiquer qu’un champ est non publié.",
+                "Fields declared unpublished by the network are shown as not published.",
+                "Les champs déclarés non publiés par le réseau sont indiqués comme non publiés.",
             ),
             limits=_VEHICLE_SCORECARD_LIMITS,
             extra_tables=(VEHICLE_POSITIONS, FEED_POLLS),
@@ -3391,31 +3498,37 @@ _SCORECARD = Family(
             "live_trip_coverage",
             "share",
             Text(
-                "Share of scheduled trips on routes seen in realtime on any measured day "
-                "that had a first capture.",
-                "Part des trajets prévus sur les lignes vues en temps réel au moins un jour "
-                "mesuré qui ont fait l’objet d’une première collecte.",
+                "Share of scheduled trips on live-tracked lines that appeared at least once in "
+                "the realtime feed.",
+                "Part des trajets prévus sur les lignes suivies en direct qui sont apparus au "
+                "moins une fois dans le flux en temps réel.",
             ),
             counts=Text(
-                "All scheduled trips, eligible trips, trips seen, and the count and share "
-                "of scheduled trips on routes never seen in the selection.",
-                "Tous les trajets prévus, les trajets admissibles, les trajets vus et le "
-                "nombre et la part des trajets sur des lignes jamais vues dans la sélection.",
+                "Compares trips seen in realtime with scheduled trips on lines seen on any "
+                "measured day. Evidence also reports the count and share of scheduled trips on "
+                "lines never seen in the selection.",
+                "Compare les trajets vus en temps réel aux trajets prévus sur les lignes vues "
+                "au moins un jour mesuré. Les données indiquent aussi le nombre et la part des "
+                "trajets sur des lignes jamais vues dans la sélection.",
             ),
             exclusions=Text(
-                "The coverage rate excludes added trips, days with a capture-gap trip state, "
-                "and routes never seen in the selection.",
-                "Le taux exclut les trajets ajoutés, les jours où un trajet présente une "
-                "interruption de collecte et les lignes jamais vues dans la sélection.",
+                "Added trips, days with capture gaps and lines never seen in realtime are left "
+                "out of the coverage rate.",
+                "Les trajets ajoutés, les jours touchés par une interruption de collecte et "
+                "les lignes jamais vues en temps réel sont exclus du taux.",
             ),
             limits=Text(
-                "Verified trip days can establish route presence even when a capture gap "
-                "excludes the day from the rate. The hour is the scheduled trip start. "
-                "The stop cut selects scheduled trips that serve that stop.",
-                "Les jours de trajets vérifiés peuvent établir la présence d’une ligne même "
-                "si une interruption de collecte exclut le jour du taux. L’heure correspond "
-                "au début prévu du trajet. Le filtre d’arrêt sélectionne les trajets prévus "
-                "qui desservent cet arrêt.",
+                "A line only has to appear once in the selected dates to enter the live-tracked "
+                "group; unseen trips may reflect missing feeds rather than cancelled service. "
+                "Verified trip days can still confirm a line’s presence even when a capture "
+                "gap excludes that day from the rate. Hour uses scheduled trip start, and stop "
+                "filters keep trips serving that stop.",
+                "Il suffit qu’une ligne apparaisse une fois aux dates choisies pour entrer "
+                "dans le groupe suivi en direct; un trajet absent peut refléter un manque du "
+                "flux plutôt qu’une annulation. Les jours vérifiés peuvent confirmer la "
+                "présence d’une ligne même lorsqu’une interruption exclut ce jour du taux. "
+                "L’heure suit le départ prévu du trajet et le filtre d’arrêt retient les "
+                "trajets qui desservent cet arrêt.",
             ),
             extra_tables=(TRIP_DAYS,),
         ),
@@ -3423,19 +3536,21 @@ _SCORECARD = Family(
             "vehicles_without_trip",
             "share",
             Text(
-                "Share of vehicle reporting time without a trip ID.",
-                "Part de la durée de signalement des véhicules sans identifiant de trajet.",
+                "Share of vehicle reporting time sent without a trip identifier.",
+                "Part de la durée de signalement des véhicules transmise sans identifiant de "
+                "trajet.",
             ),
             counts=Text(
-                "Reporting time, time without a trip and distinct vehicles reporting without one.",
-                "Durée de signalement, durée sans trajet et véhicules distincts signalés "
-                "sans trajet.",
+                "Compares reporting time missing a trip ID against total reporting time, and "
+                "counts distinct vehicles affected.",
+                "Compare la durée de signalement sans identifiant de trajet à la durée totale, "
+                "et compte les véhicules distincts touchés.",
             ),
             exclusions=Text(
-                "The line, direction and stop cuts require matching information in the "
-                "clean vehicle observations.",
-                "Les filtres de ligne, de direction et d’arrêt exigent une correspondance "
-                "dans les observations nettoyées des véhicules.",
+                "Line, direction and stop filters keep only reports that include a matching "
+                "line, direction or stop.",
+                "Les filtres par ligne, direction et arrêt retiennent uniquement les relevés "
+                "contenant une correspondance.",
             ),
             limits=_VEHICLE_SCORECARD_LIMITS,
             extra_tables=(VEHICLE_POSITIONS, FEED_POLLS),
@@ -3444,41 +3559,46 @@ _SCORECARD = Family(
             "prediction_error",
             "seconds",
             Text(
-                "By prediction horizon, sample count, median signed error (predicted minus "
-                "observed), 90th percentile absolute error and share within ±60 seconds.",
-                "Par horizon de prévision, effectif, médiane de l’erreur signée (prévu moins "
-                "observé), 90e centile de l’erreur absolue et part à ±60 secondes.",
+                "How close arrival predictions were to observed stops at each lead time, "
+                "reporting median error (predicted minus observed), 90th percentile error and "
+                "share within 1 minute.",
+                "Écart entre les prévisions d’arrivée et les passages observés selon "
+                "l’horizon, en indiquant l’erreur médiane (prévision moins observation), le "
+                "90e centile de l’erreur absolue et la part à au plus une minute près.",
             ),
             counts=Text(
-                "Counts by observation basis and exact inclusive ±60-second count.",
-                "Effectifs par source d’observation et nombre exact à ±60 secondes incluses.",
+                "Counts observed stop events by observation type and how many predictions "
+                "landed within 1 minute of actual arrival.",
+                "Compte les passages observés aux arrêts par type d’observation et le nombre "
+                "de prévisions tombant à au plus une minute de l’arrivée réelle.",
             ),
             exclusions=Text(
-                "Error statistics use reports of vehicles stopped at a stop. Nearby GPS fixes "
-                "and exact agency times are counted separately. Passed stops are excluded "
-                "because the observed time is itself a prediction.",
-                "Les statistiques d’erreur utilisent les relevés de véhicules immobilisés à "
-                "un arrêt. Les positions GPS à proximité et les heures exactes de l’agence "
-                "sont comptées à part. Les arrêts dépassés sont exclus car l’heure observée "
-                "est elle-même une prévision.",
+                "Passed stops are left out because their recorded time is itself a prediction. "
+                "Error figures use vehicles seen stopped at a stop, while nearby GPS fixes and "
+                "exact agency times are counted separately.",
+                "Les arrêts dépassés sont exclus parce que leur heure enregistrée est "
+                "elle-même une prévision. Les statistiques d’erreur reposent sur les véhicules "
+                "vus à l’arrêt, tandis que les positions GPS à proximité et les heures exactes "
+                "de la société de transport sont comptées à part.",
             ),
             limits=Text(
-                f"Percentiles use {DELAY_BIN_SECONDS}-second bins. The ±60-second band uses an "
-                f"inclusive boundary. Each horizon requires {MIN_PREDICTION_SAMPLES} "
-                "observed stop events. From "
-                "cleaning v10, each bucket takes the latest forecast from its lower lead "
-                "bound up to the next horizon, exclusive. The 30-minute bucket ends before "
-                "40 minutes. Trip-update capture must cover the lead window continuously. "
-                "The hour is the observed local hour. Requires cleaning v7 or later.",
-                f"Les centiles utilisent des classes de {DELAY_BIN_SECONDS} secondes. La bande "
-                "de ±60 secondes inclut ses bornes. "
-                f"Chaque horizon exige {MIN_PREDICTION_SAMPLES} événements observés à l’arrêt. "
-                "Depuis le nettoyage v10, on retient la prévision la plus récente entre "
-                "l’horizon indiqué et le suivant, exclu. L’horizon de 30 minutes exclut les "
-                "avances de 40 minutes ou plus. La collecte des mises à jour des trajets "
-                "doit être continue pendant cette période. L’heure est l’heure locale "
-                "observée. Nécessite le nettoyage v7 "
-                "ou une version ultérieure.",
+                "It checks only stops where a vehicle was observed stopped, not every "
+                "prediction riders saw on a screen. Each horizon requires at least "
+                f"{MIN_PREDICTION_SAMPLES} observed stop events. Percentiles use "
+                f"{DELAY_BIN_SECONDS}-s bins, and the ±1-minute band includes both boundaries. "
+                "Since 22 November 2026, each horizon takes the latest forecast from its lower "
+                "lead bound up to the next horizon (exclusive), with the 30-minute bucket "
+                "ending before 40 minutes ahead. Trip-update capture must cover the lead window "
+                "continuously, and hour uses the observed local hour.",
+                "Elle ne vérifie que les arrêts où un véhicule a été observé à l’arrêt, et non "
+                "toutes les prévisions affichées aux usagers. Chaque horizon exige au moins "
+                f"{MIN_PREDICTION_SAMPLES} passages observés aux arrêts. Les centiles "
+                f"utilisent des classes de {DELAY_BIN_SECONDS}\u00a0s, et la bande d’au plus "
+                "une minute inclut ses bornes. Depuis le 22 novembre 2026, chaque horizon "
+                "retient la prévision la plus récente entre son délai minimal et l’horizon "
+                "suivant, exclu; l’horizon de 30 minutes exclut les prévisions faites "
+                "40 minutes ou plus à l’avance. La collecte des mises à jour des trajets doit "
+                "être continue pendant cette période, et l’heure suit l’heure locale observée.",
             ),
             extra_tables=(PREDICTION_SAMPLES,),
         ),
@@ -3497,11 +3617,17 @@ _ACCESSIBILITY_COUNTS = {
     "trips_accessible": Text("Accessible trips", "Trajets accessibles"),
     "trips_not_accessible": Text("Not accessible trips", "Trajets non accessibles"),
     "trips_no_information": Text("Trips without information", "Trajets sans information"),
-    "trips_not_published": Text("Trips without a published column", "Trajets sans colonne publiée"),
+    "trips_not_published": Text(
+        "Trips without a published accessibility field",
+        "Trajets sans champ d’accessibilité publié",
+    ),
     "stops_accessible": Text("Accessible stops", "Arrêts accessibles"),
     "stops_not_accessible": Text("Not accessible stops", "Arrêts non accessibles"),
     "stops_no_information": Text("Stops without information", "Arrêts sans information"),
-    "stops_not_published": Text("Stops without a published column", "Arrêts sans colonne publiée"),
+    "stops_not_published": Text(
+        "Stops without a published accessibility field",
+        "Arrêts sans champ d’accessibilité publié",
+    ),
 }
 
 
@@ -3588,27 +3714,29 @@ _ACCESSIBILITY = Family(
     minimum_cleaning_version=8,
     columns=_ACCESSIBILITY_COUNTS,
     counts=Text(
-        "Each scheduled trip or distinct served stop counts once. Each stop uses its "
-        "declaration on its latest service date in the cut. The accessible share is the "
-        "count declared accessible (1) divided by the number with a published value. "
-        "A value of 0 means no information.",
-        "Chaque trajet prévu ou arrêt distinct desservi compte une fois. Pour chaque arrêt, "
-        "la déclaration retenue est celle de sa dernière date de service dans la sélection. "
-        "La part accessible divise le nombre déclaré accessible (1) par le nombre avec une "
-        "valeur publiée. La valeur 0 signifie aucune information.",
+        "Divides scheduled trips or distinct served stops declared wheelchair accessible by "
+        "those with a published declaration. Each scheduled trip or distinct served stop "
+        "counts once, using each stop’s declaration on its latest service date in the "
+        "selection. In GTFS, 1 means accessible and 0 means no information.",
+        "Divise les trajets prévus ou les arrêts distincts desservis déclarés accessibles en "
+        "fauteuil roulant par ceux qui comportent une déclaration publiée. Chaque trajet prévu "
+        "ou arrêt distinct desservi compte une fois, selon la déclaration de l’arrêt à sa "
+        "dernière date de service dans la sélection. En GTFS, 1 signifie accessible et 0 "
+        "signifie aucune information.",
     ),
     exclusions=Text(
-        "Trips added by the feed are excluded. Trips or stops whose edition does not declare "
-        "the accessibility column are not published rather than counted as zero.",
-        "Les trajets ajoutés par les données en direct sont exclus. Les trajets ou arrêts dont "
-        "l’édition ne déclare pas la colonne d’accessibilité sont non publiés, jamais comptés "
-        "comme zéro.",
+        "Added trips are left out, and trips or stops in schedules without an accessibility "
+        "field are marked not published rather than counted as zero.",
+        "Les trajets ajoutés sont exclus, et les trajets ou arrêts dont l’horaire ne publie "
+        "pas le champ d’accessibilité sont indiqués comme non publiés, jamais comptés comme zéro.",
     ),
     limits=Text(
-        "The value is the agency's declaration, not an observed condition. A stop inherits its "
-        "parent station's declaration when it publishes none of its own.",
-        "La valeur est la déclaration de l’exploitant, pas une condition observée. Un arrêt "
-        "hérite de la déclaration de sa station parente lorsqu’il n’en publie pas.",
+        "It reflects what the agency declares in its timetable, not whether a ramp worked or "
+        "an elevator was in service. A stop inherits its parent station’s declaration when it "
+        "publishes none of its own.",
+        "Elle reflète ce que déclare la société de transport dans son horaire, et non si une "
+        "rampe fonctionnait ou si un ascenseur était en service. Un arrêt hérite de la "
+        "déclaration de sa station parente lorsqu’il n’en publie pas lui-même.",
     ),
     measures=(
         Measure(
@@ -3616,7 +3744,8 @@ _ACCESSIBILITY = Family(
             "share",
             Text(
                 "Share of scheduled trips the agency declares wheelchair accessible.",
-                "Part des trajets prévus que l’exploitant déclare accessibles en fauteuil roulant.",
+                "Part des trajets prévus que la société de transport déclare accessibles en "
+                "fauteuil roulant.",
             ),
             ranking_kinds=(),
         ),
@@ -3625,8 +3754,8 @@ _ACCESSIBILITY = Family(
             "share",
             Text(
                 "Share of distinct served stops the agency declares wheelchair accessible.",
-                "Part des arrêts distincts desservis que l’exploitant déclare accessibles en "
-                "fauteuil roulant.",
+                "Part des arrêts distincts desservis que la société de transport déclare "
+                "accessibles en fauteuil roulant.",
             ),
             ranking_kinds=(),
         ),
@@ -3649,19 +3778,19 @@ _DELAY_DISTRIBUTION = Measure(
     id=_DELAY_DISTRIBUTION_ID,
     unit="share",
     definition=Text(
-        "Share of observed stop events in each minute range against the timetable. "
-        "The outer ranges count more than 5 minutes early and 15 minutes late or more. "
+        "Share of observed stop events falling in each one-minute delay band against the "
+        "timetable. Outer bands count more than 5 minutes early and 15 minutes late or more. "
         "Exactly 1 minute early and exactly 5 minutes late both count as on time.",
-        "Part des passages observés aux arrêts par tranche d’une minute par rapport à l’horaire. "
-        "Les tranches aux extrémités comptent plus de 5 minutes d’avance et 15 minutes "
-        "de retard ou plus. Un passage avec exactement 1 minute d’avance ou 5 minutes "
-        "de retard est à l’heure.",
+        "Part des passages observés aux arrêts dans chaque tranche d’une minute par rapport à "
+        "l’horaire. Les tranches extrêmes comptent plus de 5 minutes d’avance et 15 minutes de "
+        "retard ou plus. Un passage avec exactement 1 minute d’avance ou 5 minutes de retard "
+        "est à l’heure.",
     ),
     ranking_kinds=(),
 )
 _DELAY_DISTRIBUTION_COLUMNS = {
-    "min_seconds": Text("Minimum delay (s)", "Écart minimal (s)"),
-    "max_seconds": Text("Maximum delay (s)", "Écart maximal (s)"),
+    "min_seconds": Text("Minimum delay (s)", "Retard minimal (s)"),
+    "max_seconds": Text("Maximum delay (s)", "Retard maximal (s)"),
     "stop_events": Text("Stop events", "Passages aux arrêts"),
 }
 _SELECTIONS = {
@@ -3843,7 +3972,7 @@ class ReadWindow:
         if ALERTS in self.paths and self.measured and (self.missing or self.not_tracked):
             return Text(
                 "Some dates lack alert history. Published periods can still cover those dates.",
-                "L’historique des alertes manque à certaines dates. Les périodes publiées "
+                "L’historique des avis manque à certaines dates. Les périodes publiées "
                 "peuvent quand même couvrir ces dates.",
             )._asdict()
         return _PARTIAL._asdict() if self.measured and self.missing else None

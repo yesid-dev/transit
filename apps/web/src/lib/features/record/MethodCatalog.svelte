@@ -17,7 +17,16 @@
 	import ScreenTitle from './ScreenTitle.svelte';
 	import StateMark from './StateMark.svelte';
 	import { methodCopy, methodReferenceStates } from './methodCatalog.copy.ts';
-	import { methodGroups, methodName, methodParts, methodSummary } from './methodCatalogText';
+	import {
+		buildMethodViews,
+		dataUserFields,
+		methodGroups,
+		methodName,
+		sameAsName,
+		type DataUserNote,
+		type FieldPart,
+		type GroupView,
+	} from './methodCatalogText';
 	import { recordSectionLinks } from './recordLinks.ts';
 	import { choose, lastGoodNote, recordConnection, tally } from './recordText.ts';
 
@@ -87,93 +96,140 @@
 	}
 </script>
 
-{#snippet measure(
-	entry: MethodEntry,
+{#snippet fieldList(
+	parts: readonly FieldPart[],
 	byId: Map<string, MethodEntry>,
-	details: ReturnType<typeof methodParts>[string],
-	nested = false,
+	minimumSample: number | null,
+	rankingMinimumSample: number | null,
+	since: string | null,
 )}
-	<RecordCard
-		title={methodName(entry, locale)}
-		bind:open={openCards[entry.id]}
-		disclosure={{
-			id: entry.id,
-			description: methodSummary(entry, locale),
-			nested,
-		}}
-	>
+	{#if parts.length || minimumSample != null || rankingMinimumSample != null || since}
 		<dl class="method-parts">
-			{#each details.parts as part (part.field)}
+			{#each parts as part (part.field)}
 				<div>
 					<dt>{copy[part.field]}</dt>
 					{#if part.lead}<dd>{part.lead}</dd>{/if}
-					{#each part.shared as owner (owner)}
+					{#if part.shared.length}
 						<dd>
-							<a class="method-link" href={'#' + owner}>{methodName(byId.get(owner)!, locale)}</a>
-						</dd>
-					{/each}
-					{#if !part.lead && !part.shared.length}<dd>{copy.missing}</dd>{/if}
-					{#if part.field === 'limits' && entry.minimum_sample > 0}
-						<dd>
-							{copy.minimum}{locale === 'fr' ? ' : ' : ': '}{tally(entry.minimum_sample, locale)}
-						</dd>
-					{/if}
-					{#if part.field === 'limits' && entry.ranking_minimum_sample}
-						<dd>
-							{copy.rankingMinimum}{locale === 'fr' ? ' : ' : ': '}{tally(
-								entry.ranking_minimum_sample,
-								locale,
-							)}
+							{copy.sameAs}
+							{#each part.shared as owner, index (owner)}{#if index > 0},
+								{/if}<a class="method-link" href={'#' + owner}
+									>{sameAsName(byId.get(owner)!, locale)}</a
+								>{/each}.
 						</dd>
 					{/if}
 				</div>
 			{/each}
-			<div>
-				<dt>{copy.since}</dt>
-				<dd><time datetime={entry.since}>{longDate(entry.since, locale)}</time></dd>
-			</div>
+			{#if minimumSample != null}
+				<div>
+					<dt>{copy.minimum}</dt>
+					<dd>{tally(minimumSample, locale)}</dd>
+				</div>
+			{/if}
+			{#if rankingMinimumSample != null}
+				<div>
+					<dt>{copy.rankingMinimum}</dt>
+					<dd>{tally(rankingMinimumSample, locale)}</dd>
+				</div>
+			{/if}
+			{#if since}
+				<div>
+					<dt>{copy.since}</dt>
+					<dd><time datetime={since}>{longDate(since, locale)}</time></dd>
+				</div>
+			{/if}
 		</dl>
-		{#if details.definition || details.parts.some(({ notes }) => notes)}
-			<div class="mt-3">
-				<RecordCard
-					title={copy.notes}
-					bind:open={openCards[entry.id + '-notes']}
-					disclosure={{ id: entry.id + '-notes', nested: true }}
-				>
-					{#if details.definition}<p class="mb-3">{details.definition}</p>{/if}
-					<dl class="method-parts">
-						{#each details.parts as part (part.field)}
-							{#if part.notes}<div>
-									<dt>{copy[part.field]}</dt>
-									<dd>{part.notes}</dd>
-								</div>{/if}
-						{/each}
-					</dl>
-				</RecordCard>
-			</div>
-		{/if}
-	</RecordCard>
+	{/if}
 {/snippet}
 
-{#snippet group(
-	group: ReturnType<typeof methodGroups>['groups'][number],
-	byId: Map<string, MethodEntry>,
-	details: ReturnType<typeof methodParts>,
-)}
-	{#if group.entries.length === 1}
-		{@const entry = group.entries[0]}
-		{@render measure(entry, byId, details[entry.id])}
+{#snippet dataUsersDisclosure(id: string, notes: readonly DataUserNote[])}
+	{#if notes.length}
+		<div class="mt-4">
+			<RecordCard
+				title={copy.dataUsers}
+				bind:open={openCards[id + '-notes']}
+				disclosure={{ id: id + '-notes', nested: true }}
+			>
+				<dl class="method-notes">
+					{#each notes as note, index (index)}
+						<div>
+							{#if note.label || note.field}
+								<dt>
+									{#if note.label && note.field}{note.label} · {copy[
+											note.field
+										]}{:else if note.label}{note.label}{:else if note.field}{copy[note.field]}{/if}
+								</dt>
+							{/if}
+							<dd>{note.text}</dd>
+						</div>
+					{/each}
+				</dl>
+			</RecordCard>
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet groupCard(view: GroupView, byId: Map<string, MethodEntry>)}
+	{#if view.measures.length === 1}
+		{@const item = view.measures[0]}
+		<RecordCard
+			title={methodName(item.entry, locale)}
+			bind:open={openCards[item.entry.id]}
+			disclosure={{
+				id: item.entry.id,
+				description: item.summary,
+				chevronBesideTitle: true,
+			}}
+		>
+			{@render fieldList(
+				item.parts,
+				byId,
+				item.minimumSample,
+				item.rankingMinimumSample,
+				item.since,
+			)}
+			{@render dataUsersDisclosure(item.entry.id, view.dataUsers)}
+		</RecordCard>
 	{:else}
 		<RecordCard
-			bind:open={openCards[group.id]}
-			title={group.name}
-			disclosure={{ id: group.id, description: group.summary }}
+			bind:open={openCards[view.group.id]}
+			title={view.group.name}
+			disclosure={{
+				id: view.group.id,
+				description: view.group.summary,
+				chevronBesideTitle: true,
+			}}
 		>
-			<div class="grid min-w-0 gap-3">
-				{#each group.entries as entry (entry.id)}
-					{@render measure(entry, byId, details[entry.id], true)}
-				{/each}
+			<div class="grid min-w-0 gap-5">
+				<div class="grid min-w-0 gap-4">
+					{#each view.measures as item (item.entry.id)}
+						<section id={item.entry.id} class="measure-item grid min-w-0 gap-2">
+							<h3>{methodName(item.entry, locale)}</h3>
+							<p>{item.summary}</p>
+							{@render fieldList(
+								item.parts,
+								byId,
+								item.minimumSample,
+								item.rankingMinimumSample,
+								item.since,
+							)}
+						</section>
+					{/each}
+				</div>
+				{#if view.sharedParts.length || view.sharedMinimumSample != null || view.sharedRankingMinimumSample != null || view.sharedSince}
+					<div class="grid min-w-0 gap-2 pt-1">
+						<p class="shared-heading">{copy.sharedAcross}</p>
+						{@render fieldList(
+							view.sharedParts,
+							byId,
+							view.sharedMinimumSample,
+							view.sharedRankingMinimumSample,
+							view.sharedSince,
+						)}
+					</div>
+				{/if}
 			</div>
+			{@render dataUsersDisclosure(view.group.id, view.dataUsers)}
 		</RecordCard>
 	{/if}
 {/snippet}
@@ -184,10 +240,9 @@
 			{#each entries as entry (entry.id)}
 				{@const share = recordSectionLinks(canonical, entry.id).share}
 				<li>
-					Transit. {title}. {entry.text[locale].definition} ({versionNumber(entry.method_version)}, {longDate(
-						entry.since,
-						locale,
-					)}).
+					Transit. {title}. {registryUnitText(entry.text[locale].definition, locale)} ({versionNumber(
+						entry.method_version,
+					)}, {longDate(entry.since, locale)}).
 					{#each share.split(/(?<=[/?&=#_.:%-])/u) as part, index (index)}{part}<wbr />{/each}
 				</li>
 			{/each}
@@ -231,8 +286,10 @@
 					</RecordGroup>
 				{:else}
 					{@const { groups, extra } = methodGroups(result.answer, locale)}
+					{@const allViews = buildMethodViews([...groups, ...extra], locale)}
+					{@const primaryViews = allViews.slice(0, groups.length)}
+					{@const extraViews = allViews.slice(groups.length)}
 					{@const ordered = [...groups, ...extra].flatMap(({ entries }) => entries)}
-					{@const parts = methodParts(ordered, locale)}
 					{@const byId = new Map(ordered.map((entry) => [entry.id, entry]))}
 					<RecordGroup>
 						<div data-slot="screen-answer">
@@ -275,7 +332,7 @@
 									>
 								{/if}
 							</header>
-							{#each groups as item (item.id)}{@render group(item, byId, parts)}{/each}
+							{#each primaryViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 							<RecordCard
 								title={copy.range.title}
 								bind:open={openCards['ranking-range']}
@@ -288,11 +345,23 @@
 											<dd>{copy.range[field]}</dd>
 										</div>
 									{/each}
-									<div>
-										<dt>{copy.since}</dt>
-										<dd>{copy.missing}</dd>
-									</div>
 								</dl>
+								<div class="mt-4">
+									<RecordCard
+										title={copy.dataUsers}
+										bind:open={openCards['ranking-range-notes']}
+										disclosure={{ id: 'ranking-range-notes', nested: true }}
+									>
+										<dl class="method-notes">
+											{#each dataUserFields as field (field)}
+												<div>
+													<dt>{copy[field]}</dt>
+													<dd>{copy.range.dataUsers[field]}</dd>
+												</div>
+											{/each}
+										</dl>
+									</RecordCard>
+								</div>
 							</RecordCard>
 							<RecordCard title={copy.statesTitle}>
 								<dl class="method-parts">
@@ -313,10 +382,10 @@
 								</div>
 							</RecordCard>
 						</RecordGroup>
-						{#if extra.length}
+						{#if extraViews.length}
 							<RecordGroup aria-labelledby="more-methods">
 								<h2 id="more-methods">{copy.more}</h2>
-								{#each extra as item (item.id)}{@render group(item, byId, parts)}{/each}
+								{#each extraViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 							</RecordGroup>
 						{/if}
 					</div>
@@ -338,19 +407,32 @@
 		word-break: normal;
 	}
 	.method-parts,
+	.method-notes,
 	.method-limits {
 		display: grid;
 		gap: var(--space-card-gap);
 	}
+	.measure-item {
+		scroll-margin-block-start: var(--space-page-x);
+	}
 	dt {
 		font-weight: 600;
+		color: var(--muted-foreground);
+	}
+	.shared-heading {
+		margin: 0;
+		font-size: var(--text-small);
+		font-weight: 600;
+		color: var(--muted-foreground);
 	}
 	h2 {
 		font-size: var(--text-heading);
 		font-weight: 700;
 	}
-	dt {
-		color: var(--muted-foreground);
+	h3 {
+		margin: 0;
+		font-size: inherit;
+		font-weight: 600;
 	}
 	.method-link {
 		color: var(--primary);

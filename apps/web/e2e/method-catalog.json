@@ -57,8 +57,8 @@
 			"fr": {
 				"definition": "Retard typique aux arrêts observés.",
 				"unit": "Secondes",
-				"counts": "Chaque arrêt avec une lecture compte une fois.",
-				"exclusions": "Exclut les arrêts sans lecture.",
+				"counts": "Chaque arrêt avec un relevé compte une fois.",
+				"exclusions": "Exclut les arrêts sans relevé.",
 				"limits": "N’explique pas pourquoi un véhicule était en retard.",
 				"histogram": "Lit un histogramme par tranches de 15 secondes."
 			}

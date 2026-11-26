@@ -29,7 +29,6 @@ it('matches the bounds used by the engine registry on How we measure', () => {
 	expect(registry.split(/\r?\n/)).toContain('EARLY_LIMIT_SECONDS = ' + ON_TIME_LIMITS_S.from);
 	expect(registry.split(/\r?\n/)).toContain('LATE_LIMIT_SECONDS = ' + ON_TIME_LIMITS_S.through);
 	expect(registry).toContain('method_version="punctuality-v3"');
-	expect(registry).toContain('seconds late, including both limits.');
 	expect(registry).toContain(
 		'delay_seconds BETWEEN {EARLY_LIMIT_SECONDS} AND {LATE_LIMIT_SECONDS}',
 	);

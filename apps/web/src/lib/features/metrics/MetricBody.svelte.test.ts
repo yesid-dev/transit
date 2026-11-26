@@ -85,7 +85,10 @@ function expectContent(element: HTMLElement, entry: MetricEntry, locale: Locale)
 	expect(code?.textContent).toBe(entry.sql);
 	expect(code).toHaveAttribute('tabindex', '0');
 	expect(code).toHaveAttribute('role', 'region');
-	expect(code).toHaveAttribute('aria-label', `${metricsCopy[locale].sqlAria}: ${entry.sciName}`);
+	expect(code).toHaveAttribute(
+		'aria-label',
+		`${metricsCopy[locale].sqlAria}${locale === 'fr' ? '\u00a0: ' : ': '}${entry.sciName}`,
+	);
 }
 
 describe('server-rendered methodology bodies', () => {

@@ -98,10 +98,155 @@ it('puts shared family prose in one reading and links to it from its siblings', 
 		}),
 	});
 	expect(await screen.findAllByText(/Each stop with a reading counts once\./)).toHaveLength(1);
-	expect(document.getElementById('early')?.querySelector('a[href="#on_time"]')).toHaveTextContent(
-		'On-time share',
-	);
+	const early = document.getElementById('early')!;
+	expect(early).toHaveTextContent('The same as the on-time share.');
+	expect(early.querySelector('a[href="#on_time"]')).toHaveTextContent('the on-time share');
 });
+
+it.each([
+	['en', 'For data users', 'The method registry does not specify this.'],
+	['fr', 'Pour les utilisateurs de données', 'Le registre des méthodes ne le précise pas.'],
+] as const)(
+	'routes histograms to %s "For data users", hides empty fields and caps strokes per card',
+	async (locale, notesTitle, placeholder) => {
+		const entries: MethodEntry[] = [
+			{
+				...fixtureDelay,
+				id: 'on_time',
+				minimum_sample: 30,
+				text: {
+					en: {
+						...fixtureDelay.text.en,
+						histogram: undefined,
+					},
+					fr: {
+						...fixtureDelay.text.fr,
+						histogram: undefined,
+					},
+				},
+			},
+			{
+				...fixtureDelay,
+				id: 'median_delay',
+				minimum_sample: 30,
+			},
+			{
+				...fixtureDelay,
+				id: 'p90_delay',
+				minimum_sample: 30,
+			},
+			{
+				...fixtureDelay,
+				id: 'crowding_empty',
+				family: 'crowding',
+				family_text: { en: 'Crowding', fr: 'Occupation des véhicules' },
+				minimum_sample: 1,
+				text: {
+					en: {
+						definition: 'Share of vehicle time when vehicles reported being empty.',
+						unit: 'Share',
+						counts:
+							'Divides vehicle time at each level by total vehicle time. Extra technical note.',
+						exclusions: '',
+						limits: 'Cannot count riders on board.',
+					},
+					fr: {
+						definition: 'Part du temps-véhicule pendant laquelle les véhicules étaient vides.',
+						unit: 'Part',
+						counts: 'Divise le temps-véhicule par niveau. Note technique supplémentaire.',
+						exclusions: '',
+						limits: 'Ne compte pas les usagers à bord.',
+					},
+				},
+			},
+			{
+				...fixtureDelay,
+				id: 'crowding_full',
+				family: 'crowding',
+				family_text: { en: 'Crowding', fr: 'Occupation des véhicules' },
+				minimum_sample: 1,
+				text: {
+					en: {
+						definition: 'Share of vehicle time when vehicles reported being full.',
+						unit: 'Share',
+						counts:
+							'Divides vehicle time at each level by total vehicle time. Extra technical note.',
+						exclusions: '',
+						limits: 'Cannot count riders on board.',
+					},
+					fr: {
+						definition: 'Part du temps-véhicule pendant laquelle les véhicules étaient pleins.',
+						unit: 'Part',
+						counts: 'Divise le temps-véhicule par niveau. Note technique supplémentaire.',
+						exclusions: '',
+						limits: 'Ne compte pas les usagers à bord.',
+					},
+				},
+			},
+		];
+		const { container } = render(MethodCatalog, {
+			locale,
+			url: new URL(
+				locale === 'fr'
+					? 'https://transit1.yesid.dev/fr/metrics'
+					: 'https://transit1.yesid.dev/metrics',
+			),
+			city: 'stm',
+			period,
+			catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: entries }),
+		});
+		expect(await screen.findAllByText(notesTitle, { selector: 'button *' })).not.toHaveLength(0);
+		expect(document.body.textContent).not.toContain(placeholder);
+
+		const percentiles = document.getElementById('delay-percentiles')!;
+		expect(percentiles).toHaveTextContent(
+			locale === 'fr' ? 'Comme pour la part à l’heure.' : 'The same as the on-time share.',
+		);
+		const percentilesNotes = document.getElementById('delay-percentiles-notes')!;
+		expect(percentilesNotes).toHaveTextContent(locale === 'fr' ? 'tranches de 15' : '15-s steps');
+		expect(percentilesNotes).toHaveTextContent(locale === 'fr' ? 'Calcul' : 'How it is calculated');
+
+		const onTime = document.getElementById('on_time')!;
+		for (const [label, value] of [
+			[locale === 'fr' ? 'Échantillon minimal' : 'Minimum sample', '30'],
+			[
+				locale === 'fr'
+					? 'Échantillon minimal pour les classements'
+					: 'Minimum sample for rankings',
+				'45',
+			],
+		] as const) {
+			const field = within(onTime).getByText(label, { exact: true, selector: 'dt' }).parentElement!;
+			expect(within(field).getByText(value, { exact: true, selector: 'dd' })).toBeVisible();
+			expect(field).not.toHaveTextContent(
+				locale === 'fr' ? 'Ce que la mesure ne peut pas dire' : 'What it cannot tell',
+			);
+		}
+
+		const rankingNotes = document.getElementById('ranking-range-notes')!;
+		expect(rankingNotes).toHaveTextContent(
+			locale === 'fr' ? 'Ordre des lignes' : 'How rows are ordered',
+		);
+		expect(rankingNotes).toHaveTextContent(locale === 'fr' ? 'Mise en garde' : 'Caveat');
+		for (const riderLabel of locale === 'fr'
+			? ['Ce que la mesure compte', 'Ce que la mesure exclut', 'Ce que la mesure ne peut pas dire']
+			: ['What it counts', 'What it leaves out', 'What it cannot tell']) {
+			expect(percentilesNotes).not.toHaveTextContent(riderLabel);
+			expect(rankingNotes).not.toHaveTextContent(riderLabel);
+		}
+
+		const crowding = document.getElementById('family-crowding')!;
+		expect(crowding).not.toHaveTextContent(
+			locale === 'fr' ? 'Ce que la mesure exclut' : 'What it leaves out',
+		);
+		expect(crowding.querySelectorAll('[data-record-disclosure]')).toHaveLength(1);
+
+		const topCards = container.querySelectorAll<HTMLElement>('[data-slot="card"]');
+		for (const card of topCards) {
+			expect(card.querySelectorAll('[data-slot="separator"]').length).toBeLessThanOrEqual(6);
+		}
+	},
+);
 
 it('describes closed families with all of their measures', async () => {
 	const entries = ['early', 'late', 'vehicle_early', 'vehicle_late'].map((id) => ({

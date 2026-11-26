@@ -212,3 +212,118 @@ describe('metricInfoFor — (i) affordance payload', () => {
 		expect(metricInfoFor('p50p90', 'fr').href).toBe('/fr/metrics#p50-p90');
 	});
 });
+
+describe('metrics archive — plain citizen EN and Québec French guards', () => {
+	const enArchiveProse = [
+		metricsCopy.en.kicker,
+		metricsCopy.en.lede,
+		...Object.values(metricsCopy.en.sections),
+		metricsCopy.en.provenance.body,
+		metricsCopy.en.provenance.howWeMeasure.label,
+		metricsCopy.en.provenance.howWeMeasure.serviceDay.heading,
+		metricsCopy.en.provenance.howWeMeasure.serviceDay.body,
+		metricsCopy.en.provenance.howWeMeasure.confidenceInterval.body,
+		metricsCopy.en.provenance.howWeMeasure.rounding.heading,
+		metricsCopy.en.provenance.howWeMeasure.rounding.body,
+		metricsCopy.en.provenance.howWeMeasure.constants.heading,
+		metricsCopy.en.provenance.howWeMeasure.constants.body('30', '1.96'),
+		metricsCopy.en.provenance.howWeMeasure.constants.absent,
+		metricsCopy.en.lacunes.lede,
+		...metricsCopy.en.lacunes.gaps.flatMap((g) => [g.heading, g.body]),
+		metricsCopy.en.livePositions.title,
+		metricsCopy.en.livePositions.lede,
+		...metricsCopy.en.livePositions.points.flatMap((p) => [p.heading, p.body]),
+		...Object.values(metricsCopy.en.confidence.levels).flatMap((l) => [l.chip, l.meaning]),
+		...METRICS.flatMap((m) => [
+			m.name.en,
+			m.oneLiner.en,
+			m.definition.en,
+			m.math.en,
+			m.notReally.en,
+			...m.caveats.en,
+		]),
+	].join('\n');
+
+	const frArchiveProse = [
+		metricsCopy.fr.kicker,
+		metricsCopy.fr.lede,
+		...Object.values(metricsCopy.fr.sections),
+		metricsCopy.fr.provenance.body,
+		metricsCopy.fr.provenance.howWeMeasure.label,
+		metricsCopy.fr.provenance.howWeMeasure.serviceDay.heading,
+		metricsCopy.fr.provenance.howWeMeasure.serviceDay.body,
+		metricsCopy.fr.provenance.howWeMeasure.confidenceInterval.body,
+		metricsCopy.fr.provenance.howWeMeasure.confidenceInterval.reference,
+		metricsCopy.fr.provenance.howWeMeasure.rounding.heading,
+		metricsCopy.fr.provenance.howWeMeasure.rounding.body,
+		metricsCopy.fr.provenance.howWeMeasure.constants.heading,
+		metricsCopy.fr.provenance.howWeMeasure.constants.body('30', '1,96'),
+		metricsCopy.fr.provenance.howWeMeasure.constants.absent,
+		metricsCopy.fr.lacunes.lede,
+		...metricsCopy.fr.lacunes.gaps.flatMap((g) => [g.heading, g.body]),
+		metricsCopy.fr.livePositions.title,
+		metricsCopy.fr.livePositions.lede,
+		...metricsCopy.fr.livePositions.points.flatMap((p) => [p.heading, p.body]),
+		...Object.values(metricsCopy.fr.confidence.levels).flatMap((l) => [l.chip, l.meaning]),
+		...Object.values(metricsCopy.fr.clusters),
+		...METRICS.flatMap((m) => [
+			m.name.fr,
+			m.oneLiner.fr,
+			m.definition.fr,
+			m.math.fr,
+			m.notReally.fr,
+			...m.caveats.fr,
+		]),
+	].join('\n');
+
+	it('keeps internal versions, storage tables, slices, NULL and generic bus out of archive prose', () => {
+		const banned = [
+			/\bspine\b/i,
+			/\bsilver\b/i,
+			/\bslice-[\w.-]+/i,
+			/\bS14\b/,
+			/\bmigration \d+/i,
+			/\b__unrouted__\b/,
+			/\bNULL\b/,
+			/\bNULLIF\b/,
+			/\bCOALESCE\b/,
+			/\b(?:live|reliability|alerts)-2\b/i,
+			/\bversion[- ]1\b/i,
+			/\bmin_n_rate\b/,
+			/\bwilson_z\b/,
+			/\bprovenance\.methodology\b/,
+			/\bsnapshot\b/i,
+			/\binstantané\b/i,
+			/\bchaîne de traitement\b/i,
+			/\bbus(?:es)?\b/i,
+			/\bautobus\b/i,
+		];
+		for (const pattern of banned) {
+			expect(enArchiveProse, `EN matched ${pattern}`).not.toMatch(pattern);
+			expect(frArchiveProse, `FR matched ${pattern}`).not.toMatch(pattern);
+		}
+	});
+
+	it('keeps resolved Québec French meaning, glossary and typography regressions out of archive prose', () => {
+		const bannedFr = [
+			/fut JAMAIS/i,
+			/figure de complétude/i,
+			/\bpercentiles?\b/i,
+			/\bmétriques?\b/i,
+			/\bprédictions?\b/i,
+			/\bencombrement\b/i,
+			/(?<!\p{L})seaux?(?!\p{L})/iu,
+			/\bfiligrané\b/i,
+			/\bdrapeau\b/i,
+			/dépassement physique/i,
+			/\bconnexion\b/i,
+			/\bproxy\b/i,
+			/9999\.9999/,
+			/Service assuré/,
+			/\bvs\b/i,
+		];
+		for (const pattern of bannedFr) {
+			expect(frArchiveProse, `FR matched ${pattern}`).not.toMatch(pattern);
+		}
+	});
+});

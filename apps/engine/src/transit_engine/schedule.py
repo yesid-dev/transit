@@ -36,6 +36,8 @@ def period_sql(hour: str) -> str:
 
 
 def periods_text(language: str) -> str:
-    return ", ".join(
-        f"{getattr(p, language)} {p.start_hour:02d}:00–{p.end_hour:02d}:00" for p in PERIODS
-    )
+    if language == "fr":
+        return ", ".join(
+            f"{p.fr.lower()} ({p.start_hour}\u00a0h à {p.end_hour}\u00a0h)" for p in PERIODS
+        )
+    return ", ".join(f"{p.en} {p.start_hour:02d}:00–{p.end_hour:02d}:00" for p in PERIODS)

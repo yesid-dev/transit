@@ -22,19 +22,19 @@
 	const L: Record<Locale, Labels> = {
 		fr: {
 			conformant: 'Flux conforme',
-			outOfNorm: 'Flux hors-norme',
+			outOfNorm: 'Flux hors norme',
 			detail: (n, members) =>
 				`${n} champ${n > 1 ? 's' : ''} non modélisé${n > 1 ? 's' : ''} (${members})`,
 			conformantTitle:
-				'Le flux GTFS le plus récent ne contient que des champs que la chaîne de traitement modélise.',
+				'Le flux GTFS le plus récent ne contient que des champs que Transit prend en charge.',
 			outOfNormTitle: (rows, members) =>
-				`Le flux contient des champs hors du modèle standard (${members}) : ${intl.number('fr').format(rows)} ligne(s) conservée(s) telles quelles, jamais supprimées.`,
+				`Le flux contient des champs hors du modèle standard (${members})\u00a0: ${intl.number('fr').format(rows)} ${rows < 2 ? 'rangée conservée telle quelle, jamais supprimée' : 'rangées conservées telles quelles, jamais supprimées'}.`,
 		},
 		en: {
 			conformant: 'Feed compliant',
 			outOfNorm: 'Feed out-of-norm',
 			detail: (n, members) => `${n} unmodelled field${n > 1 ? 's' : ''} (${members})`,
-			conformantTitle: 'The latest GTFS feed only carries fields the pipeline models.',
+			conformantTitle: 'The latest GTFS feed only carries fields Transit models.',
 			outOfNormTitle: (rows, members) =>
 				`The feed carries fields beyond the standard model (${members}): ${intl.number('en').format(rows)} row(s) captured verbatim, never dropped.`,
 		},

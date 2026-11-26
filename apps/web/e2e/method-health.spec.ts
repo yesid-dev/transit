@@ -41,6 +41,28 @@ for (const locale of ['en', 'fr'] as const) {
 		).toHaveCSS('list-style-position', 'outside');
 	});
 
+	test(`How we measure keeps the chevron beside a wrapped title in ${locale}`, async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+		await page.goto(fr ? '/fr/metrics' : '/metrics');
+		const card = page.locator('#fixture_delay');
+		const title = card.locator('.disclosure-title > span').first();
+		await title.evaluate(
+			(node, text) => {
+				node.textContent = text;
+			},
+			fr ? 'Trajets effectués, annulés et manquants' : 'Trips that ran, cancelled and missing',
+		);
+		const chevron = card.locator('.disclosure-title svg').first();
+		const titleBox = await title.boundingBox();
+		const chevronBox = await chevron.boundingBox();
+		expect(titleBox).not.toBeNull();
+		expect(chevronBox).not.toBeNull();
+		expect(titleBox!.height).toBeGreaterThan(40);
+		expect(Math.abs(chevronBox!.y - titleBox!.y)).toBeLessThanOrEqual(2);
+		expect(chevronBox!.x).toBeGreaterThan(titleBox!.x);
+	});
+
 	test(`Download keeps the CSV column names findable in ${locale}`, async ({ page }) => {
 		const path = fr ? '/fr/download' : '/download';
 		await page.goto(`${path}?provider=stm`);
@@ -120,9 +142,20 @@ for (const width of [390, 1440]) {
 			await expect(measure).toHaveAttribute('data-open', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
 			await expect(measure).not.toContainText(/\bv2\b/u);
+			await expect(main).not.toContainText(
+				fr
+					? 'Le registre des méthodes ne le précise pas.'
+					: 'The method registry does not specify this.',
+			);
 			await expect(measure.locator('time')).toHaveText(
 				fr ? '10 novembre 2026' : '10 November 2026',
 			);
+			const notesTrigger = measure.getByRole('button', {
+				name: fr ? 'Pour les utilisateurs de données' : 'For data users',
+			});
+			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'false');
+			await notesTrigger.click();
+			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'true');
 			await expect(main.locator('#ranking-range').getByRole('button').first()).toHaveAccessibleName(
 				fr
 					? 'L’intervalle dans un classement L’intervalle montre l’incertitude autour d’une valeur du classement.'

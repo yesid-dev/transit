@@ -19,8 +19,8 @@ export const serviceComparisonCopy = defineCopy({
 		section: 'Décomptes de service',
 		label: 'Trajets observés / prévus',
 		explanation:
-			'Les jours-trajets non annulés signalés dans le flux divisés par le nombre prévu, avec un plafond de 100 %. Les trajets ne sont pas rapprochés par identifiant; le service ajouté peut masquer des trajets prévus manquants.',
-		tip: 'Jours-trajets observés non annulés ÷ jours-trajets prévus, avec un plafond de 100 %.',
+			'Les jours-trajets non annulés signalés dans le flux divisés par le nombre prévu, avec un plafond de 100\u00a0%. Les trajets ne sont pas rapprochés par identifiant; le service ajouté peut masquer des trajets prévus manquants.',
+		tip: 'Jours-trajets observés non annulés ÷ jours-trajets prévus, avec un plafond de 100\u00a0%.',
 		split: 'Décomptes rapportés à l’horaire',
 		observed: 'Observés, non annulés',
 		cancelled: 'Annulations signalées',
@@ -28,6 +28,6 @@ export const serviceComparisonCopy = defineCopy({
 		unavailable:
 			'Ce rapport nécessite des décomptes observés et un nombre de trajets prévus supérieur à zéro.',
 		fraction: (observed: string, scheduled: string, shortfall: string | null) =>
-			`${observed} jours-trajets observés non annulés / ${scheduled} prévus${shortfall == null ? '' : ` · écart de décompte : ${shortfall}`}. Aucun rapprochement par identifiant.`,
+			`${observed} jours-trajets observés non annulés / ${scheduled} prévus${shortfall == null ? '' : ` · écart de décompte\u00a0: ${shortfall}`}. Aucun rapprochement par identifiant.`,
 	},
 });

@@ -32,10 +32,10 @@ def test_delay_distribution_http_csv_and_catalog(store: Store) -> None:
     assert status == 200
     rows = list(csv.DictReader(io.StringIO(body.decode())))
     assert len(rows) == 22
-    assert rows[0]["Écart minimal (s)"] == ""
-    assert rows[0]["Écart maximal (s)"] == "-301"
-    assert rows[-1]["Écart minimal (s)"] == "900"
-    assert rows[-1]["Écart maximal (s)"] == ""
+    assert rows[0]["Retard minimal (s)"] == ""
+    assert rows[0]["Retard maximal (s)"] == "-301"
+    assert rows[-1]["Retard minimal (s)"] == "900"
+    assert rows[-1]["Retard maximal (s)"] == ""
     classified = query(store)["evidence"]["counts"]["classified"]
     assert sum(int(row["Passages aux arrêts"]) for row in rows) == classified
     entry = next(entry for entry in measures.methods() if entry["id"] == "delay_distribution")
