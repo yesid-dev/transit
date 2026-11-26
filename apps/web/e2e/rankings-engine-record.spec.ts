@@ -50,7 +50,9 @@ for (const provider of ['stm', 'octranspo'] as const) {
 					await page.evaluate((theme) => localStorage.setItem('theme', theme), theme);
 					await page.reload();
 					await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
-					await expect(main.getByRole('heading', { level: 1 })).toHaveText(fr ? french : en);
+					await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
+						fr ? french : en,
+					);
 					if (unsupported) {
 						await expect(main.locator('[data-record-state="not_tracked"]')).toBeVisible();
 						await expect(main.getByRole('table')).toHaveCount(0);

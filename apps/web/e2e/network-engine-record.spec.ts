@@ -13,7 +13,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const root = locale === 'fr' ? '/fr' : '';
 			await page.goto(`${root}/network?provider=${city}&frameMode=record&${period}`);
 			const main = page.getByRole('main');
-			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
+			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 				locale === 'fr' ? 'Santé du réseau' : 'Network health',
 			);
 			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(/80[.,]7\s*%/);

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { RoutePlate } from '@yesid/ui/brand';
+	import { RoutePlate, SectionHeading } from '@yesid/ui/brand';
 
 	let {
 		title,
@@ -10,8 +10,10 @@
 		stopCode,
 		back,
 		compact = false,
+		dot = true,
 	}: {
 		title: string;
+		/** On the kit heading's wrapper, which holds the title alone. */
 		id?: string;
 		subtitle?: string;
 		hideSubtitle?: boolean;
@@ -19,6 +21,8 @@
 		stopCode?: string;
 		back?: { href: string; label: string };
 		compact?: boolean;
+		/** The brand dot after the title. A line, stop, vehicle or departure has none. */
+		dot?: boolean;
 	} = $props();
 </script>
 
@@ -31,13 +35,14 @@
 		{#if plate}<span class="route-code" aria-hidden="true"
 				><RoutePlate code={plate} size="lg" /></span
 			>{/if}
-		<h1
+		<SectionHeading
 			{id}
-			class="flex flex-wrap items-center gap-2 wrap-break-word text-title font-bold"
-			class:compact
-		>
-			{title}
-		</h1>
+			class={compact ? 'screen-heading compact' : 'screen-heading'}
+			heading={title}
+			level={1}
+			size="title"
+			{dot}
+		/>
 		{#if subtitle}<p class="text-muted-foreground" class:invisible={hideSubtitle}>
 				{subtitle}
 			</p>{/if}
@@ -46,6 +51,11 @@
 </header>
 
 <style>
+	/* The kit's title, flush with Transit's subtitle and wrapping long words. */
+	hgroup :global(.screen-heading h1) {
+		margin-block-end: 0;
+		overflow-wrap: break-word;
+	}
 	.stop-code {
 		padding: 0.2em 0.45em;
 		border: 1px solid var(--foreground);
@@ -94,7 +104,7 @@
 		.route-heading p {
 			grid-column: 1;
 		}
-		.route-heading h1:not(.compact) {
+		.route-heading :global(.screen-heading:not(.compact)[data-size='title'] h1) {
 			font-size: var(--text-heading);
 		}
 	}
@@ -107,7 +117,7 @@
 			grid-column: 1;
 		}
 	}
-	.compact {
+	hgroup :global(.screen-heading.compact[data-size='title'] h1) {
 		font-size: clamp(1.25rem, 8vi, var(--text-title));
 	}
 

@@ -189,7 +189,7 @@ for (const width of [390, 1440]) {
 				const about = main.getByRole('article', {
 					name: fr ? 'À propos de ces chiffres' : 'About these figures',
 				});
-				await expect(main.getByRole('heading', { level: 1 })).toHaveText(title);
+				await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(title);
 				await expect(
 					record
 						.getByText(provider === 'stm' ? /81[,.]2\s?%/ : /70[,.]0\s?%/, { exact: true })
@@ -419,7 +419,7 @@ test('the header carries the Live view and dates through city and language chang
 		url.searchParams.get('recordFrom') === '2026-11-08' &&
 		url.searchParams.get('recordTo') === '2026-11-14';
 	await expect(page).toHaveURL(isOttawaLive);
-	await expect(main.getByRole('heading', { level: 1 })).toHaveText('Ottawa network');
+	await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName('Ottawa network');
 	const live = main.getByRole('article', { name: 'Live now', exact: true });
 	await expect(
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
@@ -431,7 +431,7 @@ test('the header carries the Live view and dates through city and language chang
 
 	await page.getByTestId('language-toggle').click();
 	await expect(page).toHaveURL((url) => url.pathname === '/fr' && isOttawaLive(url));
-	await expect(main.getByRole('heading', { level: 1 })).toHaveText('Réseau d’Ottawa');
+	await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName('Réseau d’Ottawa');
 	await expect(main.getByRole('article').first()).toHaveAccessibleName('En direct');
 	await expect(
 		main.getByRole('heading', { name: 'À propos des chiffres en direct' }),

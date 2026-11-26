@@ -89,6 +89,7 @@
 				{subtitle}
 				hideSubtitle={data.frameLive && data.outsideCurrentTimetable}
 				{back}
+				dot={false}
 			/>
 		</RecordGroup>
 		{#if data.frameLive && data.outsideCurrentTimetable}

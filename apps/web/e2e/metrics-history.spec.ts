@@ -24,7 +24,7 @@ for (const locale of ['en', 'fr'] as const) {
 			[],
 		);
 		await link.press('Enter');
-		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+		await expect(page.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 			locale === 'fr' ? 'Santé des données' : 'Data health',
 		);
 		expect(snapshotRequests).toEqual([]);
