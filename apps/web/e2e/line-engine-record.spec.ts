@@ -8,11 +8,9 @@ test.beforeEach(({ browserName }, info) => {
 for (const width of [390, 1440]) {
 	for (const locale of ['en', 'fr'] as const) {
 		const fr = locale === 'fr';
-		test(`${locale} at ${width}px shows the Line record and schedule with evidence`, async ({
-			page,
-		}) => {
+		const path = `${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`;
+		test(`${locale} at ${width}px shows the Line record with evidence`, async ({ page }) => {
 			await page.setViewportSize({ width, height: 900 });
-			const path = `${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`;
 			await page.goto(path);
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			const main = page.getByRole('main');
@@ -70,8 +68,13 @@ for (const width of [390, 1440]) {
 				.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all', exact: true })
 				.click();
 			await expect(main.locator('#delivery table')).toBeVisible();
+		});
 
+		test(`${locale} at ${width}px opens the schedule tab with its periods`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
 			await page.goto(path + '&direction=1&tab=schedule');
+			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+			const main = page.getByRole('main');
 			await expect(page).toHaveURL(
 				(url) =>
 					url.hash === '#schedule' &&
