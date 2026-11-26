@@ -157,11 +157,12 @@ export function feedState(
 
 /** Public capture status uses the declared vehicle capture cadence, without delivery grace. */
 export function captureDisplayState(feed: CaptureFeed, now: number): ReturnType<typeof feedState> {
-	const state = feedState(feed, now);
 	if (feed.family !== 'vehicle_positions' || !feed.captured_at || !feed.expected_every_seconds)
-		return state;
+		return feedState(feed, now);
 	const age = now - Date.parse(feed.captured_at);
-	return age > 3_000 * feed.expected_every_seconds ? 'stale' : state;
+	if (!Number.isFinite(age) || age < -5_000) return 'unknown';
+	if (age > 3 * feed.expected_every_seconds * 1_000) return 'stale';
+	return feed.read_failed ? 'refresh_unavailable' : 'live';
 }
 
 export async function fetchCaptureSnapshot(

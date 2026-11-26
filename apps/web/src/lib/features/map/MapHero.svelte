@@ -467,7 +467,11 @@
 		liveStamp({ ...presentation.stamp, notResponding: presentation.stamp.ageLabel != null }),
 	);
 	const liveStampLabel = $derived(
-		!wide && remWidth >= 24 && liveTime.ageSeconds !== null && liveTime.state === 'current'
+		!wide &&
+			remWidth >= 24 &&
+			!livePause.paused &&
+			liveTime.ageSeconds !== null &&
+			liveTime.state === 'current'
 			? `${tr('Live', 'En direct')} · ${formatRelativeSeconds(liveTime.ageSeconds, locale)}`
 			: stampText(liveTime, locale, timeZone),
 	);
@@ -482,7 +486,7 @@
 		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
 	);
 	const title = $derived(
-		isRecordLayer ? tr('Map of the record', 'Carte du bilan') : tr('Live map', 'Carte en direct'),
+		isRecordLayer ? tr('Record map', 'Carte du bilan') : tr('Live map', 'Carte en direct'),
 	);
 	const viewLabel = tr('What is in view', 'Ce qui est en vue');
 	// The map region is named for what it draws: vehicles live, the record of stops otherwise.

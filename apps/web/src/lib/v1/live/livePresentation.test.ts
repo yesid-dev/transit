@@ -17,7 +17,7 @@ it.each(['en', 'fr'] as const)('uses the capture clock and cadence on the map in
 		family: 'vehicle_positions',
 		captured_at: timestamp,
 		source_at: '2026-06-21T11:58:30Z',
-		fresh_for_seconds: 180,
+		fresh_for_seconds: 60,
 		source_lag_seconds: 90,
 		expected_every_seconds: 30,
 		read_failed: false,
