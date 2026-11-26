@@ -120,16 +120,16 @@ const budgets: Partial<Record<Screen, Budget>> = {
 		1440: { height: 4300, beforeFigure: 3 },
 	},
 };
-// Reading pages vary by city and language, so each case keeps its own ceiling: the measured
-// height plus 1%, never above the debt value it replaced (STM English).
+// Reading pages vary by city and language, so each case keeps its own ceiling: the height
+// measured by hosted CI plus 1%, never above the debt value it replaced (STM English).
 const caseBudgets: Partial<Record<string, Budget>> = {
 	'privacy/stm/en': {
 		390: { height: 12868, beforeFigure: 0 },
-		1440: { height: 7710, beforeFigure: 0 },
+		1440: { height: 7810, beforeFigure: 0 },
 	},
 	'terms/stm/en': {
-		390: { height: 6120, beforeFigure: 0 },
-		1440: { height: 3640, beforeFigure: 0 },
+		390: { height: 6090, beforeFigure: 0 },
+		1440: { height: 3680, beforeFigure: 0 },
 	},
 	'accessibility/stm/en': {
 		390: { height: 3340, beforeFigure: 0 },
@@ -140,12 +140,12 @@ const caseBudgets: Partial<Record<string, Budget>> = {
 		1440: { height: 1250, beforeFigure: 0 },
 	},
 	'privacy/octranspo/en': {
-		390: { height: 12860, beforeFigure: 0 },
-		1440: { height: 7710, beforeFigure: 0 },
+		390: { height: 12820, beforeFigure: 0 },
+		1440: { height: 7810, beforeFigure: 0 },
 	},
 	'terms/octranspo/en': {
-		390: { height: 6060, beforeFigure: 0 },
-		1440: { height: 3640, beforeFigure: 0 },
+		390: { height: 6040, beforeFigure: 0 },
+		1440: { height: 3680, beforeFigure: 0 },
 	},
 	'accessibility/octranspo/en': {
 		390: { height: 3290, beforeFigure: 0 },
@@ -156,32 +156,32 @@ const caseBudgets: Partial<Record<string, Budget>> = {
 		1440: { height: 1250, beforeFigure: 0 },
 	},
 	'privacy/stm/fr': {
-		390: { height: 15170, beforeFigure: 0 },
-		1440: { height: 8910, beforeFigure: 0 },
+		390: { height: 15140, beforeFigure: 0 },
+		1440: { height: 9110, beforeFigure: 0 },
 	},
 	'terms/stm/fr': {
 		390: { height: 6920, beforeFigure: 0 },
-		1440: { height: 4090, beforeFigure: 0 },
+		1440: { height: 4130, beforeFigure: 0 },
 	},
 	'accessibility/stm/fr': {
 		390: { height: 3660, beforeFigure: 0 },
-		1440: { height: 1890, beforeFigure: 0 },
+		1440: { height: 1930, beforeFigure: 0 },
 	},
 	'error/stm/fr': {
 		390: { height: 2350, beforeFigure: 0 },
 		1440: { height: 1270, beforeFigure: 0 },
 	},
 	'privacy/octranspo/fr': {
-		390: { height: 15120, beforeFigure: 0 },
-		1440: { height: 8910, beforeFigure: 0 },
+		390: { height: 15090, beforeFigure: 0 },
+		1440: { height: 9110, beforeFigure: 0 },
 	},
 	'terms/octranspo/fr': {
 		390: { height: 6870, beforeFigure: 0 },
-		1440: { height: 4090, beforeFigure: 0 },
+		1440: { height: 4130, beforeFigure: 0 },
 	},
 	'accessibility/octranspo/fr': {
 		390: { height: 3610, beforeFigure: 0 },
-		1440: { height: 1890, beforeFigure: 0 },
+		1440: { height: 1930, beforeFigure: 0 },
 	},
 	'error/octranspo/fr': {
 		390: { height: 2310, beforeFigure: 0 },
