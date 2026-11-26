@@ -6,16 +6,31 @@ const clock = (recordThrough: string | null = null) => ({ today, recordThrough }
 const state = (href: string) => frameControlsState(new URL(href, 'https://transit.test'), clock());
 
 describe('frame control state', () => {
-	it('shows the View hint on the updated screens in both modes', () => {
-		expect(state('/?frameMode=live')).toMatchObject({ mode: 'live', showViewHint: true });
-		expect(state('/fr/network?frameMode=record')).toMatchObject({
-			mode: 'record',
-			showViewHint: true,
-		});
-		expect(state('/fr/receipt')).toMatchObject({ mode: 'record', showViewHint: false });
-		expect(state('/download')).toMatchObject({ mode: 'record', showViewHint: false });
-		expect(state('/lines/24')).toMatchObject({ showViewHint: false });
+	it.each([
+		'/',
+		'/fr/network',
+		'/lines/24',
+		'/stop/S1',
+		'/vehicles',
+		'/vehicle/1',
+		'/alerts',
+		'/map',
+	])('shows the View hint in both modes on %s', (path) => {
+		for (const mode of ['live', 'record'])
+			expect(state(`${path}?frameMode=${mode}`)).toMatchObject({ mode, showViewHint: true });
 	});
+
+	it.each([
+		'/fr/receipt',
+		'/download',
+		'/trip/T1',
+		'/privacy',
+		'/terms',
+		'/fr/accessibility',
+		'/roadmap',
+	])('uses no View hint when %s has no View choice', (path) =>
+		expect(state(path)).toMatchObject({ showViewHint: false }),
+	);
 
 	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/rankings', '/fr/download'])(
 		'shows Record when a live link opens the record-only %s',

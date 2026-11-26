@@ -103,6 +103,7 @@ export function frameControlsState(url: URL, clock: FrameClock) {
 	const stop = /^\/stop\/[^/]+$/.test(path);
 	const map = path === '/map';
 	const liveOnly = path.startsWith('/trip/');
+	const showRail = !['/roadmap', '/privacy', '/terms', '/accessibility'].includes(path);
 	const parsed = parseFrameState(
 		url.searchParams,
 		path === '/status' ? { ...clock, recordThrough: null } : clock,
@@ -117,11 +118,8 @@ export function frameControlsState(url: URL, clock: FrameClock) {
 	return {
 		...parsed,
 		mode,
-		showRail: !['/roadmap', '/privacy', '/terms', '/accessibility'].includes(path),
-		showViewHint:
-			['/', '/network', '/status', '/metrics'].includes(path) ||
-			path.startsWith('/departure/') ||
-			(mode === 'record' && path.startsWith('/vehicle/')),
+		showRail,
+		showViewHint: showRail && !recordOnly && !liveOnly,
 		recordOnly,
 		liveOnly,
 		detail: line || stop,

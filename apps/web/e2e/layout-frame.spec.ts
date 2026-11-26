@@ -4,6 +4,7 @@ import { navPillCopy } from '../src/lib/i18n/messages';
 import { test } from './layout-test';
 import { textDefects, waitForFrameClearance } from './layout-helpers';
 import { openFrameControls } from './frame-controls';
+import { frameCopy } from '../src/lib/components/shell/frameControlsState';
 
 const cities = {
 	stm: {
@@ -29,6 +30,21 @@ async function open(page: Page, href: string) {
 
 for (const locale of ['en', 'fr'] as const) {
 	const words = navPillCopy[locale];
+	for (const width of [390, 1440]) {
+		test(`${locale} View hints follow the selected mode at ${width}px`, async ({ page }) => {
+			await page.setViewportSize({ width, height: 900 });
+			const copy = frameCopy[locale];
+			for (const mode of ['live', 'record'] as const) {
+				await open(page, localizeHref(`/vehicles?frameMode=${mode}`, locale, 'stm'));
+				const controls = await openFrameControls(page, locale);
+				const choice = controls.getByRole('group', { name: copy.view });
+				await expect(choice.getByText(copy.viewHint[mode], { exact: true })).toHaveCount(1);
+				await expect(
+					choice.getByText(copy.viewHint[mode === 'live' ? 'record' : 'live'], { exact: true }),
+				).toHaveCount(0);
+			}
+		});
+	}
 	test(`${locale} compact header reaches the city after the menu and clears the content`, async ({
 		page,
 		browserName,
