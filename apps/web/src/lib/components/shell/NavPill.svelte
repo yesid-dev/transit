@@ -404,6 +404,19 @@
 			font-size: 1rem;
 		}
 	}
+	/* Below 360px the pill tightens every split to 2px, which sets "yesid." and "Transit" against
+	   their dividers. The brand keeps the phone tier's 4px (as at 390px), and the divider after it
+	   gets 4px on both sides from the brand and the search button; the pill still holds every
+	   control on one row at 320px. */
+	@media (max-width: 359px) {
+		:global(.nav-product-brand) {
+			--nav-split-space: 4px;
+			margin-inline-end: 2px;
+		}
+		:global(.nav-compact-search) {
+			margin-inline-start: 2px;
+		}
+	}
 
 	.network-choice {
 		display: contents;
