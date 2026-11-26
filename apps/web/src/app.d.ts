@@ -1,5 +1,9 @@
 declare global {
 	namespace App {
+		interface Error {
+			message: string;
+			code?: 'STOP_NOT_FOUND';
+		}
 		interface Locals {
 			locale?: 'en' | 'fr';
 			approximateLocation?: import('#lib/v1/requestLocation').ApproximateLocation | null;

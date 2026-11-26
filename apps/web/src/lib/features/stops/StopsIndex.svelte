@@ -56,7 +56,7 @@
 		stopPageSize,
 		stopReading,
 		type NearbyStop,
-		type stopListingView,
+		stopListingView,
 		type StopListing,
 		type StopListingResult,
 	} from './stopListing.ts';
@@ -81,7 +81,9 @@
 			: undefined,
 	);
 	const listing = $derived(loadedSearch ? loadedSearch.listing : initialListing);
-	const view = $derived(loadedSearch?.view ?? initialView);
+	const view = $derived(
+		loadedSearch?.view ?? initialView ?? stopListingView(new URLSearchParams(location.search)),
+	);
 	const record = $derived(
 		loadedSearch
 			? loadedSearch.finderRecord && {

@@ -17,7 +17,8 @@
 			? {
 					label: copy.notFound.label,
 					heading: copy.notFound.heading,
-					body: copy.notFound.description,
+					body:
+						page.error?.code === 'STOP_NOT_FOUND' ? page.error.message : copy.notFound.description,
 					statusNote: copy.notFound.statusNote,
 					signLabel: 'STATION',
 					suggestions: copy.notFound.suggestions.map((suggestion) => ({

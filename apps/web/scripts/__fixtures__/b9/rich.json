@@ -36,7 +36,15 @@
 						"type": 3
 					}
 				],
-				"stops": []
+				"stops": [
+					{
+						"id": "S1",
+						"name": "Fixture stop",
+						"lat": 45.5,
+						"lon": -73.6,
+						"routes": ["24"]
+					}
+				]
 			}
 		},
 		"manifest.json": {

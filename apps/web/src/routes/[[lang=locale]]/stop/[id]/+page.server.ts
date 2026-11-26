@@ -1,10 +1,17 @@
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 import { stopPageTitle } from '#lib/seo/riderPageTitle.ts';
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
 import { loadStopRecord } from '#lib/server/stopRecord.ts';
-import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
+import { getRecordAnswer } from '#lib/server/engine.ts';
+import {
+	frameClock,
+	frameDateLimit,
+	MAX_RECORD_DAYS,
+	parseAnswerFrameState,
+	RECORD_START,
+} from '#lib/site/frameState.ts';
 import { stopFrameView, stopViewHref } from '#lib/site/stopFrame.ts';
 import { lineIsScheduleOnly, providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
@@ -39,9 +46,36 @@ export const load: PageServerLoad = async (event) => {
 	const tripUpdatesPublished = provider?.inputs.trip_updates !== false;
 	const live = frameLive && !outsideCurrentTimetable && provider;
 	const signal = event.request.signal;
-	const period = !frameLive
-		? parseAnswerFrameState(url.searchParams, frameClock(provider)).period
-		: null;
+	const clock = frameClock(provider);
+	const period = !frameLive ? parseAnswerFrameState(url.searchParams, clock).period : null;
+	const scope = { city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') };
+	if (period && !scheduledStop) {
+		// One question over the whole record tells an archived stop, which keeps its Record even
+		// for dates without readings, from an id the network never published.
+		const to = frameDateLimit(clock);
+		const earliest = new Date(Date.parse(to) - (MAX_RECORD_DAYS - 1) * 86_400_000)
+			.toISOString()
+			.slice(0, 10);
+		const history = await getRecordAnswer(
+			{ path: '/measure', parameters: { measure: 'on_time', group: 'stop_id', stop: id } },
+			{ ...scope, from: earliest > RECORD_START ? earliest : RECORD_START, to },
+		);
+		const unavailable = () =>
+			error(
+				503,
+				lang === 'fr'
+					? 'L’identité de cet arrêt est temporairement indisponible.'
+					: 'This stop’s identity is temporarily unavailable.',
+			);
+		if (history.kind !== 'answer' || !('cells' in history.answer)) return unavailable();
+		if (!history.answer.cells.some(({ key }) => key.stop === id)) {
+			if (!schedule || !history.answer.evidence.days_included.length) return unavailable();
+			error(404, {
+				code: 'STOP_NOT_FOUND',
+				message: lang === 'fr' ? 'Cet arrêt est introuvable.' : 'This stop could not be found.',
+			});
+		}
+	}
 	return {
 		seed: { id, name: name || id },
 		stopCode: scheduledStop?.code,
@@ -52,12 +86,7 @@ export const load: PageServerLoad = async (event) => {
 		tripUpdatesPublished,
 		hasAlerts,
 		...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) } : {}),
-		record: period
-			? loadStopRecord(
-					{ ...period, city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') },
-					id,
-				)
-			: null,
+		record: period ? loadStopRecord({ ...scope, ...period }, id) : null,
 		capture:
 			live && (hasAlerts || (tripUpdatesPublished && !scheduleOnly))
 				? fetchCaptureSnapshot(providerId, signal, event.fetch).catch(() => null)

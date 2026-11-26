@@ -136,12 +136,12 @@ for (const locale of PUBLISHED_LOCALES) {
 			(url) => url.searchParams.get('frameMode') === 'record' && url.search.includes(dates),
 		);
 		await expect(answer).toContainText(fr ? '80 %' : '80%');
+		// An id the record never held is not a page of empty cards.
 		const missing = await page.goto(path('57135', 'frameMode=record'));
-		expect(missing?.status()).toBe(200);
-		await expect(page.getByText(notice, { exact: true })).toBeVisible();
-		await expect(answer).toContainText(
-			fr ? 'Aucune lecture n’a été publiée' : 'No readings were published',
-		);
+		expect(missing?.status()).toBe(404);
+		await expect(
+			page.getByText(fr ? 'Cet arrêt est introuvable.' : 'This stop could not be found.'),
+		).toBeVisible();
 		await expect(page.getByRole('main').locator('[data-slot="record-card"]')).toHaveCount(0);
 	});
 }

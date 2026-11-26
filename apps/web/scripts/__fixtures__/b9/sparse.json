@@ -26,7 +26,11 @@
 			]
 		},
 		"/v2/stm/schedule-index": {
-			"schedule": null
+			"schedule": {
+				"date": "2026-08-29",
+				"routes": [],
+				"stops": [{ "id": "S1", "name": "Fixture stop", "lat": 45.5, "lon": -73.6 }]
+			}
 		},
 		"manifest.json": {
 			"provider": "stm",

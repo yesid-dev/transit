@@ -365,6 +365,16 @@ for (const locale of ['en', 'fr'] as const) {
 			page.getByRole('link', { name: fr ? 'Ouvrir son bilan' : 'Open its record' }),
 		).toHaveAttribute('href', /\/stop\/57430\?/);
 		await expect(table).toHaveCount(0);
+		await page.getByRole('link', { name: fr ? 'Ouvrir son bilan' : 'Open its record' }).click();
+		await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+			fr ? 'Arrêt 57430' : 'Stop 57430',
+		);
+
+		const missing = await page.goto(`${prefix}/stop/57135?${period}`);
+		expect(missing?.status()).toBe(404);
+		await expect(
+			page.getByText(fr ? 'Cet arrêt est introuvable.' : 'This stop could not be found.'),
+		).toBeVisible();
 	});
 
 	test(`${locale} stops accepts a search without JavaScript`, async ({ browser, baseURL }) => {
