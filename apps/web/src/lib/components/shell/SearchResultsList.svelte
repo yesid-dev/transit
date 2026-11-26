@@ -80,8 +80,8 @@
 			? copy.heading(kind, null)
 			: `${copy.kinds[kind]} · ${searchCount(total, locale)}`;
 	const detail = (hit: SearchHit) =>
-		hit.kind === 'route' && hit.mode
-			? copy.modes[hit.mode]
+		hit.kind === 'route'
+			? (hit.detail ?? null)
 			: hit.line
 				? `${copy.kind.route} ${hit.line}`
 				: null;

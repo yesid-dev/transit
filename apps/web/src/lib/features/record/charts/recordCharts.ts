@@ -19,6 +19,7 @@ import {
 	delayReading,
 	sampleWithMinimum,
 	recordPercent,
+	stopTrendGap,
 } from '#lib/site/presenter.ts';
 import { choose, measuredShare, tally } from '../recordText.ts';
 import { recordState, type RecordState } from '../recordStates.ts';
@@ -340,6 +341,7 @@ type TrendProps = {
 	xDomain: [number, number];
 	yDomain: [number, number];
 	last?: { x: number; y: number; label: string };
+	gapNote?: string;
 };
 
 export function trendChart(
@@ -347,6 +349,7 @@ export function trendChart(
 	title: string,
 	locale: Locale,
 	network?: RecordSeries,
+	stop = false,
 ): ChartReading<TrendProps> {
 	const keyed = (cells: SeriesCell[]) =>
 		new Map(
@@ -383,6 +386,15 @@ export function trendChart(
 		end = Math.min(100, end + step);
 	}
 	const last = points.findLast((point): point is { x: number; y: number } => point.y !== null);
+	const minimum = stop ? minimumSample(series, 'on_time') : undefined;
+	const gapNote =
+		minimum != null && series.cells.some(({ state }) => state === 'too_few_to_judge')
+			? stopTrendGap(
+					minimum,
+					series.cells.every(({ state }) => state === 'too_few_to_judge'),
+					locale,
+				)
+			: undefined;
 	const networkLabel = network ? choose(locale, 'Network', 'Réseau') : undefined;
 	return {
 		props: {
@@ -414,6 +426,7 @@ export function trendChart(
 				},
 			),
 			last: last ? { ...last, label: recordPercent(last.y, locale) } : undefined,
+			gapNote,
 			xDomain: [-0.5, Math.max(0.5, dates.length - 0.5)],
 		},
 		table: {

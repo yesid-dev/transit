@@ -37,7 +37,7 @@
 				observed?: boolean;
 		  }
 		| { kind: 'histogram'; answer: DelayDistribution }
-		| { kind: 'trend'; answer: RecordSeries; network?: RecordSeries };
+		| { kind: 'trend'; answer: RecordSeries; network?: RecordSeries; stop?: boolean };
 
 	let {
 		input,
@@ -68,7 +68,7 @@
 						? { kind: input.kind, ...histogramChart(input.answer, title, locale) }
 						: {
 								kind: input.kind,
-								...trendChart(input.answer, title, locale, input.network),
+								...trendChart(input.answer, title, locale, input.network, input.stop),
 							},
 	);
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -184,8 +184,10 @@
 			{#snippet children(plot)}
 				<ChartAxis {plot} axis="x" ticks={reading.props.ticks} />
 				<ChartAxis {plot} axis="y" ticks={reading.props.yTicks} />
-				<ChartLineSeries {plot} points={reading.props.points} />
-				{#if reading.props.reference.length}
+				{#if reading.props.last}
+					<ChartLineSeries {plot} points={reading.props.points} />
+				{/if}
+				{#if reading.props.reference.some(({ y }) => y !== null)}
 					<ChartLineSeries
 						{plot}
 						points={reading.props.reference.length === 1
@@ -214,8 +216,10 @@
 				<ChartLegend
 					label={title}
 					items={[
-						{ kind: 'line', label: reading.table.columns.value },
-						...(reading.table.columns.detail
+						...(reading.props.last
+							? [{ kind: 'line' as const, label: reading.table.columns.value }]
+							: []),
+						...(reading.table.columns.detail && reading.props.reference.some(({ y }) => y !== null)
 							? [{ kind: 'reference' as const, label: reading.table.columns.detail }]
 							: []),
 					]}
@@ -224,6 +228,9 @@
 		</ChartFrame>
 	{:else}
 		<StateMark state={chartState(input.answer.state)} {locale} />
+	{/if}
+	{#if reading.kind === 'trend' && reading.props.gapNote}
+		<p class="text-small text-muted-foreground">{reading.props.gapNote}</p>
 	{/if}
 </div>
 

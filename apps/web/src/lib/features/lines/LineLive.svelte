@@ -127,7 +127,7 @@
 {/snippet}
 
 {#snippet schedule()}
-	{#if record}<LineScheduleCard {record} {locale} {url} />{/if}
+	{#if record}<LineScheduleCard {record} {locale} {url} {headsigns} />{/if}
 {/snippet}
 
 {#snippet body(

@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 // Endonyms and product names retain their official spelling in French copy.
 const properNouns = ['English', 'Cloudflare Web Analytics', 'Plausible Analytics Cloud'];
 const forbidden =
-	/\b(?:Contains|pipeline|gate|trips?|voyages?|Slowest|BUILD|English|proxy|rollup|bus-moments|hors-norme)\b|chaîne de traitement|registre des méthodes|génération de publication|filigran[ée]|dépassement physique/gi;
+	/\b(?:Contains|pipeline|gate|trips?|voyages?|Slowest|BUILD|English|proxy|rollup|bus-moments|hors-norme)\b|chaîne de traitement|registre des méthodes|génération de publication|filigran[ée]|dépassement physique|transport routier|\bvers (?:est|ouest|nord|sud)\b/gi;
 
 // Use the Svelte parser, not a regex, to find a component's script blocks.
 function svelteScripts(raw: string): string {

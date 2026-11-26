@@ -646,7 +646,7 @@ const server = createServer((request, response) => {
 				type: 3,
 			});
 		}
-		if (kind === 'schedule-index' && process.env.TRANSIT_E2E_LINE_RECORD_NAMED === '1')
+		if (process.env.TRANSIT_E2E_LINE_RECORD_NAMED === '1')
 			installLineRecordFixtures(city, editionRoutes, routeDirections, editionStops);
 		for (const stop of fromRoute) {
 			if (!editionStops.has(stop.id)) editionStops.set(stop.id, stop);
@@ -762,7 +762,7 @@ const server = createServer((request, response) => {
 			});
 			for (const [id, long, destinations] of service) {
 				editionRoutes.set(id, { id, short: id, long, type: 3 });
-				routeDirections[id] = destinations.map((headsign, dir) => ({
+				routeDirections[id] ??= destinations.map((headsign, dir) => ({
 					dir,
 					headsign,
 					stops: [{ id: 'S1', name: stop.name, seq: 15 }],

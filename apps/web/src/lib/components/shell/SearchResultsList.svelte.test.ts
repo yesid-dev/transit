@@ -29,7 +29,14 @@ function show(
 		sources?: SearchSources;
 	} = {},
 ) {
-	const list = searchTransit({ query }, sources);
+	const list = searchTransit(
+		{ query },
+		{
+			...sources,
+			locale,
+			patterns: { 161: { ends: ['Station Rosemont', 'Station Plamondon'], termini: {} } },
+		},
+	);
 	const hrefs = {
 		hit: (hit: Parameters<typeof searchHitHref>[0]) =>
 			searchHitHref(hit, { path: '/', params: new URLSearchParams() }),
@@ -45,8 +52,20 @@ const selected = (view: ReturnType<typeof show>) =>
 	view.getAllByRole('option').filter((option) => option.getAttribute('aria-selected') === 'true');
 
 it.each([
-	['en', 'Lines · 1', 'Stops · 38', 'Line 161 · Van Horne Road', 'See all results'],
-	['fr', 'Lignes · 1', 'Arrêts · 38', 'Ligne 161 · Van Horne Routier', 'Voir tous les résultats'],
+	[
+		'en',
+		'Lines · 1',
+		'Stops · 38',
+		'Line 161 · Van Horne Station Rosemont to Station Plamondon',
+		'See all results',
+	],
+	[
+		'fr',
+		'Lignes · 1',
+		'Arrêts · 38',
+		'Ligne 161 · Van Horne Station Rosemont à Station Plamondon',
+		'Voir tous les résultats',
+	],
 ] as const)(
 	'shows true totals in each heading and names each row by its text in %s',
 	(locale, lines, stopsHeading, line, all) => {
@@ -65,7 +84,7 @@ it.each([
 it('highlights an exact first row, and nothing otherwise', () => {
 	const exact = show('18');
 	expect(selected(exact)).toHaveLength(1);
-	expect(selected(exact)[0]).toHaveAccessibleName('Line 18 · Beaubien Road');
+	expect(selected(exact)[0]).toHaveAccessibleName('Line 18 · Beaubien');
 	exact.unmount();
 	expect(selected(show('van'))).toEqual([]);
 });

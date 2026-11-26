@@ -18,7 +18,6 @@
 		recordStamp,
 	} from '#lib/site/presenter.ts';
 	import type { LinesRecord } from '#lib/server/finderRecord.ts';
-	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
@@ -64,7 +63,6 @@
 		url,
 		record,
 		routes,
-		directions,
 		provider,
 		sort,
 		setSort,
@@ -74,7 +72,6 @@
 		url: URL;
 		record: LinesRecord;
 		routes: RouteIndexEntry[];
-		directions?: ScheduleEdition['route_directions'];
 		provider: PublicCity | null;
 		sort: LineSort;
 		setSort: (key: string, toggle: boolean) => void;
@@ -157,19 +154,6 @@
 		};
 	});
 
-	function endpoints(id: string): string | undefined {
-		const heads = [
-			...new Set(
-				directions?.[id]
-					?.map(({ headsign }) => display.directionName(headsign, locale))
-					.filter(Boolean),
-			),
-		];
-		return heads.length === 2
-			? t(`${heads[0]} to ${heads[1]}`, `${heads[0]} à ${heads[1]}`)
-			: heads[0];
-	}
-
 	const all = $derived(
 		lineRecordRows(routes, provider, punctuality, delivery, locale).map((row) => {
 			const { number, name, label } = display.lineName(row.id);
@@ -182,7 +166,7 @@
 				label: name ?? label,
 				// Every row carries its plate, the route ID when the timetable gives no number.
 				plate: { code: number ?? row.id, scheduleOnly: row.noLive },
-				detail: endpoints(row.id),
+				detail: display.directory.subtitle(row.id),
 			};
 		}),
 	);

@@ -50,7 +50,6 @@
 			{setQuery}
 			record={data.finderRecord}
 			routes={data.schedule?.routes ?? []}
-			directions={data.schedule?.route_directions}
 			provider={data.provider}
 		/>
 	</Surface>

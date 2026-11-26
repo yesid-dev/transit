@@ -536,7 +536,7 @@
 									title={titleFor('daily')}
 									id="stop-daily-chart"
 									table={dailyTable}
-									input={{ kind: 'trend', answer: result.answer }}
+									input={{ kind: 'trend', answer: result.answer, stop: true }}
 									{locale}
 								/>
 							{:then network}
@@ -547,6 +547,7 @@
 									input={{
 										kind: 'trend',
 										answer: result.answer,
+										stop: true,
 										network:
 											network.kind === 'answer' && 'cells' in network.answer
 												? network.answer

@@ -60,7 +60,7 @@
 		display.directionLabel(value, headsigns, locale);
 	function destination(direction: number | null | undefined) {
 		const name = direction == null ? undefined : headsigns[direction]?.trim();
-		return name ? display.readName(name, locale) : undefined;
+		return name ? display.toward(name, locale, false) : undefined;
 	}
 	const unknown = $derived(t('Unknown', 'Inconnu'));
 	const otherLocale = $derived(locale === 'en' ? 'fr' : 'en');

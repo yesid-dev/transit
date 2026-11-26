@@ -10,6 +10,7 @@ import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
+import { linePatterns } from '#lib/site/linePatterns.ts';
 
 const localRoute = '/[[lang=locale]]';
 
@@ -34,13 +35,12 @@ function scheduleForPage(
 ): ScheduleEdition {
 	const { date, routes, stops, route_directions } = schedule;
 	switch (route.id) {
-		case localRoute + '/lines':
 		case localRoute + '/network':
 			return {
 				date,
 				routes,
 				stops: [],
-				...((route.id === localRoute + '/lines' || !networkRecordView(url)) && route_directions
+				...(!networkRecordView(url) && route_directions
 					? {
 							route_directions: Object.fromEntries(
 								Object.entries(route_directions).map(([id, directions]) => [
@@ -135,6 +135,11 @@ export const load: LayoutServerLoad = async (event) => {
 	const v1 =
 		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;
 	const provider = selection.provider;
+	const patternPages = ['/lines', '/lines/[id]', '/vehicles', '/vehicle/[id]', '/rankings'];
+	const patterns =
+		schedule && patternPages.some((path) => route === localRoute + path)
+			? linePatterns(schedule, route === localRoute + '/lines/[id]' ? params.id?.trim() : undefined)
+			: undefined;
 	const period =
 		!loadSnapshots && needsSchedule && provider?.download_licence?.source_date_required
 			? parseAnswerFrameState(event.url.searchParams, frameClock(provider)).period
@@ -151,6 +156,7 @@ export const load: LayoutServerLoad = async (event) => {
 		: null;
 	return {
 		schedule: schedule ? scheduleForPage(schedule, event) : null,
+		...(patterns ? { patterns } : {}),
 		lang,
 		...selection,
 		v1,

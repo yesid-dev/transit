@@ -3,7 +3,7 @@ const montreal = {
 		short: '51',
 		long: 'Édouard-Montpetit',
 		type: 3,
-		ends: ['Station Laurier', 'Gare Montréal-Ouest'],
+		ends: ['Est', 'Ouest'],
 		stops: [
 			'Gare Montréal-Ouest',
 			'Westminster / Sherbrooke',

@@ -13,6 +13,7 @@ import { presenterCopy } from './presenter.copy.ts';
 import { formatTransitName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { stampCopy, type LiveState } from '#lib/v1/stamp.copy.ts';
+import { compassPoint, type LinePattern } from './linePatterns';
 
 export function searchCount(value: number, locale: Locale): string {
 	return intl.number(locale).format(value);
@@ -56,7 +57,7 @@ export function mapRecordReading(value: number, stops: boolean, locale: Locale):
 }
 
 export function mapDirectionReading(name: string, locale: Locale): string {
-	return `${locale === 'fr' ? 'vers' : 'toward'} ${directionName(name, locale)}`;
+	return towardReading(name, locale, undefined, false);
 }
 
 /** Inclusive delay bounds, shown exactly to the second as signed minutes:seconds. */
@@ -155,7 +156,7 @@ export function scheduleHours(start: number, end: number, locale: Locale) {
 }
 
 export function plannedInterval(tripsPerHour: number, locale: Locale) {
-	const interval = minuteReading(60 / tripsPerHour, locale);
+	const interval = minuteReading(Math.max(1, Math.round(60 / tripsPerHour)), locale);
 	if (!interval) return locale === 'fr' ? 'Inconnu' : 'Unknown';
 	return locale === 'fr' ? `toutes les ${interval}` : `every ${interval}`;
 }
@@ -164,38 +165,59 @@ export function dailyScheduledTrips(trips: number, locale: Locale) {
 	return intl.number(locale, { maximumFractionDigits: 1 }).format(trips);
 }
 
+export function riderHeadsign(headsign: string | null | undefined, pattern?: LinePattern) {
+	const sign = headsign?.trim();
+	const terminus = sign && compassPoint.test(sign) && pattern?.termini[sign.toLowerCase()];
+	return terminus ? `${terminus} (${sign})` : sign;
+}
+
 export function directionName(
 	headsign: string | null | undefined,
 	locale: Locale,
 	rule?: NameSeparators,
 ): string {
-	return headsign?.trim()
-		? formatTransitName(headsign.trim(), locale, rule)
-		: presenterCopy[locale].unknownDirection;
+	const name = headsign?.trim();
+	if (!name) return presenterCopy[locale].unknownDirection;
+	const terminus = /^(.*) \(([^()]*)\)$/u.exec(name);
+	if (terminus && compassPoint.test(terminus[2])) {
+		const compass = locale === 'fr' ? terminus[2].toLowerCase() : terminus[2];
+		return `${formatTransitName(terminus[1], locale, rule)} (${compass})`;
+	}
+	if (compassPoint.test(name)) {
+		const words: Record<string, [string, string]> = {
+			est: ['the east', 'l’est'],
+			ouest: ['the west', 'l’ouest'],
+			nord: ['the north', 'le nord'],
+			sud: ['the south', 'le sud'],
+		};
+		const key =
+			{ east: 'est', west: 'ouest', north: 'nord', south: 'sud' }[name.toLowerCase()] ??
+			name.toLowerCase();
+		return words[key][locale === 'fr' ? 1 : 0];
+	}
+	return formatTransitName(name, locale, rule);
+}
+
+export function towardReading(name: string, locale: Locale, rule?: NameSeparators, capital = true) {
+	const label = presenterCopy[locale].toward(directionName(name, locale, rule));
+	return capital ? label : label[0].toLowerCase() + label.slice(1);
 }
 
 export function lineSubtitle(
 	type: number | null,
-	headsigns: Record<number, string>,
+	ends: readonly string[] | undefined,
 	locale: Locale,
 	rule?: NameSeparators,
 ) {
 	const modes: Record<number, [string, string]> = {
-		0: ['Light rail', 'Tramway'],
+		0: ['Tram', 'Tramway'],
 		1: ['Métro', 'Métro'],
-		2: ['Rail', 'Train'],
-		3: ['Road transit', 'Transport routier'],
+		2: ['Train', 'Train'],
 		4: ['Ferry', 'Traversier'],
 	};
 	const mode = type == null ? undefined : modes[type]?.[locale === 'fr' ? 1 : 0];
-	const ends = [
-		...new Set(
-			[headsigns[1], headsigns[0]]
-				.filter(Boolean)
-				.map((name) => formatTransitName(name, locale, rule)),
-		),
-	];
-	const route = ends.join(locale === 'fr' ? ' à ' : ' to ');
+	const stops = [...new Set((ends ?? []).map((name) => formatTransitName(name, locale, rule)))];
+	const route = stops.join(locale === 'fr' ? ' à ' : ' to ');
 	return [mode, route].filter(Boolean).join(' · ') || undefined;
 }
 
@@ -220,7 +242,18 @@ export function directionLabel(
 ): string {
 	const name = direction == null || direction === '' ? null : headsigns[Number(direction)];
 	const copy = presenterCopy[locale];
-	return name?.trim() ? copy.toward(directionName(name, locale, rule)) : copy.unknownDirection;
+	return name?.trim() ? towardReading(name, locale, rule) : copy.unknownDirection;
+}
+
+export function stopTrendGap(minimum: number, allDays: boolean, locale: Locale) {
+	const count = intl.number(locale).format(minimum);
+	if (locale === 'fr')
+		return allDays
+			? `Trop peu de passages aux arrêts chaque jour pour tracer la courbe de cet arrêt (minimum de ${count} par jour).`
+			: `Trop peu de passages aux arrêts certains jours pour tracer la courbe de cet arrêt (minimum de ${count} par jour).`;
+	return allDays
+		? `Too few stop events per day to draw this stop’s line (minimum ${count} per day).`
+		: `Too few stop events per day to draw this stop’s line on some days (minimum ${count} per day).`;
 }
 
 export function longDate(date: string, locale: Locale): string {

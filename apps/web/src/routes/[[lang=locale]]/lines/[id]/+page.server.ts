@@ -34,7 +34,7 @@ export const load: PageServerLoad = async (event) => {
 		redirect(308, target.pathname + target.search);
 	}
 
-	const { schedule, lang, providerId, provider } = await event.parent();
+	const { schedule, lang, providerId, provider, patterns } = await event.parent();
 	const knownLine = schedule?.routes.some((route) => route.id === id) ?? false;
 	const outsideCurrentTimetable = schedule != null && !knownLine;
 	const showLiveReadings = frameLive && !outsideCurrentTimetable;
@@ -42,9 +42,14 @@ export const load: PageServerLoad = async (event) => {
 		line: (routeId) => routeNameFallback(routeId, lang),
 		locale: lang,
 		nameSeparators: provider?.name_separators,
+		patterns,
 	});
 	const name = directory.name(id);
 	const directions = schedule?.route_directions?.[id];
+	const riderDirections = directions?.map((direction) => ({
+		...direction,
+		headsign: directory.headsign(id, direction.headsign),
+	}));
 	const scheduleOnly =
 		!outsideCurrentTimetable &&
 		(lineIsScheduleOnly(provider, id, directory.type(id)) ||
@@ -64,8 +69,8 @@ export const load: PageServerLoad = async (event) => {
 		knownLine,
 		outsideCurrentTimetable,
 		scheduleOnly,
-		directionHeadsigns: directionHeadsigns(directions),
-		predictionHeadsigns: uniqueDirectionHeadsigns(directions),
+		directionHeadsigns: directionHeadsigns(riderDirections),
+		predictionHeadsigns: uniqueDirectionHeadsigns(riderDirections),
 		stopNames: Object.fromEntries(stops.map((stop) => [stop.id, stop.name])),
 		stopCodes: Object.fromEntries(
 			stops.flatMap((stop) => (stop.code ? [[stop.id, stop.code]] : [])),

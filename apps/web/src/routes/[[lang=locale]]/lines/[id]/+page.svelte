@@ -10,7 +10,7 @@
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import { recoverRecord } from '#lib/features/record/recordRecovery.svelte.ts';
-	import { lineRecordHeading, lineSubtitle } from '#lib/site/presenter.ts';
+	import { lineRecordHeading } from '#lib/site/presenter.ts';
 	import { vehicleTrackingDisabled } from '#lib/site/providerCapabilities.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -20,15 +20,12 @@
 	const locale = getLocale();
 	const display = transitDisplay();
 	const name = $derived(display.lineName(data.seed.id));
-	const routeType = $derived(display.directory.type(data.seed.id));
 	const url = $derived(new URL(page.shallow?.url.href ?? page.url.href));
 	const timetableNotice =
 		locale === 'fr'
 			? 'Cette ligne ne figure pas à l’horaire actuel.'
 			: 'This line is not in the current timetable.';
-	const subtitle = $derived(
-		lineSubtitle(routeType, data.directionHeadsigns, locale, display.directory.nameSeparators),
-	);
+	const subtitle = $derived(display.directory.subtitle(data.seed.id));
 	const readings = recoverRecord(
 		() => data.record,
 		({ city, line, direction, period }) => ({ ...period, city, id: line, direction, kind: 'line' }),

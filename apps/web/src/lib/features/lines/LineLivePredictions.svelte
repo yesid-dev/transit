@@ -12,7 +12,6 @@
 		predictedIn,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { presenterCopy } from '#lib/site/presenter.copy.ts';
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 	import { nextStopPredictions, type LineMainStop } from './lineLiveReadings.ts';
 	import { choose } from '../record/recordText.ts';
@@ -71,13 +70,14 @@
 					</a>
 					{#if estimate}
 						{@const status = classifyDelay(estimate.delay)}
+						{@const headsign = display.directory.headsign(line, estimate.toward)}
 						{@const scheduled =
 							estimate.scheduledAt === null
 								? null
 								: clockTime(new Date(estimate.scheduledAt), locale, timeZone)}
 						<p class="text-small text-muted-foreground">
-							{estimate.toward
-								? presenterCopy[locale].toward(display.directionName(estimate.toward, locale))
+							{headsign
+								? display.toward(headsign, locale)
 								: t('Destination unavailable.', 'Destination indisponible.')}
 						</p>
 						<div class="flex flex-wrap justify-between gap-x-3">
