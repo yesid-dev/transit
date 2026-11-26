@@ -44,16 +44,16 @@ test("classify CLI sees both sides of renames and runs all checks when a diff is
   git("init", "--quiet");
   mkdirSync(join(root, "apps/db"), { recursive: true });
   mkdirSync(join(root, "apps/engine"), { recursive: true });
-  mkdirSync(join(root, "apps/web"), { recursive: true });
+  mkdirSync(join(root, "docs"), { recursive: true });
   writeFileSync(join(root, "apps/db/old file.py"), "fixture\n");
   git("add", "apps/db/old file.py");
   git("commit", "--quiet", "-m", "base");
   const base = git("rev-parse", "HEAD");
   renameSync(
     join(root, "apps/db/old file.py"),
-    join(root, "apps/web/new file.ts"),
+    join(root, "docs/new file.md"),
   );
-  git("add", "apps/db/old file.py", "apps/web/new file.ts");
+  git("add", "apps/db/old file.py", "docs/new file.md");
   git("commit", "--quiet", "-m", "rename");
   const head = git("rev-parse", "HEAD");
   const eventPath = join(root, "event.json");
@@ -91,9 +91,9 @@ test("classify CLI sees both sides of renames and runs all checks when a diff is
   assert.equal(classify(base, head), "run_db=true");
   assert.equal(classify("f".repeat(40), head), "run_db=true");
   assert.equal(classify("--not-a-sha", head), "run_db=true");
-  writeFileSync(join(root, "apps/web/new file.ts"), "web change\n");
-  git("add", "apps/web/new file.ts");
-  git("commit", "--quiet", "-m", "web only");
+  writeFileSync(join(root, "docs/new file.md"), "documentation change\n");
+  git("add", "docs/new file.md");
+  git("commit", "--quiet", "-m", "documentation only");
   assert.equal(classify(head, git("rev-parse", "HEAD")), "run_db=false");
   assert.equal(
     classify(head, git("rev-parse", "HEAD"), "merge_group"),
@@ -113,21 +113,29 @@ test("classify CLI sees both sides of renames and runs all checks when a diff is
   git("commit", "--quiet", "-m", "engine only");
   const engineHead = git("rev-parse", "HEAD");
   for (const event of ["pull_request", "merge_group", "push"]) {
-    assert.equal(classify(engineBase, engineHead, event), "run_db=false");
+    assert.equal(classify(engineBase, engineHead, event), "run_db=true");
     assert.equal(classify(base, engineHead, event), "run_db=true");
   }
   assert.equal(classify("0".repeat(40), engineHead, "push"), "run_db=true");
 });
 
-test("web, proxy, engine and documentation changes skip DB work", () => {
-  for (const paths of [
-    ["apps/web/src/app.css"],
-    ["apps/data-proxy/index.js"],
-    ["apps/engine/src/transit_engine/timing.py", "apps/engine/uv.lock"],
-    ["CONTRIBUTING.md"],
-    ["docs/guide.md"],
-  ]) {
+test("documentation changes skip DB work", () => {
+  for (const paths of [["CONTRIBUTING.md"], ["docs/guide.md"]]) {
     assert.equal(classifyPaths(paths), false);
+  }
+});
+
+test("web, proxy and engine files read by DB tests run DB work", () => {
+  for (const path of [
+    "apps/web/wrangler.toml",
+    "apps/web/src/lib/v1/config.ts",
+    "apps/data-proxy/wrangler.toml",
+    "apps/data-proxy/src/kpis.js",
+    "apps/data-proxy/test/entrypoint.test.mjs",
+    "apps/engine/ops/linux/transit-engine-sync.timer",
+    "apps/engine/src/transit_engine/timing.py",
+  ]) {
+    assert.equal(classifyPaths([path]), true, path);
   }
 });
 

@@ -28,12 +28,8 @@ const IGNORED = new Set([
   "SECURITY.md",
   "SUPPORT.md",
 ]);
-const IGNORED_PREFIXES = [
-  "docs/",
-  "apps/data-proxy/",
-  "apps/engine/",
-  "apps/web/",
-];
+// DB artifact tests also read the web, data-proxy and engine trees.
+const IGNORED_PREFIXES = ["docs/"];
 
 // Unknown or unresolved paths run all checks. Only known unrelated paths skip them.
 export function classifyPaths(paths) {

@@ -137,21 +137,21 @@ def test_deploy_workflow_runs_worker_tests_then_wrangler_action() -> None:
     )
 
 
-def test_production_workflow_uses_opaque_public_base_and_web_config_exposes_origin() -> None:
+def test_production_publish_and_compatibility_route_do_not_use_web_v1_config() -> None:
     publish_env = yaml.safe_load(PUBLISH_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["publish"][
         "env"
     ]
     web_config = tomllib.loads(WEB_WRANGLER_TOML.read_text(encoding="utf-8"))
-    base_url = web_config["vars"]["PUBLIC_V1_BASE"].removesuffix("/v1")
 
     assert publish_env["SNAPSHOT_PUBLIC_BASE_URL"] == ("${{ secrets.SNAPSHOT_PUBLIC_BASE_URL }}")
-    assert base_url == "https://data.yesid.dev"
+    assert "PUBLIC_V1_BASE" not in web_config.get("vars", {})
+    assert all(bucket.get("binding") != "SNAPSHOTS" for bucket in web_config.get("r2_buckets", []))
 
     compatibility_route = next(
         route for route in _wrangler_config()["routes"] if route["pattern"].endswith("/data/*")
     )
     assert compatibility_route["pattern"] == "transit.yesid.dev/data/*"
-    assert base_url.removeprefix("https://") not in compatibility_route["pattern"]
+    assert "data.yesid.dev" not in compatibility_route["pattern"]
 
 
 def test_smoke_script_asserts_direct_r2_and_compatibility_objects() -> None:
