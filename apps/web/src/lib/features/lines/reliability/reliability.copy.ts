@@ -26,7 +26,11 @@ function identity(parts: readonly (string | false | null)[]): string {
 }
 
 export type ReliabilityClusterKey =
-	'punctuality' | 'waitRegularity' | 'serviceDelivered' | 'crowding' | 'habits';
+	| 'punctuality'
+	| 'waitRegularity'
+	| 'serviceDelivered'
+	| 'crowding'
+	| 'habits';
 
 export const reliabilityCopy = defineCopy({
 	fr: {
