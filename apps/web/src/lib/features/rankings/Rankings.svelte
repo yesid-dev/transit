@@ -13,7 +13,13 @@
 	import type { loadRankingsRecord, RankingIdentities } from '#lib/server/rankingsRecord.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
-	import { countedUnit, dateRange, recordStamp, scheduledClock } from '#lib/site/presenter.ts';
+	import {
+		countedUnit,
+		dateRange,
+		recordStamp,
+		rowSentence,
+		scheduledClock,
+	} from '#lib/site/presenter.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
@@ -184,7 +190,7 @@
 	}
 
 	type Entry = RankingsRecord['rows'][number] | RankingsRecord['excluded'][number];
-	type Ranked = RecordTableRow & { entry: RankingsRecord['rows'][number] };
+	type Ranked = RecordTableRow & { entry: RankingsRecord['rows'][number]; facts: string[] };
 	type Excluded = RecordTableRow & { entry: RankingsRecord['excluded'][number] };
 	function name(row: Entry, identities: RankingIdentities): RecordTableRow {
 		const id = row.id;
@@ -442,11 +448,10 @@
 {#snippet tableCard(data: RankingsRecord, identities: RankingIdentities)}
 	{@const rows = data.rows.map((entry): Ranked => {
 		const row = name(entry, identities);
-		return {
-			...row,
-			entry,
-			detail: [row.detail, coverageText(entry, locale)].filter(Boolean).join(' · ') || undefined,
-		};
+		const facts = [row.detail, coverageText(entry, locale)].filter(
+			(fact): fact is string => !!fact,
+		);
+		return { ...row, entry, facts, detail: facts.join(' · ') || undefined };
 	})}
 	{@const plates = rows.some((row) => row.plate || row.leadingCode)}
 	{@const bounded = rows.filter(
@@ -457,7 +462,18 @@
 		: null}
 	{@const wilson = bounded.some(({ entry }) => entry.range.method.endsWith('wilson_95'))}
 	{@const scale = domain(data)}
-	{#snippet value(row: Ranked)}{rankingValue(row.entry.value, measure, locale)}{/snippet}
+	{#snippet value(row: Ranked)}<strong>{rankingValue(row.entry.value, measure, locale)}</strong
+		>{/snippet}
+	{#snippet phoneValue(row: Ranked)}{rankingValue(
+			row.entry.value,
+			measure,
+			locale,
+		)}{#if measure === reporting}
+			{t('per 100 h', 'par 100 h')}{/if}{/snippet}
+	{#snippet rank(row: Ranked)}<span class="sr-only">{t('Rank', 'Rang')} </span>{tally(
+			row.entry.rank,
+			locale,
+		)}{/snippet}
 	{#snippet counted(row: Ranked)}
 		{#each rankingCountLines(row.entry, measure, locale) as reading (reading)}<span
 				class="block font-sans text-small text-right">{reading}</span
@@ -516,12 +532,10 @@
 	] satisfies DataTableColumn<Ranked>[]}
 	{#snippet heading(row: Ranked)}
 		<div
-			class="grid min-w-0 grid-cols-[3ch_minmax(0,1fr)] items-start gap-x-2 @max-[13rem]:grid-cols-1"
+			class="grid min-w-0 grid-cols-[3ch_minmax(0,1fr)] items-baseline gap-x-2 @max-[13rem]:grid-cols-1"
 		>
-			<span class="pt-2 font-mono text-small tabular-nums"
-				><span class="sr-only">{t('Rank', 'Rang')} </span>{tally(row.entry.rank, locale)}</span
-			>
-			<RecordTableName {row} {plates} columnCount={columns.length + 1} />
+			<span class="font-mono text-small tabular-nums">{@render rank(row)}</span>
+			<RecordTableName {row} {plates} columnCount={columns.length + 1} plateOnName />
 		</div>
 	{/snippet}
 	<RecordCard
@@ -541,12 +555,19 @@
 					{locale}
 					title={listLabel}
 					{rowHeader}
-					nameWidth="34%"
+					nameWidth="40%"
 					{rows}
 					{columns}
 					value="value"
 					pageSize={rows.length > 20 ? 20 : undefined}
 					rowHeading={heading}
+					phone={{
+						before: rank,
+						value: phoneValue,
+						line: (row) =>
+							rowSentence([...row.facts, ...rankingCountLines(row.entry, measure, locale)], locale),
+						below: range,
+					}}
 				/>
 				{#if !bounded.length}<p class="text-small text-muted-foreground">
 						{t(
@@ -592,6 +613,10 @@
 				{rowHeader}
 				rows={data.excluded.map((entry): Excluded => ({ ...name(entry, identities), entry }))}
 				columns={[{ key: 'reason', header: t('Reason', 'Motif'), cell: reason }]}
+				phone={{
+					line: (row) =>
+						rowSentence([row.detail, exclusionText(row.entry, measure, locale)], locale),
+				}}
 			/>
 		</RecordCard>
 	{:else}<RecordCard {title}

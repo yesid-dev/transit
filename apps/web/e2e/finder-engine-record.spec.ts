@@ -237,16 +237,15 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await page.goBack();
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/324\?/);
+		// Phone rows carry no column headers: one button after the sort choices reverses the order.
 		await page.getByRole('radio', { name: fr ? 'Part à l’heure' : 'On-time share' }).focus();
 		await page.keyboard.press('Tab');
-		await page.keyboard.press('Tab');
-		const timingHeader = table.getByRole('button', {
+		const reverse = page.getByRole('button', {
 			name: fr ? 'Inverser le tri par À l’heure' : 'Reverse sort by On time',
 		});
-		await expect(timingHeader).toBeFocused();
+		await expect(reverse).toBeFocused();
 		await page.keyboard.press('Enter');
 		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
-		await expect(timingHeader.locator('..')).toHaveAttribute('aria-sort', 'ascending');
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
 		const choices = page.getByRole('radiogroup', { name: fr ? 'Trier par' : 'Sort by' });
 		await expect(
@@ -255,9 +254,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(
 			choices.getByRole('radio', { name: fr ? 'Numéro de ligne' : 'Line number' }),
 		).toBeVisible();
-		await expect(
-			table.getByRole('button', { name: fr ? 'Trier par Ligne' : 'Sort by Line', exact: true }),
-		).toBeVisible();
+		await expect(table.getByRole('columnheader')).toHaveCount(1);
 
 		for (const width of [1024, 1440]) {
 			await page.setViewportSize({ width, height: 900 });
@@ -445,18 +442,15 @@ for (const locale of ['en', 'fr'] as const) {
 			);
 			const row = page.getByRole('row').filter({ hasText: '8th Line / Byron' });
 			await expect(row.getByRole('link', { name: '8th Line / Byron' })).toBeVisible();
-			await expect(row.locator('[data-column="lines"] [data-slot="route-plate"]')).toHaveText([
-				'51',
-				'51A',
-				'105',
-			]);
+			// The phone row puts the line plates on the name's line and the sample in its sentence.
+			await expect(row.locator('[data-slot="route-plate"]')).toHaveText(['51', '51A', '105']);
 			await expect(row.locator('[data-record-state]')).toHaveCount(1);
 			await expect(row.locator('[data-record-state]')).toHaveAttribute(
 				'data-record-state',
 				'too_few_to_judge',
 			);
-			await expect(row.locator('[data-column="events"]')).toContainText(
-				fr ? '29 (minimum de 500)' : '29 (minimum 500)',
+			await expect(row).toContainText(
+				fr ? '29 passages aux arrêts (minimum de 500)' : '29 stop events (minimum 500)',
 			);
 		}
 	});
@@ -465,7 +459,11 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.setViewportSize({ width: 390, height: 900 });
 		await page.goto(`${prefix}/stop/S1?provider=stm&recordFrom=2026-11-10&recordTo=2026-11-10`);
 		const answer = page.locator('[data-slot="screen-answer"]');
-		await expect(answer).toContainText(fr ? /24 sur 100, minimum de 40/ : /24 of 100, minimum 40/);
+		await expect(answer).toContainText(
+			fr
+				? /24 des 100 passages prévus ont été observés ici à ces dates\. Il faut observer au moins 40,0\s% des passages prévus\./
+				: '24 of 100 scheduled stop events were observed here on these dates. At least 40.0% of scheduled stop events must be observed.',
+		);
 		const waiting = page.locator('#waiting');
 		const gap = fr
 			? 'Trop peu d’intervalles prévus ont été observés'

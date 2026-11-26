@@ -60,6 +60,7 @@
 		pageCitation,
 		recordStamp,
 		recordPercent,
+		rowSentence,
 		sampleWithMinimum,
 		tripOutcomeLabels,
 		tripOutcomeNote,
@@ -275,8 +276,14 @@
 </script>
 
 {#snippet hours(row: PeriodRow)}<span class="font-mono">{row.hours}</span>{/snippet}
+{#snippet phoneLate(row: PeriodRow)}
+	{#if row.value != null}{row.value}{:else if row.state}<StateMark
+			state={row.state}
+			locale={lang}
+		/>{/if}
+{/snippet}
 {#snippet late(row: PeriodRow)}
-	{#if row.value != null}{row.value}
+	{#if row.value != null}<strong>{row.value}</strong>
 	{:else if row.state}
 		<StateMark state={row.state} locale={lang} />
 		{#if row.stateDetail}<span class="block text-muted-foreground">{row.stateDetail}</span>{/if}
@@ -589,6 +596,18 @@
 												stateDetail: detail,
 											}))}
 											scrollMinWidth="26rem"
+											phone={{
+												value: phoneLate,
+												line: (row) =>
+													rowSentence(
+														[
+															row.hours,
+															row.stateDetail ??
+																(row.classified > 0 && countedUnit(row.classified, 'event', lang)),
+														],
+														lang,
+													),
+											}}
 										/>
 									{:else}
 										{@render failure(result)}

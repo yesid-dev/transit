@@ -12,6 +12,9 @@ import {
 	dateRange,
 	pageCitation,
 	countedUnit,
+	countLabels,
+	daysInService,
+	deliveryFacts,
 	dailyAlertsLink,
 	noticeCountEvidence,
 	publishedAlertCount,
@@ -34,9 +37,13 @@ import {
 	recordPercent,
 	rankingComparison,
 	recordStamp,
+	rowSentence,
 	scheduledClock,
 	serviceTime,
+	tooFewDepartures,
+	tooFewHours,
 	tripsInHours,
+	tripsRan,
 	vehiclePositionsCapture,
 	versionNumber,
 } from './presenter.ts';
@@ -387,6 +394,8 @@ it.each([
 	},
 );
 
+const plain = (text: string | null) => text?.replace(/[\u00a0\u202f]/gu, ' ') ?? null;
+
 it.each([
 	[
 		'en',
@@ -451,4 +460,64 @@ it.each([
 	expect(pageCitation('24 · Sherbrooke', period, 'https://t.test/lines/24', locale)).toBe(text);
 	// Mid-sentence dates keep their lowercase.
 	expect(dateRange(period, 'fr')).toBe('du 19 au 25 nov. 2026');
+});
+
+it.each([
+	[
+		'en',
+		'Sud to Nord, late 7.2%, 526 of 578 trips ran, 10,284 stop events',
+		'7 of 7 days',
+		'3 cancelled, 1 missing',
+		'8,630 stops',
+	],
+	[
+		'fr',
+		'Sud to Nord, en retard 7,2 %, 526 sur 578 trajets effectués, 10 284 passages aux arrêts',
+		'7 sur 7 jours',
+		'3 annulés, 1 manquant',
+		'8 630 arrêts',
+	],
+] as const)(
+	'writes the phone row sentence without labels or trailing separators in %s',
+	(locale, line, days, delivery, count) => {
+		expect(
+			plain(
+				rowSentence(
+					[
+						'Sud to Nord',
+						locale === 'fr' ? 'en retard 7,2 %' : 'late 7.2%',
+						tripsRan(526, 578, locale),
+						countedUnit(10284, 'event', locale),
+						null,
+						false,
+					],
+					locale,
+				),
+			),
+		).toBe(line);
+		expect(rowSentence([null, undefined], locale)).toBeNull();
+		expect(daysInService(7, 7, locale)).toBe(days);
+		expect(deliveryFacts(3, 1, locale)).toBe(delivery);
+		const labels = countLabels(
+			8630,
+			locale === 'fr'
+				? { singular: '{count} arrêt', plural: '{count} arrêts' }
+				: { singular: '{count} stop', plural: '{count} stops' },
+			locale,
+		);
+		expect(plain(labels.plural)).toBe(count);
+	},
+);
+
+it('says once that every departure or hour is too few to judge, with the count and the minimum', () => {
+	expect(tooFewDepartures(5, 20, 'en')).toBe(
+		'Each departure has at most 5 scheduled trips; the minimum is 20.',
+	);
+	expect(tooFewDepartures(1, null, 'fr')).toBe('Chaque départ compte au plus 1 trajet prévu.');
+	expect(tooFewHours(12, 25, 'en')).toBe(
+		'Every hour has too few stop events to judge: at most 12; the minimum is 25.',
+	);
+	expect(tooFewHours(12, 25, 'fr')).toBe(
+		'Chaque heure compte trop peu de passages aux arrêts pour conclure\u00a0: au plus 12, sur un minimum de 25.',
+	);
 });

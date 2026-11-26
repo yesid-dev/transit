@@ -22,6 +22,7 @@
 		citeDates,
 		dateRange,
 		frenchAgency,
+		gridDaysNote,
 		longDate,
 		methodEvidence,
 		officialAlertsLabel,
@@ -57,6 +58,7 @@
 	import RecordCard from './RecordCard.svelte';
 	import RecordDataTable, { type RecordTableRow } from './RecordDataTable.svelte';
 	import RecordEvidenceLine from './RecordEvidenceLine.svelte';
+	import PhoneSwitch from './PhoneSwitch.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import RecordSkeleton from './RecordSkeleton.svelte';
 	import ScreenTitle from './ScreenTitle.svelte';
@@ -182,8 +184,8 @@
 		);
 	}
 
-	function grid(answer: DataHealthAnswer) {
-		const days = answer.days.slice(-14);
+	function grid(answer: DataHealthAnswer, count: number) {
+		const days = answer.days.slice(-count);
 		const tables = tablesFor(answer);
 		const states = new Set<keyof typeof marks>([
 			'present',
@@ -528,14 +530,14 @@
 							<RecordSkeleton shape="table" />
 						{:then result}
 							{#if result.kind === 'answer'}
-								{@const display = grid(result.answer)}
-								{#if display.from && display.to && display.rows.length}
-									<p class="mb-3">{daysSummary(result.answer)}</p>
+								{@const display = grid(result.answer, 14)}
+								{#snippet dayGrid(count: number)}
+									{@const shown = grid(result.answer, count)}
 									<div>
 										<HourGrid
 											label={titles.days}
-											columns={display.columns}
-											rows={display.rows}
+											columns={shown.columns}
+											rows={shown.rows}
 											scale={{ label: '', steps: [] }}
 											stateLabels={{ few: '', none: '', unmeasured: '' }}
 										/>
@@ -544,7 +546,7 @@
 											role="list"
 											aria-label={t('Day states', 'États des jours')}
 										>
-											{#each [...display.states] as state (state)}
+											{#each [...shown.states] as state (state)}
 												<li class="flex gap-2">
 													<span aria-hidden="true" class="min-w-4 text-center"
 														>{marks[state].text}</span
@@ -554,14 +556,18 @@
 											{/each}
 										</ul>
 									</div>
-									{#if result.answer.days.length > display.columns.length}
+									{#if result.answer.days.length > shown.columns.length}
 										<p class="mt-3 text-small text-muted-foreground">
-											{t(
-												'The grid shows the last 14 days. The counts cover the full period.',
-												'La grille montre les 14 derniers jours. Les totaux couvrent toute la période.',
-											)}
+											{gridDaysNote(shown.columns.length, locale)}
 										</p>
 									{/if}
+								{/snippet}
+								{#snippet wideGrid()}{@render dayGrid(14)}{/snippet}
+								{#snippet narrowGrid()}{@render dayGrid(7)}{/snippet}
+								{#if display.from && display.to && display.rows.length}
+									<p class="mb-3">{daysSummary(result.answer)}</p>
+									<!-- A phone shows the last 7 days, so the most recent day is always in view. -->
+									<PhoneSwitch wide={wideGrid} narrow={narrowGrid} />
 									<p class="mt-3">
 										{t(
 											'A day with a gap is left out of the figures that need it, and each figure says how many days it counted.',
@@ -630,6 +636,7 @@
 										{ key: 'since', header: t('Last changed', 'Dernier changement'), cell: since },
 									]}
 									value="since"
+									phone={{}}
 								/>
 							{/if}
 						{:else}<StateMark state="not_measured" {locale} />{/if}

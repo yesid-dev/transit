@@ -196,7 +196,7 @@
 		</FactList>
 		{#if lines.length}
 			<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
-			{#snippet late(row: RecordTableRow & { late: string })}{row.late}{/snippet}
+			{#snippet late(row: RecordTableRow & { late: string })}<strong>{row.late}</strong>{/snippet}
 			<RecordDataTable
 				{locale}
 				title={t.lateLines}
@@ -213,6 +213,7 @@
 				})}
 				columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}
 				value="late"
+				phone={{}}
 			/>
 		{/if}
 	{/if}

@@ -11,7 +11,14 @@
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import { captureDisplayState, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
-	import { countedUnit, liveStampAge, singularCount } from '#lib/site/presenter.ts';
+	import {
+		countedUnit,
+		departureAt,
+		liveStampAge,
+		rowSentence,
+		singularCount,
+	} from '#lib/site/presenter.ts';
+	import { presenterCopy } from '#lib/site/presenter.copy.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { choose, tally } from '../record/recordText.ts';
@@ -62,6 +69,17 @@
 		},
 	]);
 
+	function lineHref(routeId: string) {
+		return carryFrameState(
+			localizeHref(
+				'/lines/' + encodeURIComponent(routeId) + '?frameMode=live',
+				locale,
+				city ?? undefined,
+			),
+			url,
+		);
+	}
+
 	function reading(
 		snapshot: CaptureSnapshot | null,
 		feed: CaptureSnapshot['feeds'][string] | undefined,
@@ -84,14 +102,7 @@
 
 {#snippet line(row: SilentTrip)}
 	{@const name = display.lineName(row.routeId)}
-	{@const href = carryFrameState(
-		localizeHref(
-			'/lines/' + encodeURIComponent(row.routeId) + '?frameMode=live',
-			locale,
-			city ?? undefined,
-		),
-		url,
-	)}
+	{@const href = lineHref(row.routeId)}
 	{#if name.name && name.name !== row.line}
 		<span class="inline-flex min-w-0 items-center gap-2">
 			<span class="shrink-0"><RoutePlate code={row.line} /></span>
@@ -240,10 +251,23 @@
 									rows={silentTrips.map((row) => ({
 										...row,
 										id: row.tripId,
-										label: row.line,
+										label: display.lineName(row.routeId).name ?? row.line,
+										plate: { code: row.line },
+										href: lineHref(row.routeId),
 									}))}
 									scrollMinWidth="28rem"
 									pageSize={silentTrips.length > silentTripLimit ? silentTripLimit : undefined}
+									value="silent"
+									phone={{
+										line: (row) =>
+											rowSentence(
+												[
+													departureAt(row.departure, locale),
+													row.toward && presenterCopy[locale].toward(row.toward),
+												],
+												locale,
+											),
+									}}
 								/>
 							{:else}
 								{#if silentCount != null}<p>{countedUnit(silentCount, 'trip', locale)}</p>{/if}

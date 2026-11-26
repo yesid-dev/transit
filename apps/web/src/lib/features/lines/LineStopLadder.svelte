@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { SegmentedChoice } from '@yesid/ui/brand';
+	import { Button } from '@yesid/ui/button';
 	import { StopLadder } from '@yesid/ui/chart';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import PhoneSwitch from '#lib/features/record/PhoneSwitch.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { choose } from '#lib/features/record/recordText.ts';
 	import { stopLadderChart, chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import type { RecordSeries } from '#lib/server/engine.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
-	import { countedUnit, minuteReading } from '#lib/site/presenter.ts';
+	import { countedUnit, minuteReading, showAllStops } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { delayBuilds } from './lineRecordText.ts';
@@ -75,7 +77,24 @@
 			undefined,
 		),
 	);
+	/** On a phone: the first stop, where delay builds (or the highest delay) and the last stop. */
+	const short = $derived.by(() => {
+		const stops = reading.props.stops;
+		const middle = to ?? peak;
+		const picks = [stops[0], middle, stops.at(-1)].filter((stop) => stop !== undefined);
+		return picks.filter((stop, index) => picks.findIndex(({ id }) => id === stop.id) === index);
+	});
+	let showAll = $state(false);
+	$effect(() => {
+		void direction;
+		showAll = false;
+	});
+	const ladderMax = $derived(Math.max(threshold.value, reading.props.max));
 </script>
+
+{#snippet fullLadder()}
+	<StopLadder {...reading.props} max={ladderMax} {threshold} {highlight} />
+{/snippet}
 
 {#if stretch && from && to}
 	{@const stops = countedUnit(stretch.to - stretch.from + 1, 'stop', locale)}
@@ -118,12 +137,22 @@
 				values: [stop.valueLabel],
 			}))}
 		/>
+	{:else if reading.props.stops.length > short.length && !showAll}
+		<PhoneSwitch wide={fullLadder}>
+			{#snippet narrow()}
+				<StopLadder {...reading.props} stops={short} max={ladderMax} {threshold} />
+				<Button
+					class="mt-3 min-h-11"
+					variant="outline"
+					size="sm"
+					aria-expanded="false"
+					aria-controls="line-stop-ladder"
+					onclick={() => (showAll = true)}
+					>{showAllStops(reading.props.stops.length, locale)}</Button
+				>
+			{/snippet}
+		</PhoneSwitch>
 	{:else if reading.props.stops.length}
-		<StopLadder
-			{...reading.props}
-			max={Math.max(threshold.value, reading.props.max)}
-			{threshold}
-			{highlight}
-		/>
+		{@render fullLadder()}
 	{/if}
 </div>

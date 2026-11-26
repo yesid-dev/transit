@@ -4,7 +4,7 @@
 	import RecordTableValue from './RecordTableValue.svelte';
 	import type { RecordState } from './recordStates.ts';
 
-	let { locale }: { locale: Locale } = $props();
+	let { locale, phone = false }: { locale: Locale; phone?: boolean } = $props();
 	type Row = RecordTableRow & { code: string | null; reading: string | null; state?: RecordState };
 	const rows: Row[] = Array.from({ length: 25 }, (_, i) => ({
 		id: String(i + 1),
@@ -38,6 +38,12 @@
 		},
 	]}
 	value="reading"
+	phone={phone
+		? {
+				line: (row) =>
+					row.reading ? `${row.reading} ${locale === 'fr' ? 'passages' : 'readings'}` : null,
+			}
+		: undefined}
 	sort={{
 		key: 'reading',
 		direction,

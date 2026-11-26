@@ -19,7 +19,9 @@
 		methodEvidence,
 		recordPercent,
 		recordStamp,
+		rowSentence,
 		sampleWithMinimum,
+		countLabels as countTemplates,
 	} from '#lib/site/presenter.ts';
 	import { formatTransitName, stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import {
@@ -401,10 +403,16 @@
 		{ key: 'onTime', header: about.onTime, numeric: true, cell: shareCell },
 		{ key: 'events', header: eventsHeader, numeric: true, cell: eventsCell },
 	]);
-	const countLabel = $derived({
-		singular: t('{count} stop', '{count} arrêt'),
-		plural: t('{count} stops', '{count} arrêts'),
-	});
+	const countLabel = $derived(
+		countTemplates(
+			total,
+			{
+				singular: t('{count} stop', '{count} arrêt'),
+				plural: t('{count} stops', '{count} arrêts'),
+			},
+			locale,
+		),
+	);
 	const pageLabels = $derived({
 		showing: (shown: number, all: number) =>
 			t(
@@ -687,6 +695,25 @@
 								{columns}
 								{rows}
 								pageSize={0}
+								phone={{
+									code: (row) => row.code,
+									after: linesCell,
+									line: (row) =>
+										row.events === null
+											? null
+											: rowSentence(
+													[
+														row.minimum === null
+															? countedUnit(row.events, 'event', locale)
+															: sampleWithMinimum(
+																	countedUnit(row.events, 'event', locale),
+																	row.minimum,
+																	locale,
+																),
+													],
+													locale,
+												),
+								}}
 							/>
 							<ShowMore
 								shown={rows.length}

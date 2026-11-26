@@ -115,6 +115,7 @@ export function dailyPeriods(answer: RecordSeries | null, locale: Locale) {
 			hours: reportHours(start, end, locale),
 			value: state ? null : recordPercent(late / classified, locale),
 			count: classified ? tally(classified, locale) : null,
+			classified,
 			state,
 			detail,
 		};

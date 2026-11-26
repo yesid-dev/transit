@@ -8,12 +8,15 @@
 		plates,
 		columnCount,
 		inlinePlate = false,
+		plateOnName = false,
 		detailContent,
 	}: {
 		row: RecordTableRow;
 		plates: boolean;
 		columnCount: number;
 		inlinePlate?: boolean;
+		/** Keep the plate on the name's line at every width, the detail under the name. */
+		plateOnName?: boolean;
 		detailContent?: Snippet;
 	} = $props();
 	const hasTrack = $derived(plates || !!row.plate || !!row.leadingCode);
@@ -42,6 +45,7 @@
 		class="name-cell"
 		class:with-plate={hasTrack}
 		class:inline-plate={inlinePlate}
+		class:plate-on-name={plateOnName}
 		class:schedule-only={row.plate?.scheduleOnly}
 		data-many-columns={columnCount > 2 || undefined}
 		href={row.href}
@@ -53,6 +57,7 @@
 		class="name-cell"
 		class:with-plate={hasTrack}
 		class:inline-plate={inlinePlate}
+		class:plate-on-name={plateOnName}
 		data-many-columns={columnCount > 2 || undefined}
 	>
 		{@render contents()}
@@ -153,6 +158,21 @@
 			font-size: var(--text-caption);
 			letter-spacing: var(--tracking-tight);
 		}
+	}
+	/* After every width rule above, so it wins at each width. */
+	.name-cell.with-plate.plate-on-name:not(.schedule-only) {
+		grid-template-columns: minmax(min-content, 3.75em) minmax(0, 1fr);
+		align-items: baseline;
+	}
+	.name-cell.with-plate.plate-on-name:not(.schedule-only) .plate {
+		grid-row: 1;
+		align-self: baseline;
+	}
+	.name-cell.with-plate.plate-on-name:not(.schedule-only) .name-label {
+		grid-row: 1;
+	}
+	.name-cell.with-plate.plate-on-name:not(.schedule-only) .detail {
+		grid-column: 2;
 	}
 	a.name-cell {
 		min-block-size: var(--size-tap-min);

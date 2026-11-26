@@ -178,8 +178,14 @@ for (const width of [390, 1440]) {
 			const first = table
 				.getByRole('row')
 				.filter({ has: page.getByRole('link', { name: '40061', exact: true }) });
-			await expect(first.locator('[data-column="days"]')).toContainText('5');
-			await expect(first.locator('[data-column="trips"]')).toContainText('22');
+			if (width === 390) {
+				// The phone row: days in service as its value, the rest as one sentence.
+				await expect(first).toContainText(fr ? /5 sur \d+ jours/u : /5 of \d+ days/u);
+				await expect(first).toContainText(fr ? '22 trajets' : '22 trips');
+			} else {
+				await expect(first.locator('[data-column="days"]')).toContainText('5');
+				await expect(first.locator('[data-column="trips"]')).toContainText('22');
+			}
 			await main.getByRole('link', { name: '40061' }).click();
 			await expect(page).toHaveURL(/vehicle\/40061\?.*recordFrom=2026-11-08/);
 			await expect(

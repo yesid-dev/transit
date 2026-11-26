@@ -20,14 +20,33 @@
 		};
 	};
 
+	/**
+	 * The phone row: line 1 holds the plate or code box, the linked name, `after` (inline plates)
+	 * and the main value in bold at the right; line 2 is one muted sentence of the secondary facts.
+	 * No column name repeats in a row. `empty` rows have no value: their sentence follows the name.
+	 * The row's `detail` is not printed under the name: include it in `line` when it matters.
+	 * `before` precedes the name (a rank); `below` follows the sentence on its own line (a range).
+	 */
+	export type RecordPhoneRow<Row> = {
+		line?: (row: Row) => string | null | undefined;
+		before?: Snippet<[Row]>;
+		below?: Snippet<[Row]>;
+		value?: Snippet<[Row]>;
+		after?: Snippet<[Row]>;
+		code?: (row: Row) => string | null | undefined;
+		empty?: (row: Row) => boolean;
+	};
+
 	type Column<Row> = DataTableColumn<Row>;
 </script>
 
 <script lang="ts" generics="Row extends RecordTableRow">
 	import { SegmentedChoice } from '@yesid/ui/brand';
+	import { Button } from '@yesid/ui/button';
+	import type { Snippet } from 'svelte';
 	import { DataTable } from '@yesid/ui/table';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
-	import type { Snippet } from 'svelte';
+	import PhoneSwitch from './PhoneSwitch.svelte';
 	import RecordTableName from './RecordTableName.svelte';
 
 	/**
@@ -43,6 +62,8 @@
 	 * `nameWidth` reserves room for a custom row heading on wide screens.
 	 * When sorting is enabled, the caller reads and writes the URL and supplies the resulting
 	 * order and direction. Headers request a direction change; optional choices select a column.
+	 * `phone` turns each row into the phone row pattern (see RecordPhoneRow) when the table is at
+	 * most 28rem wide, through PhoneSwitch.
 	 */
 	let {
 		locale,
@@ -58,6 +79,7 @@
 		stackAt,
 		pageSize,
 		rowHeading,
+		phone,
 	}: {
 		locale: Locale;
 		title: string;
@@ -72,6 +94,7 @@
 		stackAt?: 'compact' | 'tablet';
 		pageSize?: number;
 		rowHeading?: Snippet<[Row]>;
+		phone?: RecordPhoneRow<Row>;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
 		...(leadingColumn ? [leadingColumn] : []),
@@ -84,6 +107,16 @@
 			cell: nameCell,
 		},
 		...columns,
+	]);
+	const valueColumn = $derived(columns.find(({ key }) => key === value));
+	const phoneColumns = $derived<Column<Row>[]>([
+		{
+			key: 'name',
+			header: rowHeader,
+			rowHeader: true,
+			sortable: !!sort && !sort.choices,
+			cell: phoneCell,
+		},
 	]);
 	const plates = $derived(
 		rows.some(({ plate, leadingCode }) => plate !== undefined || leadingCode !== undefined),
@@ -121,13 +154,57 @@
 		<RecordTableName {row} {plates} columnCount={allColumns.length} />
 	{/if}
 {/snippet}
+{#snippet phoneCell(row: Row)}
+	{@const code = phone?.code?.(row)}
+	{@const line = phone?.line?.(row)}
+	{@const empty = phone?.empty?.(row) ?? false}
+	{@const named = { ...row, detail: undefined }}
+	<div class="phone-row">
+		<div class="phone-head" class:ranked={!!phone?.before}>
+			{#if phone?.before}<span class="phone-before">{@render phone.before(row)}</span>{/if}
+			<div class="phone-name">
+				{#if code}<span class="phone-code">{code}</span>{/if}
+				<RecordTableName row={named} {plates} columnCount={1} />
+				{#if phone?.after}<span class="phone-after">{@render phone.after(row)}</span>{/if}
+				{#if empty && line}<span class="phone-line">{line}</span>{/if}
+			</div>
+			{#if !empty && (phone?.value || valueColumn)}
+				<span class="phone-value"
+					>{#if phone?.value}{@render phone.value(
+							row,
+						)}{:else if valueColumn}{@render valueColumn.cell(row)}{/if}</span
+				>
+			{/if}
+		</div>
+		{#if line && !empty}<p class="phone-line">{line}</p>{/if}
+		{#if phone?.below}{@render phone.below(row)}{/if}
+	</div>
+{/snippet}
+{#snippet wideTable()}
+	<DataTable
+		caption={title}
+		columns={allColumns}
+		{rows}
+		key={(row) => row.id}
+		{sort}
+		onSort={sort?.onSort}
+		sortLabels={sort ? { by: sortHeaderLabel } : undefined}
+		pageSize={page}
+		{pageLabels}
+		responsive={scrollMinWidth
+			? { mode: 'scroll', minWidth: scrollMinWidth }
+			: stackAt
+				? { mode: 'stack', at: stackAt }
+				: { mode: 'rows', primary: 'name', value: value ?? '' }}
+	/>
+{/snippet}
 {#if sort?.choices}
 	{@const options = sort.choices.options.map((choice) =>
 		choice.key === sort.key
 			? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
 			: choice,
 	)}
-	<div class="sort-choice-frame">
+	<div class="sort-choice-frame" class:with-phone={!!phone}>
 		<div class="sort-choices mb-2 flex flex-wrap items-center gap-2">
 			<span class="basis-full sm:basis-auto">{sortBy}</span>
 			<div class="sort-choice-default">
@@ -147,28 +224,94 @@
 					variant="joined-grid"
 				/>
 			</div>
+			{#if phone && sortedHeader}
+				<!-- Phone rows carry no column headers: this button reverses the order there. -->
+				<span class="sort-reverse">
+					<Button class="min-h-11" variant="outline" size="sm" onclick={() => sort.onSort(sort.key)}
+						>{sortHeaderLabel(sortedHeader)}</Button
+					>
+				</span>
+			{/if}
 		</div>
 	</div>
 {/if}
 
-<DataTable
-	caption={title}
-	columns={allColumns}
-	{rows}
-	key={(row) => row.id}
-	{sort}
-	onSort={sort?.onSort}
-	sortLabels={sort ? { by: sortHeaderLabel } : undefined}
-	pageSize={page}
-	{pageLabels}
-	responsive={scrollMinWidth
-		? { mode: 'scroll', minWidth: scrollMinWidth }
-		: stackAt
-			? { mode: 'stack', at: stackAt }
-			: { mode: 'rows', primary: 'name', value: value ?? '' }}
-/>
+{#if phone}
+	<PhoneSwitch wide={wideTable}>
+		{#snippet narrow()}
+			<DataTable
+				caption={title}
+				columns={phoneColumns}
+				{rows}
+				key={(row) => row.id}
+				{sort}
+				onSort={sort?.onSort}
+				sortLabels={sort ? { by: sortHeaderLabel } : undefined}
+				pageSize={page}
+				{pageLabels}
+				responsive={{ mode: 'rows', primary: 'name', value: '' }}
+			/>
+		{/snippet}
+	</PhoneSwitch>
+{:else}
+	{@render wideTable()}
+{/if}
 
 <style>
+	.phone-row {
+		display: grid;
+		gap: 0.125rem;
+		min-inline-size: 0;
+	}
+	.phone-head {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: baseline;
+		column-gap: 0.5rem;
+	}
+	.phone-head.ranked {
+		grid-template-columns: auto minmax(0, 1fr) auto;
+	}
+	.phone-name {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		column-gap: 0.5rem;
+		row-gap: 0.125rem;
+		min-inline-size: 0;
+	}
+	.phone-name > :global(.name-cell) {
+		flex: 0 1 auto;
+		min-inline-size: 0;
+	}
+	.phone-code {
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding-inline: 0.25em;
+		font-family: var(--font-mono);
+		font-size: var(--text-small);
+	}
+	.phone-before {
+		font-family: var(--font-mono);
+		font-size: var(--text-small);
+		font-variant-numeric: tabular-nums;
+	}
+	.phone-after {
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
+	.phone-value {
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		text-align: end;
+	}
+	.phone-line {
+		color: var(--muted-foreground);
+		font-size: var(--text-small);
+		font-weight: 400;
+		line-height: 1.35;
+	}
 	.sort-choice-frame {
 		container-type: inline-size;
 	}
@@ -185,7 +328,12 @@
 	}
 	/* Column headers retain sorting when the optional choices run out of room. */
 	@container (inline-size < 8rem) {
-		.sort-choices {
+		.sort-choice-frame:not(.with-phone) .sort-choices {
+			display: none;
+		}
+	}
+	@container (inline-size > 28rem) {
+		.sort-reverse {
 			display: none;
 		}
 	}
