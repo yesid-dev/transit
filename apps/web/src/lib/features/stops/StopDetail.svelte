@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
-	import { createRecordStamp } from '#lib/v1/recordStamp.svelte.ts';
 	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -13,24 +12,18 @@
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import { CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
-	import { onMount, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 	import { page } from '$app/state';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { DetailTab } from '#lib/site/detailTabs.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
 	import { createDetailTabController } from '#lib/site/detailTabController.svelte.ts';
 	import { getStop } from '#lib/v1/repositories/static.ts';
-	import {
-		getPublishedReliabilityIndex,
-		getStopReliability,
-	} from '#lib/v1/repositories/historic.ts';
 	import type { LiveStore, LiveFamily } from '#lib/v1/live/store.svelte.ts';
 	import { createLiveResource } from '#lib/v1/live/resource.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
-	import { historyRangeRequestFromSearchParams } from '#lib/v1/history/rangeResource.svelte.ts';
-	import type { StopFile, StopReliability, StopDeparture } from '#lib/v1/index.ts';
+	import type { StopFile, StopDeparture } from '#lib/v1/index.ts';
 	import { createResource, type ResourceSeed } from '#lib/v1/resource.svelte.ts';
-	import { ScheduleTable, type ScheduleRow } from '#lib/components/schedule/index.ts';
 	import {
 		EntityDetail,
 		ResourceBoundary,
@@ -44,21 +37,11 @@
 	import { articleNavigationCopy } from '#lib/components/shared/index.ts';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
 	import { desktop } from '@yesid/ui/state';
-	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 	import { mapHrefFor, routeFor } from '#lib/nav/index.ts';
 	import MetricDisplay from '#lib/components/brand/MetricDisplay.svelte';
-	import { stampDate } from '#lib/v1/stamp.ts';
-	import { StopReliabilitySurface } from './reliability';
-	import {
-		createStopHistoryResource,
-		type StopHistoryResource,
-	} from './reliability/data/stopHistoryResource.svelte';
 	import { detailCopy } from './stops.copy';
-	import { presentStopRecord } from './stopRecord';
 	import { stopAccess, stopNotices } from './stopIdentity';
 	import StopIdentity from './StopIdentity.svelte';
-	import StopCurrentNotice from './StopCurrentNotice.svelte';
-	import StopRecordAnswer from './StopRecordAnswer.svelte';
 	import StopLivePredictions from './StopLivePredictions.svelte';
 	import { presentStopLive, type StopLiveOrder } from './stopPredictions';
 	import { alertUnavailableCopy } from '#lib/components/surface/alertAvailabilityCopy.ts';
@@ -67,12 +50,11 @@
 
 	interface StopDetailProps {
 		id: string;
-		seed: IdentitySeed;
+		seed: { id: string; name: string };
 		stopSeed?: ResourceSeed<StopFile | null>;
-		frameLive?: boolean;
 	}
 
-	let { id, seed, stopSeed, frameLive = false }: StopDetailProps = $props();
+	let { id, seed, stopSeed }: StopDetailProps = $props();
 
 	const locale: Locale = getLocale();
 	const t = $derived(detailCopy[locale]);
@@ -88,17 +70,10 @@
 	const operator = $derived(provider?.labels[locale].operator ?? shortName);
 	const noticesHeading = $derived(t.notices.heading(operator));
 
-	const SCHEDULE_CAP = 30;
-
-	const tabs = $derived(
-		(
-			[
-				{ key: 'reliability', label: t.tabs.reliability },
-				{ key: 'detail', label: t.tabs.detail },
-				{ key: 'schedule', label: t.tabs.schedule },
-			] as const satisfies readonly { key: DetailTab; label: string }[]
-		).filter(({ key }) => !frameLive || key === 'detail'),
-	);
+	const tabs = $derived([{ key: 'detail', label: t.tabs.detail }] satisfies {
+		key: DetailTab;
+		label: string;
+	}[]);
 	const detailTocEntries = $derived<TocEntry[]>([
 		{
 			id: 'stop-detail-departures',
@@ -125,7 +100,7 @@
 	// The Schedule view has one section: a contents list of one ("1 / 1") navigates nowhere,
 	// so it gets no rail card and no phone pill, as a line's Record without sections does.
 	const articleToc = $derived({
-		entries: { detail: detailTocEntries, schedule: [] },
+		entries: { detail: detailTocEntries },
 		heading: articleNav.heading,
 		sectionKey: `stop-${id}-toc`,
 		counterPrefix: 'SEC',
@@ -175,97 +150,12 @@
 	const access = $derived(stop.data ? stopAccess(stop.data) : stop.settled ? 'unknown' : null);
 	const servedLines = $derived(stop.data?.routes_served ?? null);
 	const stopPath = $derived(routeFor({ kind: 'stop', id }));
-	const recordUrl = $derived(new URL(localizeHref(stopPath, locale), page.url.origin).href);
-	const recordHref = $derived(
-		frameLive
-			? stopViewHref(new URL(page.url.href), 'record').href
-			: localizeHref(stopPath, locale),
-	);
-	// The Live now view holds the full notices; the strip elsewhere leads there.
-	const onLive = $derived(detailTabController.active === 'detail');
-	const noticeHref = $derived(
-		`${localizeHref(`${stopPath}?tab=detail`, locale)}#stop-detail-notices`,
-	);
-
-	// The same published weekly row the home page's "Most delayed stops" reads.
-	const weeklyIndex = createResource((signal) => getPublishedReliabilityIndex({ signal }), {
-		key: () => 'stop-weekly-record',
-		enabled: () => !frameLive,
-	});
-	const recordAnswer = $derived(
-		presentStopRecord({ stopId: id, index: weeklyIndex, now: clock.serverNow }, locale, {
-			operator: shortName,
-			stopId: id,
-			stopCode: stop.data?.code ?? null,
-			stopName: articleTitle,
-			url: recordUrl,
-		}),
-	);
-
-	const reliability = createResource((signal) => getStopReliability(id, { signal }), {
-		key: () => id,
-		enabled: () => !frameLive,
-	});
-	const record = createRecordStamp(
-		() => manifest,
-		() => reliability.data?.generated_utc ?? null,
-		() => stopHistory,
-		() => detailTabController.active === 'reliability',
-	);
+	const recordHref = $derived(stopViewHref(new URL(page.url.href), 'record').href);
 	const articleEdgeLeft = $derived([t.kicker, stop.data?.code].filter(Boolean).join(' '));
-	const articleMeta = $derived.by<ArticleMetaEntry[]>(() => {
-		const values: ArticleMetaEntry[] = [
-			...(stop.data?.code ? [{ label: t.info.code, text: stop.data.code }] : []),
-			{ label: t.article.provider, text: shortName },
-		];
-		const stamp = detailTabController.active === 'reliability' ? record.meta(locale) : null;
-		if (stamp) values.push(stamp);
-		if (detailTabController.active === 'schedule' && stop.data?.generated_utc) {
-			const date = stop.data.generated_utc.slice(0, 10);
-			values.push({
-				text: t.schedule.loadedOn(stampDate(date, locale, timeZone)),
-				datetime: date,
-			});
-		}
-		return values;
-	});
-
-	function historyFor(stopId: string): StopHistoryResource {
-		return createStopHistoryResource(
-			stopId,
-			historyRangeRequestFromSearchParams(new URLSearchParams(page.url.search)),
-			frameLive,
-		);
-	}
-	const initialHistoryEntityId = untrack(() => id);
-	let historyEntityId = initialHistoryEntityId;
-	let stopHistory = $state.raw<StopHistoryResource>(historyFor(initialHistoryEntityId));
-	$effect(() => {
-		const stopId = id;
-		if (stopId === historyEntityId) return;
-		const previous = stopHistory;
-		historyEntityId = stopId;
-		stopHistory = historyFor(stopId);
-		previous.destroy();
-	});
-	onMount(() => () => stopHistory.destroy());
-	const stopHistoryRequested = $derived(stopHistory.request.hasFrom || stopHistory.request.hasTo);
-	const historyOnlyReliability = $derived.by<StopReliability | null>(() => {
-		if (!stopHistoryRequested) return null;
-		const generatedUtc =
-			stopHistory.index?.generated_utc ??
-			reliability.data?.generated_utc ??
-			stop.data?.generated_utc;
-		return generatedUtc == null ? null : { id, generated_utc: generatedUtc };
-	});
-	const reliabilityIsEmpty = (value: StopReliability | null): boolean =>
-		value == null ||
-		((value.periods?.length ?? 0) === 0 &&
-			(value.habits?.matrix?.length ?? 0) === 0 &&
-			value.occupancy_mix == null &&
-			(value.day_of_week?.length ?? 0) === 0 &&
-			(value.by_route?.length ?? 0) === 0 &&
-			(value.daily?.length ?? 0) === 0);
+	const articleMeta = $derived<ArticleMetaEntry[]>([
+		...(stop.data?.code ? [{ label: t.info.code, text: stop.data.code }] : []),
+		{ label: t.article.provider, text: shortName },
+	]);
 
 	let liveOrder = $state<StopLiveOrder>('soonest');
 	$effect(() => {
@@ -319,19 +209,6 @@
 		<StateNotice
 			title={t.report.staticRefreshUnavailable}
 			body={t.report.retainedStatic}
-			tone="warning"
-			presentation="silo"
-			role="status"
-			aria-live="polite"
-		/>
-	{/if}
-{/snippet}
-
-{#snippet historicStatus()}
-	{#if reliability.data && reliability.error}
-		<StateNotice
-			title={t.report.historicRefreshUnavailable}
-			body={t.report.retainedHistoric}
 			tone="warning"
 			presentation="silo"
 			role="status"
@@ -421,44 +298,7 @@
 	</div>
 {/snippet}
 
-{#snippet stopSummary(onRecord: boolean)}
-	<div class="stop-summary" data-slot="stop-summary">
-		<StopIdentity {locale} lines={servedLines} {access} />
-		{#if onRecord}
-			<StopRecordAnswer
-				view={recordAnswer}
-				{locale}
-				url={recordUrl}
-				sourceHref={reliability.data != null || historyOnlyReliability != null
-					? '#stop-rel-source'
-					: null}
-			/>
-			{@render historicStatus()}
-			<!-- After the answer: the live alert report lands after first paint. -->
-			{@render currentNotice(true)}
-		{/if}
-	</div>
-{/snippet}
-
-<!-- The strip arrives with the live alert report, after first paint, so it always follows what
-     the reader already sees: the record's answer, or the Schedule view's sections. Live now holds
-     the full notices in its own section and shows no strip. -->
-{#snippet currentNotice(onRecord: boolean)}
-	<StopCurrentNotice
-		{locale}
-		{operator}
-		current={alertsAvailable && !onLive ? notices.current : []}
-		{noticeHref}
-		record={onRecord}
-	/>
-{/snippet}
-
-<EntityDetail
-	{tabs}
-	{articleToc}
-	bind:active={detailTabController.active}
-	paneOwnedRailKeys={['reliability']}
->
+<EntityDetail {tabs} {articleToc} bind:active={detailTabController.active}>
 	{#snippet articleHeader()}
 		<ArticleHeader
 			watermark={t.article.watermark}
@@ -467,8 +307,6 @@
 			backHref={localizeHref('/stops', locale)}
 			backLabel={t.back}
 			meta={articleMeta}
-			metaPending={detailTabController.active === 'reliability' && record.pending}
-			notice={detailTabController.active === 'reliability' ? record.notice(locale) : null}
 			edgeLeft={articleEdgeLeft}
 			edgeRight={shortName}
 			titleId="stop-title"
@@ -488,7 +326,11 @@
 
 	{#snippet pane(key)}
 		{#if key === 'detail'}
-			<div class="stop-lead">{@render stopSummary(false)}</div>
+			<div class="stop-lead">
+				<div class="stop-summary" data-slot="stop-summary">
+					<StopIdentity {locale} lines={servedLines} {access} />
+				</div>
+			</div>
 			<ArticleSectionStack>
 				{#key id}
 					<CollapsibleSection
@@ -572,84 +414,6 @@
 					</CollapsibleSection>
 				{/key}
 			</ArticleSectionStack>
-		{:else if key === 'schedule'}
-			<div class="stop-lead">{@render stopSummary(false)}</div>
-			<ArticleSectionStack data-section-sequence="stop-schedule">
-				{#key id}
-					<CollapsibleSection
-						title={t.schedule.heading}
-						headerVariant="article-summary"
-						index={0}
-						subtitle={t.questions.schedule}
-						anchor="stop-schedule-service"
-					>
-						<ResourceBoundary resource={stop} lang={locale}>
-							{#snippet children(s: StopFile | null)}
-								<div class="stop-schedule">
-									{@render staticStatus()}
-									<p class="stop-report-note">{t.schedule.scope}</p>
-
-									{#if (s?.scheduled?.length ?? 0) === 0}
-										<StateNotice
-											title={t.schedule.none}
-											presentation="silo"
-											data-testid="stop-schedule-empty"
-										/>
-									{:else}
-										<ScheduleTable
-											mode="grid"
-											rows={(s?.scheduled ?? []).map(
-												(entry): ScheduleRow => ({
-													kind: 'grid',
-													route: entry.route,
-													headsign: entry.headsign,
-													times: entry.times ?? [],
-												}),
-											)}
-											{locale}
-											labels={t.schedule.table}
-											cap={SCHEDULE_CAP}
-											moreLabel={t.schedule.moreTimes}
-										/>
-									{/if}
-								</div>
-							{/snippet}
-						</ResourceBoundary>
-					</CollapsibleSection>
-				{/key}
-			</ArticleSectionStack>
-			<div class="stop-trailing-notice">{@render currentNotice(false)}</div>
-		{:else if key === 'reliability'}
-			<!-- The record's answer stays in one place while the reliability file loads, fails or arrives. -->
-			<div class="stop-lead">{@render stopSummary(true)}</div>
-
-			{#if reliability.settled && reliability.error == null && reliabilityIsEmpty(reliability.data) && historyOnlyReliability != null && stopHistory.state !== 'current'}
-				{#key id}
-					<StopReliabilitySurface
-						data={historyOnlyReliability}
-						{locale}
-						recordWindow={recordAnswer.window}
-						history={stopHistory}
-						syncUrl={detailTabController.active === 'reliability'}
-					/>
-				{/key}
-			{:else}
-				<ResourceBoundary resource={reliability} lang={locale} isEmpty={reliabilityIsEmpty}>
-					{#snippet children(r: StopReliability | null)}
-						{#if r != null}
-							{#key id}
-								<StopReliabilitySurface
-									data={r}
-									{locale}
-									recordWindow={recordAnswer.window}
-									history={stopHistory}
-									syncUrl={detailTabController.active === 'reliability'}
-								/>
-							{/key}
-						{/if}
-					{/snippet}
-				</ResourceBoundary>
-			{/if}
 		{/if}
 	{/snippet}
 </EntityDetail>
@@ -673,15 +437,11 @@
 		line-height: 1.5;
 	}
 
-	/* Each view leads with the stop summary as a full-width block; the record answer sizes to it. */
+	/* The stop identity spans the full content width. */
 	.stop-lead {
 		inline-size: 100%;
 		margin-block-end: var(--space-card-gap);
 		container-type: inline-size;
-	}
-	/* Room above the Schedule view's strip only when one shows. */
-	.stop-trailing-notice:has(:global([data-slot='stop-current-notice'])) {
-		margin-block-start: var(--space-card-gap);
 	}
 	.stop-summary {
 		display: flex;
@@ -723,12 +483,6 @@
 	.stop-live-links a:focus-visible {
 		outline: 2px solid var(--ring);
 		outline-offset: 2px;
-	}
-
-	.stop-schedule {
-		display: flex;
-		flex-direction: column;
-		gap: 1.25rem;
 	}
 
 	.stop-info {

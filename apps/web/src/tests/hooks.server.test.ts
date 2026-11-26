@@ -153,7 +153,6 @@ describe('server request locale', () => {
 		await handle({ event: request, resolve });
 
 		expect(request.locals.locale).toBe('fr');
-		expect(request.locals.v1Cache).toBeInstanceOf(Map);
 	});
 
 	it('preloads JavaScript, CSS and only the latin fonts while preserving the locale transform', async () => {

@@ -144,7 +144,6 @@ function applyDocumentHeaders(response: Response, url: URL): void {
 }
 
 export const handle: Handle = async ({ event, resolve }) => {
-	event.locals.v1Cache = new Map();
 	event.locals.approximateLocation = readRequestLocation(event.request);
 	const overviewRecord =
 		event.route.id === '/[[lang=locale]]' && event.url.searchParams.get('frameMode') !== 'live';

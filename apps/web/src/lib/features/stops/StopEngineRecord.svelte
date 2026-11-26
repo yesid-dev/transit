@@ -39,7 +39,6 @@
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
-	import type { IdentitySeed } from '#lib/v1/serverContext.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import StopRecordLines from './StopRecordLines.svelte';
 	import {
@@ -59,7 +58,7 @@
 		url,
 		record,
 	}: {
-		stop: IdentitySeed;
+		stop: { id: string; name: string };
 		code?: string | null;
 		lines?: readonly string[];
 		operator: string;

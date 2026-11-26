@@ -39,6 +39,7 @@ export const PublicCitySchema = PublicProviderSchema.extend({
 	record_through: z.iso.date().nullable().optional(),
 	bounds: bounds.nullable(),
 	basemap_url: z.string().nullable().optional(),
+	basemap_v2_url: z.string().nullable().optional(),
 	attribution: z.string().nullable().optional(),
 	download_licence: z
 		.object({

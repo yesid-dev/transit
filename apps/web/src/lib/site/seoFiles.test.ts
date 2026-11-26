@@ -8,7 +8,6 @@ import {
 	buildSitemapXml,
 	toW3CDate,
 } from './seoFiles';
-import { entityUrl } from '#lib/v1/config.ts';
 
 const SURFACES = [
 	'/',
@@ -189,8 +188,6 @@ describe('sitemap entity enumeration', () => {
 		expect(fr).toContain(`<loc>${origin}/fr/lines/${encoded}</loc>`);
 
 		expect(en).not.toContain('/lines/A B/C');
-
-		expect(entityUrl('static', 'static/routes/', id)).toContain(`static/routes/${encoded}.json`);
 	});
 
 	it('percent-encodes then XML-escapes ids with reserved chars in <loc> and hrefs', () => {
@@ -207,7 +204,6 @@ describe('sitemap entity enumeration', () => {
 		expect(fr).toContain(`<loc>https://transit.yesid.dev/fr/lines/${escaped}</loc>`);
 
 		expect(en.replace(/&(amp|lt|gt|apos|quot);/g, '')).not.toContain('&');
-		expect(entityUrl('static', 'static/routes/', nasty)).toContain(`static/routes/${encoded}.json`);
 	});
 
 	it('fails soft to static-only when no entity ids are supplied', () => {

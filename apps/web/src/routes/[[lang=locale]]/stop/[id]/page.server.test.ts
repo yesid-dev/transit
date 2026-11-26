@@ -1,20 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { loadStopRecord } from '#lib/server/stopRecord.ts';
 
-const harness = vi.hoisted(() => ({
-	ctx: { fetch: vi.fn(), providerId: 'octranspo', manifest: { provider: 'octranspo' } },
-	getStop: vi.fn(),
-	getRecordAnswer: vi.fn(),
-	serverV1Context: vi.fn(),
-}));
-
-vi.mock('#lib/v1/repositories/static.ts', () => ({
-	getStop: (...args: unknown[]) => harness.getStop(...args),
-}));
-
-vi.mock('#lib/v1/serverContext.ts', () => ({
-	serverV1Context: (...args: unknown[]) => harness.serverV1Context(...args),
-}));
+const harness = vi.hoisted(() => ({ getRecordAnswer: vi.fn() }));
+const stop = {
+	id: '1234',
+	name: '  Van Horne / Rockland  ',
+	code: '56789',
+	lat: 45.51,
+	lon: -73.62,
+	routes: ['24'],
+};
+const schedule = { date: '2026-11-23', routes: [], stops: [stop] };
 
 vi.mock('#lib/server/engine.ts', () => ({ getRecordAnswer: harness.getRecordAnswer }));
 
@@ -23,6 +19,7 @@ import { load } from './+page.server';
 function event(
 	id = '1234',
 	href = `https://transit.yesid.dev/stop/${id}?tab=detail&frameMode=live`,
+	options: { lang?: 'en' | 'fr'; schedule?: typeof schedule | null; v1?: boolean } = {},
 ): Parameters<typeof load>[0] {
 	return {
 		params: { id },
@@ -31,11 +28,12 @@ function event(
 		request: new Request(href, {
 			headers: { 'cf-connecting-ip': '192.0.2.24' },
 		}),
-		locals: { v1Cache: new Map() },
+		locals: {},
 		platform: undefined,
 		parent: async () => ({
-			v1: { manifest: harness.ctx.manifest },
-			lang: 'en',
+			v1: options.v1 === false ? null : { manifest: { provider: 'octranspo' } },
+			lang: options.lang ?? 'en',
+			schedule: options.schedule === undefined ? schedule : options.schedule,
 			providerId: 'octranspo',
 			routesIndex: { routes: [{ id: '24', short: '24', long: 'Sherbrooke' }] },
 		}),
@@ -43,9 +41,7 @@ function event(
 }
 
 beforeEach(() => {
-	harness.getStop.mockReset();
 	harness.getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unconfigured' });
-	harness.serverV1Context.mockReset().mockReturnValue(harness.ctx);
 });
 
 describe('/stop/[id] server identity seed', () => {
@@ -63,7 +59,7 @@ describe('/stop/[id] server identity seed', () => {
 				status: 308,
 				location: '/stop/1234?from=2026-01-31&to=2026-02-01&line=51',
 			});
-			expect(harness.getStop).not.toHaveBeenCalled();
+			expect(request.fetch).not.toHaveBeenCalled();
 		},
 	);
 
@@ -72,80 +68,65 @@ describe('/stop/[id] server identity seed', () => {
 		Object.assign(request, {
 			url: new URL('https://transit.yesid.dev/stop/1234?tab=detail&frameMode=live'),
 		});
-		harness.getStop.mockResolvedValue(null);
+
 		await expect(load(request)).resolves.toMatchObject({ seed: { id: '1234' } });
-		expect(harness.getStop).toHaveBeenCalledOnce();
+		expect(request.fetch).not.toHaveBeenCalled();
 	});
 
-	it('serializes the accepted stop once so hydration does not fetch it again', async () => {
-		const stop = {
-			id: '1234',
-			name: '  Van Horne / Rockland  ',
-			code: '56789',
-			lat: 45.51,
-			lon: -73.62,
-			scheduled: [{ route: '24', times: ['08:00'] }],
-			routes_served: ['24'],
-		};
-		harness.getStop.mockResolvedValue(stop);
-
-		const result = await load(event());
-
-		expect(result).toMatchObject({
+	it('seeds Live from the layout schedule without a second read', async () => {
+		const request = event();
+		expect(await load(request)).toMatchObject({
 			seed: { id: '1234', name: 'Van Horne / Rockland' },
 			seoTitle: 'Van Horne / Rockland (stop 56789)',
-			stopSeed: { key: '1234', data: stop },
+			stopSeed: {
+				key: '1234',
+				data: {
+					id: '1234',
+					code: '56789',
+					routes_served: ['24'],
+					generated_utc: '2026-11-23T00:00:00Z',
+					scheduled: [],
+				},
+			},
 		});
-		if (!result) throw new Error('expected a stop identity seed');
-		expect(Object.keys(result.seed)).toEqual(['id', 'name']);
-		expect(harness.getStop).toHaveBeenCalledWith('1234', harness.ctx);
-		expect(harness.serverV1Context).toHaveBeenCalledTimes(1);
+		expect(request.fetch).not.toHaveBeenCalled();
 	});
 
-	it('uses the stop ID when the snapshot name is blank', async () => {
-		harness.getStop.mockResolvedValue({ id: '1234', name: '   ' });
-
-		await expect(load(event())).resolves.toMatchObject({
+	it('uses the stop ID when its name is blank', async () => {
+		const request = event(undefined, undefined, {
+			schedule: { ...schedule, stops: [{ ...stop, name: '   ' }] },
+		});
+		expect(await load(request)).toMatchObject({
 			seed: { id: '1234', name: '1234' },
 			stopSeed: { key: '1234', data: { id: '1234', name: '   ' } },
 		});
 	});
 
-	it('uses the deterministic ID fallback for a missing stop', async () => {
-		harness.getStop.mockResolvedValue(null);
-
-		await expect(load(event('9999'))).resolves.toMatchObject({
+	it('seeds a known missing stop without a second read', async () => {
+		const request = event('9999');
+		expect(await load(request)).toMatchObject({
 			seed: { id: '9999', name: '9999' },
 			stopSeed: { key: '9999', data: null },
 		});
+		expect(request.fetch).not.toHaveBeenCalled();
 	});
 
-	it('uses the deterministic ID fallback when the upstream read fails', async () => {
-		harness.getStop.mockRejectedValue(new Error('data proxy unavailable'));
-
-		await expect(load(event('5678'))).resolves.toMatchObject({
+	it('leaves the live stop unseeded when schedule-index is unavailable', async () => {
+		expect(await load(event('5678', undefined, { schedule: null }))).toMatchObject({
 			seed: { id: '5678', name: '5678' },
 			stopSeed: null,
 		});
 	});
 });
 
-it.each(['en', 'fr'] as const)('titles from the stop file in %s', async (lang) => {
-	const request = event();
-	Object.assign(request, {
-		parent: async () => ({ lang, v1: { manifest: harness.ctx.manifest } }),
+it.each(['en', 'fr'] as const)('titles from the selected schedule stop in %s', async (lang) => {
+	expect(await load(event(undefined, undefined, { lang }))).toMatchObject({
+		seoTitle: 'Van Horne / Rockland (' + (lang === 'en' ? 'stop' : 'arrêt') + ' 56789)',
 	});
-	harness.getStop.mockResolvedValue({ id: '1234', name: 'VAN HORNE / ROCKLAND', code: '1658' });
-	expect(await load(request)).toMatchObject({
-		seoTitle: 'Van Horne / Rockland (' + (lang === 'en' ? 'stop' : 'arrêt') + ' 1658)',
-	});
-	harness.getStop.mockResolvedValue({ id: '1234', name: 'Fixture stop' });
-	expect(await load(request)).toMatchObject({ seoTitle: 'Fixture stop' });
 });
-it('omits seoTitle without v1', async () => {
-	const request = event();
-	Object.assign(request, { parent: async () => ({ v1: null }) });
-	expect(await load(request)).not.toHaveProperty('seoTitle');
+
+it('omits seoTitle without a live context', async () => {
+	expect(await load(event(undefined, undefined, { v1: false }))).not.toHaveProperty('seoTitle');
 });
 
 it('streams the dated stop cuts without waiting for a slow per-line answer', async () => {

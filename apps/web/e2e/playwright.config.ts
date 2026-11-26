@@ -183,7 +183,7 @@ export default defineConfig({
 	webServer: [
 		{
 			command: 'node data.mjs',
-			url: `${dataURL}/v1/providers.json`,
+			url: `${dataURL}/v2/cities`,
 			env: {
 				TRANSIT_E2E_DATA_PORT: dataPort,
 				TRANSIT_E2E_ORIGIN: baseURL,

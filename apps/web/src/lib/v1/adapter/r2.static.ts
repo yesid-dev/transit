@@ -5,7 +5,8 @@ import { RouteFileSchema } from '#lib/v1/schemas/route.ts';
 import { RoutesIndexSchema } from '#lib/v1/schemas/routes_index.ts';
 import { StopFileSchema } from '#lib/v1/schemas/stop.ts';
 import { StopsIndexSchema } from '#lib/v1/schemas/stops_index.ts';
-import { fetchOf, providerOf, loadManifest } from './r2.core';
+import { browserAdapterManifest } from './browserManifest';
+import { fetchOf, providerOf } from './r2.core';
 import type { AdapterCtx } from './types';
 
 const requests = new Map<string, Promise<ScheduleEdition>>();
@@ -16,9 +17,7 @@ async function editionFor(ctx?: AdapterCtx): Promise<ScheduleEdition> {
 	const pending = ctx?.cache?.get(key) as Promise<ScheduleEdition> | undefined;
 	if (pending) return pending;
 	const request = async () => {
-		const response = ctx?.scheduleFetch
-			? await ctx.scheduleFetch(city)
-			: await fetchOf(ctx)(`/api/schedule-edition?${new URLSearchParams({ city })}`);
+		const response = await fetchOf(ctx)(`/api/schedule-edition?${new URLSearchParams({ city })}`);
 		if (!response.ok) throw new Error('Schedule edition unavailable');
 		const { schedule } = scheduleIndexSchema.parse(await response.json());
 		if (!schedule) throw new Error('Schedule edition unavailable');
@@ -37,6 +36,15 @@ async function editionFor(ctx?: AdapterCtx): Promise<ScheduleEdition> {
 }
 
 const generated = (edition: ScheduleEdition) => `${edition.date}T00:00:00Z`;
+
+export function stopFileFromSchedule(stop: ScheduleEdition['stops'][number], date: string) {
+	return StopFileSchema.parse({
+		...stop,
+		generated_utc: `${date}T00:00:00Z`,
+		routes_served: stop.routes,
+		scheduled: [],
+	});
+}
 
 export async function getMapRouteDirections(
 	ctx?: AdapterCtx,
@@ -72,20 +80,14 @@ export const staticPort = {
 	async stop(stopId: string, ctx?: AdapterCtx) {
 		const edition = await editionFor(ctx);
 		const stop = edition.stops.find((stop) => stop.id === stopId);
-		if (!stop) return null;
-		return StopFileSchema.parse({
-			...stop,
-			generated_utc: generated(edition),
-			routes_served: stop.routes,
-			scheduled: [],
-		});
+		return stop ? stopFileFromSchedule(stop, edition.date) : null;
 	},
 };
 
 export const basemapPort = {
 	async get(ctx?: AdapterCtx) {
-		const manifest = await loadManifest(ctx);
-		if (!manifest.basemap) return null;
+		const manifest = ctx?.manifest ?? browserAdapterManifest();
+		if (!manifest?.basemap) return null;
 		return BasemapFileSchema.parse({
 			url: manifest.basemap,
 			generated_utc: manifest.files.static?.generated_utc ?? manifest.files.live.generated_utc,

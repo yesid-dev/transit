@@ -3,8 +3,6 @@ declare module 'cloudflare:workers' {
 		QUESTION_PROXY?: { fetch(request: Request): Promise<Response> };
 		QUESTION_FIXTURE_ORIGIN?: string;
 		CAPTURE_FIXTURE_CLOCK?: string;
-		SNAPSHOTS?: import('./lib/v1/binding').R2BucketBinding;
-		DATA?: { fetch: typeof fetch };
 		WEB_VITALS?: {
 			writeDataPoint(point: {
 				indexes?: string[];

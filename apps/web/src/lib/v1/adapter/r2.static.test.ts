@@ -48,6 +48,7 @@ it('keeps a missing edition distinct from a missing entity and resolves the decl
 		files: { live: { generated_utc: '2026-11-23T00:00:00Z' } },
 	});
 	await expect(r2Adapter.basemap.get({ manifest, fetch })).resolves.toMatchObject({ url });
+	await expect(r2Adapter.basemap.get({ fetch })).resolves.toBeNull();
 	expect(fetch).not.toHaveBeenCalled();
 	await expect(r2Adapter.static.stop('missing', { manifest, fetch })).rejects.toThrow(
 		'edition unavailable',

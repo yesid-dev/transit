@@ -45,7 +45,6 @@ const worker = new Miniflare(
 				},
 				bindings: {
 					...config.vars,
-					PUBLIC_V1_BASE: `${fixture}/v1`,
 					QUESTION_FIXTURE_ORIGIN: fixture,
 				},
 			},

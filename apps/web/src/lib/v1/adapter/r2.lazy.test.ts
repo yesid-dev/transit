@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Manifest } from '#lib/v1/schemas/manifest.ts';
 import type { r2Adapter } from './r2';
 
 vi.mock('$app/env', () => ({ browser: true }));
@@ -7,7 +6,6 @@ vi.mock('$app/env', () => ({ browser: true }));
 const evaluated = vi.hoisted(() => ({
 	live: 0,
 	static: 0,
-	historic: 0,
 }));
 
 vi.mock('#lib/v1/schemas/data_health.ts', async (importOriginal) => {
@@ -20,30 +18,9 @@ vi.mock('#lib/v1/schemas/routes_index.ts', async (importOriginal) => {
 	return importOriginal<typeof import('#lib/v1/schemas/routes_index.ts')>();
 });
 
-vi.mock('#lib/v1/schemas/history.ts', async (importOriginal) => {
-	evaluated.historic += 1;
-	return importOriginal<typeof import('#lib/v1/schemas/history.ts')>();
-});
-
 const PORT_METHODS = {
-	manifest: ['get', 'getFresh'],
-	labels: ['get'],
 	live: ['vehicles', 'trips', 'stopDepartures', 'alerts', 'network'],
 	static: ['routesIndex', 'route', 'stopsIndex', 'stop'],
-	historic: [
-		'historyIndex',
-		'lineHistoryDirectory',
-		'stopHistoryDirectory',
-		'lineHistoryIndex',
-		'stopHistoryIndex',
-		'lineHistoryPartition',
-		'stopHistoryPartition',
-		'hotspots',
-		'routeReliabilityIndex',
-		'routeReliability',
-		'stopReliability',
-	],
-	dataHealth: ['get'],
 	basemap: ['get'],
 } as const satisfies Record<keyof typeof r2Adapter, readonly string[]>;
 
@@ -83,13 +60,6 @@ function expectUnchanged(value: object, snapshot: ObjectSnapshot): void {
 	}
 }
 
-function json(body: unknown): Response {
-	return new Response(JSON.stringify(body), {
-		status: 200,
-		headers: { 'content-type': 'application/json' },
-	});
-}
-
 describe('r2 lazy adapter boundaries', () => {
 	it('does not evaluate tier schemas when only the adapter root is imported', async () => {
 		const { r2Adapter } = await import('./r2');
@@ -97,12 +67,11 @@ describe('r2 lazy adapter boundaries', () => {
 		expect(evaluated).toEqual({
 			live: 0,
 			static: 0,
-			historic: 0,
 		});
 		expect(r2Adapter).toBeDefined();
 	});
 
-	it('exposes stable ordinary value objects for the facade and all seven ports', async () => {
+	it('exposes stable ordinary value objects for the facade and its capture and schedule ports', async () => {
 		const { r2Adapter } = await import('./r2');
 		const facade = r2Adapter as unknown as Record<string, object>;
 
@@ -114,51 +83,5 @@ describe('r2 lazy adapter boundaries', () => {
 			expectUnchanged(port, snapshotObject(port));
 		}
 		expectUnchanged(r2Adapter, facadeSnapshot);
-	});
-
-	it('loads only the live family on first data-health use without mutating the facade', async () => {
-		const { r2Adapter } = await import('./r2');
-		const facade = r2Adapter as unknown as Record<string, object>;
-		const facadeSnapshot = snapshotObject(r2Adapter);
-		const portSnapshots = new Map(
-			Object.keys(PORT_METHODS).map((portName) => [portName, snapshotObject(facade[portName])]),
-		);
-		const generatedUtc = '2026-07-15T12:00:00Z';
-		const dataHealth = { generated_utc: generatedUtc, lanes: [], feeds: [] };
-		const request = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-			json(dataHealth),
-		);
-		const manifest = {
-			provider: 'stm',
-			display_name: 'STM',
-			bbox: [-74, 45, -73, 46],
-			attribution: 'STM',
-			dataset_version: 'v1',
-			labels: {},
-			files: {
-				live: {
-					generated_utc: generatedUtc,
-					data_health: 'status/current-data-health.json',
-				},
-			},
-			surfaces: [],
-		} as unknown as Manifest;
-
-		await expect(
-			r2Adapter.dataHealth.get({
-				fetch: request as unknown as typeof fetch,
-				manifest,
-			}),
-		).resolves.toEqual(dataHealth);
-
-		expect(evaluated).toEqual({
-			live: 1,
-			static: 0,
-			historic: 0,
-		});
-		expectUnchanged(r2Adapter, facadeSnapshot);
-		for (const [portName, snapshot] of portSnapshots) {
-			expectUnchanged(facade[portName], snapshot);
-		}
 	});
 });

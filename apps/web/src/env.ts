@@ -4,7 +4,6 @@ export const variables = defineEnvVars({
 	PUBLIC_PLAUSIBLE_DOMAIN: { public: true, schema: (input) => input ?? '' },
 	PUBLIC_CF_BEACON_TOKEN: { public: true, schema: (input) => input ?? '' },
 	PUBLIC_VITALS_ENABLED: { public: true, schema: (input) => input ?? '' },
-	PUBLIC_V1_BASE: { public: true, schema: (input) => input ?? '' },
 	PUBLIC_V1_PROVIDER: { public: true, schema: (input) => input ?? '' },
 	PUBLIC_SITE_ORIGIN: { public: true, schema: (input) => input ?? '' },
 	PUBLIC_INDEXING: { public: true, schema: (input) => input ?? '' },

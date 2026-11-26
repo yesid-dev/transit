@@ -1,0 +1,31 @@
+import { expect, it } from 'vitest';
+import { captureContext } from './captureContext';
+import { PublicCitySchema } from '#lib/v1/schemas/providers.ts';
+
+const city = PublicCitySchema.parse({
+	id: 'stm',
+	labels: {
+		en: { city: 'Montréal', operator: 'STM' },
+		fr: { city: 'Montréal', operator: 'STM' },
+	},
+	timezone: 'America/Toronto',
+	bounds: null,
+	lines_without_live_data: [],
+	inputs: { static_schedule: true, vehicle_positions: true },
+	alert_links: {},
+	basemap_url: '/data/v1/stm/static/basemap/montreal.pmtiles',
+});
+
+it('uses the published v2 basemap URL when it belongs to the selected city', () => {
+	const url = 'https://data.yesid.dev/v2/stm/basemap/new-montreal.pmtiles';
+	expect(captureContext({ ...city, basemap_v2_url: url }, 'en', null).manifest.basemap).toBe(url);
+});
+
+it.each([
+	undefined,
+	'https://data.yesid.dev/v2/octranspo/basemap/ottawa.pmtiles',
+	'https://transit.yesid.dev/v2/stm/basemap/montreal.pmtiles',
+])('builds the public v2 URL if the v2 catalog field is unusable (%s)', (basemap_v2_url) => {
+	const context = captureContext({ ...city, basemap_v2_url }, 'fr', null);
+	expect(context.manifest.basemap).toBe('https://data.yesid.dev/v2/stm/basemap/montreal.pmtiles');
+});

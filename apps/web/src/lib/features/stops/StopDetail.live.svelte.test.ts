@@ -22,9 +22,6 @@ const fixture = vi.hoisted(() => ({
 	vehicles: vi.fn(),
 	trips: vi.fn(),
 	stop: vi.fn(),
-	reliability: vi.fn(),
-	historyIndex: vi.fn(),
-	historyRange: vi.fn(),
 }));
 vi.mock('$app/env', () => ({ browser: true }));
 vi.mock('$app/state', () => ({ page: fixture.page }));
@@ -59,12 +56,6 @@ vi.mock('#lib/v1/live/store.svelte.ts', async (importOriginal) => {
 	};
 });
 vi.mock('#lib/v1/repositories/static.ts', () => ({ getStop: fixture.stop }));
-vi.mock('#lib/v1/repositories/historic.ts', () => ({
-	getStopReliability: fixture.reliability,
-	getPublishedReliabilityIndex: async () => null,
-	getStopHistoryIndex: fixture.historyIndex,
-	loadStopHistoryRange: fixture.historyRange,
-}));
 vi.mock('@yesid/ui/state', async (importOriginal) => ({
 	...(await importOriginal<typeof import('@yesid/ui/state')>()),
 	clock: {
@@ -175,16 +166,11 @@ beforeEach(() => {
 		fixture.vehicles,
 		fixture.trips,
 		fixture.stop,
-		fixture.reliability,
-		fixture.historyIndex,
-		fixture.historyRange,
 	])
 		method.mockReset();
 	fixture.stopDepartures.mockResolvedValue(departures());
 	fixture.alerts.mockResolvedValue(alerts());
 	fixture.stop.mockResolvedValue(staticStop);
-	fixture.reliability.mockResolvedValue(null);
-	fixture.historyIndex.mockResolvedValue(null);
 	restoreRuntime = configureV1Runtime({
 		clock: {
 			get serverNow() {
@@ -235,7 +221,7 @@ describe('StopDetail independent report owners', () => {
 		// The way out survives a failed first report.
 		expect(
 			within(board as HTMLElement).getByRole('link', { name: 'See the record' }),
-		).toHaveAttribute('href', '/stop/probe');
+		).toHaveAttribute('href', 'http://localhost/stop/probe?frameMode=record');
 		expect(
 			within(board as HTMLElement).getByRole('link', { name: 'See the schedule' }),
 		).toHaveAttribute('href', '/stop/probe?tab=schedule');
@@ -281,34 +267,22 @@ describe('StopDetail independent report owners', () => {
 	});
 
 	it.each(['en', 'fr'] as const)(
-		'keeps loaded-empty schedule scope and retained failure visible in %s',
+		'keeps the live stop facts when a static refresh fails in %s',
 		async (locale) => {
 			mount(locale);
 			await settle();
-			await fireEvent.click(
-				screen.getByRole('tab', { name: locale === 'fr' ? 'Horaire' : 'Schedule' }),
-			);
-			await settle();
-			expect(screen.getByTestId('stop-schedule-empty')).toHaveTextContent(
-				locale === 'fr' ? 'Aucun exemple d’horaire publié' : 'No sample schedule published',
-			);
-			expect(
-				screen.getByText(
-					locale === 'fr'
-						? /Heures sélectionnées dans un horaire représentatif/
-						: /Selected times from a representative weekday/,
-				),
-			).toBeInTheDocument();
+			const facts = within(document.querySelector('[data-toc="stop-detail-facts"]') as HTMLElement);
+			expect(facts.getByText('probe')).toBeInTheDocument();
 			fixture.stop.mockRejectedValue(new Error('static refresh failed'));
 			await manualRefresh();
 			expect(
-				within(document.querySelector('.stop-schedule') as HTMLElement).getByText(
+				facts.getByText(
 					locale === 'fr'
 						? 'Informations de l’arrêt non actualisées'
 						: 'Stop information could not refresh',
 				),
 			).toBeInTheDocument();
-			expect(screen.getByTestId('stop-schedule-empty')).toBeInTheDocument();
+			expect(facts.getByText('probe')).toBeInTheDocument();
 		},
 	);
 
@@ -368,44 +342,5 @@ describe('StopDetail independent report owners', () => {
 		expect(screen.getByTestId('stop-departures-notice')).toHaveTextContent('Refresh unavailable');
 		expect(screen.getByRole('table', { name: /24/ })).toBeInTheDocument();
 		expect(liveState()).toBeNull();
-	});
-
-	it('does not borrow live time for an unavailable historic report', async () => {
-		fixture.page.url = new URL('http://localhost/stop/probe?tab=reliability');
-		mount();
-		await settle();
-		expect(document.querySelector('[data-slot="article-header"] time')).toBeNull();
-		expect(reportStamp('historic')).toBeNull();
-	});
-
-	it('polls only live reports across tabs, refreshes static/historic through the epoch, and stops both stores', async () => {
-		const view = mount();
-		await settle();
-		await fireEvent.click(screen.getByRole('tab', { name: 'Schedule' }));
-		await advance(60);
-		expect(fixture.stopDepartures).toHaveBeenCalledTimes(3);
-		expect(fixture.alerts).toHaveBeenCalledTimes(3);
-		expect(fixture.stop).toHaveBeenCalledTimes(1);
-		expect(fixture.reliability).toHaveBeenCalledTimes(1);
-		await manualRefresh();
-		expect(fixture.stop).toHaveBeenCalledTimes(2);
-		expect(fixture.reliability).toHaveBeenCalledTimes(2);
-		// The unchanged, minute-old report receives one bounded cache-bypassing retry.
-		expect(fixture.stopDepartures).toHaveBeenCalledTimes(5);
-		expect(fixture.alerts).toHaveBeenCalledTimes(5);
-		fixture.visible = 'hidden';
-		document.dispatchEvent(new Event('visibilitychange'));
-		await advance(60);
-		expect(fixture.stopDepartures).toHaveBeenCalledTimes(5);
-		expect(fixture.alerts).toHaveBeenCalledTimes(5);
-		fixture.visible = 'visible';
-		document.dispatchEvent(new Event('visibilitychange'));
-		await settle();
-		expect(fixture.stopDepartures).toHaveBeenCalledTimes(6);
-		expect(fixture.alerts).toHaveBeenCalledTimes(6);
-		view.unmount();
-		await advance(90);
-		expect(fixture.stopDepartures).toHaveBeenCalledTimes(6);
-		expect(fixture.alerts).toHaveBeenCalledTimes(6);
 	});
 });

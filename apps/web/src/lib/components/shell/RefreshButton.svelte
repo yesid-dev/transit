@@ -7,7 +7,6 @@
 	import { tick } from 'svelte';
 	import { page } from '$app/state';
 	import { browserAdapterManifest } from '#lib/v1/adapter/browserManifest.ts';
-	import { shownRecord } from '#lib/v1/recordStamp.svelte.ts';
 	import {
 		refreshResult,
 		refreshMessage,
@@ -68,16 +67,10 @@
 	async function onClick(): Promise<void> {
 		result = null;
 		shift = 0;
-		const before = shownRecord();
-		const stamp = before?.stamp;
 		await dataRefresh.run();
 		const completed = dataRefresh.lastResult;
 		if (!completed) return;
-		result = refreshResult({
-			...completed,
-			record:
-				before && stamp && shownRecord() === before ? { before: stamp, after: before.stamp } : null,
-		});
+		result = refreshResult({ ...completed, record: null });
 		await tick();
 		if (!region?.isConnected) return;
 		const box = region.getBoundingClientRect();

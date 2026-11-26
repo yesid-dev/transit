@@ -8,14 +8,6 @@
 	"lib/features/rankings/Rankings.svelte": {
 		"border-t": 1
 	},
-	"lib/features/stops/reliability/sections/StopDailyChart.svelte": {
-		"border-top:": 1,
-		"border-top-color:": 1,
-		"border-bottom:": 1
-	},
-	"lib/features/stops/StopCurrentNotice.svelte": {
-		"border-block:": 1
-	},
 	"lib/features/stops/StopLivePredictions.svelte": {
 		"border-bottom:": 1
 	},

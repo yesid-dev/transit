@@ -3,18 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dataRefresh } from '#lib/stores/refresh.svelte.ts';
 import RefreshButton from './RefreshButton.svelte';
 import { refreshMessage, RESULT_VISIBLE_MS } from './refreshResult';
-import { recordStamp, type RecordStamp } from '#lib/v1/stamp.ts';
 
 const mocks = vi.hoisted(() => ({
 	invalidateAll: vi.fn<() => Promise<void>>(),
-	shownRecord: vi.fn(),
 }));
-vi.mock('#lib/v1/recordStamp.svelte.ts', () => ({ shownRecord: mocks.shownRecord }));
 vi.mock('$app/env', () => ({ browser: true }));
 vi.mock('$app/navigation', () => ({ invalidateAll: mocks.invalidateAll }));
 
 beforeEach(async () => {
-	mocks.shownRecord.mockReturnValue(null);
 	mocks.invalidateAll.mockResolvedValue();
 	await dataRefresh.run();
 	mocks.invalidateAll.mockReset();
@@ -143,35 +139,3 @@ it.each(['Escape', 'pointerdown'])(
 		expect(screen.getByRole('status')).toBeEmptyDOMElement();
 	},
 );
-it('on a record page, says whether the record changed', async () => {
-	let stamp: RecordStamp = {
-		...recordStamp({ manifest: null, historyIndex: null }),
-		publishedOn: '2026-11-11',
-	};
-	const page = {
-		get stamp() {
-			return stamp;
-		},
-	};
-	mocks.shownRecord.mockReturnValue(page);
-	mocks.invalidateAll.mockResolvedValue();
-	render(RefreshButton, { locale: 'en' });
-	await fireEvent.click(screen.getByRole('button'));
-	await waitFor(() =>
-		expect(screen.getByRole('status')).toHaveTextContent(/The record has not changed since/),
-	);
-	mocks.invalidateAll.mockImplementation(async () => {
-		stamp = { ...stamp, dataThrough: '2026-11-17', publishedOn: '2026-11-18' };
-	});
-	await fireEvent.click(screen.getByRole('button'));
-	await waitFor(() =>
-		expect(screen.getByRole('status')).toHaveTextContent(/^Updated\. A new record is published/),
-	);
-	mocks.invalidateAll.mockImplementation(async () => {
-		mocks.shownRecord.mockReturnValue({ stamp });
-	});
-	await fireEvent.click(screen.getByRole('button'));
-	await waitFor(() =>
-		expect(screen.getByRole('status')).toHaveTextContent(/^Live data updated at/),
-	);
-});
