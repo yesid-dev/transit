@@ -167,9 +167,10 @@ test('stale and empty trip captures have different states', async ({ page }) => 
 
 test('Record shows the low coverage explanation once', async ({ page }) => {
 	await page.goto('/stop/S1?provider=stm&recordFrom=2026-10-24&recordTo=2026-10-24');
+	// One sentence, with the sample it was judged on.
 	await expect(
 		page.getByText(
-			'There are too few observed stop events to measure punctuality for these dates.',
+			'There are too few observed stop events to measure punctuality for these dates (5 of 100).',
 			{ exact: true },
 		),
 	).toHaveCount(1);

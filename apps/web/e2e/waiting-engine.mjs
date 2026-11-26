@@ -16,6 +16,7 @@ export function waitingEngine(url, evidence) {
 	const info = Object.entries(definition).map(([id, [en, fr]]) => ({
 		id,
 		minimum_sample: 20,
+		minimum_coverage: 0.4,
 		text: {
 			en: { definition: en, counts: '', limits: '' },
 			fr: { definition: fr, counts: '', limits: '' },
@@ -44,17 +45,19 @@ export function waitingEngine(url, evidence) {
 			body: { ...measured, info, coverage_note, evidence: { ...evidence, ...measured.evidence } },
 		};
 	}
+	const lowCoverage = url.searchParams.get('from') === '2026-11-10';
 	const cells = [
 		{ ...measured, key: { line: '80' } },
 		{
 			key: { line: '24' },
-			state: 'too_few_to_judge',
+			state: lowCoverage ? 'not_measured' : 'too_few_to_judge',
 			state_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
 			value: {},
 			evidence: {
 				days_included: evidence.days_included,
-				counts: { observed_headways: 3, frequent_headways: 4 },
-				share_observed: 0.75,
+				counts: { observed_headways: 3, frequent_headways: lowCoverage ? 20 : 4 },
+				share_observed: lowCoverage ? 0.15 : 0.75,
+				...(lowCoverage ? { coverage_reason: 'insufficient_coverage', low_coverage: true } : {}),
 			},
 		},
 		{

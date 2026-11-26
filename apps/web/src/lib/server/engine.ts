@@ -337,6 +337,7 @@ const recordEnvelope = z.object({
 const recordMethod = z.object({
 	id: z.string().optional(),
 	minimum_sample: count.optional(),
+	minimum_coverage: share.optional(),
 	text: z
 		.object({
 			en: z.object({ definition: z.string().optional(), counts: z.string(), limits: z.string() }),
@@ -355,7 +356,6 @@ const recordSeries = recordEnvelope.extend({
 		.array(
 			recordMethod.extend({
 				minimum_sample: count,
-				minimum_coverage: share.optional(),
 				low_coverage_below: share.optional(),
 			}),
 		)

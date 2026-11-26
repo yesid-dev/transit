@@ -43,6 +43,7 @@
 		stopBoardingNotPublished,
 		stopCitation,
 		stopComparison,
+		stopCoverageGap,
 		stopEvidenceSample,
 		stopLowCoverage,
 		stopSectionTitles,
@@ -98,12 +99,6 @@
 		t(
 			'of observed stop events here were on time.',
 			'des passages observés à cet arrêt étaient à l’heure.',
-		),
-	);
-	const insufficientCoverage = $derived(
-		t(
-			'There are too few observed stop events to measure punctuality for these dates.',
-			'Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates.',
 		),
 	);
 	let bandsTable = $state(false);
@@ -271,6 +266,18 @@
 				{#if result.kind === 'answer' && 'value' in result.answer}
 					{@const data = result.answer}
 					{@const share = measuredShare(data, 'on_time')}
+					{@const reading =
+						share !== null
+							? sentence
+							: stopLowCoverage(result)
+								? (stopCoverageGap(
+										data,
+										locale,
+										false,
+										(data.info?.find(({ id }) => id === 'on_time') ?? data.info?.[0])
+											?.minimum_coverage,
+									) ?? rateStateText(data, locale))
+								: rateStateText(data, locale)}
 					{@const evidence = {
 						sample: counted(data),
 						record: data.evidence,
@@ -282,11 +289,7 @@
 					{#await record.network}
 						<RecordAnswer
 							value={share === null ? null : percent(share, locale)}
-							sentence={share === null
-								? stopLowCoverage(result)
-									? insufficientCoverage
-									: rateStateText(data, locale)
-								: sentence}
+							sentence={reading}
 							state={chartState(data.state)}
 							time={stamp}
 							{locale}
@@ -296,11 +299,7 @@
 					{:then network}
 						<RecordAnswer
 							value={share === null ? null : percent(share, locale)}
-							sentence={share === null
-								? stopLowCoverage(result)
-									? insufficientCoverage
-									: rateStateText(data, locale)
-								: sentence}
+							sentence={reading}
 							state={chartState(data.state)}
 							time={stamp}
 							{locale}

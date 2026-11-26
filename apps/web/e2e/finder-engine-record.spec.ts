@@ -404,6 +404,21 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 	});
 
+	test(`${locale} Stop explains each uncovered reading once`, async ({ page }) => {
+		await page.setViewportSize({ width: 390, height: 900 });
+		await page.goto(`${prefix}/stop/S1?provider=stm&recordFrom=2026-11-10&recordTo=2026-11-10`);
+		const answer = page.locator('[data-slot="screen-answer"]');
+		await expect(answer).toContainText(fr ? /24 sur 100, minimum de 40/ : /24 of 100, minimum 40/);
+		const waiting = page.locator('#waiting');
+		const gap = fr
+			? 'Trop peu d’intervalles prévus ont été observés'
+			: 'Too few scheduled intervals were observed';
+		await expect(waiting.getByText(gap, { exact: false })).toHaveCount(1);
+		await expect(waiting.getByText(gap, { exact: false })).toContainText(
+			fr ? '3 sur 20' : '3 of 20',
+		);
+	});
+
 	test(`${locale} stops accepts a search without JavaScript`, async ({ browser, baseURL }) => {
 		const context = await browser.newContext({ javaScriptEnabled: false, baseURL });
 		try {

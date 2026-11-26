@@ -2,7 +2,13 @@ import { expect, it } from 'vitest';
 import { measure, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import { punctualityBands, recordMessage } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure } from '#lib/server/engine.ts';
-import { stopAccessibility, stopAnswer, stopCitation, stopComparison } from './stopRecordText.ts';
+import {
+	stopAccessibility,
+	stopAnswer,
+	stopCitation,
+	stopComparison,
+	stopCoverageGap,
+} from './stopRecordText.ts';
 
 const base = measure();
 const answer: RecordMeasure = {
@@ -14,6 +20,21 @@ const answer: RecordMeasure = {
 		counts: { early: 0, on_time: 80, late: 20, classified: 100, scheduled: 200 },
 	},
 };
+
+it('explains low coverage once and retains the sample and threshold in both languages', () => {
+	const gap: RecordMeasure = {
+		...answer,
+		state: 'not_measured',
+		evidence: { ...answer.evidence, coverage_reason: 'insufficient_coverage', low_coverage: true },
+	};
+	expect(stopCoverageGap(gap, 'en', false, 0.6)).toBe(
+		'There are too few observed stop events to measure punctuality for these dates (100 of 200, minimum 60%).',
+	);
+	expect(stopCoverageGap(gap, 'fr', false, 0.6)).toMatch(
+		/^Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates \(100 sur 200, minimum de 60\s%\)\.$/,
+	);
+	expect(stopCoverageGap(answer, 'en')).toBeNull();
+});
 
 it('uses the engine dates, count and denominator in both locales', () => {
 	expect(stopAnswer(answer, 'en')).toMatch(/8 to 14 Nov 2026, 80%.*\(80 of 100\)/);
