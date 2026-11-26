@@ -143,11 +143,11 @@ export const SHARE_COPY = {
 	},
 	'/roadmap': {
 		en: {
-			support: 'The Transit rebuild and what stays available meanwhile',
+			support: 'What Transit does today and what comes next',
 			cta: 'Read the roadmap',
 		},
 		fr: {
-			support: 'La refonte de Transit et ce qui reste accessible entre-temps',
+			support: 'Ce que Transit fait aujourd’hui et ce qui suit',
 			cta: 'Lire la feuille de route',
 		},
 	},
