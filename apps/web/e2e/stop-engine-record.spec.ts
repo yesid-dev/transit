@@ -6,6 +6,23 @@ test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
 });
 
+test('a stop with no eligible days shows the network alone and explains the missing line', async ({
+	page,
+}) => {
+	await page.goto(
+		'/stop/S1?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-11',
+	);
+	const daily = page.locator('#daily');
+	await expect(
+		daily.getByText('Too few stop events per day to draw this stop’s line (minimum 30 per day).'),
+	).toBeVisible();
+	await expect(daily.locator('[data-slot="chart-line-series"][data-reference]')).toHaveCount(1);
+	await expect(daily.locator('[data-slot="chart-line-series"]:not([data-reference])')).toHaveCount(
+		0,
+	);
+	await expect(daily.getByText('On-time share', { exact: true })).toHaveCount(0);
+});
+
 for (const width of [390, 1440]) {
 	for (const locale of ['en', 'fr'] as const) {
 		const fr = locale === 'fr';
@@ -81,6 +98,14 @@ for (const width of [390, 1440]) {
 			await expect(
 				main.locator('#daily [data-slot="chart-line-series"][data-reference]'),
 			).toBeAttached();
+			const daily = main.locator('#daily');
+			await expect(
+				daily.locator('[data-slot="chart-line-series"]:not([data-reference]) polyline'),
+			).toHaveCount(2);
+			await expect(
+				daily.getByText(fr ? /minimum de 30 par jour/ : /minimum 30 per day/),
+			).toHaveCount(1);
+			await expect(daily.locator('svg text').filter({ hasText: /^(?:0|20)\s?%$/ })).toHaveCount(1);
 			await expect(main.locator('#delay')).toContainText(fr ? '0,5 min d’avance' : '0.5 min early');
 			await expect(main.locator('#delay')).toContainText(fr ? '5,8 min de retard' : '5.8 min late');
 			await expect(main.locator('#alerts')).toContainText(fr ? 'Non suivi' : '3');
@@ -105,7 +130,7 @@ for (const width of [390, 1440]) {
 				fr ? '27 intervalles observés, 7 jours' : '27 observed intervals, 7 days',
 			]);
 			await expect(main.locator('#daily footer span').first()).toHaveText(
-				fr ? '700 passages aux arrêts, 7 jours' : '700 stop events, 7 days',
+				fr ? '614 passages aux arrêts, 7 jours' : '614 stop events, 7 days',
 			);
 			const alertsFooter = main.locator('#alerts footer');
 			if (fr) await expect(alertsFooter).toBeHidden();

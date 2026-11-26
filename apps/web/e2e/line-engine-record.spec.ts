@@ -23,6 +23,11 @@ for (const width of [390, 1440]) {
 			await expect(meta.locator('p').first()).toContainText(fr ? 'Ce qui est compté' : 'Counted:');
 			await expect(meta).not.toContainText(fr ? 'nettoyage' : 'cleaning');
 			await expect(main.locator('#directions dd').first()).toContainText(fr ? /80,0\s%/u : '80.0%');
+			const schedule = main.locator('#schedule');
+			await expect(schedule).toContainText(fr ? 'toutes les 12 min' : 'every 12 min');
+			await expect(schedule).toContainText(
+				fr ? 'direction qui compte le plus de trajets' : 'direction with the most scheduled trips',
+			);
 
 			const trend = main.locator('#daily');
 			await trend.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();

@@ -2,7 +2,7 @@ import { getContext, setContext } from 'svelte';
 import { getLocale } from '#lib/i18n/index.ts';
 import { routeNameFallback } from './absence';
 import { createLineDirectory, type LineDirectory } from './lineDirectory';
-import { directionLabel, directionName } from './presenter';
+import { directionLabel, directionName, towardReading } from './presenter';
 import { formatTransitName } from './transitDisplay';
 import type { Locale } from '#lib/i18n/copy.ts';
 
@@ -27,6 +27,8 @@ export function transitDisplay() {
 			formatTransitName(name, lang, directory().nameSeparators),
 		directionName: (name: string | null | undefined, lang: Locale) =>
 			directionName(name, lang, directory().nameSeparators),
+		toward: (name: string, lang: Locale, capital = true) =>
+			towardReading(name, lang, directory().nameSeparators, capital),
 		directionLabel: (
 			direction: string | number | null | undefined,
 			headsigns: Readonly<Record<number, string>>,

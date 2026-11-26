@@ -9,6 +9,7 @@ import type { BilingualLabel } from '#lib/content/nav.ts';
 import { routeFor } from '#lib/nav/index.ts';
 import { dedupeBy, foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 import { routeModeKey, stopGroupKey, type TransitModeKey } from '#lib/search/stopMode.ts';
+import type { LinePattern } from '#lib/site/linePatterns.ts';
 import { setMapFocusSearchParams, type MapFocusKind } from '#lib/search/mapFocus.ts';
 import {
 	copyNearTargetSearchParams,
@@ -45,6 +46,7 @@ export interface SearchSources {
 	readonly locale?: Locale;
 	readonly nameSeparators?: NameSeparators;
 	readonly routes?: readonly RouteIndexEntry[] | null;
+	readonly patterns?: Record<string, LinePattern>;
 	readonly stops?: readonly StopIndexEntry[] | null;
 	readonly vehicles?: readonly SearchVehicle[] | null;
 	readonly pages?: readonly SitePage[] | null;
@@ -63,6 +65,7 @@ export interface SearchHit {
 	readonly code?: string | null;
 	readonly name?: string | null;
 	readonly mode?: TransitModeKey | null;
+	readonly detail?: string;
 	readonly line?: string | null;
 	readonly lat?: number;
 	readonly lon?: number;
@@ -166,6 +169,7 @@ export function searchTransit(request: ListSearchRequest, sources: SearchSources
 		line: (id) => id,
 		locale: sources.locale,
 		nameSeparators: sources.nameSeparators,
+		patterns: sources.patterns,
 	});
 	const lines: SearchGroup = {
 		kind: 'route',
@@ -178,7 +182,8 @@ export function searchTransit(request: ListSearchRequest, sources: SearchSources
 				label: line.label,
 				code: line.number,
 				name: line.name,
-				mode: routeModeKey(value.type),
+				mode: value.type === 3 ? null : routeModeKey(value.type),
+				detail: directory.subtitle(value.id),
 			};
 		}),
 	};

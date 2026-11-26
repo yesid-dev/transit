@@ -66,6 +66,16 @@ export function loadLineRecord(
 		city,
 		line,
 		direction,
+		directionalFrequency:
+			!direction && include('frequency')
+				? getRecordAnswer(
+						{
+							path: '/measure',
+							parameters: { ...schedule.frequency, line, group: 'direction' },
+						},
+						scope,
+					)
+				: null,
 		network:
 			!scheduleOnly && include('network')
 				? getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope)

@@ -131,7 +131,6 @@
 		return matching.length === 1 ? (matching[0].headsign ?? null) : null;
 	}
 
-	const direction = (vehicle: Vehicle) => display.directionName(directionName(vehicle), locale);
 	const href = (path: string) => vehicleHref(path, url, locale, city);
 	const predictionsLabel = $derived(
 		t('Predictions at its next stops', 'Prévisions à ses prochains arrêts'),
@@ -155,9 +154,9 @@
 				: delayReading(liveReading.delay_min * 60, locale),
 	);
 	const destination = $derived(
-		liveReading && directionName(liveReading) ? direction(liveReading) : null,
+		liveReading ? display.directory.headsign(liveReading.route, directionName(liveReading)) : null,
 	);
-	const toward = $derived(destination ? t(` toward ${destination}`, ` vers ${destination}`) : '');
+	const toward = $derived(destination ? ` ${display.toward(destination, locale, false)}` : '');
 	const currentTrip = $derived(
 		liveReading?.trip ? live.index.byTripId.get(liveReading.trip) : undefined,
 	);
@@ -323,8 +322,8 @@
 							{#if previous && next}
 								<p>
 									{t(
-										`Between ${previous.name} and ${next.name}${destination ? ', heading toward ' + destination : ''}.`,
-										`Entre ${previous.name} et ${next.name}${destination ? ', en direction de ' + destination : ''}.`,
+										`Between ${previous.name} and ${next.name}${toward ? ', heading' + toward : ''}.`,
+										`Entre ${previous.name} et ${next.name}${toward ? ',' + toward : ''}.`,
 									)}
 								</p>
 							{/if}

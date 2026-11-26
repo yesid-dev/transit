@@ -71,7 +71,7 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						await expect(table).toContainText(kind === 'vehicle' ? /24[,.]4/u : /48[,.]0\s*%/u);
 						if (kind === 'line') {
 							await expect(table.getByRole('rowheader')).toContainText(
-								fr ? 'De East B9 à West B9' : 'East B9 to West B9',
+								fr ? 'East B9 à West B9' : 'East B9 to West B9',
 							);
 							await expect(table.getByRole('rowheader')).toContainText(
 								fr ? 'Faible couverture' : 'Low coverage',

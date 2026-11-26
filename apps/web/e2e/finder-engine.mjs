@@ -131,7 +131,13 @@ export function finderEngine(url) {
 				? [cell({ line: '24' }, { trips_run: 0.9 }, { ran: 90, eligible: 100, scheduled: 105 })]
 				: [
 						onTime('24', 0.8),
-						onTime('80', 0.65),
+						onTime(
+							process.env.TRANSIT_E2E_LINE_RECORD_NAMED === '1' &&
+								url.searchParams.get('city') === 'stm'
+								? '51'
+								: '80',
+							0.65,
+						),
 						cell(
 							{ line: '99' },
 							{ on_time: null },

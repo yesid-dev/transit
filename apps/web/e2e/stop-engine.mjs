@@ -126,7 +126,14 @@ export function stopEngine(url) {
 			hour: [cell({ hour: 7 })],
 			weekday_hour: grid,
 			day: days.map((day, index) => {
-				const onTime = [75, 79, 81, 82, 84, 78, 81][index % 7];
+				if (index === 2 || (from === '2026-11-08' && to === '2026-11-11')) {
+					return {
+						...cell({ day }, { on_time: null }, { classified: 14 }),
+						state: 'too_few_to_judge',
+						state_text: { en: 'Too few to judge', fr: 'Trop peu de données pour conclure' },
+					};
+				}
+				const onTime = [20, 25, 81, 30, 36, 32, 41][index % 7];
 				return cell({ day }, { on_time: onTime / 100 }, { classified: 100, on_time: onTime });
 			}),
 		}[group];
@@ -140,9 +147,9 @@ export function stopEngine(url) {
 				cells,
 				coverage_note,
 				evidence,
-				...(group === 'weekday_hour' || group === 'line'
+				...(group === 'weekday_hour' || group === 'line' || group === 'day'
 					? {
-							info: [{ id: measure, minimum_sample: group === 'weekday_hour' ? 30 : 60 }],
+							info: [{ id: measure, minimum_sample: group === 'line' ? 60 : 30 }],
 						}
 					: {}),
 			},

@@ -263,7 +263,7 @@
 	<RecordGroup>
 		<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
 		{#if scheduleOnly}
-			<LineScheduleCard {record} {locale} {url} />
+			<LineScheduleCard {record} {locale} {url} {headsigns} />
 		{/if}
 	</RecordGroup>
 	{#if scheduleOnly}
@@ -276,7 +276,7 @@
 			{/if}
 		{/await}
 		<RecordGroup>
-			<LineScheduleCard {record} {locale} {url} />
+			<LineScheduleCard {record} {locale} {url} {headsigns} />
 			{#await punctualityAnswer then result}
 				{@const answer =
 					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}

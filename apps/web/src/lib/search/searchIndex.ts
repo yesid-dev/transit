@@ -48,6 +48,15 @@ export type ScheduleMap = NonNullable<z.infer<typeof scheduleMapSchema>['schedul
 
 export const searchIndexSchema = z.object({
 	schedule: scheduleSchema.nullable(),
+	patterns: z
+		.record(
+			z.string(),
+			z.object({
+				ends: z.tuple([z.string(), z.string()]).optional(),
+				termini: z.record(z.string(), z.string()),
+			}),
+		)
+		.optional(),
 	vehicles: z.array(z.object({ id: z.string() })).nullable(),
 	vehicle_state: z.enum(['ready', 'not_tracked', 'unavailable']),
 });
@@ -67,6 +76,7 @@ export function searchIndexList(
 			{
 				...sources,
 				routes: data?.schedule?.routes ?? null,
+				patterns: data?.patterns,
 				stops: data?.schedule?.stops ?? null,
 				vehicles: vehiclesNotTracked ? [] : (data?.vehicles ?? null),
 			},

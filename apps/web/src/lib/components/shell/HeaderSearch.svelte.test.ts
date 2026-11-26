@@ -40,7 +40,7 @@ it('shows true totals in each heading and links each row to its record', () => {
 	const stopsGroup = view.getByRole('group', { name: 'Stops · 38' });
 	expect(within(stopsGroup).getAllByRole('option')).toHaveLength(4);
 	const line = within(view.getByRole('group', { name: 'Lines · 1' })).getByRole('option', {
-		name: 'Line 161 · Van Horne Road',
+		name: 'Line 161 · Van Horne',
 	});
 	expect(path(line.getAttribute('href'))).toBe('/lines/161');
 	const all = view.getByRole('option', { name: 'See all results' });
@@ -64,7 +64,7 @@ const opened = (option: HTMLElement) => {
 
 it('an exact line number is highlighted on a line page, and Enter opens that line', async () => {
 	const view = show('18', '/lines/17?tab=reliability&grain=week');
-	const line = view.getByRole('option', { name: 'Line 18 · Beaubien Road' });
+	const line = view.getByRole('option', { name: 'Line 18 · Beaubien' });
 	expect(line).toHaveAttribute('aria-selected', 'true');
 	expect(view.input).toHaveAttribute('aria-activedescendant', line.id);
 	expect(path(line.getAttribute('href'))).toBe('/lines/18?tab=reliability&grain=week');

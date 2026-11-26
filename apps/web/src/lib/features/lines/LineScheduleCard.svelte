@@ -9,10 +9,12 @@
 		record,
 		locale,
 		url,
+		headsigns,
 	}: {
 		record: ReturnType<typeof loadLineRecord>;
 		locale: Locale;
 		url: URL;
+		headsigns: Record<number, string>;
 	} = $props();
 	const frequencyAnswer = $derived(
 		record.sections.find(({ section }) => section === 'frequency')!.answer,
@@ -43,8 +45,10 @@
 						: undefined}
 					{locale}
 					{stamp}
+					{headsigns}
+					direction={record.direction}
+					directionalFrequency={record.directionalFrequency}
 					day={url.searchParams.get('dayType') ?? url.searchParams.get('day_type')}
-					combined={record.direction === null}
 					unavailable={[frequency, boundaries].some(
 						({ kind }) => kind !== 'answer' && kind !== 'busy',
 					)}

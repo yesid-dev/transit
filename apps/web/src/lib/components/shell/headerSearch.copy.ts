@@ -12,7 +12,6 @@ export const headerSearchCopy = {
 	en: {
 		kind: { route: 'Line', stop: 'Stop', vehicle: 'Vehicle', page: 'Page', address: 'Address' },
 		kinds: { route: 'Lines', stop: 'Stops', vehicle: 'Vehicles', page: 'Pages' },
-		modes: { metro: 'Métro', tram: 'Tram', rail: 'Train', bus: 'Road', ferry: 'Ferry' },
 		idleTitle: 'Nothing typed yet',
 		idleBody: 'Results appear as you type: lines, stops, vehicles and pages.',
 		short: 'Enter a line number or at least two letters.',
@@ -50,7 +49,6 @@ export const headerSearchCopy = {
 	fr: {
 		kind: { route: 'Ligne', stop: 'Arrêt', vehicle: 'Véhicule', page: 'Page', address: 'Adresse' },
 		kinds: { route: 'Lignes', stop: 'Arrêts', vehicle: 'Véhicules', page: 'Pages' },
-		modes: { metro: 'Métro', tram: 'Tramway', rail: 'Train', bus: 'Routier', ferry: 'Traversier' },
 		idleTitle: 'Rien de saisi',
 		idleBody: 'Les résultats s’affichent pendant la saisie : lignes, arrêts, véhicules et pages.',
 		short: 'Saisissez un numéro de ligne ou au moins deux lettres.',

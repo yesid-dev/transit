@@ -58,6 +58,30 @@ export function lineEngine(url) {
 		state_text: { en: 'Measured', fr: 'Mesuré' },
 		evidence: { ...sample, days_included: [from] },
 	});
+	const schedulePeriods = named
+		? namedSchedulePeriods(line)
+		: [
+				{
+					period_text: { en: 'Morning peak', fr: 'Pointe du matin' },
+					start_hour: 7,
+					end_hour: 9,
+					day_type: 'weekday',
+					days: 1,
+					scheduled_trips: 16,
+					scheduled_clock_hours: 2,
+					scheduled_frequency: 8,
+				},
+				{
+					period_text: { en: 'Midday', fr: 'Milieu de journée' },
+					start_hour: 9,
+					end_hour: 15,
+					day_type: 'saturday',
+					days: 1,
+					scheduled_trips: 24,
+					scheduled_clock_hours: 6,
+					scheduled_frequency: 4,
+				},
+			];
 
 	if (get('format') === 'csv') {
 		const fr = get('lang') === 'fr';
@@ -106,6 +130,27 @@ export function lineEngine(url) {
 		return waitingEngine(url, evidence);
 	}
 	if (group) {
+		if (group === 'direction' && measure === 'scheduled_frequency') {
+			const cells = [0, 1].map((direction) =>
+				cell(
+					{ direction },
+					{},
+					{
+						counts: {},
+						periods: schedulePeriods.map((period) => {
+							const first = Math.round(period.scheduled_trips * 0.625);
+							const scheduled_trips = direction === 0 ? first : period.scheduled_trips - first;
+							return {
+								...period,
+								scheduled_trips,
+								scheduled_frequency: scheduled_trips / period.scheduled_clock_hours,
+							};
+						}),
+					},
+				),
+			);
+			return { body: { cells, coverage_note, evidence } };
+		}
 		const cells =
 			(named
 				? namedLineCells(
@@ -232,30 +277,7 @@ export function lineEngine(url) {
 			{ scheduled_frequency: 8 },
 			{
 				counts: {},
-				periods: named
-					? namedSchedulePeriods(line)
-					: [
-							{
-								period_text: { en: 'Morning peak', fr: 'Pointe du matin' },
-								start_hour: 7,
-								end_hour: 9,
-								day_type: 'weekday',
-								days: 1,
-								scheduled_trips: 16,
-								scheduled_clock_hours: 2,
-								scheduled_frequency: 8,
-							},
-							{
-								period_text: { en: 'Midday', fr: 'Milieu de journée' },
-								start_hour: 9,
-								end_hour: 15,
-								day_type: 'saturday',
-								days: 1,
-								scheduled_trips: 24,
-								scheduled_clock_hours: 6,
-								scheduled_frequency: 4,
-							},
-						],
+				periods: schedulePeriods,
 			},
 		);
 	}

@@ -176,10 +176,11 @@
 		const next = directions.find((candidate) =>
 			candidate.stops?.some(({ id }) => id === vehicle.next_stop),
 		);
-		return display.directionName(
+		const sign = display.directory.headsign(
+			vehicle.route,
 			(next ?? (directions.length === 1 ? directions[0] : null))?.headsign,
-			locale,
 		);
+		return sign ? display.toward(sign, locale) : display.directionName(null, locale);
 	}
 
 	const register = getContext<RegisterFrameSurfaceRail | undefined>(frameSurfaceRailContext);

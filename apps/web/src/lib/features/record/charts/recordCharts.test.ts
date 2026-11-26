@@ -199,6 +199,39 @@ describe('record charts', () => {
 	});
 
 	it.each([
+		[
+			'en',
+			'Too few stop events per day to draw this stop’s line on some days (minimum 30 per day).',
+		],
+		[
+			'fr',
+			'Trop peu de passages aux arrêts certains jours pour tracer la courbe de cet arrêt (minimum de 30 par jour).',
+		],
+	] as const)(
+		'draws low stop values on the network axis and explains a sparse day in %s',
+		(locale, notice) => {
+			const dates = ['2026-11-08', '2026-11-09', '2026-11-10'];
+			const stop = series(
+				cell({ day: dates[0] }, { value: { on_time: 0.204 } }),
+				cell({ day: dates[1] }, { state: 'too_few_to_judge', value: { on_time: 0.26 } }),
+				cell({ day: dates[2] }, { value: { on_time: 0.25 } }),
+			);
+			const network = series(...dates.map((day) => cell({ day }, { value: { on_time: 0.807 } })));
+			const { props } = trendChart(
+				{ ...stop, info: [{ id: 'on_time', minimum_sample: 30 }] },
+				'Daily',
+				locale,
+				network,
+				true,
+			);
+			expect(props.points.map(({ y }) => y)).toEqual([0.204, null, 0.25]);
+			expect(props.yDomain).toEqual([0, 1]);
+			expect(props.yTicks.map(({ value }) => value)).toEqual([0, 0.25, 0.5, 0.75, 1]);
+			expect(props.gapNote).toBe(notice);
+		},
+	);
+
+	it.each([
 		['en', ['75%', '80%', '85%'], '85.0%'],
 		['fr', ['75 %', '80 %', '85 %'], '85,0 %'],
 	] as const)(

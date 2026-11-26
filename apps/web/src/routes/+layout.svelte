@@ -103,6 +103,7 @@
 			line: (id) => routeNameFallback(id, locale),
 			locale,
 			nameSeparators: data.provider?.name_separators,
+			patterns: data.patterns,
 		}),
 	);
 	setLineDirectory(() => lineDirectory);

@@ -91,8 +91,8 @@ export function departureFinding(
 	const value = recordPercent(top.value, locale);
 	return choose(
 		locale,
-		`The ${time} departure${end ? ` toward ${end}` : ''} ranked first, with ${value} of its observed stop events late.`,
-		`Le départ de ${time}${end ? ` vers ${end}` : ''} se classe premier, avec ${value} de ses passages observés aux arrêts en retard.`,
+		`The ${time} departure${end ? ` ${end}` : ''} ranked first, with ${value} of its observed stop events late.`,
+		`Le départ de ${time}${end ? ` ${end}` : ''} se classe premier, avec ${value} de ses passages observés aux arrêts en retard.`,
 	);
 }
 

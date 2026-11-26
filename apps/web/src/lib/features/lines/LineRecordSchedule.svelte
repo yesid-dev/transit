@@ -8,8 +8,11 @@
 		scheduledClock,
 		plannedInterval,
 		dailyScheduledTrips,
+		towardReading,
 	} from '#lib/site/presenter.ts';
-	import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
+	import type { RecordMeasure, RecordSeries, getRecordAnswer } from '#lib/server/engine.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import RecordPending from '../record/RecordPending.svelte';
 	import LineReadingTable from './LineReadingTable.svelte';
 	import LineRecordEvidence from './LineRecordEvidence.svelte';
 
@@ -21,7 +24,9 @@
 		day,
 		unavailable,
 		busy,
-		combined,
+		direction,
+		directionalFrequency,
+		headsigns,
 	}: {
 		frequency?: RecordMeasure;
 		boundaries?: RecordSeries;
@@ -30,10 +35,13 @@
 		day?: string | null;
 		unavailable?: boolean;
 		busy?: boolean;
-		combined: boolean;
+		direction: string | null;
+		directionalFrequency: ReturnType<typeof getRecordAnswer> | null;
+		headsigns: Record<number, string>;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const display = transitDisplay();
 	const title = $derived(t('Schedule', 'Horaire'));
 	const dayTypes = $derived([
 		{ key: 'weekday', label: t('Weekday', 'Jour de semaine') },
@@ -56,6 +64,30 @@
 			? periods.reduce((total, period) => total + period.scheduled_trips, 0) / periods[0].days
 			: null,
 	);
+	type Period = NonNullable<RecordMeasure['evidence']['periods']>[number];
+
+	function reading(period: Period, directions?: RecordSeries) {
+		if (!period.scheduled_trips) return t('No service scheduled', 'Aucun service prévu');
+		let sign = direction == null ? undefined : headsigns[Number(direction)];
+		let rate = direction == null ? undefined : period.scheduled_frequency;
+		for (const cell of directions?.cells ?? []) {
+			const id = cell.key.direction;
+			if (typeof id !== 'number' || cell.state !== 'measured') continue;
+			const match = cell.evidence.periods?.find(
+				(candidate) =>
+					candidate.day_type === period.day_type && candidate.start_hour === period.start_hour,
+			);
+			if (!match?.scheduled_frequency || (rate != null && match.scheduled_frequency <= rate))
+				continue;
+			rate = match.scheduled_frequency;
+			sign = headsigns[id];
+		}
+		if (rate == null) return t('Unknown', 'Inconnu');
+		const interval = plannedInterval(rate, locale);
+		return sign
+			? `${interval} ${towardReading(sign, locale, display.directory.nameSeparators, false)}`
+			: interval;
+	}
 
 	function edge(kind: 'first_trip' | 'last_trip') {
 		const times = edges
@@ -69,6 +101,28 @@
 			: t(`${distinct[0]} to ${distinct.at(-1)}`, `${distinct[0]} à ${distinct.at(-1)}`);
 	}
 </script>
+
+{#snippet timetable(directions?: RecordSeries)}
+	<div id="frequency" class="min-w-0">
+		<LineReadingTable
+			title={t('Planned frequency', 'Fréquence prévue')}
+			{locale}
+			numeric={false}
+			headers={[
+				t('Part of the day', 'Moment de la journée'),
+				t('Hours', 'Heures'),
+				t('Planned frequency', 'Fréquence prévue'),
+			]}
+			rows={periods.map((period) => ({
+				label: period.period_text[locale],
+				values: [
+					scheduleHours(period.start_hour, period.end_hour, locale),
+					reading(period, directions),
+				],
+			}))}
+		/>
+	</div>
+{/snippet}
 
 <div class="min-w-0">
 	<RecordCard interactive {title} {stamp}>
@@ -93,35 +147,39 @@
 				{/each}
 			</dl>
 			{#if periods.length}
-				{#if combined}
-					<p class="text-small text-muted-foreground">
-						{t(
-							'Planned frequency combines both directions.',
-							'La fréquence prévue combine les deux directions.',
-						)}
-					</p>
+				{#if directionalFrequency}
+					{#await directionalFrequency}
+						<RecordPending {locale} answer={directionalFrequency} />
+					{:then result}
+						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.some((cell) => cell.state === 'measured' && typeof cell.key.direction === 'number')}
+							<p class="text-small text-muted-foreground">
+								{t(
+									'Each row shows the direction with the most scheduled trips at that time.',
+									'Chaque ligne du tableau indique la direction qui compte le plus de trajets prévus à ces heures.',
+								)}
+							</p>
+							{@render timetable(result.answer)}
+						{:else if result.kind === 'busy'}
+							<RecordPending {locale} busy />
+						{:else if result.kind === 'answer'}
+							<p>
+								{t(
+									'Planned frequency by direction is unavailable.',
+									'La fréquence prévue par direction est indisponible.',
+								)}
+							</p>
+						{:else if !unavailable}
+							<p>
+								{t(
+									'The record is temporarily unavailable.',
+									'Le bilan est temporairement indisponible.',
+								)}
+							</p>
+						{/if}
+					{/await}
+				{:else}
+					{@render timetable()}
 				{/if}
-				<div id="frequency" class="min-w-0">
-					<LineReadingTable
-						title={t('Planned frequency', 'Fréquence prévue')}
-						{locale}
-						numeric={false}
-						headers={[
-							t('Part of the day', 'Moment de la journée'),
-							t('Hours', 'Heures'),
-							t('Planned frequency', 'Fréquence prévue'),
-						]}
-						rows={periods.map((period) => ({
-							label: period.period_text[locale],
-							values: [
-								scheduleHours(period.start_hour, period.end_hour, locale),
-								period.scheduled_trips
-									? plannedInterval(period.scheduled_frequency, locale)
-									: t('No service scheduled', 'Aucun service prévu'),
-							],
-						}))}
-					/>
-				</div>
 			{:else if !unavailable && !busy}
 				<p>
 					{frequency && frequency.state !== 'measured'

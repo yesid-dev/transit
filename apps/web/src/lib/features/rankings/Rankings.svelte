@@ -189,11 +189,7 @@
 		const id = row.id;
 		if (kind === 'line') {
 			const line = display.lineName(id);
-			const heads = identities.headsigns[id];
-			const direction =
-				heads?.[0] && heads?.[1] && heads[0] !== heads[1]
-					? t(`${heads[1]} to ${heads[0]}`, `De ${heads[1]} à ${heads[0]}`)
-					: undefined;
+			const direction = display.directory.subtitle(id);
 			return {
 				id,
 				label: line.name ?? line.label,
@@ -227,9 +223,11 @@
 			};
 		const line = row.line ? display.lineName(row.line) : null;
 		const clock = scheduledClock(row.departure, locale);
-		const sign =
-			row.direction == null || !row.line ? null : identities.headsigns[row.line]?.[row.direction];
-		const label = [clock, sign ? t(`toward ${sign}`, `vers ${sign}`) : null]
+		const sign = display.directory.headsign(
+			row.line,
+			row.direction == null || !row.line ? null : identities.headsigns[row.line]?.[row.direction],
+		);
+		const label = [clock, sign ? display.toward(sign, locale, false) : null]
 			.filter(Boolean)
 			.join(' ');
 		const href =
