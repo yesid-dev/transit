@@ -33,8 +33,8 @@
 	data-slot="live-pause"
 	onclick={toggle}
 >
-	<span>{copy.pause}</span>
-	<span aria-hidden="true" class="font-mono text-xs uppercase"
+	<span class="text-left">{copy.pause}</span>
+	<span aria-hidden="true" class="shrink-0 font-mono text-xs whitespace-nowrap uppercase"
 		>{livePause.paused ? copy.switchOn : copy.switchOff}</span
 	>
 </Button>
