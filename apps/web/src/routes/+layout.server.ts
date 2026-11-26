@@ -117,6 +117,7 @@ export const load: LayoutServerLoad = async (event) => {
 	// Overview combines schedule totals with a small set of ranked stop names.
 	// Keep the untrimmed schedule on the server for its page loader.
 	if (route === localRoute && !loadSnapshots) locals.overviewSchedule = schedule;
+	if (route === localRoute + '/rankings') locals.rankingsSchedule = schedule;
 	if (route === localRoute + '/stops') locals.stopsSchedule = schedule;
 	const v1 =
 		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;

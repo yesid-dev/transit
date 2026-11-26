@@ -17,7 +17,7 @@ describe('frame control state', () => {
 		expect(state('/lines/24')).toMatchObject({ showViewHint: false });
 	});
 
-	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/repeat-offenders', '/fr/download'])(
+	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/rankings', '/fr/download'])(
 		'shows Record when a live link opens the record-only %s',
 		(path) =>
 			expect(state(path + '?frameMode=live')).toMatchObject({ mode: 'record', recordOnly: true }),

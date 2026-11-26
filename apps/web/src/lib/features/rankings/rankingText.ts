@@ -1,26 +1,102 @@
-import { dateRange, methodEvidence, minuteReading } from '#lib/site/presenter.ts';
+import {
+	dateRange,
+	methodEvidence,
+	minuteReading,
+	recordPercent,
+	rankingComparison,
+} from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import type { RankingsRecord } from '#lib/server/engine.ts';
-import { choose, percent, withCoverage } from '../record/recordText.ts';
-import { reporting, type RankingMeasure } from './rankingSelection.ts';
+import type { EngineResult, RecordAnswer, RankingsRecord } from '#lib/server/engine.ts';
+import { choose } from '../record/recordText.ts';
+import { reporting, worseIsHigher, type RankingMeasure } from './rankingSelection.ts';
 
 type Row = RankingsRecord['rows'][number];
 type Excluded = RankingsRecord['excluded'][number];
 
+const leadPhrases: Record<RankingMeasure, Record<Locale, [extreme: string, first: string]>> = {
+	on_time: {
+		en: ['is the lowest on-time share', 'is the top-ranked on-time share'],
+		fr: ['est la plus faible part à l’heure', 'est la part à l’heure en tête du classement'],
+	},
+	late: {
+		en: ['is the highest late share', 'is the top-ranked late share'],
+		fr: ['est la plus forte part en retard', 'est la part en retard en tête du classement'],
+	},
+	early: {
+		en: ['is the highest early departure share', 'is the top-ranked early departure share'],
+		fr: [
+			'est la plus forte part de départs en avance',
+			'est la part de départs en avance en tête du classement',
+		],
+	},
+	median_delay: {
+		en: ['is the longest median delay', 'is the top-ranked median delay'],
+		fr: ['est le retard médian le plus long', 'est le retard médian en tête du classement'],
+	},
+	excess_wait_time: {
+		en: ['is the longest excess wait', 'is the top-ranked excess wait'],
+		fr: [
+			'est l’attente excédentaire la plus longue',
+			'est l’attente excédentaire en tête du classement',
+		],
+	},
+	cancelled_trips: {
+		en: ['is the highest cancelled trip share', 'is the top-ranked cancelled trip share'],
+		fr: [
+			'est la plus forte part de trajets annulés',
+			'est la part de trajets annulés en tête du classement',
+		],
+	},
+	missing_trips: {
+		en: ['is the highest missing trip share', 'is the top-ranked missing trip share'],
+		fr: [
+			'est la plus forte part de trajets manquants',
+			'est la part de trajets manquants en tête du classement',
+		],
+	},
+	[reporting]: {
+		en: [
+			'interruptions per 100 hours in service, the highest rate',
+			'interruptions per 100 hours in service, the top-ranked rate',
+		],
+		fr: [
+			'interruptions par 100 heures en service, le taux le plus élevé',
+			'interruptions par 100 heures en service, le taux en tête du classement',
+		],
+	},
+};
+
+export function rankingLead(
+	data: Pick<RankingsRecord, 'rows' | 'ranked_count'>,
+	entry: Row,
+	measure: RankingMeasure,
+	countText: string,
+	locale: Locale,
+) {
+	const higher = worseIsHigher(measure);
+	const extreme =
+		data.rows.length === data.ranked_count &&
+		data.rows.every((row) => (higher ? row.value <= entry.value : row.value >= entry.value));
+	const among =
+		data.ranked_count === 1
+			? choose(locale, 'for', 'pour')
+			: choose(locale, 'among the', 'parmi les');
+	return `${leadPhrases[measure][locale][extreme ? 0 : 1]} ${among} ${countText}${choose(locale, ':', '\u00a0:')}`;
+}
+
 const sampleUnits = {
 	headways: { en: 'observed intervals', fr: 'intervalles observés' },
-	events: { en: 'observed stop events', fr: 'passages observés' },
+	events: { en: 'observed stop events', fr: 'passages observés aux arrêts' },
 	trips: { en: 'eligible trips', fr: 'trajets admissibles' },
 	hours: { en: 'hours in service', fr: 'heures en service' },
 };
 
-const numerators: Partial<Record<RankingMeasure, string>> = {
-	on_time: 'on_time',
-	early: 'early',
-	late: 'late',
-	cancelled_trips: 'cancelled',
-	missing_trips: 'missing',
-	[reporting]: 'reporting_gaps',
+export const rankOptionLabels: Partial<Record<RankingMeasure, Record<Locale, string>>> = {
+	early: { en: 'Early share', fr: 'Part en avance' },
+	excess_wait_time: { en: 'Excess wait', fr: 'Attente' },
+	cancelled_trips: { en: 'Cancelled share', fr: 'Part annulée' },
+	missing_trips: { en: 'Missing share', fr: 'Part manquante' },
+	[reporting]: { en: 'Stopped reporting', fr: 'Interruptions' },
 };
 
 function number(value: number, locale: Locale) {
@@ -31,8 +107,49 @@ export function rankingValue(value: number, measure: RankingMeasure, locale: Loc
 	if (measure === 'median_delay' || measure === 'excess_wait_time')
 		return minuteReading(value / 60, locale)!;
 	if (measure === reporting)
-		return `${number(value, locale)} ${choose(locale, 'per 100 h', 'par 100 h')}`;
-	return percent(value, locale);
+		return intl
+			.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+			.format(value);
+	return recordPercent(value, locale);
+}
+
+export function rankingReference(
+	result: EngineResult<RecordAnswer> | null,
+	ranking: RankingsRecord,
+	measure: RankingMeasure,
+	locale: Locale,
+) {
+	if (
+		result?.kind !== 'answer' ||
+		!('value' in result.answer) ||
+		result.answer.state !== 'measured'
+	)
+		return null;
+	const reference = result.answer;
+	const value = reference.value[measure];
+	const methodVersion = reference.evidence.method_version;
+	if (
+		value == null ||
+		methodVersion !== ranking.evidence.method_version ||
+		(reference.evidence.measure_states?.[measure] ?? 'measured') !== 'measured'
+	)
+		return null;
+	const title =
+		ranking.kind === 'vehicle'
+			? choose(locale, 'Fleet', 'Parc de véhicules')
+			: choose(locale, 'Network', 'Réseau');
+	return { value, methodVersion, label: `${title} (${rankingValue(value, measure, locale)})` };
+}
+
+export function rankingVerdict(
+	row: Row,
+	reference: ReturnType<typeof rankingReference>,
+	method: string,
+	measure: RankingMeasure,
+	locale: Locale,
+) {
+	if (measure === reporting) return null;
+	return rankingComparison(row.range, reference, method, worseIsHigher(measure), locale);
 }
 
 export function rankingRange({ range }: Row, measure: RankingMeasure, locale: Locale) {
@@ -40,12 +157,6 @@ export function rankingRange({ range }: Row, measure: RankingMeasure, locale: Lo
 	const low = rankingValue(range.lower, measure, locale);
 	const high = rankingValue(range.upper, measure, locale);
 	return choose(locale, `${low} to ${high}`, `${low} à ${high}`);
-}
-
-export function rankingRangeLabel(method: string, locale: Locale) {
-	return method === 'histogram_half_bin'
-		? choose(locale, 'Bin rounding only', 'Arrondi des classes seulement')
-		: choose(locale, 'Range', 'Intervalle');
 }
 
 export function sampleText(sample: number, measure: RankingMeasure, locale: Locale) {
@@ -60,13 +171,27 @@ export function sampleText(sample: number, measure: RankingMeasure, locale: Loca
 	return `${number(sample, locale)} ${sampleUnits[unit][locale]}`;
 }
 
-export function rankingSample(row: Row, measure: RankingMeasure, locale: Locale) {
-	const key = numerators[measure];
-	const count = key ? row.counts[key] : null;
-	const sample = sampleText(row.sample, measure, locale);
-	if (count == null) return withCoverage(sample, row, locale);
-	const n = number(count, locale);
-	return withCoverage(choose(locale, `${n} in ${sample}`, `${n} sur ${sample}`), row, locale);
+export function rankingCountLines(row: Row, measure: RankingMeasure, locale: Locale) {
+	const lines = [sampleText(row.sample, measure, locale)];
+	const { observed_trips: trips, observed_trip_pairs: pairs, reporting_gaps: gaps } = row.counts;
+	if (measure === reporting) {
+		if (gaps != null)
+			lines.push(`${number(gaps, locale)} ${gaps === 1 ? 'interruption' : 'interruptions'}`);
+	} else if (measure === 'excess_wait_time') {
+		if (pairs != null)
+			lines.push(
+				choose(
+					locale,
+					`${number(pairs, locale)} trip pairs`,
+					`${number(pairs, locale)} paires de trajets`,
+				),
+			);
+	} else if (trips != null && measure !== 'cancelled_trips' && measure !== 'missing_trips') {
+		const unit =
+			trips === 1 ? choose(locale, 'trip', 'trajet') : choose(locale, 'trips', 'trajets');
+		lines.push(`${number(trips, locale)} ${unit}`);
+	}
+	return lines;
 }
 
 export function lineRankingFloor(
@@ -80,7 +205,7 @@ export function lineRankingFloor(
 		return choose(
 			locale,
 			`Each line needs at least ${events} observed stop events and ${trips} observed trips to rank.`,
-			`Chaque ligne doit compter au moins ${events} passages observés et ${trips} trajets observés pour être classée.`,
+			`Chaque ligne doit compter au moins ${events} passages observés aux arrêts et ${trips} trajets observés pour être classée.`,
 		);
 	}
 	if (
@@ -99,16 +224,6 @@ export function lineRankingFloor(
 	return null;
 }
 
-export function waitingRankingBasis(counts: Row['counts'], locale: Locale) {
-	const { observed_trip_pairs: pairs, covered_scheduled_headways: matched } = counts;
-	if (pairs == null || matched == null) return '';
-	return choose(
-		locale,
-		`${number(pairs, locale)} distinct observed trip pairs, ${number(matched, locale)} scheduled intervals in comparable windows.`,
-		`${number(pairs, locale)} paires distinctes de trajets observés, ${number(matched, locale)} intervalles prévus dans des fenêtres comparables.`,
-	);
-}
-
 export function exclusionText(row: Excluded, measure: RankingMeasure, locale: Locale) {
 	const reason = row.reason_text[locale];
 	return row.reason === 'too_few_to_judge' && row.sample != null
@@ -116,21 +231,56 @@ export function exclusionText(row: Excluded, measure: RankingMeasure, locale: Lo
 		: reason;
 }
 
-export function classText(key: string, locale: Locale) {
+export function classText(key: string, locale: Locale, classes: string[] = []) {
+	if (key === 'all') return choose(locale, 'All lines', 'Toutes les lignes');
 	const [type, pattern] = key.split(':');
 	const service =
 		pattern === 'night'
-			? choose(locale, 'Night service', 'Service de nuit')
+			? choose(locale, 'Night lines', 'Lignes de nuit')
 			: pattern === 'frequent'
-				? choose(locale, 'Frequent service', 'Service fréquent')
-				: choose(locale, 'Regular service', 'Service régulier');
-	const mode =
-		type === 'unknown'
-			? choose(locale, 'unknown mode', 'mode inconnu')
-			: type === 'mixed'
-				? choose(locale, 'mixed modes', 'modes mixtes')
-				: choose(locale, `GTFS type ${type}`, `type GTFS ${type}`);
+				? choose(locale, 'Frequent lines', 'Lignes fréquentes')
+				: choose(locale, 'Regular lines', 'Lignes régulières');
+	if (!classes.some((other) => other !== key && other.split(':')[1] === pattern)) return service;
+	const modes: Record<string, string> = {
+		'0': choose(locale, 'tram', 'tramway'),
+		'1': choose(locale, 'metro', 'métro'),
+		'2': choose(locale, 'rail', 'train'),
+		'3': choose(locale, 'road', 'route'),
+		mixed: choose(locale, 'mixed modes', 'modes mixtes'),
+		unknown: choose(locale, 'unknown mode', 'mode inconnu'),
+	};
+	const mode = modes[type] ?? choose(locale, `type ${type}`, `type ${type}`);
 	return `${service} (${mode})`;
+}
+
+// Classification from LineSchedule.service_class in the engine.
+export function serviceClassDefinition(key: string, locale: Locale) {
+	if (key === 'all')
+		return choose(
+			locale,
+			'Includes every service class.',
+			'Comprend toutes les classes de service.',
+		);
+	switch (key.split(':')[1]) {
+		case 'night':
+			return choose(
+				locale,
+				'More than half of scheduled trips depart before 05:00 local time.',
+				'Plus de la moitié des trajets prévus partent avant 5 h, heure locale.',
+			);
+		case 'frequent':
+			return choose(
+				locale,
+				'The average scheduled interval from 07:00 to 09:00 local time is 10 minutes or less. The rule uses weekdays unless the selected dates are all on a weekend.',
+				'L’intervalle moyen prévu de 7 h à 9 h, heure locale, est de 10 minutes ou moins. La règle s’applique aux jours de semaine, ou aux jours de fin de semaine si la période ne contient que ceux-ci.',
+			);
+		default:
+			return choose(
+				locale,
+				'The line meets neither the night nor the frequent service rule.',
+				'La ligne ne répond ni au critère de nuit ni à celui du service fréquent.',
+			);
+	}
 }
 
 export function rankingCitation(

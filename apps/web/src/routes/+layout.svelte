@@ -47,6 +47,7 @@
 	import { SeoHead } from '@yesid/ui/head';
 	import {
 		resolveRouteSeo,
+		canonicalRoutePath,
 		isEphemeralPath,
 		breadcrumbItemsForHead,
 		resolveDatasetSeo,
@@ -244,7 +245,11 @@
 		return nodes;
 	});
 	const headHref = (lang: Locale) =>
-		`${siteConfig.siteOrigin}${localizeHref(seoPath, lang, seo.providerId)}`;
+		`${siteConfig.siteOrigin}${localizeHref(
+			canonicalRoutePath(new URL(page.url.href)),
+			lang,
+			seo.providerId,
+		)}`;
 	const head = $derived({
 		title: headTitle === headSiteName ? headTitle : `${headTitle} · ${headSiteName}`,
 		description: headDescription,

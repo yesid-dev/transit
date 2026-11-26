@@ -400,11 +400,8 @@ describe('server HTML edge cache', () => {
 			'/[[lang=locale]]/stop/[id]',
 		],
 		['https://transit1.yesid.dev/lines/24?frameMode=record#offered', '/[[lang=locale]]/lines/[id]'],
-		['https://transit1.yesid.dev/hotspots?kind=stop', '/[[lang=locale]]/hotspots'],
-		[
-			'https://transit1.yesid.dev/fr/repeat-offenders?kind=vehicle',
-			'/[[lang=locale]]/repeat-offenders',
-		],
+		['https://transit1.yesid.dev/rankings?kind=stop', '/[[lang=locale]]/rankings'],
+		['https://transit1.yesid.dev/fr/rankings?kind=vehicle', '/[[lang=locale]]/rankings'],
 		['https://transit1.yesid.dev/fr/metrics', '/[[lang=locale]]/metrics'],
 		['https://transit1.yesid.dev/status', '/[[lang=locale]]/status'],
 		['https://transit1.yesid.dev/lines', '/[[lang=locale]]/lines'],

@@ -4,6 +4,7 @@ declare global {
 			locale?: 'en' | 'fr';
 			approximateLocation?: import('#lib/v1/requestLocation').ApproximateLocation | null;
 			overviewSchedule?: import('#lib/search/searchIndex.ts').ScheduleEdition | null;
+			rankingsSchedule?: import('#lib/search/searchIndex.ts').ScheduleEdition | null;
 			stopsSchedule?: import('#lib/search/searchIndex.ts').ScheduleEdition | null;
 		}
 		interface PageState {

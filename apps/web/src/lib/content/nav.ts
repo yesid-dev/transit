@@ -114,16 +114,16 @@ export const NAV_ITEMS: readonly NavItem[] = [
 	{
 		key: 'hotspots',
 		group: 'reports',
-		href: '/hotspots',
+		href: '/rankings',
 		label: { en: 'Worst lines and stops', fr: 'Pires lignes et arrêts' },
-		activePrefixes: ['/hotspots'],
+		activePrefixes: ['/rankings'],
 	},
 	{
 		key: 'repeatOffenders',
 		group: 'reports',
-		href: '/repeat-offenders',
+		href: '/rankings?kind=departure',
 		label: { en: 'Worst trips and vehicles', fr: 'Pires trajets et véhicules' },
-		activePrefixes: ['/repeat-offenders'],
+		activePrefixes: ['/rankings?kind=departure'],
 	},
 	{
 		key: 'receipt',

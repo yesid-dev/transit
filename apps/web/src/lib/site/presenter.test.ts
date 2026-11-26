@@ -23,6 +23,7 @@ import {
 	registryUnitText,
 	recordRatio,
 	recordPercent,
+	rankingComparison,
 	recordStamp,
 	scheduledClock,
 	serviceTime,
@@ -54,6 +55,28 @@ it.each([
 });
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
+
+it('uses the published interval and a matching reference method for the ranking verdict', () => {
+	const network = { value: 0.8, methodVersion: 'on-time-v3' };
+	expect(rankingComparison({ lower: 0.5, upper: 0.7 }, network, 'on-time-v3', false, 'en')).toBe(
+		'Worse than the network',
+	);
+	expect(rankingComparison({ lower: 0.5, upper: 0.7 }, network, 'on-time-v3', true, 'fr')).toBe(
+		'Mieux que le réseau',
+	);
+	expect(rankingComparison({ lower: 0.8, upper: 0.9 }, network, 'on-time-v3', true, 'fr')).toBe(
+		'Comme le réseau',
+	);
+	expect(rankingComparison({ lower: 0.81, upper: 0.9 }, network, 'on-time-v3', true, 'fr')).toBe(
+		'Moins bien que le réseau',
+	);
+	expect(
+		rankingComparison({ lower: 0.81, upper: 0.9 }, network, 'on-time-v2', true, 'en'),
+	).toBeNull();
+	expect(
+		rankingComparison({ lower: null, upper: null }, network, 'on-time-v3', true, 'en'),
+	).toBeNull();
+});
 
 it.each([
 	['en', '0.0%', '14.0%', '80.7%'],

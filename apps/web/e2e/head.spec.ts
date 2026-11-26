@@ -7,7 +7,12 @@ import { DEFAULT_LOCALE, PUBLISHED_LOCALES, type Locale } from '../src/lib/i18n/
 
 const localized = (href: string, locale: Locale) =>
 	locale === DEFAULT_LOCALE ? href : `/${locale}${href === '/' ? '' : href}`;
-const pathOf = (href: string | null) => (href ? new URL(href).pathname : null);
+function pathOf(href: string | null) {
+	if (!href) return null;
+	const url = new URL(href.replaceAll('&amp;', '&'));
+	url.searchParams.delete('provider');
+	return url.pathname + url.search;
+}
 const destinations = [...SURFACE_NAV, ...AUDIT_NAV];
 
 test.beforeEach(async ({ page }) => {
@@ -18,7 +23,11 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: every destination's head names itself, its canonical and every locale`, async ({
 		page,
 	}) => {
-		for (const { href } of destinations) {
+		for (const { href } of [
+			...destinations,
+			{ href: '/rankings?kind=stop' },
+			{ href: '/rankings?kind=vehicle' },
+		]) {
 			const path = localized(href, locale);
 			const response = await page.goto(path);
 			expect(response?.ok(), path).toBe(true);
@@ -38,6 +47,26 @@ for (const locale of PUBLISHED_LOCALES) {
 				(await page.locator('script[type="application/ld+json"]').textContent()) ?? '',
 			)['@graph'] as { '@type': string }[];
 			expect(graph.map((node) => node['@type'])).toContain('WebSite');
+		}
+	});
+
+	test(`${locale}: ranking canonicals keep only the non-default rank`, async ({ page }) => {
+		for (const kind of ['line', 'stop', 'departure', 'vehicle']) {
+			const canonical = `/rankings${kind === 'line' ? '' : `?kind=${kind}`}`;
+			await page.goto(
+				localized(
+					`/rankings?kind=${kind}&measure=late&class=all&recordFrom=2026-11-01&recordTo=2026-11-09`,
+					locale,
+				),
+			);
+			expect(pathOf(await page.locator('link[rel="canonical"]').getAttribute('href'))).toBe(
+				localized(canonical, locale),
+			);
+			for (const lang of PUBLISHED_LOCALES) {
+				expect(pathOf(await page.locator(`link[hreflang="${lang}"]`).getAttribute('href'))).toBe(
+					localized(canonical, lang),
+				);
+			}
 		}
 	});
 }
@@ -76,6 +105,9 @@ test('documents carry the security headers and robots matches the indexing polic
 		for (const { href } of destinations) {
 			for (const lang of PUBLISHED_LOCALES) expect(locs).toContain(localized(href, lang));
 		}
+		for (const kind of ['stop', 'departure', 'vehicle'])
+			for (const lang of PUBLISHED_LOCALES)
+				expect(locs).toContain(localized(`/rankings?kind=${kind}`, lang));
 	}
 });
 

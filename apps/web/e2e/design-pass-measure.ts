@@ -308,6 +308,7 @@ async function keyboardMetrics(page: Page, countShadowRings: boolean) {
 			beforeFigure,
 		},
 		accessibleStops,
+		keys: sequence,
 	};
 }
 
@@ -322,6 +323,7 @@ export async function measureDesignPass(page: Page, { countShadowRings = false }
 		Awaited<ReturnType<typeof keyboardMetrics>>['metrics']
 	>;
 	const focusSequences = {} as Record<(typeof budgetWidths)[number], string[]>;
+	const focusKeys = {} as Record<(typeof budgetWidths)[number], string[]>;
 	for (const width of widths) {
 		await setWidth(page, width);
 		await settled(page);
@@ -331,9 +333,10 @@ export async function measureDesignPass(page: Page, { countShadowRings = false }
 		}
 		Object.assign(widthsReport, { [width]: await layoutMetrics(page) });
 		if (width === 390 || width === 1440) {
-			const { metrics, accessibleStops } = await keyboardMetrics(page, countShadowRings);
+			const { metrics, accessibleStops, keys } = await keyboardMetrics(page, countShadowRings);
 			keyboard[width] = metrics;
 			focusSequences[width] = accessibleStops;
+			focusKeys[width] = keys;
 			await page.evaluate(() => {
 				(document.activeElement as HTMLElement)?.blur();
 				window.scrollTo(0, 0);
@@ -354,5 +357,9 @@ export async function measureDesignPass(page: Page, { countShadowRings = false }
 		await settled(page);
 		Object.assign(zoomReport, { [width]: await layoutMetrics(page, true) });
 	}
-	return { report: { content, widths: widthsReport, keyboard, zoom: zoomReport }, focusSequences };
+	return {
+		report: { content, widths: widthsReport, keyboard, zoom: zoomReport },
+		focusSequences,
+		focusKeys,
+	};
 }

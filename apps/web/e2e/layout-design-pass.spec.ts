@@ -33,6 +33,10 @@ const cohesionScreens = new Set<Screen>([
 	'vehicles',
 	'vehicles-live',
 	'departure',
+	'rankings-lines',
+	'rankings-stops',
+	'rankings-departures',
+	'rankings-vehicles',
 	'daily',
 	'network-health',
 	'network-health-live',
@@ -236,6 +240,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		if (alerts && provider === 'stm')
 			await expect(page.locator('[data-slot="show-more"]').first()).toBeVisible();
 		const start = performance.now();
+		const rankings = screen.startsWith('rankings-');
 		const redesignedDetail =
 			screen === 'departure' ||
 			screen === 'vehicle-record' ||
@@ -246,6 +251,12 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			await expect(
 				page.locator('[data-slot="screen-answer"] [data-slot="answer-lead"]'),
 			).toBeVisible();
+		if (rankings) {
+			const main = page.getByRole('main');
+			if (screen === 'rankings-vehicles' && provider === 'octranspo')
+				await expect(main.locator('[data-record-state="not_tracked"]')).toBeVisible();
+			else await expect(main.locator('#ranking table')).toBeVisible();
+		}
 		if (
 			screen === 'roadmap' ||
 			screen === 'privacy' ||
@@ -286,10 +297,11 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				.toEqual([]);
 		}
 		// Adopted Overview checks the actual indicator. Existing debt fingerprints count outlines.
-		const { report, focusSequences } = await measureDesignPass(page, {
+		const { report, focusSequences, focusKeys } = await measureDesignPass(page, {
 			countShadowRings:
 				health ||
 				redesignedDetail ||
+				rankings ||
 				alerts ||
 				screen.startsWith('overview') ||
 				screen === 'stop-record' ||
@@ -309,6 +321,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				ms: Math.round(performance.now() - start),
 				report,
 				focusSequences,
+				focusKeys,
 			}),
 			contentType: 'application/json',
 		});

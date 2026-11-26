@@ -4,6 +4,11 @@ import type { Locale } from '../i18n/config';
 import { roadmapTitle } from '../features/roadmap/roadmap.copy';
 import cards from '../../../static/og/manifest.json';
 import { upcomingPage } from '#lib/content/nav.ts';
+import {
+	rankingPath,
+	rankingPathForKind,
+	rankingSelection,
+} from '#lib/features/rankings/rankingUrls.ts';
 
 export interface RouteSeo {
 	title: string;
@@ -88,14 +93,11 @@ const SURFACES: Record<string, BilingualSeo> = {
 	'/download': {
 		title: { en: 'Download the data', fr: 'Télécharger les données' },
 	},
-	'/hotspots': {
-		title: { en: 'Hotspots', fr: 'Points chauds' },
+	'/rankings': {
+		title: { en: 'Worst lines', fr: 'Pires lignes' },
 	},
 	'/receipt': {
 		title: { en: 'Daily report', fr: 'Rapport quotidien' },
-	},
-	'/repeat-offenders': {
-		title: { en: 'Repeat offenders', fr: 'Récidivistes' },
 	},
 	'/alerts': {
 		title: { en: 'Alerts', fr: 'Avis' },
@@ -135,6 +137,13 @@ function entryFor(path: string): BilingualSeo {
 export function isEphemeralPath(pathname: string): boolean {
 	const path = delocalizePath(pathname);
 	return path.startsWith('/trip/') || Boolean(upcomingPage(path));
+}
+
+export function canonicalRoutePath(url: URL): string {
+	const path = delocalizePath(url.pathname);
+	return path === rankingPath
+		? rankingPathForKind(rankingSelection(rankingPath, url.searchParams).kind)
+		: path;
 }
 
 function resolveIdentity(identity?: ProviderSeoIdentity): ResolvedIdentity | null {

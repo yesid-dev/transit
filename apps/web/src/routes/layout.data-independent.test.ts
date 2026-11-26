@@ -110,7 +110,10 @@ vi.mock('$app/env/public', async () => ({
 vi.mock('#lib/components/edge/index.ts', async () => ({
 	EdgeState: (await import('./__fixtures__/RootLayoutEdgeStateStub.svelte')).default,
 }));
-vi.mock('#lib/seo/routeSeo.ts', () => ({
+vi.mock('#lib/seo/routeSeo.ts', async (importOriginal) => ({
+	// canonicalRoutePath stays real so the layout head uses the delocalized
+	// pathname of the route under test.
+	...(await importOriginal<typeof import('#lib/seo/routeSeo.ts')>()),
 	resolveRouteSeo: () => ({
 		title: 'Legal',
 		description: 'Legal document description.',

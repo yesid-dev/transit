@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	resolveRouteSeo,
+	canonicalRoutePath,
 	isEphemeralPath,
 	resolveBreadcrumbTrail,
 	breadcrumbItemsForHead,
@@ -18,9 +19,8 @@ const PATHS = [
 	'/search',
 	'/metrics',
 	'/status',
-	'/hotspots',
+	'/rankings',
 	'/receipt',
-	'/repeat-offenders',
 	'/alerts',
 	'/privacy',
 	'/terms',
@@ -38,15 +38,25 @@ const SURFACE_PATHS = [
 	'/search',
 	'/metrics',
 	'/status',
-	'/hotspots',
+	'/rankings',
 	'/receipt',
-	'/repeat-offenders',
 	'/alerts',
 	'/privacy',
 	'/terms',
 ];
 
 const STM_IDENTITY = { id: 'stm', shortName: 'STM', city: 'Montréal' } as const;
+
+it.each([
+	['/rankings?kind=line&measure=late', '/rankings'],
+	['/fr/rankings?kind=stops&measure=late&recordFrom=2026-11-04', '/rankings?kind=stop'],
+	['/rankings?kind=departure&class=all', '/rankings?kind=departure'],
+	['/fr/rankings?kind=vehicle', '/rankings?kind=vehicle'],
+	['/rankings?kind=unknown', '/rankings'],
+	['/fr/lines?kind=vehicle', '/lines'],
+])('canonicalizes %s to %s', (path, expected) => {
+	expect(canonicalRoutePath(new URL(path, ORIGIN))).toBe(expected);
+});
 
 describe('URL-scoped home sharing', () => {
 	const ottawa = { id: 'octranspo', shortName: 'OC Transpo', city: 'Ottawa' };

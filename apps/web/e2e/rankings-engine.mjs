@@ -1,8 +1,9 @@
-export function rankingsEngine(url) {
+export function rankingsEngine(url, city) {
 	const get = (key) => url.searchParams.get(key);
 	const kind = get('kind');
 	const measure = get('measure');
 	const from = get('from');
+	if (from === '2026-10-29' && get('to') === '2026-11-04') return { status: 503, body: {} };
 	const vehicle = kind === 'vehicle';
 	const reporting = measure === 'vehicle_reporting_gaps_per_100_hours';
 	if (vehicle && !reporting) {
@@ -17,7 +18,8 @@ export function rankingsEngine(url) {
 		const header = get('lang') === 'fr' ? 'Rang,Type,Identifiant' : 'Rank,Kind,ID';
 		return { csv: `${header}\n1,${kind},${JSON.stringify(ids[kind])}\n` };
 	}
-	const classes = kind === 'line' ? ['3:frequent', '3:regular'] : [];
+	const classes =
+		kind === 'line' ? (from === '2026-11-01' ? ['3:frequent'] : ['3:frequent', '3:regular']) : [];
 	const serviceClass = kind === 'line' ? (get('class') ?? '3:frequent') : null;
 	const entry = {
 		id: ids[kind],
@@ -37,6 +39,7 @@ export function rankingsEngine(url) {
 						early: 4,
 						scheduled: 250,
 						classified: 100,
+						observed_trips: 12,
 						on_time: 48,
 						late: 48,
 						vehicle_stopped: 50,
@@ -44,7 +47,8 @@ export function rankingsEngine(url) {
 					},
 		...(!vehicle ? { share_observed: 0.4, low_coverage: true } : {}),
 	};
-	const notTracked = vehicle && from === '2026-11-10';
+	const notTracked = vehicle && (city === 'octranspo' || from === '2026-11-10');
+	const paged = kind === 'line' && from === '2026-10-28';
 	const method = wait
 		? 'matched_headways'
 		: reporting
@@ -59,23 +63,22 @@ export function rankingsEngine(url) {
 			measure,
 			class: serviceClass,
 			available_classes: classes,
-			ranked_count: notTracked || floorGated ? 0 : 1,
+			ranked_count: notTracked || floorGated ? 0 : paged ? 21 : 1,
 			rows:
 				notTracked || floorGated
 					? []
-					: [
-							{
-								...entry,
-								rank: 1,
-								...(!reporting && !median && !wait ? { ranking_bound: 0.58 } : {}),
-								value: wait ? 42.5 : early ? 0.04 : reporting ? 24.39 : median ? 30 : 0.48,
-								range: {
-									method,
-									lower: wait || reporting ? null : early ? 0.02 : median ? 27.5 : 0.38,
-									upper: wait || reporting ? null : early ? 0.1 : median ? 32.5 : 0.58,
-								},
+					: Array.from({ length: paged ? 21 : 1 }, (_, index) => ({
+							...entry,
+							id: index === 0 ? entry.id : `L${index + 1}`,
+							rank: index + 1,
+							...(!reporting && !median && !wait ? { ranking_bound: 0.58 } : {}),
+							value: wait ? 42.5 : early ? 0.04 : reporting ? 24.39 : median ? 30 : 0.48,
+							range: {
+								method,
+								lower: wait || reporting ? null : early ? 0.02 : median ? 27.5 : 0.38,
+								upper: wait || reporting ? null : early ? 0.1 : median ? 32.5 : 0.58,
 							},
-						],
+						})),
 			excluded: notTracked
 				? []
 				: [
@@ -124,6 +127,47 @@ export function rankingsEngine(url) {
 				method_version: 'rankings-fixture-v1',
 				cleaning_versions: [8],
 				query_ms: 4,
+			},
+		},
+	};
+}
+
+export function rankingReferenceFixture(url) {
+	const q = url.searchParams;
+	const from = q.get('from');
+	const measure = q.get('measure');
+	const windows = { '2026-10-27': '2026-11-02', '2026-10-28': '2026-11-03' };
+	if (!Object.hasOwn(windows, from) || windows[from] !== q.get('to') || q.has('group') || !measure)
+		return null;
+	const values = {
+		on_time: 0.8,
+		late: 0.2,
+		early: 0.06,
+		median_delay: 25,
+		excess_wait_time: 35,
+		vehicle_reporting_gaps_per_100_hours: 20.5,
+	};
+	if (!Object.hasOwn(values, measure)) return null;
+	const value = values[measure];
+	return {
+		body: {
+			measure,
+			state: value == null ? 'not_measured' : 'measured',
+			state_text:
+				value == null ? { en: 'Not measured', fr: 'Non mesuré' } : { en: 'Measured', fr: 'Mesuré' },
+			value: { [measure]: value ?? null },
+			coverage_note: null,
+			evidence: {
+				start_date: from,
+				end_date: q.get('to'),
+				days_included: [from],
+				days_measured: value == null ? [] : [from],
+				days_not_measured: value == null ? [from] : [],
+				method_version: from === '2026-10-28' ? 'old-fixture-v0' : 'rankings-fixture-v1',
+				cleaning_versions: [8],
+				query_ms: 2,
+				counts: { classified: 250 },
+				share_observed: 0.4,
 			},
 		},
 	};

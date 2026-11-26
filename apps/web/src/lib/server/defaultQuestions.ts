@@ -1,7 +1,8 @@
 import {
 	rankingKinds,
-	rankingLists,
+	rankingPath,
 	rankingSelection,
+	canRankVehicles,
 } from '#lib/features/rankings/rankingSelection.ts';
 import { type FrameClock, parseFrameState } from '#lib/site/frameState.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
@@ -60,10 +61,15 @@ export function defaultCityQuestions(
 			Object.values(finder).map((parameters) => finderQuestion(parameters, scope)),
 		),
 		...rankingKinds
-			.map((kind) =>
-				rankingsQuery(rankingSelection(rankingLists[kind].path, new URLSearchParams({ kind }))),
-			)
-			.map(({ path, parameters }) => periodQuestion(scope, path, parameters)),
+			.filter((kind) => kind !== 'vehicle' || canRankVehicles(city.inputs))
+			.flatMap((kind) => {
+				const selection = rankingSelection(rankingPath, new URLSearchParams({ kind }));
+				const { path, parameters } = rankingsQuery(selection);
+				return [
+					periodQuestion(scope, path, parameters),
+					periodQuestion(scope, '/measure', { measure: selection.measure }),
+				];
+			}),
 		...dailyQuestions(dailyScope)
 			.questions.filter(({ section }) => tracked || section !== 'messages')
 			.map(({ query: { path, parameters } }) => periodQuestion(dailyScope, path, parameters)),

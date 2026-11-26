@@ -68,15 +68,15 @@ for (const locale of PUBLISHED_LOCALES) {
 		}
 		for (const path of [
 			'/alerts?frameMode=live',
-			'/hotspots',
+			'/rankings',
 			'/network',
 			'/receipt',
-			'/repeat-offenders',
+			'/rankings?kind=departure',
 		]) {
 			await page.goto(localizeHref(path, locale));
 			const surface = path.startsWith('/alerts')
 				? '[data-slot="screen-content"]'
-				: path === '/hotspots' || path === '/repeat-offenders'
+				: path.startsWith('/rankings')
 					? '#ranking'
 					: path === '/receipt'
 						? 'article.daily-report'
