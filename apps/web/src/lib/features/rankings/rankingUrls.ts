@@ -1,0 +1,103 @@
+// Pure ranking URL model: paths, kinds, measures and URL selection.
+// Keep this module free of Svelte and @yesid/ui imports: plain-Bun scripts
+// (the OG drift gate) reach it through the SEO path.
+
+export const rankingPath = '/rankings';
+export const rankingLists = {
+	line: { label: { en: 'Lines', fr: 'Lignes' }, title: { en: 'Worst lines', fr: 'Pires lignes' } },
+	stop: { label: { en: 'Stops', fr: 'Arrêts' }, title: { en: 'Worst stops', fr: 'Pires arrêts' } },
+	departure: {
+		label: { en: 'Departures', fr: 'Départs' },
+		title: { en: 'Departures that fail most often', fr: 'Départs qui échouent le plus souvent' },
+	},
+	vehicle: {
+		label: { en: 'Vehicles', fr: 'Véhicules' },
+		title: {
+			en: 'Vehicles that stop reporting most often',
+			fr: 'Véhicules qui cessent le plus souvent de se signaler',
+		},
+	},
+} as const;
+
+export type RankingKind = keyof typeof rankingLists;
+
+export function rankingPathForKind(kind: RankingKind) {
+	return kind === 'line' ? rankingPath : (`${rankingPath}?kind=${kind}` as const);
+}
+export type LegacyRankingPath = '/hotspots' | '/repeat-offenders';
+export type RankingPath = typeof rankingPath | LegacyRankingPath;
+export const rankingKinds = Object.keys(rankingLists) as RankingKind[];
+
+export function isRankingPath(path: string): path is RankingPath {
+	return path === rankingPath || path === '/hotspots' || path === '/repeat-offenders';
+}
+
+export const measures = {
+	on_time: { en: 'On-time share', fr: 'Part à l’heure' },
+	late: { en: 'Late share', fr: 'Part en retard' },
+	early: { en: 'Early departure share', fr: 'Part des départs en avance' },
+	excess_wait_time: { en: 'Excess wait time', fr: 'Attente excédentaire' },
+	median_delay: { en: 'Median delay', fr: 'Retard médian' },
+	cancelled_trips: { en: 'Cancelled trip share', fr: 'Part des trajets annulés' },
+	missing_trips: { en: 'Missing trip share', fr: 'Part des trajets manquants' },
+	vehicle_reporting_gaps_per_100_hours: {
+		en: 'Stopped reporting',
+		fr: 'Interruptions de signalement',
+	},
+} as const;
+
+export type RankingMeasure = keyof typeof measures;
+export const reporting = 'vehicle_reporting_gaps_per_100_hours';
+const punctuality = ['on_time', 'late', 'median_delay'] as const;
+const delivery = [...punctuality, 'cancelled_trips', 'missing_trips'] as const;
+export const rankingMeasures: Record<RankingKind, readonly [RankingMeasure, ...RankingMeasure[]]> =
+	{
+		line: [...delivery, 'early', 'excess_wait_time'],
+		stop: punctuality,
+		departure: delivery,
+		vehicle: [reporting],
+	};
+
+export function worseIsHigher(measure: RankingMeasure) {
+	return measure !== 'on_time';
+}
+
+export function canRankVehicles(inputs?: Record<string, boolean>) {
+	return inputs?.vehicle_positions !== false && inputs?.stable_vehicle_ids !== false;
+}
+
+const legacyKinds = {
+	'/hotspots': ['line', 'stop'],
+	'/repeat-offenders': ['departure', 'vehicle'],
+} as const;
+
+const aliases: Partial<Record<string, RankingKind>> = {
+	lines: 'line',
+	stops: 'stop',
+	departures: 'departure',
+	trips: 'departure',
+	vehicles: 'vehicle',
+	buses: 'vehicle',
+};
+
+export function rankingSelection(path: RankingPath, params: URLSearchParams) {
+	const raw = params.get('kind');
+	const requested = raw !== null && Object.hasOwn(aliases, raw) ? aliases[raw] : raw;
+	const kinds: readonly RankingKind[] = path === rankingPath ? rankingKinds : legacyKinds[path];
+	const kind = kinds.find((key) => key === requested) ?? kinds[0];
+	const options = rankingMeasures[kind];
+	const measure = options.find((option) => option === params.get('measure')) ?? options[0];
+	const serviceClass = params.get('class');
+	return {
+		kind,
+		measure,
+		serviceClass:
+			kind === 'line' &&
+			serviceClass != null &&
+			/^(?:all|(?:[0-9]+|unknown|mixed):(?:night|frequent|regular))$/.test(serviceClass)
+				? serviceClass
+				: null,
+	};
+}
+
+export type RankingSelection = ReturnType<typeof rankingSelection>;

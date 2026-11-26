@@ -1,6 +1,6 @@
 import type { PublicSiteConfig } from './config';
 import { localizeHref } from '#lib/i18n/index.ts';
-import { rankingKinds, rankingPathForKind } from '#lib/features/rankings/rankingSelection.ts';
+import { rankingKinds, rankingPathForKind } from '#lib/features/rankings/rankingUrls.ts';
 import {
 	emitAlternateSitemapEntries,
 	emitSitemapDocument,

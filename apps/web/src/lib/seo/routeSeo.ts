@@ -8,7 +8,7 @@ import {
 	rankingPath,
 	rankingPathForKind,
 	rankingSelection,
-} from '#lib/features/rankings/rankingSelection.ts';
+} from '#lib/features/rankings/rankingUrls.ts';
 
 export interface RouteSeo {
 	title: string;
