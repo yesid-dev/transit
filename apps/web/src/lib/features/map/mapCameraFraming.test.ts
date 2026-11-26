@@ -66,8 +66,12 @@ it('falls back to served stops, preferring those on lines with live data', () =>
 		-74, 45.4, -73.5, 45.9,
 	]);
 	expect(
-		mapCameraFraming({ manifest, stops, hasLiveLine, provider: { fit_bounds: ISLAND_FIT_BOUNDS } })
-			?.bounds,
+		mapCameraFraming({
+			manifest,
+			stops,
+			hasLiveLine,
+			provider: { fit_bounds: [...ISLAND_FIT_BOUNDS] },
+		})?.bounds,
 	).toEqual(ISLAND_FIT_BOUNDS);
 });
 

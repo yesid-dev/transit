@@ -28,7 +28,7 @@ async function sample(page: Page, bounds: number[]) {
 		const west = probe.project([b[0], b[3]]).x;
 		const east = probe.project([b[2], b[3]]).x;
 		const left = panel.width > 56 ? panel.right - map.left : 0;
-		const right = detail?.width ?? 0;
+		const right = detail ? map.right - detail.left : 0;
 		const padding = JSON.parse(
 			(document.querySelector('.map-hero') as HTMLElement).dataset.cameraPadding ?? '{}',
 		);
@@ -36,6 +36,7 @@ async function sample(page: Page, bounds: number[]) {
 			center,
 			west,
 			east,
+			rightPanelLeft: detail ? detail.left - map.left : map.width,
 			expectedX: Math.max(
 				left ? left + 16 + (east - west) / 2 : 16 + (east - west) / 2,
 				Math.min(map.width / 2, map.width - right - 16 - (east - west) / 2),
@@ -153,6 +154,7 @@ for (const provider of providers.providers)
 						const m = measurements[state] as Awaited<ReturnType<typeof sample>>;
 						expect(Math.abs(m.center.x - m.expectedX), state).toBeLessThan(3);
 						if (state === 'default') expect(m.west).toBeGreaterThanOrEqual(m.panel.right + 15);
+						expect(m.east).toBeLessThanOrEqual(m.rightPanelLeft - 15);
 						expect(Math.abs(m.center.y - m.visibleCenter.y), state).toBeLessThan(3);
 					}
 			});
