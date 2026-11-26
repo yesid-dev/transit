@@ -17,15 +17,19 @@ release=$(mktemp -d "$root/releases/private-${sha:0:12}.XXXXXX")
 git archive "$sha" .python-version apps/db | tar -x --no-same-owner -C "$release"
 UV_PYTHON_INSTALL_DIR="$root/python" UV_LINK_MODE=copy /opt/transit-engine/bin/uv sync \
   --directory "$release/apps/db" --managed-python --locked --no-dev --no-editable
+HOME="$release/duckdb-home" "$release/apps/db/.venv/bin/python" \
+  -c 'import duckdb; duckdb.connect().install_extension("icu")'
+chmod -R a+rX "$release/duckdb-home"
 chmod 0755 "$release"
 check_space || { echo 'Release preparation left less than 33 GiB free in /var/lib' >&2; exit 1; }
 unit=transit-private-clean-${release##*.}
 printf 'Verified revision %s\nPrivate local result /var/lib/private/%s\n' "$sha" "$unit"
-systemd-run --pipe --wait --collect --unit="$unit" \
+systemd-run --pipe --wait --collect --expand-environment=no --unit="$unit" \
   -p EnvironmentFile=/etc/transit-live/r2-read.env -p DynamicUser=yes -p PrivateTmp=yes \
   -p ProtectHome=yes -p ProtectSystem=strict -p UMask=0077 -p "MemoryMax=$cap" -p MemoryAccounting=yes \
   -p "StateDirectory=$unit" -p StateDirectoryMode=0700 \
   --setenv="PYTHONPATH=$release/apps/db/src" --setenv="TRANSIT_CLEAN_BUILDER_COMMIT=$sha" \
+  --setenv="HOME=$release/duckdb-home" \
   bash -ec '
     if [[ -n ${!CLEAN_DEST_S3_*} ]]; then echo "Destination environment is forbidden" >&2; exit 1; fi
     export TMPDIR="$STATE_DIRECTORY"
