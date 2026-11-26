@@ -76,13 +76,13 @@ _RANGE_NOTES = {
     "wilson_95": Text(
         "95% Wilson interval. Stop events on the same trip are dependent. "
         "Treat this range as a guide.",
-        "Intervalle de Wilson à 95 %. Les observations d’arrêts d’un même trajet "
-        "sont dépendantes. Cet intervalle sert de guide.",
+        "Intervalle de Wilson à 95\u00a0%. Les passages aux arrêts d’un même trajet "
+        "sont dépendants. Cet intervalle sert de guide.",
     ),
     "duration_weighted_wilson_95": Text(
         "Approximate 95% Wilson interval using an effective trip sample weighted "
         "by scheduled duration. Treat this range as a guide.",
-        "Intervalle de Wilson approximatif à 95 % avec un effectif de trajets "
+        "Intervalle de Wilson approximatif à 95\u00a0% avec un effectif de trajets "
         "pondéré par la durée prévue. Cet intervalle sert de guide.",
     ),
     "histogram_half_bin": Text(
@@ -92,12 +92,12 @@ _RANGE_NOTES = {
     "occupancy_weighted_wilson_95": Text(
         "Approximate 95% Wilson interval using an effective sample of state intervals "
         "weighted by vehicle time. Intervals from the same vehicle can be dependent.",
-        "Intervalle de Wilson approximatif à 95 % avec un effectif d’intervalles "
+        "Intervalle de Wilson approximatif à 95\u00a0% avec un effectif d’intervalles "
         "pondéré par le temps-véhicule. Les intervalles d’un véhicule peuvent être dépendants.",
     ),
     "recorded_alert_hours": Text(
         "Recorded duration from the published alert history. Both bounds equal that duration.",
-        "Durée calculée à partir de l’historique des alertes. Les deux bornes égalent cette durée.",
+        "Durée calculée à partir de l’historique des avis. Les deux bornes égalent cette durée.",
     ),
     "vehicle_reporting_uncertainty_unknown": Text(
         "Repeated reporting gaps can be related. The uncertainty of this rate is unknown.",
@@ -106,7 +106,7 @@ _RANGE_NOTES = {
     "vehicle_completion_wilson_95": Text(
         "95% Wilson interval. Trips assigned to the same vehicle can be dependent. "
         "Treat this range as a guide.",
-        "Intervalle de Wilson à 95 %. Les trajets attribués au même véhicule peuvent être "
+        "Intervalle de Wilson à 95\u00a0%. Les trajets attribués au même véhicule peuvent être "
         "dépendants. Cet intervalle sert de guide.",
     ),
 }

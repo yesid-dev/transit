@@ -253,7 +253,7 @@ def test_alert_details_follow_the_same_window_and_clipping(
     assert status == 200
     exported = csv.DictReader(io.StringIO(raw.decode()))
     assert exported.fieldnames == detailed["info"][0]["csv_columns"]["fr"]
-    assert json.loads(next(exported)["Avis de l’agence"]) == rows
+    assert json.loads(next(exported)["Avis de la société de transport"]) == rows
     status, _, _ = asyncio.run(http(app, "/measure", args + "&group=day"))
     assert status == 400
 

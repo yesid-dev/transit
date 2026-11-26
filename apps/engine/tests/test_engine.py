@@ -1139,16 +1139,16 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Canonical JSON digests with the revised statistics and v11 basis and method text.
+    # Canonical JSON digests with the revised statistics and plain-language method text.
     # The fixture spans two query batches, a DST transition, and one missing day.
     expected = {
-        "network": "ac977cb6a6f1e87262a0f718f843e1dda277e6c2f22bd65aa5b2309a6d2c131e",
-        "line": "f2e32cf4de38bbdeb4e32c748f3ac424ea0c5f77a76fbb897ca1e64389dea67a",
-        "grid": "f4aee9d539ccab0b32bedfac1bdabd55541410ada1992f85b9da3c5c40bca1d4",
-        "delivery": "c0585d214d9f18d8760df1ddf5353865b073cede0f1077ab72b93a6efecf57ad",
-        "line_rank": "cdca9252102f588ae33cc6d01adb85fe6d5a01ba86bdc8c43af8c7f302305122",
-        "stop_rank": "a6dbd3c760292cc78e37ff9335c024eed56ff030514f7e61b99d46cea731854a",
-        "departure_rank": "6197f7211a721a412fb8e671278340b2b4e8861e3aec3bd0def3fc03e3a7f170",
+        "network": "224f8134dd17d175462973b7a1ed4f34a09a5d2deeb885d1cc8ebaa09305aaf4",
+        "line": "bf74a0abb34f4365d2c3d986bf9c4d5be448a3e47c584864f4358e81fc3192d9",
+        "grid": "92545606510813fcdbaac2379cca2cdb2caad93679af2021cba0f0cafb932be2",
+        "delivery": "588ca59f1841ed4aec345434dff6759665b514e8958dd2926eb8cbcf8eb99491",
+        "line_rank": "521efaf27dd469db8f28c447a900339fdb35917245d40a782c1a0977194511f0",
+        "stop_rank": "3fd331a6263faab1ecc87aaf6d5cd203ed778156a50b03888cbe0a8043d6094c",
+        "departure_rank": "e4eaf327013ab4ad4dc55ab7bcd02e982fa359e105e0969cd85e70ccc3fdd755",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {
