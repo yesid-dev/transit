@@ -180,7 +180,10 @@
 															: labels.not_measured,
 														facts: captureFacts(
 															captureAge(schedule.captured_at, now, locale),
-															t('when the agency publishes', 'à la publication par l’agence'),
+															t(
+																'when the agency publishes',
+																'à la publication par la société de transport',
+															),
 															captureSize(schedule.bytes, locale),
 															locale,
 														),
