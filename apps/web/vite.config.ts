@@ -61,13 +61,33 @@ export default defineConfig(
 							build: {
 								rollupOptions: {
 									output: {
-										// Keep the map runtime out of the shell while avoiding tiny precache chunks.
+										// Merged groups move modules across chunks; run every module body in
+										// source order so a module never reads an import that has not run yet.
+										strictExecutionOrder: true,
 										codeSplitting: {
 											minSize: 1_500,
 											groups: [
+												// Keep the map runtime out of the shell.
 												{
 													name: 'vendor-maplibre',
 													test: isMapRuntimeModule,
+												},
+												// Code shared by two or more pages loads as a few mid-size chunks
+												// instead of about a hundred small ones (a Line page: 110 scripts → 52).
+												{
+													name: 'shared-libs',
+													test: /node_modules[\\/]/,
+													minShareCount: 2,
+													minSize: 20_000,
+													maxSize: 120_000,
+													priority: -1,
+												},
+												{
+													name: 'shared-app',
+													minShareCount: 2,
+													minSize: 20_000,
+													maxSize: 120_000,
+													priority: -2,
 												},
 											],
 										},
