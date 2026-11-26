@@ -1,6 +1,7 @@
 import os
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import Annotated, Literal, Self
@@ -197,6 +198,7 @@ class Declaration(_Block):
     currency: Annotated[str, Field(pattern=r"^[A-Z]{3}$")] | None = None
     stage: Literal["candidate", "capturing", "public"]
     capture_enabled: bool = False
+    clean_days_from: date | None = None
     licence: Licence
     download_licence: DownloadLicence | None = None
     name_separators: NameSeparators | None = None

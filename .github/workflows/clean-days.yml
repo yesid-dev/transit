@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       provider:
-        description: Provider ID (leave blank for public providers). Private runs use temporary output.
+        description: Provider ID (leave blank for public providers). Private runs keep their output out of the log.
         type: string
         required: false
       from:
@@ -57,51 +57,11 @@ jobs:
           CLEAN_PROVIDER: ${{ inputs.provider }}
           CLEAN_FROM: ${{ inputs.from }}
           CLEAN_TO: ${{ inputs.to }}
-        run: |
-          uv run --managed-python --locked python -u - <<'PY'
-          import json
-          import os
-          from datetime import UTC, datetime, timedelta
-
-          from transit_ops.clean_days import parse_date
-          from transit_ops.providers.registry import ProviderRegistry
-
-          registry = ProviderRegistry.from_project_root()
-          active = registry.list_active_provider_ids()
-          public = [provider for provider in active if registry.get_public_config(provider).enabled]
-          selected = os.environ["CLEAN_PROVIDER"]
-          if selected and selected not in registry.list_provider_ids():
-              raise SystemExit("Requested provider is unknown")
-          manual = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch"
-          providers = [selected] if manual and selected else public
-          if not providers:
-              raise SystemExit("No eligible providers declared")
-
-          if manual:
-              first = parse_date(os.environ["CLEAN_FROM"])
-              last = parse_date(os.environ["CLEAN_TO"])
-              if last < first:
-                  raise SystemExit("From date must be on or before to date")
-              days = (last - first).days + 1
-              if days * len(providers) > 256:
-                  raise SystemExit("GitHub Actions allows at most 256 provider-days per backfill")
-              entries = [
-                  {"provider": provider, "day": (first + timedelta(days=offset)).isoformat(),
-                   "private": provider not in public}
-                  for provider in providers
-                  for offset in range(days)
-              ]
-          else:
-              entries = [{"provider": provider, "private": False} for provider in providers]
-
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              print("matrix=" + json.dumps({"include": entries}), file=output)
-              if not manual:
-                  print("scheduled_at=" + datetime.now(UTC).isoformat(), file=output)
-          PY
+        run: uv run --managed-python --locked python -m transit_ops.clean_days_plan
 
   clean:
-    name: Clean ${{ matrix.provider }} ${{ matrix.day || 'catch-up' }}
+    # A private city's job title, log and summary carry no figures or provider name.
+    name: Clean ${{ matrix.private && 'private city' || matrix.provider }} ${{ matrix.day || 'catch-up' }}
     needs: plan
     runs-on: ubuntu-24.04
     strategy:
@@ -114,8 +74,8 @@ jobs:
       - name: Set up Python workspace
         uses: ./.github/actions/setup-py
       - name: Build and publish clean days
-        if: ${{ !matrix.private }}
         env:
+          CLEAN_PRIVATE: ${{ matrix.private }}
           CLEAN_PROVIDER: ${{ matrix.provider }}
           CLEAN_DAY: ${{ matrix.day }}
           CLEAN_SCHEDULED_AT: ${{ needs.plan.outputs.scheduled_at }}
@@ -127,35 +87,16 @@ jobs:
           CLEAN_DEST_S3_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_WRITE_SECRET_ACCESS_KEY }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            uv run --managed-python --locked transit-ops clean-days \
-              --provider "$CLEAN_PROVIDER" --from "$CLEAN_DAY" --to "$CLEAN_DAY" \
-              --source s3://transit-raw --dest s3://transit-clean
+            args=(--from "$CLEAN_DAY" --to "$CLEAN_DAY")
           else
-            uv run --managed-python --locked python -u - <<'PY'
-          import os
-          from datetime import datetime
-
-          from transit_ops.clean_days import run_clean_days
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
-              run_clean_days(
-                  os.environ["CLEAN_PROVIDER"],
-                  "s3://transit-raw",
-                  "s3://transit-clean",
-                  selection=datetime.fromisoformat(os.environ["CLEAN_SCHEDULED_AT"]),
-                  summary=summary,
-              )
-          PY
+            args=(--scheduled-at "$CLEAN_SCHEDULED_AT")
           fi
-      - name: Verify private clean day
-        if: ${{ matrix.private }}
-        env:
-          CLEAN_PROVIDER: ${{ matrix.provider }}
-          CLEAN_DAY: ${{ matrix.day }}
-          CLEAN_SOURCE_S3_ENDPOINT: ${{ secrets.TRANSIT1_R2_ENDPOINT }}
-          CLEAN_SOURCE_S3_ACCESS_KEY_ID: ${{ secrets.TRANSIT1_R2_READ_ACCESS_KEY_ID }}
-          CLEAN_SOURCE_S3_SECRET_ACCESS_KEY: ${{ secrets.TRANSIT1_R2_READ_SECRET_ACCESS_KEY }}
-        run: |
-          uv run --managed-python --locked transit-ops clean-days \
-            --provider "$CLEAN_PROVIDER" --from "$CLEAN_DAY" --to "$CLEAN_DAY" \
-            --source s3://transit-raw --dest "$RUNNER_TEMP/transit-clean-private"
+          if [[ "$CLEAN_PRIVATE" == "true" ]]; then
+            # Only the exit status of a private city is public. Diagnose a failure on the
+            # VM with apps/db/ops/linux/private-clean-day.sh, never by restoring output here.
+            exec > /dev/null 2>&1
+          else
+            args+=(--summary "$GITHUB_STEP_SUMMARY")
+          fi
+          uv run --managed-python --locked transit-ops clean-days --provider "$CLEAN_PROVIDER" \
+            "${args[@]}" --source s3://transit-raw --dest s3://transit-clean

@@ -354,6 +354,8 @@ class ProviderManifest(BaseModel):
     public: ProviderPublicConfig = Field(default_factory=ProviderPublicConfig)
     capture_enabled: bool = Field(default=False, exclude=True)
     capture_download_limit: CaptureDownloadLimit | None = Field(default=None, exclude=True)
+    # First complete captured service day; clean days never cover earlier dates.
+    clean_days_from: date | None = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_manifest_shape(self) -> ProviderManifest:

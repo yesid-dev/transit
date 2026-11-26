@@ -65,6 +65,23 @@ def test_every_cleaning_has_a_later_copy_before_the_next_days_first_cleaning() -
         )
 
 
+def test_private_cities_publish_nothing_but_an_exit_status() -> None:
+    document = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    clean = document["jobs"]["clean"]
+    assert "'private city'" in clean["name"] and "matrix.private" in clean["name"]
+    (step,) = [step for step in clean["steps"] if "run" in step]
+    assert step["env"]["CLEAN_PRIVATE"] == "${{ matrix.private }}"
+    script = step["run"]
+    private, public = script.split('if [[ "$CLEAN_PRIVATE" == "true" ]]; then', 1)[1].split(
+        "else", 1
+    )
+    assert "exec > /dev/null 2>&1" in private
+    assert "GITHUB_STEP_SUMMARY" not in private
+    assert "--summary" in public.split("fi", 1)[0]
+    assert script.count("GITHUB_STEP_SUMMARY") == 1
+    assert "upload-artifact" not in WORKFLOW.read_text(encoding="utf-8")
+
+
 def test_sync_timer_stays_persistent() -> None:
     body = TIMER.read_text(encoding="utf-8")
     assert re.search(r"^Persistent=true$", body, re.MULTILINE), (

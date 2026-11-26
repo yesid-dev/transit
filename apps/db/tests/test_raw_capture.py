@@ -11,6 +11,7 @@ import pytest
 from google.transit.gtfs_realtime_pb2 import FeedMessage
 from test_readiness import CONFIG, NOW, write_samples
 
+from transit_ops import clean_days
 from transit_ops.clean_days import run_clean_days
 from transit_ops.core.models import CaptureDownloadLimit
 from transit_ops.ingestion.i3 import build_service_alerts_object_storage_path
@@ -142,7 +143,9 @@ def test_dry_run_uses_legacy_layout_and_writes_nothing(feeds, tmp_path, capsys):
     assert all(query == {"key": [PUBLIC], "hash": [_signature(NOW)]} for _, _, query in calls[1:])
 
 
-def test_capture_restart_partial_failure_and_private_consumers(feeds, tmp_path, caplog, capsys):
+def test_capture_restart_partial_failure_and_private_consumers(
+    feeds, tmp_path, caplog, capsys, monkeypatch
+):
     manifest, clock, calls, failed, paths, base = feeds
     raw = tmp_path / "raw"
     raw.mkdir()
@@ -185,6 +188,9 @@ def test_capture_restart_partial_failure_and_private_consumers(feeds, tmp_path, 
 
     clean = tmp_path / "clean"
     day = NOW.date().isoformat()
+    # The synthetic day predates the declared first day; lift the cut-off for this check.
+    undated = clean_days.declaration_for(CITY).model_copy(update={"clean_days_from": None})
+    monkeypatch.setattr(clean_days, "declaration_for", lambda _: undated)
     run_clean_days(CITY, str(raw), str(clean), selection=(day, day))
     assert "Built 1" in capsys.readouterr().out
     events = next(clean.rglob("stop_events.parquet"))

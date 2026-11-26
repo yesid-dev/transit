@@ -165,9 +165,8 @@ def test_raw_capture_uses_the_private_clean_day_read_credentials() -> None:
     workflow = _load(WORKFLOWS / "raw-capture-freshness.yml")
     capture = next(s for s in workflow["jobs"]["probe"]["steps"] if s.get("id") == "capture")
     clean = _load(WORKFLOWS / "clean-days.yml")
-    source = next(
-        s["env"] for s in clean["jobs"]["clean"]["steps"] if s["name"] == "Verify private clean day"
-    )
+    steps = clean["jobs"]["clean"]["steps"]
+    source = next(s["env"] for s in steps if s["name"] == "Build and publish clean days")
     assert capture["env"]["BRONZE_S3_ACCESS_KEY"] == source["CLEAN_SOURCE_S3_ACCESS_KEY_ID"]
     assert capture["env"]["BRONZE_S3_SECRET_KEY"] == source["CLEAN_SOURCE_S3_SECRET_ACCESS_KEY"]
     assert capture["env"]["BRONZE_S3_ENDPOINT"] == source["CLEAN_SOURCE_S3_ENDPOINT"]
