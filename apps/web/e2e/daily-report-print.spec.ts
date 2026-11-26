@@ -23,7 +23,7 @@ test.describe('Daily report print', () => {
 			const title = fr
 				? 'Rapport du dimanche 15 novembre 2026'
 				: 'Report for Sunday 15 November 2026';
-			await expect(main.getByRole('heading', { level: 1 })).toHaveText(title);
+			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(title);
 			await expect(page).toHaveTitle(new RegExp('^' + title));
 			await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
 				'content',

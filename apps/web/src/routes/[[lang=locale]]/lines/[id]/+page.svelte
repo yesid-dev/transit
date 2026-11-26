@@ -61,6 +61,7 @@
 				subtitle={subtitle ?? (data.outsideCurrentTimetable ? timetableNotice : undefined)}
 				hideSubtitle={data.frameLive && data.outsideCurrentTimetable && !subtitle}
 				{back}
+				dot={false}
 			/>
 		</RecordGroup>
 		{#if data.frameLive && data.outsideCurrentTimetable}

@@ -110,7 +110,7 @@ for (const width of [390, 1440]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${path}/metrics?${dates}#fixture_delay`);
 			const main = page.getByRole('main');
-			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
+			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
 			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
@@ -182,7 +182,7 @@ for (const width of [390, 1440]) {
 			const response = await page.goto(`${path}/status?${dates}`);
 			expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 			const main = page.getByRole('main');
-			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
+			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 				fr ? 'Santé des données' : 'Data health',
 			);
 			const table = main.locator('#table-health').getByRole('table');

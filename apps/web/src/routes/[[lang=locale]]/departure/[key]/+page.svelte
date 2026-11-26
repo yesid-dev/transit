@@ -163,6 +163,7 @@
 				plate={line}
 				subtitle={direction}
 				back={lineHref ? { href: lineHref, label: t('See the line', 'Voir la ligne') } : undefined}
+				dot={false}
 			/>
 		</RecordGroup>
 		<div data-slot="screen-content">

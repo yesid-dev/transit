@@ -12,7 +12,7 @@ for (const provider of ['stm', 'octranspo'])
 			});
 			await page.goto(`${locale === 'fr' ? '/fr' : ''}/status?provider=${provider}&frameMode=live`);
 			const main = page.getByRole('main');
-			await expect(main.getByRole('heading', { level: 1 })).toHaveText(
+			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 				locale === 'fr' ? 'Santé des données' : 'Data health',
 			);
 			const answer = main.locator('[data-slot="screen-answer"]');

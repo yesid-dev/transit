@@ -61,6 +61,7 @@
 				href: vehicleHref('/vehicles', pinned, locale, data.city),
 				label: t('All vehicles', 'Tous les véhicules'),
 			}}
+			dot={false}
 		/>
 	</RecordGroup>
 {/snippet}
