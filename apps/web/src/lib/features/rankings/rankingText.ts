@@ -1,6 +1,8 @@
 import {
 	dateRange,
+	lowCoverageReason,
 	methodEvidence,
+	registryUnitText,
 	minuteReading,
 	recordPercent,
 	rankingComparison,
@@ -8,60 +10,64 @@ import {
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, RecordAnswer, RankingsRecord } from '#lib/server/engine.ts';
 import { choose } from '../record/recordText.ts';
+import { overviewCopy } from '../home/overviewRecord.copy.ts';
 import { reporting, worseIsHigher, type RankingMeasure } from './rankingSelection.ts';
 
 type Row = RankingsRecord['rows'][number];
 type Excluded = RankingsRecord['excluded'][number];
 
-const leadPhrases: Record<RankingMeasure, Record<Locale, [extreme: string, first: string]>> = {
+// [extreme, ranked]: the first row holds the extreme value, or it ranks first by the
+// cautious bound while a row with fewer events shows a more extreme value.
+// Each says lowest, highest, longest or most for its measure, never "top-ranked".
+const leadPhrases: Record<RankingMeasure, Record<Locale, [extreme: string, ranked: string]>> = {
 	on_time: {
-		en: ['is the lowest on-time share', 'is the top-ranked on-time share'],
-		fr: ['est la plus faible part à l’heure', 'est la part à l’heure en tête du classement'],
+		en: ['is the lowest on-time share', 'is the on-time share ranked lowest'],
+		fr: ['est la plus faible part à l’heure', 'est la part à l’heure classée la plus faible'],
 	},
 	late: {
-		en: ['is the highest late share', 'is the top-ranked late share'],
-		fr: ['est la plus forte part en retard', 'est la part en retard en tête du classement'],
+		en: ['is the highest late share', 'is the late share ranked highest'],
+		fr: ['est la plus forte part en retard', 'est la part en retard classée la plus forte'],
 	},
 	early: {
-		en: ['is the highest early departure share', 'is the top-ranked early departure share'],
+		en: ['is the highest early departure share', 'is the early departure share ranked highest'],
 		fr: [
 			'est la plus forte part de départs en avance',
-			'est la part de départs en avance en tête du classement',
+			'est la part de départs en avance classée la plus forte',
 		],
 	},
 	median_delay: {
-		en: ['is the longest median delay', 'is the top-ranked median delay'],
-		fr: ['est le retard médian le plus long', 'est le retard médian en tête du classement'],
+		en: ['is the longest median delay', 'is the median delay ranked longest'],
+		fr: ['est le retard médian le plus long', 'est le retard médian classé le plus long'],
 	},
 	excess_wait_time: {
-		en: ['is the longest excess wait', 'is the top-ranked excess wait'],
+		en: ['is the longest excess wait', 'is the excess wait ranked longest'],
 		fr: [
 			'est l’attente excédentaire la plus longue',
-			'est l’attente excédentaire en tête du classement',
+			'est l’attente excédentaire classée la plus longue',
 		],
 	},
 	cancelled_trips: {
-		en: ['is the highest cancelled trip share', 'is the top-ranked cancelled trip share'],
+		en: ['is the highest cancelled trip share', 'is the cancelled trip share ranked highest'],
 		fr: [
 			'est la plus forte part de trajets annulés',
-			'est la part de trajets annulés en tête du classement',
+			'est la part de trajets annulés classée la plus forte',
 		],
 	},
 	missing_trips: {
-		en: ['is the highest missing trip share', 'is the top-ranked missing trip share'],
+		en: ['is the highest missing trip share', 'is the missing trip share ranked highest'],
 		fr: [
 			'est la plus forte part de trajets manquants',
-			'est la part de trajets manquants en tête du classement',
+			'est la part de trajets manquants classée la plus forte',
 		],
 	},
 	[reporting]: {
 		en: [
 			'interruptions per 100 hours in service, the highest rate',
-			'interruptions per 100 hours in service, the top-ranked rate',
+			'interruptions per 100 hours in service, the rate ranked highest',
 		],
 		fr: [
 			'interruptions par 100 heures en service, le taux le plus élevé',
-			'interruptions par 100 heures en service, le taux en tête du classement',
+			'interruptions par 100 heures en service, le taux classé le plus élevé',
 		],
 	},
 };
@@ -225,10 +231,34 @@ export function lineRankingFloor(
 }
 
 export function exclusionText(row: Excluded, measure: RankingMeasure, locale: Locale) {
+	if (row.reason === 'low_coverage') return lowCoverageReason(row, locale);
 	const reason = row.reason_text[locale];
 	return row.reason === 'too_few_to_judge' && row.sample != null
 		? `${reason} · ${sampleText(row.sample, measure, locale)}`
 		: reason;
+}
+
+/** The on-time window in the words every other screen uses. */
+export function measureMeaning(measure: RankingMeasure, definition: string, locale: Locale) {
+	return measure === 'on_time'
+		? overviewCopy[locale].definition
+		: registryUnitText(definition, locale);
+}
+
+/** "regular lines" (or "regular line") for a chosen class, for the ranked count; null otherwise. */
+export function rankedNoun(
+	kind: RankingsRecord['kind'],
+	serviceClass: string | null,
+	classes: string[],
+	locale: Locale,
+	count = 2,
+) {
+	if (kind !== 'line' || !serviceClass || serviceClass === 'all') return null;
+	const plural = classText(serviceClass, locale, classes).toLocaleLowerCase(locale);
+	if (count !== 1) return plural;
+	return locale === 'fr'
+		? plural.replace(/^lignes/u, 'ligne').replace(/(régulière|fréquente)s/u, '$1')
+		: plural.replace(/ lines/u, ' line');
 }
 
 export function classText(key: string, locale: Locale, classes: string[] = []) {

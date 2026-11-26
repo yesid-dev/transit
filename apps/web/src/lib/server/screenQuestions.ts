@@ -98,8 +98,11 @@ export function healthDiagnosticQuestions() {
 }
 
 export function rankingsQuery({ kind, measure, serviceClass }: RankingSelection): RecordQuery {
+	// An address without a class ranks every line, as the Overview preview does, so the
+	// highlighted choice and the list always agree. A class narrows it only when chosen.
+	const lineClass = kind === 'line' ? (serviceClass ?? 'all') : serviceClass;
 	return {
 		path: '/ranking',
-		parameters: { kind, measure, ...(serviceClass ? { class: serviceClass } : {}), limit: '500' },
+		parameters: { kind, measure, ...(lineClass ? { class: lineClass } : {}), limit: '500' },
 	};
 }

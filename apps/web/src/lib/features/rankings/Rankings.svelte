@@ -3,6 +3,8 @@
 	import { tick } from 'svelte';
 	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
+	import { Combobox } from '@yesid/ui/combobox';
+	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { RangeMark } from '@yesid/ui/chart';
 	import { Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
@@ -52,7 +54,9 @@
 		classText,
 		exclusionText,
 		lineRankingFloor,
+		measureMeaning,
 		rankOptionLabels,
+		rankedNoun,
 		rankingCitation,
 		rankingCountLines,
 		rankingLead,
@@ -198,7 +202,7 @@
 				detail:
 					[
 						direction,
-						serviceClass === 'all'
+						(serviceClass ?? 'all') === 'all'
 							? row.classes.map((key) => classText(key, locale, row.classes)).join(', ')
 							: '',
 					]
@@ -241,7 +245,9 @@
 		};
 	}
 	function rankedCount(data: RankingsRecord) {
-		const noun = (data.ranked_count === 1 ? rowHeader : listLabel).toLocaleLowerCase(locale);
+		const noun =
+			rankedNoun(data.kind, data.class, data.available_classes, locale, data.ranked_count) ??
+			(data.ranked_count === 1 ? rowHeader : listLabel).toLocaleLowerCase(locale);
 		return t(
 			`${tally(data.ranked_count, locale)} ${noun} with enough to judge`,
 			`${tally(data.ranked_count, locale)} ${noun} avec assez de données pour conclure`,
@@ -289,19 +295,35 @@
 {#snippet classControl(data: RankingsRecord)}
 	{@const classes = [...new Set(data.available_classes)]}
 	{#if data.kind === 'line' && classes.length > 1}
-		<div class="grid min-w-0 gap-1 @max-[13rem]:w-full">
-			<p>{t('Compare lines', 'Comparer les lignes')}</p>
-			<SegmentedChoice
-				options={['all', ...classes].map((key) => ({
-					key,
-					label: classText(key, locale, classes),
+		{@const label = t('Compare lines', 'Comparer les lignes')}
+		{@const options = ['all', ...classes].map((key) => ({
+			key,
+			label: classText(key, locale, classes),
+		}))}
+		{@const current = serviceClass ?? data.class ?? 'all'}
+		{@const pickClass = (next: string | null) => {
+			// Clearing the field means every line again.
+			const target = next ?? 'all';
+			if (target !== current) void select({ kind, measure, serviceClass: target });
+		}}
+		<div class="grid min-w-0 gap-1 @max-[36rem]:hidden">
+			<p>{label}</p>
+			<SegmentedChoice {options} value={current} {label} onSelect={pickClass} />
+		</div>
+		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
+			<p aria-hidden="true">{label}</p>
+			<Combobox
+				options={options.map(({ key, label }) => ({
+					value: key,
+					label,
+					search: foldSearchText(label),
 				}))}
-				value={serviceClass ?? data.class ?? 'all'}
-				label={t('Compare lines', 'Comparer les lignes')}
-				onSelect={(next) => {
-					if (next !== (serviceClass ?? data.class))
-						void select({ kind, measure, serviceClass: next });
-				}}
+				value={current}
+				onValueChange={pickClass}
+				{label}
+				clearLabel={t('Show all lines', 'Afficher toutes les lignes')}
+				emptyLabel={t('No matching choice', 'Aucun choix correspondant')}
+				fold={foldSearchText}
 			/>
 		</div>
 	{/if}
@@ -319,13 +341,32 @@
 				onSelect={selectKind}
 			/>
 		</div>
-		<div class="grid min-w-0 gap-1 @max-[13rem]:w-full">
+		<div class="grid min-w-0 gap-1 @max-[36rem]:hidden">
 			<p>{t('By', 'Par')}</p>
 			<SegmentedChoice
 				options={byOptions}
 				value={measure}
 				label={t('By', 'Par')}
 				onSelect={selectMeasure}
+			/>
+		</div>
+		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
+			<p aria-hidden="true">{t('By', 'Par')}</p>
+			<Combobox
+				options={byOptions.map(({ key, label }) => ({
+					value: key,
+					label,
+					search: foldSearchText(label),
+				}))}
+				value={measure}
+				onValueChange={(next) => {
+					const choice = byOptions.find(({ key }) => key === next);
+					if (choice) selectMeasure(choice.key);
+				}}
+				label={t('By', 'Par')}
+				clearLabel={t('Clear', 'Effacer')}
+				emptyLabel={t('No matching measure', 'Aucune mesure correspondante')}
+				fold={foldSearchText}
 			/>
 		</div>
 		{#await record.answer then result}
@@ -584,7 +625,11 @@
 							? coverageText(result.answer.evidence, locale) || null
 							: null,
 				},
-				{ key: 'means', label: measureLabel, text: info.text[locale].definition },
+				{
+					key: 'means',
+					label: measureLabel,
+					text: measureMeaning(measure, info.text[locale].definition, locale),
+				},
 				{
 					key: 'ordering',
 					label: t('Rank order', 'Ordre du classement'),
@@ -627,7 +672,18 @@
 	<Surface class="@max-[13rem]:[--space-page-x:var(--space-card-gap)]">
 		<RecordScreen>
 			<RecordGroup
-				><ScreenTitle {title} subtitle={[operator, by].filter(Boolean).join(', ')} /></RecordGroup
+				><ScreenTitle
+					{title}
+					subtitle={[
+						operator,
+						kind === 'line' && serviceClass && serviceClass !== 'all'
+							? classText(serviceClass, locale).toLocaleLowerCase(locale)
+							: null,
+						by,
+					]
+						.filter(Boolean)
+						.join(', ')}
+				/></RecordGroup
 			>
 			<div data-slot="screen-content" class="min-w-0">
 				<RecordGroup>

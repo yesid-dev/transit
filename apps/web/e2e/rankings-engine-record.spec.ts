@@ -219,14 +219,21 @@ test('uses segmented measures and explains an available choice of line classes',
 	).toHaveCount(7);
 	await expect(main.getByRole('combobox')).toHaveCount(0);
 	const classes = main.getByRole('radiogroup', { name: 'Compare lines' });
-	await expect(classes.getByRole('radio', { name: 'Frequent lines' })).toBeChecked();
+	// An address without a class ranks every line, and the highlight says so.
+	await expect(classes.getByRole('radio', { name: 'All lines' })).toBeChecked();
+	await expect(main.getByText('Includes every service class.')).toBeVisible();
+	const frequent = classes.getByRole('radio', { name: 'Frequent lines' });
+	await frequent.focus();
+	await frequent.press('Enter');
+	await expect(page).toHaveURL(/class=3%3Afrequent/u);
+	await expect(frequent).toBeChecked();
+	await expect(frequent).toBeFocused();
 	await expect(main.getByText('10 minutes or less.', { exact: false })).toBeVisible();
-	const allLines = classes.getByRole('radio', { name: 'All lines' });
-	await allLines.focus();
-	await allLines.press('Enter');
-	await expect(page).toHaveURL(/class=all/u);
-	await expect(allLines).toBeChecked();
-	await expect(allLines).toBeFocused();
+	// The chosen class is said in the title block and in the answer's count.
+	await expect(main.getByText('frequent lines, by on-time share', { exact: false })).toBeVisible();
+	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
+		'for 1 frequent line with enough to judge',
+	);
 	await page.goto('/rankings?provider=stm&recordFrom=2026-11-01&recordTo=2026-11-07');
 	await expect(main.getByRole('table', { name: 'Lines' })).toBeVisible();
 	await expect(classes).toHaveCount(0);

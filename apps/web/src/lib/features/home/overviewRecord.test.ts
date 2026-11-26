@@ -7,6 +7,7 @@ import {
 	comparisonText,
 	measureText,
 	overviewValue,
+	previewRows,
 	previousPeriod,
 } from './overviewRecord.ts';
 
@@ -102,5 +103,27 @@ describe('Overview record text', () => {
 		expect(measureText(answer(value), period, 'en')).toContain(
 			'0.0% of observed stop events were on time (0 of 507,800) · 60.0% of 846,333 scheduled stops observed.',
 		);
+	});
+});
+
+describe('preview rows', () => {
+	it('sorts the three rows by the share shown, as the Daily report of 24 Nov showed them', () => {
+		// Stops ranked by the cautious bound: 28.6%, 28.0%, 30.2%.
+		const stops = [
+			{ id: '58989', rank: 1, value: 0.286 },
+			{ id: '53015', rank: 2, value: 0.28 },
+			{ id: '61263', rank: 3, value: 0.302 },
+		];
+		expect(previewRows(stops).map((row) => row.value)).toEqual([0.28, 0.286, 0.302]);
+	});
+
+	it('never shows a low-coverage row, even from an engine that still ranks it', () => {
+		const lines = [
+			{ id: '74', rank: 1, value: 0.498, low_coverage: true },
+			{ id: '445', rank: 2, value: 0.606 },
+			{ id: '69', rank: 3, value: 0.64 },
+			{ id: '18', rank: 4, value: 0.65 },
+		];
+		expect(previewRows(lines).map((row) => row.id)).toEqual(['445', '69', '18']);
 	});
 });
