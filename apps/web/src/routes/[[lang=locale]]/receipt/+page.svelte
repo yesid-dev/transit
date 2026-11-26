@@ -9,6 +9,7 @@
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
+	import { recordNoticeCards } from '#lib/features/alerts/alertCards.ts';
 	import RecordRanking from '#lib/features/home/RecordRanking.svelte';
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
 	import { previewRows, recordCounts } from '#lib/features/home/overviewRecord.ts';
@@ -55,6 +56,7 @@
 		dateRange,
 		longDate,
 		methodEvidence,
+		noticeCountEvidence,
 		pageCitation,
 		recordStamp,
 		recordPercent,
@@ -154,8 +156,18 @@
 		const days = countedUnit(answer.evidence.days_included.length, 'day', lang);
 		if ('value' in answer) {
 			const counts = answer.evidence.counts;
-			if (section === 'messages' && answer.state === 'measured' && counts.alerts != null)
-				return countedUnit(counts.alerts, 'distinct-alert', lang);
+			if (section === 'messages') {
+				const notices =
+					answer.state === 'measured' && !data.messagesLimited ? recordNoticeCards(answer) : null;
+				return notices?.length && counts.alerts != null
+					? noticeCountEvidence(
+							notices.length,
+							counts.alerts,
+							agencyName(operator ?? cityName, routeData.provider),
+							lang,
+						)
+					: null;
+			}
 			return recordCounts(
 				counts.classified,
 				section === 'delivery' ? counts.ran : null,
@@ -611,6 +623,10 @@
 									{:then result}
 										{@const messages = measure(result)}
 										{@const count = messages?.evidence.counts.alerts}
+										{@const notices =
+											messages?.state === 'measured' && !data.messagesLimited
+												? recordNoticeCards(messages)
+												: null}
 										{#if !messages}{@render failure(result)}
 										{:else if messages.state === 'not_tracked'}
 											{@render messagesNotTracked(true)}
@@ -623,10 +639,10 @@
 												)}
 											</p>
 										{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
-										{:else if messages.evidence.alert_messages?.length}
+										{:else if notices?.length}
 											<ul class="message-rows">
-												{#each messages.evidence.alert_messages as message (JSON.stringify( [message.source, message.id, message.version], ))}
-													{@const { title, body } = agencyMessage(message, lang)}
+												{#each notices as message (message.key)}
+													{@const { title, body } = agencyMessage(message, lang, message.stops)}
 													{@const dates = agencyMessagePeriods(
 														message.periods,
 														lang,
@@ -635,7 +651,7 @@
 													)}
 													<li class="message-row grid min-w-0 gap-x-4 py-2 print:py-0.5">
 														<div class="flex flex-wrap items-start gap-x-2">
-															{#each message.routes.slice(0, 3) as id (id)}
+															{#each message.routes as id (id)}
 																{@const line = display.lineName(id)}
 																<a
 																	class="inline-flex min-h-11 min-w-11 items-center"
@@ -649,6 +665,12 @@
 															<h3 class="font-semibold" lang={title.lang}>
 																{title.text}
 															</h3>
+															{#if message.stops.length > 1}
+																<p class="text-muted-foreground">
+																	{t('Stops:', 'Arrêts\u00a0:')}
+																	{message.stops.join(' · ')}
+																</p>
+															{/if}
 															{#if dates.length}<p
 																	class="text-muted-foreground"
 																	data-slot="agency-message-dates"
@@ -676,7 +698,7 @@
 												class="inline-flex min-h-11 items-center text-primary underline"
 												href={link('/alerts')}
 											>
-												{dailyAlertsLink(count, lang)}
+												{dailyAlertsLink(notices?.length ?? count, lang, notices == null)}
 											</a>
 										{/if}
 									{/await}

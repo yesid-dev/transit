@@ -31,7 +31,7 @@ test('Alerts Record and Live now use no legacy requests across load and refresh'
 
 	await page.goto('/alerts?provider=stm&frameMode=live');
 	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
-	await expect(page.locator('#alerts-window')).toContainText('0 alerts are in effect now.');
+	await expect(page.locator('#alerts-window')).toContainText('0 notices are in effect now.');
 	expect(captures).toEqual([]);
 	expect((await refreshAlertsCapture(page)).ok()).toBe(true);
 	expect(captures).toEqual(['/api/live?city=stm']);
@@ -47,9 +47,16 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 	await expect(page.getByRole('heading', { name: 'Avis de service', level: 1 })).toBeVisible();
 	const answer = page.locator('#answer');
-	await expect(answer).toContainText('avis ont été en vigueur');
+	await expect(answer).toContainText('213 avis étaient en vigueur à un moment donné à ces dates.');
+	await expect(answer).toContainText(/213 avis, issus de 1\s707 avis publiés par la STM/);
 	await expect(answer).not.toContainText('12,5');
-	await expect(page.locator('#effect')).toContainText('Non publié');
+	await expect(page.getByRole('heading', { name: 'Par effet', exact: true })).toHaveCount(0);
+	await expect(
+		page.getByText('La société de transport ne publie pas l’effet de ses avis.'),
+	).toBeVisible();
+	await expect(
+		page.getByText('Chaque avis compte une fois, même si la société de transport l’a republié.'),
+	).toBeVisible();
 	const byLine = page.getByRole('button', { name: 'Par ligne', exact: true });
 	await expect(byLine).toHaveAttribute('aria-expanded', 'false');
 	await byLine.click();
@@ -69,18 +76,22 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(messages.getByRole('heading', { name: 'Avis sans texte' })).toBeVisible();
 	await expect(messages.getByText(/Votre arrêt|anonymous:|Inconnu/)).toHaveCount(0);
 	await expect(messages.getByText('du 14 au 20 nov. 2026', { exact: true }).first()).toBeVisible();
-	await expect(messages.getByRole('status')).toHaveText(/^12 sur 1\s707$/);
+	await expect(messages.getByRole('status')).toHaveText('12 sur 213 avis');
+	await expect(messages).not.toContainText(/1\s707/);
 	await messages.getByRole('button', { name: 'Afficher 12 de plus' }).click();
-	await expect(messages.getByRole('status')).toHaveText(/^24 sur 1\s707$/);
+	await expect(messages.getByRole('status')).toHaveText('24 sur 213 avis');
 	await expect(messages.locator('ul > li').nth(12)).toBeFocused();
 
 	await answer.getByRole('button', { name: 'Citer', exact: true }).click();
 	await expect(page.getByRole('dialog')).toContainText(/v1.*recordFrom=2026-11-14.*#answer/);
-	await expect(page.getByRole('dialog')).toContainText(/Avis de l’agence.*#messages/);
+	await expect(page.getByRole('dialog')).toContainText(
+		/Avis de la société de transport.*#messages/,
+	);
+	await expect(page.getByRole('dialog')).toContainText(/Avis tels que publiés\s*:\s*1\s707/);
 	await page.keyboard.press('Escape');
 	await answer.getByRole('button', { name: 'Télécharger' }).click();
 	for (const [name, section] of [
-		['Avis de l’agence', 'messages'],
+		['Avis de la société de transport', 'messages'],
 		['Par heure', 'hour'],
 		['Jour par jour', 'day'],
 	]) {
@@ -96,12 +107,17 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 		expect(await download.text()).toMatch(/^Mesure,Du,Au/);
 	}
 
-	const target = stmAlertId(1706);
-	await page.goto(`/alerts?${period}#alert-${encodeURIComponent(target)}`);
-	await expect(page.locator(`[id="alert-${target}"]`)).toBeVisible();
-	await expect(
-		page.getByRole('heading', { name: 'Travaux sur la chaussée de la rue Beaubien.' }),
-	).toHaveAttribute('lang', 'fr');
+	const duplicate = stmAlertId(14);
+	await page.goto(`/alerts?${period}#alert-${encodeURIComponent(duplicate)}`);
+	await expect(answer).toContainText('213 notices were in effect at some point in these dates.');
+	await expect(answer).toContainText(
+		'213 notices, from 1,707 alerts as STM published them, one per line and reissue.',
+	);
+	const grouped = page.locator(`[id="alert-${duplicate}"]`).locator('xpath=ancestor-or-self::li');
+	await expect(grouped.getByRole('heading')).toHaveText('Stop 52997 is closed during roadworks.');
+	for (const number of ['34', '125', '353']) {
+		await expect(grouped.getByRole('link', { name: new RegExp(`\\b${number}\\b`) })).toHaveCount(1);
+	}
 	// The compact rail steps aside when the footer is in view.
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	await answer.scrollIntoViewIfNeeded();
@@ -121,9 +137,9 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await stop.press('ArrowDown');
 	await page.getByRole('option', { name: 'Stop 51234' }).click();
 	await expect(page).toHaveURL(/route=24.*stop=51234/);
-	await expect(filter.getByText(/^\d+ alerts?$/)).not.toHaveText('1,707 alerts');
+	await expect(filter.getByText(/^\d+ notices?$/)).not.toHaveText('213 notices');
 	await closeCompactFrameControls(page);
-	await expect(messages.getByRole('status')).toHaveText(/Showing [1-9]\d* of [1-9]\d*/);
+	await expect(messages.getByRole('status')).toHaveText(/Showing [1-9]\d* of [1-9]\d* notices?/);
 	await expect(messages.getByRole('combobox')).toHaveCount(0);
 
 	await page.reload();
@@ -136,7 +152,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(line).toHaveValue(/24.*Sherbrooke/);
 	await filter.getByRole('button', { name: 'Clear', exact: true }).click();
 	await expect(page).not.toHaveURL(/(?:route|stop)=/);
-	await expect(filter.getByText('1,707 alerts', { exact: true })).toBeVisible();
+	await expect(filter.getByText('213 notices', { exact: true })).toBeVisible();
 });
 
 test('Alerts Record shows the engine message limit and OC Transpo has no alert total', async ({
@@ -145,6 +161,7 @@ test('Alerts Record shows the engine message limit and OC Transpo has no alert t
 }) => {
 	const long = period.replace('2026-11-14', '2026-11-13');
 	await page.goto(`/alerts?${long}`);
+	await expect(page.locator('#answer')).toContainText('1,707 alerts as published.');
 	await expect(page.locator('#messages')).toContainText(
 		'Agency messages are listed for 7 days or fewer. Pick a shorter period.',
 	);
@@ -171,7 +188,7 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 	await page.goto(`/alerts?provider=stm&frameMode=record&recordFrom=${date}&recordTo=${date}`, {
 		waitUntil: 'commit',
 	});
-	await expect(page.locator('#answer')).toContainText('alerts were in effect');
+	await expect(page.locator('#answer')).toContainText('alerts as published.');
 	await expect(page.locator('#messages')).toContainText('Calculating…');
 	const patience = page.locator('[data-slot="record-patience"]').getByRole('status');
 	await expect(patience).toHaveCount(1);

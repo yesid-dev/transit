@@ -77,7 +77,7 @@ for (const width of [390, 1440]) {
 			}
 			await expect(answer).toContainText(
 				fr
-					? /Ce qui est compté : 8[ \u00a0\u202f]285 passages/
+					? /Ce qui est compté\s:\s8[ \u00a0\u202f]285 passages/u
 					: 'Counted: 8,285 stop events, 230 trips, 7 days',
 			);
 			await expect(

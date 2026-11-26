@@ -100,7 +100,7 @@ export function alertsEngine(url) {
 			});
 		return { body: { ...body, group, cells } };
 	}
-	if (messages)
+	if (messages) {
 		evidence.alert_messages = stmAlertFixtures(value.alerts).map(
 			({ id, routes, stops, header, description }, index) => ({
 				source: 'fixture',
@@ -113,6 +113,21 @@ export function alertsEngine(url) {
 				periods: messagePeriods(from, to, index),
 			}),
 		);
+		const roadworks = {
+			header: { en: 'Your stop', fr: 'Votre arrêt' },
+			description: {
+				en: 'This stop is closed during roadworks.',
+				fr: 'Cet arrêt est fermé pendant les travaux.',
+			},
+			stops: ['52997'],
+			periods: messagePeriods(from, to, 1),
+		};
+		for (const index of [12, 13, 14]) {
+			Object.assign(evidence.alert_messages[index], roadworks, {
+				routes: [['34'], ['125'], ['353']][index - 12],
+			});
+		}
+	}
 	const slowMessage = messages && from === to && /^2026-11-1[0-5]$/.test(from);
 	return { body: { ...body, value }, hold: slowMessage && `alerts-${from}` };
 }

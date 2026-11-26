@@ -61,3 +61,19 @@ it('keeps known English labels and voyage out of French copy objects', () => {
 	expect(files.length).toBeGreaterThan(0);
 	expect(findings).toEqual([]);
 });
+
+it('uses société de transport in rider-facing notice copy', () => {
+	for (const file of [
+		'alerts/AlertList.svelte',
+		'alerts/AlertsScreen.svelte',
+		'alerts/NoticeRows.svelte',
+		'alerts/alertRecord.ts',
+		'health/DataHealthLive.svelte',
+		'lines/LineLiveNotices.svelte',
+		'lines/lineRecordText.ts',
+		'record/departureDailyText.ts',
+	]) {
+		const raw = readFileSync(new URL(`../features/${file}`, import.meta.url), 'utf8');
+		expect(raw, file).not.toMatch(/\bl['’]agence\b/iu);
+	}
+});

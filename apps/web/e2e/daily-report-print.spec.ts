@@ -29,21 +29,31 @@ test.describe('Daily report print', () => {
 				'content',
 				new RegExp('^' + title),
 			);
-			await expect(main.locator('#messages h3')).toHaveCount(5);
-			await expect(main.locator('#messages h3[lang=fr]')).toHaveCount(5);
-			await expect(main.locator('#messages h3').first()).toHaveText(
+			const messages = main.locator('#messages');
+			const notices = messages.getByRole('heading', { level: 3 });
+			await expect(notices).toHaveCount(5);
+			await expect(messages.locator('h3[lang=fr]')).toHaveCount(5);
+			await expect(notices.first()).toHaveText(
 				'Le service est réduit sur Sauvé en raison de travaux.',
 			);
-			const dates = main.locator('#messages [data-slot="agency-message-dates"]').first();
+			const dates = messages.locator('[data-slot="agency-message-dates"]').first();
 			await expect(dates).toHaveText(
 				fr ? '15 nov. 2026, de 08:00 à 18:00' : '15 Nov 2026, 08:00 to 18:00',
 			);
-			const preview = main
-				.locator('#messages')
-				.getByText('Consultez l’avis de service', { exact: false })
-				.first();
+			const preview = messages.getByText('Consultez l’avis de service', { exact: false }).first();
 			await expect(preview).toBeVisible();
-			await expect(main.locator('#messages a[href*="/alerts"]')).toContainText(/1[\s,]690/u);
+			const count = await notices.count();
+			await expect(messages.locator('a[href*="/alerts"]')).toHaveText(
+				fr
+					? `Voir ${count} avis dans les avis de service`
+					: `See ${count} notices in Service alerts`,
+			);
+			await expect(messages.locator('footer')).toContainText(
+				fr
+					? new RegExp(`${count} avis, issus de 1\\s690 avis publiés par la STM`, 'u')
+					: `${count} notices, from 1,690 alerts as STM published them`,
+			);
+			expect((await messages.innerText()).match(/1[\s,]690\b/gu) ?? []).toHaveLength(1);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
 			await expect(main.locator('#punctuality')).toContainText(fr ? /97,2\s%/u : '97.2%');
 			// Scheduled, no live data, status unknown, ran, cancelled, missing: the five under Scheduled add up to it.

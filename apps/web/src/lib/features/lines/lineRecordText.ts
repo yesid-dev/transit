@@ -39,7 +39,7 @@ export const lineSectionTitles = {
 	],
 	late: ['Departures late most often', 'Départs le plus souvent en retard'],
 	crowding: ['Crowding', 'Achalandage'],
-	alerts: ['Agency notices on these dates', 'Avis de l’agence à ces dates'],
+	alerts: ['Agency notices on these dates', 'Avis de la société de transport à ces dates'],
 	frequency: ['Planned frequency', 'Fréquence prévue'],
 	boundaries: ['First and last trips', 'Premiers et derniers trajets'],
 } satisfies Record<LineSection, [string, string]>;
@@ -77,7 +77,7 @@ export function deliveryFinding(answer: RecordSeries, locale: Locale) {
 	return choose(
 		locale,
 		`${failures} of ${total} scheduled trips did not run: ${a} cancelled by the agency and ${m} missing, with no vehicle and no notice.`,
-		`${failures} des ${total} trajets prévus n’ont pas été effectués : ${a} annulés par l’agence et ${m} manquants, sans véhicule ni avis.`,
+		`${failures} des ${total} trajets prévus n’ont pas été effectués\u00a0: ${a} annulés par la société de transport et ${m} manquants, sans véhicule ni avis.`,
 	);
 }
 

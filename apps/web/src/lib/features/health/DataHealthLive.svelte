@@ -169,7 +169,7 @@
 														age: captureAge(schedule.captured_at, now, locale) ?? labels.unknown,
 														cadence: t(
 															'when the agency publishes',
-															'à la publication par l’agence',
+															'à la publication par la société de transport',
 														),
 														size: captureSize(schedule.bytes, locale) ?? labels.not_measured,
 														state: schedule.effective_date

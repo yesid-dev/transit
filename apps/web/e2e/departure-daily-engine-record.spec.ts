@@ -100,13 +100,13 @@ for (const width of [390, 1440]) {
 			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five parts');
 			await expect(periods.getByRole('rowheader')).toHaveCount(5);
 			await expect(periods).toContainText(fr ? 'Couverture insuffisante' : 'Insufficient coverage');
-			const messages = section(fr ? 'Avis de l’agence' : 'Agency messages');
+			const messages = section(fr ? 'Avis de la société de transport' : 'Agency messages');
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveCount(1);
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveAttribute('lang', lang);
 			await expect(messages).toContainText(fr ? 'Détour sur la ligne 24' : 'Detour on 24');
 			await expect(
 				messages.getByRole('link', {
-					name: fr ? 'Voir l’avis de service' : 'See the service alert',
+					name: fr ? 'Voir 1 avis dans les avis de service' : 'See 1 notice in Service alerts',
 				}),
 			).toHaveAttribute('href', /\/alerts\?.*recordFrom=2026-11-18/);
 			await main
@@ -114,7 +114,10 @@ for (const width of [390, 1440]) {
 				.click();
 			const csv = await page
 				.getByRole('dialog')
-				.getByRole('link', { name: fr ? 'Avis de l’agence' : 'Agency messages', exact: true })
+				.getByRole('link', {
+					name: fr ? 'Avis de la société de transport' : 'Agency messages',
+					exact: true,
+				})
 				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();

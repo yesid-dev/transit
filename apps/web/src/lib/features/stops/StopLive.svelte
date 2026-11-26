@@ -29,6 +29,7 @@
 	let {
 		id,
 		lines,
+		name,
 		operator,
 		locale,
 		city,
@@ -43,6 +44,7 @@
 	}: {
 		id: string;
 		lines: readonly string[];
+		name: string;
 		operator: string;
 		locale: Locale;
 		city: string;
@@ -192,13 +194,18 @@
 		{/if}
 	</RecordGroup>
 	<RecordGroup>
-		<div id="stop-detail-notices" data-testid="stop-alerts" class="min-w-0">
+		<div
+			id="stop-detail-notices"
+			data-testid="stop-alerts"
+			class="grid min-w-0 gap-[var(--space-card-gap)]"
+		>
 			<LineLiveNotices
 				{snapshot}
 				{now}
 				{locale}
 				{timeZone}
 				{operator}
+				stopNames={{ [id]: name }}
 				scope={{ kind: 'stop', id, lines }}
 				tracked={hasAlerts}
 				href={link('/alerts?frameMode=live')}

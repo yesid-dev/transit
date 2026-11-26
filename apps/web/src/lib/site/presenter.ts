@@ -127,34 +127,70 @@ export function clockRange(start: string, end: string, locale: Locale, timeZone 
 	return [from, to].join('–');
 }
 
-export function alertAnswerSentence(count: number, locale: Locale, live: boolean) {
+export function noticeCount(count: number, locale: Locale) {
+	const label = locale === 'fr' ? 'avis' : count === 1 ? 'notice' : 'notices';
+	return `${intl.number(locale).format(count)} ${label}`;
+}
+
+function publishedAlertUnit(count: number, locale: Locale) {
+	return locale === 'fr'
+		? count === 1
+			? 'avis tel que publié'
+			: 'avis tels que publiés'
+		: count === 1
+			? 'alert as published'
+			: 'alerts as published';
+}
+
+export function publishedAlertCount(count: number, locale: Locale) {
+	return `${intl.number(locale).format(count)} ${publishedAlertUnit(count, locale)}`;
+}
+
+export function noticeCountEvidence(
+	grouped: number,
+	published: number,
+	agency: AgencyName,
+	locale: Locale,
+) {
+	const total = intl.number(locale).format(published);
+	return locale === 'fr'
+		? `${noticeCount(grouped, locale)}, issu${grouped === 1 ? '' : 's'} de ${total} avis publié${published === 1 ? '' : 's'} par ${frenchAgency(agency).subject}, un par ligne et par mise à jour.`
+		: `${noticeCount(grouped, locale)}, from ${total} ${published === 1 ? 'alert' : 'alerts'} as ${agency.name} published ${published === 1 ? 'it' : 'them'}, one per line and reissue.`;
+}
+
+export function alertAnswerSentence(
+	count: number,
+	locale: Locale,
+	live: boolean,
+	published = false,
+) {
+	if (published) return publishedAlertUnit(count, locale) + '.';
 	if (locale === 'fr') {
 		if (live) return count === 1 ? `avis est en vigueur.` : `avis sont en vigueur.`;
 		return count === 1
-			? `avis a été en vigueur à un moment de cette période.`
-			: `avis ont été en vigueur à un moment de cette période.`;
+			? 'avis était en vigueur à un moment donné à ces dates.'
+			: 'avis étaient en vigueur à un moment donné à ces dates.';
 	}
-	if (live) return count === 1 ? 'alert is in effect now.' : 'alerts are in effect now.';
+	if (live) return count === 1 ? 'notice is in effect now.' : 'notices are in effect now.';
 	return count === 1
-		? 'alert was in effect at some point in these dates.'
-		: 'alerts were in effect at some point in these dates.';
+		? 'notice was in effect at some point in these dates.'
+		: 'notices were in effect at some point in these dates.';
 }
 
-export function dailyAlertsLink(count: number, locale: Locale) {
-	const number = intl.number(locale).format(count);
-	if (count === 1) return locale === 'fr' ? 'Voir l’avis de service' : 'See the service alert';
+export function dailyAlertsLink(count: number, locale: Locale, published = false) {
+	const unit = published ? publishedAlertCount(count, locale) : noticeCount(count, locale);
 	return locale === 'fr'
-		? `Les ${number} dans les avis de service`
-		: `All ${number} in Service alerts`;
+		? `Voir ${unit} dans les avis de service`
+		: `See ${unit} in Service alerts`;
 }
 
-export function alertPaging(locale: Locale) {
+export function alertPaging(locale: Locale, notices = false) {
 	const { format } = intl.number(locale);
 	return {
 		showing: (shown: number, total: number) =>
 			locale === 'fr'
-				? `${format(shown)} sur ${format(total)}`
-				: `Showing ${format(shown)} of ${format(total)}`,
+				? `${format(shown)} sur ${notices ? noticeCount(total, locale) : format(total)}`
+				: `Showing ${format(shown)} of ${notices ? noticeCount(total, locale) : format(total)}`,
 		more: (count: number) =>
 			locale === 'fr' ? `Afficher ${format(count)} de plus` : `Show ${format(count)} more`,
 	};
@@ -376,6 +412,58 @@ export function lineName(
 	if (label) return { number, name, label, spoken: spoken(label) };
 	const missing = fallback();
 	return { number, name, label: missing, spoken: missing };
+}
+
+/** A route plate already prints the number supplied at the start of some line names. */
+export function noticeLineName(number: string, name: string | null) {
+	let detail = name?.trim();
+	while (detail?.startsWith(number)) {
+		const remaining = detail.slice(number.length).match(/^\s*[/·:-]\s*(.+)$/u)?.[1];
+		if (!remaining) break;
+		detail = remaining;
+	}
+	return detail && detail !== number ? detail : null;
+}
+
+export function noticeStopName(text: string, stop: string, locale: Locale) {
+	return locale === 'fr'
+		? text.replace(/^Cet arrêt\b/iu, `L’arrêt ${stop}`)
+		: text.replace(/^This stop\b/iu, `Stop ${stop}`);
+}
+
+export const countedNotice = {
+	en: 'Each notice counts once, however many times the agency reissued it.',
+	fr: 'Chaque avis compte une fois, même si la société de transport l’a republié.',
+};
+
+export function noticesForLines(lines: readonly string[], locale: Locale) {
+	const list = new Intl.ListFormat(locale).format(lines);
+	if (locale === 'fr') return `Avis pour ${lines.length === 1 ? 'la ligne' : 'les lignes'} ${list}`;
+	return `Notices for ${lines.length === 1 ? 'line' : 'lines'} ${list}`;
+}
+
+export function noLiveStopNotices(agency: AgencyName, locale: Locale) {
+	if (locale === 'en') return `${agency.name} has no notice in effect for this stop.`;
+	const subject = frenchAgency(agency).subject;
+	return `${subject.charAt(0).toLocaleUpperCase('fr')}${subject.slice(1)} n’a aucun avis en vigueur pour cet arrêt.`;
+}
+
+export function noPublishedNotices(
+	agency: AgencyName,
+	scope: 'stop' | 'line' | 'network',
+	locale: Locale,
+	complete = true,
+) {
+	if (!complete)
+		return locale === 'fr'
+			? 'Aucun avis dans le bilan disponible pour ces dates.'
+			: 'No notices in the available record for these dates.';
+	if (locale === 'en') {
+		return `${agency.name} published no alert${scope === 'network' ? '' : ` for this ${scope}`} on these dates.`;
+	}
+	const subject = frenchAgency(agency).subject;
+	const forScope = { stop: ' pour cet arrêt', line: ' pour cette ligne', network: '' }[scope];
+	return `${subject.charAt(0).toLocaleUpperCase('fr')}${subject.slice(1)} n’a publié aucun avis${forScope} à ces dates.`;
 }
 
 export function tripsInHours(trips: number, hours: number, locale: Locale): string {

@@ -113,6 +113,7 @@
 			{#key data.capture ?? data.seed.id}
 				<StopLive
 					id={data.seed.id}
+					name={name ?? code}
 					lines={data.stopLines}
 					{operator}
 					{locale}

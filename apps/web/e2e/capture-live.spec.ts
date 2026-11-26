@@ -136,9 +136,12 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		await page.goto(`${href}?provider=stm&frameMode=live`);
 		await refreshAlertsCapture(page);
 		await expect(page.getByText(header[locale], { exact: true })).toBeVisible();
-		await expect(page.locator('#alerts-breakdown')).toContainText(
-			locale === 'fr' ? 'Non publié' : 'Not published',
-		);
+		await expect(
+			page.getByRole('article', {
+				name: fr ? 'Par effet' : 'By effect',
+				exact: true,
+			}),
+		).toHaveCount(0);
 		const controls = await openFrameControls(page, locale);
 		const filter = controls.getByRole('group', { name: fr ? 'Filtrer' : 'Filter', exact: true });
 		await expect(filter.getByRole('combobox')).toHaveCount(2);
@@ -149,13 +152,18 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		});
 		await expect(about).toContainText(
 			fr
+				? 'La société de transport ne publie pas l’effet de ses avis.'
+				: 'The agency does not publish the effect of its notices.',
+		);
+		await expect(about).toContainText(
+			fr
 				? 'Les avis en vigueur en ce moment, dans le dernier relevé du flux.'
 				: 'Alerts in effect at this moment, in the latest feed capture.',
 		);
 		await expect(about).toContainText(fr ? 'Quand un avis compte' : 'How an alert counts');
 		await expect(about).toContainText(
 			fr
-				? 'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand l’agence ne publie aucune période.'
+				? 'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand la société de transport ne publie aucune période.'
 				: 'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
 		);
 		await expect(about).toContainText(
@@ -179,21 +187,25 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	const at = Date.now();
 	const start = new Date(at - 60_000).toISOString();
 	const future = new Date(at + 86_400_000).toISOString();
+	const alerts = alertFixtures(13).map((alert, index) => ({
+		...alert,
+		periods: [[index === 12 ? future : start, null]],
+	}));
 	await page.route(captureUrl, (route) =>
 		route.fulfill({
 			json: captureFixture(at, {
-				alerts: alertFixtures(13).map((alert, index) => ({
-					...alert,
-					periods: [[index === 12 ? future : start, null]],
-				})),
+				alerts: [...alerts, { ...alerts[0], id: 'same-notice-as-published-again' }],
 			}),
 		}),
 	);
 	await page.goto('/alerts?provider=stm&frameMode=live');
 	await refreshAlertsCapture(page);
 	const list = page.locator('#alerts-log');
-	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12');
-	await expect(page.locator('#alerts-window')).toContainText('12 alerts are in effect now.');
+	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12 notices');
+	await expect(page.locator('#alerts-window')).toContainText('12 notices are in effect now.');
+	await expect(page.locator('#alerts-window')).toContainText(
+		'12 notices, from 13 alerts as STM published them',
+	);
 	await expect(page.locator('#alerts-breakdown')).toContainText('Not stated');
 	await expect(page.locator('#alerts-breakdown')).toContainText(
 		'Effects are the agency’s own categories, kept as published.',
@@ -203,7 +215,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(byLineToggle).toHaveAttribute('aria-expanded', 'false');
 	await byLineToggle.click();
 	await expect(byLine.getByRole('table')).toBeVisible();
-	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 alerts');
+	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 notices');
 	await byLineToggle.click();
 	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	const controls = await openFrameControls(page);
@@ -217,11 +229,11 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await effect.press('ArrowDown');
 	await page.getByRole('option', { name: 'Detour', exact: true }).click();
 	await closeCompactFrameControls(page);
-	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
+	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1 notice');
 	await expect(page).toHaveURL(/route=24.*effect=DETOUR/);
 	await page.reload();
 	await refreshAlertsCapture(page);
-	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
+	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1 notice');
 	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	await openFrameControls(page);
 	await expect(effect).toHaveValue('Detour');

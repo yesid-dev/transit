@@ -1,8 +1,13 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
-import type { AgencyMessage, AgencyMessagePeriod } from '#lib/site/agencyMessages.ts';
+import {
+	agencyMessage,
+	type AgencyMessage,
+	type AgencyMessagePeriod,
+} from '#lib/site/agencyMessages.ts';
 import { effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
 import type { CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
+import { isGenericAlertHeading } from '#lib/v1/alertDisplay.ts';
 
 export type AlertCard = AgencyMessage & {
 	key: string;
@@ -10,7 +15,69 @@ export type AlertCard = AgencyMessage & {
 	stops: readonly string[];
 	effect: string | null;
 	periods: readonly AgencyMessagePeriod[];
+	publishedPeriods?: readonly AgencyMessagePeriod[];
 };
+
+export type NoticeCard = AlertCard & { ids: string[] };
+
+function normalizedNoticeText(text: string) {
+	return text
+		.normalize('NFC')
+		.replace(/['’]/gu, '’')
+		.replace(/\s+/gu, ' ')
+		.trim()
+		.replace(/[.]$/u, '');
+}
+
+function periodInstant(value: string | null) {
+	if (value === null) return null;
+	const instant = Date.parse(value);
+	return Number.isFinite(instant) ? instant : value;
+}
+
+/** Match the readable text in both languages and the same set of active intervals. */
+export function groupAlertCards(
+	cards: readonly AlertCard[],
+	include: (card: AlertCard) => boolean = () => true,
+): NoticeCard[] {
+	const groups = new Map<string, NoticeCard>();
+	const included = new Set<string>();
+	for (const card of cards) {
+		const text = (['en', 'fr'] as const).map((locale) => {
+			const { title, body } = agencyMessage(card, locale);
+			return [title, body].map((part) => part && [part.lang, normalizedNoticeText(part.text)]);
+		});
+		const intervals = [
+			...new Set(
+				(card.publishedPeriods ?? card.periods).map(({ start, end }) =>
+					JSON.stringify([periodInstant(start), periodInstant(end)]),
+				),
+			),
+		].sort();
+		// Missing wording provides no evidence that two independent notices are the same.
+		const hasText = [...Object.values(card.header), ...Object.values(card.description)].some(
+			(value) => value?.trim() && !isGenericAlertHeading(value),
+		);
+		const key = JSON.stringify(hasText ? [text, intervals] : [card.key]);
+		if (include(card)) included.add(key);
+		const group = groups.get(key);
+		if (group) {
+			group.ids = [...new Set([...group.ids, card.id])];
+			group.routes = [...new Set([...group.routes, ...card.routes])];
+			group.stops = [...new Set([...group.stops, ...card.stops])];
+			if (group.effect !== card.effect) group.effect = null;
+			group.url = { ...card.url, ...group.url };
+		} else {
+			groups.set(key, {
+				...card,
+				ids: [card.id],
+				routes: [...new Set(card.routes)],
+				stops: [...new Set(card.stops)],
+			});
+		}
+	}
+	return [...included].map((key) => groups.get(key)!);
+}
 
 export const unstatedEffect = 'UNKNOWN_EFFECT';
 
@@ -32,6 +99,12 @@ export function recordAlertCards(
 		effect: publishedAlertEffect(message.effect),
 		periods: message.periods ?? [],
 	}));
+}
+
+export function recordNoticeCards(answer: RecordMeasure) {
+	const messages = answer.evidence.alert_messages;
+	if (messages?.length) return groupAlertCards(recordAlertCards(messages));
+	return answer.value.alerts === 0 ? [] : null;
 }
 
 export function liveAlertCards(
@@ -57,6 +130,7 @@ export function liveAlertCards(
 				url: alert.url,
 				effect: publishedAlertEffect(alert.effect),
 				periods,
+				publishedPeriods: published.map(([start, end]) => ({ start, end })),
 			},
 		];
 	});

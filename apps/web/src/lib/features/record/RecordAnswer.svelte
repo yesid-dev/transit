@@ -35,7 +35,7 @@
 {#snippet evidenceMeta()}
 	{#if evidence}
 		{#if evidence.sample}<p>
-				{`${choose(locale, 'Counted:', 'Ce qui est compté :')} ${evidence.sample}`}
+				{`${choose(locale, 'Counted:', 'Ce qui est compté\u00a0:')} ${evidence.sample}`}
 			</p>{/if}
 		{#if evidence.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 	{/if}
