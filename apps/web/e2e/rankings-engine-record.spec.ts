@@ -76,8 +76,11 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							await expect(table.getByRole('rowheader')).toContainText(
 								fr ? 'Faible couverture' : 'Low coverage',
 							);
+							// On a phone the counts join the row's one muted sentence.
 							await expect(
-								table.getByRole('cell', { name: fr ? /12 trajets/u : /12 trips/u }),
+								width === 1440
+									? table.getByRole('cell', { name: fr ? /12 trajets/u : /12 trips/u })
+									: table.getByRole('rowheader').getByText(fr ? /12 trajets/u : /12 trips/u),
 							).toBeVisible();
 						}
 						if (kind === 'departure') {

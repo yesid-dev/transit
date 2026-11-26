@@ -19,7 +19,9 @@
 		methodEvidence,
 		recordPercent,
 		recordStamp,
+		rowSentence,
 		sampleWithMinimum,
+		countLabels as countTemplates,
 	} from '#lib/site/presenter.ts';
 	import { formatTransitName, stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import {
@@ -401,10 +403,16 @@
 		{ key: 'onTime', header: about.onTime, numeric: true, cell: shareCell },
 		{ key: 'events', header: eventsHeader, numeric: true, cell: eventsCell },
 	]);
-	const countLabel = $derived({
-		singular: t('{count} stop', '{count} arrêt'),
-		plural: t('{count} stops', '{count} arrêts'),
-	});
+	const countLabel = $derived(
+		countTemplates(
+			total,
+			{
+				singular: t('{count} stop', '{count} arrêt'),
+				plural: t('{count} stops', '{count} arrêts'),
+			},
+			locale,
+		),
+	);
 	const pageLabels = $derived({
 		showing: (shown: number, all: number) =>
 			t(
@@ -463,6 +471,9 @@
 		{#each row.lineCodes as code (code)}<li><RoutePlate {code} /></li>{/each}
 	</ul>
 {/snippet}
+{#snippet phonePlates(row: Row)}{#each row.lineCodes as code, index (code)}{index ? ' ' : ''}<span
+			class="inline-block whitespace-nowrap"><RoutePlate {code} /></span
+		>{/each}{/snippet}
 {#snippet shareCell(row: Row)}
 	{#if row.share !== null}<strong>{recordPercent(row.share, locale)}</strong>
 	{:else}<RecordTableValue
@@ -687,6 +698,25 @@
 								{columns}
 								{rows}
 								pageSize={0}
+								phone={{
+									code: (row) => row.code,
+									after: phonePlates,
+									line: (row) =>
+										rowSentence(
+											[
+												row.detail,
+												row.events !== null &&
+													(row.minimum === null
+														? countedUnit(row.events, 'event', locale)
+														: sampleWithMinimum(
+																countedUnit(row.events, 'event', locale),
+																row.minimum,
+																locale,
+															)),
+											],
+											locale,
+										),
+								}}
 							/>
 							<ShowMore
 								shown={rows.length}

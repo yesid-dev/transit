@@ -237,16 +237,15 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await page.goBack();
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/324\?/);
+		// Phone rows carry no column headers: one button after the sort choices reverses the order.
 		await page.getByRole('radio', { name: fr ? 'Part à l’heure' : 'On-time share' }).focus();
 		await page.keyboard.press('Tab');
-		await page.keyboard.press('Tab');
-		const timingHeader = table.getByRole('button', {
+		const reverse = page.getByRole('button', {
 			name: fr ? 'Inverser le tri par À l’heure' : 'Reverse sort by On time',
 		});
-		await expect(timingHeader).toBeFocused();
+		await expect(reverse).toBeFocused();
 		await page.keyboard.press('Enter');
 		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
-		await expect(timingHeader.locator('..')).toHaveAttribute('aria-sort', 'ascending');
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
 		const choices = page.getByRole('radiogroup', { name: fr ? 'Trier par' : 'Sort by' });
 		await expect(
@@ -255,9 +254,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(
 			choices.getByRole('radio', { name: fr ? 'Numéro de ligne' : 'Line number' }),
 		).toBeVisible();
-		await expect(
-			table.getByRole('button', { name: fr ? 'Trier par Ligne' : 'Sort by Line', exact: true }),
-		).toBeVisible();
+		await expect(table.getByRole('columnheader')).toHaveCount(1);
 
 		for (const width of [1024, 1440]) {
 			await page.setViewportSize({ width, height: 900 });
@@ -434,6 +431,64 @@ for (const locale of ['en', 'fr'] as const) {
 		).toBeVisible();
 	});
 
+	test(`${locale} Stops phone rows lay out alike and keep plates inline after the name`, async ({
+		page,
+	}) => {
+		for (const width of [320, 390]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(`${prefix}/stops?provider=stm`);
+			const rows = page.locator('#stop-results tbody tr');
+			await expect(rows).toHaveCount(20);
+			// Names of one length lay out the same way: the same row height.
+			const heights = [];
+			for (let sample = 1; sample <= 9; sample++) {
+				const row = rows.filter({
+					has: page.getByRole('link', { name: `Pagination sample ${sample}`, exact: true }),
+				});
+				const box = await row.boundingBox();
+				heights.push(Math.round(box!.height));
+			}
+			expect(new Set(heights).size, `${width}px row heights ${heights}`).toBe(1);
+			// A hanging indent: every name starts right of its code box, never under it.
+			const under = await rows.evaluateAll((items) =>
+				items.flatMap((item) => {
+					const code = item.querySelector('.phone-code');
+					const name = item.querySelector('a');
+					if (!code || !name) return [];
+					return name.getBoundingClientRect().left < code.getBoundingClientRect().right
+						? [name.textContent?.trim()]
+						: [];
+				}),
+			);
+			expect(under, `${width}px names under their code box`).toEqual([]);
+			// Plates flow after the name like words: a plate starts a new line only when it would
+			// not have fit after the name or the plate before it.
+			const row = rows.filter({
+				has: page.getByRole('link', { name: 'B9 Atwater', exact: true }),
+			});
+			const plates = row.locator('[data-slot="route-plate"]');
+			await expect(plates).toHaveText(['24', '51', '99']);
+			const early = await row.evaluate((element) => {
+				const column = element.querySelector('.phone-text')!.getBoundingClientRect();
+				const boxes = [
+					element.querySelector('a')!.getBoundingClientRect(),
+					...[...element.querySelectorAll('[data-slot="route-plate"]')].map((plate) =>
+						plate.getBoundingClientRect(),
+					),
+				];
+				return boxes
+					.slice(1)
+					.filter((plate, index) => {
+						const before = boxes[index];
+						const wrapped = plate.top >= before.bottom - 2;
+						return wrapped && before.right + 4 + plate.width <= column.right - 1;
+					})
+					.map((plate) => Math.round(plate.left));
+			});
+			expect(early, `${width}px plates that wrapped though they fit`).toEqual([]);
+		}
+	});
+
 	test(`${locale} Stops keeps the stop-event sample beside one state on phones`, async ({
 		page,
 	}) => {
@@ -445,18 +500,15 @@ for (const locale of ['en', 'fr'] as const) {
 			);
 			const row = page.getByRole('row').filter({ hasText: '8th Line / Byron' });
 			await expect(row.getByRole('link', { name: '8th Line / Byron' })).toBeVisible();
-			await expect(row.locator('[data-column="lines"] [data-slot="route-plate"]')).toHaveText([
-				'51',
-				'51A',
-				'105',
-			]);
+			// The phone row puts the line plates on the name's line and the sample in its sentence.
+			await expect(row.locator('[data-slot="route-plate"]')).toHaveText(['51', '51A', '105']);
 			await expect(row.locator('[data-record-state]')).toHaveCount(1);
 			await expect(row.locator('[data-record-state]')).toHaveAttribute(
 				'data-record-state',
 				'too_few_to_judge',
 			);
-			await expect(row.locator('[data-column="events"]')).toContainText(
-				fr ? '29 (minimum de 500)' : '29 (minimum 500)',
+			await expect(row).toContainText(
+				fr ? '29 passages aux arrêts (minimum de 500)' : '29 stop events (minimum 500)',
 			);
 		}
 	});
@@ -465,7 +517,11 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.setViewportSize({ width: 390, height: 900 });
 		await page.goto(`${prefix}/stop/S1?provider=stm&recordFrom=2026-11-10&recordTo=2026-11-10`);
 		const answer = page.locator('[data-slot="screen-answer"]');
-		await expect(answer).toContainText(fr ? /24 sur 100, minimum de 40/ : /24 of 100, minimum 40/);
+		await expect(answer).toContainText(
+			fr
+				? /24 des 100 passages prévus ont été observés ici à ces dates\. Il faut observer au moins 40,0\s% des passages prévus\./
+				: '24 of 100 scheduled stop events were observed here on these dates. At least 40.0% of scheduled stop events must be observed.',
+		);
 		const waiting = page.locator('#waiting');
 		const gap = fr
 			? 'Trop peu d’intervalles prévus ont été observés'

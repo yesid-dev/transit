@@ -14,7 +14,8 @@ for (const locale of ['en', 'fr'] as const)
 				.filter({ has: page.getByRole('link', { name: /^24 Sherbrooke/ }) });
 			await expect(row).toBeVisible();
 			await expect(row).toContainText(/80[.,]0\s?%/u);
-			await expect(row).toContainText(locale === 'fr' ? 'Faible couverture' : 'Low coverage');
+			// On a phone, low coverage joins the row's sentence in lower case.
+			await expect(row).toContainText(locale === 'fr' ? /faible couverture/iu : /low coverage/iu);
 			await expect(
 				page.getByRole('row').filter({ has: page.getByRole('link', { name: /99/ }) }),
 			).toContainText(locale === 'fr' ? 'Trop peu de données pour conclure' : 'Too few to judge');

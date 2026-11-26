@@ -935,3 +935,125 @@ export function citeDates(period: { from: string; to: string }, locale: Locale):
 export function sentenceStart(text: string): string {
 	return text.charAt(0).toLocaleUpperCase() + text.slice(1);
 }
+
+/** The muted second line of a phone row: the secondary facts as one sentence, no labels. */
+export function rowSentence(parts: readonly (string | null | undefined | false)[], locale: Locale) {
+	const text = parts.filter(Boolean).join(', ');
+	return text ? text.charAt(0).toLocaleUpperCase(locale) + text.slice(1) : null;
+}
+
+export function lateShare(value: number, locale: Locale) {
+	return `${locale === 'fr' ? 'en retard' : 'late'} ${recordPercent(value, locale)}`;
+}
+
+export function tripsRan(ran: number, scheduled: number, locale: Locale) {
+	const total = intl.number(locale).format(scheduled);
+	return locale === 'fr'
+		? `${recordRatio(ran, total, locale)} trajets effectués`
+		: `${recordRatio(ran, total, locale)} trips ran`;
+}
+
+export function daysInService(days: number, periodDays: number | null, locale: Locale) {
+	const count = periodDays
+		? recordRatio(days, intl.number(locale).format(periodDays), locale)
+		: intl.number(locale).format(days);
+	const one = !periodDays && singularCount(days, locale);
+	return `${count} ${locale === 'fr' ? (one ? 'jour' : 'jours') : one ? 'day' : 'days'}`;
+}
+
+export function hoursInService(hours: number, locale: Locale) {
+	return `${hoursReading(hours, locale)} ${locale === 'fr' ? 'en service' : 'in service'}`;
+}
+
+export function didNotReport(locale: Locale) {
+	return locale === 'fr' ? 'Aucun signalement pour ces dates.' : 'Did not report on these dates.';
+}
+
+export function lastReport(age: string, locale: Locale) {
+	return locale === 'fr' ? `dernier signalement ${age}` : `last report ${age}`;
+}
+
+/** A feed's capture facts as one phone-row sentence. */
+export function captureFacts(
+	age: string | null | undefined,
+	cadence: string | null | undefined,
+	size: string | null | undefined,
+	locale: Locale,
+) {
+	const fr = locale === 'fr';
+	return rowSentence(
+		[
+			age && (fr ? `relevé ${age}` : `captured ${age}`),
+			cadence && (fr ? `prévu ${cadence}` : `expected ${cadence}`),
+			size,
+		],
+		locale,
+	);
+}
+
+export function departureAt(clock: string, locale: Locale) {
+	return `${locale === 'fr' ? 'départ' : 'departure'} ${clock}`;
+}
+
+/** Cancelled and missing trips of one service day, as a phone-row sentence. */
+export function deliveryFacts(cancelled: number | null, missing: number | null, locale: Locale) {
+	const count = (value: number) => intl.number(locale).format(value);
+	const fr = locale === 'fr';
+	return rowSentence(
+		[
+			cancelled != null &&
+				(fr
+					? `${count(cancelled)} ${cancelled < 2 ? 'annulé' : 'annulés'}`
+					: `${count(cancelled)} cancelled`),
+			missing != null &&
+				(fr
+					? `${count(missing)} ${missing < 2 ? 'manquant' : 'manquants'}`
+					: `${count(missing)} missing`),
+		],
+		locale,
+	);
+}
+
+/** One sentence for a departure table whose every row is too few to judge. */
+export function tooFewDepartures(most: number, minimum: number | null, locale: Locale) {
+	const count = (value: number) => intl.number(locale).format(value);
+	if (locale === 'fr')
+		return `Chaque départ compte au plus ${count(most)} ${most < 2 ? 'trajet prévu' : 'trajets prévus'}${minimum == null ? '' : `, sur un minimum de ${count(minimum)}`}.`;
+	return `Each departure has at most ${count(most)} scheduled ${most === 1 ? 'trip' : 'trips'}${minimum == null ? '' : `; the minimum is ${count(minimum)}`}.`;
+}
+
+export function showAllStops(count: number, locale: Locale) {
+	const number = intl.number(locale).format(count);
+	return locale === 'fr' ? `Afficher les ${number} arrêts` : `Show all ${number} stops`;
+}
+
+export function gridDaysNote(days: number, locale: Locale) {
+	const count = intl.number(locale).format(days);
+	return locale === 'fr'
+		? `La grille montre les ${count} derniers jours. Les totaux couvrent toute la période.`
+		: `The grid shows the last ${count} days. The counts cover the full period.`;
+}
+
+/** One sentence for an hour grid whose every reading is too few to judge. */
+export function tooFewHours(most: number, minimum: number | null, locale: Locale) {
+	const count = (value: number) => intl.number(locale).format(value);
+	if (locale === 'fr')
+		return `Chaque heure compte trop peu de passages aux arrêts pour conclure\u00a0: au plus ${count(most)}${minimum == null ? '' : `, sur un minimum de ${count(minimum)}`}.`;
+	return `Every hour has too few stop events to judge: at most ${count(most)}${minimum == null ? '' : `; the minimum is ${count(minimum)}`}.`;
+}
+
+/**
+ * Count templates with the number already formatted ("8,630 stops", "8 630 arrêts"). The kit's
+ * filterCountText fills `{count}` with the bare number, so the templates arrive pre-filled.
+ */
+export function countLabels(
+	count: number,
+	labels: { singular: string; plural: string },
+	locale: Locale,
+) {
+	const number = intl.number(locale).format(count);
+	return {
+		singular: labels.singular.replace('{count}', number),
+		plural: labels.plural.replace('{count}', number),
+	};
+}

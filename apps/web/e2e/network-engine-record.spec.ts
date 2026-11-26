@@ -33,7 +33,8 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(tableToggle).toHaveAttribute('aria-pressed', 'true');
 				await expect(card.getByRole('table')).toBeVisible();
 				if (id === 'delay') {
-					await expect(card.getByRole('cell', { name: /^14[,\s]500$/u })).toBeVisible();
+					// A cell on wide screens; on a phone the count is the row's sentence.
+					await expect(card.getByText(/^14[,\s]500$/u)).toBeVisible();
 				}
 				await tableToggle.click();
 				await expect(tableToggle).toHaveAttribute('aria-pressed', 'false');
@@ -93,10 +94,14 @@ test('Network health reads scheduled trips and individual silent trips from the 
 	);
 	const silent = main.getByRole('table', { name: 'Scheduled trips with no vehicle reporting' });
 	await expect(silent.getByRole('row')).toHaveCount(9);
-	for (const name of ['Line', 'Departure', 'Toward', 'Silent for'])
-		await expect(silent.getByRole('columnheader', { name })).toBeVisible();
-	await expect(silent.getByRole('cell', { name: '40 min' })).toBeVisible();
-	await expect(silent.getByRole('cell', { name: /Unknown/ }).first()).toBeVisible();
+	// Wide: one column each. Phone rows: the line, the time silent in bold, then departure and
+	// direction in one sentence, under the one column header the rows keep.
+	const phone = (await silent.getByRole('columnheader').count()) === 1;
+	if (!phone)
+		for (const name of ['Line', 'Departure', 'Toward', 'Silent for'])
+			await expect(silent.getByRole('columnheader', { name })).toBeVisible();
+	await expect(silent.getByText('40 min', { exact: true })).toBeVisible();
+	await expect(silent.getByText(phone ? /unknown direction/u : /Unknown/u).first()).toBeVisible();
 	await expect(silent.getByRole('link', { name: 'Sherbrooke' })).toHaveAttribute(
 		'href',
 		/\/lines\/24\?.*frameMode=live/u,

@@ -23,8 +23,11 @@
 		citeDates,
 		dateRange,
 		delayReading,
+		deliveryFacts,
 		methodEvidence,
+		recordRatio,
 		recordStamp,
+		rowSentence,
 		shortServiceDay,
 	} from '#lib/site/presenter.ts';
 	import {
@@ -116,6 +119,22 @@
 			ran: value('ran'),
 			cancelled: value('cancelled'),
 			missing: value('missing'),
+			share: outcomes
+				? recordRatio(outcomes.ran, tally(outcomes.scheduled, locale), locale)
+				: value('ran'),
+			facts: outcomes
+				? rowSentence(
+						[
+							deliveryFacts(outcomes.cancelled, outcomes.missing, locale),
+							outcomes.noLiveData > 0 &&
+								`${tally(outcomes.noLiveData, locale)} ${headers.noLiveData.toLocaleLowerCase(locale)}`,
+							outcomes.statusUnknown > 0 &&
+								`${tally(outcomes.statusUnknown, locale)} ${headers.statusUnknown.toLocaleLowerCase(locale)}`,
+						],
+						locale,
+					)
+				: null,
+			measured: outcomes !== null,
 		};
 	}
 	type DeliveryDay = ReturnType<typeof deliveryDay>;
@@ -172,6 +191,7 @@
 	}
 </script>
 
+{#snippet deliveryShare(row: DeliveryDay)}{row.share}{/snippet}
 {#snippet scheduledCell(row: DeliveryDay)}{row.scheduled}{/snippet}
 {#snippet noLiveDataCell(row: DeliveryDay)}{row.noLiveData}{/snippet}
 {#snippet statusUnknownCell(row: DeliveryDay)}{row.statusUnknown}{/snippet}
@@ -469,6 +489,11 @@
 										{rows}
 										pageSize={rows.length > 7 ? 7 : undefined}
 										scrollMinWidth="30rem"
+										phone={{
+											value: deliveryShare,
+											empty: (row) => !row.measured,
+											line: (row) => (row.measured ? row.facts : row.ran),
+										}}
 									/>
 								{:else if days.kind === 'busy'}<RecordPending {locale} busy />{/if}
 							{/await}
@@ -521,6 +546,8 @@
 									};
 								})}
 								scrollMinWidth="24rem"
+								value="share"
+								phone={{}}
 							/>
 						{:else if result.state === 'not_tracked'}
 							<p>

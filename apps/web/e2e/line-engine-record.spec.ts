@@ -53,9 +53,13 @@ for (const width of [390, 1440]) {
 				.click();
 			await expect(page).toHaveURL(/#delivery$/);
 			await expect(main.locator('#stops [data-highlighted]')).toHaveCount(2);
-			await expect(
-				main.locator('#delivery').getByRole('cell', { name: '6', exact: true }),
-			).toBeVisible();
+			// On a phone each departure is one row: ran of scheduled, then cancelled and missing.
+			if (width === 390)
+				await expect(main.locator('#delivery')).toContainText(fr ? '6 manquants' : '6 missing');
+			else
+				await expect(
+					main.locator('#delivery').getByRole('cell', { name: '6', exact: true }),
+				).toBeVisible();
 			await expect(main.locator('#delivery')).toContainText(
 				fr ? '8 des 40 trajets prévus' : '8 of 40 scheduled trips did not run',
 			);

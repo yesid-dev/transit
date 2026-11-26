@@ -30,6 +30,9 @@
 		scheduleHours,
 		scheduledClock,
 		countedUnit,
+		deliveryFacts,
+		recordRatio,
+		tooFewDepartures,
 		tripsInHours,
 		agencyName,
 		noPublishedNotices,
@@ -277,23 +280,43 @@
 			)}</a
 		>
 	{:else if section === 'delivery'}
-		{@render opening(deliveryFinding(answer, locale))}
-		<LineReadingTable
-			{title}
-			{locale}
-			headers={[
-				t('Departure', 'Départ'),
-				t('Cancelled', 'Annulés'),
-				t('Missing', 'Manquants'),
-				t('Ran', 'Effectués'),
-				t('Scheduled', 'Prévus'),
-			]}
-			rows={answer.cells.map((cell) => ({
-				label: `${scheduledClock(cell.key.departure, locale)} · ${dir(cell.key.direction)}`,
-				values: ['cancelled', 'missing', 'ran', 'scheduled'].map((field) =>
-					count(cell, field, true),
-				),
-			}))}
-		/>
+		{@const finding = deliveryFinding(answer, locale)}
+		{@render opening(finding)}
+		{#if answer.cells.some((cell) => cell.state === 'measured')}
+			<LineReadingTable
+				{title}
+				{locale}
+				headers={[
+					t('Departure', 'Départ'),
+					t('Cancelled', 'Annulés'),
+					t('Missing', 'Manquants'),
+					t('Ran', 'Effectués'),
+					t('Scheduled', 'Prévus'),
+				]}
+				rows={answer.cells.map((cell) => {
+					const { ran, scheduled, cancelled, missing } = cell.evidence.counts;
+					return {
+						label: `${scheduledClock(cell.key.departure, locale)} · ${dir(cell.key.direction)}`,
+						values: ['cancelled', 'missing', 'ran', 'scheduled'].map((field) =>
+							count(cell, field, true),
+						),
+						phone:
+							cell.state === 'measured' && ran != null && scheduled != null
+								? {
+										value: recordRatio(ran, n(scheduled), locale),
+										line: deliveryFacts(cancelled ?? null, missing ?? null, locale),
+									}
+								: { value: cell.state_text[locale], line: null },
+					};
+				})}
+			/>
+		{:else if answer.cells.length && answer.cells.every((cell) => cell.state === 'too_few_to_judge')}
+			{@const most = Math.max(...answer.cells.map((cell) => cell.evidence.counts.scheduled ?? 0))}
+			{@const minimum = answer.info?.[0]?.minimum_sample}
+			<p>
+				{#if finding}<StateMark state="too_few_to_judge" {locale} />{/if}
+				{tooFewDepartures(most, minimum ?? null, locale)}
+			</p>
+		{/if}
 	{/if}
 {/if}

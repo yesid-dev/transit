@@ -9,6 +9,7 @@
 		healthFeedName,
 		captureAge,
 		captureCadence,
+		captureFacts,
 		captureSize,
 		liveStampAge,
 		recordRatio,
@@ -80,6 +81,7 @@
 		cadence: string;
 		size: string;
 		state: string;
+		facts: string | null;
 	};
 	const feedColumns = $derived<DataTableColumn<FeedRow>[]>([
 		{ key: 'age', header: t('Last capture', 'Dernière collecte'), cell: ageCell },
@@ -160,6 +162,7 @@
 												state === 'stale' && age
 													? t(`Late: last received ${age}`, `En retard : dernière réception ${age}`)
 													: labels[state],
+											facts: captureFacts(state === 'stale' ? null : age, cadence, size, locale),
 										})),
 										...(schedule
 											? [
@@ -175,11 +178,22 @@
 														state: schedule.effective_date
 															? t('In use', 'En vigueur')
 															: labels.not_measured,
+														facts: captureFacts(
+															captureAge(schedule.captured_at, now, locale),
+															t(
+																'when the agency publishes',
+																'à la publication par la société de transport',
+															),
+															captureSize(schedule.bytes, locale),
+															locale,
+														),
 													},
 												]
 											: []),
 									]}
 									scrollMinWidth="24rem"
+									value="state"
+									phone={{ line: (row) => row.facts }}
 								/>
 								<p class="mt-3 text-small text-muted-foreground">{hold}</p>
 							{:else}<StateMark state="no_live_data" {locale} />{/if}

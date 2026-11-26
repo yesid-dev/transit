@@ -292,9 +292,22 @@
 									answer={directionsAnswer}
 								/>{/key}
 						{:then result}
-							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+							{@const cells =
+								result.kind === 'answer' && 'cells' in result.answer
+									? result.answer.cells.filter(
+											(cell) =>
+												// An unknown direction with nothing observed is no reading.
+												!(
+													(cell.key.direction == null ||
+														!headsigns[Number(cell.key.direction)]?.trim()) &&
+													!cell.evidence.counts.classified &&
+													measuredShare(cell, 'on_time') === null
+												),
+										)
+									: []}
+							{#if cells.length}
 								<FactList leading={false}>
-									{#each result.answer.cells as cell (cell.key.direction)}
+									{#each cells as cell (cell.key.direction)}
 										{@const share = measuredShare(cell, 'on_time')}
 										{@const classified = cell.evidence.counts.classified}
 										<FactRow

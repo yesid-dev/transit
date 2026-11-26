@@ -10,11 +10,12 @@
 		ChartLineSeries,
 	} from '@yesid/ui/chart';
 	import { StatusMark } from '@yesid/ui/brand';
-	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import type { DataTableColumn } from '@yesid/ui/table';
 	import { type Locale } from '#lib/i18n/index.ts';
 	import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
-	import { countedUnit } from '#lib/site/presenter.ts';
-	import { choose, tally } from '../recordText.ts';
+	import { countedUnit, tooFewHours } from '#lib/site/presenter.ts';
+	import RecordDataTable from '../RecordDataTable.svelte';
+	import { tally } from '../recordText.ts';
 	import StateMark from '../StateMark.svelte';
 	import RecordBandBar from './RecordBandBar.svelte';
 	import {
@@ -22,9 +23,9 @@
 		chartState,
 		histogramChart,
 		hourChart,
+		minimumSample,
 		stopLadderChart,
 		trendChart,
-		type ChartTable,
 	} from './recordCharts.ts';
 
 	type Input =
@@ -71,10 +72,25 @@
 								...trendChart(input.answer, title, locale, input.network, input.stop),
 							},
 	);
-	const t = (en: string, fr: string) => choose(locale, en, fr);
-	type Row = ChartTable['rows'][number];
+	/** An hour grid whose every reading is too few to judge says so once, with no grid. */
+	const fewHours = $derived.by(() => {
+		if (input.kind !== 'hours' || reading.kind !== 'hours') return null;
+		const states = reading.props.rows.flatMap((row) => row.cells.map((cell) => cell.state));
+		if (!states.includes('few') || states.some((state) => state === undefined)) return null;
+		if (states.some((state) => state !== 'few' && state !== 'none')) return null;
+		const most = Math.max(
+			0,
+			...input.answer.cells.map((cell) => cell.evidence.counts.classified ?? 0),
+		);
+		const minimum = minimumSample(input.answer, 'late') ?? null;
+		return tooFewHours(most, minimum, locale);
+	});
+	// The count stays in its own column, not under the name.
+	const tableRows = $derived(
+		reading.table.rows.map(({ detail, ...row }) => ({ ...row, count: detail })),
+	);
+	type Row = (typeof tableRows)[number];
 	const columns = $derived<DataTableColumn<Row>[]>([
-		{ key: 'label', header: reading.table.columns.label, rowHeader: true, cell: name },
 		{ key: 'value', header: reading.table.columns.value, numeric: true, cell: value },
 		...(reading.table.columns.detail
 			? [
@@ -89,30 +105,25 @@
 	]);
 </script>
 
-{#snippet name(row: Row)}{row.label}{/snippet}
 {#snippet value(row: Row)}{row.value}{/snippet}
-{#snippet detail(row: Row)}{row.detail ?? ''}{/snippet}
+{#snippet detail(row: Row)}{row.count ?? ''}{/snippet}
 
 <div {id} class="grid min-w-0 gap-2" class:grow={fill}>
-	{#if table && reading.table.rows.length}
-		<DataTable
-			caption={title}
+	{#if fewHours}
+		<p><StateMark state="too_few_to_judge" {locale} /> {fewHours}</p>
+	{:else if table && reading.table.rows.length}
+		<RecordDataTable
+			{locale}
+			{title}
+			rowHeader={reading.table.columns.label}
 			{columns}
-			rows={reading.table.rows}
-			key={(row) => row.id}
-			responsive={{ mode: 'scroll', minWidth: '28rem' }}
+			rows={tableRows}
+			value="value"
+			scrollMinWidth="28rem"
 			pageSize={reading.table.pageSize && reading.table.rows.length > reading.table.pageSize
 				? reading.table.pageSize
 				: undefined}
-			pageLabels={{
-				showing: (shown, total) =>
-					t(
-						`Showing ${tally(shown, locale)} of ${tally(total, locale)}`,
-						`${tally(shown, locale)} sur ${tally(total, locale)}`,
-					),
-				more: (count) =>
-					t(`Show ${tally(count, locale)} more`, `Afficher ${tally(count, locale)} de plus`),
-			}}
+			phone={{ line: (row) => row.count ?? null }}
 		/>
 	{:else if reading.kind === 'bands'}
 		<RecordBandBar {...reading.props}>

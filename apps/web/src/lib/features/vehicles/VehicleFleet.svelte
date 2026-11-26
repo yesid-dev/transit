@@ -19,14 +19,22 @@
 	import { frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
 		citeDates,
+		countLabels as countTemplates,
+		countedUnit,
 		dateRange,
+		daysInService,
+		didNotReport,
+		hoursInService,
 		hoursReading,
+		lastReport,
 		tickingLiveStamp,
 		methodEvidence,
 		recordRatio,
 		recordStamp,
 		relativeReportAge,
+		rowSentence,
 	} from '#lib/site/presenter.ts';
+	import { presenterCopy } from '#lib/site/presenter.copy.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
 		frameSurfaceRailContext,
@@ -287,10 +295,16 @@
 	}
 
 	const count = $derived(liveMode ? liveRows.length : (record?.total ?? 0));
-	const countLabels = $derived({
-		singular: t('{count} vehicle', '{count} véhicule'),
-		plural: t('{count} vehicles', '{count} véhicules'),
-	});
+	const countLabels = $derived(
+		countTemplates(
+			count,
+			{
+				singular: t('{count} vehicle', '{count} véhicule'),
+				plural: t('{count} vehicles', '{count} véhicules'),
+			},
+			locale,
+		),
+	);
 	const paging = $derived({
 		showing: (shown: number, total: number) =>
 			t(
@@ -318,10 +332,7 @@
 						? ''
 						: t(`${tally(record.trips, locale)} trips`, `${tally(record.trips, locale)} trajets`),
 					record.evidence.days_included.length
-						? t(
-								`${tally(record.evidence.days_included.length, locale)} days`,
-								`${tally(record.evidence.days_included.length, locale)} jours`,
-							)
+						? countedUnit(record.evidence.days_included.length, 'day', locale)
 						: '',
 				]
 					.filter(Boolean)
@@ -428,6 +439,15 @@
 			style="overflow-wrap: normal; word-break: normal"
 		/>{/if}
 {/snippet}
+{#snippet phoneDays(row: RecordRow)}<RecordTableValue
+		{locale}
+		text={row.days == null ? null : daysInService(row.days, periodDays, locale)}
+		state={row.state}
+	/>{/snippet}
+{#snippet phonePlate({ vehicle }: LiveRow)}{#if vehicle.route}<span
+			class="inline-block whitespace-nowrap"
+			><RoutePlate code={display.lineName(vehicle.route).number ?? vehicle.route} /></span
+		>{/if}{/snippet}
 {#snippet reportCell({ vehicle }: LiveRow)}
 	{@const report = vehicle.reported_utc || vehicle.updated_utc}
 	{#if report && Number.isFinite(Date.parse(report))}<time datetime={report}
@@ -646,6 +666,28 @@
 										rows={liveRows.slice(0, liveShown)}
 										value="status"
 										pageSize={0}
+										phone={{
+											after: phonePlate,
+											line: ({ vehicle }) => {
+												const toward = vehicle.route ? direction(vehicle) : '';
+												const report = vehicle.reported_utc || vehicle.updated_utc;
+												return rowSentence(
+													[
+														toward && presenterCopy[locale].toward(toward),
+														report &&
+															Number.isFinite(Date.parse(report)) &&
+															lastReport(
+																relativeReportAge(
+																	(clock.serverNow - Date.parse(report)) / 1000,
+																	locale,
+																),
+																locale,
+															),
+													],
+													locale,
+												);
+											},
+										}}
 									/>
 									<ShowMore
 										shown={liveShown}
@@ -663,6 +705,21 @@
 										rows={recordRows}
 										value="days"
 										pageSize={0}
+										phone={{
+											value: phoneDays,
+											empty: (row) => row.state === 'not_reporting',
+											line: (row) =>
+												row.state === 'not_reporting'
+													? didNotReport(locale)
+													: rowSentence(
+															[
+																row.hours != null && hoursInService(row.hours, locale),
+																row.lines != null && countedUnit(row.lines, 'line', locale),
+																row.trips != null && countedUnit(row.trips, 'trip', locale),
+															],
+															locale,
+														),
+										}}
 									/>
 									<ShowMore
 										shown={recordRows.length}

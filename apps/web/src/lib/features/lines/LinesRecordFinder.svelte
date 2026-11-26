@@ -10,14 +10,18 @@
 	import { carryFrameState, recordStart } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
+		countLabels as countTemplates,
 		countedUnit,
 		citeDates,
 		dateRange,
+		lateShare,
 		methodEvidence,
 		pageCitation,
 		recordPercent,
 		recordRatio,
 		recordStamp,
+		rowSentence,
+		tripsRan,
 	} from '#lib/site/presenter.ts';
 	import type { LinesRecord } from '#lib/server/finderRecord.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
@@ -215,10 +219,16 @@
 	const scheduleShown = $derived(scheduleOnly.filter(matching));
 	const excludedShown = $derived(excluded.filter(matching));
 	const matchCount = $derived(measuredShown.length + scheduleShown.length + excludedShown.length);
-	const countLabels = $derived({
-		singular: t('{count} line', '{count} ligne'),
-		plural: t('{count} lines', '{count} lignes'),
-	});
+	const countLabels = $derived(
+		countTemplates(
+			matchCount,
+			{
+				singular: t('{count} line', '{count} ligne'),
+				plural: t('{count} lines', '{count} lignes'),
+			},
+			locale,
+		),
+	);
 	const noMatch = $derived(
 		t(
 			'No line in this list matches this number or name.',
@@ -443,6 +453,10 @@
 	{/if}
 {/snippet}
 
+{#snippet phoneOnTime(row: Row)}
+	{#if timingPending}{pendingText}{:else}{recordPercent(row.onTime!, locale)}{/if}
+{/snippet}
+
 {#snippet lateCell(row: Row)}
 	<RecordTableValue
 		{locale}
@@ -624,6 +638,29 @@
 								columns={measuredColumns}
 								value="onTime"
 								sort={sortChoices}
+								phone={{
+									value: phoneOnTime,
+									line: (row) => {
+										if (timingPending) return null;
+										const counts = row.delivery?.evidence.counts;
+										const events = row.timing?.evidence.counts.classified;
+										return rowSentence(
+											[
+												row.detail,
+												row.late !== null && lateShare(row.late, locale),
+												!tripsPending &&
+													row.trips !== null &&
+													counts?.ran != null &&
+													counts.scheduled != null &&
+													tripsRan(counts.ran, counts.scheduled, locale),
+												events != null && countedUnit(events, 'event', locale),
+												row.timing?.evidence.low_coverage &&
+													lowCoverageText(locale).toLocaleLowerCase(locale),
+											],
+											locale,
+										);
+									},
+								}}
 							/>
 						{:else if appliedQuery && measured.length}
 							<p>{noMatch}</p>

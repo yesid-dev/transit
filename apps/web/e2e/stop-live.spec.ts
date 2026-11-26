@@ -270,10 +270,7 @@ test('Record shows the low coverage explanation once', async ({ page }) => {
 	await page.goto('/stop/S1?provider=stm&recordFrom=2026-10-24&recordTo=2026-10-24');
 	// One sentence, with the sample it was judged on.
 	await expect(
-		page.getByText(
-			'There are too few observed stop events to measure punctuality for these dates (5 of 100).',
-			{ exact: true },
-		),
+		page.getByText(/^5 of 100 scheduled stop events were observed here on these dates\./u),
 	).toHaveCount(1);
 	await expect(page.getByRole('main')).not.toContainText('Not measured (insufficient coverage)');
 	await expect(page.getByRole('main')).not.toContainText('Low coverage');
