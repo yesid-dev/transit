@@ -1,3 +1,11 @@
+<script lang="ts" module>
+	// Offer a line break after "@" or "." inside an address, so enlarged text wraps
+	// "contact@yesid.dev" between its parts instead of inside a word. Copying is unchanged.
+	export function addressParts(text: string) {
+		return text.split(/(?<=[a-z0-9][@.])(?=[a-z])/);
+	}
+</script>
+
 <script lang="ts">
 	import { ReadingFrame, Surface } from '@yesid/ui/layout';
 	import { Separator } from '@yesid/ui/separator';
@@ -14,6 +22,11 @@
 	const locale = $derived(localeProp ?? contextLocale);
 	const document = $derived(legalDocument(locale, kind));
 </script>
+
+{#snippet wrapping(
+	text: string,
+)}{#each addressParts(text) as part, index (index)}{#if index > 0}<wbr
+			/>{/if}{part}{/each}{/snippet}
 
 <Surface class="@container" style="--space-page-x: var(--space-card-gap); padding-block-start: 0">
 	<ReadingFrame
@@ -37,12 +50,12 @@
 			<section class="legal-section grid gap-3" aria-labelledby={`legal-${section.id}`}>
 				<h2 id={`legal-${section.id}`}>{section.title}</h2>
 				{#each section.paragraphs as paragraph (paragraph)}
-					<p>{paragraph}</p>
+					<p>{@render wrapping(paragraph)}</p>
 				{/each}
 				{#if section.bullets}
 					<ul class="ms-5 list-disc">
 						{#each section.bullets as item (item)}
-							<li>{item}</li>
+							<li>{@render wrapping(item)}</li>
 						{/each}
 					</ul>
 				{/if}
@@ -51,10 +64,11 @@
 						{#each section.links as link (link.href)}
 							<li>
 								<a
-									class="text-primary underline"
+									class="min-h-11 text-primary underline"
 									href={link.href}
 									target={link.href.startsWith('https://') ? '_blank' : undefined}
-									rel={link.href.startsWith('https://') ? 'noreferrer' : undefined}>{link.label}</a
+									rel={link.href.startsWith('https://') ? 'noreferrer' : undefined}
+									>{@render wrapping(link.label)}</a
 								>
 							</li>
 						{/each}
@@ -81,7 +95,6 @@
 
 	.legal-document__links a {
 		display: inline-block;
-		min-block-size: 24px;
 		align-content: center;
 	}
 </style>

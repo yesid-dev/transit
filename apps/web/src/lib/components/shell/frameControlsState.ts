@@ -10,7 +10,10 @@ import { frameCopy } from './frameCopy.ts';
 
 export { frameCopy };
 
-export function frameControlsState(url: URL, clock: FrameClock) {
+// Reading documents have no View or Period to choose.
+const readingPaths = ['/roadmap', '/privacy', '/terms', '/accessibility', '/metrics/archive'];
+
+export function frameControlsState(url: URL, clock: FrameClock, errorPage = false) {
 	const path = delocalizePath(url.pathname).replace(/\/$/, '') || '/';
 	const recordOnly =
 		isRankingPath(path) || ['/lines', '/stops', '/receipt', '/download'].includes(path);
@@ -18,7 +21,7 @@ export function frameControlsState(url: URL, clock: FrameClock) {
 	const stop = /^\/stop\/[^/]+$/.test(path);
 	const map = path === '/map';
 	const liveOnly = path.startsWith('/trip/');
-	const showRail = !['/roadmap', '/privacy', '/terms', '/accessibility'].includes(path);
+	const showRail = !errorPage && !readingPaths.includes(path);
 	const parsed = parseFrameState(
 		url.searchParams,
 		path === '/status' ? { ...clock, recordThrough: null } : clock,

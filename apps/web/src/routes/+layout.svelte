@@ -419,6 +419,7 @@
 		bind:search={topSearch}
 		{searchList}
 		mainLabel={mainLabel?.[locale]}
+		errorPage={isErrorStatus}
 	>
 		{#snippet main()}
 			<div

@@ -36,6 +36,7 @@
 		searchList?: SearchList;
 		searchPresentation?: LivePresentation | null;
 		mainLabel?: string;
+		errorPage?: boolean;
 		main: Snippet;
 		footer?: Snippet;
 	}
@@ -56,6 +57,7 @@
 		searchList,
 		searchPresentation,
 		mainLabel,
+		errorPage = false,
 		main,
 		footer,
 	}: AppShellProps = $props();
@@ -66,7 +68,7 @@
 	let announcementHeight = $state(0);
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
-	const frame = $derived(frameControlsState(url, clock));
+	const frame = $derived(frameControlsState(url, clock, errorPage));
 	let surfaceControls = $state.raw<Snippet<[SurfaceRailContext]>[]>([]);
 	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail) => {
 		surfaceControls = [...surfaceControls, rail];

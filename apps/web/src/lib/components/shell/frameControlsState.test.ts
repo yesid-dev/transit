@@ -28,9 +28,25 @@ describe('frame control state', () => {
 		'/terms',
 		'/fr/accessibility',
 		'/roadmap',
+		'/metrics/archive',
 	])('uses no View hint when %s has no View choice', (path) =>
 		expect(state(path)).toMatchObject({ showViewHint: false }),
 	);
+
+	it.each(['/privacy', '/fr/terms', '/accessibility', '/roadmap', '/fr/metrics/archive/'])(
+		'keeps the controls rail off the reading page %s',
+		(path) => expect(state(path)).toMatchObject({ showRail: false }),
+	);
+
+	it('keeps the controls rail off an error page at any path', () => {
+		const url = new URL('/fr/vehicles?frameMode=live', 'https://transit.test');
+		expect(frameControlsState(url, clock(), true)).toMatchObject({
+			showRail: false,
+			showViewHint: false,
+		});
+		expect(frameControlsState(url, clock())).toMatchObject({ showRail: true });
+		expect(state('/metrics')).toMatchObject({ showRail: true });
+	});
 
 	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/rankings', '/fr/download'])(
 		'shows Record when a live link opens the record-only %s',
