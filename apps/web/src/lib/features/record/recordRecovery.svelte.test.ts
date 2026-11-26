@@ -40,12 +40,12 @@ it('tries once when visible and preserves the answered control and its focus', a
 		expect(screen.getByRole('button', { name: 'Days' })).toBe(days);
 		expect(days).toHaveFocus();
 		expect(screen.getByRole('button', { name: 'Lines' })).toBeInTheDocument();
-		expect(screen.getByRole('status')).toHaveTextContent('Answered');
+		expect(screen.getByRole('status')).toHaveTextContent('Readings arrived');
 		expect(notice.style.minBlockSize).toBe('170.25px');
 		window.dispatchEvent(new WheelEvent('wheel', { deltaY: 150 }));
 		await vi.advanceTimersByTimeAsync(0);
 		expect(notice.style.minBlockSize).toBe('');
-		expect(screen.getByRole('status')).toHaveTextContent('Answered');
+		expect(screen.getByRole('status')).toHaveTextContent('Readings arrived');
 		await rerender({ scope: '/vehicle/102', sections: [{ section: 'Days', answer }] });
 		await vi.advanceTimersByTimeAsync(0);
 		expect(screen.queryByRole('status')).toBeNull();

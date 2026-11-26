@@ -32,6 +32,10 @@ describe('LegalDocument', () => {
 				LEGAL_EFFECTIVE_DATES[kind],
 			);
 			expect(within(page).queryByRole('button')).not.toBeInTheDocument();
+			// jest-dom turns no-break spaces into spaces, so read the raw text.
+			expect(page.querySelector('[data-slot="reading-frame-updated"]')?.textContent).toContain(
+				copy.effectiveLabel + (locale === 'fr' ? '\u00a0:' : ':'),
+			);
 		},
 	);
 

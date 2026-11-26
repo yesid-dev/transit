@@ -184,5 +184,5 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 	await expect(
 		page.locator('#messages').getByRole('heading', { name: 'Use stop 51234.' }),
 	).toBeVisible();
-	await expect(patience).toContainText('Answered');
+	await expect(patience).toContainText('Readings arrived');
 });

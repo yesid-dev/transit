@@ -5,7 +5,7 @@ import ErrorPage from './+error.svelte';
 const pageState = vi.hoisted(() => ({
 	value: {
 		status: 404,
-		error: null as { message?: string } | null,
+		error: null as { message?: string; code?: 'STOP_NOT_FOUND' } | null,
 		url: new URL('https://transit.yesid.dev/missing'),
 	},
 }));
@@ -57,6 +57,26 @@ describe('error route', () => {
 		expect(screen.getByRole('link', { name: /Lignes/ })).toHaveAttribute('href', '/fr/lines');
 		expect(screen.getByRole('link', { name: /Arrêts/ })).toHaveAttribute('href', '/fr/stops');
 		expect(screen.getByRole('link', { name: /Réseau/ })).toHaveAttribute('href', '/fr/network');
+	});
+
+	it.each([
+		['en', '/stop/57135', 'This stop could not be found', 'Find a stop', '/stops'],
+		['fr', '/fr/stop/57135', 'Cet arrêt est introuvable', 'Trouver un arrêt', '/fr/stops'],
+	] as const)('says plainly in %s that a stop is missing', (_locale, path, heading, find, href) => {
+		pageState.value = {
+			status: 404,
+			error: { code: 'STOP_NOT_FOUND', message: heading + '.' },
+			url: new URL(path, 'https://transit.yesid.dev'),
+		};
+
+		render(ErrorPage);
+
+		expect(screen.getByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: find })).toHaveAttribute('href', href);
+		expect(screen.queryByTestId('construction-scene')).not.toBeInTheDocument();
+		expect(screen.queryByTestId('error-label')).not.toBeInTheDocument();
+		expect(screen.queryByTestId('terminal-line')).not.toBeInTheDocument();
+		expect(document.title).toBe(`404 · ${heading} · Transit`);
 	});
 
 	it('preserves the generic error treatment and never presents a 500 as a 404 construction sign', () => {

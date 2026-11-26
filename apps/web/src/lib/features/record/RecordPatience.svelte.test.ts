@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import RecordPatienceHarness from './RecordPatienceHarness.svelte';
 
 it.each([
-	['answer', 'Answered'],
+	['answer', 'Readings arrived'],
 	['unreachable', null],
 ] as const)('shows a single slow notice and handles a final %s', async (kind, completion) => {
 	vi.useFakeTimers();

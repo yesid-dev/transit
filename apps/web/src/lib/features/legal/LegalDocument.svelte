@@ -37,7 +37,7 @@
 		data-testid="legal-document"
 		updated={{
 			datetime: LEGAL_EFFECTIVE_DATES[kind],
-			label: document.effectiveLabel + ':',
+			label: document.effectiveLabel + (locale === 'fr' ? '\u00a0:' : ':'),
 			text: document.effectiveDate,
 		}}
 	>

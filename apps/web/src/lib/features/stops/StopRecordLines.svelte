@@ -176,7 +176,7 @@
 				{/each}
 				{#each rows as row (row.id)}
 					{@const coverage = row.coverageGap ? '' : coverageText(row.cell.evidence, locale)}
-					{#if coverage}<p>{row.name.label}: {coverage}</p>{/if}
+					{#if coverage}<p>{row.name.label}{t(':', '\u00a0:')} {coverage}</p>{/if}
 				{/each}
 			</div>
 		</Collapsible.Content>

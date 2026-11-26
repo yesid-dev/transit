@@ -140,7 +140,14 @@ for (const locale of PUBLISHED_LOCALES) {
 		const missing = await page.goto(path('57135', 'frameMode=record'));
 		expect(missing?.status()).toBe(404);
 		await expect(
-			page.getByText(fr ? 'Cet arrêt est introuvable.' : 'This stop could not be found.'),
+			page.getByRole('heading', {
+				level: 1,
+				name: fr ? 'Cet arrêt est introuvable' : 'This stop could not be found',
+			}),
+		).toBeVisible();
+		await expect(page.getByTestId('construction-scene')).toHaveCount(0);
+		await expect(
+			page.getByRole('link', { name: fr ? 'Trouver un arrêt' : 'Find a stop' }),
 		).toBeVisible();
 		await expect(page.getByRole('main').locator('[data-slot="record-card"]')).toHaveCount(0);
 	});

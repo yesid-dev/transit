@@ -41,7 +41,9 @@ for (const locale of ['en', 'fr']) {
 		await expect(control).toBeFocused();
 		const notice = page.locator('[data-slot="record-patience"]');
 		await expect(notice.getByRole('status')).toHaveCount(1);
-		await expect(notice.getByRole('status')).toContainText(fr ? 'Réponse reçue' : 'Answered');
+		await expect(notice.getByRole('status')).toContainText(
+			fr ? 'Lectures reçues' : 'Readings arrived',
+		);
 		await expect(notice).toHaveAttribute('style', /min-block-size: \d+(?:\.\d+)?px/);
 		await page.evaluate(() => {
 			document.documentElement.style.fontSize = '200%';
