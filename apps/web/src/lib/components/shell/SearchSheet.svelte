@@ -101,9 +101,27 @@
 
 	const visible = (element: HTMLElement | null) =>
 		element !== null && getComputedStyle(element).display !== 'none';
+	/**
+	 * The button that opens the sheet at this header width: the phone trigger below a 1024 px
+	 * header, the icon button beside the page links up to 1280 px, none where the field shows.
+	 */
+	const shownButton = (): HTMLElement | null =>
+		[
+			trigger,
+			...(trigger
+				?.closest('[data-slot="site-header"]')
+				?.querySelectorAll<HTMLElement>('[data-slot="nav-search-button"]') ?? []),
+		].find(visible) ?? null;
+
+	/** Opens the sheet from a button outside it (the icon button beside the page links). */
+	export function show(): void {
+		if (open) return;
+		open = true;
+		opened();
+	}
 
 	// The sheet follows its entry both ways: Back closes it, Forward opens it again. From a
-	// 1024 px header the field sits in the header, so a restored entry loses its flag instead.
+	// 1280 px header the field sits in the header, so a restored entry loses its flag instead.
 	let hadEntry = false;
 	$effect(() => {
 		const now = entry;
@@ -114,7 +132,7 @@
 					offEntry?.();
 					offEntry = null;
 				} else if (open || leaving) return;
-				else if (visible(trigger)) open = true;
+				else if (shownButton()) open = true;
 				else void replaceState('', { ...page.state, searchSheet: undefined });
 			});
 		hadEntry = now;
@@ -164,7 +182,7 @@
 			restore = null;
 			// After a choice the new page takes focus and the text goes, as in the desktop list.
 			if (leaving) query = '';
-			else if (visible(trigger)) trigger?.focus({ preventScroll: true });
+			else if (shownButton()) shownButton()?.focus({ preventScroll: true });
 			// A header that widened while the sheet was open shows the field instead of the button.
 			else
 				trigger
@@ -229,10 +247,19 @@
 		outline: 2px solid var(--ring);
 		outline-offset: 1px;
 	}
-	/* From a 1024 px header the field itself is in the header. */
+	/* From a 1024 px header the search sits in SiteHeader's search slot: an icon button beside the
+	   page links, then from a 1280 px header the field itself. */
 	@container site-header (width >= 1024px) {
-		:global(.nav-compact-search) {
+		:global(.nav-compact-search:not([data-slot='nav-search-button'])) {
 			display: none;
+		}
+	}
+	:global([data-slot='nav-search-button']) {
+		display: none;
+	}
+	@container site-header (1024px <= width < 1280px) {
+		:global(.nav-compact-search[data-slot='nav-search-button']) {
+			display: inline-flex;
 		}
 	}
 	/* Like the desktop field, the phone trigger folds away while the menu is open. */

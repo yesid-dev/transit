@@ -162,3 +162,30 @@ it('Forward onto the sheet with the button hidden (a wide header) drops the flag
 	expect(view.queryByRole('dialog')).toBeNull();
 	expect(view.behind).not.toHaveAttribute('inert');
 });
+
+// From 1024 to 1279 px the phone trigger is hidden and an icon button beside the page links
+// opens the same sheet; focus and the history entry follow that button.
+it('opens from the icon button beside the page links and gives focus back to it', async () => {
+	const view = open();
+	const header = view.trigger.parentElement!;
+	header.dataset.slot = 'site-header';
+	const beside = header.appendChild(document.createElement('button'));
+	beside.dataset.slot = 'nav-search-button';
+	beside.setAttribute('aria-label', 'Search the network');
+	view.trigger.style.display = 'none';
+	beside.addEventListener('click', () => view.component.show());
+
+	await fireEvent.click(beside);
+	const dialog = await view.findByRole('dialog', { name: 'Search' });
+	const field = within(dialog).getByRole('combobox', { name: 'Search the network' });
+	await waitFor(() => expect(field).toHaveFocus());
+	expect(pushState).toHaveBeenCalledWith('', { searchSheet: true });
+	await fireEvent.keyDown(field, { key: 'Escape' });
+	await waitFor(() => expect(view.queryByRole('dialog')).toBeNull());
+	expect(back).toHaveBeenCalledOnce();
+	await waitFor(() => expect(beside).toHaveFocus());
+
+	kit.forward();
+	await view.findByRole('dialog', { name: 'Search' });
+	expect(replaceState).not.toHaveBeenCalled();
+});

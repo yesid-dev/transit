@@ -214,6 +214,12 @@
 		align-items: center;
 		min-width: 0;
 	}
+	/* Below a 1280 px header the page links take the room; the search button opens the sheet. */
+	@container site-header (width < 1280px) {
+		.nav-search:not(.nav-search-sheet) {
+			display: none;
+		}
+	}
 	.nav-search :global(.nav-search-icon) {
 		position: absolute;
 		left: 0.5rem;

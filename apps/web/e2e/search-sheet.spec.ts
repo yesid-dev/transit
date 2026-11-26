@@ -14,7 +14,7 @@ const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 test.use({ bypassCSP: true });
 
 test.beforeEach(async ({ page }, { project }) => {
-	test.skip(project.name === 'desktop', 'from 1024px the field sits in the header itself');
+	test.skip(project.name === 'desktop', 'from 1280px the field sits in the header itself');
 	await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 });
 
@@ -110,6 +110,30 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(page).toHaveURL((url) => url.pathname + url.search === start);
 		await expect(title).toHaveText(startingHeading);
 		await expect(sheet(page)).toBeHidden();
+	});
+
+	test(`${locale}: beside the page links the icon button opens the sheet and takes focus back`, async ({
+		page,
+	}, { project }) => {
+		test.skip(project.name !== 'tablet', 'one run sets its own 1180px viewport');
+		await page.setViewportSize({ width: 1180, height: 900 });
+		await page.goto(home);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await expect(page.getByTestId('nav-pill').locator('.nav-links a:visible')).toHaveCount(4);
+		await expect(trigger(page)).toHaveAttribute('data-slot', 'nav-search-button');
+		await expect(trigger(page)).toHaveText('');
+		await expect(page.getByRole('combobox', { name })).toHaveCount(0);
+		const field = await openSheet(page);
+		await field.fill(line.long);
+		await page.keyboard.press('Escape');
+		await expect(sheet(page)).toBeHidden();
+		await expect(trigger(page)).toBeFocused();
+		await expect(await openSheet(page)).toHaveValue(line.long);
+		await page.goBack();
+		await expect(sheet(page)).toBeHidden();
+		await expect(trigger(page)).toBeFocused();
+		await page.goForward();
+		await expect(field).toBeFocused();
 	});
 
 	test(`${locale}: Forward onto the sheet once the header has widened opens no hidden sheet`, async ({

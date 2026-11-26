@@ -15,6 +15,7 @@
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import TramFrontIcon from '@lucide/svelte/icons/tram-front';
 	import DownloadIcon from '@lucide/svelte/icons/download';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import {
 		type Locale,
 		DEFAULT_LOCALE,
@@ -153,7 +154,56 @@
 	const providerShortLabel = $derived(selectedNames?.short ?? providerLabel);
 	const defaultProvider = $derived(publishedNetwork(v1Provider()));
 
+	/*
+	 * Choosing a city changes the page, so it never follows arrow keys alone (WCAG 3.2.2). Keys
+	 * that move a closed select only preview the city; Enter switches to it, and Escape or leaving
+	 * the picker keeps the current one. A pointer or the open option list switches at once.
+	 */
+	const PREVIEW_KEYS = new Set([
+		'ArrowUp',
+		'ArrowDown',
+		'ArrowLeft',
+		'ArrowRight',
+		'Home',
+		'End',
+		'PageUp',
+		'PageDown',
+	]);
+	let previewNetwork = $state<string | null>(null);
+	let keyedNetwork = false;
+	const shownNetwork = $derived(previewNetwork ?? providerId);
+	const previewNames = $derived.by(() => {
+		if (!previewNetwork) return undefined;
+		const provider =
+			providers.find((entry) => entry.id === previewNetwork) ?? publishedNetwork(previewNetwork);
+		return provider ? providerNames(provider) : undefined;
+	});
+	const switchNetwork = (id: string) => location.assign(providerHref(url, id, locale));
+	function chooseNetwork(id: string): void {
+		if (keyedNetwork) previewNetwork = id === providerId ? null : id;
+		else if (id !== providerId) switchNetwork(id);
+	}
+	function networkKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Enter' && previewNetwork) {
+			event.preventDefault();
+			switchNetwork(previewNetwork);
+		} else if (event.key === 'Escape' && previewNetwork) {
+			event.preventDefault();
+			previewNetwork = null;
+		}
+		keyedNetwork =
+			!event.altKey &&
+			!event.ctrlKey &&
+			!event.metaKey &&
+			(PREVIEW_KEYS.has(event.key) || (event.key.length === 1 && event.key !== ' '));
+	}
+	function leaveNetwork(): void {
+		keyedNetwork = false;
+		previewNetwork = null;
+	}
+
 	let headerFrame = $state<HTMLDivElement>();
+	let searchSheet = $state<ReturnType<typeof SearchSheet>>();
 
 	// Scroll padding and map overlays use the measured chrome. Page content follows it in flow.
 	$effect(() => {
@@ -209,6 +259,16 @@
 {/snippet}
 
 {#snippet searchField()}
+	<!-- Beside the page links (1024 to 1279 px) the field gives way to this button and the sheet. -->
+	<button
+		type="button"
+		class="tap-press nav-compact-search"
+		aria-label={searchAria}
+		data-slot="nav-search-button"
+		onclick={() => searchSheet?.show()}
+	>
+		<SearchIcon size={17} strokeWidth={1.8} aria-hidden="true" />
+	</button>
 	<HeaderSearch
 		bind:query={search}
 		{locale}
@@ -221,53 +281,70 @@
 
 {#snippet network()}
 	<!-- The visible label is its own element, centred in the control; the native select sits on top, transparent. -->
-	{#if useKitNetworkPicker}
-		<NetworkPicker
-			label={`${navCopy.network}${locale === 'fr' ? '\u00a0' : ''}: ${providerLabel}`}
-			networks={networkOptions}
-			value={providerId}
-			onValueChange={(id) => location.assign(providerHref(url, id, locale))}
-		/>
-	{:else}
-		<label class="nav-provider">
-			<span class="nav-provider-label nav-provider-full" aria-hidden="true" title={providerLabel}
-				>{providerLabel}</span
-			>
-			<span class="nav-provider-label nav-provider-short" aria-hidden="true" title={providerLabel}
-				>{providerShortLabel}</span
-			>
-			<select
-				class="nav-provider-select"
-				aria-label={`${navCopy.network}${locale === 'fr' ? '\u00a0' : ''}: ${providerLabel}`}
-				title={providerLabel}
-				value={providerId}
-				onchange={(event) => {
-					const href = providerHref(url, event.currentTarget.value, locale);
-					event.currentTarget.value = providerId;
-					location.assign(href);
-				}}
-			>
-				{#each providers as provider (provider.id)}
-					<option value={provider.id}>{providerNames(provider).full}</option>
-				{/each}
-				{#if !providers.length}
-					<option value={providerId}>{providerLabel}</option>
-					{#if providerId !== v1Provider()}
-						<option value={v1Provider()}>
-							{defaultProvider ? providerNames(defaultProvider).full : navCopy.defaultNetwork}
-						</option>
+	<span
+		class="network-choice"
+		data-slot="network-choice"
+		onkeydowncapture={networkKeydown}
+		onpointerdowncapture={() => (keyedNetwork = false)}
+		onfocusout={leaveNetwork}
+	>
+		{#if useKitNetworkPicker}
+			<NetworkPicker
+				label={`${navCopy.network}${locale === 'fr' ? '\u00a0' : ''}: ${providerLabel}`}
+				networks={networkOptions}
+				value={shownNetwork}
+				onValueChange={chooseNetwork}
+			/>
+		{:else}
+			<label class="nav-provider">
+				<span
+					class="nav-provider-label nav-provider-full"
+					aria-hidden="true"
+					title={previewNames?.full ?? providerLabel}>{previewNames?.full ?? providerLabel}</span
+				>
+				<span
+					class="nav-provider-label nav-provider-short"
+					aria-hidden="true"
+					title={previewNames?.full ?? providerLabel}
+					>{previewNames?.short ?? providerShortLabel}</span
+				>
+				<select
+					class="nav-provider-select"
+					aria-label={`${navCopy.network}${locale === 'fr' ? '\u00a0' : ''}: ${providerLabel}`}
+					title={providerLabel}
+					value={shownNetwork}
+					onchange={(event) => {
+						const id = event.currentTarget.value;
+						event.currentTarget.value = shownNetwork;
+						chooseNetwork(id);
+					}}
+				>
+					{#each providers as provider (provider.id)}
+						<option value={provider.id}>{providerNames(provider).full}</option>
+					{/each}
+					{#if !providers.length}
+						<option value={providerId}>{providerLabel}</option>
+						{#if providerId !== v1Provider()}
+							<option value={v1Provider()}>
+								{defaultProvider ? providerNames(defaultProvider).full : navCopy.defaultNetwork}
+							</option>
+						{/if}
 					{/if}
-				{/if}
-				{#if discoveryError}
-					<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
-				{/if}
-			</select>
-		</label>
-	{/if}
+					{#if discoveryError}
+						<option value="" disabled>{navCopy.otherNetworksUnavailable}</option>
+					{/if}
+				</select>
+			</label>
+		{/if}
+		<span class="sr-only" role="status"
+			>{previewNames ? `${navCopy.networkConfirm} ${previewNames.full}.` : ''}</span
+		>
+	</span>
 {/snippet}
 
 {#snippet actions()}
 	<SearchSheet
+		bind:this={searchSheet}
 		bind:query={search}
 		{locale}
 		{providerId}
@@ -284,7 +361,6 @@
 		{home}
 		{brand}
 		{links}
-		linkTiers={{ priority3: 1280 }}
 		{menuGroups}
 		labels={navCopy}
 		language={{
@@ -310,6 +386,12 @@
 		padding-block-end: var(--chrome-gap);
 		pointer-events: none;
 	}
+	/* Below 1024px AppFrame measures SiteHeader directly for the transparent vacated network band. */
+	@media (width < 1024px) {
+		.frame-nav {
+			display: contents;
+		}
+	}
 
 	/* The full brand leaves too little room for French search and the controls at 414px.
 	   Keep the product name on phones. The house link is in the menu. */
@@ -327,6 +409,9 @@
 		}
 	}
 
+	.network-choice {
+		display: contents;
+	}
 	.nav-provider {
 		--size-provider-select: 12.5rem;
 		position: relative;

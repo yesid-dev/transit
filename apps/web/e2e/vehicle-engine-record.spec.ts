@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { textDefects } from './layout-helpers';
 import {
 	captureFixture,
 	captureTrip,
@@ -414,5 +415,97 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(
 			fr ? 'Ce bilan demande plus de temps' : 'These records take longer',
 		);
+	});
+
+	test(`${locale} narrow vehicle fleet tables keep name, value and 44px links clear at 320 and 390px`, async ({
+		page,
+	}) => {
+		const now = Date.now();
+		await page.route(captureUrl, (route) =>
+			route.fulfill({
+				json: captureFixture(now, {
+					vehicle_positions: [
+						captureVehicle(now, { id: 'narrow-1', vehicle_id: '56-350', delay: null }),
+						captureVehicle(now, { id: 'narrow-2', vehicle_id: '56-351', delay: 240 }),
+					],
+				}),
+			}),
+		);
+		const modes = [
+			{
+				label: 'record',
+				url: `${prefix}/vehicles?provider=stm&frameMode=record&${fleetDates}`,
+				table: '#fleet table',
+			},
+			{
+				label: 'live',
+				url: `${prefix}/vehicles?provider=stm&frameMode=live`,
+				table: '#vehicles-live table',
+			},
+		] as const;
+
+		for (const item of modes) {
+			for (const width of [320, 390]) {
+				await page.setViewportSize({ width, height: 900 });
+				await page.goto(item.url);
+				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+				const table = page.locator(item.table);
+				await expect(table.locator('tbody tr').first()).toBeVisible();
+				await page.evaluate(() => document.fonts.ready);
+
+				const check = await table.evaluate((tableEl) => {
+					const rows = [...tableEl.querySelectorAll('tbody tr')].slice(0, 6);
+					let minPrimaryWidth = Infinity;
+					let minLinkHeight = Infinity;
+					let labelOverlapsValue = false;
+					for (const row of rows) {
+						const primary = row.querySelector<HTMLElement>('[data-row-position="primary"]');
+						const value = row.querySelector<HTMLElement>('[data-row-position="value"]');
+						const link = row.querySelector<HTMLElement>('a.name-cell');
+						const name = row.querySelector<HTMLElement>('.name-label');
+						if (primary)
+							minPrimaryWidth = Math.min(minPrimaryWidth, primary.getBoundingClientRect().width);
+						if (link) minLinkHeight = Math.min(minLinkHeight, link.getBoundingClientRect().height);
+						if (name && value) {
+							const nr = name.getBoundingClientRect();
+							const vr = value.getBoundingClientRect();
+							if (nr.right > vr.left + 1 && nr.top < vr.bottom - 1 && nr.bottom > vr.top + 1) {
+								labelOverlapsValue = true;
+							}
+						}
+					}
+					return {
+						rowCount: rows.length,
+						pageOverflow:
+							document.documentElement.scrollWidth - document.documentElement.clientWidth,
+						minPrimaryWidth: Math.round(minPrimaryWidth),
+						minLinkHeight: Math.round(minLinkHeight),
+						labelOverlapsValue,
+					};
+				});
+				expect(check.rowCount, `${locale} ${item.label} ${width}px rows`).toBeGreaterThan(0);
+				expect(
+					check.pageOverflow,
+					`${locale} ${item.label} ${width}px overflow`,
+				).toBeLessThanOrEqual(0);
+				expect(
+					check.minPrimaryWidth,
+					`${locale} ${item.label} ${width}px name track`,
+				).toBeGreaterThanOrEqual(100);
+				expect(
+					check.minLinkHeight,
+					`${locale} ${item.label} ${width}px link height`,
+				).toBeGreaterThanOrEqual(44);
+				expect(
+					check.labelOverlapsValue,
+					`${locale} ${item.label} ${width}px label/value overlap`,
+				).toBe(false);
+				const tablePrefix = item.table.split(' ')[0];
+				const defects = (await textDefects(page)).filter(
+					({ kind, selector }) => kind === 'broken-word' && selector.startsWith(tablePrefix),
+				);
+				expect(defects, `${locale} ${item.label} ${width}px broken words`).toEqual([]);
+			}
+		}
 	});
 }

@@ -73,6 +73,45 @@ for (const locale of ['en', 'fr'] as const) {
 		expect((await city.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 	});
 
+	test(`${locale} from 1024 to 1279px the header keeps the page links and a search button`, async ({
+		page,
+	}) => {
+		const current = { en: 'Lines', fr: 'Lignes' }[locale];
+		for (const width of [1024, 1180, 1279, 1280]) {
+			await page.setViewportSize({ width, height: 900 });
+			await open(page, localizeHref('/lines', locale, 'stm'));
+			await page.evaluate(() => document.fonts.ready);
+			const pill = page.getByTestId('nav-pill');
+			const links = pill.locator('.nav-links a:visible');
+			await expect(links, `${width}px page links`).toHaveCount(4);
+			await expect(pill.locator('.nav-links a[aria-current="page"]')).toHaveText(current);
+			const button = pill.getByRole('button', { name: words.searchAria.all, exact: true });
+			const field = pill.getByRole('combobox', { name: words.searchAria.all });
+			if (width < 1280) {
+				await expect(button).toBeVisible();
+				await expect(field).toHaveCount(0);
+			} else {
+				await expect(button).toHaveCount(0);
+				await expect(field).toBeVisible();
+			}
+			// The city stays in the pill's row, so the chrome keeps the 1280px height.
+			const row = await pill.evaluate((nav) => {
+				const top = (selector: string) =>
+					Math.round(nav.querySelector(selector)!.getBoundingClientRect().top);
+				return {
+					theme: top('[data-testid="theme-toggle"]'),
+					city: top('[data-slot="site-header-network"]'),
+					below: nav.hasAttribute('data-network-below'),
+				};
+			});
+			expect(row.below, `${width}px city below the pill`).toBe(false);
+			expect(row.city).toBe(row.theme);
+			const bounds = (await pill.boundingBox())!;
+			expect(bounds.x).toBeGreaterThanOrEqual(0);
+			expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+		}
+	});
+
 	test(`${locale} the compact search button and city fit at 1024px and 200% text`, async ({
 		page,
 	}) => {
@@ -91,6 +130,75 @@ for (const locale of ['en', 'fr'] as const) {
 		const bounds = (await pill.boundingBox())!;
 		expect(bounds.x).toBeGreaterThanOrEqual(0);
 		expect(bounds.x + bounds.width).toBeLessThanOrEqual(1024);
+	});
+
+	test(`${locale} compact header keeps pill fixed, vacated band clickable, city reachable and fits at 200% text across 390, 768 and 1023px`, async ({
+		page,
+		browserName,
+	}) => {
+		for (const width of [390, 768, 1023]) {
+			await page.setViewportSize({ width, height: 844 });
+			await open(page, localizeHref('/privacy', locale, 'stm'));
+			await page.evaluate(() => document.fonts.ready);
+			const pill = page.getByTestId('nav-pill');
+			const network = pill.locator('[data-slot="site-header-network"]');
+			const search = pill.getByRole('button', { name: words.searchAria.all });
+			const menu = pill.getByTestId('nav-menu-toggle');
+			await expect(network).toBeVisible();
+			const pillStart = (await pill.boundingBox())!;
+			const networkStart = (await network.boundingBox())!;
+
+			await page.evaluate(() => window.scrollTo({ top: 300, behavior: 'instant' }));
+			await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThanOrEqual(240);
+			await expect.poll(async () => (await network.boundingBox())!.y).toBeLessThan(0);
+			expect((await pill.boundingBox())!.y).toBeCloseTo(pillStart.y, 0);
+
+			const vacated = await page.evaluate(() => {
+				const pr = document.querySelector('[data-testid="nav-pill"]')!.getBoundingClientRect();
+				const hit = document.elementFromPoint(window.innerWidth / 2, pr.bottom + 24);
+				return {
+					hitInMain: Boolean(hit?.closest('main')),
+					hitTag: hit ? `${hit.tagName}.${hit.className}` : null,
+				};
+			});
+			expect(vacated.hitInMain, `${locale} ${width}px vacated hit: ${vacated.hitTag}`).toBe(true);
+
+			// Search sheet opens and returns focus without losing scroll position.
+			const searchBox = (await search.boundingBox())!;
+			await page.mouse.click(searchBox.x + searchBox.width / 2, searchBox.y + searchBox.height / 2);
+			await expect(page.getByRole('dialog')).toBeVisible();
+			await page.keyboard.press('Escape');
+			await expect(page.getByRole('dialog')).toHaveCount(0);
+			await expect(search).toBeFocused();
+
+			// Keyboard focus brings the scrolled network row back into view.
+			if (browserName === 'chromium') {
+				await menu.focus();
+				await page.keyboard.press('Tab');
+				const city = pill.getByRole('combobox', { name: words.network });
+				await expect(city).toBeFocused();
+				await expect
+					.poll(async () => (await network.boundingBox())!.y)
+					.toBeCloseTo(networkStart.y, 0);
+			}
+
+			// At 200% text the compact header and city picker fit within the viewport.
+			await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+			await page.addStyleTag({ content: 'html { font-size: 200%; }' });
+			await page.evaluate(() => document.fonts.ready);
+			await expect(search).toBeVisible();
+			await expect(network).toBeVisible();
+			const zoomedPill = (await pill.boundingBox())!;
+			expect(zoomedPill.x, `${locale} ${width}px 200% pill start`).toBeGreaterThanOrEqual(0);
+			expect(
+				zoomedPill.x + zoomedPill.width,
+				`${locale} ${width}px 200% pill end`,
+			).toBeLessThanOrEqual(width);
+			expect(
+				await page.evaluate(() => document.documentElement.scrollWidth),
+				`${locale} ${width}px 200% page width`,
+			).toBeLessThanOrEqual(width);
+		}
 	});
 
 	for (const [city, licences] of Object.entries(cities)) {

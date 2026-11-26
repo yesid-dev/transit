@@ -97,7 +97,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the header search finds a stop and Enter opens it`, async ({ page }, {
 		project,
 	}) => {
-		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
+		test.skip(project.name !== 'desktop', 'the header search box shows from 1280px');
 		await page.goto(localizeHref(stops, locale));
 		const box = page.getByRole('combobox', { name: nav.searchAria.all });
 		const result = page.getByRole('listbox', { name: nav.searchAria.all }).getByRole('option', {
@@ -117,7 +117,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the header search hands an address to the map`, async ({ page }, {
 		project,
 	}) => {
-		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
+		test.skip(project.name !== 'desktop', 'the header search box shows from 1280px');
 		await page.goto(localizeHref('/', locale));
 		const box = page.getByRole('combobox', { name: nav.searchAria.all });
 		const list = page.getByRole('listbox', { name: nav.searchAria.all });
@@ -154,7 +154,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the header search opens a line page from the home page`, async ({ page }, {
 		project,
 	}) => {
-		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
+		test.skip(project.name !== 'desktop', 'the header search box shows from 1280px');
 		await page.goto(localizeHref('/', locale));
 		await (await headerRow(page, line.long, lineRow(line))).click();
 		await expect(page).toHaveURL(
@@ -163,7 +163,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	});
 
 	test(`${locale}: on the map the header search keeps map focus`, async ({ page }, { project }) => {
-		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
+		test.skip(project.name !== 'desktop', 'the header search box shows from 1280px');
 		await page.goto(localizeHref(map, locale));
 		await (await headerRow(page, line.long, lineRow(line))).click();
 		await expect(page).toHaveURL(
@@ -176,7 +176,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: from a Line Record another line opens for the same dates`, async ({ page }, {
 		project,
 	}) => {
-		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
+		test.skip(project.name !== 'desktop', 'the header search box shows from 1280px');
 		const other = fixture('routes-index.json').routes[1];
 		await page.goto(
 			localizeHref(`/lines/${line.id}?recordFrom=2026-11-08&recordTo=2026-11-14`, locale),
@@ -206,7 +206,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(`${locale}: the search page takes the place of a search opened from its header, and back`, async ({
 		page,
 	}, { project }) => {
-		test.skip(project.name !== 'desktop', 'the header search box shows from 1024px');
+		test.skip(project.name !== 'desktop', 'the header search box shows from 1280px');
 		const words = searchCopy[locale];
 		const field = page.getByRole('main').getByRole('textbox', { name: words.inputLabel });
 		const stopsTab = page.getByRole('tab', { name: new RegExp(`^${literal(words.stopsLabel)}`) });

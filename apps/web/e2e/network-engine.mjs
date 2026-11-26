@@ -10,7 +10,7 @@ export function networkServiceFixture(url) {
 		!['day_type', 'weekday_hour'].includes(group) &&
 		!(
 			['punctuality', 'on_time', 'delay_distribution'].includes(measure) &&
-			query.get('from') === '2026-11-20'
+			(query.get('from') === '2026-11-20' || query.get('from') === '2026-10-19')
 		)
 	)
 		return null;
@@ -91,18 +91,38 @@ export function networkServiceFixture(url) {
 			],
 		};
 	} else if (group === 'weekday_hour') {
+		const fullDay = from === '2026-10-19';
 		result = {
 			cells: Array.from({ length: 7 }, (_, day) =>
-				Array.from({ length: 20 }, (_, hour) => {
-					const late = 110 + ((day * 17 + hour * 37) % 170);
-					const key = { weekday: day + 1, hour: (hour + 5) % 24 };
-					if (day === 0 && hour === 0) {
+				Array.from({ length: fullDay ? 24 : 20 }, (_, index) => {
+					const hour = fullDay ? index : (index + 5) % 24;
+					const late = 110 + ((day * 17 + index * 37) % 170);
+					const key = { weekday: day + 1, hour };
+					if (day === 0 && index === 0) {
 						return {
 							key,
 							state: 'not_measured',
 							state_text: enFr('Not measured', 'Non mesuré'),
 							value: { late: null },
 							evidence: { counts: { scheduled: 58 }, days_included: [] },
+						};
+					}
+					if (fullDay && ((day === 0 && hour === 1) || (day === 2 && hour === 21))) {
+						return {
+							key,
+							state: 'too_few_to_judge',
+							state_text: enFr('Too few to judge', 'Trop peu pour juger'),
+							value: { late: null },
+							evidence: { counts: { classified: 12 }, days_included: days },
+						};
+					}
+					if (fullDay && ((day === 0 && hour === 2) || (day === 4 && hour === 22))) {
+						return {
+							key,
+							state: 'unknown',
+							state_text: enFr('No service', 'Aucun service'),
+							value: { late: null },
+							evidence: { counts: { scheduled: 0 }, days_included: [] },
 						};
 					}
 					return {
