@@ -8,7 +8,10 @@ workers_dev = false
 # PR version URLs remain available on workers.dev.
 preview_urls = true
 
-routes = [{ pattern = "transit1.yesid.dev", custom_domain = true }]
+routes = [
+  { pattern = "transit1.yesid.dev", custom_domain = true },
+  { pattern = "transit.yesid.dev/*", zone_name = "yesid.dev" },
+]
 
 [assets]
 binding = "ASSETS"
@@ -20,8 +23,8 @@ service = "transit-data-proxy"
 entrypoint = "Questions"
 
 [vars]
-PUBLIC_SITE_ORIGIN = "https://transit1.yesid.dev"
-PUBLIC_INDEXING = "false"
+PUBLIC_SITE_ORIGIN = "https://transit.yesid.dev"
+PUBLIC_INDEXING = "true"
 PUBLIC_PLAUSIBLE_DOMAIN = ""
 PUBLIC_CF_BEACON_TOKEN = ""
 PUBLIC_VITALS_ENABLED = ""

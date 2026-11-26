@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 
 export const DATA_ORIGIN = "https://data.yesid.dev";
-export const WEB_ORIGIN = "https://transit1.yesid.dev";
+export const WEB_ORIGIN = "https://transit.yesid.dev";
 
 async function request(fetchFn, url, headers = {}) {
   return fetchFn(url, {

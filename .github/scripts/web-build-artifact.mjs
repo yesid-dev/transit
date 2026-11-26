@@ -28,8 +28,6 @@ export const BUILD_INPUTS = [
   "bun.lock",
   "package.json",
   "turbo.json",
-  "apps/data-proxy/src/snapshot-response.js",
-  "apps/data-proxy/src/snapshot-response.d.ts",
   "apps/web/package.json",
   "apps/web/kit.config.js",
   "apps/web/vite.config.ts",
@@ -52,9 +50,9 @@ const required = (env, name, pattern) => {
 function publicEnvironment(target) {
   if (target !== "production") throw new Error("Invalid TRANSIT_BUILD_TARGET");
   return {
-    PUBLIC_SITE_ORIGIN: "https://transit1.yesid.dev",
+    PUBLIC_SITE_ORIGIN: "https://transit.yesid.dev",
     PUBLIC_V1_BASE: "https://data.yesid.dev/v1",
-    PUBLIC_INDEXING: "false",
+    PUBLIC_INDEXING: "true",
   };
 }
 

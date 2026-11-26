@@ -941,9 +941,9 @@ jobs:
     environment: production
     env:
       TRANSIT_BUILD_TARGET: production
-      PUBLIC_SITE_ORIGIN: https://transit1.yesid.dev
+      PUBLIC_SITE_ORIGIN: https://transit.yesid.dev
       PUBLIC_V1_BASE: https://data.yesid.dev/v1
-      PUBLIC_INDEXING: "false"
+      PUBLIC_INDEXING: "true"
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -1034,18 +1034,13 @@ jobs:
           TRANSIT_WAIT_FOR_DOMAIN: ${{ steps.locked_scope.outputs.bootstrap == 'true' || steps.locked_scope.outputs.recovery == 'true' }}
         run: node .github/scripts/post-deploy-layout.mjs verify
 
-      - name: Verify transit1 and shared snapshot routes
+      - name: Verify web indexing policy and public v2
         id: smoke
         if: steps.deploy.outputs.deployed == 'true'
         working-directory: apps/data-proxy
-        env:
-          BROWSER_ORIGIN: https://transit1.yesid.dev
         run: |
-          curl --fail --silent --show-error --max-time 20 "$BROWSER_ORIGIN/health" > /dev/null
           node ../../.github/scripts/post-deploy-layout.mjs policy
-          # The smoke script also verifies legacy /data and /api/v1 routes.
-          bash smoke.sh
-          bash smoke.sh v2
+          bash smoke.sh "$GITHUB_SHA"
 
       - name: Alert immediately on failed deployment verification
         if: ${{ always() && steps.deploy.outputs.deployed == 'true' && (steps.identity.outcome != 'success' || steps.smoke.outcome != 'success') }}

@@ -1,111 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
 import { probeSites, SITE_CHECKS } from "./site-probe.mjs";
-
-const { examples } = JSON.parse(
-  await readFile(
-    new URL("../../contracts/kpis-v1.examples.json", import.meta.url),
-    "utf8",
-  ),
-);
-const kpiCheck = {
-  name: "transit-kpis",
-  url: "https://transit.yesid.dev/api/v1/kpis",
-  kind: "kpis",
-};
-
-for (const example of examples) {
-  test(`real endpoint probe accepts v1 example and counts hero state: ${example.name}`, async () => {
-    const alerts = [];
-    const logs = [];
-    assert.equal(
-      await probeSites({
-        checks: [kpiCheck],
-        fetchFn: async (url) => {
-          assert.equal(url, kpiCheck.url);
-          return Response.json(example.body, {
-            status: example.status,
-            headers: example.headers,
-          });
-        },
-        alert: (...args) => alerts.push(args),
-        log: (value) => logs.push(value),
-      }),
-      0,
-    );
-    assert.equal(alerts[0][0], "resolve");
-    assert.deepEqual(logs, [
-      {
-        kpis: {
-          samples: 1,
-          live: example.hero.mode === "live" ? 1 : 0,
-          demo: example.hero.mode === "demo" ? 1 : 0,
-          invalid: 0,
-        },
-      },
-    ]);
-  });
-}
-
-for (const field of Object.keys(examples[0].body)) {
-  test(`KPI field drift (${field}) retries and reaches existing alert path`, async () => {
-    const alerts = [];
-    const broken = { ...examples[0].body };
-    delete broken[field];
-    let calls = 0;
-    assert.equal(
-      await probeSites({
-        checks: [kpiCheck],
-        fetchFn: async () => {
-          calls++;
-          return Response.json(broken);
-        },
-        pause: async () => {},
-        alert: (...args) => alerts.push(args),
-        log() {},
-      }),
-      1,
-    );
-    assert.equal(calls, 2);
-    assert.equal(alerts[0][0], "fire");
-    assert.equal(alerts[0][1], "site-availability");
-    assert.match(alerts[0][3], /transit-kpis.*invalid KPI v1 response/);
-  });
-}
-
-test("KPI schema is additive, accepts zero and negative delay, rejects wrong types and bad cold response", async () => {
-  for (const [body, status, headers, expected] of [
-    [{ ...examples[0].body, futureField: true }, 200, {}, 0],
-    [
-      { ...examples[0].body, avgDelayS: 0, coverage: 0, routesTotal: 0 },
-      200,
-      {},
-      0,
-    ],
-    [{ ...examples[0].body, freshnessS: 90 }, 200, {}, 1],
-    [{ ...examples[0].body, vehicles: "10" }, 200, {}, 1],
-    [
-      { ...examples[0].body, topRoutes: [{ route: "10", vehicles: 1 }] },
-      200,
-      {},
-      1,
-    ],
-    [{ error: "pipeline_cold" }, 503, {}, 1],
-    [{ error: "something_else" }, 503, { "retry-after": "30" }, 1],
-  ]) {
-    assert.equal(
-      await probeSites({
-        checks: [kpiCheck],
-        fetchFn: async () => Response.json(body, { status, headers }),
-        pause: async () => {},
-        alert() {},
-        log() {},
-      }),
-      expected,
-    );
-  }
-});
 
 test("a repeated site failure opens the existing alert channel and exits failing", async () => {
   const alerts = [];
@@ -123,14 +18,15 @@ test("a repeated site failure opens the existing alert channel and exits failing
   assert.equal(calls, 2);
   assert.equal(alerts[0][0], "fire");
   assert.equal(alerts[0][1], "site-availability");
-  assert.match(alerts[0][3], /transit-health.*HTTP 503/);
+  assert.match(alerts[0][3], /transit-health.*health failed/);
 });
 
 const healthy = () =>
   Response.json({
     status: "ok",
-    data: "readable",
-    service: "transit-web",
+    engine: "ok",
+    proxy: "ok",
+    service: "transit1-web",
     commit: "b5b283781a6fe6ab12c424dd685bbb854d515962",
     branch: "main",
   });
@@ -162,14 +58,9 @@ test("all public targets must pass before resolving the shared outage", async ()
         return Response.json({ default_provider: "fixture", providers: [{ id: "fixture", inputs: {} }] });
       }
       assert.equal(init.headers["cache-control"], "no-cache");
-      if (url === "https://transit1.yesid.dev/health") {
-        return Response.json({ ...await healthy().json(), service: "transit1-web", engine: "ok", proxy: "ok" });
-      }
       return url.endsWith("/health")
         ? healthy()
-        : url.endsWith("/api/v1/kpis")
-          ? Response.json(examples[0].body)
-          : new Response("<html><title>Transit | Yesid</title></html>", {
+        : new Response("<html><title>Transit | Yesid</title></html>", {
               headers: { "content-type": "text/html" },
             });
     },
@@ -180,8 +71,6 @@ test("all public targets must pass before resolving the shared outage", async ()
     "https://transit.yesid.dev/health",
     "https://transit.yesid.dev/",
     "https://yesid.dev/",
-    "https://transit.yesid.dev/api/v1/kpis",
-    "https://transit1.yesid.dev/health",
     "https://data.yesid.dev/v2/cities",
   ]);
   assert.equal(alerts[0][0], "resolve");
@@ -248,32 +137,5 @@ test("failure to deliver the alert is a failing probe, never a green result", as
       },
     }),
     /issue delivery failed/,
-  );
-});
-
-test("a broken KPI response recovers on retry and invalid JSON is counted without leaking content", async () => {
-  const logs = [];
-  const alerts = [];
-  let calls = 0;
-  assert.equal(
-    await probeSites({
-      checks: [kpiCheck],
-      fetchFn: async () =>
-        ++calls === 1
-          ? new Response("private failure detail")
-          : Response.json(examples[0].body),
-      pause: async () => {},
-      alert: (...args) => alerts.push(args),
-      log: (value) => logs.push(value),
-    }),
-    0,
-  );
-  assert.deepEqual(logs, [
-    { kpis: { samples: 2, live: 1, demo: 0, invalid: 1 } },
-  ]);
-  assert.equal(alerts[0][0], "resolve");
-  assert.doesNotMatch(
-    JSON.stringify({ logs, alerts }),
-    /private failure detail/,
   );
 });

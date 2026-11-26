@@ -110,9 +110,9 @@ function fixture(t) {
     GITHUB_OUTPUT: join(directory, "outputs"),
     GITHUB_ENV: join(directory, "env"),
     TRANSIT_BUILD_TARGET: "production",
-    PUBLIC_SITE_ORIGIN: "https://transit1.yesid.dev",
+    PUBLIC_SITE_ORIGIN: "https://transit.yesid.dev",
     PUBLIC_V1_BASE: "https://data.yesid.dev/v1",
-    PUBLIC_INDEXING: "false",
+    PUBLIC_INDEXING: "true",
   };
   const options = { root, env };
   const seal = () => {
@@ -152,7 +152,7 @@ test("configure binds each eligible event to the deployment environment", (t) =>
     else
       assert.equal(
         readFileSync(f.env.GITHUB_ENV, "utf8"),
-        "PUBLIC_SITE_ORIGIN=https://transit1.yesid.dev\nPUBLIC_V1_BASE=https://data.yesid.dev/v1\nPUBLIC_INDEXING=false\n",
+        "PUBLIC_SITE_ORIGIN=https://transit.yesid.dev\nPUBLIC_V1_BASE=https://data.yesid.dev/v1\nPUBLIC_INDEXING=true\n",
       );
   }
 });
@@ -240,7 +240,7 @@ test("restore rejects changed identity, producer attempt, public environment, an
     ["TRANSIT_BUILD_TARGET", "verification"],
     ["PUBLIC_SITE_ORIGIN", "https://other.invalid"],
     ["PUBLIC_V1_BASE", "https://other.invalid/v1"],
-    ["PUBLIC_INDEXING", "true"],
+    ["PUBLIC_INDEXING", "false"],
     ["TRANSIT_EXPECTED_MANIFEST_SHA256", "b".repeat(64)],
     ["TRANSIT_EXPECTED_MANIFEST_SHA256", ""],
   ])

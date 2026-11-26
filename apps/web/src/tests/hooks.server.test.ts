@@ -146,6 +146,14 @@ describe('server request locale', () => {
 		expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
 	});
 
+	it('keeps the review alias out of the index while canonical indexing is enabled', async () => {
+		const response = await handle({
+			event: event('https://transit1.yesid.dev/'),
+			resolve: vi.fn(async () => html()),
+		});
+		expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow');
+	});
+
 	it('stores the path locale for error layouts that have no route params', async () => {
 		const request = event('https://transit.yesid.dev/fr/missing-route');
 		const resolve = vi.fn(async () => new Response('ok'));
@@ -206,7 +214,7 @@ describe('server HTML edge cache', () => {
 		['outside the supported areas', { latitude: '43.65', longitude: '-79.38' }],
 	])('does not reuse or store location-dependent HTML for %s', async (_city, cf) => {
 		const cache = cacheHarness(html('cached for another city'));
-		const request = event('https://transit.yesid.dev/fr/network', { cache, cf });
+		const request = event('https://transit.yesid.dev/fr/network?frameMode=live', { cache, cf });
 		const resolve = vi.fn(async () => html('selected for this visitor'));
 		const response = await handle({ event: request, resolve });
 		expect(await response.text()).toBe('selected for this visitor');
@@ -218,7 +226,7 @@ describe('server HTML edge cache', () => {
 
 	it('keeps explicit network pages cacheable regardless of visitor location', async () => {
 		const cache = cacheHarness(html('Montréal'));
-		const request = event('https://transit.yesid.dev/network?provider=stm', {
+		const request = event('https://transit.yesid.dev/network?provider=stm&frameMode=live', {
 			cache,
 			cf: { latitude: '45.42', longitude: '-75.70' },
 		});
@@ -248,7 +256,7 @@ describe('server HTML edge cache', () => {
 
 	it('keeps location-dependent page data private and passes the location to the layout', async () => {
 		const request = {
-			...event('https://transit.yesid.dev/fr/network', {
+			...event('https://transit.yesid.dev/fr/network?frameMode=live', {
 				cf: { latitude: '45.42', longitude: '-75.70' },
 			}),
 			isDataRequest: true,

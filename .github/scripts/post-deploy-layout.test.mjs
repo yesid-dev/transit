@@ -5,28 +5,41 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { report, verifyDeployedSha, verifySitePolicy } from "./post-deploy-layout.mjs";
 
-test("post-deploy policy verifies noindex and checks analytics without sending an event", async () => {
-  const check = (relayStatus, html = "<html></html>", robots = "noindex, nofollow") =>
+test("post-deploy policy verifies both hosts and checks analytics without sending an event", async () => {
+  const canonical = "https://transit.yesid.dev";
+  const alias = "https://transit1.yesid.dev";
+  const check = ({ relay = 404, extraHtml = "", aliasHeader = "noindex, nofollow", aliasSitemap = false } = {}) =>
     verifySitePolicy(async (url, options) => {
+      const { origin, pathname } = new URL(url);
       assert.equal(options.redirect, "error");
-      if (url === "https://transit1.yesid.dev/?provider=stm") {
+      assert.ok([canonical, alias].includes(origin));
+      const indexable = origin === canonical;
+      if (pathname === "/") {
         assert.equal(options.method, undefined);
-        return new Response(html, {
-          headers: { "content-type": "text/html", "x-robots-tag": robots },
-        });
+        const robots = indexable ? "max-image-preview:large" : "noindex,nofollow";
+        const html = `<html><head><link rel="canonical" href="${canonical}/"><link rel="alternate" hreflang="fr" href="${canonical}/fr"><meta name="robots" content="${robots}">${extraHtml}</head></html>`;
+        const headers = { "content-type": "text/html" };
+        if (!indexable) headers["x-robots-tag"] = aliasHeader;
+        return new Response(html, { headers });
       }
-      assert.equal(url, "https://transit1.yesid.dev/relay/e");
+      if (pathname === "/robots.txt") {
+        return new Response("Allow: /\n" + (indexable ? `Sitemap: ${canonical}/sitemap.xml\n` : ""));
+      }
+      if (pathname === "/sitemap.xml") {
+        return new Response(indexable || aliasSitemap ? `<urlset><loc>${canonical}/</loc></urlset>` : "<urlset/>");
+      }
+      assert.equal(url, alias + "/relay/e");
       assert.equal(options.method, "POST");
       assert.deepEqual(JSON.parse(options.body), {});
-      return new Response(null, { status: relayStatus });
+      return new Response(null, { status: relay });
     });
-  await check(404);
-  await assert.rejects(check(400), /disabled transit1 analytics relay/);
-  await assert.rejects(check(404, '<script src="https://static.cloudflareinsights.com/beacon.min.js"></script>'),
-    /Cloudflare Web Analytics beacon/);
-  await assert.rejects(check(404, '<script defer src="/cdn-cgi/rum"></script>'),
-    /Cloudflare Web Analytics beacon/);
-  await assert.rejects(check(404, "<html></html>", "index"), /missing noindex/);
+  await check();
+  await assert.rejects(check({ relay: 400 }), /disabled transit1 analytics relay/);
+  for (const src of ["https://static.cloudflareinsights.com/beacon.min.js", "/cdn-cgi/rum"]) {
+    await assert.rejects(check({ extraHtml: `<script src="${src}"></script>` }), /Cloudflare Web Analytics beacon/);
+  }
+  await assert.rejects(check({ aliasHeader: "index" }), /Unexpected Transit indexing header/);
+  await assert.rejects(check({ aliasSitemap: true }), /Unexpected Transit robots or sitemap policy/);
 });
 
 test("layout replay verifies that production reports the intended source SHA", async () => {

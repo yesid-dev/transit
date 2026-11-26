@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { workerMissing } from './worker-rollback.mjs';
 
+// Check the Worker directly through its Custom Domain, including before a rider route transfer.
 export const WEB_ORIGIN = 'https://transit1.yesid.dev';
 
 const DEPLOYABLE_PATHS = new Set([

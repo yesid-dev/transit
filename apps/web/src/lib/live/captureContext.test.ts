@@ -13,7 +13,6 @@ const city = PublicCitySchema.parse({
 	lines_without_live_data: [],
 	inputs: { static_schedule: true, vehicle_positions: true },
 	alert_links: {},
-	basemap_url: '/data/v1/stm/static/basemap/montreal.pmtiles',
 });
 
 it('uses the published v2 basemap URL when it belongs to the selected city', () => {
@@ -28,11 +27,13 @@ it('keeps a same-origin v2 basemap path from a local preview gateway', () => {
 
 it.each([
 	undefined,
+	null,
+	'/data/v1/stm/static/basemap/montreal.pmtiles',
 	'https://data.yesid.dev/v2/octranspo/basemap/ottawa.pmtiles',
 	'https://transit.yesid.dev/v2/stm/basemap/montreal.pmtiles',
 	'/v2/octranspo/basemap/ottawa.pmtiles',
 	'//elsewhere.example/v2/stm/basemap/montreal.pmtiles',
-])('builds the public v2 URL if the v2 catalog field is unusable (%s)', (basemap_v2_url) => {
+])('omits the basemap if the published URL is unusable (%s)', (basemap_v2_url) => {
 	const context = captureContext({ ...city, basemap_v2_url }, 'fr', null);
-	expect(context.manifest.basemap).toBe('https://data.yesid.dev/v2/stm/basemap/montreal.pmtiles');
+	expect(context.manifest.basemap).toBeNull();
 });

@@ -11,10 +11,6 @@ PROVIDERS = ROOT / "apps/db/config/providers"
 # R5.6 removal: delete each entry with its public v1 compatibility path.
 # Match complete source lines so these exceptions cannot cover a new branch.
 LEGACY = {
-    "apps/data-proxy/src/worker.js": (
-        "Retired v1 public path for historic links.",
-        (r'const RETIRED_STO_PREFIX = "/data/v1/sto/";',),
-    ),
     "apps/web/src/routes/api/geocode/montreal/+server.ts": (
         "Old Montréal-only geocode URL forwards to the generic route.",
         (r"params\.set\('provider', 'stm'\);",),

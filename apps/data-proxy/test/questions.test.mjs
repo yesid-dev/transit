@@ -858,7 +858,6 @@ test("serves and caches the search index with the normal limit and no v1 catalog
     assert.equal(new URL(request.url).search, "?city=demo");
     return Response.json(body);
   });
-  harness.env.SNAPSHOTS = undefined;
   for (const path of [
     "/v2/demo/search-index?q=private-term",
     "/v2/%2e%2e%2fdemo/search-index",
@@ -893,7 +892,7 @@ test("the city endpoint and dated questions share the declaration catalog", asyn
   assert.equal((await f.fetch(MEASURE)).status, 200);
 });
 
-test("the city catalog adds canonical v2 basemap URLs to fresh and cached catalogs", async (t) => {
+test("fresh and cached public catalogs expose only canonical v2 basemap URLs", async (t) => {
   const f = fixture(t);
   f.cities.default_provider = "stm";
   f.cities.providers = [

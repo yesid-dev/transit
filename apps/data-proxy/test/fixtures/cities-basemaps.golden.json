@@ -6,19 +6,16 @@
     {
       "id": "stm",
       "timezone": "America/Toronto",
-      "basemap_url": "/data/v1/stm/static/basemap/montreal.pmtiles",
       "basemap_v2_url": "https://data.yesid.dev/v2/stm/basemap/montreal.pmtiles"
     },
     {
       "id": "octranspo",
       "timezone": "America/Toronto",
-      "basemap_url": "/data/v1/octranspo/static/basemap/ottawa.pmtiles",
       "basemap_v2_url": "https://data.yesid.dev/v2/octranspo/basemap/ottawa.pmtiles"
     },
     {
       "id": "other-city",
       "timezone": "Europe/Paris",
-      "basemap_url": "/data/v1/stm/static/basemap/montreal.pmtiles",
       "basemap_v2_url": null
     }
   ]

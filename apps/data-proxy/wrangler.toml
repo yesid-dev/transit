@@ -6,18 +6,17 @@ account_id = "eccfb9bedd87d413eaf4cac6ae2285d3"
 workers_dev = false
 
 routes = [
-  { pattern = "transit.yesid.dev/data/*", zone_name = "yesid.dev" },
+  # Only the retired namespaces reach this Worker on the rider host.
+  { pattern = "transit.yesid.dev/data/v1/*", zone_name = "yesid.dev" },
   { pattern = "transit.yesid.dev/api/v1/*", zone_name = "yesid.dev" },
+  { pattern = "transit.yesid.dev/v1/*", zone_name = "yesid.dev" },
+  { pattern = "data.yesid.dev/v1/*", zone_name = "yesid.dev" },
   { pattern = "data.yesid.dev/v2/*", zone_name = "yesid.dev" },
 ]
 
 [build]
 command = "bun scripts/build-public-cities.mjs"
 watch_dir = ["../db/config/providers", "scripts"]
-
-[[r2_buckets]]
-binding = "SNAPSHOTS"
-bucket_name = "transit-snapshots"
 
 [[services]]
 binding = "ENGINE"
