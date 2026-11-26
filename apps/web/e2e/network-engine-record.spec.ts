@@ -20,7 +20,6 @@ for (const locale of ['en', 'fr'] as const) {
 			const delay = main.locator('#delay');
 			await expect(delay.locator('[data-slot="chart-frame"]')).toBeVisible();
 			const tableLabel = locale === 'fr' ? 'Tableau' : 'Table';
-			const chartLabel = locale === 'fr' ? 'Graphique' : 'Chart';
 			for (const id of ['delay', 'trend', 'hours']) {
 				const card = main.locator('#' + id);
 				const footer = card.locator('footer');
@@ -29,15 +28,15 @@ for (const locale of ['en', 'fr'] as const) {
 				const tableToggle = footer.getByRole('button', { name: tableLabel, exact: true });
 				await expect(tableToggle).toHaveAttribute('aria-controls', controls);
 				await expect(footer.locator('.hand-drawn-line')).toBeVisible();
+				await expect(tableToggle).toHaveAttribute('aria-pressed', 'false');
 				await tableToggle.click();
-				const chartToggle = footer.getByRole('button', { name: chartLabel, exact: true });
-				await expect(chartToggle).toHaveAttribute('aria-expanded', 'true');
+				await expect(tableToggle).toHaveAttribute('aria-pressed', 'true');
 				await expect(card.getByRole('table')).toBeVisible();
 				if (id === 'delay') {
 					await expect(card.getByRole('cell', { name: /^14[,\s]500$/u })).toBeVisible();
 				}
-				await chartToggle.click();
-				await expect(tableToggle).toHaveAttribute('aria-expanded', 'false');
+				await tableToggle.click();
+				await expect(tableToggle).toHaveAttribute('aria-pressed', 'false');
 			}
 			await expect(main.locator('#delivery dl dd').first()).toHaveCSS('text-align', 'right');
 			await expect(
@@ -89,9 +88,9 @@ test('Network health reads scheduled trips and individual silent trips from the 
 	);
 	await expect(main.getByText('1,262', { exact: true })).toBeVisible();
 	await expect(main.getByText('of 1,306', { exact: true })).toBeVisible();
-	await expect(
-		main.getByText('A count of vehicles at this moment, not a percentage.'),
-	).toBeVisible();
+	await expect(main.getByText('A count of vehicles at this moment, not a percentage.')).toHaveCount(
+		0,
+	);
 	const silent = main.getByRole('table', { name: 'Scheduled trips with no vehicle reporting' });
 	await expect(silent.getByRole('row')).toHaveCount(9);
 	for (const name of ['Line', 'Departure', 'Toward', 'Silent for'])

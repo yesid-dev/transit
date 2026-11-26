@@ -9,7 +9,14 @@
 	} from '#lib/live/captureSnapshot.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
-	import { liveStampAge, relativeReportAge } from '#lib/site/presenter.ts';
+	import {
+		clockTime,
+		liveStampAge,
+		predictedIn,
+		relativeReportAge,
+		stopNextVehicleSentence,
+	} from '#lib/site/presenter.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import LineLiveNotices from '../lines/LineLiveNotices.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
@@ -17,7 +24,7 @@
 	import RecordCard from '../record/RecordCard.svelte';
 	import { choose, tally } from '../record/recordText.ts';
 	import StopPredictionTable from './StopPredictionTable.svelte';
-	import { stopLiveReadings } from './stopLiveReadings.ts';
+	import { stopLiveReadings, type StopPrediction } from './stopLiveReadings.ts';
 
 	let {
 		id,
@@ -51,12 +58,18 @@
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const title = $derived(t('Next vehicles at this stop', 'Prochains véhicules à cet arrêt'));
 	const link = (path: string) => carryFrameState(localizeHref(path, locale, city), url);
-	const countNote = $derived(
-		t(
-			'A count of vehicles at this moment, not a percentage.',
-			'Le nombre de véhicules en ce moment, pas un pourcentage.',
-		),
-	);
+	const display = transitDisplay();
+	function nextSentence(row: StopPrediction) {
+		return stopNextVehicleSentence(
+			{
+				line: row.line ? display.line(row.line) : null,
+				toward: row.toward ? display.readName(row.toward, locale) : null,
+				scheduled:
+					row.scheduledAt === null ? null : clockTime(new Date(row.scheduledAt), locale, timeZone),
+			},
+			locale,
+		);
+	}
 </script>
 
 {#snippet pending()}
@@ -85,7 +98,7 @@
 				}}
 	<RecordGroup>
 		<div id="stop-detail-departures" data-slot="screen-answer">
-			{#if readings?.rows.length}
+			{#if readings?.count}
 				<RecordAnswer
 					{locale}
 					value={tally(readings.count, locale)}
@@ -99,9 +112,15 @@
 								'véhicules sont attendus ici dans les 15 prochaines minutes.',
 							)}
 					time={stamp}
-				>
-					{#snippet meta()}<p>{countNote}</p>{/snippet}
-				</RecordAnswer>
+				/>
+			{:else if readings?.rows.length}
+				<!-- At zero the answer is the next vehicle, never a big 0. -->
+				<RecordAnswer
+					{locale}
+					value={predictedIn(readings.rows[0].predictedAt, now, locale)}
+					sentence={nextSentence(readings.rows[0])}
+					time={stamp}
+				/>
 			{:else}
 				<RecordAnswer
 					{locale}
@@ -128,10 +147,7 @@
 										'Les prévisions en direct pour cet arrêt ne sont plus à jour.',
 									)
 								: readings
-									? t(
-											'No current prediction for this stop.',
-											'Aucune prévision à jour pour cet arrêt.',
-										)
+									? t('No vehicle is predicted now.', 'Aucun véhicule n’est annoncé en ce moment.')
 									: t(
 											'Live predictions for this stop are temporarily unavailable.',
 											'Les prévisions en direct pour cet arrêt sont temporairement indisponibles.',
@@ -158,8 +174,16 @@
 					{#snippet evidence()}
 						<p class="text-small text-muted-foreground">
 							{t(
-								'A prediction is the agency’s estimate. “Delay unknown” means the feed does not give a usable delay for this stop. Trips with no prediction are not listed.',
-								'Une prévision est une estimation de l’agence. « Retard inconnu » signifie que le flux ne donne pas de retard exploitable pour cet arrêt. Les trajets sans prévision ne sont pas affichés.',
+								'A prediction is the agency’s estimate.',
+								'Une prévision est une estimation de l’agence.',
+							)}
+							{#if readings.rows.some(({ delay }) => delay === null)}{t(
+									'“Delay unknown” means the feed does not give a usable delay for this stop.',
+									'« Retard inconnu » signifie que le flux ne donne pas de retard exploitable pour cet arrêt.',
+								)}{/if}
+							{t(
+								'Trips with no prediction are not listed.',
+								'Les trajets sans prévision ne sont pas affichés.',
 							)}
 						</p>
 					{/snippet}

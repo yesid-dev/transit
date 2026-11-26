@@ -20,7 +20,7 @@
 	import {
 		dateRange,
 		hoursReading,
-		liveStampAge,
+		tickingLiveStamp,
 		methodEvidence,
 		recordRatio,
 		recordStamp,
@@ -115,13 +115,7 @@
 	);
 	const reportStamp = $derived(
 		live?.vehicles?.generated_utc
-			? {
-					kind: 'live' as const,
-					label: liveStampAge(null, locale),
-					updatedAt: new Date(live.vehicles.generated_utc),
-					agoLabel: (seconds: number) => liveStampAge(seconds, locale),
-					late: health?.isStale,
-				}
+			? tickingLiveStamp(new Date(live.vehicles.generated_utc), locale, { late: health?.isStale })
 			: undefined,
 	);
 	const stamp = $derived(liveMode ? reportStamp : recordStampProps);

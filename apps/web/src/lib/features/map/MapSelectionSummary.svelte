@@ -4,7 +4,7 @@
 	import { absenceShort } from '#lib/site/absence.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
-	import { delayReading, mapDirectionReading } from '#lib/site/presenter.ts';
+	import { liveStatusWords, mapDirectionReading } from '#lib/site/presenter.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { vehicleLiveHref } from '#lib/features/vehicles/vehicleLinks.ts';
@@ -65,10 +65,12 @@
 		{/if}
 		<StatusMark
 			status={detail.vehicle.status}
-			label={mapStatusLabel(locale, detail.vehicle.status)}
-			detail={detail.vehicle.delay_min == null
-				? undefined
-				: delayReading(detail.vehicle.delay_min * 60, locale)}
+			{...liveStatusWords(
+				detail.vehicle.status,
+				mapStatusLabel(locale, detail.vehicle.status),
+				detail.vehicle.delay_min == null ? null : detail.vehicle.delay_min * 60,
+				locale,
+			)}
 		/>
 		{#if notReporting}<p class="text-muted-foreground">
 				{tr('No recent position.', 'Aucune position récente.')}

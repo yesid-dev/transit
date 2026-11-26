@@ -15,6 +15,7 @@
 		officialAlertsLabel,
 		recordRatio,
 		singularCount,
+		tickingLiveStamp,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import FactList from '../record/FactList.svelte';
@@ -77,13 +78,12 @@
 	const distribution = $derived(live?.network?.status_dist);
 	const lines = $derived(lateLines(live?.vehicles?.vehicles ?? []));
 	const generated = $derived(live?.network?.generated_utc);
-	const stamp: StampProps = $derived({
-		kind: 'live',
-		label: networkStale ? liveStampAge(health?.ageSeconds ?? null, locale, 'behind') : t.live,
-		updatedAt: generated ? new Date(generated) : undefined,
-		agoLabel: (seconds) => liveStampAge(seconds, locale),
-		late: networkStale || health?.state === 'failed-no-data',
-	});
+	const stamp: StampProps = $derived(
+		tickingLiveStamp(generated ? new Date(generated) : new Date(Number.NaN), locale, {
+			label: networkStale ? liveStampAge(health?.ageSeconds ?? null, locale, 'behind') : t.live,
+			late: networkStale || health?.state === 'failed-no-data',
+		}),
+	);
 	function reading(
 		value: number | null | undefined,
 		family: LiveFamilyState | undefined,

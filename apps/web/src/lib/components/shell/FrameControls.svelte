@@ -36,6 +36,7 @@
 		type Preset,
 	} from '#lib/site/frameState.ts';
 	import { frameCopy, framePeriodSummary, type frameControlsState } from './frameControlsState.ts';
+	import LivePauseSwitch from './LivePauseSwitch.svelte';
 
 	let {
 		locale,
@@ -149,6 +150,9 @@
 		<p id={uid} class="text-sm text-muted-foreground">{copy.liveOnly}</p>
 	{:else if frame.showViewHint}
 		<p class="text-sm text-muted-foreground">{copy.viewHint[frame.mode]}</p>
+	{/if}
+	{#if frame.mode === 'live' && !frame.recordOnly}
+		<LivePauseSwitch {locale} />
 	{/if}
 {/snippet}
 

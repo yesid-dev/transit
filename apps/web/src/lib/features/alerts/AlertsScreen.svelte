@@ -21,7 +21,7 @@
 		officialAlertsLabel,
 		captureAge,
 		dateRange,
-		liveStampAge,
+		tickingLiveStamp,
 		methodEvidence,
 		recordStamp,
 	} from '#lib/site/presenter.ts';
@@ -465,12 +465,7 @@
 						{#if snapshot?.alerts && alertFeed?.captured_at && feedState(alertFeed, now) === 'live'}
 							{@const liveCards = liveAlertCards(snapshot.alerts, now)}
 							{@const lineCount = liveCards.filter(({ routes }) => routes.length).length}
-							{@const liveStamp = {
-								kind: 'live' as const,
-								label: liveStampAge(null, locale),
-								updatedAt: new Date(alertFeed.captured_at),
-								agoLabel: (seconds: number) => liveStampAge(seconds, locale),
-							}}
+							{@const liveStamp = tickingLiveStamp(new Date(alertFeed.captured_at), locale)}
 							{#snippet liveActions()}{@render actions(undefined, alertFeed.captured_at)}{/snippet}
 							<RecordGroup density="compact">
 								<div id="alerts-window" data-slot="screen-answer">
@@ -483,12 +478,6 @@
 									>
 										{#snippet meta()}
 											<p>{t('Counted:', 'Ce qui est compté :')} {labelCount(liveCards.length)}</p>
-											<p>
-												{t(
-													'A count of alerts at this moment.',
-													'Un décompte des avis à ce moment.',
-												)}
-											</p>
 											<p>{scope}</p>
 										{/snippet}
 									</RecordAnswer>

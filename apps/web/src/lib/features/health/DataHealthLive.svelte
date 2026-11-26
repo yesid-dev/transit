@@ -139,18 +139,7 @@
 									: t('feeds are fresh.', 'flux sont à jour.')
 								: labels.no_live_data}
 							time={stamp}
-						>
-							{#snippet meta()}
-								{#if feeds.length}
-									<p>
-										{t(
-											'A count of feeds at their last capture.',
-											'Le nombre de flux à leur dernier relevé.',
-										)}
-									</p>
-								{/if}
-							{/snippet}
-						</RecordAnswer>
+						/>
 					</div>
 					<div class="grid min-w-0 gap-4">
 						<RecordCard title={table} {stamp}>

@@ -14,6 +14,8 @@ import { formatTransitName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { stampCopy, type LiveState } from '#lib/v1/stamp.copy.ts';
 import { compassPoint, type LinePattern } from './linePatterns';
+import { livePause } from '#lib/live/livePause.svelte.ts';
+import type { StampProps } from '@yesid/ui/brand';
 
 export function searchCount(value: number, locale: Locale): string {
 	return intl.number(locale).format(value);
@@ -46,6 +48,29 @@ export function delayReading(
 	if (minutes < 0.05) return copy.onSchedule;
 	const magnitude = minuteReading(minutes, locale)!;
 	return seconds < 0 ? copy.early(magnitude) : copy.late(magnitude);
+}
+
+/**
+ * The words of a live status mark. A late or early vehicle reads as its delay alone ("14 min
+ * late"); an on-time vehicle keeps "On time" and gives a small gap in brackets ("On time (4 min
+ * behind)"), and nothing when it is on schedule.
+ */
+export function liveStatusWords(
+	status: 'early' | 'on_time' | 'late' | 'unknown',
+	label: string,
+	delaySeconds: number | null | undefined,
+	locale: Locale,
+): { label: string; detail?: string } {
+	if (status === 'unknown' || delaySeconds == null || !Number.isFinite(delaySeconds))
+		return { label };
+	const minutes = Math.abs(delaySeconds) / 60;
+	// The display rounds to a tenth of a minute.
+	if (minutes < 0.05) return { label };
+	const copy = presenterCopy[locale];
+	const magnitude = minuteReading(minutes, locale)!;
+	if (status === 'on_time')
+		return { label, detail: delaySeconds < 0 ? copy.ahead(magnitude) : copy.behind(magnitude) };
+	return { label: status === 'early' ? copy.early(magnitude) : copy.late(magnitude) };
 }
 
 export function mapRecordReading(value: number, stops: boolean, locale: Locale): string | null {
@@ -441,14 +466,41 @@ export function singularCount(value: number, locale: Locale) {
 
 export function liveStampAge(seconds: number | null, locale: Locale, state: LiveState = 'current') {
 	if (seconds == null && state === 'behind') {
-		const unknown = stampCopy[locale].live('data', 'unknown', null);
+		const unknown = stampCopy[locale].live('data', 'unknown', null, livePause.paused);
 		return `${unknown} · ${locale === 'fr' ? 'pas à jour' : 'not current'}`;
 	}
 	return stampCopy[locale].live(
 		'data',
 		state,
 		seconds == null ? null : formatRelativeSeconds(seconds, locale),
+		livePause.paused,
 	);
+}
+
+/**
+ * Props for a live stamp that counts its age up each second. While live updates are paused it
+ * keeps the age it had when it was drawn and says so: "Paused · updated 2 minutes ago".
+ */
+export function tickingLiveStamp(
+	updatedAt: Date,
+	locale: Locale,
+	options: { label?: string; late?: boolean } = {},
+): StampProps {
+	const late = options.late ?? false;
+	const age = Number.isFinite(+updatedAt) ? Math.max(0, (Date.now() - +updatedAt) / 1000) : null;
+	if (livePause.paused && age !== null && !late)
+		return { kind: 'live', label: liveStampAge(age, locale), late };
+	return {
+		kind: 'live',
+		label:
+			options.label ??
+			(age === null
+				? stampCopy[locale].live('data', 'unknown', null, livePause.paused)
+				: liveStampAge(age, locale)),
+		updatedAt,
+		agoLabel: (seconds: number) => liveStampAge(seconds, locale),
+		late,
+	};
 }
 
 export function sampleWithMinimum(sample: string, minimum: number, locale: Locale) {
@@ -555,6 +607,47 @@ export function lineVehicleSentence(
 		return `${one ? 'véhicule circule' : 'véhicules circulent'} sur cette ligne en ce moment : ${count(counts.early)} en avance, ${count(counts.on_time)} à l’heure, ${count(counts.late)} en retard${counts.unknown ? `, ${count(counts.unknown)} au retard inconnu` : ''}.`;
 	}
 	return `${one ? 'vehicle is' : 'vehicles are'} running on this line now: ${count(counts.early)} early, ${count(counts.on_time)} on time, ${count(counts.late)} late${counts.unknown ? `, ${count(counts.unknown)} with delay unknown` : ''}.`;
+}
+
+/**
+ * A stop with no vehicle in the next 15 minutes answers with the next one instead of a zero:
+ * "No vehicle in the next 15 minutes. Next: line 361 toward Nord, scheduled 04:34."
+ */
+export function stopNextVehicleSentence(
+	next: { line: string | null; toward: string | null; scheduled: string | null },
+	locale: Locale,
+) {
+	const fr = locale === 'fr';
+	const parts = [
+		next.line ? (fr ? `ligne ${next.line}` : `line ${next.line}`) : null,
+		next.toward ? (fr ? `vers ${next.toward}` : `toward ${next.toward}`) : null,
+	].filter(Boolean);
+	const where = parts.join(' ');
+	const when = next.scheduled
+		? fr
+			? `prévu à ${next.scheduled}`
+			: `scheduled ${next.scheduled}`
+		: null;
+	const detail = [where || null, when].filter(Boolean).join(', ');
+	const lead = fr
+		? 'Aucun véhicule dans les 15 prochaines minutes.'
+		: 'No vehicle in the next 15 minutes.';
+	if (!detail) return lead;
+	return fr ? `${lead} Prochain\u00a0: ${detail}.` : `${lead} Next: ${detail}.`;
+}
+
+/**
+ * A line with no vehicle reporting says so in words. Before the day's first scheduled trip it
+ * names that trip; otherwise it says only what the feed shows.
+ */
+export function lineNoVehicleSentence(firstTrip: string | null, locale: Locale) {
+	if (firstTrip)
+		return locale === 'fr'
+			? `Aucun trajet en cours. Premier trajet à ${firstTrip}.`
+			: `No trip is running now. First trip at ${firstTrip}.`;
+	return locale === 'fr'
+		? 'Aucun véhicule ne transmet sa position sur cette ligne en ce moment.'
+		: 'No vehicle is reporting on this line now.';
 }
 
 export function predictedIn(predictedAt: number, now: number, locale: Locale) {

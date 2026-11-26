@@ -6,8 +6,8 @@
 	import LiveTripReport from '#lib/live/LiveTripReport.svelte';
 	import {
 		clockTime,
-		delayReading,
 		liveDelayLabels,
+		liveStatusWords,
 		liveStampAge,
 		predictedIn,
 	} from '#lib/site/presenter.ts';
@@ -84,11 +84,13 @@
 							<span class="inline-flex flex-wrap items-baseline gap-x-2"
 								><StatusMark
 									{status}
-									label={liveDelayLabels(locale)[status]}
-								/>{#if estimate.delay !== null}
-									<span class="text-small text-muted-foreground"
-										>{delayReading(estimate.delay, locale)}</span
-									>{/if}</span
+									{...liveStatusWords(
+										status,
+										liveDelayLabels(locale)[status],
+										estimate.delay,
+										locale,
+									)}
+								/></span
 							>
 							<strong class="tabular-nums">{predictedIn(estimate.predictedAt, now, locale)}</strong>
 						</div>

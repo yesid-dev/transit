@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
-import { captureTrip, captureTripReport, installStopCapture } from './capture-fixture';
+import { captureTrip, captureTripReport, captureUrl, installStopCapture } from './capture-fixture';
 import { openFrameControls } from './frame-controls';
 
 const at = Date.parse('2026-11-25T13:12:00Z');
@@ -91,6 +91,87 @@ for (const locale of PUBLISHED_LOCALES) {
 		expect(oldRequests).toEqual([]);
 	});
 
+	test(`${locale}: with no vehicle in 15 minutes the answer is the next vehicle, never a zero`, async ({
+		page,
+	}) => {
+		const refresh = await installStopCapture(page, provider, 'S1', at);
+		await page.route('**/api/live-trips?city=stm&stop=S1', async (route) => {
+			const now = await page.evaluate(() => Date.now());
+			await route.fulfill({
+				json: captureTripReport(provider, new Date(now).toISOString(), [
+					{
+						...captureTrip('late-trip', '24', [
+							{
+								stop: 'S1',
+								eta_utc: new Date(now + 20 * 60_000).toISOString(),
+								delay_min: 4,
+								scheduled_utc: new Date(now + 16 * 60_000).toISOString(),
+							},
+						]),
+						trip_headsign: 'Nord',
+					},
+				]),
+			});
+		});
+		await page.goto(path('S1', 'frameMode=live'));
+		await refresh();
+		const answer = page.locator('[data-slot="screen-answer"]');
+		await expect(answer).toContainText(fr ? 'dans 20 min' : 'in 20 min');
+		await expect(answer).toContainText(
+			fr
+				? /Aucun véhicule dans les 15 prochaines minutes\. Prochain\u00a0: ligne \S+ vers Nord, prévu à .+\./u
+				: /No vehicle in the next 15 minutes\. Next: line \S+ toward Nord, scheduled .+\./u,
+		);
+		await expect(answer).not.toContainText(fr ? 'pourcentage' : 'percentage');
+		const predictions = page.locator('[data-slot="stop-live-predictions"]');
+		await expect(predictions.locator('tbody [data-column="status"]').first()).toContainText(
+			fr ? /À l’heure\s*\(4 min de retard\)/u : /On time\s*\(4 min behind\)/u,
+		);
+		// The "Delay unknown" helper shows only when a row has that state.
+		await expect(predictions).not.toContainText(fr ? 'Retard inconnu' : 'Delay unknown');
+	});
+
+	test(`${locale}: live updates pause from the keyboard, are announced and hold across Live screens`, async ({
+		page,
+	}) => {
+		const refresh = await installStopCapture(page, provider, 'S1', at);
+		await page.goto(path('S1', 'frameMode=live'));
+		await refresh();
+		const name = fr ? 'Suspendre les mises à jour' : 'Pause live updates';
+		const rail = await openFrameControls(page, locale);
+		const toggle = rail.getByRole('switch', { name });
+		await expect(toggle).toHaveAttribute('aria-checked', 'false');
+		await toggle.focus();
+		await page.keyboard.press('Space');
+		await expect(toggle).toHaveAttribute('aria-checked', 'true');
+		await expect(toggle).toBeFocused();
+		await expect(rail.locator('[data-slot="live-pause-status"]')).toHaveText(
+			fr ? 'Mises à jour en direct suspendues.' : 'Live updates paused.',
+		);
+		await expect(
+			page.locator('[data-slot="screen-answer"] [data-slot="stamp"]').first(),
+		).toContainText(fr ? 'En pause · mis à jour' : 'Paused · updated');
+		let captures = 0;
+		page.on('request', (request) => {
+			if (captureUrl.test(request.url())) captures += 1;
+		});
+		await page.clock.fastForward(61_000);
+		expect(captures).toBe(0);
+
+		// The choice holds while the visitor moves to another Live screen in the same tab.
+		await page.goto(localizeHref('/network?frameMode=live', locale, provider));
+		const next = (await openFrameControls(page, locale)).getByRole('switch', { name });
+		await expect(next).toHaveAttribute('aria-checked', 'true');
+		const resumed = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await next.focus();
+		await page.keyboard.press('Enter');
+		await expect(next).toHaveAttribute('aria-checked', 'false');
+		await expect(page.locator('[data-slot="live-pause-status"]')).toHaveText(
+			fr ? 'Mises à jour en direct reprises.' : 'Live updates resumed.',
+		);
+		await resumed;
+	});
+
 	test(`${locale}: live pages results after 20 with no line-group headings`, async ({ page }) => {
 		const refresh = await installStopCapture(page, provider, 'S1', at);
 		await page.route('**/api/live-trips?city=stm&stop=S1', async (route) => {
@@ -168,7 +249,7 @@ test('stale and empty trip captures have different states', async ({ page }) => 
 	await expect(answer).toContainText('out of date');
 	stale = false;
 	await refresh();
-	await expect(answer).toContainText('No current prediction for this stop.');
+	await expect(answer).toContainText('No vehicle is predicted now.');
 	await expect(page.locator('[data-slot="stop-live-predictions"]')).toHaveCount(0);
 });
 

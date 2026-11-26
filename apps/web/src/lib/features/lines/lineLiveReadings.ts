@@ -1,3 +1,5 @@
+import type { RecordSeries } from '#lib/server/engine.ts';
+import { serviceClockParts } from '#lib/utils/serviceDate.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 import { stopPrediction } from '#lib/live/stopPrediction.ts';
@@ -106,4 +108,41 @@ export function vehicleCounts(rows: readonly LiveVehicleRow[]) {
 	const counts = { early: 0, on_time: 0, late: 0, unknown: 0 };
 	for (const row of rows) counts[row.status] += 1;
 	return counts;
+}
+
+const weekdayKeys: Record<string, string> = { Sat: 'saturday', Sun: 'sunday' };
+
+/**
+ * The day's first scheduled trip, when it has not left yet: the record's first departure for
+ * today's day type, only when every day of that type in the record agrees on it.
+ */
+export function firstTripAhead(
+	boundaries: Pick<RecordSeries, 'cells'> | undefined,
+	now: number,
+	timeZone: string,
+): string | null {
+	if (!boundaries || !Number.isFinite(now)) return null;
+	const parts = new Intl.DateTimeFormat('en-US', {
+		weekday: 'short',
+		hour: '2-digit',
+		minute: '2-digit',
+		hourCycle: 'h23',
+		timeZone,
+	}).formatToParts(new Date(now));
+	const part = (type: Intl.DateTimeFormatPartTypes) =>
+		parts.find((entry) => entry.type === type)?.value ?? '';
+	const dayType = weekdayKeys[part('weekday')] ?? 'weekday';
+	const times = new Set(
+		boundaries.cells
+			.filter(({ key }) => key.day_type === dayType)
+			.flatMap(({ evidence }) => evidence.boundary_departures ?? [])
+			.filter(({ measure }) => measure === 'first_trip')
+			.map(({ scheduled_departure }) => scheduled_departure),
+	);
+	if (times.size !== 1) return null;
+	const [first] = times;
+	const clock = serviceClockParts(first);
+	if (!clock) return null;
+	const minutes = Number(part('hour')) * 60 + Number(part('minute'));
+	return minutes < clock.hours * 60 + clock.minutes ? first : null;
 }

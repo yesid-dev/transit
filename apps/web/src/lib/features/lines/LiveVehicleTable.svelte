@@ -2,8 +2,12 @@
 	import { StatusMark } from '@yesid/ui/brand';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { delayReading, relativeReportAge, searchCount } from '#lib/site/presenter.ts';
-	import { liveDelayLabels } from '#lib/site/presenter.ts';
+	import {
+		liveDelayLabels,
+		liveStatusWords,
+		relativeReportAge,
+		searchCount,
+	} from '#lib/site/presenter.ts';
 	import StateMark from '../record/StateMark.svelte';
 	import { choose } from '../record/recordText.ts';
 	import type { LiveVehicleRow } from './lineLiveReadings.ts';
@@ -27,10 +31,10 @@
 </script>
 
 {#snippet status(row: Row)}
-	<StatusMark status={row.status} label={liveDelayLabels(locale)[row.status]} />
-	{#if row.delay !== null}
-		<span class="text-small text-muted-foreground">{delayReading(row.delay, locale)}</span>
-	{/if}
+	<StatusMark
+		status={row.status}
+		{...liveStatusWords(row.status, liveDelayLabels(locale)[row.status], row.delay, locale)}
+	/>
 {/snippet}
 
 {#snippet vehicle(row: Row)}
