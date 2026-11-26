@@ -38,7 +38,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(table.locator('tbody tr')).toHaveCount(6);
 		const calls = table.locator('tbody tr');
 		const headers = fr
-			? ['Ligne', 'Vers', 'Horaire', 'Prévu', 'État']
+			? ['Ligne', 'Vers', 'Horaire', 'Attendu', 'État']
 			: ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'];
 		await expect(table.getByRole('columnheader')).toHaveText(headers);
 		await expect(
@@ -49,7 +49,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		).toHaveText('Gare Montréal-Ouest');
 		await expect(
 			calls.nth(0).locator('[data-column="scheduled"] .data-table-cell-content'),
-		).toHaveText('08:15');
+		).toHaveText(fr ? '8 h 15' : '08:15');
 		for (const index of [1, 2]) {
 			for (const column of ['scheduled', 'toward']) {
 				await expect(
@@ -169,7 +169,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			// By keyboard: the Controls pill may sit under the footer on a short page.
 			await page
 				.getByRole('button', {
-					name: fr ? /^Commandes.*Ouvrir les commandes/ : /^Controls.*Open controls/,
+					name: fr ? /^Options.*Ouvrir les options/ : /^Controls.*Open controls/,
 				})
 				.focus();
 			await page.keyboard.press('Enter');
@@ -273,6 +273,6 @@ test('Record shows the low coverage explanation once', async ({ page }) => {
 	await expect(
 		page.getByText(/^5 of 100 scheduled stop events were observed here on these dates\./u),
 	).toHaveCount(1);
-	await expect(page.getByRole('main')).not.toContainText('Not measured (insufficient coverage)');
+	await expect(page.getByRole('main')).not.toContainText('Not measured: too little observed');
 	await expect(page.getByRole('main')).not.toContainText('Low coverage');
 });

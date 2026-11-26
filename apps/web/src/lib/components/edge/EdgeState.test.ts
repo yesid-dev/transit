@@ -170,7 +170,7 @@ describe('EdgeState — error-v1 retry affordance', () => {
 		});
 		const delta = container.querySelector('[data-slot="edge-stale-delta"]');
 		expect(delta).not.toBeNull();
-		expect(delta!.textContent).toContain('MAJ');
+		expect(delta!.textContent).toContain('Mis à jour');
 	});
 });
 

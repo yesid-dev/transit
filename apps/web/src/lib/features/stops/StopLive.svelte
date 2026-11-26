@@ -10,6 +10,7 @@
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import {
+		singularCount,
 		clockTime,
 		liveStampAge,
 		predictedIn,
@@ -104,7 +105,7 @@
 				<RecordAnswer
 					{locale}
 					value={tally(readings.count, locale)}
-					sentence={readings.count === 1
+					sentence={singularCount(readings.count, locale)
 						? t(
 								'vehicle is expected here in the next 15 minutes.',
 								'véhicule est attendu ici dans les 15 prochaines minutes.',
@@ -177,7 +178,7 @@
 						<p class="text-small text-muted-foreground">
 							{t(
 								'A prediction is the agency’s estimate.',
-								'Une prévision est une estimation de l’agence.',
+								'Une prévision est une estimation de la société de transport.',
 							)}
 							{#if readings.rows.some(({ delay }) => delay === null)}{t(
 									'“Delay unknown” means the feed does not give a usable delay for this stop.',
@@ -220,7 +221,7 @@
 				healthLink={link('/status?frameMode=live')}
 				scope={t(
 					'Agency predictions for this stop. The count includes trips expected here in the next 15 minutes.',
-					'Prévisions de l’agence pour cet arrêt. Le décompte couvre les trajets attendus ici dans les 15 prochaines minutes.',
+					'Prévisions de la société de transport pour cet arrêt. Le décompte couvre les trajets attendus ici dans les 15 prochaines minutes.',
 				)}
 				statusLabel={t(
 					'How a prediction gets its status',
@@ -228,7 +229,7 @@
 				)}
 				definition={t(
 					'From the predicted delay at this stop: early is more than 1 minute ahead, late is more than 5 minutes behind, and on time is between those limits.',
-					'Selon le retard prévu à cet arrêt : en avance signifie plus de 1 minute avant l’heure prévue, en retard signifie plus de 5 minutes après, et à l’heure se situe entre ces seuils.',
+					'Selon le retard prévu à cet arrêt : en avance signifie plus d’une minute avant l’heure prévue, en retard signifie plus de 5 minutes après, et à l’heure se situe entre ces seuils.',
 				)}
 				captureText={age === null
 					? t('Trip updates unavailable.', 'Mises à jour des trajets indisponibles.')

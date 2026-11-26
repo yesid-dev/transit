@@ -38,7 +38,7 @@ test.describe('Daily report print', () => {
 			);
 			const dates = messages.locator('[data-slot="agency-message-dates"]').first();
 			await expect(dates).toHaveText(
-				fr ? '15 nov. 2026, de 08:00 à 18:00' : '15 Nov 2026, 08:00 to 18:00',
+				fr ? '15 nov. 2026, de 8 h à 18 h' : '15 Nov 2026, 08:00 to 18:00',
 			);
 			const preview = messages.getByText('Consultez l’avis de service', { exact: false }).first();
 			await expect(preview).toBeVisible();

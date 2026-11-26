@@ -1,14 +1,16 @@
 import { defineCopy } from '#lib/i18n/copy.ts';
+import { frenchAgency, type AgencyName } from '#lib/site/presenter.ts';
 
 export const footerCopy = defineCopy({
 	fr: {
 		tagline:
-			'Un bilan public et indépendant du service de transport livré. Pas un planificateur de trajets.',
+			'Un bilan public et indépendant du service de transport effectué. Pas un planificateur de trajets.',
 		navAria: 'Pied de page',
 		exploreLabel: 'Explorer',
-		providerFallback: 'l’agence de transport',
+		providerFallback: 'la société de transport',
 
-		disclaimer: (agencyName: string) => `Site non officiel, sans affiliation avec ${agencyName}.`,
+		disclaimer: (agency: AgencyName) =>
+			`Site non officiel, sans affiliation ${frenchAgency(agency).with}.`,
 		auditLabel: 'Vérification',
 		reportsLabel: 'Rapports',
 		infoLabel: 'Information',
@@ -19,7 +21,7 @@ export const footerCopy = defineCopy({
 		exploreLabel: 'Explore',
 		providerFallback: 'the transit agency',
 
-		disclaimer: (agencyName: string) => `Unofficial website, not affiliated with ${agencyName}.`,
+		disclaimer: (agency: AgencyName) => `Unofficial website, not affiliated with ${agency.name}.`,
 		auditLabel: 'Audit',
 		reportsLabel: 'Reports',
 		infoLabel: 'Information',

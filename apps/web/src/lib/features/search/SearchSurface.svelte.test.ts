@@ -114,7 +114,7 @@ it.each(['en', 'fr'] as const)(
 			within(view.getByRole('region', { name: fr ? /^Arrêts · 1/ : 'Stops · 1,160' }));
 		expect(stops().getAllByRole('link')).toHaveLength(6);
 		expect(stops().getByRole('status')).toHaveTextContent(
-			fr ? /6 sur 1.160 affichés/ : 'Showing 6 of 1,160',
+			fr ? /6 sur 1.160$/ : 'Showing 6 of 1,160',
 		);
 		expect(view.queryByRole('button', { name: 'Métro' })).toBeNull();
 		await fireEvent.click(

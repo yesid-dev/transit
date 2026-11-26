@@ -13,7 +13,7 @@ export const downloadTables = {
 	},
 	vehicle_positions: {
 		en: 'One row per vehicle position reading, with its trip, position and occupancy.',
-		fr: 'Une ligne par relevé de véhicule, avec le trajet, la position et l’achalandage.',
+		fr: 'Une ligne par relevé de véhicule, avec le trajet, la position et l’occupation.',
 	},
 	alerts: {
 		en: 'One row per alert version and source, with its text, affected lines and stops.',

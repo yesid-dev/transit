@@ -383,7 +383,7 @@ const documents = {
 					paragraphs: [
 						'Les renseignements décrits ci-dessus sont traités uniquement pour livrer et protéger Transit, choisir le réseau de transport initial, répondre à une recherche d’adresse, mémoriser vos choix d’interface, diagnostiquer la fiabilité et comprendre la performance globale.',
 						'Transit ne vend ni ne loue de renseignements personnels et ne les utilise pas à des fins de publicité ou de marketing direct. Des renseignements peuvent être traités par Cloudflare, Plausible et le service du gouvernement du Canada décrit ci-dessus, ou communiqués lorsque la loi l’exige.',
-						"Le traitement par les fournisseurs peut avoir lieu à l’extérieur du Québec. Cloudflare indique stocker principalement les renseignements aux États-Unis et dans l’Espace économique européen. Les renseignements traités ailleurs peuvent être assujettis aux lois de cet endroit. La présente politique ne prétend pas qu’une configuration particulière de localisation des données Cloudflare est activée. Plausible traite et conserve les données de visite dans l'Union européenne.",
+						'Le traitement par les fournisseurs peut avoir lieu à l’extérieur du Québec. Cloudflare indique stocker principalement les renseignements aux États-Unis et dans l’Espace économique européen. Les renseignements traités ailleurs peuvent être assujettis aux lois de cet endroit. La présente politique ne prétend pas qu’une configuration particulière de localisation des données Cloudflare est activée. Plausible traite et conserve les données de visite dans l’Union européenne.',
 					],
 					links: [
 						{
@@ -400,7 +400,7 @@ const documents = {
 					id: 'retention-security',
 					title: 'Conservation et mesures de protection',
 					paragraphs: [
-						"Transit ne conserve aucun profil de compte ni dossier de paiement, puisque ces fonctions n’existent pas. La limite de recherche en mémoire est de courte durée, comme décrit ci-dessus. Les préférences du navigateur restent sous votre contrôle. Cloudflare contrôle la conservation de ses registres réseau selon ses propres politiques et conserve les mesures de Web Analytics au complet pendant sept jours, puis sous forme de statistiques agrégées échantillonnées; Plausible conserve des statistiques agrégées tant que le compte de Transit est actif et ne conserve jamais d'adresse IP ni d'agent utilisateur.",
+						'Transit ne conserve aucun profil de compte ni dossier de paiement, puisque ces fonctions n’existent pas. La limite de recherche en mémoire est de courte durée, comme décrit ci-dessus. Les préférences du navigateur restent sous votre contrôle. Cloudflare contrôle la conservation de ses registres réseau selon ses propres politiques et conserve les mesures de Web Analytics au complet pendant sept jours, puis sous forme de statistiques agrégées échantillonnées; Plausible conserve des statistiques agrégées tant que le compte de Transit est actif et ne conserve jamais d’adresse IP ni d’agent utilisateur.',
 						'Les mesures visibles dans le code comprennent des contrôles de même origine sur les requêtes de géocodage, une validation et une limitation bornées des entrées, des réponses de géocodage privées sans mise en cache et les contrôles de livraison et de sécurité de Cloudflare. Aucun service Internet ni mode de transmission n’est entièrement sûr.',
 					],
 				},

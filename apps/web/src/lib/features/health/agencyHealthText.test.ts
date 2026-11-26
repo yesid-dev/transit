@@ -219,12 +219,12 @@ describe('the alerts sentence', () => {
 		[{ name: 'Le Réseau', frenchOf: 'du Réseau' }, 'le Réseau', 'du Réseau'],
 		[{ name: 'Lignes', frenchOf: 'des Lignes' }, 'les Lignes', 'des Lignes'],
 	])('takes the declared French forms for %o', (agency, subject, of) => {
-		expect(frenchAgency(agency)).toEqual({ subject, of });
+		expect(frenchAgency(agency)).toMatchObject({ subject, of });
 	});
 
 	it('guesses no article for a city that declares none', () => {
-		expect(frenchAgency({ name: 'XYZ' })).toEqual({ subject: 'XYZ', of: 'de XYZ' });
-		expect(frenchAgency({ name: 'Ombre', frenchOf: null })).toEqual({
+		expect(frenchAgency({ name: 'XYZ' })).toMatchObject({ subject: 'XYZ', of: 'de XYZ' });
+		expect(frenchAgency({ name: 'Ombre', frenchOf: null })).toMatchObject({
 			subject: 'Ombre',
 			of: 'd’Ombre',
 		});

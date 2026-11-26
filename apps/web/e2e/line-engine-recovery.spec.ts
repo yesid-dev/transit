@@ -26,7 +26,7 @@ for (const locale of ['en', 'fr']) {
 			await request.delete(registration);
 		}
 		const crowding = page.locator('#crowding');
-		await expect(crowding).toContainText(fr ? 'Lecture en attente.' : 'Waiting for a reading.');
+		await expect(crowding).toContainText(fr ? 'En attente de données.' : 'Waiting for a reading.');
 
 		const stops = page.locator('#stops h2 button');
 		const delivery = page.locator('#delivery h2 button');

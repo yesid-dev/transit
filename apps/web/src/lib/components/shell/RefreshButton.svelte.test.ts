@@ -88,7 +88,12 @@ it.each(['en', 'fr'] as const)('shows the time after a successful refresh (%s)',
 	await fireEvent.click(button);
 	await waitFor(() =>
 		expect(screen.getByRole('status')).toHaveTextContent(
-			refreshMessage({ kind: 'updated', atMs: dataRefresh.lastResult!.atMs }, locale, undefined),
+			// The DOM text reads a no-break space as a space.
+			refreshMessage(
+				{ kind: 'updated', atMs: dataRefresh.lastResult!.atMs },
+				locale,
+				undefined,
+			).replace(/\s/gu, ' '),
 		),
 	);
 	expect(button).toHaveFocus();

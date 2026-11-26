@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { recordPercent } from '#lib/site/presenter.ts';
+	import { page } from '$app/state';
+	import { agencyName, recordPercent, reportingGapsReading } from '#lib/site/presenter.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
 	import { DayStrip } from '@yesid/ui/chart';
@@ -42,8 +43,6 @@
 	import {
 		coverageText,
 		lastGoodNote,
-		pooledDays,
-		punctualityWeighting,
 		recordConnection,
 		tally,
 		timingBasis,
@@ -244,14 +243,16 @@
 						value={serviceDays.ratio}
 						sentence={t(
 							`${serviceDays.partial ? 'measured ' : ''}${serviceDays.total === 1 ? 'day' : 'days'} had vehicle ${data.id} in service.`,
-							`${serviceDays.total === 1 ? 'jour' : 'jours'} ${serviceDays.partial ? (serviceDays.total === 1 ? 'mesuré ' : 'mesurés ') : ''}où le véhicule ${data.id} était en service.`,
+							`${serviceDays.total < 2 ? 'jour' : 'jours'} ${serviceDays.partial ? (serviceDays.total < 2 ? 'mesuré ' : 'mesurés ') : ''}où le véhicule ${data.id} était en service.`,
 						)}
 						{locale}
 						{time}
 						{actions}
 					>
 						{#snippet meta()}
-							{#if serviceSample}<p>{t('Counted: ', 'Décompte : ')}{serviceSample}</p>{/if}
+							{#if serviceSample}<p>
+									{t('Counted: ', 'Ce qui est compté\u00a0: ')}{serviceSample}
+								</p>{/if}
 						{/snippet}
 					</RecordAnswer>
 					{#await dailyAnswer then daily}
@@ -362,7 +363,7 @@
 						{/snippet}
 					</RecordCard>
 				</div>
-				<RecordCard interactive title={t('Day by day', 'Jour après jour')} stamp={time}>
+				<RecordCard interactive title={t('Day by day', 'Jour par jour')} stamp={time}>
 					{#await dailyAnswer}
 						{#if dailyAnswer}<RecordPending {locale} answer={dailyAnswer} />{/if}
 					{:then result}
@@ -437,7 +438,7 @@
 											<p>
 												{t(
 													'The live feeds do not show reliably when a trip ends early, so trips not finished are not tracked.',
-													'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt, alors les trajets non terminés ne sont pas suivis.',
+													'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt, donc les trajets non terminés ne sont pas suivis.',
 												)}
 											</p>
 										{:else if section === 'reporting' && reading.state === 'measured'}
@@ -446,11 +447,12 @@
 													>{tally(counts.reporting_gaps, locale)}</strong
 												>{/if}
 											<p>
-												{vehicleReading(reading, 'vehicle_reporting_gaps_per_100_hours', locale)}
-												{t(
-													'interruptions per 100 hours in service',
-													'interruptions par 100 heures en service',
-												)}
+												{reportingGapsReading(
+													reading.value.vehicle_reporting_gaps_per_100_hours,
+													counts.reporting_gaps,
+													locale,
+												) ??
+													vehicleReading(reading, 'vehicle_reporting_gaps_per_100_hours', locale)}
 											</p>
 										{:else}{@render absent(result)}{/if}
 									{:else}{@render absent(result)}{/if}
@@ -559,13 +561,7 @@
 							{
 								key: 'counted',
 								label: term.counted,
-								text: [
-									serviceSample ? `${serviceSample}.` : null,
-									punctualityWeighting[locale],
-									data.period?.from !== data.period?.to ? pooledDays[locale] : null,
-								]
-									.filter(Boolean)
-									.join(' '),
+								text: serviceSample ? `${serviceSample}.` : null,
 							},
 							{
 								key: 'service',
@@ -602,7 +598,11 @@
 								text: null,
 								link: { href: vehicleHref('/metrics', url, locale, data.city), label: term.method },
 							},
-							{ key: 'source', label: term.source, text: operator ? term.feeds(operator) : null },
+							{
+								key: 'source',
+								label: term.source,
+								text: operator ? term.feeds(agencyName(operator, page.data.provider)) : null,
+							},
 						]}
 					/>
 				</RecordGroup>

@@ -6,7 +6,7 @@ export async function openFrameControls(page: Page, locale: 'en' | 'fr' = 'en') 
 	if (!(await rail.isVisible())) {
 		await page
 			.getByRole('button', {
-				name: locale === 'fr' ? /^Commandes.*Ouvrir les commandes/ : /^Controls.*Open controls/,
+				name: locale === 'fr' ? /^Options.*Ouvrir les options/ : /^Controls.*Open controls/,
 			})
 			.click();
 	}
@@ -16,7 +16,7 @@ export async function openFrameControls(page: Page, locale: 'en' | 'fr' = 'en') 
 
 export async function closeCompactFrameControls(page: Page, locale: 'en' | 'fr' = 'en') {
 	const sheet = page.getByRole('dialog', {
-		name: locale === 'fr' ? 'Commandes' : 'Controls',
+		name: locale === 'fr' ? 'Options' : 'Controls',
 		exact: true,
 	});
 	if (await sheet.isVisible()) await page.keyboard.press('Escape');

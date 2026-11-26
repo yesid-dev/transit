@@ -29,7 +29,7 @@
 			<li>
 				{t(
 					'The agency publishes no vehicle positions for this line.',
-					'L’agence ne publie aucune position de véhicule pour cette ligne.',
+					'La société de transport ne publie aucune position de véhicule pour cette ligne.',
 				)}
 			</li>{/if}
 		<li>

@@ -16,7 +16,6 @@
 	} from './lineRecordText.ts';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
-		cautiousRanking,
 		choose,
 		coverageText,
 		departureRankingFloor,
@@ -26,7 +25,7 @@
 	import { waitingMeasures, waitingReadingParts } from '#lib/features/record/waitingText.ts';
 	import {
 		recordPercent,
-		minuteReading,
+		vehicleHours,
 		scheduleHours,
 		scheduledClock,
 		countedUnit,
@@ -90,7 +89,7 @@
 	};
 	const levelLabels = $derived({
 		crowding_empty: t('Empty', 'Vide'),
-		crowding_many_seats: t('Many seats available', 'Beaucoup de places assises libres'),
+		crowding_many_seats: t('Many seats available', 'Plusieurs places assises libres'),
 		crowding_few_seats: t('Few seats available', 'Peu de places assises libres'),
 		crowding_standing: t('Standing room only', 'Places debout seulement'),
 		crowding_crushed: t('Limited standing room', 'Peu de places debout'),
@@ -114,7 +113,7 @@
 								{
 									label: t(
 										`Occupancy reported at ${p(percentage / 100)}`,
-										`Achalandage déclaré à ${p(percentage / 100)}`,
+										`Occupation déclarée à ${p(percentage / 100)}`,
 									),
 									share,
 									seconds: vehicle_seconds,
@@ -198,21 +197,20 @@
 			topOccupancy
 				? t(
 						`The largest reported share was ${p(topOccupancy.share)} of vehicle time with usable occupancy data (${topOccupancy.label}).`,
-						`La plus grande part déclarée était de ${p(topOccupancy.share)} du temps des véhicules avec une mesure d’achalandage utilisable (${topOccupancy.label}).`,
+						`La plus grande part déclarée était de ${p(topOccupancy.share)} du temps des véhicules avec une mesure d’occupation utilisable (${topOccupancy.label}).`,
 					)
 				: null,
 		)}
 		<LineReadingTable
 			{title}
 			{locale}
-			headers={[t('Occupancy level', 'Niveau d’achalandage'), t('Share', 'Part')]}
+			headers={[t('Occupancy level', 'Places à bord'), t('Share', 'Part')]}
 			rows={occupancy.map(({ label, share, seconds }) => ({
 				label,
 				values: [
 					{
 						value: p(share),
-						detail:
-							seconds == null ? undefined : (minuteReading(seconds / 60, locale) ?? undefined),
+						detail: seconds == null ? undefined : vehicleHours(seconds, locale),
 					},
 				],
 			}))}
@@ -231,9 +229,6 @@
 			values: [{ value: p(row.value), detail: countedUnit(row.sample, 'event', locale) }],
 		}))}
 	/>
-	{#if answer.rows[0]?.ranking_bound != null}
-		<p class="mt-3 text-small text-muted-foreground">{cautiousRanking[locale]}</p>
-	{/if}
 	{#if floors}<p class="mt-3 text-small text-muted-foreground">
 			{departureRankingFloor(floors, locale)}
 		</p>{/if}

@@ -23,7 +23,7 @@ const EFFECT_LABELS: Record<string, LocaleMap> = {
 	ADDITIONAL_SERVICE: { en: 'Additional service', fr: 'Service supplémentaire' },
 	MODIFIED_SERVICE: { en: 'Modified service', fr: 'Service modifié' },
 	STOP_MOVED: { en: 'Stop moved', fr: 'Arrêt déplacé' },
-	ACCESSIBILITY_ISSUE: { en: 'Accessibility issue', fr: "Problème d'accessibilité" },
+	ACCESSIBILITY_ISSUE: { en: 'Accessibility issue', fr: 'Problème d’accessibilité' },
 };
 
 const UNINFORMATIVE = new Set([

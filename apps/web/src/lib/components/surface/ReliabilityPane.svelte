@@ -49,7 +49,7 @@
 			delayAvg: 'Retard moyen',
 			delayMedian: 'Retard médian',
 			p90: 'p90',
-			p90Caption: '90e percentile des relevés de retard',
+			p90Caption: '90e centile des relevés de retard',
 			trend: 'Part des prévisions à plus de 5 minutes de retard',
 			unitPct: '%',
 		},

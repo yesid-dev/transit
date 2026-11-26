@@ -436,7 +436,7 @@
 			value={null}
 			sentence={t(
 				'No entries can be ranked on these dates.',
-				'Aucune entrée ne peut être classée à ces dates.',
+				'Aucun élément ne peut être classé à ces dates.',
 			)}
 			state={resultState(data)}
 			time={stamp}
@@ -500,7 +500,7 @@
 					value={row.entry.value}
 					domain={range}
 					reference={ref ?? undefined}
-					label={`${t('Range:', 'Plage\u00a0:')} ${caption}`}
+					label={`${t('Range:', 'Intervalle\u00a0:')} ${caption}`}
 					{caption}
 				/>
 				{#if verdict}<span class="text-small text-muted-foreground">{verdict}</span>{/if}
@@ -583,7 +583,7 @@
 						{wilson
 							? t(
 									'The line is the range in which the value would fall about 95 times in 100 for another equal period.',
-									'Le trait indique la plage où la valeur tomberait environ 95 fois sur 100 sur une autre période de même durée.',
+									'Le trait indique l’intervalle où la valeur se situerait environ 95 fois sur 100 sur une autre période de même durée.',
 								)
 							: data.range_notes[bounded[0].entry.range.method]?.[locale]}
 						{#if bounded.length < rows.length}{t(
@@ -722,7 +722,7 @@
 								state="not_measured"
 								sentence={t(
 									'No entries can be ranked on these dates.',
-									'Aucune entrée ne peut être classée à ces dates.',
+									'Aucun élément ne peut être classé à ces dates.',
 								)}
 							/>
 						{:else}

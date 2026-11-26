@@ -91,7 +91,7 @@ describe('Departure and Daily report text', () => {
 		const rows = dailyPeriods(answer, 'fr');
 		expect(rows[0]).toMatchObject({
 			state: 'not_measured',
-			detail: 'Couverture insuffisante',
+			detail: 'Trop peu observé',
 			count: '40',
 		});
 		expect(rows[1]).toMatchObject({

@@ -7,7 +7,7 @@ export const announcement = {
 		closeLabel: 'Close this announcement',
 	},
 	fr: {
-		message: "Un nouveau Transit s'en vient. Voyez ce qui change",
+		message: 'Un nouveau Transit s’en vient. Voyez ce qui change',
 		href: '/fr/roadmap',
 		closeLabel: 'Fermer cette annonce',
 	},

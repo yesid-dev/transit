@@ -198,7 +198,7 @@ it.each([
 
 it.each([
 	['en', 'Waiting for a reading.'],
-	['fr', 'Lecture en attente.'],
+	['fr', 'En attente de données.'],
 ] as const)(
 	'uses the shared pending line for a busy download answer in %s',
 	async (locale, pending) => {

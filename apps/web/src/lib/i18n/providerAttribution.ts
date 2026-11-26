@@ -5,7 +5,7 @@ export const providerAttributionCopy = defineCopy({
 	fr: {
 		stm: 'Contient des données de la Société de transport de Montréal mises à disposition selon la licence CC BY 4.0.',
 		octranspo:
-			"Contient de l'information visée par la Licence du gouvernement ouvert – Ville d'Ottawa.",
+			'Contient de l’information visée par la Licence du gouvernement ouvert – Ville d’Ottawa.',
 	},
 	en: {
 		stm: 'Contains STM data made available under CC BY 4.0.',

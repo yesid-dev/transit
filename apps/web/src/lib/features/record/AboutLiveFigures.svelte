@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { ComponentProps } from 'svelte';
-	import { vehiclePositionsCapture } from '#lib/site/presenter.ts';
+	import { agencyName, vehiclePositionsCapture } from '#lib/site/presenter.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy';
 	import AboutFigures from './AboutFigures.svelte';
 
@@ -43,10 +44,14 @@
 		...additionalFields,
 		{
 			key: 'capture',
-			label: locale === 'fr' ? 'Dernier relevé' : 'Last capture',
+			label: locale === 'fr' ? 'Dernière collecte' : 'Last capture',
 			text: captureText ?? vehiclePositionsCapture(captureAge, locale),
 			link: healthLink ? { href: healthLink, label: t.dataHealth } : undefined,
 		},
-		{ key: 'source', label: t.source, text: operator ? t.liveFeeds(operator) : null },
+		{
+			key: 'source',
+			label: t.source,
+			text: operator ? t.liveFeeds(agencyName(operator, page.data.provider)) : null,
+		},
 	]}
 />

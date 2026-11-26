@@ -91,7 +91,7 @@ export const methodCopy = {
 		cleanTables: 'répertorie les fichiers sources quotidiens.',
 		dataUsers: 'Pour les utilisateurs de données',
 		calculation: 'Calcul',
-		ordering: 'Ordre des lignes',
+		ordering: 'Ordre du classement',
 		caveat: 'Mise en garde',
 		archive: 'Méthode du bilan archivé',
 		range: {

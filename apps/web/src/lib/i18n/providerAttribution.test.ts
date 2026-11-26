@@ -23,7 +23,7 @@ it('credits the STM with its full French name and licence', () => {
 
 it('uses Ottawa’s official French notice', () => {
 	expect(providerAttribution('octranspo', 'Contains OC Transpo data', 'fr')).toBe(
-		"Contient de l'information visée par la Licence du gouvernement ouvert – Ville d'Ottawa.",
+		'Contient de l’information visée par la Licence du gouvernement ouvert – Ville d’Ottawa.',
 	);
 });
 

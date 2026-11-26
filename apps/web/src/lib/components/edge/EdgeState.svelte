@@ -137,7 +137,7 @@
 	};
 
 	const MAJ_PREFIX: Record<Locale, string> = {
-		fr: 'MAJ',
+		fr: 'Mis à jour',
 		en: 'Updated',
 	};
 

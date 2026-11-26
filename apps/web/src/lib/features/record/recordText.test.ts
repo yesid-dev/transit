@@ -25,9 +25,12 @@ it('keeps the reason for an engine-gated rate and its known coverage', () => {
 		},
 	} as const;
 	expect(rateStateText(answer, 'en')).toBe(
-		'Not measured (insufficient coverage) · Status known for 20.0% of 400 scheduled trips on lines with live data · Low coverage',
+		'Not measured: too little observed · Status known for 20.0% of 400 scheduled trips on lines with live data',
 	);
-	expect(rateStateText(answer, 'fr')).toContain('Non mesuré (couverture insuffisante)');
+	expect(rateStateText(answer, 'fr')).toContain('Non mesuré\u00a0: trop peu observé');
+	// The two limits are said once each: a figure that is not measured is never also low coverage.
+	expect(rateStateText(answer, 'en')).not.toContain('Low coverage');
+	expect(rateStateText(answer, 'fr')).not.toContain('Faible couverture');
 });
 
 it('shows all timing sources and warns only when most times are predictions', () => {
@@ -47,6 +50,6 @@ it('shows all timing sources and warns only when most times are predictions', ()
 			'fr',
 		).replace(/\s/g, ' '),
 	).toBe(
-		'Heures observées : 20,0 % véhicule signalé à l’arrêt, 20,0 % heure signalée par l’agence, 60,0 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.',
+		'Heures observées : 20,0 % véhicule signalé à l’arrêt, 20,0 % heure signalée par la société de transport, 60,0 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.',
 	);
 });

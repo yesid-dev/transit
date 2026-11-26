@@ -12,9 +12,12 @@
 		type CaptureTripReport,
 	} from '#lib/live/captureSnapshot.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
+	import { page } from '$app/state';
 	import {
+		agencyName,
 		countedUnit,
 		dateAndClock,
+		frenchAgency,
 		liveDelayLabels,
 		liveStampAge,
 		lineNoVehicleSentence,
@@ -92,6 +95,7 @@
 	const terms = $derived(overviewCopy[locale]);
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const agencyFr = $derived(frenchAgency(agencyName(operator, page.data.provider)));
 	const link = (path: string) => carryFrameState(localizeHref(path, locale, city), url);
 	const stopHref = (id: string) => link('/stop/' + encodeURIComponent(id));
 	const share = $derived.by(() => {
@@ -353,7 +357,7 @@
 					<p>
 						{t(
 							`${operator} publishes no realtime feed for this line. Its timetable is shown below.`,
-							`${operator} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
+							`${agencyFr.start} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
 						)}
 					</p>
 				{/snippet}

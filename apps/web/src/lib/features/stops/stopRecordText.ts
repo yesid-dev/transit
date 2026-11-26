@@ -207,7 +207,7 @@ function stopEventGap(
 
 export const stopAccessibilityDescription = {
 	en: 'This is what the agency declared for this stop in the schedule on its latest service date in the selection.',
-	fr: 'Il s’agit de la déclaration de l’exploitant dans l’horaire pour cet arrêt à sa dernière date de service dans la période choisie.',
+	fr: 'Il s’agit de la déclaration de la société de transport dans l’horaire pour cet arrêt à sa dernière date de service dans la période choisie.',
 };
 
 export function stopBoardingNotPublished(answer: RecordMeasure) {
@@ -271,7 +271,7 @@ export function stopComparison(
 			`Le réseau était aussi à ${baseline} sur les mêmes dates.`,
 		);
 	const relation = stopShare < networkShare ? ['below', 'sous'] : ['above', 'au-dessus de'];
-	const unit = difference === 1 ? 'point' : 'points';
+	const unit = singularCount(difference, locale) ? 'point' : 'points';
 	return choose(
 		locale,
 		`${points} ${unit} ${relation[0]} the network, which was at ${baseline} over the same dates.`,

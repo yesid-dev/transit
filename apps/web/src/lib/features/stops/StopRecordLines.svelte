@@ -86,7 +86,7 @@
 					},
 					{
 						key: 'bunching',
-						header: t(waitingMeasures[2][1], 'Véhicules groupés'),
+						header: t(waitingMeasures[2][1], waitingMeasures[2][2]),
 						numeric: true,
 						cell: bunching,
 					},

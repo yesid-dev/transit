@@ -150,7 +150,7 @@
 		const answer = measure(result);
 		if (answer) return recordState(readingState(answer))[lang];
 		return result?.kind === 'busy'
-			? t('Waiting for a reading.', 'Lecture en attente.')
+			? t('Waiting for a reading.', 'En attente de données.')
 			: unavailable;
 	}
 	function evidenceSample(answer: EngineAnswer, section: DailySection) {
@@ -556,7 +556,7 @@
 												<p class="mt-3 text-muted-foreground">
 													{t(
 														earlyLateDefinitionEn,
-														'En avance : plus de 1 minute avant l’horaire. En retard : plus de 5 minutes après l’horaire.',
+														'En avance\u00a0: plus d’une minute avant l’horaire. En retard\u00a0: plus de 5 minutes après l’horaire.',
 													)}
 												</p>
 											{:else}<StateMark state="unknown" locale={lang} />{/if}
@@ -588,7 +588,7 @@
 												'Late share by part of the day',
 												'Part en retard selon la période de la journée',
 											)}
-											rowHeader={t('Part of the day', 'Partie de la journée')}
+											rowHeader={t('Part of the day', 'Période de la journée')}
 											{columns}
 											rows={dailyPeriods(result.answer, lang).map(({ detail, ...row }) => ({
 												...row,
@@ -654,7 +654,7 @@
 											<p>
 												{t(
 													'No alerts in the tracked record for these dates.',
-													'Aucun avis dans le bilan suivi à ces dates.',
+													'Aucun avis enregistré dans le bilan à ces dates.',
 												)}
 											</p>
 										{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
@@ -835,7 +835,7 @@
 											key: 'source',
 											label: copy.source,
 											text: [
-												copy.feeds(operator ?? cityName),
+												copy.feeds(agencyName(operator ?? cityName, routeData.provider)),
 												copy.recordStart(longDate(recordStart(page.data.provider), lang)),
 											].join(' '),
 										},

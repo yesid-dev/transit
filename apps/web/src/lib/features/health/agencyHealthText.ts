@@ -435,7 +435,7 @@ export function minimumNote(answer: ScorecardAnswer, measure: string, locale: Lo
 		? choose(
 				locale,
 				`At least ${tally(minimum, locale)} observed arrivals per lead time.`,
-				`Au moins ${tally(minimum, locale)} arrivées observées par temps d’avance.`,
+				`Au moins ${tally(minimum, locale)} arrivées observées par horizon de prévision.`,
 			)
 		: choose(
 				locale,

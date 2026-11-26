@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { routeNameFallback } from './absence.ts';
 import { createLineDirectory } from './lineDirectory.ts';
 import {
+	agencyName,
 	alertAnswerSentence,
 	alertPaging,
 	captureCadence,
@@ -20,6 +21,15 @@ import {
 	publishedAlertCount,
 	delayReading,
 	directionLabel,
+	frenchAgency,
+	lineSubtitle,
+	plannedInterval,
+	predictedIn,
+	readerClock,
+	riderHeadsign,
+	scheduleHours,
+	terminusName,
+	towardReading,
 	fileSize,
 	lineRecordHeading,
 	liveStampAge,
@@ -221,30 +231,42 @@ it.each([
 );
 
 it.each([
-	['en', '00:48, next day', 'Unknown time'],
-	['fr', '00:48, le lendemain', 'Heure inconnue'],
-] as const)('displays service clocks and absence in %s', (locale, nextDay, unknown) => {
-	expect(serviceTime('16:38:52', locale)).toBe('16:38');
-	expect(serviceTime('24:48:00', locale)).toBe(nextDay);
-	expect(serviceTime('00:48:00', locale)).toBe('00:48');
-	expect(serviceTime('24:60:00', locale)).toBeNull();
-	expect(serviceTime(null, locale)).toBeNull();
-	expect(scheduledClock(null, locale)).toBe(unknown);
-});
+	['en', ['16:38', '00:48'], '00:48, next day', 'Unknown time'],
+	[
+		'fr',
+		['16\u00a0h\u00a038', '0\u00a0h\u00a048'],
+		'0\u00a0h\u00a048, le lendemain',
+		'Heure inconnue',
+	],
+] as const)(
+	'displays service clocks and absence in %s',
+	(locale, [late, early], nextDay, unknown) => {
+		expect(serviceTime('16:38:52', locale)).toBe(late);
+		expect(serviceTime('24:48:00', locale)).toBe(nextDay);
+		expect(serviceTime('00:48:00', locale)).toBe(early);
+		expect(serviceTime('24:60:00', locale)).toBeNull();
+		expect(serviceTime(null, locale)).toBeNull();
+		expect(scheduledClock(null, locale)).toBe(unknown);
+	},
+);
 
 it.each(['en', 'fr'] as const)(
 	'renders instants in the selected city across DST in %s',
 	(locale) => {
 		const time = (iso: string, zone = 'America/Los_Angeles') =>
 			clockTime(new Date(iso), locale, zone);
-		expect(time('2026-03-08T09:59:59Z')).toBe('01:59');
-		expect(time('2026-03-08T10:00:00Z')).toBe('03:00');
-		expect(time('2026-11-01T08:48:00Z')).toBe('01:48');
-		expect(time('2026-11-01T09:48:00Z')).toBe('01:48');
-		expect(time('2026-11-01T09:48:00Z', 'America/Toronto')).toBe('04:48');
-		expect(time('2026-11-01T07:00:00Z')).toBe('00:00');
+		// Québec French writes the hour without a leading zero and an h: "1 h 59", "3 h".
+		const clock = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+		expect(time('2026-03-08T09:59:59Z')).toBe(clock('01:59', '1\u00a0h\u00a059'));
+		expect(time('2026-03-08T10:00:00Z')).toBe(clock('03:00', '3\u00a0h'));
+		expect(time('2026-11-01T08:48:00Z')).toBe(clock('01:48', '1\u00a0h\u00a048'));
+		expect(time('2026-11-01T09:48:00Z')).toBe(clock('01:48', '1\u00a0h\u00a048'));
+		expect(time('2026-11-01T09:48:00Z', 'America/Toronto')).toBe(
+			clock('04:48', '4\u00a0h\u00a048'),
+		);
+		expect(time('2026-11-01T07:00:00Z')).toBe(clock('00:00', '0\u00a0h'));
 		expect(dateAndClock('2026-11-01T09:48:00Z', locale, 'America/Los_Angeles', true)).toContain(
-			'01:48',
+			clock('01:48', '1\u00a0h\u00a048'),
 		);
 	},
 );
@@ -328,7 +350,9 @@ it.each(['en', 'fr'] as const)('shares the date across a same-day alert period i
 	const end = '2026-11-22T04:45:00Z';
 	const zone = 'America/Toronto';
 	const from = dateAndClock(start, locale, zone);
-	expect(clockRange(start, end, locale, zone)).toBe(from + '–23:45');
+	expect(clockRange(start, end, locale, zone)).toBe(
+		from + (locale === 'fr' ? '–23\u00a0h\u00a045' : '–23:45'),
+	);
 	const nextDay = '2026-11-22T05:15:00Z';
 	expect(clockRange(start, nextDay, locale, zone)).toBe(
 		from + '–' + dateAndClock(nextDay, locale, zone),
@@ -520,4 +544,103 @@ it('says once that every departure or hour is too few to judge, with the count a
 	expect(tooFewHours(12, 25, 'fr')).toBe(
 		'Chaque heure compte trop peu de passages aux arrêts pour conclure\u00a0: au plus 12, sur un minimum de 25.',
 	);
+});
+
+it.each([
+	['en', ['04:48', '07:00', '07:00 to 08:00']],
+	['fr', ['4 h 48', '7 h', '7 h à 8 h']],
+] as const)('writes clock times as %s readers do', (locale, [clock, hour, range]) => {
+	expect(readerClock(4, 48, locale)).toBe(clock);
+	expect(readerClock(7, 0, locale)).toBe(hour);
+	expect(scheduleHours(7, 8, locale)).toBe(range);
+	expect(scheduledClock('04:48:00', locale)).toBe(clock);
+});
+
+it.each([
+	[
+		'en',
+		'Toward Station Laurier (Est)',
+		'Toward the stop du Square-Victoria / Saint-Antoine (Est)',
+	],
+	['fr', 'Vers Station Laurier (est)', 'Vers l’arrêt du Square-Victoria / Saint-Antoine (est)'],
+] as const)('names a terminus as riders do in %s', (locale, laurier, particle) => {
+	expect(terminusName('Station Laurier (Saint-Joseph / Berri)')).toBe('Station Laurier');
+	expect(terminusName('Station Laurier (Est)')).toBe('Station Laurier (Est)');
+	const pattern = {
+		termini: {
+			est: 'Station Laurier (Saint-Joseph / Berri)',
+			ouest: 'du Square-Victoria / Saint-Antoine',
+		},
+	};
+	expect(towardReading(riderHeadsign('Est', pattern)!, locale)).toBe(laurier);
+	expect(towardReading('du Square-Victoria / Saint-Antoine (Est)', locale)).toBe(particle);
+	expect(towardReading('du Square-Victoria / Saint-Antoine (Est)', locale)).not.toMatch(
+		/Vers du|Toward du/,
+	);
+});
+
+it.each([
+	['en', 'Gare Montréal-Ouest to Station Laurier', 'Angrignon to Honoré-Beaugrand'],
+	['fr', 'De Gare Montréal-Ouest à Station Laurier', 'D’Angrignon à Honoré-Beaugrand'],
+] as const)('reads a line from one terminus to the other in %s', (locale, bus, vowel) => {
+	const ends = [
+		'Gare Montréal-Ouest (Elmhurst / Sherbrooke)',
+		'Station Laurier (Saint-Joseph / Berri)',
+	];
+	expect(lineSubtitle(3, ends, locale)).toBe(bus);
+	expect(lineSubtitle(3, ['Angrignon', 'Honoré-Beaugrand'], locale)).toBe(vowel);
+});
+
+it('gives each agency its French article from the city’s declared form', () => {
+	const stm = frenchAgency(
+		agencyName('STM', { download_licence: { source: { fr: 'de la STM' } } }),
+	);
+	expect(stm).toEqual({
+		subject: 'la STM',
+		of: 'de la STM',
+		by: 'par la STM',
+		with: 'avec la STM',
+		start: 'La STM',
+	});
+	const oc = frenchAgency(
+		agencyName('OC Transpo', { download_licence: { source: { fr: 'd’OC Transpo' } } }),
+	);
+	expect(oc).toMatchObject({ subject: 'OC Transpo', by: 'par OC Transpo', start: 'OC Transpo' });
+	// A city that declares no form keeps its bare name; no article is guessed.
+	expect(frenchAgency(agencyName('STO', null))).toMatchObject({ subject: 'STO', of: 'de STO' });
+});
+
+it.each([
+	[
+		'en',
+		['0 trips in 7 hours', '1 trip in 1 hour'],
+		'0 stop events',
+		'every minute',
+		'notices are in effect now.',
+	],
+	[
+		'fr',
+		['0 trajet en 7 heures', '1 trajet en 1 heure'],
+		'aucun passage aux arrêts',
+		'chaque minute',
+		'avis est en vigueur.',
+	],
+] as const)(
+	'counts 0 and 1 as %s does',
+	(locale, [noTrip, oneTrip], noEvent, everyMinute, noAlert) => {
+		expect(tripsInHours(0, 7, locale)).toBe(noTrip);
+		expect(tripsInHours(1, 1, locale)).toBe(oneTrip);
+		expect(countedUnit(0, 'event', locale)).toBe(noEvent);
+		expect(plannedInterval(60, locale)).toBe(everyMinute);
+		expect(alertAnswerSentence(0, locale, true)).toBe(noAlert);
+	},
+);
+
+it.each([
+	['en', 'now', 'in 3 min'],
+	['fr', 'maintenant', 'dans 3 min'],
+] as const)('says a vehicle due within the minute is due now in %s', (locale, now, soon) => {
+	expect(predictedIn(30_000, 0, locale)).toBe(soon.replace('3', '1'));
+	expect(predictedIn(0, 0, locale)).toBe(now);
+	expect(predictedIn(180_000, 0, locale)).toBe(soon);
 });

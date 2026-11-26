@@ -30,7 +30,7 @@ export const indexCopy = defineCopy({
 		basis: (readings: string) => `Selon ${readings} relevés`,
 		basisUnknown: 'Nombre de relevés non publié',
 		uncertain: 'Incertaine',
-		lowSample: 'Pas assez de relevés pour juger',
+		lowSample: 'Trop peu de données pour conclure',
 		notPublished: 'Non publié cette semaine',
 		noLive: 'Aucune donnée en direct',
 		loading: 'Vérification du bilan de cette ligne…',

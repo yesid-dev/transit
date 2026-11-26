@@ -28,7 +28,7 @@ export function selectLivePulse(net: NetworkFile | null, locale?: Locale): LiveP
 	const total = tally(scheduled, locale);
 	const scheduledTrips =
 		locale === 'fr'
-			? `${total} ${scheduled === 1 ? 'trajet prévu' : 'trajets prévus'} en ce moment`
+			? `${total} ${scheduled < 2 ? 'trajet prévu' : 'trajets prévus'} en ce moment`
 			: `${total} ${scheduled === 1 ? 'trip' : 'trips'} scheduled now`;
 	return {
 		...pulse,

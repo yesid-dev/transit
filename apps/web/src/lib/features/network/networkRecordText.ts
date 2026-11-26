@@ -18,7 +18,7 @@ const fields = {
 	trip: ['Trip', 'Trajet'],
 	route: ['Line', 'Ligne'],
 	stop: ['Stop', 'Arrêt'],
-	current_status: ['Current status', 'Statut actuel'],
+	current_status: ['Current status', 'État actuel'],
 	occupancy: ['Occupancy', 'Occupation'],
 	position: ['Position', 'Position'],
 } satisfies Record<string, [string, string]>;
@@ -89,7 +89,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 			headers: [
 				t('Feed', 'Flux'),
 				t('Median', 'Médiane'),
-				t('90th percentile', '90e centile'),
+				t('9 in 10 under', '9 sur 10 sous'),
 				t('Samples', 'Observations'),
 			],
 			rows: Object.entries(feeds).map(([feed, label]) => {
@@ -171,9 +171,9 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 	}
 	return {
 		headers: [
-			t('Lead time', 'Temps d’avance'),
-			t('Median signed error', 'Erreur médiane signée'),
-			t('90th percentile absolute error', '90e centile de l’erreur absolue'),
+			t('Lead time', 'Horizon de prévision'),
+			t('Typical error (late is +)', 'Écart typique (retard\u00a0: +)'),
+			t('9 in 10 off by less than', '9 sur 10 décalées de moins de'),
 			t('Within one minute', 'À une minute près'),
 			t('Observed arrivals', 'Arrivées observées'),
 		],

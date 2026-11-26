@@ -75,7 +75,7 @@ export function comparisonText(
 		.format(magnitude);
 	if (magnitude === 0)
 		return locale === 'fr'
-			? 'Environ pareil (variation normale)'
+			? 'À peu près pareil (variation normale)'
 			: 'About the same (within normal variation)';
 	const higher = change.points > 0;
 	const point = singularCount(magnitude, locale) ? 'point' : 'points';

@@ -51,10 +51,10 @@ const glossary: [RegExp, string, exceptIn?: RegExp][] = [
 ];
 
 /**
- * Screens whose words other packets of the same wave rewrite (alerts in W9, the map in W10). The
- * glossary reads them once those land: delete this line then.
+ * The map's words are left to the map's own packet (achalandage, two straight apostrophes). The
+ * glossary reads the map files once those are fixed: delete this line then.
  */
-const inFlight = /^features\/(?:alerts\/|map\/|lines\/LineLiveNotices\.svelte$)/;
+const inFlight = /^features\/map\//;
 
 // Use the Svelte parser, not a regex, to find a component's script blocks.
 function svelteScripts(raw: string): string {

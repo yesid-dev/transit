@@ -18,7 +18,7 @@ const STRUCTURAL_LABELS = {
 		group: 'groupe',
 		x: 'axe x',
 		gap: 'écart',
-		confidenceInterval95: 'IC 95 %',
+		confidenceInterval95: 'IC 95\u00a0%',
 		tripsTitle: 'Trajets',
 		tripsLower: 'trajets',
 		share: 'Part',

@@ -69,7 +69,7 @@
 	const columns = $derived<DataTableColumn<Row>[]>([
 		{ key: 'toward', header: t('Toward', 'Vers'), cell: toward },
 		{ key: 'scheduled', header: t('Scheduled', 'Horaire'), cell: scheduled },
-		{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected },
+		{ key: 'expected', header: t('Expected', 'Attendu'), cell: expected },
 		{ key: 'status', header: t('Status', 'État'), cell: statusCell },
 	]);
 </script>

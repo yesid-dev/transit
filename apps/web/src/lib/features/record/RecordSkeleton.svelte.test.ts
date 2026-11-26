@@ -31,5 +31,5 @@ it('releases the reservation when the reader is waiting for a slot', async () =>
 	const { container, rerender } = render(RecordPending, { locale: 'fr', shape: 'answer' });
 	await rerender({ locale: 'fr', shape: 'answer', busy: true });
 	expect(container.querySelector('[data-record-pending]')).toBeNull();
-	expect(screen.getByRole('status')).toHaveTextContent('Lecture en attente.');
+	expect(screen.getByRole('status')).toHaveTextContent('En attente de données.');
 });

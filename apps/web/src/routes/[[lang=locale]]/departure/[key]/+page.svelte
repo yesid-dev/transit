@@ -12,6 +12,7 @@
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
+		agencyName,
 		compactServiceDay,
 		countedUnit,
 		citeDates,
@@ -545,7 +546,7 @@
 											},
 											{
 												key: 'counted',
-												label: t('Counted', 'Décompte'),
+												label: t('Counted', 'Ce qui est compté'),
 												text: t(
 													'The answer is the late share of the observed stop events of this departure on these dates. An observed day has at least one classified stop event.',
 													'La réponse est la part des passages observés de ce départ qui étaient en retard à ces dates. Jour observé : au moins un passage classé.',
@@ -559,7 +560,7 @@
 												),
 												text: t(
 													'Cancelled: the agency announced it. Missing: it was scheduled and no vehicle was seen during continuous capture.',
-													'Annulé : annoncé par l’agence. Manquant : départ prévu, sans véhicule vu en collecte continue.',
+													'Annulé\u00a0: annoncé par la société de transport. Manquant : départ prévu, sans véhicule vu en collecte continue.',
 												),
 											},
 											{ key: 'means', label: term.means, text: term.definition },
@@ -576,7 +577,9 @@
 												key: 'source',
 												label: term.source,
 												text: data.provider
-													? term.feeds(data.provider.labels[data.lang].operator)
+													? term.feeds(
+															agencyName(data.provider.labels[data.lang].operator, data.provider),
+														)
 													: null,
 											},
 										]}

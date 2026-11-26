@@ -83,7 +83,7 @@
 		if (unavailable) {
 			return t(
 				`${count === 1 ? 'file is' : 'files are'} confirmed for the dates shown. Some dates could not be checked.`,
-				`${count === 1 ? 'fichier est confirmé' : 'fichiers sont confirmés'}. Certaines dates restent à vérifier.`,
+				`${count < 2 ? 'fichier est confirmé' : 'fichiers sont confirmés'} pour les dates affichées. Certaines dates n’ont pas pu être vérifiées.`,
 			);
 		}
 		const tableCount = tally(tables.length, locale);

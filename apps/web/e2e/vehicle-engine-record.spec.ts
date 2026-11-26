@@ -205,7 +205,11 @@ for (const width of [390, 1440]) {
 				main.getByRole('article', {
 					name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
 				}),
-			).toContainText(fr ? '16 interruptions par 100 heures' : '16 interruptions per 100 hours');
+			).toContainText(
+				fr
+					? 'interruptions des signalements, environ 0,2 par heure'
+					: 'times it stopped reporting, about 0.2 an hour',
+			);
 			const completion = main.getByRole('article', {
 				name: fr ? 'Trajets non terminés' : 'Trips it did not finish',
 			});
@@ -412,7 +416,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(answer).toContainText(fr ? 'jours mesurés' : 'measured days');
 		await expect(answer).not.toContainText(fr ? 'Le jour restant' : 'On the other day');
 		await expect(
-			page.getByRole('article', { name: fr ? 'Jour après jour' : 'Day by day' }),
+			page.getByRole('article', { name: fr ? 'Jour par jour' : 'Day by day' }),
 		).toContainText(
 			fr ? '6 jours en service sur 6 jours mesurés' : '6 days in service of 6 measured days',
 		);
@@ -424,7 +428,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.goto(`${prefix}/vehicle/40065?provider=stm&frameMode=record&${dates}`);
 		await expect(answer).toContainText(fr ? '5 sur 6' : '5 of 6');
 		await expect(answer).toContainText(fr ? 'Le jour restant' : 'On the other day');
-		const days = page.getByRole('article', { name: fr ? 'Jour après jour' : 'Day by day' });
+		const days = page.getByRole('article', { name: fr ? 'Jour par jour' : 'Day by day' });
 		await expect(days.locator('[data-slot="day-strip-cell"][data-reported="false"]')).toContainText(
 			fr ? 'Non mesuré' : 'Not measured',
 		);
@@ -438,7 +442,7 @@ for (const locale of ['en', 'fr'] as const) {
 	test(`${locale} Vehicle busy answer shows the shared pending line`, async ({ page }) => {
 		await page.goto(`${prefix}/vehicle/40066?provider=stm&frameMode=record&${dates}`);
 		await expect(page.locator('[data-slot="screen-answer"]')).toHaveText(
-			fr ? 'Lecture en attente.' : 'Waiting for a reading.',
+			fr ? 'En attente de données.' : 'Waiting for a reading.',
 		);
 		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(
