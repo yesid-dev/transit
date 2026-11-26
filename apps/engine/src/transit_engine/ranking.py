@@ -39,6 +39,7 @@ from transit_engine.measures import (
     Question,
     ReadWindow,
     Text,
+    _coverage_evidence,
     _csv_columns,
     _info,
     _punctuality_evidence,
@@ -114,6 +115,9 @@ _INSUFFICIENT_COVERAGE = Text(
     "Insufficient coverage", "Couverture insuffisante",
 )
 _NOT_MEASURED_ON_DATES = Text("Not measured on those dates", "Non mesuré à ces dates")
+# An entity under its family's low-coverage limit is never ranked: too little of its
+# scheduled service has a reading for its value to lead a list.
+_LOW_COVERAGE = Text("Low coverage", "Faible couverture")
 
 
 @dataclass(frozen=True)
@@ -453,7 +457,8 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
     class_sizes: Counter[str] = Counter()
     frequent_class_sizes: Counter[str] = Counter()
     for result in totals.values():
-        if ranking.kind == "line":
+        # A class whose lines never carry live data can never be ranked, so it is not offered.
+        if ranking.kind == "line" and (has_own_states or result.counts["live_candidates"]):
             for route in result.scheduled_routes:
                 class_sizes[classes[route]] += lines[route].trips
                 if (
@@ -502,6 +507,21 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
             state, value = "too_few_to_judge", None
         if not has_own_states and not result.counts["live_candidates"]:
             state, value = "no_live_data", None
+        coverage = (
+            _coverage_evidence(family, result.counts["classified"], result.counts["scheduled"])
+            if punctuality else evidence
+        )
+        if value is not None and coverage.get("low_coverage"):
+            excluded.append({
+                **_identity(ranking.kind, key, service_classes),
+                "sample": displayed_sample,
+                **evidence,
+                **(_punctuality_evidence(family, result.counts, window.included)
+                   if punctuality else {}),
+                "reason": "low_coverage",
+                "reason_text": _LOW_COVERAGE._asdict(),
+            })
+            continue
         range_ = _range(value, sample, measure, result.counts, family) if value is not None else {}
         bound = (
             range_["lower" if measure.worst_first_descending else "upper"]
