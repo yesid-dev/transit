@@ -7,7 +7,7 @@
 	import { onMount } from 'svelte';
 	import { Button } from '@yesid/ui/button';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { livePause } from '#lib/live/livePause.svelte.ts';
+	import { livePause } from '#lib/live/livePause.ts';
 	import { stampCopy } from '#lib/v1/stamp.copy.ts';
 
 	let { locale }: { locale: Locale } = $props();

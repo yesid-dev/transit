@@ -5,11 +5,25 @@
  * visitor moves between Live screens. Storage may be blocked: the switch then still works for the
  * page in view.
  */
+import { createSubscriber } from 'svelte/reactivity';
+
 const STORAGE_KEY = 'transit:live-updates-paused';
 const EVENT = 'transit:live-pause';
 
-let paused = $state(false);
+// A plain module (no runes), so pure formatters and Node tooling can import it; reading
+// `paused` inside a Svelte effect or template still subscribes to changes.
+let paused = false;
 let restored = false;
+const redraws = new Set<() => void>();
+const track = createSubscriber((update) => {
+	redraws.add(update);
+	return () => redraws.delete(update);
+});
+
+function changed() {
+	for (const redraw of redraws) redraw();
+	if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENT));
+}
 
 function storage(): Storage | null {
 	try {
@@ -22,6 +36,7 @@ function storage(): Storage | null {
 export const livePause = {
 	/** Always false on the server and until `restore` runs after hydration. */
 	get paused() {
+		track();
 		return paused;
 	},
 	set(value: boolean) {
@@ -34,7 +49,7 @@ export const livePause = {
 		} catch {
 			// Blocked storage keeps the choice for this page only.
 		}
-		if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENT));
+		changed();
 	},
 	/** Reads the tab's choice once, after hydration, so server and client first render agree. */
 	restore() {
@@ -56,7 +71,9 @@ export const livePause = {
 	},
 	/** For tests: forget the choice and the restore. */
 	reset() {
-		paused = false;
 		restored = false;
+		if (!paused) return;
+		paused = false;
+		changed();
 	},
 };

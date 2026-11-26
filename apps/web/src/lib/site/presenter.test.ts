@@ -36,7 +36,7 @@ import {
 	vehiclePositionsCapture,
 	versionNumber,
 } from './presenter.ts';
-import { livePause } from '#lib/live/livePause.svelte.ts';
+import { livePause } from '#lib/live/livePause.ts';
 
 it.each([
 	[

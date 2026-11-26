@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, expect, it, vi } from 'vitest';
-import { livePause } from '#lib/live/livePause.svelte.ts';
+import { livePause } from '#lib/live/livePause.ts';
 import LivePauseSwitch from './LivePauseSwitch.svelte';
 
 afterEach(() => {

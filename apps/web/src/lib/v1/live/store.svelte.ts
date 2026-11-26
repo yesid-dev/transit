@@ -20,7 +20,7 @@ import type {
 	VehiclesFile,
 } from '#lib/v1/schemas/index.ts';
 import { buildLiveIndex, type LiveIndex } from './index';
-import { livePause } from '#lib/live/livePause.svelte.ts';
+import { livePause } from '#lib/live/livePause.ts';
 
 const STALE_TTL_MULTIPLIER = 3;
 const CAPTURE_STALE_SECONDS = { alerts: 900, trips: 300, departures: 300 } as const;

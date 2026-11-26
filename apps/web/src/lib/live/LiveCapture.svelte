@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { fetchCaptureSnapshot, type CaptureSnapshot } from './captureSnapshot.ts';
-	import { livePause } from './livePause.svelte.ts';
+	import { livePause } from './livePause.ts';
 
 	let {
 		city,

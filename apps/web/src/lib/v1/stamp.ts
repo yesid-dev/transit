@@ -1,5 +1,5 @@
 import type { Locale } from '#lib/i18n/copy.ts';
-import { livePause } from '#lib/live/livePause.svelte.ts';
+import { livePause } from '#lib/live/livePause.ts';
 import { formatRelativeSeconds, formatDateKey } from '#lib/utils/time.ts';
 import type { DataHealth, HistoricAvailabilityIndex, Manifest } from './schemas/index';
 import { recordClosedThrough } from './closedWindow';

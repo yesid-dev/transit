@@ -14,7 +14,7 @@ import { formatTransitName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { stampCopy, type LiveState } from '#lib/v1/stamp.copy.ts';
 import { compassPoint, type LinePattern } from './linePatterns';
-import { livePause } from '#lib/live/livePause.svelte.ts';
+import { livePause } from '#lib/live/livePause.ts';
 import type { StampProps } from '@yesid/ui/brand';
 
 export function searchCount(value: number, locale: Locale): string {

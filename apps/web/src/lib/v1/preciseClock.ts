@@ -1,6 +1,6 @@
 import type { ClockPort } from '#lib/v1/runtime.ts';
 import { createSubscriber } from 'svelte/reactivity';
-import { livePause } from '#lib/live/livePause.svelte.ts';
+import { livePause } from '#lib/live/livePause.ts';
 
 /** A tick-driven clock: `now` advances on each tick, `serverNow` adds the server offset to it. */
 export interface TickingServerClock extends ClockPort {

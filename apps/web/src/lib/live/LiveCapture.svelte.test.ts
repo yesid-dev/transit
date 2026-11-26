@@ -1,7 +1,7 @@
 import { render } from '@testing-library/svelte';
 import { afterEach, expect, it, vi } from 'vitest';
 import LiveCaptureHarness from './LiveCaptureHarness.svelte';
-import { livePause } from './livePause.svelte.ts';
+import { livePause } from './livePause.ts';
 
 afterEach(() => {
 	livePause.reset();

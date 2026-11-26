@@ -21,7 +21,7 @@
 	import { recordStamp } from '#lib/site/presenter.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
-	import { livePause } from '#lib/live/livePause.svelte.ts';
+	import { livePause } from '#lib/live/livePause.ts';
 	import { formatRelativeSeconds } from '#lib/utils/time.ts';
 	import {
 		FrameControlsExtensionContext,
