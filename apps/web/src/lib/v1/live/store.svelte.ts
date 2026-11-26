@@ -34,7 +34,11 @@ export type LiveFamily = (typeof LIVE_FAMILIES)[number];
 export type LiveFamilyPhase = 'idle' | 'loading' | 'ready' | 'failed';
 
 export type FeedHealthState =
-	'never-loaded' | 'live' | 'retained-stale' | 'retrying' | 'failed-no-data';
+	| 'never-loaded'
+	| 'live'
+	| 'retained-stale'
+	| 'retrying'
+	| 'failed-no-data';
 
 export interface FeedHealth {
 	readonly ageSource: 'publication' | 'serving-capture' | null;
