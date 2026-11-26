@@ -263,7 +263,9 @@
 											rowSentence(
 												[
 													departureAt(row.departure, locale),
-													row.toward && presenterCopy[locale].toward(row.toward),
+													row.toward
+														? presenterCopy[locale].toward(row.toward)
+														: presenterCopy[locale].unknownDirection.toLocaleLowerCase(locale),
 												],
 												locale,
 											),

@@ -251,7 +251,8 @@ test('data health distinguishes an aged capture from an unavailable response', a
 	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await page.clock.runFor(21_000);
 	await expect(
-		page.getByRole('cell', { name: /^Late: last received \d+ min ago$/u }).first(),
+		// A cell on wide screens, the row's value on a phone.
+		page.getByText(/^Late: last received \d+ min ago$/u).first(),
 	).toBeVisible();
 	missing = true;
 	await page.clock.runFor(21_000);

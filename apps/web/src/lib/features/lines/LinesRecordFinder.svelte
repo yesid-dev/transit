@@ -646,6 +646,7 @@
 										const events = row.timing?.evidence.counts.classified;
 										return rowSentence(
 											[
+												row.detail,
 												row.late !== null && lateShare(row.late, locale),
 												!tripsPending &&
 													row.trips !== null &&

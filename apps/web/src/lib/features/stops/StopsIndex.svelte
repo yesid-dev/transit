@@ -699,20 +699,20 @@
 									code: (row) => row.code,
 									after: linesCell,
 									line: (row) =>
-										row.events === null
-											? null
-											: rowSentence(
-													[
-														row.minimum === null
-															? countedUnit(row.events, 'event', locale)
-															: sampleWithMinimum(
-																	countedUnit(row.events, 'event', locale),
-																	row.minimum,
-																	locale,
-																),
-													],
-													locale,
-												),
+										rowSentence(
+											[
+												row.detail,
+												row.events !== null &&
+													(row.minimum === null
+														? countedUnit(row.events, 'event', locale)
+														: sampleWithMinimum(
+																countedUnit(row.events, 'event', locale),
+																row.minimum,
+																locale,
+															)),
+											],
+											locale,
+										),
 								}}
 							/>
 							<ShowMore
