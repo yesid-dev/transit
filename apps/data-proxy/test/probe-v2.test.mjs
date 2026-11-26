@@ -73,6 +73,30 @@ test("stale, well-formed live answers pass deploy verification and fail schedule
   ]);
 });
 
+const markedStale = (headers = {}) => {
+  const fetchFn = fixture();
+  return async (url, init) => {
+    const response = await fetchFn(url, init);
+    if (!new URL(url).pathname.startsWith("/v2/fixture/live")) return response;
+    return Response.json({ ...await response.json(), stale: true }, { headers });
+  };
+};
+
+test("deploy verification permits explicit stale markers only for valid live answers", async () => {
+  assert.deepEqual(await run(markedStale()), []);
+  assert.deepEqual(await run(markedStale({ "x-transit-answer": "last-good" })), [
+    "v2 fixture live answer failed",
+    "v2 fixture live trips failed",
+  ]);
+});
+
+test("scheduled monitoring rejects live answers explicitly marked stale", async () => {
+  assert.deepEqual(await run(markedStale(), 30, true), [
+    "v2 fixture fresh live failed",
+    "v2 fixture live trips failed",
+  ]);
+});
+
 test("unparseable feed timestamps fail deploy verification", async () => {
   const corrupted = { ...feed, captured_at: "unavailable" };
   const fetchFn = fixture("/v2/fixture/live-trips?stop=1", () =>

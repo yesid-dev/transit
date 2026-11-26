@@ -11,14 +11,14 @@ async function request(fetchFn, url, headers = {}) {
   });
 }
 
-async function json(fetchFn, url, headers) {
+async function json(fetchFn, url, { headers, allowStale = false } = {}) {
   const response = await request(fetchFn, url, headers);
   if (response.status !== 200 || response.headers.get("x-transit-answer") === "last-good") {
     await response.body?.cancel();
     return null;
   }
   const body = await response.json();
-  return body?.stale === true ? null : body;
+  return !allowStale && body?.stale === true ? null : body;
 }
 
 async function check(label, test) {
@@ -50,7 +50,7 @@ function usableFeed(feed, family, requireFresh, now) {
 
 export async function probeWebHealth({ fetchFn = fetch, webOrigin = WEB_ORIGIN, commit } = {}) {
   return check("transit1-web health", async () => {
-    const health = await json(fetchFn, `${webOrigin}/health`, { "cache-control": "no-cache" });
+    const health = await json(fetchFn, `${webOrigin}/health`, { headers: { "cache-control": "no-cache" } });
     return health?.status === "ok" && health.engine === "ok" && health.proxy === "ok" &&
       health.service === "transit1-web" && /^[a-f0-9]{40}$/.test(health.commit) &&
       typeof health.branch === "string" && health.branch.length > 0 &&
@@ -76,14 +76,14 @@ export async function probeV2({ fetchFn = fetch, dataOrigin = DATA_ORIGIN, requi
     const city = `${root}/${id}`;
     const feeds = ["vehicle_positions", "trip_updates"].filter((feed) => inputs[feed] === true);
     if (feeds.length) checks.push(check(`v2 ${id} ${requireFresh ? "fresh live" : "live answer"}`, async () => {
-      const live = await json(fetchFn, `${city}/live`);
+      const live = await json(fetchFn, `${city}/live`, { allowStale: !requireFresh });
       const time = now();
       return live?.version === 2 && live.city === id &&
         feeds.every((feed) => usableFeed(live.feeds?.[feed], feed, requireFresh, time));
     }));
     if (inputs.trip_updates === true) checks.push(check(`v2 ${id} live trips`, async () => {
       // Stop scopes allow an empty array when no passing trip is being tracked.
-      const trips = await json(fetchFn, `${city}/live-trips?stop=1`);
+      const trips = await json(fetchFn, `${city}/live-trips?stop=1`, { allowStale: !requireFresh });
       return trips?.version === 2 && trips.city === id &&
         Array.isArray(trips.trip_updates) && usableFeed(trips.feed, "trip_updates", requireFresh, now());
     }));
