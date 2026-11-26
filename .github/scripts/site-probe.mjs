@@ -39,7 +39,7 @@ export const SITE_CHECKS = [
 async function checkSite(check, fetchFn, sample) {
   try {
     if (check.kind === "health-v2") return probeWebHealth({ fetchFn, webOrigin: new URL(check.url).origin });
-    if (check.kind === "data-v2") return (await probeV2({ fetchFn, dataOrigin: check.url })).join(", ") || null;
+    if (check.kind === "data-v2") return (await probeV2({ fetchFn, dataOrigin: check.url, requireFresh: true })).join(", ") || null;
     const response = await fetchFn(check.url, {
       redirect: "manual",
       headers: {

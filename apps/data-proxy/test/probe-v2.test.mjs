@@ -54,9 +54,10 @@ function fixture(path, response) {
   };
 }
 
-const run = (fetchFn, seconds = 30) => probeV2({
+const run = (fetchFn, seconds = 30, requireFresh = false) => probeV2({
   fetchFn,
   dataOrigin: "https://data.example",
+  requireFresh,
   now: () => Date.parse(captured) + seconds * 1_000,
 });
 
@@ -64,11 +65,19 @@ test("discovers cities, respects capabilities, and checks the announced record d
   assert.deepEqual(await run(fixture()), []);
 });
 
-test("stale live data fails even when both endpoints return HTTP 200", async () => {
-  assert.deepEqual(await run(fixture(), 120), [
+test("stale, well-formed live answers pass deploy verification and fail scheduled monitoring", async () => {
+  assert.deepEqual(await run(fixture(), 120), []);
+  assert.deepEqual(await run(fixture(), 120, true), [
     "v2 fixture fresh live failed",
     "v2 fixture live trips failed",
   ]);
+});
+
+test("unparseable feed timestamps fail deploy verification", async () => {
+  const corrupted = { ...feed, captured_at: "unavailable" };
+  const fetchFn = fixture("/v2/fixture/live-trips?stop=1", () =>
+    Response.json({ version: 2, city: "fixture", feed: corrupted, trip_updates: [] }));
+  assert.deepEqual(await run(fetchFn), ["v2 fixture live trips failed"]);
 });
 
 test("a legacy tile source, missing downloads and last-good Record answers fail independently", async () => {
