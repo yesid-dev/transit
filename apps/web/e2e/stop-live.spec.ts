@@ -37,46 +37,33 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(table).toHaveCount(1);
 		await expect(table.locator('tbody tr')).toHaveCount(6);
 		const calls = table.locator('tbody tr');
-		const phone = (page.viewportSize()?.width ?? 1440) < 768;
+		const headers = fr
+			? ['Ligne', 'Vers', 'Horaire', 'Prévu', 'État']
+			: ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'];
+		await expect(table.getByRole('columnheader')).toHaveText(headers);
+		await expect(
+			calls.nth(0).getByRole('rowheader').locator('.data-table-cell-content'),
+		).not.toContainText('Gare Montréal-Ouest');
+		await expect(
+			calls.nth(0).locator('[data-column="toward"] .data-table-cell-content'),
+		).toHaveText('Gare Montréal-Ouest');
+		await expect(
+			calls.nth(0).locator('[data-column="scheduled"] .data-table-cell-content'),
+		).toHaveText('08:15');
+		for (const index of [1, 2]) {
+			for (const column of ['scheduled', 'toward']) {
+				await expect(
+					calls.nth(index).locator(`[data-column="${column}"] .data-table-cell-content`),
+				).toHaveText(fr ? 'Indisponible' : 'Unavailable');
+			}
+		}
+		const phone = (page.viewportSize()?.width ?? 1440) <= 448;
 		if (phone) {
-			await expect(table.getByRole('columnheader')).toHaveText(
-				fr ? ['Ligne', 'Prévu'] : ['Line', 'Expected'],
-			);
-			await expect(calls.nth(0).getByRole('rowheader')).toContainText('Gare Montréal-Ouest');
-			await expect(calls.nth(0).getByRole('rowheader')).toContainText(
-				fr ? 'Horaire 08:15' : 'Scheduled 08:15',
-			);
-			for (const index of [1, 2]) {
-				for (const detail of fr
-					? ['Horaire indisponible', 'Destination indisponible']
-					: ['Scheduled time unavailable', 'Destination unavailable']) {
-					await expect(calls.nth(index).getByRole('rowheader')).toContainText(detail);
-				}
-			}
-			await expect(table).not.toContainText(fr ? 'Horaire Indisponible' : 'Scheduled Unavailable');
+			const labels = calls.nth(0).locator('.data-table-stack-label');
+			await expect(labels).toHaveCount(5);
+			for (let i = 0; i < 5; i++) await expect(labels.nth(i)).toBeVisible();
 		} else {
-			await expect(table.getByRole('columnheader')).toHaveText(
-				fr
-					? ['Ligne', 'Vers', 'Horaire', 'Prévu', 'État']
-					: ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'],
-			);
-			await expect(calls.nth(0).getByRole('rowheader')).not.toContainText('Gare Montréal-Ouest');
-			await expect(calls.nth(0).getByRole('rowheader')).not.toContainText(
-				fr ? 'Horaire' : 'Scheduled',
-			);
-			await expect(
-				calls.nth(0).locator('[data-column="toward"] .data-table-cell-content'),
-			).toHaveText('Gare Montréal-Ouest');
-			await expect(
-				calls.nth(0).locator('[data-column="scheduled"] .data-table-cell-content'),
-			).toHaveText('08:15');
-			for (const index of [1, 2]) {
-				for (const column of ['scheduled', 'toward']) {
-					await expect(
-						calls.nth(index).locator(`[data-column="${column}"] .data-table-cell-content`),
-					).toHaveText(fr ? 'Indisponible' : 'Unavailable');
-				}
-			}
+			await expect(calls.nth(0).locator('.data-table-stack-label').first()).toBeHidden();
 		}
 		expect(await table.innerText()).not.toMatch(
 			/Scheduled Unavailable|Horaire Indisponible|Toward Unavailable|Vers Indisponible/,

@@ -31,10 +31,10 @@ const rows: StopPrediction[] = [
 	},
 ];
 
-function mockContainerWidth(width: number) {
+function mockContainerWidth(width: number, fontSize = 16) {
 	vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(width);
 	vi.spyOn(window, 'getComputedStyle').mockReturnValue({
-		fontSize: '16px',
+		fontSize: `${fontSize}px`,
 	} as CSSStyleDeclaration);
 }
 
@@ -44,13 +44,13 @@ afterEach(() => {
 
 describe('StopPredictionTable', () => {
 	it.each([
-		['en', ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'], 'Unavailable'],
-		['fr', ['Ligne', 'Vers', 'Horaire', 'Prévu', 'État'], 'Indisponible'],
+		['en', ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'], 'Unavailable', 'Delay unknown'],
+		['fr', ['Ligne', 'Vers', 'Horaire', 'Prévu', 'État'], 'Indisponible', 'Retard inconnu'],
 	] as const)(
-		'renders five columns at desktop widths with %s unavailable cells and links',
-		(locale, headers, unavailable) => {
+		'renders five columns with compact labelled stack mode in %s and links to line and departure',
+		(locale, headers, unavailable, unknownDelay) => {
 			mockContainerWidth(920);
-			render(StopPredictionTable, {
+			const { container } = render(StopPredictionTable, {
 				rows,
 				caption: locale === 'fr' ? 'Prochains véhicules à cet arrêt' : 'Next vehicles at this stop',
 				locale,
@@ -60,6 +60,10 @@ describe('StopPredictionTable', () => {
 				now,
 			});
 
+			const frame = container.querySelector('[data-slot="data-table-frame"]');
+			expect(frame).toHaveAttribute('data-responsive', 'stack');
+			expect(frame).toHaveAttribute('data-stack-at', 'compact');
+
 			const table = within(screen.getByRole('table'));
 			expect(table.getAllByRole('columnheader').map((cell) => cell.textContent?.trim())).toEqual(
 				headers,
@@ -67,39 +71,41 @@ describe('StopPredictionTable', () => {
 			const bodyRows = screen.getByRole('table').querySelectorAll('tbody tr');
 			expect(bodyRows).toHaveLength(2);
 
-			const first = within(bodyRows[0] as HTMLElement);
-			const firstHeader = first.getByRole('rowheader');
+			const first = bodyRows[0] as HTMLElement;
+			expect(
+				Array.from(first.querySelectorAll('.data-table-stack-label'), (el) =>
+					el.textContent?.trim(),
+				),
+			).toEqual(headers);
+			const firstHeader = within(first).getByRole('rowheader');
 			expect(firstHeader.querySelector('a')).toHaveAttribute(
 				'href',
 				expect.stringContaining('/lines/51?'),
 			);
-			expect(firstHeader.textContent).not.toMatch(
+			expect(firstHeader.querySelector('.data-table-cell-content')?.textContent).not.toMatch(
 				/Gare Montréal-Ouest|Toward|Vers|Scheduled|Horaire/,
 			);
 			expect(
-				bodyRows[0].querySelector('[data-column="toward"] .data-table-cell-content'),
+				first.querySelector('[data-column="toward"] .data-table-cell-content'),
 			).toHaveTextContent('Gare Montréal-Ouest');
 			expect(
-				bodyRows[0].querySelector('[data-column="scheduled"] .data-table-cell-content'),
+				first.querySelector('[data-column="scheduled"] .data-table-cell-content'),
 			).toHaveTextContent('08:17');
-			expect(bodyRows[0].querySelector('[data-column="expected"] a')).toHaveAttribute(
+			expect(first.querySelector('[data-column="expected"] a')).toHaveAttribute(
 				'href',
 				expect.stringContaining('/departure/'),
 			);
 
-			const secondHeader = within(bodyRows[1] as HTMLElement).getByRole('rowheader');
-			expect(secondHeader.textContent).not.toMatch(
-				/Unavailable|Indisponible|Scheduled|Horaire|Destination/,
-			);
+			const second = bodyRows[1] as HTMLElement;
 			expect(
-				bodyRows[1].querySelector('[data-column="toward"] .data-table-cell-content'),
+				second.querySelector('[data-column="toward"] .data-table-cell-content'),
 			).toHaveTextContent(unavailable);
 			expect(
-				bodyRows[1].querySelector('[data-column="scheduled"] .data-table-cell-content'),
+				second.querySelector('[data-column="scheduled"] .data-table-cell-content'),
 			).toHaveTextContent(unavailable);
 			expect(
-				bodyRows[1].querySelector('[data-column="status"] .data-table-cell-content'),
-			).toHaveTextContent(locale === 'fr' ? 'Retard inconnu' : 'Delay unknown');
+				second.querySelector('[data-column="status"] .data-table-cell-content'),
+			).toHaveTextContent(unknownDelay);
 			const visibleCells = Array.from(
 				screen.getByRole('table').querySelectorAll('.data-table-cell-content'),
 				(cell) => cell.textContent?.trim() ?? '',
@@ -110,58 +116,36 @@ describe('StopPredictionTable', () => {
 		},
 	);
 
-	it.each([
-		[
-			'en',
-			['Line', 'Expected'],
-			'Toward Gare Montréal-Ouest',
-			'Scheduled 08:17',
-			'Scheduled time unavailable',
-			'Destination unavailable',
-		],
-		[
-			'fr',
-			['Ligne', 'Prévu'],
-			'Vers Gare Montréal-Ouest',
-			'Horaire 08:17',
-			'Horaire indisponible',
-			'Destination indisponible',
-		],
-	] as const)(
-		'stacks prediction detail only on narrow phone rows in %s without awkward unavailable labels',
-		(locale, headers, toward, scheduled, scheduledUnavailable, destinationUnavailable) => {
-			mockContainerWidth(320);
-			render(StopPredictionTable, {
-				rows,
-				caption: locale === 'fr' ? 'Prochains véhicules à cet arrêt' : 'Next vehicles at this stop',
-				locale,
-				city: 'stm',
-				url: new URL('https://transit1.yesid.dev/stop/52847?provider=stm&frameMode=live'),
-				timeZone: 'America/Toronto',
-				now,
-			});
+	it('keeps compact labelled stack mode at 320px and falls back to horizontal scroll below 12rem', () => {
+		mockContainerWidth(256, 16);
+		const compact = render(StopPredictionTable, {
+			rows,
+			caption: 'Next vehicles at this stop',
+			locale: 'en',
+			city: 'stm',
+			url: new URL('https://transit1.yesid.dev/stop/52847?provider=stm&frameMode=live'),
+			timeZone: 'America/Toronto',
+			now,
+		});
+		expect(compact.container.querySelector('[data-slot="data-table-frame"]')).toHaveAttribute(
+			'data-responsive',
+			'stack',
+		);
+		compact.unmount();
 
-			const table = within(screen.getByRole('table'));
-			expect(table.getAllByRole('columnheader').map((cell) => cell.textContent?.trim())).toEqual(
-				headers,
-			);
-			const bodyRows = screen.getByRole('table').querySelectorAll('tbody tr');
-			expect(bodyRows).toHaveLength(2);
-
-			const firstHeader = within(bodyRows[0] as HTMLElement).getByRole('rowheader');
-			expect(firstHeader).toHaveTextContent(toward);
-			expect(firstHeader).toHaveTextContent(scheduled);
-			expect(bodyRows[0].querySelector('[data-column="expected"] a')).toHaveAttribute(
-				'href',
-				expect.stringContaining('/departure/'),
-			);
-
-			const secondHeader = within(bodyRows[1] as HTMLElement).getByRole('rowheader');
-			expect(secondHeader).toHaveTextContent(scheduledUnavailable);
-			expect(secondHeader).toHaveTextContent(destinationUnavailable);
-			expect(screen.getByRole('table').textContent).not.toMatch(
-				/Scheduled Unavailable|Horaire Indisponible|Toward Unavailable|Vers Indisponible/,
-			);
-		},
-	);
+		mockContainerWidth(326, 32);
+		const zoomed = render(StopPredictionTable, {
+			rows,
+			caption: 'Next vehicles at this stop',
+			locale: 'en',
+			city: 'stm',
+			url: new URL('https://transit1.yesid.dev/stop/52847?provider=stm&frameMode=live'),
+			timeZone: 'America/Toronto',
+			now,
+		});
+		expect(zoomed.container.querySelector('[data-slot="data-table-frame"]')).toHaveAttribute(
+			'data-responsive',
+			'scroll',
+		);
+	});
 });

@@ -51,7 +51,6 @@
 	);
 	const hasPlates = $derived(readings.some(({ plate }) => plate !== undefined));
 	let container = $state<HTMLDivElement>();
-	let narrow = $state(false);
 	let needsScroll = $state(false);
 	$effect(() => {
 		const element = container;
@@ -59,36 +58,30 @@
 		const root = element.ownerDocument.documentElement;
 		const measure = () => {
 			const rem = Number.parseFloat(getComputedStyle(root).fontSize);
-			// Below this width in text units, narrow rows need a scrollable five-column table.
+			// Below this width in text units (e.g. 200% text on phone), stacked labels run out of room.
 			needsScroll = element.clientWidth < 12 * rem;
-			// Match DataTable's 28rem rows breakpoint: five columns on desktop, stacked detail on phone.
-			narrow = !needsScroll && element.clientWidth <= 28 * rem;
 		};
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(element);
 		return () => observer.disconnect();
 	});
-	const columns = $derived<DataTableColumn<Row>[]>(
-		narrow
-			? [{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected }]
-			: [
-					{ key: 'toward', header: t('Toward', 'Vers'), cell: toward },
-					{ key: 'scheduled', header: t('Scheduled', 'Horaire'), cell: scheduled },
-					{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected },
-					{ key: 'status', header: t('Status', 'État'), cell: statusCell },
-				],
-	);
+	const columns = $derived<DataTableColumn<Row>[]>([
+		{ key: 'toward', header: t('Toward', 'Vers'), cell: toward },
+		{ key: 'scheduled', header: t('Scheduled', 'Horaire'), cell: scheduled },
+		{ key: 'expected', header: t('Expected', 'Prévu'), cell: expected },
+		{ key: 'status', header: t('Status', 'État'), cell: statusCell },
+	]);
 </script>
 
 {#snippet toward(row: Row)}
-	<span class="inline-flex min-h-11 items-center wrap-normal"
+	<span class="prediction-cell wrap-normal"
 		>{row.toward ? display.readName(row.toward, locale) : t('Unavailable', 'Indisponible')}</span
 	>
 {/snippet}
 
 {#snippet scheduled(row: Row)}
-	<span class="inline-flex min-h-11 items-center tabular-nums wrap-normal">
+	<span class="prediction-cell tabular-nums wrap-normal">
 		{row.scheduledAt === null
 			? t('Unavailable', 'Indisponible')
 			: clockTime(new Date(row.scheduledAt), locale, timeZone)}
@@ -106,7 +99,7 @@
 			class="inline-flex min-h-11 min-w-11 items-center text-primary underline tabular-nums wrap-normal"
 			{href}>{time}</a
 		>
-	{:else}<span class="tabular-nums wrap-normal">{time}</span>{/if}
+	{:else}<span class="prediction-cell tabular-nums wrap-normal">{time}</span>{/if}
 {/snippet}
 
 {#snippet status(row: StopPrediction)}
@@ -122,47 +115,48 @@
 {/snippet}
 
 {#snippet statusCell(row: Row)}
-	<span class="inline-flex min-h-11 items-center">{@render status(row)}</span>
+	<span class="prediction-cell">{@render status(row)}</span>
 {/snippet}
 
-<div class="min-w-0" bind:this={container}>
+<div class="stop-predictions min-w-0" bind:this={container}>
 	<RecordDataTable
 		{locale}
 		title={caption}
 		rowHeader={t('Line', 'Ligne')}
-		value="expected"
 		{columns}
 		rows={readings}
+		stackAt="compact"
 		scrollMinWidth={needsScroll ? '36rem' : undefined}
 	>
 		{#snippet rowHeading(row)}
-			{#if narrow}
-				<RecordTableName {row} plates={hasPlates} columnCount={2} inlinePlate>
-					{#snippet detailContent()}
-						<span
-							>{row.toward
-								? t(
-										`Toward ${display.readName(row.toward, locale)}`,
-										`Vers ${display.readName(row.toward, locale)}`,
-									)
-								: t('Destination unavailable', 'Destination indisponible')}</span
-						>
-						<span aria-hidden="true"> · </span>
-						<span class="tabular-nums"
-							>{row.scheduledAt === null
-								? t('Scheduled time unavailable', 'Horaire indisponible')
-								: t(
-										`Scheduled ${clockTime(new Date(row.scheduledAt), locale, timeZone)}`,
-										`Horaire ${clockTime(new Date(row.scheduledAt), locale, timeZone)}`,
-									)}</span
-						>
-						<span aria-hidden="true"> · </span>
-						{@render status(row)}
-					{/snippet}
-				</RecordTableName>
-			{:else}
-				<RecordTableName {row} plates={hasPlates} columnCount={5} inlinePlate />
-			{/if}
+			<RecordTableName {row} plates={hasPlates} columnCount={5} inlinePlate />
 		{/snippet}
 	</RecordDataTable>
 </div>
+
+<style>
+	.prediction-cell {
+		display: inline-flex;
+		min-block-size: var(--size-tap-min);
+		align-items: center;
+	}
+
+	@media (max-width: 28rem) {
+		.stop-predictions :global(.data-table-frame[data-stack-at='compact'] .prediction-cell) {
+			min-block-size: 0;
+		}
+		.stop-predictions
+			:global(.data-table-frame[data-stack-at='compact'] .data-table tbody :is(th, td)) {
+			align-items: center;
+		}
+		.stop-predictions
+			:global(
+				.data-table-frame[data-stack-at='compact']
+					.data-table
+					tbody
+					:is(th, td[data-column='expected']):has(a)
+			) {
+			padding-block: 0;
+		}
+	}
+</style>
