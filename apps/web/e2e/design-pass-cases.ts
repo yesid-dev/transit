@@ -28,6 +28,7 @@ const screens = {
 	'data-health': '/status',
 	'data-health-live': '/status?frameMode=live',
 	'how-we-measure': '/metrics',
+	archive: '/metrics/archive',
 	search: '/search',
 	'search-query': '/search?q=24',
 	'map-live': '/map?frameMode=live',
@@ -49,6 +50,9 @@ const rankings = [
 	'rankings-departures',
 	'rankings-vehicles',
 ] as const;
+
+// Reading and error pages carry no Record answer and no controls rail.
+export const readingScreens = ['privacy', 'terms', 'accessibility', 'archive', 'error'] as const;
 
 const ottawa: Screen[] = [
 	'alerts',
@@ -76,6 +80,7 @@ const ottawa: Screen[] = [
 	'vehicle-live',
 	'vehicles',
 	'vehicles-live',
+	...readingScreens,
 ];
 const french: Screen[] = [
 	'alerts',
@@ -104,6 +109,7 @@ const french: Screen[] = [
 	'lines',
 	'stops',
 	'how-we-measure',
+	...readingScreens,
 ];
 
 export const designPassCases = [
@@ -130,9 +136,15 @@ export const designPassCases = [
 	['vehicles-live', 'octranspo', 'fr'] as const,
 	['roadmap', 'octranspo', 'fr'] as const,
 	...rankings.map((screen) => [screen, 'octranspo', 'fr'] as const),
-	...(['network-health', 'network-health-live', 'data-health', 'data-health-live'] as const).map(
-		(screen) => [screen, 'octranspo', 'fr'] as const,
-	),
+	...(
+		[
+			'network-health',
+			'network-health-live',
+			'data-health',
+			'data-health-live',
+			...readingScreens,
+		] as const
+	).map((screen) => [screen, 'octranspo', 'fr'] as const),
 ].map(([screen, provider, locale]) => {
 	const url = new URL(screens[screen], 'http://fixture');
 	if (provider === 'octranspo' && screen === 'vehicle-record') url.pathname = '/vehicle/1';

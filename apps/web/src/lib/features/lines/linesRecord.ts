@@ -7,6 +7,7 @@ import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 import { finderCells, finderShare, finderTrips, type FinderResult } from '../record/finderText.ts';
 import { recordPercent } from '#lib/site/presenter.ts';
+import { foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 
 export const lineSortKeys = ['line', 'onTime', 'late', 'trips'] as const;
 export type LineSortKey = (typeof lineSortKeys)[number];
@@ -22,6 +23,17 @@ export function lineSort(params: URLSearchParams): LineSort {
 	return key && (direction === 'asc' || direction === 'desc')
 		? { key, direction }
 		: firstLineSort(key ?? 'line');
+}
+
+/** The Lines field's text from the address, as one trimmed query. */
+export function lineQuery(params: Pick<URLSearchParams, 'get'>) {
+	return (params.get('q') ?? '').trim().slice(0, 80);
+}
+
+/** Whether a line matches the Lines field by its public number or its name. */
+export function lineMatches(row: { number: string; label: string }, query: string) {
+	if (!foldSearchText(query)) return true;
+	return tokenMatchScore([row.number, row.label, `${row.number} ${row.label}`], query) !== null;
 }
 
 type Coverage = Pick<FinderCell['evidence'], 'share_observed' | 'counts'>;

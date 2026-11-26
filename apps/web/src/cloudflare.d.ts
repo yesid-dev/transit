@@ -2,7 +2,6 @@ declare module 'cloudflare:workers' {
 	export const env: {
 		QUESTION_PROXY?: { fetch(request: Request): Promise<Response> };
 		QUESTION_FIXTURE_ORIGIN?: string;
-		CAPTURE_FIXTURE_CLOCK?: string;
 		WEB_VITALS?: {
 			writeDataPoint(point: {
 				indexes?: string[];

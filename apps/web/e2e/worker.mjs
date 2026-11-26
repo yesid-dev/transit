@@ -35,7 +35,7 @@ const worker = new Miniflare(
 				name: config.name,
 				modules: true,
 				modulesRoot: bundle,
-				scriptPath: join(bundle, '_worker.js'),
+				scriptPath: join(bundle, 'fixture-worker.js'),
 				compatibilityDate: config.compatibility_date,
 				compatibilityFlags: config.compatibility_flags,
 				assets: {

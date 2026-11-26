@@ -19,7 +19,6 @@ export const load: PageServerLoad = async ({ url, parent, request, locals }) => 
 		...period,
 		city,
 		visitorIp,
-		fixtureScope: request.headers.get('x-transit-fixture-scope'),
 	});
 	const punctuality = getMeasure(...questions.punctuality);
 	const stops = getRanking(...questions.stops);

@@ -192,9 +192,8 @@ describe('overview engine requests', () => {
 	});
 });
 
-it('forwards the message hold scope only to the fixture server', async () => {
-	const fixtureScope = 'daily-messages-test';
-	const scope = { ...dates, fixtureScope, visitorIp: '192.0.2.24' };
+it('preserves the proxy request and leaves the loopback transport unadorned', async () => {
+	const scope = { ...dates, visitorIp: '192.0.2.24' };
 	const question = { path: '/measure', parameters: { measure: 'alert_counts' } } as const;
 	const fixture = vi
 		.spyOn(globalThis, 'fetch')
@@ -204,11 +203,14 @@ it('forwards the message hold scope only to the fixture server', async () => {
 	await getRecordAnswer(question, scope);
 	const local = fixture.mock.calls[0]?.[0] as Request;
 	expect(new URL(local.url).origin).toBe(env.QUESTION_FIXTURE_ORIGIN);
-	expect(local.headers.get('x-transit-fixture-scope')).toBe(fixtureScope);
+	expect([...local.headers]).toEqual([]);
 
 	env.QUESTION_PROXY = { fetch: fetcher };
 	await getRecordAnswer(question, scope);
 	const proxied = fetcher.mock.calls[0]?.[0];
-	expect(proxied?.headers.get('x-transit-fixture-scope')).toBeNull();
-	expect(proxied?.headers.get('x-transit-visitor-ip')).toBe('192.0.2.24');
+	expect([...proxied.headers]).toEqual([['x-transit-visitor-ip', '192.0.2.24']]);
+	expect(proxied.url).toBe(
+		local.url.replace(env.QUESTION_FIXTURE_ORIGIN, 'https://data.yesid.dev'),
+	);
+	expect(proxied.redirect).toBe('manual');
 });

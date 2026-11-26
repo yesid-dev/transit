@@ -1,6 +1,6 @@
 import { render, within } from '@testing-library/svelte';
 import { describe, expect, it } from 'vitest';
-import LegalDocument from './LegalDocument.svelte';
+import LegalDocument, { addressParts } from './LegalDocument.svelte';
 import { LEGAL_EFFECTIVE_DATES, legalCopy, legalDocument } from './legal.copy';
 
 const cases = [
@@ -32,6 +32,36 @@ describe('LegalDocument', () => {
 				LEGAL_EFFECTIVE_DATES[kind],
 			);
 			expect(within(page).queryByRole('button')).not.toBeInTheDocument();
+		},
+	);
+
+	it.each(['en', 'fr'] as const)(
+		'lets %s addresses wrap between their parts without changing the text',
+		(locale) => {
+			const { getByTestId } = render(LegalDocument, { props: { locale, kind: 'privacy' } });
+			const page = getByTestId('legal-document');
+			const copy = legalDocument(locale, 'privacy');
+			const texts = [...page.querySelectorAll('section p, section li')].map(
+				(element) => element.textContent,
+			);
+			for (const section of copy.sections)
+				for (const text of [
+					...section.paragraphs,
+					...(section.bullets ?? []),
+					...(section.links ?? []).map(({ label }) => label),
+				])
+					expect(texts).toContain(text);
+			const contact = [...page.querySelectorAll('section p, section li')].filter((element) =>
+				element.textContent?.includes('contact@yesid.dev'),
+			);
+			expect(contact.length).toBeGreaterThan(0);
+			for (const text of contact)
+				expect(text.innerHTML.replaceAll('<!---->', '')).toContain('contact@<wbr>yesid.<wbr>dev');
+			expect(addressParts('static.cloudflareinsights.com, 2.5 km. Next')).toEqual([
+				'static.',
+				'cloudflareinsights.',
+				'com, 2.5 km. Next',
+			]);
 		},
 	);
 

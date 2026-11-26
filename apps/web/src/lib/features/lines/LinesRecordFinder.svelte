@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { FilterSummary, SearchInput, filterCountText } from '@yesid/ui/brand';
+	import { Button } from '@yesid/ui/button';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
@@ -46,6 +49,8 @@
 		timingBasis,
 	} from '../record/recordText.ts';
 	import {
+		lineMatches,
+		lineQuery,
 		lineRecordRows,
 		lineSpread,
 		observedLineReadings,
@@ -62,6 +67,7 @@
 		provider,
 		sort,
 		setSort,
+		setQuery,
 	}: {
 		locale: Locale;
 		url: URL;
@@ -71,6 +77,8 @@
 		provider: PublicCity | null;
 		sort: LineSort;
 		setSort: (key: string, toggle: boolean) => void;
+		/** Writes the field's text to the address; `replace` keeps typing out of the history. */
+		setQuery: (text: string, replace: boolean) => void;
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -191,6 +199,48 @@
 			.filter((row) => !row.noLive && row.onTime === null)
 			.map((row) => ({ ...row, detail: undefined })),
 	);
+	// The field narrows the three lists. The answer, evidence and downloads keep every line.
+	const appliedQuery = $derived(lineQuery(url.searchParams));
+	let query = $state(untrack(() => appliedQuery));
+	let typing = $state(false);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		const applied = appliedQuery;
+		if (!untrack(() => typing) && untrack(() => query.trim()) !== applied) query = applied;
+	});
+	$effect(() => () => clearTimeout(timer));
+	function applyQuery(value: string, replace: boolean) {
+		clearTimeout(timer);
+		typing = false;
+		setQuery(value, replace);
+	}
+	function queueQuery(value: string) {
+		query = value;
+		typing = true;
+		clearTimeout(timer);
+		timer = setTimeout(() => applyQuery(value, true), 250);
+	}
+	const matching = (row: Row) =>
+		lineMatches({ number: row.plate?.code ?? row.number, label: row.label }, appliedQuery);
+	const measuredShown = $derived(measured.filter(matching));
+	const scheduleShown = $derived(scheduleOnly.filter(matching));
+	const excludedShown = $derived(excluded.filter(matching));
+	const matchCount = $derived(measuredShown.length + scheduleShown.length + excludedShown.length);
+	const countLabels = $derived({
+		singular: t('{count} line', '{count} ligne'),
+		plural: t('{count} lines', '{count} lignes'),
+	});
+	const noMatch = $derived(
+		t(
+			'No line in this list matches this number or name.',
+			'Aucune ligne de cette liste ne correspond à ce numéro ou à ce nom.',
+		),
+	);
+	const clearHref = $derived.by(() => {
+		const next = new URL(url);
+		next.searchParams.delete('q');
+		return next.pathname + next.search;
+	});
 	const spread = $derived(lineSpread(measured, locale));
 	const answer = $derived(
 		measured.length === 1
@@ -451,6 +501,56 @@
 	{/if}
 {/snippet}
 
+{#snippet lineField()}
+	<form
+		method="GET"
+		action={url.pathname}
+		class="mb-3 grid max-w-xl gap-3"
+		onsubmit={(event) => {
+			event.preventDefault();
+			applyQuery(query, false);
+		}}
+	>
+		{#each [...url.searchParams].filter(([key]) => key !== 'q') as [key, value], i (i)}<input
+				type="hidden"
+				name={key}
+				{value}
+			/>{/each}
+		<SearchInput
+			name="q"
+			type="search"
+			testId="lines-filter-input"
+			visibleLabel
+			textSize="body"
+			label={t('Line number or name', 'Numéro ou nom de ligne')}
+			placeholder={t('Line number or name', 'Numéro ou nom de ligne')}
+			description={t('The lists narrow as you type.', 'Les listes se précisent pendant la saisie.')}
+			value={query}
+			oninput={(event) => queueQuery(event.currentTarget.value)}
+		/>
+		<noscript><Button type="submit" variant="outline">{t('Search', 'Rechercher')}</Button></noscript
+		>
+	</form>
+	<p class="sr-only" role="status">
+		{appliedQuery && !typing ? filterCountText(matchCount, countLabels, locale) : ''}
+	</p>
+	{#if appliedQuery && !typing}
+		<div class="mb-3">
+			<FilterSummary
+				count={matchCount}
+				countLabel={countLabels}
+				{locale}
+				clearLabel={t('Clear filters', 'Effacer les filtres')}
+				onClear={() => {
+					query = '';
+					applyQuery('', false);
+				}}
+			/>
+			<noscript><a href={clearHref}>{t('Clear filters', 'Effacer les filtres')}</a></noscript>
+		</div>
+	{/if}
+{/snippet}
+
 {#snippet measuredEvidence()}
 	{#if timingEvidence}<RecordEvidenceLine {locale} evidence={timingEvidence} sample={counts} />{/if}
 {/snippet}
@@ -504,24 +604,27 @@
 					<RecordCard
 						title={measuredTitle}
 						{stamp}
-						interactive={measured.length > 0}
+						interactive={all.length > 0}
 						evidence={!timingPending && timingEvidence && measured.length
 							? measuredEvidence
 							: undefined}
 					>
+						{#if all.length}{@render lineField()}{/if}
 						{#if timingFailure || tripsFailure}
 							<p>{recordConnection.unreachable[locale]}</p>
 						{/if}
-						{#if measured.length}
+						{#if measuredShown.length}
 							<RecordDataTable
 								{locale}
 								title={measuredTitle}
 								rowHeader={lineHeader}
-								rows={measured}
+								rows={measuredShown}
 								columns={measuredColumns}
 								value="onTime"
 								sort={sortChoices}
 							/>
+						{:else if appliedQuery && measured.length}
+							<p>{noMatch}</p>
 						{:else if timingAnswer}
 							<p>{t('No measured lines.', 'Aucune ligne mesurée.')}</p>
 						{/if}
@@ -540,8 +643,8 @@
 
 			<div id="lines-without-live-data">
 				{#if !initialTiming}
-					<RecordCard title={noLiveTitle} interactive={scheduleOnly.length > 0}>
-						{#if scheduleOnly.length}
+					<RecordCard title={noLiveTitle} interactive={scheduleShown.length > 0}>
+						{#if scheduleShown.length}
 							<p class="mb-2">
 								<StateMark state="no_live_data" {locale} hiddenLabel />
 								{operator
@@ -558,7 +661,7 @@
 								{locale}
 								title={noLiveTitle}
 								rowHeader={lineHeader}
-								rows={scheduleOnly.map((row) => ({
+								rows={scheduleShown.map((row) => ({
 									...row,
 									detail:
 										row.routeType !== null && routeModeKey(row.routeType)
@@ -566,6 +669,8 @@
 											: undefined,
 								}))}
 							/>
+						{:else if appliedQuery && scheduleOnly.length}
+							<p>{noMatch}</p>
 						{:else if timingAnswer}
 							<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
 						{:else if timingFailure}
@@ -579,7 +684,7 @@
 				<RecordCard
 					title={excludedTitle}
 					{stamp}
-					interactive={!timingFailure && !!timingAnswer && excluded.length > 0}
+					interactive={!timingFailure && !!timingAnswer && excludedShown.length > 0}
 					evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
 						? excludedEvidence
 						: undefined}
@@ -587,14 +692,16 @@
 					{#if timingFailure}
 						<p>{recordConnection.unreachable[locale]}</p>
 					{:else if timingAnswer}
-						{#if excluded.length}
+						{#if excludedShown.length}
 							<RecordDataTable
 								{locale}
 								title={excludedTitle}
 								rowHeader={lineHeader}
-								rows={excluded}
+								rows={excludedShown}
 								columns={stateColumns}
 							/>
+						{:else if appliedQuery && excluded.length}
+							<p>{noMatch}</p>
 						{:else}
 							<p>
 								{t(

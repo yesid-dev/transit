@@ -1,8 +1,34 @@
 import type { Locale } from '#lib/i18n/index.ts';
 import { describe, expect, it } from 'vitest';
-import { lineSort, orderedLines, lineSpread, observedLineReadings } from './linesRecord.ts';
+import {
+	lineMatches,
+	lineQuery,
+	lineSort,
+	orderedLines,
+	lineSpread,
+	observedLineReadings,
+} from './linesRecord.ts';
 
 describe('Lines Record', () => {
+	it('finds a line by its number or its name, ignoring accents and case', () => {
+		const lines = [
+			{ number: '24', label: 'Sherbrooke' },
+			{ number: '51', label: 'Édouard-Montpetit' },
+			{ number: '105', label: 'Sherbrooke-Ouest' },
+		];
+		const find = (query: string) =>
+			lines.filter((line) => lineMatches(line, query)).map(({ number }) => number);
+		expect(find('24')).toEqual(['24']);
+		expect(find('51')).toEqual(['51']);
+		expect(find('sherbrooke')).toEqual(['24', '105']);
+		expect(find('edouard montpetit')).toEqual(['51']);
+		expect(find('24 sherb')).toEqual(['24']);
+		expect(find('')).toEqual(['24', '51', '105']);
+		expect(find(' - ')).toEqual(['24', '51', '105']);
+		expect(find('Laurier')).toEqual([]);
+		expect(lineQuery(new URLSearchParams('q=%20%2051%20'))).toBe('51');
+		expect(lineQuery(new URLSearchParams(''))).toBe('');
+	});
 	const rows = [
 		{ id: '2', number: '2', onTime: 0.847, late: 0.1, trips: null },
 		{ id: '10', number: '10', onTime: 0.732, late: 0.2, trips: 0.98 },

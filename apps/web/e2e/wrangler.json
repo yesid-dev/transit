@@ -1,6 +1,6 @@
 {
 	"name": "transit-e2e",
-	"main": "../.svelte-kit/cloudflare/_worker.js",
+	"main": "fixture-worker.js",
 	"assets": { "directory": "../.svelte-kit/cloudflare", "binding": "ASSETS" },
 	"compatibility_date": "2025-01-01",
 	"compatibility_flags": ["nodejs_compat"],

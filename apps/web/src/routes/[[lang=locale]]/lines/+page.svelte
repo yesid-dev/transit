@@ -30,6 +30,14 @@
 		next.searchParams.set('direction', target.direction);
 		void goto(next, { shallow: true, state: page.state });
 	}
+
+	function setQuery(text: string, replace: boolean) {
+		const next = new URL(url);
+		if (text.trim()) next.searchParams.set('q', text.trim());
+		else next.searchParams.delete('q');
+		if (next.href === url.href) return;
+		void goto(next, { shallow: true, replace, state: page.state });
+	}
 </script>
 
 {#if data.finderRecord}
@@ -39,6 +47,7 @@
 			{url}
 			{sort}
 			{setSort}
+			{setQuery}
 			record={data.finderRecord}
 			routes={data.schedule?.routes ?? []}
 			directions={data.schedule?.route_directions}

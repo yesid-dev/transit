@@ -240,7 +240,16 @@ async function ensureBuild() {
 	return true;
 }
 
-async function startPreview(replay, captureClock) {
+function verifyProductionFixtureIsolation() {
+	for (const path of readdirSync(BUILD_ROOT, { recursive: true })) {
+		if (!/\.(?:js|mjs|cjs|map)$/.test(path)) continue;
+		const body = readFileSync(join(BUILD_ROOT, path));
+		for (const control of ['x-transit-fixture-scope', 'CAPTURE_FIXTURE_CLOCK'])
+			invariant(!body.includes(control), `${control} reached the production asset ${path}`);
+	}
+}
+
+async function startPreview(replay) {
 	const version = await runChild('node', [WRANGLER, '--version'], {
 		cwd: WEB_ROOT,
 		label: 'wrangler version',
@@ -266,7 +275,6 @@ async function startPreview(replay, captureClock) {
 				vars: {
 					PUBLIC_V1_PROVIDER: 'stm',
 					QUESTION_FIXTURE_ORIGIN: replay.origin,
-					CAPTURE_FIXTURE_CLOCK: captureClock,
 				},
 			}),
 		);
@@ -812,14 +820,8 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 
 async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic = true } = {}) {
 	const selfCheck = runRunnerSelfCheck();
-	const captureClocks = new Set(
-		cells
-			.filter(({ surface }) => surface === 'network-live')
-			.map(({ fixture }) => fixtures[fixture].frozen_utc),
-	);
-	invariant(captureClocks.size <= 1, 'B9 Live Network fixtures must share a capture clock');
-	const [captureClock] = captureClocks;
 	const built = await ensureBuild();
+	verifyProductionFixtureIsolation();
 	const replay = await startReplay(fixtures, cells[0]?.fixture);
 	const transcripts = [];
 	let observationCount = 0;
@@ -837,7 +839,7 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 			'launched Chromium version mismatch',
 		);
 		for (let run = 0; run < runs; run += 1) {
-			preview = await startPreview(replay, captureClock);
+			preview = await startPreview(replay);
 			const transcript = [];
 			for (const cell of cells) {
 				replay.state.active = cell.fixture;

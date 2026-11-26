@@ -46,7 +46,6 @@
 	{:else}
 		<NetworkLive
 			capture={data.capture}
-			captureClock={data.captureClock}
 			city={data.provider?.inputs.vehicle_positions ? data.providerId : null}
 			subject={names.operatorCity}
 			operator={names.short}

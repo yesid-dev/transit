@@ -6,15 +6,45 @@ const clock = (recordThrough: string | null = null) => ({ today, recordThrough }
 const state = (href: string) => frameControlsState(new URL(href, 'https://transit.test'), clock());
 
 describe('frame control state', () => {
-	it('shows the View hint on the updated screens in both modes', () => {
-		expect(state('/?frameMode=live')).toMatchObject({ mode: 'live', showViewHint: true });
-		expect(state('/fr/network?frameMode=record')).toMatchObject({
-			mode: 'record',
-			showViewHint: true,
+	it.each(['/', '/fr/network', '/lines/24', '/stop/S1', '/vehicles', '/vehicle/1', '/alerts'])(
+		'shows the View hint in both modes on %s',
+		(path) => {
+			for (const mode of ['live', 'record'])
+				expect(state(`${path}?frameMode=${mode}`)).toMatchObject({ mode, showViewHint: true });
+		},
+	);
+
+	it('leaves the map to explain its modes in its Period card and layer line', () => {
+		for (const href of ['/map?frameMode=live', '/fr/map?mapLayer=stops&frameMode=record'])
+			expect(state(href)).toMatchObject({ showRail: true, showViewHint: false });
+	});
+
+	it.each([
+		'/fr/receipt',
+		'/download',
+		'/trip/T1',
+		'/privacy',
+		'/terms',
+		'/fr/accessibility',
+		'/roadmap',
+		'/metrics/archive',
+	])('uses no View hint when %s has no View choice', (path) =>
+		expect(state(path)).toMatchObject({ showViewHint: false }),
+	);
+
+	it.each(['/privacy', '/fr/terms', '/accessibility', '/roadmap', '/fr/metrics/archive/'])(
+		'keeps the controls rail off the reading page %s',
+		(path) => expect(state(path)).toMatchObject({ showRail: false }),
+	);
+
+	it('keeps the controls rail off an error page at any path', () => {
+		const url = new URL('/fr/vehicles?frameMode=live', 'https://transit.test');
+		expect(frameControlsState(url, clock(), true)).toMatchObject({
+			showRail: false,
+			showViewHint: false,
 		});
-		expect(state('/fr/receipt')).toMatchObject({ mode: 'record', showViewHint: false });
-		expect(state('/download')).toMatchObject({ mode: 'record', showViewHint: false });
-		expect(state('/lines/24')).toMatchObject({ showViewHint: false });
+		expect(frameControlsState(url, clock())).toMatchObject({ showRail: true });
+		expect(state('/metrics')).toMatchObject({ showRail: true });
 	});
 
 	it.each(['/lines', '/fr/stops/', '/receipt', '/fr/rankings', '/fr/download'])(

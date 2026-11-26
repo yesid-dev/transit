@@ -143,7 +143,6 @@ function engineFetch(
 	question: EngineQuestion,
 	signal: AbortSignal,
 	visitorIp?: string | null,
-	fixtureScope?: string | null,
 	recordDeadline?: number,
 ) {
 	// Vite has no deployed Questions service, even when its local Worker exposes the binding.
@@ -156,18 +155,6 @@ function engineFetch(
 	const headers = new Headers();
 	if (proxy && visitorIp) headers.set('x-transit-visitor-ip', visitorIp);
 	if (proxy && recordDeadline) headers.set('x-transit-record-deadline', String(recordDeadline));
-	// The loopback test binding lets a fixture opt in to holding its own request.
-	if (
-		!proxy &&
-		fixture &&
-		fixtureScope &&
-		(question.parameters.measure === 'alert_counts' ||
-			question.path.endsWith('/schedule-index') ||
-			fixtureScope === 'overview-stream' ||
-			fixtureScope === 'overview-stop-ranking' ||
-			(fixtureScope === 'stops-search' && question.parameters.group === 'stop_id'))
-	)
-		headers.set('x-transit-fixture-scope', fixtureScope);
 	const request = new Request(url, { headers, signal, redirect: 'manual' });
 	return proxy ? proxy.fetch(request) : fetch(request);
 }
@@ -188,7 +175,6 @@ export async function query<T>(
 	question: EngineQuestion,
 	schema: z.ZodType<T>,
 	visitorIp?: string | null,
-	fixtureScope?: string | null,
 	retryBusy = false,
 	requestSignal?: AbortSignal,
 ): Promise<EngineResult<T>> {
@@ -197,7 +183,7 @@ export async function query<T>(
 	const signal = requestSignal ? AbortSignal.any([deadline, requestSignal]) : deadline;
 	const recordDeadline = retryBusy ? Date.now() + timeout - 250 : undefined;
 	try {
-		const response = await engineFetch(question, signal, visitorIp, fixtureScope, recordDeadline);
+		const response = await engineFetch(question, signal, visitorIp, recordDeadline);
 		if (!response) return { kind: 'unconfigured' };
 		if (
 			question.parameters.view === 'map' &&
@@ -232,27 +218,16 @@ function periodQuery<T>(
 		periodQuestion(period, path, parameters),
 		schema,
 		period.visitorIp,
-		period.fixtureScope,
 		period.retryBusy,
 	);
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
-	return query(
-		measureQuestion(measure, period),
-		measureAnswer,
-		period.visitorIp,
-		period.fixtureScope,
-	);
+	return query(measureQuestion(measure, period), measureAnswer, period.visitorIp);
 }
 
 export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
-	return query(
-		overviewRankingQuestion(kind, period),
-		rankingAnswer,
-		period.visitorIp,
-		period.fixtureScope,
-	);
+	return query(overviewRankingQuestion(kind, period), rankingAnswer, period.visitorIp);
 }
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
@@ -551,14 +526,7 @@ export function getFinderSeries(
 	period: EnginePeriod,
 	signal?: AbortSignal,
 ) {
-	return query(
-		finderQuestion(parameters, period),
-		finderSeries,
-		period.visitorIp,
-		period.fixtureScope,
-		false,
-		signal,
-	);
+	return query(finderQuestion(parameters, period), finderSeries, period.visitorIp, false, signal);
 }
 
 export async function getRecordCsv(
@@ -639,17 +607,9 @@ export async function getCityCatalog(visitorIp?: string | null) {
 export async function getScheduleEdition(
 	city: string,
 	visitorIp?: string | null,
-	fixtureScope?: string,
 	signal?: AbortSignal,
 ) {
-	const result = await query(
-		scheduleQuestion(city),
-		scheduleIndexSchema,
-		visitorIp,
-		fixtureScope,
-		false,
-		signal,
-	);
+	const result = await query(scheduleQuestion(city), scheduleIndexSchema, visitorIp, false, signal);
 	return result.kind === 'answer' ? result.answer.schedule : null;
 }
 

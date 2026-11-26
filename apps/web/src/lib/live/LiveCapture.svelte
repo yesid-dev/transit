@@ -5,13 +5,11 @@
 	let {
 		city,
 		capture,
-		captureClock,
 		children,
 		pending,
 	}: {
 		city: string | null;
 		capture: Promise<CaptureSnapshot | null>;
-		captureClock?: number;
 		children: Snippet<[CaptureSnapshot | null, number, boolean]>;
 		pending: Snippet;
 	} = $props();
@@ -51,7 +49,7 @@
 	{@const latest = refreshed?.seed === capture ? refreshed : undefined}
 	{@render children(
 		latest ? latest.snapshot : snapshot,
-		latest?.receivedAt ?? captureClock ?? Date.now(),
+		latest?.receivedAt ?? Date.now(),
 		latest !== undefined,
 	)}
 {/await}
