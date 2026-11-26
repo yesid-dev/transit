@@ -385,7 +385,7 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 	expect(
 		await pill.evaluate((button) => {
 			const { left, width } = button.getBoundingClientRect();
-			return left + width / 2 - window.innerWidth / 2;
+			return left + width / 2 - document.documentElement.clientWidth / 2;
 		}),
 	).toBeCloseTo(0, 0);
 	await pill.focus();
