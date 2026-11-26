@@ -141,6 +141,8 @@ export function stopCoverageGap(
 	const { counts } = answer.evidence;
 	const observed = waiting ? counts.observed_headways : counts.classified;
 	const scheduled = waiting ? counts.frequent_headways : counts.scheduled;
+	if (!waiting && observed != null && scheduled)
+		return stopEventGap(observed, scheduled, minimum, locale);
 	const sample =
 		observed != null && scheduled
 			? choose(
@@ -166,10 +168,41 @@ export function stopCoverageGap(
 			)
 		: choose(
 				locale,
-				'There are too few observed stop events to measure punctuality for these dates',
-				'Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates',
+				'Too few stop events were observed here on these dates',
+				'Trop peu de passages ont été observés ici à ces dates',
 			);
 	return detail ? `${sentence} (${detail}).` : `${sentence}.`;
+}
+
+/** Low coverage at a stop, in plain words: what was observed, what was scheduled, the limit. */
+function stopEventGap(
+	observed: number,
+	scheduled: number,
+	minimum: number | undefined,
+	locale: Locale,
+) {
+	const seen = tally(observed, locale);
+	const planned = tally(scheduled, locale);
+	const one = singularCount(scheduled, locale);
+	const reading =
+		observed === 0
+			? choose(
+					locale,
+					`No stop event was observed here on these dates: ${planned} ${one ? 'was' : 'were'} scheduled.`,
+					`Aucun passage n’a été observé ici à ces dates\u00a0: ${planned} ${one ? 'était prévu' : 'étaient prévus'}.`,
+				)
+			: choose(
+					locale,
+					`${seen} of ${planned} scheduled stop events ${observed === 1 ? 'was' : 'were'} observed here on these dates.`,
+					`${seen} des ${planned} passages prévus ${singularCount(observed, locale) ? 'a été observé' : 'ont été observés'} ici à ces dates.`,
+				);
+	if (minimum == null) return reading;
+	const share = recordPercent(minimum, locale);
+	return `${reading} ${choose(
+		locale,
+		`At least ${share} of scheduled stop events must be observed.`,
+		`Il faut observer au moins ${share} des passages prévus.`,
+	)}`;
 }
 
 export const stopAccessibilityDescription = {

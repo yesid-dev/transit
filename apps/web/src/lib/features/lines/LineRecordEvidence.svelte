@@ -24,7 +24,12 @@
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 
 	let { evidence, locale }: { evidence: Evidence; locale: Locale } = $props();
-	const sample = $derived(lineEvidenceSample(evidence, locale));
+	// A card's foot carries its own sample; a span of days with nothing counted is no sample.
+	const counted = $derived(
+		evidence.counts?.classified != null ||
+			(evidence.trip_ids?.length ?? evidence.counts?.observed_trips) != null,
+	);
+	const sample = $derived(counted ? lineEvidenceSample(evidence, locale) : null);
 </script>
 
 <RecordEvidenceLine {evidence} {locale} {sample} />

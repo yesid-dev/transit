@@ -107,6 +107,19 @@
 		})),
 	);
 	const titleFor = (section: StopSection) => t(...stopSectionTitles[section]);
+	// With no delay reading, the card holds only wheelchair boarding and is named for it.
+	let delayGap = $state(false);
+	$effect(() => {
+		const answer = answers.delay;
+		let active = true;
+		delayGap = false;
+		void answer.then((result) => {
+			if (active) delayGap = stopLowCoverage(result);
+		});
+		return () => {
+			active = false;
+		};
+	});
 	const bands = $derived(t('Early, on time and late', 'En avance, à l’heure et en retard'));
 	const hourly = $derived(t('By hour and weekday', 'Par heure et jour de la semaine'));
 	const sentence = $derived(
@@ -225,7 +238,7 @@
 
 {#snippet evidenceFooter(section: StopSection)}
 	{#await section === 'hourly' ? record.grid : answers[section] then result}
-		{#if result.kind === 'answer' && ('value' in result.answer || 'cells' in result.answer)}
+		{#if result.kind === 'answer' && ('value' in result.answer || 'cells' in result.answer) && !stopLowCoverage(result)}
 			{@const sample = stopEvidenceSample(result.answer, section, locale)}
 			{@const versions =
 				result.answer.evidence.method_version.trim() ||
@@ -337,9 +350,9 @@
 			{#await answers.punctuality}
 				{@render bandsCard()}
 			{:then result}
-				{@render bandsCard(result)}
+				{#if !stopLowCoverage(result)}{@render bandsCard(result)}{/if}
 			{/await}
-			<RecordCard title={titleFor('delay')} {stamp}>
+			<RecordCard title={titleFor(delayGap ? 'accessibility' : 'delay')} {stamp}>
 				{#snippet evidence()}
 					{@render evidenceFooter('delay')}
 				{/snippet}

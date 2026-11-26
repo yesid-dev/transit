@@ -28,10 +28,20 @@ it('explains low coverage once and retains the sample and threshold in both lang
 		evidence: { ...answer.evidence, coverage_reason: 'insufficient_coverage', low_coverage: true },
 	};
 	expect(stopCoverageGap(gap, 'en', false, 0.6)).toBe(
-		'There are too few observed stop events to measure punctuality for these dates (100 of 200, minimum 60.0%).',
+		'100 of 200 scheduled stop events were observed here on these dates. At least 60.0% of scheduled stop events must be observed.',
 	);
 	expect(stopCoverageGap(gap, 'fr', false, 0.6)).toMatch(
-		/^Il y a trop peu de passages observés pour mesurer la ponctualité à ces dates \(100 sur 200, minimum de 60,0\s%\)\.$/,
+		/^100 des 200 passages prévus ont été observés ici à ces dates\. Il faut observer au moins 60,0\s% des passages prévus\.$/,
+	);
+	const none: RecordMeasure = {
+		...gap,
+		evidence: { ...gap.evidence, counts: { ...gap.evidence.counts, classified: 0, scheduled: 1 } },
+	};
+	expect(stopCoverageGap(none, 'en', false, 0.25)).toBe(
+		'No stop event was observed here on these dates: 1 was scheduled. At least 25.0% of scheduled stop events must be observed.',
+	);
+	expect(stopCoverageGap(none, 'fr', false, 0.25)).toMatch(
+		/^Aucun passage n’a été observé ici à ces dates\u00a0: 1 était prévu\. Il faut observer au moins 25,0\s% des passages prévus\.$/,
 	);
 	expect(stopCoverageGap(answer, 'en')).toBeNull();
 });
