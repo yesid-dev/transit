@@ -28,17 +28,29 @@ interface FrameState {
 const KEYS = ['frameMode', 'period', 'recordFrom', 'recordTo'] as const;
 const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
-type FrameProvider = Pick<PublicCity, 'timezone' | 'record_through'> | null | undefined;
+type FrameProvider =
+	| Pick<PublicCity, 'timezone' | 'record_through' | 'record_from'>
+	| null
+	| undefined;
 
 export interface FrameClock {
 	today: string;
 	recordThrough: string | null;
+	/** First day of this city's record; RECORD_START when it declares none. */
+	recordStart?: string;
+}
+
+/** A city's record starts on its declared first day, never before the site's record. */
+export function recordStart(provider?: Pick<PublicCity, 'record_from'> | null): string {
+	const declared = provider?.record_from;
+	return declared && isDay(declared) && declared > RECORD_START ? declared : RECORD_START;
 }
 
 export function frameClock(provider: FrameProvider, now = new Date()): FrameClock {
 	return {
 		today: providerLocalDateKey(now.toISOString(), provider?.timezone)!,
 		recordThrough: provider?.record_through ?? null,
+		recordStart: recordStart(provider),
 	};
 }
 
@@ -59,10 +71,14 @@ function isDay(key: string): boolean {
 	return Number.isFinite(date.getTime()) && isoDay(date) === key;
 }
 
-export function periodError({ from, to }: DateWindow, today: string): PeriodError | null {
+export function periodError(
+	{ from, to }: DateWindow,
+	today: string,
+	start: string = RECORD_START,
+): PeriodError | null {
 	if (!isDay(from) || !isDay(to)) return 'invalidDate';
 	if (from > to) return 'reversed';
-	if (from < RECORD_START) return 'beforeRecord';
+	if (from < start) return 'beforeRecord';
 	if (to > today) return 'future';
 	if (Date.parse(to) - Date.parse(from) >= MAX_RECORD_DAYS * 86_400_000) return 'tooLong';
 	return null;
@@ -70,7 +86,7 @@ export function periodError({ from, to }: DateWindow, today: string): PeriodErro
 
 export function presetPeriod(
 	preset: Preset,
-	{ today, recordThrough }: FrameClock,
+	{ today, recordThrough, recordStart: start = RECORD_START }: FrameClock,
 ): FramePeriod | null {
 	const date = new Date(today + 'T00:00:00Z');
 	const yesterday = shiftDay(today, -1);
@@ -100,12 +116,13 @@ export function presetPeriod(
 		'12-months': { from: lastYear, to: end },
 	};
 	const period = { ...periods[preset], preset };
+	// Calendar presets start at the city's first day; a rolling one must fit inside its record.
 	if (
 		(preset === 'this-month' || preset === 'last-month' || preset === '12-months') &&
-		period.from < RECORD_START
+		period.from < start
 	)
-		period.from = RECORD_START;
-	return periodError(period, today) ? null : period;
+		period.from = start;
+	return periodError(period, today, start) ? null : period;
 }
 
 export function parseFrameState(params: URLSearchParams, clock: FrameClock): FrameState {
@@ -114,7 +131,7 @@ export function parseFrameState(params: URLSearchParams, clock: FrameClock): Fra
 	const from = params.get('recordFrom') ?? '';
 	const to = params.get('recordTo') ?? '';
 	const period = { preset, from, to };
-	if (!periodError(period, frameDateLimit(clock))) return { mode, period };
+	if (!periodError(period, frameDateLimit(clock), clock.recordStart)) return { mode, period };
 	return {
 		mode,
 		period:

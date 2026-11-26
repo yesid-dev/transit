@@ -31,3 +31,12 @@ export function lineIsScheduleOnly(
 		) ?? false
 	);
 }
+
+/** Whether a city declares any line without live data; unknown cities keep the rail key. */
+export function hasScheduleOnlyLines(provider: Parameters<typeof lineIsScheduleOnly>[0]): boolean {
+	return (
+		provider?.lines_without_live_data.some(
+			(gap) => gap.route_ids.length > 0 || gap.route_types.length > 0,
+		) ?? true
+	);
+}

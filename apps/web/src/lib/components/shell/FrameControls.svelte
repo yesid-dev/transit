@@ -58,7 +58,8 @@
 	const { today, recordThrough } = $derived(clock);
 	const dateLimit = $derived(frameDateLimit(clock));
 	const summary = $derived(framePeriodSummary(frame.period, locale));
-	const startLabel = $derived(longDate(RECORD_START, locale));
+	const start = $derived(clock.recordStart ?? RECORD_START);
+	const startLabel = $derived(longDate(start, locale));
 	const modes = $derived([
 		{
 			key: 'live' as const,
@@ -127,7 +128,7 @@
 
 	function applyDates({ start, end }: { start: string; end: string }) {
 		const period = { from: start, to: end, preset: null };
-		tooLong = periodError(period, dateLimit) === 'tooLong';
+		tooLong = periodError(period, dateLimit, start) === 'tooLong';
 		if (tooLong) return;
 		open = false;
 		selectPeriod(period);
@@ -206,7 +207,7 @@
 					<DateRangePicker
 						presets={[]}
 						value={{ start: frame.period?.from ?? '', end: frame.period?.to ?? '' }}
-						min={RECORD_START}
+						min={start}
 						max={dateLimit}
 						labels={{
 							legend: copy.custom,

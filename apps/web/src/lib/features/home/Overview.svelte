@@ -2,7 +2,8 @@
 	import { DashboardGrid } from '@yesid/ui/layout';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
-	import { RECORD_START } from '#lib/site/frameState.ts';
+	import { page } from '$app/state';
+	import { recordStart } from '#lib/site/frameState.ts';
 	import {
 		countedUnit,
 		longDate,
@@ -95,6 +96,7 @@
 		};
 	} = $props();
 	const t = $derived(overviewCopy[locale]);
+	const cityStart = $derived(recordStart(page.data.provider));
 	let trendTable = $state(false);
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(record.period, locale) });
 	const days = $derived(
@@ -373,7 +375,7 @@
 			{
 				key: 'source',
 				label: t.source,
-				text: `${t.feeds(operator)} ${t.recordStart(locale === 'fr' ? longDate(RECORD_START, locale) : dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`,
+				text: `${t.feeds(operator)} ${t.recordStart(locale === 'fr' ? longDate(cityStart, locale) : dateRange({ from: cityStart, to: cityStart }, locale))}`,
 			},
 		]}
 	/>

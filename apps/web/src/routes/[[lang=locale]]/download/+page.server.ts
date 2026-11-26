@@ -23,7 +23,7 @@ export const load: PageServerLoad = async (event) => {
 		requested.length === 1 &&
 		parsed.success &&
 		!searchParams.has('recordFrom') &&
-		!periodError({ from: parsed.data, to: parsed.data }, frameDateLimit(clock))
+		!periodError({ from: parsed.data, to: parsed.data }, frameDateLimit(clock), clock.recordStart)
 	) {
 		const target = new URL(event.url);
 		target.searchParams.delete('date');

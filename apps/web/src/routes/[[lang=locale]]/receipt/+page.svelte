@@ -58,7 +58,7 @@
 		tripsRunSentence,
 	} from '#lib/site/presenter.ts';
 	import { tripOutcomes } from '#lib/features/record/tripOutcomes.ts';
-	import { carryFrameState, frameHref, RECORD_START } from '#lib/site/frameState.ts';
+	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { DailySection } from '#lib/server/departureDailyRecord.ts';
 	import type {
@@ -771,7 +771,7 @@
 											label: copy.source,
 											text: [
 												copy.feeds(operator ?? cityName),
-												copy.recordStart(longDate(RECORD_START, lang)),
+												copy.recordStart(longDate(recordStart(page.data.provider), lang)),
 											].join(' '),
 										},
 									]}

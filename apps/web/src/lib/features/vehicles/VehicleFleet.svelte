@@ -16,7 +16,7 @@
 	import { ShowMore, type DataTableColumn } from '@yesid/ui/table';
 	import type { PageData } from '../../../routes/[[lang=locale]]/vehicles/$types';
 	import { getLocale, intl } from '#lib/i18n/index.ts';
-	import { frameHref, RECORD_START } from '#lib/site/frameState.ts';
+	import { frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
 		dateRange,
 		hoursReading,
@@ -729,7 +729,7 @@
 									key: 'source',
 									label: about.source,
 									text: operator
-										? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: RECORD_START, to: RECORD_START }, locale))}`
+										? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: recordStart(page.data.provider), to: recordStart(page.data.provider) }, locale))}`
 										: null,
 								},
 							]}

@@ -7,6 +7,7 @@ import {
 	periodError,
 	presetPeriod,
 	RECORD_START,
+	recordStart,
 } from './frameState.ts';
 
 const today = '2026-11-22';
@@ -56,6 +57,37 @@ describe('app frame URL state', () => {
 		expect(presetPeriod('last-month', clock('2026-10-31'))).toBeNull();
 		expect(presetPeriod('7-days', clock('2026-10-15'))).toBeNull();
 		expect(parseFrameState(new URLSearchParams(), clock(RECORD_START)).period).toBeNull();
+	});
+
+	it('starts a newer city’s record at its declared first day', () => {
+		const city = {
+			timezone: 'America/Toronto',
+			record_through: '2026-11-25',
+			record_from: '2026-11-25',
+		};
+		const newer = frameClock(city, new Date('2026-11-26T17:00:00Z'));
+		expect(newer.recordStart).toBe('2026-11-25');
+		expect(presetPeriod('7-days', newer)).toBeNull();
+		expect(presetPeriod('12-months', newer)).toEqual({
+			preset: '12-months',
+			from: '2026-11-25',
+			to: '2026-11-25',
+		});
+		expect(parseFrameState(new URLSearchParams(), newer).period).toEqual({
+			preset: '12-months',
+			from: '2026-11-25',
+			to: '2026-11-25',
+		});
+		expect(periodError({ from: '2026-11-24', to: '2026-11-25' }, today, newer.recordStart)).toBe(
+			'beforeRecord',
+		);
+	});
+
+	it('never starts a city before the site’s record, and ignores a malformed declaration', () => {
+		expect(recordStart({ record_from: '2026-01-01' })).toBe(RECORD_START);
+		expect(recordStart({ record_from: '2026-11-31' })).toBe(RECORD_START);
+		expect(recordStart({ record_from: null })).toBe(RECORD_START);
+		expect(recordStart(null)).toBe(RECORD_START);
 	});
 
 	it.each([

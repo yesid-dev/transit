@@ -4,7 +4,8 @@
 	import { HourGrid, type HourGridCell } from '@yesid/ui/chart';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { DataHealthAnswer, EngineResult, MethodEntry } from '#lib/server/engine.ts';
-	import { carryFrameState, frameHref, RECORD_START } from '#lib/site/frameState.ts';
+	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
+	import { page } from '$app/state';
 	import {
 		dateRange,
 		countedUnit,
@@ -300,7 +301,7 @@
 					<dl class="mb-4 grid gap-3 sm:grid-cols-2">
 						<div>
 							<dt class="font-semibold">{t('Record starts', 'Début du bilan')}</dt>
-							<dd>{longDate(RECORD_START, locale)}</dd>
+							<dd>{longDate(recordStart(page.data.provider), locale)}</dd>
 						</div>
 						<div>
 							<dt class="font-semibold">{t('Rebuilt', 'Recalcul')}</dt>

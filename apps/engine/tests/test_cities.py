@@ -98,7 +98,8 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
         "stage: public\ntimezone: Europe/Paris\nname: Example\n"
         'name_separators: {ends: "<>", languages: "~", language_order: [fr, en]}\n'
         "labels:\n  en: {city: Example, operator: Rail}\n"
-        "  fr: {city: Exemple, operator: Rail}\n",
+        "  fr: {city: Exemple, operator: Rail}\n"
+        "clean_days_from: 2026-06-01\n",
         encoding="utf8",
     )
     for city in ("hidden", "candidate", "unknown"):
@@ -107,6 +108,7 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
     cities = city_catalog()
     assert cities["default_provider"] == "example"
     assert [provider["id"] for provider in cities["providers"]] == ["example"]
+    assert cities["providers"][0]["record_from"] == "2026-06-01"
     assert cities["providers"][0]["name_separators"] == {
         "ends": "<>",
         "languages": "~",
@@ -138,6 +140,40 @@ def test_private_city_remains_hidden_with_a_complete_clean_day(tmp_path: Path) -
         )
         assert status == 400, route
         assert json.loads(body) == {"message": "unknown city"}
+
+
+def test_data_health_refuses_a_private_city_even_without_the_proxy_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    day = date(2026, 6, 1)
+    store = _build_store(
+        tmp_path / "clean", cleaning_version=9, trips_by_day={day: ()}, city="gamma"
+    )
+    declarations = tmp_path / "declarations"
+    declarations.mkdir()
+    # A synthetic city shaped like a declared public one, kept private.
+    template = (Path(__file__).parents[2] / "db/config/providers/octranspo.yaml").read_text(
+        encoding="utf-8"
+    )
+    declaration = declarations / "gamma.yaml"
+    declaration.write_text(
+        template.replace("  is_active: true", "  is_active: false").replace(
+            "  enabled: true", "  enabled: false"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ENGINE_PROVIDER_DECLARATIONS", str(declarations))
+    app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=10)
+    query = f"city=gamma&from={day}&to={day}"
+    for route, cut in (("data-health", ""), ("measure", "&measure=on_time")):
+        status, _, body = asyncio.run(http(app, f"/{route}", query + cut))
+        assert status == 400, route
+        assert json.loads(body) == {"message": "unknown city"}
+
+    declaration.write_text(template, encoding="utf-8")
+    status, _, body = asyncio.run(http(app, "/data-health", query))
+    assert status == 200
+    assert json.loads(body)["days"][0]["status"] == "present"
 
 
 def test_record_through_tracks_the_latest_complete_edition_after_a_mirror_copy(

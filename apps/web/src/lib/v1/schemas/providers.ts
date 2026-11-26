@@ -52,6 +52,8 @@ export const PublicCitySchema = PublicProviderSchema.extend({
 		.nullable()
 		.optional(),
 	live_source_lag_seconds: z.int().nonnegative().optional(),
+	/** Declared first day of the city's record. */
+	record_from: z.iso.date().nullable().optional(),
 	lines_without_live_data: z.array(
 		z.object({
 			route_types: z.array(z.int()),
