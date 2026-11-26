@@ -1,5 +1,11 @@
 import { cleanObjectReader } from "./clean-download-store.js";
 
+export function publicBasemapUrl(city, legacyUrl) {
+  if (typeof legacyUrl !== "string") return null;
+  const match = /^\/data\/v1\/([a-z0-9][a-z0-9_-]{0,63})\/static\/basemap\/([a-zA-Z0-9_-]+\.pmtiles)$/.exec(legacyUrl);
+  return match?.[1] === city ? `https://data.yesid.dev/v2/${city}/basemap/${match[2]}` : null;
+}
+
 export function basemapKey(city, file) {
   return `basemaps/v1/${city}/${file}`;
 }
