@@ -18,7 +18,7 @@ describe('Line Record readings', () => {
 		const ends = ['Barrhaven Centre ~ Centre Barrhaven', 'Tunney’s Pasture ~ Pré Tunney'];
 		const rule: NameSeparators = { ends: '<>', languages: '~', language_order: ['en', 'fr'] };
 		expect(lineSubtitle(3, ends, 'en', rule)).toBe('Barrhaven Centre to Tunney’s Pasture');
-		expect(lineSubtitle(3, ends, 'fr', rule)).toBe('Centre Barrhaven à Pré Tunney');
+		expect(lineSubtitle(3, ends, 'fr', rule)).toBe('De Centre Barrhaven à Pré Tunney');
 	});
 	it.each([
 		[
@@ -27,7 +27,7 @@ describe('Line Record readings', () => {
 			'Toward Station Laurier (Est)',
 			'Toward the east',
 		],
-		['fr', 'Gare Montréal-Ouest à Station Laurier', 'Vers Station Laurier (est)', 'Vers l’est'],
+		['fr', 'De Gare Montréal-Ouest à Station Laurier', 'Vers Station Laurier (est)', 'Vers l’est'],
 	] as const)(
 		'uses scheduled termini for compass directions in %s',
 		(locale, route, destination, fallback) => {
@@ -66,7 +66,7 @@ describe('Line Record readings', () => {
 	);
 	it.each([
 		['en', 'Métro · Côte-Vertu to Montmorency', 'every 8 min', '07:00 to 09:00'],
-		['fr', 'Métro · Côte-Vertu à Montmorency', 'toutes les 8 min', '07:00 à 09:00'],
+		['fr', 'Métro · de Côte-Vertu à Montmorency', 'toutes les 8 min', '7\u00a0h à 9\u00a0h'],
 	] as const)('formats route ends and the timetable in %s', (locale, route, interval, hours) => {
 		const heading = lineRecordHeading(
 			{ number: '51', name: 'Édouard-Montpetit', label: '51 · Édouard-Montpetit' },

@@ -119,7 +119,7 @@ test('alerts French filter placeholders fit the rail and sheet @layout', async (
 		const filter = rail.getByRole('group', { name: 'Filtrer', exact: true });
 		if (width === 390)
 			await expect(
-				page.getByRole('dialog', { name: 'Commandes' }).locator('input').first(),
+				page.getByRole('dialog', { name: 'Options' }).locator('input').first(),
 			).toBeVisible();
 		await page.evaluate(() => document.fonts.ready);
 		for (const [label, placeholder] of [

@@ -198,7 +198,7 @@ for (const locale of PUBLISHED_LOCALES) {
 				const pill = page.locator('.surface-rail-pill:visible');
 				await expect(pill).toHaveCount(1);
 				const sheet = page.getByRole('dialog', {
-					name: locale === 'fr' ? 'Commandes' : 'Controls',
+					name: locale === 'fr' ? 'Options' : 'Controls',
 					exact: true,
 				});
 				await pill.tap();

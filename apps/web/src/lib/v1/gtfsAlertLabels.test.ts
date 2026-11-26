@@ -32,7 +32,7 @@ describe('effectLabel', () => {
 		expect(effectLabel('DETOUR', 'fr')).toBe('Détour');
 		expect(effectLabel('SIGNIFICANT_DELAYS', 'en')).toBe('Significant delays');
 		expect(effectLabel('SIGNIFICANT_DELAYS', 'fr')).toBe('Retards importants');
-		expect(effectLabel('ACCESSIBILITY_ISSUE', 'fr')).toBe("Problème d'accessibilité");
+		expect(effectLabel('ACCESSIBILITY_ISSUE', 'fr')).toBe('Problème d’accessibilité');
 	});
 
 	it('humanizes an unknown/vendor effect instead of showing it raw', () => {

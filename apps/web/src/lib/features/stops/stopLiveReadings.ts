@@ -3,6 +3,8 @@ import type { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 import type { CaptureTripReport } from '#lib/live/captureSnapshot.ts';
 import { stopPrediction, uniqueDirectionHeadsigns } from '#lib/live/stopPrediction.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
+import { compassPoint, type LinePattern } from '#lib/site/linePatterns.ts';
+import { riderHeadsign } from '#lib/site/presenter.ts';
 
 export type StopPrediction = {
 	key: string;
@@ -60,20 +62,40 @@ export function stopLiveReadings(
 /**
  * Where a predicted trip goes, in the rider's words: a compass headsign becomes the line's
  * terminus with the agency's word in brackets ("Station Laurier (Est)", "(est)" in French), as
- * on the line pages. In a sentence any compass word reads as W8's direction ("the north"); in a
- * table cell a sign with no known terminus reads as published.
+ * on the line pages. The stop page passes its own lines' termini (`patterns`); without them the
+ * page's line directory is asked. In a sentence any compass word reads as W8's direction ("the
+ * north"); in a table cell a compass word with no known terminus reads in the reader's language
+ * ("West", "Ouest"), and any other sign reads as published.
  */
 export function riderToward(
 	display: Pick<ReturnType<typeof transitDisplay>, 'directory' | 'directionName' | 'readName'>,
 	row: Pick<StopPrediction, 'line' | 'toward'>,
 	locale: Locale,
 	place: 'cell' | 'sentence' = 'cell',
+	patterns?: Readonly<Record<string, LinePattern>>,
 ): string | null {
 	const toward = row.toward?.trim();
 	if (!toward) return null;
-	const sign = display.directory.headsign(row.line, toward);
+	const pattern = row.line ? patterns?.[row.line] : undefined;
+	const sign = pattern
+		? riderHeadsign(toward, pattern)
+		: display.directory.headsign(row.line, toward);
 	if (place === 'sentence') return display.directionName(sign ?? toward, locale);
-	return sign && sign !== toward
-		? display.directionName(sign, locale)
-		: display.readName(toward, locale);
+	if (sign && sign !== toward) return display.directionName(sign, locale);
+	return compassPoint.test(toward) ? compassWord(toward, locale) : display.readName(toward, locale);
+}
+
+const compassWords: Record<string, [string, string]> = {
+	est: ['East', 'Est'],
+	ouest: ['West', 'Ouest'],
+	nord: ['North', 'Nord'],
+	sud: ['South', 'Sud'],
+};
+
+/** A bare compass headsign as a table cell names it, never the agency's word in the other language. */
+function compassWord(sign: string, locale: Locale) {
+	const key =
+		{ east: 'est', west: 'ouest', north: 'nord', south: 'sud' }[sign.toLowerCase()] ??
+		sign.toLowerCase();
+	return compassWords[key][locale === 'fr' ? 1 : 0];
 }

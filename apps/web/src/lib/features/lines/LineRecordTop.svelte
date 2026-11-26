@@ -24,7 +24,15 @@
 	} from '#lib/features/record/recordText.ts';
 	import type { EngineResult, RecordAnswer as Answer, RecordMeasure } from '#lib/server/engine.ts';
 	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
-	import { recordPercent, countedUnit, recordStamp, pageCitation } from '#lib/site/presenter.ts';
+	import { page } from '$app/state';
+	import {
+		agencyName,
+		countedUnit,
+		frenchAgency,
+		pageCitation,
+		recordPercent,
+		recordStamp,
+	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopComparison } from '#lib/features/stops/stopRecordText.ts';
 	import {
@@ -54,6 +62,7 @@
 	} = $props();
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const agencyFr = $derived(frenchAgency(agencyName(operator, page.data.provider)));
 	const { directionLabel } = transitDisplay();
 	const title = (section: LineSection) => t(...lineSectionTitles[section]);
 	const bands = $derived(t('Early, on time and late', 'En avance, à l’heure et en retard'));
@@ -198,7 +207,7 @@
 			<p>
 				{t(
 					`${operator} publishes no realtime feed for this line. Its timetable is shown below.`,
-					`${operator} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
+					`${agencyFr.start} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
 				)}
 			</p>
 		{/snippet}
@@ -278,7 +287,7 @@
 							<p class="mt-2 text-small text-muted-foreground">
 								{t(
 									'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.',
-									'En avance signifie plus de 1 minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
+									'En avance signifie plus d’une minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
 								)}
 							</p>
 						{:else}{@render gap(result)}{/if}

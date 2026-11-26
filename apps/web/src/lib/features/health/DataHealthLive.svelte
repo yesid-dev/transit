@@ -6,6 +6,7 @@
 	import { type CaptureSnapshot, captureDisplayState } from '#lib/live/captureSnapshot.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
+		singularCount,
 		healthFeedName,
 		captureAge,
 		captureCadence,
@@ -137,8 +138,16 @@
 							state={feeds.length ? undefined : 'no_live_data'}
 							sentence={feeds.length
 								? late
-									? t(`feeds are fresh. Late: ${late}.`, `flux sont à jour. En retard : ${late}.`)
-									: t('feeds are fresh.', 'flux sont à jour.')
+									? t(
+											`feeds are fresh. Late: ${late}.`,
+											`${singularCount(fresh.length, locale) ? 'flux est à jour' : 'flux sont à jour'}. En retard\u00a0: ${late}.`,
+										)
+									: t(
+											'feeds are fresh.',
+											singularCount(fresh.length, locale)
+												? 'flux est à jour.'
+												: 'flux sont à jour.',
+										)
 								: labels.no_live_data}
 							time={stamp}
 						/>

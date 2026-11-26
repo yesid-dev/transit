@@ -54,8 +54,8 @@ export const reliabilityCopy = defineCopy({
 			p50Min: 'Retard médian',
 			p90Min: 'Retard au 90e percentile',
 			headwayRegularityCov: 'Régularité (CV)',
-			cancellationRatePct: "Taux d'annulation",
-			skippedStopRatePct: "Taux d'arrêts ignorés",
+			cancellationRatePct: 'Taux d’annulation',
+			skippedStopRatePct: 'Taux d’arrêts ignorés',
 			serviceCompletenessPct: serviceComparisonCopy.fr.label,
 			serviceCompletenessFraction: serviceComparisonCopy.fr.fraction,
 			p50Caption: 'Médiane des relevés de retard prédit',
@@ -73,7 +73,7 @@ export const reliabilityCopy = defineCopy({
 			severeCaption: 'Part des relevés à retard connu classés en retard grave',
 			skippedStopCaption: 'Arrêts non desservis',
 			wilsonBandCaption:
-				'Bande ombrée : intervalle de Wilson à 95 %. Plus il est large, moins l’estimation est précise. Les relevés répétés d’un même trajet peuvent le rendre trop étroit. Pointillés : cible de 80 %.',
+				'Bande ombrée : intervalle de Wilson à 95 %. Plus il est large, moins l’estimation est précise. Les relevés répétés d’un même trajet peuvent le rendre trop étroit. Pointillés : cible de 80 %.',
 			regularity: {
 				regular: 'Apparitions régulières',
 				irregular: 'Apparitions irrégulières',
@@ -102,11 +102,11 @@ export const reliabilityCopy = defineCopy({
 		byDow: {
 			heading: 'Encombrement par jour de la semaine',
 			caption:
-				"Répartition de l'occupation pour chaque jour, du lundi au dimanche. Un jour sans télémétrie le dit clairement plutôt que d'inventer une barre.",
+				'Répartition de l’occupation pour chaque jour, du lundi au dimanche. Un jour sans télémétrie le dit clairement plutôt que d’inventer une barre.',
 		},
 		delayByCrowding: {
-			heading: "Retard selon l'occupation",
-			bandHeader: "Niveau d'occupation",
+			heading: 'Retard selon l’occupation',
+			bandHeader: 'Niveau d’occupation',
 			typical: (p50: string) => `typique ${p50}`,
 		},
 		crosstab: {
@@ -114,12 +114,12 @@ export const reliabilityCopy = defineCopy({
 			shiftHeader: 'Période',
 			dayTypeHeader: 'Type de jour',
 			caption:
-				'Ponctualité (% à l’heure) par période de la journée et type de jour, sur une échelle fixe de 0 à 100 %. Une cellule avec moins de 30 observations est grisée; jamais un zéro inventé.',
+				'Ponctualité (% à l’heure) par période de la journée et type de jour, sur une échelle fixe de 0 à 100 %. Une cellule avec moins de 30 observations est grisée; jamais un zéro inventé.',
 			heatmapLabel: 'Ponctualité par période et type de jour',
 			legend: {
-				low: 'Faible (0–40 %)',
-				mid: 'Moyenne (40–80 %)',
-				high: 'Élevée (80–100 %)',
+				low: 'Faible (0–40 %)',
+				mid: 'Moyenne (40–80 %)',
+				high: 'Élevée (80–100 %)',
 			},
 			hottest: 'Meilleure ponctualité',
 			obs: (n: number) => `n=${n}`,
@@ -140,7 +140,7 @@ export const reliabilityCopy = defineCopy({
 			caption:
 				'Les extrémités marquent des premières captures. Les dates locales et décalages UTC accompagnent un axe en heures écoulées; l’écart affiché s’arrondit à la minute. Les retards viennent du premier relevé du premier trajet et du dernier relevé du dernier trajet, qui peut être postérieur à l’extrémité droite.',
 		},
-		units: { pct: '%', min: ' min' },
+		units: { pct: '\u00a0%', min: '\u00a0min' },
 		controls: {
 			viewLabel: 'Vue',
 			grainLabel: 'Granularité',
@@ -162,13 +162,13 @@ export const reliabilityCopy = defineCopy({
 				month: 'Fenêtre : ce mois-ci (mois le plus récent)',
 				singleDay: (date: string) => `Fenêtre : ${date}`,
 				range: (n: number, start: string, end: string) =>
-					`Moyenne sur ${n} ${n === 1 ? 'jour' : 'jours'}, du ${start} au ${end}`,
+					`Moyenne sur ${n} ${n < 2 ? 'jour' : 'jours'}, du ${start} au ${end}`,
 				rangeSelection: (start: string, end: string) => `Fenêtre : du ${start} au ${end}`,
 				rangePrompt: 'Fenêtre : choisissez une date de début et de fin',
 			},
 			toc: 'Aller à une section',
-			filterPillOpen: 'Ouvrir les commandes de vue',
-			filterPillClose: 'Fermer les commandes de vue',
+			filterPillOpen: 'Ouvrir les options de vue',
+			filterPillClose: 'Fermer les options de vue',
 			tocPillClose: 'Fermer la liste des sections',
 		},
 		history: {
@@ -219,7 +219,7 @@ export const reliabilityCopy = defineCopy({
 			history: 'tout l’historique disponible',
 			notPublished: 'Non publié pour cette période',
 			summaryAbsent: 'Non publié pour cette période.',
-			readings: (shown: string, count: number) => `${shown} ${count === 1 ? 'relevé' : 'relevés'}`,
+			readings: (shown: string, count: number) => `${shown} ${count < 2 ? 'relevé' : 'relevés'}`,
 			timeOfDay: {
 				summary: (low: string, high: string, lowest: string) =>
 					`Entre ${low} et ${high} selon la période de la journée. Le plus bas : ${lowest}.`,
@@ -310,7 +310,7 @@ export const reliabilityCopy = defineCopy({
 				uneven: 'Classification de Transit : ponctualité inégale.',
 				unreliable: 'Classification de Transit : ponctualité peu fiable.',
 				uncertain: 'Classification de Transit : incertaine pour ces relevés.',
-				'too-few': 'Pas assez de relevés pour juger.',
+				'too-few': 'Trop peu de données pour conclure.',
 			},
 			absent: 'Aucune part de relevés à l’heure n’est publiée pour cette période.',
 			readings: (shown: string, count: number) =>

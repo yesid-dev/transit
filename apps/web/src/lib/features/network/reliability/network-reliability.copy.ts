@@ -180,10 +180,10 @@ export const networkReliabilityCopy = defineCopy({
 		},
 		kicker: 'RÉSEAU · EN DIRECT',
 		heading: 'Santé du réseau',
-		lede: 'La ponctualité, l’achalandage et la couverture des signalements en direct, avec leurs tendances quotidiennes.',
+		lede: 'La ponctualité, l’occupation des véhicules et la couverture des signalements en direct, avec leurs tendances quotidiennes.',
 		article: articleCopy('fr', {
 			watermark: 'Réseau',
-			tags: ['réseau', 'service en direct', 'fiabilité', 'achalandage', 'données ouvertes'],
+			tags: ['réseau', 'service en direct', 'fiabilité', 'occupation', 'données ouvertes'],
 			sections: (count: number) => `${count} sections`,
 		}),
 		liveTerminal: {
@@ -197,17 +197,17 @@ export const networkReliabilityCopy = defineCopy({
 		viewControlsLabel: 'Vue',
 		rail: {
 			toc: 'Aller à une section',
-			pillOpen: 'Ouvrir les commandes de vue',
-			pillClose: 'Fermer les commandes de vue',
+			pillOpen: 'Ouvrir les options de vue',
+			pillClose: 'Fermer les options de vue',
 		},
 		liveSection: 'En direct',
 		trendSection: 'Tendance quotidienne',
 		cancelSection: 'Annulations',
-		occupancyTrendSection: 'Achalandage par jour',
+		occupancyTrendSection: 'Occupation par jour',
 		shiftSection: 'Par moment de la journée',
 		dayTypeSection: 'Semaine et fin de semaine',
 		statusSection: 'Répartition des statuts',
-		occupancySection: 'Achalandage',
+		occupancySection: 'Occupation',
 		delayHistogramSection: 'Répartition des retards',
 		nonRespondingSection: 'Trajets silencieux par ligne',
 		completeness: {
@@ -219,7 +219,7 @@ export const networkReliabilityCopy = defineCopy({
 		metrics: {
 			onTime: 'À l’heure',
 			vehicles: 'Positions de véhicules',
-			notReporting: 'Trajets sans signal',
+			notReporting: 'Trajets silencieux',
 			coverage: 'Couverture',
 			delayP50: 'Retard médian',
 			delayP90: 'Retard au 90e percentile',
@@ -232,12 +232,12 @@ export const networkReliabilityCopy = defineCopy({
 				'La couverture est la part de la flotte dont le statut en direct est connu. « Trajets silencieux » compte les trajets planifiés qui circulent actuellement sans véhicule en direct : un décompte de trajets silencieux par ligne, pas des véhicules identifiables. Les positions individuelles peuvent être plus anciennes que la mise à jour du flux. {excluded}',
 		},
 		statusBarLabel: 'Répartition des statuts du réseau',
-		occupancyBarLabel: 'Répartition de l’achalandage du réseau',
+		occupancyBarLabel: 'Répartition de l’occupation du réseau',
 		trend: {
 			through: (date: string) => `Jusqu’au ${date}`,
 			onTimeLabel: 'Ponctualité %',
-			retardLabel: '10 % les plus lents (min)',
-			retardP90: '10 % les plus lents',
+			retardLabel: '10\u00a0% les plus lents (min)',
+			retardP90: '10\u00a0% les plus lents',
 			retardAvg: 'Moyen',
 			retardAvgLabel: 'Retard moyen (min)',
 			retardToggleLabel: 'Série de retard',
@@ -256,7 +256,7 @@ export const networkReliabilityCopy = defineCopy({
 			summary: 'Part quotidienne des jours-trajets annulés à l’échelle du réseau.',
 		},
 		occupancyTrend: {
-			summary: 'Répartition des bandes d’achalandage par jour sur la tendance récente du réseau.',
+			summary: 'Répartition des bandes d’occupation par jour sur la tendance récente du réseau.',
 		},
 		shift: {
 			shiftSummary:
@@ -273,7 +273,7 @@ export const networkReliabilityCopy = defineCopy({
 			summary:
 				'Répartition des retards moyens par trajet à l’échelle du réseau, du plus tôt au plus tard.',
 			caption:
-				'La répartition actuelle des retards moyens par trajet, en minutes signées. Même base que le retard médian et les 10 % les plus lents ci-dessus : négatif signifie en avance, positif signifie en retard.',
+				'La répartition actuelle des retards moyens par trajet, en minutes signées. Même base que le retard médian et les 10\u00a0% les plus lents ci-dessus : négatif signifie en avance, positif signifie en retard.',
 			xLabel: 'Retard (min)',
 			yLabel: 'Trajets',
 		},
@@ -288,7 +288,7 @@ export const networkReliabilityCopy = defineCopy({
 		grain: { label: 'Granularité de tendance', day: 'Jour', week: 'Semaine', month: 'Mois' },
 		window: {
 			reason: (n: number) =>
-				n === 1 ? 'Seulement 1 jour enregistré' : `Seulement ${n} jours enregistrés`,
+				n < 2 ? `Seulement ${n} jour enregistré` : `Seulement ${n} jours enregistrés`,
 			label: 'Fenêtre de tendance',
 			d7: '7 j',
 			d30: '30 j',
@@ -319,9 +319,9 @@ export const networkReliabilityCopy = defineCopy({
 			currentOnly:
 				'Les vues par moment de la journée et par type de jour restent celles de l’instantané actuel.',
 			dailyOnly:
-				'Le retard des 10 % les plus lents et les véhicules sont des lectures quotidiennes exactes; ils ne sont pas regroupés par semaine ou par mois.',
+				'Le retard des 10\u00a0% les plus lents et les véhicules sont des relevés quotidiens exacts; ils ne sont pas regroupés par semaine ou par mois.',
 		},
-		units: { pct: '%', min: ' min' },
+		units: { pct: '\u00a0%', min: '\u00a0min' },
 		verdict: routeVerdictCopy.fr.verdict,
 		verdictDelta: {
 			label: 'Verdict du réseau',

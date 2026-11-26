@@ -1,6 +1,6 @@
 <script lang="ts">
-	import FactList from '#lib/features/record/FactList.svelte';
 	import { page } from '$app/state';
+	import FactList from '#lib/features/record/FactList.svelte';
 	import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
 	import NoticeRows from '#lib/features/alerts/NoticeRows.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
@@ -22,8 +22,6 @@
 	import {
 		choose,
 		measuredShare,
-		pooledDays,
-		punctualityWeighting,
 		rateStateText,
 		recordMessage,
 		tally,
@@ -188,15 +186,7 @@
 			{
 				key: 'counted',
 				label: term.counted,
-				text: answer
-					? [
-							sample ? `${sample}.` : null,
-							punctualityWeighting[locale],
-							record.period.from === record.period.to ? null : pooledDays[locale],
-						]
-							.filter(Boolean)
-							.join(' ')
-					: null,
+				text: answer && sample ? `${sample}.` : null,
 			},
 			{
 				key: 'observed',
@@ -230,7 +220,7 @@
 			{
 				key: 'source',
 				label: term.source,
-				text: term.feeds(operator),
+				text: term.feeds(agencyName(operator, page.data.provider)),
 			},
 		]}
 	/>
@@ -272,7 +262,7 @@
 				<p class="mt-3 text-small text-muted-foreground">
 					{t(
 						'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.',
-						'En avance signifie plus de 1 minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
+						'En avance signifie plus d’une minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
 					)}
 				</p>
 			{:else if stopLowCoverage(result)}
@@ -404,7 +394,7 @@
 										detail={notPublished
 											? t(
 													'The agency does not declare it for this stop.',
-													'L’exploitant ne le déclare pas pour cet arrêt.',
+													'La société de transport ne le déclare pas pour cet arrêt.',
 												)
 											: undefined}
 									>

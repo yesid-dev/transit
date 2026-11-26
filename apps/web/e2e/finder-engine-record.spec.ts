@@ -558,7 +558,7 @@ for (const locale of ['en', 'fr'] as const) {
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			if (width === 390) {
 				await page
-					.getByRole('button', { name: fr ? /^Commandes Bilan/ : /^Controls Record/ })
+					.getByRole('button', { name: fr ? /^Options Bilan/ : /^Controls Record/ })
 					.click();
 			}
 			await page.getByRole('button', { name: label, exact: true }).click();

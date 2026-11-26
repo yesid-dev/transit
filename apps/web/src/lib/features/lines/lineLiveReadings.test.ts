@@ -46,7 +46,7 @@ describe('Line Live readings', () => {
 			'vehicles are running on this line now: 1 early, 2 on time, 1 late, 1 with delay unknown.',
 		);
 		expect(lineVehicleSentence(vehicleCounts(rows), 'fr')).toBe(
-			'véhicules circulent sur cette ligne en ce moment : 1 en avance, 2 à l’heure, 1 en retard, 1 au retard inconnu.',
+			'véhicules circulent sur cette ligne en ce moment\u00a0: 1 en avance, 2 à l’heure, 1 en retard, 1 dont le retard est inconnu.',
 		);
 	});
 

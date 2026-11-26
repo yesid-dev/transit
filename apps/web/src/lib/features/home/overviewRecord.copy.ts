@@ -1,3 +1,5 @@
+import { frenchAgency, type AgencyName } from '#lib/site/presenter.ts';
+
 export const overviewCopy = {
 	en: {
 		title: (city: string) => `${city} network`,
@@ -22,7 +24,7 @@ export const overviewCopy = {
 		liveStatus: 'How a vehicle gets its status',
 		liveDefinition:
 			'At its last report: early is more than 1 minute ahead, late is more than 5 minutes behind, on time is between the two.',
-		liveFeeds: (operator: string) => `GTFS-Realtime feeds published by ${operator}.`,
+		liveFeeds: (agency: AgencyName) => `GTFS-Realtime feeds published by ${agency.name}.`,
 		dataHealth: 'Data health',
 		liveUnavailable: 'Live numbers unavailable',
 		period: 'Period',
@@ -34,7 +36,7 @@ export const overviewCopy = {
 		methodRow: 'Method',
 		method: 'How we measure',
 		source: 'Source',
-		feeds: (operator: string) => `GTFS and GTFS-Realtime feeds published by ${operator}.`,
+		feeds: (agency: AgencyName) => `GTFS and GTFS-Realtime feeds published by ${agency.name}.`,
 		recordStart: (date: string) => `The record starts ${date}.`,
 		observedShare: (share: string, scheduled?: string) =>
 			`${share} of ${scheduled ? scheduled + ' ' : ''}scheduled stop events have a reading. The rest are left out, never counted as on time.`,
@@ -58,7 +60,7 @@ export const overviewCopy = {
 		title: (city: string) =>
 			`Réseau ${/^[aeiouyàâäéèêëîïôöùûüÿœ]/iu.test(city) ? 'd’' : 'de '}${city}`,
 		intro:
-			'Transit est un bilan public et indépendant du service de transport livré, pas un planificateur de trajets.',
+			'Transit dresse un bilan public et indépendant du service de transport effectué. Ce n’est pas un planificateur de trajets.',
 		record: 'Bilan',
 		unavailable: 'Indisponible',
 		live: 'En direct',
@@ -78,7 +80,7 @@ export const overviewCopy = {
 		liveStatus: 'Comment est déterminé l’état d’un véhicule',
 		liveDefinition:
 			'Au dernier relevé : le véhicule est en avance de plus d’une minute, en retard de plus de 5 minutes ou à l’heure entre les deux.',
-		liveFeeds: (operator: string) => `Flux GTFS-Realtime publiés par ${operator}.`,
+		liveFeeds: (agency: AgencyName) => `Flux GTFS-Realtime publiés ${frenchAgency(agency).by}.`,
 		dataHealth: 'Santé des données',
 		liveUnavailable: 'Chiffres en direct indisponibles',
 		period: 'Période',
@@ -90,7 +92,7 @@ export const overviewCopy = {
 		methodRow: 'Méthode',
 		method: 'Comment on mesure',
 		source: 'Source',
-		feeds: (operator: string) => `Flux GTFS et GTFS-Realtime publiés par ${operator}.`,
+		feeds: (agency: AgencyName) => `Flux GTFS et GTFS-Realtime publiés ${frenchAgency(agency).by}.`,
 		recordStart: (date: string) => `Le bilan commence le ${date}.`,
 		observedShare: (share: string, scheduled?: string) =>
 			`${share} des ${scheduled ? scheduled + ' ' : ''}passages prévus aux arrêts ont un relevé. Les autres sont exclus et ne sont jamais comptés comme étant à l’heure.`,

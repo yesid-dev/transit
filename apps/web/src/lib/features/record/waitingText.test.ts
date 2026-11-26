@@ -23,12 +23,12 @@ const measured: RecordCell = {
 
 it('reads a pooled wait with its matched basis and a disruption share with its observed sample', () => {
 	expect(waitingReading(measured, 'excess_wait_time', 'en')).toBe(
-		'0.7 min · 20 observed intervals, 14 scheduled intervals in comparable windows',
+		'0.7 min · 20 gaps between vehicles seen, 14 planned, when vehicles are due every 10 minutes or less',
 	);
 	expect(waitingReading(measured, 'long_gaps', 'en')).toBe('0.0% (0 of 20)');
 	expect(waitingReading(measured, 'bunching', 'fr')).toMatch(/20,0\s% \(4 sur 20\)/);
 	expect(coverageText(measured.evidence, 'en')).toBe(
-		'40.0% coverage of 50 scheduled intervals in frequent periods · Low coverage',
+		'40.0% of 50 planned gaps between vehicles seen, when vehicles are due every 10 minutes or less · Low coverage',
 	);
 });
 
@@ -54,5 +54,5 @@ it('keeps an unavailable wait and a coverage-gated reading distinct from an obse
 			'long_gaps',
 			'en',
 		),
-	).toBe('Not measured (insufficient coverage)');
+	).toBe('Not measured: too little observed');
 });

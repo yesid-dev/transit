@@ -99,8 +99,20 @@ export function delayRange(min: number | null, max: number | null, locale: Local
 	return min === null || max === null ? '' : copy.delayRange(minuteClock(min), minuteClock(max));
 }
 
+/**
+ * A clock time as the reader writes it: "04:48" in English, "4 h 48" and "7 h" in Québec French.
+ * Every clock a page shows comes through here.
+ */
+export function readerClock(hour: number, minute: number, locale: Locale): string {
+	if (locale !== 'fr') return clockFace(hour, minute);
+	const hours = `${hour}\u00a0h`;
+	return minute === 0 ? hours : `${hours}\u00a0${String(minute).padStart(2, '0')}`;
+}
+
 export function clockTime(date: Date, locale: Locale, timeZone = 'UTC'): string {
-	return formatClock(date, locale, timeZone);
+	const face = formatClock(date, locale, timeZone);
+	const parts = /^(\d{2}):(\d{2})$/u.exec(face);
+	return parts ? readerClock(Number(parts[1]), Number(parts[2]), locale) : face;
 }
 
 export function dateAndClock(iso: string, locale: Locale, timeZone = 'UTC', zoneName = false) {
@@ -166,8 +178,8 @@ export function alertAnswerSentence(
 ) {
 	if (published) return publishedAlertUnit(count, locale) + '.';
 	if (locale === 'fr') {
-		if (live) return count === 1 ? `avis est en vigueur.` : `avis sont en vigueur.`;
-		return count === 1
+		if (live) return count < 2 ? `avis est en vigueur.` : `avis sont en vigueur.`;
+		return count < 2
 			? 'avis était en vigueur à un moment donné à ces dates.'
 			: 'avis étaient en vigueur à un moment donné à ces dates.';
 	}
@@ -201,7 +213,7 @@ export function serviceTime(value: unknown, locale: Locale): string | null {
 	if (!parts) return null;
 	const { hours, minutes } = parts;
 	const day = Math.floor(hours / 24);
-	const clock = clockFace(hours % 24, minutes);
+	const clock = readerClock(hours % 24, minutes, locale);
 	const copy = presenterCopy[locale];
 	return day === 0 ? clock : day === 1 ? copy.nextDay(clock) : copy.laterDay(clock, day);
 }
@@ -211,14 +223,16 @@ export function scheduledClock(value: unknown, locale: Locale): string {
 }
 
 export function scheduleHours(start: number, end: number, locale: Locale) {
-	const from = clockFace(start, 0);
-	const to = clockFace(end, 0);
+	const from = readerClock(start, 0, locale);
+	const to = readerClock(end, 0, locale);
 	return locale === 'fr' ? `${from} à ${to}` : `${from} to ${to}`;
 }
 
 export function plannedInterval(tripsPerHour: number, locale: Locale) {
-	const interval = minuteReading(Math.max(1, Math.round(60 / tripsPerHour)), locale);
+	const minutes = Math.max(1, Math.round(60 / tripsPerHour));
+	const interval = minuteReading(minutes, locale);
 	if (!interval) return locale === 'fr' ? 'Inconnu' : 'Unknown';
+	if (minutes === 1) return locale === 'fr' ? 'chaque minute' : 'every minute';
 	return locale === 'fr' ? `toutes les ${interval}` : `every ${interval}`;
 }
 
@@ -226,10 +240,30 @@ export function dailyScheduledTrips(trips: number, locale: Locale) {
 	return intl.number(locale, { maximumFractionDigits: 1 }).format(trips);
 }
 
+/**
+ * A terminus as riders name it: the agency's cross street in brackets is dropped ("Station
+ * Laurier (Saint-Joseph / Berri)" reads "Station Laurier"). A compass word in brackets stays.
+ */
+export function terminusName(name: string): string {
+	const bracketed = /^(.*\S)\s*\(([^()]*)\)$/u.exec(name.trim());
+	return bracketed && !compassPoint.test(bracketed[2].trim()) ? bracketed[1] : name.trim();
+}
+
+/**
+ * A terminus written as a place a rider goes. A name that starts with a lowercase particle ("du
+ * Square-Victoria / Saint-Antoine") is a cross street, so it reads as "l’arrêt du …" and "the
+ * stop du …", never "Vers du …".
+ */
+function terminusPlace(name: string, locale: Locale, rule?: NameSeparators) {
+	const shown = formatTransitName(terminusName(name), locale, rule);
+	if (!/^(?:du|de|des|d['’])(?=[\s\p{L}])/u.test(shown)) return shown;
+	return `${locale === 'fr' ? 'l’arrêt' : 'the stop'} ${shown}`;
+}
+
 export function riderHeadsign(headsign: string | null | undefined, pattern?: LinePattern) {
 	const sign = headsign?.trim();
 	const terminus = sign && compassPoint.test(sign) && pattern?.termini[sign.toLowerCase()];
-	return terminus ? `${terminus} (${sign})` : sign;
+	return terminus ? `${terminusName(terminus)} (${sign})` : sign;
 }
 
 export function directionName(
@@ -242,7 +276,7 @@ export function directionName(
 	const terminus = /^(.*) \(([^()]*)\)$/u.exec(name);
 	if (terminus && compassPoint.test(terminus[2])) {
 		const compass = locale === 'fr' ? terminus[2].toLowerCase() : terminus[2];
-		return `${formatTransitName(terminus[1], locale, rule)} (${compass})`;
+		return `${terminusPlace(terminus[1], locale, rule)} (${compass})`;
 	}
 	if (compassPoint.test(name)) {
 		const words: Record<string, [string, string]> = {
@@ -256,7 +290,7 @@ export function directionName(
 			name.toLowerCase();
 		return words[key][locale === 'fr' ? 1 : 0];
 	}
-	return formatTransitName(name, locale, rule);
+	return terminusPlace(name, locale, rule);
 }
 
 export function towardReading(name: string, locale: Locale, rule?: NameSeparators, capital = true) {
@@ -271,15 +305,29 @@ export function lineSubtitle(
 	rule?: NameSeparators,
 ) {
 	const modes: Record<number, [string, string]> = {
-		0: ['Tram', 'Tramway'],
+		0: ['Tram', 'Train léger'],
 		1: ['Métro', 'Métro'],
 		2: ['Train', 'Train'],
 		4: ['Ferry', 'Traversier'],
 	};
 	const mode = type == null ? undefined : modes[type]?.[locale === 'fr' ? 1 : 0];
-	const stops = [...new Set((ends ?? []).map((name) => formatTransitName(name, locale, rule)))];
-	const route = stops.join(locale === 'fr' ? ' à ' : ' to ');
-	return [mode, route].filter(Boolean).join(' · ') || undefined;
+	const stops = [...new Set((ends ?? []).map((name) => terminusPlace(name, locale, rule)))];
+	return [mode, routeBetween(stops, locale, mode != null)].filter(Boolean).join(' · ') || undefined;
+}
+
+/** "Gare Montréal-Ouest to Station Laurier"; in French "De Gare Montréal-Ouest à Station Laurier". */
+function routeBetween(stops: string[], locale: Locale, afterMode: boolean) {
+	if (locale !== 'fr') {
+		const route = stops.join(' to ');
+		return afterMode ? route : route.replace(/^the stop /u, 'The stop ');
+	}
+	if (stops.length !== 2) return stops.join(' à ');
+	const [from, to] = stops;
+	const de = afterMode ? 'de' : 'De';
+	const start = /^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(from)
+		? `${de.slice(0, 1)}’${from}`
+		: `${de} ${from}`;
+	return `${start} à ${to}`;
 }
 
 export function lineRecordHeading(
@@ -362,7 +410,9 @@ export function dailyReportTitle({ from, to }: { from: string; to: string }, loc
 }
 
 export function reportHours(start: number, end: number, locale: Locale) {
-	return [clockFace(start, 0), clockFace(end, 0)].join(locale === 'fr' ? ' à ' : ' to ');
+	return [readerClock(start, 0, locale), readerClock(end, 0, locale)].join(
+		locale === 'fr' ? ' à ' : ' to ',
+	);
 }
 
 export function fileSize(bytes: number | null | undefined, locale: Locale): string | null {
@@ -471,8 +521,8 @@ export function tripsInHours(trips: number, hours: number, locale: Locale): stri
 	return presenterCopy[locale].tripsInHours(
 		format.format(trips),
 		format.format(hours),
-		trips === 1,
-		hours === 1,
+		singularCount(trips, locale),
+		singularCount(hours, locale),
 	);
 }
 
@@ -536,6 +586,7 @@ export function countedUnit(
 			fr: ['avis distinct', 'avis distincts'],
 		},
 	};
+	if (locale === 'fr' && value === 0 && unit === 'event') return 'aucun passage aux arrêts';
 	const plural = !singularCount(value, locale);
 	return `${intl.number(locale).format(value)} ${labels[unit][locale][Number(plural)]}`;
 }
@@ -594,6 +645,45 @@ export function tickingLiveStamp(
 export function sampleWithMinimum(sample: string, minimum: number, locale: Locale) {
 	const number = intl.number(locale).format(minimum);
 	return `${sample} (${locale === 'fr' ? 'minimum de' : 'minimum'} ${number})`;
+}
+
+/**
+ * What a vehicle's reporting interruptions mean, after their count: "times it stopped reporting,
+ * about 2.4 an hour". The rate per 100 hours stays on How we measure. Without a count the rate
+ * leads: "About 2.4 times an hour it stopped reporting".
+ */
+export function reportingGapsReading(
+	per100Hours: number | null | undefined,
+	gaps: number | null | undefined,
+	locale: Locale,
+) {
+	const fr = locale === 'fr';
+	const rate =
+		per100Hours == null || !Number.isFinite(per100Hours)
+			? null
+			: intl.number(locale, { maximumFractionDigits: 1 }).format(per100Hours / 100);
+	if (gaps == null)
+		return rate == null
+			? null
+			: fr
+				? `Environ ${rate} interruptions des signalements par heure`
+				: `About ${rate} times an hour it stopped reporting`;
+	const what = fr
+		? singularCount(gaps, locale)
+			? 'interruption des signalements'
+			: 'interruptions des signalements'
+		: gaps === 1
+			? 'time it stopped reporting'
+			: 'times it stopped reporting';
+	if (rate == null) return what;
+	return fr ? `${what}, environ ${rate} par heure` : `${what}, about ${rate} an hour`;
+}
+
+/** Vehicle time in whole hours ("596 h"); under ten hours it keeps a tenth ("2.5 h"). */
+export function vehicleHours(seconds: number, locale: Locale) {
+	const hours = seconds / 3600;
+	const digits = hours < 10 ? 1 : 0;
+	return `${intl.number(locale, { maximumFractionDigits: digits }).format(hours)}\u00a0h`;
 }
 
 export function hoursReading(hours: number, locale: Locale) {
@@ -690,9 +780,9 @@ export function lineVehicleSentence(
 		return locale === 'fr'
 			? 'véhicule en service sur cette ligne en ce moment.'
 			: 'vehicles are running on this line now.';
-	const one = total === 1;
+	const one = singularCount(total, locale);
 	if (locale === 'fr') {
-		return `${one ? 'véhicule circule' : 'véhicules circulent'} sur cette ligne en ce moment : ${count(counts.early)} en avance, ${count(counts.on_time)} à l’heure, ${count(counts.late)} en retard${counts.unknown ? `, ${count(counts.unknown)} au retard inconnu` : ''}.`;
+		return `${one ? 'véhicule circule' : 'véhicules circulent'} sur cette ligne en ce moment\u00a0: ${count(counts.early)} en avance, ${count(counts.on_time)} à l’heure, ${count(counts.late)} en retard${counts.unknown ? `, ${count(counts.unknown)} dont le retard est inconnu` : ''}.`;
 	}
 	return `${one ? 'vehicle is' : 'vehicles are'} running on this line now: ${count(counts.early)} early, ${count(counts.on_time)} on time, ${count(counts.late)} late${counts.unknown ? `, ${count(counts.unknown)} with delay unknown` : ''}.`;
 }
@@ -739,7 +829,10 @@ export function lineNoVehicleSentence(firstTrip: string | null, locale: Locale) 
 }
 
 export function predictedIn(predictedAt: number, now: number, locale: Locale) {
-	const minutes = minuteReading(Math.max(0, Math.ceil((predictedAt - now) / 60_000)), locale);
+	const left = Math.max(0, Math.ceil((predictedAt - now) / 60_000));
+	// "in 0 min" reads as a machine; a vehicle due within the minute is due now.
+	if (left === 0) return locale === 'fr' ? 'maintenant' : 'now';
+	const minutes = minuteReading(left, locale);
 	return locale === 'fr' ? `dans ${minutes}` : `in ${minutes}`;
 }
 
@@ -872,20 +965,27 @@ const frenchContractions: [RegExp, string][] = [
 	[/^de /u, ''],
 ];
 
-/** The agency as a French subject ("la …") and after "de" ("de la …", "d’…"). */
+/**
+ * The agency in a French sentence, from the form its city declares after "de": as its subject
+ * ("la …" for a declared "de la …"), after "de", after "par" and "avec", and capitalized to start
+ * a sentence.
+ */
 export function frenchAgency({ name, frenchOf }: AgencyName) {
 	const declared = frenchOf?.trim();
-	if (declared) {
-		const rule = frenchContractions.find(([pattern]) => pattern.test(declared));
-		return {
-			subject: rule ? declared.replace(rule[0], rule[1]) : name,
-			of: rule ? declared : `de ${name}`,
-		};
-	}
+	const rule = declared && frenchContractions.find(([pattern]) => pattern.test(declared));
 	// Without a declared form, only French elision applies; no article is guessed.
+	const subject = rule ? declared.replace(rule[0], rule[1]) : name;
+	const of = rule
+		? declared
+		: /^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(name)
+			? `d’${name}`
+			: `de ${name}`;
 	return {
-		subject: name,
-		of: /^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(name) ? `d’${name}` : `de ${name}`,
+		subject,
+		of,
+		by: `par ${subject}`,
+		with: `avec ${subject}`,
+		start: subject.charAt(0).toLocaleUpperCase('fr') + subject.slice(1),
 	};
 }
 

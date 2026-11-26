@@ -38,7 +38,7 @@ export const lineSectionTitles = {
 		'Trajets annulés et manquants, par départ',
 	],
 	late: ['Departures late most often', 'Départs le plus souvent en retard'],
-	crowding: ['Crowding', 'Achalandage'],
+	crowding: ['Crowding', 'Places à bord'],
 	alerts: ['Agency notices on these dates', 'Avis de la société de transport à ces dates'],
 	frequency: ['Planned frequency', 'Fréquence prévue'],
 	boundaries: ['First and last trips', 'Premiers et derniers trajets'],
@@ -102,8 +102,8 @@ export function waitingFinding(answer: RecordMeasure, locale: Locale) {
 	if (excess.value && excess.detail)
 		return choose(
 			locale,
-			`Excess wait time was ${excess.value} in comparable frequent-service windows.`,
-			`L’attente excédentaire était de ${excess.value} dans les périodes comparables de service fréquent.`,
+			`Riders waited ${excess.value} longer than the timetable promised, when vehicles are due every 10 minutes or less.`,
+			`Les usagers ont attendu ${excess.value} de plus que ce que promettait l’horaire, quand les véhicules passent aux 10 minutes ou moins.`,
 		);
 	const gaps = waitingReadingParts(answer, 'long_gaps', locale);
 	if (gaps.detail)

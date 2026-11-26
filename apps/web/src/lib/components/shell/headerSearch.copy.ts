@@ -53,7 +53,7 @@ export const headerSearchCopy = {
 		loading: 'Chargement de l’index de recherche…',
 		unavailable: 'L’index de recherche est temporairement indisponible.',
 		notTracked: 'Ce flux ne permet pas de suivre les véhicules par numéro.',
-		showing: (shown: string, total: string) => `${shown} sur ${total} affichés`,
+		showing: (shown: string, total: string) => `${shown} sur ${total}`,
 		more: 'Afficher plus',
 		results: 'Résultats par type',
 		searched: {

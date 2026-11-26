@@ -227,7 +227,7 @@
     ],
     "live_policy_text": "[{\"gap_id\": \"metro_realtime\", \"route_ids\": [], \"route_types\": [1]}]",
     "provider_seed": {
-      "attribution_text": "Contains STM data made available under CC BY 4.0.",
+      "attribution_text": "Contient des données de la Société de transport de Montréal mises à disposition selon la licence CC BY 4.0.",
       "city": "Montréal",
       "default_currency": "CAD",
       "default_language": "fr",

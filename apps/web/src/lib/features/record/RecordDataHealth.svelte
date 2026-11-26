@@ -667,7 +667,7 @@
 						{
 							key: 'source',
 							label: term.source,
-							text: operator ? term.feeds(operator) : null,
+							text: operator ? term.feeds(agency) : null,
 						},
 					]}
 				/>

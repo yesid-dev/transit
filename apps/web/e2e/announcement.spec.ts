@@ -113,7 +113,7 @@ test('a wrapped phone banner leaves the map and its controls in the viewport', a
 
 	const filters = page.locator('[data-slot="surface-rail-mobile"] > button');
 	await filters.click();
-	const drawer = page.getByRole('dialog', { name: 'Commandes', exact: true });
+	const drawer = page.getByRole('dialog', { name: 'Options', exact: true });
 	await expect(drawer).toBeInViewport({ ratio: 1 });
 	const pill = (await page.getByTestId('nav-pill').boundingBox())!;
 	expect((await drawer.boundingBox())!.y).toBeGreaterThanOrEqual(pill.y + pill.height);

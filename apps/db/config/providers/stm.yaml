@@ -33,7 +33,8 @@ download_licence:
     fr: "Transit est indépendant de la STM, de la Ville d’Ottawa et d’OC Transpo. Aucun de ces organismes ne commandite ni n’approuve Transit."
   source: {en: "STM", fr: "de la STM"}
 attribution:
-  fr: Contains STM data made available under CC BY 4.0.
+  en: Contains STM data made available under CC BY 4.0.
+  fr: Contient des données de la Société de transport de Montréal mises à disposition selon la licence CC BY 4.0.
 reading_population: vehicle_evidence
 live_source_lag_seconds: 0
 

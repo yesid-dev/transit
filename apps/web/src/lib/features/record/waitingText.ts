@@ -6,7 +6,7 @@ import { choose, tally } from './recordText.ts';
 export const waitingMeasures = [
 	['excess_wait_time', 'Excess wait time', 'Attente excédentaire'],
 	['long_gaps', 'Long gaps', 'Intervalles prolongés'],
-	['bunching', 'Bunching', 'Regroupement de véhicules'],
+	['bunching', 'Bunching', 'Véhicules trop rapprochés'],
 ] as const;
 
 type WaitingMeasure = (typeof waitingMeasures)[number][0];
@@ -24,8 +24,8 @@ export function waitingReadingParts(cell: RecordCell, measure: WaitingMeasure, l
 				cell.evidence.coverage_reason === 'insufficient_coverage'
 					? choose(
 							locale,
-							'Not measured (insufficient coverage)',
-							'Non mesuré (couverture insuffisante)',
+							'Not measured: too little observed',
+							'Non mesuré\u00a0: trop peu observé',
 						)
 					: cell.state_text[locale],
 		};
@@ -50,8 +50,8 @@ export function waitingReadingParts(cell: RecordCell, measure: WaitingMeasure, l
 			value: duration,
 			detail: choose(
 				locale,
-				`${total} observed intervals, ${scheduled} scheduled intervals in comparable windows`,
-				`${total} intervalles observés, ${scheduled} intervalles prévus dans des fenêtres comparables`,
+				`${total} gaps between vehicles seen, ${scheduled} planned, when vehicles are due every 10 minutes or less`,
+				`${total} intervalles entre deux véhicules observés, ${scheduled} prévus, quand les véhicules passent aux 10 minutes ou moins`,
 			),
 		};
 	}

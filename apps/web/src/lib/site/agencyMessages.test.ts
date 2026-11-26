@@ -134,7 +134,7 @@ it.each(['en', 'fr'] as const)(
 
 it.each([
 	['en', ['17 to 23 Nov 2026', '25 Nov 2026, 05:00 to 12:00']],
-	['fr', ['du 17 au 23 nov. 2026', '25 nov. 2026, de 05:00 à 12:00']],
+	['fr', ['du 17 au 23 nov. 2026', '25 nov. 2026, de 5\u00a0h à 12\u00a0h']],
 ] as const)('combines overlapping local calendar dates in %s', (locale, label) => {
 	expect(
 		agencyMessagePeriods(
@@ -152,7 +152,7 @@ it.each([
 
 it.each([
 	['en', 'Since 20 Nov 2026, 09:00.'],
-	['fr', 'Depuis le 20 nov. 2026, 09:00.'],
+	['fr', 'Depuis le 20 nov. 2026, 9\u00a0h.'],
 ] as const)('uses day-first dates for open live periods in %s', (locale, since) => {
 	expect(
 		agencyMessagePeriods(

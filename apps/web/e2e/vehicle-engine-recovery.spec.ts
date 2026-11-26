@@ -19,7 +19,7 @@ for (const locale of ['en', 'fr']) {
 		const reporting = page.getByRole('article', {
 			name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
 		});
-		await expect(reporting).toContainText(fr ? 'Lecture en attente.' : 'Waiting for a reading.');
+		await expect(reporting).toContainText(fr ? 'En attente de données.' : 'Waiting for a reading.');
 		const control = page.getByRole('button', {
 			name: fr ? 'Afficher plus de jours' : 'Show more days',
 		});
@@ -35,14 +35,16 @@ for (const locale of ['en', 'fr']) {
 		await page.clock.fastForward(60_001);
 		expect((await response).ok()).toBe(true);
 		await expect(reporting).toContainText(
-			fr ? '16 interruptions par 100 heures' : '16 interruptions per 100 hours',
+			fr
+				? 'interruptions des signalements, environ 0,2 par heure'
+				: 'times it stopped reporting, about 0.2 an hour',
 		);
 		expect(Math.round(Math.abs((await control.boundingBox())!.y - before))).toBe(0);
 		await expect(control).toBeFocused();
 		const notice = page.locator('[data-slot="record-patience"]');
 		await expect(notice.getByRole('status')).toHaveCount(1);
 		await expect(notice.getByRole('status')).toContainText(
-			fr ? 'Lectures reçues' : 'Readings arrived',
+			fr ? 'Résultats reçus' : 'Readings arrived',
 		);
 		// The notice is for screen readers only: it takes no room, so nothing reserves or moves.
 		const box = (await notice.boundingBox())!;

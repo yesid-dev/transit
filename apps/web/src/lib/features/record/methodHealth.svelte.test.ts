@@ -247,7 +247,7 @@ it.each([
 
 		const rankingNotes = document.getElementById('ranking-range-notes')!;
 		expect(rankingNotes).toHaveTextContent(
-			locale === 'fr' ? 'Ordre des lignes' : 'How rows are ordered',
+			locale === 'fr' ? 'Ordre du classement' : 'How rows are ordered',
 		);
 		expect(rankingNotes).toHaveTextContent(locale === 'fr' ? 'Mise en garde' : 'Caveat');
 		for (const riderLabel of locale === 'fr'

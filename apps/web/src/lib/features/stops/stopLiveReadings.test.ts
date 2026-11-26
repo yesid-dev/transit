@@ -164,8 +164,51 @@ describe('riderToward', () => {
 		expect(riderToward(display, { line: '24', toward: 'Gare Montréal-Ouest' }, 'en')).toBe(
 			'Gare Montréal-Ouest',
 		);
-		expect(riderToward(display, { line: '80', toward: 'Nord' }, 'en')).toBe('Nord');
 		expect(riderToward(display, { line: '24', toward: null }, 'en')).toBeNull();
 		expect(riderToward(display, { line: '80', toward: 'Nord' }, 'fr', 'sentence')).toBe('le nord');
 	});
+
+	it.each([
+		['en', 'North', 'West'],
+		['fr', 'Nord', 'Ouest'],
+	] as const)(
+		'names a compass word with no terminus in the reader’s language in %s',
+		(locale, north, west) => {
+			expect(riderToward(display, { line: '80', toward: 'Nord' }, locale)).toBe(north);
+			expect(riderToward(display, { line: '80', toward: 'Ouest' }, locale)).toBe(west);
+		},
+	);
+
+	it.each([
+		[
+			'en',
+			'Station Henri-Bourassa (Ouest)',
+			'toward Station Henri-Bourassa (Ouest), scheduled 11:15.',
+		],
+		[
+			'fr',
+			'Station Henri-Bourassa (ouest)',
+			'vers Station Henri-Bourassa (ouest), prévu à 11\u00a0h\u00a015.',
+		],
+	] as const)(
+		'takes the stop’s own line termini when the page directory has none in %s',
+		(locale, cell, sentence) => {
+			// The stop page loads its lines' termini itself; the agency's cross street is dropped.
+			const patterns = {
+				197: { termini: { ouest: 'Station Henri-Bourassa (Lajeunesse / Henri-Bourassa)' } },
+			};
+			const row = { line: '197', toward: 'Ouest' };
+			expect(riderToward(display, row, locale, 'cell', patterns)).toBe(cell);
+			expect(
+				stopNextVehicleSentence(
+					{
+						line: '197',
+						toward: riderToward(display, row, locale, 'sentence', patterns),
+						scheduled: locale === 'fr' ? '11\u00a0h\u00a015' : '11:15',
+					},
+					locale,
+				),
+			).toContain(sentence);
+		},
+	);
 });

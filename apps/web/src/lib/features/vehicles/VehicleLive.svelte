@@ -390,7 +390,7 @@
 									>
 								{:else}{unknown}{/if}
 							</FactRow>
-							<FactRow label={t('How full it is', 'Achalandage')}
+							<FactRow label={t('How full it is', 'Places à bord')}
 								>{running.occupancy
 									? OCCUPANCY_LABELS[locale][running.occupancy]
 									: unknown}</FactRow

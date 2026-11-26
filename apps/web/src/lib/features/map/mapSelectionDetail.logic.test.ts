@@ -11,11 +11,11 @@ it('localizes a selected stop with no published name', () => {
 describe('timeLabel', () => {
 	it.each([
 		['2026-07-14T23:21:00Z', 'America/Toronto', 'en', '19:21'],
-		['2026-07-14T23:21:00Z', 'America/Toronto', 'fr', '19:21'],
+		['2026-07-14T23:21:00Z', 'America/Toronto', 'fr', '19\u00a0h\u00a021'],
 		['2026-07-14T23:21:00Z', 'America/Vancouver', 'en', '16:21'],
-		['2026-07-14T23:21:00Z', 'America/Vancouver', 'fr', '16:21'],
+		['2026-07-14T23:21:00Z', 'America/Vancouver', 'fr', '16\u00a0h\u00a021'],
 		['2026-11-14T05:00:00Z', 'America/Toronto', 'en', '00:00'],
-		['2026-11-14T05:00:00Z', 'America/Toronto', 'fr', '00:00'],
+		['2026-11-14T05:00:00Z', 'America/Toronto', 'fr', '0\u00a0h'],
 	] as const)('reads %s in %s for %s as %s', (iso, timeZone, locale, expected) => {
 		expect(timeLabel(iso, locale, timeZone)).toBe(expected);
 	});

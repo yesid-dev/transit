@@ -127,7 +127,7 @@ export const MAP_RECORD: BilingualSeo = {
 };
 
 const STOP_DETAIL: BilingualSeo = {
-	title: { en: 'Stop detail', fr: "Détail de l'arrêt" },
+	title: { en: 'Stop detail', fr: 'Détail de l’arrêt' },
 };
 
 function entryFor(path: string, params: URLSearchParams): BilingualSeo {

@@ -21,6 +21,8 @@
 		citeDates,
 		countLabels as countTemplates,
 		countedUnit,
+		singularCount,
+		agencyName,
 		dateRange,
 		daysInService,
 		didNotReport,
@@ -316,7 +318,7 @@
 	});
 	const subtitle = $derived(
 		operator && (liveMode ? reporting.length > 0 : Boolean(record))
-			? `${operator}${t(': ', '\u00a0: ')}${t(`${tally(liveMode ? reporting.length : record!.fleet, locale)} vehicles`, `${tally(liveMode ? reporting.length : record!.fleet, locale)} véhicules`)}`
+			? `${operator}${t(': ', '\u00a0: ')}${countedUnit(liveMode ? reporting.length : record!.fleet, 'vehicle', locale)}`
 			: operator,
 	);
 	const sample = $derived(
@@ -324,13 +326,8 @@
 			? [
 					record.daysInService === null
 						? ''
-						: t(
-								`${tally(record.daysInService, locale)} days in service`,
-								`${tally(record.daysInService, locale)} jours en service`,
-							),
-					record.trips === null
-						? ''
-						: t(`${tally(record.trips, locale)} trips`, `${tally(record.trips, locale)} trajets`),
+						: `${countedUnit(record.daysInService, 'day', locale)} ${t('in service', 'en service')}`,
+					record.trips === null ? '' : countedUnit(record.trips, 'trip', locale),
 					record.evidence.days_included.length
 						? countedUnit(record.evidence.days_included.length, 'day', locale)
 						: '',
@@ -500,7 +497,7 @@
 							time={stamp}
 							value={live?.vehicles && !health?.isStale ? tally(reporting.length, locale) : null}
 							sentence={live?.vehicles && !health?.isStale
-								? reporting.length === 1
+								? singularCount(reporting.length, locale)
 									? about.reportingOne
 									: about.reporting
 								: t(
@@ -515,7 +512,7 @@
 							time={stamp}
 							value={record?.fleet ? tally(record.active, locale) : null}
 							sentence={record?.fleet
-								? record.active === 1
+								? singularCount(record.active, locale)
 									? t(
 											'vehicle reported on a trip on these dates.',
 											'véhicule a signalé une position pendant un trajet à ces dates.',
@@ -781,7 +778,7 @@
 									key: 'source',
 									label: about.source,
 									text: operator
-										? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: recordStart(page.data.provider), to: recordStart(page.data.provider) }, locale))}`
+										? `${about.feeds(agencyName(operator, page.data.provider))} ${about.recordStart(dateRange({ from: recordStart(page.data.provider), to: recordStart(page.data.provider) }, locale))}`
 										: null,
 								},
 							]}

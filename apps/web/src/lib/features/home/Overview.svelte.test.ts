@@ -44,7 +44,7 @@ it.each(['unconfigured', 'unreachable', 'timeout', 'busy'] as const)(
 			},
 		});
 		if (kind === 'busy') {
-			await waitFor(() => expect(screen.getAllByText('Lecture en attente.')).toHaveLength(6));
+			await waitFor(() => expect(screen.getAllByText('En attente de données.')).toHaveLength(6));
 		} else {
 			const record = screen.getByRole('article', { name: overviewCopy.fr.record });
 			const rankings = screen.getByRole('article', { name: overviewCopy.fr.rankings });

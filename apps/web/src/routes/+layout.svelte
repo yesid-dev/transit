@@ -11,6 +11,7 @@
 	import { setPageTitleContext, resolvePageTitle } from '#lib/seo/pageTitle.ts';
 	const clientTitle = setPageTitleContext();
 	import { publishedNetwork } from '#lib/site/providerDisplay.ts';
+	import { agencyName } from '#lib/site/presenter.ts';
 	import { providerSourceAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { setContext } from 'svelte';
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
@@ -467,7 +468,7 @@
 						{#if footerAttribution}<span data-slot="source-credit">{footerAttribution}</span
 							>{footerSeparator}{/if}
 						<span class="footer-disclaimer" data-slot="agency-disclaimer"
-							>{footerWords.disclaimer(footerAgency)}</span
+							>{footerWords.disclaimer(agencyName(footerAgency, data.provider))}</span
 						>
 					{/snippet}
 					{#if datedMapCredit}
@@ -499,7 +500,7 @@
 					<p class="m-0 text-center sm:text-left" data-slot="legal-footer-status">
 						<span>{footerAttribution}</span>{footerSeparator}
 						<span class="footer-disclaimer" data-slot="agency-disclaimer"
-							>{footerWords.disclaimer(footerAgency)}</span
+							>{footerWords.disclaimer(agencyName(footerAgency, data.provider))}</span
 						>
 					</p>
 				{/snippet}
@@ -532,7 +533,7 @@
 									</span>{footerSeparator}
 								{/if}
 								<span class="footer-disclaimer" data-slot="agency-disclaimer"
-									>{footerWords.disclaimer(footerAgency)}</span
+									>{footerWords.disclaimer(agencyName(footerAgency, data.provider))}</span
 								>
 							</p>
 						{/if}

@@ -218,7 +218,7 @@ for (const width of [390, 1440]) {
 					name:
 						width === 390
 							? fr
-								? /^Commandes.*Ouvrir les commandes/
+								? /^Options.*Ouvrir les options/
 								: /^Controls.*Open controls/
 							: fr
 								? 'Choisir d’autres dates'

@@ -11,7 +11,7 @@ const examples = [
 		'departure',
 		'',
 		'Departures that fail most often',
-		'Départs qui échouent le plus souvent',
+		'Départs les moins fiables',
 		'Departures',
 		'Départs',
 	],

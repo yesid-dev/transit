@@ -25,7 +25,7 @@
 	const fr = $derived(locale === 'fr');
 	const markers = $derived([
 		...(previous
-			? [{ ...previous, kind: 'previous', label: fr ? 'Arrêt quitté' : 'Stop it left' }]
+			? [{ ...previous, kind: 'previous', label: fr ? 'Arrêt précédent' : 'Stop it left' }]
 			: []),
 		...(next ? [{ ...next, kind: 'next', label: fr ? 'Prochain arrêt' : 'Next stop' }] : []),
 		{ ...vehicle, kind: 'vehicle', name: '', label: fr ? 'Ce véhicule' : 'This vehicle' },

@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { recordStart } from '#lib/site/frameState.ts';
 	import {
+		agencyName,
 		countedUnit,
 		longDate,
 		methodEvidence,
@@ -395,7 +396,7 @@
 			{
 				key: 'source',
 				label: t.source,
-				text: `${t.feeds(operator)} ${t.recordStart(locale === 'fr' ? longDate(cityStart, locale) : dateRange({ from: cityStart, to: cityStart }, locale))}`,
+				text: `${t.feeds(agencyName(operator, page.data.provider))} ${t.recordStart(locale === 'fr' ? longDate(cityStart, locale) : dateRange({ from: cityStart, to: cityStart }, locale))}`,
 			},
 		]}
 	/>

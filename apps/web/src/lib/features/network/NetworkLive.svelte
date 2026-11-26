@@ -52,7 +52,7 @@
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const statusTitle = $derived(t('Vehicles by status', 'Véhicules par état'));
-	const silentTitle = $derived(t('Silent trips', 'Trajets sans signalement'));
+	const silentTitle = $derived(t('Silent trips', 'Trajets silencieux'));
 	const delayLabels = $derived(transitTerms[locale].band);
 	const term = $derived(overviewCopy[locale]);
 	const display = transitDisplay();
@@ -238,7 +238,7 @@
 							<p class="mb-3">
 								{t(
 									'Trips that should be running and have no vehicle reporting. Trips the agency cancelled are not counted.',
-									'Ces trajets devraient être en cours, mais aucun véhicule ne transmet sa position. Les trajets annulés par l’exploitant sont exclus.',
+									'Ces trajets devraient être en cours, mais aucun véhicule ne transmet sa position. Les trajets annulés par la société de transport sont exclus.',
 								)}
 							</p>
 							{#if silentTrips?.length}

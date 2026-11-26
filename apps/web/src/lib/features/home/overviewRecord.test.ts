@@ -63,7 +63,7 @@ describe('Overview record text', () => {
 			'About the same (within normal variation)',
 		);
 		expect(comparisonText(answer(current), answer(current), 'fr')).toBe(
-			'Environ pareil (variation normale)',
+			'À peu près pareil (variation normale)',
 		);
 		expect(
 			comparisonText(

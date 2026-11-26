@@ -88,15 +88,83 @@ function sha256(bytes: Buffer): string {
 function bounds(value: ConfigBounds): Bounds {
 	return [value.min_longitude, value.min_latitude, value.max_longitude, value.max_latitude];
 }
-async function readRenderInputs(provider: string) {
-	return Promise.all(
-		[...RENDER_INPUT_PATHS, `../db/config/providers/${provider}.yaml`].map(async (path) => ({
+/**
+ * The declaration fields a poster reads: the city, its framing and its basemap. A change to any
+ * other part of the city's declaration (names, licence, feeds) does not touch the posters.
+ */
+interface PosterDeclaration {
+	provider_id: string;
+	bounds: Bounds | null;
+	fit_bounds: Bounds | null;
+	max_bounds: Bounds | null;
+	basemap_bounds: Bounds | null;
+	basemap_url: string | null;
+	posters_url: string | null;
+}
+function declaredBounds(value: unknown): Bounds | null {
+	if (value == null) return null;
+	if (Array.isArray(value) && value.length === 4 && value.every(Number.isFinite))
+		return value as Bounds;
+	if (typeof value === 'object' && Number.isFinite((value as ConfigBounds).min_longitude))
+		return bounds(value as ConfigBounds);
+	throw new Error(`Unreadable declared bounds: ${JSON.stringify(value)}`);
+}
+function declarationFromConfig(config: ProviderConfig): PosterDeclaration {
+	return {
+		provider_id: config.provider.provider_id,
+		bounds: declaredBounds(config.provider.bounds),
+		fit_bounds: declaredBounds(config.public.fit_bounds),
+		max_bounds: declaredBounds(config.public.max_bounds),
+		basemap_bounds: declaredBounds(config.public.basemap_bounds),
+		basemap_url: config.public.basemap_url ?? null,
+		posters_url: config.public.posters_url ?? null,
+	};
+}
+/** Read from the city's YAML, in its declared (v2) or legacy layout. The check runs in Bun. */
+async function declarationFromFile(provider: string): Promise<PosterDeclaration> {
+	const yaml = (globalThis as { Bun?: { YAML?: { parse(text: string): unknown } } }).Bun?.YAML;
+	if (!yaml) throw new Error('Reading a city declaration needs the Bun runtime');
+	const text = await readFile(resolve(webRoot, `../db/config/providers/${provider}.yaml`), 'utf8');
+	const file = yaml.parse(text) as Record<string, Record<string, unknown> | string | undefined>;
+	if (typeof file.id === 'string') {
+		const map = (file.map ?? {}) as Record<string, unknown>;
+		const framing = (file.overrides ?? {}) as Record<string, unknown>;
+		return declarationFromConfig({
+			provider: { provider_id: file.id, bounds: framing.bounds as ConfigBounds },
+			public: {
+				fit_bounds: (framing.fit_bounds ?? null) as ConfigBounds | null,
+				max_bounds: (framing.max_bounds ?? null) as ConfigBounds | null,
+				basemap_bounds: map.basemap_bounds as ConfigBounds,
+				basemap_url: map.basemap_url as string,
+				posters_url: map.posters_url as string,
+			},
+		});
+	}
+	if (typeof file.provider === 'object' && typeof file.public === 'object')
+		return declarationFromConfig(file as unknown as ProviderConfig);
+	throw new Error(`Unknown declaration layout for ${provider}`);
+}
+async function readRenderInputs(provider: string, declaration: PosterDeclaration) {
+	assertEqual(declaration.provider_id, provider, 'poster declaration identity');
+	const files = await Promise.all(
+		RENDER_INPUT_PATHS.map(async (path) => ({
 			path,
 			sha256: sha256(await readFile(resolve(webRoot, path))),
 		})),
 	);
+	return [
+		...files,
+		{
+			path: `../db/config/providers/${provider}.yaml#posters`,
+			sha256: sha256(Buffer.from(JSON.stringify(declaration))),
+		},
+	];
 }
-async function verifyPosterReceipt(receipt: PosterReceipt, filename: string): Promise<void> {
+async function verifyPosterReceipt(
+	receipt: PosterReceipt,
+	filename: string,
+	declaration?: PosterDeclaration,
+): Promise<void> {
 	assertEqual(receipt.schema_version, 2, 'poster schema');
 	if (!/^[a-z0-9][a-z0-9_-]*$/u.test(receipt.provider_id))
 		throw new Error('Invalid poster provider');
@@ -126,7 +194,12 @@ async function verifyPosterReceipt(receipt: PosterReceipt, filename: string): Pr
 	);
 	assertEqual(
 		JSON.stringify(receipt.render_inputs),
-		JSON.stringify(await readRenderInputs(receipt.provider_id)),
+		JSON.stringify(
+			await readRenderInputs(
+				receipt.provider_id,
+				declaration ?? (await declarationFromFile(receipt.provider_id)),
+			),
+		),
 		'poster render inputs',
 	);
 	assertEqual(receipt.posters.length, 4, 'poster variants');
@@ -299,7 +372,6 @@ async function capturePoster(
 
 async function buildPosters(providerId: string, archivePath: string): Promise<void> {
 	if (!/^[a-z0-9][a-z0-9_-]*$/u.test(providerId)) throw new Error('Invalid provider id');
-	const renderInputs = await readRenderInputs(providerId);
 	const config: ProviderConfig = JSON.parse(
 		execFileSync('uv', ['run', '--no-sync', 'transit-ops', 'show-provider', providerId], {
 			cwd: resolve(webRoot, '../db'),
@@ -307,6 +379,8 @@ async function buildPosters(providerId: string, archivePath: string): Promise<vo
 			env: { ...process.env, PYTHONUTF8: '1' },
 		}),
 	);
+	const declaration = declarationFromConfig(config);
+	const renderInputs = await readRenderInputs(providerId, declaration);
 	assertEqual(config.provider.provider_id, providerId, 'provider config identity');
 	if (
 		!config.public.basemap_url?.startsWith(`/data/v1/${providerId}/static/basemap/`) ||
@@ -392,7 +466,7 @@ async function buildPosters(providerId: string, archivePath: string): Promise<vo
 		}
 	}
 	assertEqual(
-		JSON.stringify(await readRenderInputs(providerId)),
+		JSON.stringify(await readRenderInputs(providerId, declaration)),
 		JSON.stringify(renderInputs),
 		'render inputs during generation',
 	);
@@ -417,7 +491,7 @@ async function buildPosters(providerId: string, archivePath: string): Promise<vo
 	for (const poster of generated)
 		await writeFile(resolve(outputDir, poster.spec.filename), poster.bytes);
 	await writeFile(resolve(outputDir, receiptName), `${JSON.stringify(receipt, null, 2)}\n`);
-	await verifyPosterReceipt(receipt, receiptName);
+	await verifyPosterReceipt(receipt, receiptName, declaration);
 }
 
 async function main(): Promise<void> {

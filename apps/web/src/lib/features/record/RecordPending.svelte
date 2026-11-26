@@ -43,7 +43,7 @@
 	{#if shape && !busy}<RecordSkeleton {shape} />{/if}
 	<p role={register ? undefined : 'status'}>
 		{#if busy}
-			{locale === 'fr' ? 'Lecture en attente.' : 'Waiting for a reading.'}
+			{locale === 'fr' ? 'En attente de données.' : 'Waiting for a reading.'}
 		{:else}
 			{slow?.() ?? (locale === 'fr' ? 'Calcul en cours…' : 'Calculating…')}
 		{/if}

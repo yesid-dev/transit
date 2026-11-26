@@ -219,7 +219,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		const predictions = page.locator('#line-detail-directions');
 		await expect(predictions).toContainText(fr ? 'dans 5' : 'in 5');
 		await expect(predictions).toContainText(fr ? 'Vers Greenboro' : 'Toward Greenboro');
-		await expect(predictions).toContainText(fr ? /Prévu à \d\d:\d\d/ : /Scheduled \d\d:\d\d/);
+		await expect(predictions).toContainText(fr ? /Prévu à \d{1,2}\sh/u : /Scheduled \d\d:\d\d/);
 		await expect(predictions.getByRole('link').first().locator('[data-slot="badge"]')).toHaveText(
 			't4-0',
 		);

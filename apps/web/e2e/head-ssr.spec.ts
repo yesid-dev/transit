@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 test('the canonical rankings route serves the selected bilingual title', async ({ request }) => {
 	for (const [path, title] of [
 		['/rankings?provider=stm', 'Worst lines'],
-		['/fr/rankings?provider=stm&kind=departure', 'Départs qui échouent le plus souvent'],
+		['/fr/rankings?provider=stm&kind=departure', 'Départs les moins fiables'],
 	]) {
 		const response = await request.get(path);
 		expect(response.ok()).toBe(true);

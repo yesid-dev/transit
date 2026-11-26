@@ -15,6 +15,8 @@
 		citeDates,
 		dateRange,
 		lateShare,
+		agencyName,
+		frenchAgency,
 		methodEvidence,
 		pageCitation,
 		recordPercent,
@@ -49,8 +51,6 @@
 		choose,
 		lastGoodNote,
 		lowCoverageText,
-		pooledDays,
-		punctualityWeighting,
 		recordConnection,
 		tally,
 		timingBasis,
@@ -689,11 +689,11 @@
 								{operator
 									? t(
 											`${operator} publishes no real-time feed for these lines, so they are listed apart and never ranked.`,
-											`${operator} ne publie aucun flux en temps réel pour ces lignes : elles sont présentées à part et jamais classées.`,
+											`${frenchAgency(agencyName(operator, provider)).start} ne publie aucun flux en temps réel pour ces lignes\u00a0: elles sont présentées à part et jamais classées.`,
 										)
 									: t(
 											'The agency publishes no real-time feed for these lines, so they are listed apart and never ranked.',
-											'L’agence ne publie aucun flux en temps réel pour ces lignes : elles sont présentées à part et jamais classées.',
+											'La société de transport ne publie aucun flux en temps réel pour ces lignes\u00a0: elles sont présentées à part et jamais classées.',
 										)}
 							</p>
 							<RecordDataTable
@@ -763,15 +763,7 @@
 					{
 						key: 'counted',
 						label: about.counted,
-						text: counts
-							? [
-									counts + '.',
-									punctualityWeighting[locale],
-									record.period.from !== record.period.to ? pooledDays[locale] : '',
-								]
-									.filter(Boolean)
-									.join(' ')
-							: null,
+						text: counts ? `${counts}.` : null,
 					},
 					{
 						key: 'observed',
@@ -807,7 +799,7 @@
 						key: 'source',
 						label: about.source,
 						text: operator
-							? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
+							? `${about.feeds(agencyName(operator, provider))} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
 							: null,
 					},
 				]}

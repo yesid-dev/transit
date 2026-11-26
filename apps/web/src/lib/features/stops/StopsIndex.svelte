@@ -13,6 +13,7 @@
 	import { foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 	import { carryFrameState, recordStart } from '#lib/site/frameState.ts';
 	import {
+		agencyName,
 		countedUnit,
 		citeDates,
 		dateRange,
@@ -49,13 +50,7 @@
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import { finderCells, finderCsv, finderRecordUrl, finderShare } from '../record/finderText.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
-	import {
-		pooledDays,
-		punctualityWeighting,
-		recordConnection,
-		tally,
-		timingBasis,
-	} from '../record/recordText.ts';
+	import { recordConnection, tally, timingBasis } from '../record/recordText.ts';
 	import { indexCopy } from './stops.copy.ts';
 	import {
 		stopPageSize,
@@ -111,10 +106,7 @@
 	);
 	const subtitle = $derived(
 		listing
-			? [
-					operator,
-					t(`${tally(listing.count, locale)} stops`, `${tally(listing.count, locale)} arrêts`),
-				]
+			? [operator, countedUnit(listing.count, 'stop', locale)]
 					.filter(Boolean)
 					.join(t(': ', '\u00a0: '))
 			: operator,
@@ -751,15 +743,7 @@
 					{
 						key: 'counted',
 						label: about.counted,
-						text: evidence
-							? [
-									sample ? `${sample}.` : '',
-									punctualityWeighting[locale],
-									record?.period.from !== record?.period.to ? pooledDays[locale] : '',
-								]
-									.filter(Boolean)
-									.join(' ')
-							: null,
+						text: evidence && sample ? `${sample}.` : null,
 					},
 					{
 						key: 'observed',
@@ -790,7 +774,7 @@
 						key: 'source',
 						label: about.source,
 						text: operator
-							? `${about.feeds(operator)} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
+							? `${about.feeds(agencyName(operator, provider))} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
 							: null,
 					},
 				]}

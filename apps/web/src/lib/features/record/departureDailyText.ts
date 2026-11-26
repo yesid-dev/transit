@@ -96,7 +96,7 @@ export function dailyPeriods(answer: RecordSeries | null, locale: Locale) {
 		let detail: string | null = null;
 		if (coverage != null && info?.minimum_coverage != null && coverage < info.minimum_coverage) {
 			state = 'not_measured';
-			detail = choose(locale, 'Insufficient coverage', 'Couverture insuffisante');
+			detail = choose(locale, 'Too little observed', 'Trop peu observé');
 		} else if (!classified) {
 			state = recordStateFor(observed?.state ?? answer?.state ?? 'not_measured');
 		} else if (!info || missingLateCount || (info.minimum_coverage != null && coverage == null)) {

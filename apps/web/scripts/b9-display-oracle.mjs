@@ -191,9 +191,9 @@ const TABLE_COPY = Object.freeze({
 		bin: 'intervalle (min)',
 		trips: 'trajets',
 		observations: 'relevés',
-		crowdingBand: "Niveau d'occupation",
+		crowdingBand: 'Niveau d’occupation',
 		networkOtp: 'Ponctualité %',
-		networkDelay: '10 % les plus lents (min)',
+		networkDelay: '10\u00a0% les plus lents (min)',
 		canceled: '% de jours-trajets annulés',
 	},
 });

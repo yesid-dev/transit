@@ -25,7 +25,7 @@ for (const width of [390, 1440]) {
 			const late = page.getByRole('article', {
 				name: fr ? 'Départs le plus souvent en retard' : 'Departures late most often',
 			});
-			const departure = late.getByRole('link', { name: /^07:00\b/u });
+			const departure = late.getByRole('link', { name: fr ? /^7\sh\b/u : /^07:00\b/u });
 			await expect(departure).toBeVisible();
 			await expect(late).toContainText(
 				fr ? '5 dates de service observées' : '5 observed service dates',
@@ -33,7 +33,7 @@ for (const width of [390, 1440]) {
 			await departure.click();
 			await expect(page).toHaveURL(/\/departure\//);
 			const main = page.getByRole('main');
-			await expect(main.getByRole('heading', { level: 1 })).toContainText('07:00');
+			await expect(main.getByRole('heading', { level: 1 })).toContainText(fr ? '7 h' : '07:00');
 			// The answer is the late share of stop events; the days count is its detail.
 			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
 				fr ? /1,0\s%/u : '1.0%',
@@ -99,7 +99,7 @@ for (const width of [390, 1440]) {
 			await expect(delivery).toContainText('70');
 			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five parts');
 			await expect(periods.getByRole('rowheader')).toHaveCount(5);
-			await expect(periods).toContainText(fr ? 'Couverture insuffisante' : 'Insufficient coverage');
+			await expect(periods).toContainText(fr ? 'Trop peu observé' : 'Too little observed');
 			const messages = section(fr ? 'Avis de la société de transport' : 'Agency messages');
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveCount(1);
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveAttribute('lang', lang);
@@ -196,7 +196,7 @@ test('a ranked departure links to its exact line, direction, time and range', as
 		'/fr/rankings?kind=departure&provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14',
 	);
 	const ranking = page.getByRole('table', { name: 'Départs', exact: true });
-	const link = ranking.getByRole('link', { name: /07:15 vers West B9/ });
+	const link = ranking.getByRole('link', { name: /7\sh\s15 vers West B9/u });
 	await expect(link).toBeVisible();
 	await expect(ranking.getByRole('img', { name: /38,0\s*% à 58,0\s*%/u })).toBeVisible();
 	const target = new URL((await link.getAttribute('href'))!, page.url());
@@ -223,7 +223,7 @@ for (const locale of ['en', 'fr'] as const) {
 			`${fr ? '/fr' : ''}/departure/${key('24')}?provider=stm&frameMode=record&recordFrom=2026-11-22&recordTo=2026-11-22`,
 		);
 		await expect(page.locator('[data-slot="screen-answer"]')).toHaveText(
-			fr ? 'Lecture en attente.' : 'Waiting for a reading.',
+			fr ? 'En attente de données.' : 'Waiting for a reading.',
 		);
 		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(

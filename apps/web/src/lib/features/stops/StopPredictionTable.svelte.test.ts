@@ -45,7 +45,7 @@ afterEach(() => {
 describe('StopPredictionTable', () => {
 	it.each([
 		['en', ['Line', 'Toward', 'Scheduled', 'Expected', 'Status'], 'Unavailable', 'Delay unknown'],
-		['fr', ['Ligne', 'Vers', 'Horaire', 'Prévu', 'État'], 'Indisponible', 'Retard inconnu'],
+		['fr', ['Ligne', 'Vers', 'Horaire', 'Attendu', 'État'], 'Indisponible', 'Retard inconnu'],
 	] as const)(
 		'renders five columns with compact labelled stack mode in %s and links to line and departure',
 		(locale, headers, unavailable, unknownDelay) => {
@@ -90,7 +90,7 @@ describe('StopPredictionTable', () => {
 			).toHaveTextContent('Gare Montréal-Ouest');
 			expect(
 				first.querySelector('[data-column="scheduled"] .data-table-cell-content'),
-			).toHaveTextContent('08:17');
+			).toHaveTextContent(locale === 'fr' ? '8 h 17' : '08:17');
 			expect(first.querySelector('[data-column="expected"] a')).toHaveAttribute(
 				'href',
 				expect.stringContaining('/departure/'),

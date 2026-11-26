@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import {
+		agencyName,
 		recordPercent,
 		tripOutcomeHeaders,
 		tripOutcomeLabels,
@@ -367,7 +369,7 @@
 												{delayReading(reading.value.median_delay, locale)}
 											</FactRow>
 											<FactRow
-												label={t('90th percentile', '90e centile')}
+												label={t('Latest 1 in 10', 'Le dixième le plus en retard')}
 												emphasis
 												detail={t(
 													'1 observed stop event in 10 was later than this.',
@@ -532,7 +534,7 @@
 								columns={crowdingColumns}
 								rows={[
 									['empty', t('Empty', 'Vide')],
-									['many_seats', t('Many seats available', 'Beaucoup de places assises libres')],
+									['many_seats', t('Many seats available', 'Plusieurs places assises libres')],
 									['few_seats', t('Few seats available', 'Peu de places assises libres')],
 									['standing', t('Standing room only', 'Places debout seulement')],
 									['crushed', t('Limited standing room', 'Peu de places debout')],
@@ -553,7 +555,7 @@
 							<p>
 								{t(
 									'Crowding is not tracked in this city.',
-									'L’achalandage n’est pas suivi dans cette ville.',
+									'L’occupation des véhicules n’est pas suivie dans cette ville.',
 								)}
 							</p>
 						{:else}<StateMark state={chartState(result.state)} {locale} />{/if}
@@ -621,7 +623,11 @@
 									label: term.method,
 								},
 							},
-							{ key: 'source', label: term.source, text: term.feeds(operator) },
+							{
+								key: 'source',
+								label: term.source,
+								text: term.feeds(agencyName(operator, page.data.provider)),
+							},
 						]}
 					/>
 				{/await}

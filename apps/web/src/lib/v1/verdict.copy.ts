@@ -35,7 +35,7 @@ export const verdictCopy = defineCopy({
 		unreliable: ({ window, onTen, lateTen, hedge }: VerdictSentenceArgs) =>
 			`Service peu fiable ${window}, seulement ${onTen} relevés de retard sur 10 dans la plage de ponctualité${hedge}; ${lateTen} sur 10 hors de cette plage.`,
 		tentative: ({ window, otp, n, lo, hi }) =>
-			`Fiabilité incertaine ${window} : ${otp} % de ${n} relevés de retard dans la plage de ponctualité (IC 95 % : ${lo}–${hi} %).`,
+			`Fiabilité incertaine ${window}\u00a0: ${otp}\u00a0% de ${n} relevés de retard dans la plage de ponctualité (IC 95\u00a0%\u00a0: ${lo}–${hi}\u00a0%).`,
 		unknownCount: () =>
 			'Relevés insuffisants pour juger la fiabilité : nombre d’observations inconnu.',
 		unavailableInterval: (window, n) =>
@@ -43,7 +43,8 @@ export const verdictCopy = defineCopy({
 		tooFew: (window: string, n: number) =>
 			`Relevés insuffisants ${window} (${n}) pour juger la fiabilité.`,
 		absent: 'Aucun relevé de retard disponible pour juger la fiabilité.',
-		hedgeCI: (otp: number, lo: number, hi: number) => ` (${otp} %, IC 95 % : ${lo}–${hi} %)`,
+		hedgeCI: (otp: number, lo: number, hi: number) =>
+			` (${otp}\u00a0%, IC 95\u00a0%\u00a0: ${lo}–${hi}\u00a0%)`,
 	},
 	en: {
 		locale: 'en' satisfies Locale,

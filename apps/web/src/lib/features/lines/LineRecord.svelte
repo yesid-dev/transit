@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
 
@@ -13,13 +14,11 @@
 	import {
 		choose,
 		lastGoodNote,
-		punctualityWeighting,
-		pooledDays,
 		recordMessage,
 		tally,
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
-	import { recordPercent, dateRange, recordStamp } from '#lib/site/presenter.ts';
+	import { agencyName, recordPercent, dateRange, recordStamp } from '#lib/site/presenter.ts';
 	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
 	import type { EngineResult, RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
@@ -28,7 +27,7 @@
 	import LineRecordTop from './LineRecordTop.svelte';
 	import LineScheduleCard from './LineScheduleCard.svelte';
 	import LineMeasurementLimits from './LineMeasurementLimits.svelte';
-	import LineRecordEvidence from './LineRecordEvidence.svelte';
+	import LineRecordEvidence, { lineEvidenceSample } from './LineRecordEvidence.svelte';
 	import LineStopLadder from './LineStopLadder.svelte';
 	import { lineSectionTitles, lineTimetableOnly, lineViewHref } from './lineRecordText.ts';
 
@@ -217,13 +216,9 @@
 			{
 				key: 'counted',
 				label: term.counted,
+				// This screen's own count; how counting weighs lines lives on How we measure (S5).
 				text: answer
-					? [
-							punctualityWeighting[locale],
-							record.period.from === record.period.to ? null : pooledDays[locale],
-						]
-							.filter(Boolean)
-							.join(' ')
+					? `${name}${locale === 'fr' ? '\u00a0: ' : ': '}${lineEvidenceSample(answer.evidence, locale)}.`
 					: null,
 			},
 			{
@@ -253,7 +248,11 @@
 				text: null,
 				link: { href: link('/metrics'), label: term.method },
 			},
-			{ key: 'source', label: term.source, text: term.feeds(operator) },
+			{
+				key: 'source',
+				label: term.source,
+				text: term.feeds(agencyName(operator, page.data.provider)),
+			},
 		]}
 	/>
 	<a class="inline-flex min-h-11 w-fit items-center text-primary underline" href={corridorMap}

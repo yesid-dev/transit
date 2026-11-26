@@ -63,7 +63,7 @@ it.each([
 		'fr',
 		'Lignes · 1',
 		'Arrêts · 38',
-		'Ligne 161 · Van Horne Station Rosemont à Station Plamondon',
+		'Ligne 161 · Van Horne De Station Rosemont à Station Plamondon',
 		'Voir tous les résultats',
 	],
 ] as const)(

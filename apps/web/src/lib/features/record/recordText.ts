@@ -85,8 +85,8 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		const total = tally(counts.frequent_headways, locale);
 		coverage = choose(
 			locale,
-			`${rate} coverage of ${total} scheduled intervals in frequent periods`,
-			`Couverture de ${rate} sur ${total} intervalles prévus en période fréquente`,
+			`${rate} of ${total} planned gaps between vehicles seen, when vehicles are due every 10 minutes or less`,
+			`${rate} des ${total} intervalles prévus entre deux véhicules observés, quand les véhicules passent aux 10 minutes ou moins`,
 		);
 	}
 	if (share_eligible != null) {
@@ -112,7 +112,7 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		coverage = choose(
 			locale,
 			`Occupancy reported in ${rate} of readings (${sample} of ${total})`,
-			`Achalandage signalé dans ${rate} des relevés (${sample} sur ${total})`,
+			`Occupation signalée dans ${rate} des relevés (${sample} sur ${total})`,
 		);
 	}
 	return [coverage, low_coverage ? lowCoverageLabel[locale] : ''].filter(Boolean).join(' · ');
@@ -148,8 +148,10 @@ export function rateStateText(
 		answer.state === 'not_measured' &&
 		answer.evidence.coverage_reason === 'insufficient_coverage'
 	) {
-		const reason = choose(locale, 'insufficient coverage', 'couverture insuffisante');
-		return withCoverage(`${status} (${reason})`, answer.evidence, locale);
+		// Under the minimum the figure is not measured at all; "Low coverage" is only for a figure
+		// measured under the warning limit, so it is not said twice.
+		const reason = choose(locale, ': too little observed', '\u00a0: trop peu observé');
+		return withCoverage(`${status}${reason}`, { ...answer.evidence, low_coverage: false }, locale);
 	}
 	return answer.evidence.low_coverage ? withCoverage(status, answer.evidence, locale) : status;
 }
@@ -169,7 +171,11 @@ export function timingBasis(counts: Counts | undefined, locale: Locale) {
 	const bases = [
 		['vehicle_stopped', 'vehicle reported stopped', 'véhicule signalé à l’arrêt'],
 		['vehicle_nearby', 'vehicle GPS near the stop', 'GPS du véhicule près de l’arrêt'],
-		['trip_update_reported', 'time reported by the agency', 'heure signalée par l’agence'],
+		[
+			'trip_update_reported',
+			'time reported by the agency',
+			'heure signalée par la société de transport',
+		],
 		[
 			'trip_update_passed',
 			'last prediction before the vehicle passed',
@@ -240,7 +246,7 @@ export function departureRankingFloor(
 
 export const cautiousRanking = {
 	en: 'Share rankings use the cautious end of the 95% range. The displayed share is the exact observed rate.',
-	fr: 'Le classement des parts utilise la borne prudente de l’intervalle à 95 %. La part affichée est le taux exact observé.',
+	fr: 'Le classement des parts utilise la borne prudente de l’intervalle à 95\u00a0%. La part affichée est le taux exact observé.',
 };
 
 export function emptyRecord(evidence: RecordEvidence, locale: Locale) {

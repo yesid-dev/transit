@@ -8,7 +8,7 @@ export const rankingLists = {
 	stop: { label: { en: 'Stops', fr: 'Arrêts' }, title: { en: 'Worst stops', fr: 'Pires arrêts' } },
 	departure: {
 		label: { en: 'Departures', fr: 'Départs' },
-		title: { en: 'Departures that fail most often', fr: 'Départs qui échouent le plus souvent' },
+		title: { en: 'Departures that fail most often', fr: 'Départs les moins fiables' },
 	},
 	vehicle: {
 		label: { en: 'Vehicles', fr: 'Véhicules' },

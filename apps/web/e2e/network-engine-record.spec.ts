@@ -66,7 +66,7 @@ for (const locale of ['en', 'fr'] as const) {
 			).toBeVisible();
 			await expect(
 				main.getByRole('heading', {
-					name: locale === 'fr' ? 'Trajets sans signalement' : 'Silent trips',
+					name: locale === 'fr' ? 'Trajets silencieux' : 'Silent trips',
 				}),
 			).toBeVisible();
 			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(

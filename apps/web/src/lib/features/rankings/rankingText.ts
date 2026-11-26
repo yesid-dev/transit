@@ -6,6 +6,7 @@ import {
 	minuteReading,
 	recordPercent,
 	rankingComparison,
+	singularCount,
 } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, RecordAnswer, RankingsRecord } from '#lib/server/engine.ts';
@@ -182,19 +183,22 @@ export function rankingCountLines(row: Row, measure: RankingMeasure, locale: Loc
 	const { observed_trips: trips, observed_trip_pairs: pairs, reporting_gaps: gaps } = row.counts;
 	if (measure === reporting) {
 		if (gaps != null)
-			lines.push(`${number(gaps, locale)} ${gaps === 1 ? 'interruption' : 'interruptions'}`);
+			lines.push(
+				`${number(gaps, locale)} ${singularCount(gaps, locale) ? 'interruption' : 'interruptions'}`,
+			);
 	} else if (measure === 'excess_wait_time') {
 		if (pairs != null)
 			lines.push(
 				choose(
 					locale,
 					`${number(pairs, locale)} trip pairs`,
-					`${number(pairs, locale)} paires de trajets`,
+					`${number(pairs, locale)} ${pairs < 2 ? 'paire de trajets' : 'paires de trajets'}`,
 				),
 			);
 	} else if (trips != null && measure !== 'cancelled_trips' && measure !== 'missing_trips') {
-		const unit =
-			trips === 1 ? choose(locale, 'trip', 'trajet') : choose(locale, 'trips', 'trajets');
+		const unit = singularCount(trips, locale)
+			? choose(locale, 'trip', 'trajet')
+			: choose(locale, 'trips', 'trajets');
 		lines.push(`${number(trips, locale)} ${unit}`);
 	}
 	return lines;
@@ -270,9 +274,11 @@ export function classText(key: string, locale: Locale, classes: string[] = []) {
 			: pattern === 'frequent'
 				? choose(locale, 'Frequent lines', 'Lignes fréquentes')
 				: choose(locale, 'Regular lines', 'Lignes régulières');
+	// Ordinary lines carry no mode word; only a mode that tells something is named.
+	if (type === '3') return service;
 	if (!classes.some((other) => other !== key && other.split(':')[1] === pattern)) return service;
 	const modes: Record<string, string> = {
-		'0': choose(locale, 'tram', 'tramway'),
+		'0': choose(locale, 'tram', 'train léger'),
 		'1': choose(locale, 'metro', 'métro'),
 		'2': choose(locale, 'rail', 'train'),
 		'3': choose(locale, 'road', 'route'),

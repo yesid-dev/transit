@@ -33,20 +33,18 @@ for (const width of [390, 1440]) {
 			await trend.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
 			await expect(trend.getByRole('rowheader')).toHaveCount(2);
 			const waiting = main.locator('#waiting');
+			await expect(waiting).toContainText(fr ? 'Les usagers ont attendu' : 'Riders waited');
 			await expect(waiting).toContainText(
-				fr ? 'L’attente excédentaire était de' : 'Excess wait time was',
+				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
 			);
-			await expect(waiting).toContainText(fr ? '24 intervalles observés' : '24 observed intervals');
-			await expect(waiting).toContainText(
-				fr ? 'sur 48 intervalles prévus' : 'coverage of 48 scheduled intervals',
-			);
+			await expect(waiting).toContainText(fr ? 'des 48 intervalles prévus' : 'of 48 planned gaps');
 			const offered = main.locator('#offered');
 			await expect(offered).toContainText(
 				fr ? 'Le service prévu atteignait un maximum de 8' : 'Planned service peaked at 8',
 			);
-			await expect(offered.getByRole('row', { name: /07:00.*08:00/ })).toContainText(
-				fr ? '8 trajets en 1 heure' : '8 trips in 1 hour',
-			);
+			await expect(
+				offered.getByRole('row', { name: fr ? /7\sh\sà\s8\sh/u : /07:00.*08:00/ }),
+			).toContainText(fr ? '8 trajets en 1 heure' : '8 trips in 1 hour');
 			await expect(offered).toContainText(fr ? 'Aucun service prévu' : 'No service scheduled');
 			await offered
 				.getByRole('link', { name: fr ? /Voir les trajets/ : /See scheduled and delivered trips/ })
@@ -64,7 +62,9 @@ for (const width of [390, 1440]) {
 				fr ? '8 des 40 trajets prévus' : '8 of 40 scheduled trips did not run',
 			);
 			await expect(main.locator('#delivery')).not.toContainText(fr ? '1 sur 1' : 'Showing 1 of 1');
-			await expect(main.locator('#late').getByRole('link', { name: /07:00/ })).toBeVisible();
+			await expect(
+				main.locator('#late').getByRole('link', { name: fr ? /7\sh/u : /07:00/ }),
+			).toBeVisible();
 			await expect(main.locator('#late')).toContainText(fr ? 'se classe premier' : 'ranked first');
 			await expect(main.locator('#crowding')).toContainText(fr ? 'Non suivi' : '25.0%');
 			await expect(main.locator('#alerts')).toContainText(fr ? /3 avis/ : /3 (?:distinct )?alerts/);
@@ -94,7 +94,7 @@ for (const width of [390, 1440]) {
 				fr ? 'Pointe du matin' : 'Morning peak',
 			);
 			await expect(main.locator('#schedule')).toContainText(
-				fr ? '01:15, le lendemain' : '01:15, next day',
+				fr ? '1 h 15, le lendemain' : '01:15, next day',
 			);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /40,0\s%/u : '40.0%');
 			await main

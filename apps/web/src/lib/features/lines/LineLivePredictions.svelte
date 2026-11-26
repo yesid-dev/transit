@@ -116,7 +116,7 @@
 			<p>
 				{t(
 					'These are the agency’s predictions, not observed arrivals.',
-					'Ce sont les prévisions de l’agence, pas des arrivées observées.',
+					'Ce sont les prévisions de la société de transport, pas des arrivées observées.',
 				)}
 			</p>
 		{/snippet}

@@ -18,9 +18,11 @@ const cities = {
 };
 
 const agencyByCity: Record<string, string> = { stm: 'STM', octranspo: 'OC Transpo' };
+// French names the agency with the article its city declares: "la STM", "OC Transpo".
+const frenchAgencyByCity: Record<string, string> = { stm: 'la STM', octranspo: 'OC Transpo' };
 const taglines = {
 	en: 'An independent public record of the transit service delivered. Not a trip planner.',
-	fr: 'Un bilan public et indépendant du service de transport livré. Pas un planificateur de trajets.',
+	fr: 'Un bilan public et indépendant du service de transport effectué. Pas un planificateur de trajets.',
 };
 
 async function open(page: Page, href: string) {
@@ -218,7 +220,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const agency = agencyByCity[city];
 			const disclaimer =
 				locale === 'fr'
-					? `Site non officiel, sans affiliation avec ${agency}.`
+					? `Site non officiel, sans affiliation avec ${frenchAgencyByCity[city]}.`
 					: `Unofficial website, not affiliated with ${agency}.`;
 			for (const href of ['/', '/?frameMode=live', '/map']) {
 				await open(page, localizeHref(href, locale, city));
@@ -390,7 +392,7 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 		page,
 		'/fr/lines?provider=stm&period=7-days&recordFrom=2026-11-08&recordTo=2026-11-14',
 	);
-	const pill = page.getByRole('button', { name: /^Commandes 7 jours.*Ouvrir les commandes/ });
+	const pill = page.getByRole('button', { name: /^Options 7 jours.*Ouvrir les options/ });
 	await expect(pill).toBeVisible();
 	expect(
 		await pill.evaluate((button) => {
@@ -400,7 +402,7 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 	).toBeCloseTo(0, 0);
 	await pill.focus();
 	await page.keyboard.press('Enter');
-	const sheet = page.getByRole('dialog', { name: 'Commandes', exact: true });
+	const sheet = page.getByRole('dialog', { name: 'Options', exact: true });
 	await expect(sheet).toBeVisible();
 	await expect(sheet.getByRole('radio', { name: 'En direct', exact: true })).toBeDisabled();
 	await expect(

@@ -3,7 +3,7 @@ import { defineCopy } from '#lib/i18n/copy.ts';
 export const tripCopy = defineCopy({
 	fr: {
 		observedCaveat: 'Ce sont des prévisions, pas des arrivées observées.',
-		columns: { stop: 'Arrêt', time: 'Heure prévue', offset: 'Écart signalé' },
+		columns: { stop: 'Arrêt', time: 'Heure attendue', offset: 'Écart signalé' },
 		showAll: (n: number) => `Voir les ${n} prévisions`,
 		showFewer: 'Voir moins de prévisions',
 		download: 'Télécharger toutes les prévisions (CSV)',
@@ -11,13 +11,13 @@ export const tripCopy = defineCopy({
 		reportedPredictions: 'Prévisions communiquées',
 		viewStop: 'Voir l’arrêt',
 		predictionCaveat:
-			'Les prédictions couvrent jusqu’à une heure au moment de la préparation du rapport. Elles peuvent changer.',
+			'Les prévisions couvrent jusqu’à une heure au moment de la préparation du rapport. Elles peuvent changer.',
 		noPredictions: 'Aucune prévision communiquée pour ce trajet dans cette fenêtre.',
 		latestReport: 'Dernier rapport',
 		refreshUnavailable: 'Actualisation indisponible',
 		reportBehind: 'Rapport en retard',
 		retainedReport:
-			'Le dernier rapport reçu reste affiché. Ses prédictions peuvent ne plus être à jour.',
+			'Le dernier rapport reçu reste affiché. Ses prévisions peuvent ne plus être à jour.',
 	},
 	en: {
 		observedCaveat: 'These are predictions, not observed arrivals.',

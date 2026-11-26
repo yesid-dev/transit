@@ -83,10 +83,10 @@
 	const reading = $derived(
 		dates
 			? french
-				? `Lecture du bilan pour la période ${dates}.`
+				? `Chargement du bilan (${dates}).`
 				: `Reading the record for ${dates}.`
 			: french
-				? 'Lecture du bilan en cours.'
+				? 'Chargement du bilan en cours.'
 				: 'Reading the record.',
 	);
 </script>
@@ -99,7 +99,7 @@
 					? 'Ce bilan demande plus de temps.'
 					: 'These records take longer.'
 				: french
-					? 'Lectures reçues.'
+					? 'Résultats reçus.'
 					: 'Readings arrived.'}
 			{waiting
 				? `${reading} ${
@@ -108,7 +108,7 @@
 							: 'Each card fills in when its answer arrives.'
 					}`
 				: french
-					? 'Les lectures qui tardaient sont maintenant affichées.'
+					? 'Les résultats qui tardaient sont maintenant affichés.'
 					: 'The readings that took longer are now on screen.'}
 		</p>
 	</div>
