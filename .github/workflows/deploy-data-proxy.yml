@@ -95,5 +95,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID: 8a4ad7999bd6c2259b5b4acd52f39015
 
-      - name: Run production smoke
+      - name: Run production v1 and v2 smoke
+        env:
+          V2_WEB_ORIGIN: https://transit1.yesid.dev
         run: bash smoke.sh

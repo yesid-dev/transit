@@ -67,7 +67,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $control = Join-Path $env:RUNNER_TEMP 'transit-deploy-control'
-          foreach ($asset in @('.nvmrc', '.bun-version', 'apps/data-proxy/r2-cors.json', 'apps/data-proxy/scripts/configure-data-edge.mjs')) {
+          foreach ($asset in @('.nvmrc', '.bun-version', 'apps/data-proxy/r2-cors.json', 'apps/data-proxy/scripts/configure-data-edge.mjs', 'apps/data-proxy/scripts/probe-v2.mjs')) {
             $destination = Join-Path $control $asset
             New-Item -ItemType Directory -Force -Path (Split-Path $destination) | Out-Null
             Copy-Item -LiteralPath $asset -Destination $destination
@@ -174,3 +174,13 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ZONE_ID: 8a4ad7999bd6c2259b5b4acd52f39015
         run: node "$RUNNER_TEMP/transit-deploy-control/apps/data-proxy/scripts/configure-data-edge.mjs"
+
+      - name: Verify public v2 and transit1-web
+        env:
+          DEPLOY_TARGET: ${{ inputs.target }}
+        run: |
+          expected=()
+          if [[ "$DEPLOY_TARGET" != data-proxy ]]; then
+            expected=("$TRANSIT_COMMIT_SHA")
+          fi
+          node "$RUNNER_TEMP/transit-deploy-control/apps/data-proxy/scripts/probe-v2.mjs" "${expected[@]}"

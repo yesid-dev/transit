@@ -53,6 +53,8 @@ const fixtures=new Map([
  ['https://transit.yesid.dev/',()=>new Response('<html>Transit</html>',{headers:{'content-type':'text/html'}})],
  ['https://yesid.dev/',()=>new Response('<html>Yesid</html>',{headers:{'content-type':'text/html'}})],
  ['https://transit.yesid.dev/api/v1/kpis',()=>Response.json(kpi)],
+ ['https://transit1.yesid.dev/health',()=>Response.json({status:'ok',engine:'ok',proxy:'ok',service:'transit1-web',commit:'1'.repeat(40),branch:'main'})],
+ ['https://data.yesid.dev/v2/cities',()=>Response.json({default_provider:'fixture',providers:[{id:'fixture',inputs:{static_schedule:true}}]})],
  ['https://yesid.dev/sitemap.xml',()=>new Response('<urlset><loc>https://yesid.dev/</loc></urlset>')]
 ]);
 globalThis.fetch=async(url,options)=>{
@@ -74,7 +76,7 @@ for (const [name, args, environment, expectedStatus, reads, lychee] of [
     [],
     { GITHUB_EVENT_NAME: "schedule", PROBE_SCHEDULE: "4,19,34,49 * * * *" },
     0,
-    4,
+    6,
     0,
   ],
   [
@@ -98,7 +100,7 @@ for (const [name, args, environment, expectedStatus, reads, lychee] of [
     [],
     { GITHUB_EVENT_NAME: "push", CONTACT_TEST: "true" },
     0,
-    4,
+    6,
     0,
   ],
   [

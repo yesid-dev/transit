@@ -301,3 +301,4 @@ vitals_status="$(status_of -X POST -H 'content-type: application/json' -d '{}' \
 ok "/api/vitals still reaches the web app (status $vitals_status)"
 
 echo "SMOKE OK: direct R2 + compatibility serving, kpis live, negatives clean"
+CANONICAL_BASE="$CANONICAL_BASE" node "$(dirname "${BASH_SOURCE[0]}")/scripts/probe-v2.mjs"

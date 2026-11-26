@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { kpiSampleState } from "../../contracts/kpis-v1.js";
+import { DATA_ORIGIN, WEB_ORIGIN, probeV2, probeWebHealth } from "../../apps/data-proxy/scripts/probe-v2.mjs";
 
-/** @typedef {{ name: string, url: string, kind: 'health' } | { name: string, url: string, kind: 'kpis' } | { name: string, url: string, kind: 'html', marker: string }} SiteCheck */
+/** @typedef {{ name: string, url: string, kind: 'health' | 'health-v2' | 'data-v2' | 'kpis' } | { name: string, url: string, kind: 'html', marker: string }} SiteCheck */
 
 // Fixed public targets only. No credentials, visitor input, analytics or database access.
 /** @type {SiteCheck[]} */
@@ -30,11 +31,15 @@ export const SITE_CHECKS = [
     url: "https://transit.yesid.dev/api/v1/kpis",
     kind: "kpis",
   },
+  { name: "transit1-health", url: `${WEB_ORIGIN}/health`, kind: "health-v2" },
+  { name: "transit-data", url: DATA_ORIGIN, kind: "data-v2" },
 ];
 
 /** @param {SiteCheck} check @param {typeof fetch} fetchFn @param {(state: 'live' | 'demo' | null) => void} sample */
 async function checkSite(check, fetchFn, sample) {
   try {
+    if (check.kind === "health-v2") return probeWebHealth({ fetchFn, webOrigin: new URL(check.url).origin });
+    if (check.kind === "data-v2") return (await probeV2({ fetchFn, dataOrigin: check.url })).join(", ") || null;
     const response = await fetchFn(check.url, {
       redirect: "manual",
       headers: {
@@ -67,7 +72,7 @@ async function checkSite(check, fetchFn, sample) {
     if (!response.headers.get("content-type")?.includes("text/html"))
       return "not HTML";
     const body = await response.text();
-    return body.includes("<html") && body.includes(check.marker)
+    return check.kind === "html" && body.includes("<html") && body.includes(check.marker)
       ? null
       : "missing page content";
   } catch {
