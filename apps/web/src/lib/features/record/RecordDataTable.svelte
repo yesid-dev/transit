@@ -166,23 +166,24 @@
 	{@const line = phone?.line?.(row)}
 	{@const empty = phone?.empty?.(row) ?? false}
 	{@const valued = !empty && !!(phone?.value || valueColumn)}
-	<div class="phone-row">
-		<!-- The name and its plates read like a line of text: they wrap word by word, under the
-		rank and code box too, while the value keeps its own column at the end. -->
-		<div class="phone-head">
-			<div class="phone-text">
-				{#if phone?.before}<span class="phone-before">{@render phone.before(row)}</span>{/if}
-				{#if code}<span class="phone-code">{code}</span>{/if}
-				{#if row.href}<a class="phone-link" href={row.href}>{@render phoneName(row)}</a>{:else}<span
-						class="phone-link">{@render phoneName(row)}</span
-					>{/if}{#if phone?.after}
-					<span class="phone-after">{@render phone.after(row)}</span>{/if}{#if empty && line}
-					<span class="phone-line">{line}</span>{/if}
-			</div>
-			{#if valued}<span class="phone-value">{@render phoneValue(row)}</span>{/if}
+	{@const lead = !!(phone?.before || code)}
+	<!-- A hanging indent, as in the wireframe: the rank or code box, then the text column where the
+	name wraps with its plates and the row's sentence under it, then the value. -->
+	<div class="phone-row" class:lead>
+		{#if lead}<span class="phone-lead"
+				>{#if phone?.before}<span class="phone-before">{@render phone.before(row)}</span
+					>{/if}{#if code}<span class="phone-code">{code}</span>{/if}</span
+			>{/if}
+		<div class="phone-text">
+			{#if row.href}<a class="phone-link" href={row.href}>{@render phoneName(row)}</a>{:else}<span
+					class="phone-link">{@render phoneName(row)}</span
+				>{/if}{#if phone?.after}
+				<span class="phone-after">{@render phone.after(row)}</span>{/if}{#if empty && line}
+				<span class="phone-line">{line}</span>{/if}
 		</div>
-		{#if line && !empty}<p class="phone-line">{line}</p>{/if}
-		{#if phone?.below}{@render phone.below(row)}{/if}
+		{#if valued}<span class="phone-value">{@render phoneValue(row)}</span>{/if}
+		{#if line && !empty}<p class="phone-line phone-under">{line}</p>{/if}
+		{#if phone?.below}<div class="phone-under">{@render phone.below(row)}</div>{/if}
 	</div>
 {/snippet}
 {#snippet phoneName(row: RecordTableRow)}{#if row.plate}<span class="phone-plate"
@@ -291,50 +292,70 @@
 <style>
 	.phone-row {
 		display: grid;
-		gap: 0.125rem;
-		min-inline-size: 0;
-	}
-	.phone-head {
-		display: grid;
-		/* A long state as the value wraps within half the row; the name keeps the rest. */
-		grid-template-columns: minmax(0, 1fr) fit-content(50%);
-		align-items: start;
+		/* The value keeps at most 30% of the row, so the name's column stays wide enough to read. */
+		grid-template-columns: minmax(0, 1fr) fit-content(30%);
+		align-items: baseline;
 		column-gap: 0.5rem;
+		row-gap: 0.125rem;
+		min-inline-size: 0;
 		line-height: 1.5;
 	}
+	.phone-row.lead {
+		grid-template-columns: auto minmax(0, 1fr) fit-content(30%);
+	}
+	.phone-lead {
+		display: inline-flex;
+		gap: 0.5rem;
+		align-items: baseline;
+	}
 	.phone-text {
-		display: flow-root;
 		min-inline-size: 0;
 	}
-	.phone-before,
-	.phone-code {
-		float: inline-start;
-		margin-inline-end: 0.5rem;
+	.phone-value {
+		grid-column: -2;
+	}
+	/* The sentence and the range bar sit under the name, never under the code box. */
+	.phone-under {
+		grid-column: 1 / -1;
+	}
+	.lead > .phone-under {
+		grid-column: 2 / -1;
+	}
+	/* With enlarged text the indent would leave too narrow a column: the sentence takes the row. */
+	@container phone-switch (inline-size < 12rem) {
+		.lead > .phone-under {
+			grid-column: 1 / -1;
+		}
 	}
 	.phone-before {
+		min-inline-size: 2ch;
 		font-family: var(--font-mono);
 		font-size: var(--text-small);
 		font-variant-numeric: tabular-nums;
 	}
-	/* Exactly one line tall with its border, so only line 1 makes room for it. */
 	.phone-code {
+		min-inline-size: 6.5ch;
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
 		padding-inline: 0.25em;
 		font-family: var(--font-mono);
 		font-size: var(--text-small);
-		line-height: calc(1.5em - 2px);
+		text-align: center;
 	}
 	.phone-value {
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 		text-align: end;
 	}
-	/* The name is one word of the line: it follows the code box when it fits there, otherwise the
-	whole name takes the next line, so names of one length always land the same way. */
+	/* The name wraps inside the text column; plates follow it as words. Top-aligned, so the row
+	lines the code box and the value up with the name's first line, as in the wireframe. */
 	.phone-link {
 		display: inline-block;
-		min-block-size: var(--size-tap-min);
+		vertical-align: top;
+		/* Padding gives a 44px target; the equal negative margin keeps it out of the layout, so the
+		next line starts under the name's last line of text, however many lines it takes. */
+		padding-block: calc((var(--size-tap-min) - 1.5em) / 2);
+		margin-block: calc((1.5em - var(--size-tap-min)) / 2);
 		min-inline-size: min(var(--size-tap-min), 100%);
 		max-inline-size: 100%;
 		margin-inline-end: 0.25rem;
@@ -361,7 +382,6 @@
 		white-space: nowrap;
 	}
 	.phone-plate.phone-code {
-		float: none;
 		min-inline-size: 0;
 	}
 	/* Plates are words of the line: each wraps as a whole, never between its digits. */

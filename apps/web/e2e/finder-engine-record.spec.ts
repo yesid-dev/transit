@@ -439,7 +439,7 @@ for (const locale of ['en', 'fr'] as const) {
 			await page.goto(`${prefix}/stops?provider=stm`);
 			const rows = page.locator('#stop-results tbody tr');
 			await expect(rows).toHaveCount(20);
-			// Names of one length lay out the same way: the same row height, the name beside its code.
+			// Names of one length lay out the same way: the same row height.
 			const heights = [];
 			for (let sample = 1; sample <= 9; sample++) {
 				const row = rows.filter({
@@ -449,29 +449,43 @@ for (const locale of ['en', 'fr'] as const) {
 				heights.push(Math.round(box!.height));
 			}
 			expect(new Set(heights).size, `${width}px row heights ${heights}`).toBe(1);
-			// Plates flow after the name like words: each shares its line with another plate or with
-			// the name's last line, so none sits alone on a line of its own.
+			// A hanging indent: every name starts right of its code box, never under it.
+			const under = await rows.evaluateAll((items) =>
+				items.flatMap((item) => {
+					const code = item.querySelector('.phone-code');
+					const name = item.querySelector('a');
+					if (!code || !name) return [];
+					return name.getBoundingClientRect().left < code.getBoundingClientRect().right
+						? [name.textContent?.trim()]
+						: [];
+				}),
+			);
+			expect(under, `${width}px names under their code box`).toEqual([]);
+			// Plates flow after the name like words: a plate starts a new line only when it would
+			// not have fit after the name or the plate before it.
 			const row = rows.filter({
 				has: page.getByRole('link', { name: 'B9 Atwater', exact: true }),
 			});
 			const plates = row.locator('[data-slot="route-plate"]');
 			await expect(plates).toHaveText(['24', '51', '99']);
-			const alone = await row.evaluate((element) => {
-				const span = (rect: DOMRect) => [rect.top, rect.bottom] as const;
-				const plateSpans = [...element.querySelectorAll('[data-slot="route-plate"]')].map((plate) =>
-					span(plate.getBoundingClientRect()),
-				);
-				const label = element.querySelector('a .name-label, a')!;
-				const nameLine = span([...label.getClientRects()].at(-1)!);
-				const overlaps = (a: readonly [number, number], b: readonly [number, number]) =>
-					Math.min(a[1], b[1]) - Math.max(a[0], b[0]) > 4;
-				return plateSpans.filter(
-					(plate, index) =>
-						!overlaps(plate, nameLine) &&
-						!plateSpans.some((other, j) => j !== index && overlaps(plate, other)),
-				).length;
+			const early = await row.evaluate((element) => {
+				const column = element.querySelector('.phone-text')!.getBoundingClientRect();
+				const boxes = [
+					element.querySelector('a')!.getBoundingClientRect(),
+					...[...element.querySelectorAll('[data-slot="route-plate"]')].map((plate) =>
+						plate.getBoundingClientRect(),
+					),
+				];
+				return boxes
+					.slice(1)
+					.filter((plate, index) => {
+						const before = boxes[index];
+						const wrapped = plate.top >= before.bottom - 2;
+						return wrapped && before.right + 4 + plate.width <= column.right - 1;
+					})
+					.map((plate) => Math.round(plate.left));
 			});
-			expect(alone, `${width}px plates alone on a line`).toBe(0);
+			expect(early, `${width}px plates that wrapped though they fit`).toEqual([]);
 		}
 	});
 
