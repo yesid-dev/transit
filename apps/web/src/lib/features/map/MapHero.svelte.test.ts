@@ -2672,4 +2672,22 @@ describe('MapHero retained state during Stage-only recovery', () => {
 			else Reflect.deleteProperty(navigator, 'clipboard');
 		}
 	});
+
+	it('marks the mobile sheet as in-view until a selection opens detail mode', async () => {
+		render(MapHero);
+		await tick();
+
+		await fireEvent.click(screen.getByRole('button', { name: /^In view:/u }));
+		const sheet = await waitFor(() => {
+			const el = document.querySelector<HTMLElement>('[data-slot="bottom-sheet"]');
+			expect(el).not.toBeNull();
+			return el!;
+		});
+		expect(sheet).toHaveAttribute('data-map-sheet-mode', 'in-view');
+
+		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
+		await waitFor(() => {
+			expect(sheet).toHaveAttribute('data-map-sheet-mode', 'detail');
+		});
+	});
 });

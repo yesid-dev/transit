@@ -1225,6 +1225,7 @@
 				data-slot="bottom-sheet"
 				data-m6c2-detail-sheet
 				data-map-in-view-sheet
+				data-map-sheet-mode={detailOpen ? 'detail' : 'in-view'}
 				onEscapeKeydown={(event) => {
 					if (inViewOpen && detailOpen) {
 						event.preventDefault();
