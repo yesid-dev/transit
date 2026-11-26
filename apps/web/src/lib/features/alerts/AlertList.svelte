@@ -14,11 +14,11 @@
 		frameSurfaceRailContext,
 		type RegisterFrameSurfaceRail,
 	} from '#lib/components/shell/frameSurfaceRail.ts';
-	import { choose, tally } from '#lib/features/record/recordText.ts';
+	import { choose } from '#lib/features/record/recordText.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { alertPaging, noticeLineName } from '#lib/site/presenter.ts';
+	import { alertPaging, noticeCount, noticeLineName } from '#lib/site/presenter.ts';
 	import {
 		agencyMessage,
 		agencyMessageLink,
@@ -131,14 +131,12 @@
 				: pageSize,
 		),
 	);
-	const labels = $derived(alertPaging(locale));
+	const labels = $derived(alertPaging(locale, true));
 
 	let list = $state<HTMLUListElement>();
 	let lastJump: string | null = null;
 	const anchor = (id: string) => `alert-${id}`;
-	const resultCount = $derived(
-		`${tally(ordered.length, locale)} ${t(ordered.length === 1 ? 'alert' : 'alerts', 'avis')}`,
-	);
+	const resultCount = $derived(noticeCount(ordered.length, locale));
 
 	$effect(() => {
 		if (hasControls) {

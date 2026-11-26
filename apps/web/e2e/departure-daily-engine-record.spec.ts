@@ -106,7 +106,7 @@ for (const width of [390, 1440]) {
 			await expect(messages).toContainText(fr ? 'Détour sur la ligne 24' : 'Detour on 24');
 			await expect(
 				messages.getByRole('link', {
-					name: fr ? 'Voir l’avis de service' : 'See the service alert',
+					name: fr ? 'Voir 1 avis dans les avis de service' : 'See 1 notice in Service alerts',
 				}),
 			).toHaveAttribute('href', /\/alerts\?.*recordFrom=2026-11-18/);
 			await main
@@ -114,7 +114,10 @@ for (const width of [390, 1440]) {
 				.click();
 			const csv = await page
 				.getByRole('dialog')
-				.getByRole('link', { name: fr ? 'Avis de l’agence' : 'Agency messages', exact: true })
+				.getByRole('link', {
+					name: fr ? 'Avis de la société de transport' : 'Agency messages',
+					exact: true,
+				})
 				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();

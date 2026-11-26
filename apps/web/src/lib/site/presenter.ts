@@ -127,34 +127,70 @@ export function clockRange(start: string, end: string, locale: Locale, timeZone 
 	return [from, to].join('–');
 }
 
-export function alertAnswerSentence(count: number, locale: Locale, live: boolean) {
+export function noticeCount(count: number, locale: Locale) {
+	const label = locale === 'fr' ? 'avis' : count === 1 ? 'notice' : 'notices';
+	return `${intl.number(locale).format(count)} ${label}`;
+}
+
+function publishedAlertUnit(count: number, locale: Locale) {
+	return locale === 'fr'
+		? count === 1
+			? 'avis tel que publié'
+			: 'avis tels que publiés'
+		: count === 1
+			? 'alert as published'
+			: 'alerts as published';
+}
+
+export function publishedAlertCount(count: number, locale: Locale) {
+	return `${intl.number(locale).format(count)} ${publishedAlertUnit(count, locale)}`;
+}
+
+export function noticeCountEvidence(
+	grouped: number,
+	published: number,
+	agency: AgencyName,
+	locale: Locale,
+) {
+	const total = intl.number(locale).format(published);
+	return locale === 'fr'
+		? `${noticeCount(grouped, locale)}, à partir de ${total} avis que ${frenchAgency(agency).subject} a publié${published === 1 ? '' : 's'}, à raison d’un par ligne et par republication.`
+		: `${noticeCount(grouped, locale)}, from ${total} ${published === 1 ? 'alert' : 'alerts'} as ${agency.name} published ${published === 1 ? 'it' : 'them'}, one per line and reissue.`;
+}
+
+export function alertAnswerSentence(
+	count: number,
+	locale: Locale,
+	live: boolean,
+	published = false,
+) {
+	if (published) return publishedAlertUnit(count, locale) + '.';
 	if (locale === 'fr') {
 		if (live) return count === 1 ? `avis est en vigueur.` : `avis sont en vigueur.`;
 		return count === 1
-			? `avis a été en vigueur à un moment de cette période.`
-			: `avis ont été en vigueur à un moment de cette période.`;
+			? 'avis était en vigueur à un moment donné à ces dates.'
+			: 'avis étaient en vigueur à un moment donné à ces dates.';
 	}
-	if (live) return count === 1 ? 'alert is in effect now.' : 'alerts are in effect now.';
+	if (live) return count === 1 ? 'notice is in effect now.' : 'notices are in effect now.';
 	return count === 1
-		? 'alert was in effect at some point in these dates.'
-		: 'alerts were in effect at some point in these dates.';
+		? 'notice was in effect at some point in these dates.'
+		: 'notices were in effect at some point in these dates.';
 }
 
-export function dailyAlertsLink(count: number, locale: Locale) {
-	const number = intl.number(locale).format(count);
-	if (count === 1) return locale === 'fr' ? 'Voir l’avis de service' : 'See the service alert';
+export function dailyAlertsLink(count: number, locale: Locale, published = false) {
+	const unit = published ? publishedAlertCount(count, locale) : noticeCount(count, locale);
 	return locale === 'fr'
-		? `Les ${number} dans les avis de service`
-		: `All ${number} in Service alerts`;
+		? `Voir ${unit} dans les avis de service`
+		: `See ${unit} in Service alerts`;
 }
 
-export function alertPaging(locale: Locale) {
+export function alertPaging(locale: Locale, notices = false) {
 	const { format } = intl.number(locale);
 	return {
 		showing: (shown: number, total: number) =>
 			locale === 'fr'
-				? `${format(shown)} sur ${format(total)}`
-				: `Showing ${format(shown)} of ${format(total)}`,
+				? `${format(shown)} sur ${notices ? noticeCount(total, locale) : format(total)}`
+				: `Showing ${format(shown)} of ${notices ? noticeCount(total, locale) : format(total)}`,
 		more: (count: number) =>
 			locale === 'fr' ? `Afficher ${format(count)} de plus` : `Show ${format(count)} more`,
 	};

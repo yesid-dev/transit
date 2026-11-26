@@ -13,6 +13,8 @@ import {
 	pageCitation,
 	countedUnit,
 	dailyAlertsLink,
+	noticeCountEvidence,
+	publishedAlertCount,
 	delayReading,
 	directionLabel,
 	fileSize,
@@ -43,15 +45,15 @@ import { livePause } from '#lib/live/livePause.ts';
 it.each([
 	[
 		'en',
-		'alert is in effect now.',
-		'alerts were in effect at some point in these dates.',
+		'notice is in effect now.',
+		'notices were in effect at some point in these dates.',
 		'Show 12 more',
 		'Showing 12 of 426',
 	],
 	[
 		'fr',
 		'avis est en vigueur.',
-		'avis ont été en vigueur à un moment de cette période.',
+		'avis étaient en vigueur à un moment donné à ces dates.',
 		'Afficher 12 de plus',
 		'12 sur 426',
 	],
@@ -60,9 +62,27 @@ it.each([
 	expect(alertAnswerSentence(426, locale, false)).toBe(plural);
 	expect(alertPaging(locale).more(12)).toBe(more);
 	expect(alertPaging(locale).showing(12, 426)).toBe(showing);
+	expect(alertPaging(locale, true).showing(12, 426)).toBe(
+		locale === 'fr' ? '12 sur 426 avis' : 'Showing 12 of 426 notices',
+	);
+	expect(alertAnswerSentence(426, locale, false, true)).toBe(
+		locale === 'fr' ? 'avis tels que publiés.' : 'alerts as published.',
+	);
 });
 
 const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
+
+it('explains the grouped and published units using the declared French agency name', () => {
+	const agency = { name: 'STM', frenchOf: 'de la STM' };
+	expect(noticeCountEvidence(213, 1707, agency, 'en')).toBe(
+		'213 notices, from 1,707 alerts as STM published them, one per line and reissue.',
+	);
+	expect(normalize(noticeCountEvidence(213, 1707, agency, 'fr'))).toBe(
+		'213 avis, à partir de 1 707 avis que la STM a publiés, à raison d’un par ligne et par republication.',
+	);
+	expect(publishedAlertCount(1707, 'en')).toBe('1,707 alerts as published');
+	expect(normalize(publishedAlertCount(1707, 'fr'))).toBe('1 707 avis tels que publiés');
+});
 
 it('uses the published interval and a matching reference method for the ranking verdict', () => {
 	const network = { value: 0.8, methodVersion: 'on-time-v3' };
@@ -110,8 +130,8 @@ it.each([
 );
 
 it.each([
-	['en', '1 distinct alert', '2 distinct alerts', 'See the service alert'],
-	['fr', '1 avis distinct', '2 avis distincts', 'Voir l’avis de service'],
+	['en', '1 distinct alert', '2 distinct alerts', 'See 1 notice in Service alerts'],
+	['fr', '1 avis distinct', '2 avis distincts', 'Voir 1 avis dans les avis de service'],
 ] as const)('presents the Daily alert count and link in %s', (locale, one, two, link) => {
 	expect(countedUnit(1, 'distinct-alert', locale)).toBe(one);
 	expect(countedUnit(2, 'distinct-alert', locale)).toBe(two);

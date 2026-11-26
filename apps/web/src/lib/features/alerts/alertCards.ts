@@ -101,6 +101,12 @@ export function recordAlertCards(
 	}));
 }
 
+export function recordNoticeCards(answer: RecordMeasure) {
+	const messages = answer.evidence.alert_messages;
+	if (messages?.length) return groupAlertCards(recordAlertCards(messages));
+	return answer.value.alerts === 0 ? [] : null;
+}
+
 export function liveAlertCards(
 	alerts: Readonly<NonNullable<CaptureSnapshot['alerts']>>,
 	now: number,

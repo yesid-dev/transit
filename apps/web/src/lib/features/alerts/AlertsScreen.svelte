@@ -23,10 +23,14 @@
 		citeDates,
 		countedNotice,
 		dateRange,
+		frenchAgency,
 		tickingLiveStamp,
 		methodEvidence,
 		noPublishedNotices,
+		noticeCount,
+		noticeCountEvidence,
 		noticeLineName,
+		publishedAlertCount,
 		recordStamp,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -57,11 +61,13 @@
 	} from './alertRecord.ts';
 	import {
 		alertEffect,
+		groupAlertCards,
 		type AlertCard,
 		liveAlertCards,
 		publishedAlertEffect,
 		liveAlertCut,
 		recordAlertCards,
+		recordNoticeCards,
 		recordAlertCut,
 		sortAlertLineCut,
 		unstatedEffect,
@@ -138,8 +144,6 @@
 			'La société de transport rédige ces avis. Transit conserve chacun en entier, avec ses dates, ses lignes et ses arrêts.',
 		),
 	);
-	const labelCount = (count: number) =>
-		`${tally(count, locale)} ${t(count === 1 ? 'alert' : 'alerts', 'avis')}`;
 	const unavailable = $derived(t('Unavailable', 'Indisponible'));
 	const noAlerts = $derived(t('No alerts in effect.', 'Aucun avis en vigueur.'));
 	const linePageSize = 6;
@@ -163,7 +167,11 @@
 	}
 </script>
 
-{#snippet actions(result?: EngineResult<EngineAnswer>, liveTime?: string | null)}
+{#snippet actions(
+	result?: EngineResult<EngineAnswer>,
+	liveTime?: string | null,
+	published?: number,
+)}
 	{#snippet figures()}
 		{#each data.sections.filter(({ section }) => section !== 'answer') as { section, answer } (section)}
 			{#await answer then cut}
@@ -186,6 +194,7 @@
 					text={[
 						`Transit · ${title}, ${data.cityName}.`,
 						`${t('Live now', 'En direct')}.`,
+						published == null ? '' : publishedAlertCount(published, locale) + '.',
 						liveTime ?? '',
 						share.href,
 					]
@@ -200,7 +209,7 @@
 {/snippet}
 
 {#snippet evidenceFooter(evidence?: RecordEvidence, count?: number | null, note?: string)}
-	{@const sample = count == null ? null : labelCount(count)}
+	{@const sample = count == null ? null : publishedAlertCount(count, locale)}
 	{#if evidence}
 		<RecordEvidenceLine {evidence} {locale} {sample} {note} />
 	{:else if sample}
@@ -222,7 +231,7 @@
 	{/if}
 {/snippet}
 
-{#snippet cutRows(rows: AlertCut[], group: 'effect' | 'line')}
+{#snippet cutRows(rows: AlertCut[], group: 'effect' | 'line', live = false)}
 	{#if rows.length}
 		{#if group === 'effect'}
 			<dl class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -248,7 +257,12 @@
 				caption={alertSections.line[locale]}
 				columns={[
 					{ key: 'line', header: t('Line', 'Ligne'), rowHeader: true, cell: lineCell },
-					{ key: 'count', header: t('Alerts', 'Avis'), numeric: true, cell: cutValue },
+					{
+						key: 'count',
+						header: live ? t('Notices', 'Avis') : t('Alerts as published', 'Avis tels que publiés'),
+						numeric: true,
+						cell: cutValue,
+					},
 				] satisfies readonly DataTableColumn<AlertCut>[]}
 				rows={sortAlertLineCut(rows, locale, display.line)}
 				key={(row, index) => (row.key ? `line:${row.key}` : `unknown:${index}`)}
@@ -381,7 +395,7 @@
 		{/if}
 		{@render evidenceFooter(
 			reading.evidence,
-			reading.value.alerts,
+			undefined,
 			result?.kind === 'answer' && result.lastGood ? lastGoodNote[locale] : undefined,
 		)}
 	{:else if result}
@@ -454,13 +468,31 @@
 					text: data.operator
 						? t(
 								`Service alerts published by ${data.operator}.`,
-								`Avis de service publiés par ${data.operator}.`,
+								`Avis de service publiés par ${frenchAgency(operator).subject}.`,
 							)
 						: null,
 				},
 			]}
 		/>
 	</div>
+{/snippet}
+
+{#snippet recordLead(result: EngineResult<EngineAnswer>, published: number, grouped?: number)}
+	{@const count = grouped ?? published}
+	{#snippet recordActions()}{@render actions(result)}{/snippet}
+	<RecordAnswer
+		value={tally(count, locale)}
+		sentence={alertAnswerSentence(count, locale, false, grouped == null)}
+		{locale}
+		time={stamp}
+		evidence={{
+			sample: grouped == null ? '' : noticeCountEvidence(grouped, published, operator, locale),
+			lastGood: result.kind === 'answer' && result.lastGood,
+		}}
+		actions={recordActions}
+	>
+		{#snippet meta()}<p>{scope}</p>{/snippet}
+	</RecordAnswer>
 {/snippet}
 
 <Surface>
@@ -513,18 +545,23 @@
 							feedState(alertFeed, now) === 'live'
 						)}
 						{@const liveCards = alertReady ? liveAlertCards(snapshot?.alerts ?? [], now) : []}
+						{@const liveNotices = groupAlertCards(liveCards)}
 						{@const missingEffect = Boolean(
 							liveCards?.length && liveCards.every(({ effect }) => !effect),
 						)}
 						{#if alertReady && alertFeed?.captured_at}
-							{@const lineCount = liveCards.filter(({ routes }) => routes.length).length}
+							{@const lineCount = liveNotices.filter(({ routes }) => routes.length).length}
 							{@const liveStamp = tickingLiveStamp(new Date(alertFeed.captured_at), locale)}
-							{#snippet liveActions()}{@render actions(undefined, alertFeed.captured_at)}{/snippet}
+							{#snippet liveActions()}{@render actions(
+									undefined,
+									alertFeed.captured_at,
+									liveCards.length,
+								)}{/snippet}
 							<RecordGroup density="compact">
 								<div id="alerts-window" data-slot="screen-answer">
 									<RecordAnswer
-										value={tally(liveCards.length, locale)}
-										sentence={alertAnswerSentence(liveCards.length, locale, true)}
+										value={tally(liveNotices.length, locale)}
+										sentence={alertAnswerSentence(liveNotices.length, locale, true)}
 										{locale}
 										time={liveStamp}
 										actions={liveActions}
@@ -532,7 +569,12 @@
 										{#snippet meta()}
 											<p>
 												{t('Counted:', 'Ce qui est compté\u00a0:')}
-												{labelCount(liveCards.length)}
+												{noticeCountEvidence(
+													liveNotices.length,
+													liveCards.length,
+													operator,
+													locale,
+												)}
 											</p>
 											<p>{scope}</p>
 										{/snippet}
@@ -540,18 +582,13 @@
 								</div>
 								{#if liveCards.some(({ effect }) => effect)}<div id="alerts-breakdown">
 										<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
-											{@render cutRows(liveAlertCut(liveCards, 'effect'), 'effect')}
-											{#snippet evidence()}{@render evidenceFooter(
-													undefined,
-													liveCards.length,
-												)}{/snippet}
+											{@render cutRows(liveAlertCut(liveNotices, 'effect'), 'effect', true)}
 										</RecordCard>
 									</div>{/if}
 							</RecordGroup>
 							<RecordGroup id="alerts-log" class="scroll-mt-24" density="compact">
 								{@render logHeading(t('In effect now', 'En vigueur maintenant'), liveStamp)}
 								{@render messageList(liveCards, true)}
-								{@render evidenceFooter(undefined, liveCards.length)}
 							</RecordGroup>
 							<RecordGroup density="compact">
 								<RecordCard
@@ -560,9 +597,13 @@
 									expandable={lineCount > 0}
 									open={false}
 								>
-									{@render cutRows(liveAlertCut(liveCards, 'line'), 'line')}
+									{@render cutRows(liveAlertCut(liveNotices, 'line'), 'line', true)}
 									{#snippet evidence()}
-										{@render evidenceFooter(undefined, lineCount)}
+										<RecordEvidenceLine
+											versions=""
+											{locale}
+											sample={noticeCount(lineCount, locale)}
+										/>
 									{/snippet}
 								</RecordCard>
 							</RecordGroup>
@@ -575,7 +616,9 @@
 							{#if missingEffect}<span id="alerts-breakdown" class="block scroll-mt-24"></span>{/if}
 							<AboutLiveFigures
 								{locale}
-								operator={data.operator}
+								operator={locale === 'fr' && data.operator
+									? frenchAgency(operator).subject
+									: data.operator}
 								healthLink={localizeHref('/status', locale, data.city)}
 								scope={t(
 									'Alerts in effect at this moment, in the latest feed capture.',
@@ -611,20 +654,21 @@
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts != null}
 								{@const count = result.answer.value.alerts}
-								{#snippet recordActions()}{@render actions(result)}{/snippet}
-								<RecordAnswer
-									value={tally(count, locale)}
-									sentence={alertAnswerSentence(count, locale, false)}
-									{locale}
-									time={stamp}
-									evidence={{
-										sample: labelCount(count),
-										lastGood: result.lastGood,
-									}}
-									actions={recordActions}
-								>
-									{#snippet meta()}<p>{scope}</p>{/snippet}
-								</RecordAnswer>
+								{#await messages}
+									{@render recordLead(result, count)}
+								{:then detail}
+									{@const reading =
+										detail?.kind === 'answer' &&
+										'value' in detail.answer &&
+										detail.answer.state === 'measured'
+											? detail.answer
+											: null}
+									{@render recordLead(
+										result,
+										reading?.value.alerts ?? count,
+										reading ? recordNoticeCards(reading)?.length : undefined,
+									)}
+								{/await}
 							{:else}
 								<div data-slot="screen-state">{@render resultState(result)}</div>
 							{/if}

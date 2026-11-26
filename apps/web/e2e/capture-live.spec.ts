@@ -187,21 +187,25 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	const at = Date.now();
 	const start = new Date(at - 60_000).toISOString();
 	const future = new Date(at + 86_400_000).toISOString();
+	const alerts = alertFixtures(13).map((alert, index) => ({
+		...alert,
+		periods: [[index === 12 ? future : start, null]],
+	}));
 	await page.route(captureUrl, (route) =>
 		route.fulfill({
 			json: captureFixture(at, {
-				alerts: alertFixtures(13).map((alert, index) => ({
-					...alert,
-					periods: [[index === 12 ? future : start, null]],
-				})),
+				alerts: [...alerts, { ...alerts[0], id: 'same-notice-as-published-again' }],
 			}),
 		}),
 	);
 	await page.goto('/alerts?provider=stm&frameMode=live');
 	await refreshAlertsCapture(page);
 	const list = page.locator('#alerts-log');
-	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12');
-	await expect(page.locator('#alerts-window')).toContainText('12 alerts are in effect now.');
+	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12 notices');
+	await expect(page.locator('#alerts-window')).toContainText('12 notices are in effect now.');
+	await expect(page.locator('#alerts-window')).toContainText(
+		'12 notices, from 13 alerts as STM published them',
+	);
 	await expect(page.locator('#alerts-breakdown')).toContainText('Not stated');
 	await expect(page.locator('#alerts-breakdown')).toContainText(
 		'Effects are the agency’s own categories, kept as published.',
@@ -211,7 +215,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(byLineToggle).toHaveAttribute('aria-expanded', 'false');
 	await byLineToggle.click();
 	await expect(byLine.getByRole('table')).toBeVisible();
-	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 alerts');
+	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 notices');
 	await byLineToggle.click();
 	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	const controls = await openFrameControls(page);
@@ -225,11 +229,11 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await effect.press('ArrowDown');
 	await page.getByRole('option', { name: 'Detour', exact: true }).click();
 	await closeCompactFrameControls(page);
-	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
+	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1 notice');
 	await expect(page).toHaveURL(/route=24.*effect=DETOUR/);
 	await page.reload();
 	await refreshAlertsCapture(page);
-	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1');
+	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1 notice');
 	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	await openFrameControls(page);
 	await expect(effect).toHaveValue('Detour');

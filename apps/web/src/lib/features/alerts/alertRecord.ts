@@ -10,11 +10,11 @@ export const alertSections = {
 	stop: { en: 'By stop', fr: 'Par arrêt' },
 	effect: { en: 'By effect', fr: 'Par effet' },
 	cause: { en: 'By cause', fr: 'Par cause' },
-	messages: { en: 'Agency messages', fr: 'Avis de l’agence' },
+	messages: { en: 'Agency messages', fr: 'Avis de la société de transport' },
 };
 
 export const alertMetrics = {
-	alerts: { en: 'Distinct alerts', fr: 'Alertes distinctes' },
+	alerts: { en: 'Alerts as published', fr: 'Avis tels que publiés' },
 	alert_versions: { en: 'Distinct alert versions', fr: 'Versions d’alertes distinctes' },
 	alert_hours: { en: 'Hours of alerts in effect', fr: 'Heures d’alerte en vigueur' },
 };
