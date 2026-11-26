@@ -393,8 +393,8 @@
 		}
 	}
 
-	/* The full brand leaves too little room for French search and the controls at 414px.
-	   Keep the product name on phones. The house link is in the menu. */
+	/* "yesid. | Transit" at every width, as on yesid.dev and in the wireframe: on phones the search
+	   is an icon button, which leaves the brand its room. */
 	:global(.nav-product-brand) {
 		flex-shrink: 0;
 		white-space: nowrap;
@@ -402,10 +402,6 @@
 	@container site-header (width < 432px) {
 		:global(.nav-product-brand) {
 			font-size: 1rem;
-		}
-		:global(.nav-product-brand > [data-slot='wordmark']),
-		:global(.nav-product-brand > [aria-hidden='true']) {
-			display: none;
 		}
 	}
 

@@ -81,6 +81,10 @@ describe('OC stop display names', () => {
 		['8TH Line / Byron', '8th Line / Byron'],
 		['Highway 31 / 3RD Avenue NB', 'Highway 31 / 3rd Avenue NB'],
 		['UOTTAWA A', 'UOTTAWA A'],
+		['RIDEAU A', 'Rideau A'],
+		['LANSDOWNE TD PLACE', 'Lansdowne TD Place'],
+		['BILLINGS BRIDGE 4B', 'Billings Bridge 4B'],
+		['OC TRANSPO / ST-LAURENT', 'OC Transpo / St-Laurent'],
 		['RIDEAU NB / O-TRAIN 1', 'Rideau NB / O-TRAIN 1'],
 		['Station Berri-UQAM', 'Station Berri-UQAM'],
 	])('%s → %s', (raw, display) => expect(stopDisplayName(raw)).toBe(display));

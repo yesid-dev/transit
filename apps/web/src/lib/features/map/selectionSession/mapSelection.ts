@@ -1,3 +1,4 @@
+import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import type { LiveIndex } from '#lib/v1/live/index.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
@@ -377,7 +378,7 @@ function routeDirectionStops(variants: readonly RouteDirectionVariant[]): RouteD
 		labelInferred: variant.labelInferred,
 		stops: variant.stops.map((stop) => ({
 			id: stop.id,
-			name: stop.name ?? stop.id,
+			name: stop.name == null ? stop.id : stopDisplayName(stop.name),
 			nameAbsent: stop.name == null,
 			seq: stop.seq,
 		})),
@@ -469,7 +470,7 @@ export function resolveMapSelection(
 	return {
 		kind: 'stop',
 		id: stop.id,
-		title: stop.name,
+		title: stopDisplayName(stop.name),
 		stop,
 		departures,
 		vehicles: vehiclesHeadingToStop(context.index, stop.id),

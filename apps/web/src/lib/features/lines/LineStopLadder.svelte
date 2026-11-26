@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { StopLadder } from '@yesid/ui/chart';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -49,7 +50,7 @@
 	);
 	const reading = $derived(
 		stopLadderChart({ ...series, cells: rows }, title, locale, (id) => ({
-			name: stopNames[id] ?? id,
+			name: stopNames[id] ? stopDisplayName(stopNames[id]) : id,
 			code: stopCodes[id],
 			href: stopNames[id]
 				? carryFrameState(localizeHref(routeFor({ kind: 'stop', id }), locale, city), pinned)

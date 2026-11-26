@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
@@ -100,7 +101,7 @@
 
 	const selected = $derived(id ? live.index.byVehicleId.get(id) : undefined);
 	const stopNames = $derived(
-		Object.fromEntries((stops?.stops ?? []).map((stop) => [stop.id, stop.name])),
+		Object.fromEntries((stops?.stops ?? []).map((stop) => [stop.id, stopDisplayName(stop.name)])),
 	);
 	const routes = new SvelteMap<string, RouteFile | null>();
 	$effect(() => {

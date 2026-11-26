@@ -2,7 +2,6 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { test } from './layout-test';
 import { waitForFrameClearance } from './layout-helpers';
 import { navPillCopy } from '../src/lib/i18n/messages';
-import { headerSearchCopy } from '../src/lib/components/shell/headerSearch.copy';
 import { localizeHref } from '../src/lib/i18n/routing';
 
 async function targetFits(control: Locator, page: Page) {
@@ -197,8 +196,11 @@ for (const locale of ['en', 'fr'] as const)
 			if (width < 1024) {
 				const search = pill.getByRole('button', { name: copy.searchAria.all, exact: true });
 				await targetFits(search, page);
-				await expect(search).toHaveText(headerSearchCopy[locale].trigger);
-				await singleLine(search.locator('span'));
+				// An icon button, as on yesid.dev: the brand keeps "yesid. | Transit" beside it.
+				await expect(search).toHaveText('');
+				await expect(
+					pill.locator('[data-slot="product-brand"] a[data-slot="wordmark"]'),
+				).toBeVisible();
 			} else if (width < 1280) {
 				// Beside the page links the search is the icon button that opens the sheet.
 				const search = pill.getByRole('button', { name: copy.searchAria.all, exact: true });
