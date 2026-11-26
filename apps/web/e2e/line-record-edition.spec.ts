@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { probeRequests } from './request-probe';
 import { transitTerms } from '../src/lib/i18n/transitTerms.copy';
 
 function terminalPanelAsset(): string {
@@ -21,6 +22,8 @@ function terminalPanelAsset(): string {
 
 test.use({ bypassCSP: true });
 test.describe.configure({ mode: 'parallel' });
+// Unfinished requests on an unexpected result: sent by Chromium or not.
+probeRequests(test);
 test.beforeEach(async ({ page }) => {
 	await page.addInitScript(() => {
 		Object.defineProperty(navigator, 'clipboard', {

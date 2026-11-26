@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { probeRequests } from './request-probe';
 import {
 	captureFixture,
 	captureTrip,
@@ -13,6 +14,8 @@ import {
 const provider = 'stm';
 
 test.use({ bypassCSP: true });
+// Unfinished requests on an unexpected result: sent by Chromium or not.
+probeRequests(test);
 
 test.beforeEach(async ({ page }) => {
 	await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
