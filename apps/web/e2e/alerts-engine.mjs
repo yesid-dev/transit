@@ -47,8 +47,8 @@ export function alertsEngine(url) {
 	};
 	const coverage_note = partial
 		? {
-				en: 'Some dates lack alert history.',
-				fr: 'L’historique des alertes manque à certaines dates.',
+				en: 'The record of notices is missing for some dates.',
+				fr: 'Le bilan des avis manque pour certaines dates.',
 			}
 		: null;
 	if (searchParams.get('format') === 'csv') {

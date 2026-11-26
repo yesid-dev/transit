@@ -3971,8 +3971,9 @@ class ReadWindow:
             )._asdict()
         if ALERTS in self.paths and self.measured and (self.missing or self.not_tracked):
             return Text(
-                "Some dates lack alert history. Published periods can still cover those dates.",
-                "L’historique des avis manque à certaines dates. Les périodes publiées "
+                "The record of notices is missing for some dates. Published periods can still "
+                "cover those dates.",
+                "Le bilan des avis manque pour certaines dates. Les périodes publiées "
                 "peuvent quand même couvrir ces dates.",
             )._asdict()
         return _PARTIAL._asdict() if self.measured and self.missing else None
