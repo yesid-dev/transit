@@ -25,8 +25,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
 			const city = requested[0] || catalog.default_provider;
 			const provider = catalog.providers.find(({ id }) => id === city);
 			if (!provider) return json({ error: 'invalid_city' }, { status: 400 });
-			const scope = request.headers.get('x-transit-fixture-scope') ?? undefined;
-			const edition = await getScheduleEdition(city, visitorIp, scope, request.signal);
+			const edition = await getScheduleEdition(city, visitorIp, request.signal);
 			if (!edition) return json({ error: 'stops_index_unavailable' }, { status: 503 });
 			const locale = url.searchParams.get('lang') === 'fr' ? 'fr' : 'en';
 			return json(

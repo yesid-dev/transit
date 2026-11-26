@@ -5,7 +5,6 @@ export const QUESTION_ORIGIN = 'https://data.yesid.dev';
 export type EnginePeriod = DateWindow & {
 	city: string;
 	visitorIp?: string | null;
-	fixtureScope?: string | null;
 	retryBusy?: boolean;
 };
 export type EngineQuestion = { path: string; parameters: Record<string, string> };

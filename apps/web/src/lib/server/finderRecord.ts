@@ -32,7 +32,6 @@ export function loadStopsRecord(url: URL, city: string, request: Request, clock:
 						...period,
 						city,
 						visitorIp,
-						fixtureScope: request.headers.get('x-transit-fixture-scope') ?? undefined,
 					},
 					request.signal,
 				),

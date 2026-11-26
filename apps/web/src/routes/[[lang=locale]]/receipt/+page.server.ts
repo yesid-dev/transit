@@ -47,7 +47,6 @@ export const load: PageServerLoad = async (event) => {
 			...period,
 			city: providerId,
 			visitorIp,
-			fixtureScope: event.request.headers.get('x-transit-fixture-scope'),
 		};
 	const { sections, messagesLimited } = scope
 		? loadDailyRecord(scope, tracked, lang, (id) => lineNumbers.get(id) ?? id)

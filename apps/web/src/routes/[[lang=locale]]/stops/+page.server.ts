@@ -6,11 +6,7 @@ export const load = (async ({ parent, url, request, locals }) => {
 	const { providerId, provider, lang } = await parent();
 	const schedule =
 		locals.stopsSchedule === undefined && provider
-			? await getScheduleEdition(
-					providerId,
-					request.headers.get('cf-connecting-ip'),
-					request.headers.get('x-transit-fixture-scope') ?? undefined,
-				)
+			? await getScheduleEdition(providerId, request.headers.get('cf-connecting-ip'))
 			: locals.stopsSchedule;
 	return projectStops(schedule, url, request, providerId, provider, lang);
 }) satisfies PageServerLoad;
