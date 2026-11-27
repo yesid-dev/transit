@@ -29,7 +29,7 @@
 			mode={data.mode}
 			provider={data.providerId}
 			href={page.url.href}
-			alertsAvailable={data.provider != null && providerHasAlerts(data.provider)}
+			alertsAvailable={providerHasAlerts(data.provider)}
 			officialAlertsUrl={data.provider?.alert_links[locale]}
 			operatorOf={data.provider?.download_licence?.source?.fr}
 			cities={data.providers.map(({ labels }) => labels[locale].city)}

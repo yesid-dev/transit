@@ -171,7 +171,9 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		await expect(filter).toHaveCount(0);
 		await page.goto(`${href}?provider=octranspo&frameMode=live`);
 		await expect(
-			page.getByRole('status').filter({ hasText: locale === 'fr' ? 'Non suivi' : 'Not tracked' }),
+			page
+				.getByRole('status')
+				.filter({ hasText: locale === 'fr' ? 'Non publié' : 'Not published' }),
 		).toBeVisible();
 	}
 });

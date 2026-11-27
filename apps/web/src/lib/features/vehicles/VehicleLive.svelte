@@ -384,8 +384,9 @@
 									{:else if departure.time}{departure.time + toward}
 									{:else}
 										<!-- A missing time is a state, not a link; the departure keeps its own link. -->
-										<span data-slot="departure-time-missing"
-											>{t('Departure time unavailable', 'Heure de départ indisponible')}</span
+										<span
+											class="[overflow-wrap:normal] [word-break:normal]"
+											data-slot="departure-time-missing">{t('Time unknown', 'Heure inconnue')}</span
 										>
 										{#if departureLink}<a
 												class="inline-flex min-h-11 items-center text-primary underline"

@@ -39,7 +39,7 @@
 		tripsAnHour,
 		tripsOverDays,
 		agencyName,
-		alertsNotCollected,
+		alertsNotTrackedOnDates,
 		frenchAgency,
 		noPublishedNotices,
 	} from '#lib/site/presenter.ts';
@@ -149,12 +149,12 @@
 
 {#if 'value' in answer}
 	{#if section === 'alerts' && answer.state === 'not_tracked'}
-		<p>{alertsNotCollected(agencyName(operator, provider), locale)}</p>
+		<p>{alertsNotTrackedOnDates(agencyName(operator, provider), locale)}</p>
 	{:else if section === 'crowding' && answer.state === 'not_tracked'}
 		<p>
 			{t(
-				`Transit does not record room on board for ${operator} yet.`,
-				`Transit ne relève pas encore la place à bord des véhicules ${frenchAgency(agencyName(operator, provider)).of}.`,
+				`Transit did not record room on board for ${operator} on these dates.`,
+				`Transit n’a pas relevé la place à bord des véhicules ${frenchAgency(agencyName(operator, provider)).of} à ces dates.`,
 			)}
 		</p>
 	{:else if section === 'alerts'}

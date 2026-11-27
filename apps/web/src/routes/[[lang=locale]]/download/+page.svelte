@@ -2,6 +2,7 @@
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { page } from '$app/state';
+	import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 	import { ChevronToggle } from '@yesid/ui/brand';
 	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Surface } from '@yesid/ui/layout';
@@ -12,6 +13,9 @@
 	import { downloadLayouts, downloadTables } from '#lib/features/record/downloadTables.ts';
 	import { healthReason, tableName } from '#lib/features/record/dataHealthText.ts';
 	import {
+		agencyName,
+		alertsNotPublishedLine,
+		officialAlertsLabel,
 		compactServiceDay,
 		countedUnit,
 		dateRange,
@@ -45,6 +49,7 @@
 					}
 				: null,
 	);
+	const provider = $derived(page.data.provider);
 	const listing = $derived(readings()?.listing ?? data.listing);
 	const methods = $derived(readings()?.methods ?? data.methods);
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
@@ -444,12 +449,26 @@
 					{/if}
 
 					{#if listings.some((day) => day.alerts_not_tracked)}
-						<p>
-							{t(
-								'Notices are not tracked for this city.',
-								'Les avis ne sont pas suivis pour cette ville.',
-							)}
-						</p>
+						{#if !providerHasAlerts(provider) && provider}
+							{@const official = provider.alert_links[locale]}
+							<p>
+								{alertsNotPublishedLine(
+									agencyName(provider.labels[locale].operator, provider),
+									locale,
+									Boolean(official),
+								)}
+							</p>
+							{#if official}<a class="text-primary underline" href={official}
+									>{officialAlertsLabel(locale)}</a
+								>{/if}
+						{:else}
+							<p>
+								{t(
+									'Transit did not collect notices on some or all of these dates.',
+									'Transit n’a pas collecté les avis à certaines de ces dates ou à toutes ces dates.',
+								)}
+							</p>
+						{/if}
 					{/if}
 					{#if !count}
 						{#each [...new Set(listings.flatMap((day) => day.reason ?? []))] as reason (reason)}

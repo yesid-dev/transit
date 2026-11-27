@@ -6,7 +6,7 @@
 	import { page } from '$app/state';
 	import {
 		agencyName,
-		alertsNotTrackedLine,
+		alertsNotPublishedLine,
 		tickingLiveStamp,
 		noLiveStopNotices,
 		noticesForLines,
@@ -44,7 +44,7 @@
 		stopNames?: Readonly<Record<string, string>>;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
-	// The city's declaration names its official alerts page; Transit links to it when it does not collect them.
+	// The city's declaration names its official alerts page; Transit links to it when there is no open feed.
 	const city = $derived(page.data.provider as PublicCity | null | undefined);
 	const display = transitDisplay();
 	const agency = $derived(agencyName(operator ?? '', city));
@@ -110,12 +110,12 @@
 	{#if pending}
 		<RecordPending {locale} shape={{ shape: 'notice', count: 2 }} />
 	{:else if !tracked}
-		{@render empty(alertsNotTrackedLine(agency, locale))}
+		{@render empty(alertsNotPublishedLine(agency, locale, Boolean(officialAlertsUrl)))}
 	{:else if !ready}
 		{@render empty(
 			t(
-				'Live agency notices are temporarily unavailable.',
-				'Les avis en direct de la société de transport sont temporairement indisponibles.',
+				'Transit could not get current service alerts.',
+				'Transit n’a pas pu obtenir les avis de service en vigueur.',
 			),
 		)}
 	{:else if notices.length}

@@ -19,6 +19,12 @@
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
+	import {
+		alertsNotPublishedLine,
+		alertsNotTrackedOnDates,
+		officialAlertsLabel,
+	} from '#lib/site/presenter.ts';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { chartState, hourGridTooFew } from '#lib/features/record/charts/recordCharts.ts';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
@@ -671,44 +677,64 @@
 				{#snippet evidence()}
 					{@render evidenceFooter('alerts')}
 				{/snippet}
-				{#await answers.alerts}
-					{@render pending(answers.alerts, noticeShape)}
-				{:then result}
-					{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-						{@const count = result.answer.value.alerts}
-						{@const notices = groupAlertCards(
-							recordAlertCards(result.answer.evidence.alert_messages).filter((notice) =>
-								notice.stops.includes(stop.id),
-							),
+				{#if !providerHasAlerts(provider)}
+					<p>
+						{alertsNotPublishedLine(
+							agencyName(operator, provider),
+							locale,
+							Boolean(provider?.alert_links[locale]),
 						)}
-						{#if count === 0}
-							<p>
-								{noPublishedNotices(
-									agencyName(operator, provider),
-									'stop',
-									locale,
-									!result.answer.evidence.days_not_measured.length &&
-										!result.answer.evidence.days_not_tracked?.length,
-								)}
-							</p>
-						{:else if notices.length}
-							<NoticeRows
-								cards={notices}
-								{locale}
-								timeZone={provider?.timezone}
-								stopName={(id) => (id === stop.id ? (name ?? stopCode) : id)}
-							/>
-						{:else if count != null}
-							<FactList leading={false}>
-								<FactRow label={t('Distinct notices', 'Avis distincts')}
-									>{tally(count, locale)}</FactRow
-								>
-							</FactList>
-						{:else}
-							<StateMark state="unknown" {locale} />
-						{/if}
-					{:else}{@render gap(result, noticeShape)}{/if}
-				{/await}
+					</p>
+				{:else}
+					{#await answers.alerts}
+						{@render pending(answers.alerts, noticeShape)}
+					{:then result}
+						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+							{@const count = result.answer.value.alerts}
+							{@const notices = groupAlertCards(
+								recordAlertCards(result.answer.evidence.alert_messages).filter((notice) =>
+									notice.stops.includes(stop.id),
+								),
+							)}
+							{#if count === 0}
+								<p>
+									{noPublishedNotices(
+										agencyName(operator, provider),
+										'stop',
+										locale,
+										!result.answer.evidence.days_not_measured.length &&
+											!result.answer.evidence.days_not_tracked?.length,
+									)}
+								</p>
+							{:else if notices.length}
+								<NoticeRows
+									cards={notices}
+									{locale}
+									timeZone={provider?.timezone}
+									stopName={(id) => (id === stop.id ? (name ?? stopCode) : id)}
+								/>
+							{:else if count != null}
+								<FactList leading={false}>
+									<FactRow label={t('Distinct notices', 'Avis distincts')}
+										>{tally(count, locale)}</FactRow
+									>
+								</FactList>
+							{:else}
+								<StateMark state="unknown" {locale} />
+							{/if}
+						{:else if result.kind === 'answer' && 'state' in result.answer && result.answer.state === 'not_tracked'}
+							<p>{alertsNotTrackedOnDates(agencyName(operator, provider), locale)}</p>
+						{:else}{@render gap(result, noticeShape)}{/if}
+					{/await}
+				{/if}
+				{#snippet links()}
+					{#if !providerHasAlerts(provider) && provider?.alert_links[locale]}
+						<a
+							class="inline-flex min-h-11 items-center text-primary underline"
+							href={provider.alert_links[locale]}>{officialAlertsLabel(locale)}</a
+						>
+					{/if}
+				{/snippet}
 			</RecordCard>
 		</div>
 	</RecordGroup>

@@ -57,16 +57,22 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'report-behind': { short: 'Report behind', why: 'the live report is behind' },
 		'refresh-unavailable': {
 			short: 'Refresh unavailable',
-			why: 'the live report could not be refreshed',
+			why: 'Transit could not refresh the live report',
 		},
 		'not-loaded': { short: 'No live data', why: 'the live report has not loaded yet' },
-		'metro-no-realtime': { short: 'No live data', why: 'live positions are not published here' },
+		'metro-no-realtime': {
+			short: 'No live data',
+			why: 'the agency does not publish the required live data here',
+		},
 		'closed-opens-at': { short: 'Closed', why: 'service is closed, opens at {first}' },
 		'overnight-opens-at': { short: 'No service', why: 'no service at this hour, opens at {first}' },
 		'before-open': { short: 'Not started', why: 'service has not started yet, opens at {first}' },
 		'scheduled-silent': { short: 'No signal', why: 'scheduled, but nothing is reporting live' },
 		'last-seen': { short: 'No recent position', why: 'last seen {age}' },
-		'not-reported': { short: 'Unknown', why: 'not reported in the live feed' },
+		'not-reported': {
+			short: 'Unknown',
+			why: 'this detail is missing from the live data Transit has',
+		},
 		'not-reporting': { short: 'Stale', why: 'this vehicle is not reporting' },
 		'not-in-schedule': { short: 'Unknown', why: 'not in the schedule' },
 		'window-not-supplied': { short: 'Unknown', why: 'time window not supplied' },
@@ -76,11 +82,11 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'no-observations': { short: 'No data', why: 'not enough readings yet' },
 		'crowding-not-available': {
 			short: 'No data',
-			why: 'crowding information is not available here',
+			why: 'Transit has no occupancy reading for this view',
 		},
 		'thin-coverage': {
 			short: 'Not enough readings',
-			why: 'delay readings for only {n} of {total} buses',
+			why: 'delay readings for only {n} of {total} vehicles',
 		},
 		'histogram-not-published': {
 			short: 'No histogram',
@@ -115,7 +121,7 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'report-behind': { short: 'Rapport en retard', why: 'le rapport en direct est en retard' },
 		'refresh-unavailable': {
 			short: 'Indisponible',
-			why: 'le rapport en direct n’a pas pu être actualisé',
+			why: 'Transit n’a pas pu actualiser le rapport en direct',
 		},
 		'not-loaded': {
 			short: 'Aucune donnée en direct',
@@ -123,7 +129,7 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		},
 		'metro-no-realtime': {
 			short: 'Aucune donnée en direct',
-			why: 'les positions en direct ne sont pas publiées ici',
+			why: 'la société de transport ne publie pas les données en direct nécessaires ici',
 		},
 		'closed-opens-at': { short: 'Fermé', why: 'service terminé, reprise à {first}' },
 		'overnight-opens-at': {
@@ -136,7 +142,10 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 			why: 'prévu à l’horaire, mais rien ne se signale',
 		},
 		'last-seen': { short: 'Aucune position récente', why: 'dernière position {age}' },
-		'not-reported': { short: 'Inconnu', why: 'non signalé dans le flux en direct' },
+		'not-reported': {
+			short: 'Inconnu',
+			why: 'ce détail manque dans les données en direct dont dispose Transit',
+		},
 		'not-reporting': { short: 'Obsolète', why: 'ce véhicule ne se signale pas' },
 		'not-in-schedule': { short: 'Inconnu', why: 'absent de l’horaire' },
 		'window-not-supplied': { short: 'Inconnu', why: 'plage horaire non fournie' },
@@ -146,11 +155,11 @@ export const ABSENCE_COPY: Record<Locale, Record<AbsenceReasonKey, ReasonCopy>> 
 		'no-observations': { short: 'Aucune donnée', why: 'pas assez de mesures' },
 		'crowding-not-available': {
 			short: 'Aucune donnée',
-			why: 'aucune information sur l’occupation ici',
+			why: 'Transit n’a aucun relevé d’occupation pour cette vue',
 		},
 		'thin-coverage': {
 			short: 'Pas assez de relevés',
-			why: 'relevés de retard pour seulement {n} bus sur {total}',
+			why: 'relevés de retard pour seulement {n} véhicules sur {total}',
 		},
 		'histogram-not-published': {
 			short: 'Aucun histogramme',

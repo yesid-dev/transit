@@ -66,7 +66,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(
 		page.locator('#line').getByRole('link').filter({ hasText: 'Sherbrooke' }),
 	).toBeVisible();
-	await expect(page.getByText('Aucune capture brute')).toBeVisible();
+	await expect(page.getByText('Transit n’a collecté aucune donnée source')).toBeVisible();
 	const messages = page.locator('#messages');
 	await expect(messages.getByRole('heading', { name: 'Use stop 51234.' })).toHaveAttribute(
 		'lang',
@@ -194,7 +194,7 @@ test('Alerts Record shows the engine message limit and OC Transpo has no alert t
 	);
 	expect((await request.get(`/alerts/record.csv?${long}&section=messages`)).status()).toBe(400);
 	await page.goto(`/alerts?${period.replace('provider=stm', 'provider=octranspo')}`);
-	await expect(page.getByRole('status', { name: 'Not tracked' })).toBeVisible();
+	await expect(page.getByRole('status', { name: 'Not published' })).toBeVisible();
 	await expect(page.getByRole('link', { name: 'Check the official notices' })).toBeVisible();
 	await expect(page.locator('[data-slot="answer-lead"]')).toHaveCount(0);
 });

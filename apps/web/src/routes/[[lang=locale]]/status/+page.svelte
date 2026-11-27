@@ -31,6 +31,8 @@
 		/>
 	{:else}
 		<DataHealthLive
+			alerts={data.alerts}
+			operatorOf={data.provider?.download_licence?.source?.fr}
 			{locale}
 			subject={names.operatorCity}
 			operator={names.short}

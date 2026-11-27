@@ -11,16 +11,16 @@ export const load = (async (event) => {
 	// Data health reads the same last complete days as every other screen.
 	const { mode, period } = parseAnswerFrameState(event.url.searchParams, frameClock(provider));
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
+	const alerts = { tracked: providerHasAlerts(provider), officialUrl: provider?.alert_links[lang] };
 	if (mode === 'record') {
-		const alertsTracked = providerHasAlerts(provider);
 		const scope = period && { ...period, city, visitorIp };
 		return readyAnswers({
 			view: 'record' as const,
-			alerts: { tracked: alertsTracked, officialUrl: provider?.alert_links[lang] },
+			alerts,
 			record: scope && {
 				city,
 				period: { from: scope.from, to: scope.to },
-				...(readHealthRecord(scope, alertsTracked) as Complete<
+				...(readHealthRecord(scope, alerts.tracked) as Complete<
 					ReturnType<typeof readHealthRecord>
 				>),
 			},
@@ -28,6 +28,7 @@ export const load = (async (event) => {
 	}
 	return readyAnswers({
 		view: 'live' as const,
+		alerts,
 		capture: provider
 			? streamed(fetchCaptureSnapshot(city, event.request.signal, event.fetch).catch(() => null))
 			: Promise.resolve(null),

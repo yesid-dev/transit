@@ -144,12 +144,14 @@
 		),
 		not_measured: t('Not measured: its source was missing', 'Non mesuré : la source manquait'),
 		incomplete: t('Incomplete', 'Incomplet'),
-		not_tracked: t('Not tracked', 'Non suivi'),
+		not_tracked: t('Transit did not track this', 'Transit n’a pas suivi cette donnée'),
+		not_published: t('Not published', 'Non publié'),
 		unknown: t('Unknown', 'Inconnu'),
 	});
 	const marks = {
 		present: { text: '●', level: 0 },
 		not_tracked: { text: '⊠', level: null, state: 'unmeasured' },
+		not_published: { text: '□', level: null, state: 'unmeasured' },
 		unknown: { text: '?', level: null, state: 'unmeasured' },
 		incomplete: { text: '◐', level: 2 },
 		missing: { text: '×', level: 4 },
@@ -193,11 +195,17 @@
 	function grid(answer: DataHealthAnswer, count: number) {
 		const days = answer.days.slice(-count);
 		const tables = tablesFor(answer);
+		const cellState = (date: (typeof days)[number], id: string) => {
+			const status = date.tables[id]?.status ?? 'unknown';
+			return id === 'alerts' && status === 'not_tracked' && !alerts.tracked
+				? 'not_published'
+				: status;
+		};
 		const states = new Set<keyof typeof marks>([
 			'present',
 			'missing',
 			'not_measured',
-			...days.flatMap((day) => tables.map((id) => day.tables[id]?.status ?? 'unknown')),
+			...days.flatMap((day) => tables.map((id) => cellState(day, id))),
 		]);
 		const day = intl.dateTime(locale, { day: 'numeric', timeZone: 'UTC' });
 		return {
@@ -210,10 +218,13 @@
 				label: tableName(id, locale),
 				cells: days.map((date): HourGridCell => {
 					const cell = date.tables[id];
-					const state = cell?.status ?? 'unknown';
+					const state = cellState(date, id);
 					return {
 						...marks[state],
-						name: healthReading(cell, locale, cell?.status === 'present' ? undefined : date.reason),
+						name:
+							state === 'not_published'
+								? labels.not_published
+								: healthReading(cell, locale, cell?.status === 'present' ? undefined : date.reason),
 					};
 				}),
 			})),
@@ -377,7 +388,7 @@
 		{locale}
 		title={titles.feeds}
 		rowHeader={t('Feed', 'Flux')}
-		rows={feedCheckRows(answer, locale, age)}
+		rows={feedCheckRows(answer, locale, age, alerts.tracked)}
 		columns={[
 			{
 				key: 'answered',
@@ -499,6 +510,7 @@
 								{ accessibility, alertEffects, completeness },
 								agency,
 								locale,
+								alerts,
 							)}
 							{#if rows.every(({ state }) => state === 'unavailable')}
 								<p>{recordConnection.unreachable[locale]}</p>

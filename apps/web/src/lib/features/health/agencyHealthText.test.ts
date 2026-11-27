@@ -8,8 +8,8 @@ import type {
 } from '#lib/server/engine.ts';
 import {
 	agencyName,
-	alertsNotCollected,
-	alertsNotTrackedLine,
+	alertsNotPublished,
+	alertsNotPublishedLine,
 	alertsNotTrackedOnDates,
 	frenchAgency,
 } from '#lib/site/presenter.ts';
@@ -138,7 +138,7 @@ describe('what the agency publishes', () => {
 		]);
 	});
 
-	it('names alerts Transit does not collect, and fields the agency leaves empty, in French', () => {
+	it('names unpublished alerts and fields the agency leaves empty in French', () => {
 		const rows = publishingRows(
 			{
 				accessibility: accessibility({
@@ -156,10 +156,15 @@ describe('what the agency publishes', () => {
 			},
 			{ name: 'OC Transpo', frenchOf: 'd’OC Transpo' },
 			'fr',
+			{ tracked: false, officialUrl: 'https://www.octranspo.com/fr/alertes/' },
 		);
 		expect(spaces(readable(rows, 'fr'))).toEqual(
 			spaces([
-				['Avis de service', 'Non suivi', 'Transit ne collecte pas encore les avis d’OC Transpo.'],
+				[
+					'Avis de service',
+					'Non publié',
+					'OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.',
+				],
 				[
 					'Accès en fauteuil roulant aux arrêts',
 					'Non publié',
@@ -198,25 +203,29 @@ describe('the alerts sentence', () => {
 		gatineau: { name: 'STO', frenchOf: 'de la STO' },
 	};
 	it.each([
-		['en', declared.ottawa, 'Not tracked: Transit does not collect OC Transpo’s notices yet.'],
+		[
+			'en',
+			declared.ottawa,
+			'Not published: OC Transpo does not publish its service alerts as open data.',
+		],
 		[
 			'fr',
 			declared.ottawa,
-			'Non suivi\u00a0: Transit ne collecte pas encore les avis d’OC Transpo.',
+			'Non publié\u00a0: OC Transpo ne publie pas ses avis de service en données ouvertes.',
 		],
 		[
 			'fr',
 			declared.montreal,
-			'Non suivi\u00a0: Transit ne collecte pas encore les avis de la STM.',
+			'Non publié\u00a0: La STM ne publie pas ses avis de service en données ouvertes.',
 		],
 		[
 			'fr',
 			declared.gatineau,
-			'Non suivi\u00a0: Transit ne collecte pas encore les avis de la STO.',
+			'Non publié\u00a0: La STO ne publie pas ses avis de service en données ouvertes.',
 		],
 	] as const)('reads one sentence in %s for %o', (locale, agency, line) => {
-		expect(alertsNotTrackedLine(agency, locale)).toBe(line);
-		expect(line.endsWith(alertsNotCollected(agency, locale))).toBe(true);
+		expect(alertsNotPublishedLine(agency, locale)).toBe(line);
+		expect(line.endsWith(alertsNotPublished(agency, locale))).toBe(true);
 	});
 
 	it.each([
@@ -465,8 +474,11 @@ describe('the agency scorecard in plain words', () => {
 
 describe('gaps in collection', () => {
 	it.each([
-		['en', 'Days with a gap in collection: 24 Nov (no raw captures).'],
-		['fr', 'Jours avec une lacune de collecte\u00a0: 24 nov. (aucune capture brute).'],
+		['en', 'Days with a gap in collection: 24 Nov (Transit collected no source data).'],
+		[
+			'fr',
+			'Jours avec une lacune de collecte\u00a0: 24 nov. (Transit n’a collecté aucune donnée source).',
+		],
 	] as const)('names each day and its reason in %s', (locale, sentence) => {
 		const checks = scorecard('poll_success', {}, {}, {});
 		checks.evidence.days_not_measured = ['2026-11-24'];
@@ -554,6 +566,6 @@ it.each([
 ] as const)('separates dates without alerts from a city never collected in %s', (locale, line) => {
 	expect(alertsNotTrackedOnDates({ name: 'STM', frenchOf: 'de la STM' }, locale)).toBe(line);
 	expect(alertsNotTrackedOnDates({ name: 'STM', frenchOf: 'de la STM' }, locale)).not.toBe(
-		alertsNotTrackedLine({ name: 'STM', frenchOf: 'de la STM' }, locale),
+		alertsNotPublishedLine({ name: 'STM', frenchOf: 'de la STM' }, locale),
 	);
 });

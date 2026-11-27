@@ -28,7 +28,15 @@
 		tally,
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
-	import { agencyName, recordPercent, dateRange, recordStamp } from '#lib/site/presenter.ts';
+	import {
+		agencyName,
+		alertsNotPublishedLine,
+		officialAlertsLabel,
+		recordPercent,
+		dateRange,
+		recordStamp,
+	} from '#lib/site/presenter.ts';
+	import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 	import type { loadLineRecord, LineSection } from '#lib/server/lineRecord.ts';
 	import type { EngineResult, RecordAnswer, RecordMeasure } from '#lib/server/engine.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
@@ -421,8 +429,23 @@
 			{#if !timetableOnly}
 				<div id="alerts">
 					<RecordCard interactive title={title('alerts')} {stamp} reserve={shapes.alerts}>
-						{@render reading('alerts')}
-						{#snippet evidence()}{@render sectionEvidence('alerts')}{/snippet}
+						{#if !providerHasAlerts(page.data.provider)}
+							{@const official = page.data.provider?.alert_links[locale]}
+							<p>
+								{alertsNotPublishedLine(
+									agencyName(operator, page.data.provider),
+									locale,
+									Boolean(official),
+								)}
+							</p>
+							{#if official}<a
+									class="inline-flex min-h-11 items-center text-primary underline"
+									href={official}>{officialAlertsLabel(locale)}</a
+								>{/if}
+						{:else}{@render reading('alerts')}{/if}
+						{#snippet evidence()}{#if providerHasAlerts(page.data.provider)}{@render sectionEvidence(
+									'alerts',
+								)}{/if}{/snippet}
 					</RecordCard>
 				</div>
 			{/if}

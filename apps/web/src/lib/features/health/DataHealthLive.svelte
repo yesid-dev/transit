@@ -7,6 +7,8 @@
 	import { type CaptureSnapshot, captureDisplayState } from '#lib/live/captureSnapshot.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
+		alertsNotPublished,
+		officialAlertsLabel,
 		singularCount,
 		healthFeedName,
 		captureAge,
@@ -30,12 +32,16 @@
 		capture,
 		subject,
 		operator,
+		operatorOf,
+		alerts = { tracked: true },
 		locale,
 	}: {
 		city: string | null;
 		capture: Awaitable<CaptureSnapshot | null>;
 		subject: string;
 		operator: string;
+		operatorOf?: string | null;
+		alerts?: { tracked: boolean; officialUrl?: string };
 		locale: Locale;
 	} = $props();
 
@@ -52,7 +58,7 @@
 		stale: t('Late', 'En retard'),
 		no_live_data: t('No live data', 'Aucune donnée en direct'),
 		refresh_unavailable: t('Refresh unavailable', 'Actualisation indisponible'),
-		not_tracked: t('Not tracked', 'Non suivi'),
+		not_tracked: t('Transit did not track this feed', 'Transit n’a pas suivi ce flux'),
 		unknown: t('Unknown', 'Inconnu'),
 		not_measured: t('Not measured', 'Non mesuré'),
 	});
@@ -96,6 +102,20 @@
 {#snippet stateCell(row: FeedRow)}{row.state}{/snippet}
 
 {#snippet about(text: string | null)}
+	{#if !alerts.tracked}
+		<p class="mb-3">
+			<StateMark state="not_published" {locale} />
+			{alertsNotPublished(
+				{ name: operator, frenchOf: operatorOf },
+				locale,
+				Boolean(alerts.officialUrl),
+			)}
+		</p>
+		{#if alerts.officialUrl}<a
+				class="mb-3 inline-flex min-h-11 items-center text-primary underline"
+				href={alerts.officialUrl}>{officialAlertsLabel(locale)}</a
+			>{/if}
+	{/if}
 	<AboutLiveFigures
 		{locale}
 		{operator}

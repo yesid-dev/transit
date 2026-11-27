@@ -688,7 +688,8 @@ async function verifyLineReadings(page, cell, onTime, label) {
 
 	const stops = page.locator('#stops footer button');
 	await stops.click();
-	await check('#stops tbody td', [[0.6], [5.6]]);
+	// The ladder rounds its median readings to the nearest half minute.
+	await check('#stops tbody td', [[0.5], [5.5]]);
 	await stops.click();
 	await check('#delivery tbody td', [[2], [6], [32], [40]]);
 	await check('#late tbody td', [[late, 100]]);

@@ -157,7 +157,7 @@ for (const width of [390, 1440]) {
 			await expect(daily.locator('svg text').filter({ hasText: /^(?:0|20)\s?%$/ })).toHaveCount(1);
 			await expect(main.locator('#delay')).toContainText(fr ? '0,5 min d’avance' : '0.5 min early');
 			await expect(main.locator('#delay')).toContainText(fr ? '6 min de retard' : '6 min late');
-			await expect(main.locator('#alerts')).toContainText(fr ? 'Non suivi' : '3');
+			await expect(main.locator('#alerts')).toContainText(fr ? 'Non publié' : '3');
 			await expect(main.locator('#accessibility')).toContainText(fr ? 'Non publié' : 'Accessible');
 			await expect(
 				main.getByRole('link', { name: fr ? 'Vous avez vu une erreur?' : 'Seen an error?' }),

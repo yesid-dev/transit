@@ -364,12 +364,12 @@ it('renders absent readings and both not-measured reasons while methods can fail
 	const table = await screen.findByRole('table');
 	for (const label of [
 		'Present',
-		'Not tracked',
+		'Transit did not track this',
 		'Missing (File size differs from the file list)',
 	]) {
 		expect(within(table).getAllByRole('cell', { name: label })[0]).toBeVisible();
 	}
-	for (const reason of ['No raw captures', 'No schedule edition']) {
+	for (const reason of ['Transit collected no source data', 'No schedule edition']) {
 		expect(within(table).getAllByRole('cell', { name: `Not measured (${reason})` })).toHaveLength(
 			2,
 		);
@@ -378,14 +378,14 @@ it('renders absent readings and both not-measured reasons while methods can fail
 	expect(screen.getByText('Present', { exact: true })).toBeVisible();
 	expect(screen.getByText('3 of 4 days have a gap.')).toBeVisible();
 	expect(document.body).not.toHaveTextContent(/table days|clean tables?/iu);
-	expect(screen.getByText('Not tracked', { exact: true })).toBeVisible();
+	expect(screen.getByText('Transit did not track this', { exact: true })).toBeVisible();
 	expect(screen.queryByText('Incomplete', { exact: true })).not.toBeInTheDocument();
 	expect(screen.getByRole('list', { name: 'Day states' })).not.toHaveTextContent('Unknown');
 });
 
 it.each([
-	['en', '/status', 'Not measured (Schedule archive unreadable)'],
-	['fr', '/fr/status', 'Non mesuré (Archive de l’horaire illisible)'],
+	['en', '/status', 'Not measured (Transit could not read the archived timetable)'],
+	['fr', '/fr/status', 'Non mesuré (Transit n’a pas pu lire l’horaire archivé)'],
 ] as const)('renders the unreadable schedule archive reason in %s', async (locale, path, label) => {
 	const answer: DataHealthAnswer = {
 		city: health.city,
@@ -424,7 +424,7 @@ it.each([
 		'65.1%',
 		'of scheduled stop events have a reading.',
 		'What OC Transpo publishes',
-		'Transit does not collect OC Transpo’s notices yet.',
+		'OC Transpo does not publish its service alerts as open data. It posts them on its website.',
 		'Check the official notices',
 	],
 	[
@@ -432,7 +432,7 @@ it.each([
 		/^65,1\s%$/u,
 		'des passages prévus aux arrêts ont un relevé.',
 		'Ce que publie OC Transpo',
-		'Transit ne collecte pas encore les avis d’OC Transpo.',
+		'OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.',
 		'Consulter les avis officiels',
 	],
 ] as const)(

@@ -18,7 +18,9 @@ describe('AbsentValue — renders the resolved label + why in FR + EN', () => {
 			const text = root!.textContent ?? '';
 			expect(text).toContain(lang === 'fr' ? 'Inconnu' : 'Unknown');
 			expect(text).toContain(
-				lang === 'fr' ? 'non signalé dans le flux' : 'not reported in the live feed',
+				lang === 'fr'
+					? 'ce détail manque dans les données en direct'
+					: 'this detail is missing from the live data Transit has',
 			);
 		});
 	}
@@ -104,7 +106,7 @@ describe('AbsentValue — no business branching (resolver owns the copy)', () =>
 			props: { reason: 'totally-made-up' as AbsenceReasonKey, locale: 'en' },
 		});
 		expect(container.querySelector('[data-slot="absent-value"]')!.textContent).toContain(
-			'not reported in the live feed',
+			'this detail is missing from the live data Transit has',
 		);
 	});
 });

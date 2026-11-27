@@ -22,7 +22,13 @@
 	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
-	import { agencyName, alertsNotCollected, tickingLiveStamp, recordStamp, searchCount } from '#lib/site/presenter.ts';
+	import {
+		agencyName,
+		alertsNotPublished,
+		tickingLiveStamp,
+		recordStamp,
+		searchCount,
+	} from '#lib/site/presenter.ts';
 	import { recordPeriodNoticeReader } from '#lib/site/recordPeriodNoticeContext.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
@@ -1487,7 +1493,7 @@
 						store={filters}
 						{alertsAvailable}
 						alertsUnavailableReason={v1.provider && !alertsAvailable
-							? `${tr('No notices to filter:', 'Aucun avis à filtrer\u00a0:')} ${alertsNotCollected(agencyName(providerName, v1.provider), locale)}`
+							? `${tr('No notices to filter:', 'Aucun avis à filtrer\u00a0:')} ${alertsNotPublished(agencyName(providerName, v1.provider), locale, Boolean(v1.provider?.alert_links[locale]))}`
 							: undefined}
 						{locale}
 						routes={session.routesIndex}

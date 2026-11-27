@@ -51,8 +51,9 @@
 		countedUnit,
 		dailyAlertsLink,
 		agencyName,
-		alertsNotTrackedLine,
+		alertsNotPublishedLine,
 		alertsNotTrackedOnDates,
+		officialAlertsLabel,
 		dateRange,
 		longDate,
 		methodEvidence,
@@ -397,12 +398,17 @@
 	{/if}
 {/snippet}
 {#snippet messagesNotTracked(onDates = false)}
+	{@const official = routeData.provider?.alert_links[lang]}
 	<p class="flex min-w-0 items-baseline gap-2">
-		<StateMark state="alerts_not_tracked" locale={lang} hiddenLabel />
+		<StateMark state={onDates ? 'alerts_not_tracked' : 'not_published'} locale={lang} hiddenLabel />
 		<span
 			>{onDates
 				? alertsNotTrackedOnDates(agencyName(operator ?? cityName, routeData.provider), lang)
-				: alertsNotTrackedLine(agencyName(operator ?? cityName, routeData.provider), lang)}</span
+				: alertsNotPublishedLine(
+						agencyName(operator ?? cityName, routeData.provider),
+						lang,
+						Boolean(official),
+					)}</span
 		>
 	</p>
 {/snippet}
@@ -769,6 +775,12 @@
 								>
 									{#if !data.tracked}
 										{@render messagesNotTracked()}
+										{#if routeData.provider?.alert_links[lang]}
+											<a
+												class="inline-flex min-h-11 items-center text-primary underline"
+												href={routeData.provider.alert_links[lang]}>{officialAlertsLabel(lang)}</a
+											>
+										{/if}
 									{:else}
 										{#await messagesAnswer}
 											{#key messagesAnswer}<RecordPending

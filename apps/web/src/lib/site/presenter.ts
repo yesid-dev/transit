@@ -1211,25 +1211,32 @@ export function frenchAgency({ name, frenchOf }: AgencyName) {
 	};
 }
 
-/** The one sentence for a city whose alerts Transit does not collect. */
-export function alertsNotCollected(agency: AgencyName, locale: Locale) {
-	return locale === 'fr'
-		? `Transit ne collecte pas encore les avis ${frenchAgency(agency).of}.`
-		: `Transit does not collect ${agency.name}’s notices yet.`;
+/** The agency has no open service-alert feed in the provider declaration. */
+export function alertsNotPublished(agency: AgencyName, locale: Locale, website = false) {
+	if (locale === 'fr') {
+		const sentence = `${frenchAgency(agency).start} ne publie pas ses avis de service en données ouvertes.`;
+		return website ? `${sentence} Elle les affiche sur son site Web.` : sentence;
+	}
+	const sentence = `${agency.name} does not publish its service alerts as open data.`;
+	return website ? `${sentence} It posts them on its website.` : sentence;
 }
 
-/** The state and its sentence on one line: "Not tracked: Transit does not collect …". */
-export function alertsNotTrackedLine(agency: AgencyName, locale: Locale) {
+/** Transit has no archived notices for these dates despite a declared source. */
+export function alertsNotCollected(agency: AgencyName, locale: Locale) {
 	return locale === 'fr'
-		? `Non suivi\u00a0: ${alertsNotCollected(agency, locale)}`
-		: `Not tracked: ${alertsNotCollected(agency, locale)}`;
+		? `Transit n’a pas collecté les avis ${frenchAgency(agency).of} à ces dates.`
+		: `Transit did not collect ${agency.name}’s notices on these dates.`;
+}
+
+export function alertsNotPublishedLine(agency: AgencyName, locale: Locale, website = false) {
+	const sentence = alertsNotPublished(agency, locale, website);
+	return locale === 'fr' ? `Non publié\u00a0: ${sentence}` : `Not published: ${sentence}`;
 }
 
 /** A city whose alerts Transit collects, on dates the record holds none of them. */
 export function alertsNotTrackedOnDates(agency: AgencyName, locale: Locale) {
-	return locale === 'fr'
-		? `Non suivi\u00a0: Transit n’a pas collecté les avis ${frenchAgency(agency).of} à ces dates.`
-		: `Not tracked: Transit did not collect ${agency.name}’s notices on these dates.`;
+	const sentence = alertsNotCollected(agency, locale);
+	return locale === 'fr' ? `Non suivi\u00a0: ${sentence}` : `Not tracked: ${sentence}`;
 }
 
 export function officialAlertsLabel(locale: Locale) {

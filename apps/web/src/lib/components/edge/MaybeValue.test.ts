@@ -39,7 +39,9 @@ describe('MaybeValue — presence (a real 0 is real data, never a chip)', () => 
 			props: { value: '4 min', present: false, reason: 'not-reported', locale: 'en' },
 		});
 		expect(absence(container)).not.toBeNull();
-		expect(flat(absenceCopy(container))).toBe('Unknown · not reported in the live feed');
+		expect(flat(absenceCopy(container))).toBe(
+			'Unknown · this detail is missing from the live data Transit has',
+		);
 	});
 
 	it('an explicit present={true} renders the children snippet instead of a chip', () => {

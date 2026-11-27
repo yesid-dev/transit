@@ -83,11 +83,14 @@ test.describe('Daily report print', () => {
 			expect(Math.max(...actionTops) - Math.min(...actionTops)).toBeLessThan(1);
 			const rankingsFooter = main.locator('#lines footer');
 			await expect(rankingsFooter).toHaveCount(1);
-			await expect(rankingsFooter).toContainText(
-				fr
-					? /Lignes : 1\s089 passages aux arrêts · Arrêts : 1\s089 passages aux arrêts, 1 jour/u
-					: 'Lines: 1,089 stop events · Stops: 1,089 stop events, 1 day',
-			);
+			const rankings = main.locator('#lines').getByRole('table');
+			await expect(rankings).toHaveCount(2);
+			for (const table of await rankings.all()) {
+				await expect(table.locator('tbody tr').first()).toContainText(
+					fr ? /\d passages aux arrêts/u : /\d stop events/u,
+				);
+			}
+			await expect(rankingsFooter).not.toContainText(fr ? 'passages aux arrêts' : 'stop events');
 			await expect(rankingsFooter).not.toContainText(fr ? 'méthode v' : 'method v');
 			const about = main.getByRole('article', {
 				name: fr ? 'À propos de ces chiffres' : 'About these figures',
@@ -167,10 +170,10 @@ if (process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
 			}
 			if (name === 'oc-en-390-light') {
 				await expect(
-					content.locator('#messages [data-record-state="alerts_not_tracked"]'),
+					content.locator('#messages [data-record-state="not_published"]'),
 				).toBeVisible();
 				await expect(content.locator('#messages')).toContainText(
-					'Not tracked: Transit does not collect OC Transpo’s notices yet.',
+					'Not published: OC Transpo does not publish its service alerts as open data. It posts them on its website.',
 				);
 			}
 			if (name === 'range-1440') {

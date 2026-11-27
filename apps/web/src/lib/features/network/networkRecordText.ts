@@ -50,8 +50,11 @@ const states = {
 	not_measured: ['Not measured', 'Non mesuré'],
 	too_few_to_judge: ['Too few to judge', 'Trop peu de données pour conclure'],
 	no_live_data: ['No live data', 'Aucune donnée en direct'],
-	not_tracked: ['Not tracked', 'Non suivi'],
-	not_published: ['Not tracked (field not published)', 'Non suivi (champ non publié)'],
+	not_tracked: ['Transit did not track this', 'Transit n’a pas suivi cette donnée'],
+	not_published: [
+		'Field not published by the agency',
+		'Champ non publié par la société de transport',
+	],
 	unknown: ['Unknown', 'Inconnu'],
 } satisfies Record<string, [string, string]>;
 
@@ -61,7 +64,12 @@ function object(value: unknown): Record<string, unknown> {
 		: {};
 }
 
-export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, locale: Locale) {
+export function networkRows(
+	measure: NetworkMeasure,
+	answer: ScorecardAnswer,
+	locale: Locale,
+	alertsPublished = true,
+) {
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const stateText = (state: keyof typeof states) => t(...states[state]);
 	const values = object(answer.value[measure]);
@@ -100,9 +108,11 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				const reading =
 					dimensions[feed] === 'measured' && typeof value === 'number'
 						? recordPercent(value, locale)
-						: !Object.hasOwn(values, feed) && !noMeasuredDays
-							? stateText('not_tracked')
-							: missing(feed);
+						: feed === 'alerts' && !alertsPublished
+							? t('Not published', 'Non publié')
+							: !Object.hasOwn(values, feed) && !noMeasuredDays
+								? stateText('not_tracked')
+								: missing(feed);
 				return [t(...label), reading, ratio(successful, attempts)];
 			}),
 		};
@@ -127,8 +137,8 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 						? stateText('not_tracked')
 						: noTimestamp
 							? t(
-									'Not tracked (no publication timestamp)',
-									'Non suivi (aucun horodatage de publication)',
+									'The agency publishes no timestamp',
+									'La société de transport ne publie aucun horodatage',
 								)
 							: missing(feed);
 				const measured = dimensions[feed] === 'measured';

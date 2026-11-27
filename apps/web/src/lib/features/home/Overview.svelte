@@ -84,7 +84,7 @@
 		mode = 'record',
 		provider,
 		href,
-		alertsAvailable = false,
+		alertsAvailable = true,
 		officialAlertsUrl,
 		operatorOf,
 		cities = [],

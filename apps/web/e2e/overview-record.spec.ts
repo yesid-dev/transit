@@ -498,10 +498,12 @@ test('the header carries the Live view and dates through city and language chang
 	await expect(
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
 	).toContainText('Not measured');
-	// A city whose alerts Transit does not collect says so, and blames no one else.
+	// A provider with no open feed keeps its agency’s notices link.
 	const alerts = live.getByText('Notice publications', { exact: true }).locator('..');
-	await expect(alerts).toContainText('Not tracked');
-	await expect(alerts).toContainText('Transit does not collect OC Transpo’s notices yet.');
+	await expect(alerts).toContainText('Not published');
+	await expect(alerts).toContainText(
+		'OC Transpo does not publish its service alerts as open data. It posts them on its website.',
+	);
 	await expect(live.getByRole('link', { name: 'Read the notices' })).toHaveCount(0);
 	await expect(live.getByRole('link', { name: 'Check the official notices' })).toHaveAttribute(
 		'href',

@@ -140,7 +140,7 @@ describe('MapHoverPeek', () => {
 		{
 			delayMin: null,
 			status: 'unknown',
-			want: 'not reported in the live feed',
+			want: 'this detail is missing from the live data Transit has',
 			absence: true,
 		},
 	] as const)(
@@ -219,7 +219,9 @@ describe('MapHoverPeek', () => {
 			props: { peek: freshBusNulls, locale: 'en' },
 		});
 
-		expect(definitionValue(container, 'Status')).toHaveTextContent(/not reported/i);
+		expect(definitionValue(container, 'Status')).toHaveTextContent(
+			'this detail is missing from the live data Transit has',
+		);
 	});
 
 	it('renders route long name, direction, and visible-vehicle count', () => {
