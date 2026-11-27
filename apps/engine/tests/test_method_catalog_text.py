@@ -58,6 +58,22 @@ def test_catalog_definitions_are_full_sentences_and_limits_match_their_label() -
             assert not limits.startswith("Un trajet effectué a au moins un arrêt confirmé.")
 
 
+def test_method_release_date_applies_to_the_whole_record() -> None:
+    by_id = {entry["id"]: entry for entry in measures.methods()}
+    for name, field in (("on_time", "counts"), ("prediction_error", "limits")):
+        copy = by_id[name]["text"]
+        assert (
+            "The whole record was recomputed with this method on 22 November 2026."
+            in copy["en"][field]
+        )
+        assert (
+            "Tout le bilan a été recalculé avec cette méthode le 22 novembre 2026."
+            in copy["fr"][field]
+        )
+    for lang, phrase in (("en", "60 minutes apart"), ("fr", "espacés d’au moins 60 minutes")):
+        assert phrase in by_id["bunching"]["text"][lang]["counts"]
+
+
 def test_catalog_quebec_french_meaning_terminology_and_typography() -> None:
     by_id = {entry["id"]: entry for entry in measures.methods()}
     punctuality_counts = by_id["on_time"]["text"]

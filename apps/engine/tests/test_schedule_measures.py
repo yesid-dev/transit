@@ -41,9 +41,9 @@ def _polls(start: int, end: int) -> tuple[Poll, ...]:
 
 def test_waiting_at_a_stop_groups_lines_without_mixing_their_intervals(tmp_path: Path) -> None:
     trips = (
-        *(_trip("A", i, 60 + i * 5, 120 if i % 2 else 0) for i in range(25)),
-        *(_trip("B", i, 61 + i * 5) for i in range(25)),
-        *(_trip("C", i, 60 + i * 20) for i in range(8)),
+        *(_trip("A", i, i * 5, 120 if i % 2 else 0) for i in range(25)),
+        *(_trip("B", i, 1 + i * 5) for i in range(25)),
+        *(_trip("C", i, i * 20) for i in range(8)),
     )
     store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: _polls(0, 14400)})
     by_line = query(store, measure="waiting_and_gaps", stop="first", group="line")["cells"]
@@ -58,6 +58,33 @@ def test_waiting_at_a_stop_groups_lines_without_mixing_their_intervals(tmp_path:
         assert cell["evidence"]["counts"] == answer["evidence"]["counts"]
     assert by_line[0]["value"]["excess_wait_time"] > 0
     assert by_line[1]["value"]["excess_wait_time"] == 0
+
+
+def test_waiting_and_rankings_require_sustained_service(tmp_path: Path) -> None:
+    trips = (
+        *(_trip("S", i, minute) for i, minute in enumerate((57, 60, 62, 65))),
+        *(_trip("A", i, i * 5, -270 if i == 3 else 0) for i in range(13)),
+        _trip("A", 13, 5, 15),
+        _trip("A", 14, 25, 15)._replace(state="added"),
+        _trip("A", 15, 6, -30),
+    )
+    store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: _polls(0, 3900)})
+    ranked = _json(store, measure="on_time", **{"class": "all"})
+    assert {row["id"]: row["class"] for row in ranked["rows"] + ranked["excluded"]} == {
+        "A": "3:frequent",
+        "S": "3:regular",
+    }
+    school = query(store, measure="bunching", line="S")
+    assert school["state"] == "no_frequent_periods"
+    assert school["evidence"]["counts"]["frequent_headways"] == 0
+
+    # Pairs scheduled at the same time or a minute apart stay in the denominator.
+    # The two other short gaps count as bunching, including one with an added trip.
+    for cuts, expected in (({}, 15), ({"hour": 7}, 14)):
+        result = query(store, measure="bunching", line="A", **cuts)
+        counts = result["evidence"]["counts"]
+        assert counts["observed_headways"] == expected
+        assert counts["bunching"] == 2
 
 
 def test_waiting_network_fits_the_buffer_without_spilling(tmp_path: Path) -> None:
@@ -292,6 +319,17 @@ def test_waiting_includes_missing_trips_and_all_bases_but_excludes_poll_gaps(
         _trip("O", 0, 0),
         _trip("O", 1, 5, 600),
         _trip("O", 2, 10, 60),
+        # Extend the timetables on the lines used to check capture and passage evidence.
+        *(
+            _trip(line, 10 + i, minute, None)._replace(state="cancelled")
+            for line, minutes in (
+                ("M", range(30, 61, 5)),
+                ("G", range(55, 106, 5)),
+                ("T", range(10, 61, 5)),
+                ("O", range(20, 61, 10)),
+            )
+            for i, minute in enumerate(minutes)
+        ),
     )
     polls = tuple(
         p._replace(result="error")
@@ -303,7 +341,7 @@ def test_waiting_includes_missing_trips_and_all_bases_but_excludes_poll_gaps(
     result = query(store, measure="waiting_and_gaps", line="M")["evidence"]
     assert result["counts"]["observed_headways"] == 4
     assert result["counts"]["long_gaps"] == 1
-    assert result["excluded"]["missing_observation"] == 1
+    assert result["excluded"]["missing_observation"] == 8
     ranked = _json(store, measure="bunching", **{"class": "all"})
     excluded = {row["id"]: row for row in ranked["excluded"]}
     assert {line: row["reason"] for line, row in excluded.items()} == {
@@ -321,7 +359,7 @@ def test_waiting_includes_missing_trips_and_all_bases_but_excludes_poll_gaps(
     assert excluded["G"]["excluded"]["capture_gap"] == 1
     assert excluded["O"]["counts"]["observed_headways"] == 2
     assert excluded["O"]["excluded"]["capture_gap"] == 0
-    assert excluded["T"]["excluded"]["missing_observation"] == 1
+    assert excluded["T"]["excluded"]["missing_observation"] == 12
 
 
 def test_waiting_uses_the_realtime_feeds_recorded_for_each_day(tmp_path: Path) -> None:
@@ -349,7 +387,13 @@ def test_waiting_uses_the_realtime_feeds_recorded_for_each_day(tmp_path: Path) -
 
 
 def test_waiting_counts_coverage_ending_on_an_hour_boundary(tmp_path: Path) -> None:
-    trips = tuple(_trip("A", i, minute) for i, minute in enumerate(range(-10, 11, 5)))
+    trips = (
+        *(_trip("A", i, minute) for i, minute in enumerate(range(-10, 11, 5))),
+        *(
+            _trip("A", 10 + i, minute, None)._replace(state="cancelled")
+            for i, minute in enumerate(range(15, 51, 5))
+        ),
+    )
     polls = (*_polls(-900, 0), *_polls(300, 600))
     store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: polls})
 
@@ -367,12 +411,13 @@ def test_waiting_period_summary_preserves_tied_passages_and_live_status(tmp_path
         _trip("A", 2, 5),
         _trip("A", 3, 10, None, live=False),
         _trip("A", 4, 15),
+        *(_trip("A", 5 + i, minute) for i, minute in enumerate(range(20, 61, 10))),
     )
-    store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: _polls(0, 900)})
+    store = _build_store(tmp_path, 9, {THURSDAY: trips}, {THURSDAY: _polls(0, 3600)})
     evidence = query(store, measure="waiting_and_gaps")["evidence"]
 
-    assert evidence["counts"]["scheduled_headways"] == 3
-    assert evidence["counts"]["frequent_headways"] == 3
+    assert evidence["counts"]["scheduled_headways"] == 8
+    assert evidence["counts"]["frequent_headways"] == 8
     assert evidence["excluded"]["missing_observation"] == 2
     assert evidence["excluded"]["route_without_live_data"] == 1
 
