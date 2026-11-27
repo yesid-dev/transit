@@ -39,7 +39,7 @@ export function lineVehicleRows(snapshot: CaptureSnapshot | null, line: string, 
 	if (
 		!snapshot?.vehicle_positions ||
 		!feed?.captured_at ||
-		captureDisplayState(feed, now) !== 'live'
+		captureDisplayState(feed, now, snapshot.published_at) !== 'live'
 	)
 		return null;
 	const delayReady = feedState(captureFamily(snapshot, 'trip_updates'), now) === 'live';
@@ -79,7 +79,11 @@ export type LiveVehicleRow = {
 export function lineSilentCount(snapshot: CaptureSnapshot | null, line: string, now: number) {
 	if (
 		!snapshot?.non_responding_by_route ||
-		captureDisplayState(captureFamily(snapshot, 'vehicle_positions'), now) !== 'live' ||
+		captureDisplayState(
+			captureFamily(snapshot, 'vehicle_positions'),
+			now,
+			snapshot.published_at,
+		) !== 'live' ||
 		feedState(captureFamily(snapshot, 'trip_updates'), now) !== 'live'
 	)
 		return null;

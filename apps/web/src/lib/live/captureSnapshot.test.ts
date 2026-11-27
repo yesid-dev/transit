@@ -8,6 +8,7 @@ import {
 } from './captureProjection';
 import { selectLivePulse } from '#lib/features/home/homePulse.ts';
 import {
+	captureDisplayState,
 	captureSnapshotSchema,
 	captureTripScopeSchema,
 	feedState,
@@ -195,6 +196,27 @@ describe('capture-backed Live projection', () => {
 		expect(feedState({ ...feed, captured_at: null }, now)).toBe('no_live_data');
 		expect(feedState(feed, now + 59_999)).toBe('live');
 		expect(feedState(feed, now + 60_000)).toBe('stale');
+	});
+
+	it('judges a vehicle capture when published, and the publication when received', () => {
+		const vehicles = {
+			family: 'vehicle_positions' as const,
+			captured_at: captured,
+			source_at: captured,
+			fresh_for_seconds: 60,
+			source_lag_seconds: 0,
+			read_failed: false,
+			expected_every_seconds: 20,
+		};
+		const at = (seconds: number) => new Date(now + seconds * 1_000).toISOString();
+		// A skipped capture, then a publication that waited its round: 30 s + 25 s, both normal.
+		expect(captureDisplayState(vehicles, now + 70_000, at(30))).toBe('live');
+		// Without the publication time the same 70 s reads as three missed captures.
+		expect(captureDisplayState(vehicles, now + 70_000)).toBe('stale');
+		// Three captures missed before publication, or a publication three rounds old, is late.
+		expect(captureDisplayState(vehicles, now + 65_000, at(61))).toBe('stale');
+		expect(captureDisplayState(vehicles, now + 72_000, at(10))).toBe('stale');
+		expect(captureDisplayState(vehicles, now + 20_000, at(-10))).toBe('unknown');
 	});
 
 	it('uses reported zero values and leaves an unsupported schedule denominator unknown', () => {

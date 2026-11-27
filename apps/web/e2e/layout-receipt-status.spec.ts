@@ -16,12 +16,16 @@ for (const provider of ['stm', 'octranspo'])
 				locale === 'fr' ? 'Santé des données' : 'Data health',
 			);
 			const answer = main.locator('[data-slot="screen-answer"]');
-			await expect(answer).toContainText(locale === 'fr' ? 'flux sont à jour' : 'feeds are fresh');
+			await expect(answer).toContainText(
+				locale === 'fr' ? 'flux en direct sont à jour' : 'live feeds are fresh',
+			);
 			await page.addStyleTag({ content: 'html { font-size: 200%; }' });
 			await expect
 				.poll(() => page.evaluate(() => document.documentElement.scrollWidth))
 				.toBeLessThanOrEqual(390);
 			await page.reload();
-			await expect(answer).toContainText(locale === 'fr' ? 'flux sont à jour' : 'feeds are fresh');
+			await expect(answer).toContainText(
+				locale === 'fr' ? 'flux en direct sont à jour' : 'live feeds are fresh',
+			);
 			expect(oldRequests).toEqual([]);
 		});

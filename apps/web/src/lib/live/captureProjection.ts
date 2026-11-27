@@ -253,7 +253,9 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 		silent != null &&
 		silent <= scheduled &&
 		Object.values(snapshot.feeds).every(
-			(feed) => feed.family === 'alerts' || captureDisplayState(feed, now) === 'live',
+			(feed) =>
+				feed.family === 'alerts' ||
+				captureDisplayState(feed, now, snapshot.published_at) === 'live',
 		);
 	const status_dist = { on_time: 0, early: 0, late: 0, unknown: 0 };
 	const occupancy = { empty: 0, many_seats: 0, few_seats: 0, standing: 0, full: 0 };

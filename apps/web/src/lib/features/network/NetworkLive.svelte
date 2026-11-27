@@ -85,7 +85,11 @@
 		feed: CaptureSnapshot['feeds'][string] | undefined,
 		now: number,
 	) {
-		if (!snapshot?.vehicle_positions || captureDisplayState(feed, now) !== 'live') return null;
+		if (
+			!snapshot?.vehicle_positions ||
+			captureDisplayState(feed, now, snapshot.published_at) !== 'live'
+		)
+			return null;
 		return captureNetwork(snapshot, now);
 	}
 

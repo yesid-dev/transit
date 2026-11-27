@@ -72,7 +72,7 @@
 			age: captureAge(feed.captured_at, now, locale),
 			cadence: captureCadence(feed.expected_every_seconds, locale),
 			size: captureSize(feed.bytes, locale),
-			state: captureDisplayState(feed, now),
+			state: captureDisplayState(feed, now, snapshot?.published_at),
 		}));
 	}
 	type FeedRow = {
@@ -139,14 +139,14 @@
 							sentence={feeds.length
 								? late
 									? t(
-											`feeds are fresh. Late: ${late}.`,
-											`${singularCount(fresh.length, locale) ? 'flux est à jour' : 'flux sont à jour'}. En retard\u00a0: ${late}.`,
+											`live feeds are fresh. Late: ${late}.`,
+											`${singularCount(fresh.length, locale) ? 'flux en direct est à jour' : 'flux en direct sont à jour'}. En retard\u00a0: ${late}.`,
 										)
 									: t(
-											'feeds are fresh.',
+											'live feeds are fresh.',
 											singularCount(fresh.length, locale)
-												? 'flux est à jour.'
-												: 'flux sont à jour.',
+												? 'flux en direct est à jour.'
+												: 'flux en direct sont à jour.',
 										)
 								: labels.no_live_data}
 							time={stamp}

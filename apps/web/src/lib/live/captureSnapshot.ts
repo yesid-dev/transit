@@ -155,16 +155,28 @@ export function feedState(
 	return feed.read_failed ? 'refresh_unavailable' : 'live';
 }
 
-/** Public capture status uses the declared vehicle capture cadence, without delivery grace. */
+/**
+ * Public capture status uses the declared vehicle capture cadence, without delivery grace: a
+ * capture is late once three captures in a row are missing. With the snapshot's publication time,
+ * the two legs are judged apart, each against that limit: the capture when Transit published it,
+ * and the publication when the page received it. Their normal sum (a skipped capture, then a
+ * publication that waits for the next round) runs past three captures, so one limit over the whole
+ * age would call a healthy feed late.
+ */
 export function captureDisplayState(
 	feed: CaptureFeed | undefined,
 	now: number,
+	publishedAt?: string | null,
 ): ReturnType<typeof feedState> {
 	if (feed?.family !== 'vehicle_positions' || !feed.captured_at || !feed.expected_every_seconds)
 		return feedState(feed, now);
-	const age = now - Date.parse(feed.captured_at);
-	if (!Number.isFinite(age) || age < -5_000) return 'unknown';
-	if (age > 3 * feed.expected_every_seconds * 1_000) return 'stale';
+	const captured = Date.parse(feed.captured_at);
+	const published = publishedAt ? Date.parse(publishedAt) : Number.NaN;
+	const legs = Number.isFinite(published) ? [published - captured, now - published] : [];
+	const age = now - captured;
+	if (!Number.isFinite(age) || age < -5_000 || legs.some((leg) => leg < -5_000)) return 'unknown';
+	const limit = 3 * feed.expected_every_seconds * 1_000;
+	if (legs.length ? legs.some((leg) => leg > limit) : age > limit) return 'stale';
 	return feed.read_failed ? 'refresh_unavailable' : 'live';
 }
 

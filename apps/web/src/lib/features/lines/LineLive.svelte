@@ -152,7 +152,7 @@
 	refreshed: boolean,
 )}
 	{@const feed = captureFamily(snapshot, 'vehicle_positions')}
-	{@const state = captureDisplayState(feed, now)}
+	{@const state = captureDisplayState(feed, now, snapshot?.published_at)}
 	{@const rows = describeRows(snapshot, now)}
 	{@const live = rows !== null && (!!rows.length || knownLine)}
 	{@const counts = vehicleCounts(rows ?? [])}
