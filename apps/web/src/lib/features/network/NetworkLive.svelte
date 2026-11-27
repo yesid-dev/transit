@@ -15,6 +15,7 @@
 		countedUnit,
 		departureAt,
 		liveStampAge,
+		tickingLiveStamp,
 		rowSentence,
 		singularCount,
 	} from '#lib/site/presenter.ts';
@@ -144,9 +145,12 @@
 					};
 				})
 			: [];
-		const stamp = live
-			? { kind: 'live' as const, label: liveStampAge(captureAge, locale) }
-			: undefined;
+		const stamp =
+			live && feed?.captured_at
+				? tickingLiveStamp(new Date(feed.captured_at), locale, { now })
+				: live
+					? { kind: 'live' as const, label: liveStampAge(null, locale) }
+					: undefined;
 		return { snapshot, live, captureAge, silentTrips, bands, stamp };
 	}
 	type LiveView = ReturnType<typeof liveView>;

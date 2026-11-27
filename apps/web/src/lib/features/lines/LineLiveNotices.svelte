@@ -7,7 +7,7 @@
 	import {
 		agencyName,
 		alertsNotTrackedLine,
-		liveStampAge,
+		tickingLiveStamp,
 		noLiveStopNotices,
 		noticesForLines,
 		officialAlertsLabel,
@@ -54,10 +54,7 @@
 	const ready = $derived(tracked && feedState(feed, now) === 'live' && snapshot?.alerts != null);
 	const stamp = $derived(
 		ready && feed?.captured_at
-			? {
-					kind: 'live' as const,
-					label: liveStampAge(Math.max(0, now - Date.parse(feed.captured_at)) / 1000, locale),
-				}
+			? tickingLiveStamp(new Date(feed.captured_at), locale, { now })
 			: undefined,
 	);
 	const cards = $derived(ready ? liveAlertCards(snapshot?.alerts ?? [], now) : []);

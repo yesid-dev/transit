@@ -12,7 +12,7 @@
 		captureCadence,
 		captureFacts,
 		captureSize,
-		liveStampAge,
+		tickingLiveStamp,
 		recordRatio,
 	} from '#lib/site/presenter.ts';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
@@ -139,18 +139,12 @@
 					.flatMap((feed) => feed.captured_at ?? [])
 					.sort((left, right) => Date.parse(left) - Date.parse(right))
 					.at(-1)}
-				{@const publicationAge = snapshot
-					? Math.max(0, (now - Date.parse(snapshot.published_at)) / 1000)
-					: null}
 				{@const late = feeds
 					.filter((feed) => feed.state === 'stale')
 					.map((feed) => feed.name)
 					.join(', ')}
 				{@const stamp = snapshot
-					? {
-							kind: 'live' as const,
-							label: liveStampAge(publicationAge, locale),
-						}
+					? tickingLiveStamp(new Date(snapshot.published_at), locale, { now })
 					: undefined}
 				<RecordGroup>
 					<ScreenTitle title={t('Data health', 'Santé des données')} subtitle={subject} />

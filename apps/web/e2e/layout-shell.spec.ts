@@ -98,17 +98,29 @@ for (const [surface, path] of [
 
 // Owner ruling (16 November 2026): grouped menus read as organized columns from 768px and as one
 // column below it. Layout offsets, not client rects, so the menu's opening transform cannot skew them.
-async function menuRows(page: Page) {
+async function menuLayout(page: Page) {
 	return page.evaluate(() => {
-		const headings = [
-			...document.querySelectorAll<HTMLElement>('[role="dialog"] .menu-group-heading'),
-		];
-		const rows = new Map<number, number>();
-		for (const heading of headings) {
-			const top = Math.round(heading.offsetTop);
-			rows.set(top, (rows.get(top) ?? 0) + 1);
+		const rows = new Map<number, DOMRect[]>();
+		for (const group of document.querySelectorAll('[role="dialog"] [data-slot="menu-group"]')) {
+			const box = group.getBoundingClientRect();
+			const top = Math.round(box.top);
+			rows.set(top, [...(rows.get(top) ?? []), box]);
 		}
-		return [...rows.values()];
+		const viewport = document.documentElement.clientWidth;
+		const lines = [...document.querySelectorAll('[role="dialog"] .menu-label')].map((label) => {
+			const range = document.createRange();
+			range.selectNodeContents(label);
+			return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+		});
+		const row = [...rows.values()];
+		return {
+			counts: row.map((boxes) => boxes.length),
+			outer: row.map((boxes) => [boxes[0]!.left, viewport - boxes.at(-1)!.right]),
+			gaps: row.flatMap((boxes) =>
+				boxes.slice(1).map((box, index) => box.left - boxes[index]!.right),
+			),
+			lines,
+		};
 	});
 }
 
@@ -232,11 +244,24 @@ for (const locale of ['en', 'fr'] as const)
 			await menu.focus();
 			await page.keyboard.press('Enter');
 			await expect(page.getByRole('dialog', { name: copy.menu })).toBeVisible();
-			// One column below 768px; organized columns from 768px, four across at desktop width.
-			const rows = await menuRows(page);
-			expect(rows, `${width}px menu rows`).toEqual(
-				width < 768 ? [1, 1, 1, 1] : width === 768 ? [2, 2] : [4],
+			// One column below 768px. From 768px the kit centres the groups as content-sized columns with
+			// one gap and keeps every destination label on one line while its row has room, so a group
+			// moves to the next row instead: French needs 1280px for all four in one row.
+			const wrappedRows: Record<number, number[]> =
+				locale === 'fr' ? { 768: [2, 1, 1], 1206: [3, 1] } : { 768: [2, 2] };
+			const layout = await menuLayout(page);
+			expect(layout.counts, `${width}px menu rows`).toEqual(
+				width < 768 ? [1, 1, 1, 1] : (wrappedRows[width] ?? [4]),
 			);
+			if (width >= 768) {
+				expect(layout.lines, `${width}px menu labels on one line`).toEqual(
+					layout.lines.map(() => 1),
+				);
+				for (const [left, right] of layout.outer)
+					expect(Math.abs(left! - right!), `${width}px menu row centred`).toBeLessThanOrEqual(1);
+				for (const gap of layout.gaps)
+					expect(Math.abs(gap - layout.gaps[0]!), `${width}px menu gaps`).toBeLessThanOrEqual(1);
+			}
 			expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
 				width,
 			);
