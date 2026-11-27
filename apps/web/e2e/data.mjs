@@ -935,7 +935,7 @@ const server = createServer((request, response) => {
 				: reportFixture && reportDate === '2026-11-15'
 					? departureDailyEngine(url, undefined, true)
 					: ((reportFixture && question[2] === 'measure' ? rankingReferenceFixture(url) : null) ??
-						networkServiceFixture(url) ??
+						(question[2] === 'measure' && !finderFixture ? networkServiceFixture(url) : null) ??
 						(url.searchParams.get('measure') === 'accessible_trips'
 							? accessibilityEngine(url)
 							: isNetwork

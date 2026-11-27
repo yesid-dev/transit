@@ -66,23 +66,16 @@ for (const locale of PUBLISHED_LOCALES) {
 			await page.locator('.toc-drawer-item').first().click();
 			await expect(pill).toHaveAttribute('aria-expanded', 'false');
 		}
-		for (const path of [
-			'/alerts?frameMode=live',
-			'/rankings',
-			'/network',
-			'/receipt',
-			'/rankings?kind=departure',
+		// Keep the window that exposed the collision between the Network and Rankings fixtures.
+		const dates = 'recordFrom=2026-11-20&recordTo=2026-11-26';
+		for (const [path, surface] of [
+			['/alerts?frameMode=live', '[data-slot="screen-content"]'],
+			[`/rankings?${dates}`, '#ranking'],
+			[`/network?${dates}`, '[data-slot="screen-content"]'],
+			['/receipt?recordFrom=2026-11-26&recordTo=2026-11-26', 'article.daily-report'],
+			[`/rankings?kind=departure&${dates}`, '#ranking'],
 		]) {
 			await page.goto(localizeHref(path, locale));
-			const surface = path.startsWith('/alerts')
-				? '[data-slot="screen-content"]'
-				: path.startsWith('/rankings')
-					? '#ranking'
-					: path === '/receipt'
-						? 'article.daily-report'
-						: path === '/network'
-							? '[data-slot="screen-content"]'
-							: '[data-slot="detail-shell"]';
 			await expect(page.locator(surface)).toBeVisible();
 			await expect(page.getByTestId('toc-pill')).toHaveCount(0);
 		}

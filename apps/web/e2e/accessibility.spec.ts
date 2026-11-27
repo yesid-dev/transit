@@ -222,7 +222,10 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 				await page.setViewportSize({ width: 320, height: 900 });
 				// This project's storage state selects OC Transpo, whose fixture serves no index; the
 				// directory case runs against the STM fixtures the other listing cases use.
-				await page.goto(localizeHref(path, locale, 'stm'), { waitUntil: 'networkidle' });
+				await page.goto(
+					localizeHref(path, locale, 'stm') + '&recordFrom=2026-11-08&recordTo=2026-11-14',
+					{ waitUntil: 'networkidle' },
+				);
 				const rows = page.locator('main table tbody tr');
 				await expect(rows.first()).toBeVisible();
 				// Every published name stays whole at the narrowest width: no clipped or shredded word.
