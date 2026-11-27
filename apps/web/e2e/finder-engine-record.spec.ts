@@ -156,11 +156,9 @@ for (const locale of ['en', 'fr'] as const) {
 		const table = page.getByRole('table', {
 			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
 		});
-		const thin = table
-			.getByRole('row')
-			.filter({
-				hasText: fr ? 'Il en faut 20 pour classer une ligne.' : 'A line needs 20 to be ranked.',
-			});
+		const thin = table.getByRole('row').filter({
+			hasText: fr ? 'Il en faut 20 pour classer une ligne.' : 'A line needs 20 to be ranked.',
+		});
 		for (const column of ['onTime', 'late']) {
 			const share = thin.locator(`[data-column="${column}"]`);
 			await expect(share).toContainText(fr ? 'Trop peu pour juger' : 'Too few to judge');
