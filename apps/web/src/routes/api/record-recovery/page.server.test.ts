@@ -22,6 +22,31 @@ function ask(parameters: string) {
 
 const scope = { city: 'demo', from: '2026-11-17', to: '2026-11-23', visitorIp: '192.0.2.1' };
 
+it('re-reads only the selected Departure card and preserves its service day', async () => {
+	const params = new URLSearchParams({
+		...scope,
+		screen: 'departure',
+		id: JSON.stringify(['A/B', 1, '07:42:00']),
+		page: 'day=2026-11-19',
+		readings: 'sections.stops',
+	});
+	const response = await ask(params.toString());
+	expect(await response.json()).toEqual({ 'sections.stops': { kind: 'busy' } });
+	expect(engine.getRecordAnswer).toHaveBeenCalledExactlyOnceWith(
+		{
+			path: '/measure',
+			parameters: {
+				measure: 'punctuality',
+				group: 'stop',
+				line: 'A/B',
+				direction: '1',
+				departure: '07:42:00',
+			},
+		},
+		{ ...scope, from: '2026-11-19', to: '2026-11-19' },
+	);
+});
+
 it('reads only the missing Vehicle readings with the original cut and visitor', async () => {
 	const response = await ask(
 		'screen=vehicle&city=demo&id=101&from=2026-11-17&to=2026-11-23&readings=days',

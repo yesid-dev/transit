@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { tripReportCsv } from './tripReportCsv';
+	import { csvDataHref } from '#lib/utils/csvDownload.ts';
 	import { tripCopy } from './trips.copy';
 	import TripPredictionTable from './TripPredictionTable.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
@@ -33,17 +34,16 @@
 	const predictions = $derived(trip?.stops ?? []);
 	const csv = $derived(
 		trip
-			? 'data:text/csv;charset=utf-8,' +
-					encodeURIComponent(
-						tripReportCsv({
-							provider,
-							tripId: id,
-							trip,
-							report,
-							timeZone,
-							stopNames,
-						}),
-					)
+			? csvDataHref(
+					tripReportCsv({
+						provider,
+						tripId: id,
+						trip,
+						report,
+						timeZone,
+						stopNames,
+					}),
+				)
 			: null,
 	);
 </script>

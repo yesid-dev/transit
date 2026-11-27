@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { csvDataText, csvText } from '../../../tests/csv.ts';
 import { emptyFilterState } from '#lib/filters/index.ts';
 import type { Vehicle, VehiclesFile } from '#lib/v1/schemas/index.ts';
 import { buildMapReportView, mapReportFilterTokens } from './mapReports';
@@ -59,7 +60,8 @@ function capturedCsv(vehicles: Vehicle[], overrides: Record<string, unknown> = {
 }
 
 /** A minimal RFC 4180 reader, so the assertions run on parsed bytes, not the writer's intent. */
-function parse(csv: string): string[][] {
+function parse(body: string): string[][] {
+	const csv = csvText(body);
 	const rows: string[][] = [];
 	let row: string[] = [];
 	let cell = '';
@@ -291,7 +293,7 @@ describe('map report CSV', () => {
 		});
 		expect(file.filename).toBe('map-reports-stm-montr-al-en.csv');
 		expect(file.filename).not.toContain('/');
-		expect(file.href.startsWith('data:text/csv;charset=utf-8,')).toBe(true);
+		expect(csvDataText(file.href)).toBe(file.csv);
 	});
 
 	it('exports exactly the captured model even if the live source later changes', () => {

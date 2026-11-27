@@ -8,13 +8,23 @@ import { fixAgeS, isVehicleStale, STALE_CUTOFF_S } from '#lib/components/map/veh
 import { departureHref } from '#lib/features/record/departureIdentity.ts';
 import { localizeHref } from '#lib/i18n/index.ts';
 import { vehicleLiveHref } from '#lib/features/vehicles/vehicleLinks.ts';
-import { query } from '#lib/server/engine.ts';
+import { query, type EngineResult } from '#lib/server/engine.ts';
 import { cityQuestion } from '#lib/server/engineQuestion.ts';
+import { validEntityId } from '#lib/server/entityIdentity.ts';
 import type { PageServerLoad } from './$types';
+
+function currentAnswer<T extends { city: string }>(result: EngineResult<T> | null, city: string) {
+	return result?.kind === 'answer' &&
+		result.answer.city === city &&
+		!result.lastGood &&
+		!result.cacheStale
+		? result.answer
+		: null;
+}
 
 export const load: PageServerLoad = async ({ params, parent, url, request, setHeaders }) => {
 	const id = params.id;
-	if (!id || id.length > 256 || id !== id.trim() || /[^\S ]|\p{C}/u.test(id)) error(404);
+	if (!validEntityId(id)) error(404);
 	const { providerId: city, lang, provider, discoveryError } = await parent();
 	if (discoveryError) error(503);
 	if (!provider) error(404);
@@ -26,16 +36,17 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 		provider.inputs.vehicle_positions
 			? query(cityQuestion(city, '/live'), captureSnapshotSchema, ip)
 			: null,
-		query(tripQuestion, captureTripScopeSchema, ip),
+		provider.inputs.trip_updates ? query(tripQuestion, captureTripScopeSchema, ip) : null,
 	]);
-	if (positions?.kind === 'answer' && positions.answer.city === city && !positions.lastGood) {
-		const now = Date.now();
-		const feed = Object.values(positions.answer.feeds).find(
+	const now = Date.now();
+	const location = currentAnswer(positions, city);
+	if (location) {
+		const feed = Object.values(location.feeds).find(
 			(entry) => entry.family === 'vehicle_positions',
 		);
 		const captured = feed?.captured_at;
-		if (captured && captureDisplayState(feed, now, positions.answer.published_at) === 'live') {
-			const vehicle = positions.answer.vehicle_positions?.find(
+		if (captured && captureDisplayState(feed, now, location.published_at) === 'live') {
+			const vehicle = location.vehicle_positions?.find(
 				(row) =>
 					row.trip_id === id &&
 					!isVehicleStale(
@@ -59,8 +70,14 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 		positions?.kind === 'answer' && positions.answer.city === city
 			? positions.answer.vehicle_positions?.find((row) => row.trip_id === id && row.route_id)
 			: undefined;
-	if (trips.kind === 'answer' && trips.answer.city === city) {
-		const trip = trips.answer.trip_updates.find((row) => row.trip_id === id);
+	const updates = currentAnswer(trips, city);
+	if (
+		updates?.feed.family === 'trip_updates' &&
+		captureDisplayState(updates.feed, now) === 'live'
+	) {
+		const trip = updates.trip_updates.find((row) => row.trip_id === id);
+		// GTFS-Realtime trip relationships CANCELED and DELETED.
+		if (trip?.relationship === 3 || trip?.relationship === 7) ended(trip.route_id);
 		if (trip?.route_id && trip.start_time) {
 			const href = departureHref(
 				url,
@@ -74,9 +91,8 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 			);
 			if (href) redirect(307, href);
 		}
-		ended(trip?.route_id ?? lastPosition?.route_id);
+		if (!trip) ended(lastPosition?.route_id);
 	}
-	if (!provider.inputs.trip_updates && !provider.inputs.vehicle_positions) error(404);
 	error(
 		503,
 		lang === 'fr'

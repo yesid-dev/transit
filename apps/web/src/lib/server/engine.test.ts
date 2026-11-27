@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { csvText } from '../../tests/csv.ts';
 import { measure, period, ranking, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import {
 	getCaptureResponse,
@@ -257,10 +258,10 @@ describe('overview engine requests', () => {
 		fetcher.mockResolvedValueOnce(
 			new Response(null, {
 				status: 503,
-				headers: { 'retry-after': '30' },
+				headers: { 'retry-after': '600' },
 			}),
 		);
-		expect(await getMeasure('on_time', dates)).toEqual({ kind: 'busy' });
+		expect(await getMeasure('on_time', dates)).toEqual({ kind: 'busy', retryAfterMs: 60_000 });
 		fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
 		expect(await getMeasure('on_time', dates)).toEqual({ kind: 'unreachable' });
 	});
@@ -300,7 +301,7 @@ describe('overview engine requests', () => {
 		);
 		const response = await getRecordCsv(query, scope, 'fr');
 		expect(response?.headers.get('x-transit-answer')).toBe('last-good');
-		expect(await response?.text()).toBe('Mesure,Valeur');
+		expect(csvText(await response!.text())).toBe('Mesure,Valeur');
 		expect(fetcher.mock.calls[1]?.[0].url).toBe(
 			'https://data.yesid.dev/v2/other-city/measure?from=2026-11-08&to=2026-11-14&measure=on_time&stop=S+1&group=line&format=csv&lang=fr',
 		);

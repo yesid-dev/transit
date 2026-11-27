@@ -1,3 +1,4 @@
+import { csvText } from '../src/tests/csv';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { join } from 'node:path';
@@ -171,7 +172,9 @@ for (const provider of ['stm', 'octranspo'] as const) {
 					await main.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
 					const csv = await page.getByRole('dialog').getByRole('link').first().getAttribute('href');
 					const response = await request.get(csv!);
-					expect(await response.text()).toMatch(fr ? /^Rang,Type,Identifiant/ : /^Rank,Kind,ID/);
+					expect(csvText(await response.body())).toMatch(
+						fr ? /^Rang,Type,Identifiant/u : /^Rank,Kind,ID/u,
+					);
 				}
 			});
 		}

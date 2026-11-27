@@ -1,6 +1,7 @@
 import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.ts';
 import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
 import { readingFilter, type Complete } from './readingFilter.ts';
+import type { EntityIdentity } from './entityIdentity.ts';
 
 export const stopRecordQueries = {
 	punctuality: { measure: 'punctuality' },
@@ -24,21 +25,25 @@ export function stopRecordQuery(section: StopSection, stop: string): RecordQuery
 	};
 }
 
-export type StopIdentity = 'available' | 'missing' | 'unconfirmed';
-
 function readStopRecord(
 	scope: EnginePeriod,
 	stop: string,
 	only?: ReadonlySet<string>,
-	identity?: Promise<StopIdentity>,
+	identity?: Promise<EntityIdentity>,
 ) {
 	const { from, to, city } = scope;
 	const include = readingFilter(only);
+	const ask = (query: RecordQuery) =>
+		identity
+			? identity.then((state) =>
+					state === 'available'
+						? getRecordAnswer(query, scope)
+						: ({ kind: 'unreachable' } as const),
+				)
+			: getRecordAnswer(query, scope);
 	// The engine already computes both delay percentiles alongside the three bands.
 	const punctuality =
-		include('punctuality') || include('delay')
-			? getRecordAnswer(stopRecordQuery('punctuality', stop), scope)
-			: null;
+		include('punctuality') || include('delay') ? ask(stopRecordQuery('punctuality', stop)) : null;
 	const alerts = stopRecordQuery('alerts', stop);
 	if (alertDetailsAllowed(scope)) alerts.parameters.alert_details = '1';
 	const sections: StopSection[] = [
@@ -51,25 +56,17 @@ function readStopRecord(
 		'accessibility',
 		'alerts',
 	];
-	const measure = (parameters: RecordQuery['parameters']) =>
-		getRecordAnswer({ path: '/measure', parameters }, scope);
-	const delivery = () => measure({ measure: 'service_delivered', stop });
+	const measure = (parameters: RecordQuery['parameters']) => ask({ path: '/measure', parameters });
 	return {
 		period: { from, to },
 		city,
-		delivery: include('delivery')
-			? identity
-				? identity.then((state) =>
-						state === 'available' ? delivery() : ({ kind: 'unreachable' } as const),
-					)
-				: delivery()
-			: undefined,
+		delivery: include('delivery') ? measure({ measure: 'service_delivered', stop }) : undefined,
 		sections: sections.filter(include).map((section) => ({
 			section,
 			answer:
 				(section === 'punctuality' || section === 'delay') && punctuality
 					? punctuality
-					: getRecordAnswer(section === 'alerts' ? alerts : stopRecordQuery(section, stop), scope),
+					: ask(section === 'alerts' ? alerts : stopRecordQuery(section, stop)),
 		})),
 		// Keep the existing export queries and stream the display cuts independently.
 		grid: include('grid') ? measure({ measure: 'late', group: 'weekday_hour', stop }) : undefined,
@@ -93,13 +90,13 @@ export function loadStopRecord(
 	scope: EnginePeriod,
 	stop: string,
 	only?: undefined,
-	identity?: Promise<StopIdentity>,
+	identity?: Promise<EntityIdentity>,
 ): StopRecord;
 export function loadStopRecord(
 	scope: EnginePeriod,
 	stop: string,
 	only?: ReadonlySet<string>,
-	identity?: Promise<StopIdentity>,
+	identity?: Promise<EntityIdentity>,
 ) {
 	return readStopRecord(scope, stop, only, identity);
 }

@@ -28,6 +28,27 @@ test("separates compact answers from the full method in both cache keys and upst
   assert.throws(() => question("&format=csv&include_method=0"), /requires JSON/);
 });
 
+test("cache-only vehicle identity reads neither the catalog nor the engine", async (t) => {
+  const vehicles = [{ id: "101" }];
+  const f = fixture(t, () => Response.json({ schedule: { routes: [] }, vehicles, vehicle_state: "ready" }));
+  const path = "/v2/demo/search-index";
+  const cached = path + "?cache=only";
+  assert.equal((await f.fetch(cached)).status, 504);
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.cityRequests.length, 0);
+  assert.equal(f.visitors.length, 0);
+  assert.equal((await f.fetch(path)).status, 200);
+  const fromEdge = await f.fetch(cached, {}, "GET", true);
+  assert.equal(fromEdge.headers.get("cache-status"), "Transit; hit");
+  assert.deepEqual(await fromEdge.json(), { vehicles, vehicle_state: "ready" });
+  f.answers.clear();
+  delete f.env.ENGINE;
+  assert.deepEqual(await (await f.fetch(cached)).json(), { vehicles, vehicle_state: "ready" });
+  assert.equal((await f.fetch("/v2/private-city/search-index?cache=only")).status, 404);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.cityRequests.length, 1);
+});
+
 test("passes schedule map line sets upstream and caches each cut independently", async (t) => {
   const base = "/v2/demo/schedule-map";
   const requestFor = (lines) => base + "?" + new URLSearchParams({ lines: JSON.stringify(lines) });
@@ -462,6 +483,14 @@ test("preserves a network corridor refusal from an engine without complete clean
   );
   assert.equal(result.status, 409);
   assert.deepEqual(await result.json(), payload);
+});
+
+test("keeps an invalid network corridor question a client error", async (t) => {
+  const f = fixture(t, () => Response.json({ message: "invalid date range" }, { status: 400 }));
+  const result = await f.fetch(
+    "/v2/demo/measure?from=2026-10-17&to=2026-10-23&view=map&measure=mean_time_lost&group=segment",
+  );
+  assert.equal(result.status, 400);
 });
 
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {

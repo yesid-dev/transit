@@ -120,6 +120,27 @@
 		return carryFrameState(localizeHref(path, lang, city), pinned);
 	}
 	const answers = $derived(new Map(data.sections.map(({ section, answer }) => [section, answer])));
+	let settledReport = $state.raw<typeof data>();
+	$effect(() => {
+		const report = data;
+		let active = true;
+		void Promise.allSettled(report.sections.map(({ answer }) => answer)).then(async (results) => {
+			await report.directory?.catch(() => {});
+			if (
+				active &&
+				!results.some(
+					(result) =>
+						result.status === 'fulfilled' &&
+						(result.value.kind === 'busy' || result.value.kind === 'timeout'),
+				)
+			)
+				settledReport = report;
+		});
+		return () => {
+			active = false;
+		};
+	});
+	const printReady = $derived(settledReport === data);
 	const files = $derived(
 		data.sections
 			.filter(({ section }) => section !== 'messages' || !data.messagesLimited)
@@ -345,10 +366,16 @@
 			{citation}
 			{figures}
 			print={() => window.print()}
-			printNote={t(
-				'A one-day report prints on one sheet.',
-				'Le rapport d’une journée tient sur une feuille.',
-			)}
+			printDisabled={!printReady}
+			printNote={!printReady
+				? t(
+						'Printing is available when all sections have loaded.',
+						'L’impression sera possible lorsque toutes les sections seront chargées.',
+					)
+				: t(
+						'A one-day report prints on one sheet.',
+						'Le rapport d’une journée tient sur une feuille.',
+					)}
 		/>
 	</div>
 {/snippet}
@@ -531,6 +558,14 @@
 {/snippet}
 
 <Surface class="print:py-0!">
+	{#if period && !printReady}
+		<p class="hidden print:block">
+			{t(
+				'Some sections are still loading. This copy includes only the readings available so far.',
+				'Certaines sections sont encore en cours de chargement. Cette copie contient seulement les mesures déjà disponibles.',
+			)}
+		</p>
+	{/if}
 	<article class="daily-report min-w-0">
 		<RecordScreen>
 			{#if !period}

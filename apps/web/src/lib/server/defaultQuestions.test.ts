@@ -162,9 +162,9 @@ it('warms the same ranges and questions overnight and in the afternoon on the sa
 });
 
 it.each([
-	[400, { message: 'unknown parameter' }],
-	[409, { reason: 'segment_runs_version_required' }],
-])('asks the visitor to choose a line when the engine returns %i', async (status, payload) => {
+	[400, { message: 'invalid dates' }, 'invalid_request'],
+	[409, { reason: 'segment_runs_version_required' }, 'choose_line'],
+] as const)('preserves the specific map answer for status %i', async (status, payload, state) => {
 	fetcher.mockResolvedValueOnce(Response.json(payload, { status }));
 	const url = new URL(
 		'https://example.test/api/map-record?city=fixture&from=2026-11-15&to=2026-11-21&layer=corridors',
@@ -172,8 +172,8 @@ it.each([
 	const response = await mapRecord({ url, request: new Request(url) } as Parameters<
 		typeof mapRecord
 	>[0]);
-	expect(response.status).toBe(409);
-	expect(await response.json()).toEqual({ state: 'choose_line' });
+	expect(response.status).toBe(status);
+	expect(await response.json()).toEqual({ state });
 	expect(new URL(fetcher.mock.calls.at(-1)![0].url).searchParams.get('line')).toBeNull();
 });
 

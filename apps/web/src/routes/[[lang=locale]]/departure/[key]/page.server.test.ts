@@ -17,7 +17,21 @@ function event(search: string, id = key) {
 	} as unknown as Parameters<typeof load>[0];
 }
 
-beforeEach(() => getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unconfigured' }));
+const archive = (present: boolean) => ({
+	kind: 'answer',
+	answer: {
+		cells: present ? [{ key: { direction: 1, departure: '07:42:00' } }] : [],
+		evidence: { days_included: ['2026-11-18'] },
+	},
+});
+
+beforeEach(() => {
+	getRecordAnswer
+		.mockReset()
+		.mockImplementation(({ parameters }) =>
+			Promise.resolve(parameters.group === 'departure' ? archive(true) : { kind: 'unconfigured' }),
+		);
+});
 
 it('starts all Record sections independently and limits the stop sequence to the chosen day', async () => {
 	const result = await load(event('recordFrom=2026-11-16&recordTo=2026-11-19&day=2026-11-18'));
@@ -29,11 +43,9 @@ it('starts all Record sections independently and limits the stop sequence to the
 		'missed',
 	]);
 	expect(
-		getRecordAnswer.mock.calls.map(([query, period]) => [
-			query.parameters.group,
-			period.from,
-			period.to,
-		]),
+		getRecordAnswer.mock.calls
+			.slice(1)
+			.map(([query, period]) => [query.parameters.group, period.from, period.to]),
 	).toEqual([
 		['day', '2026-11-16', '2026-11-19'],
 		[undefined, '2026-11-16', '2026-11-19'],
@@ -71,5 +83,17 @@ it('keeps Live available without fetching the historical sections', async () => 
 		sections: [],
 		liveTrips: null,
 	});
-	expect(getRecordAnswer).not.toHaveBeenCalled();
+	expect(getRecordAnswer).toHaveBeenCalledOnce();
+	expect(getRecordAnswer.mock.calls[0][0].parameters.group).toBe('departure');
+});
+
+it('answers 404 for a departure absent from the archive and 503 for an unavailable identity', async () => {
+	const search = 'recordFrom=2026-11-16&recordTo=2026-11-19';
+	getRecordAnswer.mockResolvedValueOnce(archive(false));
+	await expect(load(event(search))).rejects.toMatchObject({
+		status: 404,
+		body: { code: 'DEPARTURE_NOT_FOUND' },
+	});
+	getRecordAnswer.mockResolvedValueOnce({ kind: 'timeout' });
+	await expect(load(event(search))).rejects.toMatchObject({ status: 503 });
 });

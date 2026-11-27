@@ -58,6 +58,15 @@ export function lineEngine(url) {
 		state_text: { en: 'Measured', fr: 'Mesuré' },
 		evidence: { ...sample, days_included: [from] },
 	});
+	if (measure === 'on_time' && group === 'line') {
+		return {
+			body: {
+				cells: line === 'unknown-entity' ? [] : [cell({ line })],
+				evidence,
+				coverage_note,
+			},
+		};
+	}
 	const schedulePeriods = named
 		? namedSchedulePeriods(line)
 		: [

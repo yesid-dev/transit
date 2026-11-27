@@ -1,4 +1,5 @@
 import type { MapReportModel, MapReportRow } from './mapReports';
+import { csvDataHref } from '#lib/utils/csvDownload.ts';
 
 /**
  * Fixed export contract, in this order. Metadata repeats on every row so one row can be read
@@ -132,7 +133,7 @@ export function mapReportsCsv(model: MapReportModel): MapReportCsv {
 	].join('\r\n');
 	return {
 		csv,
-		href: 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv),
+		href: csvDataHref(csv),
 		filename: `map-reports-${providerToken(model.providerId)}-${model.locale}.csv`,
 	};
 }

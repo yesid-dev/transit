@@ -15,7 +15,11 @@ export function vehicleEngine(url) {
 		!requestedRecoveryFixtures.has(vehicle)
 	) {
 		requestedRecoveryFixtures.add(vehicle);
-		return { status: 503, body: {}, headers: { 'retry-after': '1' } };
+		return {
+			status: 503,
+			body: {},
+			headers: { 'retry-after': vehicle.startsWith('recovery-minute-') ? '60' : '1' },
+		};
 	}
 	if (from === '2026-11-21') return { status: 503, body: {} };
 	const fr = get('lang') === 'fr';
@@ -77,6 +81,13 @@ export function vehicleEngine(url) {
 		from === '2026-11-10' ? 'not_tracked' : 'measured',
 	);
 	if (group === 'vehicle') {
+		if (vehicle !== null)
+			return {
+				body: {
+					...envelope,
+					cells: vehicle === 'unknown-entity' ? [] : [{ key: { vehicle }, ...service }],
+				},
+			};
 		const supported = from !== '2026-11-10';
 		const state = supported ? 'measured' : 'not_tracked';
 		return {

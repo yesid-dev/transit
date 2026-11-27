@@ -2,6 +2,33 @@ import { expect, test } from '@playwright/test';
 
 test.use({ bypassCSP: true });
 
+test('Vehicle Record waits for the proxy’s 60-second Retry-After', async ({ page }, info) => {
+	const id = `recovery-minute-${info.project.name}-${info.repeatEachIndex}`;
+	await page.clock.install();
+	const requests: string[] = [];
+	page.on('request', (request) => {
+		const url = new URL(request.url());
+		if (url.pathname === '/api/record-recovery')
+			requests.push(url.searchParams.get('readings') ?? '');
+	});
+	await page.goto(
+		`/vehicle/${id}?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-16`,
+	);
+	await expect(page.getByText(/^Next attempt available at/)).toBeVisible();
+	await page.clock.fastForward(30_000);
+	expect(requests).toEqual([]);
+	await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+	const response = page.waitForResponse(
+		(res) => new URL(res.url()).pathname === '/api/record-recovery',
+	);
+	await page.clock.fastForward(30_000);
+	expect((await response).ok()).toBe(true);
+	expect(requests).toEqual(['sections.reporting']);
+	await expect(page.getByRole('article', { name: 'Stopped reporting' })).toContainText(
+		'about 0.2 an hour',
+	);
+});
+
 for (const locale of ['en', 'fr']) {
 	test(`${locale} Vehicle recovery keeps the completed control in place`, async ({
 		page,

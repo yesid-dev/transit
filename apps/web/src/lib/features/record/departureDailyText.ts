@@ -126,6 +126,20 @@ export function shortDay(day: string, locale: Locale) {
 	return dateRange({ from: day, to: day }, locale);
 }
 
+export function unscheduledDepartureDay(day: string, locale: Locale) {
+	const date = new Intl.DateTimeFormat(locale === 'fr' ? 'fr-CA' : 'en-GB', {
+		weekday: 'long',
+		day: 'numeric',
+		month: 'long',
+		timeZone: 'UTC',
+	}).format(new Date(`${day}T00:00:00Z`));
+	return choose(
+		locale,
+		`This departure is not scheduled on ${date}.`,
+		`Ce départ n’est pas prévu le ${date}.`,
+	);
+}
+
 /**
  * The departure's answer: the late share of its observed stop events, pooled over
  * the same observed days as departureDays. A day late at one stop of forty weighs

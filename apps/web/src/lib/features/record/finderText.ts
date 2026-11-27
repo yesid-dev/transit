@@ -2,6 +2,7 @@ import type { Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, FinderCell, FinderSeries, RecordEvidence } from '#lib/server/engine.ts';
 import { frameHref } from '#lib/site/frameState.ts';
 import { csvCell } from '#lib/features/lines/reliability/recordCsv.ts';
+import { csvDataHref } from '#lib/utils/csvDownload.ts';
 import {
 	choose,
 	emptyRecord,
@@ -108,5 +109,5 @@ export function finderCsv(
 	const csv = [[...headers, ...columns], ...rows.map((row) => [...row, ...evidence])]
 		.map((row) => row.map(csvCell).join(','))
 		.join('\r\n');
-	return 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+	return csvDataHref(csv);
 }

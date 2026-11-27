@@ -61,9 +61,12 @@ it.each(['live', 'record'] as const)(
 		}
 		if (data?.view === 'record' && data.record) {
 			await expect(data.record.methods).resolves.toEqual({ kind: 'answer', answer: [] });
-			await expect(data.record.health).resolves.toEqual({ kind: 'busy' });
-			await expect(data.record.coverage).resolves.toEqual({ kind: 'busy' });
-			await expect(data.record.deliveryDays).resolves.toEqual({ kind: 'busy' });
+			await expect(data.record.health).resolves.toEqual({ kind: 'busy', retryAfterMs: 30_000 });
+			await expect(data.record.coverage).resolves.toEqual({ kind: 'busy', retryAfterMs: 30_000 });
+			await expect(data.record.deliveryDays).resolves.toEqual({
+				kind: 'busy',
+				retryAfterMs: 30_000,
+			});
 			await Promise.all([data.record.accessibility, ...Object.values(data.record.scorecard)]);
 			// Alerts are not collected for this fixture, so no alert question is asked.
 			expect(data.record.alertEffects).toBeNull();

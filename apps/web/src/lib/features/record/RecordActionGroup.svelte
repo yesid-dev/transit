@@ -17,6 +17,7 @@
 		citation,
 		figures,
 		print,
+		printDisabled = false,
 		printNote,
 	}: {
 		locale: Locale;
@@ -36,6 +37,7 @@
 		/** One CiteBlock per card, under "Cite one figure". */
 		figures?: Snippet;
 		print?: () => void;
+		printDisabled?: boolean;
 		/** What printing gives, read with the Print button and shown on hover. */
 		printNote?: string;
 	} = $props();
@@ -236,6 +238,7 @@
 				size="cta-sm"
 				class="min-h-11"
 				onclick={print}
+				disabled={printDisabled}
 				title={printNote}
 				aria-describedby={printNote ? printNoteId : undefined}>{fr ? 'Imprimer' : 'Print'}</Button
 			>{#if printNote}<span id={printNoteId} class="sr-only">{printNote}</span>{/if}{/if}

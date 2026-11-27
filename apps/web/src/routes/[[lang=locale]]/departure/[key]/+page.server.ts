@@ -4,12 +4,17 @@ import type { PageServerLoad } from './$types';
 import { departureFromKey, isDepartureTripId } from '#lib/features/record/departureIdentity.ts';
 import {
 	departureDay,
+	identifyDeparture,
 	loadDepartureLive,
 	loadDepartureRecord,
 	publishedDepartureTrip,
 } from '#lib/server/departureDailyRecord.ts';
 import { scheduledClock } from '#lib/site/presenter.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
+import { detailNotFoundCopy } from '#lib/site/errorPage.ts';
+import { localizeHref } from '#lib/i18n/index.ts';
+import { validEntityId } from '#lib/server/entityIdentity.ts';
+import { captureDisplayState, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { providerId, lang, v1, schedule, provider } = await event.parent();
@@ -18,12 +23,9 @@ export const load: PageServerLoad = async (event) => {
 	const onlyTrip =
 		event.params.key === 'trip' && isDepartureTripId(requestedTrip) ? requestedTrip : null;
 	if (!identity && !onlyTrip)
-		error(
-			404,
-			lang === 'fr'
-				? 'Ce départ ne figure pas à l’horaire.'
-				: 'This departure is not in the timetable.',
-		);
+		error(404, detailNotFoundCopy.DEPARTURE_NOT_FOUND[lang].heading, {
+			code: 'DEPARTURE_NOT_FOUND',
+		});
 	const clock = frameClock(provider);
 	const { today } = clock;
 	const { period, mode } = parseAnswerFrameState(event.url.searchParams, clock);
@@ -34,6 +36,53 @@ export const load: PageServerLoad = async (event) => {
 		? schedule?.routes.find(({ id }) => id === identity.line)?.short || identity.line
 		: null;
 	const time = identity ? scheduledClock(identity.departure, lang) : null;
+	const unavailable = () =>
+		error(
+			503,
+			lang === 'fr'
+				? 'Ce départ est temporairement indisponible.'
+				: 'This departure is temporarily unavailable.',
+		);
+	if (onlyTrip) {
+		if (mode !== 'live')
+			error(404, detailNotFoundCopy.DEPARTURE_NOT_FOUND[lang].heading, {
+				code: 'DEPARTURE_NOT_FOUND',
+			});
+		const report = await fetchCaptureTripScope(
+			providerId,
+			{ kind: 'trip', id: onlyTrip },
+			event.request.signal,
+			event.fetch,
+		).catch(() => null);
+		if (!report || captureDisplayState(report.feed, Date.now()) !== 'live') return unavailable();
+		if (!report.trip_updates.some(({ trip_id }) => trip_id === onlyTrip))
+			error(404, detailNotFoundCopy.DEPARTURE_NOT_FOUND[lang].heading, {
+				code: 'DEPARTURE_NOT_FOUND',
+			});
+	}
+	if (identity) {
+		const state = validEntityId(identity.line)
+			? await identifyDeparture(identity, clock, scope)
+			: 'missing';
+		const liveMatch =
+			state !== 'available' &&
+			mode === 'live' &&
+			requestedTrip &&
+			v1 &&
+			(await publishedDepartureTrip(providerId, requestedTrip, identity, visitorIp));
+		if (state === 'missing' && !liveMatch)
+			error(
+				404,
+				lang === 'fr'
+					? `Aucun départ de ${time} n’est prévu sur la ligne ${line}.`
+					: `No ${time} departure is scheduled on line ${line}.`,
+				{
+					code: 'DEPARTURE_NOT_FOUND',
+					line: localizeHref(`/lines/${encodeURIComponent(identity.line)}`, lang, providerId),
+				},
+			);
+		if (state === 'unconfirmed' && !liveMatch) return unavailable();
+	}
 	return {
 		identity,
 		seoTitle: identity

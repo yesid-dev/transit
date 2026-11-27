@@ -497,8 +497,8 @@ const server = createServer((request, response) => {
 					city,
 					feed: {
 						...feed('trip_updates', 90),
-						captured_at: generated_utc,
-						source_at: generated_utc,
+						captured_at: tripScope ? timestamp : generated_utc,
+						source_at: tripScope ? timestamp : generated_utc,
 					},
 					trip_updates,
 				}),
@@ -585,8 +585,17 @@ const server = createServer((request, response) => {
 		return;
 	}
 	const search = /^\/v2\/([^/]+)\/(search-index|schedule-index)$/.exec(url.pathname);
-	if (search && !url.search) {
+	if (search && (!url.search || (search[2] === 'search-index' && url.search === '?cache=only'))) {
 		const [, city, kind] = search;
+		const vehicles = [{ id: '40061' }, ...(city === 'octranspo' ? [{ id: '1' }] : [])];
+		if (url.search) {
+			response.writeHead(200, {
+				'content-type': 'application/json',
+				'cache-status': 'Transit; hit',
+			});
+			response.end(JSON.stringify({ vehicles, vehicle_state: 'ready' }));
+			return;
+		}
 		const data = JSON.parse(
 			files[`/v1/${city}/static/routes_index.json`] ?? read('routes-index.json'),
 		);
@@ -814,9 +823,7 @@ const server = createServer((request, response) => {
 							},
 						],
 					},
-					...(kind === 'search-index'
-						? { vehicles: [{ id: '40061' }], vehicle_state: 'ready' }
-						: {}),
+					...(kind === 'search-index' ? { vehicles, vehicle_state: 'ready' } : {}),
 				}),
 			),
 		);
@@ -1001,9 +1008,15 @@ const server = createServer((request, response) => {
 			return;
 		}
 		const { hold, body, status = 200, headers = {} } = result;
+		const richMessageHold =
+			reportFixture &&
+			reportDate === '2026-11-15' &&
+			url.searchParams.get('measure') === 'alert_counts'
+				? dailyMessageHold
+				: undefined;
 		const heldBy = holdStopSearch
 			? scope
-			: (activeTestHold(request) ?? (hold === true ? 'overview' : hold));
+			: (richMessageHold ?? activeTestHold(request) ?? (hold === true ? 'overview' : hold));
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		sendFixtureResponse(response, heldBy, () => response.end(JSON.stringify(body)));
 		return;

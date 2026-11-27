@@ -318,12 +318,16 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
     if (!publicCities?.has(question.city)) return message(404, "not found");
     return serveLive(env, ctx, url.origin, question, visitorIp);
   }
+  const cache = globalThis.caches?.default;
+  if (question.cacheOnly) {
+    if (!publicCities?.has(question.city)) return message(404, "not found");
+    return cachedVehicleIndex(env, cache, url.origin, question);
+  }
 
   if (!env.ENGINE || !env.TRANSIT1_ENGINE_ACCESS_TOKEN) {
     return message(503, "engine not configured");
   }
 
-  const cache = globalThis.caches?.default;
   let admission;
   const authorize = () => admission ??= admit(env, visitorIp);
 
@@ -409,13 +413,14 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       }
     }
     if (response.status === 400) {
-      if (question.networkCorridors) {
+      const error = await response.json().catch(() => null);
+      if (question.networkCorridors && error?.message === "unknown parameter") {
         return Response.json({ reason: "network_corridors_unsupported" }, {
           status: 409, headers: PUBLIC_HEADERS,
         });
       }
-      if (question.map) return lastGood(env, key);
-      const error = await response.json();
+      if (question.map && !question.networkCorridors && error?.message === "unknown parameter")
+        return lastGood(env, key);
       if (question.delayDistribution && error?.message === "unknown measure") {
         return Response.json({ reason: "delay_distribution_unsupported", message: "engine unavailable" }, {
           status: 409, headers: PUBLIC_HEADERS,
@@ -423,7 +428,12 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       }
       return publicEngineError(error);
     }
-    if (!response.ok) return lastGood(env, key);
+    if (!response.ok) {
+      await response.body?.cancel();
+      if (question.csv && [404, 409, 422].includes(response.status))
+        return message(response.status, "invalid export selection");
+      return lastGood(env, key);
+    }
 
     contentType = response.headers.get("content-type");
     const mime = contentType?.split(";")[0].trim().toLowerCase();
@@ -457,11 +467,31 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
   return publicAnswer(body, contentType, { source: "engine", timing });
 }
 
+const indexCacheKey = (origin, key) => new Request(`${origin}/__transit_question_cache/v2/index${key}`);
+const indexStoreKey = (key) => hash(`index${key}`);
+
+async function cachedVehicleIndex(env, cache, origin, question) {
+  try {
+    const cached = await cacheMatch(cache, indexCacheKey(origin, question.key));
+    const saved = !cached && env.QUESTION_LAST_GOOD && await savedAnswer(env, await indexStoreKey(question.key));
+    const freshUntil = cached ? Number(cached.headers.get(FRESH_UNTIL)) : saved?.metadata?.freshUntil;
+    const body = cached ? await cached.json() : saved?.value && JSON.parse(saved.value);
+    if (body && typeof body.vehicle_state === "string" &&
+        (body.vehicles === null || Array.isArray(body.vehicles))) {
+      return publicAnswer(JSON.stringify({ vehicles: body.vehicles, vehicle_state: body.vehicle_state }),
+        "application/json", { cached: true, stale: !(freshUntil > Date.now()) });
+    }
+  } catch {
+    // A missing or unreadable cache entry must never reach the engine on this path.
+  }
+  return message(504, "vehicle index not cached");
+}
+
 async function serveIndex(env, ctx, cache, origin, question, version, revision, city, authorize) {
   // The canonical cut identifies a single last copy. Its tag controls when it needs refreshing.
   const tag = `${version}/${revision}/${city.record_through ?? ""}`;
-  const key = new Request(`${origin}/__transit_question_cache/v2/index${question.key}`);
-  const storeKey = env.QUESTION_LAST_GOOD && await hash(`index${question.key}`);
+  const key = indexCacheKey(origin, question.key);
+  const storeKey = env.QUESTION_LAST_GOOD && await indexStoreKey(question.key);
   const contentType = "application/json";
   const keepAtEdge = (body, freshUntil, storedTag) => ctx.waitUntil(
     remember(cache, key, LAST_GOOD_TTL, body, contentType, {

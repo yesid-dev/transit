@@ -5,7 +5,12 @@
 	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
-	import { setRecordPatience, setRecordRecovered, setRecordRetry } from './recordPatience.ts';
+	import {
+		setRecordPatience,
+		setRecordRecovered,
+		setRecordRetry,
+		setRecordRetryWindow,
+	} from './recordPatience.ts';
 	import { recordConnection } from './recordText.ts';
 	import { screenWaitingWords } from './recordWaiting.ts';
 
@@ -26,6 +31,8 @@
 	let slow = $state(false);
 	let answered = $state(false);
 	let recovered = $state(false);
+	let retryAt = $state<number | null>(null);
+	setRecordRetryWindow((openAt) => (retryAt = openAt));
 	let succeeded = false;
 	let failed = false;
 
@@ -84,6 +91,15 @@
 		busy > 0 || (slow && pending > 0) ? 'still' : loading ? 'loading' : 'done',
 	);
 	const french = $derived(locale === 'fr');
+	const retryTime = $derived(
+		retryAt === null
+			? ''
+			: new Intl.DateTimeFormat(french ? 'fr-CA' : 'en-CA', {
+					hour: 'numeric',
+					minute: '2-digit',
+					second: '2-digit',
+				}).format(retryAt),
+	);
 </script>
 
 {#if loading || answered || recovered}
@@ -92,7 +108,13 @@
 	</div>
 {/if}
 {@render children()}
-{#if retries.size}
+{#if retryAt !== null}
+	<p class="text-muted-foreground" role="status">
+		{french
+			? `Prochaine tentative possible à ${retryTime}.`
+			: `Next attempt available at ${retryTime}.`}
+	</p>
+{:else if retries.size}
 	<div class="try-again" data-slot="record-try-again">
 		<StateNotice
 			role="status"
