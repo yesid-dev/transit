@@ -2,6 +2,7 @@
 	import { Card } from '@yesid/ui/card';
 	import { ChevronToggle, Stamp, type StampProps } from '@yesid/ui/brand';
 	import * as Collapsible from '@yesid/ui/collapsible';
+	import { Skeleton } from '@yesid/ui/skeleton';
 	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
 	import RecordSkeleton from './RecordSkeleton.svelte';
@@ -9,8 +10,10 @@
 
 	let {
 		title,
+		class: className,
 		disclosure,
 		stamp,
+		stampPending = false,
 		links,
 		evidence,
 		toggle,
@@ -26,6 +29,7 @@
 		stampRule = false,
 	}: {
 		title: string;
+		class?: string;
 		disclosure?: {
 			id: string;
 			description?: string;
@@ -34,6 +38,7 @@
 			chevronBesideTitle?: boolean;
 		};
 		stamp?: StampProps;
+		stampPending?: boolean;
 		links?: Snippet;
 		evidence?: Snippet;
 		toggle?: Snippet;
@@ -112,7 +117,9 @@
 				</Collapsible.Trigger>
 			{:else}{title}{/if}
 		</h2>
-		{#if stamp}<Stamp {...stamp} />{/if}
+		{#if stamp}<Stamp {...stamp} />{:else if stampPending}<Skeleton
+				class="h-7 w-36 max-w-full"
+			/>{/if}
 	</header>
 {/snippet}
 
@@ -169,7 +176,7 @@
 		{edge}
 		interactive={interactive || expandable || !!disclosure}
 		textSize="inherit"
-		class={['min-w-0 px-4 sm:px-6', compactPrint && 'print:p-2']}
+		class={['min-w-0 px-4 sm:px-6', compactPrint && 'print:p-2', className]}
 		spread
 	>
 		{@render content()}

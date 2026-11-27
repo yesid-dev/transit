@@ -53,17 +53,29 @@
 </script>
 
 {#snippet heading(subtitle: string | undefined)}
-	<RecordGroup>
-		<ScreenTitle
-			{title}
-			{subtitle}
-			back={{
-				href: vehicleHref('/vehicles', pinned, locale, data.city),
-				label: t('All vehicles', 'Tous les véhicules'),
-			}}
-			dot={false}
-		/>
-	</RecordGroup>
+	<ScreenTitle
+		{title}
+		{subtitle}
+		back={{
+			href: vehicleHref('/vehicles', pinned, locale, data.city),
+			label: t('All vehicles', 'Tous les véhicules'),
+		}}
+		dot={false}
+	/>
+{/snippet}
+
+{#snippet recordTitle()}
+	{#await lineAnswer}
+		{@render heading(operator)}
+	{:then result}
+		{@const line =
+			result?.kind === 'answer' && 'cells' in result.answer && !notTrackedLive
+				? vehicleLines(result.answer).find(
+						(cell) => cell.state === 'measured' && (cell.value.vehicle_trips_run ?? 0) > 0,
+					)?.key.line
+				: undefined}
+		{@render heading(typeof line === 'string' ? mostlyOnLine(line) : operator)}
+	{/await}
 {/snippet}
 
 {#snippet liveTitle(line: string | null | undefined)}
@@ -98,17 +110,6 @@
 						/>
 					{/key}
 				{:else}
-					{#await lineAnswer}
-						{@render heading(operator)}
-					{:then result}
-						{@const line =
-							result?.kind === 'answer' && 'cells' in result.answer && !notTrackedLive
-								? vehicleLines(result.answer).find(
-										(cell) => cell.state === 'measured' && (cell.value.vehicle_trips_run ?? 0) > 0,
-									)?.key.line
-								: undefined}
-						{@render heading(typeof line === 'string' ? mostlyOnLine(line) : operator)}
-					{/await}
 					<div class="min-w-0" data-slot="screen-content">
 						{#if data.mode === 'record'}
 							<VehicleDetailRecord
@@ -117,10 +118,12 @@
 								{title}
 								url={pinned}
 								trackingDisabled={notTrackedLive}
+								titleBlock={recordTitle}
 								{operator}
 							/>
 						{:else}
 							<RecordGroup>
+								{@render heading(operator)}
 								<div data-slot="screen-answer">
 									<RecordAnswer
 										value={null}

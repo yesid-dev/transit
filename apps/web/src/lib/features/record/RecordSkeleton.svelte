@@ -67,7 +67,7 @@
 	data-waiting-count={s.shape === 'table' ? s.rows : s.count}
 	aria-hidden="true"
 	aria-busy="true"
-	style:block-size={blockSize}
+	style:block-size={s.shape === 'rows' ? undefined : blockSize}
 >
 	{#if s.shape === 'answer' || s.shape === 'reading'}
 		<!-- Laid out as RecordAnswer: the statement; the stamp and what was counted on one line; an
@@ -270,10 +270,10 @@
 		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 0.75rem;
-		block-size: 2.4375rem;
+		block-size: var(--record-waiting-row-height, 2.4375rem);
 	}
 	.list-row.two-lines {
-		block-size: 3.8125rem;
+		block-size: var(--record-waiting-row-height, 3.8125rem);
 	}
 	.list-row[data-lead='none'] {
 		grid-template-columns: minmax(0, 1fr) auto;

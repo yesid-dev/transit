@@ -17,11 +17,11 @@ test('rejects fixed card gaps and caller-owned name widths', () => {
 });
 
 test('counts each allowed screen departure and requires removal of stale entries', () => {
-	const path = 'lib/features/rankings/Rankings.svelte';
-	const legacy = '<RecordDataTable nameWidth="40%" />';
+	const path = 'lib/features/record/RecordActionGroup.svelte';
+	const legacy = '<div class="gap-6" />';
 	expect(recordLayoutViolations(path, legacy)).toEqual([]);
 	expect(recordLayoutViolations(path, `${legacy}\n${legacy}`)).toEqual([
-		`Let RecordDataTable size its name column in ${path}:2 (nameWidth)`,
+		`Use gap-(--space-card-gap) between cards in ${path}:2 (gap-6)`,
 	]);
-	expect(recordLayoutViolations(path, '<RecordDataTable />')[0]).toContain('S-fleet');
+	expect(recordLayoutViolations(path, '<RecordDataTable />')[0]).toContain('Cite sheet body');
 });

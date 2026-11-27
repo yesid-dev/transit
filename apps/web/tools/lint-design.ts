@@ -24,9 +24,6 @@ const recordLayoutAllowlist: Record<string, Record<string, { count: number; owne
 	'lib/features/record/RecordActionGroup.svelte': {
 		'gap-6': { count: 1, owner: 'Cite sheet body, outside the card-spacing rule' },
 	},
-	'lib/features/rankings/Rankings.svelte': {
-		nameWidth: { count: 1, owner: 'S-fleet (remove the superseded table width prop)' },
-	},
 };
 
 export function recordLayoutViolations(path: string, source: string): string[] {

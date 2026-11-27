@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { Skeleton } from '@yesid/ui/skeleton';
-	import { onMount } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { getRecordPatience } from './recordPatience.ts';
 	import { cardWaitingWords, STILL_CALCULATING_MS, type RecordWaiting } from './recordWaiting.ts';
@@ -11,12 +11,15 @@
 		busy = false,
 		answer,
 		shape,
+		skeleton,
 	}: {
 		locale: Locale;
 		busy?: boolean;
 		answer?: Promise<{ kind: string }>;
 		/** The final shape of the card body. Without one, one pulsing text line. */
 		shape?: RecordWaiting;
+		/** A caller can supply a skeleton for a layout with no shared shape. */
+		skeleton?: Snippet;
 	} = $props();
 	const register = getRecordPatience();
 	let late = $state(false);
@@ -51,18 +54,18 @@
      take its place. Screens with a RecordPatience region announce once for every card. -->
 <div
 	class="record-pending"
-	class:plain-answer={!shape}
+	class:plain-answer={!shape && !skeleton}
 	aria-busy="true"
 	data-record-pending={busy ? undefined : ''}
 	data-record-busy={busy ? '' : undefined}
 >
-	{#if shape}<RecordSkeleton {shape} />{/if}
+	{#if skeleton}{@render skeleton()}{:else if shape}<RecordSkeleton {shape} />{/if}
 	<div
 		class="pending-words"
 		role={register ? undefined : 'status'}
 		data-slot="record-pending-words"
 	>
-		{#if words}{words}{:else if !shape}<Skeleton class="h-4 w-48 max-w-full" />{/if}
+		{#if words}{words}{:else if !shape && !skeleton}<Skeleton class="h-4 w-48 max-w-full" />{/if}
 	</div>
 </div>
 

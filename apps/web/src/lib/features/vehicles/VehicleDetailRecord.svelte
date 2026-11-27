@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import type { Snippet } from 'svelte';
 	import { agencyName, recordPercent, reportingGapsReading } from '#lib/site/presenter.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
@@ -37,6 +38,7 @@
 		type RecordTableRow,
 	} from '#lib/features/record/RecordDataTable.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import type { RecordWaiting } from '../record/recordWaiting.ts';
 	import RecordUnavailable from '#lib/features/record/RecordUnavailable.svelte';
 	import RecordTableValue from '#lib/features/record/RecordTableValue.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
@@ -69,6 +71,7 @@
 		title,
 		trackingDisabled,
 		operator,
+		titleBlock,
 	}: {
 		data: ReturnType<typeof loadVehiclePage>;
 		url: URL;
@@ -76,6 +79,7 @@
 		title: string;
 		trackingDisabled: boolean;
 		operator?: string;
+		titleBlock: Snippet;
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
@@ -131,6 +135,38 @@
 	const lines = $derived(records.find(({ section }) => section === 'lines'));
 	const timing = $derived(records.find(({ section }) => section === 'punctuality'));
 	const dailyAnswer = $derived(data.days);
+	const serviceFacts: RecordWaiting = { shape: 'facts', count: 3 };
+	const lineShape: RecordWaiting = { shape: 'rows', count: 3, lines: 2, lead: 'plate' };
+	const dayShape: RecordWaiting = { shape: 'table', rows: 7, header: false };
+	let settledService = $state.raw<RecordMeasure | null>(null);
+	let settledTiming = $state.raw<RecordMeasure | null>(null);
+	$effect(() => {
+		const answer = service?.answer;
+		const timingAnswer = timing?.answer;
+		let current = true;
+		settledService = settledTiming = null;
+		void answer?.then((result) => {
+			if (current && result.kind === 'answer' && 'value' in result.answer)
+				settledService = result.answer;
+		});
+		void timingAnswer?.then((result) => {
+			if (current && result.kind === 'answer' && 'value' in result.answer)
+				settledTiming = result.answer;
+		});
+		return () => {
+			current = false;
+		};
+	});
+	function sampleFor(answer: RecordMeasure | null) {
+		const active = answer?.value.vehicle_days_in_service;
+		const trips = answer?.value.vehicle_trips_run;
+		return [
+			trips == null ? null : countedUnit(trips, 'trip', locale),
+			active == null ? null : countedUnit(active, 'day', locale) + t(' in service', ' en service'),
+		]
+			.filter(Boolean)
+			.join(', ');
+	}
 
 	let shownDays = $state(7);
 	let dayPage = $derived(data.period ? `${data.period.from}/${data.period.to}` : '');
@@ -158,9 +194,9 @@
 	}
 </script>
 
-{#snippet absent(result: EngineResult<Answer>)}
+{#snippet absent(result: EngineResult<Answer>, shape?: RecordWaiting)}
 	{#if result.kind === 'busy'}
-		<RecordPending {locale} busy />
+		<RecordPending {locale} busy {shape} />
 	{:else if result.kind === 'unreachable'}
 		<RecordUnavailable {locale} retry={result.retry} />
 	{:else if result.kind !== 'answer'}
@@ -208,8 +244,9 @@
 	</RecordActionGroup>
 {/snippet}
 
-{#if trackingDisabled}
-	<RecordGroup>
+<RecordGroup class="gap-(--space-card-gap)">
+	{@render titleBlock()}
+	{#if trackingDisabled}
 		<div data-slot="screen-answer">
 			<RecordAnswer
 				value={null}
@@ -219,45 +256,26 @@
 				{time}
 			/>
 		</div>
-	</RecordGroup>
-{:else if service}
-	{#await service.answer}
-		<RecordGroup
-			><div data-slot="screen-answer">
+	{:else if service}
+		{#await service.answer}
+			<div class="vehicle-answer" data-slot="screen-answer">
 				<RecordPending shape="answer" {locale} answer={service.answer} />
-			</div></RecordGroup
-		>
-	{:then result}
-		{#if result.kind === 'busy'}
-			<RecordGroup><div data-slot="screen-answer"><RecordPending {locale} busy /></div></RecordGroup
-			>
-		{:else if result.kind === 'unreachable' && result.retry}
-			<RecordGroup
-				><div data-slot="screen-answer">
+			</div>
+		{:then result}
+			{#if result.kind === 'busy'}
+				<div class="vehicle-answer" data-slot="screen-answer">
+					<RecordPending shape="answer" {locale} busy />
+				</div>
+			{:else if result.kind === 'unreachable' && result.retry}
+				<div class="vehicle-answer" data-slot="screen-answer">
 					<RecordUnavailable {locale} retry={result.retry} />
-				</div></RecordGroup
-			>
-		{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
-			{@const answer = result.answer}
-			{@const serviceDays = vehicleServiceDays(answer, locale)}
-			{@const {
-				vehicle_days_in_service: active,
-				vehicle_hours_in_service: hours,
-				vehicle_trips_run: trips,
-				vehicle_lines_run: lineCount,
-			} = answer.value}
-			{@const inService =
-				active != null
-					? t(
-							`${countedUnit(active, 'day', locale)} in service`,
-							`${countedUnit(active, 'day', locale)} en service`,
-						)
-					: null}
-			{@const serviceSample = [trips == null ? null : countedUnit(trips, 'trip', locale), inService]
-				.filter(Boolean)
-				.join(', ')}
-			<RecordGroup>
-				<div data-slot="screen-answer">
+				</div>
+			{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
+				{@const answer = result.answer}
+				{@const serviceDays = vehicleServiceDays(answer, locale)}
+				{@const serviceSample = sampleFor(answer)}
+
+				<div class="vehicle-answer" data-slot="screen-answer">
 					<RecordAnswer
 						value={serviceDays.ratio}
 						sentence={t(
@@ -297,346 +315,15 @@
 					{/await}
 					{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				</div>
-				<div id="service">
-					<RecordCard interactive title={service.title} stamp={time}>
-						<DashboardGrid gutter={false} minTile="18rem" class="items-start">
-							<dl class="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
-								<div>
-									<dt>{t('Days in service', 'Jours en service')}</dt>
-									<dd class="font-heading text-heading font-extrabold tabular-nums">
-										{serviceDays.ratio}
-									</dd>
-									<dd class="text-small text-muted-foreground">
-										{serviceDays.partial
-											? t('of the measured days', 'parmi les jours mesurés')
-											: t(
-													'days with a report on a trip',
-													'jours avec un signalement pendant un trajet',
-												)}
-									</dd>
-								</div>
-								{#if hours != null}<div>
-										<dt>{t('Hours in service', 'Heures en service')}</dt>
-										<dd class="font-heading text-heading font-extrabold tabular-nums">
-											{hoursReading(hours, locale)}
-										</dd>
-										{#if active}<dd class="text-small text-muted-foreground">
-												{t(
-													`${hoursReading(hours / active, locale)} on a day in service`,
-													`${hoursReading(hours / active, locale)} par jour en service`,
-												)}
-											</dd>{/if}
-									</div>{/if}
-								{#if trips != null}<div>
-										<dt>{t('Trips', 'Trajets')}</dt>
-										<dd class="font-heading text-heading font-extrabold tabular-nums">
-											{tally(trips, locale)}
-										</dd>
-										{#if lineCount != null}<dd class="text-small text-muted-foreground">
-												{t(
-													`on ${countedUnit(lineCount, 'line', locale)}`,
-													`sur ${countedUnit(lineCount, 'line', locale)}`,
-												)}
-											</dd>{/if}
-									</div>{/if}
-							</dl>
-							{#if lines}
-								<section
-									id="lines"
-									class="vehicle-lines grid min-w-0 gap-2"
-									aria-labelledby="vehicle-lines-title"
-								>
-									<h3 id="vehicle-lines-title" class="font-semibold">{lines.title}</h3>
-									{#await lines.answer}
-										<RecordPending {locale} answer={lines.answer} />
-									{:then series}
-										{#if series.kind === 'answer' && 'cells' in series.answer && series.answer.cells.length}
-											{@const rows = lineRows(series.answer, trips)}
-											{#snippet lineCount(row: VehicleLineRow)}
-												<RecordTableValue {locale} text={row.count} state={row.state} />
-											{/snippet}
-											<RecordDataTable
-												{locale}
-												title={lines.title}
-												rowHeader={t('Line', 'Ligne')}
-												{rows}
-												pageSize={rows.length > 3 ? 3 : undefined}
-												columns={[
-													{
-														key: 'trips',
-														header: t('Trips', 'Trajets'),
-														numeric: true,
-														cell: lineCount,
-													},
-												]}
-												value="trips"
-											/>
-											{#if series.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-										{:else}{@render absent(series)}{/if}
-									{/await}
-								</section>
-							{/if}
-						</DashboardGrid>
-						{#snippet evidence()}
-							<RecordEvidenceLine evidence={answer.evidence} sample={serviceSample} {locale} />
-						{/snippet}
-					</RecordCard>
-				</div>
-				<RecordCard interactive title={t('Day by day', 'Jour par jour')} stamp={time}>
-					{#await dailyAnswer}
-						{#if dailyAnswer}<RecordPending {locale} answer={dailyAnswer} />{/if}
-					{:then result}
-						{#if result?.kind === 'answer' && 'cells' in result.answer}
-							{@const cells = days(result.answer)}
-							<DayStrip
-								label={t('Days in service', 'Jours en service')}
-								cells={cells.slice(0, shownDays)}
-								reportedLabel={t(
-									'In service: its hours with reports that day',
-									'En service : heures avec signalements ce jour-là',
-								)}
-								missingLabel={recordState('not_measured')[locale]}
-							/>
-							{#if cells.some((entry) => entry.state === 'not_reporting')}
-								<p class="mt-2 flex items-baseline gap-2 text-small text-muted-foreground">
-									<StateMark state="not_reporting" {locale} hiddenLabel />
-									{didNotReport[locale]}
-								</p>
-							{/if}
-							{#if cells.length > shownDays}<Button
-									variant="outline"
-									class="mt-2 min-h-11"
-									onclick={() => (shownDays += 7)}
-									>{t('Show more days', 'Afficher plus de jours')}</Button
-								>{/if}
-							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{:else if result}{@render absent(result)}{/if}
-					{/await}
-					{#snippet evidence()}
-						{#await dailyAnswer then result}
-							{#if result?.kind === 'answer' && 'cells' in result.answer}
-								{@const entries = days(result.answer)}
-								{@const reported = entries.filter((entry) => entry.state === 'in_service').length}
-								{@const measured = entries.filter((entry) => entry.state !== 'not_measured').length}
-								{@const denominator = countedUnit(
-									measured,
-									measured < entries.length ? 'measured-day' : 'day',
-									locale,
-								)}
-								<RecordEvidenceLine
-									evidence={result.answer.evidence}
-									sample={measured
-										? t(
-												`${tally(reported, locale)} of ${denominator} in service`,
-												`${tally(reported, locale)} sur ${denominator} en service`,
-											)
-										: null}
-									{locale}
-								/>
-							{/if}
-						{/await}
-					{/snippet}
-				</RecordCard>
-
-				<DashboardGrid gutter={false} minTile="19rem">
-					{#each records.filter(({ section }) => section === 'reporting' || section === 'completion') as { section, title: heading, answer } (section)}
-						<div id={section} class="grid min-w-0">
-							<RecordCard title={heading} stamp={time}>
-								{#await answer}<RecordPending {locale} {answer} />
-								{:then result}
-									{#if result.kind === 'answer' && 'value' in result.answer}
-										{@const reading = result.answer}
-										{@const counts = reading.evidence.counts}
-										{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-										{#if section === 'completion' && reading.state === 'not_tracked'}
-											<p class="flex flex-wrap items-baseline gap-x-2 font-semibold">
-												<StateMark state="not_tracked" {locale} hiddenLabel />{t(
-													'Not tracked',
-													'Non suivi',
-												)}
-											</p>
-											<p>
-												{t(
-													'The live feeds do not show reliably when a trip ends early, so trips not finished are not tracked.',
-													'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt, donc les trajets non terminés ne sont pas suivis.',
-												)}
-											</p>
-										{:else if section === 'reporting' && reading.state === 'measured'}
-											{#if counts.reporting_gaps != null}<strong
-													class="block text-title tabular-nums"
-													>{tally(counts.reporting_gaps, locale)}</strong
-												>{/if}
-											<p>
-												{reportingGapsReading(
-													reading.value.vehicle_reporting_gaps_per_100_hours,
-													counts.reporting_gaps,
-													locale,
-													counts.silent_hours,
-												) ??
-													vehicleReading(reading, 'vehicle_reporting_gaps_per_100_hours', locale)}
-											</p>
-										{:else}{@render absent(result)}{/if}
-									{:else}{@render absent(result)}{/if}
-								{/await}
-								{#snippet evidence()}
-									{#await answer then result}
-										{#if result.kind === 'answer' && 'value' in result.answer}
-											{@const hours = result.answer.evidence.counts.hours_in_service}
-											<RecordEvidenceLine
-												evidence={result.answer.evidence}
-												sample={section === 'reporting' && hours != null
-													? t(
-															`${hoursReading(hours, locale)} in service`,
-															`${hoursReading(hours, locale)} en service`,
-														)
-													: section === 'completion' && trips != null
-														? countedUnit(trips, 'trip', locale)
-														: null}
-												{locale}
-											/>
-										{/if}
-									{/await}
-								{/snippet}
-							</RecordCard>
-						</div>
-					{/each}
-				</DashboardGrid>
-				{#if timing}
-					<div id="punctuality">
-						<RecordCard title={timing.title} stamp={time}>
-							<DashboardGrid gutter={false} minTile="18rem">
-								<p class="font-semibold">{assignmentCaution[locale]}</p>
-								<div class="grid min-w-0 gap-2">
-									{#await timing.answer}<RecordPending {locale} answer={timing.answer} />
-									{:then result}
-										{#if result.kind === 'answer' && 'value' in result.answer}
-											{@const reading = result.answer}
-											{@const count = reading.evidence.counts.punctuality_classified}
-											{@const minimum = reading.info?.find(
-												({ id }) => id === 'vehicle_on_time',
-											)?.minimum_sample}
-											{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-											{#if reading.state === 'measured' && reading.value.vehicle_on_time != null && count}
-												<p>
-													<strong class="text-title tabular-nums"
-														>{recordPercent(reading.value.vehicle_on_time, locale)}</strong
-													>
-													{t(
-														'of observed stop events were on time.',
-														'des passages observés étaient à l’heure.',
-													)}
-												</p>
-												{@const chart = punctualityBands(reading)}
-												{#if chart}<RecordChart
-														input={{ kind: 'bands', answer: chart }}
-														title={timing.title}
-														{locale}
-														id="vehicle-punctuality-bands"
-													/>{/if}
-											{:else}
-												{@render absent(result)}
-												{#if reading.state === 'too_few_to_judge' && count != null}
-													<p>
-														{minimum == null
-															? countedUnit(count, 'event', locale)
-															: sampleWithMinimum(
-																	countedUnit(count, 'event', locale),
-																	minimum,
-																	locale,
-																)}
-													</p>
-												{/if}
-											{/if}
-										{:else}{@render absent(result)}{/if}
-									{/await}
-								</div>
-							</DashboardGrid>
-							{#snippet evidence()}
-								{#await timing.answer then result}
-									{#if result.kind === 'answer' && 'value' in result.answer}
-										{@const count = result.answer.evidence.counts.punctuality_classified}
-										<RecordEvidenceLine
-											evidence={result.answer.evidence}
-											sample={count ? countedUnit(count, 'event', locale) : null}
-											{locale}
-										/>
-									{/if}
-								{/await}
-							{/snippet}
-						</RecordCard>
-					</div>
-				{/if}
-			</RecordGroup>
-			{#await timing?.answer then result}
-				<RecordGroup>
-					{@const evidence =
-						result?.kind === 'answer' && 'value' in result.answer ? result.answer.evidence : null}
-					<AboutFigures
-						title={t('About these figures', 'À propos de ces chiffres')}
-						fields={[
-							{
-								key: 'period',
-								label: t('Period', 'Période'),
-								text: data.period ? dateRange(data.period, locale) : null,
-							},
-							{
-								key: 'counted',
-								label: term.counted,
-								text: serviceSample ? `${serviceSample}.` : null,
-							},
-							{
-								key: 'service',
-								label: t('In service means', 'En service'),
-								text: t(
-									'Days count dates with a position reported on a trip.',
-									'Les jours comptés sont ceux où une position a été signalée pendant un trajet.',
-								),
-							},
-							{
-								key: 'gaps',
-								label: t('Stopped reporting means', 'Interruption de signalement'),
-								text: t(
-									'More than a minute between successive position reports on the same trip. The feed cannot tell whether the vehicle kept running.',
-									'Plus d’une minute entre deux signalements successifs sur le même trajet. Le flux n’indique pas si le véhicule a continué de rouler.',
-								),
-							},
-							{
-								key: 'observed',
-								label: t('Observed', 'Observations'),
-								text: evidence
-									? [
-											coverageText(evidence, locale).replace(/([^.!?])$/, '$1.'),
-											timingBasis(evidence.counts, locale),
-										]
-											.filter(Boolean)
-											.join(' ')
-									: null,
-							},
-							{ key: 'means', label: term.means, text: term.definition },
-							{
-								key: 'method',
-								label: t('Method', 'Méthode'),
-								text: null,
-								link: { href: vehicleHref('/metrics', url, locale, data.city), label: term.method },
-							},
-							{
-								key: 'source',
-								label: term.source,
-								text: operator ? term.feeds(agencyName(operator, page.data.provider)) : null,
-							},
-						]}
-					/>
-				</RecordGroup>
-			{/await}
-		{:else}
-			{@const reading = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-			{@const noReports =
-				reading?.state === 'measured' &&
-				reading.evidence.days_included.length > 0 &&
-				reading.value.vehicle_days_in_service === 0}
-			{@const state = noReports ? 'not_reporting' : recordStateFor(reading?.state)}
-			<RecordGroup>
-				<div data-slot="screen-answer">
+			{:else}
+				{@const reading =
+					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
+				{@const noReports =
+					reading?.state === 'measured' &&
+					reading.evidence.days_included.length > 0 &&
+					reading.value.vehicle_days_in_service === 0}
+				{@const state = noReports ? 'not_reporting' : recordStateFor(reading?.state)}
+				<div class="vehicle-answer" data-slot="screen-answer">
 					<RecordAnswer
 						value={null}
 						{state}
@@ -658,11 +345,309 @@
 					/>
 					{#if result.kind === 'answer' && result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				</div>
-			</RecordGroup>
+			{/if}
+		{/await}
+		<div id="service">
+			<RecordCard
+				interactive
+				title={service.title}
+				class="lg:min-h-[24.5rem]"
+				stamp={time}
+				stampRule
+				evidence={serviceEvidence}
+			>
+				<div class="service-card-body">
+					{#await service.answer}<DashboardGrid gutter={false} minTile="18rem" class="items-start"
+							><RecordPending {locale} shape={serviceFacts} answer={service.answer} /><RecordPending
+								{locale}
+								shape={lineShape}
+							/></DashboardGrid
+						>
+					{:then result}
+						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
+							{@const answer = result.answer}
+							{@const serviceDays = vehicleServiceDays(answer, locale)}
+							{@const {
+								vehicle_days_in_service: active,
+								vehicle_hours_in_service: hours,
+								vehicle_trips_run: trips,
+								vehicle_lines_run: lineCount,
+							} = answer.value}
+
+							<DashboardGrid gutter={false} minTile="18rem" class="items-start">
+								<dl class="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
+									<div>
+										<dt>{t('Days in service', 'Jours en service')}</dt>
+										<dd class="font-heading text-heading font-extrabold tabular-nums">
+											{serviceDays.ratio}
+										</dd>
+										<dd class="text-small text-muted-foreground">
+											{serviceDays.partial
+												? t('of the measured days', 'parmi les jours mesurés')
+												: t(
+														'days with a report on a trip',
+														'jours avec un signalement pendant un trajet',
+													)}
+										</dd>
+									</div>
+									{#if hours != null}<div>
+											<dt>{t('Hours in service', 'Heures en service')}</dt>
+											<dd class="font-heading text-heading font-extrabold tabular-nums">
+												{hoursReading(hours, locale)}
+											</dd>
+											{#if active}<dd class="text-small text-muted-foreground">
+													{t(
+														`${hoursReading(hours / active, locale)} on a day in service`,
+														`${hoursReading(hours / active, locale)} par jour en service`,
+													)}
+												</dd>{/if}
+										</div>{/if}
+									{#if trips != null}<div>
+											<dt>{t('Trips', 'Trajets')}</dt>
+											<dd class="font-heading text-heading font-extrabold tabular-nums">
+												{tally(trips, locale)}
+											</dd>
+											{#if lineCount != null}<dd class="text-small text-muted-foreground">
+													{t(
+														`on ${countedUnit(lineCount, 'line', locale)}`,
+														`sur ${countedUnit(lineCount, 'line', locale)}`,
+													)}
+												</dd>{/if}
+										</div>{/if}
+								</dl>
+								{#if lines}
+									<section
+										id="lines"
+										class="vehicle-lines grid min-w-0 gap-2"
+										aria-labelledby="vehicle-lines-title"
+									>
+										<h3 id="vehicle-lines-title" class="font-semibold">{lines.title}</h3>
+										{#await lines.answer}
+											<RecordPending {locale} shape={lineShape} answer={lines.answer} />
+										{:then series}
+											{#if series.kind === 'answer' && 'cells' in series.answer && series.answer.cells.length}
+												{@const rows = lineRows(series.answer, trips)}
+												{#snippet lineCount(row: VehicleLineRow)}
+													<RecordTableValue {locale} text={row.count} state={row.state} />
+												{/snippet}
+												<RecordDataTable
+													{locale}
+													title={lines.title}
+													rowHeader={t('Line', 'Ligne')}
+													{rows}
+													pageSize={rows.length > 3 ? 3 : undefined}
+													columns={[
+														{
+															key: 'trips',
+															header: t('Trips', 'Trajets'),
+															numeric: true,
+															cell: lineCount,
+														},
+													]}
+													value="trips"
+												/>
+												{#if series.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+											{:else}{@render absent(series, lineShape)}{/if}
+										{/await}
+									</section>
+								{/if}
+							</DashboardGrid>
+						{:else}{@render absent(result, serviceFacts)}{/if}{/await}
+				</div>
+			</RecordCard>
+		</div>
+		<RecordCard
+			interactive
+			title={t('Day by day', 'Jour par jour')}
+			class="lg:min-h-[27.625rem]"
+			stamp={time}
+			stampRule
+			reserve={dayShape}
+		>
+			{#await dailyAnswer}
+				{#if dailyAnswer}<RecordPending {locale} shape={dayShape} answer={dailyAnswer} />{/if}
+			{:then result}
+				{#if result?.kind === 'answer' && 'cells' in result.answer}
+					{@const cells = days(result.answer)}
+					<DayStrip
+						label={t('Days in service', 'Jours en service')}
+						cells={cells.slice(0, shownDays)}
+						reportedLabel={t(
+							'In service: its hours with reports that day',
+							'En service : heures avec signalements ce jour-là',
+						)}
+						missingLabel={recordState('not_measured')[locale]}
+					/>
+					{#if cells.some((entry) => entry.state === 'not_reporting')}
+						<p class="mt-2 flex items-baseline gap-2 text-small text-muted-foreground">
+							<StateMark state="not_reporting" {locale} hiddenLabel />
+							{didNotReport[locale]}
+						</p>
+					{/if}
+					{#if cells.length > shownDays}<Button
+							variant="outline"
+							class="mt-2 min-h-11"
+							onclick={() => (shownDays += 7)}
+							>{t('Show more days', 'Afficher plus de jours')}</Button
+						>{/if}
+					{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+				{:else if result}{@render absent(result, dayShape)}{/if}
+			{/await}
+			{#snippet evidence()}
+				{#await dailyAnswer then result}
+					{#if result?.kind === 'answer' && 'cells' in result.answer}
+						{@const entries = days(result.answer)}
+						{@const reported = entries.filter((entry) => entry.state === 'in_service').length}
+						{@const measured = entries.filter((entry) => entry.state !== 'not_measured').length}
+						{@const denominator = countedUnit(
+							measured,
+							measured < entries.length ? 'measured-day' : 'day',
+							locale,
+						)}
+						<RecordEvidenceLine
+							evidence={result.answer.evidence}
+							sample={measured
+								? t(
+										`${tally(reported, locale)} of ${denominator} in service`,
+										`${tally(reported, locale)} sur ${denominator} en service`,
+									)
+								: null}
+							{locale}
+						/>
+					{/if}
+				{/await}
+			{/snippet}
+		</RecordCard>
+
+		<DashboardGrid gutter={false} minTile="19rem" class="items-start">
+			{#each records.filter(({ section }) => section === 'reporting' || section === 'completion') as { section, title: heading, answer } (section)}
+				<div id={section} class="grid min-w-0">
+					<RecordCard
+						title={heading}
+						class="lg:min-h-[18.75rem]"
+						stamp={time}
+						stampRule
+						reserve={serviceFacts}
+					>
+						{#await answer}<RecordPending {locale} {answer} shape={serviceFacts} />
+						{:then result}
+							{#if result.kind === 'answer' && 'value' in result.answer}
+								{@const reading = result.answer}
+								{@const counts = reading.evidence.counts}
+								{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+								{#if section === 'completion' && reading.state === 'not_tracked'}
+									<p class="flex flex-wrap items-baseline gap-x-2 font-semibold">
+										<StateMark state="not_tracked" {locale} hiddenLabel />{t(
+											'Not tracked',
+											'Non suivi',
+										)}
+									</p>
+									<p>
+										{t(
+											'The live feeds do not show reliably when a trip ends early, so trips not finished are not tracked.',
+											'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt, donc les trajets non terminés ne sont pas suivis.',
+										)}
+									</p>
+								{:else if section === 'reporting' && reading.state === 'measured'}
+									{#if counts.reporting_gaps != null}<strong class="block text-title tabular-nums"
+											>{tally(counts.reporting_gaps, locale)}</strong
+										>{/if}
+									<p>
+										{reportingGapsReading(
+											reading.value.vehicle_reporting_gaps_per_100_hours,
+											counts.reporting_gaps,
+											locale,
+											counts.silent_hours,
+										) ?? vehicleReading(reading, 'vehicle_reporting_gaps_per_100_hours', locale)}
+									</p>
+								{:else}{@render absent(result, serviceFacts)}{/if}
+							{:else}{@render absent(result, serviceFacts)}{/if}
+						{/await}
+						{#snippet evidence()}
+							{#await answer then result}
+								{#if result.kind === 'answer' && 'value' in result.answer}
+									{@const hours = result.answer.evidence.counts.hours_in_service}
+									<RecordEvidenceLine
+										evidence={result.answer.evidence}
+										sample={section === 'reporting' && hours != null
+											? t(
+													`${hoursReading(hours, locale)} in service`,
+													`${hoursReading(hours, locale)} en service`,
+												)
+											: section === 'completion' && settledService?.value.vehicle_trips_run != null
+												? countedUnit(settledService.value.vehicle_trips_run, 'trip', locale)
+												: null}
+										{locale}
+									/>
+								{/if}
+							{/await}
+						{/snippet}
+					</RecordCard>
+				</div>
+			{/each}
+		</DashboardGrid>
+		{#if timing}
+			<div id="punctuality">
+				<RecordCard title={timing.title} class="lg:min-h-80" stamp={time} stampRule reserve="bands">
+					<DashboardGrid gutter={false} minTile="18rem">
+						<p class="font-semibold">{assignmentCaution[locale]}</p>
+						<div class="grid min-w-0 gap-2">
+							{#await timing.answer}<RecordPending {locale} shape="bands" answer={timing.answer} />
+							{:then result}
+								{#if result.kind === 'answer' && 'value' in result.answer}
+									{@const reading = result.answer}
+									{@const count = reading.evidence.counts.punctuality_classified}
+									{@const minimum = reading.info?.find(
+										({ id }) => id === 'vehicle_on_time',
+									)?.minimum_sample}
+									{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+									{#if reading.state === 'measured' && reading.value.vehicle_on_time != null && count}
+										<p>
+											<strong class="text-title tabular-nums"
+												>{recordPercent(reading.value.vehicle_on_time, locale)}</strong
+											>
+											{t(
+												'of observed stop events were on time.',
+												'des passages observés étaient à l’heure.',
+											)}
+										</p>
+										{@const chart = punctualityBands(reading)}
+										{#if chart}<RecordChart
+												input={{ kind: 'bands', answer: chart }}
+												title={timing.title}
+												{locale}
+												id="vehicle-punctuality-bands"
+											/>{/if}
+									{:else}
+										{@render absent(result, serviceFacts)}
+										{#if reading.state === 'too_few_to_judge' && count != null}
+											<p>
+												{minimum == null
+													? countedUnit(count, 'event', locale)
+													: sampleWithMinimum(countedUnit(count, 'event', locale), minimum, locale)}
+											</p>
+										{/if}
+									{/if}
+								{:else}{@render absent(result, serviceFacts)}{/if}
+							{/await}
+						</div>
+					</DashboardGrid>
+					{#snippet evidence()}
+						{#await timing.answer then result}
+							{#if result.kind === 'answer' && 'value' in result.answer}
+								{@const count = result.answer.evidence.counts.punctuality_classified}
+								<RecordEvidenceLine
+									evidence={result.answer.evidence}
+									sample={count ? countedUnit(count, 'event', locale) : null}
+									{locale}
+								/>
+							{/if}
+						{/await}
+					{/snippet}
+				</RecordCard>
+			</div>
 		{/if}
-	{/await}
-{:else}
-	<RecordGroup>
+	{:else}
 		<div data-slot="screen-answer">
 			<RecordAnswer
 				value={null}
@@ -671,5 +656,105 @@
 				sentence={t('Choose dates to see the record.', 'Choisissez des dates pour voir le bilan.')}
 			/>
 		</div>
+	{/if}
+</RecordGroup>
+{#if service && !trackingDisabled}
+	<RecordGroup class="gap-(--space-card-gap)">
+		{@render aboutFigures(sampleFor(settledService), settledTiming?.evidence ?? null)}
 	</RecordGroup>
 {/if}
+
+{#snippet serviceEvidence()}
+	{#if settledService}
+		<RecordEvidenceLine
+			evidence={settledService.evidence}
+			sample={sampleFor(settledService)}
+			{locale}
+		/>
+	{/if}
+{/snippet}
+
+{#snippet aboutFigures(serviceSample: string, evidence: RecordMeasure['evidence'] | null)}
+	<AboutFigures
+		title={t('About these figures', 'À propos de ces chiffres')}
+		class="lg:min-h-[24.5rem]"
+		fields={[
+			{
+				key: 'period',
+				label: t('Period', 'Période'),
+				text: data.period ? dateRange(data.period, locale) : null,
+			},
+			{
+				key: 'counted',
+				label: term.counted,
+				text: serviceSample ? `${serviceSample}.` : null,
+			},
+			{
+				key: 'service',
+				label: t('In service means', 'En service'),
+				text: t(
+					'Days count dates with a position reported on a trip.',
+					'Les jours comptés sont ceux où une position a été signalée pendant un trajet.',
+				),
+			},
+			{
+				key: 'gaps',
+				label: t('Stopped reporting means', 'Interruption de signalement'),
+				text: t(
+					'More than a minute between successive position reports on the same trip. The feed cannot tell whether the vehicle kept running.',
+					'Plus d’une minute entre deux signalements successifs sur le même trajet. Le flux n’indique pas si le véhicule a continué de rouler.',
+				),
+			},
+			{
+				key: 'observed',
+				label: t('Observed', 'Observations'),
+				text: evidence
+					? [
+							coverageText(evidence, locale).replace(/([^.!?])$/, '$1.'),
+							timingBasis(evidence.counts, locale),
+						]
+							.filter(Boolean)
+							.join(' ')
+					: null,
+			},
+			{ key: 'means', label: term.means, text: term.definition },
+			{
+				key: 'method',
+				label: t('Method', 'Méthode'),
+				text: null,
+				link: { href: vehicleHref('/metrics', url, locale, data.city), label: term.method },
+			},
+			{
+				key: 'error',
+				label: t('Seen an error?', 'Vous avez vu une erreur?'),
+				text: null,
+				link: {
+					href: vehicleHref('/metrics', url, locale, data.city) + '#about-transit',
+					label: t('About Transit', 'À propos de Transit'),
+				},
+			},
+			{
+				key: 'source',
+				label: term.source,
+				text: operator ? term.feeds(agencyName(operator, page.data.provider)) : null,
+			},
+		]}
+	/>
+{/snippet}
+
+<style>
+	.vehicle-answer {
+		min-block-size: 13.25rem;
+	}
+	.service-card-body {
+		min-block-size: 16rem;
+	}
+	@media (width < 40rem) {
+		.vehicle-answer {
+			min-block-size: 14.5rem;
+		}
+		.service-card-body {
+			min-block-size: 28rem;
+		}
+	}
+</style>
