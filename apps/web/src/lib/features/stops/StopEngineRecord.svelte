@@ -52,6 +52,7 @@
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import StopRecordLines from './StopRecordLines.svelte';
+	import StopDelivered from './StopDelivered.svelte';
 	import { stopErrorLink } from './stops.copy.ts';
 	import {
 		stopAccessibility,
@@ -117,7 +118,13 @@
 			heldHeight = untrack(() => content.getBoundingClientRect().height);
 		else if (previous?.scope !== scope) heldHeight = undefined;
 		previous = { scope, from, to };
-		const pending = [record.grid, record.network, record.networkDaily, ...Object.values(answers)];
+		const pending = [
+			record.grid,
+			record.network,
+			record.networkDaily,
+			record.delivery,
+			...Object.values(answers),
+		];
 		let current = true;
 		void Promise.allSettled(pending).then(() => {
 			if (current) heldHeight = undefined;
@@ -245,7 +252,7 @@
 			{
 				key: 'method',
 				label: term.methodRow,
-				text: null,
+				text: t('An outcome applies to the whole trip.', 'L’issue s’applique au trajet entier.'),
 				links: [
 					{ href: link('/metrics'), label: term.method },
 					{ href: link('/metrics#about-transit'), label: stopErrorLink[locale].label },
@@ -588,63 +595,66 @@
 			{/await}
 		</div>
 
-		<div id="daily">
-			<span id="stop-rel-trend" class="absolute" aria-hidden="true"></span>
-			{#snippet dailyCard(result?: EngineResult<EngineAnswer>)}
-				<RecordCard
-					interactive={result?.kind === 'answer' &&
-						'cells' in result.answer &&
-						result.answer.cells.length > 0}
-					title={titleFor('daily')}
-					{stamp}
-					reserve="trend"
-				>
-					{#if result === undefined}
-						{@render pending(answers.daily, 'trend')}
-					{:else}
-						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-							{#await record.networkDaily}
-								<RecordChart
-									title={titleFor('daily')}
-									id="stop-daily-chart"
-									table={dailyTable}
-									input={{ kind: 'trend', answer: result.answer, stop: true }}
-									{locale}
-								/>
-							{:then network}
-								<RecordChart
-									title={titleFor('daily')}
-									id="stop-daily-chart"
-									table={dailyTable}
-									input={{
-										kind: 'trend',
-										answer: result.answer,
-										stop: true,
-										network:
-											network.kind === 'answer' && 'cells' in network.answer
-												? network.answer
-												: undefined,
-									}}
-									{locale}
-								/>
-							{/await}
-						{:else}{@render gap(result, 'trend')}{/if}
-					{/if}
-					{#snippet evidence()}
-						{@render evidenceFooter('daily')}
-					{/snippet}
-					{#snippet toggle()}
-						{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-							<RecordChartToggle bind:table={dailyTable} controls="stop-daily-chart" {locale} />
+		<div class="grid min-w-0 items-start gap-[var(--space-card-gap)] xl:grid-cols-2">
+			<div id="daily" class="min-w-0">
+				<span id="stop-rel-trend" class="absolute" aria-hidden="true"></span>
+				{#snippet dailyCard(result?: EngineResult<EngineAnswer>)}
+					<RecordCard
+						interactive={result?.kind === 'answer' &&
+							'cells' in result.answer &&
+							result.answer.cells.length > 0}
+						title={titleFor('daily')}
+						{stamp}
+						reserve="trend"
+					>
+						{#if result === undefined}
+							{@render pending(answers.daily, 'trend')}
+						{:else}
+							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+								{#await record.networkDaily}
+									<RecordChart
+										title={titleFor('daily')}
+										id="stop-daily-chart"
+										table={dailyTable}
+										input={{ kind: 'trend', answer: result.answer, stop: true }}
+										{locale}
+									/>
+								{:then network}
+									<RecordChart
+										title={titleFor('daily')}
+										id="stop-daily-chart"
+										table={dailyTable}
+										input={{
+											kind: 'trend',
+											answer: result.answer,
+											stop: true,
+											network:
+												network.kind === 'answer' && 'cells' in network.answer
+													? network.answer
+													: undefined,
+										}}
+										{locale}
+									/>
+								{/await}
+							{:else}{@render gap(result, 'trend')}{/if}
 						{/if}
-					{/snippet}
-				</RecordCard>
-			{/snippet}
-			{#await answers.daily}
-				{@render dailyCard()}
-			{:then result}
-				{@render dailyCard(result)}
-			{/await}
+						{#snippet evidence()}
+							{@render evidenceFooter('daily')}
+						{/snippet}
+						{#snippet toggle()}
+							{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+								<RecordChartToggle bind:table={dailyTable} controls="stop-daily-chart" {locale} />
+							{/if}
+						{/snippet}
+					</RecordCard>
+				{/snippet}
+				{#await answers.daily}
+					{@render dailyCard()}
+				{:then result}
+					{@render dailyCard(result)}
+				{/await}
+			</div>
+			<StopDelivered {locale} {stamp} answer={record.delivery} />
 		</div>
 
 		<div id="alerts">

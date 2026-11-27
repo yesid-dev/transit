@@ -40,6 +40,30 @@ for (const width of [390, 1440]) {
 			await expect(answer).toContainText(fr ? 'calcul précédent' : 'older answer');
 			await expect(answer).toContainText(fr ? /10 points au-dessus/ : /1.2 points below/);
 			await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
+			const delivery = main.getByRole('article', {
+				name: fr ? 'Trajets effectués à cet arrêt' : 'Trips that ran at this stop',
+			});
+			await expect(delivery).toContainText(fr ? /96,0\s%/u : '96.0%');
+			await expect(delivery).toContainText(
+				fr ? '96 des 100 trajets à l’état connu' : '96 of the 100 trips with a known status',
+			);
+			await expect(delivery).toContainText(
+				fr ? /entre 87,3\s% et 96,4\s%/u : 'between 87.3% and 96.4%',
+			);
+			await expect(
+				delivery.locator('dl > div').filter({ hasText: fr ? 'Annulés' : 'Cancelled' }),
+			).toContainText('3');
+			await expect(
+				delivery.locator('dl > div').filter({ hasText: fr ? 'Trajets ajoutés' : 'Added trips' }),
+			).toContainText('2');
+			await expect(delivery).toContainText(
+				fr
+					? 'Part des trajets prévus à l’issue connue qui ont été effectués.'
+					: 'Share of scheduled trips with a known outcome that ran.',
+			);
+			await expect(main.locator('#stop-rel-source')).toContainText(
+				fr ? 'L’issue s’applique au trajet entier.' : 'An outcome applies to the whole trip.',
+			);
 
 			const bands = main.getByRole('article', {
 				name: fr ? 'En avance, à l’heure et en retard' : 'Early, on time and late',
@@ -208,7 +232,10 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 	const response = await page.goto(path, { waitUntil: 'commit' });
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.locator('[data-slot="screen-answer"]')).toContainText('80.0%');
-	await expect(page.locator('main [data-slot="record-card"]')).toHaveCount(8);
+	await expect(page.locator('main [data-slot="record-card"]')).toHaveCount(9);
+	const delivery = page.locator('#delivery');
+	await expect(delivery.locator('[data-waiting-shape="trip-facts"]')).toBeVisible();
+	const deliveryHeight = (await delivery.boundingBox())?.height;
 	await expect(page.locator('#byLine [data-waiting-shape="rows"]')).toBeVisible();
 	await expect(page.locator('#hourly [data-waiting-shape="grid"]')).toBeVisible();
 	const pendingHeight = (await page.locator('#hourly [data-slot="card"]').boundingBox())?.height;
@@ -219,7 +246,7 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 		'Still calculating the record',
 	);
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	for (const fixture of ['stop-by-line', 'stop-hour-grid']) {
+	for (const fixture of ['stop-by-line', 'stop-hour-grid', 'stop-delivery']) {
 		expect(
 			(
 				await request.post(`http://127.0.0.1:${dataPort}/__overview/release?fixture=${fixture}`)
@@ -228,9 +255,24 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 	}
 	await expect(page.locator('#byLine')).toContainText('Too few to judge');
 	await expect(page.locator('#hourly [data-slot="hour-grid"]')).toBeVisible();
+	await expect(delivery).toContainText('96.0%');
+	expect((await delivery.boundingBox())?.height).toBe(deliveryHeight);
 	expect((await page.locator('#hourly [data-slot="card"]').boundingBox())?.height).toBe(
 		pendingHeight,
 	);
+});
+
+test('Stop delivery distinguishes a measured stop from a stop with too few known trips', async ({
+	page,
+}) => {
+	const range = '?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14';
+	await page.goto('/stop/57430' + range);
+	const delivery = page.locator('#delivery');
+	await expect(delivery).toContainText('98.0%');
+	await expect(delivery).toContainText('49 of the 50 trips with a known status');
+	await page.goto('/stop/archived-stop' + range);
+	await expect(delivery).toContainText('Too few to judge');
+	await expect(delivery.locator('dl')).toHaveCount(0);
 });
 
 test('changing the Stop record period keeps the reading position', async ({ page }) => {

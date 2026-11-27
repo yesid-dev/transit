@@ -147,11 +147,19 @@ describe('Stop capture and Record loading', () => {
 	});
 
 	it('keeps a current stop on the timetable without an identity question', async () => {
+		const pending = Promise.withResolvers<unknown>();
+		harness.getRecordAnswer.mockReturnValueOnce(pending.promise);
 		await expect(load(event({ query: dated }))).resolves.toMatchObject({
 			seed: { id: 'S1', name: 'Van Horne / Rockland' },
 			outsideCurrentTimetable: false,
+			record: { delivery: expect.any(Promise) },
 		});
 		expect(harness.getRecordAnswer).not.toHaveBeenCalledWith(...identityQuery('S1'));
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
+			{ path: '/measure', parameters: { measure: 'service_delivered', stop: 'S1' } },
+			expect.objectContaining({ from: '2026-10-20', to: '2026-10-21', city: 'stm' }),
+		);
+		pending.resolve({ kind: 'unconfigured' });
 	});
 
 	it.each(['en', 'fr'] as const)(
@@ -192,7 +200,18 @@ describe('Stop capture and Record loading', () => {
 		await vi.advanceTimersByTimeAsync(1500);
 		const data = await shell;
 		expect(data).toMatchObject({ seed: { id: '57135' }, stopIdentity: expect.any(Promise) });
+		const delivery = {
+			path: '/measure',
+			parameters: { measure: 'service_delivered', stop: '57135' },
+		};
+		expect(harness.getRecordAnswer).not.toHaveBeenCalledWith(delivery, expect.anything());
 		pending.resolve(answer);
 		await expect(data?.stopIdentity).resolves.toBe(state);
+		await data?.record?.delivery;
+		if (state === 'missing') {
+			expect(harness.getRecordAnswer).not.toHaveBeenCalledWith(delivery, expect.anything());
+		} else {
+			expect(harness.getRecordAnswer).toHaveBeenCalledWith(delivery, expect.anything());
+		}
 	});
 });
