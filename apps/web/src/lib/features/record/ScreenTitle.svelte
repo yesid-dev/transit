@@ -137,6 +137,7 @@
 		display: inline-flex;
 		align-items: center;
 		min-block-size: 44px;
+		min-inline-size: 44px;
 		color: var(--primary);
 		text-decoration: underline;
 	}

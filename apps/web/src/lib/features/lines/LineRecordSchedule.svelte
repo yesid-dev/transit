@@ -140,7 +140,7 @@
 	</div>
 {/snippet}
 
-<div class="min-w-0">
+<div class="grid min-w-0 min-[1280px]:min-h-[30.75rem]">
 	<RecordCard interactive {title} {stamp}>
 		<div class="min-h-[25rem]">
 			<div class="grid min-w-0 grid-cols-1 gap-3">

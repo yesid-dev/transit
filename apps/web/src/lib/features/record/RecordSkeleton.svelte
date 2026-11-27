@@ -13,8 +13,14 @@
 	let {
 		shape,
 		heading,
+		liveAnswer = false,
 		answerStatus,
-	}: { shape: RecordWaiting; heading?: Snippet; answerStatus?: Snippet } = $props();
+	}: {
+		shape: RecordWaiting;
+		heading?: Snippet;
+		liveAnswer?: boolean;
+		answerStatus?: Snippet;
+	} = $props();
 	const s = $derived(resolveWaiting(shape));
 	const blockSize = $derived(skeletonBlockSize(shape));
 	// The shared shape keeps its rule height. A caller with taller rows can reserve more space.
@@ -89,6 +95,7 @@
 			class:with-actions={s.shape === 'answer'}
 			class:short-context={!s.comparison}
 			class:with-heading={Boolean(heading)}
+			class:live-answer={liveAnswer}
 		>
 			{#if heading}<div class="answer-heading" data-record-heading-row>
 					{@render heading()}
@@ -100,17 +107,19 @@
 			<div class="answer-context">
 				<div class="answer-stamp"><Skeleton class="h-7 w-56 max-w-full" /></div>
 				<!-- An answer carries one evidence line ("Counted: …"); versions are never on screen. -->
-				<div class="answer-evidence grid gap-2">
-					{#if answerStatus}{@render answerStatus()}{:else}<Skeleton
-							class="h-4 w-72 max-w-full"
-						/>{/if}
-					{#if s.shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
-					{#if s.comparison}<Skeleton class="mt-3 h-4 w-80 max-w-full" />{/if}
-				</div>
+				{#if !liveAnswer}
+					<div class="answer-evidence grid gap-2">
+						{#if answerStatus}{@render answerStatus()}{:else}<Skeleton
+								class="h-4 w-72 max-w-full"
+							/>{/if}
+						{#if s.shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
+						{#if s.comparison}<Skeleton class="mt-3 h-4 w-80 max-w-full" />{/if}
+					</div>
+				{/if}
 			</div>
 			{#if s.shape === 'answer'}
 				<div class="answer-actions flex flex-wrap gap-2">
-					{#each [1, 2, 3] as action (action)}
+					{#each range(liveAnswer ? 2 : 3) as action (action)}
 						<Skeleton class="h-11 w-24 max-w-full" />
 					{/each}
 				</div>
@@ -416,6 +425,11 @@
 		.with-heading.with-actions {
 			grid-template-areas: 'heading stamp actions' 'statement statement evidence';
 			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
+		}
+		.live-answer.with-actions {
+			grid-template-areas: 'statement stamp actions';
+			align-items: center;
+			min-block-size: 3.25rem;
 		}
 		.with-actions > .answer-context {
 			display: contents;

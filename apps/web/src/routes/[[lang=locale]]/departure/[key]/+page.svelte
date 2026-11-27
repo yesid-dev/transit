@@ -310,7 +310,7 @@
 			{/await}
 		</div>
 		{#each cardAnswers as { section, title: heading, answer } (section)}
-			<div id={section} class="min-w-0">
+			<div id={section} class="min-w-0" class:typical-delay={section === 'delay'}>
 				{#snippet dayChoices()}
 					{#if section === 'stops'}
 						<nav class="flex flex-wrap gap-2" aria-label={t('Service date', 'Date de service')}>
@@ -665,5 +665,13 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
 		gap: calc(var(--space-card-gap) / 2);
+	}
+
+	@media (width >= 80rem) {
+		/* Two delay readings and the evidence line share a stable card slot. */
+		.typical-delay {
+			display: grid;
+			min-block-size: 14rem;
+		}
 	}
 </style>

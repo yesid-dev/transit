@@ -9,6 +9,7 @@
 	let {
 		locale,
 		heading,
+		liveAnswer = false,
 		busy = false,
 		answer,
 		shape,
@@ -16,6 +17,8 @@
 	}: {
 		locale: Locale;
 		heading?: Snippet;
+		/** Live answers show a stamp and two actions without a Record evidence row. */
+		liveAnswer?: boolean;
 		busy?: boolean;
 		answer?: Promise<{ kind: string }>;
 		/** The final shape of the card body. Without one, one pulsing text line. */
@@ -82,6 +85,7 @@
 	{:else if shape}
 		<RecordSkeleton
 			{shape}
+			{liveAnswer}
 			heading={answerHeading}
 			answerStatus={answerHeading ? pendingWords : undefined}
 		/>

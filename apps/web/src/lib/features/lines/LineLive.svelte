@@ -182,9 +182,9 @@
 				false))}
 	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 		<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
-		<div id="line-detail-profile" data-slot="screen-answer" class="min-[1280px]:-mb-4">
+		<div id="line-detail-profile" data-slot="screen-answer" class="live-answer min-[1280px]:-mb-4">
 			{#if waiting}
-				<RecordPending {locale} shape="answer" />
+				<RecordPending {locale} shape="answer" liveAnswer />
 			{:else if live && rows && !limits}
 				{#snippet citation()}
 					<CiteBlock
@@ -426,3 +426,12 @@
 		{@render body(null, Date.now(), null, false)}
 	{/if}
 </div>
+
+<style>
+	@media (width >= 80rem) {
+		/* One reading row, with the same room for delayed status as the waiting view. */
+		.live-answer {
+			min-block-size: 5.125rem;
+		}
+	}
+</style>
