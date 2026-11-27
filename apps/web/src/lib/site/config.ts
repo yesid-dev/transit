@@ -1,6 +1,6 @@
 import * as env from '$app/env/public';
 
-export const DEFAULT_SITE_ORIGIN = 'https://transit1.yesid.dev';
+export const DEFAULT_SITE_ORIGIN = 'https://transit.yesid.dev';
 
 export interface PublicSiteConfig {
 	readonly siteOrigin: string;
@@ -54,4 +54,8 @@ export function readPublicSiteConfig(): PublicSiteConfig {
 		twitterCreator: normalizeTwitterHandle(env.PUBLIC_TWITTER_CREATOR),
 		author: normalizeOptionalText(env.PUBLIC_SITE_AUTHOR),
 	};
+}
+
+export function canIndexSite(config: PublicSiteConfig, origin: string): boolean {
+	return config.indexing && origin === config.siteOrigin && origin === DEFAULT_SITE_ORIGIN;
 }

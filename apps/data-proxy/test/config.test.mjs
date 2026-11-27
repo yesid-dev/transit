@@ -13,13 +13,16 @@ function routePatterns(config) {
   return [...routes[1].matchAll(/pattern\s*=\s*"([^"]+)"/g)].map((match) => match[1]);
 }
 
-test("deployment config keeps both compatibility routes and adds the public question route", () => {
+test("deployment routes keep v2 and capture only the retired namespaces", () => {
   const config = readFileSync(configPath, "utf8");
   assert.deepEqual(routePatterns(config), [
-    "transit.yesid.dev/data/*",
+    "transit.yesid.dev/data/v1/*",
     "transit.yesid.dev/api/v1/*",
+    "transit.yesid.dev/v1/*",
+    "data.yesid.dev/v1/*",
     "data.yesid.dev/v2/*",
   ]);
+  assert.doesNotMatch(config, /\bSNAPSHOTS\b/);
 });
 
 test("clean downloads use only the read credentials supplied by the proxy deploy", () => {
@@ -42,5 +45,5 @@ test("production deploys are push-only from main", () => {
     workflow,
     /if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main'/,
   );
-  assert.match(workflow, /- name: Run production smoke\n\s+run: bash smoke\.sh/);
+  assert.match(workflow, /- name: Run production v2 smoke\n\s+run: bash smoke\.sh/);
 });

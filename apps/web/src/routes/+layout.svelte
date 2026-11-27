@@ -62,7 +62,7 @@
 		websiteJsonLd,
 		type JsonLdNode,
 	} from '#lib/seo/jsonld.ts';
-	import { readPublicSiteConfig } from '#lib/site/config.ts';
+	import { canIndexSite, readPublicSiteConfig } from '#lib/site/config.ts';
 	import { currentMirrorUrl } from '#lib/site/urlMirror.ts';
 	import { errorDocumentHead } from '#lib/site/errorPage.ts';
 	import { setV1Context } from '#lib/v1/boot.ts';
@@ -121,7 +121,9 @@
 	let constructionEdge = $state<HTMLElement>();
 	let constructionProgress = $state(1);
 
-	const noIndex = $derived(!siteConfig.indexing || isEphemeralPath(page.url.pathname));
+	const noIndex = $derived(
+		!canIndexSite(siteConfig, page.url.origin) || isEphemeralPath(page.url.pathname),
+	);
 
 	const isFullBleed = $derived(seoPath === '/map');
 	const dataIndependentRoute = $derived(isDataIndependentRoute(seoPath));

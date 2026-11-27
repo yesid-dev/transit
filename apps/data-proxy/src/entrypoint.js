@@ -1,14 +1,15 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { isDownloadPath, serveDownload } from "./downloads.js";
 import { probeEngine, serveBoundQuestion } from "./questions.js";
-import cityIds from "./.generated-public-cities.json";
+import publicAssets from "./.generated-public-cities.json";
 import worker from "./worker.js";
 
-const publicCities = new Set(cityIds);
+const publicCities = new Set(publicAssets.cities);
+const retiredBasemaps = new Map(Object.entries(publicAssets.retiredBasemaps));
 
 export default {
   fetch(request, env, ctx) {
-    return worker.fetch(request, env, ctx, publicCities);
+    return worker.fetch(request, env, ctx, publicCities, retiredBasemaps, publicAssets.defaultCity);
   },
 };
 

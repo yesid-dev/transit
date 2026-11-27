@@ -4,7 +4,7 @@ import { constants, createGzip } from 'node:zlib';
 import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
 import { pathLocale } from '#lib/i18n/index.ts';
 import { readRequestLocation } from '#lib/v1/requestLocation.ts';
-import { readPublicSiteConfig } from '#lib/site/config.ts';
+import { canIndexSite, readPublicSiteConfig } from '#lib/site/config.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { DOCUMENT_SECURITY_HEADERS } from '#lib/site/securityHeaders.ts';
@@ -137,7 +137,7 @@ function applyDocumentHeaders(response: Response, url: URL): void {
 	}
 
 	// Version and preview URLs live on workers.dev and must never be indexed.
-	if (!readPublicSiteConfig().indexing || url.hostname.endsWith('.workers.dev')) {
+	if (!canIndexSite(readPublicSiteConfig(), url.origin)) {
 		response.headers.set('x-robots-tag', 'noindex, nofollow');
 	}
 }

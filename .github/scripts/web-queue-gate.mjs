@@ -217,9 +217,9 @@ export function verifyQueueArtifact(
     env: {
       ...env,
       TRANSIT_BUILD_TARGET: "production",
-      PUBLIC_SITE_ORIGIN: "https://transit1.yesid.dev",
+      PUBLIC_SITE_ORIGIN: "https://transit.yesid.dev",
       PUBLIC_V1_BASE: "https://data.yesid.dev/v1",
-      PUBLIC_INDEXING: "false",
+      PUBLIC_INDEXING: "true",
       TRANSIT_EXPECTED_MANIFEST_SHA256: receipt.manifest_sha256,
       TRANSIT_PRODUCER_ATTEMPT: receipt.producer_attempt,
       TRANSIT_PRODUCER_RUN_ID: receipt.producer_run_id,

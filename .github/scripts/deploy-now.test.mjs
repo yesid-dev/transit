@@ -46,9 +46,9 @@ test("manual production deployment checks out the selected ref without CI depend
   assert.doesNotMatch(workflow, /needs:|run:.*(?:test|smoke)|workflow_run/);
   for (const setting of [
     "TRANSIT_BUILD_TARGET: production",
-    "PUBLIC_SITE_ORIGIN: https://transit1.yesid.dev",
+    "PUBLIC_SITE_ORIGIN: https://transit.yesid.dev",
     "PUBLIC_V1_BASE: https://data.yesid.dev/v1",
-    'PUBLIC_INDEXING: "false"',
+    'PUBLIC_INDEXING: "true"',
   ]) {
     assert.ok(workflow.includes(setting), setting);
     assert.ok(web.includes(setting), setting);
@@ -245,8 +245,6 @@ test("older application refs use deployment control files preserved from the mai
   const assets = [
     ".nvmrc",
     ".bun-version",
-    "apps/data-proxy/r2-cors.json",
-    "apps/data-proxy/scripts/configure-data-edge.mjs",
     "apps/data-proxy/scripts/probe-v2.mjs",
   ];
   function step(name) {
@@ -325,14 +323,6 @@ test("older application refs use deployment control files preserved from the mai
         `main control: ${asset}`,
       );
     }
-    assert.match(
-      workflow,
-      /--file "\$RUNNER_TEMP\/transit-deploy-control\/apps\/data-proxy\/r2-cors.json"/,
-    );
-    assert.match(
-      workflow,
-      /node "\$RUNNER_TEMP\/transit-deploy-control\/apps\/data-proxy\/scripts\/configure-data-edge.mjs"/,
-    );
     assert.match(
       workflow,
       /node "\$RUNNER_TEMP\/transit-deploy-control\/apps\/data-proxy\/scripts\/probe-v2.mjs"/,

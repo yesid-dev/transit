@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import { setupFailureDetails } from "./layout-setup-result.mjs";
 import { liveProductionSha, WEB_ORIGIN } from "./deploy-scope.mjs";
+import { DATA_ORIGIN, WEB_ORIGIN as CANONICAL_ORIGIN } from "../../apps/data-proxy/scripts/probe-v2.mjs";
 
 export async function verifyDeployedSha(
   sha,
@@ -46,21 +47,48 @@ export async function verifyDeployedSha(
 }
 
 export async function verifySitePolicy(fetcher = fetch) {
-  const request = (path, options = {}) => fetcher(`${WEB_ORIGIN}${path}`, {
+  const request = (origin, path, options = {}) => fetcher(`${origin}${path}`, {
     redirect: "error",
     signal: AbortSignal.timeout(20_000),
     ...options,
   });
-  const page = await request("/?provider=stm");
-  if (!page.ok || !page.headers.get("content-type")?.includes("text/html"))
-    throw new Error("Cannot read transit1 HTML");
-  if (page.headers.get("x-robots-tag") !== "noindex, nofollow")
-    throw new Error("transit1 HTML is missing noindex, nofollow");
-  if (/static\.cloudflareinsights\.com\/beacon|\/cdn-cgi\/rum/i.test(await page.text()))
-    throw new Error("Cloudflare Web Analytics beacon found on transit1");
+  const catalog = await request(DATA_ORIGIN, "/v2/cities");
+  const city = catalog.ok ? (await catalog.json())?.default_provider : null;
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city ?? ""))
+    throw new Error("Cannot identify the default public city for the indexing check");
+  // Explicit city selection makes this independent of the runner's location.
+  const query = `?provider=${city}`;
+  for (const origin of [CANONICAL_ORIGIN, WEB_ORIGIN]) {
+    const indexable = origin === CANONICAL_ORIGIN;
+    const [page, robots, sitemap] = await Promise.all([
+      request(origin, `/${query}`),
+      request(origin, "/robots.txt"),
+      request(origin, "/sitemap.xml"),
+    ]);
+    if (!page.ok || !page.headers.get("content-type")?.includes("text/html"))
+      throw new Error("Cannot read Transit HTML");
+    const robotsTag = page.headers.get("x-robots-tag");
+    const hasNoindex = /\bnoindex\b/i.test(robotsTag ?? "");
+    if (hasNoindex === indexable) throw new Error("Unexpected Transit indexing header");
+    const html = await page.text();
+    const head = html.split("</head>")[0];
+    if (!head.includes(`rel="canonical" href="${CANONICAL_ORIGIN}/${query}"`) ||
+        !head.includes(`hreflang="fr" href="${CANONICAL_ORIGIN}/fr${query}"`) ||
+        /name="robots" content="[^"]*\bnoindex\b/.test(head) === indexable)
+      throw new Error("Unexpected Transit canonical, hreflang or robots metadata");
+    if (/static\.cloudflareinsights\.com\/beacon|\/cdn-cgi\/rum/i.test(html))
+      throw new Error("Cloudflare Web Analytics beacon found on Transit");
+
+    const robotsTxt = await robots.text();
+    const sitemapXml = await sitemap.text();
+    if (!robots.ok || !sitemap.ok || !robotsTxt.includes("Allow: /") ||
+        robotsTxt.includes(`Sitemap: ${CANONICAL_ORIGIN}/sitemap.xml`) !== indexable ||
+        sitemapXml.includes(`<loc>${CANONICAL_ORIGIN}/</loc>`) !== indexable)
+      throw new Error("Unexpected Transit robots or sitemap policy");
+  }
 
   // An empty object cannot pass the relay's event schema or reach Plausible.
-  const relay = await request("/relay/e", {
+  const relay = await request(WEB_ORIGIN, "/relay/e", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "{}",

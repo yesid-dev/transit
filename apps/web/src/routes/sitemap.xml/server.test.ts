@@ -4,14 +4,15 @@ import { GET } from './+server';
 
 const engine = vi.hoisted(() => ({ getCityCatalog: vi.fn(), getScheduleEdition: vi.fn() }));
 vi.mock('#lib/server/engine.ts', () => engine);
-vi.mock('#lib/site/config.ts', () => ({
-	readPublicSiteConfig: () => ({ siteOrigin: 'https://transit1.yesid.dev', indexing: true }),
+vi.mock('#lib/site/config.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof import('#lib/site/config.ts')>()),
+	readPublicSiteConfig: () => ({ siteOrigin: 'https://transit.yesid.dev', indexing: true }),
 }));
 
-const origin = 'https://transit1.yesid.dev';
+const origin = 'https://transit.yesid.dev';
 
-function event(search = '') {
-	const url = new URL(origin + '/sitemap.xml' + search);
+function event(search = '', requestOrigin = origin) {
+	const url = new URL(requestOrigin + '/sitemap.xml' + search);
 	const request = new Request(url);
 	return { url, request } as Parameters<typeof GET>[0];
 }
@@ -25,6 +26,13 @@ beforeEach(() => {
 });
 
 describe('sitemap.xml', () => {
+	it('publishes no URLs and performs no catalog reads on the review alias', async () => {
+		const response = await GET(event('', 'https://transit1.yesid.dev'));
+		expect(response.status).toBe(200);
+		expect(await response.text()).not.toContain('<loc>');
+		expect(engine.getCityCatalog).not.toHaveBeenCalled();
+	});
+
 	it('lists bilingual addresses from every city’s clean schedule edition', async () => {
 		const response = await GET(event());
 		expect(response.status).toBe(200);

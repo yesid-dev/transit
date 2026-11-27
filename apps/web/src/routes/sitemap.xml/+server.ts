@@ -1,5 +1,5 @@
 import type { RequestHandler } from './$types';
-import { readPublicSiteConfig } from '#lib/site/config.ts';
+import { canIndexSite, readPublicSiteConfig } from '#lib/site/config.ts';
 import { buildSitemapXml, type SitemapEntities } from '#lib/site/seoFiles.ts';
 import { getCityCatalog, getScheduleEdition } from '#lib/server/engine.ts';
 import { resolveProvider } from '#lib/v1/providers.ts';
@@ -9,7 +9,8 @@ export const prerender = false;
 const SITEMAP_CACHE_CONTROL = 'public, max-age=3600, s-maxage=14400';
 
 export const GET: RequestHandler = async (event) => {
-	const config = readPublicSiteConfig();
+	const siteConfig = readPublicSiteConfig();
+	const config = { ...siteConfig, indexing: canIndexSite(siteConfig, event.url.origin) };
 	let entities: SitemapEntities[] = [];
 	if (config.indexing) {
 		try {

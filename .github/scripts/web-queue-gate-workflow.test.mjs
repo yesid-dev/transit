@@ -225,9 +225,9 @@ function sealed(f) {
       producer_attempt: "1",
       target: "production",
       public_env: {
-        PUBLIC_SITE_ORIGIN: "https://transit1.yesid.dev",
+        PUBLIC_SITE_ORIGIN: "https://transit.yesid.dev",
         PUBLIC_V1_BASE: "https://data.yesid.dev/v1",
-        PUBLIC_INDEXING: "false",
+        PUBLIC_INDEXING: "true",
       },
       tools: {
         node: readFileSync(join(f.root, ".nvmrc"), "utf8").trim(),
@@ -265,9 +265,9 @@ test("real sealed-artifact preflight works without dependencies and never weaken
         env: {
           ...f.env,
           TRANSIT_BUILD_TARGET: "production",
-          PUBLIC_SITE_ORIGIN: "https://transit1.yesid.dev",
+          PUBLIC_SITE_ORIGIN: "https://transit.yesid.dev",
           PUBLIC_V1_BASE: "https://data.yesid.dev/v1",
-          PUBLIC_INDEXING: "false",
+          PUBLIC_INDEXING: "true",
           TRANSIT_EXPECTED_MANIFEST_SHA256: proof.manifest_sha256,
           TRANSIT_PRODUCER_ATTEMPT: "1",
           TRANSIT_PRODUCER_RUN_ID: "123",

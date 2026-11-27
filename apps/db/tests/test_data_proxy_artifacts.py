@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
-import textwrap
 import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
-
-from transit_ops.snapshots.ttl import LIVE_TTL_SECONDS
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PROXY_DIR = REPO_ROOT / "apps" / "data-proxy"
@@ -19,26 +15,6 @@ WRANGLER_TOML = PROXY_DIR / "wrangler.toml"
 DEPLOY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "deploy-data-proxy.yml"
 PUBLISH_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "daily-warm-rollups.yml"
 WEB_WRANGLER_TOML = REPO_ROOT / "apps" / "web" / "wrangler.toml"
-
-
-def test_kpi_freshness_budget_matches_three_manifest_live_ttls() -> None:
-    from transit_ops.snapshots.contract import ManifestLiveFiles
-
-    result = subprocess.run(
-        [
-            "node",
-            "--input-type=module",
-            "-e",
-            "import * as k from './src/kpis.js'; console.log(JSON.stringify("
-            "[k.LIVE_TTL_SECONDS, k.SNAPSHOT_STALE_S, k.LIVE_CADENCE_MS, k.RETRY_AFTER_S]));",
-        ],
-        cwd=PROXY_DIR,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    ttl = ManifestLiveFiles.model_fields["ttl_s"].default
-    assert json.loads(result.stdout) == [ttl, ttl * 3, ttl * 1000, str(ttl)]
 
 
 def _wrangler_config() -> dict:
@@ -53,17 +29,19 @@ def _workflow_triggers(workflow: dict) -> dict:
     return workflow.get("on", workflow.get(True))
 
 
-def test_wrangler_config_pins_public_routes_and_snapshots_bucket() -> None:
+def test_wrangler_config_pins_v2_and_narrow_retirement_routes() -> None:
     config = _wrangler_config()
 
     assert config["name"] == "transit-data-proxy"
     assert config["main"] == "src/entrypoint.js"
     assert config["routes"] == [
-        {"pattern": "transit.yesid.dev/data/*", "zone_name": "yesid.dev"},
+        {"pattern": "transit.yesid.dev/data/v1/*", "zone_name": "yesid.dev"},
         {"pattern": "transit.yesid.dev/api/v1/*", "zone_name": "yesid.dev"},
+        {"pattern": "transit.yesid.dev/v1/*", "zone_name": "yesid.dev"},
+        {"pattern": "data.yesid.dev/v1/*", "zone_name": "yesid.dev"},
         {"pattern": "data.yesid.dev/v2/*", "zone_name": "yesid.dev"},
     ]
-    assert config["r2_buckets"] == [{"binding": "SNAPSHOTS", "bucket_name": "transit-snapshots"}]
+    assert "r2_buckets" not in config
 
 
 def test_wrangler_config_disables_workers_dev_and_pins_account() -> None:
@@ -137,7 +115,7 @@ def test_deploy_workflow_runs_worker_tests_then_wrangler_action() -> None:
     )
 
 
-def test_production_publish_and_compatibility_route_do_not_use_web_v1_config() -> None:
+def test_legacy_publish_and_web_do_not_share_snapshot_configuration() -> None:
     publish_env = yaml.safe_load(PUBLISH_WORKFLOW.read_text(encoding="utf-8"))["jobs"]["publish"][
         "env"
     ]
@@ -146,210 +124,6 @@ def test_production_publish_and_compatibility_route_do_not_use_web_v1_config() -
     assert publish_env["SNAPSHOT_PUBLIC_BASE_URL"] == ("${{ secrets.SNAPSHOT_PUBLIC_BASE_URL }}")
     assert "PUBLIC_V1_BASE" not in web_config.get("vars", {})
     assert all(bucket.get("binding") != "SNAPSHOTS" for bucket in web_config.get("r2_buckets", []))
-
-    compatibility_route = next(
-        route for route in _wrangler_config()["routes"] if route["pattern"].endswith("/data/*")
-    )
-    assert compatibility_route["pattern"] == "transit.yesid.dev/data/*"
-    assert "data.yesid.dev" not in compatibility_route["pattern"]
-
-
-def test_smoke_script_asserts_direct_r2_and_compatibility_objects() -> None:
-    smoke = PROXY_DIR / "smoke.sh"
-
-    assert smoke.exists(), "smoke.sh is the prod verification gate for this slice"
-    assert os.access(smoke, os.X_OK), "smoke.sh must be executable"
-
-    syntax_check = subprocess.run(
-        ["bash", "-n", str(smoke)], text=True, capture_output=True, check=False
-    )
-    assert syntax_check.returncode == 0, syntax_check.stderr
-
-    text = smoke.read_text(encoding="utf-8")
-    assert "transit.yesid.dev/data" in text
-    assert "data.yesid.dev" in text
-    # Live objects carry the publisher TTL; the smoke must assert the same value.
-    assert f'"public, max-age={LIVE_TTL_SECONDS}"' in text
-    assert "max-age=604800" in text
-    assert "max-age=86400" in text
-    assert "max-age=3600, stale-while-revalidate=86400" in text
-    assert "live/vehicles.json" in text
-    assert "static/routes_index.json" in text
-    assert "historic/network_trend.json" in text
-    assert "provenance.json" in text
-    assert "405" in text
-    assert "no-store" in text
-    assert "access-control-allow-origin" in text
-    assert 'BROWSER_ORIGIN="${BROWSER_ORIGIN:-https://transit.yesid.dev}"' in text
-    assert "Origin: $BROWSER_ORIGIN" in text
-    assert "assert_edge_hit" in text
-    assert "cf-cache-status: hit" in text.lower()
-    assert "^age: [1-9][0-9]*$" in text
-    assert "edge gate" in text.lower()
-    assert "/api/v1/kpis" in text
-    for field in (
-        "snapshotAt",
-        "freshnessS",
-        "vehicles",
-        "avgDelayS",
-        "coverage",
-        "routesLive",
-        "routesTotal",
-        "topRoutes",
-    ):
-        assert field in text
-    assert "/api/v1/definitely-missing" in text
-    assert "/api/vitals" in text
-
-
-def test_smoke_retries_kpis_during_bounded_route_propagation_window() -> None:
-    text = (PROXY_DIR / "smoke.sh").read_text(encoding="utf-8")
-
-    assert 'KPIS_MAX_ATTEMPTS="${KPIS_MAX_ATTEMPTS:-24}"' in text
-    assert 'KPIS_RETRY_DELAY_S="${KPIS_RETRY_DELAY_S:-5}"' in text
-    assert "attempt <= KPIS_MAX_ATTEMPTS" in text
-    assert 'sleep "$KPIS_RETRY_DELAY_S"' in text
-    assert "exhausted $KPIS_MAX_ATTEMPTS attempts" in text
-
-
-def test_smoke_recovers_when_kpi_route_appears_after_propagation(
-    tmp_path: Path,
-) -> None:
-    mock_bin = tmp_path / "bin"
-    mock_bin.mkdir()
-    curl = mock_bin / "curl"
-    curl.write_text(
-        textwrap.dedent(
-            r"""
-            #!/usr/bin/env bash
-            set -euo pipefail
-
-            url="${*: -1}"
-            method=GET
-            status_only=false
-            head_only=false
-            dump_headers=false
-            for ((index = 1; index <= $#; index++)); do
-              argument="${!index}"
-              [ "$argument" = "-w" ] && status_only=true
-              [ "$argument" = "-D" ] && dump_headers=true
-              case "$argument" in -*I*) head_only=true ;; esac
-              if [ "$argument" = "-X" ]; then
-                next=$((index + 1))
-                method="${!next}"
-              fi
-            done
-
-            if [ "$status_only" = true ]; then
-              case "$url" in
-                */api/vitals) printf 400 ;;
-                */api/v1/definitely-missing) printf 404 ;;
-                */definitely-missing.json|*/secrets.txt) printf 404 ;;
-                https://canonical.test/v1/sto/static/routes_index.json|\
-                https://canonical.test/v1%2Fsto/static/routes_index.json|\
-                https://canonical.test/%761%2Fsto/static/routes_index.json|\
-                https://canonical.test/v1/sto%2Fstatic/routes_index.json|\
-                https://canonical.test/v1/%73to/static/routes_index.json) printf 404 ;;
-                */v1/sto/static/routes_index.json|\
-                */v1%2Fsto/static/routes_index.json|\
-                */v1/sto%2Fstatic/routes_index.json|\
-                */v1/%73to/static/routes_index.json) printf 410 ;;
-                */manifest.json)
-                  [ "$method" = POST ] && printf 405 || printf 200
-                  ;;
-                *) printf 200 ;;
-              esac
-              exit 0
-            fi
-
-            if [ "$head_only" = true ]; then
-              case "$url" in
-                */definitely-missing.json) cache_control='no-store' ;;
-                */api/v1/kpis) cache_control='no-store' ;;
-                */live/vehicles.json|*/manifest.json) cache_control='public, max-age=20' ;;
-                */static/routes_index.json) cache_control='public, max-age=604800' ;;
-                *) cache_control='public, max-age=86400' ;;
-              esac
-              printf 'HTTP/2 200\r\n'
-              printf 'content-type: application/json\r\n'
-              printf 'cache-control: %s\r\n' "$cache_control"
-              printf 'access-control-allow-origin: *\r\n\r\n'
-              exit 0
-            fi
-
-            if [ "$dump_headers" = true ]; then
-              if [ "$method" = OPTIONS ]; then
-                printf 'HTTP/2 204\r\n'
-                printf 'access-control-allow-origin: *\r\n'
-                printf 'access-control-allow-methods: GET, HEAD\r\n'
-                printf 'access-control-allow-headers: range\r\n\r\n'
-                exit 0
-              fi
-              if [[ "$url" == */definitely-missing.json ]]; then
-                printf 'HTTP/2 404\r\n'
-                printf 'content-type: application/json\r\n\r\n'
-                exit 0
-              fi
-              printf 'HTTP/2 200\r\n'
-              printf 'content-type: application/json\r\n'
-              printf 'cache-control: public, max-age=20\r\n'
-              printf 'cf-cache-status: HIT\r\n'
-              printf 'age: 2\r\n'
-              printf 'access-control-allow-origin: *\r\n\r\n'
-              exit 0
-            fi
-
-            if [[ "$url" == */api/v1/kpis ]]; then
-              count="$(cat "$CURL_COUNT_FILE" 2>/dev/null || printf 0)"
-              count=$((count + 1))
-              printf '%s' "$count" > "$CURL_COUNT_FILE"
-              [ "$count" -ge 3 ] || exit 22
-              printf '%s' \
-                '{"snapshotAt":"now","freshnessS":1,"vehicles":1,' \
-                '"avgDelayS":0,"coverage":1,"routesLive":1,' \
-                '"routesTotal":1,"topRoutes":[]}'
-              exit 0
-            fi
-
-            case "$url" in
-              */v1/providers.json)
-                printf '{"default_provider":"stm","providers":[{"id":"stm"}]}' ;;
-              */manifest.json)
-                printf '{"provider":"stm","files":{"static":{"basemap":"static/basemap.json"}}}' ;;
-              */static/basemap.json)
-                printf '{"url":"/data/v1/stm/static/basemap/montreal.pmtiles"}' ;;
-              *) printf '{}' ;;
-            esac
-            """
-        ).lstrip(),
-        encoding="utf-8",
-    )
-    curl.chmod(0o755)
-
-    count_file = tmp_path / "kpi-attempts"
-    env = {
-        **os.environ,
-        "PATH": f"{mock_bin}:{os.environ['PATH']}",
-        "CURL_COUNT_FILE": str(count_file),
-        "CANONICAL_BASE": "https://canonical.test",
-        "FALLBACK_BASE": "https://fallback.test",
-        "APEX_BASE": "https://apex.test",
-        "KPIS_MAX_ATTEMPTS": "3",
-        "KPIS_RETRY_DELAY_S": "0",
-    }
-    result = subprocess.run(
-        ["bash", str(PROXY_DIR / "smoke.sh")],
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert count_file.read_text(encoding="utf-8") == "3"
-    assert result.stderr.count("not ready") == 2
-    assert "SMOKE OK" in result.stdout
-
 
 @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
 def test_smoke_script_committed_with_executable_bit() -> None:
@@ -368,7 +142,6 @@ def test_smoke_script_committed_with_executable_bit() -> None:
     assert mode == "100755", (
         f"smoke.sh tracked as {mode}; fresh clones would get a non-executable file"
     )
-
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 def test_worker_behavioral_suite_passes_under_node() -> None:

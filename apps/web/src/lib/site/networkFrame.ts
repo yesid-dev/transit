@@ -4,6 +4,7 @@ export function networkRecordView({ origin, searchParams }: URL): boolean {
 	return (
 		searchParams.get('frameMode') !== 'live' &&
 		(origin === DEFAULT_SITE_ORIGIN ||
+			origin === 'https://transit1.yesid.dev' ||
 			['frameMode', 'recordFrom', 'recordTo'].some((key) => searchParams.has(key)))
 	);
 }

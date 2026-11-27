@@ -5,8 +5,6 @@ import { OCCUPANCY_LABELS, SEVERITY_LABELS, STATUS_LABELS } from '#lib/v1/enumLa
 import { ManifestSchema } from '#lib/v1/schemas/manifest.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 
-const origin = 'https://data.yesid.dev';
-
 export function captureContext(
 	provider: PublicCity,
 	lang: Locale,
@@ -19,21 +17,13 @@ export function captureContext(
 		...entries('severity', SEVERITY_LABELS[lang]),
 		...entries('occupancy', OCCUPANCY_LABELS[lang]),
 	]);
-	const tile = /^\/data\/v1\/([^/]+)\/static\/basemap\/([a-zA-Z0-9_-]+\.pmtiles)$/.exec(
-		provider.basemap_url ?? '',
-	);
 	// The public proxy names its own origin; a local preview gateway serves the same
 	// path from the page's origin.
 	const publishedTile =
 		/^(?:https:\/\/data\.yesid\.dev)?\/v2\/([^/]+)\/basemap\/[a-zA-Z0-9_-]+\.pmtiles$/.exec(
 			provider.basemap_v2_url ?? '',
 		);
-	const basemap =
-		publishedTile?.[1] === provider.id
-			? publishedTile[0]
-			: tile?.[1] === provider.id
-				? `${origin}/v2/${provider.id}/basemap/${tile[2]}`
-				: null;
+	const basemap = publishedTile?.[1] === provider.id ? publishedTile[0] : null;
 	const position = provider.inputs.vehicle_positions === true;
 	return {
 		lang,

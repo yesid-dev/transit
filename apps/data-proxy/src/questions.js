@@ -262,9 +262,9 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
   if (question.route === "cities") {
     if (cities.error) return cities.error;
     const catalog = JSON.parse(cities.body);
-    catalog.providers = catalog.providers.map((provider) => ({
+    catalog.providers = catalog.providers.map(({ basemap_url, ...provider }) => ({
       ...provider,
-      basemap_v2_url: publicBasemapUrl(provider.id, provider.basemap_url),
+      basemap_v2_url: publicBasemapUrl(provider.id, basemap_url),
     }));
     return publicAnswer(JSON.stringify(catalog), "application/json");
   }
