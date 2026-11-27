@@ -7,7 +7,7 @@ export const indexCopy = defineCopy({
 		lineEmpty: 'Aucune ligne ne correspond.',
 		noLineStops: 'Aucune liste d’arrêts publiée pour cette ligne.',
 		nearMe: 'Arrêts près de moi',
-		nearAddress: 'Près d’une adresse',
+		nearAddress: 'Près d’une adresse, sur la carte',
 		nearAsking: 'Recherche de votre position…',
 		nearActive:
 			'Arrêts à moins de 1 km de votre position, du plus proche au plus loin. Votre position reste sur cette page ; elle n’est pas ajoutée à l’adresse.',
@@ -27,7 +27,7 @@ export const indexCopy = defineCopy({
 		lineEmpty: 'No lines match.',
 		noLineStops: 'No published stop list for this line.',
 		nearMe: 'Stops near me',
-		nearAddress: 'Near an address',
+		nearAddress: 'Near an address, on the map',
 		nearAsking: 'Finding your location…',
 		nearActive:
 			'Stops within 1 km of your location, nearest first. Your location stays on this page; it is not added to the address.',

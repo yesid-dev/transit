@@ -15,7 +15,6 @@ import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/en
 import {
 	countedLabel,
 	countedUnit,
-	dateRange,
 	delayRange,
 	delayReading,
 	sampleWithMinimum,
@@ -447,7 +446,7 @@ export function trendChart(
 					? [
 							{
 								value: index,
-								label: dateRange({ from: day, to: day }, locale).replace(/ \d{4}$/u, ''),
+								label: recordDate(day, locale).replace(/ \d{4}$/u, ''),
 							},
 						]
 					: [],

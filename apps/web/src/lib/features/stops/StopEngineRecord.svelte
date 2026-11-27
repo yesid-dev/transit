@@ -521,36 +521,42 @@
 			<span id="stop-rel-weekday" class="absolute" aria-hidden="true"></span>
 			<span id="stop-rel-time" class="absolute" aria-hidden="true"></span>
 			{#snippet hourlyCard(result?: EngineResult<EngineAnswer>)}
-				<RecordCard
-					interactive={result?.kind === 'answer' &&
-						'cells' in result.answer &&
-						result.answer.cells.length > 0}
-					title={hourly}
-					{stamp}
-					reserve="grid"
-				>
-					{#if result === undefined}
-						{@render pending(record.grid, 'grid')}
-					{:else}
-						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-							<RecordChart
-								title={hourly}
-								input={{ kind: 'hours', answer: result.answer }}
-								{locale}
-								id="stop-hours-chart"
-								table={hoursTable}
-							/>
-						{:else}{@render gap(result, 'grid')}{/if}
-					{/if}
-					{#snippet evidence()}
-						{@render evidenceFooter('hourly')}
-					{/snippet}
-					{#snippet toggle()}
-						{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length && !hourGridTooFew(result.answer)}
-							<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
+				{@const chart =
+					result?.kind === 'answer' &&
+					'cells' in result.answer &&
+					result.answer.cells.length > 0 &&
+					!hourGridTooFew(result.answer)}
+				{@const reserveGrid = result === undefined || result.kind === 'busy' || chart}
+				<div data-grid-space={reserveGrid ? '' : undefined}>
+					<RecordCard
+						interactive={chart}
+						title={hourly}
+						{stamp}
+						reserve={reserveGrid ? 'grid' : undefined}
+					>
+						{#if result === undefined}
+							{@render pending(record.grid, 'grid')}
+						{:else}
+							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+								<RecordChart
+									title={hourly}
+									input={{ kind: 'hours', answer: result.answer }}
+									{locale}
+									id="stop-hours-chart"
+									table={hoursTable}
+								/>
+							{:else}{@render gap(result, 'grid')}{/if}
 						{/if}
-					{/snippet}
-				</RecordCard>
+						{#snippet evidence()}
+							{@render evidenceFooter('hourly')}
+						{/snippet}
+						{#snippet toggle()}
+							{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length && !hourGridTooFew(result.answer)}
+								<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
+							{/if}
+						{/snippet}
+					</RecordCard>
+				</div>
 			{/snippet}
 			{#await record.grid}
 				{@render hourlyCard()}
@@ -661,7 +667,7 @@
 		</div>
 
 		<div id="alerts">
-			<RecordCard title={titleFor('alerts')} {stamp} reserve={noticeShape}>
+			<RecordCard title={titleFor('alerts')} {stamp}>
 				{#snippet evidence()}
 					{@render evidenceFooter('alerts')}
 				{/snippet}

@@ -200,7 +200,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(list.getByRole('status')).toHaveText('Showing 5 of 12 notices');
 	await expect(page.locator('#alerts-window')).toContainText('12 notices are in effect now.');
 	await expect(page.locator('#alerts-window')).toContainText(
-		'12 notices across 13 publications by STM.',
+		'12 notices. STM published them 13 times.',
 	);
 	await expect(page.locator('#alerts-breakdown')).toContainText('Not stated');
 	await expect(page.locator('#alerts-breakdown')).toContainText(
@@ -234,7 +234,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await refreshAlertsCapture(page);
 	await expect(page.locator('#alerts-window')).toContainText('12 avis sont en vigueur.');
 	await expect(page.locator('#alerts-window')).toContainText(
-		'12 avis, en 13 publications par la STM.',
+		'12 avis. La STM les a publiés 13 fois.',
 	);
 });
 

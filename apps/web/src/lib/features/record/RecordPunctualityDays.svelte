@@ -32,7 +32,7 @@
 				id: day,
 				count,
 				label: date(day, { day: 'numeric', month: 'short' }),
-				dateLabel: date(day, { dateStyle: 'long' }),
+				dateLabel: recordDate(day, locale),
 				report: share === null ? null : { value: recordPercent(share, locale), fraction: share },
 			};
 		});

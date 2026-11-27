@@ -206,7 +206,7 @@
 					localizeHref(routeFor({ kind: 'line', id: row.id }), locale, record.city),
 					pinned,
 				),
-				label: name ?? label,
+				label: name ?? number ?? label,
 				// Every row carries its plate, the route ID when the timetable gives no number.
 				plate: { code: number ?? row.id, scheduleOnly: row.noLive },
 				detail: display.directory.subtitle(row.id),
@@ -276,6 +276,15 @@
 		excludedShown.length > 0 && excludedShown.every(({ timing }) => !timing),
 	);
 	const matchCount = $derived(measuredShown.length + scheduleShown.length + excludedShown.length);
+	const singleMatchList = $derived(
+		matchCount === 1
+			? measuredShown.length
+				? measuredTitle
+				: scheduleShown.length
+					? noLiveTitle
+					: excludedTitle
+			: null,
+	);
 	const countLabels = $derived(
 		countTemplates(
 			matchCount,
@@ -306,7 +315,7 @@
 				)
 			: t(
 					`is the spread of on-time share across the ${tally(ranked.length, locale)} lines with enough to judge on these dates.`,
-					`est la plage des parts à l’heure pour les ${tally(ranked.length, locale)} lignes avec assez de données pour conclure pour ces dates.`,
+					`est la plage des parts à l’heure des ${tally(ranked.length, locale)} lignes qui ont assez de données pour conclure à ces dates.`,
 				),
 	);
 	const noneRanked = $derived(
@@ -657,6 +666,11 @@
 						applyQuery('', false);
 					}}
 				/>
+				{#if singleMatchList}
+					<p class="mt-2 text-small text-muted-foreground">
+						{t(`Match in “${singleMatchList}”.`, `Résultat sous «\u00a0${singleMatchList}\u00a0».`)}
+					</p>
+				{/if}
 				<noscript><a href={clearHref}>{t('Clear filters', 'Effacer les filtres')}</a></noscript>
 			</div>
 		{/if}

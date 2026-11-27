@@ -80,11 +80,7 @@ describe('MapFilters', () => {
 		const view = render(MapFilters, { props: { store, locale, alertsAvailable: false } });
 		expect(view.container.querySelector('[data-filter-group="alerts"]')).toBeNull();
 		expect(
-			view.getByText(
-				locale === 'en'
-					? 'Filter unavailable: no notice feed connected.'
-					: 'Filtre indisponible : aucune source d’avis connectée.',
-			),
+			view.getByText(locale === 'en' ? 'No notices to filter.' : 'Aucun avis à filtrer.'),
 		).toBeVisible();
 		expect(store.alerts).toEqual([]);
 	});

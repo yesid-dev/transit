@@ -3,22 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import RecordDataTableHarness from './RecordDataTableHarness.svelte';
 
 it.each([
-	[
-		'en',
-		'Measured stops',
-		'Showing 20 of 25',
-		'Show 5 more',
-		'Unknown',
-		'Reverse sort by Readings',
-	],
-	[
-		'fr',
-		'Arrêts mesurés',
-		'20 sur 25',
-		'Afficher 5 de plus',
-		'Inconnu',
-		'Inverser le tri par Passages',
-	],
+	['en', 'Measured stops', 'Showing 20 of 25', 'Show 5 more', 'Unknown', 'Reverse the order'],
+	['fr', 'Arrêts mesurés', '20 sur 25', 'Afficher 5 de plus', 'Inconnu', 'Inverser l’ordre'],
 ] as const)(
 	'pages, links, sorts and shows reading states in %s',
 	async (locale, title, showing, more, unknown, sort) => {

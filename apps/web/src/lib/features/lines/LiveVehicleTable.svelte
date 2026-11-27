@@ -56,16 +56,18 @@
 </script>
 
 {#snippet status(row: Row)}
-	<StatusMark
-		status={row.status}
-		{...liveStatusWords(row.status, liveDelayLabels(locale)[row.status], row.delay, locale)}
-	/>
+	<span class="font-sans">
+		<StatusMark
+			status={row.status}
+			{...liveStatusWords(row.status, liveDelayLabels(locale)[row.status], row.delay, locale)}
+		/>
+	</span>
 {/snippet}
 
 {#snippet next(row: Row)}
 	{#if row.nextStop}
 		<a
-			class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
+			class="inline-flex min-h-11 min-w-11 items-center font-sans text-primary underline"
 			href={row.nextStop.href}
 		>
 			{stopDisplayName(row.nextStop.name)}

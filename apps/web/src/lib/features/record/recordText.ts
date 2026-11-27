@@ -19,14 +19,14 @@ const temporarilyUnavailable = {
 
 export const recordConnection = {
 	unconfigured: {
-		en: 'The record view is being connected. Numbers will appear here.',
-		fr: 'Le bilan sera bientôt relié aux données. Les chiffres s’afficheront ici.',
+		en: 'The record is not available.',
+		fr: 'Le bilan n’est pas disponible.',
 	},
 	unreachable: temporarilyUnavailable,
 	timeout: temporarilyUnavailable,
 	busy: {
-		en: 'The record is busy right now. You can come back later.',
-		fr: 'Le bilan est très sollicité en ce moment. Vous pouvez revenir plus tard.',
+		en: 'The record is busy right now.',
+		fr: 'Le bilan est très sollicité en ce moment.',
 	},
 };
 

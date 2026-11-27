@@ -79,7 +79,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await stop.press('Enter');
 		const selected = page.locator('[data-slot="record-map-selection"]');
 		await expect(selected).toContainText(fr ? 'Mesuré' : 'Measured');
-		await expect(selected).toContainText(/0[.,]0\s*%/);
+		await expect(selected).toContainText(/\b0\s*%/u);
 		await expect(selected).toContainText('45');
 		await expect(
 			page.getByRole('link', { name: fr ? 'Bilan de l’arrêt' : 'Stop Record' }),

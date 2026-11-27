@@ -44,9 +44,8 @@ export function delayReading(
 	if (seconds == null || !Number.isFinite(seconds)) return fallback;
 	const copy = presenterCopy[locale];
 	const minutes = Math.abs(seconds) / 60;
-	// The display rounds to a tenth of a minute.
-	if (minutes < 0.05) return copy.onSchedule;
-	const magnitude = minuteReading(minutes, locale)!;
+	if (minutes < 0.25) return copy.onSchedule;
+	const magnitude = minuteReading(Math.round(minutes * 2) / 2, locale)!;
 	return seconds < 0 ? copy.early(magnitude) : copy.late(magnitude);
 }
 
@@ -80,10 +79,7 @@ export function distanceReading(distanceM: number, locale: Locale): string {
 }
 
 export function mapRecordReading(value: number, stops: boolean, locale: Locale): string | null {
-	if (stops)
-		return intl
-			.number(locale, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 })
-			.format(value / 1000);
+	if (stops) return recordPercent(value / 1000, locale);
 	return `${intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 60)} min`;
 }
 
@@ -178,9 +174,10 @@ export function noticeCountEvidence(
 ) {
 	if (grouped === published) return `${noticeCount(grouped, locale)}.`;
 	const total = intl.number(locale).format(published);
+	const one = singularCount(grouped, locale);
 	return locale === 'fr'
-		? `${noticeCount(grouped, locale)}, en ${total} publications par ${frenchAgency(agency).subject}.`
-		: `${noticeCount(grouped, locale)} across ${total} publications by ${agency.name}.`;
+		? `${noticeCount(grouped, locale)}. ${frenchAgency(agency).start} ${one ? 'l’a publié' : 'les a publiés'} ${total} fois.`
+		: `${noticeCount(grouped, locale)}. ${agency.name} published ${one ? 'it' : 'them'} ${total} times.`;
 }
 
 /** A few notices out of all of them: "5 of 1,230 notices." */
@@ -669,15 +666,17 @@ export function recordStamp(period: { from: string; to: string }, locale: Locale
 }
 
 export function recordPercent(value: number, locale: Locale) {
-	// Reserve the displayed 100.0% for a complete share.
-	const displayed = value < 1 && value >= 0.9995 ? 0.999 : value;
-	return intl
-		.number(locale, {
-			style: 'percent',
-			minimumFractionDigits: 1,
-			maximumFractionDigits: 1,
-		})
-		.format(displayed);
+	const between = value > 0 && value < 1;
+	const digits =
+		value === 0 || value === 1 ? 0 : between && (value < 0.0005 || value >= 0.9995) ? 2 : 1;
+	const format = intl.number(locale, {
+		style: 'percent',
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits,
+	});
+	if (between && value < 0.00005) return `<${format.format(0.0001)}`;
+	if (between && value >= 0.99995) return `>${format.format(0.9999)}`;
+	return format.format(value);
 }
 
 export function rankingComparison(
@@ -908,7 +907,10 @@ export function recordHours(hours: number, locale: Locale) {
 }
 
 export function relativeReportAge(seconds: number, locale: Locale) {
-	return formatRelativeSeconds(Math.max(0, Math.floor(seconds)), locale);
+	return formatRelativeSeconds(Math.max(0, Math.floor(seconds)), locale).replace(
+		/\bminutes?\b/u,
+		'min',
+	);
 }
 
 export function serviceWeekday(day: string, locale: Locale) {
@@ -1006,7 +1008,7 @@ export function lineVehicleSentence(
 
 /**
  * A stop with no vehicle in the next 15 minutes answers with the next one instead of a zero:
- * "No vehicle in the next 15 minutes. Next: line 361 toward Nord, scheduled 04:34."
+ * "35 min until the next vehicle: line 361 toward Nord, scheduled 04:34."
  */
 export function stopNextVehicleSentence(
 	next: { line: string | null; toward: string | null; scheduled: string | null },
@@ -1024,11 +1026,8 @@ export function stopNextVehicleSentence(
 			: `scheduled ${next.scheduled}`
 		: null;
 	const detail = [where || null, when].filter(Boolean).join(', ');
-	const lead = fr
-		? 'Aucun véhicule dans les 15 prochaines minutes.'
-		: 'No vehicle in the next 15 minutes.';
-	if (!detail) return lead;
-	return fr ? `${lead} Prochain\u00a0: ${detail}.` : `${lead} Next: ${detail}.`;
+	const lead = fr ? 'avant le prochain véhicule' : 'until the next vehicle';
+	return detail ? `${lead}${fr ? '\u00a0:' : ':'} ${detail}.` : `${lead}.`;
 }
 
 /**

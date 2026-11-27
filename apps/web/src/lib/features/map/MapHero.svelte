@@ -22,7 +22,7 @@
 	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
-	import { tickingLiveStamp, recordStamp, searchCount } from '#lib/site/presenter.ts';
+	import { agencyName, alertsNotCollected, tickingLiveStamp, recordStamp, searchCount } from '#lib/site/presenter.ts';
 	import { recordPeriodNoticeReader } from '#lib/site/recordPeriodNoticeContext.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
@@ -883,7 +883,7 @@
 	);
 	const listTabLabel = $derived(
 		recordLayer === 'corridors'
-			? 'Corridors'
+			? tr('Corridors', 'Corridors')
 			: isRecordLayer || nearMeController.open || nearMeController.origin
 				? tr('Stops', 'Arrêts')
 				: tr('Vehicles', 'Véhicules'),
@@ -892,8 +892,10 @@
 		const mode = isRecordLayer ? frameCopy[locale].record : tr('Live', 'En direct');
 		let reading: string;
 		if (isRecordLayer && recordHeadline !== null) {
-			const unit = recordLayer === 'stops' ? tr('late', 'en retard') : tr('lost', 'de temps perdu');
-			reading = recordHeadline + ' ' + unit;
+			reading =
+				recordLayer === 'stops'
+					? tr(`Up to ${recordHeadline} late`, `Max. ${recordHeadline} en retard`)
+					: tr(`Up to ${recordHeadline} lost`, `Max. ${recordHeadline} de temps perdu`);
 		} else if (!isRecordLayer && (nearMeController.open || nearMeController.origin)) {
 			reading = tr('Nearby stops', 'Arrêts à proximité');
 		} else if (inViewCount === null) {
@@ -1484,6 +1486,9 @@
 						{occupancyAvailable}
 						store={filters}
 						{alertsAvailable}
+						alertsUnavailableReason={v1.provider && !alertsAvailable
+							? `${tr('No notices to filter:', 'Aucun avis à filtrer\u00a0:')} ${alertsNotCollected(agencyName(providerName, v1.provider), locale)}`
+							: undefined}
 						{locale}
 						routes={session.routesIndex}
 						stops={stopList}

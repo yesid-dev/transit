@@ -7,6 +7,20 @@ test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
 });
 
+test('an hourly card with too few stop events settles to its message at both widths', async ({
+	page,
+}) => {
+	for (const width of [390, 1440]) {
+		await page.setViewportSize({ width, height: 900 });
+		await page.goto(
+			'/stop/S1?provider=stm&frameMode=record&recordFrom=2026-11-13&recordTo=2026-11-13',
+		);
+		const hourly = page.locator('#hourly [data-slot="card"]').first();
+		await expect(hourly.getByText(/too few/i).first()).toBeVisible();
+		expect((await hourly.boundingBox())?.height).toBeLessThan(300);
+	}
+});
+
 test('a stop with no eligible days shows the network alone and explains the missing line', async ({
 	page,
 }) => {
@@ -142,7 +156,7 @@ for (const width of [390, 1440]) {
 			).toHaveCount(1);
 			await expect(daily.locator('svg text').filter({ hasText: /^(?:0|20)\s?%$/ })).toHaveCount(1);
 			await expect(main.locator('#delay')).toContainText(fr ? '0,5 min d’avance' : '0.5 min early');
-			await expect(main.locator('#delay')).toContainText(fr ? '5,8 min de retard' : '5.8 min late');
+			await expect(main.locator('#delay')).toContainText(fr ? '6 min de retard' : '6 min late');
 			await expect(main.locator('#alerts')).toContainText(fr ? 'Non suivi' : '3');
 			await expect(main.locator('#accessibility')).toContainText(fr ? 'Non publié' : 'Accessible');
 			await expect(

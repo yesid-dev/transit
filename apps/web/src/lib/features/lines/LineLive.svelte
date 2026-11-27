@@ -384,7 +384,7 @@
 				{#snippet message()}
 					<p>
 						{t(
-							`${operator} publishes no realtime feed for this line. Its timetable is shown below.`,
+							`${operator} publishes no real-time feed for this line. Its timetable is shown below.`,
 							`${agencyFr.start} ne publie pas de flux en temps réel pour cette ligne. Son horaire est présenté ci-dessous.`,
 						)}
 					</p>

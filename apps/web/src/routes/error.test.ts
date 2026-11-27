@@ -85,15 +85,15 @@ describe('error route', () => {
 
 		expect(screen.getByRole('heading', { level: 1, name: heading })).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: find })).toHaveAttribute('href', href);
-		expect(screen.queryByTestId('construction-scene')).not.toBeInTheDocument();
+		expect(screen.getByTestId('construction-scene')).toBeInTheDocument();
 		expect(screen.queryByTestId('error-label')).not.toBeInTheDocument();
-		expect(screen.queryByTestId('terminal-line')).not.toBeInTheDocument();
+		expect(screen.getByTestId('terminal-line')).toHaveTextContent('404');
 		expect(document.title).toBe(`404 · ${heading} · Transit`);
 	});
 
 	it.each([
-		['/network?provider=stm', 'Try again', 'Back to home', '/'],
-		['/fr/network?provider=stm', 'Réessayer', 'Retour à l’accueil', '/fr'],
+		['/network?provider=stm', 'Try again', 'Back to the overview', '/'],
+		['/fr/network?provider=stm', 'Réessayer', 'Retour à l’aperçu', '/fr'],
 	])('reloads the failed page with its query at %s', (path, retry, home, homePath) => {
 		const url = new URL(path, 'https://transit.yesid.dev');
 		pageState.value = { status: 503, error: null, url };
@@ -114,11 +114,11 @@ describe('error route', () => {
 		render(ErrorPage);
 
 		expect(
-			screen.getByRole('heading', { level: 1, name: 'Something went wrong' }),
+			screen.getByRole('heading', { level: 1, name: 'This page could not load' }),
 		).toBeInTheDocument();
-		expect(screen.getByText('Database unavailable')).toBeInTheDocument();
+		expect(screen.queryByText('Database unavailable')).not.toBeInTheDocument();
 		expect(screen.getByRole('alert')).toHaveTextContent('500');
-		expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/');
+		expect(screen.getByRole('link', { name: 'Back to the overview' })).toHaveAttribute('href', '/');
 		expect(screen.getByTestId('construction-scene')).not.toHaveTextContent('500');
 		expect(screen.queryByTestId('terminal-line')).not.toBeInTheDocument();
 	});

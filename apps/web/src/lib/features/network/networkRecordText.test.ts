@@ -116,7 +116,7 @@ it('keeps a declared unpublished vehicle field separate from measured zero', () 
 	};
 	const { rows } = networkRows('vehicle_field_completeness', data, 'en');
 	expect(rows).toContainEqual(['Occupancy', 'Not tracked (field not published)', '']);
-	expect(rows).toContainEqual(['Stop', '0.0%', '0 / 2']);
+	expect(rows).toContainEqual(['Stop', '0%', '0 / 2']);
 });
 
 it('shows dates and separate reasons when live coverage could not be measured', () => {

@@ -63,10 +63,11 @@
 			{ early: 0, on_time: 0, late: 0, unknown: 0 },
 		),
 	);
+	const oneVehicle = $derived(model?.inViewCount === 1);
 	const sentence = $derived(
 		french
-			? `véhicules en vue ${lastAvailable ? 'au dernier signalement' : 'en ce moment'}\u00a0: ${count(statuses.early)} en avance, ${count(statuses.on_time)} à l’heure, ${count(statuses.late)} en retard, ${count(statuses.unknown)} au retard inconnu.`
-			: `vehicles in view ${lastAvailable ? 'at the last report' : 'now'}: ${count(statuses.early)} early, ${count(statuses.on_time)} on time, ${count(statuses.late)} late, ${count(statuses.unknown)} with unknown delay.`,
+			? `${oneVehicle ? 'véhicule' : 'véhicules'} en vue ${lastAvailable ? 'au dernier signalement' : 'en ce moment'}\u00a0: ${count(statuses.early)} en avance, ${count(statuses.on_time)} à l’heure, ${count(statuses.late)} en retard, ${count(statuses.unknown)} au retard inconnu.`
+			: `${oneVehicle ? 'vehicle' : 'vehicles'} in view ${lastAvailable ? 'at the last report' : 'now'}: ${count(statuses.early)} early, ${count(statuses.on_time)} on time, ${count(statuses.late)} late, ${count(statuses.unknown)} with unknown delay.`,
 	);
 	const uid = $props.id();
 </script>

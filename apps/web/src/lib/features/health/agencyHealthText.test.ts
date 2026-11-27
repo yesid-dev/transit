@@ -333,7 +333,7 @@ describe('the agency scorecard in plain words', () => {
 			{
 				id: 'with_live_data',
 				label: 'Trips with live data',
-				value: '99.9%',
+				value: '99.99%',
 				detail: '111,959 of 111,974 trips on lines seen in live data',
 			},
 			{
@@ -459,7 +459,7 @@ describe('the agency scorecard in plain words', () => {
 			label: 'Occupation du véhicule',
 			share: '99,9\u00a0%',
 		});
-		expect(spaces(sample)).toBe(spaces('72\u202f598,2\u00a0h de données des véhicules, 7 jours'));
+		expect(spaces(sample)).toBe(spaces('72\u202f598\u00a0h de données des véhicules, 7 jours'));
 	});
 });
 

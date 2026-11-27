@@ -65,6 +65,14 @@
 		min-inline-size: 0;
 		text-align: end;
 	}
+	dd :global(p) {
+		font-family: var(--font-sans);
+	}
+	@container fact-list (inline-size < 24rem) {
+		dd :global(p) {
+			text-align: start;
+		}
+	}
 	@container fact-list (inline-size < 16rem) {
 		.fact {
 			grid-template-columns: minmax(0, 1fr);

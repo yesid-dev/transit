@@ -59,7 +59,7 @@ export async function stopArchiveAvailability(record: Ready<ReturnType<typeof lo
 
 export const stopSectionTitles = {
 	waiting: ['Waiting by line', 'Attente par ligne'],
-	punctuality: ['On-time performance', 'Ponctualité'],
+	punctuality: ['On-time share', 'Ponctualité'],
 	byLine: ['By line', 'Par ligne'],
 	hourly: ['By hour', 'Par heure'],
 	daily: ['Day by day', 'Jour par jour'],

@@ -100,8 +100,8 @@ it.each([
 	],
 	[
 		reporting,
-		'times an hour it stopped reporting, the highest rate',
-		'interruptions des signalements par heure, le taux le plus élevé',
+		'times an hour is the highest rate of reporting interruptions',
+		'fois par heure est le taux d’interruption des signalements le plus élevé',
 	],
 ] as const)('leads with the appropriate wording for %s', (measure, en, fr) => {
 	const ranked = { rows: Array.from({ length: 20 }, () => row), ranked_count: 20 };
@@ -155,7 +155,7 @@ it('shows the observed sample for an entry below the minimum', () => {
 			reporting,
 			'fr',
 		),
-	).toBe('Trop peu pour juger · 2,3 heures en service');
+	).toBe('Trop peu pour juger · 2,3\u00a0h en service');
 });
 
 it('distinguishes no recorded days from an unknown result on recorded days', () => {

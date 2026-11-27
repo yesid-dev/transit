@@ -70,12 +70,12 @@ const leadPhrases: Record<RankingMeasure, Record<Locale, [extreme: string, ranke
 	// The rate per 100 hours stays on How we measure; riders read it per hour.
 	[reporting]: {
 		en: [
-			'times an hour it stopped reporting, the highest rate',
-			'times an hour it stopped reporting, the rate ranked highest',
+			'times an hour is the highest rate of reporting interruptions',
+			'times an hour is the interruption rate ranked highest',
 		],
 		fr: [
-			'interruptions des signalements par heure, le taux le plus élevé',
-			'interruptions des signalements par heure, le taux classé le plus élevé',
+			'fois par heure est le taux d’interruption des signalements le plus élevé',
+			'fois par heure est le taux d’interruption des signalements classé le plus élevé',
 		],
 	},
 };
@@ -123,7 +123,6 @@ const sampleUnits = {
 	headways: { en: 'observed intervals', fr: 'intervalles observés' },
 	events: { en: 'observed stop events', fr: 'passages observés aux arrêts' },
 	trips: { en: 'eligible trips', fr: 'trajets admissibles' },
-	hours: { en: 'hours in service', fr: 'heures en service' },
 };
 
 export const rankOptionLabels: Partial<Record<RankingMeasure, Record<Locale, string>>> = {
@@ -203,7 +202,14 @@ export function sampleText(sample: number, measure: RankingMeasure, locale: Loca
 				: measure === 'cancelled_trips' || measure === 'missing_trips'
 					? 'trips'
 					: 'events';
-	const formatted = unit === 'hours' ? recordHours(sample, locale) : number(sample, locale);
+	if (unit === 'hours') {
+		const duration =
+			sample < 1
+				? minuteReading(Math.round(sample * 60), locale)
+				: `${recordHours(sample, locale)}\u00a0h`;
+		return `${duration} ${choose(locale, 'in service', 'en service')}`;
+	}
+	const formatted = number(sample, locale);
 	return `${formatted} ${sampleUnits[unit][locale]}`;
 }
 

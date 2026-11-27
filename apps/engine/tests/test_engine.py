@@ -1017,7 +1017,10 @@ def test_http_and_bilingual_csv_come_from_same_registry(
             assert headers[b"content-type"] == b"text/csv; charset=utf-8"
             assert headers[b"x-transit-cleaning-version"] == str(store.cleaning_version).encode()
             reader = csv.reader(io.StringIO(payload.decode()))
-            assert next(reader) == info[0]["csv_columns"][lang]
+            columns = next(reader)
+            assert columns == info[0]["csv_columns"][lang]
+            assert "Query time (ms)" not in columns
+            assert "Durée de la requête (ms)" not in columns
             assert [row[0] for row in reader] == [measure["id"] for measure in info]
 
     asyncio.run(run())

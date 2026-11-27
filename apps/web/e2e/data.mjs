@@ -456,6 +456,11 @@ const server = createServer((request, response) => {
 			const { stops: departures } = JSON.parse(files['/v1/stm/live/stop_departures.json']);
 			const stopScope = url.searchParams.get('stop');
 			const tripScope = url.searchParams.get('trip');
+			if (tripScope === 'unavailable-trip') {
+				response.statusCode = 503;
+				response.end('{}');
+				return;
+			}
 			const lineScope = url.searchParams.get('line');
 			const tripUpdate = (id, route, delay, stops) => ({
 				trip_id: id,

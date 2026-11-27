@@ -12,7 +12,7 @@ import {
 	compactServiceDay,
 	countedUnit,
 	frenchAgency,
-	hoursReading,
+	vehicleHours,
 	recordPercent,
 	recordRatio,
 } from '#lib/site/presenter.ts';
@@ -390,7 +390,7 @@ export function vehicleReportRows(answer: ScorecardAnswer, locale: Locale) {
 		};
 	});
 	const reporting = number(object(counts.position).reporting_us);
-	const hours = reporting == null ? null : hoursReading(reporting / 3_600_000_000, locale);
+	const hours = reporting == null ? null : vehicleHours(reporting / 1_000_000, locale);
 	return {
 		rows,
 		sample: hours

@@ -164,9 +164,7 @@ describe('French copy', () => {
 		const where = new Set(strings.map(({ path }) => path));
 		// One of each kind: a fr: copy object, a locale choice in TypeScript, a t() call in markup.
 		expect(where).toContain('site/presenter.copy.ts');
-		expect(
-			strings.some(({ text }) => text === 'Aucun véhicule dans les 15 prochaines minutes.'),
-		).toBe(true);
+		expect(strings.some(({ text }) => text === 'avant le prochain véhicule')).toBe(true);
 		expect(where).toContain('features/stops/StopPredictionTable.svelte');
 	});
 

@@ -101,7 +101,7 @@ export const copy = defineCopy({
 		vehicleLabel: 'Vehicle',
 		tripLabel: 'Trip',
 		alertHas: 'With notices',
-		alertFilterUnavailable: 'Filter unavailable: no notice feed connected.',
+		alertFilterUnavailable: 'No notices to filter.',
 		alertHasAria: 'Show markers with notices',
 		latestReport: 'Latest report',
 		liveUnavailable: 'Live vehicle positions unavailable right now. The map and stops still work.',
@@ -224,7 +224,7 @@ export const copy = defineCopy({
 		vehicleLabel: 'Véhicule',
 		tripLabel: 'Trajet',
 		alertHas: 'Avec avis',
-		alertFilterUnavailable: 'Filtre indisponible : aucune source d’avis connectée.',
+		alertFilterUnavailable: 'Aucun avis à filtrer.',
 		alertHasAria: 'Afficher les marqueurs avec avis',
 		latestReport: 'Dernier rapport',
 		liveUnavailable:

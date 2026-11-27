@@ -274,7 +274,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.getByRole('radio', { name: fr ? 'Part à l’heure' : 'On-time share' }).focus();
 		await page.keyboard.press('Tab');
 		const reverse = page.getByRole('button', {
-			name: fr ? 'Inverser le tri par À l’heure' : 'Reverse sort by On time',
+			name: fr ? 'Inverser l’ordre' : 'Reverse the order',
 		});
 		await expect(reverse).toBeFocused();
 		await page.keyboard.press('Enter');
@@ -415,7 +415,9 @@ for (const locale of ['en', 'fr'] as const) {
 					.getByRole('button', { name: fr ? 'Fermer' : 'Close' })
 					.click();
 				await expect(
-					main.getByRole('link', { name: fr ? 'Près d’une adresse' : 'Near an address' }),
+					main.getByRole('link', {
+						name: fr ? 'Près d’une adresse, sur la carte' : 'Near an address, on the map',
+					}),
 				).toHaveAttribute('href', /\/map\?[^#]*\blookup=address(?:&|$)/u);
 				if (width === 390) {
 					await filter.click();
@@ -506,7 +508,7 @@ for (const locale of ['en', 'fr'] as const) {
 				name: fr ? 'Cet arrêt est introuvable' : 'This stop could not be found',
 			}),
 		).toBeVisible();
-		await expect(page.getByTestId('construction-scene')).toHaveCount(0);
+		await expect(page.getByTestId('construction-scene')).toBeVisible();
 		await expect(
 			page.getByRole('link', { name: fr ? 'Trouver un arrêt' : 'Find a stop' }),
 		).toBeVisible();

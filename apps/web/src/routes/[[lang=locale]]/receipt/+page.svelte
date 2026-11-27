@@ -13,7 +13,7 @@
 	import { recordNoticeCards } from '#lib/features/alerts/alertCards.ts';
 	import RecordRanking from '#lib/features/home/RecordRanking.svelte';
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
-	import { previewRows, recordCounts } from '#lib/features/home/overviewRecord.ts';
+	import { recordCounts } from '#lib/features/home/overviewRecord.ts';
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
@@ -240,30 +240,13 @@
 			return [
 				{
 					label,
-					// The footer counts the rows the preview shows.
-					events: previewRows(answer.rows).reduce((total, row) => total + row.sample, 0),
-					dates: answer.evidence.days_included,
 					version: methodEvidence(answer.evidence, lang, true),
 					lastGood,
 				},
 			];
 		});
-		const counted = readings.filter(({ events }) => events > 0);
-		const commonDates = counted[0]?.dates ?? [];
-		const sharedDays =
-			commonDates.length && counted.every(({ dates }) => dates.join() === commonDates.join())
-				? countedUnit(commonDates.length, 'day', lang)
-				: '';
-		const samples = counted
-			.map(({ label, events, dates }) => {
-				const days =
-					!sharedDays && dates.length ? ', ' + countedUnit(dates.length, 'day', lang) : '';
-				return label + separator + countedUnit(events, 'event', lang) + days;
-			})
-			.join(' · ');
 		const versions = new Set(readings.map(({ version }) => version));
 		return {
-			sample: samples + (sharedDays ? ', ' + sharedDays : ''),
 			versions:
 				versions.size <= 1
 					? readings[0]?.version
@@ -374,10 +357,15 @@
 						'Printing is available when all sections have loaded.',
 						'L’impression sera possible lorsque toutes les sections seront chargées.',
 					)
-				: t(
-						'A one-day report prints on one sheet.',
-						'Le rapport d’une journée tient sur une feuille.',
-					)}
+				: period && period.from !== period.to
+					? t(
+							'This report covers several days and prints on several sheets.',
+							'Ce rapport couvre plusieurs jours et s’imprime sur plusieurs feuilles.',
+						)
+					: t(
+							'A one-day report prints on one sheet.',
+							'Le rapport d’une journée tient sur une feuille.',
+						)}
 		/>
 	</div>
 {/snippet}
@@ -888,7 +876,7 @@
 								<RecordCard
 									interactive
 									compactPrint
-									title={t('Lines and stops to inspect', 'Lignes et arrêts à examiner')}
+									title={t('Lines and stops to investigate', 'Lignes et arrêts à examiner')}
 									{stamp}
 									stampRule
 								>
@@ -929,7 +917,6 @@
 											{#if evidence.versions}
 												<RecordEvidenceLine
 													locale={lang}
-													sample={evidence.sample}
 													versions={evidence.versions}
 													note={evidence.stale}
 												/>

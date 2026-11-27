@@ -233,7 +233,7 @@
 		back={lineHref
 			? {
 					href: lineHref,
-					label: t(`Line ${line}`, `Ligne ${line}`),
+					label: t('Line', 'Ligne'),
 					compactLabel: t('Line', 'Ligne'),
 				}
 			: undefined}

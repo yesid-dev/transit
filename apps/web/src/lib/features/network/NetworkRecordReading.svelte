@@ -28,6 +28,7 @@
 		id,
 		fill = false,
 		waiting,
+		compactWhenSettled = false,
 		more,
 		after,
 	}: {
@@ -42,6 +43,7 @@
 		/** The body's final shape, drawn while it waits or the engine is busy, and kept as its least
 		    height when it ends in a short honest state. */
 		waiting: RecordWaiting;
+		compactWhenSettled?: boolean;
 		/** More of the final shape under the first one, for a card in two parts. */
 		more?: RecordWaiting;
 		/** Parts of the card that need no answer from this reading, drawn from the first frame. */
@@ -74,7 +76,11 @@
 <section {id} class="grid min-w-0">
 	<RecordCard {title} {stamp} stampRule {fill} interactive={!!control}>
 		<!-- The reading keeps its waiting height when it ends in a short state; what follows it stays put. -->
-		<div class="reading" class:fill style:min-block-size={reserved}>
+		<div
+			class="reading"
+			class:fill
+			style:min-block-size={compactWhenSettled ? undefined : reserved}
+		>
 			{#await answer}
 				{#key answer}<RecordPending {locale} {answer} shape={waiting} />{/key}
 				{#if more}<RecordSkeleton shape={more} />{/if}

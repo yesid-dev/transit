@@ -117,11 +117,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(path('S1', 'frameMode=live'));
 		await refresh();
 		const answer = page.locator('[data-slot="screen-answer"]');
-		await expect(answer).toContainText(fr ? 'dans 20 min' : 'in 20 min');
+		await expect(answer).toContainText(
+			fr ? '20 min avant le prochain véhicule' : '20 min until the next vehicle',
+		);
 		await expect(answer).toContainText(
 			fr
-				? /Aucun véhicule dans les 15 prochaines minutes\. Prochain\u00a0: ligne \S+ vers .+, prévu à .+\./u
-				: /No vehicle in the next 15 minutes\. Next: line \S+ toward .+, scheduled .+\./u,
+				? /avant le prochain véhicule\s: ligne \S+ vers .+, prévu à .+\./u
+				: /until the next vehicle: line \S+ toward .+, scheduled .+\./u,
 		);
 		await expect(answer).not.toContainText(fr ? 'pourcentage' : 'percentage');
 		// The rider's direction, as on the line pages: never the bare compass word.
@@ -235,7 +237,7 @@ for (const locale of PUBLISHED_LOCALES) {
 				name: fr ? 'Cet arrêt est introuvable' : 'This stop could not be found',
 			}),
 		).toBeVisible();
-		await expect(page.getByTestId('construction-scene')).toHaveCount(0);
+		await expect(page.getByTestId('construction-scene')).toBeVisible();
 		await expect(
 			page.getByRole('link', { name: fr ? 'Trouver un arrêt' : 'Find a stop' }),
 		).toBeVisible();

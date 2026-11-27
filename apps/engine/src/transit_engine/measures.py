@@ -584,7 +584,6 @@ _EVIDENCE_COLUMNS = {
     "share_observed": Text("Observed share", "Part observée"),
     "cleaning_versions": Text("Cleaning versions", "Versions du nettoyage"),
     "method_version": Text("Method version", "Version de la méthode"),
-    "query_ms": Text("Query time (ms)", "Durée de la requête (ms)"),
 }
 _CSV_COLUMNS = {
     "measure": Text("Measure", "Mesure"),

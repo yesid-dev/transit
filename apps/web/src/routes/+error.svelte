@@ -12,6 +12,10 @@
 	const is404 = $derived(status === 404);
 
 	const copy = $derived(errorPageCopy[locale]);
+	const detailSign = $derived({
+		signLabel: 'STATION',
+		statusNote: locale === 'fr' ? '// introuvable' : '// not found',
+	});
 	const localized = (suggestions: readonly { label: string; href: string }[]) =>
 		suggestions.map((suggestion) => ({
 			...suggestion,
@@ -36,7 +40,7 @@
 			return {
 				heading: copy.stopNotFound.heading,
 				body: copy.stopNotFound.body,
-				illustration: 'none' as const,
+				...detailSign,
 				suggestions: localized(copy.stopNotFound.suggestions),
 			};
 		const detail = detailNotFound(code, locale);
@@ -45,7 +49,7 @@
 			return {
 				heading: detail.heading,
 				body: departure ? (page.error?.message ?? detail.body) : detail.body,
-				illustration: 'none' as const,
+				...detailSign,
 				suggestions: departure
 					? [
 							{
@@ -69,7 +73,7 @@
 			label: copy.generic.label,
 			heading: copy.generic.heading,
 			body: copy.generic.body,
-			detail: page.error?.message,
+			detail: status < 500 ? page.error?.message : undefined,
 			suggestions: [
 				{
 					href: page.url.origin + page.url.pathname + page.url.search,

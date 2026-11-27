@@ -659,6 +659,10 @@
 						{:else if result.answer.length}
 							{@const families = familiesFor(result.answer)}
 							{@const dates = new Set(families.map(({ since }) => since))}
+							{@const common = [...dates].find(
+								(date) =>
+									families.filter(({ since }) => since === date).length * 2 > families.length,
+							)}
 							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 							{#if dates.size === 1}
 								<p>
@@ -672,6 +676,12 @@
 									)}
 								</p>
 							{:else}
+								{#if common}<p class="mb-3">
+										{t(
+											`Most measure families last changed on ${longDate(common, locale)}.`,
+											`La plupart des familles de mesures ont changé pour la dernière fois le ${longDate(common, locale)}.`,
+										)}
+									</p>{/if}
 								<p class="mb-3">
 									{t(
 										`The record starts ${longDate(start, locale)} and is rebuilt each night, after the service day closes.`,
@@ -685,12 +695,14 @@
 									{locale}
 									title={titles.changes}
 									rowHeader={t('Measure family', 'Famille de mesures')}
-									rows={families.map((entry) => ({
-										id: entry.family,
-										label: entry.family_text?.[locale] ?? entry.family,
-										href: `${methodHref}#${entry.id}`,
-										since: entry.since,
-									}))}
+									rows={families
+										.filter(({ since }) => since !== common)
+										.map((entry) => ({
+											id: entry.family,
+											label: entry.family_text?.[locale] ?? entry.family,
+											href: `${methodHref}#${entry.id}`,
+											since: entry.since,
+										}))}
 									columns={[
 										{ key: 'since', header: t('Last changed', 'Dernier changement'), cell: since },
 									]}

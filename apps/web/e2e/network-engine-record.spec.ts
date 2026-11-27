@@ -89,7 +89,7 @@ test('Network health reads scheduled trips and individual silent trips from the 
 	await refresh();
 	const main = page.getByRole('main');
 	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
-		'364 vehicles are reporting now, for 1,306 trips scheduled at this moment.',
+		'1,262 of 1,306 trips scheduled now have a vehicle reporting. 364 vehicles are reporting in all.',
 	);
 	await expect(main.getByText('1,262', { exact: true })).toBeVisible();
 	await expect(main.getByText('of 1,306', { exact: true })).toBeVisible();

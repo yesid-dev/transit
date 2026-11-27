@@ -155,7 +155,7 @@
 
 	function sortHeaderLabel(header: string) {
 		if (header !== sortedHeader) return `${sortBy} ${header}`;
-		return locale === 'fr' ? `Inverser le tri par ${header}` : `Reverse sort by ${header}`;
+		return locale === 'fr' ? 'Inverser l’ordre' : 'Reverse the order';
 	}
 
 	const pageLabels = $derived({

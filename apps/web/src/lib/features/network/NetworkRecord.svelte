@@ -646,6 +646,7 @@
 					{stamp}
 					answer={record.crowding}
 					waiting={{ shape: 'table', rows: 6 }}
+					compactWhenSettled
 				>
 					{#snippet reading(result)}
 						{#if !('cells' in result) && result.state === 'measured'}

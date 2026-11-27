@@ -39,6 +39,8 @@
 		tripsAnHour,
 		tripsOverDays,
 		agencyName,
+		alertsNotCollected,
+		frenchAgency,
 		noPublishedNotices,
 	} from '#lib/site/presenter.ts';
 	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
@@ -146,7 +148,16 @@
 {/snippet}
 
 {#if 'value' in answer}
-	{#if section === 'alerts'}
+	{#if section === 'alerts' && answer.state === 'not_tracked'}
+		<p>{alertsNotCollected(agencyName(operator, provider), locale)}</p>
+	{:else if section === 'crowding' && answer.state === 'not_tracked'}
+		<p>
+			{t(
+				`Transit does not record room on board for ${operator} yet.`,
+				`Transit ne relève pas encore la place à bord des véhicules ${frenchAgency(agencyName(operator, provider)).of}.`,
+			)}
+		</p>
+	{:else if section === 'alerts'}
 		{@const messages = groupAlertCards(recordAlertCards(answer.evidence.alert_messages))}
 		{#if answer.value.alerts != null && answer.value.alerts > 0}
 			<p class="mb-3">{countedUnit(answer.value.alerts, 'distinct-alert', locale)}</p>
@@ -367,8 +378,11 @@
 			<p>
 				<StateMark state="too_few_to_judge" {locale} />
 				{tooFewDepartures(most, minimum ?? null, locale)}
-				{#if unconfirmed}{unconfirmedTrips(unconfirmed, locale)}{/if}
+				{#if Date.parse(answer.evidence.end_date) - Date.parse(answer.evidence.start_date) < 7 * 86_400_000}
+					{t('Choose 28 days or more.', 'Choisissez 28 jours ou plus.')}
+				{/if}
 			</p>
+			{#if unconfirmed}<p>{unconfirmedTrips(unconfirmed, locale)}</p>{/if}
 		{/if}
 	{/if}
 {/if}
