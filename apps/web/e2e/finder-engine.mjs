@@ -91,7 +91,7 @@ export function finderEngine(url) {
 			: [from];
 	if (group === 'line' && from === '2026-11-05') return { status: 502, body: {} };
 	if (group === 'stop_id' && from === '2026-11-05') return { status: 502, body: {} };
-	if (group === 'line' && from === '2026-11-06') {
+	if (from === '2026-11-06') {
 		return { status: 503, headers: { 'retry-after': '20' }, body: {} };
 	}
 	const cell = (key, value, counts, state = 'measured', en = 'Measured', fr = 'Mesuré') => ({

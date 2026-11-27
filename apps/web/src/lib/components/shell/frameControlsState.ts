@@ -4,12 +4,15 @@ import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { mapLayerFor } from '#lib/site/mapFrame.ts';
-import { dateRange, longDate } from '#lib/site/presenter.ts';
+import { dateRange, longDate, recordNoticeDates } from '#lib/site/presenter.ts';
 import {
 	RECORD_START,
+	dailyReportPeriod,
 	frameDateLimit,
 	parseFrameState,
 	periodError,
+	receiptFrameParams,
+	unpublishedRecordDates,
 	unpublishedYesterday,
 	type FrameClock,
 } from '#lib/site/frameState.ts';
@@ -37,7 +40,10 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 	const map = path === '/map';
 	const liveOnly = path.startsWith('/trip/');
 	const showRail = !errorPage && !readingPaths.includes(path);
-	const parsed = parseFrameState(url.searchParams, clock);
+	const params =
+		path === '/receipt' ? receiptFrameParams(url.searchParams, clock) : url.searchParams;
+	const parsed = parseFrameState(params, clock);
+	const period = path === '/receipt' ? dailyReportPeriod(parsed.period, clock) : parsed.period;
 	let mode = parsed.mode;
 	if (recordOnly) mode = 'record';
 	else if (liveOnly) mode = 'live';
@@ -59,8 +65,14 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		askedFrom !== null &&
 		askedTo !== null &&
 		periodError({ from: askedFrom, to: askedTo }, frameDateLimit(clock), start) === 'beforeRecord';
+	const waitingForYesterday =
+		mode === 'record' && path !== '/download' && path !== '/receipt'
+			? unpublishedYesterday(period, clock)
+			: null;
+	const askedAfterRecord = unpublishedRecordDates(params, clock);
 	return {
 		...parsed,
+		period,
 		mode,
 		showRail,
 		// The map explains each mode itself: Record names what its layer draws. A second line
@@ -70,15 +82,45 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		liveOnly,
 		detail: line || stop,
 		map,
-		waitingForYesterday:
-			mode === 'record' && path !== '/download' ? unpublishedYesterday(parsed.period, clock) : null,
+		waitingForYesterday,
 		usesFrameRecord,
 		// A link whose dates fall before the city's record is answered with other dates: say so once.
 		beforeRecord:
 			!errorPage && askedBeforeRecord && mode === 'record' && usesFrameRecord && parsed.period
 				? { start, period: parsed.period }
 				: null,
+		afterRecord:
+			!errorPage &&
+			mode === 'record' &&
+			(usesFrameRecord || map) &&
+			!waitingForYesterday &&
+			askedAfterRecord &&
+			period &&
+			askedAfterRecord.from > period.to
+				? { requested: askedAfterRecord, period }
+				: null,
 	} as const;
+}
+
+export function recordEndNotice(
+	afterRecord: ReturnType<typeof frameControlsState>['afterRecord'],
+	locale: Locale,
+): string | null {
+	if (!afterRecord) return null;
+	const { requested, period } = afterRecord;
+	const copy = frameCopy[locale];
+	const year = period.from.slice(0, 4) !== requested.to.slice(0, 4);
+	const asked = recordNoticeDates(requested, locale, year);
+	const shown = recordNoticeDates(period, locale, year);
+	const missing =
+		requested.from === requested.to ? copy.waitingForDay(asked) : copy.waitingForDates(asked);
+	const showing =
+		locale === 'en'
+			? frameCopy.en.showing(shown)
+			: period.from === period.to
+				? frameCopy.fr.showingDay(shown)
+				: frameCopy.fr.showingDates(shown);
+	return `${missing} ${showing}`;
 }
 
 /** The one sentence a screen shows when its link's dates fell before the record. */

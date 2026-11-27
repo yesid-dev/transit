@@ -58,6 +58,10 @@ const shiftDay = (day: string, offset: number) =>
 	isoDay(new Date(Date.parse(day) + offset * 86_400_000));
 const minDay = (a: string, b: string) => (a < b ? a : b);
 
+function lastBuiltDay({ today, recordThrough }: FrameClock) {
+	return recordThrough && isDay(recordThrough) ? minDay(recordThrough, shiftDay(today, -1)) : null;
+}
+
 export function frameDateLimit({ today, recordThrough }: FrameClock) {
 	return recordThrough ? shiftDay(today, -1) : today;
 }
@@ -80,13 +84,11 @@ export function periodError(
 	return null;
 }
 
-export function presetPeriod(
-	preset: Preset,
-	{ today, recordThrough, recordStart: start = RECORD_START }: FrameClock,
-): FramePeriod | null {
+export function presetPeriod(preset: Preset, clock: FrameClock): FramePeriod | null {
+	const { today, recordStart: start = RECORD_START } = clock;
 	const date = new Date(today + 'T00:00:00Z');
 	const yesterday = shiftDay(today, -1);
-	const through = recordThrough && isDay(recordThrough) ? minDay(recordThrough, yesterday) : null;
+	const through = lastBuiltDay(clock);
 	const end = through ?? yesterday;
 	const yearEnd = through ? new Date(shiftDay(through, 1) + 'T00:00:00Z') : date;
 	const monthStart = (offset: number) =>
@@ -127,13 +129,28 @@ export function parseFrameState(params: URLSearchParams, clock: FrameClock): Fra
 	const from = params.get('recordFrom') ?? '';
 	const to = params.get('recordTo') ?? '';
 	const period = { preset, from, to };
-	if (!periodError(period, frameDateLimit(clock), clock.recordStart)) return { mode, period };
+	if (
+		!periodError(period, frameDateLimit(clock), clock.recordStart) &&
+		(!unpublishedRecordDates(params, clock) || unpublishedYesterday(period, clock))
+	)
+		return { mode, period };
 	return {
 		mode,
 		period:
 			presetPeriod('7-days', clock) ??
 			presetPeriod(clock.recordThrough ? '12-months' : 'yesterday', clock),
 	};
+}
+
+export function unpublishedRecordDates(
+	params: URLSearchParams,
+	clock: FrameClock,
+): DateWindow | null {
+	const through = lastBuiltDay(clock);
+	const period = { from: params.get('recordFrom') ?? '', to: params.get('recordTo') ?? '' };
+	return through && period.from > through && !periodError(period, '9999-12-31', clock.recordStart)
+		? period
+		: null;
 }
 
 export function unpublishedYesterday(period: FrameState['period'], { recordThrough }: FrameClock) {
@@ -143,6 +160,21 @@ export function unpublishedYesterday(period: FrameState['period'], { recordThrou
 		period.to > recordThrough
 		? period.to
 		: null;
+}
+
+/** Daily reports keep Yesterday selected while showing the latest available day. */
+export function dailyReportPeriod(period: FrameState['period'], clock: FrameClock) {
+	const through = lastBuiltDay(clock);
+	return period && through && unpublishedYesterday(period, clock)
+		? { ...period, from: through, to: through }
+		: period;
+}
+
+export function receiptFrameParams(params: URLSearchParams, clock: FrameClock) {
+	const date = params.get('date');
+	if (!date || params.has('recordFrom')) return params;
+	const legacy = new URLSearchParams({ recordFrom: date, recordTo: date });
+	return unpublishedRecordDates(legacy, clock) ? legacy : params;
 }
 
 /** Keep the selected dates in the frame, but avoid question work for a pending Yesterday. */

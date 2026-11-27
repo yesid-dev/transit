@@ -4,11 +4,12 @@ import {
 	frameHref,
 	frameDateLimit,
 	frameClock,
+	dailyReportPeriod,
 	parseFrameState,
 	periodError,
 	presetPeriod,
 	PRESETS,
-	unpublishedYesterday,
+	receiptFrameParams,
 } from '#lib/site/frameState.ts';
 import { loadDailyRecord } from '#lib/server/departureDailyRecord.ts';
 import { getScheduleEdition } from '#lib/server/engine.ts';
@@ -18,7 +19,7 @@ import { dailyReportTitle } from '#lib/site/presenter.ts';
 export const load: PageServerLoad = async (event) => {
 	const { providerId, lang, provider, schedule } = await event.parent();
 	const clock = frameClock(provider);
-	const params = event.url.searchParams;
+	const params = receiptFrameParams(event.url.searchParams, clock);
 	const date = params.has('recordFrom') ? null : params.get('date');
 	const legacyPeriod = date == null ? null : { from: date, to: date, preset: null };
 	if (!legacyPeriod && !params.has('recordFrom') && !params.has('recordTo')) {
@@ -37,17 +38,15 @@ export const load: PageServerLoad = async (event) => {
 		? periodError(legacyPeriod, frameDateLimit(clock), clock.recordStart)
 			? null
 			: legacyPeriod
-		: parseFrameState(params, clock).period;
-	const unpublished = Boolean(unpublishedYesterday(period, clock));
+		: dailyReportPeriod(parseFrameState(params, clock).period, clock);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const tracked = !provider || providerHasAlerts(provider);
 	const lineNumbers = new Map(schedule?.routes.map(({ id, short }) => [id, short || id]));
-	const scope = !unpublished &&
-		period && {
-			...period,
-			city: providerId,
-			visitorIp,
-		};
+	const scope = period && {
+		...period,
+		city: providerId,
+		visitorIp,
+	};
 	const { sections, messagesLimited } = scope
 		? loadDailyRecord(scope, tracked, lang, (id) => lineNumbers.get(id) ?? id)
 		: { sections: [], messagesLimited: false };
@@ -74,7 +73,6 @@ export const load: PageServerLoad = async (event) => {
 			operator: provider?.labels[lang].operator,
 			timeZone: provider?.timezone,
 			period,
-			unpublished,
 			tracked,
 			sections,
 			messagesLimited,

@@ -6,6 +6,10 @@
 	let props: ComponentProps<typeof RecordRecoveryHarness> = $props();
 </script>
 
-<RecordPatience locale="en" period={{ from: '2026-11-17', to: '2026-11-23' }} scope={props.scope}>
+<RecordPatience
+	locale={props.locale ?? 'en'}
+	period={{ from: '2026-11-17', to: '2026-11-23' }}
+	scope={props.scope}
+>
 	<RecordRecoveryHarness {...props} />
 </RecordPatience>

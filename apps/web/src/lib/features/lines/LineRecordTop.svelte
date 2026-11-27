@@ -14,6 +14,7 @@
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordUnavailable from '#lib/features/record/RecordUnavailable.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import {
@@ -130,9 +131,7 @@
 	{#if result.kind === 'busy'}
 		<RecordPending {locale} busy />
 	{:else if result.kind !== 'answer'}
-		<p>
-			{t('The record is temporarily unavailable.', 'Le bilan est temporairement indisponible.')}
-		</p>
+		<RecordUnavailable {locale} retry={result.kind === 'unreachable' ? result.retry : undefined} />
 	{:else}
 		{@const answer = result.answer}
 		<p>

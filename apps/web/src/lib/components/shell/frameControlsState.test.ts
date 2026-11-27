@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { frameControlsState, framePeriodSummary, recordStartNotice } from './frameControlsState.ts';
+import {
+	frameControlsState,
+	framePeriodSummary,
+	recordStartNotice,
+	recordEndNotice,
+} from './frameControlsState.ts';
 
 const today = '2026-11-22';
 const clock = (recordThrough: string | null = null) => ({ today, recordThrough });
@@ -134,4 +139,29 @@ describe('frame control state', () => {
 		])
 			expect(state(href).beforeRecord).toBeNull();
 	});
+
+	it.each([
+		['en', '26 November is not in the record yet. Showing 18 to 24 November.'],
+		['fr', 'Le 26 novembre ne figure pas encore au bilan. Affichage du 18 au 24 novembre.'],
+	] as const)(
+		'names the requested and displayed dates in %s when a link is ahead of the record',
+		(locale, text) => {
+			const url = new URL('https://transit.test/receipt?recordFrom=2026-11-26&recordTo=2026-11-26');
+			const lateClock = { today: '2026-11-26', recordThrough: '2026-11-24' };
+			const frame = frameControlsState(url, lateClock);
+			expect(frame.period).toMatchObject({ from: '2026-11-18', to: '2026-11-24' });
+			expect(recordEndNotice(frame.afterRecord, locale)).toBe(text);
+			url.search = '?period=yesterday&recordFrom=2026-11-25&recordTo=2026-11-25';
+			const daily = frameControlsState(url, lateClock);
+			expect(daily.period).toEqual({ preset: 'yesterday', from: '2026-11-24', to: '2026-11-24' });
+			expect(daily.waitingForYesterday).toBeNull();
+			expect(recordEndNotice(daily.afterRecord, locale)).toBe(
+				locale === 'en'
+					? '25 November is not in the record yet. Showing 24 November.'
+					: 'Le 25 novembre ne figure pas encore au bilan. Affichage du 24 novembre.',
+			);
+			url.pathname = '/roadmap';
+			expect(frameControlsState(url, lateClock).afterRecord).toBeNull();
+		},
+	);
 });

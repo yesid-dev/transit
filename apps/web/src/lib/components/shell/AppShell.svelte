@@ -15,8 +15,13 @@
 		FrameControlsExtensionContext,
 		type FrameControlsExtension,
 	} from './FrameControls.svelte';
-	import { frameControlsState, frameCopy, recordStartNotice } from './frameControlsState.ts';
-	import { provideRecordStartNotice } from '#lib/site/recordStartNoticeContext.ts';
+	import {
+		frameControlsState,
+		frameCopy,
+		recordStartNotice,
+		recordEndNotice,
+	} from './frameControlsState.ts';
+	import { provideRecordPeriodNotice } from '#lib/site/recordPeriodNoticeContext.ts';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import RecordPatience from '#lib/features/record/RecordPatience.svelte';
@@ -70,7 +75,10 @@
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
 	const frame = $derived(frameControlsState(url, clock, errorPage));
-	provideRecordStartNotice(() => recordStartNotice(frame.beforeRecord, locale));
+	provideRecordPeriodNotice(
+		() =>
+			recordStartNotice(frame.beforeRecord, locale) ?? recordEndNotice(frame.afterRecord, locale),
+	);
 	let surfaceControls = $state.raw<Snippet<[SurfaceRailContext]>[]>([]);
 	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail) => {
 		surfaceControls = [...surfaceControls, rail];

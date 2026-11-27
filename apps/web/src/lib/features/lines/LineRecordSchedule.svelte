@@ -13,6 +13,7 @@
 	import type { RecordMeasure, RecordSeries, getRecordAnswer } from '#lib/server/engine.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import RecordPending from '../record/RecordPending.svelte';
+	import RecordUnavailable from '../record/RecordUnavailable.svelte';
 	import LineReadingTable from './LineReadingTable.svelte';
 	import LineRecordEvidence from './LineRecordEvidence.svelte';
 
@@ -24,6 +25,7 @@
 		day,
 		unavailable,
 		busy,
+		retry,
 		direction,
 		directionalFrequency,
 		headsigns,
@@ -35,6 +37,7 @@
 		day?: string | null;
 		unavailable?: boolean;
 		busy?: boolean;
+		retry?: () => void;
 		direction: string | null;
 		directionalFrequency: ReturnType<typeof getRecordAnswer> | null;
 		headsigns: Record<number, string>;
@@ -133,9 +136,18 @@
 				label={t('Day type', 'Type de jour')}
 				onSelect={(key) => (selection = key)}
 			/>
-			{#if unavailable}<p>
-					{t('The record is temporarily unavailable.', 'Le bilan est temporairement indisponible.')}
-				</p>{/if}
+			{#if unavailable}
+				<RecordUnavailable
+					{locale}
+					retry={retry &&
+						(() => {
+							retry?.();
+							void directionalFrequency?.then((result) => {
+								if (result.kind === 'unreachable') result.retry?.();
+							});
+						})}
+				/>
+			{/if}
 			<dl id="boundaries" class="grid grid-cols-1 gap-3 tabular-nums sm:grid-cols-3">
 				{#each [{ label: t('First trip', 'Premier trajet'), value: edge('first_trip') }, { label: t('Last trip', 'Dernier trajet'), value: edge('last_trip') }, { label: selected === 'weekday' ? t('Average trips per weekday', 'Moyenne de trajets par jour de semaine') : t('Average trips per day', 'Moyenne de trajets par jour'), value: trips === null ? null : dailyScheduledTrips(trips, locale) }] as item (item.label)}
 					{#if item.value != null}
@@ -169,12 +181,10 @@
 								)}
 							</p>
 						{:else if !unavailable}
-							<p>
-								{t(
-									'The record is temporarily unavailable.',
-									'Le bilan est temporairement indisponible.',
-								)}
-							</p>
+							<RecordUnavailable
+								{locale}
+								retry={result.kind === 'unreachable' ? result.retry : undefined}
+							/>
 						{/if}
 					{/await}
 				{:else}

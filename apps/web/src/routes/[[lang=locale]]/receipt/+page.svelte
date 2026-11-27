@@ -448,7 +448,7 @@
 						'Cette date est hors du bilan disponible.',
 					)}
 				</p>
-			{:else if !data.unpublished && data.sections.length}
+			{:else if data.sections.length}
 				<div
 					class="report-content min-w-0 print:grid print:grid-cols-2 print:gap-3"
 					data-slot="screen-content"

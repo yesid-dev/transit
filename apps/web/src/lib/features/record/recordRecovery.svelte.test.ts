@@ -6,6 +6,51 @@ import RecordRecoveryNoticeHarness from './RecordRecoveryNoticeHarness.svelte';
 const answer = Promise.resolve({ kind: 'answer' } as EngineResult<RecordAnswer>);
 const busy = Promise.resolve({ kind: 'busy' } as const);
 
+it.each([
+	['en', 'Waiting for a reading.', 'The record is temporarily unavailable.', 'Try again'],
+	['fr', 'En attente de données.', 'Le bilan est temporairement indisponible.', 'Réessayer'],
+] as const)(
+	'retries missing sections and offers one retry per unavailable card in %s',
+	async (locale, pending, unavailable, retry) => {
+		vi.useFakeTimers();
+		const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+		const fetcher = vi.fn(async (_url: string) => Response.json({}));
+		fetcher.mockResolvedValueOnce(Response.json({ Days: await answer }));
+		vi.stubGlobal('fetch', fetcher);
+		try {
+			render(RecordRecoveryNoticeHarness, {
+				scope: '/vehicle/101',
+				locale,
+				sections: [
+					{ section: 'Days', answer: busy },
+					{ section: 'Lines', answer: busy },
+				],
+			});
+			await vi.advanceTimersByTimeAsync(60_001);
+			const days = screen.getByRole('button', { name: 'Days' });
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(fetcher).toHaveBeenCalledTimes(2);
+			await vi.advanceTimersByTimeAsync(3_000);
+			expect(
+				fetcher.mock.calls.map(([url]) =>
+					new URL(url, location.origin).searchParams.get('sections'),
+				),
+			).toEqual(['Days,Lines', 'Lines', 'Lines']);
+			expect(screen.getAllByText(unavailable)).toHaveLength(1);
+			expect(screen.queryByText(pending)).toBeNull();
+			fetcher.mockResolvedValueOnce(Response.json({ Lines: await answer }));
+			screen.getByRole('button', { name: retry }).click();
+			await vi.advanceTimersByTimeAsync(1);
+			expect(screen.getByRole('button', { name: 'Days' })).toBe(days);
+			expect(screen.getByRole('button', { name: 'Lines' })).toBeInTheDocument();
+		} finally {
+			vi.unstubAllGlobals();
+			visibility.mockRestore();
+			vi.useRealTimers();
+		}
+	},
+);
+
 it('tries once when visible and preserves the answered control and its focus', async () => {
 	vi.useFakeTimers();
 	const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);

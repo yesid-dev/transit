@@ -47,6 +47,7 @@
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
+	import RecordUnavailable from '../record/RecordUnavailable.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import { finderCells, finderCsv, finderRecordUrl, finderShare } from '../record/finderText.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
@@ -470,7 +471,7 @@
 	{#if row.share !== null}<strong>{recordPercent(row.share, locale)}</strong>
 	{:else}<RecordTableValue
 			{locale}
-			text={record && (!result || result.kind === 'busy')
+			text={record && !result
 				? t('Calculating…', 'Calcul en cours…')
 				: result && result.kind !== 'answer'
 					? t('Unavailable', 'Indisponible')
@@ -722,10 +723,17 @@
 									{locale}
 									answer={record.punctuality}
 								/>{/key}
-						{:else if result?.kind === 'busy'}<RecordPending {locale} busy />
-						{:else if result && result.kind !== 'answer'}<p>
-								{recordConnection[result.kind][locale]}
-							</p>{/if}
+						{:else if result && result.kind !== 'answer' && !searchFailed && listing && !updatingSearch}
+							{#if result.kind === 'unconfigured'}
+								<p>{recordConnection.unconfigured[locale]}</p>
+							{:else}
+								<RecordUnavailable
+									{locale}
+									retry={() =>
+										void goto(location.href, { invalidateAll: true, reset: false, state: {} })}
+								/>
+							{/if}
+						{/if}
 					</section>
 				</div>
 			</RecordCard>

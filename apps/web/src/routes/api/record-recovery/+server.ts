@@ -38,6 +38,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	if ('network' in readings && readings.network) entries.push(['network', readings.network]);
 	if ('networkDaily' in readings && readings.networkDaily)
 		entries.push(['networkDaily', readings.networkDaily]);
+	if ('directionalFrequency' in readings && readings.directionalFrequency)
+		entries.push(['directionalFrequency', readings.directionalFrequency]);
 	const results = await Promise.all(entries.map(async ([name, answer]) => [name, await answer]));
 	return json(Object.fromEntries(results), { headers: { 'cache-control': 'no-store' } });
 };
