@@ -98,6 +98,11 @@
 					{/if}
 					{#if method?.definition}<p class="mt-3 text-small text-muted-foreground">
 							{method.definition}
+							{choose(
+								locale,
+								'An outcome applies to the whole trip.',
+								'L’issue s’applique au trajet entier.',
+							)}
 						</p>{/if}
 					{#if result.kind === 'answer' && result.lastGood}
 						<p class="mt-3 text-small text-muted-foreground">{lastGoodNote[locale]}</p>

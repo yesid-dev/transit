@@ -252,7 +252,7 @@
 			{
 				key: 'method',
 				label: term.methodRow,
-				text: t('An outcome applies to the whole trip.', 'L’issue s’applique au trajet entier.'),
+				text: null,
 				links: [
 					{ href: link('/metrics'), label: term.method },
 					{ href: link('/metrics#about-transit'), label: stopErrorLink[locale].label },
@@ -595,7 +595,9 @@
 			{/await}
 		</div>
 
-		<div class="grid min-w-0 items-start gap-[var(--space-card-gap)] xl:grid-cols-2">
+		<div
+			class="grid min-w-0 items-start gap-[var(--space-card-gap)] xl:grid-cols-[minmax(0,6fr)_minmax(0,5fr)]"
+		>
 			<div id="daily" class="min-w-0">
 				<span id="stop-rel-trend" class="absolute" aria-hidden="true"></span>
 				{#snippet dailyCard(result?: EngineResult<EngineAnswer>)}

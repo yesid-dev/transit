@@ -61,7 +61,7 @@ for (const width of [390, 1440]) {
 					? 'Part des trajets prévus à l’issue connue qui ont été effectués.'
 					: 'Share of scheduled trips with a known outcome that ran.',
 			);
-			await expect(main.locator('#stop-rel-source')).toContainText(
+			await expect(delivery).toContainText(
 				fr ? 'L’issue s’applique au trajet entier.' : 'An outcome applies to the whole trip.',
 			);
 

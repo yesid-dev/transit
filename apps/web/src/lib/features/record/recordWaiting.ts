@@ -81,7 +81,8 @@ export function resolveWaiting(waiting: RecordWaiting): ResolvedSkeleton {
 export const skeletonRem = {
 	header: 2, // 32 px table header
 	fact: 2.75, // 44 px fact row and table row
-	tripFactsPhoneWrap: 5.3125, // wrapped labels, sample and notes under the trip facts
+	tripFactsWideWrap: 1.4375, // scope note under the trip facts, rounded up to a whole pixel
+	tripFactsPhoneWrap: 6.75, // wrapped labels, sample and notes under the trip facts
 	rowTwoLines: 3.8125, // 61 px
 	rowOneLine: 2.4375, // 39 px
 	bandBar: 1.75, // 28 px
@@ -159,9 +160,11 @@ export function pendingBlockSize(waiting: RecordWaiting): { wide: string; phone:
 		shape.endsWith('rem') && !shape.startsWith('calc')
 			? rem(Number(shape.slice(0, -3)) + pendingFootRem.gap + line)
 			: `calc(${shape} + ${foot(line)})`;
-	const phoneWrap =
-		resolveWaiting(waiting).shape === 'trip-facts' ? skeletonRem.tripFactsPhoneWrap : 0;
-	return { wide: plus(pendingFootRem.wide), phone: plus(pendingFootRem.phone + phoneWrap) };
+	const tripFacts = resolveWaiting(waiting).shape === 'trip-facts';
+	return {
+		wide: plus(pendingFootRem.wide + (tripFacts ? skeletonRem.tripFactsWideWrap : 0)),
+		phone: plus(pendingFootRem.phone + (tripFacts ? skeletonRem.tripFactsPhoneWrap : 0)),
+	};
 }
 
 /** Words a waiting card shows under its skeleton, small and muted. */

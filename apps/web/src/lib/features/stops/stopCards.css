@@ -115,6 +115,13 @@
 	.stop-record #daily > [data-slot='card'] {
 		min-block-size: 31.125rem;
 	}
+
+	/* The wider chart column keeps its stamp beside the title when the pair has room. */
+	@container stop-record (inline-size >= 66rem) {
+		.stop-record #daily > [data-slot='card'] {
+			min-block-size: 29rem;
+		}
+	}
 }
 
 .stop-cards [data-slot='record-card'] {
