@@ -85,6 +85,10 @@ for (const { name, path, section } of pages)
 									}),
 								)
 								.toBe(true);
+							const code = page.locator(
+								`[data-slot="screen-title"] .${name === 'line' ? 'route-code' : 'stop-code'}`,
+							);
+							await expect(code).toBeVisible();
 							const before = await frame(page);
 							const gap = await page
 								.locator('[data-slot="app-frame-header"]')
@@ -132,6 +136,7 @@ for (const { name, path, section } of pages)
 							if (name === 'line' && width < 640) await cut.getByRole('button').first().click();
 							await expect(cutContent.first()).toBeVisible();
 							await waitForFrameClearance(page);
+							await expect(code).toBeVisible();
 							expect(await frame(page)).toEqual(before);
 						} finally {
 							releaseScripts();

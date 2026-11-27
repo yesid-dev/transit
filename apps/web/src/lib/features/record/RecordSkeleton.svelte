@@ -424,6 +424,10 @@
 		}
 		.with-heading.with-actions {
 			grid-template-areas: 'heading stamp actions' 'statement statement evidence';
+			grid-template-columns: minmax(0, 1fr) 14rem 20rem;
+			column-gap: 1rem;
+		}
+		.with-heading.with-actions:lang(fr) {
 			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
 		}
 		.live-answer.with-actions {

@@ -213,8 +213,12 @@
 		}
 		.with-heading.aside.has-actions {
 			grid-template-areas: 'heading stamp actions' 'statement statement details';
-			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
+			grid-template-columns: minmax(0, 1fr) 14rem 20rem;
+			column-gap: 1rem;
 			align-items: start;
+		}
+		.with-heading.aside.has-actions:lang(fr) {
+			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
 		}
 		.with-heading.aside.has-actions.one-row {
 			grid-template-areas: 'heading stamp actions' 'statement statement statement';

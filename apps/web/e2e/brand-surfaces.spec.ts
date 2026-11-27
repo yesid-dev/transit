@@ -68,6 +68,7 @@ test('the Stop Record header clears the frame and gives its back link a full tar
 	const title = main.getByRole('heading', { level: 1 });
 	await expect(link).toBeVisible();
 	await expect(title).toBeVisible();
+	await expect(main.locator('[data-slot="screen-title"] .stop-code')).toBeVisible();
 	await expect(main.locator('[data-slot="article-header"] canvas')).toHaveCount(0);
 	await page.evaluate(() => document.fonts.ready);
 	const chrome = (await page.locator('[data-slot="app-frame-header"]').boundingBox())!;

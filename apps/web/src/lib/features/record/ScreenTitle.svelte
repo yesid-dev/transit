@@ -119,11 +119,11 @@
 	.route-code,
 	.stop-code,
 	.crumb,
-	.short-crumb {
-		display: none;
-	}
 	.crumb-sep {
 		flex: none;
+	}
+	.short-crumb {
+		display: none;
 	}
 	.crumb-sep {
 		color: var(--muted-foreground);
@@ -214,6 +214,7 @@
 			display: flex;
 			flex-wrap: nowrap;
 			align-items: center;
+			column-gap: 0.5rem;
 		}
 		:global([data-record-heading-row]) .long-crumb {
 			display: none;
