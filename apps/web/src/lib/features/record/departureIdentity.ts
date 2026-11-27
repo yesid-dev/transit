@@ -17,6 +17,19 @@ export function departureIdentity(line: unknown, direction: unknown, departure: 
 
 export type DepartureIdentity = NonNullable<ReturnType<typeof departureIdentity>>;
 
+function departurePath({ line, direction, departure }: DepartureIdentity) {
+	const [hours, minutes, seconds] = departure.split(':');
+	const clock = `${hours}${minutes}${seconds === '00' ? '' : `s${seconds}`}`;
+	return `/departure/${encodeURIComponent(`${line}-${direction}-${clock}`)}`;
+}
+
+/** Replace the identity segment and keep the locale, endpoint suffix and query intact. */
+export function canonicalDepartureHref(url: URL, identity: DepartureIdentity) {
+	const path = url.pathname.replace(/\/departure\/[^/]+/, departurePath(identity));
+	// Fragments are client-side and the browser carries them across this redirect.
+	return path === url.pathname ? null : path + url.search;
+}
+
 export function isDepartureTripId(trip: string | null): trip is string {
 	return Boolean(trip && trip.length <= 256 && trip === trip.trim() && !/[^\S ]|\p{C}/u.test(trip));
 }
@@ -45,9 +58,8 @@ export function departureHref(
 ) {
 	const identity = departureIdentity(line, direction, departure);
 	if (!identity) return null;
-	const key = encodeURIComponent(JSON.stringify([line, direction, departure]));
 	const target = new URL(
-		carryFrameState(localizeHref(`/departure/${key}`, locale, city), source),
+		carryFrameState(localizeHref(departurePath(identity), locale, city), source),
 		source,
 	);
 	target.searchParams.set('frameMode', mode);
@@ -56,6 +68,12 @@ export function departureHref(
 }
 
 export function departureFromKey(key: string) {
+	// Read from the right so hyphens in a line ID remain part of that ID.
+	const readable = /^(.+)-([01])-(\d{2,6})([0-5]\d)(?:s([0-5]\d))?$/u.exec(key);
+	if (readable) {
+		const [, line, direction, hours, minutes, seconds = '00'] = readable;
+		return departureIdentity(line, Number(direction), `${hours}:${minutes}:${seconds}`);
+	}
 	try {
 		const value: unknown = JSON.parse(key);
 		if (Array.isArray(value) && value.length === 3)

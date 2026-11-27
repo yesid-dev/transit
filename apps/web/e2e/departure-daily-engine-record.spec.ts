@@ -11,8 +11,7 @@ test.beforeEach(({ browserName }, info) => {
 const period = 'provider=stm&frameMode=record&recordFrom=2026-11-18&recordTo=2026-11-20';
 // A departure must have observations on at least five service dates to appear in a ranking.
 const departurePeriod = period.replace('recordFrom=2026-11-18', 'recordFrom=2026-11-16');
-const key = (line: string, time = '07:00:00') =>
-	encodeURIComponent(JSON.stringify([line, 0, time]));
+const key = (line: string, time = '0700') => `${line}-0-${time}`;
 for (const width of [390, 1440]) {
 	for (const lang of ['en', 'fr'] as const) {
 		const fr = lang === 'fr';
@@ -32,6 +31,7 @@ for (const width of [390, 1440]) {
 			if (width === 390) await late.getByRole('button').first().click();
 			const departure = late.getByRole('link', { name: fr ? /^7\sh\b/u : /^07:00\b/u });
 			await expect(departure).toBeVisible();
+			await expect(departure).toHaveAttribute('href', /\/departure\/24-0-0700\?/u);
 			await expect(late).toContainText(
 				fr ? '5 dates de service observées' : '5 observed service dates',
 			);
@@ -228,7 +228,7 @@ for (const locale of ['en', 'fr'] as const) {
 	test(`${locale} Live departure explains a future scheduled start`, async ({ page }) => {
 		const fr = locale === 'fr';
 		const path = fr ? '/fr' : '';
-		const nextDay = encodeURIComponent(JSON.stringify(['24', 0, '25:10:00']));
+		const nextDay = key('24', '2510');
 		await page.goto(`${path}/departure/${nextDay}?provider=stm&frameMode=live`);
 		await expect(page.getByRole('main')).toContainText(fr ? 'Départ prévu' : 'Scheduled departure');
 		await expect(page.getByRole('main')).toContainText(
@@ -248,7 +248,7 @@ test('a ranked departure links to its exact line, direction, time and range', as
 	await expect(link).toBeVisible();
 	await expect(ranking.getByRole('img', { name: /38,0\s*% à 58,0\s*%/u })).toBeVisible();
 	const target = new URL((await link.getAttribute('href'))!, page.url());
-	expect(decodeURIComponent(target.pathname)).toBe('/fr/departure/["24",0,"07:15:00"]');
+	expect(target.pathname).toBe('/fr/departure/24-0-0715');
 	expect(target.searchParams.get('provider')).toBe('stm');
 	expect(target.searchParams.get('frameMode')).toBe('record');
 	expect(target.searchParams.get('recordFrom')).toBe('2026-11-08');
@@ -256,7 +256,7 @@ test('a ranked departure links to its exact line, direction, time and range', as
 });
 
 test('an unknown departure is a noindex 404 without Record actions', async ({ page }) => {
-	const response = await page.goto(`/departure/${key('24', '03:33:00')}?${departurePeriod}`);
+	const response = await page.goto(`/departure/${key('24', '0333')}?${departurePeriod}`);
 	expect(response?.status()).toBe(404);
 	await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,nofollow');
 	const main = page.getByRole('main');
@@ -266,6 +266,36 @@ test('an unknown departure is a noindex 404 without Record actions', async ({ pa
 });
 
 for (const lang of ['en', 'fr'] as const) {
+	test(`${lang} old departure URLs permanently redirect with their dates, anchor and CSV section`, async ({
+		page,
+		request,
+	}) => {
+		const prefix = lang === 'fr' ? '/fr' : '';
+		const old = `${prefix}/departure/${encodeURIComponent(JSON.stringify(['24', 0, '07:00:00']))}`;
+		const canonical = `${prefix}/departure/24-0-0700`;
+		const search = `${departurePeriod}&period=7-days&day=2026-11-18`;
+		const response = await request.get(`${old}?${search}`, { maxRedirects: 0 });
+		expect(response.status()).toBe(308);
+		expect(response.headers().location).toBe(`${canonical}?${search}`);
+		await page.goto(`${old}?${search}#stops`);
+		const target = new URL(page.url());
+		expect(target.pathname + target.search + target.hash).toBe(`${canonical}?${search}#stops`);
+		const csv = await request.get(`${old}/record.csv?${search}&section=stops`, { maxRedirects: 0 });
+		expect(csv.status()).toBe(308);
+		expect(csv.headers().location).toBe(`${canonical}/record.csv?${search}&section=stops`);
+		const unknown = encodeURIComponent(JSON.stringify(['24', 0, '03:33:00']));
+		const missing = await request.get(`${prefix}/departure/${unknown}?${search}`, {
+			maxRedirects: 0,
+		});
+		expect(missing.status()).toBe(404);
+		expect(await missing.text()).toContain('name="robots" content="noindex,nofollow"');
+		const missingCsv = await request.get(
+			`${prefix}/departure/${unknown}/record.csv?${search}&section=stops`,
+			{ maxRedirects: 0 },
+		);
+		expect(missingCsv.status()).toBe(404);
+	});
+
 	test(`${lang} a known departure explains a day without scheduled service`, async ({ page }) => {
 		const fr = lang === 'fr';
 		const response = await page.goto(

@@ -107,13 +107,26 @@ describe('Departure and Daily report text', () => {
 			'https://transit.test/fr/lines?frameMode=live&recordFrom=2026-11-18&recordTo=2026-11-20',
 		);
 		const href = departureHref(source, 'fr', 'demo', '36 / é', 0, '25:42:00');
-		expect(href).toContain('/fr/departure/');
+		expect(href).toContain('/fr/departure/36%20%2F%20%C3%A9-0-2542?');
 		const target = new URL(href!, source);
 		const key = decodeURIComponent(target.pathname.split('/').at(-1)!);
 		expect(departureFromKey(key)).toEqual({ line: '36 / é', direction: 0, departure: '25:42:00' });
 		expect(target.searchParams.get('frameMode')).toBe('record');
 		expect(target.searchParams.get('recordFrom')).toBe('2026-11-18');
 		expect(departureHref(source, 'en', 'demo', '36', null, '07:42:00')).toBeNull();
+	});
+
+	it('keeps hyphenated line IDs, long service hours and nonzero seconds distinct', () => {
+		const source = new URL('https://transit.test/lines');
+		const href = departureHref(source, 'en', 'demo', 'north-1-0700', 1, '000025:42:13');
+		expect(href).toContain('/departure/north-1-0700-1-00002542s13?');
+		expect(departureFromKey('north-1-0700-1-00002542s13')).toEqual({
+			line: 'north-1-0700',
+			direction: 1,
+			departure: '000025:42:13',
+		});
+		expect(departureFromKey('north-1-2-2542s13')).toBeNull();
+		expect(departureFromKey('north-1-1-2560')).toBeNull();
 	});
 });
 

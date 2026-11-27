@@ -1,6 +1,6 @@
 import { localizeHref } from '../src/lib/i18n/routing';
 
-const departure = encodeURIComponent(JSON.stringify(['24', 0, '07:00:00']));
+const departure = '24-0-0700';
 
 const screens = {
 	overview: '/',
