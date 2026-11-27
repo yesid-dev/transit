@@ -35,7 +35,7 @@
 		title={roadmapTitle[locale]}
 		titleId="roadmap-title"
 		aria-labelledby="roadmap-title"
-		style="--reading-gutter: 0; padding-block: 0"
+		style="--reading-gutter: 0; --reading-measure: var(--transit-measure-listing); padding-block: 0"
 	>
 		<RecordScreen>
 			<div class="roadmap-content min-w-0" data-slot="screen-content">
@@ -97,10 +97,6 @@
 	h2 {
 		font-size: var(--text-heading);
 		font-weight: 700;
-	}
-
-	p {
-		max-inline-size: var(--measure-lede);
 	}
 
 	h3 {

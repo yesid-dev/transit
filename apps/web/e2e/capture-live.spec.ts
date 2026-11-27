@@ -137,11 +137,12 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		await refreshAlertsCapture(page);
 		await expect(page.getByText(header[locale], { exact: true })).toBeVisible();
 		await expect(
-			page.getByRole('article', {
-				name: fr ? 'Par effet' : 'By effect',
-				exact: true,
-			}),
-		).toHaveCount(0);
+			page.getByRole('article', { name: fr ? 'Par effet' : 'By effect', exact: true }),
+		).toContainText(
+			fr
+				? 'La société de transport ne publie pas l’effet de ses avis.'
+				: 'The agency does not publish the effect of its notices.',
+		);
 		const controls = await openFrameControls(page, locale);
 		const filter = controls.getByRole('group', { name: fr ? 'Filtrer' : 'Filter', exact: true });
 		await expect(filter.getByRole('combobox')).toHaveCount(2);
@@ -150,11 +151,6 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		const about = page.getByRole('article', {
 			name: fr ? 'À propos des chiffres en direct' : 'About live figures',
 		});
-		await expect(about).toContainText(
-			fr
-				? 'La société de transport ne publie pas l’effet de ses avis.'
-				: 'The agency does not publish the effect of its notices.',
-		);
 		await expect(about).toContainText(
 			fr
 				? 'Les avis en vigueur en ce moment, dans le dernier relevé du flux.'
@@ -201,7 +197,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await page.goto('/alerts?provider=stm&frameMode=live');
 	await refreshAlertsCapture(page);
 	const list = page.locator('#alerts-log');
-	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12 notices');
+	await expect(list.getByRole('status')).toHaveText('Showing 5 of 12 notices');
 	await expect(page.locator('#alerts-window')).toContainText('12 notices are in effect now.');
 	await expect(page.locator('#alerts-window')).toContainText(
 		'12 notices across 13 publications by STM.',
@@ -211,12 +207,8 @@ test('Live alerts share effect and line filters and exclude future notices from 
 		'Effects are the agency’s own categories, kept as published.',
 	);
 	const byLine = page.getByRole('article', { name: 'By line', exact: true });
-	const byLineToggle = byLine.getByRole('button', { name: 'By line', exact: true });
-	await expect(byLineToggle).toHaveAttribute('aria-expanded', 'false');
-	await byLineToggle.click();
 	await expect(byLine.getByRole('table')).toBeVisible();
 	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 notices');
-	await byLineToggle.click();
 	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	const controls = await openFrameControls(page);
 	const filter = controls.getByRole('group', { name: 'Filter', exact: true });

@@ -14,11 +14,13 @@
 		shape,
 		heading,
 		liveAnswer = false,
+		fullWidthContext = false,
 		answerStatus,
 	}: {
 		shape: RecordWaiting;
 		heading?: Snippet;
 		liveAnswer?: boolean;
+		fullWidthContext?: boolean;
 		answerStatus?: Snippet;
 	} = $props();
 	const s = $derived(resolveWaiting(shape));
@@ -93,7 +95,7 @@
 		<div
 			class="answer-layout"
 			class:with-actions={s.shape === 'answer'}
-			class:short-context={!s.comparison}
+			class:short-context={!s.comparison && !fullWidthContext}
 			class:with-heading={Boolean(heading)}
 			class:live-answer={liveAnswer}
 		>

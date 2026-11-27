@@ -10,6 +10,7 @@
 		locale,
 		operator,
 		healthLink,
+		errorLink,
 		captureAge,
 		scope,
 		statusLabel,
@@ -22,6 +23,7 @@
 		locale: Locale;
 		operator?: string;
 		healthLink?: string;
+		errorLink?: string;
 		captureAge?: number | null;
 		scope?: string;
 		statusLabel?: string;
@@ -46,7 +48,17 @@
 			key: 'capture',
 			label: locale === 'fr' ? 'Dernière collecte' : 'Last capture',
 			text: captureText ?? vehiclePositionsCapture(captureAge, locale),
-			link: healthLink ? { href: healthLink, label: t.dataHealth } : undefined,
+			links: [
+				...(healthLink ? [{ href: healthLink, label: t.dataHealth }] : []),
+				...(errorLink
+					? [
+							{
+								href: errorLink,
+								label: locale === 'fr' ? 'Vous avez vu une erreur?' : 'Seen an error?',
+							},
+						]
+					: []),
+			],
 		},
 		{
 			key: 'source',

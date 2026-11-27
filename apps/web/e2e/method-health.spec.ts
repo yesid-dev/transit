@@ -1,5 +1,6 @@
-import { csvText } from '../src/tests/csv';
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { csvText } from '../src/tests/csv';
 import { textDefects } from './layout-helpers';
 import { installHealthCapture } from './capture-fixture';
 
@@ -143,7 +144,7 @@ for (const width of [390, 1440]) {
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
 			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
-			const intro = await main.locator('[data-slot="answer-lead"] p').first().boundingBox();
+			const intro = await main.locator('[data-slot="screen-answer"]').boundingBox();
 			expect(intro!.x).toBeCloseTo(heading!.x);
 			const measure = main.locator('#fixture_delay');
 			await expect(measure).toHaveAttribute('data-open', 'true');
@@ -359,3 +360,22 @@ for (const width of [390, 1440]) {
 		});
 	}
 }
+
+test('Download offers every listed Parquet address in one file', async ({ page }) => {
+	await page.goto(
+		`/download?provider=stm&frameMode=record&recordFrom=2026-11-14&recordTo=2026-11-20`,
+	);
+	const main = page.getByRole('main');
+	const fileLinks = main.locator('a[href*=".parquet?"]');
+	await expect(fileLinks.first()).toBeAttached();
+	const expected = await fileLinks.evaluateAll((links) =>
+		links.map((link) => (link as HTMLAnchorElement).href),
+	);
+	const [download] = await Promise.all([
+		page.waitForEvent('download'),
+		main.getByRole('link', { name: 'Download the list of file addresses' }).click(),
+	]);
+	expect(download.suggestedFilename()).toBe('transit-file-addresses.txt');
+	const addresses = (await readFile((await download.path())!, 'utf8')).trim().split('\n');
+	expect(addresses).toEqual(expected);
+});

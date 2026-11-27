@@ -54,6 +54,7 @@ it.each(cases)(
 					window: { from: '2026-11-19', to: day, page: 0, lastPage: 0 },
 					methods: null,
 					listing: Promise.resolve({
+						kind: 'answer' as const,
 						unavailable: false,
 						busy: false,
 						listings: [
@@ -84,6 +85,8 @@ it.each(cases)(
 		});
 		const key = version === '12' ? 'segment_runs' : 'stop_events';
 		const chosen = downloadLayouts[key];
+		// The card shell is already present while the file listing is pending.
+		await screen.findByRole('link', { name: attribution[locale] });
 		// Download names each table as Data health does.
 		const card = await screen.findByRole('article', { name: tableName(key, locale) });
 		const trigger = within(card).getByRole('button', {
@@ -173,6 +176,7 @@ it.each([
 				window: { ...period, page: 0, lastPage: 0 },
 				methods: null,
 				listing: Promise.resolve({
+					kind: 'answer' as const,
 					unavailable: false,
 					busy: false,
 					listings: dates.map((date, i) => ({
@@ -218,7 +222,12 @@ it.each([
 					period: { from: day, to: day, preset: null },
 					window: { from: day, to: day, page: 0, lastPage: 0 },
 					methods: null,
-					listing: Promise.resolve({ unavailable: true, busy: true, listings: [] }),
+					listing: Promise.resolve({
+						kind: 'busy' as const,
+						unavailable: true,
+						busy: true,
+						listings: [],
+					}),
 				},
 			},
 		});

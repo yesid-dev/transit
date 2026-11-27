@@ -4,9 +4,10 @@
 	import { page } from '$app/state';
 	import { ChevronToggle } from '@yesid/ui/brand';
 	import * as Collapsible from '@yesid/ui/collapsible';
-	import { Surface, DashboardGrid } from '@yesid/ui/layout';
+	import { Surface } from '@yesid/ui/layout';
 	import { onMount, type Snippet } from 'svelte';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import { downloadCoverage } from '#lib/features/record/downloadCoverage.ts';
 	import { downloadLayouts, downloadTables } from '#lib/features/record/downloadTables.ts';
 	import { healthReason, tableName } from '#lib/features/record/dataHealthText.ts';
@@ -32,6 +33,20 @@
 	}: { data: Pick<PageData, 'providerId' | 'city' | 'period' | 'window' | 'listing' | 'methods'> } =
 		$props();
 	const locale = getLocale();
+	const readings = recoverReadings(
+		() => data,
+		({ period, providerId }) =>
+			period
+				? {
+						...period,
+						screen: 'download',
+						city: providerId,
+						page: page.url.searchParams.toString(),
+					}
+				: null,
+	);
+	const listing = $derived(readings()?.listing ?? data.listing);
+	const methods = $derived(readings()?.methods ?? data.methods);
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 	const title = t('Download the data', 'Télécharger les données');
 	const subtitle = $derived(
@@ -140,39 +155,71 @@
 	</Collapsible.Root>
 {/snippet}
 
+{#snippet contents()}
+	<nav aria-label={t('On this page', 'Sur cette page')} class="flex flex-wrap gap-x-4">
+		<a class="inline-flex min-h-11 items-center text-primary underline" href="#daily-files"
+			>{t('Daily files', 'Fichiers quotidiens')}</a
+		><a class="inline-flex min-h-11 items-center text-primary underline" href="#reading-files"
+			>{t('Read a Parquet file', 'Lire un fichier Parquet')}</a
+		>
+	</nav>
+{/snippet}
+
 <Surface>
 	<RecordScreen>
-		<RecordGroup><ScreenTitle {title} {subtitle} compact /></RecordGroup>
 		<div data-slot="screen-content">
-			<RecordGroup>
-				{#await data.listing}
-					<div data-slot="screen-state">
-						{#key data.listing}<RecordPending shape="listing" {locale} />{/key}
+			<RecordGroup
+				><div class="reading-column" data-screen-intro>
+					<ScreenTitle {title} {subtitle} compact />
+				</div>
+
+				{#await listing}
+					<div data-slot="screen-state" class="reading-column">
+						{#key listing}<RecordPending shape="answer" {locale} />{/key}
+					</div>
+					{@render contents()}
+					<RecordCard
+						class="reading-column"
+						title={t('Licence and attribution', 'Licence et attribution')}
+						><RecordPending shape="card" {locale} /></RecordCard
+					>
+					<div id="daily-files" class="download-grid scroll-mt-8">
+						{#each Object.keys(downloadLayouts) as key (key)}<RecordCard
+								title={tableName(key, locale)}
+								{stamp}
+								stampRule
+								><RecordPending
+									shape={{ shape: 'tiles', count: 1, size: 'file' }}
+									{locale}
+								/></RecordCard
+							>{/each}
 					</div>
 				{:then result}
 					{@const listings = result?.listings ?? []}
 					{@const complete = listings.filter((day) => day.status === 'complete')}
 					{@const coverage = downloadCoverage(data.window, listings)}
 					{@const { count } = coverage}
+					{@const files = coverage.tables.flatMap(({ files }) => files.map(({ file }) => file))}
+					{@const totalBytes = files.reduce((total, file) => total + file.byte_size, 0)}
 					{@const notices = Object.values(
 						Object.groupBy(listings, ({ licence: { changes: _changes, ...terms } }) =>
 							JSON.stringify(terms),
 						),
 					)}
-					<div data-slot="screen-answer">
-						{#if !count && result?.busy}<RecordPending {locale} busy />
+					<div data-slot="screen-answer" class="reading-column">
+						{#if result?.kind === 'busy'}<RecordPending {locale} shape="answer" busy />
 						{:else}<RecordAnswer
 								{locale}
 								time={stamp}
 								value={count ? tally(count, locale) : null}
 								state={count
 									? undefined
-									: result && !result.unavailable
+									: result?.kind === 'answer' && !result.unavailable
 										? 'not_measured'
 										: 'unknown'}
 								sentence={count
 									? coverageSentence(coverage, result?.unavailable ?? false)
-									: result && !result.unavailable
+									: result?.kind === 'answer' && !result.unavailable
 										? t(
 												'No files were published for these dates.',
 												'Aucun fichier n’a été publié pour ces dates.',
@@ -181,9 +228,30 @@
 							/>{/if}
 					</div>
 
+					<div class="reading-column grid min-w-0 gap-2">
+						<p>
+							{t(
+								'These Parquet files are for data tools such as DuckDB, Python or R. For a spreadsheet, use Download on a page that shows figures.',
+								'Ces fichiers Parquet sont destinés à des outils comme DuckDB, Python ou R. Pour un tableur, utilisez Télécharger sur une page qui affiche des chiffres.',
+							)}
+						</p>
+						{#if count}<p>
+								<a
+									class="inline-flex min-h-11 items-center text-primary underline"
+									download="transit-file-addresses.txt"
+									href={'data:text/plain;charset=utf-8,' +
+										encodeURIComponent(files.map(({ url }) => url).join('\n') + '\n')}
+									>{t(
+										'Download the list of file addresses',
+										'Télécharger la liste des adresses des fichiers',
+									)}</a
+								>
+								· {fileSize(totalBytes, locale)}
+							</p>{/if}
+						{@render contents()}
+					</div>
 					{#if count && result?.unavailable}
-						{#if result.busy}<RecordPending {locale} busy />
-						{:else}<p>{recordConnection.unreachable[locale]}</p>{/if}
+						<p>{recordConnection.unreachable[locale]}</p>
 					{/if}
 					{#if data.window && data.period && data.window.lastPage}
 						<nav
@@ -212,7 +280,11 @@
 					{/if}
 
 					{#if notices.length}
-						<RecordCard interactive title={t('Licence and attribution', 'Licence et attribution')}>
+						<RecordCard
+							interactive
+							class="reading-column"
+							title={t('Licence and attribution', 'Licence et attribution')}
+						>
 							<div class="grid gap-3">
 								{#each notices as group (group![0].service_date)}
 									{@const licence = group![0].licence}
@@ -292,9 +364,9 @@
 					{/if}
 
 					{#if coverage.tables.length}
-						<div class="download-grid">
+						<div id="daily-files" class="download-grid scroll-mt-8">
 							{#each coverage.tables as { table: key, files: rows, gaps } (key)}
-								<RecordCard interactive title={tableName(key, locale)} {stamp}>
+								<RecordCard interactive title={tableName(key, locale)} {stamp} stampRule>
 									<div class="grid min-w-0 grid-cols-1 gap-2">
 										<p>{downloadTables[key][locale]}</p>
 										{#if rows.length}<p class="text-sm text-muted-foreground">
@@ -387,7 +459,7 @@
 				{/await}
 			</RecordGroup>
 			<RecordGroup>
-				<DashboardGrid gutter={false} minTile="20rem">
+				<div id="reading-files" class="reading-column download-grid scroll-mt-8">
 					<RecordCard title={t('Read a Parquet file', 'Lire un fichier Parquet')}>
 						<div class="grid min-w-0 grid-cols-1 gap-2 text-sm">
 							<p>
@@ -430,7 +502,7 @@
 								</li>
 							</ul>
 							{#snippet measureColumns()}
-								{#await data.methods}
+								{#await methods}
 									<p>{t('Loading…', 'Chargement…')}</p>
 								{:then result}
 									{#if result?.kind === 'answer'}
@@ -458,7 +530,7 @@
 							)}
 						</div>
 					</RecordCard>
-				</DashboardGrid>
+				</div>
 			</RecordGroup>
 		</div>
 	</RecordScreen>
@@ -467,7 +539,7 @@
 <style>
 	.download-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 		gap: var(--space-card-gap);
 	}
 	.download-columns {

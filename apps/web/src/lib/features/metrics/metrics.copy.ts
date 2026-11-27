@@ -11,8 +11,8 @@ export const metricsCopy = defineCopy({
 			gaps: 'Qu’est-ce que ces chiffres ne peuvent pas dire ?',
 		},
 		kicker: 'Méthode · science des mesures',
-		heading: 'La méthode du premier site Transit, jusqu’en novembre 2026',
-		lede: 'Chaque chiffre de fiabilité dans cette archive est une estimation dérivée des prévisions en temps réel, et non une mesure certifiée. Voici, pour chaque indicateur, ce qu’il mesure vraiment, le calcul exact, le SQL, ce qu’il n’est pas et ses limites.',
+		heading: 'Ancienne méthode, jusqu’en novembre 2026',
+		lede: 'Chaque chiffre de cette page est une estimation tirée des prévisions de la société de transport. Il ne s’agit pas d’une arrivée mesurée. Pour chaque mesure\u00a0: sa définition, son calcul, son SQL et ses limites.',
 		sections: {
 			definition: 'Définition',
 			math: 'Le calcul',
@@ -152,14 +152,14 @@ export const metricsCopy = defineCopy({
 			gaps: 'What can these numbers not tell you?',
 		},
 		kicker: 'Methodology · metric science',
-		heading: 'The method of the first Transit site, until November 2026',
-		lede: 'Every reliability number in this archive is an estimate derived from the predicted realtime feed, not a certified measurement. Here, for each measure, is what it actually measures, the exact math, the SQL, what it is not, and its honest limits.',
+		heading: 'Previous method, through November 2026',
+		lede: 'Each figure here is an estimate from the agency’s predictions. It represents a predicted arrival. Each measure has a definition, its math, its SQL and its limits.',
 		sections: {
 			definition: 'Definition',
 			math: 'The math',
 			sql: 'The SQL',
 			notReally: 'What it is not',
-			caveats: 'Caveats',
+			caveats: 'Limits',
 			pipelineNote: 'Current data note',
 		},
 		provenance: {

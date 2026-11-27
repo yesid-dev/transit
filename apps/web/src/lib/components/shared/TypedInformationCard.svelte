@@ -20,6 +20,7 @@
 	export interface TypedInformationCardProps {
 		kind: InformationKind;
 		label: string;
+		plain?: boolean;
 		code?: string;
 		/** `@yesid/seo-kit/highlight` markup for `code`; without it the code shows as plain text. */
 		codeHtml?: string;
@@ -31,6 +32,7 @@
 	let {
 		kind,
 		label,
+		plain = false,
 		code,
 		codeHtml,
 		codeAriaLabel,
@@ -59,23 +61,27 @@
 		class={`typed-information-card typed-information-card--normal ${className ?? ''}`}
 		data-slot="typed-information-card"
 		data-kind={kind}
+		class:plain
 	>
-		<h3 class="typed-information-badge" data-slot="typed-information-badge">
-			{#if kind === 'definition'}
-				<BookOpenIcon size={18} strokeWidth={2} aria-hidden="true" />
-			{:else if kind === 'math'}
-				<SigmaIcon size={18} strokeWidth={2} aria-hidden="true" />
-			{:else if kind === 'not-really'}
-				<BanIcon size={18} strokeWidth={2} aria-hidden="true" />
-			{:else if kind === 'caveat'}
-				<TriangleAlertIcon size={18} strokeWidth={2} aria-hidden="true" />
-			{:else if kind === 'pipeline-note'}
-				<WorkflowIcon size={18} strokeWidth={2} aria-hidden="true" />
-			{:else}
-				<NotebookTextIcon size={18} strokeWidth={2} aria-hidden="true" />
-			{/if}
-			<span>{label}</span>
-		</h3>
+		{#if plain}<h3 class="plain-heading">{label}</h3>{:else}<h3
+				class="typed-information-badge"
+				data-slot="typed-information-badge"
+			>
+				{#if kind === 'definition'}
+					<BookOpenIcon size={18} strokeWidth={2} aria-hidden="true" />
+				{:else if kind === 'math'}
+					<SigmaIcon size={18} strokeWidth={2} aria-hidden="true" />
+				{:else if kind === 'not-really'}
+					<BanIcon size={18} strokeWidth={2} aria-hidden="true" />
+				{:else if kind === 'caveat'}
+					<TriangleAlertIcon size={18} strokeWidth={2} aria-hidden="true" />
+				{:else if kind === 'pipeline-note'}
+					<WorkflowIcon size={18} strokeWidth={2} aria-hidden="true" />
+				{:else}
+					<NotebookTextIcon size={18} strokeWidth={2} aria-hidden="true" />
+				{/if}
+				<span>{label}</span>
+			</h3>{/if}
 
 		<div class="typed-information-body" data-slot="typed-information-body">
 			{@render children?.()}
@@ -122,6 +128,18 @@
 		--information-accent: var(--dataviz-status-unknown);
 	}
 
+	.typed-information-card--normal.plain {
+		min-height: 0;
+		gap: 0.5rem;
+		padding: 0;
+		border: 0;
+		background: none;
+	}
+	.plain-heading {
+		margin: 0;
+		font-size: var(--text-subheading);
+		font-weight: 600;
+	}
 	.typed-information-badge {
 		align-self: flex-end;
 		display: inline-flex;

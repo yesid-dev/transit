@@ -18,6 +18,7 @@ const SURFACES = [
 	'/network',
 	'/search',
 	'/metrics',
+	'/download',
 	'/status',
 	'/rankings',
 	'/rankings?kind=stop',

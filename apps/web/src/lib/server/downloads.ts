@@ -83,6 +83,9 @@ export async function getDownloadWindow(
 			: [],
 	);
 	return {
+		kind: results.every(({ kind }) => kind === 'busy' || kind === 'timeout')
+			? ('busy' as const)
+			: ('answer' as const),
 		listings,
 		unavailable: listings.length < days.length,
 		busy: results.some(({ kind }) => kind === 'busy'),

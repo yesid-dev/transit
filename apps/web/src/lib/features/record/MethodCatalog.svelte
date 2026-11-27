@@ -58,21 +58,23 @@
 		);
 	});
 	let measures = $state<HTMLElement>();
+	let methodList = $state<HTMLElement>();
 	let openCards = $state<Record<string, boolean>>({ on_time: true });
-	const hasOpenCards = $derived(
-		Array.from(
-			measures?.querySelectorAll<HTMLElement>(
+	const hasOpenCards = $derived.by(() => {
+		if (!methodList || !measures) return false;
+		return Array.from(
+			measures.querySelectorAll<HTMLElement>(
 				'[data-record-disclosure]:not([data-record-disclosure] *)',
-			) ?? [],
-		).some(({ id }) => openCards[id]),
-	);
+			),
+		).some(({ id }) => openCards[id]);
+	});
 
 	$effect(() => {
-		const node = measures;
+		const node = methodList ?? measures;
 		const hash = url.hash.slice(1);
 		if (!hash || !node) return;
 		const target = document.getElementById(hash);
-		if (!target || !node.contains(target)) return;
+		if (!target || !measures?.contains(target) || !node) return;
 		untrack(() => {
 			let card = target.closest<HTMLElement>('[data-record-disclosure]');
 			while (card) {
@@ -266,64 +268,69 @@
 {/snippet}
 
 <Surface>
-	<RecordScreen>
-		<RecordGroup><ScreenTitle {title} /></RecordGroup>
+	<RecordScreen class="reading-column">
 		<div data-slot="screen-content" class="method-content min-w-0">
-			{#await catalog}
-				<RecordGroup>
-					<div data-slot="screen-state">
-						{#key catalog}<RecordPending shape="card" {locale} answer={catalog} />{/key}
-					</div>
-				</RecordGroup>
-			{:then result}
-				{#if result.kind !== 'answer'}
-					<RecordGroup>
-						<div data-slot="screen-state">
-							{#if result.kind === 'busy'}<RecordPending {locale} busy />
-							{:else}<RecordAnswer
-									value={null}
-									sentence={recordConnection[result.kind][locale]}
-									{locale}
-								/>{/if}
-						</div>
-					</RecordGroup>
-				{:else}
-					{@const { groups, extra } = methodGroups(result.answer, locale)}
-					{@const allViews = buildMethodViews([...groups, ...extra], locale)}
-					{@const primaryViews = allViews.slice(0, groups.length)}
-					{@const extraViews = allViews.slice(groups.length)}
-					{@const ordered = [...groups, ...extra].flatMap(({ entries }) => entries)}
-					{@const byId = new Map(ordered.map((entry) => [entry.id, entry]))}
-					<RecordGroup>
-						<div data-slot="screen-answer">
-							{#snippet leadActions()}{@render actions(result.answer)}{/snippet}
-							<RecordAnswer
-								value={null}
-								sentence={copy.intro}
+			<RecordGroup
+				><ScreenTitle {title} />
+				<p data-slot="screen-answer">{copy.intro}</p>
+				<nav aria-label={choose(locale, 'On this page', 'Sur cette page')}>
+					<ul class="flex flex-wrap gap-x-4">
+						{#each [['method-heading', copy.heading], ['reading-states', copy.statesTitle], ['about-transit', copy.about.title]] as [id, label] (id)}<li
+							>
+								<a class="method-link inline-flex min-h-11 items-center" href={'#' + id}>{label}</a>
+							</li>{/each}
+					</ul>
+				</nav></RecordGroup
+			>
+			<div class="min-w-0" bind:this={measures}>
+				{#await catalog}
+					<RecordGroup aria-labelledby="method-heading"
+						><h2 id="method-heading">{copy.heading}</h2>
+						{#key catalog}<RecordPending
+								shape={{ shape: 'tiles', count: 16 }}
 								{locale}
-								actions={result.answer.length ? leadActions : undefined}
-							/>
-						</div>
-						{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-						{#if !result.answer.length}
-							<p>
-								{choose(
-									locale,
-									'No measures are listed yet.',
-									'Aucune mesure n’est encore répertoriée.',
-								)}
-							</p>
-						{:else}
-							<p class="text-muted-foreground">
-								{copy.files}
-								<a class="method-link" href={localizeHref('/download', locale, city)}
-									>{copy.downloadPage}</a
-								>
-								{copy.cleanTables}
-							</p>
-						{/if}
-					</RecordGroup>
-					<div class="min-w-0" bind:this={measures}>
+								answer={catalog}
+							/>{/key}</RecordGroup
+					>
+				{:then result}
+					{#if result.kind !== 'answer'}
+						<RecordGroup>
+							<div data-slot="screen-state">
+								{#if result.kind === 'busy'}<RecordPending {locale} busy />
+								{:else}<RecordAnswer
+										value={null}
+										sentence={recordConnection[result.kind][locale]}
+										{locale}
+									/>{/if}
+							</div>
+						</RecordGroup>
+					{:else}
+						{@const { groups, extra } = methodGroups(result.answer, locale)}
+						{@const allViews = buildMethodViews([...groups, ...extra], locale)}
+						{@const primaryViews = allViews.slice(0, groups.length)}
+						{@const extraViews = allViews.slice(groups.length)}
+						{@const ordered = [...groups, ...extra].flatMap(({ entries }) => entries)}
+						{@const byId = new Map(ordered.map((entry) => [entry.id, entry]))}
+						<RecordGroup>
+							{#if result.answer.length}{@render actions(result.answer)}{/if}
+							{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+							{#if !result.answer.length}
+								<p>
+									{choose(
+										locale,
+										'No measures are listed yet.',
+										'Aucune mesure n’est encore répertoriée.',
+									)}
+								</p>
+							{:else}
+								<p class="text-muted-foreground">
+									{copy.files}
+									<a class="method-link" href={localizeHref('/download', locale, city)}
+										>{copy.downloadPage}</a
+									>.
+								</p>
+							{/if}
+						</RecordGroup>
 						<RecordGroup aria-labelledby="method-heading">
 							<header class="flex flex-wrap items-center justify-between gap-3">
 								<h2 id="method-heading">{copy.heading}</h2>
@@ -335,78 +342,9 @@
 									>
 								{/if}
 							</header>
-							{#each primaryViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
-							<RecordCard
-								title={copy.range.title}
-								bind:open={openCards['ranking-range']}
-								disclosure={{ id: 'ranking-range', description: copy.range.summary }}
-							>
-								<dl class="method-parts">
-									{#each rangeFields as field (field)}
-										<div>
-											<dt>{copy[field]}</dt>
-											<dd>{copy.range[field]}</dd>
-										</div>
-									{/each}
-								</dl>
-								<div class="mt-4">
-									<RecordCard
-										title={copy.dataUsers}
-										bind:open={openCards['ranking-range-notes']}
-										disclosure={{ id: 'ranking-range-notes', nested: true }}
-									>
-										<dl class="method-notes">
-											{#each dataUserFields as field (field)}
-												<div>
-													<dt>{copy[field]}</dt>
-													<dd>{copy.range.dataUsers[field]}</dd>
-												</div>
-											{/each}
-										</dl>
-									</RecordCard>
-								</div>
-							</RecordCard>
-							<RecordCard title={copy.statesTitle}>
-								<dl class="method-parts">
-									{#each methodReferenceStates as state (state)}
-										<div>
-											<dt><StateMark {state} {locale} /></dt>
-											<dd>{copy.states[state]}</dd>
-										</div>
-									{/each}
-								</dl>
-								<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
-							</RecordCard>
-							<RecordCard title={copy.limitsTitle}>
-								<div class="@container">
-									<ul class="method-limits list-outside list-disc ps-5 @max-[10rem]:ps-3">
-										{#each copy.recordLimits as line (line)}<li>{line}</li>{/each}
-									</ul>
-								</div>
-							</RecordCard>
-							<RecordCard
-								title={copy.about.title}
-								bind:open={openCards['about-transit']}
-								disclosure={{ id: 'about-transit', description: copy.about.summary }}
-							>
-								<!-- An email address is one long word: let it wrap at 200% text on a phone. -->
-								<dl class="method-parts [overflow-wrap:anywhere]">
-									{#each copy.about.fields as field (field.label)}
-										<div>
-											<dt>{field.label}</dt>
-											<dd>{field.text}</dd>
-											{#if 'link' in field}
-												<dd>
-													<a
-														class="method-link inline-flex min-h-11 items-center"
-														href={field.link.href}>{field.link.label}</a
-													>
-												</dd>
-											{/if}
-										</div>
-									{/each}
-								</dl>
-							</RecordCard>
+							<div class="contents" bind:this={methodList}>
+								{#each primaryViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
+							</div>
 						</RecordGroup>
 						{#if extraViews.length}
 							<RecordGroup aria-labelledby="more-methods">
@@ -414,21 +352,97 @@
 								{#each extraViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 							</RecordGroup>
 						{/if}
-					</div>
-				{/if}
+					{/if}
+				{/await}
 				<RecordGroup>
-					<a
-						class="method-link inline-flex min-h-11 items-center justify-self-start"
-						href={localizeHref('/metrics/archive', locale, city)}>{copy.archive}</a
+					<RecordCard
+						title={copy.range.title}
+						bind:open={openCards['ranking-range']}
+						disclosure={{ id: 'ranking-range', description: copy.range.summary }}
 					>
+						<dl class="method-parts">
+							{#each rangeFields as field (field)}
+								<div>
+									<dt>{copy[field]}</dt>
+									<dd>{copy.range[field]}</dd>
+								</div>
+							{/each}
+						</dl>
+						<div class="mt-4">
+							<RecordCard
+								title={copy.dataUsers}
+								bind:open={openCards['ranking-range-notes']}
+								disclosure={{ id: 'ranking-range-notes', nested: true }}
+							>
+								<dl class="method-notes">
+									{#each dataUserFields as field (field)}
+										<div>
+											<dt>{copy[field]}</dt>
+											<dd>{copy.range.dataUsers[field]}</dd>
+										</div>
+									{/each}
+								</dl>
+							</RecordCard>
+						</div>
+					</RecordCard>
+					<div id="reading-states">
+						<RecordCard title={copy.statesTitle}>
+							<dl class="method-parts">
+								{#each methodReferenceStates as state (state)}
+									<div>
+										<dt><StateMark {state} {locale} /></dt>
+										<dd>{copy.states[state]}</dd>
+									</div>
+								{/each}
+							</dl>
+							<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
+						</RecordCard>
+					</div>
+					<RecordCard title={copy.limitsTitle}>
+						<div class="@container">
+							<ul class="method-limits list-outside list-disc ps-5 @max-[10rem]:ps-3">
+								{#each copy.recordLimits as line (line)}<li>{line}</li>{/each}
+							</ul>
+						</div>
+					</RecordCard>
+					<RecordCard
+						title={copy.about.title}
+						bind:open={openCards['about-transit']}
+						disclosure={{ id: 'about-transit', description: copy.about.summary }}
+					>
+						<!-- An email address is one long word: let it wrap at 200% text on a phone. -->
+						<dl class="method-parts [overflow-wrap:anywhere]">
+							{#each copy.about.fields as field (field.label)}
+								<div>
+									<dt>{field.label}</dt>
+									<dd>{field.text}</dd>
+									{#if 'link' in field}
+										<dd>
+											<a
+												class="method-link inline-flex min-h-11 items-center"
+												href={field.link.href}>{field.link.label}</a
+											>
+										</dd>
+									{/if}
+								</div>
+							{/each}
+						</dl>
+					</RecordCard>
 				</RecordGroup>
-			{/await}
+			</div>
+			<RecordGroup>
+				<a
+					class="method-link inline-flex min-h-11 items-center justify-self-start"
+					href={localizeHref('/metrics/archive', locale, city)}>{copy.archive}</a
+				>
+			</RecordGroup>
 		</div>
 	</RecordScreen>
 </Surface>
 
 <style>
 	.method-content {
+		container-type: inline-size;
 		overflow-wrap: normal;
 		word-break: normal;
 	}
@@ -464,10 +478,8 @@
 		color: var(--primary);
 		text-decoration: underline;
 	}
-	@media (min-width: 64rem) {
-		.method-parts {
-			grid-template-columns: repeat(3, minmax(0, 1fr));
-		}
+	@container (min-width: 36rem) {
+		.method-parts,
 		.method-limits {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}

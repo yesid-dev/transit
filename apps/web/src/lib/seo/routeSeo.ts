@@ -57,6 +57,7 @@ interface BilingualText {
 
 interface BilingualSeo {
 	readonly title: BilingualText;
+	readonly description?: BilingualText;
 }
 
 const HOME: BilingualSeo & {
@@ -89,15 +90,23 @@ const SURFACES: Record<string, BilingualSeo> = {
 		title: { en: 'How we measure', fr: 'Comment on mesure' },
 	},
 	'/metrics/archive': {
+		description: {
+			en: 'Read the definitions and sources used by the first Transit site through November 2026.',
+			fr: 'Consultez les définitions et les sources du premier site Transit, jusqu’en novembre 2026.',
+		},
 		title: {
-			en: 'The method of the first Transit site',
-			fr: 'La méthode du premier site Transit',
+			en: 'Previous method, through November 2026',
+			fr: 'Ancienne méthode, jusqu’en novembre 2026',
 		},
 	},
 	'/status': {
 		title: { en: 'Data health', fr: 'Santé des données' },
 	},
 	'/download': {
+		description: {
+			en: 'Download daily transit data in Parquet format and read the source licence.',
+			fr: 'Téléchargez les données quotidiennes de transport en format Parquet et consultez la licence des sources.',
+		},
 		title: { en: 'Download the data', fr: 'Télécharger les données' },
 	},
 	'/rankings': {
@@ -107,7 +116,7 @@ const SURFACES: Record<string, BilingualSeo> = {
 		title: { en: 'Daily report', fr: 'Rapport quotidien' },
 	},
 	'/alerts': {
-		title: { en: 'Alerts', fr: 'Avis' },
+		title: { en: 'Service alerts', fr: 'Avis de service' },
 	},
 	'/privacy': {
 		title: { en: 'Privacy', fr: 'Confidentialité' },
@@ -149,7 +158,7 @@ function entryFor(path: string, params: URLSearchParams): BilingualSeo {
 
 export function isEphemeralPath(pathname: string): boolean {
 	const path = delocalizePath(pathname);
-	return path.startsWith('/trip/') || Boolean(upcomingPage(path));
+	return path === '/metrics/archive' || path.startsWith('/trip/') || Boolean(upcomingPage(path));
 }
 
 export function canonicalRoutePath(url: URL): string {
@@ -219,7 +228,7 @@ export function resolveRouteSeo(
 	}
 	return {
 		title: entry.title[locale],
-		description: withShareCta(copy.support, copy.cta),
+		description: entry.description?.[locale] ?? withShareCta(copy.support, copy.cta),
 		siteName: 'Transit',
 		providerId,
 		imagePath,

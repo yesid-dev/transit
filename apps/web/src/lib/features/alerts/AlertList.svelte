@@ -40,15 +40,16 @@
 		city,
 		timeZone,
 		live,
+		pageSize = 12,
 	}: {
 		cards: AlertCard[];
 		locale: Locale;
 		city: string;
 		timeZone?: string;
 		live: boolean;
+		pageSize?: number;
 	} = $props();
 
-	const pageSize = 12;
 	const registerControls = getContext<RegisterFrameSurfaceRail | undefined>(
 		frameSurfaceRailContext,
 	);
@@ -140,7 +141,7 @@
 
 	$effect(() => {
 		if (hasControls) {
-			return untrack(() => registerControls?.(controls));
+			return untrack(() => registerControls?.(controls, 'before-frame'));
 		}
 	});
 

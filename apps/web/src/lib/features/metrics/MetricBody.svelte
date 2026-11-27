@@ -24,11 +24,11 @@
 </script>
 
 <div class="metric__static-information" data-slot="metric-static-information">
-	<TypedInformationCard kind="definition" label={t.sections.definition}>
+	<TypedInformationCard plain kind="definition" label={t.sections.definition}>
 		<EasterProse text={entry.definition[locale]} class="metric__prose" />
 	</TypedInformationCard>
 
-	<TypedInformationCard kind="math" label={t.sections.math}>
+	<TypedInformationCard plain kind="math" label={t.sections.math}>
 		<p class="metric__prose">{entry.math[locale]}</p>
 	</TypedInformationCard>
 
@@ -41,11 +41,11 @@
 	/>
 
 	<div class="metric__paired-information">
-		<TypedInformationCard kind="not-really" label={t.sections.notReally}>
+		<TypedInformationCard plain kind="not-really" label={t.sections.notReally}>
 			<EasterProse text={entry.notReally[locale]} class="metric__prose" />
 		</TypedInformationCard>
 
-		<TypedInformationCard kind="caveat" label={t.sections.caveats}>
+		<TypedInformationCard plain kind="caveat" label={t.sections.caveats}>
 			<ul class="metric__caveats">
 				{#each entry.caveats[locale] as caveat, i (i)}
 					<li>{caveat}</li>

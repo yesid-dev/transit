@@ -26,7 +26,7 @@ for (const locale of PUBLISHED_LOCALES) {
 	test(locale + ': archived methodology stays static as the clock moves', async ({ page }) => {
 		await page.clock.install({ time: generated + 3 * 60_000 });
 		await page.goto(localized(metrics, locale));
-		const header = page.locator('[data-slot="article-header"]');
+		const header = page.locator('[data-slot="reading-frame"]');
 		const heading = header.getByRole('heading', { level: 1 });
 		await expect(heading).toBeVisible();
 		const title = await heading.textContent();

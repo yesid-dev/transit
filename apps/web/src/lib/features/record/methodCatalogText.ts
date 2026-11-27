@@ -14,6 +14,45 @@ const sameAsNames: Readonly<Partial<Record<string, readonly [string, string]>>> 
 export const earlyLateDefinitionEn =
 	'Early is more than 1 minute ahead of the timetable. Late is more than 5 minutes behind it.';
 
+const familySummaries: Readonly<Partial<Record<string, Record<Locale, string>>>> = {
+	service_delivered: {
+		en: 'How much of the scheduled service hours ran, and whether the first and last departures of the day ran.',
+		fr: 'La part des heures de service prévues qui ont été effectuées, et si le premier et le dernier départ de la journée ont eu lieu.',
+	},
+	crowding: {
+		en: 'How full vehicles reported being, from empty to full, as a share of their reporting time.',
+		fr: 'Le niveau d’occupation signalé par les véhicules, de vide à plein, en part de leur temps de signalement.',
+	},
+	alert_counts: {
+		en: 'How many notices the agency published, how often it revised them and how long they stayed in effect.',
+		fr: 'Le nombre d’avis publiés par la société de transport, leurs mises à jour et leur durée en vigueur.',
+	},
+	waiting_and_gaps: {
+		en: 'The time between vehicles at a stop when service is frequent: long gaps, vehicles too close together and the extra wait.',
+		fr: 'L’intervalle entre deux véhicules à un arrêt quand le service est fréquent\u00a0: intervalles prolongés, véhicules trop rapprochés et attente excédentaire.',
+	},
+	service_offered: {
+		en: 'What the timetable plans: trips, trips per hour, and the evening and weekend periods with fewer than 2 trips an hour.',
+		fr: 'Ce que prévoit l’horaire\u00a0: les trajets, les trajets par heure, et les périodes de soir et de fin de semaine à moins de 2 trajets par heure.',
+	},
+	vehicles: {
+		en: 'The on-time, early, late and delay measures, counted for one vehicle.',
+		fr: 'Les mesures de ponctualité et de retard, comptées pour un seul véhicule.',
+	},
+	corridors: {
+		en: 'The time vehicles lose between two consecutive stops, against the timetable.',
+		fr: 'Le temps que les véhicules perdent entre deux arrêts consécutifs, par rapport à l’horaire.',
+	},
+	open_data_scorecard: {
+		en: 'How the agency’s feeds arrive: captures that succeeded, how fresh and complete they are, and how close the predictions were.',
+		fr: 'L’état des flux de la société de transport\u00a0: collectes réussies, fraîcheur, données présentes et justesse des prévisions.',
+	},
+	accessibility: {
+		en: 'The share of trips and of stops the agency declares wheelchair accessible.',
+		fr: 'La part des trajets et des arrêts que la société de transport déclare accessibles en fauteuil roulant.',
+	},
+};
+
 const featured = [
 	{
 		id: 'on_time',
@@ -79,7 +118,6 @@ export type MethodGroup = {
 
 export function methodGroups(entries: MethodEntry[], locale: Locale) {
 	const index = locale === 'en' ? 0 : 1;
-	const list = new Intl.ListFormat(locale);
 	const groups: MethodGroup[] = featured.flatMap(({ id, name, summary, has }) => {
 		const matching = entries.filter((entry) => has(entry.id));
 		return matching.length
@@ -95,7 +133,7 @@ export function methodGroups(entries: MethodEntry[], locale: Locale) {
 	).map(([id, members = []]) => ({
 		id: 'family-' + id,
 		name: members[0].family_text?.[locale] ?? id,
-		summary: list.format(members.map((entry) => methodName(entry, locale))) + '.',
+		summary: familySummaries[id]?.[locale],
 		entries: members,
 	}));
 	return { groups, extra };

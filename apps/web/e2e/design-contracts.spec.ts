@@ -49,23 +49,12 @@ for (const locale of PUBLISHED_LOCALES) {
 		);
 	}
 
-	test(`${locale} visible and hidden DetailFrame pills retain their navigation`, async ({
+	test(`${locale} archive has inline contents and record screens have no floating contents`, async ({
 		page,
 	}) => {
 		await page.goto(localizeHref('/metrics/archive', locale));
-		const pill = page.getByTestId('toc-pill').locator('button.toc-pill');
-		if (page.viewportSize()!.width < 1024) {
-			await expect(pill).toHaveAccessibleName(/Contents|Sommaire/);
-			await expect(async () => {
-				await pill.click();
-				await expect(pill).toHaveAttribute('aria-expanded', 'true', { timeout: 1000 });
-			}).toPass();
-			await expect(page.locator('.toc-drawer-backdrop')).toHaveAccessibleName(
-				locale === 'en' ? 'Close contents' : 'Fermer le sommaire',
-			);
-			await page.locator('.toc-drawer-item').first().click();
-			await expect(pill).toHaveAttribute('aria-expanded', 'false');
-		}
+		await expect(page.getByTestId('archive-contents')).toBeVisible();
+		await expect(page.getByTestId('toc-pill')).toHaveCount(0);
 		// Keep the window that exposed the collision between the Network and Rankings fixtures.
 		const dates = 'recordFrom=2026-11-20&recordTo=2026-11-26';
 		for (const [path, surface] of [

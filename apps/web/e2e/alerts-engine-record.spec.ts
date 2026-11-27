@@ -51,7 +51,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(answer).toContainText('213 avis étaient en vigueur à un moment donné à ces dates.');
 	await expect(answer).toContainText(/213 avis, en 1\s707 publications par la STM\./);
 	await expect(answer).not.toContainText('12,5');
-	await expect(page.getByRole('heading', { name: 'Par effet', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('heading', { name: 'Par effet', exact: true })).toBeVisible();
 	await expect(
 		page.getByText('La société de transport ne publie pas l’effet de ses avis.'),
 	).toBeVisible();
@@ -60,16 +60,12 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 			'Compte les avis distincts en vigueur à ces dates. Le nombre de publications comprend chaque version.',
 		),
 	).toBeVisible();
-	const byLine = page.getByRole('button', { name: 'Par ligne', exact: true });
-	await expect(byLine).toHaveAttribute('aria-expanded', 'false');
-	await byLine.click();
-	await expect(byLine).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.getByRole('heading', { name: 'Par ligne', exact: true })).toBeVisible();
 	await expect(page.locator('#line').getByRole('status')).toHaveText('6 sur 185');
 	await expect(page.locator('#line').getByRole('link').first()).toContainText('Beaubien');
 	await expect(
 		page.locator('#line').getByRole('link').filter({ hasText: 'Sherbrooke' }),
 	).toBeVisible();
-	await byLine.click();
 	await expect(page.getByText('Aucune capture brute')).toBeVisible();
 	const messages = page.locator('#messages');
 	await expect(messages.getByRole('heading', { name: 'Use stop 51234.' })).toHaveAttribute(
@@ -79,11 +75,11 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(messages.getByRole('heading', { name: 'Avis sans texte' })).toBeVisible();
 	await expect(messages.getByText(/Votre arrêt|anonymous:|Inconnu/)).toHaveCount(0);
 	await expect(messages.getByText('du 14 au 20 nov. 2026', { exact: true }).first()).toBeVisible();
-	await expect(messages.getByRole('status')).toHaveText('12 sur 213 avis');
+	await expect(messages.getByRole('status')).toHaveText('5 sur 213 avis');
 	await expect(messages).not.toContainText(/1\s707/);
-	await messages.getByRole('button', { name: 'Afficher 12 de plus' }).click();
-	await expect(messages.getByRole('status')).toHaveText('24 sur 213 avis');
-	await expect(messages.locator('ul > li').nth(12)).toBeFocused();
+	await messages.getByRole('button', { name: 'Afficher 5 de plus' }).click();
+	await expect(messages.getByRole('status')).toHaveText('10 sur 213 avis');
+	await expect(messages.locator('ul > li').nth(5)).toBeFocused();
 
 	await answer.getByRole('button', { name: 'Citer', exact: true }).click();
 	await expect(page.getByRole('dialog')).toContainText(/v1.*recordFrom=2026-11-14.*#answer/);
@@ -164,6 +160,25 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(page).not.toHaveURL(/(?:route|stop)=/);
 	await expect(filter.getByText('213 notices', { exact: true })).toBeVisible();
 });
+
+for (const [width, height] of [
+	[1280, 720],
+	[1366, 768],
+] as const) {
+	test(`Alerts Record shows the line and stop filters at ${width} by ${height}`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width, height });
+		await page.goto(`/alerts?${period}`);
+		const filters = page.getByRole('group', { name: 'Filter', exact: true });
+		await expect(filters.getByRole('combobox', { name: 'Line', exact: true })).toBeInViewport({
+			ratio: 1,
+		});
+		await expect(filters.getByRole('combobox', { name: 'Stop', exact: true })).toBeInViewport({
+			ratio: 1,
+		});
+	});
+}
 
 test('Alerts Record shows the engine message limit and OC Transpo has no alert total', async ({
 	page,

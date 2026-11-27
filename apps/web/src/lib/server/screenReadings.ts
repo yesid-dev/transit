@@ -2,18 +2,24 @@ import type { RecoveryScreen } from '#lib/features/record/recordReadings.ts';
 import { rankingPath } from '#lib/features/rankings/rankingSelection.ts';
 import { fleetView, projectFleetAnswer } from '#lib/features/vehicles/vehicleFleet.ts';
 import type { Locale } from '#lib/i18n/index.ts';
-import { getCityCatalog, getScheduleEdition, type EnginePeriod } from './engine.ts';
+import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
+import {
+	getCityCatalog,
+	getMethodCatalog,
+	getScheduleEdition,
+	type EnginePeriod,
+} from './engine.ts';
 import {
 	dailyDirectory,
 	departureDay,
 	loadDailyRecord,
 	loadDepartureRecord,
 } from './departureDailyRecord.ts';
-import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
 import { readLinesRecord } from './finderRecord.ts';
 import { readHealthRecord } from './healthRecord.ts';
 import { lineDirection, loadLineRecord } from './lineRecord.ts';
 import { loadNetworkRecord } from './networkRecord.ts';
+import { getDownloadWindow, downloadWindow } from './downloads.ts';
 import { loadAlertRecord } from './alertRecord.ts';
 import { readOverviewRecord } from './overviewRecord.ts';
 import { loadRankingsRecord } from './rankingsRecord.ts';
@@ -97,6 +103,15 @@ export async function readScreenAgain(again: ScreenAgain, only: ReadonlySet<stri
 			return loadNetworkRecord(scope, only);
 		case 'alerts':
 			return { sections: loadAlertRecord(scope, only) };
+		case 'metrics':
+			return { catalog: only.has('catalog') ? getMethodCatalog(visitorIp) : undefined };
+		case 'download':
+			return {
+				listing: only.has('listing')
+					? getDownloadWindow(city, downloadWindow(scope, page.get('daysPage')), visitorIp)
+					: undefined,
+				methods: only.has('methods') ? getMethodCatalog(visitorIp) : undefined,
+			};
 		case 'status':
 			// Only a screen that tracks alerts has their reading to ask again.
 			return readHealthRecord(scope, true, only);
