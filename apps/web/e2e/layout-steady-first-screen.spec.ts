@@ -1,4 +1,5 @@
 import { expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { streamingLayoutTest as test } from './layout-test';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
@@ -118,7 +119,8 @@ for (const { screen, href } of designPassCases.filter(
 						from = '2026-10-26';
 						to = `2026-11-${(locale === 'fr' ? 19 : 15) + position}`;
 					}
-					const fixture = `steady:${city}:${from}:${to}`;
+					// The hold is this test's own: another test asking for the same dates is never held.
+					const fixture = `steady:${city}:${from}:${to}:${randomUUID()}`;
 					const fixtureUrl = (action: 'hold' | 'release') =>
 						`http://127.0.0.1:${port}/__overview/${action}?fixture=${encodeURIComponent(fixture)}`;
 					const hold = (action: 'hold' | 'release') => request.post(fixtureUrl(action));
@@ -128,9 +130,10 @@ for (const { screen, href } of designPassCases.filter(
 					}
 					await page.setViewportSize({ width, height: 900 });
 					await page.clock.install({ time: captureRefresh.has(screen) ? Date.now() : time });
-					await page.setExtraHTTPHeaders(
-						screen === 'alerts' ? { 'x-transit-fixture-scope': 'alerts' } : {},
-					);
+					await page.setExtraHTTPHeaders({
+						...(screen === 'alerts' ? { 'x-transit-fixture-scope': 'alerts' } : {}),
+						...(held ? { 'x-transit-fixture-hold': fixture } : {}),
+					});
 					await page.addInitScript(
 						(theme) => localStorage.setItem('theme', theme),
 						locale === 'fr' ? 'dark' : 'light',
@@ -273,13 +276,17 @@ test('steady footer is keyboard reachable after ten seconds while the engine is 
 	request,
 }) => {
 	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-	const fixture = encodeURIComponent('steady:stm:2026-10-13:2026-11-01');
+	const key = `steady:stm:2026-10-13:2026-11-01:${randomUUID()}`;
+	const fixture = encodeURIComponent(key);
 	const host = `http://127.0.0.1:${port}/__overview`;
 	const hold = `${host}/hold?fixture=${fixture}`;
 	expect((await request.post(hold)).ok()).toBe(true);
 	try {
 		await page.setViewportSize({ width: 390, height: 900 });
-		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
+		await page.setExtraHTTPHeaders({
+			'x-transit-fixture-scope': 'alerts',
+			'x-transit-fixture-hold': key,
+		});
 		await page.goto('/alerts?provider=stm&recordFrom=2026-10-13&recordTo=2026-11-01', {
 			waitUntil: 'commit',
 		});
