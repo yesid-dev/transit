@@ -1,10 +1,12 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
-const { getRecordAnswer, getRecordCsv } = vi.hoisted(() => ({
+const { getCityCatalog, getRecordAnswer, getRecordCsv } = vi.hoisted(() => ({
+	getCityCatalog: vi.fn(),
 	getRecordAnswer: vi.fn().mockResolvedValue({ kind: 'unconfigured' }),
 	getRecordCsv: vi.fn(),
 }));
 vi.mock('#lib/server/engine.ts', () => ({
+	getCityCatalog,
 	getRecordAnswer,
 	getRecordCsv,
 	getScheduleEdition: vi.fn(),
@@ -159,16 +161,27 @@ it('opens the last built day when Yesterday has not been added', async () => {
 	);
 });
 
-it('rejects an eight-date agency message CSV request before asking the engine', () => {
-	const url = new URL(
-		'https://transit1.yesid.dev/fr/receipt/record.csv?provider=demo&section=messages&recordFrom=2026-11-11&recordTo=2026-11-18',
-	);
-	const request = new Request(url);
-	expect(() =>
-		getCsv({ params: { lang: 'fr' }, url, request } as Parameters<typeof getCsv>[0]),
-	).toThrow(expect.objectContaining({ status: 400 }));
-	expect(getRecordCsv).not.toHaveBeenCalled();
-});
+it.each([
+	{ lang: undefined, prefix: '', message: 'Choose a valid date range for this download.' },
+	{ lang: 'fr', prefix: '/fr', message: 'Choisissez une période valide pour ce téléchargement.' },
+] as const)(
+	'rejects an eight-date agency message CSV request at $prefix/receipt before asking the engine',
+	async ({ lang, prefix, message }) => {
+		const url = new URL(
+			`https://transit1.yesid.dev${prefix}/receipt/record.csv?provider=demo&section=messages&recordFrom=2026-11-11&recordTo=2026-11-18`,
+		);
+		const request = new Request(url);
+		const response = await getCsv({ params: { lang }, url, request } as Parameters<
+			typeof getCsv
+		>[0]);
+		expect(response.status).toBe(400);
+		expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+		expect(await response.text()).toBe(`${message}\n`);
+		expect(getCityCatalog).not.toHaveBeenCalled();
+		expect(getRecordAnswer).not.toHaveBeenCalled();
+		expect(getRecordCsv).not.toHaveBeenCalled();
+	},
+);
 
 it('shows an unavailable period for dates before the clean record', async () => {
 	await expect(
