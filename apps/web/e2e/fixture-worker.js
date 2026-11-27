@@ -17,6 +17,7 @@ globalThis.fetch = (input, init) => {
 		!url.pathname.endsWith('/schedule-index') &&
 		fixture.scope !== 'overview-stream' &&
 		fixture.scope !== 'overview-stop-ranking' &&
+		!(fixture.scope === 'record-yesterday' && url.pathname === '/v2/cities') &&
 		!(fixture.scope === 'stops-search' && url.searchParams.get('group') === 'stop_id')
 	)
 		return workerFetch(input, init);

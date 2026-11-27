@@ -4,8 +4,7 @@ import {
 	frameHref,
 	frameDateLimit,
 	frameClock,
-	dailyReportPeriod,
-	parseFrameState,
+	parseAnswerFrameState,
 	periodError,
 	presetPeriod,
 	PRESETS,
@@ -38,7 +37,7 @@ export const load: PageServerLoad = async (event) => {
 		? periodError(legacyPeriod, frameDateLimit(clock), clock.recordStart)
 			? null
 			: legacyPeriod
-		: dailyReportPeriod(parseFrameState(params, clock).period, clock);
+		: parseAnswerFrameState(params, clock).period;
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	const tracked = !provider || providerHasAlerts(provider);
 	const lineNumbers = new Map(schedule?.routes.map(({ id, short }) => [id, short || id]));

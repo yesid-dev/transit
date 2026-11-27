@@ -83,22 +83,41 @@ describe('frame control state', () => {
 		expect(state('/map?recordFrom=2026-11-17&recordTo=2026-11-21').mode).toBe('live');
 	});
 
-	it('replaces an unavailable Yesterday answer on every screen but downloads', () => {
-		const url = new URL(
-			'https://transit.test/lines/51?period=yesterday&recordFrom=2026-11-21&recordTo=2026-11-21',
-		);
-		expect(frameControlsState(url, clock('2026-11-20')).waitingForYesterday).toBe('2026-11-21');
-		expect(frameControlsState(url, clock('2026-11-21')).waitingForYesterday).toBeNull();
-		expect(frameControlsState(url, clock()).waitingForYesterday).toBeNull();
-		url.pathname = '/download';
-		expect(frameControlsState(url, clock('2026-11-20'))).toMatchObject({
-			waitingForYesterday: null,
-			period: { from: '2026-11-21', to: '2026-11-21' },
-		});
-		// Data health reads the same complete days as every other screen.
-		url.pathname = '/status';
-		expect(frameControlsState(url, clock('2026-11-20')).waitingForYesterday).toBe('2026-11-21');
-	});
+	it.each(['/', '/lines', '/lines/51', '/network', '/status', '/map', '/receipt'])(
+		'keeps Yesterday selected and names the built day on %s',
+		(path) => {
+			const url = new URL(
+				path + '?frameMode=record&period=yesterday&recordFrom=2026-11-26&recordTo=2026-11-26',
+				'https://transit.test',
+			);
+			const late = { today: '2026-11-27', recordThrough: '2026-11-25' };
+			const frame = frameControlsState(url, late);
+			expect(frame.period).toEqual({ preset: 'yesterday', from: '2026-11-25', to: '2026-11-25' });
+			expect(recordEndNotice(frame.afterRecord, 'en')).toBe(
+				'26 November is not in the record yet. Showing 25 November.',
+			);
+			expect(recordEndNotice(frame.afterRecord, 'fr')).toBe(
+				'Le 26 novembre ne figure pas encore au bilan. Affichage du 25 novembre.',
+			);
+			expect(
+				frameControlsState(url, { ...late, recordThrough: '2026-11-26' }).afterRecord,
+			).toBeNull();
+		},
+	);
+
+	it.each(['/download?frameMode=record', '/?frameMode=live'])(
+		'keeps the requested Yesterday dates at %s',
+		(path) => {
+			const url = new URL(
+				path + '&period=yesterday&recordFrom=2026-11-21&recordTo=2026-11-21',
+				'https://transit.test',
+			);
+			expect(frameControlsState(url, clock('2026-11-20'))).toMatchObject({
+				afterRecord: null,
+				period: { preset: 'yesterday', from: '2026-11-21', to: '2026-11-21' },
+			});
+		},
+	);
 
 	it('describes pinned dates and their inclusive duration in either language', () => {
 		const { period } = state('/?period=7-days&recordFrom=2026-11-01&recordTo=2026-11-07');
@@ -154,7 +173,6 @@ describe('frame control state', () => {
 			url.search = '?period=yesterday&recordFrom=2026-11-25&recordTo=2026-11-25';
 			const daily = frameControlsState(url, lateClock);
 			expect(daily.period).toEqual({ preset: 'yesterday', from: '2026-11-24', to: '2026-11-24' });
-			expect(daily.waitingForYesterday).toBeNull();
 			expect(recordEndNotice(daily.afterRecord, locale)).toBe(
 				locale === 'en'
 					? '25 November is not in the record yet. Showing 24 November.'

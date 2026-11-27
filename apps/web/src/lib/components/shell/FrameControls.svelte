@@ -27,6 +27,7 @@
 		frameDateLimit,
 		frameHref,
 		MAX_RECORD_DAYS,
+		parseFrameState,
 		periodError,
 		presetPeriod,
 		PRESETS,
@@ -102,7 +103,9 @@
 
 	function selectMode(mode: FrameMode) {
 		if (frame.mode === mode) return;
-		const target = new URL(frameHref(url, { ...frame, mode }), url);
+		// A view switch carries the requested dates so returning to Record can use a newly built day.
+		const { period } = parseFrameState(url.searchParams, clock);
+		const target = new URL(frameHref(url, { mode, period }), url);
 		if (frame.detail) {
 			if (mode === 'live') target.searchParams.set('tab', 'detail');
 			else target.searchParams.delete('tab');

@@ -401,9 +401,11 @@ const server = createServer((request, response) => {
 					...provider,
 					attribution: JSON.parse(files[`/v1/${provider.id}/manifest.json`]).attribution,
 					timezone: 'America/Toronto',
-					...(process.env.TRANSIT_E2E_DAILY_ARTWORK === '1'
-						? { record_through: '2026-11-23' }
-						: {}),
+					...(request.headers['x-transit-fixture-scope'] === 'record-yesterday'
+						? { record_through: '2026-11-25' }
+						: process.env.TRANSIT_E2E_DAILY_ARTWORK === '1'
+							? { record_through: '2026-11-23' }
+							: {}),
 					download_licence: {
 						attribution: sourceCredits[provider.id],
 						source: declaredSources[provider.id],

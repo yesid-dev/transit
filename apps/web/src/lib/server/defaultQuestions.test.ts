@@ -105,7 +105,7 @@ it.each([
 	expect(warm.length).toBeLessThan(visitor.length);
 });
 
-it('does not start Record questions for an unpublished Yesterday', async () => {
+it('queries only the last built day when Yesterday is unpublished', async () => {
 	vi.useFakeTimers({ toFake: ['Date'] });
 	vi.setSystemTime(new Date('2026-11-25T05:30:00Z'));
 	const url = new URL(
@@ -117,8 +117,16 @@ it('does not start Record questions for an unpublished Yesterday', async () => {
 		provider: { timezone: 'America/Toronto', record_through: '2026-11-23' },
 	});
 	const result = await lines({ url, request, parent } as Parameters<typeof lines>[0]);
-	expect(result.finderRecord).toBeNull();
-	expect(fetcher).not.toHaveBeenCalled();
+	expect(result.finderRecord?.period).toEqual({
+		preset: 'yesterday',
+		from: '2026-11-23',
+		to: '2026-11-23',
+	});
+	expect(fetcher).toHaveBeenCalledTimes(2);
+	for (const [request] of fetcher.mock.calls) {
+		const params = new URL(request.url).searchParams;
+		expect([params.get('from'), params.get('to')]).toEqual(['2026-11-23', '2026-11-23']);
+	}
 });
 
 it('warms the same ranges and questions overnight and in the afternoon on the same edition', () => {

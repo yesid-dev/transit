@@ -7,13 +7,12 @@ import { mapLayerFor } from '#lib/site/mapFrame.ts';
 import { dateRange, longDate, recordNoticeDates } from '#lib/site/presenter.ts';
 import {
 	RECORD_START,
-	dailyReportPeriod,
 	frameDateLimit,
 	parseFrameState,
 	periodError,
 	receiptFrameParams,
+	recordAnswerPeriod,
 	unpublishedRecordDates,
-	unpublishedYesterday,
 	type FrameClock,
 } from '#lib/site/frameState.ts';
 import { frameCopy } from './frameCopy.ts';
@@ -43,7 +42,6 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 	const params =
 		path === '/receipt' ? receiptFrameParams(url.searchParams, clock) : url.searchParams;
 	const parsed = parseFrameState(params, clock);
-	const period = path === '/receipt' ? dailyReportPeriod(parsed.period, clock) : parsed.period;
 	let mode = parsed.mode;
 	if (recordOnly) mode = 'record';
 	else if (liveOnly) mode = 'live';
@@ -58,6 +56,10 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		path.startsWith('/departure/') ||
 		['/', '/alerts', '/network', '/status', '/vehicles'].includes(path) ||
 		path.startsWith('/vehicle/');
+	const period =
+		mode === 'record' && path !== '/download' && (usesFrameRecord || map)
+			? recordAnswerPeriod(parsed.period, clock)
+			: parsed.period;
 	const start = clock.recordStart ?? RECORD_START;
 	const askedFrom = url.searchParams.get('recordFrom');
 	const askedTo = url.searchParams.get('recordTo');
@@ -65,10 +67,6 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		askedFrom !== null &&
 		askedTo !== null &&
 		periodError({ from: askedFrom, to: askedTo }, frameDateLimit(clock), start) === 'beforeRecord';
-	const waitingForYesterday =
-		mode === 'record' && path !== '/download' && path !== '/receipt'
-			? unpublishedYesterday(period, clock)
-			: null;
 	const askedAfterRecord = unpublishedRecordDates(params, clock);
 	return {
 		...parsed,
@@ -82,7 +80,6 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		liveOnly,
 		detail: line || stop,
 		map,
-		waitingForYesterday,
 		usesFrameRecord,
 		// A link whose dates fall before the city's record is answered with other dates: say so once.
 		beforeRecord:
@@ -93,7 +90,6 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 			!errorPage &&
 			mode === 'record' &&
 			(usesFrameRecord || map) &&
-			!waitingForYesterday &&
 			askedAfterRecord &&
 			period &&
 			askedAfterRecord.from > period.to
