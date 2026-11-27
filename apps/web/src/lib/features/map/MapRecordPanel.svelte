@@ -9,12 +9,12 @@
 	import { Combobox } from '@yesid/ui/combobox';
 	import { foldSearchText } from '#lib/search/normalize.ts';
 	import MapLinePicker from './MapLinePicker.svelte';
-	import { RoutePlate } from '@yesid/ui/brand';
 	import { theme } from '@yesid/ui/state';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { choose, notMeasuredLabel } from '#lib/features/record/recordText.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import MapPanelAnswer from './MapPanelAnswer.svelte';
+	import MapPanelRow from './MapPanelRow.svelte';
 	import { Button } from '@yesid/ui/button';
 	import { frameHref, type parseFrameState } from '#lib/site/frameState.ts';
 	import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
@@ -61,7 +61,7 @@
 		onsourcedate: (date: string | null) => void;
 		reportCamera?: MapReportCamera | null;
 		oncount?: (count: number | null) => void;
-		children: Snippet<[Snippet<[Snippet | undefined]> | undefined]>;
+		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
 	}
 	let {
 		map,
@@ -299,6 +299,7 @@
 	const routeNames = $derived(new Map(routes.map((route) => [route.id, route.long])));
 	const stopCodes = $derived(new Map(stops.map((stop) => [stop.id, stop.code ?? stop.id])));
 	const shownCount = (value: number) => searchCount(value, locale);
+	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop events', 'passages');
 	function measuredLine(mark: RecordMark) {
 		return stopLayer ? undefined : line || (mark.lines?.length === 1 ? mark.lines[0] : undefined);
 	}
@@ -329,12 +330,13 @@
 	function valueText(value: number) {
 		return mapRecordReading(value, stopLayer, locale);
 	}
+	const headline = $derived(leader?.value == null ? null : valueText(leader.value));
 </script>
 
 {#snippet recordBody(stamp: Snippet | undefined)}
 	{#if leader?.value != null}
 		<MapPanelAnswer
-			value={valueText(leader.value) ?? ''}
+			value={headline ?? ''}
 			sentence={stopLayer
 				? tr(
 						`is the highest late share of observed stop events in view, at stop ${leaderStop}, ${leader.name}.`,
@@ -445,44 +447,26 @@
 						<ul>
 							{#each visible.slice(0, limit) as mark (mark.id)}
 								{@const lineId = measuredLine(mark)}
-								{@const stopCode = mark.stop ? stopCodes.get(mark.stop) : undefined}
+								{@const stopCode = stopCodes.get(mark.stop ?? mark.fromStop ?? '')}
 								{@const target = mark.stop ?? lineId}
-								<li class="record-in-view-row">
-									<span>
-										{#if lineId}<RoutePlate
-												code={display.lineName(lineId, routeNames.get(lineId)).number ?? lineId}
-											/>
-										{:else if stopCode}<span class="record-stop-code">{stopCode}</span>{/if}
-									</span>
-									<div class="record-in-view-name">
-										{#if target}
-											<a
-												class="text-primary underline"
-												href={recordLink(target, mark.direction)}
-												onclick={(event) => {
-													if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey)
-														return;
-													event.preventDefault();
-													selectedId = mark.id;
-												}}>{stopLayer ? mark.name : mark.fromName}</a
-											>
-										{:else}
-											<Button
-												variant="ghost"
-												size="sm"
-												wrap
-												class="min-h-11 text-left"
-												onclick={() => (selectedId = mark.id)}>{mark.fromName}</Button
-											>
-										{/if}
-										{#if stopLayer && mark.sample !== null}
-											<small>{shownCount(mark.sample)} {tr('stop events', 'passages')}</small>
-										{:else if mark.toName}<small>{tr('to', 'à')} {mark.toName}</small>{/if}
-									</div>
-									<span class="record-in-view-value" class:measured={mark.value !== null}
-										>{mark.value !== null ? valueText(mark.value) : stateLabels[mark.state]}</span
-									>
-								</li>
+								<MapPanelRow
+									code={lineId
+										? (display.lineName(lineId, routeNames.get(lineId)).number ?? lineId)
+										: stopCode}
+									routePlate={Boolean(lineId)}
+									name={stopLayer ? mark.name : (mark.fromName ?? mark.name)}
+									href={target ? recordLink(target, mark.direction) : undefined}
+									onselect={() => (selectedId = mark.id)}
+									detail={stopLayer && mark.sample !== null
+										? sampleLabel(mark.sample)
+										: mark.toName
+											? tr('to', 'à') + ' ' + mark.toName
+											: null}
+								>
+									{#snippet value()}{mark.value !== null
+											? valueText(mark.value)
+											: stateLabels[mark.state]}{/snippet}
+								</MapPanelRow>
 							{/each}
 						</ul>
 						{#if visible.length > limit}
@@ -566,7 +550,7 @@
 	</div>
 {/snippet}
 
-{@render children(layer === 'live' ? undefined : recordContent)}
+{@render children(layer === 'live' ? undefined : recordContent, headline)}
 
 <style>
 	.record-panel {
@@ -575,38 +559,6 @@
 		color: var(--foreground);
 		font-size: var(--text-small);
 		line-height: 1.35;
-	}
-	.record-in-view-row {
-		display: grid;
-		grid-template-columns: 3.25rem minmax(0, 1fr) auto;
-		align-items: center;
-		column-gap: calc(var(--spacing) * 2);
-	}
-	.record-in-view-value {
-		text-align: end;
-		font-variant-numeric: tabular-nums;
-		font-weight: 600;
-	}
-	.record-in-view-value.measured {
-		white-space: nowrap;
-	}
-	.record-in-view-name {
-		display: grid;
-		justify-items: start;
-	}
-	.record-in-view-name a {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--size-tap-min);
-	}
-	.record-in-view-name small {
-		color: var(--muted-foreground);
-	}
-	.record-stop-code {
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		padding: calc(var(--spacing) * 0.5);
-		font-family: var(--font-mono);
 	}
 	.record-panel .map-record-list-title {
 		font-size: var(--text-control);

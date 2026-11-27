@@ -116,12 +116,9 @@ async function serveNetwork(page: Page, provider: 'stm' | 'octranspo'): Promise<
 	});
 }
 
-async function openNearMe(page: Page, name: string): Promise<void> {
-	const toggle = page.getByRole('button', { name, exact: true });
-	await expect(async () => {
-		if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-		await expect(toggle).toHaveAttribute('aria-expanded', 'true', { timeout: 1_000 });
-	}).toPass();
+async function openNearMe(page: Page, name: string) {
+	await page.getByRole('button', { name, exact: true }).click();
+	await expect(page.locator('[data-slot="map-address-lookup"]')).toBeVisible();
 }
 
 const clocks = {
@@ -147,22 +144,16 @@ for (const provider of ['stm', 'octranspo'] as const) {
 			const t = mapCopy[locale];
 			await openMapControls(page);
 			await openNearMe(page, locale === 'fr' ? 'Près d’une adresse' : 'Near an address');
-			await page
-				.getByRole('searchbox', { name: t.nearMeSearchPlaceholder })
-				.fill(network.address.label);
+			await page.getByRole('combobox', { name: t.nearMeAddressLabel }).fill(network.address.label);
 			const suggestion = page
-				.getByRole('group', { name: t.nearMeSuggestions })
-				.getByRole('button', { name: new RegExp(literal(network.address.label)) });
+				.getByRole('listbox', { name: t.nearMeSuggestions })
+				.getByRole('option', { name: new RegExp(literal(network.address.label)) });
 			await expect(suggestion).toBeVisible();
-			// Real keyboard path: submit, then the suggestion, then the stop in the near list.
-			await page.keyboard.press('Tab');
-			await expect(page.getByRole('button', { name: t.nearMeSearchSubmit })).toBeFocused();
-			await page.keyboard.press('Tab');
-			await expect(suggestion).toBeFocused();
+			// Choose a suggestion with the combobox keyboard controls.
+			await page.keyboard.press('ArrowDown');
+			await expect(suggestion).toHaveAttribute('aria-selected', 'true');
 			await page.keyboard.press('Enter');
-			await page
-				.getByRole('button', { name: new RegExp(`^${literal(network.stop.name)}`) })
-				.click();
+			await page.getByRole('link', { name: new RegExp(`^${literal(network.stop.name)}`) }).click();
 
 			const detail = page.locator('[data-slot="map-detail-overlay"][data-selection-kind="stop"]');
 			await expect(detail).toBeVisible();

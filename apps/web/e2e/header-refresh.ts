@@ -5,7 +5,6 @@ import type { Locale } from '../src/lib/i18n/config';
 export async function revealRefresh(page: Page, locale: Locale = 'en') {
 	const refresh = page.getByRole('main').getByRole('button', {
 		name: navPillCopy[locale].refresh,
-		exact: true,
 	});
 	await expect(refresh).toBeVisible();
 	return refresh;

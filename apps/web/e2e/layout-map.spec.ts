@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, type Page } from '@playwright/test';
 import { forwardRoute } from './layout-helpers';
 import { captureUrl, layoutCapture } from './capture-fixture';
+import { openMapLegend } from './map-frame-controls';
 const read = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}.json`, import.meta.url), 'utf8'));
 const epoch = Date.parse(read('departures').generated_utc);
@@ -290,19 +291,25 @@ test('mobile detail sheet keeps its header controls above the home indicator at 
 for (const provider of read('providers').providers) {
 	for (const locale of ['en', 'fr']) {
 		test(
-			provider.id + ' ' + locale + ' map title and stamp share the reading panel @layout',
+			provider.id + ' ' + locale + ' map title and stamp suit the viewport @layout',
 			async ({ page }) => {
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 				await page.clock.setFixedTime(epoch + 900_000);
 				await page.goto((locale === 'fr' ? '/fr' : '') + '/map?provider=' + provider.id);
+				await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+					'data-map-progressive-state',
+					'ready',
+				);
 				const frame = page.locator('[data-slot="map-frame"]');
 				const title = frame.locator('[data-slot="map-title"]');
 				const stamp = frame.locator('[data-slot="freshness-stamp"]');
-				await expect(title).toBeVisible();
+				const phone = page.viewportSize()!.width < 1024;
+				if (phone) await expect(title).toHaveCount(0);
+				else await expect(title).toBeVisible();
 				await expect(page.locator('h1')).toHaveCount(1);
 				// The page heading is read before the map; the panel shows the same words.
 				const heading = page.getByRole('heading', { level: 1 });
-				await expect(heading).toHaveText(await title.innerText());
+				if (!phone) await expect(heading).toHaveText(await title.innerText());
 				expect(
 					await heading.evaluate(
 						(h1, map) => !!(h1.compareDocumentPosition(map!) & Node.DOCUMENT_POSITION_FOLLOWING),
@@ -311,17 +318,20 @@ for (const provider of read('providers').providers) {
 				).toBe(true);
 				await expect(page.getByText(/NETWORK · LIVE|RÉSEAU · EN DIRECT/)).toHaveCount(0);
 				await expect(stamp).toBeVisible();
-				const phone = page.viewportSize()!.width < 1024;
-				const panel = frame.locator(phone ? '.map-mobile-head' : '[data-slot="map-details"]');
-				await expect(panel.locator('[data-slot="map-title"]')).toHaveCount(1);
+				const panel = frame.locator(
+					phone ? '[data-slot="map-live-chip"]' : '[data-slot="map-details"]',
+				);
+				await expect(panel.locator('[data-slot="map-title"]')).toHaveCount(phone ? 0 : 1);
 				await expect(panel.locator('[data-slot="freshness-stamp"]')).toHaveCount(1);
-				const head = (await title.boundingBox())!;
 				const time = (await stamp.boundingBox())!;
 				const card = (await panel.boundingBox())!;
-				expect(head.y + head.height).toBeLessThanOrEqual(time.y);
+				if (!phone) {
+					const head = (await title.boundingBox())!;
+					expect(head.y + head.height).toBeLessThanOrEqual(time.y);
+				}
 				expect(time.x).toBeGreaterThanOrEqual(card.x);
 				expect(time.x + time.width).toBeLessThanOrEqual(card.x + card.width + 1);
-				if (phone) await page.getByTestId('map-legend-button').click();
+				if (phone) await openMapLegend(page);
 				const legend = page.locator(
 					phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 				);

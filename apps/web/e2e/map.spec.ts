@@ -9,6 +9,7 @@ import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { stampCopy } from '../src/lib/v1/stamp.copy';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
@@ -42,11 +43,8 @@ test.beforeEach(async ({ page }) => {
 
 // Server markup shows the toggle before hydration wires it; retry until the panel opens.
 async function openNearMe(page: Page, name: string) {
-	const toggle = page.getByRole('button', { name, exact: true });
-	await expect(async () => {
-		if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-		await expect(toggle).toHaveAttribute('aria-expanded', 'true', { timeout: 1_000 });
-	}).toPass();
+	await page.getByRole('button', { name, exact: true }).click();
+	await expect(page.locator('[data-slot="map-address-lookup"]')).toBeVisible();
 }
 
 test('manual refresh stays busy until live data is received and rendered', async ({ page }) => {
@@ -81,9 +79,9 @@ test('manual refresh stays busy until live data is received and rendered', async
 		await held;
 		await (await invalidated).finished();
 		await page.clock.runFor(250);
-		await expect(page.getByRole('button', { name: 'Refreshing…', exact: true })).toBeDisabled();
+		await expect(page.getByRole('button', { name: /Refreshing…$/u })).toBeDisabled();
 		release();
-		await expect(page.getByRole('button', { name: 'Refresh data', exact: true })).toBeEnabled();
+		await expect(page.getByRole('button', { name: /Refresh data$/u })).toBeEnabled();
 		await expect(timestamp).toHaveAttribute('datetime', new Date(newer).toISOString());
 	} finally {
 		release();
@@ -160,7 +158,7 @@ for (const reducedMotion of ['reduce', 'no-preference'] as const) {
 			const refreshed = page.waitForResponse((response) => captureUrl.test(response.url()));
 			await (await revealRefresh(page)).click();
 			await refreshed;
-			await expect(page.getByRole('button', { name: 'Refresh data', exact: true })).toBeEnabled();
+			await expect(page.getByRole('button', { name: /Refresh data$/u })).toBeEnabled();
 			await expect
 				.poll(async () => Number(await stamp.getAttribute('data-age-seconds')))
 				.toBeGreaterThanOrEqual(originalAge + click);
@@ -181,17 +179,20 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(localizeHref(map, locale));
 		await openMapControls(page);
 		await openNearMe(page, locale === 'fr' ? 'Près d’une adresse' : 'Near an address');
-		await page.getByRole('searchbox', { name: t.nearMeSearchPlaceholder }).fill(address.label);
+		const input = page.getByRole('combobox', { name: t.nearMeAddressLabel });
+		expect((await input.boundingBox())!.width).toBeGreaterThanOrEqual(280);
+		await input.fill(address.label);
 		const suggestion = page
-			.getByRole('group', { name: t.nearMeSuggestions })
-			.getByRole('button', { name: new RegExp(literal(address.label)) });
+			.getByRole('listbox', { name: t.nearMeSuggestions })
+			.getByRole('option', { name: new RegExp(literal(address.label)) });
 		await expect(suggestion).toBeVisible();
-		await page.keyboard.press('Tab');
-		await expect(page.getByRole('button', { name: t.nearMeSearchSubmit })).toBeFocused();
-		await page.keyboard.press('Tab');
-		await expect(suggestion).toBeFocused();
+		await page.keyboard.press('ArrowDown');
+		await expect(suggestion).toHaveAttribute('aria-selected', 'true');
 		await page.keyboard.press('Enter');
-		await page.getByRole('button', { name: new RegExp(`^${literal(stop.name)}`) }).click();
+		const nearby = page.locator('[data-slot="map-nearby-stops"]');
+		await expect(nearby.getByRole('heading')).toContainText(address.label);
+		await expect(nearby.locator('[data-map-row-code]').first()).not.toBeEmpty();
+		await nearby.getByRole('link', { name: new RegExp(`^${literal(stop.name)}`) }).click();
 
 		// A side panel on desktop, a sheet below.
 		const detail = page.locator('[data-slot="map-detail-overlay"]');
@@ -221,13 +222,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(localizeHref(map, locale));
 		await snapshot;
 		const banner = page.getByRole('status').filter({ hasText: stall });
-		const nearMe = (await mapControlsPill(page).isVisible())
-			? mapControlsPill(page)
-			: page.getByRole('button', { name: t.nearMe, exact: true });
 		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
 			'data-map-progressive-state',
 			'ready',
 		);
+		const nearMe = (await mapControlsPill(page).isVisible())
+			? mapControlsPill(page)
+			: page.getByRole('button', { name: t.nearMe, exact: true });
 		await expect(nearMe).toBeVisible();
 		await expect(page.getByRole('status').filter({ hasText: t.liveNoVehicles })).toBeVisible();
 		await expect(banner).toHaveCount(0);
@@ -244,8 +245,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(banner).toBeVisible();
 
 		const attribution = page.getByLabel(t.attributionToggle, { exact: true }).locator('..');
+		const chip = page.locator('[data-slot="map-live-chip"]');
+		const compact = await chip.isVisible();
+		if (compact) {
+			await expect(chip).toContainText(stampCopy[locale].live('data', 'not-responding', null));
+		}
 		const controls = [
-			banner,
+			compact ? chip : banner,
 			nearMe,
 			page.getByRole('group', {
 				name: locale === 'fr' ? 'Navigation de la carte' : 'Map navigation',
@@ -277,6 +283,12 @@ for (const locale of PUBLISHED_LOCALES) {
 		const recovered = page.waitForResponse((response) => captureUrl.test(response.url()));
 		await page.clock.fastForward(20_000);
 		await recovered;
+		if (!compact) {
+			await page
+				.locator('[data-slot="map-details"]')
+				.getByRole('button', { name: locale === 'fr' ? 'Retour' : 'Back', exact: true })
+				.click();
+		}
 		await expect(stamp.locator('time')).toHaveAttribute(
 			'datetime',
 			new Date(capturedAt).toISOString(),

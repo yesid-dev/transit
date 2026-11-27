@@ -64,7 +64,7 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			?.querySelector('[data-slot="surface-rail-mobile"]')
 			?.getBoundingClientRect();
 		const credit = frame?.querySelector('[data-slot="map-source-footer"]')?.getBoundingClientRect();
-		const legendButton = rect('[data-slot="map-legend-fab"]');
+		const peekBar = rect('[data-slot="map-mobile-peek"]');
 		const fitTop =
 			wide && header
 				? header.bottom
@@ -79,7 +79,7 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			fitTop: fitTop === undefined ? undefined : Math.max(0, fitTop - box.top),
 			bottom: Math.max(
 				0,
-				...(wide ? [actions, attribution] : [north, attribution, legendButton]).map((r) =>
+				...(wide ? [actions, attribution] : [north, attribution, peekBar]).map((r) =>
 					r ? box.bottom - r.top : 0,
 				),
 			),
@@ -101,17 +101,19 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 								0,
 								...[framePill, credit].map((r) => (r?.height ? box.bottom - r.top : 0)),
 							),
-							left: Math.max(
-								0,
-								(legendButton?.right ?? box.left) - box.left,
-								headingOnRight ? 0 : heading.right - box.left,
-							),
+							left: Math.max(0, headingOnRight ? 0 : heading.right - box.left),
 						}
 					: undefined,
 		};
 	},
 	containerRect: (container) => container.getBoundingClientRect(),
-	headingRect: (hero) => hero.querySelector('.map-head')?.getBoundingClientRect() ?? null,
+	headingRect: (hero) =>
+		hero.querySelector('.map-head')?.getBoundingClientRect() ??
+		hero
+			.closest('[data-slot="app-frame"]')
+			?.querySelector('[data-slot="app-frame-chrome"]')
+			?.getBoundingClientRect() ??
+		null,
 	detailOffset: (hero) => {
 		const panel = hero.querySelector(
 			'.map-hero[data-map-wide="true"] [data-slot="map-details"], [data-slot="map-detail-overlay"]',

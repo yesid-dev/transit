@@ -16,6 +16,7 @@ export interface RecordMark {
 	id: string;
 	name: string;
 	fromName?: string;
+	fromStop?: string;
 	toName?: string;
 	stop?: string;
 	main?: boolean;
@@ -223,6 +224,7 @@ export function recordCorridors(
 			id,
 			name: `${from.name} → ${to.name}`,
 			fromName: from.name,
+			fromStop: from.id,
 			toName: to.name,
 			direction: dir,
 			geometry: {

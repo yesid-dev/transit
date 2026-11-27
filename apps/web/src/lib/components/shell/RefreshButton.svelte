@@ -4,7 +4,7 @@
 	import { cn } from '#lib/utils/index.ts';
 	import { dataRefresh } from '#lib/stores/index.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { tick } from 'svelte';
+	import { tick, type Snippet } from 'svelte';
 	import { page } from '$app/state';
 	import { browserAdapterManifest } from '#lib/v1/adapter/browserManifest.ts';
 	import {
@@ -18,9 +18,17 @@
 		locale: Locale;
 		class?: string;
 		fixedTapTarget?: boolean;
+		children?: Snippet;
+		visibleLabel?: string;
 	}
 
-	let { locale, class: className, fixedTapTarget = false }: Props = $props();
+	let {
+		locale,
+		class: className,
+		fixedTapTarget = false,
+		children,
+		visibleLabel,
+	}: Props = $props();
 
 	const refreshing = $derived(dataRefresh.refreshing);
 	let result = $state<RefreshResult | null>(null);
@@ -92,15 +100,17 @@
 	<Button
 		type="button"
 		variant="ghost"
-		size="icon-tap"
+		size={children ? 'sm' : 'icon-tap'}
+		class={children ? 'min-h-11 max-w-full gap-1 px-0' : undefined}
 		style={fixedTapTarget ? 'width: var(--size-tap-min); height: var(--size-tap-min);' : undefined}
-		aria-label={label}
+		aria-label={visibleLabel && !refreshing ? `${visibleLabel}. ${label}` : label}
 		title={label}
 		onclick={onClick}
 		disabled={refreshing}
 		data-refreshing={refreshing}
 		data-refresh-failed={dataRefresh.error != null}
 	>
+		{@render children?.()}
 		<svg
 			data-motion={refreshing ? 'refresh-busy' : undefined}
 			class="refresh-icon"

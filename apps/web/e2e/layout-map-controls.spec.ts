@@ -1,7 +1,12 @@
 import { test } from './layout-test';
 import { expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { closeMapControls, mapControlsPill, openMapControls } from './map-frame-controls';
+import {
+	closeMapControls,
+	openMapControls,
+	openMapLegend,
+	closeMapInView,
+} from './map-frame-controls';
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr']) {
@@ -42,31 +47,13 @@ for (const locale of ['en', 'fr'])
 		await page.goto(`${locale === 'fr' ? '/fr' : ''}/map`, { waitUntil: 'networkidle' });
 		const phone = page.viewportSize()!.width < 1024;
 		const name = locale === 'fr' ? 'Légende' : 'Legend';
-		const card = phone
-			? page.locator('[data-slot="map-legend-sheet"]')
-			: page.locator('[data-map-legend="desktop"]');
+		const card = page.locator(`[data-map-legend="${phone ? 'phone' : 'desktop'}"]`);
 		if (phone) {
-			const fab = page.getByTestId('map-legend-button');
-			const button = (await fab.boundingBox())!;
-			const controls = (await mapControlsPill(page).boundingBox())!;
-			expect(button.width).toBeGreaterThanOrEqual(44);
+			const opener = page.getByTestId('map-list-button');
+			await expect(opener).toBeVisible();
+			const button = (await opener.boundingBox())!;
 			expect(button.height).toBeGreaterThanOrEqual(44);
-			expect(button.y + button.height).toBeLessThan(controls.y);
-
-			for (const other of await page
-				.locator('.map-near-toggle, [data-slot="map-north"], .maplibregl-ctrl-attrib')
-				.all()) {
-				if (!(await other.isVisible())) continue;
-				const box = (await other.boundingBox())!;
-				expect(
-					button.x + button.width <= box.x ||
-						box.x + box.width <= button.x ||
-						button.y + button.height <= box.y ||
-						box.y + box.height <= button.y,
-				).toBe(true);
-			}
-			await fab.click();
-			await expect(fab).toHaveAttribute('aria-expanded', 'true');
+			await openMapLegend(page);
 		} else {
 			const panel = (await page.locator('[data-frame-controls="desktop"]').boundingBox())!;
 			const box = (await card.boundingBox())!;
@@ -99,21 +86,23 @@ for (const locale of ['en', 'fr'])
 		expect(geometry.x).toBeGreaterThanOrEqual(0);
 		expect(geometry.right).toBeLessThanOrEqual(page.viewportSize()!.width);
 		expect(geometry.top).toBeGreaterThanOrEqual(0);
-		expect(geometry.bottom).toBeLessThanOrEqual(page.viewportSize()!.height);
+		const surface = phone ? page.locator('[data-map-in-view-sheet]') : card;
+		expect(
+			(await surface.boundingBox())!.y + (await surface.boundingBox())!.height,
+		).toBeLessThanOrEqual(page.viewportSize()!.height);
 		expect(
 			(
 				await new AxeBuilder({ page })
-					.include(phone ? '[data-slot="map-legend-sheet"]' : '[data-map-legend="desktop"]')
+					.include(`[data-map-legend="${phone ? 'phone' : 'desktop'}"]`)
 					.analyze()
 			).violations,
 		).toEqual([]);
 		if (phone) {
-			await page.getByTestId('map-legend-button').click();
+			await closeMapInView(page);
 			await expect(card).toBeHidden();
 			await openMapControls(page);
 			await closeMapControls(page);
-			await page.getByTestId('map-legend-button').click();
-			await expect(mapControlsPill(page)).toHaveAttribute('aria-expanded', 'false');
+			await openMapLegend(page);
 			await expect(card).toBeVisible();
 		} else {
 			await card.getByRole('button', { name }).click();

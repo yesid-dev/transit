@@ -10,6 +10,7 @@ import {
 	expectAboveMapSource,
 	openMapControls,
 	openMapInView,
+	openMapLegend,
 } from './map-frame-controls';
 
 async function expectOutlineContrast(legend: Locator, theme: 'light' | 'dark') {
@@ -141,9 +142,10 @@ for (const locale of ['en', 'fr'] as const) {
 				expect(box.y).toBeGreaterThanOrEqual(bounds.y);
 				expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height + 1);
 			};
-			if (phone) await page.getByTestId('map-legend-button').click();
+			if (phone) await openMapLegend(page);
 			await expect(legend).toBeVisible();
-			await assertWithinMap(legend);
+			const phoneSheet = page.locator('[data-map-in-view-sheet]');
+			await assertWithinMap(phone ? phoneSheet : legend);
 			for (const width of viewport!.width === 390 ? [320, 390] : [viewport!.width]) {
 				await page.setViewportSize({ width, height: viewport!.height });
 				await expect(legend).toBeVisible();
@@ -169,7 +171,7 @@ for (const locale of ['en', 'fr'] as const) {
 				contentType: 'text/plain',
 			});
 			if (phone) {
-				await expectAboveMapSource(page, page.locator('[data-slot="map-legend-sheet"]'));
+				await expect(page.locator('[data-slot="map-source-footer"]')).toBeHidden();
 			} else {
 				await expectAboveMapSource(page, page.locator('[data-slot="map-details"]'));
 				await expectAboveMapSource(
@@ -204,7 +206,7 @@ for (const locale of ['en', 'fr'] as const) {
 				const states = legend.getByRole('list', { name: title, exact: true }).filter({
 					hasText: fr ? 'Trop peu pour juger' : 'Too few to judge',
 				});
-				const sheet = page.locator('[data-slot="map-legend-sheet"]');
+				const sheet = page.locator('[data-map-in-view-sheet]');
 				await expect(legend.getByText(title, { exact: true })).toBeVisible();
 				for (const zoom of ['100%', '200%']) {
 					await page.evaluate((size) => (document.documentElement.style.fontSize = size), zoom);
@@ -229,9 +231,13 @@ for (const locale of ['en', 'fr'] as const) {
 			}
 			if (phone) await page.keyboard.press('Escape');
 			await openMapControls(page);
-			await assertWithinMap(page.getByRole('radiogroup', { name: fr ? 'Couche' : 'Layer' }));
+			const layerChoice = page.getByRole('radiogroup', { name: fr ? 'Couche' : 'Layer' });
+			await layerChoice.scrollIntoViewIfNeeded();
+			await assertWithinMap(layerChoice);
 			await closeMapControls(page);
-			await assertWithinMap(page.locator('.map-head:visible'));
+			await assertWithinMap(
+				page.locator(phone ? '[data-slot="map-mobile-peek"]' : '.map-head:visible'),
+			);
 			if (browserName === 'chromium' && (viewport?.width === 390 || viewport?.width === 1440)) {
 				await expect
 					.poll(() =>

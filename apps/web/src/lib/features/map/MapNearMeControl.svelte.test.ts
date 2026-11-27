@@ -1,8 +1,9 @@
 import { fireEvent, render } from '@testing-library/svelte';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { tick } from 'svelte';
 import type { GeocodeSuggestion } from '#lib/geocode/types.ts';
 import MapNearMeControl from './MapNearMeControl.svelte';
+import MapNearbyStops from './MapNearbyStops.svelte';
 import { copy } from './map.copy';
 
 vi.mock('#lib/v1/boot', () => ({ getV1Context: () => ({ manifest: { provider: 'stm' } }) }));
@@ -13,113 +14,84 @@ afterEach(() => {
 });
 
 const handlers = () => ({
-	onuselocation: vi.fn(),
+	loading: false,
+	error: null,
 	onsearch: vi.fn(),
 	onsuggestion: vi.fn(),
-	onstopselect: vi.fn(),
-	onclear: vi.fn(),
 });
 
-describe('near-me address search', () => {
-	it('debounces, caches, selects and dismisses address suggestions', async () => {
-		vi.useFakeTimers();
-		const results: GeocodeSuggestion[] = [
-			{ label: '123 Sherbrooke', lat: 45.5, lon: -73.6, source: 'geo_ca', precision: 'address' },
-			{ label: '125 Sherbrooke', lat: 45.51, lon: -73.61, source: 'geo_ca', precision: 'address' },
-		];
-		const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results }) });
-		vi.stubGlobal('fetch', fetch);
-		const props = { locale: 'en' as const, copy: copy.en, ...handlers() };
-		const { getByRole, getAllByRole, queryByRole, rerender } = render(MapNearMeControl, { props });
-		await fireEvent.click(getByRole('button', { name: 'Near an address' }));
-		const input = getByRole('searchbox', { name: copy.en.nearMeSearchPlaceholder });
-		expect(queryByRole('button', { name: copy.en.nearMeClear })).not.toBeInTheDocument();
+it('debounces, caches and selects suggestions with arrow keys and Enter', async () => {
+	vi.useFakeTimers();
+	const results: GeocodeSuggestion[] = [
+		{ label: '123 Sherbrooke', lat: 45.5, lon: -73.6, source: 'geo_ca', precision: 'address' },
+		{ label: '125 Sherbrooke', lat: 45.51, lon: -73.61, source: 'geo_ca', precision: 'address' },
+	];
+	const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ results }) });
+	vi.stubGlobal('fetch', fetch);
+	const props = { locale: 'en' as const, copy: copy.en, ...handlers() };
+	const { getByRole, getAllByRole, queryByRole } = render(MapNearMeControl, { props });
+	const input = getByRole('combobox', { name: copy.en.nearMeAddressLabel });
 
-		await fireEvent.input(input, { target: { value: results[0].label } });
-		expect(fetch).not.toHaveBeenCalled();
-		await vi.advanceTimersByTimeAsync(121);
-		await tick();
-		expect(fetch).toHaveBeenCalledTimes(1);
-		const url = new URL(fetch.mock.calls[0][0], 'https://example.test');
-		expect(url.searchParams.get('suggest')).toBe('1');
-		expect(url.searchParams.get('limit')).toBe('4');
-		const options = getAllByRole('button', { name: /Sherbrooke/ });
-		expect(options).toHaveLength(results.length);
-		options.forEach((option, index) =>
-			expect(option).toHaveAccessibleName(new RegExp(results[index].label)),
-		);
+	await fireEvent.input(input, { target: { value: results[0].label } });
+	expect(fetch).not.toHaveBeenCalled();
+	await vi.advanceTimersByTimeAsync(251);
+	await tick();
+	expect(fetch).toHaveBeenCalledTimes(1);
+	const url = new URL(fetch.mock.calls[0][0], 'https://example.test');
+	expect(url.searchParams.get('suggest')).toBe('1');
+	expect(url.searchParams.get('limit')).toBe('4');
+	expect(getAllByRole('option')).toHaveLength(results.length);
+	await fireEvent.keyDown(input, { key: 'Escape' });
+	expect(queryByRole('listbox')).not.toBeInTheDocument();
 
-		await fireEvent.keyDown(input, { key: 'Escape' });
-		expect(queryByRole('button', { name: /123 Sherbrooke/ })).not.toBeInTheDocument();
-		await fireEvent.focus(input);
-		expect(getByRole('button', { name: /123 Sherbrooke/ })).toBeInTheDocument();
-		await fireEvent.pointerDown(document.body);
-		expect(queryByRole('button', { name: /123 Sherbrooke/ })).not.toBeInTheDocument();
-
-		await fireEvent.input(input, { target: { value: '' } });
-		await fireEvent.input(input, { target: { value: results[0].label } });
-		await vi.advanceTimersByTimeAsync(121);
-		expect(fetch).toHaveBeenCalledTimes(1);
-		await fireEvent.click(getByRole('button', { name: /125 Sherbrooke/ }));
-		expect(props.onsuggestion).toHaveBeenCalledExactlyOnceWith(results[1]);
-		await rerender({ origin: results[1] });
-		expect(getByRole('button', { name: copy.en.nearMeClear })).toBeInTheDocument();
-	});
+	await fireEvent.input(input, { target: { value: '' } });
+	await fireEvent.input(input, { target: { value: results[0].label } });
+	await vi.advanceTimersByTimeAsync(251);
+	expect(fetch).toHaveBeenCalledTimes(1);
+	await fireEvent.keyDown(input, { key: 'ArrowDown' });
+	await fireEvent.keyDown(input, { key: 'ArrowDown' });
+	expect(getByRole('option', { name: /125 Sherbrooke/ })).toHaveAttribute('aria-selected', 'true');
+	await fireEvent.keyDown(input, { key: 'Enter' });
+	expect(props.onsuggestion).toHaveBeenCalledExactlyOnceWith(results[1]);
+	expect(queryByRole('listbox')).not.toBeInTheDocument();
 });
 
 it.each(['en', 'fr'] as const)(
-	'describes the %s address search with its collection notice',
-	async (locale) => {
+	'describes the %s lookup and explains an unmatched place',
+	(locale) => {
+		const t = copy[locale];
 		const { getByRole, getByText } = render(MapNearMeControl, {
-			props: { locale, copy: copy[locale], ...handlers() },
+			props: { locale, copy: t, ...handlers(), query: 'Sherbrooke', error: t.nearMeError },
 		});
-
-		await fireEvent.click(
-			getByRole('button', {
-				name: locale === 'fr' ? 'Près d\u2019une adresse' : 'Near an address',
-			}),
+		expect(getByText(t.nearMeCollectionNotice)).toBeVisible();
+		expect(getByRole('combobox', { name: t.nearMeAddressLabel })).toHaveAccessibleDescription(
+			t.nearMeCollectionNotice,
 		);
-
-		expect(getByText(copy[locale].nearMeCollectionNotice)).toBeVisible();
-		expect(
-			getByRole('searchbox', { name: copy[locale].nearMeSearchPlaceholder }),
-		).toHaveAccessibleDescription(copy[locale].nearMeCollectionNotice);
+		expect(getByRole('status')).toHaveTextContent(
+			t.nearMeNotFound('Sherbrooke').replaceAll('\u00a0', ' '),
+		);
 	},
 );
-
-it.each(['en', 'fr'] as const)('keeps full nearby stop names available in %s', (locale) => {
-	const name = 'Boulevard Saint-Laurent et Avenue du Mont-Royal';
-	const { container, getByRole, getByTitle } = render(MapNearMeControl, {
-		props: {
-			locale,
-			copy: copy[locale],
-			...handlers(),
-			open: true,
-			origin: { lat: 45.5, lon: -73.6, label: 'Origin' },
-			stops: [{ id: 'S1', name, lat: 45.5, lon: -73.6, distanceM: 100 }],
-		},
-	});
-	expect(getByRole('button', { name: new RegExp(name) })).toHaveTextContent(name);
-	expect(container.querySelector('small')?.textContent).toBe(
-		locale === 'fr' ? '100\u00a0m' : '100 m',
-	);
-	expect(getByTitle(name)).toHaveTextContent(name);
-});
 
 it.each([
 	['en', '1.4 km'],
 	['fr', '1,4\u00a0km'],
-] as const)('formats nearby stop distances in %s', (locale, distance) => {
-	const { container } = render(MapNearMeControl, {
+] as const)('keeps full stop names and formats nearby distances in %s', (locale, distance) => {
+	const name = 'Boulevard Saint-Laurent et Avenue du Mont-Royal';
+	const { container, getByRole } = render(MapNearbyStops, {
 		props: {
 			locale,
+			city: 'stm',
 			copy: copy[locale],
-			...handlers(),
-			open: true,
-			origin: { lat: 45.5, lon: -73.6, label: 'Origin' },
-			stops: [{ id: 'S1', name: 'Sherbrooke', lat: 45.5, lon: -73.6, distanceM: 1400 }],
+			heading: 'Nearby stops',
+			details: new Map([['S1', 'North']]),
+			onselect: vi.fn(),
+			onclear: vi.fn(),
+			stops: [{ id: 'S1', code: '1001', name, lat: 45.5, lon: -73.6, distanceM: 1400 }],
 		},
 	});
-
-	expect(container.querySelector('small')?.textContent).toBe(distance);
+	expect(getByRole('link', { name })).toHaveAttribute('title', name);
+	expect(container.querySelector('[data-map-row-value]')?.textContent).toBe(distance);
+	expect(container.querySelector('[data-map-row-code]')).toHaveTextContent('1001');
+	expect(container.querySelector('small')).toHaveTextContent('North');
 });

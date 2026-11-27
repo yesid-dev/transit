@@ -515,8 +515,6 @@ test('the map title and camera controls clear their neighbours at normal and enl
 		'data-map-progressive-state',
 		'ready',
 	);
-	const footer = page.locator('[data-slot="map-source-footer"]');
-	await expect(footer).toBeVisible();
 	for (const width of [320, 390, 1024, 1440]) {
 		await page.setViewportSize({ width, height: 900 });
 		for (const scale of [100, 200]) {
@@ -536,7 +534,10 @@ test('the map title and camera controls clear their neighbours at normal and enl
 							document.querySelector(selector)!.getBoundingClientRect();
 						return {
 							aboveFooter:
-								box('.map-camera-actions').bottom <= box('[data-slot="map-source-footer"]').top,
+								box('.map-camera-actions').bottom <=
+								(box('[data-slot="map-source-footer"]').height
+									? box('[data-slot="map-source-footer"]').top
+									: innerHeight),
 							belowChrome: box('.map-head').top >= box('[data-slot="app-frame-chrome"]').bottom - 1,
 						};
 					}),
@@ -546,58 +547,53 @@ test('the map title and camera controls clear their neighbours at normal and enl
 	}
 });
 
-test('the legend clears Controls on compact maps and filters stay inside Controls', async ({
-	page,
-}) => {
+test('the compact map keeps its tools in one sheet and credits available', async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 900 });
 	await open(page, '/map?provider=stm&frameMode=live');
 	await expect(page.getByTestId('map-progressive')).toHaveAttribute(
 		'data-map-progressive-state',
 		'ready',
 	);
-	const legend = page.getByTestId('map-legend-button');
-	const frameControls = page.getByRole('button', { name: /^Controls.*Open controls/ });
+	const list = page.getByTestId('map-list-button');
+	const controls = page.getByTestId('map-controls-button');
 	const footer = page.locator('[data-slot="map-source-footer"]');
-	await expect(footer).toBeVisible();
-	await page.setViewportSize({ width: 390, height: 900 });
-	await expect(legend).toBeVisible();
-	await expect(frameControls).toBeVisible();
-	for (const licence of [true, false]) {
-		await footer.evaluate((element, visible) => {
-			(element as HTMLElement).hidden = !visible;
-		}, licence);
-		await expect
-			.poll(() =>
-				page
-					.locator('[data-slot="app-shell"]')
-					.evaluate(
-						(element) =>
-							parseFloat(
-								(element as HTMLElement).style.getPropertyValue('--map-source-clearance'),
-							) > 0,
-					),
-			)
-			.toBe(licence);
-		for (const width of [320, 390, 768, 1023]) {
-			await page.setViewportSize({ width, height: 900 });
-			for (const scale of [100, 200]) {
-				await page.evaluate(
-					(percent) => (document.documentElement.style.fontSize = percent + '%'),
-					scale,
-				);
-				await expect
-					.poll(async () => {
-						const a = await legend.boundingBox();
-						const b = await frameControls.boundingBox();
-						return !!a && !!b && a.y + a.height <= b.y;
-					})
-					.toBe(true);
-			}
+	await expect(footer).toBeHidden();
+	for (const width of [320, 390, 768, 1023]) {
+		await page.setViewportSize({ width, height: 900 });
+		for (const scale of [100, 200]) {
+			await page.evaluate(
+				(percent) => (document.documentElement.style.fontSize = percent + '%'),
+				scale,
+			);
+			await expect
+				.poll(async () => {
+					const a = await list.boundingBox();
+					const b = await controls.boundingBox();
+					return (
+						!!a &&
+						!!b &&
+						a.x + a.width <= b.x + 1 &&
+						a.y + a.height <= 900 &&
+						b.x + b.width <= width
+					);
+				})
+				.toBe(true);
 		}
 	}
 	await page.setViewportSize({ width: 390, height: 900 });
 	await page.evaluate(() => (document.documentElement.style.fontSize = '100%'));
+	const sheet = page.locator('[data-map-in-view-sheet]');
 	const filters = page.locator('[data-map-filter-trigger]');
 	await expect(filters).toBeHidden();
-	await frameControls.click();
+	await controls.click();
 	await expect(filters).toBeVisible();
+	await sheet.getByRole('tab', { name: 'Legend' }).click();
+	await expect(sheet.locator('[data-map-legend="phone"]')).toBeVisible();
+	await expect(filters).toBeHidden();
+	await page.keyboard.press('Escape');
+	await expect(sheet).toBeHidden();
+	await expect(controls).toBeFocused();
+	const attribution = page.getByLabel('Toggle attribution');
+	await attribution.click();
+	await expect(page.locator('.maplibregl-ctrl-attrib')).toContainText('CC BY 4.0');
 });

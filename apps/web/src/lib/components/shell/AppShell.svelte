@@ -11,6 +11,7 @@
 	import NavPill from './NavPill.svelte';
 	import { frameSurfaceRailContext, type RegisterFrameSurfaceRail } from './frameSurfaceRail.ts';
 	import FrameControls, {
+		FrameControlsContentContext,
 		FrameControlsExtensionContext,
 		type FrameControlsExtension,
 	} from './FrameControls.svelte';
@@ -27,7 +28,6 @@
 		navigation: NavigationLifecycle;
 		fullViewport?: boolean;
 		mapCreditHeight?: number;
-		mobileControlsVisible?: boolean;
 		locale?: Locale;
 		url: URL;
 		providerId?: string;
@@ -47,7 +47,6 @@
 		navigation,
 		fullViewport = false,
 		mapCreditHeight = 0,
-		mobileControlsVisible = true,
 		locale: localeProp,
 		url,
 		providerId,
@@ -73,6 +72,7 @@
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
 	const frame = $derived(frameControlsState(url, clock, errorPage));
+	const compactMap = $derived(fullViewport && remWidth > 0 && shellWidth < 64 * remWidth);
 	provideRecordPeriodNotice(
 		() =>
 			recordStartNotice(frame.beforeRecord, locale) ?? recordEndNotice(frame.afterRecord, locale),
@@ -85,6 +85,7 @@
 		};
 	};
 	setContext(frameSurfaceRailContext, registerSurfaceControls);
+	setContext(FrameControlsContentContext, railContents);
 	let controlsExtension = $state.raw<FrameControlsExtension>();
 	setContext(FrameControlsExtensionContext, (extension: FrameControlsExtension) => {
 		controlsExtension = extension;
@@ -159,7 +160,7 @@
 		footer={footer && !fullViewport ? streamingFooter : footer}
 		{fullViewport}
 		{mainLabel}
-		controlsRail={frame.showRail
+		controlsRail={frame.showRail && !compactMap
 			? {
 					rail,
 					label: copy.controls,
@@ -173,7 +174,7 @@
 									: copy.record,
 					openAria: copy.open,
 					closeAria: copy.close,
-					mobileVisible: mobileControlsVisible,
+					mobileVisible: !fullViewport,
 				}
 			: undefined}
 	>

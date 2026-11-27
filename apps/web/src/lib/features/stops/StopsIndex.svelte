@@ -418,7 +418,9 @@
 	const archived = $derived(
 		!nearOrigin && !total && view.query && cells.has(view.query) ? view.query : null,
 	);
-	const address = $derived(localizeHref('/search', locale, provider?.id));
+	const address = $derived(
+		localizeHref('/map?frameMode=live&lookup=address', locale, provider?.id),
+	);
 	async function showMore(count: number) {
 		const before = rows.length;
 		if (nearOrigin) nearShown += count;

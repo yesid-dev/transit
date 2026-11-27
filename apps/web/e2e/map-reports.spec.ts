@@ -679,7 +679,9 @@ test('loading, unavailable and retained states never show a reassuring zero @mot
 
 	fail = true;
 	await page.clock.fastForward('00:35');
-	await expect(page.getByText(/at the last report/)).toBeVisible();
+	await expect(
+		page.locator('[data-slot="screen-answer"]').getByText(/at the last report/),
+	).toBeVisible();
 	await expect(panel.locator('[data-report-row]')).not.toHaveCount(0);
 	await expect(panel.locator('[data-slot="map-in-view-count"]')).toHaveText('5');
 

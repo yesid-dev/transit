@@ -1,472 +1,238 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
-	import { readableName } from '#lib/components/surface/readableName.ts';
-	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
-	import { distanceReading } from '#lib/site/presenter.ts';
-	import { SvelteMap } from 'svelte/reactivity';
-	import { tick } from 'svelte';
-	import XIcon from '@lucide/svelte/icons/x';
-	import type { Locale } from '#lib/i18n/index.ts';
-	import type { LatLon, WithDistance } from '#lib/components/map/index.ts';
-	import type { GeocodePrecision, GeocodeSuggestion } from '#lib/geocode/types.ts';
-	import type { StopIndexEntry } from '#lib/v1/schemas/index.ts';
-	import type { MapCopy } from './map.copy';
+	import { SearchInput, StatusMark } from '@yesid/ui/brand';
 	import { getV1Context } from '#lib/v1/boot.ts';
+	import { onMount } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
+	import type { GeocodeSuggestion } from '#lib/geocode/types.ts';
+	import type { Locale } from '#lib/i18n/index.ts';
+	import { canSearchAddresses } from '#lib/search/transitSearch.ts';
 	import { trackEvent } from '#lib/site/analytics.ts';
-	const { manifest } = getV1Context();
-
-	interface Props {
-		open?: boolean;
-		query?: string;
-		locale: Locale;
-		copy: MapCopy;
-		loading?: boolean;
-		error?: string | null;
-		origin?: (LatLon & { label: string; precision?: GeocodePrecision }) | null;
-		stops?: readonly WithDistance<StopIndexEntry>[];
-		onuselocation: () => void;
-		onsearch: (event: SubmitEvent) => void | Promise<void>;
-		onsuggestion: (result: GeocodeSuggestion) => void | Promise<void>;
-		onstopselect: (stop: WithDistance<StopIndexEntry>) => void;
-		onclear: () => void;
-	}
+	import type { MapCopy } from './map.copy';
 
 	let {
-		open = $bindable(false),
 		query = $bindable(''),
 		locale,
 		copy: t,
-		loading = false,
-		error = null,
-		origin = null,
-		stops = [],
-		onuselocation,
+		loading,
+		error,
 		onsearch,
 		onsuggestion,
-		onstopselect,
-		onclear,
-	}: Props = $props();
+	}: {
+		query?: string;
+		locale: Locale;
+		copy: MapCopy;
+		loading: boolean;
+		error: string | null;
+		onsearch: (event: SubmitEvent) => void | Promise<void>;
+		onsuggestion: (result: GeocodeSuggestion) => void | Promise<void>;
+	} = $props();
 
-	let suggestions = $state<GeocodeSuggestion[]>([]);
-	let suggestionsLoading = $state(false);
-	let suggestionsOpen = $state(false);
-	let lastSelectedSuggestionLabel = $state('');
-	let rootEl = $state<HTMLElement>();
-	let inputEl = $state<HTMLInputElement>();
+	const { manifest } = getV1Context();
+	const id = $props.id();
+	let items = $state<GeocodeSuggestion[]>([]);
+	let pending = $state(false);
+	let showing = $state(false);
+	let input = $state<HTMLInputElement | null>(null);
+	let active = $state(-1);
+	const cached = new SvelteMap<string, GeocodeSuggestion[]>();
+	const listOpen = $derived(showing && items.length > 0);
+	const optionId = (index: number) => `${id}-option-${index}`;
+	onMount(() => {
+		if (!loading) input?.focus({ preventScroll: true });
+	});
 
-	const noticeId = 'map-near-collection-notice';
-	const suggestionCache = new SvelteMap<string, GeocodeSuggestion[]>();
-	const showSuggestions = $derived(
-		open && suggestionsOpen && suggestions.length > 0 && shouldSuggestNearMeAddress(query),
-	);
-	function shouldSuggestNearMeAddress(value: string): boolean {
-		const trimmed = value.trim();
-		if (trimmed.length < 3) return false;
-		return !isCoordinateQuery(trimmed);
+	function closeSuggestions() {
+		showing = false;
+		active = -1;
 	}
 
-	function isCoordinateQuery(value: string): boolean {
-		return /^\s*-?\d+(?:\.\d+)?\s*[, ]\s*-?\d*(?:\.\d*)?\s*$/.test(value);
-	}
-
-	function suggestionKey(result: GeocodeSuggestion): string {
-		return `${result.lat}:${result.lon}:${result.label}`;
-	}
-
-	function selectSuggestion(result: GeocodeSuggestion): void {
-		query = result.label;
-		suggestions = [];
-		suggestionsOpen = false;
-		lastSelectedSuggestionLabel = result.label;
-		inputEl?.blur();
+	function choose(item: GeocodeSuggestion) {
+		closeSuggestions();
 		trackEvent('Address Pick');
-		void onsuggestion(result);
+		void onsuggestion(item);
 	}
 
-	function closeSuggestions(): void {
-		suggestionsOpen = false;
-	}
-
-	function openSuggestions(): void {
-		if (shouldSuggestNearMeAddress(query)) suggestionsOpen = true;
-	}
-
-	function handleInput(): void {
-		lastSelectedSuggestionLabel = '';
-		suggestionsOpen = true;
-	}
-
-	function handleWindowPointerDown(event: PointerEvent): void {
-		if (!rootEl || !(event.target instanceof Node)) return;
-		if (!rootEl.contains(event.target)) closeSuggestions();
-	}
-
-	function handleWindowKeydown(event: KeyboardEvent): void {
-		if (event.key === 'Escape') closeSuggestions();
+	function keydown(event: KeyboardEvent) {
+		if (event.isComposing) return;
+		if (event.key === 'Escape' && listOpen) {
+			event.preventDefault();
+			event.stopPropagation();
+			closeSuggestions();
+			return;
+		}
+		if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && items.length > 0) {
+			event.preventDefault();
+			showing = true;
+			const step = event.key === 'ArrowDown' ? 1 : -1;
+			active =
+				active < 0
+					? step === 1
+						? 0
+						: items.length - 1
+					: (active + step + items.length) % items.length;
+			document.getElementById(optionId(active))?.scrollIntoView?.({ block: 'nearest' });
+		}
+		if (event.key === 'Enter' && listOpen && items[active]) {
+			event.preventDefault();
+			choose(items[active]!);
+		}
 	}
 
 	$effect(() => {
-		const trimmed = query.trim();
-		if (!open || !suggestionsOpen || !shouldSuggestNearMeAddress(trimmed)) {
-			suggestions = [];
-			suggestionsLoading = false;
+		const text = query.trim();
+		const provider = manifest.provider;
+		const language = locale;
+		items = [];
+		pending = false;
+		if (!showing || !canSearchAddresses(text)) return;
+		const key = `${provider}:${language}:${text.toLocaleLowerCase(language)}`;
+		const hit = cached.get(key);
+		if (hit) {
+			items = hit;
 			return;
 		}
-
-		if (trimmed === lastSelectedSuggestionLabel) {
-			suggestions = [];
-			suggestionsLoading = false;
-			return;
-		}
-
-		const cacheKey = `${manifest.provider}:${locale}:${trimmed.toLocaleLowerCase('en-CA')}`;
-		const cached = suggestionCache.get(cacheKey);
-		if (cached) {
-			suggestions = cached;
-			suggestionsLoading = false;
-			return;
-		}
-
-		const controller = new AbortController();
-		const timeout = setTimeout(() => {
-			suggestionsLoading = true;
-			const url = `/api/geocode?provider=${encodeURIComponent(manifest.provider)}&lang=${locale}&q=${encodeURIComponent(trimmed)}&suggest=1&limit=4`;
-			void fetch(url, { signal: controller.signal })
-				.then(async (response) => {
-					if (!response.ok) return [];
-					const payload = (await response.json()) as { results?: GeocodeSuggestion[] };
-					return payload.results ?? [];
-				})
-				.then((results) => {
-					if (!controller.signal.aborted) {
-						suggestionCache.set(cacheKey, results);
-						suggestions = results;
-					}
-				})
-				.catch((err: unknown) => {
-					if (err instanceof DOMException && err.name === 'AbortError') return;
-					if (!controller.signal.aborted) suggestions = [];
-				})
-				.finally(() => {
-					if (!controller.signal.aborted) suggestionsLoading = false;
+		const request = new AbortController();
+		const debounce = setTimeout(async () => {
+			pending = true;
+			try {
+				const params = new URLSearchParams({
+					provider,
+					lang: language,
+					q: text,
+					suggest: '1',
+					limit: '4',
 				});
-		}, 120);
-
+				const response = await fetch(`/api/geocode?${params}`, { signal: request.signal });
+				if (!response.ok) return;
+				const { results = [] } = (await response.json()) as { results?: GeocodeSuggestion[] };
+				if (request.signal.aborted) return;
+				cached.set(key, results);
+				items = results;
+			} catch {
+				// The explicit Find action reports a failed search. The input still accepts typing.
+			} finally {
+				if (!request.signal.aborted) pending = false;
+			}
+		}, 250);
 		return () => {
-			clearTimeout(timeout);
-			controller.abort();
+			clearTimeout(debounce);
+			request.abort();
 		};
 	});
 </script>
 
-<svelte:window onpointerdown={handleWindowPointerDown} onkeydown={handleWindowKeydown} />
-
-<div class="near-rail" bind:this={rootEl}>
-	<Button
-		variant="outline"
-		size="sm"
-		class="min-h-11 px-1 py-1"
-		wrap
-		onclick={() => {
-			open = true;
-			trackEvent('Locate Me');
-			onuselocation();
-		}}>{t.nearMe}</Button
-	>
-	<Button
-		variant="outline"
-		size="sm"
-		class="min-h-11 px-1 py-1"
-		wrap
-		aria-expanded={open}
-		onclick={() => {
-			open = !open;
-			if (open) void tick().then(() => inputEl?.focus());
-		}}>{locale === 'fr' ? 'Près d’une adresse' : 'Near an address'}</Button
-	>
-	{#if open}
-		<div class="near-rail-panel">
-			<form class="map-near-form" onsubmit={onsearch}>
-				<div class="map-near-input-wrap">
-					<input
-						bind:this={inputEl}
-						type="search"
-						bind:value={query}
-						placeholder={t.nearMeSearchPlaceholder}
-						aria-label={t.nearMeSearchPlaceholder}
-						aria-describedby={noticeId}
-						autocomplete="street-address"
-						spellcheck="false"
-						onfocus={openSuggestions}
-						oninput={handleInput}
-					/>
-				</div>
-				<Button variant="ghost" size="sm" type="submit" aria-busy={suggestionsLoading}
-					>{t.nearMeSearchSubmit}</Button
+<form
+	class="grid min-w-0 gap-2"
+	data-slot="map-address-lookup"
+	aria-label={t.nearMeAddressLabel}
+	onsubmit={(event) => {
+		closeSuggestions();
+		void onsearch(event);
+	}}
+>
+	<SearchInput
+		bind:ref={input}
+		bind:value={query}
+		label={t.nearMeAddressLabel}
+		placeholder={t.nearMeAddressHint}
+		visibleLabel
+		textSize="body"
+		role="combobox"
+		aria-autocomplete="list"
+		aria-expanded={listOpen}
+		aria-controls={listOpen ? `${id}-suggestions` : undefined}
+		aria-activedescendant={listOpen && active >= 0 ? optionId(active) : undefined}
+		aria-busy={pending || loading}
+		aria-describedby={`${id}-privacy`}
+		autocomplete="off"
+		enterkeyhint="search"
+		spellcheck={false}
+		oninput={() => {
+			active = -1;
+			showing = true;
+		}}
+		onblur={closeSuggestions}
+		onkeydown={keydown}
+	/>
+	{#if listOpen}
+		<div
+			id={`${id}-suggestions`}
+			class="suggestions"
+			role="listbox"
+			aria-label={t.nearMeSuggestions}
+		>
+			{#each items as item, index (`${item.label}:${item.lat}:${item.lon}`)}
+				<button
+					type="button"
+					role="option"
+					id={optionId(index)}
+					aria-selected={active === index}
+					tabindex="-1"
+					onpointerdown={(event) => event.preventDefault()}
+					onclick={() => choose(item)}
 				>
-				{#if showSuggestions}
-					<div class="map-near-suggestions" role="group" aria-label={t.nearMeSuggestions}>
-						{#each suggestions as result (suggestionKey(result))}
-							<Button
-								variant="ghost"
-								size="sm"
-								type="button"
-								class="map-near-suggestion"
-								onclick={() => selectSuggestion(result)}
-							>
-								<span>{result.label}</span>
-								<small>{t.precision[result.precision]}</small>
-							</Button>
-						{/each}
-					</div>
-				{/if}
-			</form>
-			<p id={noticeId} class="map-near-collection-notice">{t.nearMeCollectionNotice}</p>
-			{#if loading}
-				<p class="map-near-message">{t.nearMeLoading}</p>
-			{:else if error}
-				<p class="map-near-message" data-error="true">{error}</p>
-			{:else if origin}
-				<div class="map-near-origin-row">
-					<p class="map-near-origin">{origin.label}</p>
-					<Button variant="ghost" size="sm" type="button" class="map-near-clear" onclick={onclear}>
-						<XIcon size={13} strokeWidth={2.25} aria-hidden="true" />
-						<span>{t.nearMeClear}</span>
-					</Button>
-				</div>
-				{#if stops.length > 0}
-					<div class="map-near-results">
-						{#each stops as stop (stop.id)}
-							<Button
-								variant="ghost"
-								size="sm"
-								type="button"
-								class="map-near-stop"
-								onclick={() => {
-									trackEvent('Nearby Stop');
-									onstopselect(stop);
-								}}
-							>
-								<span class="readable-name" title={stopDisplayName(stop.name)} use:readableName
-									>{stopDisplayName(stop.name)}</span
-								>
-								<small>{distanceReading(stop.distanceM, locale)}</small>
-							</Button>
-						{/each}
-					</div>
-				{:else}
-					<p class="map-near-message">{t.nearMeNoResults}</p>
-				{/if}
-			{/if}
+					{item.label}
+					<small>{t.precision[item.precision]}</small>
+				</button>
+			{/each}
 		</div>
 	{/if}
-</div>
+	<p id={`${id}-privacy`} class="text-sm text-muted-foreground">{t.nearMeCollectionNotice}</p>
+	{#if loading}
+		<p role="status" class="text-sm text-muted-foreground">{t.nearMeLoading}</p>
+	{:else if error}
+		<p role="status" class="lookup-message text-sm">
+			<StatusMark
+				status="unknown"
+				label={query.trim() && error === t.nearMeError ? t.nearMeNotFound(query.trim()) : error}
+			/>
+		</p>
+	{/if}
+	<Button
+		variant="outline"
+		size="sm"
+		type="submit"
+		class="min-h-11 w-fit"
+		disabled={loading || !query.trim()}
+	>
+		{t.nearMeSearchSubmit}
+	</Button>
+</form>
 
 <style>
-	.near-rail-panel {
-		display: flex;
-		flex-wrap: wrap;
-		gap: calc(var(--spacing) * 2);
-		min-width: 0;
-		width: 100%;
-	}
-	.near-rail {
+	.suggestions {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: calc(var(--spacing) * 2);
-		width: 100%;
-	}
-	.near-rail-panel {
-		grid-column: 1 / -1;
-	}
-	.near-rail-panel form {
-		min-width: 0;
-		width: 100%;
-	}
-	:global(.map-near-form button),
-	:global(.map-near-stop),
-	:global(.map-near-suggestion),
-	:global(.map-near-clear) {
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
-		border: 1px solid var(--border-subtle);
-		cursor: pointer;
-		transition:
-			color var(--duration-fast) var(--ease-default),
-			background-color var(--duration-fast) var(--ease-default),
-			border-color var(--duration-fast) var(--ease-default);
-	}
-	:global(.map-near-form button:hover),
-	:global(.map-near-form button:focus-visible),
-	:global(.map-near-stop:hover),
-	:global(.map-near-stop:focus-visible),
-	:global(.map-near-suggestion:hover),
-	:global(.map-near-suggestion:focus-visible),
-	:global(.map-near-clear:hover),
-	:global(.map-near-clear:focus-visible) {
-		color: var(--primary);
-		background: color-mix(in srgb, var(--primary) 10%, var(--muted) 90%);
-		border-color: color-mix(in srgb, var(--primary) 42%, var(--border) 58%);
-	}
-	:global(.map-near-form button) {
-		min-height: 2rem;
-		padding: 0.375rem 0.75rem;
-		font-weight: 600;
-		color: var(--foreground);
-		background: var(--muted);
-		border-radius: var(--radius-pill);
-	}
-	:global(.map-near-form) {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 0.375rem;
-	}
-	:global(.map-near-input-wrap) {
-		position: relative;
-		min-width: 0;
-	}
-	:global(.map-near-form input) {
-		width: 100%;
-		min-width: 0;
-		min-height: 2rem;
-		padding: 0.375rem 0.75rem;
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
-		color: var(--foreground);
-		background: var(--muted);
-		border: 1px solid var(--border-subtle);
-		border-radius: var(--radius-pill);
-		transition:
-			border-color var(--duration-fast) var(--ease-default),
-			background-color var(--duration-fast) var(--ease-default);
-	}
-	:global(.map-near-form input:hover) {
-		border-color: color-mix(in srgb, var(--primary) 28%, var(--border) 72%);
-	}
-	:global(.map-near-form input::placeholder),
-	:global(.map-near-message),
-	:global(.map-near-origin),
-	:global(.map-near-stop small),
-	:global(.map-near-suggestion small) {
-		color: var(--muted-foreground);
-	}
-	:global(.map-near-form input:focus-visible) {
-		border-color: color-mix(in srgb, var(--primary) 50%, var(--border) 50%);
-	}
-	:global(.map-near-collection-notice) {
-		margin: 0;
-		color: var(--muted-foreground);
-		font-family: var(--font-mono);
-		font-size: var(--text-micro);
-		line-height: 1.35;
-	}
-	:global(.map-near-suggestions) {
-		grid-column: 1 / -1;
-		z-index: var(--z-map-popover-behind);
-		display: grid;
-		gap: 0.25rem;
-		max-height: min(18rem, calc(100dvh - var(--announcement-height, 0px) - 10rem));
+		min-inline-size: 0;
+		max-block-size: 12rem;
 		overflow-y: auto;
-		scrollbar-gutter: stable;
-		padding: 0.375rem;
-		background: color-mix(in srgb, var(--card) 98%, transparent);
-		border: 1px solid color-mix(in srgb, var(--border) 78%, var(--primary) 22%);
+		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
-		box-shadow: var(--shadow-card);
+		background: var(--popover);
 	}
-	:global(.map-near-suggestion) {
+	.suggestions button {
 		display: grid;
-		gap: 0.125rem;
-		min-height: 2rem;
-		padding: 0.375rem 0.5rem;
-		color: var(--foreground);
-		text-align: left;
+		min-block-size: var(--size-tap-min);
+		padding: 0.375rem 0.75rem;
+		text-align: start;
+		overflow-wrap: break-word;
+	}
+	.suggestions button:is(:hover, [aria-selected='true']) {
 		background: var(--muted);
-		border-color: transparent;
-		border-radius: var(--radius-sm);
 	}
-	:global(.map-near-suggestion span) {
-		min-width: 0;
-		overflow: visible;
-		text-overflow: clip;
-		white-space: normal;
-		line-height: 1.35;
-	}
-	:global(.map-near-stop span) {
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: normal;
-	}
-	:global(.map-near-suggestion small) {
-		font-size: var(--text-micro);
-		letter-spacing: var(--tracking-eyebrow);
-		text-transform: uppercase;
-	}
-	:global(.map-near-message),
-	:global(.map-near-origin) {
-		margin: 0;
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
-	}
-	:global(.map-near-message[data-error='true']) {
-		color: var(--dataviz-severity-high);
-	}
-	:global(.map-near-origin-row) {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		align-items: center;
-		gap: 0.375rem;
-		padding: 0.125rem 0.375rem;
-	}
-	:global(.map-near-origin) {
-		min-width: 0;
-		overflow: hidden;
-		font-weight: 600;
-		color: var(--foreground);
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	:global(.map-near-clear) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 0.375rem;
-		min-height: 1.75rem;
-		padding: 0.25rem 0.5rem;
+	.suggestions small {
 		color: var(--muted-foreground);
-		background: var(--muted);
-		border-radius: var(--radius-pill);
 	}
-	:global(.map-near-results) {
-		display: grid;
-		gap: 0.375rem;
+	.lookup-message :global([data-slot='status-mark']) {
+		display: inline;
+		color: var(--muted-foreground);
 	}
-	:global(.map-near-stop) {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-		min-height: 2rem;
-		padding: 0.375rem 0.625rem;
-		color: var(--foreground);
-		text-align: left;
-		background: var(--muted);
-		border-color: transparent;
-		border-radius: var(--radius-sm);
+	.lookup-message :global(.status-glyph) {
+		display: inline-block;
+		vertical-align: -0.15em;
+		margin-inline-end: 0.25em;
 	}
-	:global(.map-near-stop small) {
-		flex: none;
-		font-variant-numeric: tabular-nums;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		:global(.map-near-form button),
-		:global(.map-near-form input),
-		:global(.map-near-stop),
-		:global(.map-near-suggestion),
-		:global(.map-near-clear) {
-			transition: none;
-		}
+	.lookup-message :global(.status-word) {
+		font-weight: 400;
 	}
 </style>

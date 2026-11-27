@@ -130,11 +130,15 @@ for (const locale of PUBLISHED_LOCALES) {
 		// Nothing is sent while typing; the address row asks.
 		await ask.click();
 		await list.getByRole('option', { name: `${words.kind.address} ${address.label}` }).click();
-		await expect(page).toHaveURL((url) => url.pathname === localizeHref(map, locale));
+		await expect(page).toHaveURL(
+			(url) =>
+				url.pathname === localizeHref(map, locale) &&
+				url.searchParams.get('nearLabel') === address.label,
+		);
 		// The map takes the address as its near-me origin and lists the stop beside it.
-		await expect(
-			page.getByRole('button', { name: new RegExp(`^${literal(stop.name)}`) }),
-		).toBeVisible();
+		const nearby = page.locator('[data-slot="map-nearby-stops"]');
+		await expect(nearby.getByRole('heading')).toContainText(address.label);
+		await expect(nearby.getByRole('link', { name: stop.name, exact: true })).toBeVisible();
 	});
 
 	// Fills the header field until hydration keeps the value and the row answers.

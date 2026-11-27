@@ -9,6 +9,7 @@ export type NearMeOrigin = MapNearTarget;
 export interface NearMeTranslations {
 	readonly nearMeUseLocation: string;
 	readonly nearMeError: string;
+	readonly nearMeLookupUnavailable?: string;
 	readonly nearMeGeoDenied: string;
 	readonly nearMeGeoTimeout: string;
 	readonly nearMeGeoUnavailable: string;
@@ -30,6 +31,7 @@ export interface MapNearMeControllerDependencies {
 	) => string;
 	readonly clearTargetSearch: (current: URLSearchParams, pathname: string) => string;
 	readonly focusOrigin: (origin: NearMeOrigin) => void;
+	readonly onOrigin?: () => void;
 	readonly fetch: (input: string, init?: RequestInit) => Promise<Response>;
 	readonly getGeolocation: () => Geolocation | null;
 	readonly isSecureContext: () => boolean;
@@ -44,6 +46,7 @@ export interface MapNearMeController {
 	get loading(): boolean;
 	get error(): string | null;
 	get origin(): NearMeOrigin | null;
+	get usingDeviceLocation(): boolean;
 	get urlKey(): string;
 	dispose(): void;
 	setOrigin(origin: NearMeOrigin, options?: { syncUrl?: boolean; urlBacked?: boolean }): void;
@@ -72,6 +75,8 @@ export function createMapNearMeController(
 	let disposed = false;
 	const lifetime = new AbortController();
 	let urlBacked = $state(true);
+	let requestVersion = 0;
+	const isCurrent = (version: number) => !disposed && version === requestVersion;
 
 	function syncToUrl(nextOrigin: NearMeOrigin): void {
 		if (disposed) return;
@@ -97,6 +102,7 @@ export function createMapNearMeController(
 		urlBacked = nextUrlBacked;
 		if (syncUrl) syncToUrl(nextOrigin);
 		dependencies.focusOrigin(nextOrigin);
+		dependencies.onOrigin?.();
 	}
 
 	function syncFromUrl(searchParams: URLSearchParams): void {
@@ -124,6 +130,8 @@ export function createMapNearMeController(
 
 	function clear(): void {
 		if (disposed) return;
+		requestVersion += 1;
+		loading = false;
 		origin = null;
 		query = '';
 		error = null;
@@ -138,6 +146,8 @@ export function createMapNearMeController(
 
 	function useLocation(): void {
 		if (disposed) return;
+		const version = ++requestVersion;
+		loading = false;
 		open = true;
 		if (!dependencies.isSecureContext()) {
 			error = dependencies.translations.nearMeGeoInsecure;
@@ -152,7 +162,7 @@ export function createMapNearMeController(
 		error = null;
 		geolocation.getCurrentPosition(
 			(position) => {
-				if (disposed) return;
+				if (!isCurrent(version)) return;
 				loading = false;
 				setOrigin(
 					{
@@ -165,7 +175,7 @@ export function createMapNearMeController(
 				);
 			},
 			(geoError) => {
-				if (disposed) return;
+				if (!isCurrent(version)) return;
 				loading = false;
 				error =
 					geoError.code === geoError.PERMISSION_DENIED
@@ -178,34 +188,36 @@ export function createMapNearMeController(
 		);
 	}
 
-	async function fetchLocation(url: string): Promise<GeocodedLocation | null> {
-		if (disposed) return null;
+	async function fetchLocation(url: string, version: number): Promise<GeocodedLocation | null> {
+		const unavailable =
+			dependencies.translations.nearMeLookupUnavailable ?? dependencies.translations.nearMeError;
 		loading = true;
 		error = null;
 		try {
 			const response = await dependencies.fetch(url, { signal: lifetime.signal });
-			if (disposed) return null;
+			if (!isCurrent(version)) return null;
 			if (!response.ok) {
-				error = dependencies.translations.nearMeError;
+				error = response.status === 404 ? dependencies.translations.nearMeError : unavailable;
 				return null;
 			}
 			const result = (await response.json()) as GeocodedLocation;
-			if (disposed) return null;
+			if (!isCurrent(version)) return null;
 			return result;
 		} catch {
-			if (disposed) return null;
-			error = dependencies.translations.nearMeError;
+			if (isCurrent(version)) error = unavailable;
 			return null;
 		} finally {
-			if (!disposed) loading = false;
+			if (isCurrent(version)) loading = false;
 		}
 	}
 
 	async function resolveQuery(nextQuery: string): Promise<void> {
+		const version = ++requestVersion;
 		const result = await fetchLocation(
 			`/api/geocode?provider=${encodeURIComponent(dependencies.providerId)}&lang=${dependencies.locale}&q=${encodeURIComponent(nextQuery)}`,
+			version,
 		);
-		if (!result || disposed) return;
+		if (!result || !isCurrent(version)) return;
 		query = result.label;
 		setOrigin(result);
 	}
@@ -218,6 +230,8 @@ export function createMapNearMeController(
 
 		const manual = parseCoordinateQuery(nextQuery, dependencies.bbox);
 		if (manual) {
+			requestVersion += 1;
+			loading = false;
 			setOrigin({ ...manual, label: nextQuery, precision: 'address' });
 			return;
 		}
@@ -227,6 +241,8 @@ export function createMapNearMeController(
 
 	async function selectSuggestion(result: GeocodeSuggestion): Promise<void> {
 		if (disposed) return;
+		requestVersion += 1;
+		loading = false;
 		query = result.label;
 		setOrigin(result);
 	}
@@ -249,6 +265,11 @@ export function createMapNearMeController(
 			return query;
 		},
 		set query(next: string) {
+			if (query !== next && loading) {
+				requestVersion += 1;
+				loading = false;
+			}
+			if (query !== next) error = null;
 			query = next;
 		},
 		get loading() {
@@ -259,6 +280,9 @@ export function createMapNearMeController(
 		},
 		get origin() {
 			return origin;
+		},
+		get usingDeviceLocation() {
+			return origin !== null && !urlBacked;
 		},
 		get urlKey() {
 			return urlKey;

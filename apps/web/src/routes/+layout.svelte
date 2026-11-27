@@ -16,8 +16,8 @@
 	import { setContext } from 'svelte';
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import {
-		mapPanelOpenContext,
 		mapRecordSourceDateContext,
+		mapSourceCreditContext,
 	} from '#lib/site/mapRecordSourceDate.ts';
 	import { liveSourceDate } from '#lib/live/sourceDate.ts';
 	import { createLineDirectory } from '#lib/site/lineDirectory.ts';
@@ -139,10 +139,6 @@
 	let mapCreditOpen = $state(false);
 	const datedMapCredit = $derived(Boolean(data.provider?.download_licence?.source_date_required));
 	const mapCreditExpanded = $derived(datedMapCredit && mapCreditOpen);
-	let mapPanelOpen = $state(false);
-	setContext(mapPanelOpenContext, (open: boolean) => {
-		mapPanelOpen = open;
-	});
 	setContext(mapRecordSourceDateContext, (date: string | null) => {
 		mapRecordSourceDate = date;
 	});
@@ -171,6 +167,11 @@
 					recordMap ? mapRecordSourceDate : v1 ? liveSourceDate(v1.manifest.provider) : null,
 					fallbackAttribution,
 				),
+	);
+	setContext(mapSourceCreditContext, () =>
+		[footerAttribution, footerWords.disclaimer(agencyName(footerAgency, data.provider))]
+			.filter(Boolean)
+			.join(footerSeparator),
 	);
 	const footerGroups = $derived(
 		[
@@ -415,7 +416,6 @@
 		{navigation}
 		fullViewport={isFullBleed}
 		{mapCreditHeight}
-		mobileControlsVisible={!isFullBleed || !mapPanelOpen}
 		{locale}
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
@@ -560,6 +560,14 @@
 		inset-block-end: 0;
 		z-index: var(--z-content);
 		pointer-events: none;
+	}
+	@media (width < 1024px) {
+		.map-source-footer {
+			display: none;
+		}
+	}
+	:global([data-slot='app-frame'][data-rail-layout='compact']) .map-source-footer {
+		display: none;
 	}
 	.dated-map-credit {
 		max-block-size: 35dvh;
