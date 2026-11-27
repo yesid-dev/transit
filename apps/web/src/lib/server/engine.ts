@@ -223,14 +223,18 @@ function servedPage() {
 	}
 }
 
-const HEAVY_HOLD_MS = 5_000;
+/**
+ * How long a heavy question gives the page's quick questions to reach the engine ahead of it. It
+ * only orders arrival: no card ever waits for another card's answer.
+ */
+const QUICK_HEAD_START_MS = 300;
 const quickReadings = new WeakMap<object, Promise<unknown>[]>();
 
 /**
  * Asks a record question once, with the record limit, for the page that is being served. A rider
  * who leaves the page cancels it, so the engine stops working for nobody. The engine answers two
- * questions at a time in the order they arrive: a heavy question waits until the page's quick
- * questions have answered, or for a few seconds when they are slow, so the quick cards fill first.
+ * questions at a time in the order they arrive: a heavy question is sent once the page's quick
+ * questions have settled, or after their short head start, so the quick ones are ahead of it.
  */
 async function recordQuery<T>(
 	question: EngineQuestion,
@@ -253,7 +257,7 @@ async function recordQuery<T>(
 	let hold: ReturnType<typeof setTimeout> | undefined;
 	await Promise.race([
 		Promise.allSettled(quick),
-		new Promise((resolve) => (hold = setTimeout(resolve, HEAVY_HOLD_MS))),
+		new Promise((resolve) => (hold = setTimeout(resolve, QUICK_HEAD_START_MS))),
 	]);
 	clearTimeout(hold);
 	if (requestSignal?.aborted) return { kind: 'timeout' };

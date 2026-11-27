@@ -118,30 +118,27 @@ describe('questions asked while a page is served', () => {
 		});
 	});
 
-	it('sends a heavy question after the quick ones have answered', async () => {
-		servePage();
-		const quick = Promise.withResolvers<Response>();
-		fetcher.mockImplementation(async (request) =>
-			new URL(request.url).searchParams.get('measure') === 'crowding'
-				? Response.json(measure())
-				: quick.promise,
-		);
-		const heavy = getRecordAnswer({ path: '/measure', parameters: { measure: 'crowding' } }, dates);
-		const light = getRecordAnswer(
-			{ path: '/measure', parameters: { measure: 'punctuality' } },
-			dates,
-		);
-		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
-		await new Promise((resolve) => setTimeout(resolve, 20));
-		expect(fetcher).toHaveBeenCalledTimes(1);
-		expect(new URL(fetcher.mock.calls[0][0].url).searchParams.get('measure')).toBe('punctuality');
-		quick.resolve(Response.json(measure()));
-		await light;
-		expect((await heavy).kind).toBe('answer');
-		expect(new URL(fetcher.mock.calls[1][0].url).searchParams.get('measure')).toBe('crowding');
+	it('sends a heavy question at once when the quick ones have already answered', async () => {
+		vi.useFakeTimers();
+		try {
+			servePage();
+			fetcher.mockImplementation(async () => Response.json(measure()));
+			const heavy = getRecordAnswer(
+				{ path: '/measure', parameters: { measure: 'crowding' } },
+				dates,
+			);
+			await getRecordAnswer({ path: '/measure', parameters: { measure: 'punctuality' } }, dates);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(fetcher).toHaveBeenCalledTimes(2);
+			expect(new URL(fetcher.mock.calls[0][0].url).searchParams.get('measure')).toBe('punctuality');
+			expect(new URL(fetcher.mock.calls[1][0].url).searchParams.get('measure')).toBe('crowding');
+			expect((await heavy).kind).toBe('answer');
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
-	it('does not hold a heavy question longer than five seconds behind slow quick ones', async () => {
+	it('never holds a heavy question on another card that has not answered', async () => {
 		vi.useFakeTimers();
 		try {
 			servePage();
@@ -155,9 +152,11 @@ describe('questions asked while a page is served', () => {
 				{ path: '/measure', parameters: { measure: 'crowding' } },
 				dates,
 			);
-			await vi.advanceTimersByTimeAsync(4_999);
-			expect(fetcher).toHaveBeenCalledTimes(1);
+			// The quick question is sent first; the heavy one follows its short head start.
 			await vi.advanceTimersByTimeAsync(1);
+			expect(fetcher).toHaveBeenCalledTimes(1);
+			await vi.advanceTimersByTimeAsync(299);
+			expect(fetcher).toHaveBeenCalledTimes(2);
 			expect((await heavy).kind).toBe('answer');
 		} finally {
 			vi.useRealTimers();
