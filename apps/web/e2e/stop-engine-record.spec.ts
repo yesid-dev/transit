@@ -78,7 +78,7 @@ for (const width of [390, 1440]) {
 			await expect(answer).toContainText(
 				fr
 					? /Ce qui est compté\s:\s8[ \u00a0\u202f]285 passages/u
-					: 'Counted: 8,285 stop events, 230 trips that ran, 7 days',
+					: 'Counted: 8,285 stop events, 230 observed trips, 7 days',
 			);
 			await expect(
 				grid.getByRole('cell', { name: fr ? /lundi, 6 h.*en retard/ : /Monday, 06h.*late/ }),
@@ -135,8 +135,8 @@ for (const width of [390, 1440]) {
 			}
 			await expect(bands.locator('footer')).toContainText(
 				fr
-					? /8\s285 passages aux arrêts, 230 trajets effectués, 7 jours/
-					: '8,285 stop events, 230 trips that ran, 7 days',
+					? /8\s285 passages aux arrêts, 230 trajets observés, 7 jours/
+					: '8,285 stop events, 230 observed trips, 7 days',
 			);
 			await expect(waiting.locator('footer').locator('span')).toHaveText([
 				fr ? '27 intervalles observés, 7 jours' : '27 observed intervals, 7 days',

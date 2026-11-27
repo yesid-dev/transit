@@ -100,7 +100,8 @@ export function stopEvidenceSample(
 		section === 'punctuality' || section === 'delay'
 			? trips == null
 				? null
-				: countedUnit(trips, 'trip', locale)
+				: // Trips seen at this stop, named apart from the network's trips that ran.
+					countedUnit(trips, 'trip-observed', locale)
 			: null,
 	].filter(Boolean);
 	// A foot says what was counted over the days; the days alone say nothing.

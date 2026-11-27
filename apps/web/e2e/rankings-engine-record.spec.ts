@@ -68,7 +68,12 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							'href',
 							(await table.getByRole('link').getAttribute('href')) ?? '',
 						);
-						await expect(table).toContainText(kind === 'vehicle' ? /24[,.]4/u : /48[,.]0\s*%/u);
+						// A vehicle's 24.4 interruptions per 100 hours read per hour: 0.2.
+						await expect(table).toContainText(kind === 'vehicle' ? /0[,.]2/u : /48[,.]0\s*%/u);
+						if (kind === 'vehicle')
+							await expect(table).toContainText(
+								fr ? '5 interruptions en 21 heures' : '5 times in 21 hours',
+							);
 						if (kind === 'line') {
 							await expect(table.getByRole('rowheader')).toContainText(
 								fr ? 'East B9 à West B9' : 'East B9 to West B9',
@@ -104,9 +109,9 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							await expect(
 								table.getByRole('columnheader', { name: fr ? /^Plage/u : /^Range/u }),
 							).toHaveCount(0);
-							await expect(
-								table.getByRole('columnheader', { name: fr ? 'Par heure' : 'Times an hour' }),
-							).toHaveCount(1);
+							// Read per hour, not per 100 hours, in the header or the phone row.
+							await expect(table).toContainText(fr ? /par heure/iu : /an hour/u);
+							await expect(table).not.toContainText(fr ? 'par 100 h' : 'per 100 h');
 						} else {
 							await expect(
 								table.getByText(fr ? 'Moins bien que le réseau' : 'Worse than the network'),
