@@ -2,10 +2,13 @@ name: Clean service days
 
 on:
   schedule:
-    # Backup catch-up after the VM's afternoon and midnight runs. Scheduled
-    # and manual runs use the same R2 provider-day lock as the VM.
+    # One backup slot 30 minutes after each VM slot, before its mirror slot.
+    # Scheduled and manual runs use the same R2 provider-day lease as the VM.
+    - cron: "47 16 * * *"
     - cron: "13 19 * * *"
-    - cron: "37 2 * * *"
+    - cron: "43 21 * * *"
+    - cron: "7 1 * * *"
+    - cron: "37 4 * * *"
   workflow_dispatch:
     inputs:
       provider:

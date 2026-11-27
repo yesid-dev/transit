@@ -1570,7 +1570,12 @@ class _FakeS3:
     def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
         if Key in self.locks:
             etag, metadata = self.locks[Key]
-            return {"ETag": etag, "Metadata": metadata}
+            return {
+                "ETag": etag,
+                "Metadata": metadata,
+                "LastModified": datetime(2026, 6, 2, 12, tzinfo=UTC),
+                "ResponseMetadata": {"HTTPHeaders": {"date": "Tue, 02 Jun 2026 12:00:00 GMT"}},
+            }
         if not (self.root / Bucket / Key).is_file():
             raise ClientError(
                 {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}},

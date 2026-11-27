@@ -90,5 +90,9 @@ def test_cleaning_and_sync_timers_catch_up_after_a_vm_restart() -> None:
         assert re.search(r"^Persistent=true$", timer.read_text(encoding="utf-8"), re.MULTILINE)
 
 
-def test_backup_cron_uses_separate_slots_from_the_vm() -> None:
-    assert set(_cleaning_times()).isdisjoint(_timer_times(CLEAN_TIMER))
+def test_each_vm_slot_has_a_backup_before_the_next_vm_slot() -> None:
+    vm = sorted(_timer_times(CLEAN_TIMER))
+    backup = sorted(_cleaning_times())
+    assert len(backup) == len(vm)
+    for primary, fallback, next_primary in zip(vm, backup, [*vm[1:], vm[0] + 1440], strict=True):
+        assert primary < fallback < next_primary
