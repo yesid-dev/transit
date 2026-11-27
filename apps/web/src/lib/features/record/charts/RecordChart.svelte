@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		HourGrid,
 		StopLadder,
 		type StopLadderStop,
 		ChartAxis,
@@ -14,6 +13,7 @@
 	import { type Locale } from '#lib/i18n/index.ts';
 	import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
 	import { countedUnit, tooFewHours } from '#lib/site/presenter.ts';
+	import LateShareHourGrid from '#lib/components/dataviz/LateShareHourGrid.svelte';
 	import RecordDataTable from '../RecordDataTable.svelte';
 	import { tally } from '../recordText.ts';
 	import StateMark from '../StateMark.svelte';
@@ -132,7 +132,7 @@
 		<StopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
-			<HourGrid {...reading.props} />
+			<LateShareHourGrid {...reading.props} />
 			{#if input.kind === 'hours'}
 				<p class="text-small text-muted-foreground">{hourGridNote(input.answer, locale)}</p>
 			{/if}

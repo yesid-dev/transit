@@ -550,7 +550,10 @@ describe('vehicle state badge baker', () => {
 			expect(fills.slice(1).map(({ fillStyle }) => fillStyle)).toEqual([halo, halo, halo]);
 			expect(image.commands.filter(({ method }) => method === 'arc')).toHaveLength(2);
 			expect(image.commands).toContainEqual(
-				expect.objectContaining({ method: 'stroke', strokeStyle: halo }),
+				expect.objectContaining({
+					method: 'stroke',
+					strokeStyle: image === vehicle ? halo : resolvedColors.get(HEADING_FILL_TOKEN),
+				}),
 			);
 		}
 	});

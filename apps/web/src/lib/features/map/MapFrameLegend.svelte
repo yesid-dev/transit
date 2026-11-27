@@ -217,7 +217,7 @@
 {#snippet scheduleMark()}{@render unmeasuredMark(2)}{/snippet}
 
 <MapLegend
-	class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)]"
+	class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)] [&_ol>li>span]:min-h-[16px]"
 	title={copy[locale].legend.title}
 	{groups}
 	{scale}

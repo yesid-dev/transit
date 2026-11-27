@@ -2,6 +2,7 @@ import type { MapRecordAnswer, MapRecordState } from './recordMapAnswer';
 import type { RouteDirection, StopIndexEntry } from '#lib/v1/schemas/index.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import { choose, lowCoverageLabel, tally } from '#lib/features/record/recordText.ts';
+import { measureRamps } from '#lib/components/dataviz/measureRamps.ts';
 
 export type RecordMapLayer = 'live' | 'stops' | 'corridors';
 export const OTHER_STOPS_MIN_ZOOM = 13;
@@ -42,15 +43,9 @@ export type RecordFeatures = {
 	}[];
 };
 
-function ramp(anchor: string) {
-	return [19, 29, 39, 49, 59].map(
-		(strength) => `color-mix(in srgb, var(${anchor}), var(--foreground) ${strength}%)`,
-	);
-}
-
 export const recordColours = {
-	stops: ramp('--dataviz-severity-high'),
-	corridors: ramp('--dataviz-status-early'),
+	stops: measureRamps.lateShare,
+	corridors: measureRamps.timeLost,
 };
 
 export const recordStopRadii = {

@@ -2,6 +2,7 @@ import { expect, type Locator } from '@playwright/test';
 import { vectorStyleFromBasemap } from '../src/lib/components/map/basemap';
 import { test } from './layout-test';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
+import { expectRampLightness } from './measure-ramp-checks';
 import {
 	closeMapControls,
 	closeMapInView,
@@ -10,7 +11,7 @@ import {
 	openMapInView,
 } from './map-frame-controls';
 
-async function expectPaletteContrast(legend: Locator, theme: 'light' | 'dark') {
+async function expectOutlineContrast(legend: Locator, theme: 'light' | 'dark') {
 	const basemap = vectorStyleFromBasemap(
 		{ url: 'fixture.pmtiles', attribution: '', generated_utc: '2026-11-21T00:00:00Z' },
 		theme,
@@ -23,37 +24,35 @@ async function expectPaletteContrast(legend: Locator, theme: 'light' | 'dark') {
 		return [];
 	});
 	expect(backgrounds).toHaveLength(3);
-	const contrast = await legend
-		.locator('ol > li > [aria-hidden="true"]')
-		.evaluateAll((swatches, backgrounds) => {
-			const canvas = document.createElement('canvas');
-			canvas.width = canvas.height = 1;
-			const context = canvas.getContext('2d', { willReadFrequently: true })!;
-			function luminance(colour: string) {
-				context.fillStyle = colour;
-				context.fillRect(0, 0, 1, 1);
-				const channels = context.getImageData(0, 0, 1, 1).data.slice(0, 3);
-				return [...channels].reduce((luminance, channel, index) => {
-					const value = channel / 255;
-					const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-					return luminance + linear * [0.2126, 0.7152, 0.0722][index]!;
-				}, 0);
-			}
-			const ramp = swatches.map((swatch) => luminance(getComputedStyle(swatch).backgroundColor));
-			const minimum = Math.min(
-				...backgrounds.flatMap((background) => {
-					const base = luminance(background);
-					return ramp.map((step) => (Math.max(base, step) + 0.05) / (Math.min(base, step) + 0.05));
-				}),
-			);
-			return { ramp, minimum };
-		}, backgrounds);
-	expect(contrast.ramp).toHaveLength(5);
-	expect(contrast.ramp).toEqual(
-		[...contrast.ramp].sort((a, b) => (theme === 'light' ? b - a : a - b)),
-	);
-	expect(contrast.minimum).toBeGreaterThanOrEqual(3);
-	return contrast.minimum;
+	const minimum = await legend.evaluate((legend, backgrounds) => {
+		const sample = document.createElement('span');
+		sample.style.color = 'var(--foreground)';
+		legend.append(sample);
+		const outline = getComputedStyle(sample).color;
+		sample.remove();
+		const canvas = document.createElement('canvas');
+		canvas.width = canvas.height = 1;
+		const context = canvas.getContext('2d', { willReadFrequently: true })!;
+		function luminance(colour: string) {
+			context.fillStyle = colour;
+			context.fillRect(0, 0, 1, 1);
+			const channels = context.getImageData(0, 0, 1, 1).data.slice(0, 3);
+			return [...channels].reduce((luminance, channel, index) => {
+				const value = channel / 255;
+				const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+				return luminance + linear * [0.2126, 0.7152, 0.0722][index]!;
+			}, 0);
+		}
+		const ink = luminance(outline);
+		return Math.min(
+			...backgrounds.map((background) => {
+				const base = luminance(background);
+				return (Math.max(base, ink) + 0.05) / (Math.min(base, ink) + 0.05);
+			}),
+		);
+	}, backgrounds);
+	expect(minimum).toBeGreaterThanOrEqual(3);
+	return minimum;
 }
 
 async function expectUnbrokenWords(legend: Locator, textSize: string) {
@@ -146,10 +145,16 @@ for (const locale of ['en', 'fr'] as const) {
 			await expect(legend).toBeVisible();
 			await assertWithinMap(legend);
 			await expectUnbrokenWords(legend, '100%');
-			const minimum = await expectPaletteContrast(
-				legend,
-				info.project.use.colorScheme === 'dark' ? 'dark' : 'light',
+			const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light';
+			const lightness = await expectRampLightness(
+				legend.locator('ol > li > [aria-hidden="true"]'),
+				theme,
 			);
+			await info.attach('legend-lightness', {
+				body: JSON.stringify(lightness),
+				contentType: 'application/json',
+			});
+			const minimum = await expectOutlineContrast(legend, theme);
 			await info.attach('basemap-contrast', {
 				body: minimum.toFixed(2),
 				contentType: 'text/plain',

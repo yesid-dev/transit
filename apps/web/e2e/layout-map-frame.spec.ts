@@ -3,6 +3,7 @@ import { test } from './layout-test';
 import { mapChromeShareBudget, mapOpenLegendViewportHeight } from './design-pass-debt';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 import { closeMapControls, openMapControls } from './map-frame-controls';
+import { expectRampLightness } from './measure-ramp-checks';
 
 for (const locale of ['en', 'fr']) {
 	test(`${locale} map chrome leaves room for the map and text enlargement @layout`, async ({
@@ -103,7 +104,7 @@ for (const locale of ['en', 'fr']) {
 
 	test(`${locale} crowding legend orders the five levels under their swatches @layout`, async ({
 		page,
-	}) => {
+	}, info) => {
 		const fr = locale === 'fr';
 		const phone = page.viewportSize()!.width < 1024;
 		const at = Date.parse('2026-11-23T16:00:00Z');
@@ -130,11 +131,9 @@ for (const locale of ['en', 'fr']) {
 				? ['Vide', 'Plusieurs places', 'Peu de places', 'Debout', 'Plein']
 				: ['Empty', 'Many seats', 'Few seats', 'Standing', 'Full'],
 		);
-		const colours = await ramp
-			.locator('li > [aria-hidden="true"]')
-			.evaluateAll((swatches) =>
-				swatches.map((swatch) => getComputedStyle(swatch).backgroundColor),
-			);
-		expect(new Set(colours).size).toBe(5);
+		await expectRampLightness(
+			ramp.locator('li > [aria-hidden="true"]'),
+			info.project.use.colorScheme === 'dark' ? 'dark' : 'light',
+		);
 	});
 }
