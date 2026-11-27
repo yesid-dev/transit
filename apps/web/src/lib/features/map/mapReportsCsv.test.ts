@@ -291,7 +291,7 @@ describe('map report CSV', () => {
 		});
 		expect(file.filename).toBe('map-reports-stm-montr-al-en.csv');
 		expect(file.filename).not.toContain('/');
-		expect(file.href.startsWith('data:text/csv;charset=utf-8,')).toBe(true);
+		expect(file.href.startsWith('data:text/csv;charset=utf-8,%EF%BB%BF')).toBe(true);
 	});
 
 	it('exports exactly the captured model even if the live source later changes', () => {

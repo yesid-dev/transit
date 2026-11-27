@@ -38,6 +38,7 @@
 		departureLateShare,
 		departureLateStatement,
 		departureTitles,
+		unscheduledDepartureDay,
 	} from '#lib/features/record/departureDailyText.ts';
 	import {
 		coverageText,
@@ -397,7 +398,9 @@
 							{:else}
 								{@const reading = result.answer}
 								{#if result.lastGood}<p>{lastGoodNote[data.lang]}</p>{/if}
-								{#if section === 'stops' && 'cells' in reading && reading.cells.length}
+								{#if section === 'stops' && 'cells' in reading && !result.lastGood && !result.cacheStale && reading.evidence.days_included.includes(data.day) && reading.cells.every(({ evidence }) => evidence.counts.scheduled === 0)}
+									<p>{unscheduledDepartureDay(data.day, data.lang)}</p>
+								{:else if section === 'stops' && 'cells' in reading && reading.cells.length}
 									{@const stopId = reading.cells.find(({ key }) => typeof key.stop === 'string')
 										?.key.stop}
 									<RecordChart

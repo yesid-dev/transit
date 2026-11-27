@@ -2,6 +2,9 @@ import { citationSource, citationSourceText } from '#lib/site/presenter.ts';
 import { frameDateLimit, frameClock, periodError, recordStart } from '#lib/site/frameState.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 import { getCityCatalog, getRecordCsv, type RecordQuery } from './engine.ts';
+import type { EntityIdentity, IdentityScope } from './entityIdentity.ts';
+import type { PublicCity } from '#lib/v1/schemas/providers.ts';
+import { detailNotFoundCopy } from '#lib/site/errorPage.ts';
 
 // Distinct from a "source" column the engine may already export, such as a notice's source.
 const sourceHeader = { en: 'Data source and licence', fr: 'Source des données et licence' };
@@ -16,15 +19,31 @@ const invalidText = {
 };
 
 /** A failed reading answers with a sentence to read, never a file that looks like data. */
-function downloadError(lang: 'en' | 'fr', status: number, retryAfter?: string | null) {
+function csvFailure(status: number, message: string, retryAfter?: string | null) {
 	const headers = new Headers({
 		'content-type': 'text/plain; charset=utf-8',
 		'cache-control': 'no-store',
 		'x-content-type-options': 'nosniff',
 	});
 	if (retryAfter) headers.set('retry-after', retryAfter);
-	const message = status === 503 ? unavailableText[lang] : invalidText[lang];
 	return new Response(`${message}\n`, { status, headers });
+}
+
+type DetailCode = keyof typeof detailNotFoundCopy;
+type CsvOptions = {
+	selectPeriod?: (period: DateWindow) => DateWindow;
+	identity?: {
+		code: DetailCode;
+		check: (provider: PublicCity, scope: IdentityScope) => Promise<EntityIdentity>;
+	};
+};
+
+export function missingRecordCsv(lang: 'en' | 'fr', code: DetailCode) {
+	return csvFailure(404, `${detailNotFoundCopy[code][lang].heading}.`);
+}
+
+function downloadError(lang: 'en' | 'fr', status: number, retryAfter?: string | null) {
+	return csvFailure(status, status === 503 ? unavailableText[lang] : invalidText[lang], retryAfter);
 }
 
 function csvField(text: string) {
@@ -36,8 +55,8 @@ function csvField(text: string) {
  * Records end at a line break outside quotes, so quoted line breaks inside a field are kept.
  */
 export function appendCsvColumn(header: string, value: string) {
-	// Keep the byte order mark: spreadsheet programs read the file as UTF-8 by it.
-	const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+	// Decode any source BOM and write one for spreadsheet applications.
+	const decoder = new TextDecoder();
 	const encoder = new TextEncoder();
 	const head = `,${csvField(header)}`;
 	const cell = `,${csvField(value)}`;
@@ -51,6 +70,9 @@ export function appendCsvColumn(header: string, value: string) {
 		return text;
 	};
 	return new TransformStream<Uint8Array, Uint8Array>({
+		start(controller) {
+			controller.enqueue(Uint8Array.of(0xef, 0xbb, 0xbf));
+		},
 		transform(chunk, controller) {
 			const text = decoder.decode(chunk, { stream: true });
 			let out = '';
@@ -74,8 +96,7 @@ export function appendCsvColumn(header: string, value: string) {
 					out += char;
 					continue;
 				}
-				// A byte order mark opens the file; it does not start a record.
-				if (char !== '﻿') atRecordStart = false;
+				atRecordStart = false;
 				out += char;
 			}
 			if (out) controller.enqueue(encoder.encode(out));
@@ -95,7 +116,7 @@ export async function recordCsvResponse(
 	request: Request,
 	lang: 'en' | 'fr',
 	filename: string,
-	selectPeriod?: (period: DateWindow) => DateWindow,
+	{ selectPeriod, identity }: CsvOptions = {},
 ) {
 	const search = url.searchParams;
 	const city = search.get('provider') ?? '';
@@ -111,12 +132,15 @@ export async function recordCsvResponse(
 	if (periodError(period, limit, start)) return downloadError(lang, 400);
 	const selected = selectPeriod?.(period) ?? period;
 	if (periodError(selected, limit, start)) return downloadError(lang, 400);
-	const upstream = await getRecordCsv(
-		query,
-		{ ...selected, city, visitorIp },
-		lang,
-		request.signal,
-	).catch(() => null);
+	const scope = { city, visitorIp };
+	if (identity) {
+		const state = await identity.check(provider, scope).catch(() => 'unconfirmed');
+		if (state === 'missing') return missingRecordCsv(lang, identity.code);
+		if (state === 'unconfirmed') return downloadError(lang, 503);
+	}
+	const upstream = await getRecordCsv(query, { ...selected, ...scope }, lang, request.signal).catch(
+		() => null,
+	);
 	if (
 		!upstream?.ok ||
 		!upstream.body ||

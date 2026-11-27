@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { ErrorPage } from '@yesid/ui/layout';
 	import { getLocalizeHref, pathLocale, type Locale } from '#lib/i18n/index.ts';
-	import { errorDocumentHead, errorPageCopy } from '#lib/site/errorPage.ts';
+	import { detailNotFound, errorDocumentHead, errorPageCopy } from '#lib/site/errorPage.ts';
 	import { trackEvent } from '#lib/site/analytics.ts';
 
 	const localizeHref = getLocalizeHref();
@@ -39,6 +39,24 @@
 				illustration: 'none' as const,
 				suggestions: localized(copy.stopNotFound.suggestions),
 			};
+		const detail = detailNotFound(code, locale);
+		if (detail) {
+			const departure = code === 'DEPARTURE_NOT_FOUND' && page.error?.line;
+			return {
+				heading: detail.heading,
+				body: departure ? (page.error?.message ?? detail.body) : detail.body,
+				illustration: 'none' as const,
+				suggestions: departure
+					? [
+							{
+								href: departure,
+								label:
+									locale === 'fr' ? 'Voir les départs de la ligne' : 'See departures for this line',
+							},
+						]
+					: localized(detail.suggestions),
+			};
+		}
 		if (is404)
 			return {
 				heading: copy.notFound.heading,

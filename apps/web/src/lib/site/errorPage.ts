@@ -1,5 +1,65 @@
 import type { Locale } from '#lib/i18n/index.ts';
 
+export const detailNotFoundCopy = {
+	LINE_NOT_FOUND: {
+		en: {
+			heading: 'This line could not be found',
+			body: 'Check the line number, or find the line in the list of lines.',
+			suggestions: [
+				{ label: 'Find a line', href: '/lines' },
+				{ label: 'Search', href: '/search' },
+			],
+		},
+		fr: {
+			heading: 'Cette ligne est introuvable',
+			body: 'Vérifiez le numéro de la ligne ou cherchez-la dans la liste des lignes.',
+			suggestions: [
+				{ label: 'Trouver une ligne', href: '/lines' },
+				{ label: 'Recherche', href: '/search' },
+			],
+		},
+	},
+	VEHICLE_NOT_FOUND: {
+		en: {
+			heading: 'This vehicle could not be found',
+			body: 'Check the vehicle number, or find it in the list of vehicles.',
+			suggestions: [
+				{ label: 'Find a vehicle', href: '/vehicles' },
+				{ label: 'Search', href: '/search' },
+			],
+		},
+		fr: {
+			heading: 'Ce véhicule est introuvable',
+			body: 'Vérifiez le numéro du véhicule ou cherchez-le dans la liste des véhicules.',
+			suggestions: [
+				{ label: 'Trouver un véhicule', href: '/vehicles' },
+				{ label: 'Recherche', href: '/search' },
+			],
+		},
+	},
+	DEPARTURE_NOT_FOUND: {
+		en: {
+			heading: 'This departure could not be found',
+			body: 'Check the scheduled departures for this line.',
+			suggestions: [{ label: 'Find a line', href: '/lines' }],
+		},
+		fr: {
+			heading: 'Ce départ est introuvable',
+			body: 'Vérifiez les départs prévus pour cette ligne.',
+			suggestions: [{ label: 'Trouver une ligne', href: '/lines' }],
+		},
+	},
+} as const;
+
+export function detailNotFound(code: App.Error['code'], locale: Locale) {
+	switch (code) {
+		case 'LINE_NOT_FOUND':
+		case 'VEHICLE_NOT_FOUND':
+		case 'DEPARTURE_NOT_FOUND':
+			return detailNotFoundCopy[code][locale];
+	}
+}
+
 export interface ErrorPageLocaleCopy {
 	suggestionsLabel: string;
 	generic: {
@@ -115,6 +175,8 @@ export function errorDocumentHead(
 	description: string;
 } {
 	const copy = errorPageCopy[locale];
+	const detail = status === 404 ? detailNotFound(code, locale) : undefined;
+	if (detail) return { title: `${status} · ${detail.heading}`, description: detail.body };
 	if (status === 404 && code === 'TRIP_ENDED')
 		return {
 			title: `${status} · ${copy.tripEnded.heading}`,

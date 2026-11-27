@@ -5,10 +5,7 @@ import { appendCsvColumn, recordCsvResponse } from './recordCsv.ts';
 const engine = vi.hoisted(() => ({ getCityCatalog: vi.fn(), getRecordCsv: vi.fn() }));
 vi.mock('./engine.ts', () => engine);
 
-function download(
-	lang: 'en' | 'fr' = 'en',
-	selectPeriod?: Parameters<typeof recordCsvResponse>[5],
-) {
+function download(lang: 'en' | 'fr' = 'en', options?: Parameters<typeof recordCsvResponse>[5]) {
 	const url = new URL(
 		'https://transit.yesid.dev/metrics/record.csv?provider=stm&recordFrom=2026-11-15&recordTo=2026-11-15',
 	);
@@ -18,7 +15,7 @@ function download(
 		new Request(url),
 		lang,
 		'on_time.csv',
-		selectPeriod,
+		options,
 	);
 }
 
@@ -44,10 +41,22 @@ it('preserves Retry-After on a busy CSV response', async () => {
 });
 
 it('rejects invalid transformed dates before starting a CSV read', async () => {
-	const response = await download('fr', () => ({ from: '2026-11-15', to: '2026-02-30' }));
+	const response = await download('fr', {
+		selectPeriod: () => ({ from: '2026-11-15', to: '2026-02-30' }),
+	});
 	expect(response.status).toBe(400);
 	expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8');
 	expect(await response.text()).toContain('Vérifiez la ville, les dates et la mesure.');
+	expect(engine.getRecordCsv).not.toHaveBeenCalled();
+});
+
+it('answers a missing identity with a plain localized 404 before requesting CSV', async () => {
+	const response = await download('fr', {
+		identity: { code: 'LINE_NOT_FOUND', check: async () => 'missing' },
+	});
+	expect(response.status).toBe(404);
+	expect(response.headers.get('content-disposition')).toBeNull();
+	expect(await response.text()).toBe('Cette ligne est introuvable.\n');
 	expect(engine.getRecordCsv).not.toHaveBeenCalled();
 });
 
@@ -69,7 +78,7 @@ const source = {
 	fr: '"Données ouvertes de STM, calculs de Transit"',
 };
 it.each([
-	['en', ['id\r1\r'], `id,Data source and licence\r1,${source.en}\r`],
+	['en', ['id\r1\r'], `\ufeffid,Data source and licence\r1,${source.en}\r`],
 	[
 		'fr',
 		['\ufeffid\r', '\n"Premier\nDeuxième"\r', '\n2'],
@@ -111,6 +120,24 @@ async function transform(
 }
 
 const cell = '"STM open data, CC BY 4.0, computed by Transit"';
+
+it('writes exactly one UTF-8 BOM when the source has none or splits one across chunks', async () => {
+	for (const chunks of [
+		[new TextEncoder().encode('Measure\n')],
+		[Uint8Array.of(0xef), Uint8Array.of(0xbb, 0xbf, ...new TextEncoder().encode('Measure\n'))],
+	]) {
+		const input = new ReadableStream<Uint8Array>({
+			start(controller) {
+				for (const chunk of chunks) controller.enqueue(chunk);
+				controller.close();
+			},
+		});
+		const response = new Response(input.pipeThrough(appendCsvColumn('Licence', 'CC BY')));
+		expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+			new TextEncoder().encode('\ufeffMeasure,Licence\n'),
+		);
+	}
+});
 
 it('adds the source column to the header and to every row', async () => {
 	expect(await transform(['Measure,Value\npoll_success,2026-11-11\n'])).toBe(

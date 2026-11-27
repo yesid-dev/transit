@@ -10,7 +10,8 @@ test.beforeEach(({ browserName }, info) => {
 const period = 'provider=stm&frameMode=record&recordFrom=2026-11-18&recordTo=2026-11-20';
 // A departure must have observations on at least five service dates to appear in a ranking.
 const departurePeriod = period.replace('recordFrom=2026-11-18', 'recordFrom=2026-11-16');
-const key = (line: string) => encodeURIComponent(JSON.stringify([line, 0, '07:00:00']));
+const key = (line: string, time = '07:00:00') =>
+	encodeURIComponent(JSON.stringify([line, 0, time]));
 for (const width of [390, 1440]) {
 	for (const lang of ['en', 'fr'] as const) {
 		const fr = lang === 'fr';
@@ -146,7 +147,9 @@ for (const width of [390, 1440]) {
 				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
-			expect(await csvResponse.text()).toMatch(fr ? /^Mesure,Du,Au/ : /^Measure,From,To/);
+			expect(await csvResponse.text()).toMatch(
+				fr ? /^\ufeffMesure,Du,Au/u : /^\ufeffMeasure,From,To/u,
+			);
 			await downloads.locator('[data-slot="sheet-footer"]').getByRole('button', close).click();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 
@@ -251,14 +254,31 @@ test('a ranked departure links to its exact line, direction, time and range', as
 	expect(target.searchParams.get('recordTo')).toBe('2026-11-14');
 });
 
-test('a departure on an unknown line has a single timetable state', async ({ page }) => {
-	await page.goto(`/departure/${key('not-published')}?${departurePeriod}`);
+test('an unknown departure is a noindex 404 without Record actions', async ({ page }) => {
+	const response = await page.goto(`/departure/${key('24', '03:33:00')}?${departurePeriod}`);
+	expect(response?.status()).toBe(404);
+	await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'noindex,nofollow');
 	const main = page.getByRole('main');
-	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
-		'This line is not in the current timetable.',
-	);
+	await expect(main).toContainText('No 03:33 departure is scheduled on line 24.');
+	await expect(main.getByRole('button', { name: /Download|Cite/u })).toHaveCount(0);
 	await expect(main.locator('[data-slot="record-card"]')).toHaveCount(0);
 });
+
+for (const lang of ['en', 'fr'] as const) {
+	test(`${lang} a known departure explains a day without scheduled service`, async ({ page }) => {
+		const fr = lang === 'fr';
+		const response = await page.goto(
+			`${fr ? '/fr' : ''}/departure/${key('24')}?provider=stm&recordFrom=2026-11-15&recordTo=2026-11-16&day=2026-11-15`,
+		);
+		expect(response?.status()).toBe(200);
+		const stops = page.getByRole('article', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' });
+		await expect(stops).toContainText(
+			fr
+				? 'Ce départ n’est pas prévu le dimanche 15 novembre.'
+				: 'This departure is not scheduled on Sunday 15 November.',
+		);
+	});
+}
 
 test('a departure with archived readings stays available outside the current timetable', async ({
 	page,
@@ -274,7 +294,7 @@ test('a departure on a line absent from the timetable shows and re-reads an unav
 }) => {
 	await page.clock.install();
 	const search = 'provider=stm&frameMode=record&recordFrom=2026-11-21&recordTo=2026-11-21';
-	await page.goto(`/departure/${key('not-published')}?${search}`);
+	await page.goto(`/departure/${key('archived-line')}?${search}`);
 	const answer = page.locator('[data-slot="screen-answer"]');
 	await expect(answer).toContainText('The record is temporarily unavailable.');
 	await expect(page.locator('html[data-hydrated]')).toBeAttached();

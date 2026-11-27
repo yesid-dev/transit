@@ -64,7 +64,9 @@ describe('line Record flat CSV', () => {
 		expect(file.csv).toContain(
 			'"https://transit.example/fr/lines/6%2Fa%20%3F%C3%A9?provider=octranspo&from=2026-10-01&to=2026-10-03&generation=retained%40g1","","x/y",0',
 		);
-		expect(decodeURIComponent(file.href.slice(file.href.indexOf(',') + 1))).toBe(file.csv);
+		expect(decodeURIComponent(file.href.slice(file.href.indexOf(',') + 1))).toBe(
+			'\ufeff' + file.csv,
+		);
 	});
 	it('does not turn unsupported scopes, empty blocks or missing context into ready files', () => {
 		expect(

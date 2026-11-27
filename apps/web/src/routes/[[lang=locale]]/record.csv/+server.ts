@@ -24,6 +24,6 @@ export const GET: RequestHandler = ({ url, request, params }) => {
 		request,
 		params.lang === 'fr' ? 'fr' : 'en',
 		`overview-${section}.csv`,
-		section === 'previous' ? previousPeriod : undefined,
+		{ selectPeriod: section === 'previous' ? previousPeriod : undefined },
 	);
 };

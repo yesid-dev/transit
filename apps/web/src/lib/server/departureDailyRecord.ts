@@ -15,6 +15,8 @@ import { sortAgencyMessages } from '#lib/site/agencyMessages.ts';
 import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
 import { readingFilter } from './readingFilter.ts';
 import { dailyQuestions } from './screenQuestions.ts';
+import { archivePeriod, type EntityIdentity, type IdentityScope } from './entityIdentity.ts';
+import type { FrameClock } from '#lib/site/frameState.ts';
 export { dailyQuery, type DailySection } from './screenQuestions.ts';
 
 const departure = {
@@ -28,6 +30,32 @@ export type DepartureSection = keyof typeof departure;
 
 function departureCut({ line, direction, departure }: DepartureIdentity) {
 	return { line, direction: String(direction), departure };
+}
+
+export async function identifyDeparture(
+	identity: DepartureIdentity,
+	clock: FrameClock,
+	scope: IdentityScope,
+): Promise<EntityIdentity> {
+	const period = archivePeriod(clock, scope);
+	if (!period) return 'unconfirmed';
+	const result = await getRecordAnswer(
+		{
+			path: '/measure',
+			parameters: { measure: 'trips_run', group: 'departure', ...departureCut(identity) },
+		},
+		period,
+	);
+	if (result.kind !== 'answer' || !('cells' in result.answer)) return 'unconfirmed';
+	if (
+		result.answer.cells.some(
+			({ key }) => key.departure === identity.departure && key.direction === identity.direction,
+		)
+	)
+		return 'available';
+	if (result.lastGood || result.cacheStale || !result.answer.evidence.days_included.length)
+		return 'unconfirmed';
+	return 'missing';
 }
 
 export function departureQuery(section: string, identity: DepartureIdentity): RecordQuery | null {

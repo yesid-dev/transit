@@ -310,8 +310,8 @@ for (const width of [390, 1440]) {
 				const of = provider === 'stm' ? 'de la STM' : 'd’OC Transpo';
 				expect(await csv.text()).toBe(
 					fr
-						? `measure,from,to,Source des données et licence\npunctuality,2026-11-08,2026-11-14,"Données ouvertes ${of}, calculs de Transit"\n`
-						: `measure,from,to,Data source and licence\npunctuality,2026-11-08,2026-11-14,"${agency} open data, computed by Transit"\n`,
+						? `\ufeffmeasure,from,to,Source des données et licence\npunctuality,2026-11-08,2026-11-14,"Données ouvertes ${of}, calculs de Transit"\n`
+						: `\ufeffmeasure,from,to,Data source and licence\npunctuality,2026-11-08,2026-11-14,"${agency} open data, computed by Transit"\n`,
 				);
 				await page.keyboard.press('Escape');
 				await expect(download).toBeFocused();

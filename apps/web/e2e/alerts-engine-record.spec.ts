@@ -104,7 +104,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 		expect(download.headers()['content-disposition']).toBe(
 			`attachment; filename="alerts-${section}.csv"`,
 		);
-		expect(await download.text()).toMatch(/^Mesure,Du,Au/);
+		expect(await download.text()).toMatch(/^\ufeffMesure,Du,Au/u);
 	}
 
 	const duplicate = stmAlertId(14);

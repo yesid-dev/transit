@@ -1,12 +1,14 @@
 import { error } from '@sveltejs/kit';
-import { type FrameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
+import { frameClock, type FrameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import {
 	getRecordAnswer,
 	getVehicleDayAnswers,
 	type EnginePeriod,
 	type RecordQuery,
 } from './engine.ts';
-import { recordCsvResponse } from './recordCsv.ts';
+import { missingRecordCsv, recordCsvResponse } from './recordCsv.ts';
+import { validEntityId, vehicleIdentity } from './entityIdentity.ts';
+import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 
 const queries = {
 	fleet: { measure: 'vehicle_days_in_service', group: 'vehicle' },
@@ -74,14 +76,37 @@ export function loadVehiclePage(
 	};
 }
 
-export function vehicleCsv(url: URL, request: Request, lang?: string, id?: string) {
+export function vehicleCsv(
+	url: URL,
+	request: Request,
+	language?: string,
+	id?: string,
+	fetcher?: typeof fetch,
+) {
 	const section = url.searchParams.get('section') ?? '';
+	const lang = language === 'fr' ? 'fr' : 'en';
+	if (id !== undefined && !validEntityId(id)) return missingRecordCsv(lang, 'VEHICLE_NOT_FOUND');
 	if (!Object.hasOwn(queries, section) || (section === 'fleet') === Boolean(id)) error(400);
 	return recordCsvResponse(
 		recordQuery(section as VehicleSection, id),
 		url,
 		request,
-		lang === 'fr' ? 'fr' : 'en',
+		lang,
 		`vehicles-${section}.csv`,
+		id
+			? {
+					identity: {
+						code: 'VEHICLE_NOT_FOUND',
+						check: (provider, scope) =>
+							vehicleIdentity(
+								id,
+								frameClock(provider),
+								scope,
+								provider.inputs.vehicle_positions,
+								() => fetchCaptureSnapshot(scope.city, request.signal, fetcher),
+							),
+					},
+				}
+			: undefined,
 	);
 }

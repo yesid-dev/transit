@@ -157,6 +157,58 @@ test('sends a noindex 404 after a slow stop identity lookup', async ({ request }
 	}
 });
 
+test('missing detail identities return localized 404 pages and plain 404 CSV responses', async ({
+	request,
+}) => {
+	const departure = encodeURIComponent(JSON.stringify(['24', 0, '03:33:00']));
+	for (const [provider, prefix] of [
+		['stm', ''],
+		['octranspo', '/fr'],
+	] as const) {
+		const fr = prefix === '/fr';
+		const dates = `provider=${provider}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`;
+		for (const [path, section, message] of [
+			[
+				'/lines/unknown-entity',
+				'punctuality',
+				fr ? 'Cette ligne est introuvable' : 'This line could not be found',
+			],
+			[
+				'/vehicle/unknown-entity',
+				'service',
+				fr ? 'Ce véhicule est introuvable' : 'This vehicle could not be found',
+			],
+			[
+				`/departure/${departure}`,
+				'observed',
+				fr ? 'Ce départ est introuvable' : 'This departure could not be found',
+			],
+		]) {
+			const page = await request.get(`${prefix}${path}?${dates}`);
+			expect(page.status(), path).toBe(404);
+			const html = await page.text();
+			expect(html).toContain(message);
+			expect(html).toContain('name="robots" content="noindex,nofollow"');
+			expect(html).not.toContain('data-slot="record-actions"');
+			expect(html).not.toContain('published no notice');
+			const csv = await request.get(`${prefix}${path}/record.csv?${dates}&section=${section}`);
+			expect(csv.status(), path).toBe(404);
+			expect(csv.headers()['content-type']).toMatch(/^text\/plain/u);
+			expect(csv.headers()['content-disposition']).toBeUndefined();
+			expect(await csv.text()).toBe(`${message}.\n`);
+		}
+	}
+});
+
+test('opaque live departure links require a current matching trip', async ({ request }) => {
+	const url = '/departure/trip?provider=stm&frameMode=live&trip=';
+	const known = await request.get(url + 'T1');
+	expect(known.status()).toBe(200);
+	const missing = await request.get(url + 'unknown-entity');
+	expect(missing.status()).toBe(404);
+	expect(await missing.text()).toContain('name="robots" content="noindex,nofollow"');
+});
+
 test('ephemeral and error documents keep a single noindex tag', async ({ request }) => {
 	for (const path of ['/trip/example', '/fr/trip/example', '/missing-share-page']) {
 		const response = await request.get(path);

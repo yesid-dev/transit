@@ -1,6 +1,7 @@
 import type { Locale } from '#lib/i18n/config.ts';
 import { applyEditionParams } from './recordEdition';
 import type { RecordPublication } from './selectors/lineRecord';
+import { csvDataHref } from '#lib/utils/csvDownload.ts';
 
 export interface CsvContext {
 	readonly providerId: string;
@@ -148,7 +149,7 @@ export function downloadCsv(
 	const period = scope.from && scope.to ? `${scope.from}-${scope.to}` : scope.kind;
 	return {
 		csv,
-		href: 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv),
+		href: csvDataHref(csv),
 		filename: `line-${encodeURIComponent(context.lineId)}-${encodeURIComponent(block)}-${encodeURIComponent(period)}-displayed-rows.csv`,
 	};
 }

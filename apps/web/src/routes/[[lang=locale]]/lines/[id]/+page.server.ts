@@ -1,6 +1,7 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import { loadLineRecord, lineDirection } from '#lib/server/lineRecord.ts';
-import { archivedIdentity, validEntityId } from '#lib/server/entityIdentity.ts';
+import { lineIdentity, validEntityId } from '#lib/server/entityIdentity.ts';
+import { detailNotFoundCopy } from '#lib/site/errorPage.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
@@ -20,7 +21,11 @@ export const load: PageServerLoad = async (event) => {
 	if (canonicalLocation) redirect(308, canonicalLocation);
 
 	const id = event.params.id;
-	if (!validEntityId(id)) error(404);
+	const locale = event.params.lang === 'fr' ? 'fr' : 'en';
+	function missingLine(): never {
+		error(404, detailNotFoundCopy.LINE_NOT_FOUND[locale].heading, { code: 'LINE_NOT_FOUND' });
+	}
+	if (!validEntityId(id)) missingLine();
 	const tab = detailTabFromSearchParams(url.searchParams);
 	if (tab === 'schedule') {
 		const target = new URL(url);
@@ -41,9 +46,8 @@ export const load: PageServerLoad = async (event) => {
 	const clock = frameClock(provider);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
 	if (!knownLine) {
-		const identity = await archivedIdentity('line', id, clock, { city: providerId, visitorIp });
-		if (identity === 'missing' && schedule)
-			error(404, lang === 'fr' ? 'Cette ligne est introuvable.' : 'This line could not be found.');
+		const identity = await lineIdentity(id, clock, { city: providerId, visitorIp }, schedule);
+		if (identity === 'missing') missingLine();
 		if (identity !== 'available')
 			error(
 				503,

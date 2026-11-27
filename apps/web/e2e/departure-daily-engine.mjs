@@ -31,11 +31,10 @@ export function departureDailyEngine(url, dailyMessageHold, richReport = false) 
 	if (departure && from === '2026-11-22' && measure === 'late' && group === 'day')
 		return { status: 503, body: {}, headers: { 'retry-after': '15' } };
 	if (departure && from === '2026-11-21') return { status: 503, body: {} };
-	const missingDeparture =
-		departure && get('line') === 'not-published' && measure === 'late' && group === 'day';
+	const identityLookup = departure && measure === 'trips_run' && group === 'departure';
 	if (
 		departure &&
-		!missingDeparture &&
+		!identityLookup &&
 		(!['24', '80', 'archived-line'].includes(get('line')) ||
 			get('direction') !== '0' ||
 			departure !== '07:00:00')
@@ -62,7 +61,6 @@ export function departureDailyEngine(url, dailyMessageHold, richReport = false) 
 		cleaning_versions: [richReport ? 12 : 8],
 		query_ms: 5,
 	};
-	if (missingDeparture) return { body: { cells: [], evidence, coverage_note: null } };
 	const timing = richReport
 		? {
 				classified: 609056,
@@ -141,6 +139,20 @@ export function departureDailyEngine(url, dailyMessageHold, richReport = false) 
 						],
 			},
 		};
+	if (identityLookup) {
+		const known =
+			['24', '80', 'archived-line'].includes(get('line')) &&
+			get('direction') === '0' &&
+			departure === '07:00:00';
+		return {
+			body: {
+				...envelope,
+				cells: known ? [cell({ direction: 0, departure }, { scheduled: 1 })] : [],
+			},
+		};
+	}
+	if (group === 'stop' && departure && from === '2026-11-15')
+		return { body: { ...envelope, cells: [] } };
 	if (group === 'stop' && departure && process.env.TRANSIT_E2E_DEPARTURE_NAMED === '1') {
 		return {
 			body: {

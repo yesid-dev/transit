@@ -45,9 +45,11 @@ for (const provider of ['stm', 'octranspo'])
 						? `Données ouvertes ${provider === 'stm' ? 'de la STM' : 'd’OC Transpo'}, calculs de Transit`
 						: `${provider === 'stm' ? 'STM' : 'OC Transpo'} open data, computed by Transit`;
 					expect(readFileSync((await download.path())!, 'utf8')).toBe(
-						(fr
-							? 'Mesure,Valeur,Source des données et licence'
-							: 'Measure,Value,Data source and licence') + `\npunctuality,0.8,"${source}"\n`,
+						'\ufeff' +
+							(fr
+								? 'Mesure,Valeur,Source des données et licence'
+								: 'Measure,Value,Data source and licence') +
+							`\npunctuality,0.8,"${source}"\n`,
 					);
 					expect(new URL(page.url()).pathname).toBe((fr ? '/fr' : '') + '/lines/24');
 					expect(snapshotRequests).toEqual([]);
