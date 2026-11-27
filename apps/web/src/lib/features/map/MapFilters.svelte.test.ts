@@ -10,10 +10,19 @@ describe('MapFilters', () => {
 	it('exposes marker and status settings as checked rows', async () => {
 		const store = createFilterStore(emptyFilterState(), () => {});
 		const view = render(MapFilters, { props: { store, locale: 'en' } });
-		store.setEntities(['bus', 'stop']);
+		const vehicle = view.getByRole('checkbox', { name: /^Vehicle$/ });
 		const stop = view.getByRole('checkbox', { name: 'Stop' });
+		expect(vehicle).toBeChecked();
+		expect(stop).toBeChecked();
 		await fireEvent.click(stop);
-		expect(stop).toHaveAttribute('aria-checked', 'false');
+		expect(stop).not.toBeChecked();
+		expect(vehicle).toBeChecked();
+		await fireEvent.click(vehicle);
+		expect(vehicle).not.toBeChecked();
+		expect(stop).not.toBeChecked();
+		await fireEvent.click(view.getByRole('button', { name: 'Clear' }));
+		expect(vehicle).toBeChecked();
+		expect(stop).toBeChecked();
 		const late = view.getByRole('checkbox', { name: 'Late' });
 		await fireEvent.click(late);
 		expect(late).toHaveAttribute('aria-checked', 'true');
@@ -106,14 +115,14 @@ describe('MapFilters', () => {
 			Array.from(container.querySelectorAll('[data-filter-group]'), (group) =>
 				group.getAttribute('data-filter-group'),
 			),
-		).toEqual(['markers', 'alerts', 'active', 'status', 'crowding']);
+		).toEqual(['markers', 'alerts', 'status', 'crowding']);
 		for (const name of ['Markers', 'Notices', 'Status', 'Room on board']) {
 			expect(getByRole('button', { name })).toHaveAttribute('aria-expanded', 'true');
 		}
-		expect(getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-expanded', 'false');
+		expect(queryByRole('button', { name: /^Active/ })).not.toBeInTheDocument();
 
-		const stop = getByRole('checkbox', { name: 'Stop' });
-		await fireEvent.click(stop);
+		const vehicle = getByRole('checkbox', { name: /^Vehicle$/ });
+		await fireEvent.click(vehicle);
 
 		expect(pushed).toBe('entity=stop');
 		expect(store.entities).toEqual(['stop']);
@@ -196,7 +205,7 @@ describe('MapFilters', () => {
 		});
 		store.addTrip('296851600');
 
-		const { getByRole, getByText, queryByText } = render(MapFilters, {
+		const { getByRole, getByText, queryByText, queryByRole } = render(MapFilters, {
 			props: { store, locale: 'en' },
 		});
 
@@ -208,6 +217,8 @@ describe('MapFilters', () => {
 
 		expect([...store.trips]).toEqual([]);
 		expect(pushed).toBe('');
+		expect(queryByRole('button', { name: /^Active/ })).not.toBeInTheDocument();
+		expect(getByRole('button', { name: 'Markers' })).toHaveFocus();
 	});
 
 	it('keeps selected route pills removable when multiple routes are active', async () => {

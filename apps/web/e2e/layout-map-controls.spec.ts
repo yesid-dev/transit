@@ -23,12 +23,32 @@ for (const provider of ['stm', 'octranspo'])
 				name: locale === 'fr' ? 'Arrêt' : 'Stop',
 				exact: true,
 			});
-			await expect(stop).toHaveAttribute('aria-checked', 'false');
-			await stop.press('Space');
+			await expect(stop).toHaveAttribute('aria-checked', 'true');
+			const vehicle = panel.getByRole('checkbox', {
+				name: locale === 'fr' ? 'Véhicule' : 'Vehicle',
+				exact: true,
+			});
+			await expect(vehicle).toHaveAttribute('aria-checked', 'true');
+			await expect(panel.locator('[data-filter-group="active"]')).toHaveCount(0);
+			await expect(page).not.toHaveURL(/[?&]entity=/);
+
+			await vehicle.press('Space');
+			await expect(vehicle).toHaveAttribute('aria-checked', 'false');
 			await expect(stop).toHaveAttribute('aria-checked', 'true');
 			await expect(page).toHaveURL(/[?&]entity=stop(?:&|$)/);
+			await vehicle.press('Enter');
+			await expect(vehicle).toHaveAttribute('aria-checked', 'true');
+			await expect(stop).toHaveAttribute('aria-checked', 'true');
+			await expect(page).not.toHaveURL(/[?&]entity=/);
+
 			await stop.press('Enter');
 			await expect(stop).toHaveAttribute('aria-checked', 'false');
+			await expect(vehicle).toHaveAttribute('aria-checked', 'true');
+			await expect(page).toHaveURL(/[?&]entity=bus(?:&|$)/);
+			await stop.press('Space');
+			await expect(stop).toHaveAttribute('aria-checked', 'true');
+			await expect(vehicle).toHaveAttribute('aria-checked', 'true');
+			await expect(page).not.toHaveURL(/[?&]entity=/);
 			const heading = panel.locator('[data-filter-group="markers"] .mf-group-trigger');
 			const row = await stop.boundingBox();
 			const header = await heading.boundingBox();

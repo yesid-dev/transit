@@ -278,6 +278,7 @@ export function mapReportFilterTokens(filter: FilterState): string[] {
 	for (const id of sortedIds(filter.vehicles)) tokens.push(`vehicle:${id}`);
 	for (const code of filter.status ?? []) tokens.push(`status:${code}`);
 	for (const code of filter.occupancy ?? []) tokens.push(`occupancy:${code}`);
+	if (filter.entities?.length === 0) tokens.push('entity:none');
 	for (const kind of filter.entities ?? []) tokens.push(`entity:${kind}`);
 	for (const kind of filter.alerts ?? []) tokens.push(`alert:${kind}`);
 	return tokens;

@@ -5,9 +5,11 @@ import {
 	type EntityKind,
 	type AlertEntityKind,
 	type DateWindow,
+	ENTITY_KINDS,
 	cloneFilterState,
 	emptyFilterState,
 	isEmptyFilterState,
+	visibleEntityKinds,
 } from './state';
 import { toSearchString } from './url';
 
@@ -79,6 +81,7 @@ export interface FilterStore {
 	toggleOccupancy(code: OccupancyCode): void;
 	setOccupancy(codes: readonly OccupancyCode[]): void;
 	toggleEntity(kind: EntityKind): void;
+	toggleMarker(kind: EntityKind): void;
 	setEntities(kinds: readonly EntityKind[]): void;
 	toggleAlert(kind: AlertEntityKind): void;
 	setAlerts(kinds: readonly AlertEntityKind[]): void;
@@ -396,6 +399,19 @@ export function createFilterStore(init: FilterState, pushUrl: PushUrl = () => {}
 				},
 				{ kind: 'entity', value: kind },
 				kind,
+			);
+		},
+		toggleMarker(kind) {
+			const visible = visibleEntityKinds(current);
+			const next = visible.includes(kind)
+				? visible.filter((item) => item !== kind)
+				: [...visible, kind];
+			mutate(
+				(draft) => {
+					if (next.length === ENTITY_KINDS.length) delete draft.entities;
+					else draft.entities = next;
+				},
+				ENTITY_KINDS.map((value) => ({ kind: 'entity', value })),
 			);
 		},
 		setEntities(kinds) {

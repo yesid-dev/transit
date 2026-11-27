@@ -241,12 +241,15 @@ describe('toVehicleFeatures entity filtering', () => {
 		]);
 	});
 
-	it('hides all buses when only stops are selected', () => {
-		const filter = { ...EMPTY_FILTER, entities: ['stop'] } as unknown as FilterState;
-		const features = toVehicleFeatures(vehicles, filter).features;
+	it.each([{ entities: ['stop'] }, { entities: [] }])(
+		'hides all vehicles when the marker filter excludes them ($entities)',
+		({ entities }) => {
+			const filter = { ...EMPTY_FILTER, entities } as unknown as FilterState;
+			const features = toVehicleFeatures(vehicles, filter).features;
 
-		expect(features.map((f) => f.properties.matched)).toEqual([0, 0]);
-	});
+			expect(features.map((f) => f.properties.matched)).toEqual([0, 0]);
+		},
+	);
 
 	it('keeps only buses with alerts when the bus alert filter is selected', () => {
 		const filter = { ...EMPTY_FILTER, alerts: ['has_alert'] } as unknown as FilterState;

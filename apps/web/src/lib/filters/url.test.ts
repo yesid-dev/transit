@@ -112,6 +112,15 @@ describe('fromSearchParams — parsing + self-healing', () => {
 		expect((s as { entities?: string[] }).entities).toEqual(['bus', 'stop']);
 	});
 
+	it('round-trips both markers hidden separately from the default', () => {
+		const hidden = fromSearchParams(sp('entity=none'));
+		expect(hidden.entities).toEqual([]);
+		expect(isEmptyFilterState(hidden)).toBe(false);
+		expect(toSearchParams(hidden).toString()).toBe('entity=none');
+		expect(fromSearchParams(sp('entity=')).entities).toBeUndefined();
+		expect(fromSearchParams(sp('entity=garbage')).entities).toBeUndefined();
+	});
+
 	it('drops alert junk, keeps valid alert entity filters', () => {
 		const s = fromSearchParams(sp('alert=has_alert,bogus,has_alert'));
 		expect((s as { alerts?: string[] }).alerts).toEqual(['has_alert']);

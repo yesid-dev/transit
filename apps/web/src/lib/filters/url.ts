@@ -86,8 +86,10 @@ export function fromSearchParams(sp: URLSearchParams): FilterState {
 	const occupancy = normalizeOccupancy(collect(sp, 'occupancy'));
 	if (occupancy) state.occupancy = occupancy;
 
-	const entities = normalizeEntities(collect(sp, 'entity'));
+	const entityTokens = collect(sp, 'entity');
+	const entities = normalizeEntities(entityTokens);
 	if (entities) state.entities = entities;
+	else if (entityTokens.length === 1 && entityTokens[0] === 'none') state.entities = [];
 
 	const alerts = normalizeAlerts(collect(sp, 'alert'));
 	if (alerts) state.alerts = alerts;
@@ -149,7 +151,7 @@ export function toSearchParams(s: FilterState): URLSearchParams {
 				break;
 			}
 			case 'entity': {
-				if (s.entities && s.entities.length > 0) sp.set('entity', s.entities.join(','));
+				if (s.entities) sp.set('entity', s.entities.join(',') || 'none');
 				break;
 			}
 			case 'alert': {
