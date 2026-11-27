@@ -86,7 +86,7 @@
 			rate = match.scheduled_frequency;
 			sign = headsigns[id];
 		}
-		if (rate == null) return t('Unknown', 'Inconnu');
+		if (rate == null) return t('Unknown', 'Inconnue');
 		// At most one trip an hour: say the trips of the part, not an interval over empty hours.
 		if (rate <= 1 && period.days)
 			return sparseService(

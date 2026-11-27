@@ -299,7 +299,7 @@ export function tripsOverDays(trips: number, days: number, locale: Locale) {
 export function plannedInterval(tripsPerHour: number, locale: Locale) {
 	const minutes = Math.max(1, Math.round(60 / tripsPerHour));
 	const interval = minuteReading(minutes, locale);
-	if (!interval) return locale === 'fr' ? 'Inconnu' : 'Unknown';
+	if (!interval) return locale === 'fr' ? 'Inconnue' : 'Unknown';
 	if (minutes === 1) return locale === 'fr' ? 'chaque minute' : 'every minute';
 	return locale === 'fr' ? `toutes les ${interval}` : `every ${interval}`;
 }
