@@ -237,10 +237,10 @@
 			if (event.target instanceof Element && event.target.closest('[data-slot="footer"]'))
 				measure();
 		};
+		// The observer's first report comes after layout, so mounting never forces one.
 		const observer = new ResizeObserver(measure);
 		observer.observe(header);
 		doc.addEventListener('focusin', onFocusIn);
-		measure();
 		return () => {
 			observer.disconnect();
 			doc.removeEventListener('focusin', onFocusIn);

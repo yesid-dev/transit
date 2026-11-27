@@ -195,11 +195,7 @@
 			closeLabel={windowLayout.centered ? copy.closeDates : copy.close}
 			class={windowLayout.centered ? undefined : 'overflow-y-auto p-4'}
 			data-lenis-prevent
-			onOpenAutoFocus={(event) => {
-				if (!windowLayout.centered || !datesTitle) return;
-				event.preventDefault();
-				datesTitle.focus();
-			}}
+			onOpenAutoFocus={(event) => windowLayout.focusTitle(event, datesTitle)}
 		>
 			<Sheet.Header class={windowLayout.centered ? undefined : 'mx-auto w-full max-w-xl p-0 pr-8'}>
 				<Sheet.Title

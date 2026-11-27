@@ -6,7 +6,7 @@
 	import type { SearchList } from '#lib/search/transitSearch.ts';
 	import { AppFrame, AnnouncementBanner, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
-	import { frameClock } from '#lib/site/frameState.ts';
+	import { clockOnFocus, frameClock } from '#lib/site/frameState.ts';
 	import type { PublicCity, PublicProvider } from '#lib/v1/schemas/providers.ts';
 	import NavPill from './NavPill.svelte';
 	import { frameSurfaceRailContext, type RegisterFrameSurfaceRail } from './frameSurfaceRail.ts';
@@ -187,7 +187,7 @@
 	style:--map-source-clearance={fullViewport ? `${mapCreditHeight}px` : undefined}
 	data-slot="app-shell"
 	bind:clientWidth={shellWidth}
-	onfocusin={() => (now = new Date())}
+	onfocusin={() => (now = clockOnFocus(provider, now))}
 >
 	{#if fullViewport}
 		<span aria-hidden="true" class="invisible absolute w-[1rem]" bind:clientWidth={remWidth}></span>

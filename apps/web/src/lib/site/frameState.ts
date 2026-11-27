@@ -56,6 +56,14 @@ export function frameClock(provider: FrameProvider, now = new Date()): FrameCloc
 	};
 }
 
+/**
+ * The clock's time after a new look at the screen: `next` only when the city's local day has
+ * changed. Within the same day the frame stays as it is, so a focus never rebuilds it.
+ */
+export function clockOnFocus(provider: FrameProvider, current: Date, next = new Date()): Date {
+	return frameClock(provider, next).today === frameClock(provider, current).today ? current : next;
+}
+
 const shiftDay = (day: string, offset: number) =>
 	isoDay(new Date(Date.parse(day) + offset * 86_400_000));
 const minDay = (a: string, b: string) => (a < b ? a : b);
