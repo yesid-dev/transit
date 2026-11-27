@@ -52,12 +52,6 @@
 	const figuresId = `${uid}-figures`;
 	const printNoteId = `${uid}-print`;
 
-	function focusTitle(event: Event, title: HTMLElement | null) {
-		if (!windowLayout.centered || !title) return;
-		event.preventDefault();
-		title.focus();
-	}
-
 	function download(): void {
 		const file = createDownload?.();
 		if (!file) return;
@@ -125,7 +119,7 @@
 					showCloseButton={windowLayout.centered}
 					{closeLabel}
 					class={windowLayout.centered ? undefined : 'max-h-[90dvh] overflow-y-auto'}
-					onOpenAutoFocus={(event) => focusTitle(event, downloadTitle)}
+					onOpenAutoFocus={(event) => windowLayout.focusTitle(event, downloadTitle)}
 				>
 					<Sheet.Header>
 						<Sheet.Title
@@ -197,7 +191,7 @@
 				{closeLabel}
 				style="--sheet-center-width: 48rem"
 				class={windowLayout.centered ? undefined : 'max-h-[90dvh] overflow-y-auto'}
-				onOpenAutoFocus={(event) => focusTitle(event, citeTitle)}
+				onOpenAutoFocus={(event) => windowLayout.focusTitle(event, citeTitle)}
 			>
 				<Sheet.Header>
 					<Sheet.Title

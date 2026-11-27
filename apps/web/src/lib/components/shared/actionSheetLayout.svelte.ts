@@ -21,6 +21,19 @@ export function actionSheetLayout() {
 			// The kit's responsive side uses short motion on phones too. Keep the original bottom slide.
 			return viewport.current ? 'center' : 'bottom';
 		},
+		/**
+		 * A centred window takes focus on its title. Focus waits for the window's first frame: focusing
+		 * forces style and layout, and doing it in the opening task held back the window's fade.
+		 */
+		focusTitle(event: Event, title: HTMLElement | null | undefined) {
+			if (!viewport.current || !title) return;
+			event.preventDefault();
+			requestAnimationFrame(() =>
+				requestAnimationFrame(() => {
+					if (title.isConnected) title.focus({ preventScroll: true });
+				}),
+			);
+		},
 		get titleClass() {
 			if (!viewport.current) return undefined;
 			// Programmatic focus can inherit :focus-visible from the previously focused element.

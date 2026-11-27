@@ -3,6 +3,7 @@ import {
 	carryFrameState,
 	dailyReportPeriod,
 	frameHref,
+	clockOnFocus,
 	frameClock,
 	parseAnswerFrameState,
 	parseFrameState,
@@ -22,6 +23,16 @@ describe('app frame URL state', () => {
 			mode: 'record',
 			period: { from: '2026-11-15', to: '2026-11-21', preset: '7-days' },
 		});
+	});
+
+	it('keeps the clock on a focus within the same local day, and moves it on a new day', () => {
+		const toronto = { timezone: 'America/Toronto' };
+		const evening = new Date('2026-11-22T03:00:00Z');
+		// 22:00 and 23:59 in Toronto: the same day, so the frame is not rebuilt.
+		expect(clockOnFocus(toronto, evening, new Date('2026-11-22T04:59:00Z'))).toBe(evening);
+		// 00:01 the next day in Toronto: the new day moves the clock.
+		const after = new Date('2026-11-22T05:01:00Z');
+		expect(clockOnFocus(toronto, evening, after)).toBe(after);
 	});
 
 	it('uses the local calendar day even after UTC midnight', () => {
