@@ -499,7 +499,13 @@
 		/>{/if}
 {/snippet}
 {#snippet resultActions()}
-	{#if record && result && rows.length}
+	{#if !result}
+		<div class="flex flex-wrap gap-2" aria-hidden="true">
+			<Skeleton class={locale === 'fr' ? 'h-11 w-34' : 'h-11 w-27'} />
+			<Skeleton class={locale === 'fr' ? 'h-11 w-33' : 'h-11 w-29'} />
+			<Skeleton class={locale === 'fr' ? 'h-11 w-19' : 'h-11 w-18'} />
+		</div>
+	{:else if record && rows.length}
 		{@const href = new URL('#stop-results', pinned).href}
 		{@const headers = [
 			t('Stop ID', 'Identifiant de l’arrêt'),
@@ -548,6 +554,11 @@
 		/>
 	{/if}
 {/snippet}
+{#snippet pendingEvidence()}
+	<div class="grid min-h-[1lh] content-center" aria-hidden="true">
+		<Skeleton class="h-4 w-60 max-w-full" />
+	</div>
+{/snippet}
 
 <RecordScreen class="min-w-0">
 	<div class="stop-cards min-w-0" data-slot="screen-content">
@@ -558,10 +569,11 @@
 					{locale}
 					value={null}
 					{sentence}
-					actions={record && result && rows.length && !updatingSearch && !searchFailed
+					actions={record && rows.length && !updatingSearch && !searchFailed
 						? resultActions
 						: undefined}
 					time={stamp}
+					meta={record && !result && rows.length ? pendingEvidence : undefined}
 					evidence={evidence
 						? {
 								sample: sample ?? '',
@@ -570,6 +582,8 @@
 						: undefined}
 				/>
 			</div>
+		</RecordGroup>
+		<RecordGroup>
 			<RecordCard {title} {stamp} interactive evidence={evidence ? evidenceFoot : undefined}>
 				<div class="grid min-w-0 grid-cols-1 gap-3">
 					<form
@@ -778,7 +792,13 @@
 						key: 'method',
 						label: about.methodRow,
 						text: null,
-						link: { href: localizeHref('/metrics', locale, provider?.id), label: about.method },
+						links: [
+							{ href: localizeHref('/metrics', locale, provider?.id), label: about.method },
+							{
+								href: localizeHref('/metrics#about-transit', locale, provider?.id),
+								label: stopErrorLink[locale].label,
+							},
+						],
 					},
 					{
 						key: 'source',
@@ -786,15 +806,6 @@
 						text: operator
 							? `${about.feeds(agencyName(operator, provider))} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
 							: null,
-					},
-					{
-						key: 'feedback',
-						label: stopErrorLink[locale].label,
-						text: null,
-						link: {
-							href: localizeHref('/metrics#about-transit', locale, provider?.id),
-							label: stopErrorLink[locale].title,
-						},
 					},
 				]}
 			/>

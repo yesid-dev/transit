@@ -116,7 +116,7 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#alerts')).toContainText(fr ? 'Non suivi' : '3');
 			await expect(main.locator('#accessibility')).toContainText(fr ? 'Non publié' : 'Accessible');
 			await expect(
-				main.getByRole('link', { name: fr ? 'À propos de Transit' : 'About Transit' }),
+				main.getByRole('link', { name: fr ? 'Vous avez vu une erreur?' : 'Seen an error?' }),
 			).toHaveAttribute('href', /\/metrics\?.*#about-transit$/u);
 
 			const waiting = main.locator('#waiting');

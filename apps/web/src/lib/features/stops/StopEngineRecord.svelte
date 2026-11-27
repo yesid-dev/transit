@@ -246,18 +246,15 @@
 				key: 'method',
 				label: term.methodRow,
 				text: null,
-				link: { href: link('/metrics'), label: term.method },
+				links: [
+					{ href: link('/metrics'), label: term.method },
+					{ href: link('/metrics#about-transit'), label: stopErrorLink[locale].label },
+				],
 			},
 			{
 				key: 'source',
 				label: term.source,
 				text: term.feeds(agencyName(operator, page.data.provider)),
-			},
-			{
-				key: 'feedback',
-				label: stopErrorLink[locale].label,
-				text: null,
-				link: { href: link('/metrics#about-transit'), label: stopErrorLink[locale].title },
 			},
 		]}
 	/>

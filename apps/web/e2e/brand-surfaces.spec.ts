@@ -102,9 +102,12 @@ test('Record listing headers show a title and a page edge without artwork', asyn
 			const title = element.querySelector('h1')!;
 			const boundary = element.querySelector('[data-slot="page-section-boundary"]')!;
 			const answer = element.querySelector('[data-slot="screen-answer"]')!;
+			const listing = element.querySelector('[data-slot="record-card"]')!;
+			// Some listings share their first section with the answer. The edge still leads into the list.
 			return (
+				Boolean(title.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING) &&
 				Boolean(title.compareDocumentPosition(boundary) & Node.DOCUMENT_POSITION_FOLLOWING) &&
-				Boolean(boundary.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING)
+				Boolean(boundary.compareDocumentPosition(listing) & Node.DOCUMENT_POSITION_FOLLOWING)
 			);
 		});
 		expect(order).toBe(true);

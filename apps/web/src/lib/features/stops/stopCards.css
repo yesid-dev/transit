@@ -16,6 +16,18 @@
 	overflow-anchor: none;
 }
 
+@media (40rem <= width < 64rem) {
+	/* At tablet width the French comparison and evidence wrap above the actions.
+	   Keep the timing row and its following section edge in place until both cards fill. */
+	.stop-record-answer:lang(fr) {
+		min-block-size: 13.75rem;
+	}
+
+	.stop-timing-cards:lang(fr) {
+		min-block-size: 27.125rem;
+	}
+}
+
 /* The shared body shapes exclude the card header, evidence and chart controls.
    Leave room for those here, including the wrapped legend and notes on a phone. */
 .stop-timing-cards > [data-slot='card']:first-child {

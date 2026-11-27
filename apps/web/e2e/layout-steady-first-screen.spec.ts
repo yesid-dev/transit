@@ -33,6 +33,7 @@ const targets = new Set<Screen>([
 	'lines',
 	'line-record',
 	'line-live',
+	'stops',
 	'stop-record',
 	'daily',
 	'data-health',
@@ -68,6 +69,7 @@ const recordAnswers = new Set<Screen>([
 	'network-health',
 	'lines',
 	'line-record',
+	'stops',
 	'stop-record',
 	'daily',
 	'data-health',
@@ -83,7 +85,7 @@ for (const { screen, href } of designPassCases.filter(
 		for (const locale of ['en', 'fr'] as const)
 			for (const width of widths) {
 				const held = recordAnswers.has(screen) && !(screen === 'alerts' && city === 'octranspo');
-				const index = held ? recordVariant++ : 0;
+				const index = held && screen !== 'stops' ? recordVariant++ : 0;
 				test(`steady ${screen} ${city} ${locale} ${width}px @layout`, async ({
 					page,
 					request,
@@ -105,6 +107,9 @@ for (const { screen, href } of designPassCases.filter(
 						const november = (day: number) => `2026-11-${String(day).padStart(2, '0')}`;
 						from = november(first);
 						to = november(first + 6 + position);
+					} else if (screen === 'stops') {
+						from = day(24 + position + (locale === 'fr' ? widths.length : 0));
+						to = '2026-11-20';
 					} else if (screen === 'daily') {
 						const first = locale === 'fr' ? 18 : 17;
 						from = `2026-11-${first}`;
