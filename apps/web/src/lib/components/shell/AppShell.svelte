@@ -303,7 +303,9 @@
 	.app-shell-root[data-full-viewport='true'] :global([data-slot='surface-rail-mobile']) {
 		--surface-rail-stack-offset: var(--map-source-clearance);
 	}
-	.app-shell-root:has(:global(.home-construction-floor)) {
+	/* The growing construction ground sits above the footer: neither may anchor scrolling, or the
+	   reveal would push the page it is revealing. Content above keeps its scroll anchoring. */
+	.app-shell-root:has(:global(.home-construction-floor)) .streaming-footer {
 		overflow-anchor: none;
 	}
 	/* Portalled search and map dialogs retain the app's stacking and safe-area tokens. */

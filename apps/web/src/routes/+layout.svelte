@@ -137,7 +137,6 @@
 		);
 		return mode === 'record' && period !== null && alertDetailsAllowed(period);
 	});
-	const isOverviewRecord = $derived(seoPath === '/' && page.data.record != null);
 	let constructionEdge = $state<HTMLElement>();
 	let constructionProgress = $state(1);
 
@@ -472,7 +471,6 @@
 		{#snippet main()}
 			<div
 				id="main-flow"
-				style:overflow-anchor={seoPath === '/' && !isOverviewRecord ? 'none' : undefined}
 				style:--expanded-map-credit={mapCreditExpanded ? `${mapCreditHeight}px` : undefined}
 				style:--map-source-clearance={mapCreditExpanded ? '0px' : undefined}
 				style:--map-touch-row-bottom={mapCreditExpanded
@@ -526,7 +524,7 @@
 					{/if}
 				</footer>
 			{:else}
-				{#if seoPath === '/' && !isOverviewRecord}
+				{#if seoPath === '/'}
 					{#key page.url.pathname}
 						<div bind:this={constructionEdge} class="construction-anchor" aria-hidden="true"></div>
 						<div class="home-construction-floor" style="--ground-progress:{constructionProgress}">

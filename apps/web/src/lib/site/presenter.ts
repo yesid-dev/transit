@@ -597,6 +597,14 @@ export const countedNotice = {
 	fr: 'Compte les avis distincts en vigueur à ces dates. Le nombre de publications comprend chaque version.',
 };
 
+/** The cities Transit covers, each once, alphabetically: "Montréal and Ottawa". */
+export function cityList(cities: readonly string[], locale: Locale): string | null {
+	const names = [...new Set(cities.map((city) => city.trim()).filter(Boolean))].sort((a, b) =>
+		a.localeCompare(b, locale),
+	);
+	return names.length ? new Intl.ListFormat(locale).format(names) : null;
+}
+
 export function noticesForLines(lines: readonly string[], locale: Locale) {
 	const list = new Intl.ListFormat(locale).format(lines);
 	if (locale === 'fr') return `Avis pour ${lines.length === 1 ? 'la ligne' : 'les lignes'} ${list}`;
