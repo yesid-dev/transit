@@ -22,6 +22,7 @@
 		locale,
 		pageSize = 8,
 		numeric = true,
+		fitReadings = false,
 	}: {
 		title: string;
 		headers: string[];
@@ -29,6 +30,7 @@
 		locale: Locale;
 		pageSize?: number;
 		numeric?: boolean;
+		fitReadings?: boolean;
 	} = $props();
 	type Row = LineReadingRow & { id: string; href?: string };
 	const tableRows = $derived<Row[]>(
@@ -71,12 +73,14 @@
 {#snippet fourth(row: Row)}{@render reading(row.values[3])}{/snippet}
 {#snippet phoneValue(row: Row)}{row.phone?.value ?? text(row.values[0])}{/snippet}
 {#snippet reading(item: Reading)}
-	{#if typeof item === 'string'}<span class:font-sans={!numeric}>{item}</span>{:else}
-		<span class="font-sans">{item.value}</span>
-		{#if item.detail}<span class="block font-sans text-small text-muted-foreground"
-				>{item.detail}</span
-			>{/if}
-	{/if}
+	<span class:fit-reading={fitReadings}>
+		{#if typeof item === 'string'}<span class:font-sans={!numeric}>{item}</span>{:else}
+			<span class="font-sans">{item.value}</span>
+			{#if item.detail}<span class="reading-detail block font-sans text-small text-muted-foreground"
+					>{item.detail}</span
+				>{/if}
+		{/if}
+	</span>
 {/snippet}
 <RecordDataTable
 	{locale}
@@ -89,3 +93,17 @@
 	scrollMinWidth={headers.length > 4 ? '35rem' : '15rem'}
 	phone={{ value: phoneValue, line: phoneLine }}
 />
+
+<style>
+	@container (inline-size >= 40rem) {
+		.fit-reading {
+			white-space: nowrap;
+		}
+		.fit-reading .reading-detail {
+			display: inline;
+		}
+		.fit-reading .reading-detail::before {
+			content: ' · ';
+		}
+	}
+</style>

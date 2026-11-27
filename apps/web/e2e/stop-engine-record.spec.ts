@@ -176,7 +176,7 @@ for (const width of [390, 1440]) {
 			// The notices card counts its notices in the card; a foot holding only the days says nothing.
 			await expect(main.locator('#alerts footer span')).toHaveCount(0);
 			await expect(waitingLine).toContainText(
-				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
+				fr ? 'Mesuré sur 20 des 48 intervalles prévus' : 'Measured on 20 of the 48 gaps planned',
 			);
 			await expect(
 				waiting.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /\b24\b/ }) }),

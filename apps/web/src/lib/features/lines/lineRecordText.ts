@@ -100,7 +100,7 @@ export function departureFinding(
 
 export function waitingFinding(answer: RecordMeasure, locale: Locale) {
 	const excess = waitingReadingParts(answer, 'excess_wait_time', locale);
-	if (excess.value && excess.detail)
+	if (excess.measured)
 		return choose(
 			locale,
 			`On the gaps Transit could measure, estimated waits were ${excess.value} longer than scheduled.`,

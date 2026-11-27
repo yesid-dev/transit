@@ -42,9 +42,9 @@ for (const width of [390, 1440]) {
 			const waiting = main.locator('#waiting');
 			await expect(waiting).toContainText(fr ? 'l’attente estimée' : 'estimated waits');
 			await expect(waiting).toContainText(
-				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
+				fr ? /Mesuré sur 20 des 48 intervalles prévus/ : 'Measured on 20 of the 48 gaps planned',
 			);
-			await expect(waiting).toContainText(fr ? 'des 48 intervalles prévus' : 'of 48 planned gaps');
+			await expect(waiting).toContainText(fr ? /41,7\s%/ : '41.7%');
 			const offered = main.locator('#offered');
 			await expect(offered.locator('[data-slot="chart-frame"]')).toBeVisible();
 			await expect(offered).toContainText(

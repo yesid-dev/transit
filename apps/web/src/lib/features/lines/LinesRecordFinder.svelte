@@ -7,7 +7,6 @@
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { routeFor } from '#lib/nav/index.ts';
-	import { routeModeKey } from '#lib/search/stopMode.ts';
 	import { carryFrameState, recordStart } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
@@ -47,7 +46,13 @@
 	import StateMark from '../record/StateMark.svelte';
 	import { finderCsv, finderRecordUrl, type FinderResult } from '../record/finderText.ts';
 	import { recordState, recordStateFor } from '../record/recordStates.ts';
-	import { lineExclusion, lineHold, lineHoldText, type LineHold } from './linesRecord.ts';
+	import {
+		belowRankingFloor,
+		lineExclusion,
+		lineHold,
+		lineHoldText,
+		type LineHold,
+	} from './linesRecord.ts';
 	import {
 		choose,
 		lastGoodNote,
@@ -108,6 +113,7 @@
 	const tripsHeader = $derived(t('Trips that ran', 'Trajets effectués'));
 	const eventsHeader = $derived(t('Stop events', 'Passages aux arrêts'));
 	const statusHeader = $derived(t('Status', 'État'));
+	const tooFew = $derived(t('Too few to judge', 'Trop peu pour juger'));
 	let settledPeriod = $state.raw<LinesRecord['period']>();
 	const shownPeriod = $derived(settledPeriod ?? record.period);
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(shownPeriod, locale) });
@@ -203,7 +209,16 @@
 		orderedLines(
 			all
 				.filter((row) => !row.noLive && row.onTime !== null)
-				.map((row) => ({ ...row, hold: lineHold(row.timing, floors) })),
+				.map((row) => {
+					const hold = lineHold(row.timing, floors);
+					return {
+						...row,
+						hold,
+						detail: belowRankingFloor(hold)
+							? [row.detail, lineHoldText(hold, locale)].filter(Boolean).join(' · ')
+							: row.detail,
+					};
+				}),
 			sort,
 			locale,
 		),
@@ -240,6 +255,9 @@
 	const measuredShown = $derived(measured.filter(matching));
 	const scheduleShown = $derived(scheduleOnly.filter(matching));
 	const excludedShown = $derived(excluded.filter(matching));
+	const noneScheduled = $derived(
+		excludedShown.length > 0 && excludedShown.every(({ timing }) => !timing),
+	);
 	const matchCount = $derived(measuredShown.length + scheduleShown.length + excludedShown.length);
 	const countLabels = $derived(
 		countTemplates(
@@ -447,10 +465,9 @@
 		observedLineReadings(measured.flatMap(({ timing }) => (timing ? [timing.evidence] : []))),
 	);
 
-	// The total is the sum of the three lists below.
 	const subtitle = $derived.by(() => {
-		if (!all.length) return undefined;
-		const count = countedUnit(all.length, 'line', locale);
+		if (!routes.length) return undefined;
+		const count = countedUnit(routes.length, 'line', locale);
 		return operator ? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${count}` : count;
 	});
 </script>
@@ -495,6 +512,8 @@
 
 {#snippet onTimeCell(row: Row)}
 	{#if initialTiming}{@render pendingCell()}
+	{:else if belowRankingFloor(row.hold)}
+		<span class="font-sans text-muted-foreground @min-[48rem]:whitespace-nowrap">{tooFew}</span>
 	{:else}
 		<strong class="font-sans text-base">{recordPercent(row.onTime!, locale)}</strong>
 		{#if row.hold}<small class="block font-sans text-muted-foreground"
@@ -504,11 +523,15 @@
 {/snippet}
 
 {#snippet phoneOnTime(row: Row)}
-	{#if initialTiming}{@render pendingCell()}{:else}{recordPercent(row.onTime!, locale)}{/if}
+	{#if initialTiming}{@render pendingCell()}{:else}{belowRankingFloor(row.hold)
+			? tooFew
+			: recordPercent(row.onTime!, locale)}{/if}
 {/snippet}
 
 {#snippet lateCell(row: Row)}
 	{#if initialTiming}{@render pendingCell()}
+	{:else if belowRankingFloor(row.hold)}
+		<span class="font-sans text-muted-foreground @min-[48rem]:whitespace-nowrap">{tooFew}</span>
 	{:else}<RecordTableValue
 			{locale}
 			text={row.late === null ? null : recordPercent(row.late, locale)}
@@ -550,8 +573,8 @@
 				{countedUnit(row.timing.evidence.counts.classified, 'event', locale)}{minimum == null
 					? '.'
 					: t(
-							`, the minimum is ${tally(minimum, locale)}.`,
-							`, sur un minimum de ${tally(minimum, locale)}.`,
+							`. A line needs ${tally(minimum, locale)} to show a share.`,
+							`. Il en faut ${tally(minimum, locale)} pour afficher une part.`,
 						)}
 			</p>
 		{:else if row.timing?.evidence.coverage_reason === 'insufficient_coverage'}
@@ -591,13 +614,13 @@
 				textSize="body"
 				label={t('Line number or name', 'Numéro ou nom de ligne')}
 				placeholder={t('Line number or name', 'Numéro ou nom de ligne')}
-				description={t(
-					'The lists narrow as you type.',
-					'Les listes se précisent pendant la saisie.',
-				)}
+				aria-describedby="lines-filter-help"
 				value={query}
 				oninput={(event) => queueQuery(event.currentTarget.value)}
 			/>
+			<p id="lines-filter-help" class="sr-only">
+				{t('The lists narrow as you type.', 'Les listes se précisent pendant la saisie.')}
+			</p>
 			<noscript
 				><Button type="submit" variant="outline">{t('Search', 'Rechercher')}</Button></noscript
 			>
@@ -707,6 +730,14 @@
 							: undefined}
 					>
 						{#if all.length}{@render lineField()}{/if}
+						{#if timingAnswer && !appliedQuery}
+							<p class="mb-2 text-small text-muted-foreground">
+								{t(
+									`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'is' : 'are'} listed here: ${tally(measured.length, locale)} measured, ${tally(scheduleOnly.length, locale)} without live data, ${tally(excluded.length, locale)} that cannot be judged on these dates.`,
+									`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'figure' : 'figurent'} ici\u00a0: ${tally(measured.length, locale)} avec des mesures, ${tally(scheduleOnly.length, locale)} sans données en direct, ${tally(excluded.length, locale)} qu’on ne peut pas juger à ces dates.`,
+								)}
+							</p>
+						{/if}
 						{#if timingFailure || tripsFailure}
 							<p>{recordConnection.unreachable[locale]}</p>
 						{/if}
@@ -728,13 +759,15 @@
 										return rowSentence(
 											[
 												row.detail,
-												row.late !== null && lateShare(row.late, locale),
+												!belowRankingFloor(row.hold) &&
+													row.late !== null &&
+													lateShare(row.late, locale),
 												row.trips !== null &&
 													counts?.ran != null &&
 													counts.scheduled != null &&
 													tripsRan(counts.ran, counts.scheduled, locale),
 												events != null && countedUnit(events, 'event', locale),
-												row.hold && lineHoldText(row.hold, locale).toLocaleLowerCase(locale),
+												row.hold?.reason === 'low_coverage' && lineHoldText(row.hold, locale),
 											],
 											locale,
 										);
@@ -778,13 +811,7 @@
 							{locale}
 							title={noLiveTitle}
 							rowHeader={lineHeader}
-							rows={scheduleShown.map((row) => ({
-								...row,
-								detail:
-									row.routeType !== null && routeModeKey(row.routeType)
-										? t('Schedule only.', 'Horaire seulement.')
-										: undefined,
-							}))}
+							rows={scheduleShown.map((row) => ({ ...row, detail: undefined }))}
 						/>
 					{:else if appliedQuery && scheduleOnly.length}
 						<p>{noMatch}</p>
@@ -819,12 +846,20 @@
 					<p>{recordConnection.unreachable[locale]}</p>
 				{:else if timingAnswer}
 					{#if excludedShown.length}
+						{#if noneScheduled}
+							<p class="mb-2">
+								{t(
+									`No trip was scheduled on these dates for ${countedUnit(excludedShown.length, 'line', locale)}.`,
+									`Aucun trajet n’était prévu à ces dates pour ${countedUnit(excludedShown.length, 'line', locale)}.`,
+								)}
+							</p>
+						{/if}
 						<RecordDataTable
 							{locale}
 							title={excludedTitle}
 							rowHeader={lineHeader}
 							rows={excludedShown}
-							columns={stateColumns}
+							columns={noneScheduled ? [] : stateColumns}
 						/>
 					{:else if appliedQuery && excluded.length}
 						<p>{noMatch}</p>
@@ -848,7 +883,7 @@
 					{ key: 'period', label: about.period, text: dateRange(shownPeriod, locale) },
 					{
 						key: 'counted',
-						label: about.counted,
+						label: t('Network', 'Réseau'),
 						waitingLines: initialTiming ? 2 : undefined,
 						text: counts ? `${counts}.` : null,
 					},
@@ -881,7 +916,10 @@
 						key: 'method',
 						label: about.methodRow,
 						text: null,
-						link: { href: localizeHref('/metrics', locale, record.city), label: about.method },
+						link: {
+							href: carryFrameState(localizeHref('/metrics', locale, record.city), pinned),
+							label: about.method,
+						},
 					},
 					{
 						key: 'source',

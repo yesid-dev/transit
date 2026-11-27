@@ -214,29 +214,21 @@
 		}
 		.with-heading.aside.has-actions {
 			--answer-actions-track: 20rem;
-			--answer-stamp-track: 15rem;
 			grid-template-areas: 'heading stamp actions' 'statement statement details';
-			grid-template-columns: minmax(0, 1fr) calc(var(--answer-stamp-track) - 1rem) var(
-					--answer-actions-track
-				);
+			grid-template-columns: minmax(0, 1fr) max-content var(--answer-actions-track);
 			column-gap: 1rem;
 			align-items: start;
 		}
 		.with-heading.aside.has-actions:lang(fr) {
 			--answer-actions-track: 23rem;
-			--answer-stamp-track: 16rem;
 		}
 		/* Let a long evidence line start below the stamp without narrowing the title above it. */
 		.with-heading.aside.has-actions.wide-details {
-			--details-extension: clamp(
-				0rem,
-				calc(46% - var(--answer-actions-track)),
-				var(--answer-stamp-track)
-			);
+			--details-extension: max(0rem, calc(46% - var(--answer-actions-track)));
 			grid-template-areas: 'heading stamp stamp actions' 'statement statement details details';
-			grid-template-columns:
-				minmax(0, 1fr) calc(var(--answer-stamp-track) - var(--details-extension))
-				var(--details-extension) var(--answer-actions-track);
+			grid-template-columns: minmax(0, 1fr) max-content var(--details-extension) var(
+					--answer-actions-track
+				);
 			column-gap: 0;
 		}
 		.with-heading.aside.has-actions.wide-details > :is(.answer-heading, .answer-statement),
@@ -261,6 +253,7 @@
 		.aside .answer-stamp {
 			grid-area: stamp;
 			align-self: center;
+			white-space: nowrap;
 		}
 		.aside .answer-actions {
 			grid-area: actions;

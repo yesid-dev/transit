@@ -83,6 +83,7 @@ export function finderEngine(url) {
 	const rich = from === '2026-11-04';
 	const richLines = rich && group === 'line';
 	const richStops = rich && group === 'stop_id';
+	const rankingFloor = group === 'line' && !trips && from === '2026-11-07' && to === '2026-11-12';
 	const days =
 		richLines || richStops
 			? Array.from({ length: (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1 }, (_, i) =>
@@ -122,6 +123,7 @@ export function finderEngine(url) {
 				on_time: value * 100,
 				late: 95 - value * 100,
 				classified: 100,
+				...(rankingFloor ? { observed_trips: line === '24' ? 40 : 2 } : {}),
 			},
 		);
 	const rows =
@@ -218,7 +220,13 @@ export function finderEngine(url) {
 									]),
 						]
 					: rows,
-			info: [{ id: trips ? 'trips_run' : 'on_time', minimum_sample: 500 }],
+			info: [
+				{
+					id: trips ? 'trips_run' : 'on_time',
+					minimum_sample: 500,
+					...(rankingFloor ? { ranking_floors: { line: { observed_trips: 20 } } } : {}),
+				},
+			],
 			coverage_note: null,
 			evidence: {
 				start_date: from,

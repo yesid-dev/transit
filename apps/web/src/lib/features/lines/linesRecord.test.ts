@@ -7,6 +7,7 @@ import {
 	lineMatches,
 	lineQuery,
 	lineSort,
+	lineSortKeys,
 	orderedLines,
 	lineSpread,
 	observedLineReadings,
@@ -27,9 +28,9 @@ describe('Lines Record', () => {
 			count: 2,
 			minimum: 20,
 		});
-		expect(lineHoldText(thin!, 'en')).toBe('Too few to judge: 2 observed trips, the minimum is 20');
+		expect(lineHoldText(thin!, 'en')).toBe('2 observed trips. A line needs 20 to be ranked.');
 		expect(lineHoldText(thin!, 'fr')).toBe(
-			'Trop peu de données pour conclure\u00a0: 2 trajets observés, sur un minimum de 20',
+			'2 trajets observés. Il en faut 20 pour classer une ligne.',
 		);
 		// STM line 222: 66 stop events.
 		expect(lineHold(timing({ classified: 66, observed_trips: 40 }), floors)).toMatchObject({
@@ -73,6 +74,26 @@ describe('Lines Record', () => {
 		{ id: '10', number: '10', onTime: 0.732, late: 0.2, trips: 0.98 },
 		{ id: '20', number: '20', onTime: 0.732, late: 0.15, trips: 0.95 },
 	];
+	it('puts held lines after ranked lines regardless of the selected order', () => {
+		const held = {
+			...rows[0]!,
+			hold: lineHold(timing({ classified: 104, observed_trips: 2 }), floors),
+		};
+		for (const key of lineSortKeys)
+			for (const direction of ['asc', 'desc'] as const)
+				expect(orderedLines([held, ...rows.slice(1)], { key, direction }, 'en').at(-1)).toBe(held);
+	});
+
+	it('sorts measured low-coverage rows by their share', () => {
+		const low = {
+			...rows[0]!,
+			onTime: 0.6,
+			hold: lineHold(timing({ classified: 120, observed_trips: 30 }, true), floors),
+		};
+		expect(
+			orderedLines([low, ...rows.slice(1)], { key: 'onTime', direction: 'asc' }, 'en')[0],
+		).toBe(low);
+	});
 	it('reads and validates a shareable sort, with numeric line numbers and absent readings last', () => {
 		expect(lineSort(new URLSearchParams('sort=unknown&direction=desc'))).toEqual({
 			key: 'line',

@@ -78,11 +78,12 @@ export function finderTrips(
 	};
 }
 
-export function finderRecordUrl(url: URL, city: string, period: { from: string; to: string }) {
-	const pinned = new URL(
-		frameHref(url, { mode: 'record', period: { ...period, preset: null } }),
-		url,
-	);
+export function finderRecordUrl(
+	url: URL,
+	city: string,
+	period: NonNullable<Parameters<typeof frameHref>[1]['period']>,
+) {
+	const pinned = new URL(frameHref(url, { mode: 'record', period }), url);
 	pinned.searchParams.set('provider', city);
 	return pinned;
 }
