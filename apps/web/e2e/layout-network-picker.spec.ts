@@ -24,8 +24,7 @@ test('the compact network picker follows page scroll while the pill stays fixed 
 	await expect.poll(async () => (await network.boundingBox())!.y).toBeCloseTo(initial.y - 24, 0);
 	expect((await pill.boundingBox())!.y).toBeCloseTo(pillTop, 0);
 
-	// Scrolling past the network row vacates its band: clicks pass through to page content
-	// and AppFrame's backdrop stops right at the pill's bottom edge.
+	// The chrome stays transparent and clicks below the pill reach the page content.
 	await scrollTo(300);
 	await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThanOrEqual(240);
 	await expect.poll(async () => (await network.boundingBox())!.y).toBeLessThan(0);
@@ -38,18 +37,19 @@ test('the compact network picker follows page scroll while the pill stays fixed 
 		const hit = document.elementFromPoint(window.innerWidth / 2, pillBox.bottom + 24);
 		return {
 			pillTop: pillBox.top,
-			pillBottom: Math.round(pillBox.bottom),
 			headerHeight: Math.round(header.getBoundingClientRect().height),
 			siteHeaderHeight: Math.round(siteHeader.getBoundingClientRect().height),
-			chromeBackground: getComputedStyle(chrome).backgroundImage,
+			chromeColor: getComputedStyle(chrome).backgroundColor,
+			chromeImage: getComputedStyle(chrome).backgroundImage,
 			hitInMain: Boolean(hit?.closest('main')),
 			hitTag: hit ? `${hit.tagName}.${hit.className}` : null,
 		};
 	});
 	expect(scrolledState.pillTop).toBeCloseTo(pillTop, 0);
 	expect(scrolledState.headerHeight).toBe(scrolledState.siteHeaderHeight);
-	expect(scrolledState.chromeBackground).toContain(`${scrolledState.pillBottom}px`);
-	expect(scrolledState.hitInMain, `hit target in vacated band: ${scrolledState.hitTag}`).toBe(true);
+	expect(scrolledState.chromeColor).toBe('rgba(0, 0, 0, 0)');
+	expect(scrolledState.chromeImage).toBe('none');
+	expect(scrolledState.hitInMain, `hit target below the pill: ${scrolledState.hitTag}`).toBe(true);
 
 	await scrollTo(0);
 	await expect.poll(async () => (await network.boundingBox())!.y).toBeCloseTo(initial.y, 0);

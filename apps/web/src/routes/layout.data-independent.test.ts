@@ -5,6 +5,7 @@ import { KitNavigationSimulator } from '#lib/features/map/__fixtures__/KitNaviga
 import type { V1Context } from '#lib/v1/boot.ts';
 import type { IsoUtc } from '#lib/v1/schemas/index.ts';
 import type { SearchList } from '#lib/search/transitSearch.ts';
+import { navPillCopy } from '#lib/i18n/messages.ts';
 import { NAV_GROUPS } from '#lib/content/nav.ts';
 import { announcement } from '#lib/site/announcement.ts';
 import { footerCopy } from '#lib/components/layout/footer.copy.ts';
@@ -26,7 +27,7 @@ it.each(['en', 'fr'] as const)(
 		expect(groups).toHaveLength(labels.length);
 		await fireEvent.click(view.getByRole('button', { name: /Open menu|Ouvrir le menu/ }));
 		expect(
-			within(view.getByRole('dialog')).getByRole('heading', {
+			within(view.getByRole('dialog', { name: navPillCopy[locale].menu })).getByRole('heading', {
 				name: locale === 'en' ? 'Rankings and reports' : 'Classements et rapports',
 			}),
 		).toBeInTheDocument();
@@ -484,7 +485,7 @@ describe('root layout data-independent legal routes', () => {
 			}
 
 			await fireEvent.click(view.getByRole('button', { name: openMenu }));
-			const menu = view.getByRole('dialog');
+			const menu = view.getByRole('dialog', { name: navPillCopy[lang].menu });
 			expect(menu).toBeInTheDocument();
 			expectInfoDestinationsAbsent(menu, infoLabel, links);
 

@@ -188,61 +188,92 @@ for (const locale of PUBLISHED_LOCALES) {
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 				await page.goto(localizeHref('/network?frameMode=live', locale));
 				await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
-				const pill = page.locator('.surface-rail-pill:visible');
-				await expect(pill).toHaveCount(1);
-				const sheet = page.getByRole('dialog', {
+				const carrier = page.locator('[data-slot="surface-rail-mobile"]');
+				const pill = carrier.locator(':scope > button');
+				const rail = carrier.locator('aside[data-slot="surface-rail"]');
+				const dialog = carrier.getByRole('dialog', {
 					name: locale === 'fr' ? 'Options' : 'Controls',
 					exact: true,
 				});
+				await expect(pill).toBeVisible();
+				await expect(rail).toBeHidden();
+				await expect(dialog).toHaveCount(0);
 				await pill.tap();
-				await expect(sheet).toBeVisible();
-				await expect(sheet.locator('[data-slot="surface-rail"]')).toBeVisible();
-				await expect(sheet.locator('[data-slot="sheet-header"]')).toHaveCount(0);
-				const motion = await sheet.evaluate((element) => {
-					const style = getComputedStyle(element);
-					return { animation: style.animationName, transition: style.transitionProperty };
-				});
-				if (reducedMotion === 'reduce') {
-					expect(motion.animation).toBe('none');
-					expect(motion.transition).toBe('none');
-				} else expect(motion.animation).not.toBe('none');
-				const segment = sheet.getByRole('radio', {
+				await expect(dialog).toBeVisible();
+				await expect(rail).toHaveRole('dialog');
+				await expect(rail).toHaveAttribute('aria-modal', 'true');
+				await expect(rail.locator('[data-slot="sheet-header"]')).toHaveCount(0);
+				const segment = dialog.getByRole('radio', {
 					name: locale === 'fr' ? 'En direct' : 'Live now',
 					exact: true,
 				});
 				await segment.tap();
 				await expect(segment).toHaveAttribute('aria-checked', 'true');
 				await page.keyboard.press('Tab');
-				expect(await sheet.evaluate((element) => element.contains(document.activeElement))).toBe(
+				expect(await rail.evaluate((element) => element.contains(document.activeElement))).toBe(
 					true,
 				);
-				if (reducedMotion === 'no-preference') {
-					await expect.poll(() => sheet.evaluate((el) => el.getAnimations().length)).toBe(0);
-					const samples = await sheet.evaluate(async (el) => {
-						const heights: number[] = [];
-						const rail = el.querySelector('[data-slot="surface-rail"]')!;
-						const initialHeight = rail.getBoundingClientRect().height;
-						el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-						await new Promise<void>((resolve) => {
-							const sample = () => {
-								if (!el.isConnected) return resolve();
-								heights.push(el.contains(rail) ? rail.getBoundingClientRect().height : 0);
-								requestAnimationFrame(sample);
-							};
+
+				await expect.poll(() => rail.evaluate((el) => el.getAnimations().length)).toBe(0);
+				const motion = await rail.evaluate(async (el: HTMLElement) => {
+					const carrier = el.closest('[data-slot="surface-rail-mobile"]')!;
+					const initialHeight = el.offsetHeight;
+					const heights: number[] = [];
+					const transitions = new Set<string>();
+					let animations = 0;
+					el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+					await new Promise<void>((resolve) => {
+						const sample = () => {
+							for (const animation of el.getAnimations()) {
+								if (animation instanceof CSSTransition)
+									transitions.add(animation.transitionProperty);
+								else animations++;
+							}
+							if (carrier.getAttribute('data-present') === 'false') return resolve();
+							heights.push(el.offsetHeight);
 							requestAnimationFrame(sample);
-						});
-						return { heights, initialHeight };
+						};
+						requestAnimationFrame(sample);
 					});
-					expect(samples.heights.length).toBeGreaterThan(2);
-					expect(Math.min(...samples.heights)).toBeGreaterThanOrEqual(samples.initialHeight - 1);
+					return { heights, initialHeight, transitions: [...transitions], animations };
+				});
+				expect(motion.animations).toBe(0);
+				if (reducedMotion === 'reduce') {
+					expect(motion.transitions).toEqual([]);
 				} else {
-					await page.keyboard.press('Escape');
+					expect(motion.transitions).toEqual(expect.arrayContaining(['opacity', 'transform']));
+					expect(motion.heights.length).toBeGreaterThan(0);
+					expect(Math.min(...motion.heights)).toBeGreaterThanOrEqual(motion.initialHeight - 1);
 				}
-				await expect(sheet).toBeHidden();
+				await expect(carrier).toHaveAttribute('data-present', 'false');
+				await expect(rail).toHaveCount(1);
+				await expect(rail).toHaveAttribute('inert', '');
+				await expect(rail).toBeHidden();
+				await expect(dialog).toHaveCount(0);
 				await expect(pill).toBeFocused();
 			} finally {
 				await context.close();
 			}
 		});
 	}
+}
+
+for (const locale of PUBLISHED_LOCALES) {
+	test(`${locale} SurfaceRail keeps its full pill label when space is tight @theme`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 320, height: 844 });
+		await page.goto(localizeHref('/network?frameMode=live', locale));
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await page.evaluate(() => document.fonts.ready);
+		const pill = page.locator('[data-slot="surface-rail-mobile"] > button');
+		const label = pill.locator('.surface-rail-pill-label');
+		const summary = pill.locator('.surface-rail-pill-summary-text');
+		await expect(summary).toBeVisible();
+		await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));
+		await expect(pill).toBeVisible();
+		await expect(summary).toHaveCount(1);
+		expect(await label.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+		expect(await pill.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(320);
+	});
 }

@@ -74,6 +74,8 @@ export async function layoutMetrics(page: Page, zoomed = false) {
 				for (const el of document.querySelectorAll('body *:not(svg *)')) {
 					if (!el.checkVisibility() || el.closest('[aria-hidden="true"], [data-allow-clip]'))
 						continue;
+					// AnswerLead measures the natural width separately from the rendered figure.
+					if (el.closest('[data-slot="answer-fit-measure"]')) continue;
 					// The skip link intentionally lives off canvas until the first Tab.
 					if (el.closest('a.skip-link:not(:focus)')) continue;
 					const rect = el.getBoundingClientRect();

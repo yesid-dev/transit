@@ -4,7 +4,7 @@
 	import { tick } from 'svelte';
 	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
-	import RankingChoice from './RankingChoice.svelte';
+	import { Combobox } from '@yesid/ui/combobox';
 	import { RangeMark } from '@yesid/ui/chart';
 	import { Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
@@ -325,8 +325,17 @@
 			<p>{label}</p>
 			<SegmentedChoice {options} value={current} {label} onSelect={pickClass} />
 		</div>
-		<div class="w-full min-w-0 @min-[36rem]:hidden">
-			<RankingChoice {options} value={current} {label} onSelect={pickClass} />
+		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
+			<p aria-hidden="true">{label}</p>
+			<Combobox
+				searchable={false}
+				options={options.map(({ key, label }) => ({ value: key, label }))}
+				value={current}
+				{label}
+				onValueChange={(next) => {
+					if (next !== null) pickClass(next);
+				}}
+			/>
 		</div>
 	{/if}
 {/snippet}
@@ -352,12 +361,17 @@
 				onSelect={selectMeasure}
 			/>
 		</div>
-		<div class="w-full min-w-0 @min-[36rem]:hidden">
-			<RankingChoice
-				options={byOptions}
+		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
+			<p aria-hidden="true">{t('By', 'Par')}</p>
+			<Combobox
+				searchable={false}
+				options={byOptions.map(({ key, label }) => ({ value: key, label }))}
 				value={measure}
-				onSelect={selectMeasure}
 				label={t('By', 'Par')}
+				onValueChange={(next) => {
+					const option = byOptions.find(({ key }) => key === next);
+					if (option) selectMeasure(option.key);
+				}}
 			/>
 		</div>
 		{#await record.answer then result}

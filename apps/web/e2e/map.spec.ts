@@ -91,7 +91,10 @@ test('manual refresh stays busy until live data is received and rendered', async
 test('a manual refresh shows its result under the button, moves nothing, then leaves', async ({
 	page,
 }) => {
-	await page.clock.install({ time: generated + 15_000 });
+	const time = generated + 15_000;
+	await page.clock.install({ time });
+	// Keep the stamp's live age fixed while measuring the result's effect on layout.
+	await page.clock.setFixedTime(time);
 	await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(generated) }));
 	await page.goto('/map?provider=stm', { waitUntil: 'networkidle' });
 
