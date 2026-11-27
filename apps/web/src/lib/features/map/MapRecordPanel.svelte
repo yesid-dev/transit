@@ -245,6 +245,7 @@
 			recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk),
 			(id) => (selectedId = id),
 			network,
+			resolveColor('var(--foreground)', mutedInk),
 		);
 	});
 	$effect(() => {

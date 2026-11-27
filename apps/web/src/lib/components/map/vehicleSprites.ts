@@ -5,7 +5,8 @@ import {
 	type StatusCode,
 	type OccupancyCode,
 } from '#lib/v1/schemas/types.ts';
-import { occupancyGlyph, occupancyVar, statusVar } from '#lib/components/dataviz/tokens.ts';
+import { occupancyGlyph, statusVar } from '#lib/components/dataviz/tokens.ts';
+import { measureRampInk, measureRamps } from '#lib/components/dataviz/measureRamps.ts';
 
 export const VEHICLE_MARKER_GEOMETRY = Object.freeze({
 	box: 26,
@@ -48,7 +49,7 @@ export const SILENT_FILL_FALLBACK = '#f5f5f5';
 export const SILENT_HALO_TOKEN = 'var(--background)';
 
 export function mapOccupancyColour(code: OccupancyCode) {
-	return `color-mix(in srgb, ${occupancyVar(code)}, var(--foreground) 45%)`;
+	return measureRamps.crowding[OCCUPANCY_CODES.indexOf(code)]!;
 }
 
 export function resolveColor(varExpr: string, fallback: string): string {
@@ -90,7 +91,7 @@ function roundedRect(
 	ctx.closePath();
 }
 
-function vehicleCanvas(fill: string, halo: string): HTMLCanvasElement {
+function vehicleCanvas(fill: string, outline: string, detail = outline): HTMLCanvasElement {
 	const ctx = spriteContext();
 	ctx.lineJoin = 'round';
 	const x = 6.5;
@@ -101,12 +102,12 @@ function vehicleCanvas(fill: string, halo: string): HTMLCanvasElement {
 	ctx.fillStyle = fill;
 	ctx.fill();
 	ctx.lineWidth = 2;
-	ctx.strokeStyle = halo;
+	ctx.strokeStyle = outline;
 	ctx.stroke();
 
 	const inset = 2.4;
 	roundedRect(ctx, x + inset, y + inset, width - inset * 2, 5.6, 2);
-	ctx.fillStyle = halo;
+	ctx.fillStyle = detail;
 	ctx.fill();
 	for (const headlight of [x + inset + 1.2, x + width - inset - 1.2]) {
 		ctx.beginPath();
@@ -331,10 +332,12 @@ export function bakeVehicleSprites(
 			vehicleCanvas(vehicleFill(statusVar(status), '#8a8a8a'), vehicleHalo),
 		);
 	}
-	for (const occupancy of OCCUPANCY_CODES) {
+	for (const [level, occupancy] of OCCUPANCY_CODES.entries()) {
 		const fill = vehicleFill(mapOccupancyColour(occupancy), '#7a5fb0');
+		const outline = forced ? vehicleHalo : foreground;
+		const detail = forced ? vehicleHalo : resolveColor(measureRampInk[level]!, vehicleHalo);
 		for (const status of STATUS_CODES) {
-			add(occupancyBodyIconId(status, occupancy), vehicleCanvas(fill, vehicleHalo));
+			add(occupancyBodyIconId(status, occupancy), vehicleCanvas(fill, outline, detail));
 		}
 	}
 	for (const code of OCCUPANCY_CODES as readonly OccupancyCode[]) {

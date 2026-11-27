@@ -1,4 +1,9 @@
-import type { ExpressionSpecification, Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
+import type {
+	ExpressionSpecification,
+	LineLayerSpecification,
+	Map as MapLibreMap,
+	MapMouseEvent,
+} from 'maplibre-gl';
 import {
 	OTHER_STOPS_MIN_ZOOM,
 	recordCorridorWidths,
@@ -10,6 +15,7 @@ import {
 const sourceId = 'record-map';
 const pointsId = 'record-map-stops';
 const pointDetailId = 'record-map-stop-centres';
+const outlineId = 'record-map-corridor-outline';
 const segmentIds = [
 	'record-map-no-data',
 	'record-map-too-few',
@@ -24,28 +30,52 @@ const allIds = [
 	...segmentIds,
 ];
 
-function rampSize([first, second, third, fourth, fifth]: readonly [
-	number,
-	number,
-	number,
-	number,
-	number,
-]): ExpressionSpecification {
-	return ['match', ['get', 'step'], 0, first, 1, second, 2, third, 3, fourth, fifth];
+function rampSize(
+	[first, second, third, fourth, fifth]: readonly [number, number, number, number, number],
+	extra = 0,
+): ExpressionSpecification {
+	return [
+		'match',
+		['get', 'step'],
+		0,
+		first + extra,
+		1,
+		second + extra,
+		2,
+		third + extra,
+		3,
+		fourth + extra,
+		fifth + extra,
+	];
+}
+
+function corridorWidth(network: boolean, extra = 0): ExpressionSpecification {
+	return network
+		? [
+				'interpolate',
+				['linear'],
+				['zoom'],
+				10,
+				rampSize(recordCorridorWidths.network, extra),
+				16,
+				rampSize(recordCorridorWidths.detail, extra),
+			]
+		: rampSize(recordCorridorWidths.detail, extra);
 }
 
 export function attachRecordMap(
 	map: MapLibreMap,
 	features: RecordFeatures,
 	onpick: (id: string) => void,
-	network = false,
+	network: boolean,
+	outline: string,
 ) {
 	function draw() {
 		if (map.getSource(sourceId)) return;
 		map.addSource(sourceId, { type: 'geojson', data: features });
 		for (const [state, id] of segmentIds.entries()) {
 			const dash = recordUnmeasuredLine.dashes[state];
-			map.addLayer({
+			const layer: LineLayerSpecification = {
 				id,
 				type: 'line',
 				source: sourceId,
@@ -53,25 +83,21 @@ export function attachRecordMap(
 				layout: { 'line-cap': 'round', 'line-join': 'round' },
 				paint: {
 					'line-color': ['get', 'colour'],
-					'line-width': dash
-						? recordUnmeasuredLine.width
-						: network
-							? [
-									'interpolate',
-									['linear'],
-									['zoom'],
-									10,
-									rampSize(recordCorridorWidths.network),
-									16,
-									rampSize(recordCorridorWidths.detail),
-								]
-							: rampSize(recordCorridorWidths.detail),
+					'line-width': dash ? recordUnmeasuredLine.width : corridorWidth(network),
 					'line-offset': network
 						? ['interpolate', ['linear'], ['zoom'], 12, 0, 15, 3, 16, 5]
 						: ['get', 'offset'],
 					...(dash ? { 'line-dasharray': [...dash] } : {}),
 				},
-			});
+			};
+			if (!dash) {
+				map.addLayer({
+					...layer,
+					id: outlineId,
+					paint: { ...layer.paint, 'line-color': outline, 'line-width': corridorWidth(network, 2) },
+				});
+			}
+			map.addLayer(layer);
 		}
 		for (const main of [true, false]) {
 			const minzoom = main ? 0 : OTHER_STOPS_MIN_ZOOM;
@@ -94,8 +120,8 @@ export function attachRecordMap(
 					],
 					'circle-color': ['get', 'colour'],
 					'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
-					'circle-stroke-color': ['get', 'colour'],
-					'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 1.5],
+					'circle-stroke-color': ['match', ['get', 'state'], 3, outline, ['get', 'colour']],
+					'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 3, 1, 1.5],
 				},
 			});
 			map.addLayer({
@@ -139,6 +165,7 @@ export function attachRecordMap(
 		map.off('idle', draw);
 		map.off('click', pick);
 		for (const id of allIds) if (map.getLayer(id)) map.removeLayer(id);
+		if (map.getLayer(outlineId)) map.removeLayer(outlineId);
 		if (map.getSource(sourceId)) map.removeSource(sourceId);
 	};
 }
