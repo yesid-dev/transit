@@ -5,6 +5,8 @@ export function networkServiceFixture(url) {
 	if (['line', 'stop', 'departure', 'vehicle'].some((key) => query.has(key))) return null;
 	const measure = query.get('measure');
 	const group = query.get('group');
+	// Finder requests need rows keyed by line or stop, even during a network fixture window.
+	if (group === 'line' || group === 'stop_id') return null;
 	if (
 		!['crowding', 'service_delivered'].includes(measure) &&
 		!['day_type', 'weekday_hour'].includes(group) &&
