@@ -1000,6 +1000,7 @@ def test_http_and_bilingual_csv_come_from_same_registry(
         assert [
             {key: value for key, value in entry.items() if key != "family_text"} for entry in info
         ] == json.loads(answer)["info"]
+        assert all("query_ms" not in entry["evidence_fields"] for entry in info)
         if family == "service_delivered":
             status, _, stop_answer = await http(app, "/measure", params + "&stop=first")
             assert status == 200
@@ -1243,7 +1244,7 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Canonical JSON digests include the public CSV headers, which omit operational query time.
+    # These digests reflect query_ms removed from evidence_fields and both CSV header lists.
     # The fixture spans two query batches, a DST transition, and one missing day.
     # Stop "first" (46.7% observed) is excluded for low coverage, not ranked.
     expected = {
