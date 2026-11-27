@@ -2,6 +2,7 @@ const COMMON_CUTS = [
   "line", "direction", "hour", "day_type", "effect", "cause", "format", "lang", "from_stop", "to_stop", "include_method",
 ];
 const LAYER_CUTS = ["lines", "route_type", "time_band", "hour_from", "hour_to"];
+const STRETCH_MEASURES = ["stretch_timing", "stretch_time_lost", "stretch_clear_run_speed"];
 
 export const QUESTION_PARAMS = {
   measure: {
@@ -45,7 +46,7 @@ const VALID = {
   route_type: (value) => /^[0-9]{1,4}$/.test(value),
   time_band: oneOf("all", "overnight", "morning", "midday", "afternoon", "evening"),
   day_type: oneOf("weekday", "saturday", "sunday"),
-  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "segment", "line_stop", "vehicle", "effect", "cause"),
+  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "segment", "line_stop", "stretch", "vehicle", "effect", "cause"),
   kind: oneOf("line", "stop", "departure", "vehicle", "segment"),
   class: (value) => /^(?:all|(?:[0-9]+|unknown|mixed):(?:night|frequent|regular))$/.test(value),
   limit: (value) => /^[0-9]{1,3}$/.test(value) && Number(value) >= 1 && Number(value) <= 500,
@@ -132,13 +133,17 @@ export function parseQuestion(url) {
   const map = params.get("view") === "map";
   const clearRun = params.get("measure") === "clear_run_time_lost";
   const waits = params.get("measure") === "excess_wait_time" && params.get("group") === "line_stop";
-  const layerMap = map && (waits || (clearRun && params.get("group") === "segment"));
+  const stretch = STRETCH_MEASURES.includes(params.get("measure"));
+  const layerMap = map && (waits || (clearRun && params.get("group") === "segment") ||
+    (stretch && params.get("group") === "stretch"));
   const stops = params.get("measure") === "late" && params.get("group") === "stop_id";
   const segments = params.get("measure") === "mean_time_lost" && params.get("group") === "segment";
   const mapReading = map && (stops || segments || layerMap);
-  if (!mapReading && (clearRun || params.get("group") === "line_stop" ||
+  if (!mapReading && (clearRun || stretch || ["line_stop", "stretch"].includes(params.get("group")) ||
       (route === "measure" && LAYER_CUTS.some((key) => params.has(key))))) {
-    throw new Error("clear runs, waits by line and stop, and layer filters require a map reading");
+    throw new Error(
+      "clear runs, stretch timing, waits by line and stop, and layer filters require a map reading",
+    );
   }
   if (mapReading) {
     const range = params.has("hour_from") || params.has("hour_to");

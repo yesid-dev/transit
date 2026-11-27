@@ -96,6 +96,9 @@ from transit_engine.series import (
     LOCAL_HOUR as _LOCAL_HOUR,
 )
 from transit_engine.store import CITY, CheckedDay, Store
+from transit_engine.stretches import MIN_PASSES as MIN_STRETCH_PASSES
+from transit_engine.stretches import Cut as StretchCut
+from transit_engine.stretches import stretch_day, stretch_readings
 from transit_engine.vehicles import (
     MIN_REPORTING_SILENCE_MINUTES,
     MIN_STABLE_ID_READINGS,
@@ -312,6 +315,10 @@ _VEHICLES_ID = "vehicles"
 _CORRIDORS_ID = "corridors"
 _CLEAR_RUN_ID = "clear_run"
 CLEAR_RUN_TIME_LOST = "clear_run_time_lost"
+_STRETCH_ID = "stretch_timing"
+STRETCH_TIME_LOST = "stretch_time_lost"
+STRETCH_CLEAR_RUN_SPEED = "stretch_clear_run_speed"
+STRETCH_MEASURES = frozenset((_STRETCH_ID, STRETCH_TIME_LOST, STRETCH_CLEAR_RUN_SPEED))
 CORRIDOR_RANKING_DEFAULT = "median_time_lost"
 _ACCESSIBILITY_ID = "accessibility"
 _DELAY_DISTRIBUTION_ID = "delay_distribution"
@@ -362,7 +369,10 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
-        if self.measure == CLEAR_RUN_TIME_LOST or self.group == "line_stop":
+        if (
+            self.measure in STRETCH_MEASURES or self.measure == CLEAR_RUN_TIME_LOST
+            or self.group in ("line_stop", "stretch")
+        ):
             if not self.layer_map:
                 raise ValueError("clear runs and waits by line and stop require their map view")
         map_readings = self.map_view and (self.measure, self.group) in {
@@ -422,7 +432,7 @@ class Question:
         elif self.from_stop is not None or self.to_stop is not None:
             raise ValueError("from_stop and to_stop apply to corridors")
         if self.group is not None:
-            if family.query is None:
+            if family.query is None and family.id != _STRETCH_ID:
                 raise ValueError("scorecard measures do not support group")
             if self.group not in GROUP_COLUMNS or ranking:
                 raise ValueError("group must be " + ", ".join(GROUP_COLUMNS))
@@ -513,6 +523,7 @@ class Question:
     def layer_map(self) -> bool:
         return self.map_view and (
             (self.measure == CLEAR_RUN_TIME_LOST and self.group == "segment")
+            or (self.measure in STRETCH_MEASURES and self.group == "stretch")
             or (self.measure == "excess_wait_time" and self.group == "line_stop")
         )
 
@@ -523,7 +534,10 @@ class Question:
             return next(
                 ((p.start_hour, p.end_hour) for p in PERIODS if p.id == self.time_band), None
             )
-        return (6, 24) if self.measure == CLEAR_RUN_TIME_LOST and self.hour is None else None
+        if self.hour is not None:
+            return (self.hour, self.hour + 1) if self.measure in STRETCH_MEASURES else None
+        timed = self.measure == CLEAR_RUN_TIME_LOST or self.measure in STRETCH_MEASURES
+        return (6, 24) if timed else None
 
     def cuts(self) -> dict[str, str | int | tuple[str, ...]]:
         cuts = {
@@ -616,6 +630,7 @@ _UNIT_LABELS = {
     "vehicle_minutes": Text("Vehicle-minutes", "Minutes-véhicules"),
     "trips": Text("Trips", "Trajets"),
     "trips_per_hour": Text("Trips per hour", "Trajets par heure"),
+    "km_per_hour": Text("Kilometres per hour", "Kilomètres par heure"),
     "periods": Text("Periods", "Périodes"),
     "per_100_vehicle_hours": Text("Per 100 vehicle-hours", "Par 100 heures-véhicules"),
     "per_100_trips": Text("Per 100 trips", "Par 100 trajets"),
@@ -3494,6 +3509,132 @@ _CLEAR_RUN = Family(
 )
 
 
+_STRETCH_TIMING = Family(
+    id=_STRETCH_ID,
+    label=Text("Stretch timing", "Temps par tronçon"),
+    method_version="stretch-timing-v1",
+    since="2026-11-28",
+    tables=(TRIP_DAYS,),
+    minimum_cleaning_version=SEGMENT_RUNS_VERSION,
+    minimum_sample=MIN_STRETCH_PASSES,
+    query=None,
+    counts=Text(
+        "Each stop-to-stop run is cut into pieces of about 100 m, and each vehicle's pass "
+        "through a piece is timed from its position readings. For each piece, passes are "
+        "sorted by time. The clear run is the pass time at the fastest tenth's boundary. "
+        "Time lost is the exact median minus that time. Total time lost adds, over every "
+        "pass slower than the clear run, how much slower it was. The clear-run speed is the "
+        "speed while moving at the same boundary from the fast end, in whole km/h. At least "
+        "20 passes are needed. By default, a pass must start from 06:00 up to midnight in "
+        "the local time zone.",
+        "Chaque parcours entre deux arrêts est découpé en morceaux d’environ 100 m, et le "
+        "passage de chaque véhicule dans un morceau est chronométré à partir de ses positions. "
+        "Pour chaque morceau, les passages sont classés par durée. Le parcours fluide est la "
+        "durée à la limite du dixième le plus rapide. Le temps perdu est la médiane exacte "
+        "moins cette durée. Le temps perdu total additionne, pour chaque passage plus lent que "
+        "le parcours fluide, l’écart avec celui-ci. La vitesse du parcours fluide est la "
+        "vitesse en mouvement à la même limite, du côté rapide, en km/h entiers. Il faut au "
+        "moins 20 passages. Par défaut, un passage doit commencer de 6 h à minuit, heure locale.",
+    ),
+    exclusions=Text(
+        "Uses passes timed from readings at most 90 s apart, with a measured speed. "
+        "The first and last 30 m of each trip and layovers at line ends are left out. A "
+        "position repeated while the vehicle moved on is not counted as a stop.",
+        "Utilise les passages chronométrés à partir de positions espacées d’au plus 90 s, "
+        "avec une vitesse mesurée. Les 30 premiers et 30 derniers mètres de chaque "
+        "trajet et les battements en bout de ligne sont exclus. Une position répétée alors que "
+        "le véhicule avançait n’est pas comptée comme un arrêt.",
+    ),
+    limits=Text(
+        "Positions arrive about every 20 to 60 s, so a single pass is timed to about 15 s. "
+        "The result locates extra time on the stretch. It cannot identify the "
+        "cause, and a slowdown shared by all passes is already part of the clear run.",
+        "Les positions arrivent environ toutes les 20 à 60 s, donc un passage est "
+        "chronométré à environ 15 s près. Le résultat situe le temps supplémentaire "
+        "sur le tronçon. Il ne précise pas la cause, et un ralentissement commun à tous les "
+        "passages fait déjà partie du parcours fluide.",
+    ),
+    measures=(
+        Measure(
+            STRETCH_TIME_LOST,
+            "seconds",
+            Text(
+                "Extra time a typical pass takes on this stretch, compared with the fastest "
+                "tenth of passes.",
+                "Temps supplémentaire d’un passage typique sur ce tronçon, par rapport au "
+                "dixième le plus rapide des passages.",
+            ),
+            ranking_kinds=(),
+        ),
+        Measure(
+            STRETCH_CLEAR_RUN_SPEED,
+            "km_per_hour",
+            Text(
+                "How fast vehicles move on this stretch when nothing holds them up. Time "
+                "stopped is not counted.",
+                "Vitesse des véhicules sur ce tronçon quand rien ne les retient. Le temps "
+                "d’arrêt n’est pas compté.",
+            ),
+            ranking_kinds=(),
+        ),
+    ),
+)
+
+
+def _stretch_answer(
+    store: Store,
+    question: Question,
+    family: Family,
+    selected: tuple[Measure, ...],
+    started: float,
+) -> dict[str, Any]:
+    hours = question.layer_hours()
+    assert hours is not None
+    lines = question.lines or ((question.line,) if question.line is not None else ())
+    cut = StretchCut(hours, question.route_type, lines, question.direction)
+    with service_query(store, question.city) as conn:
+        window = read_window(conn, store, question, family, selected)
+        days, trip_days, included = [], [], []
+        for index, day_key in enumerate(window.included):
+            paths = stretch_day(conn, store, question.city, date.fromisoformat(day_key))
+            if paths is None:
+                # The v12 day exists, but its stretch timing is not published yet.
+                window.measured.remove(day_key)
+                window.missing.append(day_key)
+                window.unmeasured_reasons[day_key] = "stretch_timing_missing"
+                continue
+            included.append(day_key)
+            days.append(paths)
+            trip_days.append(window.paths[TRIP_DAYS][index])
+        window.included = included
+        window.missing.sort()
+        readings = stretch_readings(conn, days, cut, trip_days)
+    columns = (
+        "from_stop", "to_stop", "pieces", "piece", "length_m",
+        "from_lat", "from_lon", "to_lat", "to_lon", "passes",
+        "clear_run_seconds", "median_seconds", "time_lost_seconds",
+        "total_time_lost_seconds", "clear_run_speed_kmh",
+    )  # fmt: skip
+    fields: dict[str, list[Any]] = {column: [] for column in (*columns, "value", "state")}
+    value_of = {
+        STRETCH_TIME_LOST: "time_lost_seconds",
+        STRETCH_CLEAR_RUN_SPEED: "clear_run_speed_kmh",
+    }.get(question.measure)
+    for reading in readings:
+        check_query()
+        for column in columns:
+            fields[column].append(getattr(reading, column))
+        measured = reading.clear_run_seconds is not None
+        fields["value"].append(getattr(reading, value_of) if value_of and measured else None)
+        fields["state"].append("measured" if measured else "too_few_to_judge")
+    return {
+        "measure": question.measure,
+        "minimum_sample": family.minimum_sample,
+        **fields,
+        "evidence": window.evidence(store, question, family, started),
+        "info": [_info(family, measure) for measure in selected],
+    }
+
 def _corridor_rows(
     conn: duckdb.DuckDBPyConnection,
     family: Family,
@@ -4109,6 +4250,7 @@ _FAMILIES = (
     _VEHICLES,
     _CORRIDORS,
     _CLEAR_RUN,
+    _STRETCH_TIMING,
     _SCORECARD,
     _ACCESSIBILITY,
 )
@@ -5206,6 +5348,8 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
             ))
             for measure in selected
         )
+    if family is _STRETCH_TIMING:
+        return _stretch_answer(store, question, family, selected, started)
     if question.group:
         return _series_answer(store, question, family, selected, question.group, started)
     totals = Batch()

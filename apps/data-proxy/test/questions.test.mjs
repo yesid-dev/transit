@@ -419,6 +419,48 @@ test("forwards map layer cuts and keeps older engines and the timetable map usab
   assert.equal((await f.fetch(`${period}&measure=mean_time_lost&group=segment`)).status, 200);
 });
 
+test("forwards stretch timing layers and falls back for engines without them", async (t) => {
+  let old = false;
+  const f = fixture(t, (request) => {
+    const query = new URL(request.url).searchParams;
+    if (old && query.get("measure").startsWith("stretch_")) {
+      return Response.json({ message: "unknown measure" }, { status: 400 });
+    }
+    return Response.json({ state: ["measured"], value: [12] });
+  });
+  const period = "/v2/demo/measure?from=2020-01-01&to=2020-01-30&view=map";
+  const lost = `${period}&measure=stretch_time_lost&group=stretch`;
+  const speed = `${period}&measure=stretch_clear_run_speed&group=stretch`;
+  const lines = encodeURIComponent(JSON.stringify(["B", "A"]));
+  assert.equal((await f.fetch(`${lost}&lines=${lines}&direction=1&time_band=evening`)).status, 200);
+  assert.deepEqual(Object.fromEntries(new URL(f.requests.at(-1).url).searchParams), {
+    city: "demo", from: "2020-01-01", to: "2020-01-30", view: "map",
+    measure: "stretch_time_lost", group: "stretch", lines: '["A","B"]',
+    direction: "1", time_band: "evening",
+  });
+  assert.equal((await f.fetch(`${speed}&route_type=3&hour_from=7&hour_to=9`)).status, 200);
+
+  const requestCount = f.requests.length;
+  for (const path of [
+    `${lost}&stop=12`,
+    `${lost}&line=A&lines=${lines}`,
+    `${speed}&hour=8&time_band=midday`,
+    lost.replace("&view=map", ""),
+    `${period}&measure=stretch_time_lost&group=segment`,
+    `${period}&measure=mean_time_lost&group=stretch`,
+  ]) {
+    assert.equal((await f.fetch(path)).status, 400, path);
+  }
+  assert.equal(f.requests.length, requestCount);
+
+  old = true;
+  for (const path of [lost, speed]) {
+    const response = await f.fetch(path);
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { reason: "map_layer_unsupported" });
+  }
+});
+
 test("only the bound entrypoint uses the forwarded visitor IP", async (t) => {
   const f = fixture(t);
   const edge = "192.0.2.1";

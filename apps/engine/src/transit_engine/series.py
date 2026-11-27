@@ -16,6 +16,7 @@ type SeriesGroup = Literal[
     "stop_id",
     "segment",
     "line_stop",
+    "stretch",
     "vehicle",
     "effect",
     "cause",
@@ -34,6 +35,7 @@ GROUP_COLUMNS: dict[SeriesGroup, tuple[str, ...]] = {
     "stop_id": ("stop",),
     "segment": ("line", "direction", "from_stop", "to_stop"),
     "line_stop": ("line", "direction", "stop"),
+    "stretch": ("from_stop", "to_stop", "pieces", "piece"),
     "vehicle": ("vehicle",),
     "effect": ("effect",),
     "cause": ("cause",),
@@ -103,6 +105,7 @@ def series_sql(group: SeriesGroup, hour: str, day: str = "service_date") -> str:
         "stop_id": "row(stop_id)",
         "segment": "row(route_id, direction_id, from_stop, to_stop)",
         "line_stop": "row(route_id, direction_id, stop_id)",
+        "stretch": "row(from_stop, to_stop, pieces, piece)",
     }[group]
 
 

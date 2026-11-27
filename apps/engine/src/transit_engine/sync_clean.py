@@ -7,16 +7,21 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import UTC, date, datetime, timedelta
 from hashlib import file_digest
 from pathlib import Path
 from typing import BinaryIO
 
 from transit_engine.clean_manifest import file_identities
 from transit_engine.store import CITY, Store, env_int
+from transit_engine.stretches import STRETCH_VERSION, receipt_tables
 
 REMOTE = "clean:transit-clean"
 DATE = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
 MIB = 1024**2
+# Stretch timing is kept whole in R2. The engine host keeps the latest 30 days.
+STRETCH_LOCAL_DAYS = 30
+STRETCH_PREFIX = f"stretch/v{STRETCH_VERSION}"
 
 
 class R2:
@@ -51,6 +56,13 @@ class R2:
             "--include", f"/*/*/v{version}/**",
             "--include", "/search/v1/**",
             "--include", "/maps/v1/**",
+        )
+        return {entry["Path"]: entry["Size"] for entry in json.loads(result)}
+
+    def listing(self, include: str) -> dict[str, int]:
+        result = self.run(
+            "lsjson", REMOTE, "--recursive", "--files-only", "--no-modtime", "--no-mimetype",
+            "--include", include,
         )
         return {entry["Path"]: entry["Size"] for entry in json.loads(result)}
 
@@ -167,6 +179,111 @@ def sync(remote: R2, root: Path, version: int, reserve: int, *, check: bool = Fa
     print(f"Published {len(pending)} clean days and {len(missing_search)} search files", flush=True)
 
 
+def _write_receipt(root: Path, key: str, payload: bytes, reserve: int) -> None:
+    marker = root / key
+    require_space(root, reserve, len(payload))
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    partial = marker.with_suffix(".json.part")
+    with partial.open("wb") as stream:
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+    publish_manifest(partial, marker)
+
+
+def _digests(payload: bytes) -> dict[str, str]:
+    files = json.loads(payload)["files"]
+    return {name: entry["sha256"] for name, entry in files.items()}
+
+
+def sync_stretches(
+    remote: R2,
+    root: Path,
+    reserve: int,
+    today: date,
+    *,
+    keep_days: int = STRETCH_LOCAL_DAYS,
+    check: bool = False,
+) -> None:
+    """Copy the latest stretch timing days, and drop older local copies R2 still holds."""
+    inventory = remote.listing(f"/{STRETCH_PREFIX}/**")
+    pattern = re.compile(rf"{STRETCH_PREFIX}/({CITY.pattern})/({DATE})/manifest\.json")
+    oldest = today - timedelta(days=keep_days - 1)
+    published = {
+        key: (match[1], date.fromisoformat(match[2]))
+        for key in sorted(inventory)
+        if (match := pattern.fullmatch(key))
+    }
+    wanted = {key: day for key, day in published.items() if day[1] >= oldest}
+    pending = {key: day for key, day in wanted.items() if not (root / key).is_file()}
+    folders = {key.rsplit("/", 1)[0] for key in pending}
+    needed = sum(size for key, size in inventory.items() if key.rsplit("/", 1)[0] in folders)
+    print(
+        f"stretch v{STRETCH_VERSION}: {len(published)} published days, {len(wanted)} in the "
+        f"last {keep_days} days, {len(pending)} to copy, up to {needed} bytes to copy",
+        flush=True,
+    )
+    require_space(root, reserve, needed)
+    if check:
+        return
+    for key, (city, day) in pending.items():
+        payload = remote.run("cat", f"{REMOTE}/{key}")
+        tables = receipt_tables(payload, city, day)
+        if tables is None or len(payload) != inventory[key]:
+            raise RuntimeError(f"Invalid stretch receipt: {key}")
+        digests = _digests(payload)
+        folder = key.rsplit("/", 1)[0]
+        for name, size in tables.values():
+            path = f"{folder}/{name}"
+            if inventory.get(path) != size:
+                raise RuntimeError(f"Stretch file missing from inventory: {path}")
+            copy_object(remote, path, root, size, reserve, digests[name])
+        _write_receipt(root, key, payload, reserve)
+    removed = kept = 0
+    for marker in sorted(root.glob(f"{STRETCH_PREFIX}/*/*/manifest.json")):
+        city, day_text = marker.parts[-3], marker.parts[-2]
+        try:
+            day = date.fromisoformat(day_text)
+        except ValueError:
+            continue
+        if day >= oldest:
+            continue
+        key = marker.relative_to(root).as_posix()
+        local = marker.read_bytes()
+        tables = receipt_tables(local, city, day)
+        # Only a day R2 holds byte for byte leaves this host.
+        if (
+            tables is None
+            or inventory.get(key) != len(local)
+            or remote.run("cat", f"{REMOTE}/{key}") != local
+        ):
+            kept += 1
+            continue
+        digests = _digests(local)
+        local_folder = marker.parent
+        verified = True
+        for name, size in tables.values():
+            local_file = local_folder / name
+            if inventory.get(f"{key.rsplit('/', 1)[0]}/{name}") != size:
+                verified = False
+            elif local_file.is_file():
+                with local_file.open("rb") as stream:
+                    verified &= file_digest(stream, "sha256").hexdigest() == digests[name]
+        if not verified:
+            kept += 1
+            continue
+        for name, _ in tables.values():
+            (local_folder / name).unlink(missing_ok=True)
+        marker.unlink()
+        local_folder.rmdir()
+        removed += 1
+    print(
+        f"Published {len(pending)} stretch days; removed {removed} local days older than "
+        f"{keep_days} days, kept {kept} not yet verified in R2",
+        flush=True,
+    )
+
+
 def main() -> None:
     if sys.platform != "linux":
         raise SystemExit("The clean mirror requires Linux and rclone")
@@ -174,13 +291,10 @@ def main() -> None:
     parser.add_argument("--check", action="store_true", help="Inventory and check disk space only")
     args = parser.parse_args()
     try:
-        sync(
-            R2(),
-            Path(os.environ["ENGINE_CLEAN_ROOT"]),
-            env_int("ENGINE_CLEANING_VERSION", 10),
-            env_int("ENGINE_DISK_RESERVE_MIB", 32768) * MIB,
-            check=args.check,
-        )
+        remote, root = R2(), Path(os.environ["ENGINE_CLEAN_ROOT"])
+        reserve = env_int("ENGINE_DISK_RESERVE_MIB", 32768) * MIB
+        sync(remote, root, env_int("ENGINE_CLEANING_VERSION", 10), reserve, check=args.check)
+        sync_stretches(remote, root, reserve, datetime.now(UTC).date(), check=args.check)
     except (OSError, RuntimeError, ValueError, KeyError) as error:
         raise SystemExit(str(error)) from None
 
