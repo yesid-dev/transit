@@ -25,6 +25,7 @@
 	import { getContext, onDestroy, onMount } from 'svelte';
 	import { getLocale } from '#lib/i18n/index.ts';
 	import { theme } from '@yesid/ui/state';
+	import { INITIAL_MAP_GLYPHS } from '#lib/components/map/mapGlyphs.ts';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import { mapCopy } from './map.copy';
 	import { getV1Context } from '#lib/v1/boot.ts';
@@ -191,6 +192,14 @@
 			});
 	}
 </script>
+
+<svelte:head>
+	{#if v1.manifest.basemap}
+		{#each INITIAL_MAP_GLYPHS as href (href)}
+			<link rel="preload" as="fetch" crossorigin="anonymous" {href} />
+		{/each}
+	{/if}
+</svelte:head>
 
 <div
 	class="map-progressive"

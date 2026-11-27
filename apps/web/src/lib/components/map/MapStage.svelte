@@ -1,5 +1,6 @@
 <script module lang="ts">
 	import type { addProtocol } from 'maplibre-gl';
+	import { mapStageImports } from './mapStageImports';
 
 	export interface MapStageImporters {
 		maplibre: () => Promise<
@@ -8,19 +9,6 @@
 		css: () => Promise<unknown>;
 		pmtiles: () => Promise<typeof import('pmtiles')>;
 	}
-
-	const DEFAULT_IMPORTERS: MapStageImporters = {
-		maplibre: async () => {
-			const [maplibre, { default: workerUrl }] = await Promise.all([
-				import('maplibre-gl'),
-				import('maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'),
-			]);
-			maplibre.setWorkerUrl(workerUrl);
-			return maplibre;
-		},
-		css: () => import('maplibre-gl/dist/maplibre-gl.css'),
-		pmtiles: () => import('pmtiles'),
-	};
 
 	/** `bounds`: no valid published bounds, so no camera and no map is constructed. */
 	export type MapStageFailureKind =
@@ -36,22 +24,40 @@
 	}
 
 	let pmtilesRegistration: Promise<void> | null = null;
+	let pmtilesPreparation: Promise<{
+		protocol: import('pmtiles').Protocol;
+		PMTiles: typeof import('pmtiles').PMTiles;
+	}> | null = null;
+
+	function preparePmtiles(load: MapStageImporters['pmtiles']) {
+		if (pmtilesPreparation) return pmtilesPreparation;
+		const preparation = (async () => {
+			const { Protocol, PMTiles } = await load();
+			return { protocol: new Protocol(), PMTiles };
+		})();
+		pmtilesPreparation = preparation;
+		void preparation.catch(() => {
+			if (pmtilesPreparation === preparation) pmtilesPreparation = null;
+		});
+		return preparation;
+	}
 
 	export async function registerPmtilesProtocol(
 		add: typeof addProtocol,
 		loadPmtiles: MapStageImporters['pmtiles'],
+		prepared?: ReturnType<typeof preparePmtiles>,
 	): Promise<void> {
 		if (pmtilesRegistration) return pmtilesRegistration;
-		const thisAttemptsPromise = (async () => {
-			const { Protocol } = await loadPmtiles();
-			const protocol = new Protocol();
+		const preparation = prepared ?? preparePmtiles(loadPmtiles);
+		const thisAttemptsPromise = preparation.then(({ protocol }) => {
 			add('pmtiles', protocol.tile);
-		})();
+		});
 		pmtilesRegistration = thisAttemptsPromise;
 		try {
 			await thisAttemptsPromise;
 		} catch (error) {
 			if (pmtilesRegistration === thisAttemptsPromise) pmtilesRegistration = null;
+			if (pmtilesPreparation === preparation) pmtilesPreparation = null;
 			throw error;
 		}
 	}
@@ -123,7 +129,7 @@
 		zoom = 11,
 		basemap = undefined,
 		basemapLoader,
-		importers = DEFAULT_IMPORTERS,
+		importers = mapStageImports,
 		theme = 'dark',
 		bounds,
 		maxBounds,
@@ -547,11 +553,21 @@
 
 		let failureKind: MapStageFailureKind = 'importer';
 		try {
+			const prepared = preparePmtiles(importers.pmtiles);
+			void Promise.all([prepared, basemapPromise])
+				.then(([{ protocol, PMTiles }, initialBasemap]) => {
+					if (!initialBasemap || !isCurrentAttempt(attempt)) return;
+					const url = initialBasemap.url;
+					const archive = protocol.get(url) ?? new PMTiles(url);
+					protocol.add(archive);
+					return archive.getHeader();
+				})
+				.catch(() => {});
 			const [maplibreModule] = await Promise.all([importers.maplibre(), importers.css()]);
 			if (!isCurrentAttempt(attempt)) return;
 			const maplibregl = maplibreModule;
 			failureKind = 'protocol';
-			await registerPmtilesProtocol(maplibregl.addProtocol, importers.pmtiles);
+			await registerPmtilesProtocol(maplibregl.addProtocol, importers.pmtiles, prepared);
 			if (!isCurrentAttempt(attempt)) return;
 			const initialBasemap = await basemapPromise;
 			if (!isCurrentAttempt(attempt)) return;

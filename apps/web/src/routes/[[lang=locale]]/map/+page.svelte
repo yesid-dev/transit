@@ -1,3 +1,25 @@
+<script module lang="ts">
+	import { browser } from '$app/env';
+	import { mapStageImports } from '#lib/components/map/mapStageImports.ts';
+
+	// Start fetching the map as soon as the route module arrives. The poster still owns
+	// rendering and can catch a failed import through its existing retry flow.
+	let prefetchedHero = browser ? import('#lib/features/map/MapHero.svelte') : undefined;
+	void prefetchedHero?.catch(() => {});
+	if (browser)
+		void Promise.all([
+			mapStageImports.maplibre(),
+			mapStageImports.css(),
+			mapStageImports.pmtiles(),
+		]).catch(() => {});
+
+	function importHero() {
+		const prefetched = prefetchedHero;
+		prefetchedHero = undefined;
+		return prefetched ?? import('#lib/features/map/MapHero.svelte');
+	}
+</script>
+
 <script lang="ts">
 	import { page } from '$app/state';
 	import MapProgressive from '#lib/features/map/MapProgressive.svelte';
@@ -17,4 +39,4 @@
 	);
 </script>
 
-<MapProgressive {record} />
+<MapProgressive {record} {importHero} />

@@ -175,10 +175,8 @@ describe('vectorStyleFromBasemap (Protomaps schema)', () => {
 		});
 	});
 
-	it('references public glyphs for text labels but no sprite', () => {
-		expect(style.glyphs).toBe(
-			'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-		);
+	it('uses versioned local glyphs for text labels', () => {
+		expect(style.glyphs).toBe('/map/glyphs/028c18f/{fontstack}/{range}.pbf');
 		expect(style.sprite).toBeUndefined();
 	});
 

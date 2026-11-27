@@ -26,6 +26,7 @@ import { buildAlertEntitySets, vehicleHasAlert } from './mapAlerts';
 import * as ownerCleanup from './mapOwnerCleanup';
 
 export interface MapSelectionSessionOptions {
+	readonly referenceReady?: () => boolean;
 	readonly live: Pick<
 		LiveStore,
 		'index' | 'vehicles' | 'alerts' | 'familyStates' | 'subscribeFamilies'
@@ -70,8 +71,12 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			ownerCleanup.reportCleanupFailure('MapHero cleanup failed', error),
 		);
 	}
-	const stops = createResource((signal) => getStopsIndexSlim({ signal }));
-	const routesIndex = createResource((signal) => getRoutesIndex({ signal }));
+	const stops = createResource((signal) => getStopsIndexSlim({ signal }), {
+		enabled: options.referenceReady,
+	});
+	const routesIndex = createResource((signal) => getRoutesIndex({ signal }), {
+		enabled: options.referenceReady,
+	});
 	const scheduledRouteIds = $derived(
 		(routesIndex.data?.routes ?? [])
 			.filter((route) => options.scheduleOnly?.(route.id, route.type))

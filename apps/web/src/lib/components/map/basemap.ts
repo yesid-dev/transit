@@ -25,6 +25,7 @@
 
 import type { ExpressionSpecification, FilterSpecification, StyleSpecification } from 'maplibre-gl';
 import type { BasemapFile, Manifest } from '#lib/v1/schemas/index.ts';
+import { BASEMAP_GLYPHS_URL } from './mapGlyphs';
 
 /**
  * Neutral surface palette for the basemap chrome. These mirror the theme
@@ -262,8 +263,6 @@ const PMTILES_SCHEME = 'pmtiles://';
 /** The vector source id every generated vector style registers under. */
 export const BASEMAP_SOURCE_ID = 'basemap';
 
-const BASEMAP_GLYPHS_URL =
-	'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf';
 const ROAD_NAME_FIELD = [
 	'coalesce',
 	['get', 'name'],

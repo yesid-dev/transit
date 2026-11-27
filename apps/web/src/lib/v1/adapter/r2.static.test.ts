@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import { ManifestSchema } from '#lib/v1/schemas/manifest.ts';
 import { r2Adapter } from './r2';
+// Load the fixture's adapter module before the individual request assertions run.
+import './r2.static';
 
 const shape = {
 	type: 'LineString',

@@ -300,16 +300,27 @@
 
 	let mapFailure = $state<MapStageFailure | null>(null);
 	let hasFirstIdle = $state(false);
-	const vehicleMotion = createVehicleMotion(getMapRoutes, {
+	const scheduleCache = $derived.by(() => {
+		void getV1Runtime().refresh.epoch;
+		return new Map<string, unknown>();
+	});
+	const vehicleMotion = createVehicleMotion((ids) => getMapRoutes(ids, { cache: scheduleCache }), {
 		now: () => untrack(() => clock.serverNow),
 		continuous: () => untrack(() => clock.serverNowContinuousMs()),
 	});
+	let referenceReady = $state(false);
 	const session = createMapSelectionSession({
+		referenceReady: () => referenceReady,
 		get nameSeparators() {
 			return v1.provider?.name_separators;
 		},
 		live,
-		repositories: { getRoute, getStop, getStopsIndexSlim, getRoutesIndex },
+		repositories: {
+			getRoute: (id, ctx) => getRoute(id, { ...ctx, cache: scheduleCache }),
+			getStop: (id, ctx) => getStop(id, { ...ctx, cache: scheduleCache }),
+			getStopsIndexSlim,
+			getRoutesIndex: (ctx) => getRoutesIndex({ ...ctx, cache: scheduleCache }),
+		},
 		filters,
 		locale,
 		timeZone,
@@ -436,12 +447,9 @@
 	let recordDataSettled = $state(false);
 	$effect(() => {
 		const { phase, lastGoodAt, error } = live.familyStates.vehicles;
-		oninitialdata?.(
-			session.stopsSettled &&
-				(isRecordLayer
-					? recordDataSettled
-					: phase === 'ready' || phase === 'failed' || lastGoodAt !== null || Boolean(error)),
-		);
+		const liveReadingSettled =
+			phase === 'ready' || phase === 'failed' || lastGoodAt !== null || Boolean(error);
+		oninitialdata?.(isRecordLayer ? session.stopsSettled && recordDataSettled : liveReadingSettled);
 	});
 	const publishRecordSourceDate = getContext<((date: string | null) => void) | undefined>(
 		mapRecordSourceDateContext,
@@ -566,10 +574,14 @@
 		);
 	});
 	const terminals = $derived(scheduleTerminals(mapDirections));
-	onMount(() => {
+	$effect(() => {
+		if (!referenceReady) return;
+		const cache = scheduleCache;
 		let active = true;
 		void import('#lib/v1/adapter/r2.static.ts')
-			.then(({ getMapRouteDirections }) => getMapRouteDirections({ providerId: manifest.provider }))
+			.then(({ getMapRouteDirections }) =>
+				getMapRouteDirections({ providerId: manifest.provider, cache }),
+			)
 			.then(
 				(directions) => {
 					if (active) mapDirections = directions;
@@ -911,6 +923,7 @@
 		const wasRecovering = recovering;
 		hasFirstIdle = false;
 		runtime.ready(m, reportSetupFailure);
+		referenceReady = true;
 		if (wasRecovering) {
 			recovering = false;
 			cameraIntents.replay((intent) => {
@@ -1754,6 +1767,7 @@
 >
 	<span class="map-layout-marker" aria-hidden="true" bind:clientWidth={remWidth}></span>
 	<MapRecordPanel
+		{scheduleCache}
 		onsourcedate={(date) => (recordSourceDate = date)}
 		ondata={(settled) => (recordDataSettled = settled)}
 		oncount={(count) => (recordCount = count)}

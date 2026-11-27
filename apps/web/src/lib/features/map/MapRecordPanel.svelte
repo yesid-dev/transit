@@ -60,6 +60,7 @@
 		onscope: (line: string, direction: string) => void;
 		onsourcedate: (date: string | null) => void;
 		ondata?: (settled: boolean) => void;
+		scheduleCache?: Map<string, unknown>;
 		reportCamera?: MapReportCamera | null;
 		oncount?: (count: number | null) => void;
 		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
@@ -79,6 +80,7 @@
 		onscope,
 		onsourcedate,
 		ondata,
+		scheduleCache,
 		reportCamera,
 		oncount,
 		children,
@@ -148,9 +150,9 @@
 	$effect(() => {
 		const id = line;
 		routeResult = null;
-		if (layer !== 'corridors' || !id) return;
+		if (!map || layer !== 'corridors' || !id) return;
 		const controller = new AbortController();
-		const context = { providerId: city, signal: controller.signal };
+		const context = { providerId: city, signal: controller.signal, cache: scheduleCache };
 		const edition = getRoute(id, context).catch(() => null);
 		const shaped = getMapRoutes([id], context).then(
 			([route]) => route,

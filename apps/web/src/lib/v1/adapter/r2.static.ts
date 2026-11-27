@@ -23,9 +23,15 @@ async function editionFor(ctx?: AdapterCtx): Promise<ScheduleEdition> {
 		if (!schedule) throw new Error('Schedule edition unavailable');
 		return schedule;
 	};
-	if (!browser || ctx?.fetch) {
+	if (!browser || ctx?.fetch || ctx?.cache) {
 		const result = request();
-		ctx?.cache?.set(key, result);
+		const cache = ctx?.cache;
+		if (cache) {
+			cache.set(key, result);
+			void result.catch(() => {
+				if (cache.get(key) === result) cache.delete(key);
+			});
+		}
 		return result;
 	}
 	const prior = requests.get(city);
