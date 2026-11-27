@@ -1,14 +1,13 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './stop-search-fixture';
 
 for (const locale of ['en', 'fr'] as const) {
 	test(`${locale}: a slow unknown stop streams into the missing-stop view`, async ({
 		page,
-		request,
+		stopSearch,
 	}) => {
 		const en = locale === 'en';
-		const fixture = `http://127.0.0.1:${process.env.TRANSIT_E2E_DATA_PORT ?? '4318'}`;
-		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops-search' });
-		await request.post(`${fixture}/__stops-search`);
+		await stopSearch.hold();
 		try {
 			const response = await page.goto(
 				`${en ? '' : '/fr'}/stop/57135?provider=stm&frameMode=record`,
@@ -18,7 +17,7 @@ for (const locale of ['en', 'fr'] as const) {
 			await expect(
 				page.getByRole('heading', { name: en ? 'Stop 57135' : 'Arrêt 57135' }),
 			).toBeVisible();
-			await request.post(`${fixture}/__overview/release?fixture=stops-search`);
+			await stopSearch.release();
 			await expect(
 				page.getByRole('heading', {
 					name: en ? 'This stop could not be found' : 'Cet arrêt est introuvable',
@@ -26,7 +25,7 @@ for (const locale of ['en', 'fr'] as const) {
 			).toBeVisible();
 			await expect(page.locator('meta[name="robots"][content="noindex"]')).toHaveCount(1);
 		} finally {
-			await request.post(`${fixture}/__overview/release?fixture=stops-search`);
+			await stopSearch.release();
 		}
 	});
 }
