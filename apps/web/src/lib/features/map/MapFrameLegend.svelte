@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import { createRawSnippet } from 'svelte';
 	import { RoutePlate } from '@yesid/ui/brand';
 	import { MapLegend, type MapLegendItem, type MapLegendProps } from '@yesid/ui/map';
@@ -31,6 +32,7 @@
 		scheduleOnlyLines?: boolean;
 	} = $props();
 
+	let open = $state(true);
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 	const live = $derived(mapLegend(locale, { colourBy, staleCutoffS }));
 	const early = -ON_TIME_LIMITS_S.from / 60;
@@ -216,16 +218,29 @@
 {#snippet noSampleMark()}{@render unmeasuredMark(0)}{/snippet}
 {#snippet scheduleMark()}{@render unmeasuredMark(2)}{/snippet}
 
-<MapLegend
-	class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)] [&_ol>li>span]:min-h-[16px]"
-	title={copy[locale].legend.title}
-	{groups}
-	{scale}
-	scalePlacement={layer === 'live' ? 'before-groups' : 'after-groups'}
-	{collapsible}
-	persistKey={collapsible ? 'transit:map-legend-open' : undefined}
-	data-map-legend={collapsible ? 'desktop' : 'phone'}
-/>
+<ChartDetails
+	label={scale?.title ?? copy[locale].legend.title}
+	targets="ol[aria-label] > li"
+	readings={open
+		? (scale?.steps ?? []).map((step) => ({
+				key: step.label,
+				heading: scale!.title,
+				rows: [{ label: tr('Range', 'Plage'), value: step.label, colorVar: step.swatch }],
+			}))
+		: []}
+>
+	<MapLegend
+		bind:open
+		class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)] [&_ol>li>span]:min-h-[16px]"
+		title={copy[locale].legend.title}
+		{groups}
+		{scale}
+		scalePlacement={layer === 'live' ? 'before-groups' : 'after-groups'}
+		{collapsible}
+		persistKey={collapsible ? 'transit:map-legend-open' : undefined}
+		data-map-legend={collapsible ? 'desktop' : 'phone'}
+	/>
+</ChartDetails>
 
 <style>
 	:global([data-map-legend]) {

@@ -4,6 +4,7 @@
 	import { agencyName, recordPercent, reportingGapsReading } from '#lib/site/presenter.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
+	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import { DayStrip } from '@yesid/ui/chart';
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
 	import { DashboardGrid } from '@yesid/ui/layout';
@@ -469,15 +470,33 @@
 			{:then result}
 				{#if result?.kind === 'answer' && 'cells' in result.answer}
 					{@const cells = days(result.answer)}
-					<DayStrip
+					<ChartDetails
 						label={t('Days in service', 'Jours en service')}
-						cells={cells.slice(0, shownDays)}
-						reportedLabel={t(
-							'In service: its hours with reports that day',
-							'En service : heures avec signalements ce jour-là',
-						)}
-						missingLabel={recordState('not_measured')[locale]}
-					/>
+						targets="[data-slot='day-strip-cell']"
+						readings={cells.slice(0, shownDays).map((day) => ({
+							key: day.id,
+							heading: day.dateLabel,
+							rows: [
+								{
+									label: t('Hours in service', 'Heures en service'),
+									value:
+										day.state === 'not_reporting'
+											? recordState('not_reporting')[locale]
+											: (day.report?.value ?? recordState('not_measured')[locale]),
+								},
+							],
+						}))}
+					>
+						<DayStrip
+							label={t('Days in service', 'Jours en service')}
+							cells={cells.slice(0, shownDays)}
+							reportedLabel={t(
+								'In service: its hours with reports that day',
+								'En service : heures avec signalements ce jour-là',
+							)}
+							missingLabel={recordState('not_measured')[locale]}
+						/>
+					</ChartDetails>
 					{#if cells.some((entry) => entry.state === 'not_reporting')}
 						<p class="mt-2 flex items-baseline gap-2 text-small text-muted-foreground">
 							<StateMark state="not_reporting" {locale} hiddenLabel />

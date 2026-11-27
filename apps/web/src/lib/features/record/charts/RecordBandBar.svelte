@@ -1,17 +1,32 @@
 <script lang="ts">
 	import { StatusMark } from '@yesid/ui/brand';
 	import { BandBar, type BandBarBand } from '@yesid/ui/chart';
+	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import type { Snippet } from 'svelte';
 
 	let { label, bands, absent }: { label: string; bands: readonly BandBarBand[]; absent?: Snippet } =
 		$props();
+	const readings = $derived(
+		bands
+			.filter(({ share }) => Number.isFinite(share) && share > 0)
+			.map((band) => ({
+				key: band.id,
+				heading: band.label,
+				rows: [
+					{ label: band.label, value: band.valueLabel },
+					...(band.detail ? [{ label: '', value: band.detail }] : []),
+				],
+			})),
+	);
 	const hasTrack = $derived(bands.some(({ share }) => Number.isFinite(share) && share > 0));
 	let narrow = $state(0);
 </script>
 
 <div class="record-bands" data-ripple-exempt>
 	<div class="measure" aria-hidden="true" bind:clientWidth={narrow}></div>
-	<BandBar {label} {bands} {absent} rows={!narrow} />
+	<ChartDetails {label} {readings} targets="[data-slot='band-bar'] [role='img'] > span">
+		<BandBar {label} {bands} {absent} rows={!narrow} />
+	</ChartDetails>
 	{#if narrow || !hasTrack}
 		<dl class="mt-3 grid gap-2">
 			{#each bands as band (band.id)}

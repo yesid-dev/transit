@@ -356,6 +356,7 @@ type TrendProps = {
 	yTicks: ChartTick[];
 	xDomain: [number, number];
 	yDomain: [number, number];
+	samples: { label: string; value: string }[][];
 	last?: { x: number; y: number; label: string };
 	gapNote?: string;
 };
@@ -423,6 +424,16 @@ export function trendChart(
 			].join('. '),
 			points,
 			reference,
+			samples: dates.map((date) => {
+				const own = daily.get(date)?.evidence.counts.classified;
+				const compare = referenceDaily.get(date)?.evidence.counts.classified;
+				return [
+					...(own == null ? [] : [{ label: title, value: countedUnit(own, 'event', locale) }]),
+					...(compare == null
+						? []
+						: [{ label: networkLabel!, value: countedUnit(compare, 'event', locale) }]),
+				];
+			}),
 			ticks: dates.flatMap((day, index) =>
 				index === 0 || index === dates.length - 1
 					? [
@@ -515,7 +526,9 @@ export function stopLadderChart(
 	locale: Locale,
 	stop: (id: string) => Pick<StopLadderStop, 'name' | 'code' | 'href' | 'timingPoint'>,
 	observed = false,
-): ChartReading<StopLadderProps> {
+): ChartReading<
+	Omit<StopLadderProps, 'stops'> & { stops: readonly (StopLadderStop & { sample?: string })[] }
+> {
 	const stops = series.cells.flatMap((cell, index) => {
 		if (typeof cell.key.stop !== 'string') return [];
 		const median = cell.state === 'measured' ? (cell.value.median_delay ?? null) : null;
@@ -539,6 +552,7 @@ export function stopLadderChart(
 				id: `${cell.key.stop}/${index}`,
 				value,
 				valueLabel: state ?? delayReading(value, locale),
+				sample: count == null || sample ? undefined : countedUnit(count, 'event', locale),
 				state,
 			},
 		];

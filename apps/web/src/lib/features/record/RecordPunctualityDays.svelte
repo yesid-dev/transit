@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { recordPercent } from '#lib/site/presenter.ts';
+	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
+	import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
 	import { DayStrip } from '@yesid/ui/chart';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import type { RecordSeries } from '#lib/server/engine.ts';
@@ -24,9 +25,12 @@
 			[...missing, ...byDay.keys()].filter((day): day is string => typeof day === 'string'),
 		);
 		return [...dates].sort().map((day) => {
-			const share = measuredShare(byDay.get(day), 'on_time');
+			const cell = byDay.get(day);
+			const share = measuredShare(cell, 'on_time');
+			const count = cell?.evidence.counts.classified;
 			return {
 				id: day,
+				count,
 				label: date(day, { day: 'numeric', month: 'short' }),
 				dateLabel: date(day, { dateStyle: 'long' }),
 				report: share === null ? null : { value: recordPercent(share, locale), fraction: share },
@@ -36,10 +40,22 @@
 </script>
 
 {#if days.length}
-	<DayStrip
+	{@const measured = choose(locale, 'On-time share', 'Part à l’heure')}
+	{@const missing = choose(locale, 'No measured share', 'Aucune part mesurée')}
+	<ChartDetails
 		label={title}
-		cells={days}
-		reportedLabel={choose(locale, 'On-time share', 'Part à l’heure')}
-		missingLabel={choose(locale, 'No measured share', 'Aucune part mesurée')}
-	/>
+		targets="[data-slot='day-strip-cell']"
+		readings={days.map((day) => ({
+			key: day.id,
+			heading: day.dateLabel,
+			rows: [
+				{ label: measured, value: day.report?.value ?? missing },
+				...(day.count == null
+					? []
+					: [{ label: '', value: countedUnit(day.count, 'event', locale) }]),
+			],
+		}))}
+	>
+		<DayStrip label={title} cells={days} reportedLabel={measured} missingLabel={missing} />
+	</ChartDetails>
 {/if}

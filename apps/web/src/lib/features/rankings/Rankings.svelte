@@ -8,6 +8,7 @@
 		frameSurfaceRailContext,
 		type RegisterFrameSurfaceRail,
 	} from '#lib/components/shell/frameSurfaceRail.ts';
+	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import { RangeMark } from '@yesid/ui/chart';
 	import { ControlsRail, Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
@@ -509,15 +510,41 @@
 				locale,
 			)}
 			<div class="inline-grid min-w-0 max-w-full font-sans">
-				<RangeMark
-					low={lower}
-					high={upper}
-					value={row.entry.value}
-					domain={range}
-					reference={ref ?? undefined}
-					label={`${t('Range:', 'Intervalle\u00a0:')} ${caption}`}
-					{caption}
-				/>
+				<ChartDetails
+					label={row.label}
+					readings={[
+						{
+							key: row.id,
+							heading: row.label,
+							rows: [
+								{ label: measureLabel, value: rankingValue(row.entry.value, measure, locale) },
+								{ label: t('Range', 'Intervalle'), value: caption },
+								...(ref
+									? [
+											{
+												label: t('Network', 'Réseau'),
+												value: rankingValue(ref.value, measure, locale),
+											},
+										]
+									: []),
+								...rankingCountLines(row.entry, measure, locale).map((value) => ({
+									label: '',
+									value,
+								})),
+							],
+						},
+					]}
+				>
+					<RangeMark
+						low={lower}
+						high={upper}
+						value={row.entry.value}
+						domain={range}
+						reference={ref ?? undefined}
+						label={`${t('Range:', 'Intervalle\u00a0:')} ${caption}`}
+						{caption}
+					/>
+				</ChartDetails>
 				{#if verdict}<span class={showVerdict ? 'text-small text-muted-foreground' : 'sr-only'}
 						>{verdict}</span
 					>{/if}
