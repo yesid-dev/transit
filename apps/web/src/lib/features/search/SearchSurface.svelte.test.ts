@@ -238,3 +238,21 @@ it('sends an address only on request and focuses the address result', async () =
 	expect(found).toHaveAttribute('href', expect.stringMatching(/^\/map\?.*near/));
 	await vi.waitFor(() => expect(found).toHaveFocus());
 });
+
+it.each([
+	['', 'Nothing typed yet'],
+	['q=ber', 'Station Berri-UQAM'],
+	['q=zzzz', 'Nothing found for “zzzz”'],
+])('keeps the field and every state in one column, in one card (%s)', (query, text) => {
+	setUrlQuery(query);
+	const view = render(SearchSurface);
+	const column = view.container.querySelector('[data-slot="search-column"]')!;
+	const card = column.querySelector('[data-search-card]')!;
+	expect(column.querySelector('h1')).not.toBeNull();
+	expect(
+		within(column as HTMLElement).getByRole('textbox', { name: 'Line, stop, vehicle or page' }),
+	).toBeInTheDocument();
+	expect(card).toHaveTextContent(text);
+	// Before any typing the card only explains, so it does not react like a card that acts.
+	expect(card.getAttribute('data-interactive')).toBe(query ? 'true' : null);
+});

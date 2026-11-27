@@ -223,7 +223,7 @@
 		<p class="search-list-none">{notice}</p>
 	{/if}
 	{#if showNotTracked}<p class="search-list-none">{copy.notTracked}</p>{/if}
-	{#if page}
+	{#if page && groups.length}
 		<div bind:this={box} class="page-groups">
 			{#each groups as group (group.kind)}
 				<section data-kind={group.kind} aria-labelledby={`${id}-${group.kind}`}>
@@ -252,7 +252,7 @@
 				</section>
 			{/each}
 		</div>
-	{:else if groups.length || unmatched || address}
+	{:else if !page && (groups.length || unmatched || address)}
 		<div bind:this={box} {id} role="listbox" aria-label={label} class="search-list-box">
 			<div class="search-list-scroll">
 				<!-- Above any address rows, so rows already shown never move when addresses arrive. -->
@@ -387,6 +387,7 @@
 	.search-list-label {
 		flex: 1;
 		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 	.search-list-option small {
 		display: block;
@@ -429,9 +430,13 @@
 		color: var(--primary);
 		text-decoration: underline;
 	}
-	.page-list .search-list-code,
-	.page-list small {
+	/* On the page the rows sit in one card, the app's row pattern: the plate or code in a fixed
+	   track, the linked name, one muted line under it. */
+	.page-list .search-list-code {
 		color: var(--foreground);
+	}
+	.page-list small {
+		color: var(--muted-foreground);
 	}
 	.search-list-option:focus-visible {
 		outline: 2px solid var(--ring);
