@@ -86,6 +86,12 @@ export const networkRecordQuestions = {
 	crowding: { measure: 'crowding' },
 } satisfies Record<string, RecordQuery['parameters']>;
 
+/** The Vehicles screen's one question: every vehicle's days in service. */
+export const fleetQuestion = {
+	measure: 'vehicle_days_in_service',
+	group: 'vehicle',
+} as const satisfies RecordQuery['parameters'];
+
 export function healthDiagnosticQuery(measure: NetworkMeasure): RecordQuery {
 	return { path: '/measure', parameters: { measure } };
 }

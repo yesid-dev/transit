@@ -8,6 +8,7 @@ import { load as network } from '../../routes/[[lang=locale]]/network/+page.serv
 import { load as daily } from '../../routes/[[lang=locale]]/receipt/+page.server.ts';
 import { load as health } from '../../routes/[[lang=locale]]/status/+page.server.ts';
 import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
+import { load as vehicles } from '../../routes/[[lang=locale]]/vehicles/+page.server.ts';
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
 import { frameClock, frameHref, presetPeriod } from '#lib/site/frameState.ts';
@@ -78,6 +79,7 @@ it.each(
 		visit(overview, '/'),
 		visit(lines, '/lines'),
 		visit(stops, '/stops'),
+		visit(vehicles, '/vehicles'),
 		visit(rankings, '/rankings'),
 		visit(rankings, '/rankings?kind=stop'),
 		visit(rankings, '/rankings?kind=departure'),

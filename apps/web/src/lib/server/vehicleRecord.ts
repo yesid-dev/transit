@@ -9,9 +9,10 @@ import {
 import { missingRecordCsv, recordCsvResponse } from './recordCsv.ts';
 import { validEntityId, vehicleIdentity } from './entityIdentity.ts';
 import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
+import { fleetQuestion } from './screenQuestions.ts';
 
 const queries = {
-	fleet: { measure: 'vehicle_days_in_service', group: 'vehicle' },
+	fleet: fleetQuestion,
 	service: { measure: 'vehicles' },
 	lines: { measure: 'vehicle_trips_run', group: 'line' },
 	reporting: { measure: 'vehicle_reporting_gaps_per_100_hours' },
