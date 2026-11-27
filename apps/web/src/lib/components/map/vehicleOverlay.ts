@@ -75,9 +75,7 @@ function lerp(value: number, from: number, to: number, first: number, last: numb
 	return first + (last - first) * t;
 }
 
-function vehicleScale(zoom: number): number {
-	const { z11, z15 } = VEHICLE_MARKER_GEOMETRY.bodyIconSize;
-	const detailScale = lerp(zoom, 11, 15, z11, z15);
+function vehicleScale(zoom: number, detailScale: number): number {
 	return lerp(zoom, 11, 12, 6 / BOX, detailScale);
 }
 
@@ -121,6 +119,7 @@ export function createVehicleOverlay(
 	onUnavailable?: () => void,
 ): VehicleOverlay {
 	const glCanvas = map.getCanvas();
+	const forcedColors = window.matchMedia('(forced-colors: active)');
 	const canvas = document.createElement('canvas');
 	canvas.setAttribute('aria-hidden', 'true');
 	canvas.dataset.slot = 'vehicle-overlay';
@@ -283,7 +282,10 @@ export function createVehicleOverlay(
 		ctx.clearRect(0, 0, width, height);
 		hits = [];
 		const zoom = map.getZoom();
-		const baseSize = vehicleScale(zoom);
+		const { z11, z15 } = VEHICLE_MARKER_GEOMETRY.bodyIconSize;
+		const detailScale = lerp(zoom, 11, 15, z11, z15);
+		// Keep the larger silhouette and its internal contrast in forced-colors mode.
+		const baseSize = forcedColors.matches ? detailScale : vehicleScale(zoom, detailScale);
 		const projected: ProjectedVehicle[] = features.features.map((feature, index) => {
 			const [lon, lat] = feature.geometry.coordinates;
 			const point = map.project([lon, lat]);
