@@ -139,6 +139,8 @@
 	const source = $derived(citationSource(operator ?? cityName, routeData.provider, lang));
 	// Each card waits as its final shape (holistic pass D4); a busy card keeps it.
 	const waiting = {
+		// The answer carries the unconfirmed-trips range under its figure, as a comparison line.
+		answer: { shape: 'answer', comparison: true },
 		periods: { shape: 'rows', count: 5, lines: 2, lead: 'none' },
 		messages: { shape: 'notice', count: 3 },
 	} as const satisfies Record<string, RecordWaiting>;
@@ -557,13 +559,13 @@
 								{#await answers.get('punctuality')}
 									{@const pending = answers.get('punctuality')}
 									{#key pending}<RecordPending
-											shape="answer"
+											shape={waiting.answer}
 											locale={lang}
 											answer={pending}
 										/>{/key}
 								{:then current}
 									{#if current?.kind === 'busy'}
-										<RecordPending shape="answer" locale={lang} busy />
+										<RecordPending shape={waiting.answer} locale={lang} busy />
 									{:else if current}
 										{#await answers.get('delivery')}
 											{@render lead(current, undefined)}
