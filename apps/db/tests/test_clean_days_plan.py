@@ -1,10 +1,13 @@
-from datetime import date
+import sys
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+import typer
 import yaml
 
+from transit_ops import clean_days_plan
 from transit_ops.clean_days_plan import plan_entries
 from transit_ops.providers.registry import ProviderRegistry
 
@@ -54,6 +57,29 @@ def test_manual_backfill_marks_a_private_city(registry: ProviderRegistry) -> Non
     ]
     blank = plan_entries(registry, manual=True, first=date(2026, 6, 1), last=date(2026, 6, 1))
     assert blank == [{"provider": "alpha", "day": "2026-06-01", "private": False}]
+
+
+def test_vm_run_uses_the_scheduled_plan_and_continues_after_a_city_fails(
+    registry: ProviderRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs: list[tuple[str, str, str, datetime]] = []
+
+    def clean(provider: str, source: str, dest: str, *, selection: datetime) -> None:
+        runs.append((provider, source, dest, selection))
+        if provider == "alpha":
+            raise typer.Exit(1)
+
+    monkeypatch.setattr(ProviderRegistry, "from_project_root", lambda: registry)
+    monkeypatch.setattr(clean_days_plan, "run_clean_days", clean)
+    monkeypatch.setattr(sys, "argv", ["clean_days_plan", "--run-scheduled"])
+    with pytest.raises(SystemExit) as error:
+        clean_days_plan.main()
+
+    assert error.value.code == 1
+    assert [provider for provider, *_ in runs] == ["alpha", "beta"]
+    _, _, _, started_at = runs[0]
+    assert started_at.tzinfo is UTC
+    assert all(run[1:] == ("s3://transit-raw", "s3://transit-clean", started_at) for run in runs)
 
 
 @pytest.mark.parametrize(

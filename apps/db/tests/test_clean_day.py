@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 from transit_ops import clean_day_inputs, clean_days
 from transit_ops.clean_day import CLEANING_VERSION, CleanDay, Reading, Stop, Trip
 from transit_ops.clean_day_inputs import archived_captures
+from transit_ops.clean_day_lock import claim_clean_day
 from transit_ops.clean_day_output import version_key, write_clean_day
 from transit_ops.clean_day_realtime import DayCapture, FeedPoll
 from transit_ops.clean_day_summary import summarize
@@ -31,6 +32,7 @@ from transit_ops.history.poll_record import PollRecord
 from transit_ops.ingestion.common import build_bronze_object_storage_path
 from transit_ops.ingestion.i3 import build_i3_object_storage_path
 from transit_ops.ingestion.realtime_gtfs import build_realtime_object_storage_path
+from transit_ops.ingestion.storage import S3BronzeStorage
 from transit_ops.providers.registry import load_provider_manifest
 
 DAY = date(2026, 6, 1)
@@ -1562,11 +1564,19 @@ class _FakeS3:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.writes: list[str] = []
+        self.locks: dict[str, tuple[str, dict[str, str]]] = {}
         self.fail_upload: str | None = None
 
-    def head_object(self, *, Bucket: str, Key: str) -> None:  # noqa: N803
+    def head_object(self, *, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
+        if Key in self.locks:
+            etag, metadata = self.locks[Key]
+            return {"ETag": etag, "Metadata": metadata}
         if not (self.root / Bucket / Key).is_file():
-            raise ClientError({"Error": {"Code": "404"}}, "HeadObject")
+            raise ClientError(
+                {"Error": {"Code": "404"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                "HeadObject",
+            )
+        return {}
 
     def list_objects_v2(self, *, Bucket: str, Prefix: str) -> dict[str, object]:  # noqa: N803
         root = self.root / Bucket
@@ -1587,11 +1597,25 @@ class _FakeS3:
         *,
         Bucket: str,
         Key: str,
-        Body: BinaryIO,
-        IfNoneMatch: str,  # noqa: N803
-    ) -> None:
+        Body: BinaryIO | bytes,
+        IfNoneMatch: str | None = None,  # noqa: N803
+        IfMatch: str | None = None,  # noqa: N803
+        Metadata: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         assert Bucket == "clean"
+        if Metadata is not None:
+            assert isinstance(Body, bytes)
+            assert (IfNoneMatch, IfMatch).count(None) == 1
+            etag, _ = self.locks.get(Key, (None, {}))
+            if (IfNoneMatch == "*" and etag is not None) or (
+                IfMatch is not None and IfMatch != etag
+            ):
+                raise ClientError({"ResponseMetadata": {"HTTPStatusCode": 412}}, "PutObject")
+            etag = f'"{sha256(Body).hexdigest()}"'
+            self.locks[Key] = (etag, Metadata)
+            return {"ETag": etag}
         assert IfNoneMatch == "*"
+        assert not isinstance(Body, bytes)
         if self.fail_upload and Key.endswith(self.fail_upload):
             raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "PutObject")
         path = self.root / Bucket / Key
@@ -1613,6 +1637,7 @@ class _FakeS3:
                 "PutObject",
             ) from exc
         self.writes.append(Key)
+        return {}
 
 
 @pytest.mark.parametrize("remote", [False, True])
@@ -1687,6 +1712,27 @@ def test_range_builds_skips_and_continues(
     marker = f"{version_key('stm', DAY)}/manifest.json"
     runner = CliRunner()
     if remote:
+        storage = S3BronzeStorage("s3", "clean", "https://example.invalid", fake)
+        with claim_clean_day(storage, f"out/stm/{DAY}") as acquired:
+            assert acquired
+            attempt = runner.invoke(app, [*args, DAY.isoformat()])
+            assert attempt.exit_code == 0
+            assert "Deferred 1 locked service days" in attempt.output
+            assert not fake.writes
+            # Simulate an acquisition based on a HEAD that ran before the winner's PUT.
+            head = fake.head_object
+
+            def stale_head(*, Bucket: str, Key: str) -> dict[str, object]:  # noqa: N803
+                if Key.startswith("locks/clean-days/"):
+                    raise ClientError({"ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadObject")
+                return head(Bucket=Bucket, Key=Key)
+
+            with monkeypatch.context() as stale:
+                stale.setattr(fake, "head_object", stale_head)
+                attempt = runner.invoke(app, [*args, DAY.isoformat()])
+                assert attempt.exit_code == 0
+                assert "Deferred 1 locked service days" in attempt.output
+                assert not fake.writes
         for name in (
             "feed_polls.parquet",
             "prediction_samples.parquet",

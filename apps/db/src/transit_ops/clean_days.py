@@ -338,13 +338,12 @@ def run_clean_days(
         ):
             incomplete.append(day)
             continue
-        version = clean_prefix + version_key(provider, day)
-        marker = f"{version}/manifest.json"
+        marker = f"{clean_prefix}{version_key(provider, day)}/manifest.json"
         try:
             if clean.exists(marker):
                 skipped.append(day)
                 continue
-            with claim_clean_day(clean, version) as acquired:
+            with claim_clean_day(clean, f"{clean_prefix}{provider}/{day}") as acquired:
                 if not acquired:
                     busy.append(day)
                     continue
@@ -382,7 +381,7 @@ def run_clean_days(
     if unreadable := counts["schedule_archive_unreadable"]:
         typer.echo(f"Unreadable schedule archive {unreadable}")
     if busy:
-        typer.echo(f"Deferred {len(busy)} locked service days")
+        typer.echo(f"Deferred {len(busy)} locked service days: {', '.join(map(str, busy))}")
     if summary is not None:
         print(f"## Clean service days for {provider}\n", file=summary)
         groups: dict[str, Iterable[date]] = {

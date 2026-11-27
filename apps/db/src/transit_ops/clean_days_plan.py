@@ -1,4 +1,4 @@
-"""Select the provider days that the clean-days workflow builds.
+"""Select the provider days that the VM timer and GitHub workflow build.
 
 Scheduled runs build every public provider and every capture-enabled private one.
 Private entries publish to the same clean storage, which only the proxy and the
