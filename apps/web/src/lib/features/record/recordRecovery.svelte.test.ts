@@ -26,8 +26,18 @@ const asked = (fetcher: { mock: { calls: [string][] } }) =>
 	fetcher.mock.calls.map(([url]) => new URL(url, location.origin).searchParams.get('readings'));
 
 it.each([
-	['en', 'Waiting for a reading.', 'The record is temporarily unavailable.', 'Try again'],
-	['fr', 'En attente de données.', 'Le bilan est temporairement indisponible.', 'Réessayer'],
+	[
+		'en',
+		'Waiting for a turn. This card asks again in a few seconds.',
+		'The record is temporarily unavailable.',
+		'Try again',
+	],
+	[
+		'fr',
+		'En attente. Cette carte redemande dans quelques secondes.',
+		'Le bilan est temporairement indisponible.',
+		'Réessayer',
+	],
 ] as const)(
 	'asks again after 5 s, then 15 s, then offers one Try again for the screen in %s',
 	async (locale, pending, unavailable, retry) => {

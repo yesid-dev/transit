@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { getRecordPatience, getRecordSlow } from './recordPatience.ts';
-	import RecordSkeleton, { type RecordWaitingShape } from './RecordSkeleton.svelte';
+	import { getRecordPatience } from './recordPatience.ts';
+	import { cardWaitingWords, STILL_CALCULATING_MS, type RecordWaiting } from './recordWaiting.ts';
+	import RecordSkeleton from './RecordSkeleton.svelte';
 
 	let {
 		locale,
@@ -13,10 +14,15 @@
 		locale: Locale;
 		busy?: boolean;
 		answer?: Promise<{ kind: string }>;
-		shape?: RecordWaitingShape;
+		/** The final shape of the card body. Without one, one pulsing text line. */
+		shape?: RecordWaiting;
 	} = $props();
 	const register = getRecordPatience();
-	const slow = getRecordSlow();
+	let late = $state(false);
+	onMount(() => {
+		const timer = setTimeout(() => (late = true), STILL_CALCULATING_MS);
+		return () => clearTimeout(timer);
+	});
 	onMount(() => {
 		const release = register?.(busy);
 		if (!release) return;
@@ -33,27 +39,57 @@
 		// An await block may unmount before the promise's other listeners have run.
 		return () => queueMicrotask(finish);
 	});
+	// Waiting, slow and busy share one skeleton; only these words change.
+	const words = $derived(
+		busy ? cardWaitingWords.busy[locale] : late ? cardWaitingWords.still[locale] : '',
+	);
 </script>
 
+<!-- The words sit over the foot of the shape, so the card keeps the shape's height when they
+     appear. Screens with a RecordPatience region announce once for every card. -->
 <div
-	class={shape && !busy ? 'grid min-w-0 gap-2' : 'contents'}
-	class:plain-answer={!shape && !busy}
+	class="record-pending"
+	class:plain-answer={!shape}
+	aria-busy="true"
 	data-record-pending={busy ? undefined : ''}
+	data-record-busy={busy ? '' : undefined}
 >
-	{#if shape && !busy}<RecordSkeleton {shape} />{/if}
-	<p role={register ? undefined : 'status'}>
-		{#if busy}
-			{locale === 'fr' ? 'En attente de données.' : 'Waiting for a reading.'}
-		{:else}
-			{slow?.() ?? (locale === 'fr' ? 'Calcul en cours…' : 'Calculating…')}
-		{/if}
+	<RecordSkeleton shape={shape ?? 'line'} />
+	<p
+		class="pending-words"
+		class:shown={!!words}
+		role={register ? undefined : 'status'}
+		data-slot="record-pending-words"
+	>
+		{words}
 	</p>
 </div>
 
 <style>
+	.record-pending {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		min-inline-size: 0;
+	}
+	.record-pending > :global(*) {
+		grid-area: 1 / 1;
+	}
+	.pending-words {
+		align-self: end;
+		justify-self: start;
+		max-inline-size: 100%;
+		margin: 0;
+		font-size: var(--text-small);
+		color: var(--muted-foreground);
+	}
+	.pending-words.shown {
+		padding-block: 0.125rem;
+		padding-inline-end: 0.5rem;
+		/* A screen that waits outside a card sets its own surface. */
+		background: var(--record-pending-surface, var(--card));
+	}
 	/* Older answer slots participate before they opt into a specific skeleton. */
 	:global([data-slot='screen-answer']) > .plain-answer {
-		display: block;
 		min-block-size: 15rem;
 	}
 	@media (max-width: 39.999rem) {

@@ -223,7 +223,9 @@ for (const locale of ['en', 'fr'] as const) {
 			`${fr ? '/fr' : ''}/departure/${key('24')}?provider=stm&frameMode=record&recordFrom=2026-11-22&recordTo=2026-11-22`,
 		);
 		await expect(page.locator('[data-slot="screen-answer"]')).toHaveText(
-			fr ? 'En attente de données.' : 'Waiting for a reading.',
+			fr
+				? 'En attente. Cette carte redemande dans quelques secondes.'
+				: 'Waiting for a turn. This card asks again in a few seconds.',
 		);
 		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(

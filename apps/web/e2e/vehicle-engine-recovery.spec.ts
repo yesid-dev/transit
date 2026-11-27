@@ -27,7 +27,11 @@ for (const locale of ['en', 'fr']) {
 		const reporting = page.getByRole('article', {
 			name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
 		});
-		await expect(reporting).toContainText(fr ? 'En attente de données.' : 'Waiting for a reading.');
+		await expect(reporting).toContainText(
+			fr
+				? 'En attente. Cette carte redemande dans quelques secondes.'
+				: 'Waiting for a turn. This card asks again in a few seconds.',
+		);
 		const control = page.getByRole('button', {
 			name: fr ? 'Afficher plus de jours' : 'Show more days',
 		});

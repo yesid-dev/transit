@@ -29,8 +29,12 @@ it.each([
 });
 
 it.each([
-	['en', 'Waiting for a reading.', 'These records take longer'],
-	['fr', 'En attente de données.', 'Ce bilan demande plus de temps'],
+	['en', 'Waiting for a turn. This card asks again in a few seconds.', 'These records take longer'],
+	[
+		'fr',
+		'En attente. Cette carte redemande dans quelques secondes.',
+		'Ce bilan demande plus de temps',
+	],
 ] as const)('renders one busy notice and a pending line in %s', async (locale, pending, notice) => {
 	render(RecordPatienceHarness, { locale, readings: [Promise.resolve({ kind: 'busy' })] });
 	expect(await screen.findByText(pending)).toBeVisible();
@@ -39,15 +43,11 @@ it.each([
 });
 
 it.each([
-	['en', 'Calculating…', 'Still calculating the record for 8 to 14 Nov 2026.'],
-	[
-		'fr',
-		'Calcul en cours…',
-		'Le calcul du bilan pour la période du 8 au 14 nov. 2026 se poursuit.',
-	],
+	['en', 'Still calculating…'],
+	['fr', 'Calcul toujours en cours…'],
 ] as const)(
 	'says it is still calculating in each waiting card, and keeps the notice out of the layout, in %s',
-	async (locale, calculating, still) => {
+	async (locale, still) => {
 		vi.useFakeTimers();
 		try {
 			const pending = Promise.withResolvers<{ kind: string }>();
@@ -55,7 +55,8 @@ it.each([
 				locale,
 				readings: [pending.promise],
 			});
-			expect(screen.getByText(calculating)).toBeInTheDocument();
+			expect(container.querySelector('[data-record-pending][aria-busy="true"]')).not.toBeNull();
+			expect(screen.queryByText(still)).toBeNull();
 			await vi.advanceTimersByTimeAsync(3_000);
 			expect(screen.getByText(still)).toBeInTheDocument();
 			expect(container.querySelector('[data-slot="record-patience"]')).toHaveClass('sr-only');

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { PageSection, type PageSectionProps } from '@yesid/ui/layout';
-	import RecordSkeleton, { type RecordWaitingShape } from './RecordSkeleton.svelte';
+	import RecordSkeleton from './RecordSkeleton.svelte';
+	import type { RecordWaiting } from './recordWaiting.ts';
 
 	let {
 		children,
@@ -8,13 +9,14 @@
 		density,
 		waiting,
 		...rest
-	}: PageSectionProps & { density?: 'compact'; waiting?: RecordWaitingShape } = $props();
+	}: PageSectionProps & { density?: 'compact'; waiting?: RecordWaiting } = $props();
 </script>
 
 <!-- Keep the answer and its first cards in one group, and About these figures in the last. -->
 <PageSection
 	{...rest}
 	data-record-pending={waiting ? '' : undefined}
+	aria-busy={waiting ? 'true' : undefined}
 	class={[
 		'grid min-w-0 grid-cols-1 gap-6 py-6 first:pt-0 last:pb-0 print:py-0',
 		'record-group',

@@ -200,7 +200,7 @@ test('a client period change streams the shell before the engine answers', async
 		await closeCompactFrameControls(page);
 		const record = page.getByRole('article', { name: 'Record', exact: true });
 		await expect(record.getByText('Record · 10 to 16 Nov 2026').first()).toBeVisible();
-		await expect(record.getByText('Calculating…').first()).toBeVisible();
+		await expect(record.locator('[data-record-pending][aria-busy="true"]').first()).toBeVisible();
 		shellMs = performance.now() - start;
 		releasedMs = performance.now() - start;
 		expect((await request.post(release)).status()).toBe(204);

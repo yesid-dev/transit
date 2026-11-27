@@ -198,7 +198,8 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 		waitUntil: 'commit',
 	});
 	await expect(page.locator('#answer')).toContainText('notices as published.');
-	await expect(page.locator('#messages')).toContainText('Calculating…');
+	await expect(page.locator('#messages [data-record-pending][aria-busy="true"]')).toHaveCount(1);
+	await expect(page.locator('#messages')).toContainText('Still calculating…');
 	const patience = page.locator('[data-slot="record-patience"]').getByRole('status');
 	await expect(patience).toHaveCount(1);
 	await expect(patience).toContainText('These records take longer');
