@@ -1,9 +1,18 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
+	import { Button } from '@yesid/ui/button';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { dateRange } from '#lib/site/presenter.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
-	import { setRecordPatience, setRecordRecovered, setRecordSlow } from './recordPatience.ts';
+	import {
+		setRecordPatience,
+		setRecordRecovered,
+		setRecordRetry,
+		setRecordSlow,
+	} from './recordPatience.ts';
+	import { recordConnection } from './recordText.ts';
 
 	let {
 		locale,
@@ -51,6 +60,15 @@
 		if (busy === 0) return;
 		recovered = true;
 	});
+	// Readings that could not arrive after the last try: the screen offers one "Try again".
+	const retries = new SvelteSet<() => void>();
+	setRecordRetry((retry) => {
+		retries.add(retry);
+		return () => retries.delete(retry);
+	});
+	function tryAgain() {
+		for (const retry of [...retries]) retry();
+	}
 	// Each waiting card says it is still calculating, in its own place, so nothing above the
 	// screen title appears or moves (the screen-wide notice is for screen readers only).
 	setRecordSlow(() => (slow && pending > 0 ? stillCalculating : null));
@@ -114,3 +132,29 @@
 	</div>
 {/if}
 {@render children()}
+{#if retries.size}
+	<div class="try-again" data-slot="record-try-again">
+		<StateNotice
+			role="status"
+			presentation="card"
+			tone="warning"
+			title={recordConnection.unreachable[locale]}
+		>
+			{#snippet action()}
+				<Button type="button" size="sm" class="min-h-11 min-w-11" onclick={tryAgain}>
+					{french ? 'Réessayer' : 'Try again'}
+				</Button>
+			{/snippet}
+		</StateNotice>
+	</div>
+{/if}
+
+<style>
+	/* One notice for the screen, kept in view at the foot of the window: nothing above moves. */
+	.try-again {
+		position: sticky;
+		inset-block-end: max(var(--space-card-gap), env(safe-area-inset-bottom));
+		z-index: 1;
+		margin-block-start: var(--space-card-gap);
+	}
+</style>

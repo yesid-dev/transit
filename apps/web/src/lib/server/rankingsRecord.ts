@@ -13,6 +13,7 @@ import {
 } from '#lib/features/rankings/rankingSelection.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 
+import { readingFilter } from './readingFilter.ts';
 import { rankingsQuery } from './screenQuestions.ts';
 export { rankingsQuery } from './screenQuestions.ts';
 
@@ -69,8 +70,10 @@ export async function loadRankingsRecord(
 				| null;
 		}>;
 	},
+	only?: ReadonlySet<string>,
 ) {
 	const { url, request, parent, locals } = event;
+	const include = readingFilter(only);
 	const selection = rankingSelection(path, url.searchParams);
 	const { providerId: city, provider } = await parent();
 	const { period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
@@ -86,23 +89,25 @@ export async function loadRankingsRecord(
 		period,
 		city,
 		notTracked,
-		answer: scope
-			? getRankingsRecord(rankingsQuery(selection).parameters, scope).then((result) =>
-					result.kind === 'answer'
-						? {
-								...result,
-								identities: rankingIdentities(
-									selection.kind,
-									locals?.rankingsSchedule,
-									result.answer,
-								),
-							}
-						: result,
-				)
-			: null,
-		reference: scope
-			? getRecordAnswer({ path: '/measure', parameters: { measure: selection.measure } }, scope)
-			: null,
+		answer:
+			scope && include('answer')
+				? getRankingsRecord(rankingsQuery(selection).parameters, scope).then((result) =>
+						result.kind === 'answer'
+							? {
+									...result,
+									identities: rankingIdentities(
+										selection.kind,
+										locals?.rankingsSchedule,
+										result.answer,
+									),
+								}
+							: result,
+					)
+				: null,
+		reference:
+			scope && include('reference')
+				? getRecordAnswer({ path: '/measure', parameters: { measure: selection.measure } }, scope)
+				: null,
 	};
 }
 

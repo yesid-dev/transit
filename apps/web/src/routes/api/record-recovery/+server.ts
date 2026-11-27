@@ -1,45 +1,56 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { lineDirection, loadLineRecord } from '#lib/server/lineRecord.ts';
-import { readVehicleSections } from '#lib/server/vehicleRecord.ts';
+import {
+	READING_PATH,
+	readingName,
+	readingPaths,
+	recoveryScreens,
+	type RecoveryScreen,
+} from '#lib/features/record/recordReadings.ts';
+import { readScreenAgain } from '#lib/server/screenReadings.ts';
 import { periodError } from '#lib/site/frameState.ts';
 
+const MAX_READINGS = 20;
+const screensWithId = new Set<RecoveryScreen>(['line', 'stop', 'vehicle']);
+
+function validId(id: string) {
+	return id.length <= 256 && id === id.trim() && !/[^\S ]|\p{C}/u.test(id);
+}
+
+/** Asks one screen's missing readings again, with the cut of the page that asked first. */
 export const GET: RequestHandler = async ({ request, url }) => {
 	const { searchParams } = url;
-	const kind = searchParams.get('kind');
+	const screen = recoveryScreens.find((name) => name === searchParams.get('screen'));
 	const city = searchParams.get('city') ?? '';
 	const id = searchParams.get('id') ?? '';
 	const from = searchParams.get('from') ?? '';
 	const to = searchParams.get('to') ?? '';
-	const sections = (searchParams.get('sections') ?? '').split(',');
+	const page = searchParams.get('page') ?? '';
+	const paths = (searchParams.get('readings') ?? '').split(',');
 	if (
-		(kind !== 'line' && kind !== 'vehicle') ||
+		!screen ||
 		!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city) ||
-		!id ||
-		id.length > 256 ||
-		id !== id.trim() ||
-		/[^\S ]|\p{C}/u.test(id) ||
-		sections.length > 15 ||
-		sections.some((name) => !/^[a-zA-Z]+$/.test(name)) ||
+		(screensWithId.has(screen) ? !id : id !== '') ||
+		!validId(id) ||
+		page.length > 2048 ||
+		paths.length > MAX_READINGS ||
+		paths.some((path) => !READING_PATH.test(path)) ||
 		periodError({ from, to }, '9999-12-31')
 	) {
 		return json({}, { status: 400 });
 	}
-	const only = new Set(sections);
-	const visitorIp = request.headers.get('cf-connecting-ip');
-	const period = { from, to };
-	const readings =
-		kind === 'line'
-			? loadLineRecord(period, city, id, lineDirection(searchParams), visitorIp, false, only)
-			: readVehicleSections({ ...period, city, visitorIp, retryBusy: true }, id, only);
-	const entries: [string, (typeof readings.sections)[number]['answer']][] = readings.sections.map(
-		({ section, answer }) => [section, answer],
+	const root = await readScreenAgain(
+		{
+			screen,
+			scope: { from, to, city, visitorIp: request.headers.get('cf-connecting-ip') },
+			id,
+			page: new URLSearchParams(page),
+			lang: searchParams.get('lang') === 'fr' ? 'fr' : 'en',
+			request,
+		},
+		new Set(paths.map(readingName)),
 	);
-	if ('days' in readings && readings.days) entries.push(['days', readings.days]);
-	if ('network' in readings && readings.network) entries.push(['network', readings.network]);
-	if ('networkDaily' in readings && readings.networkDaily)
-		entries.push(['networkDaily', readings.networkDaily]);
-	if ('directionalFrequency' in readings && readings.directionalFrequency)
-		entries.push(['directionalFrequency', readings.directionalFrequency]);
-	const results = await Promise.all(entries.map(async ([name, answer]) => [name, await answer]));
+	const results = await Promise.all(
+		[...readingPaths(root)].map(async ([path, reading]) => [path, await reading]),
+	);
 	return json(Object.fromEntries(results), { headers: { 'cache-control': 'no-store' } });
 };

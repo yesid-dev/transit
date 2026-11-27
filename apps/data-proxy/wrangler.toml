@@ -30,8 +30,10 @@ binding = "QUESTION_LAST_GOOD"
 [[ratelimits]]
 name = "QUESTION_LIMIT"
 namespace_id = "25261122"
-# Two 15-question Line records leave six for catalog, schedule and source-date reads.
-simple = { limit = 36, period = 60 }
+# Sized for pages, not questions. A Line record is the largest page at 16 questions. A rider who
+# opens three lines in a minute and looks at each on a second period asks 6 x 16 = 96; four more
+# cover the catalog, timetable and source-date reads. Answers already kept never count.
+simple = { limit = 100, period = 60 }
 
 [observability]
 redact_query_string = true

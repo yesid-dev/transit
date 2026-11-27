@@ -9,7 +9,7 @@
 	let { href, label, context }: MapDrilldownLinkProps = $props();
 </script>
 
-<a {href} class="map-drilldown-link" data-sveltekit-preload-data="hover">
+<a {href} class="map-drilldown-link" data-sveltekit-preload-data="tap">
 	{label}<span class="sr-only">, {context}</span>
 </a>
 

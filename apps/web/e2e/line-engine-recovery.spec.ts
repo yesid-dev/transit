@@ -18,6 +18,10 @@ for (const locale of ['en', 'fr']) {
 		await page.clock.install();
 		const registration = `http://127.0.0.1:${port}/__line-schedule/register?line=${id}`;
 		expect((await request.post(registration)).status()).toBe(204);
+		// Listen from the start: the page asks again about five seconds after its readings settle.
+		const response = page.waitForResponse(
+			(res) => new URL(res.url()).pathname === '/api/record-recovery',
+		);
 		try {
 			await page.goto(
 				`${prefix}/lines/${id}?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
@@ -47,14 +51,11 @@ for (const locale of ['en', 'fr']) {
 		await expect(control).toBeFocused();
 		await expect(daily.getByRole('table')).toBeVisible();
 		const position = (await control.boundingBox())!.y;
-		const response = page.waitForResponse(
-			(res) => new URL(res.url()).pathname === '/api/record-recovery',
-		);
-
-		await page.clock.fastForward(60_001);
+		// The first try again comes about five seconds after the readings settle.
+		await page.clock.fastForward(5_001);
 		const recovered = await response;
 		expect(recovered.ok()).toBe(true);
-		expect(new URL(recovered.url()).searchParams.get('sections')).toBe('crowding');
+		expect(new URL(recovered.url()).searchParams.get('readings')).toBe('sections.crowding');
 		await expect(crowding).toContainText(fr ? /25,0\s%/u : '25.0%');
 		await expect(control).toBeFocused();
 		expect(Math.round(Math.abs((await control.boundingBox())!.y - position))).toBe(0);

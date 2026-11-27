@@ -31,3 +31,16 @@ export function setRecordSlow(read: () => string | null) {
 export function getRecordSlow() {
 	return getContext<(() => string | null) | undefined>(slowKey);
 }
+
+const retryKey = Symbol('record retry');
+
+/** Offers the screen's one "Try again" for readings that could not arrive; returns its removal. */
+type RegisterRetry = (tryAgain: () => void) => () => void;
+
+export function setRecordRetry(register: RegisterRetry) {
+	setContext(retryKey, register);
+}
+
+export function getRecordRetry() {
+	return getContext<RegisterRetry | undefined>(retryKey);
+}

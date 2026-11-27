@@ -3,7 +3,7 @@
 	import RecordPending from './RecordPending.svelte';
 	import RecordUnavailable from './RecordUnavailable.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { recoverRecord } from './recordRecovery.svelte.ts';
+	import { recoverReadings } from './recordRecovery.svelte.ts';
 
 	let {
 		sections,
@@ -15,9 +15,9 @@
 		locale?: Locale;
 	} = $props();
 	const record = $derived({ sections });
-	const readings = recoverRecord(
+	const readings = recoverReadings(
 		() => record,
-		() => ({ id: scope, city: 'demo', kind: 'vehicle', from: '2026-11-17', to: '2026-11-23' }),
+		() => ({ screen: 'vehicle', id: scope, city: 'demo', from: '2026-11-17', to: '2026-11-23' }),
 	);
 </script>
 

@@ -10,12 +10,18 @@
 		lineSortKeys,
 		type LineSort,
 	} from '#lib/features/lines/linesRecord.ts';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	const locale = getLocale();
 	const url = $derived(new URL(page.shallow?.url.href ?? page.url.href));
 	const sort = $derived(page.shallow ? lineSort(url.searchParams) : data.sort);
+	const readings = recoverReadings(
+		() => data.finderRecord,
+		({ period: { from, to }, city }) => ({ screen: 'lines', from, to, city }),
+	);
+	const record = $derived(readings());
 
 	function setSort(key: string, toggle: boolean) {
 		const choice = lineSortKeys.find((option) => option === key);
@@ -40,7 +46,7 @@
 	}
 </script>
 
-{#if data.finderRecord}
+{#if record}
 	<Surface>
 		<LinesRecordFinder
 			{locale}
@@ -48,7 +54,7 @@
 			{sort}
 			{setSort}
 			{setQuery}
-			record={data.finderRecord}
+			{record}
 			routes={data.schedule?.routes ?? []}
 			provider={data.provider}
 		/>

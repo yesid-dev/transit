@@ -1,3 +1,4 @@
+import { getRequestEvent } from '$app/server';
 import { env } from 'cloudflare:workers';
 import type { CaptureScope } from '#lib/live/captureSnapshot.ts';
 import { z } from 'zod';
@@ -12,6 +13,7 @@ import {
 	citiesQuestion,
 	dataHealthQuestion,
 	finderQuestion,
+	isHeavyQuestion,
 	measureQuestion,
 	methodQuestion,
 	overviewRankingQuestion,
@@ -179,13 +181,13 @@ export async function query<T>(
 	question: EngineQuestion,
 	schema: z.ZodType<T>,
 	visitorIp?: string | null,
-	retryBusy = false,
+	record = false,
 	requestSignal?: AbortSignal,
 ): Promise<EngineResult<T>> {
-	const timeout = retryBusy ? RECORD_TIMEOUT_MS : ENGINE_TIMEOUT_MS;
+	const timeout = record ? RECORD_TIMEOUT_MS : ENGINE_TIMEOUT_MS;
 	const deadline = AbortSignal.timeout(timeout);
 	const signal = requestSignal ? AbortSignal.any([deadline, requestSignal]) : deadline;
-	const recordDeadline = retryBusy ? Date.now() + timeout - 250 : undefined;
+	const recordDeadline = record ? Date.now() + timeout - 250 : undefined;
 	try {
 		const response = await engineFetch(question, signal, visitorIp, recordDeadline);
 		if (!response) return { kind: 'unconfigured' };
@@ -212,15 +214,50 @@ export async function query<T>(
 	}
 }
 
-async function retryRecordTimeout<T>(
-	read: (retry: boolean) => Promise<EngineResult<T>>,
+/** The page request a record question belongs to, when it is asked while a page is served. */
+function servedPage() {
+	try {
+		return getRequestEvent();
+	} catch {
+		return null;
+	}
+}
+
+const HEAVY_HOLD_MS = 5_000;
+const quickReadings = new WeakMap<object, Promise<unknown>[]>();
+
+/**
+ * Asks a record question once, with the record limit, for the page that is being served. A rider
+ * who leaves the page cancels it, so the engine stops working for nobody. The engine answers two
+ * questions at a time in the order they arrive: a heavy question waits until the page's quick
+ * questions have answered, or for a few seconds when they are slow, so the quick cards fill first.
+ */
+async function recordQuery<T>(
+	question: EngineQuestion,
+	schema: z.ZodType<T>,
+	visitorIp: string | null | undefined,
 	signal?: AbortSignal,
 ): Promise<EngineResult<T>> {
-	const result = await read(false);
-	if (result.kind !== 'timeout' || signal?.aborted) return result;
-	// Keep the streamed card pending while a new read can pick up a warmed answer.
-	const retried = await read(true);
-	return retried.kind === 'busy' ? { kind: 'unreachable' } : retried;
+	const page = servedPage();
+	const requestSignal = signal ?? page?.request.signal;
+	if (!page) return query(question, schema, visitorIp, true, requestSignal);
+	let quick = quickReadings.get(page);
+	if (!quick) quickReadings.set(page, (quick = []));
+	if (!isHeavyQuestion(question.parameters)) {
+		const reading = query(question, schema, visitorIp, true, requestSignal);
+		quick.push(reading);
+		return reading;
+	}
+	// The page asks its other questions in the same turn; let them all be counted first.
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	let hold: ReturnType<typeof setTimeout> | undefined;
+	await Promise.race([
+		Promise.allSettled(quick),
+		new Promise((resolve) => (hold = setTimeout(resolve, HEAVY_HOLD_MS))),
+	]);
+	clearTimeout(hold);
+	if (requestSignal?.aborted) return { kind: 'timeout' };
+	return query(question, schema, visitorIp, true, requestSignal);
 }
 
 function periodQuery<T>(
@@ -228,19 +265,17 @@ function periodQuery<T>(
 	period: EnginePeriod,
 	parameters: Record<string, string>,
 	schema: z.ZodType<T>,
+	signal?: AbortSignal,
 ) {
-	const question = periodQuestion(period, path, parameters);
-	return period.retryBusy
-		? query(question, schema, period.visitorIp, true)
-		: retryRecordTimeout((retry) => query(question, schema, period.visitorIp, retry));
+	return recordQuery(periodQuestion(period, path, parameters), schema, period.visitorIp, signal);
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
-	return query(measureQuestion(measure, period), measureAnswer, period.visitorIp);
+	return recordQuery(measureQuestion(measure, period), measureAnswer, period.visitorIp);
 }
 
 export function getRanking(kind: RankingAnswer['kind'], period: EnginePeriod) {
-	return query(overviewRankingQuestion(kind, period), rankingAnswer, period.visitorIp);
+	return recordQuery(overviewRankingQuestion(kind, period), rankingAnswer, period.visitorIp);
 }
 
 const recordCounts = z.record(z.string(), z.number().nullable().catch(null));
@@ -552,11 +587,7 @@ export function getFinderSeries(
 	period: EnginePeriod,
 	signal?: AbortSignal,
 ) {
-	const question = finderQuestion(parameters, period);
-	return retryRecordTimeout(
-		(retry) => query(question, finderSeries, period.visitorIp, retry, signal),
-		signal,
-	);
+	return recordQuery(finderQuestion(parameters, period), finderSeries, period.visitorIp, signal);
 }
 
 export async function getRecordCsv(
@@ -621,7 +652,7 @@ export function getMethodCatalog(visitorIp?: string | null) {
 }
 
 export function getRecordDataHealth(period: EnginePeriod) {
-	return query(dataHealthQuestion(period), dataHealth, period.visitorIp);
+	return recordQuery(dataHealthQuestion(period), dataHealth, period.visitorIp);
 }
 
 export function getSearchIndex(city: string, visitorIp?: string | null) {

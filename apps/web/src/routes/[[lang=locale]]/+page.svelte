@@ -6,16 +6,22 @@
 	import { overviewCopy } from '#lib/features/home/overviewRecord.copy.ts';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	const locale = $derived(data.lang);
 	const city = $derived(data.provider?.labels[locale].city ?? '');
 	const operator = $derived(data.provider?.labels[locale].operator ?? city);
+	const readings = recoverReadings(
+		() => data.record,
+		({ period: { from, to } }) => ({ screen: 'overview', from, to, city: data.providerId }),
+	);
+	const record = $derived(readings());
 </script>
 
 <Surface>
-	{#if data.record}
+	{#if record}
 		<Overview
 			{locale}
 			{city}
@@ -26,7 +32,7 @@
 			alertsAvailable={data.provider != null && providerHasAlerts(data.provider)}
 			officialAlertsUrl={data.provider?.alert_links[locale]}
 			operatorOf={data.provider?.download_licence?.source?.fr}
-			record={data.record}
+			{record}
 		/>
 	{:else}
 		<ScreenTitle title={overviewCopy[locale].title(city)} />
