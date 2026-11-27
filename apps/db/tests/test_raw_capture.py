@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
@@ -109,6 +109,12 @@ def _run_until(runner, clock, seconds):
         clock.elapsed += runner.step()
 
 
+def _first_poll(feed):
+    """Seconds after NOW until the daemon first fetches a feed with its declared phase."""
+    phase = feed.refresh_phase_seconds
+    return 0 if phase is None else int((phase - NOW.timestamp()) % feed.refresh_interval_seconds)
+
+
 def _signature(at):
     return sha256(f"{PRIVATE}{at:%Y%m%dT%H%MZ}".encode()).hexdigest().upper()
 
@@ -151,6 +157,21 @@ def test_capture_restart_partial_failure_and_private_consumers(
     raw.mkdir()
     storage = LocalBronzeStorage("local", raw)
     heartbeat = tmp_path / "heartbeat.json"
+    # The daemon stores the schedule once a day at its declared phase, not at start,
+    # so this run begins with the schedule an earlier daily download stored.
+    assert _first_poll(manifest.feeds["static_schedule"]) > 1
+    schedule = tmp_path / "schedule-download"
+    schedule.write_bytes(paths["/GTFS.zip"])
+    storage.put_if_absent(
+        schedule,
+        build_static_object_storage_path(
+            CITY,
+            "static_schedule",
+            NOW,
+            base + "/GTFS.zip",
+            sha256(paths["/GTFS.zip"]).hexdigest(),
+        ),
+    )
     kwargs = {"clock": clock, "wall": clock.wall, "heartbeat": heartbeat}
     runner = CaptureRunner(manifest, storage, **kwargs)
     caplog.set_level(logging.INFO)
@@ -170,6 +191,7 @@ def test_capture_restart_partial_failure_and_private_consumers(
     _run_until(restarted, clock, 1)
     keys = {p.relative_to(raw).as_posix(): p for p in raw.rglob("*") if p.is_file()}
     assert len(keys) == 4
+    assert all(path != "/GTFS.zip" for _, path, _ in calls)
     for key, (body, mtime) in first.items():
         assert keys[key].stat().st_mtime_ns == mtime and keys[key].read_bytes() == body
     for key, dest in keys.items():
@@ -235,9 +257,15 @@ def test_declared_cadence_and_aggregate_budget(feeds, tmp_path):
     storage = LocalBronzeStorage("local", tmp_path)
     runner = CaptureRunner(manifest, storage, clock=clock, wall=clock.wall)
     _run_until(runner, clock, 600)
-    assert len(calls) == 43
+    assert len(calls) == 42
     for feed in manifest.feeds.values():
         path = "/GTFS.zip" if feed.endpoint_key == "static_schedule" else f"/{feed.endpoint_key}"
         times = [elapsed for elapsed, captured, _ in calls if captured == path]
-        assert times == list(range(0, 600, feed.refresh_interval_seconds))
+        assert times == list(range(_first_poll(feed), 600, feed.refresh_interval_seconds))
+    # The schedule waits for 05:25 UTC (00:25 in Toronto): after local midnight and
+    # before the first trips, whatever time the worker started.
+    static = manifest.feeds["static_schedule"]
+    due = {poll.feed.endpoint_key: poll.due for poll in runner.polls}["static_schedule"]
+    assert due == _first_poll(static)
+    assert NOW + timedelta(seconds=due) == datetime(2026, 11, 24, 5, 25, tzinfo=UTC)
     assert "capture_download_limit" not in manifest.model_dump()

@@ -107,6 +107,10 @@ feeds:
       auth_type: none
       notes: Keyless static GTFS, refreshed every 24 hours. Geometry is in shapes.txt.
     refresh_interval_seconds: 86400
+    # Download daily at 05:25 UTC (00:25 or 01:25 Toronto): after local midnight,
+    # so the capture date is the day a new edition starts, and before the first
+    # trips, so live trips join it. A worker restart waits for the next 05:25.
+    refresh_phase_seconds: 19500
     is_enabled: true
 
   trip_updates:
