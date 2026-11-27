@@ -45,8 +45,7 @@ test.describe('local data fixture rendering', () => {
 		await openMapControls(page);
 		const near = page.getByRole('button', { name: 'Near an address', exact: true });
 		await near.click();
-		await expect(near).toHaveAttribute('aria-expanded', 'true');
-		await expect(page.getByRole('searchbox', { name: t.nearMeSearchPlaceholder })).toBeVisible();
+		await expect(page.getByRole('combobox', { name: t.nearMeAddressLabel })).toBeVisible();
 		expect(await page.evaluate(() => localStorage.getItem('sections-choice'))).toBe('collapsed');
 	});
 });

@@ -2,7 +2,10 @@ import { expect, type Locator, type Page } from '@playwright/test';
 import { waitForFrameRailLayout } from './frame-controls';
 
 export function mapControlsPill(page: Page) {
-	return page.locator('[data-slot="surface-rail-mobile"] button').first();
+	return page
+		.locator('[data-slot="surface-rail-mobile"] button:visible')
+		.first()
+		.or(page.getByTestId('map-live-controls-button').filter({ visible: true }));
 }
 
 export async function expectAboveMapSource(page: Page, panel: Locator) {
@@ -18,12 +21,37 @@ export async function expectAboveMapSource(page: Page, panel: Locator) {
 }
 
 export async function openMapControls(page: Page) {
+	await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+		'data-map-progressive-state',
+		'ready',
+	);
 	const layout = await waitForFrameRailLayout(page);
+	if (layout === 'compact' && (await page.getByTestId('map-live-controls-button').isVisible())) {
+		const sheet = page.locator('[data-map-in-view-sheet]');
+		if (await sheet.isVisible())
+			await sheet.getByRole('tab', { name: /^(Filters|Filtres)$/u }).click();
+		else await page.getByTestId('map-live-controls-button').click();
+		await expect(sheet.locator('[data-frame-controls="mobile"]')).toBeVisible();
+		return;
+	}
 	const pill = mapControlsPill(page);
 	if (layout === 'compact' && (await pill.isVisible())) {
 		if ((await pill.getAttribute('aria-expanded')) !== 'true') await pill.click();
 		await expect(pill).toHaveAttribute('aria-expanded', 'true');
 	}
+}
+
+export async function openMapLegend(page: Page) {
+	if (await page.getByTestId('map-live-list-button').isVisible()) {
+		await openMapInView(page);
+		await page
+			.locator('[data-map-in-view-sheet]')
+			.getByRole('tab', { name: /^(Legend|Légende)$/u })
+			.click();
+	} else {
+		await page.getByTestId('map-legend-button').click();
+	}
+	await expect(page.locator('[data-map-legend="phone"]')).toBeVisible();
 }
 
 export async function closeMapControls(page: Page) {

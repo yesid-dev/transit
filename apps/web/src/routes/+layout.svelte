@@ -18,6 +18,7 @@
 	import {
 		mapPanelOpenContext,
 		mapRecordSourceDateContext,
+		mapSourceCreditContext,
 	} from '#lib/site/mapRecordSourceDate.ts';
 	import { liveSourceDate } from '#lib/live/sourceDate.ts';
 	import { createLineDirectory } from '#lib/site/lineDirectory.ts';
@@ -171,6 +172,11 @@
 					recordMap ? mapRecordSourceDate : v1 ? liveSourceDate(v1.manifest.provider) : null,
 					fallbackAttribution,
 				),
+	);
+	setContext(mapSourceCreditContext, () =>
+		[footerAttribution, footerWords.disclaimer(agencyName(footerAgency, data.provider))]
+			.filter(Boolean)
+			.join(footerSeparator),
 	);
 	const footerGroups = $derived(
 		[
@@ -415,7 +421,7 @@
 		{navigation}
 		fullViewport={isFullBleed}
 		{mapCreditHeight}
-		mobileControlsVisible={!isFullBleed || !mapPanelOpen}
+		mobileControlsVisible={!isFullBleed || (recordMap && !mapPanelOpen)}
 		{locale}
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
@@ -459,6 +465,7 @@
 				<footer
 					class="map-source-footer bg-card px-3 py-2 text-center text-xs text-muted-foreground"
 					class:dated-map-credit={datedMapCredit}
+					class:compact-live-credit={!recordMap}
 					data-slot="map-source-footer"
 					bind:clientHeight={mapCreditHeight}
 				>
@@ -560,6 +567,14 @@
 		inset-block-end: 0;
 		z-index: var(--z-content);
 		pointer-events: none;
+	}
+	@media (width < 1024px) {
+		.compact-live-credit {
+			display: none;
+		}
+	}
+	:global([data-slot='app-frame'][data-rail-layout='compact']) .compact-live-credit {
+		display: none;
 	}
 	.dated-map-credit {
 		max-block-size: 35dvh;

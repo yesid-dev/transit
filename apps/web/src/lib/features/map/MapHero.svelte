@@ -10,14 +10,18 @@
 	import {
 		mapPanelOpenContext,
 		mapRecordSourceDateContext,
+		mapSourceCreditContext,
 	} from '#lib/site/mapRecordSourceDate.ts';
 	import { page } from '$app/state';
 	import { ChevronToggle, SegmentedChoice, Stamp } from '@yesid/ui/brand';
 	import { MapFrame } from '@yesid/ui/map';
+	import { Tabs, TabsContent, TabsList, TabsTrigger } from '@yesid/ui/tabs';
+	import type { SurfaceRailContext } from '@yesid/ui/layout';
 	import { Card } from '@yesid/ui/card';
 	import { Sheet, SheetContent, SheetTitle, type SheetDetent } from '@yesid/ui/sheet';
 	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
+	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
 	import { recordStamp, searchCount } from '#lib/site/presenter.ts';
 	import { recordPeriodNoticeReader } from '#lib/site/recordPeriodNoticeContext.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
@@ -25,6 +29,7 @@
 	import { livePause } from '#lib/live/livePause.ts';
 	import { formatRelativeSeconds } from '#lib/utils/time.ts';
 	import {
+		FrameControlsContentContext,
 		FrameControlsExtensionContext,
 		type RegisterFrameControlsExtension,
 	} from '#lib/components/shell/FrameControls.svelte';
@@ -34,6 +39,8 @@
 	import MapInView from './MapInView.svelte';
 	import MapFeedStallBanner from './MapFeedStallBanner.svelte';
 	import MapNearMeControl from './MapNearMeControl.svelte';
+	import MapNearbyStops from './MapNearbyStops.svelte';
+	import { trackEvent } from '#lib/site/analytics.ts';
 	import MapNorthControl from './MapNorthControl.svelte';
 	import MapHoverPeek from './MapHoverPeek.svelte';
 	import { mapLegend, railLegendName } from './mapLegend';
@@ -94,7 +101,7 @@
 		clearNearTargetSearch,
 		buildFocusClearSearch,
 	} from './mapUrlSync';
-	import { nearTargetKey } from './mapNearMe';
+	import { nearbyStopDescriptions, nearTargetKey } from './mapNearMe';
 	import { createMapNearMeController, type NearMeOrigin } from './mapNearMeController.svelte';
 	import { createMapFocusController } from './mapFocusController.svelte';
 	import { createMapUrlCoordinator, MAP_URL_REWRITE } from './mapUrlCoordinator';
@@ -125,6 +132,10 @@
 	const city = v1.provider?.labels[locale].city ?? manifest.city ?? manifest.provider;
 	const t = mapCopy(locale, city);
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+	const sourceCredit = getContext<(() => string) | undefined>(mapSourceCreditContext);
+	const frameControls = getContext<Snippet<[SurfaceRailContext]> | undefined>(
+		FrameControlsContentContext,
+	);
 
 	const alertsAvailable = providerHasAlerts(v1.provider);
 	function readMapFilters(params: URLSearchParams) {
@@ -158,6 +169,15 @@
 		buildTargetSearch: buildNearTargetSearch,
 		clearTargetSearch: clearNearTargetSearch,
 		focusOrigin: focusNearMeOrigin,
+		onOrigin: () => {
+			nearMeController.open = false;
+			showNearbyPanel();
+			void tick().then(() =>
+				inViewBody
+					?.querySelector<HTMLElement>('[data-slot="map-nearby-stops"] h2')
+					?.focus({ preventScroll: true }),
+			);
+		},
 		fetch: (input, init) => globalThis.fetch(input, init),
 		getGeolocation: () => (typeof navigator === 'undefined' ? null : navigator['geolocation']),
 		isSecureContext: () => typeof window === 'undefined' || window.isSecureContext,
@@ -197,6 +217,7 @@
 	let recoveryFocusTarget: HTMLElement | null = null;
 
 	let ingestedUrlIdentity = '';
+	let addressIntentRead = false;
 	$effect(() => {
 		const url = new URL(currentMapHref());
 		const urlIdentity = `${url.pathname}${url.search}`;
@@ -215,7 +236,17 @@
 			next.searchParams.delete('alert');
 			void urlCoordinator.goto(`${next.pathname}${next.search}`, MAP_URL_REWRITE);
 		}
+		const hadOrigin = nearMeController.origin !== null;
 		nearMeController.syncFromUrl(url.searchParams);
+		if (hadOrigin && !nearMeController.origin && !nearMeController.open) showingLookup = false;
+		if (
+			!addressIntentRead &&
+			url.searchParams.get('lookup') === 'address' &&
+			!nearMeController.origin
+		) {
+			addressIntentRead = true;
+			openAddress();
+		}
 		const previousFocus = focusController.pending;
 		focusController.syncFromUrl(url.searchParams);
 		if (recovering && focusController.pending !== previousFocus) {
@@ -373,19 +404,35 @@
 		});
 	});
 
-	const detailOpen = $derived(session.detailOpen && !isRecordLayer);
+	let showingLookup = $state(false);
+	const detailOpen = $derived(session.detailOpen && !isRecordLayer && !showingLookup);
 	let inViewOpen = $state(false);
+	let mobilePanel = $state('vehicles');
+	let pendingMobileLookup = $state(false);
 	let inViewDetent = $state('half');
 	const detents: readonly SheetDetent[] = [
 		{ id: 'peek', size: '168px', label: sheetCopy[locale].peek },
 		{ id: 'half', size: '50%', label: sheetCopy[locale].half },
 		{ id: 'full', size: '90%', label: sheetCopy[locale].full },
 	];
+	$effect(() => {
+		if (isRecordLayer && mobilePanel === 'filters') {
+			inViewOpen = false;
+			mobilePanel = 'vehicles';
+		}
+	});
+	$effect(() => {
+		if (isRecordLayer || wide || !hasFirstIdle || !pendingMobileLookup) return;
+		pendingMobileLookup = false;
+		if (nearMeController.open || nearMeController.origin) showMapPanel('vehicles');
+	});
 	let liveListLimit = $state(12);
 	let mobileScrollTop = 0;
 	let listScrollBeforeSelection: number | null = null;
 	let restoreListTrigger = false;
 	let inViewTrigger = $state<HTMLButtonElement | null>(null);
+	let filtersTrigger = $state<HTMLButtonElement | null>(null);
+	let sheetTrigger: HTMLButtonElement | null = null;
 	let detailBack = $state<HTMLButtonElement | null>(null);
 	let inViewBody = $state<HTMLDivElement | null>(null);
 	let returnVehicle = $state<string | null>(null);
@@ -475,6 +522,35 @@
 			liveTime.state === 'current'
 			? `${tr('Live', 'En direct')} · ${formatRelativeSeconds(liveTime.ageSeconds, locale)}`
 			: stampText(liveTime, locale, timeZone),
+	);
+	const compactNotice = $derived.by(() => {
+		switch (presentation.bannerState) {
+			case 'global-stall':
+				return tr('Live feed stalled', 'Direct interrompu');
+			case 'partial-stall':
+				return tr('Partial live data', 'Direct partiel');
+			case 'no-vehicles':
+				return tr('No vehicles', 'Aucun véhicule');
+			case 'unavailable':
+			case 'selected-family-failure':
+				return tr('Live data unavailable', 'Direct indisponible');
+			default:
+				return null;
+		}
+	});
+	const compactLiveStampLabel = $derived(
+		livePause.paused
+			? tr('Live paused', 'Direct en pause')
+			: (compactNotice ??
+					(liveTime.state === 'current' && liveTime.ageSeconds !== null
+						? tr('Live', 'En direct') +
+							' · ' +
+							(liveTime.ageSeconds < 10
+								? tr('now', 'maintenant')
+								: formatRelativeSeconds(liveTime.ageSeconds, locale))
+						: liveTime.ageSeconds === null
+							? tr('Update time unknown', 'Heure de mise à jour inconnue')
+							: tr('Last report', 'Dernier signalement'))),
 	);
 
 	let mapFiltersOpen = $state(false);
@@ -568,6 +644,7 @@
 		});
 	});
 	function commitPickedSelection(next: MapSelection) {
+		showingLookup = false;
 		session.select(next, 'pick');
 	}
 	function selectPickedFeature(next: MapSelection) {
@@ -579,6 +656,7 @@
 	}
 	function closeDetail() {
 		session.close();
+		showingLookup = Boolean(nearMeController.origin || nearMeController.open);
 		const id = returnVehicle;
 		returnVehicle = null;
 		if (!id) return;
@@ -604,6 +682,34 @@
 	const nearbyStops = $derived<WithDistance<SlimStopEntry>[]>(
 		nearMeController.origin ? nearestStops(nearMeController.origin, stopList, 5, 1_200) : [],
 	);
+	const nearbyDetails = $derived(
+		nearbyStopDescriptions(
+			nearbyStops,
+			mapDirections,
+			(id) => lineLabel(id, session.routesIndex),
+			locale,
+		),
+	);
+
+	function showMapPanel(panel: 'vehicles' | 'filters', trigger: HTMLButtonElement | null = null) {
+		if (detailOpen) closeDetail();
+		if (wide) return;
+		if (trigger || !inViewOpen) sheetTrigger = trigger;
+		mobilePanel = panel;
+		if (!inViewOpen) inViewDetent = 'half';
+		inViewOpen = true;
+	}
+
+	function openAddress() {
+		nearMeController.open = true;
+		showNearbyPanel();
+	}
+
+	function showNearbyPanel() {
+		showingLookup = true;
+		if (wide || !hasFirstIdle) pendingMobileLookup = true;
+		else showMapPanel('vehicles');
+	}
 
 	function focusSelection(selection: MapSelection, target: MapLibreMap | null = map): boolean {
 		if (recovering) {
@@ -868,9 +974,11 @@
 		onthemerepaint={runtime.repaint}
 		onerror={onMapFailure}
 		onbeforeremove={runtime.release}
-		customAttribution={v1.provider?.download_licence?.source_date_required
-			? null
-			: providerAttribution(manifest.provider, manifest.attribution, locale)}
+		customAttribution={!wide && !isRecordLayer && sourceCredit
+			? sourceCredit()
+			: v1.provider?.download_licence?.source_date_required
+				? null
+				: providerAttribution(manifest.provider, manifest.attribution, locale)}
 		locale={{
 			'Map.Title': t.mapCanvasLabel,
 			'AttributionControl.ToggleAttribution': t.attributionToggle,
@@ -947,27 +1055,25 @@
 	<MapMotionControl {locale} copy={t} />
 {/snippet}
 
-{#snippet mapControls(context: import('@yesid/ui/layout').SurfaceRailContext)}
+{#snippet mapControls()}
 	{#if !isRecordLayer && !mapFailure}
 		<div class="contents" data-map-controls data-ripple-exempt>
-			<MapNearMeControl
-				bind:open={nearMeController.open}
-				bind:query={nearMeController.query}
-				{locale}
-				copy={t}
-				loading={nearMeController.loading}
-				error={nearMeController.error}
-				origin={nearMeController.origin}
-				stops={nearbyStops}
-				onuselocation={nearMeController.useLocation}
-				onsearch={nearMeController.search}
-				onsuggestion={nearMeController.selectSuggestion}
-				onstopselect={(stop) => {
-					context.closeSheet();
-					selectNearbyStop(stop);
-				}}
-				onclear={nearMeController.clear}
-			/>
+			<div class="grid w-full grid-cols-2 gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					class="min-h-11 px-2"
+					wrap
+					onclick={() => {
+						trackEvent('Locate Me');
+						showNearbyPanel();
+						nearMeController.useLocation();
+					}}>{t.nearMe}</Button
+				>
+				<Button variant="outline" size="sm" class="min-h-11 px-2" wrap onclick={openAddress}>
+					{tr('Near an address', 'Près d’une adresse')}
+				</Button>
+			</div>
 			<Collapsible.Root bind:open={mapFiltersOpen} class="w-full" data-map-filter-disclosure>
 				<Collapsible.Trigger>
 					{#snippet child({ props })}
@@ -1065,6 +1171,21 @@
 	/>
 {/snippet}
 
+{#snippet liveStampContent(label: string)}
+	<span
+		class="inline-flex min-w-0"
+		data-slot="freshness-stamp"
+		data-form="live"
+		data-age-seconds={liveTime.ageSeconds ?? undefined}
+		data-stale={presentation.stamp.isStale}
+		title={liveStampLabel}
+	>
+		<time class="min-w-0" datetime={liveTime.generatedUtc ?? undefined}>
+			<Stamp kind="live" {label} late={presentation.stamp.isStale} />
+		</time>
+	</span>
+{/snippet}
+
 {#snippet stamp()}
 	{#if isRecordLayer && recordPeriod}
 		<div data-slot="freshness-stamp" data-form="record">
@@ -1074,16 +1195,7 @@
 		</div>
 	{:else if !isRecordLayer && presentation.stamp.visible}
 		<div class="map-stamp-line">
-			<div
-				data-slot="freshness-stamp"
-				data-form="live"
-				data-age-seconds={liveTime.ageSeconds ?? undefined}
-				data-stale={presentation.stamp.isStale}
-			>
-				<time datetime={liveTime.generatedUtc ?? undefined}>
-					<Stamp kind="live" label={liveStampLabel} late={presentation.stamp.isStale} />
-				</time>
-			</div>
+			{@render liveStampContent(liveStampLabel)}
 			<RefreshButton {locale} fixedTapTarget />
 		</div>
 	{/if}
@@ -1102,9 +1214,6 @@
 		{#if wide}<p class="text-sm text-muted-foreground">{city}</p>{/if}
 		{#if recordNotice}<p data-slot="record-start-notice">{recordNotice}</p>{/if}
 		{#if showStamp}{@render stamp()}{/if}
-		{#if !wide && !isRecordLayer}
-			<div class:sr-only={remWidth >= 24}><MapFeedStallBanner {presentation} inline /></div>
-		{/if}
 	</div>
 {/snippet}
 
@@ -1112,8 +1221,52 @@
 	<div class="grid gap-4" bind:this={inViewBody}>
 		{#if isRecordLayer}
 			{@render recordContent?.(wide ? stamp : undefined)}
+		{:else if detailOpen && (nearMeController.origin || nearMeController.open)}
+			{@render detailPanel()}
+		{:else if nearMeController.open}
+			<div class="flex items-start justify-between gap-2">
+				<h2 class="text-lg font-semibold">
+					{tr('Find nearby stops', 'Trouver des arrêts à proximité')}
+				</h2>
+				<Button
+					variant="ghost"
+					size="sm"
+					class="min-h-11"
+					onclick={() => {
+						nearMeController.open = false;
+						showingLookup = nearMeController.origin !== null;
+					}}
+				>
+					{tr('Back', 'Retour')}
+				</Button>
+			</div>
+			<MapNearMeControl
+				bind:query={nearMeController.query}
+				{locale}
+				copy={t}
+				loading={nearMeController.loading}
+				error={nearMeController.error}
+				onsearch={nearMeController.search}
+				onsuggestion={nearMeController.selectSuggestion}
+			/>
+		{:else if nearMeController.origin}
+			<MapNearbyStops
+				{locale}
+				city={manifest.provider}
+				copy={t}
+				heading={nearMeController.usingDeviceLocation
+					? tr('Stops near you', 'Arrêts près de vous')
+					: tr('Stops near', 'Arrêts près de') + ' ' + nearMeController.origin.label}
+				stops={nearbyStops}
+				details={nearbyDetails}
+				onselect={selectNearbyStop}
+				onclear={() => {
+					nearMeController.clear();
+					showingLookup = false;
+				}}
+			/>
 		{:else}
-			{#if !wide && remWidth >= 24}<MapFeedStallBanner {presentation} inline />{/if}
+			{#if !wide}<MapFeedStallBanner {presentation} inline />{/if}
 			<MapInView
 				view={reportView}
 				{locale}
@@ -1151,7 +1304,7 @@
 				/>
 			</div>
 		{:else}
-			{#if !wide}
+			{#if !wide && isRecordLayer}
 				<MapNorthControl copy={t} {...orientation} status={northStatus} onreset={turnNorth} />
 			{/if}
 			{#if !isRecordLayer}
@@ -1167,8 +1320,23 @@
 {/snippet}
 
 {#snippet mapContent(recordContent: Snippet<[Snippet | undefined]> | undefined)}
+	{#snippet phoneList()}
+		<div
+			data-slot="bottom-sheet-body"
+			class="min-h-0 overflow-y-auto"
+			use:restoreInViewScroll
+			onscroll={(event) => (mobileScrollTop = event.currentTarget.scrollTop)}
+		>
+			{@render inViewPanel(recordContent)}
+			{#if !isRecordLayer && sourceCredit}<p class="mt-3 text-xs text-muted-foreground">
+					{sourceCredit()}
+				</p>{/if}
+		</div>
+	{/snippet}
 	{#snippet desktopPanel()}
-		<div class="map-head">{@render titleCard(false)}</div>
+		{#if isRecordLayer || (!nearMeController.open && !nearMeController.origin)}
+			<div class="map-head">{@render titleCard(false)}</div>
+		{/if}
 		{@render inViewPanel(recordContent)}
 	{/snippet}
 	<!-- First in reading order (WCAG 1.3.2): the visible title sits in the panel over the map. -->
@@ -1180,13 +1348,22 @@
 		details={wide ? { label: viewLabel, content: desktopPanel } : undefined}
 	>
 		{@render stage()}
-		{#if !wide}
+		{#if !wide && isRecordLayer}
 			<div class="map-mobile-head map-head">
-				<Card
-					class="gap-1 p-[min(0.75rem,12px)] [--text-small:var(--text-caption)]"
-					edge="neutral"
-					interactive={!isRecordLayer && presentation.stamp.visible}>{@render titleCard(true)}</Card
+				<Card class="gap-1 p-[min(0.75rem,12px)] [--text-small:var(--text-caption)]" edge="neutral"
+					>{@render titleCard(true)}</Card
 				>
+			</div>
+		{:else if !wide}
+			<div class="map-live-chip map-head" data-slot="map-live-chip">
+				{#if presentation.stamp.visible || compactNotice}
+					<RefreshButton {locale} visibleLabel={compactLiveStampLabel}
+						>{@render liveStampContent(compactLiveStampLabel)}</RefreshButton
+					>
+				{/if}
+				{#if !inViewOpen && !detailOpen}
+					<MapFeedStallBanner {presentation} inline announcedOnly />
+				{/if}
 			</div>
 		{/if}
 		<div
@@ -1201,6 +1378,16 @@
 					status={northStatus}
 					onreset={turnNorth}
 					docked
+				/>
+			{/if}
+			{#if !wide && !isRecordLayer && !mapFailure}
+				<MapNorthControl
+					copy={t}
+					{...orientation}
+					status={northStatus}
+					onreset={turnNorth}
+					docked
+					reserveSpace={false}
 				/>
 			{/if}
 			<Button
@@ -1243,19 +1430,55 @@
 		</div>
 	</MapFrame>
 	{#if !wide}
-		<MapLegendControl {locale} hidden={detailOpen || inViewOpen} content={phoneLegend} />
-		<Button
-			variant="outline"
-			size="sm"
-			class="map-in-view-button min-h-[var(--size-tap-min)] max-w-full py-[min(0.5rem,8px)]"
-			bind:ref={inViewTrigger}
-			wrap
-			onclick={() => (inViewOpen = true)}
-		>
-			{inViewCount === null
-				? viewLabel
-				: `${tr('In view:', 'En vue :')} ${searchCount(inViewCount, locale)}`}
-		</Button>
+		{#if isRecordLayer}
+			<MapLegendControl {locale} hidden={inViewOpen} content={phoneLegend} />
+			<Button
+				variant="outline"
+				size="sm"
+				class="map-in-view-button min-h-[var(--size-tap-min)] max-w-full py-[min(0.5rem,8px)]"
+				bind:ref={inViewTrigger}
+				wrap
+				onclick={() => (inViewOpen = true)}
+			>
+				{inViewCount === null
+					? viewLabel
+					: `${tr('In view:', 'En vue :')} ${searchCount(inViewCount, locale)}`}
+			</Button>
+		{:else}
+			<div class="map-mobile-peek" data-slot="map-mobile-peek">
+				<Button
+					class="map-in-view-button min-h-11 min-w-0 flex-1 justify-start px-2 text-left"
+					variant="ghost"
+					size="sm"
+					bind:ref={inViewTrigger}
+					data-testid="map-live-list-button"
+					wrap
+					onclick={() => showMapPanel('vehicles', inViewTrigger)}
+				>
+					<span class="peek-handle" aria-hidden="true"></span>
+					{nearMeController.origin || nearMeController.open
+						? tr('Nearby stops', 'Arrêts à proximité')
+						: inViewCount === null
+							? viewLabel
+							: inViewCount === 1
+								? tr('1 vehicle in view', '1 véhicule en vue')
+								: tr(
+										`${searchCount(inViewCount, locale)} vehicles in view`,
+										`${searchCount(inViewCount, locale)} véhicules en vue`,
+									)}
+				</Button>
+				<Button
+					variant="ghost"
+					size="icon-tap"
+					bind:ref={filtersTrigger}
+					aria-label={tr('Open map controls', 'Ouvrir les options de la carte')}
+					aria-expanded={inViewOpen && mobilePanel === 'filters'}
+					data-testid="map-live-controls-button"
+					onclick={() => showMapPanel('filters', filtersTrigger)}
+					><SlidersHorizontalIcon size={18} aria-hidden="true" /></Button
+				>
+			</div>
+		{/if}
 		<Sheet
 			open={inViewOpen || detailOpen}
 			onOpenChange={(open) => {
@@ -1274,7 +1497,11 @@
 				data-slot="bottom-sheet"
 				data-m6c2-detail-sheet
 				data-map-in-view-sheet
-				data-map-sheet-mode={detailOpen ? 'detail' : 'in-view'}
+				data-map-sheet-mode={detailOpen
+					? 'detail'
+					: !isRecordLayer && nearMeController.origin
+						? 'nearby'
+						: 'in-view'}
 				onEscapeKeydown={(event) => {
 					if (inViewOpen && detailOpen) {
 						event.preventDefault();
@@ -1285,19 +1512,50 @@
 				data-lenis-prevent
 				onCloseAutoFocus={(event) => {
 					event.preventDefault();
-					if (restoreListTrigger) inViewTrigger?.focus({ preventScroll: true });
+					if (restoreListTrigger) (sheetTrigger ?? inViewTrigger)?.focus({ preventScroll: true });
+					sheetTrigger = null;
 					restoreListTrigger = false;
 				}}
 			>
-				<SheetTitle>{viewLabel}</SheetTitle>
-				<div
-					data-slot="bottom-sheet-body"
-					class="min-h-0 overflow-y-auto"
-					use:restoreInViewScroll
-					onscroll={(event) => (mobileScrollTop = event.currentTarget.scrollTop)}
-				>
-					{@render inViewPanel(recordContent)}
-				</div>
+				<SheetTitle class={isRecordLayer ? undefined : 'sr-only'}>{viewLabel}</SheetTitle>
+				{#if isRecordLayer}
+					{@render phoneList()}
+				{:else}
+					<Tabs
+						value={detailOpen ? 'vehicles' : mobilePanel}
+						onValueChange={(panel) => {
+							if (panel !== 'vehicles' && detailOpen) closeDetail();
+							mobilePanel = panel;
+						}}
+						class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2"
+					>
+						<TabsList class="grid h-auto w-full grid-cols-3">
+							<TabsTrigger value="vehicles" class="min-h-11"
+								>{nearMeController.open || nearMeController.origin
+									? tr('Stops', 'Arrêts')
+									: tr('Vehicles', 'Véhicules')}</TabsTrigger
+							>
+							<TabsTrigger value="legend" class="min-h-11">{t.legend.title}</TabsTrigger>
+							<TabsTrigger value="filters" class="min-h-11">{tr('Filters', 'Filtres')}</TabsTrigger>
+						</TabsList>
+						<TabsContent value="vehicles" class="grid min-h-0 grid-rows-[minmax(0,1fr)]">
+							{@render phoneList()}
+						</TabsContent>
+						<TabsContent value="legend" class="min-h-0 overflow-y-auto">
+							{@render phoneLegend()}
+						</TabsContent>
+						<TabsContent value="filters" class="min-h-0 overflow-y-auto">
+							{#if frameControls}
+								{@render frameControls({
+									presentation: 'mobile',
+									closeSheet: () => (inViewOpen = false),
+								})}
+							{:else}
+								{@render mapControls()}
+							{/if}
+						</TabsContent>
+					</Tabs>
+				{/if}
 			</SheetContent>
 		</Sheet>
 	{/if}
@@ -1389,6 +1647,10 @@
 			var(--map-touch-row-bottom) + max(2.75rem, var(--size-tap-min)) + 0.75rem
 		);
 	}
+	.map-hero[data-map-wide='false'][data-record-layer='live'] {
+		--map-peek-bottom: max(0.75rem, env(safe-area-inset-bottom));
+		--map-attribution-bottom: calc(var(--map-peek-bottom) + var(--size-tap-min) + 0.75rem);
+	}
 	.map-surface {
 		position: absolute;
 		/* The frame keeps its panels above the credit. The canvas keeps its original viewport. */
@@ -1412,6 +1674,45 @@
 		max-width: calc(100% - var(--size-tap-min) - 2rem);
 		z-index: 1;
 	}
+	.map-live-chip {
+		position: absolute;
+		inset: 0 0.75rem auto;
+		inline-size: max-content;
+		max-inline-size: calc(100% - var(--size-tap-min) - 2rem);
+		z-index: 1;
+	}
+	.map-live-chip :global([data-slot='refresh-control']) {
+		max-inline-size: 100%;
+	}
+	.map-live-chip :global([data-slot='stamp']) {
+		white-space: normal;
+		overflow-wrap: normal;
+		text-align: start;
+	}
+	.map-mobile-peek {
+		position: absolute;
+		z-index: 2;
+		inset-inline: 0.75rem;
+		inset-block-end: var(--map-peek-bottom);
+		inline-size: max-content;
+		max-inline-size: calc(100% - 1.5rem);
+		margin-inline: auto;
+		display: flex;
+		align-items: center;
+		min-block-size: 3rem;
+		padding-inline: 0.25rem;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-lg);
+		background: var(--card);
+		box-shadow: var(--shadow-card);
+	}
+	.peek-handle {
+		inline-size: 1rem;
+		block-size: 0.25rem;
+		flex: none;
+		border-radius: var(--radius-pill);
+		background: var(--muted-foreground);
+	}
 	:global(.map-hero-frame [data-slot='map-stage']) {
 		min-block-size: 0;
 	}
@@ -1422,7 +1723,7 @@
 		min-width: 0;
 		font-variant-numeric: tabular-nums;
 	}
-	:global(.map-in-view-button) {
+	.map-hero:not([data-record-layer='live']) :global(.map-in-view-button) {
 		position: absolute;
 		inset-block-end: var(--map-touch-row-bottom);
 		inset-inline-end: 0.75rem;

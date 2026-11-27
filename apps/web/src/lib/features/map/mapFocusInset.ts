@@ -65,6 +65,7 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			?.getBoundingClientRect();
 		const credit = frame?.querySelector('[data-slot="map-source-footer"]')?.getBoundingClientRect();
 		const legendButton = rect('[data-slot="map-legend-fab"]');
+		const peekBar = rect('[data-slot="map-mobile-peek"]');
 		const fitTop =
 			wide && header
 				? header.bottom
@@ -79,7 +80,7 @@ const DOM_MEASUREMENT: MapFocusMeasurementAdapter = {
 			fitTop: fitTop === undefined ? undefined : Math.max(0, fitTop - box.top),
 			bottom: Math.max(
 				0,
-				...(wide ? [actions, attribution] : [north, attribution, legendButton]).map((r) =>
+				...(wide ? [actions, attribution] : [north, attribution, legendButton, peekBar]).map((r) =>
 					r ? box.bottom - r.top : 0,
 				),
 			),

@@ -1087,6 +1087,7 @@ describe('MapHero near-me device location', () => {
 	});
 
 	it('keeps the device fix alive when a later navigation drops the near params (S5-377 B1)', async () => {
+		harness.isDesktop = true;
 		const position: GeolocationPosition = {
 			coords: {
 				latitude: 45.525686,
@@ -1121,6 +1122,7 @@ describe('MapHero near-me device location', () => {
 	});
 
 	it('opens a nearby-stop pick in detail without writing a stop filter', async () => {
+		harness.isDesktop = true;
 		const position: GeolocationPosition = {
 			coords: {
 				latitude: 45.525686,
@@ -1143,9 +1145,7 @@ describe('MapHero near-me device location', () => {
 
 		render(MapHero);
 		await fireEvent.click(screen.getByRole('button', { name: 'Stops near me' }));
-		await fireEvent.click(
-			await screen.findByRole('button', { name: /Sherbrooke \/ Saint-Denis/u }),
-		);
+		await fireEvent.click(await screen.findByRole('link', { name: /Sherbrooke \/ Saint-Denis/u }));
 
 		await waitFor(() => {
 			expect(
@@ -1161,6 +1161,7 @@ describe('MapHero near-me device location', () => {
 	});
 
 	it('retires a URL-adopted origin when the URL drops the near params (S5-377 B1 inverse)', async () => {
+		harness.isDesktop = true;
 		harness.setPageUrl('http://localhost/map?near=45.525686,-73.594764&nearLabel=Place+des+Arts');
 		render(MapHero);
 		await waitFor(() =>
@@ -1858,7 +1859,7 @@ describe('MapHero reports in this view', () => {
 	it('covers the phone map body while the camera stays mounted, and returns by its own switch', async () => {
 		harness.isDesktop = false;
 		render(MapHero);
-		await fireEvent.click(await screen.findByRole('button', { name: /In view|What is in view/ }));
+		await fireEvent.click(await screen.findByTestId('map-live-list-button'));
 		expect(await screen.findByRole('dialog', { name: 'What is in view' })).toBeVisible();
 		expect(screen.getByTestId('map-stage-stub')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -2677,7 +2678,7 @@ describe('MapHero retained state during Stage-only recovery', () => {
 		render(MapHero);
 		await tick();
 
-		await fireEvent.click(screen.getByRole('button', { name: /^In view:/u }));
+		await fireEvent.click(screen.getByTestId('map-live-list-button'));
 		const sheet = await waitFor(() => {
 			const el = document.querySelector<HTMLElement>('[data-slot="bottom-sheet"]');
 			expect(el).not.toBeNull();

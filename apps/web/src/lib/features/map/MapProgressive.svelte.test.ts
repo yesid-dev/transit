@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import MapProgressive from './MapProgressive.svelte';
 
 const harness = vi.hoisted(() => {
 	let reduced = false;
@@ -70,10 +71,18 @@ afterEach(() => {
 });
 
 describe('MapProgressive automatic live boot', () => {
+	it.each([
+		['en', 'Record map', 'Loading the Record map…'],
+		['fr', 'Carte du bilan', 'Chargement de la carte du bilan…'],
+	] as const)('keeps the Record title during automatic loading in %s', (locale, title, loading) => {
+		harness.locale = locale;
+		const view = render(MapProgressive, { props: { record: true, importHero: neverImport } });
+		expect(view.getByRole('heading', { level: 1 })).toHaveTextContent(title);
+		expect(view.getByRole('status')).toHaveTextContent(loading);
+	});
 	it.each(['en', 'fr'] as const)(
 		'uses only the selected poster and source date in %s',
 		async (locale) => {
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
 			harness.locale = locale;
 			for (const [id, city, stem, sourceDate] of [
 				['stm', 'Montréal', 'montreal', '2026-11-08'],
@@ -104,7 +113,7 @@ describe('MapProgressive automatic live boot', () => {
 			harness.provider = 'octranspo';
 			harness.city = 'Ottawa';
 			harness.posters = posters;
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
+
 			const view = render(MapProgressive, { props: { importHero: neverImport } });
 			expect(view.queryByRole('img')).toBeNull();
 			expect(view.getByText(/Basemap preview unavailable for Ottawa/)).toBeVisible();
@@ -130,7 +139,7 @@ describe('MapProgressive automatic live boot', () => {
 			harness.locale = locale;
 			harness.provider = 'octranspo';
 			harness.city = 'Ottawa';
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
+
 			const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
 			for (const [posters, failedBody] of [
 				['', unavailable],
@@ -150,7 +159,6 @@ describe('MapProgressive automatic live boot', () => {
 	);
 
 	it('removes a failed image and its source-date claim', async () => {
-		const { default: MapProgressive } = await import('./MapProgressive.svelte');
 		const view = render(MapProgressive, { props: { importHero: neverImport } });
 		await fireEvent.error(view.getByRole('img'));
 		expect(view.queryByRole('img')).toBeNull();
@@ -168,7 +176,6 @@ describe('MapProgressive automatic live boot', () => {
 		document.addEventListener('transit:map-intent', intent);
 
 		try {
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
 			const importer = vi.fn(neverImport);
 			const view = render(MapProgressive, { props: { importHero: importer } });
 
@@ -195,7 +202,6 @@ describe('MapProgressive automatic live boot', () => {
 	});
 
 	it('keeps the automatic hero import single-flight while its chunk is pending', async () => {
-		const { default: MapProgressive } = await import('./MapProgressive.svelte');
 		const pending = deferred<HeroModule>();
 		const importer = vi.fn(() => pending.promise);
 		const view = render(MapProgressive, { props: { importHero: importer } });
@@ -211,7 +217,6 @@ describe('MapProgressive automatic live boot', () => {
 	});
 
 	it('keeps the poster mounted and the live layer inert until first MapLibre idle', async () => {
-		const { default: MapProgressive } = await import('./MapProgressive.svelte');
 		const pending = deferred<HeroModule>();
 		const view = render(MapProgressive, { props: { importHero: () => pending.promise } });
 
@@ -249,7 +254,7 @@ describe('MapProgressive automatic live boot', () => {
 
 		try {
 			focusOwner.focus();
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
+
 			const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
 			const view = render(MapProgressive, { props: { importHero: async () => fixture } });
 
@@ -273,7 +278,7 @@ describe('MapProgressive automatic live boot', () => {
 
 		try {
 			focusOwner.focus();
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
+
 			const importer = vi
 				.fn<() => Promise<HeroModule>>()
 				.mockRejectedValueOnce(new Error('chunk unavailable'))
@@ -307,7 +312,6 @@ describe('MapProgressive automatic live boot', () => {
 		document.body.append(focusOwner);
 
 		try {
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
 			const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
 			const view = render(MapProgressive, { props: { importHero: async () => fixture } });
 			const hero = await view.findByTestId('map-progressive-hero-stub');
@@ -336,7 +340,6 @@ describe('MapProgressive automatic live boot', () => {
 		document.addEventListener('transit:map-intent', intent);
 
 		try {
-			const { default: MapProgressive } = await import('./MapProgressive.svelte');
 			const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
 			const view = render(MapProgressive, { props: { importHero: async () => fixture } });
 			const root = view.getByTestId('map-progressive');
@@ -364,7 +367,7 @@ describe('MapProgressive automatic live boot', () => {
 
 	it('disables the poster-to-live transition when reduced motion is requested', async () => {
 		harness.setReduced(true);
-		const { default: MapProgressive } = await import('./MapProgressive.svelte');
+
 		const view = render(MapProgressive, { props: { importHero: neverImport } });
 
 		expect(view.getByTestId('map-progressive-poster')).toHaveStyle({ transition: 'none' });
@@ -374,7 +377,6 @@ describe('MapProgressive automatic live boot', () => {
 
 describe('MapProgressive owned recovery attempt', () => {
 	it('keeps the same Hero mounted while publishing one new ready/idle attempt', async () => {
-		const { default: MapProgressive } = await import('./MapProgressive.svelte');
 		const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
 		const view = render(MapProgressive, { props: { importHero: async () => fixture } });
 		const root = view.getByTestId('map-progressive');
@@ -406,7 +408,6 @@ describe('MapProgressive owned recovery attempt', () => {
 	});
 
 	it('counts a later explicit retry once after recovery boot fails', async () => {
-		const { default: MapProgressive } = await import('./MapProgressive.svelte');
 		const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
 		const view = render(MapProgressive, { props: { importHero: async () => fixture } });
 		const root = view.getByTestId('map-progressive');

@@ -10,6 +10,7 @@
 	}
 
 	export const FrameControlsExtensionContext = Symbol('frame controls extension');
+	export const FrameControlsContentContext = Symbol('frame controls content');
 	export type RegisterFrameControlsExtension = (extension: FrameControlsExtension) => () => void;
 </script>
 

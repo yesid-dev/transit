@@ -11,6 +11,7 @@
 	import NavPill from './NavPill.svelte';
 	import { frameSurfaceRailContext, type RegisterFrameSurfaceRail } from './frameSurfaceRail.ts';
 	import FrameControls, {
+		FrameControlsContentContext,
 		FrameControlsExtensionContext,
 		type FrameControlsExtension,
 	} from './FrameControls.svelte';
@@ -73,6 +74,9 @@
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
 	const frame = $derived(frameControlsState(url, clock, errorPage));
+	const compactLiveMap = $derived(
+		fullViewport && frame.mode === 'live' && remWidth > 0 && shellWidth < 64 * remWidth,
+	);
 	provideRecordPeriodNotice(
 		() =>
 			recordStartNotice(frame.beforeRecord, locale) ?? recordEndNotice(frame.afterRecord, locale),
@@ -85,6 +89,7 @@
 		};
 	};
 	setContext(frameSurfaceRailContext, registerSurfaceControls);
+	setContext(FrameControlsContentContext, railContents);
 	let controlsExtension = $state.raw<FrameControlsExtension>();
 	setContext(FrameControlsExtensionContext, (extension: FrameControlsExtension) => {
 		controlsExtension = extension;
@@ -159,7 +164,7 @@
 		footer={footer && !fullViewport ? streamingFooter : footer}
 		{fullViewport}
 		{mainLabel}
-		controlsRail={frame.showRail
+		controlsRail={frame.showRail && !compactLiveMap
 			? {
 					rail,
 					label: copy.controls,

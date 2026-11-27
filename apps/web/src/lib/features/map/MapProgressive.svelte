@@ -20,22 +20,25 @@
 
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
-	import { onDestroy, onMount } from 'svelte';
+	import { getContext, onDestroy, onMount } from 'svelte';
 	import { intl, getLocale } from '#lib/i18n/index.ts';
 	import { theme } from '@yesid/ui/state';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import { mapCopy } from './map.copy';
 	import { getV1Context } from '#lib/v1/boot.ts';
+	import { mapSourceCreditContext } from '#lib/site/mapRecordSourceDate.ts';
 
 	interface Props {
 		importHero?: () => Promise<ProgressiveMapHeroModule>;
+		record?: boolean;
 	}
 
-	let { importHero }: Props = $props();
+	let { importHero, record = false }: Props = $props();
 
 	type ProgressiveState = 'static' | 'booting' | 'ready' | 'failed';
 	const locale = getLocale();
 	const v1 = getV1Context();
+	const sourceCredit = getContext<(() => string) | undefined>(mapSourceCreditContext);
 	const city = v1.provider?.labels[locale].city ?? v1.manifest.city ?? v1.manifest.provider;
 	const t = $derived(mapCopy(locale, city));
 	const receipts = import.meta.glob<{
@@ -214,6 +217,7 @@
 	<section
 		class="map-progressive-poster"
 		data-slot="map-static"
+		data-record-poster={record ? '' : undefined}
 		data-testid="map-progressive-poster"
 		data-visible={phase !== 'ready'}
 		aria-hidden={phase === 'ready' ? 'true' : undefined}
@@ -247,33 +251,37 @@
 			<div class="map-progressive-copy">
 				<p class="map-progressive-kicker">{t.staticKicker}</p>
 				<h1 id="map-progressive-heading">
-					{phase === 'booting' ? t.bootHeading : t.staticHeading}
+					{record ? t.recordPoster.title : phase === 'booting' ? t.bootHeading : t.staticHeading}
 				</h1>
 				<p class="map-progressive-body">
-					{phase === 'booting'
+					{record
 						? hasPoster
-							? t.bootBody
-							: t.bootUnavailable
-						: hasPoster
-							? t.staticBody
-							: t.staticUnavailable}
+							? t.recordPoster.preview
+							: t.staticUnavailable
+						: phase === 'booting'
+							? hasPoster
+								? t.bootBody
+								: t.bootUnavailable
+							: hasPoster
+								? t.staticBody
+								: t.staticUnavailable}
 				</p>
 				{#if hasPoster}<p class="map-progressive-snapshot">
 						{t.staticSnapshot.replace('{date}', sourceDate)}
 					</p>{/if}
 				<p class="map-progressive-status" role="status" aria-live="polite">
-					{phase === 'booting' ? t.mapBooting : ''}
+					{phase === 'booting' ? (record ? t.recordPoster.loading : t.mapBooting) : ''}
 				</p>
 
 				{#if phase === 'failed'}
 					<div class="map-progressive-failure" role="alert">
-						<p>{t.mapImportError}</p>
+						<p>{record ? t.recordPoster.failed : t.mapImportError}</p>
 						<Button
 							type="button"
 							size="sm"
 							class="mt-4 min-h-11"
 							disabled={liveRetryPending}
-							onclick={retry}>{t.mapImportRetry}</Button
+							onclick={retry}>{record ? t.recordPoster.retry : t.mapImportRetry}</Button
 						>
 					</div>
 				{/if}
@@ -283,9 +291,14 @@
 				<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 				<span aria-hidden="true"> · </span>
 				<a href="https://github.com/protomaps/basemaps">© Protomaps</a>
+				{#if !record && sourceCredit}<span class="poster-mobile-credit">{sourceCredit()}</span>{/if}
 			</p>
 
-			<noscript><p class="map-progressive-noscript">{t.staticNoScript}</p></noscript>
+			<noscript
+				><p class="map-progressive-noscript">
+					{record ? t.recordPoster.noScript : t.staticNoScript}
+				</p></noscript
+			>
 		{/if}
 	</section>
 </div>
@@ -427,6 +440,12 @@
 		text-decoration: underline;
 		text-underline-offset: 0.14em;
 	}
+	.poster-mobile-credit {
+		display: none;
+	}
+	[data-record-poster] .map-progressive-attribution {
+		bottom: calc(var(--map-source-clearance, 0px) + 0.55rem);
+	}
 
 	.map-progressive-noscript {
 		left: 0.65rem;
@@ -444,7 +463,7 @@
 
 	@media (--tablet-max) {
 		.map-progressive-copy {
-			bottom: 5rem;
+			bottom: calc(var(--map-source-clearance, 0px) + 5.5rem);
 		}
 
 		.map-progressive-attribution {
@@ -455,6 +474,17 @@
 
 		.map-progressive-noscript {
 			bottom: 2.25rem;
+		}
+	}
+	@media (width < 1024px) {
+		[data-record-poster] .map-progressive-copy {
+			bottom: calc(var(--map-source-clearance, 0px) + var(--size-tap-min) + 4.25rem);
+		}
+		[data-record-poster] .map-progressive-attribution {
+			bottom: calc(var(--map-source-clearance, 0px) + var(--size-tap-min) + 2rem);
+		}
+		.poster-mobile-credit {
+			display: block;
 		}
 	}
 </style>

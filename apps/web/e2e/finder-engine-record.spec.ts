@@ -368,7 +368,7 @@ for (const locale of ['en', 'fr'] as const) {
 				await downloads.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
 				await expect(
 					main.getByRole('link', { name: fr ? 'Près d’une adresse' : 'Near an address' }),
-				).toBeVisible();
+				).toHaveAttribute('href', /\/map\?[^#]*\blookup=address(?:&|$)/u);
 				if (width === 390) {
 					await filter.click();
 					await expect(filter).toBeFocused();

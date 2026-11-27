@@ -33,6 +33,14 @@ export const copy = defineCopy({
 		mapImportError: 'Live map could not start · {city}.',
 		mapImportRetry: 'Try live map again',
 		staticNoScript: 'JavaScript is required to load the live interactive map.',
+		recordPoster: {
+			title: 'Record map',
+			preview: 'This preview shows the basemap. Record readings appear when the map is ready.',
+			loading: 'Loading the Record map…',
+			failed: 'The Record map could not load.',
+			retry: 'Try again',
+			noScript: 'JavaScript is required to load the interactive Record map.',
+		},
 		heading: 'Network map',
 		mapLabel: '{city} network map with vehicle status',
 		recordMapLabel: '{city} network map of the record',
@@ -51,6 +59,10 @@ export const copy = defineCopy({
 		nearMe: 'Stops near me',
 		nearMeUseLocation: 'Use my location',
 		nearMeSearchPlaceholder: 'Address, postal code, or coordinates',
+		nearMeAddressLabel: 'Address or postal code',
+		nearMeAddressHint: 'Street address or postal code',
+		nearMeNotFound: (query: string) =>
+			`No place found for “${query}”. Add Est or Ouest, a city or a postal code.`,
 		nearMeSearchSubmit: 'Find',
 		nearMeSuggestions: 'Address suggestions',
 		nearMeCollectionNotice:
@@ -59,6 +71,7 @@ export const copy = defineCopy({
 		nearMeLoading: 'Finding stops...',
 		nearMeNoResults: 'No nearby stops',
 		nearMeError: 'Could not find that place',
+		nearMeLookupUnavailable: 'Address search is unavailable. Try again.',
 		nearMeGeoDenied: 'Location permission denied',
 		nearMeGeoTimeout: 'Location timed out. Try again',
 		nearMeGeoUnavailable: 'Location unavailable',
@@ -156,6 +169,15 @@ export const copy = defineCopy({
 		mapImportError: 'La carte en direct n’a pas pu démarrer · {city}.',
 		mapImportRetry: 'Réessayer la carte en direct',
 		staticNoScript: 'JavaScript est requis pour charger la carte interactive en direct.',
+		recordPoster: {
+			title: 'Carte du bilan',
+			preview:
+				'Cet aperçu montre le fond de carte. Les mesures du bilan apparaîtront quand la carte sera prête.',
+			loading: 'Chargement de la carte du bilan…',
+			failed: 'La carte du bilan n’a pas pu se charger.',
+			retry: 'Réessayer',
+			noScript: 'JavaScript est requis pour charger la carte interactive du bilan.',
+		},
 		heading: 'Carte du réseau',
 		mapLabel: 'Carte du réseau · {city}, avec l’état des véhicules',
 		recordMapLabel: 'Carte du bilan du réseau · {city}',
@@ -174,6 +196,10 @@ export const copy = defineCopy({
 		nearMe: 'Arrêts près de moi',
 		nearMeUseLocation: 'Utiliser ma position',
 		nearMeSearchPlaceholder: 'Adresse, code postal ou coordonnées',
+		nearMeAddressLabel: 'Adresse ou code postal',
+		nearMeAddressHint: 'Adresse ou code postal',
+		nearMeNotFound: (query: string) =>
+			`Aucun lieu trouvé pour «${NB}${query}${NB}». Ajoutez Est ou Ouest, une ville ou un code postal.`,
 		nearMeSearchSubmit: 'Trouver',
 		nearMeSuggestions: 'Suggestions d’adresses',
 		nearMeCollectionNotice:
@@ -182,6 +208,7 @@ export const copy = defineCopy({
 		nearMeLoading: 'Recherche des arrêts...',
 		nearMeNoResults: 'Aucun arrêt proche',
 		nearMeError: 'Lieu introuvable',
+		nearMeLookupUnavailable: 'La recherche d’adresses est indisponible. Réessayez.',
 		nearMeGeoDenied: 'Autorisation de localisation refusée',
 		nearMeGeoTimeout: 'Délai de localisation dépassé. Réessayez',
 		nearMeGeoUnavailable: 'Localisation indisponible',

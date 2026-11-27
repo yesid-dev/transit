@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
 	import { Separator } from '@yesid/ui/separator';
-	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
+	import { StatusMark } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import MapPanelAnswer from './MapPanelAnswer.svelte';
+	import MapPanelRow from './MapPanelRow.svelte';
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
@@ -93,11 +94,26 @@
 		<ul class="list-none p-0">
 			{#each rows.slice(0, limit) as row (`${row.vehicleId}:${row.index}`)}
 				{@const heading = headsign(row)}
-				<li class="map-in-view-row" data-report-row data-report-id={row.vehicleId}>
-					<span
-						>{#if row.routeId}<RoutePlate code={line(row.routeId)} />{/if}</span
-					>
-					<span>
+				<MapPanelRow
+					code={row.routeId ? line(row.routeId) : undefined}
+					routePlate
+					name={row.vehicleId}
+					detail={heading
+						? display.toward(
+								display.directory.headsign(row.routeId, heading) ?? heading,
+								locale,
+								false,
+							)
+						: null}
+					vehicleId={row.vehicleId}
+					href={localizeHref(
+						`/vehicle/${encodeURIComponent(row.vehicleId)}?frameMode=live`,
+						locale,
+						model.providerId,
+					)}
+					onselect={() => onselect(row.vehicleId)}
+				>
+					{#snippet value()}
 						<StatusMark
 							status={row.status}
 							{...liveStatusWords(
@@ -107,29 +123,8 @@
 								locale,
 							)}
 						/>
-						{#if heading}<small
-								>{display.toward(
-									display.directory.headsign(row.routeId, heading) ?? heading,
-									locale,
-									false,
-								)}</small
-							>{/if}
-					</span>
-					<a
-						class="map-in-view-link text-primary underline"
-						data-in-view-vehicle={row.vehicleId}
-						href={localizeHref(
-							`/vehicle/${encodeURIComponent(row.vehicleId)}?frameMode=live`,
-							locale,
-							model.providerId,
-						)}
-						onclick={(event) => {
-							if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-							event.preventDefault();
-							onselect(row.vehicleId);
-						}}>{row.vehicleId}</a
-					>
-				</li>
+					{/snippet}
+				</MapPanelRow>
 			{/each}
 		</ul>
 		{#if rows.length > limit}
@@ -177,25 +172,3 @@
 		</p>
 	{/if}
 </section>
-
-<style>
-	.map-in-view-row {
-		display: grid;
-		grid-template-columns: 2.75rem minmax(0, 1fr) auto;
-		align-items: center;
-		column-gap: calc(var(--spacing) * 2);
-		font-size: var(--text-small);
-	}
-	.map-in-view-row small {
-		display: block;
-		color: var(--muted-foreground);
-	}
-	.map-in-view-link {
-		display: inline-flex;
-		align-items: center;
-		min-height: var(--size-tap-min);
-		min-width: var(--size-tap-min);
-		margin-inline-start: auto;
-		font-family: var(--font-mono);
-	}
-</style>

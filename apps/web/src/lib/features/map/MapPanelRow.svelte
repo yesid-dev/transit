@@ -1,0 +1,122 @@
+<script lang="ts">
+	import { RoutePlate } from '@yesid/ui/brand';
+	import type { Snippet } from 'svelte';
+
+	let {
+		code,
+		routePlate = false,
+		name,
+		detail,
+		href,
+		onselect,
+		value,
+		vehicleId,
+	}: {
+		code?: string;
+		routePlate?: boolean;
+		name: string;
+		detail?: string | null;
+		href?: string;
+		onselect?: () => void;
+		value: Snippet;
+		vehicleId?: string;
+	} = $props();
+
+	function follow(event: MouseEvent) {
+		if (!onselect || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+		event.preventDefault();
+		onselect();
+	}
+</script>
+
+<li
+	class="panel-row"
+	data-map-panel-row
+	data-report-row={vehicleId ? '' : undefined}
+	data-report-id={vehicleId}
+>
+	<span class="code" data-map-row-code>
+		{#if code}
+			{#if routePlate}<RoutePlate {code} />{:else}<span class="stop-code" title={code}>{code}</span
+				>{/if}
+		{/if}
+	</span>
+	{#if href}
+		<a
+			class="name text-primary underline"
+			{href}
+			title={name}
+			onclick={follow}
+			data-map-row-name
+			data-in-view-vehicle={vehicleId}>{name}</a
+		>
+	{:else}
+		<button
+			class="name text-primary underline"
+			type="button"
+			title={name}
+			onclick={onselect}
+			data-map-row-name>{name}</button
+		>
+	{/if}
+	<span class="value" data-map-row-value>{@render value()}</span>
+	{#if detail}<small title={detail}>{detail}</small>{/if}
+</li>
+
+<style>
+	.panel-row {
+		position: relative;
+		display: grid;
+		grid-template: 'code name value' auto '. detail detail' auto / 3.25rem minmax(0, 1fr) auto;
+		align-items: baseline;
+		column-gap: 0.5rem;
+		padding-block: 0.375rem;
+		min-block-size: var(--size-tap-min);
+		font-size: var(--text-small);
+	}
+	.code {
+		grid-area: code;
+		min-inline-size: 0;
+	}
+	.stop-code {
+		display: inline-block;
+		vertical-align: middle;
+		max-inline-size: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-sm);
+		padding-inline: 0.15em;
+		font-family: var(--font-mono);
+	}
+	.name {
+		grid-area: name;
+		min-inline-size: 0;
+		min-block-size: 1.5rem;
+		text-align: start;
+		cursor: pointer;
+	}
+	.name::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+	}
+	.name,
+	small {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.value {
+		grid-area: value;
+		text-align: end;
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+	}
+	small {
+		grid-area: detail;
+		min-inline-size: 0;
+		color: var(--muted-foreground);
+	}
+</style>
