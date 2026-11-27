@@ -9,6 +9,7 @@
 		tripOutcomeLabels,
 		tripOutcomeNote,
 		tripsRunBase,
+		tripsRunShareLabel,
 		unconfirmedTripsRange,
 	} from '#lib/site/presenter.ts';
 	import { tripOutcomes } from '../record/tripOutcomes.ts';
@@ -549,7 +550,7 @@
 								)}
 								<dl class="mb-4 grid gap-2">
 									<div class="flex flex-wrap justify-between gap-x-3">
-										<dt>{term.delivery}</dt>
+										<dt>{tripsRunShareLabel(locale)}</dt>
 										<dd class="ml-auto text-right tabular-nums">
 											<strong
 												>{result.value.trips_run == null

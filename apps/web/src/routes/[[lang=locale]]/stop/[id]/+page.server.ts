@@ -3,7 +3,7 @@ import { stopPageTitle } from '#lib/seo/riderPageTitle.ts';
 import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
-import { loadStopRecord } from '#lib/server/stopRecord.ts';
+import { loadStopRecord, type StopIdentity } from '#lib/server/stopRecord.ts';
 import { getRecordAnswer } from '#lib/server/engine.ts';
 import { withinBootBudget } from '#lib/server/timetable.ts';
 import {
@@ -51,7 +51,7 @@ export const load: PageServerLoad = async (event) => {
 	const clock = frameClock(provider);
 	const period = !frameLive ? parseAnswerFrameState(url.searchParams, clock).period : null;
 	const scope = { city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') };
-	let stopIdentity: Promise<'available' | 'missing' | 'unconfirmed'> | undefined;
+	let stopIdentity: Promise<StopIdentity> | undefined;
 	if (period && !scheduledStop) {
 		// One question over the whole record tells an archived stop, which keeps its Record even
 		// for dates without readings, from an id the network never published.
@@ -94,7 +94,7 @@ export const load: PageServerLoad = async (event) => {
 		hasAlerts,
 		...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) } : {}),
 		stopIdentity,
-		record: period ? loadStopRecord({ ...scope, ...period }, id) : null,
+		record: period ? loadStopRecord({ ...scope, ...period }, id, undefined, stopIdentity) : null,
 		capture:
 			live && (hasAlerts || (tripUpdatesPublished && !scheduleOnly))
 				? fetchCaptureSnapshot(providerId, signal, event.fetch).catch(() => null)

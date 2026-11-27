@@ -24,7 +24,14 @@ export function stopRecordQuery(section: StopSection, stop: string): RecordQuery
 	};
 }
 
-function readStopRecord(scope: EnginePeriod, stop: string, only?: ReadonlySet<string>) {
+export type StopIdentity = 'available' | 'missing' | 'unconfirmed';
+
+function readStopRecord(
+	scope: EnginePeriod,
+	stop: string,
+	only?: ReadonlySet<string>,
+	identity?: Promise<StopIdentity>,
+) {
 	const { from, to, city } = scope;
 	const include = readingFilter(only);
 	// The engine already computes both delay percentiles alongside the three bands.
@@ -46,9 +53,17 @@ function readStopRecord(scope: EnginePeriod, stop: string, only?: ReadonlySet<st
 	];
 	const measure = (parameters: RecordQuery['parameters']) =>
 		getRecordAnswer({ path: '/measure', parameters }, scope);
+	const delivery = () => measure({ measure: 'service_delivered', stop });
 	return {
 		period: { from, to },
 		city,
+		delivery: include('delivery')
+			? identity
+				? identity.then((state) =>
+						state === 'available' ? delivery() : ({ kind: 'unreachable' } as const),
+					)
+				: delivery()
+			: undefined,
 		sections: sections.filter(include).map((section) => ({
 			section,
 			answer:
@@ -74,7 +89,17 @@ export function loadStopRecord(
 	only: ReadonlySet<string>,
 ): Partial<StopRecord>;
 // Last, so `ReturnType` names the whole record.
-export function loadStopRecord(scope: EnginePeriod, stop: string): StopRecord;
-export function loadStopRecord(scope: EnginePeriod, stop: string, only?: ReadonlySet<string>) {
-	return readStopRecord(scope, stop, only);
+export function loadStopRecord(
+	scope: EnginePeriod,
+	stop: string,
+	only?: undefined,
+	identity?: Promise<StopIdentity>,
+): StopRecord;
+export function loadStopRecord(
+	scope: EnginePeriod,
+	stop: string,
+	only?: ReadonlySet<string>,
+	identity?: Promise<StopIdentity>,
+) {
+	return readStopRecord(scope, stop, only, identity);
 }

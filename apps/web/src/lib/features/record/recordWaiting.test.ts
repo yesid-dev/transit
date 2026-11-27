@@ -49,6 +49,7 @@ describe('a waiting card keeps a foot line for its words', () => {
 	// The shape, an 8 px gap, then one 22 px line (two, 44 px, on a phone).
 	it.each([
 		['facts (4)', { shape: 'facts', count: 4 }, 206, 228],
+		['trip-facts', 'trip-facts', 317, 424],
 		['table (7 rows)', { shape: 'table', rows: 7 }, 370, 392],
 		['rows (8, two lines)', { shape: 'rows', count: 8 }, 550, 572],
 		['grid', 'grid', 363, 385],

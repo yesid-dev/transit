@@ -4,6 +4,7 @@ import { punctualityBands, recordMessage } from '#lib/features/record/recordText
 import type { RecordMeasure } from '#lib/server/engine.ts';
 import {
 	stopAccessibility,
+	stopArchiveAvailability,
 	stopAnswer,
 	stopCitation,
 	stopComparison,
@@ -21,6 +22,34 @@ const answer: RecordMeasure = {
 		counts: { early: 0, on_time: 80, late: 20, classified: 100, scheduled: 200 },
 	},
 };
+
+it('opens the archived record when service delivery is its only reading', async () => {
+	const empty: RecordMeasure = {
+		...base,
+		state: 'not_measured',
+		value: {},
+		evidence: { ...base.evidence, counts: {} },
+	};
+	const unavailable = Promise.resolve({ kind: 'answer' as const, answer: empty });
+	await expect(
+		stopArchiveAvailability({
+			period: { from: '2026-11-08', to: '2026-11-14' },
+			city: 'stm',
+			sections: [{ section: 'punctuality', answer: unavailable }],
+			grid: unavailable,
+			network: unavailable,
+			networkDaily: unavailable,
+			delivery: Promise.resolve({
+				kind: 'answer' as const,
+				answer: {
+					...base,
+					value: { trips_run: 0.9 },
+					evidence: { ...base.evidence, counts: { ran: 27, eligible: 30 } },
+				},
+			}),
+		}),
+	).resolves.toBe('available');
+});
 
 it('explains low coverage once and retains the sample and threshold in both languages', () => {
 	const gap: RecordMeasure = {

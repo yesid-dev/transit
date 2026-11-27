@@ -42,16 +42,16 @@ export async function stopArchiveAvailability(record: ReturnType<typeof loadStop
 		('value' in answer &&
 			answer.state === 'measured' &&
 			Object.values(answer.value).some((value) => typeof value === 'number' && value !== 0));
-	if (
-		results.some(
-			(result) =>
-				result.kind === 'answer' &&
-				('value' in result.answer || 'cells' in result.answer) &&
-				(hasReading(result.answer) ||
-					('cells' in result.answer && result.answer.cells.some(hasReading))),
-		)
-	)
-		return 'available';
+	const hasResult = (result: EngineResult<RecordAnswer>) =>
+		result.kind === 'answer' &&
+		('value' in result.answer || 'cells' in result.answer) &&
+		(hasReading(result.answer) ||
+			('cells' in result.answer && result.answer.cells.some(hasReading)));
+	if (results.some(hasResult)) return 'available';
+	// A trip can have a known outcome even when the record has no timing reading here.
+	const delivery = await record.delivery;
+	if (hasResult(delivery)) return 'available';
+	results.push(delivery);
 	if (results.some((result) => result.kind === 'busy')) return 'busy';
 	return results.every((result) => result.kind === 'answer') ? 'empty' : 'unavailable';
 }

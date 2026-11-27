@@ -79,6 +79,51 @@ export function stopEngine(url) {
 	}
 	if (!['S1', 'archived-stop', '57430'].includes(get('stop')))
 		return { status: 400, body: { message: 'Wrong stop cut' } };
+	if (measure === 'service_delivered' && group === null) {
+		const counts =
+			get('stop') === 'archived-stop'
+				? { scheduled: 10, eligible: 10, ran: 10, cancelled: 0, missing: 0, unconfirmed: 0 }
+				: get('stop') === '57430'
+					? { scheduled: 50, eligible: 50, ran: 49, cancelled: 1, missing: 0, unconfirmed: 0 }
+					: { scheduled: 110, eligible: 100, ran: 96, cancelled: 3, missing: 1, unconfirmed: 10 };
+		const measured = counts.eligible >= 20;
+		return {
+			hold: from === '2026-11-09' && 'stop-delivery',
+			body: {
+				value: { trips_run: measured ? counts.ran / counts.eligible : null },
+				state: measured ? 'measured' : 'too_few_to_judge',
+				state_text: measured
+					? { en: 'Measured', fr: 'Mesuré' }
+					: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
+				coverage_note,
+				evidence: {
+					...evidence,
+					counts,
+					excluded: { added: get('stop') === 'S1' ? 2 : 0, unconfirmed: counts.unconfirmed },
+				},
+				info: [
+					{
+						id: 'trips_run',
+						minimum_sample: 20,
+						text: {
+							en: {
+								definition: 'Share of scheduled trips with a known outcome that ran.',
+								counts:
+									'For this stop, each trip scheduled to call here counts once, even if it calls twice. An outcome applies to the whole trip. A trip that ran may have been confirmed at another stop.',
+								limits: 'It cannot tell whether a trip served every scheduled stop.',
+							},
+							fr: {
+								definition: 'Part des trajets prévus à l’issue connue qui ont été effectués.',
+								counts:
+									'Ce bilan compte une fois chaque trajet dont l’horaire prévoit un passage à cet arrêt, même s’il y passe deux fois. L’issue s’applique au trajet entier. Un trajet effectué peut avoir été confirmé à un autre arrêt.',
+								limits: 'Elle ne dit pas si le trajet a desservi tous ses arrêts prévus.',
+							},
+						},
+					},
+				],
+			},
+		};
+	}
 	if (measure === 'punctuality' && from === '2026-10-24') {
 		return {
 			body: {
