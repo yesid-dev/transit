@@ -25,9 +25,14 @@ export async function openMapControls(page: Page) {
 	const layout = await waitForFrameRailLayout(page);
 	if (layout === 'compact') {
 		const sheet = page.locator('[data-map-in-view-sheet]');
-		if (await sheet.isVisible())
-			await sheet.getByRole('tab', { name: /^(Controls|Options)$/u }).click();
-		else await mapControlsPill(page).click();
+		// The sheet stays visible during its exit animation after Escape.
+		const openSheet = sheet.and(page.locator('[data-state="open"]'));
+		if (await openSheet.isVisible()) {
+			await openSheet.getByRole('tab', { name: /^(Controls|Options)$/u }).click();
+		} else {
+			await expect(sheet).toBeHidden();
+			await mapControlsPill(page).click();
+		}
 		await expect(sheet.locator('[data-frame-controls="mobile"]')).toBeVisible();
 	}
 }
