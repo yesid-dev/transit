@@ -1,0 +1,18 @@
+[Unit]
+Description=Transit static schedule check for %i
+After=network-online.target time-sync.target
+Wants=network-online.target time-sync.target
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/transit-capture/r2-write.env
+WorkingDirectory=/opt/transit-capture/current/apps/db
+ExecStart=/opt/transit-capture/current/apps/db/.venv/bin/python -m transit_ops.raw_capture %i --provider-dir /opt/transit-capture/current/apps/db/config/providers --feed static_schedule --once
+TimeoutStartSec=10min
+MemoryMax=768M
+CPUWeight=25
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes

@@ -1,0 +1,14 @@
+[Unit]
+Description=Check the %i static schedule between local midnight and the first trips
+
+# A new edition can bring new trip ids. Store it after local midnight, so its
+# capture date is the service day it starts, and before the first trips, so
+# live trips join today's timetable. Unchanged files are not stored again.
+# The Transit cities share this zone; a city in another zone needs its own timer.
+[Timer]
+OnCalendar=*-*-* 00..04:25:00 America/Toronto
+RandomizedDelaySec=4min
+Persistent=false
+
+[Install]
+WantedBy=timers.target

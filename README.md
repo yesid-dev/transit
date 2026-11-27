@@ -145,6 +145,26 @@ the initial rollout, run `sudo systemctl disable --now transit-capture@sto.servi
 Preserve the raw objects and the rolling download state under
 `/var/lib/transit-capture-sto/` in either case.
 
+A new schedule edition can renumber every trip, as OC Transpo's do. Live trips
+then join the timetable only once that edition is stored. The schedule timer
+checks a city's static feed alone, hourly from 00:25 to 04:25 Toronto time:
+after local midnight, so the capture date is the day the edition starts, and
+before the first trips. It stores a file only when it differs from the newest
+stored capture, and needs only `r2-write.env`. It serves OC Transpo and STM,
+whose schedules are otherwise stored only by the late-starting Daily Static
+Pipeline. Gatineau's capture daemon already stores its schedule daily, under its
+download limit. After `update-capture.sh` has installed the release:
+
+~~~sh
+sudo install -m 0644 apps/db/ops/linux/transit-schedule-capture@.service \
+  apps/db/ops/linux/transit-schedule-capture@.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+for city in octranspo stm; do
+  sudo systemctl start "transit-schedule-capture@$city.service"
+  sudo systemctl enable --now "transit-schedule-capture@$city.timer"
+done
+~~~
+
 **Raw Capture Freshness** checks the private bucket every 30 minutes for each
 enabled feed in a provider manifest with `capture_enabled: true`. It uses the
 capture timestamp in the newest raw key. Static feeds are late after 1.5 times
