@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from hmac import compare_digest
 from pathlib import Path
@@ -13,8 +14,9 @@ from urllib.parse import parse_qs
 from uuid import uuid4
 
 import uvicorn
-from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, Scope
+from uvicorn._types import ASGIReceiveCallable, ASGISendCallable, HTTPScope, Scope
 
+from transit_engine.cancellation import QueryCancellation, check_query, current_query
 from transit_engine.cities import (
     ANSWER_REVISION,
     UnknownCity,
@@ -34,12 +36,14 @@ from transit_engine.measures import (
     ask,
     methods,
 )
+from transit_engine.partials import PartialResults
 from transit_engine.ranking import DEFAULT_LIMIT, Ranking, rank, ranking_csv
 from transit_engine.search import schedule_index, search_index
 from transit_engine.series import SeriesGroup
 from transit_engine.store import Store, env_int
 
 BUSY_MESSAGE = "busy, try again"
+SCHEDULE_ROUTES = {"/search-index", "/schedule-index", "/schedule-map"}
 LOGGER = logging.getLogger("uvicorn.error")
 
 
@@ -89,7 +93,7 @@ def _date(value: str) -> date:
 
 def _question(
     raw: bytes, *, ranking: bool = False
-) -> tuple[Question | Ranking, Literal["json", "csv"], Language]:
+) -> tuple[Question | Ranking, Literal["json", "csv"], Language, bool]:
     required = {"city", "from", "to"}
     optional = {
         "line",
@@ -102,6 +106,7 @@ def _question(
         "cause",
         "format",
         "lang",
+        "include_method",
     }
     if ranking:
         required.add("kind")
@@ -156,6 +161,9 @@ def _question(
     language = params.get("lang", "en")
     if output not in ("json", "csv") or language not in ("en", "fr"):
         raise ValueError("format must be json or csv and lang must be en or fr")
+    include_method = params.get("include_method", "1")
+    if include_method not in ("0", "1") or (output == "csv" and include_method == "0"):
+        raise ValueError("include_method=0 requires JSON")
     if "view" in params and (params["view"] != "map" or output != "json"):
         raise ValueError("view=map requires JSON")
     if "include_overall" in params and (params["include_overall"] != "1" or output != "json"):
@@ -198,8 +206,16 @@ def _question(
         if not re.fullmatch(r"[0-9]{1,3}", limit):
             raise ValueError("limit must be a positive integer")
         selection = Ranking(question, cast(EntityKind, kind), params.get("class"), int(limit))
-        return selection, output_format, output_language
-    return question, output_format, output_language
+        return selection, output_format, output_language, include_method == "1"
+    return question, output_format, output_language, include_method == "1"
+
+
+def omit_method_text(answer: dict[str, Any]) -> None:
+    for entry in answer.get("info", ()):
+        entry.pop("text", None)
+        entry.pop("csv_columns", None)
+    if "overall" in answer:
+        omit_method_text(answer["overall"])
 
 
 def _health(raw: bytes) -> tuple[str, date, date]:
@@ -221,6 +237,42 @@ def _health(raw: bytes) -> tuple[str, date, date]:
     return params["city"], _date(params["from"]), _date(params["to"])
 
 
+class QueryLane:
+    def __init__(self, concurrency: int, queue_size: int, queue_timeout: float):
+        self.slots = asyncio.BoundedSemaphore(concurrency)
+        self.queue_size = queue_size
+        self.queue_timeout = queue_timeout
+        self.waiting = 0
+
+    async def admit(self, send: ASGISendCallable) -> bool | None:
+        if not self.slots.locked():
+            await self.slots.acquire()
+            return False
+        if self.waiting >= self.queue_size:
+            await respond(send, 503, {"message": BUSY_MESSAGE})
+            return None
+        self.waiting += 1
+        try:
+            async with asyncio.timeout(self.queue_timeout):
+                await self.slots.acquire()
+        except TimeoutError:
+            await respond(send, 503, {"message": BUSY_MESSAGE}, queued=True)
+            return None
+        finally:
+            self.waiting -= 1
+        return True
+
+    def release_when_done(self, task: asyncio.Task[Any]) -> None:
+        self.slots.release()
+        if not task.cancelled():
+            task.exception()
+
+
+async def disconnected(receive: ASGIReceiveCallable) -> None:
+    while (await receive())["type"] != "http.disconnect":
+        pass
+
+
 class Engine:
     def __init__(
         self,
@@ -232,10 +284,9 @@ class Engine:
         access_token: bytes | None = None,
     ):
         self.store = store
-        self.slots = asyncio.BoundedSemaphore(concurrency)
-        self.queue_size = queue_size
-        self.queue_timeout = queue_wait_ms / 1000
-        self.waiting = 0
+        self.record = QueryLane(concurrency, queue_size, queue_wait_ms / 1000)
+        self.catalogue = QueryLane(1, min(queue_size, 4), queue_wait_ms / 1000)
+        self.catalogue_store = replace(store, threads=1, memory_mib=min(store.memory_mib, 256))
         self.boot_id = uuid4().hex
         self.authorization = b"Bearer " + access_token if access_token else None
 
@@ -279,6 +330,30 @@ class Engine:
         if scope["method"] != "GET":
             await respond(send, 405, {"message": "use GET"})
             return
+        if scope["path"] in SCHEDULE_ROUTES | {"/measure", "/ranking", "/data-health", "/cities"}:
+            cancellation = QueryCancellation()
+            token = current_query.set(cancellation)
+            try:
+                request = asyncio.create_task(self._get(scope, send))
+            finally:
+                current_query.reset(token)
+            gone = asyncio.create_task(disconnected(receive))
+            try:
+                await asyncio.wait((request, gone), return_when=asyncio.FIRST_COMPLETED)
+                if request.done():
+                    await request
+                else:
+                    await gone
+            finally:
+                if not request.done():
+                    cancellation.stop()
+                    request.cancel()
+                gone.cancel()
+                await asyncio.gather(request, gone, return_exceptions=True)
+            return
+        await self._get(scope, send)
+
+    async def _get(self, scope: HTTPScope, send: ASGISendCallable) -> None:
         if scope["path"] == "/healthz":
             await respond(send, 200, {"boot_id": self.boot_id, "peak_rss_bytes": peak_rss_bytes()})
             return
@@ -301,16 +376,16 @@ class Engine:
             await self._data_health(scope["query_string"], send)
             return
         route = scope["path"]
-        schedule_routes = {"/search-index", "/schedule-index", "/schedule-map"}
-        if route not in schedule_routes | {"/measure", "/ranking"}:
+        if route not in SCHEDULE_ROUTES | {"/measure", "/ranking"}:
             await respond(send, 404, {"message": "not found"})
             return
         try:
             question: Question | Ranking | str
             language: Language
+            include_method = True
             raw = scope["query_string"]
             lines = None
-            if route in schedule_routes:
+            if route in SCHEDULE_ROUTES:
                 scoped_map = route == "/schedule-map"
                 if scoped_map and (len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw)):
                     raise ValueError("invalid query encoding or length")
@@ -338,7 +413,9 @@ class Engine:
                     lines = set(ids)
                 question, output, language = fields["city"][0], "json", "en"
             else:
-                question, output, language = _question(raw, ranking=route == "/ranking")
+                question, output, language, include_method = _question(
+                    raw, ranking=route == "/ranking"
+                )
                 if require_public_city:
                     selection = question.question if isinstance(question, Ranking) else question
                     await asyncio.to_thread(public_declaration, selection.city)
@@ -349,31 +426,20 @@ class Engine:
             await respond(send, 400, {"message": str(error)})
             return
 
-        queued = self.slots.locked()
-        if queued:
-            if self.waiting >= self.queue_size:
-                await respond(send, 503, {"message": BUSY_MESSAGE})
-                return
-            self.waiting += 1
-            try:
-                async with asyncio.timeout(self.queue_timeout):
-                    await self.slots.acquire()
-            except TimeoutError:
-                await respond(send, 503, {"message": BUSY_MESSAGE}, queued=True)
-                return
-            finally:
-                self.waiting -= 1
-        else:
-            await self.slots.acquire()
+        lane = self.catalogue if route in SCHEDULE_ROUTES else self.record
+        queued = await lane.admit(send)
+        if queued is None:
+            return
 
         # Keep the slot until DuckDB stops, including when a caller disconnects.
         def run_query() -> tuple[dict[str, Any] | str, int]:
+            check_query()
             if isinstance(question, str):
                 if route in {"/schedule-index", "/schedule-map"}:
                     _, identity, _ = public_declaration(question)
                     today = datetime.now(UTC).astimezone(service_zone(identity)).date()
                     schedule = schedule_index(
-                        self.store, question, today - timedelta(days=1),
+                        self.catalogue_store, question, today - timedelta(days=1),
                         index="maps" if route == "/schedule-map" else "search",
                     )
                     if schedule is not None and lines is not None:
@@ -382,23 +448,22 @@ class Engine:
                             line: shapes[line] for line in sorted(lines) if line in shapes
                         }
                     return {"schedule": schedule}, 0
-                return search_index(self.store, question), 0
+                return search_index(self.catalogue_store, question), 0
             if isinstance(question, Ranking):
                 answer = rank(self.store, question)
+                answer["excluded_count"] = len(answer["excluded"])
+                answer["excluded"] = answer["excluded"][: question.limit]
                 payload = ranking_csv(answer, language) if output == "csv" else answer
             else:
                 answer = ask(self.store, question)
                 payload = answer_csv(answer, language) if output == "csv" else answer
+            if not include_method:
+                omit_method_text(answer)
             return payload, len(answer["evidence"]["days_pending"])
 
         query = asyncio.create_task(asyncio.to_thread(run_query))
 
-        def finished(task: asyncio.Task[Any]) -> None:
-            self.slots.release()
-            if not task.cancelled():
-                task.exception()
-
-        query.add_done_callback(finished)
+        query.add_done_callback(lane.release_when_done)
         try:
             payload, days_pending = await asyncio.shield(query)
         except UnknownCity as error:
@@ -432,31 +497,12 @@ class Engine:
             return
 
         # Same admission as /measure, so health cannot bypass the overload limits.
-        queued = self.slots.locked()
-        if queued:
-            if self.waiting >= self.queue_size:
-                await respond(send, 503, {"message": BUSY_MESSAGE})
-                return
-            self.waiting += 1
-            try:
-                async with asyncio.timeout(self.queue_timeout):
-                    await self.slots.acquire()
-            except TimeoutError:
-                await respond(send, 503, {"message": BUSY_MESSAGE}, queued=True)
-                return
-            finally:
-                self.waiting -= 1
-        else:
-            await self.slots.acquire()
+        queued = await self.record.admit(send)
+        if queued is None:
+            return
 
         work = asyncio.create_task(asyncio.to_thread(data_health, self.store, city, start, end))
-
-        def finished(task: asyncio.Task[Any]) -> None:
-            self.slots.release()
-            if not task.cancelled():
-                task.exception()
-
-        work.add_done_callback(finished)
+        work.add_done_callback(self.record.release_when_done)
         try:
             answer = await asyncio.shield(work)
         except ValueError as error:
@@ -480,6 +526,8 @@ class Engine:
 
 def main() -> None:
     store = Store.from_env()
+    if not store.s3_endpoint:
+        store = replace(store, partial_results=PartialResults())
     token_file = os.environ.get("ENGINE_ACCESS_TOKEN_FILE")
     access_token = None
     if token_file is not None:

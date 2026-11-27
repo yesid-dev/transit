@@ -3,11 +3,12 @@ import csv
 import io
 import json
 from collections import Counter
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from random import Random
 from statistics import median, quantiles
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import duckdb
 import pytest
@@ -17,6 +18,7 @@ from test_historical_measures import _write_table, utc
 from transit_engine import measures, scorecard
 from transit_engine.clean_manifest import FEED_POLLS, PREDICTION_SAMPLES, VEHICLE_POSITIONS
 from transit_engine.measures import Question, answer_csv, ask, methods
+from transit_engine.partials import PartialResults
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
@@ -44,6 +46,43 @@ class Vehicle(NamedTuple):
     occupancy_percentage: int | None
     latitude: float | None
     longitude: float | None
+
+
+def test_vehicle_field_partials_reuse_validated_days(
+    sample: tuple[Store, list[Poll], dict[date, list[Vehicle]], list[int]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = sample[0]
+    cache_store = replace(store, partial_results=PartialResults())
+    question = Question("vehicle_field_completeness", CITY, THURSDAY, FRIDAY)
+    single = replace(question, end=THURSDAY)
+    without_cache = ask(store, single)
+    calls = 0
+    compute = scorecard.vehicle_counts
+
+    def counted(*args: Any, **kwargs: Any) -> tuple[dict[str, int], list[str]]:
+        nonlocal calls
+        calls += 1
+        return compute(*args, **kwargs)
+
+    monkeypatch.setattr(measures, "vehicle_counts", counted)
+    ask(cache_store, question)
+    assert calls == 2
+    cached = ask(cache_store, single)
+    assert calls == 2
+    # Friday can be served from an older version while its preferred edition is pending.
+    ask(cache_store, replace(question, start=FRIDAY))
+    assert calls == 3
+    marker = (
+        Path(store.root) / CITY / str(THURSDAY) / f"v{store.cleaning_version}" / "manifest.json"
+    )
+    receipt = json.loads(marker.read_text(encoding="utf-8"))
+    marker.write_text(json.dumps(receipt, indent=3), encoding="utf-8")
+    reopened = ask(cache_store, single)
+    assert calls == 4
+    for answer in (without_cache, cached, reopened):
+        answer["evidence"].pop("query_ms")
+    assert cached == reopened == without_cache
 
 
 def _trip(

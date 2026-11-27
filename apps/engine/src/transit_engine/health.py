@@ -1,6 +1,7 @@
 """Report which clean tables exist for each requested service day."""
 
 import json
+from contextlib import nullcontext
 from datetime import date, timedelta
 from pathlib import Path
 from stat import S_ISREG
@@ -8,6 +9,7 @@ from typing import Any
 
 import duckdb
 
+from transit_engine.cancellation import check_query, track_connection
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
@@ -44,15 +46,12 @@ def data_health(store: Store, city: str, start: date, end: date) -> dict[str, An
     if (end - start).days + 1 > MAX_DAYS:
         raise ValueError(f"the range must be at most {MAX_DAYS} days")
     version = str(store.cleaning_version)
-    conn = store.connect() if store.s3_endpoint else None
-    try:
+    connection = track_connection(store.connect()) if store.s3_endpoint else nullcontext(None)
+    with connection as conn:
         days = [
             _day(store, conn, city, version, start + timedelta(days=offset))
             for offset in range((end - start).days + 1)
         ]
-    finally:
-        if conn is not None:
-            conn.close()
     return {
         "city": city,
         "from": start.isoformat(),
@@ -69,6 +68,7 @@ def _day(
     version: str,
     day: date,
 ) -> dict[str, Any]:
+    check_query()
     directory = f"{store.root.rstrip('/')}/{city}/{day.isoformat()}/v{version}"
     manifest_bytes, sizes = _probe(conn, directory)
     missing = {

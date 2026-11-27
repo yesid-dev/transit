@@ -15,6 +15,7 @@ from transit_engine.series import LOCAL_HOUR, LOCAL_HOUR_BUCKET
 from transit_engine.vehicles import (
     vehicle_cadence_join,
     vehicle_cadence_sql,
+    vehicle_duration_us_sql,
     vehicle_end_sql,
     vehicle_hour_weight_sql,
     vehicle_tail_sql,
@@ -324,7 +325,10 @@ def vehicle_counts(
         else ""
     )
     tail = vehicle_tail_sql("v.next_start", "v.last_seen_at_utc", "cadence.cadence_us")
-    weight = "epoch_us(ends_at) - epoch_us(captured_at_utc)"
+    weight = vehicle_duration_us_sql(
+        "captured_at_utc", "last_seen_at_utc", "tail_us", "cadence_us"
+    )
+    tie_breaker = ", filename" if len(paths) > 1 else ""
     reading = "true"
     hour_args: list[object] = []
     if hour is not None:
@@ -341,13 +345,13 @@ def vehicle_counts(
         f"""
         WITH sequenced AS (
             SELECT *, lead(captured_at_utc) OVER (
-                PARTITION BY vehicle_id ORDER BY captured_at_utc, filename
+                PARTITION BY vehicle_id ORDER BY captured_at_utc{tie_breaker}
             ) AS next_start
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ANY(?)
         ), cadence AS ({vehicle_cadence_sql("cleaning_version = ANY(?)")}
         ), vehicles AS (
-            SELECT v.*, {direction} AS direction_id,
+            SELECT v.*, cadence.cadence_us, {direction} AS direction_id,
                 {vehicle_end_sql(
                     "v.captured_at_utc", "v.last_seen_at_utc", tail, "cadence.cadence_us"
                 )} AS ends_at,

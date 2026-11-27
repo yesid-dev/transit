@@ -8,14 +8,18 @@ import json
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import InitVar, dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
+from functools import partial as bind
+from hashlib import sha256
 from itertools import batched
 from time import perf_counter
 from typing import Any, Literal, NamedTuple
 
 import duckdb
 
+from transit_engine.cancellation import check_query, track_connection
 from transit_engine.capture import (
     MAX_POLL_AGE_SECONDS,
     MAX_POLL_SPACING_SECONDS,
@@ -94,6 +98,7 @@ from transit_engine.vehicles import (
     VEHICLE_COUNTS,
     vehicle_cadence_join,
     vehicle_cadence_sql,
+    vehicle_duration_us_sql,
     vehicle_end_sql,
     vehicle_gap_us_sql,
     vehicle_hour_weight_sql,
@@ -1761,7 +1766,10 @@ def _crowding_rows(
                  (t.provider, t.cleaning_version, t.service_date, t.trip_id)
         """
         inputs.append(paths[TRIP_DAYS])
-    weight = "epoch_us(ends_at) - epoch_us(captured_at_utc)"
+    weight = vehicle_duration_us_sql(
+        "captured_at_utc", "last_seen_at_utc", "tail_us", "cadence_us"
+    )
+    tie_breaker = ", filename" if len(paths[VEHICLE_POSITIONS]) > 1 else ""
     reading_cut = "matches"
     segments = ""
     entity_hour = "NULL"
@@ -1792,12 +1800,12 @@ def _crowding_rows(
             SELECT provider, cleaning_version, service_date, trip_id, route_id, stop_id,
                 captured_at_utc, last_seen_at_utc, readings, occupancy_status,
                 occupancy_percentage, lead(captured_at_utc) OVER (
-                    PARTITION BY vehicle_id ORDER BY captured_at_utc, filename
+                    PARTITION BY vehicle_id ORDER BY captured_at_utc{tie_breaker}
                 ) AS next_start
             {positions}
         ), vehicles AS (
             SELECT v.route_id, v.stop_id, {direction} AS direction_id,
-                v.captured_at_utc, v.readings,
+                v.captured_at_utc, v.last_seen_at_utc, cadence.cadence_us, v.readings,
                 {tail} AS tail_us,
                 {vehicle_gap_us_sql("cadence.cadence_us")} AS cap_us,
                 {vehicle_end_sql(
@@ -2501,20 +2509,24 @@ def _waiting_rows(
                 count(*) AS scheduled_count, sum(s.headway) AS scheduled_elapsed,
                 sum(s.headway * s.headway) AS scheduled_squared
             FROM ({comparable_schedule}) s
-            ASOF JOIN observed_windows w
+            -- Eligible windows are disjoint for each stop/period/entity. A
+            -- positive interval fits in at most one, even at a shared boundary.
+            JOIN observed_windows w
                 ON s.entity = w.entity AND s.service_date = w.service_date
                 AND s.route_id = w.route_id AND s.direction_id = w.direction_id
                 AND s.stop_id = w.stop_id AND s.period = w.period
-                AND s.previous_at >= w.window_start
-            WHERE s.event_at <= w.window_end
+                AND s.previous_at >= w.window_start AND s.event_at <= w.window_end
             GROUP BY ALL
         ), waiting AS (
             SELECT entity, sum(scheduled_count) AS covered_scheduled_headways,
                 sum(scheduled_elapsed) AS scheduled_seconds,
                 sum(scheduled_squared) AS scheduled_squared_seconds,
                 sum(scheduled_elapsed) FILTER (actual_elapsed > 0) AS wait_weight,
+                -- Sum the same terms in a fixed order regardless of join or thread order.
                 sum(0.5 * (actual_squared * (scheduled_elapsed / nullif(actual_elapsed, 0))
-                    - scheduled_squared)) AS weighted_excess
+                    - scheduled_squared)
+                    ORDER BY service_date, route_id, direction_id, stop_id, period
+                ) AS weighted_excess
             FROM scheduled_wait_by_period JOIN observed_wait_by_period
                 USING (entity, service_date, route_id, direction_id, stop_id, period)
             GROUP BY entity
@@ -3991,6 +4003,7 @@ class ReadWindow:
     batch_days: int | None = None
     versions: dict[str, int] = field(default_factory=dict)
     source_dates: dict[str, str] = field(default_factory=dict)
+    partial_receipts: dict[str, str] = field(default_factory=dict)
 
     @property
     def no_days_measured(self) -> bool:
@@ -4020,6 +4033,7 @@ class ReadWindow:
         size = self.batch_days or days or DAYS_PER_QUERY_BATCH
         days_read = len(next(iter(self.paths.values())))
         for offset in range(0, days_read, size):
+            check_query()
             yield {table: files[offset : offset + size] for table, files in self.paths.items()}
 
     def evidence(
@@ -4066,6 +4080,40 @@ class ReadWindow:
                 self.not_tracked.append(day)
 
 
+def _partial_scope(question: Question, family: Family) -> bool:
+    cuts = question.cuts()
+    if family.id == _VEHICLES_ID:
+        return (
+            (question.measure == "vehicle_days_in_service" and question.group == "vehicle"
+             and not cuts)
+            or (question.vehicle is not None and cuts.keys() == {"vehicle"}
+                and question.group in {None, "day"})
+        )
+    return not cuts and question.group is None and (
+        family.id in {_CROWDING_ID, _WAITING_ID}
+        or question.measure in {"vehicle_field_completeness", "vehicles_without_trip"}
+    )
+
+
+def _daily_partial[T](
+    store: Store,
+    window: ReadWindow,
+    family: Family,
+    question: Question,
+    day: str,
+    measure: str,
+    compute: Callable[[], T],
+) -> T:
+    if store.partial_results is None or day not in window.partial_receipts:
+        return compute()
+    key = (
+        store.root, question.city, day, str(window.versions[day]), family.id,
+        family.method_version, measure, question.group, question.vehicle,
+        window.partial_receipts[day],
+    )
+    return store.partial_results.read_or_compute(key, compute)
+
+
 def read_window(
     conn: duckdb.DuckDBPyConnection,
     store: Store,
@@ -4099,7 +4147,11 @@ def read_window(
     )
     window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
     uses_poll_coverage = FEED_POLLS in tables and family.query is not None
-    if uses_poll_coverage and receipts is None:
+    cacheable = (
+        store.partial_results is not None and store.s3_endpoint is None and group is None
+        and _partial_scope(question, family)
+    )
+    if (uses_poll_coverage or cacheable) and receipts is None:
         receipts = {}
     if (
         family.minimum_cleaning_version is not None
@@ -4120,13 +4172,15 @@ def read_window(
 
         def check(day: date) -> tuple[date, CheckedDay, dict[str, bytes]]:
             receipt: dict[str, bytes] = {}
-            with conn.cursor() as cursor:
+            with track_connection(conn.cursor()) as cursor:
                 checked = store.query_day(cursor, question.city, day, tables, receipts=receipt)
             return day, checked, receipt
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             for days in batched(map(date.fromordinal, ordinals), 16):
-                for day, checked, receipt in executor.map(check, days):
+                futures = [executor.submit(copy_context().run, check, day) for day in days]
+                for future in futures:
+                    day, checked, receipt = future.result()
                     checked_days[day] = checked
                     receipts.update(receipt)
 
@@ -4189,6 +4243,8 @@ def read_window(
             dated.append(day_key)
             if in_cut:
                 window.included.append(day_key)
+                if cacheable and settled and receipts is not None:
+                    window.partial_receipts[day_key] = sha256(receipts[day_key]).hexdigest()
             # A weekday schedule can establish that a line exists for a weekend zero.
             if in_cut or family.id == _SERVICE_OFFERED_ID:
                 if SEGMENT_RUNS in checked.tables and SEGMENT_RUNS not in window.paths:
@@ -4594,16 +4650,14 @@ def _scorecard_answer(
             interval_denominator: Counter[str] = Counter()
             without_trip: set[str] = set()
             for day, paths in zip(window.included, window.batches(), strict=True):
-                counts, ids = vehicle_counts(
-                    conn,
-                    paths[VEHICLE_POSITIONS],
-                    paths[FEED_POLLS],
-                    paths.get(TRIP_DAYS),
-                    question.city,
-                    [str(window.versions[day])],
-                    filters,
-                    arguments,
-                    question.hour,
+                counts, ids = _daily_partial(
+                    store, window, family, question, day, "vehicle_fields",
+                    bind(
+                        vehicle_counts, conn,
+                        paths[VEHICLE_POSITIONS], paths[FEED_POLLS], paths.get(TRIP_DAYS),
+                        question.city, [str(window.versions[day])], filters, arguments,
+                        question.hour,
+                    ),
                 )
                 without_trip.update(ids)
                 totals.update(reporting_us=counts["reporting_us"], intervals=counts["intervals"])
@@ -4835,8 +4889,8 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
         if family.query is None:
             return _scorecard_answer(conn, store, question, family, selected, started)
         window = read_window(conn, store, question, family, selected)
-        for offset, batch in enumerate(window.batches()):
-            result = family.query(conn, family, batch, question, str(store.cleaning_version), None)
+        batches = _series_query_batches(conn, store, family, question, window)
+        for offset, result in enumerate(batches):
             window.record_vehicle_tracking(family, offset, result)
             if () in result:
                 totals.update(result[()])
@@ -4987,7 +5041,8 @@ def _series_query_batches(
     question: Question,
     window: ReadWindow,
 ) -> Iterator[dict[EntityKey, Batch]]:
-    assert family.query is not None
+    query = family.query
+    assert query is not None
     version = str(store.cleaning_version)
     if (
         family is _PUNCTUALITY
@@ -4998,14 +5053,20 @@ def _series_query_batches(
     ):
         # Merge each hour's bins in DuckDB before transferring them to Python.
         try:
-            result = family.query(conn, family, window.paths, question, version, None)
+            result = query(conn, family, window.paths, question, version, None)
         except duckdb.OutOfMemoryException:
             pass
         else:
             yield result
             return
-    for batch in window.batches():
-        yield family.query(conn, family, batch, question, version, None)
+    for offset, batch in enumerate(window.batches()):
+        if window.partial_receipts:
+            yield _daily_partial(
+                store, window, family, question, window.included[offset], question.measure,
+                bind(query, conn, family, batch, question, version, None),
+            )
+        else:
+            yield query(conn, family, batch, question, version, None)
 
 
 # No data (0) covers both insufficient coverage and an unknown observation.

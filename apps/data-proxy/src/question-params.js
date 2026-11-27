@@ -1,5 +1,5 @@
 const COMMON_CUTS = [
-  "line", "direction", "hour", "day_type", "effect", "cause", "format", "lang", "from_stop", "to_stop",
+  "line", "direction", "hour", "day_type", "effect", "cause", "format", "lang", "from_stop", "to_stop", "include_method",
 ];
 
 export const QUESTION_PARAMS = {
@@ -37,6 +37,7 @@ const VALID = {
   departure: (value) => /^[0-9]{2,6}:[0-5][0-9]:[0-5][0-9]$/.test(value),
   alert_details: oneOf("1"),
   include_overall: oneOf("1"),
+  include_method: oneOf("0", "1"),
   hour: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
   day_type: oneOf("weekday", "saturday", "sunday"),
   group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "segment", "vehicle", "effect", "cause"),
@@ -120,10 +121,12 @@ export function parseQuestion(url) {
     if (params.has(name)) params.set(name, String(Number(params.get(name))));
   }
   const csv = params.get("format") === "csv";
+  if (csv && params.get("include_method") === "0") throw new Error("include_method=0 requires JSON");
+  if (params.get("include_method") === "1") params.delete("include_method");
   const map = params.get("view") === "map";
   if (map) {
     const scope = [...params.keys()].filter((key) =>
-      !["from", "to", "measure", "group", "view", "format", "lang"].includes(key));
+      !["from", "to", "measure", "group", "view", "format", "lang", "include_method"].includes(key));
     const stops = params.get("measure") === "late" && params.get("group") === "stop_id" && !scope.length;
     const segments = params.get("measure") === "mean_time_lost" && params.get("group") === "segment" &&
       (!scope.length || (params.has("line") && scope.every((key) => key === "line" || key === "direction")));

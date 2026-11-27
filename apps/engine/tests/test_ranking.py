@@ -128,7 +128,8 @@ def test_lines_match_independent_calculation_and_show_every_exclusion(
     assert [r["id"] for r in _json(store, **{"class": "3:night"})["rows"]] == ["N"]
     all_lines = _json(store, **{"class": "all", "limit": "1"})
     assert all_lines["ranked_count"] == 6
-    assert set(row["id"] for row in all_lines["excluded"]) == {"G", "S", "X"}
+    assert all_lines["excluded_count"] == 3
+    assert [row["id"] for row in all_lines["excluded"]] == ["G"]
     assert [row["id"] for row in all_lines["rows"]] == ["W"]
 
 
@@ -153,7 +154,8 @@ def test_ranked_stop_and_departure_keep_registry_cuts(
     limited = _json(store, kind="departure", hour="2", limit="1", to=last)
     assert limited["ranked_count"] == 2
     assert limited["rows"] == [first]
-    assert limited["excluded"] == departures["excluded"]
+    assert limited["excluded_count"] == len(departures["excluded"])
+    assert limited["excluded"] == departures["excluded"][:1]
     measured = _json(store, measure="p90_delay", **{"class": "all"})
     assert measured["rows"][0]["id"] == "W"
     top = measured["rows"][0]

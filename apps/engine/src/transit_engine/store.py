@@ -10,6 +10,7 @@ from typing import Self
 
 import duckdb
 
+from transit_engine.cancellation import check_query
 from transit_engine.clean_manifest import (
     ALERT_VERSION,
     ALERTS,
@@ -18,6 +19,7 @@ from transit_engine.clean_manifest import (
     file_identities,
     source_date,
 )
+from transit_engine.partials import PartialResults
 
 DEFAULT_CLEANING_VERSION = 9
 CITY = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
@@ -48,6 +50,7 @@ class Store:
     memory_mib: int = 256
     threads: int = 1
     s3_endpoint: str | None = None
+    partial_results: PartialResults | None = None
 
     @classmethod
     def from_env(cls) -> Self:
@@ -74,6 +77,7 @@ class Store:
         )
 
     def connect(self) -> duckdb.DuckDBPyConnection:
+        check_query()
         conn = duckdb.connect(
             config={
                 "threads": self.threads,
@@ -207,6 +211,7 @@ class Store:
         receipts: dict[str, bytes] | None = None,
         check_all: bool = False,
     ) -> CheckedDay:
+        check_query()
         if not CITY.fullmatch(city):
             raise ValueError("Invalid city")
         directory = f"{self.root.rstrip('/')}/{city}/{day.isoformat()}/v{self.cleaning_version}"
@@ -259,6 +264,7 @@ class Store:
             )
 
         for name in checked_paths:
+            check_query()
             if not matches(name):
                 return CheckedDay(None, False, invalid_table=name)
         settled = not check_all or all(
