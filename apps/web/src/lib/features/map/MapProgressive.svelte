@@ -291,7 +291,7 @@
 				<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>
 				<span aria-hidden="true"> · </span>
 				<a href="https://github.com/protomaps/basemaps">© Protomaps</a>
-				{#if !record && sourceCredit}<span class="poster-mobile-credit">{sourceCredit()}</span>{/if}
+				{#if sourceCredit}<span class="poster-mobile-credit">{sourceCredit()}</span>{/if}
 			</p>
 
 			<noscript
@@ -477,12 +477,6 @@
 		}
 	}
 	@media (width < 1024px) {
-		[data-record-poster] .map-progressive-copy {
-			bottom: calc(var(--map-source-clearance, 0px) + var(--size-tap-min) + 4.25rem);
-		}
-		[data-record-poster] .map-progressive-attribution {
-			bottom: calc(var(--map-source-clearance, 0px) + var(--size-tap-min) + 2rem);
-		}
 		.poster-mobile-credit {
 			display: block;
 		}

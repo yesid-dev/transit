@@ -91,7 +91,7 @@ for (const locale of ['en', 'fr']) {
 			[390, 844],
 		]) {
 			await page.setViewportSize({ width, height });
-			await expect(page.getByTestId('map-live-list-button')).toBeVisible();
+			await expect(page.getByTestId('map-list-button')).toBeVisible();
 			await expect(page.locator('[data-slot="map-source-footer"]')).toBeHidden();
 			const exposed = await page.evaluate(() => {
 				const chrome = [

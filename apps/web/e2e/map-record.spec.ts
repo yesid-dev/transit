@@ -5,6 +5,7 @@ import {
 	closeMapInView,
 	openMapControls,
 	openMapInView,
+	openMapLegend,
 } from './map-frame-controls';
 
 async function pickLine(page: Page, input: Locator, code: string) {
@@ -50,8 +51,11 @@ for (const locale of ['en', 'fr'] as const) {
 		await live.press('ArrowRight');
 		await expect(page).toHaveURL(/mapLayer=stops/);
 		if (phone) {
-			await expect(page.locator('[data-map-in-view-sheet]')).toBeHidden();
-			await openMapControls(page);
+			await expect(
+				page
+					.locator('[data-map-in-view-sheet]')
+					.getByRole('tab', { name: fr ? 'Options' : 'Controls' }),
+			).toHaveAttribute('aria-selected', 'true');
 		}
 		await expect(layers.getByRole('radio', { name: fr ? 'Arrêts' : 'Stops' })).toBeChecked();
 		await closeMapControls(page);
@@ -61,7 +65,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const legend = page.locator(
 			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 		);
-		if (phone) await page.getByTestId('map-legend-button').click();
+		if (phone) await openMapLegend(page);
 		for (const state of fr
 			? ['Trop peu pour juger', 'Non mesuré', 'Aucune donnée en direct']
 			: ['Too few to judge', 'Not measured', 'No live data']) {
@@ -90,7 +94,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await openMapControls(page);
 		await layers.getByRole('radio', { name: 'Corridors' }).click();
 		await closeMapControls(page);
-		if (phone) await page.getByTestId('map-legend-button').click();
+		if (phone) await openMapLegend(page);
 		await expect(
 			legend.getByText(fr ? 'Non mesuré' : 'Not measured', { exact: true }),
 		).toBeVisible();
@@ -148,7 +152,13 @@ for (const locale of ['en', 'fr'] as const) {
 			await openMapControls(page);
 			await live.click();
 			await expect(page).toHaveURL(/frameMode=live/);
-			await expect(page.getByTestId('map-live-controls-button')).toBeVisible();
+			await expect(live).toBeChecked();
+			await expect(
+				page
+					.locator('[data-map-in-view-sheet]')
+					.getByRole('tab', { name: fr ? 'Options' : 'Controls' }),
+			).toHaveAttribute('aria-selected', 'true');
+			await expect(page.getByTestId('map-controls-button')).toBeVisible();
 		}
 	});
 

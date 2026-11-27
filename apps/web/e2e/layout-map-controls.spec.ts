@@ -49,7 +49,7 @@ for (const locale of ['en', 'fr'])
 		const name = locale === 'fr' ? 'Légende' : 'Legend';
 		const card = page.locator(`[data-map-legend="${phone ? 'phone' : 'desktop'}"]`);
 		if (phone) {
-			const opener = page.getByTestId('map-live-list-button');
+			const opener = page.getByTestId('map-list-button');
 			await expect(opener).toBeVisible();
 			const button = (await opener.boundingBox())!;
 			expect(button.height).toBeGreaterThanOrEqual(44);

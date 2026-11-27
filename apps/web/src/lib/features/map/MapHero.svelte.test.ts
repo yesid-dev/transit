@@ -1859,7 +1859,7 @@ describe('MapHero reports in this view', () => {
 	it('covers the phone map body while the camera stays mounted, and returns by its own switch', async () => {
 		harness.isDesktop = false;
 		render(MapHero);
-		await fireEvent.click(await screen.findByTestId('map-live-list-button'));
+		await fireEvent.click(await screen.findByTestId('map-list-button'));
 		expect(await screen.findByRole('dialog', { name: 'What is in view' })).toBeVisible();
 		expect(screen.getByTestId('map-stage-stub')).toBeInTheDocument();
 		await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -2678,7 +2678,7 @@ describe('MapHero retained state during Stage-only recovery', () => {
 		render(MapHero);
 		await tick();
 
-		await fireEvent.click(screen.getByTestId('map-live-list-button'));
+		await fireEvent.click(screen.getByTestId('map-list-button'));
 		const sheet = await waitFor(() => {
 			const el = document.querySelector<HTMLElement>('[data-slot="bottom-sheet"]');
 			expect(el).not.toBeNull();

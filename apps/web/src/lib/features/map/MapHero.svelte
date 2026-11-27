@@ -8,7 +8,6 @@
 	import { hasScheduleOnlyLines, lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 	import { getContext, onMount, tick, untrack, type Snippet } from 'svelte';
 	import {
-		mapPanelOpenContext,
 		mapRecordSourceDateContext,
 		mapSourceCreditContext,
 	} from '#lib/site/mapRecordSourceDate.ts';
@@ -19,6 +18,7 @@
 	import type { SurfaceRailContext } from '@yesid/ui/layout';
 	import { Card } from '@yesid/ui/card';
 	import { Sheet, SheetContent, SheetTitle, type SheetDetent } from '@yesid/ui/sheet';
+	import { frameCopy } from '#lib/components/shell/frameControlsState.ts';
 	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
@@ -35,7 +35,6 @@
 	} from '#lib/components/shell/FrameControls.svelte';
 	import { colourDimension } from '#lib/components/map/vehicleLayer.ts';
 	import MapFrameLegend from './MapFrameLegend.svelte';
-	import MapLegendControl from './MapLegendControl.svelte';
 	import MapInView from './MapInView.svelte';
 	import MapFeedStallBanner from './MapFeedStallBanner.svelte';
 	import MapNearMeControl from './MapNearMeControl.svelte';
@@ -407,7 +406,8 @@
 	let showingLookup = $state(false);
 	const detailOpen = $derived(session.detailOpen && !isRecordLayer && !showingLookup);
 	let inViewOpen = $state(false);
-	let mobilePanel = $state('vehicles');
+	let mobilePanel = $state('list');
+	let peekHeight = $state(48);
 	let pendingMobileLookup = $state(false);
 	let inViewDetent = $state('half');
 	const detents: readonly SheetDetent[] = [
@@ -416,31 +416,20 @@
 		{ id: 'full', size: '90%', label: sheetCopy[locale].full },
 	];
 	$effect(() => {
-		if (isRecordLayer && mobilePanel === 'filters') {
-			inViewOpen = false;
-			mobilePanel = 'vehicles';
-		}
-	});
-	$effect(() => {
 		if (isRecordLayer || wide || !hasFirstIdle || !pendingMobileLookup) return;
 		pendingMobileLookup = false;
-		if (nearMeController.open || nearMeController.origin) showMapPanel('vehicles');
+		if (nearMeController.open || nearMeController.origin) showMapPanel('list');
 	});
 	let liveListLimit = $state(12);
 	let mobileScrollTop = 0;
 	let listScrollBeforeSelection: number | null = null;
 	let restoreListTrigger = false;
 	let inViewTrigger = $state<HTMLButtonElement | null>(null);
-	let filtersTrigger = $state<HTMLButtonElement | null>(null);
+	let controlsTrigger = $state<HTMLButtonElement | null>(null);
 	let sheetTrigger: HTMLButtonElement | null = null;
 	let detailBack = $state<HTMLButtonElement | null>(null);
 	let inViewBody = $state<HTMLDivElement | null>(null);
 	let returnVehicle = $state<string | null>(null);
-	const reportPanelOpen = getContext<((open: boolean) => void) | undefined>(mapPanelOpenContext);
-	$effect(() => {
-		reportPanelOpen?.(!wide && (inViewOpen || detailOpen));
-		return () => reportPanelOpen?.(false);
-	});
 	const stopList = $derived(session.stops);
 	let mapDirections = $state.raw<ScheduleEdition['route_directions']>();
 	const fitFraming = $derived.by(() => {
@@ -610,6 +599,42 @@
 	const inViewCount = $derived(
 		isRecordLayer ? recordCount : reportView.kind === 'ready' ? reportView.model.inViewCount : null,
 	);
+	const listTabLabel = $derived(
+		recordLayer === 'corridors'
+			? 'Corridors'
+			: isRecordLayer || nearMeController.open || nearMeController.origin
+				? tr('Stops', 'Arrêts')
+				: tr('Vehicles', 'Véhicules'),
+	);
+	function peekReading(recordHeadline: string | null): string {
+		const mode = isRecordLayer ? frameCopy[locale].record : tr('Live', 'En direct');
+		let reading: string;
+		if (isRecordLayer && recordHeadline !== null) {
+			const unit = recordLayer === 'stops' ? tr('late', 'en retard') : tr('lost', 'de temps perdu');
+			reading = recordHeadline + ' ' + unit;
+		} else if (!isRecordLayer && (nearMeController.open || nearMeController.origin)) {
+			reading = tr('Nearby stops', 'Arrêts à proximité');
+		} else if (inViewCount === null) {
+			reading = listTabLabel;
+		} else {
+			const one = inViewCount === 1;
+			const noun =
+				recordLayer === 'corridors'
+					? one
+						? 'corridor'
+						: 'corridors'
+					: recordLayer === 'stops'
+						? one
+							? tr('stop', 'arrêt')
+							: tr('stops', 'arrêts')
+						: one
+							? tr('vehicle', 'véhicule')
+							: tr('vehicles', 'véhicules');
+			reading = searchCount(inViewCount, locale) + ' ' + noun + ' ' + tr('in view', 'en vue');
+		}
+		return mode + ' · ' + reading;
+	}
+
 	const liveViewHref = $derived(
 		!isRecordLayer
 			? buildMapReportLiveViewHref(recordUrl, filters.state, reportCamera, manifest.provider)
@@ -691,7 +716,7 @@
 		),
 	);
 
-	function showMapPanel(panel: 'vehicles' | 'filters', trigger: HTMLButtonElement | null = null) {
+	function showMapPanel(panel: 'list' | 'controls', trigger: HTMLButtonElement | null = null) {
 		if (detailOpen) closeDetail();
 		if (wide) return;
 		if (trigger || !inViewOpen) sheetTrigger = trigger;
@@ -708,7 +733,7 @@
 	function showNearbyPanel() {
 		showingLookup = true;
 		if (wide || !hasFirstIdle) pendingMobileLookup = true;
-		else showMapPanel('vehicles');
+		else showMapPanel('list');
 	}
 
 	function focusSelection(selection: MapSelection, target: MapLibreMap | null = map): boolean {
@@ -974,7 +999,7 @@
 		onthemerepaint={runtime.repaint}
 		onerror={onMapFailure}
 		onbeforeremove={runtime.release}
-		customAttribution={!wide && !isRecordLayer && sourceCredit
+		customAttribution={!wide && sourceCredit
 			? sourceCredit()
 			: v1.provider?.download_licence?.source_date_required
 				? null
@@ -1201,26 +1226,21 @@
 	{/if}
 {/snippet}
 
-{#snippet titleCard(showStamp: boolean)}
+{#snippet titleCard()}
 	<div class="grid gap-1">
 		<!-- The page heading itself comes before the map in reading order (see mapContent). -->
-		<p
-			aria-hidden="true"
-			data-slot="map-title"
-			class={wide ? 'text-xl font-bold' : 'text-lg font-bold leading-tight'}
-		>
+		<p aria-hidden="true" data-slot="map-title" class="text-xl font-bold">
 			{title}
 		</p>
-		{#if wide}<p class="text-sm text-muted-foreground">{city}</p>{/if}
+		<p class="text-sm text-muted-foreground">{city}</p>
 		{#if recordNotice}<p data-slot="record-start-notice">{recordNotice}</p>{/if}
-		{#if showStamp}{@render stamp()}{/if}
 	</div>
 {/snippet}
 
 {#snippet inViewPanel(recordContent: Snippet<[Snippet | undefined]> | undefined)}
 	<div class="grid gap-4" bind:this={inViewBody}>
 		{#if isRecordLayer}
-			{@render recordContent?.(wide ? stamp : undefined)}
+			{@render recordContent?.(stamp)}
 		{:else if detailOpen && (nearMeController.origin || nearMeController.open)}
 			{@render detailPanel()}
 		{:else if nearMeController.open}
@@ -1304,9 +1324,6 @@
 				/>
 			</div>
 		{:else}
-			{#if !wide && isRecordLayer}
-				<MapNorthControl copy={t} {...orientation} status={northStatus} onreset={turnNorth} />
-			{/if}
 			{#if !isRecordLayer}
 				{#if wide}<MapFeedStallBanner {presentation} />{/if}
 				{#if hoverPeek && wide && !peekRepeatsDetail(hoverPeek, detailOpen ? session.selected : null)}
@@ -1319,7 +1336,10 @@
 	</div>
 {/snippet}
 
-{#snippet mapContent(recordContent: Snippet<[Snippet | undefined]> | undefined)}
+{#snippet mapContent(
+	recordContent: Snippet<[Snippet | undefined]> | undefined,
+	recordHeadline: string | null,
+)}
 	{#snippet phoneList()}
 		<div
 			data-slot="bottom-sheet-body"
@@ -1328,14 +1348,14 @@
 			onscroll={(event) => (mobileScrollTop = event.currentTarget.scrollTop)}
 		>
 			{@render inViewPanel(recordContent)}
-			{#if !isRecordLayer && sourceCredit}<p class="mt-3 text-xs text-muted-foreground">
+			{#if sourceCredit}<p class="mt-3 text-xs text-muted-foreground">
 					{sourceCredit()}
 				</p>{/if}
 		</div>
 	{/snippet}
 	{#snippet desktopPanel()}
 		{#if isRecordLayer || (!nearMeController.open && !nearMeController.origin)}
-			<div class="map-head">{@render titleCard(false)}</div>
+			<div class="map-head">{@render titleCard()}</div>
 		{/if}
 		{@render inViewPanel(recordContent)}
 	{/snippet}
@@ -1348,13 +1368,7 @@
 		details={wide ? { label: viewLabel, content: desktopPanel } : undefined}
 	>
 		{@render stage()}
-		{#if !wide && isRecordLayer}
-			<div class="map-mobile-head map-head">
-				<Card class="gap-1 p-[min(0.75rem,12px)] [--text-small:var(--text-caption)]" edge="neutral"
-					>{@render titleCard(true)}</Card
-				>
-			</div>
-		{:else if !wide}
+		{#if !wide && !isRecordLayer}
 			<div class="map-live-chip map-head" data-slot="map-live-chip">
 				{#if presentation.stamp.visible || compactNotice}
 					<RefreshButton {locale} visibleLabel={compactLiveStampLabel}
@@ -1380,7 +1394,7 @@
 					docked
 				/>
 			{/if}
-			{#if !wide && !isRecordLayer && !mapFailure}
+			{#if !wide && !mapFailure}
 				<MapNorthControl
 					copy={t}
 					{...orientation}
@@ -1430,55 +1444,35 @@
 		</div>
 	</MapFrame>
 	{#if !wide}
-		{#if isRecordLayer}
-			<MapLegendControl {locale} hidden={inViewOpen} content={phoneLegend} />
+		<div class="map-mobile-peek" data-slot="map-mobile-peek" bind:clientHeight={peekHeight}>
 			<Button
-				variant="outline"
+				class="map-in-view-button min-h-11 min-w-0 flex-1 justify-start px-2 text-left"
+				variant="ghost"
 				size="sm"
-				class="map-in-view-button min-h-[var(--size-tap-min)] max-w-full py-[min(0.5rem,8px)]"
 				bind:ref={inViewTrigger}
+				data-testid="map-list-button"
+				aria-haspopup="dialog"
 				wrap
-				onclick={() => (inViewOpen = true)}
+				onclick={() => showMapPanel('list', inViewTrigger)}
 			>
-				{inViewCount === null
-					? viewLabel
-					: `${tr('In view:', 'En vue :')} ${searchCount(inViewCount, locale)}`}
+				<span class="peek-handle" aria-hidden="true"></span>
+				<span class="min-w-0 tabular-nums">{peekReading(recordHeadline)}</span>
 			</Button>
-		{:else}
-			<div class="map-mobile-peek" data-slot="map-mobile-peek">
-				<Button
-					class="map-in-view-button min-h-11 min-w-0 flex-1 justify-start px-2 text-left"
-					variant="ghost"
-					size="sm"
-					bind:ref={inViewTrigger}
-					data-testid="map-live-list-button"
-					wrap
-					onclick={() => showMapPanel('vehicles', inViewTrigger)}
-				>
-					<span class="peek-handle" aria-hidden="true"></span>
-					{nearMeController.origin || nearMeController.open
-						? tr('Nearby stops', 'Arrêts à proximité')
-						: inViewCount === null
-							? viewLabel
-							: inViewCount === 1
-								? tr('1 vehicle in view', '1 véhicule en vue')
-								: tr(
-										`${searchCount(inViewCount, locale)} vehicles in view`,
-										`${searchCount(inViewCount, locale)} véhicules en vue`,
-									)}
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon-tap"
-					bind:ref={filtersTrigger}
-					aria-label={tr('Open map controls', 'Ouvrir les options de la carte')}
-					aria-expanded={inViewOpen && mobilePanel === 'filters'}
-					data-testid="map-live-controls-button"
-					onclick={() => showMapPanel('filters', filtersTrigger)}
-					><SlidersHorizontalIcon size={18} aria-hidden="true" /></Button
-				>
-			</div>
-		{/if}
+			<Button
+				variant="ghost"
+				size="sm"
+				class="min-h-11 min-w-11 shrink-0 gap-1 px-2"
+				bind:ref={controlsTrigger}
+				aria-label={tr('Open map controls', 'Ouvrir les options de la carte')}
+				aria-expanded={inViewOpen && mobilePanel === 'controls'}
+				aria-haspopup="dialog"
+				data-testid="map-controls-button"
+				onclick={() => showMapPanel('controls', controlsTrigger)}
+			>
+				<SlidersHorizontalIcon size={18} aria-hidden="true" />
+				<span class="peek-controls-label">{frameCopy[locale].controls}</span>
+			</Button>
+		</div>
 		<Sheet
 			open={inViewOpen || detailOpen}
 			onOpenChange={(open) => {
@@ -1517,45 +1511,41 @@
 					restoreListTrigger = false;
 				}}
 			>
-				<SheetTitle class={isRecordLayer ? undefined : 'sr-only'}>{viewLabel}</SheetTitle>
-				{#if isRecordLayer}
-					{@render phoneList()}
-				{:else}
-					<Tabs
-						value={detailOpen ? 'vehicles' : mobilePanel}
-						onValueChange={(panel) => {
-							if (panel !== 'vehicles' && detailOpen) closeDetail();
-							mobilePanel = panel;
-						}}
-						class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2"
+				<SheetTitle class="sr-only">{viewLabel}</SheetTitle>
+				<Tabs
+					value={detailOpen ? 'list' : mobilePanel}
+					onValueChange={(panel) => {
+						if (panel !== 'list' && detailOpen) closeDetail();
+						mobilePanel = panel;
+					}}
+					class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2"
+				>
+					<TabsList
+						class="grid h-auto w-full grid-flow-col auto-cols-[minmax(max-content,1fr)] overflow-x-auto"
+						aria-label={tr('Map panels', 'Panneaux de la carte')}
 					>
-						<TabsList class="grid h-auto w-full grid-cols-3">
-							<TabsTrigger value="vehicles" class="min-h-11"
-								>{nearMeController.open || nearMeController.origin
-									? tr('Stops', 'Arrêts')
-									: tr('Vehicles', 'Véhicules')}</TabsTrigger
-							>
-							<TabsTrigger value="legend" class="min-h-11">{t.legend.title}</TabsTrigger>
-							<TabsTrigger value="filters" class="min-h-11">{tr('Filters', 'Filtres')}</TabsTrigger>
-						</TabsList>
-						<TabsContent value="vehicles" class="grid min-h-0 grid-rows-[minmax(0,1fr)]">
-							{@render phoneList()}
-						</TabsContent>
-						<TabsContent value="legend" class="min-h-0 overflow-y-auto">
-							{@render phoneLegend()}
-						</TabsContent>
-						<TabsContent value="filters" class="min-h-0 overflow-y-auto">
-							{#if frameControls}
-								{@render frameControls({
-									presentation: 'mobile',
-									closeSheet: () => (inViewOpen = false),
-								})}
-							{:else}
-								{@render mapControls()}
-							{/if}
-						</TabsContent>
-					</Tabs>
-				{/if}
+						<TabsTrigger value="list" class="min-h-11">{listTabLabel}</TabsTrigger>
+						<TabsTrigger value="legend" class="min-h-11">{t.legend.title}</TabsTrigger>
+						<TabsTrigger value="controls" class="min-h-11">{frameCopy[locale].controls}</TabsTrigger
+						>
+					</TabsList>
+					<TabsContent value="list" class="grid min-h-0 grid-rows-[minmax(0,1fr)]">
+						{@render phoneList()}
+					</TabsContent>
+					<TabsContent value="legend" class="min-h-0 overflow-y-auto">
+						{@render phoneLegend()}
+					</TabsContent>
+					<TabsContent value="controls" class="min-h-0 overflow-y-auto">
+						{#if frameControls}
+							{@render frameControls({
+								presentation: 'mobile',
+								closeSheet: () => (inViewOpen = false),
+							})}
+						{:else}
+							{@render mapControls()}
+						{/if}
+					</TabsContent>
+				</Tabs>
 			</SheetContent>
 		</Sheet>
 	{/if}
@@ -1575,6 +1565,7 @@
 	bind:clientWidth={mapWidthPx}
 	data-record-layer={recordLayer}
 	data-map-wide={wide}
+	style:--map-peek-height={`${peekHeight}px`}
 >
 	<span class="map-layout-marker" aria-hidden="true" bind:clientWidth={remWidth}></span>
 	<MapRecordPanel
@@ -1643,13 +1634,8 @@
 		--z-map-detail: 3;
 	}
 	.map-hero[data-map-wide='false'] {
-		--map-attribution-bottom: calc(
-			var(--map-touch-row-bottom) + max(2.75rem, var(--size-tap-min)) + 0.75rem
-		);
-	}
-	.map-hero[data-map-wide='false'][data-record-layer='live'] {
 		--map-peek-bottom: max(0.75rem, env(safe-area-inset-bottom));
-		--map-attribution-bottom: calc(var(--map-peek-bottom) + var(--size-tap-min) + 0.75rem);
+		--map-attribution-bottom: calc(var(--map-peek-bottom) + var(--map-peek-height) + 0.75rem);
 	}
 	.map-surface {
 		position: absolute;
@@ -1666,13 +1652,6 @@
 		display: block;
 		width: 1rem;
 		height: 0;
-	}
-	.map-mobile-head {
-		position: absolute;
-		inset: 0.75rem 0.75rem auto;
-		width: fit-content;
-		max-width: calc(100% - var(--size-tap-min) - 2rem);
-		z-index: 1;
 	}
 	.map-live-chip {
 		position: absolute;
@@ -1706,6 +1685,14 @@
 		background: var(--card);
 		box-shadow: var(--shadow-card);
 	}
+	.peek-controls-label {
+		display: none;
+	}
+	@media (min-width: 390px) {
+		.peek-controls-label {
+			display: inline;
+		}
+	}
 	.peek-handle {
 		inline-size: 1rem;
 		block-size: 0.25rem;
@@ -1723,13 +1710,6 @@
 		min-width: 0;
 		font-variant-numeric: tabular-nums;
 	}
-	.map-hero:not([data-record-layer='live']) :global(.map-in-view-button) {
-		position: absolute;
-		inset-block-end: var(--map-touch-row-bottom);
-		inset-inline-end: 0.75rem;
-		background: var(--card);
-		z-index: 2;
-	}
 	.map-camera-actions {
 		position: absolute;
 		inset-block-start: 0.75rem;
@@ -1742,14 +1722,6 @@
 	@media (orientation: landscape) and (max-height: 32rem) {
 		.map-hero[data-map-wide='false'] .map-camera-actions {
 			grid-auto-flow: column;
-		}
-		.map-hero[data-map-wide='false'] :global([data-slot='map-north']) {
-			top: calc(var(--map-frame-top) + 0.75rem);
-			right: calc(0.75rem + 3 * (var(--size-tap-min) + 0.5rem));
-			bottom: auto;
-		}
-		.map-hero[data-map-wide='false'] .map-mobile-head {
-			max-width: calc(100% - 4 * var(--size-tap-min) - 3.5rem);
 		}
 	}
 	.map-peek {

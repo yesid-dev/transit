@@ -16,7 +16,6 @@
 	import { setContext } from 'svelte';
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import {
-		mapPanelOpenContext,
 		mapRecordSourceDateContext,
 		mapSourceCreditContext,
 	} from '#lib/site/mapRecordSourceDate.ts';
@@ -140,10 +139,6 @@
 	let mapCreditOpen = $state(false);
 	const datedMapCredit = $derived(Boolean(data.provider?.download_licence?.source_date_required));
 	const mapCreditExpanded = $derived(datedMapCredit && mapCreditOpen);
-	let mapPanelOpen = $state(false);
-	setContext(mapPanelOpenContext, (open: boolean) => {
-		mapPanelOpen = open;
-	});
 	setContext(mapRecordSourceDateContext, (date: string | null) => {
 		mapRecordSourceDate = date;
 	});
@@ -421,7 +416,6 @@
 		{navigation}
 		fullViewport={isFullBleed}
 		{mapCreditHeight}
-		mobileControlsVisible={!isFullBleed || (recordMap && !mapPanelOpen)}
 		{locale}
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
@@ -465,7 +459,6 @@
 				<footer
 					class="map-source-footer bg-card px-3 py-2 text-center text-xs text-muted-foreground"
 					class:dated-map-credit={datedMapCredit}
-					class:compact-live-credit={!recordMap}
 					data-slot="map-source-footer"
 					bind:clientHeight={mapCreditHeight}
 				>
@@ -569,11 +562,11 @@
 		pointer-events: none;
 	}
 	@media (width < 1024px) {
-		.compact-live-credit {
+		.map-source-footer {
 			display: none;
 		}
 	}
-	:global([data-slot='app-frame'][data-rail-layout='compact']) .compact-live-credit {
+	:global([data-slot='app-frame'][data-rail-layout='compact']) .map-source-footer {
 		display: none;
 	}
 	.dated-map-credit {

@@ -61,7 +61,7 @@
 		onsourcedate: (date: string | null) => void;
 		reportCamera?: MapReportCamera | null;
 		oncount?: (count: number | null) => void;
-		children: Snippet<[Snippet<[Snippet | undefined]> | undefined]>;
+		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
 	}
 	let {
 		map,
@@ -330,12 +330,13 @@
 	function valueText(value: number) {
 		return mapRecordReading(value, stopLayer, locale);
 	}
+	const headline = $derived(leader?.value == null ? null : valueText(leader.value));
 </script>
 
 {#snippet recordBody(stamp: Snippet | undefined)}
 	{#if leader?.value != null}
 		<MapPanelAnswer
-			value={valueText(leader.value) ?? ''}
+			value={headline ?? ''}
 			sentence={stopLayer
 				? tr(
 						`is the highest late share of observed stop events in view, at stop ${leaderStop}, ${leader.name}.`,
@@ -549,7 +550,7 @@
 	</div>
 {/snippet}
 
-{@render children(layer === 'live' ? undefined : recordContent)}
+{@render children(layer === 'live' ? undefined : recordContent, headline)}
 
 <style>
 	.record-panel {

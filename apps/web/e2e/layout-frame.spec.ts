@@ -554,8 +554,8 @@ test('the compact map keeps its tools in one sheet and credits available', async
 		'data-map-progressive-state',
 		'ready',
 	);
-	const list = page.getByTestId('map-live-list-button');
-	const controls = page.getByTestId('map-live-controls-button');
+	const list = page.getByTestId('map-list-button');
+	const controls = page.getByTestId('map-controls-button');
 	const footer = page.locator('[data-slot="map-source-footer"]');
 	await expect(footer).toBeHidden();
 	for (const width of [320, 390, 768, 1023]) {

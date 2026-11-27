@@ -285,8 +285,13 @@ for (const locale of PUBLISHED_LOCALES) {
 			await expect(page.getByRole('banner')).toHaveCount(1);
 			await expect(page.getByRole('main')).toHaveAttribute('id', 'main');
 			const footer = page.getByRole('contentinfo');
-			await expect(footer).toHaveCount(1);
-			if (path === '/map') {
+			if (path === '/map' && page.viewportSize()!.width < 1024) {
+				await expect(page.locator('[data-slot="map-source-footer"]')).toBeHidden();
+				await expect(page.locator('.maplibregl-ctrl-attrib-button')).toBeVisible();
+			} else {
+				await expect(footer).toHaveCount(1);
+			}
+			if (path === '/map' && page.viewportSize()!.width >= 1024) {
 				await expect(footer).toHaveAttribute('data-slot', 'map-source-footer');
 			}
 			await expectNoHorizontalOverflow(page, ['#main-flow']);

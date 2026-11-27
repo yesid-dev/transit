@@ -9,14 +9,17 @@ for (const locale of PUBLISHED_LOCALES)
 		const attribution = page.getByLabel(mapCopy[locale].attributionToggle, { exact: true });
 		const footer = page.locator('[data-slot="map-source-footer"]');
 		const camera = page.locator('.map-camera-actions');
+		const compact = page.viewportSize()!.width < 1024;
+		const lowerChrome = compact ? page.locator('[data-slot="map-mobile-peek"]') : footer;
 		await expect(attribution).toBeVisible();
-		await expect(footer).toBeVisible();
+		await expect(lowerChrome).toBeVisible();
+		if (compact) await expect(footer).toBeHidden();
 		await expect(camera).toBeVisible();
 		for (const expanded of [false, true]) {
 			if (expanded) await attribution.click();
 			const credit = (await attribution.locator('..').boundingBox())!;
 			const navigation = (await camera.boundingBox())!;
-			expect(credit.y + credit.height).toBeLessThanOrEqual((await footer.boundingBox())!.y);
+			expect(credit.y + credit.height).toBeLessThanOrEqual((await lowerChrome.boundingBox())!.y);
 			expect(
 				credit.x >= navigation.x + navigation.width ||
 					credit.x + credit.width <= navigation.x ||
