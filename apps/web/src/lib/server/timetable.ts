@@ -104,10 +104,10 @@ export function readTimetable({
 		state.read = query(scheduleQuestion(city), scheduleIndexSchema, visitorIp)
 			.then((result) => {
 				state.revision = revision;
-				const fresh = result.kind === 'answer' && !result.lastGood;
+				const fresh = result.kind === 'answer' && !result.lastGood && !result.cacheStale;
 				state.retryAt =
 					Date.now() + (fresh && revision ? TIMETABLE_REFRESH_MS : CATALOG_REFRESH_MS);
-				if (result.kind === 'answer' && (!result.lastGood || !state.edition)) {
+				if (result.kind === 'answer' && (fresh || !state.edition)) {
 					state.edition = result.answer.schedule;
 				}
 			})

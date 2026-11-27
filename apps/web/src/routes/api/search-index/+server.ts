@@ -17,7 +17,10 @@ export const GET: RequestHandler = async ({ url, request }) => {
 				{
 					...result.answer,
 					patterns:
-						!result.lastGood && edition && edition.date === result.answer.schedule?.date
+						!result.lastGood &&
+						!result.cacheStale &&
+						edition &&
+						edition.date === result.answer.schedule?.date
 							? linePatterns(edition)
 							: undefined,
 				},

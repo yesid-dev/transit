@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { QUESTION_PARAMS } from "../src/question-params.js";
 import { probeEngine, serveBoundQuestion } from "../src/questions.js";
 import worker from "../src/worker.js";
+import { probeV2 } from "../scripts/probe-v2.mjs";
 import { fetchEngine } from "../../engine/upstream.js";
 
 const WINDOW = "from=2020-01-01&to=2020-01-02";
@@ -974,6 +975,24 @@ test("the catalog refresh after a mirror copy keeps each provider's record date"
     "2026-11-24");
 });
 
+test("the deployment probe accepts an aging catalogue until a refill actually fails", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-27T09:00:00Z") });
+  const f = fixture(t);
+  for (const city of f.cities.providers) city.inputs = {};
+  const upstream = f.env.ENGINE.fetch;
+  const probe = () => probeV2({ fetchFn: (url) => f.fetch(new URL(url).pathname) });
+  assert.deepEqual(await probe(), []);
+
+  f.env.ENGINE.fetch = async () => new Response(null, { status: 502 });
+  t.mock.timers.tick(31_000);
+  assert.deepEqual(await probe(), []);
+  assert.deepEqual(await probe(), ["v2 public cities failed"]);
+
+  f.env.ENGINE.fetch = upstream;
+  assert.equal((await f.fetch("/v2/cities")).headers.get("x-transit-answer"), "last-good");
+  assert.deepEqual(await probe(), []);
+});
+
 test("a settled period reuses a shared answer after edge eviction without spending admission", async (t) => {
   const f = fixture(t);
   await f.fetch(MEASURE);
@@ -998,10 +1017,37 @@ test("indexes retain the last response while an updated revision refreshes", asy
   await f.fetch("/v2/cities", { "cache-control": "no-cache" });
   response = 2;
   const stale = await f.fetch(url);
-  assert.equal(stale.headers.get("x-transit-answer"), "last-good");
+  assert.equal(stale.headers.get("x-transit-answer"), null);
+  assert.equal(stale.headers.get("x-transit-cache"), "stale");
   assert.equal((await stale.json()).schedule.revision, 1);
   const current = await f.fetch(url);
   assert.equal(current.headers.get("x-transit-answer"), null);
+  assert.equal(current.headers.get("x-transit-cache"), null);
   assert.equal((await current.json()).schedule.revision, 2);
   assert.equal(f.requests.length, 2);
+});
+
+test("an aging index is last-good only after a failed engine refill", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-27T11:00:00Z") });
+  let failed = false;
+  const f = fixture(t, () => failed
+    ? new Response(null, { status: 502 })
+    : Response.json({ schedule: { date: "2026-11-26" } }));
+  const url = "/v2/demo/schedule-index";
+  const first = await f.fetch(url);
+  assert.equal(first.headers.get("x-transit-answer"), null);
+  assert.equal(first.headers.get("x-transit-cache"), null);
+
+  t.mock.timers.tick(61 * 60 * 1000);
+  failed = true;
+  const refreshing = await f.fetch(url);
+  assert.equal(refreshing.headers.get("x-transit-answer"), null);
+  assert.equal(refreshing.headers.get("x-transit-cache"), "stale");
+  const fallback = await f.fetch(url);
+  assert.equal(fallback.headers.get("x-transit-answer"), "last-good");
+  assert.deepEqual(await fallback.json(), { schedule: { date: "2026-11-26" } });
+
+  failed = false;
+  await f.fetch(url);
+  assert.equal((await f.fetch(url)).headers.get("x-transit-answer"), null);
 });

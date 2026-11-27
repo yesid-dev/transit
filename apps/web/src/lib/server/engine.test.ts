@@ -171,6 +171,15 @@ describe('overview engine requests', () => {
 	it('marks a last-good answer and distinguishes proxy backpressure', async () => {
 		const answer = measure();
 		fetcher.mockResolvedValueOnce(
+			Response.json(answer, { headers: { 'x-transit-cache': 'stale' } }),
+		);
+		expect(await getMeasure('on_time', dates)).toEqual({
+			kind: 'answer',
+			answer,
+			cacheStale: true,
+		});
+
+		fetcher.mockResolvedValueOnce(
 			Response.json(answer, {
 				headers: { 'x-transit-answer': 'last-good' },
 			}),

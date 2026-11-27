@@ -13,12 +13,29 @@ const FRESH_UNTIL = "x-transit-cache-fresh-until";
 const INDEX_REVISION = "x-transit-cache-index-revision";
 const INDEX_ROUTES = new Set(["schedule-index", "schedule-map", "search-index"]);
 const refreshing = new Set();
+const failedRefreshes = new Map();
+const MAX_FAILED_REFRESHES = 256;
 
-function refreshInBackground(ctx, key, refresh) {
-  if (refreshing.has(key)) return;
+function refreshInBackground(ctx, key, generation, refresh) {
+  const failure = failedRefreshes.get(key);
+  const lastGood = failure?.generation === generation && failure.until > Date.now();
+  if (refreshing.has(key)) return lastGood;
   refreshing.add(key);
-  ctx.waitUntil(refresh().catch(() => console.warn("Transit cache refresh failed"))
+  ctx.waitUntil(refresh().then((failed) => {
+    if (failed === undefined) return; // Admission can stop a refresh before it reaches the engine.
+    if (!failed) {
+      failedRefreshes.delete(key);
+      return;
+    }
+    // Remember failures for this saved copy without rewriting the cached body.
+    failedRefreshes.delete(key);
+    if (failedRefreshes.size >= MAX_FAILED_REFRESHES) {
+      failedRefreshes.delete(failedRefreshes.keys().next().value);
+    }
+    failedRefreshes.set(key, { generation, until: Date.now() + OPEN_TTL * 1000 });
+  }).catch(() => console.warn("Transit cache refresh failed"))
     .finally(() => refreshing.delete(key)));
+  return lastGood;
 }
 const MAX_LIVE_BYTES = 8 * 1024 * 1024;
 const LAST_GOOD_TTL = 30 * 24 * 60 * 60;
@@ -26,12 +43,11 @@ const CITY_CATALOG_KEY = "transit-city-catalog";
 const VERSION_HEADER = "x-transit-cleaning-version";
 const REVISION_HEADER = "x-transit-answer-revision";
 const PENDING_DAYS_HEADER = "x-transit-days-pending";
-const STALE_HEADER = "x-transit-answer";
 const MAX_RECORD_BUDGET_MS = 45_000;
 const PUBLIC_HEADERS = {
   ...CORS_HEADERS,
   "access-control-expose-headers":
-    `${CORS_HEADERS["access-control-expose-headers"]}, Retry-After, X-Transit-Answer`,
+    `${CORS_HEADERS["access-control-expose-headers"]}, Retry-After, X-Transit-Answer, X-Transit-Cache`,
   "cache-control": "no-store",
 };
 
@@ -43,9 +59,11 @@ function busy(retryAfter) {
   return message(503, "busy, try again", { "retry-after": retryAfter });
 }
 
-function publicAnswer(body, contentType, { stale = false, cached = false } = {}) {
+function publicAnswer(body, contentType, { stale = false, lastGood = false, cached = false } = {}) {
   const headers = { ...PUBLIC_HEADERS, "content-type": contentType };
-  if (stale) headers[STALE_HEADER] = "last-good";
+  // Cache age or an unverified revision calls for revalidation. Probe failures use X-Transit-Answer.
+  if (stale) headers["x-transit-cache"] = "stale";
+  if (lastGood) headers["x-transit-answer"] = "last-good";
   if (cached) headers["cache-status"] = "Transit; hit";
   return new Response(body, { headers });
 }
@@ -110,34 +128,38 @@ async function fetchCities(env, cache, key, authorize, ctx) {
         if (env.QUESTION_LAST_GOOD) ctx.waitUntil(env.QUESTION_LAST_GOOD.put(
           CITY_CATALOG_KEY, body, { expirationTtl: LAST_GOOD_TTL, metadata: { freshUntil } },
         ).catch(() => console.warn("Last-good city catalog write failed")));
-        return { body };
+        return { body, failed: false };
       }
     }
   } catch {}
-  return { error: message(503, "provider catalog unavailable") };
+  return { error: message(503, "provider catalog unavailable"), failed: true };
 }
 
 export async function loadPublicCities(env, cache, origin, authorize, ctx, refresh = false) {
   const key = new Request(`${origin}/__transit_question_cache/v2/unversioned/cities`);
   const refill = () => fetchCities(env, cache, key, authorize, ctx);
   if (refresh) return refill();
+  const background = (freshUntil) => refreshInBackground(
+    ctx, key.url, freshUntil, async () => (await refill()).failed,
+  );
 
   const cached = await cacheMatch(cache, key);
   if (cached) {
-    const stale = !(Number(cached.headers.get(FRESH_UNTIL)) > Date.now());
-    if (stale) refreshInBackground(ctx, key.url, refill);
-    return { body: await cached.text(), stale };
+    const freshUntil = Number(cached.headers.get(FRESH_UNTIL));
+    const stale = !(freshUntil > Date.now());
+    const lastGood = stale && background(freshUntil);
+    return { body: await cached.text(), stale, lastGood };
   }
 
   const saved = await savedAnswer(env, CITY_CATALOG_KEY);
   if (saved?.value != null) {
     const freshUntil = saved.metadata?.freshUntil ?? 0;
     const stale = freshUntil <= Date.now();
-    if (stale) refreshInBackground(ctx, key.url, refill);
-    else ctx.waitUntil(remember(cache, key, LAST_GOOD_TTL, saved.value, "application/json", {
+    const lastGood = stale && background(freshUntil);
+    if (!stale) ctx.waitUntil(remember(cache, key, LAST_GOOD_TTL, saved.value, "application/json", {
       [FRESH_UNTIL]: String(freshUntil),
     }).catch(() => console.warn("Transit city cache write failed")));
-    return { body: saved.value, stale };
+    return { body: saved.value, stale, lastGood };
   }
   return refill();
 }
@@ -162,7 +184,7 @@ async function lastGood(env, key) {
           (_, leading, space, close) => `${leading}{"stale":true${close ? "" : ","}${space}${close}`,
         )
         : value;
-      return publicAnswer(body, contentType, { stale: true });
+      return publicAnswer(body, contentType, { lastGood: true });
     }
   } catch {
     console.warn("Last-good transit answer read failed");
@@ -295,7 +317,9 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       ...provider,
       basemap_v2_url: publicBasemapUrl(provider.id, provider.basemap_url),
     }));
-    return publicAnswer(JSON.stringify(catalog), "application/json", { stale: cities.stale });
+    return publicAnswer(JSON.stringify(catalog), "application/json", {
+      stale: cities.stale, lastGood: cities.lastGood,
+    });
   }
   const catalog = cities.body && JSON.parse(cities.body);
   const index = INDEX_ROUTES.has(question.route);
@@ -421,22 +445,24 @@ async function serveIndex(env, ctx, cache, origin, question, version, revision, 
   );
   const refill = async () => {
     const denied = await authorize();
-    if (denied) return denied;
+    if (denied) return { response: denied };
     try {
       const response = await env.ENGINE.fetch(new Request(question.upstream, {
         headers: { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` },
         redirect: "manual",
       }));
       const retryAfter = response.headers.get("retry-after");
-      if (response.status === 400) return publicEngineError(await response.json());
+      if (response.status === 400) {
+        return { response: publicEngineError(await response.json()), failed: true };
+      }
       if (!response.ok || !response.headers.get("content-type")?.startsWith(contentType)) {
         await response.body?.cancel();
-        return retryAfter ? busy(retryAfter) : message(503, "index unavailable");
+        return { response: retryAfter ? busy(retryAfter) : message(503, "index unavailable"), failed: true };
       }
       const body = await response.text();
       const index = JSON.parse(body);
       if (!index || typeof index !== "object" || Array.isArray(index)) {
-        return message(503, "index unavailable");
+        return { response: message(503, "index unavailable"), failed: true };
       }
       const matchesCatalog = response.headers.get(VERSION_HEADER) === version &&
         answerRevision(response.headers.get(REVISION_HEADER)) === revision;
@@ -447,28 +473,36 @@ async function serveIndex(env, ctx, cache, origin, question, version, revision, 
           expirationTtl: LAST_GOOD_TTL, metadata: { freshUntil, tag },
         }).catch(() => console.warn("Last-good transit index write failed")));
       }
-      return publicAnswer(body, contentType, { stale: !matchesCatalog });
+      return { response: publicAnswer(body, contentType, { stale: !matchesCatalog }), failed: false };
     } catch {
-      return message(503, "index unavailable");
+      return { response: message(503, "index unavailable"), failed: true };
     }
   };
+  const background = (storedTag, freshUntil) => refreshInBackground(
+    ctx, key.url, `${tag}/${storedTag}/${freshUntil}`, async () => {
+      const { response, failed } = await refill();
+      await response.body?.cancel();
+      return failed;
+    },
+  );
 
   const cached = await cacheMatch(cache, key);
   if (cached) {
-    const stale = cached.headers.get(INDEX_REVISION) !== tag ||
-      !(Number(cached.headers.get(FRESH_UNTIL)) > Date.now());
-    if (stale) refreshInBackground(ctx, key.url, async () => { await (await refill()).body?.cancel(); });
-    return publicAnswer(cached.body, contentType, { cached: true, stale });
+    const storedTag = cached.headers.get(INDEX_REVISION);
+    const freshUntil = Number(cached.headers.get(FRESH_UNTIL));
+    const stale = storedTag !== tag || !(freshUntil > Date.now());
+    const lastGood = stale && background(storedTag, freshUntil);
+    return publicAnswer(cached.body, contentType, { cached: true, stale, lastGood });
   }
   const saved = storeKey && await savedAnswer(env, storeKey);
   if (saved?.value != null && saved.metadata?.tag) {
     const { tag: storedTag, freshUntil } = saved.metadata;
     const stale = storedTag !== tag || !(freshUntil > Date.now());
     keepAtEdge(saved.value, freshUntil, storedTag);
-    if (stale) refreshInBackground(ctx, key.url, async () => { await (await refill()).body?.cancel(); });
-    return publicAnswer(saved.value, contentType, { cached: true, stale });
+    const lastGood = stale && background(storedTag, freshUntil);
+    return publicAnswer(saved.value, contentType, { cached: true, stale, lastGood });
   }
-  return refill();
+  return (await refill()).response;
 }
 
 function publicEngineError(payload) {
