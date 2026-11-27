@@ -1161,7 +1161,8 @@ def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyP
     expected = {
         "network": "fde3487d0ed9355c77ebe9ec08942978da9fc6cab6f7b50323175598ea5d330c",
         "line": "593bf1b219641c436bd064dd44b1f540f4cfe05b629ef0bd1ddca5bd2ca3a4db",
-        "grid": "5226080f8614f441aeeeaffb8e0012565ebf2a869c9768cc8ca55903d24601ae",
+        # The weekday-hour CSV header now labels the service weekday in both languages.
+        "grid": "3bf46d44f0d49519cb6996f26755ff02687b962332719d8cac6d6590fbdc7f08",
         "delivery": "588ca59f1841ed4aec345434dff6759665b514e8958dd2926eb8cbcf8eb99491",
         "line_rank": "cdd6e4bc96e6a294d6ee1e33ed73df8a845f28914f7405855d73d483a819cd04",
         "stop_rank": "d326f00dc0e7cea6345e9ce359c58567f4dab8888d4243fb2f3b1f4e4c186049",

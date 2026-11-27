@@ -15,11 +15,11 @@ import {
 } from '#lib/site/presenter.ts';
 import {
 	collectionGaps,
+	feedCheckRows,
 	predictionReadings,
 	predictionsNotMeasured,
 	publishingRows,
 	publishStateText,
-	staleFeedChecks,
 	stopEventCoverage,
 	tripCoverageFacts,
 	tripsLeftOutByDay,
@@ -488,16 +488,16 @@ it.each([
 		'en',
 		'20 Nov: 1,061 trips left out because live data was interrupted.',
 		[
-			'Trip updates: 675 of 21,184 checks returned a feed over 10 minutes old.',
-			'Vehicle positions: 1,033 of 31,941 checks returned a feed over 10 minutes old.',
+			'21,184 / 21,184 checks · 675 of 21,184 with a feed over 10 min old',
+			'31,941 / 31,941 checks · 1,033 of 31,941 with a feed over 10 min old',
 		],
 	],
 	[
 		'fr',
 		'20 nov.\u00a0: 1\u00a0061 trajets écartés à cause d’une interruption des données en direct.',
 		[
-			'Mises à jour des trajets\u00a0: 675 sur 21\u00a0184 contrôles ont reçu un flux datant de plus de 10 minutes.',
-			'Positions des véhicules\u00a0: 1\u00a0033 sur 31\u00a0941 contrôles ont reçu un flux datant de plus de 10 minutes.',
+			'21\u00a0184 / 21\u00a0184 contrôles · 675 sur 21\u00a0184 avec un flux datant de plus de 10 min',
+			'31\u00a0941 / 31\u00a0941 contrôles · 1\u00a0033 sur 31\u00a0941 avec un flux datant de plus de 10 min',
 		],
 	],
 ] as const)(
@@ -530,10 +530,21 @@ it.each([
 			},
 			{},
 		);
+		const polls = scorecard(
+			'poll_success',
+			{ trip_updates: 1, vehicle_positions: 1 },
+			{
+				trip_updates: { attempts: 21184, successful: 21184 },
+				vehicle_positions: { attempts: 31941, successful: 31941 },
+			},
+			{ trip_updates: 'measured', vehicle_positions: 'measured' },
+		);
 		const tripNotes = tripsLeftOutByDay(delivery, locale);
 		expect(tripNotes).toHaveLength(4);
 		expect(spaces(tripNotes[1])).toBe(trips);
-		expect(spaces(staleFeedChecks(age, locale))).toEqual(stale);
+		const rows = feedCheckRows(polls, locale, age);
+		expect(spaces(rows.slice(0, 2).map(({ detail }) => detail))).toEqual(stale);
+		expect(rows[2].detail).toBeUndefined();
 	},
 );
 

@@ -45,7 +45,6 @@
 		scorecardDays,
 		scorecardState,
 		stopEventCoverage,
-		staleFeedChecks,
 		tripCoverageFacts,
 		tripsLeftOutByDay,
 		vehicleReportRows,
@@ -365,13 +364,12 @@
 	/>
 {/snippet}
 
-{#snippet feedsBody(answer: ScorecardAnswer)}
-	{@const gaps = collectionGaps(answer, locale)}
+{#snippet feedTable(answer: ScorecardAnswer, age?: ScorecardAnswer)}
 	<RecordDataTable
 		{locale}
 		title={titles.feeds}
 		rowHeader={t('Feed', 'Flux')}
-		rows={feedCheckRows(answer, locale)}
+		rows={feedCheckRows(answer, locale, age)}
 		columns={[
 			{
 				key: 'answered',
@@ -382,19 +380,21 @@
 		]}
 		value="answered"
 	/>
+{/snippet}
+
+{#snippet feedsBody(answer: ScorecardAnswer)}
+	{@const gaps = collectionGaps(answer, locale)}
+	{#await record?.scorecard.feed_age_at_capture}
+		{@render feedTable(answer)}
+	{:then result}
+		{@render feedTable(answer, result?.kind === 'answer' ? result.answer : undefined)}
+	{/await}
 	{#if gaps}<p class="mt-3">{gaps}</p>{/if}
 	{#if record}
 		{#await record.deliveryDays then result}
 			{#if result.kind === 'answer'}
 				{@const notes = tripsLeftOutByDay(result.answer, locale)}
 				{#if notes.length}<p class="mt-3">{notes.join(' ')}</p>{/if}
-			{/if}
-		{/await}
-		{#await record.scorecard.feed_age_at_capture then result}
-			{#if result.kind === 'answer'}
-				{#each staleFeedChecks(result.answer, locale) as note (note)}
-					<p class="mt-3">{note}</p>
-				{/each}
 			{/if}
 		{/await}
 	{/if}

@@ -117,8 +117,8 @@ test('Data health opens the agency figures from a previously copied Network link
 	await page.goto(`/network?${period}#poll_success`);
 	await expect(page).toHaveURL(/\/status\?.*frameMode=record.*#poll_success$/);
 	await expect(
-		page.locator('#poll_success').getByText('20 / 25 checks', { exact: true }),
-	).toBeVisible();
+		page.locator('#poll_success').getByRole('row', { name: /Trip updates/ }),
+	).toContainText('20 / 25 checks');
 	await expect(page.locator('#poll_success')).toContainText('At least 20 samples per reading.');
 	const csv = await request.get(`/network/record.csv?${period}&section=poll_success`);
 	expect(csv.headers()['content-disposition']).toContain('network-poll-success.csv');
@@ -243,10 +243,12 @@ for (const width of [390, 1440]) {
 			}
 			const predictions = main.locator('#prediction_error');
 			const checks = main.locator('#poll_success');
-			await expect(checks).toContainText(
+			await expect(
+				checks.getByRole('row', { name: fr ? /Mises à jour des trajets/ : /Trip updates/ }),
+			).toContainText(
 				fr
-					? '4 sur 25 contrôles ont reçu un flux datant de plus de 10 minutes.'
-					: '4 of 25 checks returned a feed over 10 minutes old.',
+					? '4 sur 25 avec un flux datant de plus de 10 min'
+					: '4 of 25 with a feed over 10 min old',
 			);
 			if (fr) await expect(checks).toContainText('12 trajets écartés');
 			await expect(predictions).toContainText(

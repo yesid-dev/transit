@@ -521,14 +521,32 @@ export function minimumNote(answer: ScorecardAnswer, measure: string, locale: Lo
 			);
 }
 
-/** One row for each live feed: the share of checks it answered, and the checks under its name. */
-export function feedCheckRows(answer: ScorecardAnswer, locale: Locale) {
-	return networkRows('poll_success', answer, locale).rows.map(([label, answered, ratio]) => ({
-		id: label,
-		label,
-		answered,
-		detail: ratio ? choose(locale, `${ratio} checks`, `${ratio} contrôles`) : undefined,
-	}));
+/** Each feed's row shows its check outcomes and how often its file was stale. */
+export function feedCheckRows(answer: ScorecardAnswer, locale: Locale, age?: ScorecardAnswer) {
+	const ages = age?.evidence.counts.feed_age_at_capture ?? {};
+	const countsByLabel = new Map(
+		Object.entries(feedLabels).map(([feed, labels]) => [choose(locale, ...labels), ages[feed]]),
+	);
+	return networkRows('poll_success', answer, locale).rows.map(([label, answered, ratio]) => {
+		const { overflow, attempts } = object(countsByLabel.get(label));
+		const checked = ratio ? choose(locale, `${ratio} checks`, `${ratio} contrôles`) : null;
+		const stale =
+			typeof overflow === 'number' && overflow > 0 && typeof attempts === 'number'
+				? recordRatio(overflow, tally(attempts, locale), locale)
+				: null;
+		const detail = [
+			checked,
+			stale &&
+				choose(
+					locale,
+					`${stale} with a feed over 10 min old`,
+					`${stale} avec un flux datant de plus de 10 min`,
+				),
+		]
+			.filter(Boolean)
+			.join(' · ');
+		return { id: label, label, answered, detail: detail || undefined };
+	});
 }
 
 /** The days Transit could not check the feeds, each with its reason, in one sentence. */
@@ -561,23 +579,6 @@ export function tripsLeftOutByDay(answer: RecordSeries, locale: Locale) {
 				locale,
 				`${date}: ${trips} left out because live data was interrupted.`,
 				`${date}\u00a0: ${trips} ${count === 1 ? 'écarté' : 'écartés'} à cause d’une interruption des données en direct.`,
-			),
-		];
-	});
-}
-
-export function staleFeedChecks(answer: ScorecardAnswer, locale: Locale) {
-	const counts = answer.evidence.counts.feed_age_at_capture ?? {};
-	return Object.entries(feedLabels).flatMap(([feed, labels]) => {
-		const { overflow, attempts } = object(counts[feed]);
-		if (typeof overflow !== 'number' || overflow <= 0 || typeof attempts !== 'number') return [];
-		const label = choose(locale, ...labels);
-		const ratio = recordRatio(overflow, tally(attempts, locale), locale);
-		return [
-			choose(
-				locale,
-				`${label}: ${ratio} checks returned a feed over 10 minutes old.`,
-				`${label}\u00a0: ${ratio} contrôles ont reçu un flux datant de plus de 10 minutes.`,
 			),
 		];
 	});
