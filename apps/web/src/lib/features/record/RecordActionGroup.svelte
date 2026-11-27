@@ -38,6 +38,9 @@
 		printNote?: string;
 	} = $props();
 	const fr = $derived(locale === 'fr');
+	// Step 2 of the head pass: from 768 px Download and Cite open as centred windows once the kit
+	// ships SheetContent side="center" (v0.61.0); that adoption changes this one value.
+	const sheetSide = 'bottom';
 	const uid = $props.id();
 	const figuresId = `${uid}-figures`;
 	const printNoteId = `${uid}-print`;
@@ -85,7 +88,11 @@
 							class="min-h-11">{fr ? 'Télécharger' : 'Download'}</Button
 						>{/snippet}
 				</Sheet.Trigger>
-				<Sheet.Content side="bottom" showCloseButton={false} class="max-h-[90dvh] overflow-y-auto">
+				<Sheet.Content
+					side={sheetSide}
+					showCloseButton={false}
+					class="max-h-[90dvh] overflow-y-auto"
+				>
 					<Sheet.Header>
 						<Sheet.Title
 							>{fr ? 'Télécharger les fichiers CSV' : 'Download the CSV files'}</Sheet.Title
@@ -147,7 +154,7 @@
 						class="min-h-11">{fr ? 'Citer' : 'Cite'}</Button
 					>{/snippet}
 			</Sheet.Trigger>
-			<Sheet.Content side="bottom" showCloseButton={false} class="max-h-[90dvh] overflow-y-auto">
+			<Sheet.Content side={sheetSide} showCloseButton={false} class="max-h-[90dvh] overflow-y-auto">
 				<Sheet.Header>
 					<Sheet.Title>{fr ? 'Citer' : 'Cite'}</Sheet.Title>
 				</Sheet.Header>
