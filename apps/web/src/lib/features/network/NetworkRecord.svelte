@@ -237,7 +237,7 @@
 		{
 			key: 'observed',
 			label: term.observed,
-			waiting: waiting && 5,
+			waiting: waiting && 4,
 			text: answer
 				? [
 						answer.evidence.share_observed == null
@@ -443,7 +443,8 @@
 								{:else}<p>{recordConnection.unreachable[locale]}</p>{/if}
 							{/await}
 							{#await record.punctuality}
-								<RecordSkeleton shape={{ shape: 'facts', count: 2 }} />
+								<!-- The median and the latest 1 in 10: two facts, each with its detail line. -->
+								<RecordSkeleton shape={{ shape: 'facts', count: 4 }} />
 							{:then result}
 								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 									{@const reading = result.answer}

@@ -390,7 +390,7 @@
 		{
 			key: 'observed',
 			label: t.observed,
-			waiting: waiting && 5,
+			waiting: waiting && 7,
 			text: [
 				observed == null
 					? null

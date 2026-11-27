@@ -489,7 +489,7 @@
 		{
 			key: 'observed',
 			label: copy.observed,
-			waiting: waiting && 5,
+			waiting: waiting && 6,
 			text: [
 				observed == null
 					? null
