@@ -104,7 +104,7 @@ it.each([
 		'en',
 		stm,
 		'STM',
-		'Transit · Montréal. 19 to 25 Nov 2026. Source: STM open data, Creative Commons Attribution 4.0 (CC BY 4.0), computed by Transit. Read 27 Nov 2026. https://t.test/?provider=stm&frameMode=record&recordFrom=2026-11-19&recordTo=2026-11-25',
+		'Transit · Montréal. 19 to 25 Nov 2026. Source: STM open data, Creative Commons Attribution 4.0 (CC BY 4.0), computed by Transit. Accessed 27 Nov 2026. https://t.test/?provider=stm&frameMode=record&recordFrom=2026-11-19&recordTo=2026-11-25',
 	],
 	[
 		'fr',
@@ -119,7 +119,7 @@ it.each([
 		'Transit · Montréal. Du 19 au 25 nov. 2026. Source : données ouvertes d’OC Transpo, Licence du gouvernement ouvert, Ville d’Ottawa, version 2.0, calculs de Transit. Consulté le 27 nov. 2026. https://t.test/?provider=stm&frameMode=record&recordFrom=2026-11-19&recordTo=2026-11-25',
 	],
 ] as const)(
-	'cites the figures with their source, licence, read date and pinned address in %s',
+	'cites the figures with their source, licence, access date and pinned address in %s',
 	(locale, provider, operator, text) => {
 		const period = { from: '2026-11-19', to: '2026-11-25' };
 		const href =

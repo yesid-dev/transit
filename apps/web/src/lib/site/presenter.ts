@@ -1197,7 +1197,6 @@ export function officialAlertsLabel(locale: Locale) {
 	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check the official notices';
 }
 
-/** The citation for a whole page: who published it, what, which dates and where to find it. */
 /** Whose data a citation rests on: the agency and the licence it publishes under. */
 export type CitationSource = { agency: AgencyName; licence?: string | null };
 
@@ -1221,7 +1220,7 @@ export function citationSource(
 	};
 }
 
-/** "STM open data, CC BY 4.0, computed by Transit": the source as one CSV cell. */
+/** "<Agency> open data, <licence>, computed by Transit": the source as one CSV cell. */
 export function citationSourceText({ agency, licence }: CitationSource, locale: Locale) {
 	const licensed = licence ? `, ${licence}` : '';
 	return locale === 'fr'
@@ -1229,7 +1228,7 @@ export function citationSourceText({ agency, licence }: CitationSource, locale: 
 		: `${agency.name} open data${licensed}, computed by Transit`;
 }
 
-/** "Source: STM open data, CC BY 4.0, computed by Transit." */
+/** "Source: <Agency> open data, <licence>, computed by Transit." */
 export function citationSourceSentence(source: CitationSource, locale: Locale) {
 	const text = citationSourceText(source, locale);
 	return locale === 'fr'
@@ -1237,15 +1236,16 @@ export function citationSourceSentence(source: CitationSource, locale: Locale) {
 		: `Source: ${text}.`;
 }
 
-/** The day a reader read the figures, for the citation: "Read 27 Nov 2026." */
-export function citationRead(day: string, locale: Locale) {
+/** The day a reader accessed the figures, for the citation: "Accessed 27 Nov 2026." */
+export function citationAccessed(day: string, locale: Locale) {
 	const date = dateRange({ from: day, to: day }, locale);
-	return locale === 'fr' ? `Consulté le ${date}.` : `Read ${date}.`;
+	return locale === 'fr' ? `Consulté le ${date}.` : `Accessed ${date}.`;
 }
 
 /**
- * One citation format on every screen: subject, dates, source and licence, the day it was
- * read, and the address pinned to those dates. `read` is a date key; it defaults to today (UTC).
+ * The citation for a whole page, in one format on every screen: who published it, what, which
+ * dates, the source and licence of the data, the day it was accessed, and where to find it at
+ * those dates. `accessed` is a date key; it defaults to today (UTC).
  */
 export function pageCitation(
 	subject: string,
@@ -1253,13 +1253,13 @@ export function pageCitation(
 	href: string,
 	locale: Locale,
 	source?: CitationSource | null,
-	read: string = new Date().toISOString().slice(0, 10),
+	accessed: string = new Date().toISOString().slice(0, 10),
 ): string {
 	return [
 		`Transit · ${subject}.`,
 		period ? `${citeDates(period, locale)}.` : '',
 		source ? citationSourceSentence(source, locale) : '',
-		source ? citationRead(read, locale) : '',
+		source ? citationAccessed(accessed, locale) : '',
 		href,
 	]
 		.filter(Boolean)

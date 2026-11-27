@@ -255,7 +255,7 @@ it('says how long a vehicle’s interruptions last beside their count', () => {
 	]);
 });
 
-it('cites a ranking with the agency’s name, its source and licence, and the read date', () => {
+it('cites a ranking with the agency’s name, its source and licence, and the access date', () => {
 	const ranked: RankingsRecord = {
 		...answer,
 		class: 'all',
@@ -287,7 +287,7 @@ it('cites a ranking with the agency’s name, its source and licence, and the re
 		/^Transit · Lines · On-time share · OC Transpo. 19 to 25 Nov 2026. All service classes./u,
 	);
 	expect(text).toContain(
-		'Source: OC Transpo open data, Open Government Licence, City of Ottawa, v2.0, computed by Transit. Read 27 Nov 2026. ' +
+		'Source: OC Transpo open data, Open Government Licence, City of Ottawa, v2.0, computed by Transit. Accessed 27 Nov 2026. ' +
 			href,
 	);
 	expect(text).not.toContain('octranspo.');

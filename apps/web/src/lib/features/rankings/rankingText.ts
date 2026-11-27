@@ -1,5 +1,5 @@
 import {
-	citationRead,
+	citationAccessed,
 	citationSourceSentence,
 	citeDates,
 	lowCoverageReason,
@@ -355,7 +355,7 @@ export function rankingCitation(
 	href: string,
 	lastGood?: true,
 	source?: CitationSource | null,
-	read: string = new Date().toISOString().slice(0, 10),
+	accessed: string = new Date().toISOString().slice(0, 10),
 ) {
 	const { evidence } = answer;
 	const dates = citeDates({ from: evidence.start_date, to: evidence.end_date }, locale);
@@ -367,7 +367,7 @@ export function rankingCitation(
 			: '';
 	const older = lastGood ? choose(locale, ' Older answer.', ' Calcul précédent.') : '';
 	const cited = source
-		? ` ${citationSourceSentence(source, locale)} ${citationRead(read, locale)}`
+		? ` ${citationSourceSentence(source, locale)} ${citationAccessed(accessed, locale)}`
 		: '';
 	return `Transit · ${title} · ${measure} · ${city}. ${dates}. ${service}${measured} ${methodEvidence(evidence, locale)}${older}${cited} ${href}`;
 }

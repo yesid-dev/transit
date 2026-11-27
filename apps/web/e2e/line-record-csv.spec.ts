@@ -40,8 +40,14 @@ for (const provider of ['stm', 'octranspo'])
 					await csv.press('Enter');
 					const download = await pending;
 					expect(download.suggestedFilename()).toBe('line-punctuality.csv');
+					// Every row ends with the source and licence; the fixture city declares no licence name.
+					const source = fr
+						? `Données ouvertes ${provider === 'stm' ? 'de la STM' : 'd’OC Transpo'}, calculs de Transit`
+						: `${provider === 'stm' ? 'STM' : 'OC Transpo'} open data, computed by Transit`;
 					expect(readFileSync((await download.path())!, 'utf8')).toBe(
-						(fr ? 'Mesure,Valeur' : 'Measure,Value') + '\npunctuality,0.8\n',
+						(fr
+							? 'Mesure,Valeur,Source des données et licence'
+							: 'Measure,Value,Data source and licence') + `\npunctuality,0.8,"${source}"\n`,
 					);
 					expect(new URL(page.url()).pathname).toBe((fr ? '/fr' : '') + '/lines/24');
 					expect(snapshotRequests).toEqual([]);
