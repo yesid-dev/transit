@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
@@ -36,6 +37,8 @@
 	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordPending from '../record/RecordPending.svelte';
+	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import LineScheduleCard from './LineScheduleCard.svelte';
 	import LineMeasurementLimits from './LineMeasurementLimits.svelte';
 	import LiveVehicleTable from './LiveVehicleTable.svelte';
@@ -53,6 +56,7 @@
 	import type { RecordMeasure } from '#lib/server/engine.ts';
 
 	let {
+		heading,
 		line,
 		name,
 		city,
@@ -72,6 +76,7 @@
 		headsigns,
 		predictionHeadsigns,
 	}: {
+		heading: Snippet;
 		line: string;
 		name: string;
 		city: string;
@@ -134,16 +139,8 @@
 	}
 </script>
 
-{#snippet checking()}
-	<div id="line-detail-profile" data-slot="screen-answer">
-		<p role="status">
-			{t('Checking live reports…', 'Vérification des signalements en direct…')}
-		</p>
-	</div>
-{/snippet}
-
 {#snippet schedule()}
-	{#if record}<LineScheduleCard {record} {locale} {url} {headsigns} reserve={scheduleOnly} />{/if}
+	{#if record}<LineScheduleCard {record} {locale} {url} {headsigns} />{/if}
 {/snippet}
 
 {#snippet body(
@@ -151,6 +148,7 @@
 	now: number,
 	historical: RecordMeasure | null,
 	refreshed: boolean,
+	waiting = false,
 )}
 	{@const feed = captureFamily(snapshot, 'vehicle_positions')}
 	{@const state = captureDisplayState(feed, now, snapshot?.published_at)}
@@ -182,9 +180,12 @@
 				?.filter(({ route_id }) => route_id === line)
 				.every(({ trip_id }) => !trip_id) ??
 				false))}
-	<RecordGroup>
-		<div id="line-detail-profile" data-slot="screen-answer">
-			{#if live && rows && !limits}
+	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+		<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
+		<div id="line-detail-profile" data-slot="screen-answer" class="live-answer min-[1280px]:-mb-4">
+			{#if waiting}
+				<RecordPending {locale} shape="answer" liveAnswer />
+			{:else if live && rows && !limits}
 				{#snippet citation()}
 					<CiteBlock
 						{locale}
@@ -274,10 +275,13 @@
 				/>
 			{/if}
 		</div>
-		{#if live && rows && !limits}
+		{#if !limits}
 			<div id="line-detail-live" class="min-w-0">
 				<RecordCard interactive {title} {stamp}>
-					{#if rows.length}
+					{#if waiting}
+						<RecordSkeleton shape="bands" />
+						<RecordPending {locale} shape={{ shape: 'rows', count: 3, lines: 1, lead: 'none' }} />
+					{:else if rows?.length}
 						<div class="mb-4">
 							<RecordBandBar
 								label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
@@ -297,11 +301,18 @@
 										rows.every(({ stop }) => stop === null),
 									)}
 						/>
-					{:else}
+					{:else if live}
 						<p>
 							{t(
 								'No vehicles are reporting on this line.',
 								'Aucun véhicule ne transmet sa position sur cette ligne.',
+							)}
+						</p>
+					{:else}
+						<p>
+							{t(
+								'Live vehicle positions are temporarily unavailable.',
+								'Les positions des véhicules en direct sont temporairement indisponibles.',
 							)}
 						</p>
 					{/if}
@@ -330,7 +341,7 @@
 			</div>
 		{/if}
 	</RecordGroup>
-	<RecordGroup>
+	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 		{#if !limits}
 			<div id="alerts">
 				<LineLiveNotices
@@ -341,6 +352,7 @@
 					{timeZone}
 					{operator}
 					{stopNames}
+					pending={waiting && hasAlerts}
 					tracked={hasAlerts}
 					href={link('/alerts?frameMode=live&' + new URLSearchParams({ route: line }))}
 				/>
@@ -348,7 +360,7 @@
 		{/if}
 		{@render schedule()}
 	</RecordGroup>
-	<RecordGroup>
+	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 		{#if limits}
 			<LineMeasurementLimits {locale} methodHref={link('/metrics')} scheduleOnly={false} />
 		{:else}
@@ -364,8 +376,9 @@
 
 <div data-slot="screen-content" class="min-w-0">
 	{#if scheduleOnly}
-		<RecordGroup>
-			<div id="line-detail-profile" data-slot="screen-answer">
+		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+			<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
+			<div id="line-detail-profile" data-slot="screen-answer" class="min-[1280px]:-mb-4">
 				{#snippet message()}
 					<p>
 						{t(
@@ -384,22 +397,18 @@
 			</div>
 			{@render schedule()}
 		</RecordGroup>
-		<RecordGroup><LineMeasurementLimits {locale} methodHref={link('/metrics')} /></RecordGroup>
+		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)"
+			><LineMeasurementLimits {locale} methodHref={link('/metrics')} /></RecordGroup
+		>
 	{:else if capture}
 		<LiveCapture {city} {capture}>
 			{#snippet pending()}
-				<RecordGroup waiting="answer">
-					{@render checking()}
-					{@render schedule()}
-				</RecordGroup>
+				{@render body(null, 0, null, false, true)}
 			{/snippet}
 			{#snippet children(snapshot, now, refreshed)}
 				{#if lineVehicleRows(snapshot, line, now) && punctuality && !snapshot?.vehicle_positions?.some(({ route_id, trip_id }) => route_id === line && trip_id)}
 					{#await punctuality}
-						<RecordGroup waiting="answer">
-							{@render checking()}
-							{@render schedule()}
-						</RecordGroup>
+						{@render body(snapshot, now, null, refreshed, true)}
 					{:then result}
 						{@render body(
 							snapshot,
@@ -417,3 +426,12 @@
 		{@render body(null, Date.now(), null, false)}
 	{/if}
 </div>
+
+<style>
+	@media (width >= 80rem) {
+		/* One reading row, with the same room for delayed status as the waiting view. */
+		.live-answer {
+			min-block-size: 5.125rem;
+		}
+	}
+</style>

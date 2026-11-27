@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { FilterSummary, SearchInput, filterCountText } from '@yesid/ui/brand';
+	import { Skeleton } from '@yesid/ui/skeleton';
 	import { Button } from '@yesid/ui/button';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -41,7 +42,6 @@
 	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
-	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
@@ -108,8 +108,10 @@
 	const tripsHeader = $derived(t('Trips that ran', 'Trajets effectués'));
 	const eventsHeader = $derived(t('Stop events', 'Passages aux arrêts'));
 	const statusHeader = $derived(t('Status', 'État'));
-	const stamp = $derived({ kind: 'record' as const, label: recordStamp(record.period, locale) });
-	const pinned = $derived(finderRecordUrl(url, record.city, record.period));
+	let settledPeriod = $state.raw<LinesRecord['period']>();
+	const shownPeriod = $derived(settledPeriod ?? record.period);
+	const stamp = $derived({ kind: 'record' as const, label: recordStamp(shownPeriod, locale) });
+	const pinned = $derived(finderRecordUrl(url, record.city, shownPeriod));
 	const sortChoices = $derived({
 		key: sort.key === 'line' ? 'name' : sort.key,
 		direction: sort.direction,
@@ -131,24 +133,35 @@
 	let tripsPending = $state(true);
 	const initialTiming = $derived(timingPending && punctuality === null);
 	let readingCity: string | null = null;
-	const pendingText = $derived(t('Calculating…', 'Calcul en cours…'));
+	let performanceCard = $state<HTMLDivElement>();
 	$effect(() => {
-		const { punctuality: timing, trips, city } = record;
+		const { punctuality: timing, trips, city, period } = record;
 		let current = true;
 		let nextDelivery: FinderResult | null = null;
 		// Keep the previous row set and answer height for same-city period changes.
 		if (readingCity !== city) {
 			punctuality = null;
 			delivery = null;
+			settledPeriod = undefined;
 		}
 		readingCity = city;
 		timingPending = true;
 		tripsPending = true;
-		void timing.then((answer) => {
+		void timing.then(async (answer) => {
 			if (!current) return;
+			const before = performanceCard?.getBoundingClientRect();
 			punctuality = answer;
+			settledPeriod = period;
 			delivery = nextDelivery;
 			timingPending = false;
+			await tick();
+			if (current && before && before.top < 0 && before.bottom > 120 && performanceCard) {
+				const after = performanceCard.getBoundingClientRect();
+				// A shorter list can lose the row that was being read. Keep its card in view.
+				const top = after.height > 120 - before.top ? before.top : 120;
+				const delta = after.top - top;
+				if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+			}
 		});
 		void trips.then((answer) => {
 			if (!current) return;
@@ -272,11 +285,7 @@
 		!timingPending && punctuality && punctuality.kind !== 'answer' && punctuality.kind !== 'busy',
 	);
 	const tripsFailure = $derived(
-		!timingPending &&
-			!tripsPending &&
-			delivery &&
-			delivery.kind !== 'answer' &&
-			delivery.kind !== 'busy',
+		!timingPending && delivery && delivery.kind !== 'answer' && delivery.kind !== 'busy',
 	);
 	const busy = $derived(
 		(!timingPending && punctuality?.kind === 'busy') ||
@@ -326,8 +335,8 @@
 	) {
 		return {
 			label,
-			href: finderCsv(headers, rows, locale, record.city, record.period, sources),
-			download: `${section}-${record.period.from}-${record.period.to}.csv`,
+			href: finderCsv(headers, rows, locale, record.city, shownPeriod, sources),
+			download: `${section}-${shownPeriod.from}-${shownPeriod.to}.csv`,
 		};
 	}
 	const files = $derived([
@@ -359,7 +368,6 @@
 			header: about.onTime,
 			sortable: true,
 			numeric: true,
-			width: '16ch',
 			cell: onTimeCell,
 		},
 		{
@@ -367,7 +375,6 @@
 			header: lateHeader,
 			sortable: true,
 			numeric: true,
-			width: locale === 'fr' ? '16ch' : '12ch',
 			cell: lateCell,
 		},
 		{
@@ -375,14 +382,12 @@
 			header: tripsHeader,
 			sortable: true,
 			numeric: true,
-			width: locale === 'fr' ? '27ch' : '28ch',
 			cell: tripsCell,
 		},
 		{
 			key: 'events',
 			header: eventsHeader,
 			numeric: true,
-			width: locale === 'fr' ? 'min(24ch, 100cqi)' : 'min(17ch, 100cqi)',
 			cell: eventsCell,
 		},
 	]);
@@ -455,7 +460,7 @@
 		{locale}
 		text={pageCitation(
 			title,
-			record.period,
+			shownPeriod,
 			pinned.href,
 			locale,
 			operator ? citationSource(operator, provider, locale) : null,
@@ -466,11 +471,11 @@
 {#snippet figures()}
 	{#if timingEvidence}<CiteBlock
 			{locale}
-			text={`Transit. ${title}. ${csvTiming}. ${citeDates(record.period, locale)}. ${methodEvidence(timingEvidence, locale)}`}
+			text={`Transit. ${title}. ${csvTiming}. ${citeDates(shownPeriod, locale)}. ${methodEvidence(timingEvidence, locale)}`}
 		/>{/if}
 	{#if deliveryEvidence}<CiteBlock
 			{locale}
-			text={`Transit. ${title}. ${csvTrips}. ${citeDates(record.period, locale)}. ${methodEvidence(deliveryEvidence, locale)}`}
+			text={`Transit. ${title}. ${csvTrips}. ${citeDates(shownPeriod, locale)}. ${methodEvidence(deliveryEvidence, locale)}`}
 		/>{/if}
 {/snippet}
 
@@ -486,8 +491,10 @@
 	{/if}
 {/snippet}
 
+{#snippet pendingCell()}<Skeleton class="ml-auto h-4 w-12 max-w-full" />{/snippet}
+
 {#snippet onTimeCell(row: Row)}
-	{#if timingPending}{pendingText}
+	{#if initialTiming}{@render pendingCell()}
 	{:else}
 		<strong class="font-sans text-base">{recordPercent(row.onTime!, locale)}</strong>
 		{#if row.hold}<small class="block font-sans text-muted-foreground"
@@ -497,30 +504,28 @@
 {/snippet}
 
 {#snippet phoneOnTime(row: Row)}
-	{#if timingPending}{pendingText}{:else}{recordPercent(row.onTime!, locale)}{/if}
+	{#if initialTiming}{@render pendingCell()}{:else}{recordPercent(row.onTime!, locale)}{/if}
 {/snippet}
 
 {#snippet lateCell(row: Row)}
-	<RecordTableValue
-		{locale}
-		text={timingPending ? pendingText : row.late === null ? null : recordPercent(row.late, locale)}
-	/>
+	{#if initialTiming}{@render pendingCell()}
+	{:else}<RecordTableValue
+			{locale}
+			text={row.late === null ? null : recordPercent(row.late, locale)}
+		/>{/if}
 {/snippet}
 
 {#snippet tripsCell(row: Row)}
 	{@const counts = row.delivery?.evidence.counts}
-	{#if !tripsPending && !timingPending && row.trips !== null}
+	{#if row.trips !== null && counts}
 		<span class="min-[1024px]:@min-[48rem]:whitespace-nowrap">
 			{recordRatio(counts!.ran!, tally(counts!.scheduled!, locale), locale)}
 		</span>
+	{:else if tripsPending || timingPending}{@render pendingCell()}
 	{:else}
 		<RecordTableValue
 			{locale}
-			text={tripsPending || timingPending
-				? pendingText
-				: tripsFailure
-					? t('Unavailable', 'Indisponible')
-					: null}
+			text={tripsFailure ? t('Unavailable', 'Indisponible') : null}
 			state={recordStateFor(row.delivery?.state)}
 		/>
 	{/if}
@@ -528,15 +533,13 @@
 
 {#snippet eventsCell(row: Row)}
 	{@const count = row.timing?.evidence.counts.classified}
-	<RecordTableValue
-		{locale}
-		text={timingPending ? pendingText : count == null ? null : tally(count, locale)}
-	/>
+	{#if initialTiming}{@render pendingCell()}
+	{:else}<RecordTableValue {locale} text={count == null ? null : tally(count, locale)} />{/if}
 {/snippet}
 
 {#snippet stateCell(row: Row)}
 	{@const reason = lineExclusion(row.timing)}
-	{#if timingPending}{pendingText}
+	{#if initialTiming}{@render pendingCell()}
 	{:else}
 		{@const state = reason.state}
 		<StateMark {state} {locale} />
@@ -565,53 +568,59 @@
 {/snippet}
 
 {#snippet lineField()}
-	<form
-		method="GET"
-		action={url.pathname}
-		class="mb-3 grid max-w-xl gap-3"
-		onsubmit={(event) => {
-			event.preventDefault();
-			applyQuery(query, false);
-		}}
-	>
-		{#each [...url.searchParams].filter(([key]) => key !== 'q') as [key, value], i (i)}<input
-				type="hidden"
-				name={key}
-				{value}
-			/>{/each}
-		<SearchInput
-			name="q"
-			type="search"
-			testId="lines-filter-input"
-			visibleLabel
-			textSize="body"
-			label={t('Line number or name', 'Numéro ou nom de ligne')}
-			placeholder={t('Line number or name', 'Numéro ou nom de ligne')}
-			description={t('The lists narrow as you type.', 'Les listes se précisent pendant la saisie.')}
-			value={query}
-			oninput={(event) => queueQuery(event.currentTarget.value)}
-		/>
-		<noscript><Button type="submit" variant="outline">{t('Search', 'Rechercher')}</Button></noscript
+	<div class="finder-field">
+		<form
+			method="GET"
+			action={url.pathname}
+			class="mb-3 grid max-w-xl gap-3"
+			onsubmit={(event) => {
+				event.preventDefault();
+				applyQuery(query, false);
+			}}
 		>
-	</form>
-	<p class="sr-only" role="status">
-		{appliedQuery && !typing ? filterCountText(matchCount, countLabels, locale) : ''}
-	</p>
-	{#if appliedQuery && !typing}
-		<div class="mb-3">
-			<FilterSummary
-				count={matchCount}
-				countLabel={countLabels}
-				{locale}
-				clearLabel={t('Clear filters', 'Effacer les filtres')}
-				onClear={() => {
-					query = '';
-					applyQuery('', false);
-				}}
+			{#each [...url.searchParams].filter(([key]) => key !== 'q') as [key, value], i (i)}<input
+					type="hidden"
+					name={key}
+					{value}
+				/>{/each}
+			<SearchInput
+				name="q"
+				type="search"
+				testId="lines-filter-input"
+				visibleLabel
+				textSize="body"
+				label={t('Line number or name', 'Numéro ou nom de ligne')}
+				placeholder={t('Line number or name', 'Numéro ou nom de ligne')}
+				description={t(
+					'The lists narrow as you type.',
+					'Les listes se précisent pendant la saisie.',
+				)}
+				value={query}
+				oninput={(event) => queueQuery(event.currentTarget.value)}
 			/>
-			<noscript><a href={clearHref}>{t('Clear filters', 'Effacer les filtres')}</a></noscript>
-		</div>
-	{/if}
+			<noscript
+				><Button type="submit" variant="outline">{t('Search', 'Rechercher')}</Button></noscript
+			>
+		</form>
+		<p class="sr-only" role="status">
+			{appliedQuery && !typing ? filterCountText(matchCount, countLabels, locale) : ''}
+		</p>
+		{#if appliedQuery && !typing}
+			<div class="mb-3">
+				<FilterSummary
+					count={matchCount}
+					countLabel={countLabels}
+					{locale}
+					clearLabel={t('Clear filters', 'Effacer les filtres')}
+					onClear={() => {
+						query = '';
+						applyQuery('', false);
+					}}
+				/>
+				<noscript><a href={clearHref}>{t('Clear filters', 'Effacer les filtres')}</a></noscript>
+			</div>
+		{/if}
+	</div>
 {/snippet}
 
 {#snippet measuredEvidence()}
@@ -622,28 +631,33 @@
 	{#if timingEvidence}<RecordEvidenceLine {locale} evidence={timingEvidence} />{/if}
 {/snippet}
 
+{#snippet heading()}<ScreenTitle {title} {subtitle} />{/snippet}
+
 <RecordScreen class="min-w-0">
-	<RecordGroup><ScreenTitle {title} {subtitle} /></RecordGroup>
 	<div class="min-w-0" data-slot="screen-content">
-		<RecordGroup density="compact">
+		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 			<div
-				class:invisible={timingPending && !initialTiming}
-				inert={timingPending && !initialTiming}
+				class:opacity-65={timingPending && !initialTiming}
+				aria-busy={timingPending || undefined}
+				class="finder-answer min-[1280px]:-mb-4"
 				data-slot="screen-answer"
 			>
 				{#if initialTiming}
-					<RecordSkeleton shape="answer" />
+					<RecordPending {heading} {locale} shape="answer" answer={record.punctuality} />
 				{:else if spread !== null}
 					<RecordAnswer
+						{heading}
 						{locale}
 						time={stamp}
 						value={spread}
+						size="md"
 						sentence={answer}
 						evidence={timingEvidence ? { sample: headlineSample ?? '' } : undefined}
 						{actions}
 					/>
 				{:else if measured.length}
 					<RecordAnswer
+						{heading}
 						{locale}
 						time={stamp}
 						value={null}
@@ -653,6 +667,7 @@
 					/>
 				{:else if punctuality && punctuality.kind !== 'busy'}
 					<RecordAnswer
+						{heading}
 						{locale}
 						time={stamp}
 						value={null}
@@ -660,14 +675,24 @@
 						state={timingFailure ? undefined : 'not_measured'}
 						{actions}
 					/>
+				{:else}
+					<RecordPending {heading} {locale} shape="answer" busy />
 				{/if}
 			</div>
 
-			<div id="line-performance" class:contents={initialTiming}>
+			<div
+				id="line-performance"
+				class="finder-performance"
+				bind:this={performanceCard}
+				class:opacity-65={timingPending && !initialTiming}
+				aria-busy={timingPending || tripsPending}
+			>
 				{#if initialTiming}
-					<RecordCard title={measuredTitle} {stamp}>
+					<RecordCard title={measuredTitle} {stamp} interactive>
+						{#if all.length}{@render lineField()}{/if}
+						<div class="finder-sort-placeholder mb-3"><Skeleton class="h-11 w-36" /></div>
 						{#key record.punctuality}<RecordPending
-								shape="listing"
+								shape={{ shape: 'rows', count: 20, lines: 2, lead: 'plate' }}
 								{locale}
 								answer={record.punctuality}
 							/>{/key}
@@ -698,15 +723,13 @@
 									includeRailTier: true,
 									value: phoneOnTime,
 									line: (row) => {
-										if (timingPending) return null;
 										const counts = row.delivery?.evidence.counts;
 										const events = row.timing?.evidence.counts.classified;
 										return rowSentence(
 											[
 												row.detail,
 												row.late !== null && lateShare(row.late, locale),
-												!tripsPending &&
-													row.trips !== null &&
+												row.trips !== null &&
 													counts?.ran != null &&
 													counts.scheduled != null &&
 													tripsRan(counts.ran, counts.scheduled, locale),
@@ -737,93 +760,102 @@
 			</div>
 
 			<div id="lines-without-live-data">
-				{#if !initialTiming}
-					<RecordCard title={noLiveTitle} interactive={scheduleShown.length > 0}>
-						{#if scheduleShown.length}
-							<p class="mb-2">
-								<StateMark state="no_live_data" {locale} hiddenLabel />
-								{operator
-									? t(
-											`${operator} publishes no real-time feed for these lines, so they are listed apart and never ranked.`,
-											`${frenchAgency(agencyName(operator, provider)).start} ne publie aucun flux en temps réel pour ces lignes\u00a0: elles sont présentées à part et jamais classées.`,
-										)
-									: t(
-											'The agency publishes no real-time feed for these lines, so they are listed apart and never ranked.',
-											'La société de transport ne publie aucun flux en temps réel pour ces lignes\u00a0: elles sont présentées à part et jamais classées.',
-										)}
-							</p>
-							<RecordDataTable
-								{locale}
-								title={noLiveTitle}
-								rowHeader={lineHeader}
-								rows={scheduleShown.map((row) => ({
-									...row,
-									detail:
-										row.routeType !== null && routeModeKey(row.routeType)
-											? t('Schedule only.', 'Horaire seulement.')
-											: undefined,
-								}))}
-							/>
-						{:else if appliedQuery && scheduleOnly.length}
-							<p>{noMatch}</p>
-						{:else if timingAnswer}
-							<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
-						{:else if timingFailure}
-							<p>{recordConnection.unreachable[locale]}</p>
-						{/if}
-					</RecordCard>
-				{/if}
-			</div>
-
-			{#if !initialTiming}
-				<RecordCard
-					title={excludedTitle}
-					{stamp}
-					interactive={!timingFailure && !!timingAnswer && excludedShown.length > 0}
-					evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
-						? excludedEvidence
-						: undefined}
-				>
-					{#if timingFailure}
+				<RecordCard title={noLiveTitle} interactive={scheduleShown.length > 0}>
+					{#if scheduleShown.length}
+						<p class="mb-2">
+							<StateMark state="no_live_data" {locale} hiddenLabel />
+							{operator
+								? t(
+										`${operator} publishes no real-time feed for these lines, so they are listed apart and never ranked.`,
+										`${frenchAgency(agencyName(operator, provider)).start} ne publie aucun flux en temps réel pour ces lignes\u00a0: elles sont présentées à part et jamais classées.`,
+									)
+								: t(
+										'The agency publishes no real-time feed for these lines, so they are listed apart and never ranked.',
+										'La société de transport ne publie aucun flux en temps réel pour ces lignes\u00a0: elles sont présentées à part et jamais classées.',
+									)}
+						</p>
+						<RecordDataTable
+							{locale}
+							title={noLiveTitle}
+							rowHeader={lineHeader}
+							rows={scheduleShown.map((row) => ({
+								...row,
+								detail:
+									row.routeType !== null && routeModeKey(row.routeType)
+										? t('Schedule only.', 'Horaire seulement.')
+										: undefined,
+							}))}
+						/>
+					{:else if appliedQuery && scheduleOnly.length}
+						<p>{noMatch}</p>
+					{:else if timingAnswer || initialTiming}
+						<p>{t('No lines without live data.', 'Aucune ligne sans données en direct.')}</p>
+					{:else if timingFailure}
 						<p>{recordConnection.unreachable[locale]}</p>
-					{:else if timingAnswer}
-						{#if excludedShown.length}
-							<RecordDataTable
-								{locale}
-								title={excludedTitle}
-								rowHeader={lineHeader}
-								rows={excludedShown}
-								columns={stateColumns}
-							/>
-						{:else if appliedQuery && excluded.length}
-							<p>{noMatch}</p>
-						{:else}
-							<p>
-								{t(
-									'No lines were left out for these dates.',
-									'Aucune ligne n’a été écartée pour ces dates.',
-								)}
-							</p>
-						{/if}
 					{/if}
 				</RecordCard>
-			{/if}
+			</div>
+
+			<RecordCard
+				title={excludedTitle}
+				{stamp}
+				interactive={!timingFailure && !!timingAnswer && excludedShown.length > 0}
+				evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
+					? excludedEvidence
+					: undefined}
+			>
+				{#if initialTiming}
+					<RecordPending
+						{locale}
+						answer={record.punctuality}
+						shape={{
+							shape: 'rows',
+							count: Math.min(20, excludedShown.length),
+							lines: 1,
+							lead: 'plate',
+						}}
+					/>
+				{:else if timingFailure}
+					<p>{recordConnection.unreachable[locale]}</p>
+				{:else if timingAnswer}
+					{#if excludedShown.length}
+						<RecordDataTable
+							{locale}
+							title={excludedTitle}
+							rowHeader={lineHeader}
+							rows={excludedShown}
+							columns={stateColumns}
+						/>
+					{:else if appliedQuery && excluded.length}
+						<p>{noMatch}</p>
+					{:else}
+						<p>
+							{t(
+								'No lines were left out for these dates.',
+								'Aucune ligne n’a été écartée pour ces dates.',
+							)}
+						</p>
+					{/if}
+				{/if}
+			</RecordCard>
 		</RecordGroup>
 
-		<RecordGroup class={timingPending ? 'invisible' : undefined} inert={timingPending}>
+		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 			<AboutFigures
 				title={about.about}
 				compact
 				fields={[
-					{ key: 'period', label: about.period, text: dateRange(record.period, locale) },
+					{ key: 'period', label: about.period, text: dateRange(shownPeriod, locale) },
 					{
 						key: 'counted',
 						label: about.counted,
+						waitingLines: initialTiming ? 2 : undefined,
 						text: counts ? `${counts}.` : null,
 					},
 					{
 						key: 'observed',
 						label: about.observed,
+						waitingLines: initialTiming ? 5 : undefined,
 						text: [
 							observation
 								? about.observedShare(
@@ -858,8 +890,60 @@
 							? `${about.feeds(agencyName(operator, provider))} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
 							: null,
 					},
+					{
+						key: 'error',
+						label: t('Seen an error?', 'Vous avez vu une erreur?'),
+						text: null,
+						link: {
+							href: carryFrameState(
+								localizeHref('/metrics#about-transit', locale, record.city),
+								pinned,
+							),
+							label: t('About Transit', 'À propos de Transit'),
+						},
+					},
 				]}
 			/>
 		</RecordGroup>
 	</div>
 </RecordScreen>
+
+<style>
+	@media (width >= 80rem) {
+		.finder-answer {
+			min-block-size: 8rem;
+		}
+		/* A short first page keeps the next card below the desktop viewport while readings fill. */
+		.finder-performance {
+			display: grid;
+			min-block-size: clamp(0px, calc(100svh - 16rem), 40rem);
+		}
+	}
+	@media (width >= 1024px) {
+		.finder-performance {
+			container-type: inline-size;
+		}
+		@container (inline-size >= 38rem) {
+			.finder-performance :global([data-slot='record-card-body']) {
+				display: grid;
+				grid-template-columns: minmax(12rem, 1fr) minmax(22rem, 1.5fr);
+				align-items: end;
+				column-gap: var(--space-card-gap);
+			}
+			.finder-performance
+				:global(
+					[data-slot='record-card-body']
+						> :not(.finder-field, .sort-choice-frame, .finder-sort-placeholder)
+				) {
+				grid-column: 1 / -1;
+			}
+			.finder-field {
+				grid-column: 1;
+			}
+			.finder-sort-placeholder,
+			.finder-performance :global(.sort-choice-frame) {
+				grid-column: 2;
+			}
+		}
+	}
+</style>

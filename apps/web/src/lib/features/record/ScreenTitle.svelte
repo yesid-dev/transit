@@ -21,7 +21,7 @@
 		plate?: string;
 		stopCode?: string;
 		/** The parent listing, shown as a breadcrumb before the plate on the title row. */
-		back?: { href: string; label: string };
+		back?: { href: string; label: string; compactLabel?: string };
 		compact?: boolean;
 		/** The brand dot after the title. A line, stop, vehicle or departure has none. */
 		dot?: boolean;
@@ -45,8 +45,20 @@
 		data-slot="screen-title-row"
 	>
 		<!-- Spaces between the parts keep the row's text readable as one line: "All lines / 51 Line 51". -->
-		{#if back}<a class="record-link crumb" href={back.href} data-slot="screen-crumb">{back.label}</a
+		{#if back}<a
+				class="record-link crumb"
+				href={back.href}
+				data-slot="screen-crumb"
+				aria-label={back.compactLabel ? back.label : undefined}
 			>
+				<span
+					class:long-crumb={back.compactLabel}
+					aria-hidden={back.compactLabel ? true : undefined}>{back.label}</span
+				>
+				{#if back.compactLabel}<span class="short-crumb" aria-hidden="true"
+						>{back.compactLabel}</span
+					>{/if}
+			</a>
 			<span class="crumb-sep" aria-hidden="true">/</span>{/if}
 		{#if stopCode}<span class="stop-code" aria-hidden="true">{stopCode}</span>{/if}
 		{#if plate}<span class="route-code" aria-hidden="true"
@@ -110,6 +122,9 @@
 	.crumb-sep {
 		flex: none;
 	}
+	.short-crumb {
+		display: none;
+	}
 	.crumb-sep {
 		color: var(--muted-foreground);
 	}
@@ -122,6 +137,7 @@
 		display: inline-flex;
 		align-items: center;
 		min-block-size: 44px;
+		min-inline-size: 44px;
 		color: var(--primary);
 		text-decoration: underline;
 	}
@@ -186,6 +202,31 @@
 		}
 		.screen-title:not(.compact-title) .detail-heading {
 			--section-heading-title-size: var(--text-heading);
+		}
+	}
+
+	/* The answer header shares its first row with the stamp and actions on a desktop. */
+	@media (width >= 80rem) {
+		:global([data-record-heading-row]) .screen-title {
+			--section-heading-title-size: var(--text-heading);
+		}
+		:global([data-record-heading-row]) .title-row:is(.has-back, .has-code) {
+			display: flex;
+			flex-wrap: nowrap;
+			align-items: center;
+			column-gap: 0.5rem;
+		}
+		:global([data-record-heading-row]) .long-crumb {
+			display: none;
+		}
+		:global([data-record-heading-row]) .short-crumb {
+			display: inline;
+		}
+		:global([data-record-heading-row]) .title-row .crumb-sep {
+			display: inline;
+		}
+		:global([data-record-heading-row]) .screen-heading-group {
+			min-inline-size: 0;
 		}
 	}
 </style>

@@ -11,7 +11,7 @@ const pages = [
 function frame(page: Page) {
 	return page.locator('main h1').evaluate((heading) => ({
 		header: heading.closest('header')!.getBoundingClientRect().height,
-		first: document.querySelector('#punctuality')!.getBoundingClientRect().top,
+		first: document.querySelector('#punctuality')!.getBoundingClientRect().top + window.scrollY,
 	}));
 }
 
@@ -56,6 +56,22 @@ for (const { name, path, section } of pages)
 							await page.addStyleTag({ content: 'html { font-size: ' + scale + '%; }' });
 							await expect(reading).toBeVisible();
 							await expect(page.locator('html[data-hydrated]')).toHaveCount(0);
+							if (name === 'line') {
+								for (const id of [
+									'daily',
+									'hourly',
+									'stops',
+									'delivery',
+									'late',
+									'waiting',
+									'offered',
+									'crowding',
+									'schedule',
+									'alerts',
+								]) {
+									await expect(page.locator('main #' + id + ' h2').first()).toBeAttached();
+								}
+							}
 							await expect
 								.poll(() =>
 									page.locator('main h1').evaluate((heading) => {
@@ -69,7 +85,26 @@ for (const { name, path, section } of pages)
 									}),
 								)
 								.toBe(true);
+							const code = page.locator(
+								`[data-slot="screen-title"] .${name === 'line' ? 'route-code' : 'stop-code'}`,
+							);
+							await expect(code).toBeVisible();
 							const before = await frame(page);
+							const matchPhoneActions = name === 'line' && width === 390 && scale === 100;
+							const actionRows = (selector: string) =>
+								reading
+									.locator(`.answer-actions ${selector}`)
+									.evaluateAll(
+										(items) =>
+											new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))
+												.size,
+									);
+							const waitingActionRows = matchPhoneActions
+								? await actionRows('[data-slot="skeleton"]')
+								: undefined;
+							const phoneDisclosure =
+								name === 'line' && width < 640 ? page.locator('#offered') : undefined;
+							const initialDisclosureHeight = (await phoneDisclosure?.boundingBox())?.height;
 							const gap = await page
 								.locator('[data-slot="app-frame-header"]')
 								.evaluate((element) => {
@@ -82,14 +117,48 @@ for (const { name, path, section } of pages)
 							releaseScripts();
 							if (name === 'stop')
 								await expect(page.locator('#stop-bands-chart').getByRole('img')).toBeVisible();
-							else await expect(reading.locator('[data-slot="answer-lead"]')).toBeVisible();
+							else {
+								await expect(reading.locator('[data-slot="answer-lead"]')).toBeVisible();
+								if (matchPhoneActions) expect(await actionRows('button')).toBe(waitingActionRows);
+								if (width === 1440 && scale === 100) {
+									const geometry = await reading
+										.locator('[data-slot="record-answer"]')
+										.evaluate((answer) => {
+											const box = (selector: string) =>
+												answer.querySelector(selector)!.getBoundingClientRect();
+											const title = box('[data-slot="screen-title"]');
+											const stamp = box('.answer-stamp');
+											const actions = box('.answer-actions');
+											const evidence = box('[data-slot="answer-evidence"]');
+											return {
+												separateEvidence: evidence.top >= stamp.bottom,
+												titleBesideStamp: title.top < stamp.bottom && title.bottom > stamp.top,
+												actionsBesideStamp:
+													actions.top < stamp.bottom && actions.bottom > stamp.top,
+											};
+										});
+									expect(geometry).toEqual({
+										separateEvidence: true,
+										titleBesideStamp: true,
+										actionsBesideStamp: true,
+									});
+								}
+							}
 							const cutContent =
 								name === 'stop' ? cut.getByRole('table') : cut.locator('[data-slot="stop-ladder"]');
 							await expect(cutContent).toHaveCount(0);
+							if (phoneDisclosure) {
+								await expect(
+									phoneDisclosure.getByRole('heading').getByRole('button'),
+								).toHaveAttribute('aria-expanded', 'false');
+								expect((await phoneDisclosure.boundingBox())?.height).toBe(initialDisclosureHeight);
+							}
 							expect(await frame(page)).toEqual(before);
 							expect((await releaseCut()).status()).toBe(204);
+							if (name === 'line' && width < 640) await cut.getByRole('button').first().click();
 							await expect(cutContent.first()).toBeVisible();
 							await waitForFrameClearance(page);
+							await expect(code).toBeVisible();
 							expect(await frame(page)).toEqual(before);
 						} finally {
 							releaseScripts();

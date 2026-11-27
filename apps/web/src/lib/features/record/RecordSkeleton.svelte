@@ -7,9 +7,20 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
 	import { Skeleton } from '@yesid/ui/skeleton';
+	import type { Snippet } from 'svelte';
 	import { LADDER_CAP, resolveWaiting, skeletonBlockSize, skeletonRem } from './recordWaiting.ts';
 
-	let { shape }: { shape: RecordWaiting } = $props();
+	let {
+		shape,
+		heading,
+		liveAnswer = false,
+		answerStatus,
+	}: {
+		shape: RecordWaiting;
+		heading?: Snippet;
+		liveAnswer?: boolean;
+		answerStatus?: Snippet;
+	} = $props();
 	const s = $derived(resolveWaiting(shape));
 	const blockSize = $derived(skeletonBlockSize(shape));
 	// The shared shape keeps its rule height. A caller with taller rows can reserve more space.
@@ -71,7 +82,7 @@
 	class="waiting-shape"
 	data-waiting-shape={s.shape}
 	data-waiting-count={s.shape === 'table' ? s.rows : s.count}
-	aria-hidden="true"
+	aria-hidden={heading ? undefined : true}
 	aria-busy="true"
 	style:block-size={blockSize}
 	style:min-block-size={minRowBlockSize}
@@ -83,7 +94,12 @@
 			class="answer-layout"
 			class:with-actions={s.shape === 'answer'}
 			class:short-context={!s.comparison}
+			class:with-heading={Boolean(heading)}
+			class:live-answer={liveAnswer}
 		>
+			{#if heading}<div class="answer-heading" data-record-heading-row>
+					{@render heading()}
+				</div>{/if}
 			<div class="answer-statement">
 				<Skeleton class="h-12 w-32 max-w-full" />
 				<Skeleton class="h-5 w-96 max-w-full" />
@@ -91,16 +107,20 @@
 			<div class="answer-context">
 				<div class="answer-stamp"><Skeleton class="h-7 w-56 max-w-full" /></div>
 				<!-- An answer carries one evidence line ("Counted: …"); versions are never on screen. -->
-				<div class="answer-evidence grid gap-2">
-					<Skeleton class="h-4 w-72 max-w-full" />
-					{#if s.shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
-					{#if s.comparison}<Skeleton class="mt-3 h-4 w-80 max-w-full" />{/if}
-				</div>
+				{#if !liveAnswer}
+					<div class="answer-evidence grid gap-2">
+						{#if answerStatus}{@render answerStatus()}{:else}<Skeleton
+								class="h-4 w-72 max-w-full"
+							/>{/if}
+						{#if s.shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
+						{#if s.comparison}<Skeleton class="mt-3 h-4 w-80 max-w-full" />{/if}
+					</div>
+				{/if}
 			</div>
 			{#if s.shape === 'answer'}
 				<div class="answer-actions flex flex-wrap gap-2">
-					{#each [1, 2, 3] as action (action)}
-						<Skeleton class="h-11 w-24 max-w-full" />
+					{#each range(liveAnswer ? 2 : 3) as action (action)}
+						<div class="answer-action-placeholder"><Skeleton class="h-11 w-full" /></div>
 					{/each}
 				</div>
 			{/if}
@@ -342,6 +362,35 @@
 	.answer-layout {
 		gap: 0.75rem 1.5rem;
 	}
+	.answer-action-placeholder {
+		flex: none;
+		inline-size: 6rem;
+		max-inline-size: 100%;
+	}
+	@container (inline-size < 36rem) {
+		/* Match the space taken by Copy link, Download and Cite in their reading order. */
+		.with-heading:not(.short-context, .live-answer) .answer-action-placeholder:nth-child(1) {
+			inline-size: 6.875rem;
+		}
+		.with-heading:not(.short-context, .live-answer) .answer-action-placeholder:nth-child(2) {
+			inline-size: 7.1875rem;
+		}
+		.with-heading:not(.short-context, .live-answer) .answer-action-placeholder:nth-child(3) {
+			inline-size: 4.4375rem;
+		}
+		.with-heading:lang(fr):not(.short-context, .live-answer)
+			.answer-action-placeholder:nth-child(1) {
+			inline-size: 8.5625rem;
+		}
+		.with-heading:lang(fr):not(.short-context, .live-answer)
+			.answer-action-placeholder:nth-child(2) {
+			inline-size: 8.0625rem;
+		}
+		.with-heading:lang(fr):not(.short-context, .live-answer)
+			.answer-action-placeholder:nth-child(3) {
+			inline-size: 4.8125rem;
+		}
+	}
 	.answer-context {
 		display: flex;
 		flex-wrap: wrap;
@@ -359,6 +408,12 @@
 			grid-template-areas: 'statement statement' 'context actions';
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
+		.with-heading.with-actions:where(.short-context) {
+			grid-template-areas: 'heading heading' 'statement statement' 'context actions';
+		}
+		.with-heading.with-actions:where(.short-context) > .answer-heading {
+			grid-area: heading;
+		}
 		.with-actions.short-context > .answer-statement {
 			grid-area: statement;
 		}
@@ -373,6 +428,12 @@
 	@container (min-width: 52rem) {
 		.with-actions {
 			grid-template-areas: 'statement actions' 'context context';
+		}
+		.with-heading.with-actions {
+			grid-template-areas: 'heading heading' 'statement actions' 'context context';
+		}
+		.with-heading.with-actions > .answer-heading {
+			grid-area: heading;
 		}
 		.with-actions > .answer-statement {
 			grid-area: statement;
@@ -389,6 +450,19 @@
 		.with-actions {
 			grid-template-areas: 'statement stamp actions' 'evidence evidence evidence';
 			grid-template-columns: minmax(0, 1fr) auto auto;
+		}
+		.with-heading.with-actions {
+			grid-template-areas: 'heading stamp actions' 'statement statement evidence';
+			grid-template-columns: minmax(0, 1fr) 14rem 20rem;
+			column-gap: 1rem;
+		}
+		.with-heading.with-actions:lang(fr) {
+			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
+		}
+		.live-answer.with-actions {
+			grid-template-areas: 'statement stamp actions';
+			align-items: center;
+			min-block-size: 3.25rem;
 		}
 		.with-actions > .answer-context {
 			display: contents;

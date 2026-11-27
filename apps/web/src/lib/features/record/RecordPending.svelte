@@ -8,12 +8,17 @@
 
 	let {
 		locale,
+		heading,
+		liveAnswer = false,
 		busy = false,
 		answer,
 		shape,
 		skeleton,
 	}: {
 		locale: Locale;
+		heading?: Snippet;
+		/** Live answers show a stamp and two actions without a Record evidence row. */
+		liveAnswer?: boolean;
 		busy?: boolean;
 		answer?: Promise<{ kind: string }>;
 		/** The final shape of the card body. Without one, one pulsing text line. */
@@ -21,6 +26,11 @@
 		/** A caller can supply a skeleton for a layout with no shared shape. */
 		skeleton?: Snippet;
 	} = $props();
+	const answerHeading = $derived(
+		!skeleton && (typeof shape === 'string' ? shape : shape?.shape) === 'answer'
+			? heading
+			: undefined,
+	);
 	const register = getRecordPatience();
 	let late = $state(false);
 	onMount(() => {
@@ -59,14 +69,28 @@
 	data-record-pending={busy ? undefined : ''}
 	data-record-busy={busy ? '' : undefined}
 >
-	{#if skeleton}{@render skeleton()}{:else if shape}<RecordSkeleton {shape} />{/if}
-	<div
-		class="pending-words"
-		role={register ? undefined : 'status'}
-		data-slot="record-pending-words"
-	>
-		{#if words}{words}{:else if !shape && !skeleton}<Skeleton class="h-4 w-48 max-w-full" />{/if}
-	</div>
+	{#snippet pendingWords()}
+		<div
+			class="pending-words"
+			role={register ? undefined : 'status'}
+			data-slot="record-pending-words"
+		>
+			{#if words}{words}{:else if (!shape && !skeleton) || answerHeading}<Skeleton
+					class="h-4 w-48 max-w-full"
+				/>{/if}
+		</div>
+	{/snippet}
+	{#if skeleton}
+		{@render skeleton()}
+	{:else if shape}
+		<RecordSkeleton
+			{shape}
+			{liveAnswer}
+			heading={answerHeading}
+			answerStatus={answerHeading ? pendingWords : undefined}
+		/>
+	{/if}
+	{#if !answerHeading}{@render pendingWords()}{/if}
 </div>
 
 <style>

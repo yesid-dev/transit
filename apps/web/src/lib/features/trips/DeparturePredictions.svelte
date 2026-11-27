@@ -5,6 +5,7 @@
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { createLiveResource } from '#lib/v1/live/resource.ts';
 	import LiveTripPredictions from './LiveTripPredictions.svelte';
+	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import { tripCopy } from './trips.copy';
 
@@ -29,8 +30,12 @@
 		current={live.familyStates.trips.health.state === 'live'}
 		absenceReason={liveAbsenceReason('trip-delay', { familyStates: live.familyStates })}
 	/>
-{:else if !resource.settled}
-	<RecordPending {locale} />
 {:else}
-	<p>{tripCopy[locale].noPredictions}</p>
+	<RecordCard title={tripCopy[locale].reportedPredictions} reserve={{ shape: 'table', rows: 6 }}>
+		{#if !resource.settled}
+			<RecordPending {locale} shape={{ shape: 'table', rows: 6 }} />
+		{:else}
+			<p>{tripCopy[locale].noPredictions}</p>
+		{/if}
+	</RecordCard>
 {/if}

@@ -8,6 +8,7 @@
 	import type { RecordState } from './recordStates';
 
 	let {
+		heading,
 		value,
 		sentence,
 		state,
@@ -20,6 +21,7 @@
 		evidence,
 		size = 'lg',
 	}: {
+		heading?: Snippet;
 		value: string | null;
 		sentence: string;
 		state?: RecordState;
@@ -49,13 +51,16 @@
 <div class="record-answer" data-slot="record-answer">
 	<div
 		class="answer-grid"
+		class:with-heading={Boolean(heading)}
 		class:has-actions={Boolean(actions)}
+		class:wide-details={Boolean(meta) && !comparison && !evidence}
 		class:has-statement={Boolean(statement)}
 		class:aside
 		class:one-row={!secondRow}
 		class:bare={!context}
 		class:short-context={!comparison && value !== null}
 	>
+		{#if heading}<div class="answer-heading" data-record-heading-row>{@render heading()}</div>{/if}
 		<div class="answer-statement">
 			{#if statement}{@render statement()}{:else}<AnswerLead
 					{value}
@@ -101,6 +106,7 @@
 		gap: 0.75rem 1.5rem;
 		min-inline-size: 0;
 	}
+	.answer-heading,
 	.answer-statement {
 		min-inline-size: 0;
 	}
@@ -137,17 +143,23 @@
 	   A comparison line keeps the full width, with the actions under it; so does an answer with no
 	   figure, which keeps the height its figure-sized placeholder reserved. */
 	@container (min-width: 36rem) {
-		.has-actions.short-context {
+		.has-actions:where(.short-context) {
 			grid-template-areas: 'statement statement' 'context actions';
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
-		.has-actions.short-context .answer-statement {
+		.with-heading.has-actions:where(.short-context) {
+			grid-template-areas: 'heading heading' 'statement statement' 'context actions';
+		}
+		.with-heading.has-actions:where(.short-context) .answer-heading {
+			grid-area: heading;
+		}
+		.has-actions:where(.short-context) .answer-statement {
 			grid-area: statement;
 		}
-		.has-actions.short-context .answer-context {
+		.has-actions:where(.short-context) .answer-context {
 			grid-area: context;
 		}
-		.has-actions.short-context .answer-actions {
+		.has-actions:where(.short-context) .answer-actions {
 			grid-area: actions;
 			justify-content: end;
 		}
@@ -175,6 +187,15 @@
 		.has-actions.bare {
 			grid-template-areas: 'statement actions';
 		}
+		.with-heading.has-actions {
+			grid-template-areas: 'heading heading' 'statement actions' 'context context';
+		}
+		.with-heading.has-actions.bare {
+			grid-template-areas: 'heading heading' 'statement actions';
+		}
+		.with-heading.has-actions .answer-heading {
+			grid-area: heading;
+		}
 	}
 	/* On a wide desktop answer the stamp joins the actions at the right of the figure, and the
 	   comparison and what was counted share the row under it. A Live answer with only a stamp is
@@ -190,6 +211,46 @@
 		.aside.one-row:not(.has-actions) {
 			grid-template-areas: 'statement stamp';
 			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.with-heading.aside.has-actions {
+			--answer-actions-track: 20rem;
+			--answer-stamp-track: 15rem;
+			grid-template-areas: 'heading stamp actions' 'statement statement details';
+			grid-template-columns: minmax(0, 1fr) calc(var(--answer-stamp-track) - 1rem) var(
+					--answer-actions-track
+				);
+			column-gap: 1rem;
+			align-items: start;
+		}
+		.with-heading.aside.has-actions:lang(fr) {
+			--answer-actions-track: 23rem;
+			--answer-stamp-track: 16rem;
+		}
+		/* Let a long evidence line start below the stamp without narrowing the title above it. */
+		.with-heading.aside.has-actions.wide-details {
+			--details-extension: clamp(
+				0rem,
+				calc(46% - var(--answer-actions-track)),
+				var(--answer-stamp-track)
+			);
+			grid-template-areas: 'heading stamp stamp actions' 'statement statement details details';
+			grid-template-columns:
+				minmax(0, 1fr) calc(var(--answer-stamp-track) - var(--details-extension))
+				var(--details-extension) var(--answer-actions-track);
+			column-gap: 0;
+		}
+		.with-heading.aside.has-actions.wide-details > :is(.answer-heading, .answer-statement),
+		.with-heading.aside.has-actions.wide-details .answer-stamp {
+			margin-inline-end: 1rem;
+		}
+		.with-heading.aside.has-actions.one-row {
+			grid-template-areas: 'heading stamp actions' 'statement statement statement';
+		}
+		.with-heading.aside:not(.has-actions) {
+			grid-template-areas: 'heading stamp' 'statement statement';
+		}
+		.with-heading.aside .answer-heading {
+			grid-area: heading;
 		}
 		.aside .answer-statement {
 			grid-area: statement;

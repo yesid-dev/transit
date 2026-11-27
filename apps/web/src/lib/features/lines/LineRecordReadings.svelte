@@ -7,6 +7,8 @@
 	import NoticeRows from '#lib/features/alerts/NoticeRows.svelte';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
+	import RecordSeriesChart from '#lib/features/record/RecordSeriesChart.svelte';
+	import { skeletonBlockSize } from '#lib/features/record/recordWaiting.ts';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import {
 		crowdingFinding,
@@ -15,7 +17,7 @@
 		offeredFinding,
 		waitingFinding,
 	} from './lineRecordText.ts';
-	import type { Locale } from '#lib/i18n/index.ts';
+	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
 		choose,
 		coverageText,
@@ -232,11 +234,45 @@
 		</p>{/if}
 {:else if 'cells' in answer}
 	{#if section === 'offered'}
+		{@const points = answer.cells
+			.flatMap((cell) => {
+				const key = cell.key.hour;
+				const hour =
+					typeof key === 'number' || (typeof key === 'string' && key.trim()) ? Number(key) : NaN;
+				return Number.isInteger(hour) && hour >= 0 && hour < 24
+					? [
+							{
+								x: hour,
+								y: cell.state === 'measured' ? (cell.value.scheduled_frequency ?? null) : null,
+							},
+						]
+					: [];
+			})
+			.toSorted((a, b) => a.x - b.x)}
+		{@const tripsPerHour = t('Trips per hour', 'Trajets par heure')}
 		{@render opening(offeredFinding(answer, locale))}
+		{#if points.some(({ y }) => y !== null)}
+			<div class="mb-4 grid" style:min-block-size={skeletonBlockSize('trend')}>
+				<RecordSeriesChart
+					{title}
+					seriesLabel={tripsPerHour}
+					{points}
+					ticks={points
+						.filter((_, index) => index % Math.ceil(points.length / 5) === 0)
+						.map(({ x }) => ({
+							value: x,
+							label: scheduledClock(`${String(x).padStart(2, '0')}:00:00`, locale),
+						}))}
+					yMax={Math.max(2, ...points.map(({ y }) => y ?? 0))}
+					format={(value) => intl.number(locale, { maximumFractionDigits: 1 }).format(value)}
+				/>
+			</div>
+		{/if}
 		<LineReadingTable
 			{title}
 			{locale}
-			headers={[t('Local time', 'Heure locale'), t('Trips per hour', 'Trajets par heure')]}
+			pageSize={7}
+			headers={[t('Local time', 'Heure locale'), tripsPerHour]}
 			rows={answer.cells.map((cell) => {
 				const hour = Number(cell.key.hour);
 				const { scheduled_frequency: frequency } = cell.value;

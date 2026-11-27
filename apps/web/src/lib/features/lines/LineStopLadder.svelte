@@ -5,6 +5,7 @@
 	import { StopLadder } from '@yesid/ui/chart';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import PhoneSwitch from '#lib/features/record/PhoneSwitch.svelte';
+	import { LADDER_CAP } from '../record/recordWaiting.ts';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { choose } from '#lib/features/record/recordText.ts';
 	import { stopLadderChart, chartState } from '#lib/features/record/charts/recordCharts.ts';
@@ -92,8 +93,32 @@
 	const ladderMax = $derived(Math.max(threshold.value, reading.props.max));
 </script>
 
+{#snippet showAllButton()}
+	<Button
+		class="mt-3 min-h-11"
+		variant="outline"
+		size="sm"
+		aria-expanded="false"
+		aria-controls="line-stop-ladder"
+		onclick={() => (showAll = true)}
+	>
+		{showAllStops(reading.props.stops.length, locale)}
+	</Button>
+{/snippet}
+
 {#snippet fullLadder()}
-	<StopLadder {...reading.props} max={ladderMax} {threshold} {highlight} />
+	{@const capped = !showAll && reading.props.stops.length > LADDER_CAP}
+	{@const shown = capped ? reading.props.stops.slice(0, LADDER_CAP) : reading.props.stops}
+	<StopLadder
+		{...reading.props}
+		stops={shown}
+		max={ladderMax}
+		{threshold}
+		highlight={highlight && shown.some((stop) => stop.id === highlight.toId)
+			? highlight
+			: undefined}
+	/>
+	{#if capped}{@render showAllButton()}{/if}
 {/snippet}
 
 {#if stretch && from && to}
@@ -141,15 +166,7 @@
 		<PhoneSwitch wide={fullLadder}>
 			{#snippet narrow()}
 				<StopLadder {...reading.props} stops={short} max={ladderMax} {threshold} />
-				<Button
-					class="mt-3 min-h-11"
-					variant="outline"
-					size="sm"
-					aria-expanded="false"
-					aria-controls="line-stop-ladder"
-					onclick={() => (showAll = true)}
-					>{showAllStops(reading.props.stops.length, locale)}</Button
-				>
+				{@render showAllButton()}
 			{/snippet}
 		</PhoneSwitch>
 	{:else if reading.props.stops.length}

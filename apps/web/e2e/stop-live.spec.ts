@@ -86,7 +86,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		const controls = await openFrameControls(page, locale);
 		await controls.getByRole('radio', { name: fr ? 'Bilan' : 'Record', exact: true }).click();
 		await expect(page).toHaveURL((url) => url.searchParams.get('frameMode') === 'record');
-		await expect(header).toHaveText(originalTitle);
+		await expect(header).toHaveText(originalTitle, { useInnerText: true });
 		expect((await header.boundingBox())?.height).toBe(before);
 		expect(oldRequests).toEqual([]);
 	});

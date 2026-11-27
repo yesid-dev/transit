@@ -377,9 +377,9 @@ test('desktop controls keep their column and control changes retain focus and sc
 				url.searchParams.get('recordTo') === '2026-11-26',
 		);
 		await expect(preset).toBeFocused();
-		await expect(
-			firstLine.getByRole('cell', { name: 'Calculating…', exact: true }).first(),
-		).toBeVisible();
+		await expect(page.locator('#line-performance')).toHaveAttribute('aria-busy', 'true');
+		await expect(trips).toBeVisible();
+		await expect(punctuality).toBeVisible();
 		const pending = performance.locator('[data-record-pending][aria-busy="true"]').first();
 		await expect(pending).toBeVisible();
 		expect(
