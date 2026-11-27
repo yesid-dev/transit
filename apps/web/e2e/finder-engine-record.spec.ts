@@ -1,5 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { textDefects } from './layout-helpers';
+import { startStopSearchFixture, test } from './stop-search-fixture';
 
 test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
@@ -10,17 +11,14 @@ const query = 'provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026
 
 test('stops debounces engine questions and aborts superseded results', async ({
 	page,
-	request,
+	stopSearch,
 }) => {
-	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops-search' });
 	await page.goto(`/stops?${query}&q=Fixture`);
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const results = page.locator('#stop-results');
 	const input = page.getByTestId('stops-filter-input');
 	await expect(results.getByRole('cell', { name: /^80\.0%/ })).toBeVisible();
-	const fixture = `http://127.0.0.1:${process.env.TRANSIT_E2E_DATA_PORT ?? '4318'}`;
-	const questions = async (): Promise<number> =>
-		(await request.get(`${fixture}/__stops-search`)).json();
+	const { questions } = stopSearch;
 	const before = await questions();
 	await page.clock.install();
 	await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
@@ -34,7 +32,7 @@ test('stops debounces engine questions and aborts superseded results', async ({
 	await expect(results.getByRole('link', { name: 'Fixture stop' })).toBeVisible();
 	expect(await questions()).toBe(before + 1);
 
-	await request.post(`${fixture}/__stops-search`);
+	await stopSearch.hold();
 	try {
 		await input.fill('Pagination');
 		await expect(results.getByRole('row')).toHaveCount(0);
@@ -50,11 +48,11 @@ test('stops debounces engine questions and aborts superseded results', async ({
 		await expect(results.getByRole('row')).toHaveCount(0);
 		await page.clock.runFor(250);
 		await expect(results.getByRole('link', { name: 'Arrêt temporaire' })).toBeVisible();
-		await request.post(`${fixture}/__overview/release?fixture=stops-search`);
+		await stopSearch.release();
 		await expect(results.getByRole('link')).toHaveText(['Arrêt temporaire']);
 		expect(await questions()).toBe(before + 3);
 	} finally {
-		await request.post(`${fixture}/__overview/release?fixture=stops-search`);
+		await stopSearch.release();
 	}
 });
 
@@ -390,11 +388,12 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 	});
 
-	test(`${locale} stops offers one retry when the reading ends busy`, async ({ page, request }) => {
-		const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
-		const counter = `http://127.0.0.1:${port}/__stops-search`;
-		const questions = async (): Promise<number> => (await request.get(counter)).json();
-		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops-search' });
+	test(`${locale} stops offers one retry when the reading ends busy`, async ({
+		page,
+		request,
+		stopSearch,
+	}) => {
+		const { questions } = stopSearch;
 		await page.goto(`${prefix}/stops?${query.replace('2026-11-08', '2026-11-06')}&q=Fixture`);
 		const results = page.locator('#stop-results');
 		await expect(
@@ -410,6 +409,14 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(retry).toHaveCount(1);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const before = await questions();
+		// The slow Stop identity specs also ask a stop_id question on this fixture server.
+		const identity = await startStopSearchFixture(request);
+		try {
+			await request.get(`${prefix}/stop/57135?${query}`, { headers: identity.headers });
+			expect(await identity.questions()).toBe(1);
+		} finally {
+			await identity.dispose();
+		}
 		await retry.click();
 		await expect.poll(questions).toBe(before + 1);
 	});

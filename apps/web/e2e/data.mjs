@@ -301,8 +301,7 @@ const sourceCredits = {
 
 const heldResponsesByFixture = new Map();
 
-let stopSearchQuestions = 0;
-let holdNextStopSearch = false;
+const stopSearchTrials = new Map();
 const fixtureHolds = new Set();
 const registeredScheduleLines = new Set();
 
@@ -318,6 +317,15 @@ function sendFixtureResponse(response, fixture, send) {
 	held.add(send);
 	heldResponsesByFixture.set(fixture, held);
 	response.on('close', () => held.delete(send));
+}
+
+function releaseFixture(fixture) {
+	fixtureHolds.delete(fixture);
+	const trial = stopSearchTrials.get(fixture);
+	if (trial) trial.holdNext = false;
+	const held = heldResponsesByFixture.get(fixture);
+	heldResponsesByFixture.delete(fixture);
+	for (const send of held ?? []) send();
 }
 
 const server = createServer((request, response) => {
@@ -878,11 +886,30 @@ const server = createServer((request, response) => {
 		return;
 	}
 	if (url.pathname === '/__stops-search') {
-		if (request.method === 'POST') holdNextStopSearch = true;
-		response
-			.writeHead(200, { 'content-type': 'application/json' })
-			.end(JSON.stringify(stopSearchQuestions));
-		return;
+		const fixture = url.searchParams.get('fixture');
+		if (!fixture?.startsWith('stops-search:')) return response.writeHead(400).end();
+		const trial = stopSearchTrials.get(fixture);
+		if (request.method === 'PUT') {
+			if (trial) return response.writeHead(409).end();
+			stopSearchTrials.set(fixture, { questions: 0, holdNext: false });
+			return response.writeHead(204).end();
+		}
+		if (!trial) return response.writeHead(404).end();
+		if (request.method === 'GET') {
+			return response
+				.writeHead(200, { 'content-type': 'application/json' })
+				.end(JSON.stringify(trial.questions));
+		}
+		if (request.method === 'POST') {
+			trial.holdNext = true;
+			return response.writeHead(204).end();
+		}
+		if (request.method === 'DELETE') {
+			releaseFixture(fixture);
+			stopSearchTrials.delete(fixture);
+			return response.writeHead(204).end();
+		}
+		return response.writeHead(405).end();
 	}
 	if (request.method === 'GET' && url.pathname === '/__overview/hold') {
 		const fixture = url.searchParams.get('fixture');
@@ -894,10 +921,7 @@ const server = createServer((request, response) => {
 	}
 	if (request.method === 'POST' && url.pathname === '/__overview/release') {
 		const fixture = url.searchParams.get('fixture') ?? 'overview';
-		fixtureHolds.delete(fixture);
-		const held = heldResponsesByFixture.get(fixture);
-		heldResponsesByFixture.delete(fixture);
-		for (const send of held ?? []) send();
+		releaseFixture(fixture);
 		response.writeHead(204).end();
 		return;
 	}
@@ -907,11 +931,14 @@ const server = createServer((request, response) => {
 		url.searchParams.set('city', question[1]);
 		const dailyFixture = ['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from'));
 		const scope = request.headers['x-transit-fixture-scope'];
-		const stopSearch = scope === 'stops-search' && url.searchParams.get('group') === 'stop_id';
-		const holdStopSearch = stopSearch && holdNextStopSearch;
+		const stopSearch =
+			question[2] === 'measure' && url.searchParams.get('group') === 'stop_id'
+				? stopSearchTrials.get(scope)
+				: undefined;
+		const holdStopSearch = stopSearch?.holdNext;
 		if (stopSearch) {
-			stopSearchQuestions++;
-			holdNextStopSearch = false;
+			stopSearch.questions++;
+			stopSearch.holdNext = false;
 		}
 		const dailyMessageHold = fixtureHolds.has(scope) ? scope : undefined;
 		const finderFixture =
@@ -965,7 +992,7 @@ const server = createServer((request, response) => {
 		}
 		const { hold, body, status = 200, headers = {} } = result;
 		const heldBy = holdStopSearch
-			? 'stops-search'
+			? scope
 			: (activeSteadyFixture(question[1], url) ?? (hold === true ? 'overview' : hold));
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		sendFixtureResponse(response, heldBy, () => response.end(JSON.stringify(body)));
