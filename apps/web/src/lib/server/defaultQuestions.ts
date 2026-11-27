@@ -68,7 +68,9 @@ export function defaultCityQuestions(
 				const { path, parameters } = rankingsQuery(selection);
 				return [
 					periodQuestion(scope, path, parameters),
-					periodQuestion(scope, '/measure', { measure: selection.measure }),
+					...(kind === 'vehicle'
+						? []
+						: [periodQuestion(scope, '/measure', { measure: selection.measure })]),
 				];
 			}),
 		...dailyQuestions(dailyScope)

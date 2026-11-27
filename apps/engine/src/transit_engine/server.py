@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import sys
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from hmac import compare_digest
 from pathlib import Path
@@ -26,6 +26,8 @@ from transit_engine.cities import (
 )
 from transit_engine.health import data_health
 from transit_engine.measures import (
+    _ALERT_COUNTS_ID,
+    _SELECTIONS,
     CORRIDOR_RANKING_DEFAULT,
     VEHICLE_RANKING_DEFAULT,
     EntityKind,
@@ -47,6 +49,19 @@ SCHEDULE_ROUTES = {"/search-index", "/schedule-index", "/schedule-map"}
 LOGGER = logging.getLogger("uvicorn.error")
 
 
+@dataclass(frozen=True)
+class QueryTiming:
+    queued: bool
+    queue_ms: float
+    started: float | None = None
+
+    def header(self) -> bytes:
+        metrics = f"queue;dur={self.queue_ms:.2f}"
+        if self.started is not None:
+            metrics += f", engine;dur={(monotonic() - self.started) * 1000:.2f}"
+        return metrics.encode("ascii")
+
+
 def peak_rss_bytes() -> int | None:
     if sys.platform == "linux":
         from resource import RUSAGE_SELF, getrusage
@@ -60,7 +75,7 @@ async def respond(
     status: int,
     payload: dict[str, Any] | list[dict[str, Any]] | str,
     *,
-    queued: bool = False,
+    timing: QueryTiming | None = None,
     cleaning_version: int | None = None,
     days_pending: int | None = None,
 ) -> None:
@@ -68,7 +83,7 @@ async def respond(
     headers = [
         (b"content-type", b"text/csv; charset=utf-8" if csv_response else b"application/json"),
         (b"cache-control", b"no-store"),
-        (b"x-engine-queued", b"true" if queued else b"false"),
+        (b"x-engine-queued", b"true" if timing and timing.queued else b"false"),
         (b"x-transit-answer-revision", ANSWER_REVISION.encode("ascii")),
     ]
     if status == 503:
@@ -79,6 +94,8 @@ async def respond(
         headers.append((b"x-transit-cleaning-version", str(cleaning_version).encode("ascii")))
     if days_pending is not None:
         headers.append((b"x-transit-days-pending", str(days_pending).encode("ascii")))
+    if timing is not None:
+        headers.append((b"server-timing", timing.header()))
     await send({"type": "http.response.start", "status": status, "headers": headers})
     body = payload if isinstance(payload, str) else json.dumps(payload)
     await send({"type": "http.response.body", "body": body.encode()})
@@ -244,23 +261,28 @@ class QueryLane:
         self.queue_timeout = queue_timeout
         self.waiting = 0
 
-    async def admit(self, send: ASGISendCallable) -> bool | None:
+    async def admit(self, send: ASGISendCallable) -> QueryTiming | None:
+        arrived = monotonic()
         if not self.slots.locked():
             await self.slots.acquire()
-            return False
+            return QueryTiming(False, 0, monotonic())
         if self.waiting >= self.queue_size:
-            await respond(send, 503, {"message": BUSY_MESSAGE})
+            await respond(send, 503, {"message": BUSY_MESSAGE}, timing=QueryTiming(False, 0))
             return None
         self.waiting += 1
         try:
             async with asyncio.timeout(self.queue_timeout):
                 await self.slots.acquire()
         except TimeoutError:
-            await respond(send, 503, {"message": BUSY_MESSAGE}, queued=True)
+            await respond(
+                send, 503, {"message": BUSY_MESSAGE},
+                timing=QueryTiming(True, (monotonic() - arrived) * 1000),
+            )
             return None
         finally:
             self.waiting -= 1
-        return True
+        started = monotonic()
+        return QueryTiming(True, (started - arrived) * 1000, started)
 
     def release_when_done(self, task: asyncio.Task[Any]) -> None:
         self.slots.release()
@@ -286,7 +308,8 @@ class Engine:
         self.store = store
         self.record = QueryLane(concurrency, queue_size, queue_wait_ms / 1000)
         self.catalogue = QueryLane(1, min(queue_size, 4), queue_wait_ms / 1000)
-        self.catalogue_store = replace(store, threads=1, memory_mib=min(store.memory_mib, 256))
+        self.quick = QueryLane(1, min(queue_size, 4), queue_wait_ms / 1000)
+        self.small_store = replace(store, threads=1, memory_mib=min(store.memory_mib, 256))
         self.boot_id = uuid4().hex
         self.authorization = b"Bearer " + access_token if access_token else None
 
@@ -426,9 +449,20 @@ class Engine:
             await respond(send, 400, {"message": str(error)})
             return
 
-        lane = self.catalogue if route in SCHEDULE_ROUTES else self.record
-        queued = await lane.admit(send)
-        if queued is None:
+        lane = self.record
+        if isinstance(question, str):
+            lane = self.catalogue
+        elif (
+            isinstance(question, Question)
+            and output == "json"
+            and (question.end - question.start).days < 31
+            and _SELECTIONS[question.measure][0].id == _ALERT_COUNTS_ID
+        ):
+            # Alert questions read the compact advisory history. Long exports
+            # and rankings can read additional data and stay on the record lane.
+            lane = self.quick
+        timing = await lane.admit(send)
+        if timing is None:
             return
 
         # Keep the slot until DuckDB stops, including when a caller disconnects.
@@ -439,7 +473,7 @@ class Engine:
                     _, identity, _ = public_declaration(question)
                     today = datetime.now(UTC).astimezone(service_zone(identity)).date()
                     schedule = schedule_index(
-                        self.catalogue_store, question, today - timedelta(days=1),
+                        self.small_store, question, today - timedelta(days=1),
                         index="maps" if route == "/schedule-map" else "search",
                     )
                     if schedule is not None and lines is not None:
@@ -448,17 +482,19 @@ class Engine:
                             line: shapes[line] for line in sorted(lines) if line in shapes
                         }
                     return {"schedule": schedule}, 0
-                return search_index(self.catalogue_store, question), 0
+                return search_index(self.small_store, question), 0
             if isinstance(question, Ranking):
-                answer = rank(self.store, question)
+                answer = rank(self.store, question, with_reference=output == "json")
                 answer["excluded_count"] = len(answer["excluded"])
                 answer["excluded"] = answer["excluded"][: question.limit]
                 payload = ranking_csv(answer, language) if output == "csv" else answer
             else:
-                answer = ask(self.store, question)
+                answer = ask(self.small_store if lane is self.quick else self.store, question)
                 payload = answer_csv(answer, language) if output == "csv" else answer
             if not include_method:
                 omit_method_text(answer)
+                if "reference" in answer:
+                    omit_method_text(answer["reference"])
             return payload, len(answer["evidence"]["days_pending"])
 
         query = asyncio.create_task(asyncio.to_thread(run_query))
@@ -467,19 +503,19 @@ class Engine:
         try:
             payload, days_pending = await asyncio.shield(query)
         except UnknownCity as error:
-            await respond(send, 400, {"message": str(error)}, queued=queued)
+            await respond(send, 400, {"message": str(error)}, timing=timing)
         except NetworkCorridorsUnavailable as error:
-            await respond(send, 409, {"reason": error.reason, "message": str(error)}, queued=queued)
+            await respond(send, 409, {"reason": error.reason, "message": str(error)}, timing=timing)
         except Exception as error:
             # DuckDB errors can include storage configuration. Log the class only.
             LOGGER.error("engine query failed (%s)", type(error).__name__)
-            await respond(send, 500, {"message": "query failed"}, queued=queued)
+            await respond(send, 500, {"message": "query failed"}, timing=timing)
         else:
             await respond(
                 send,
                 200,
                 payload,
-                queued=queued,
+                timing=timing,
                 cleaning_version=self.store.cleaning_version,
                 days_pending=days_pending,
             )
@@ -497,8 +533,8 @@ class Engine:
             return
 
         # Same admission as /measure, so health cannot bypass the overload limits.
-        queued = await self.record.admit(send)
-        if queued is None:
+        timing = await self.record.admit(send)
+        if timing is None:
             return
 
         work = asyncio.create_task(asyncio.to_thread(data_health, self.store, city, start, end))
@@ -506,10 +542,10 @@ class Engine:
         try:
             answer = await asyncio.shield(work)
         except ValueError as error:
-            await respond(send, 400, {"message": str(error)}, queued=queued)
+            await respond(send, 400, {"message": str(error)}, timing=timing)
         except Exception as error:
             LOGGER.error("data health failed (%s)", type(error).__name__)
-            await respond(send, 500, {"message": "data health failed"}, queued=queued)
+            await respond(send, 500, {"message": "data health failed"}, timing=timing)
         else:
             days_pending = sum(
                 day["status"] not in {"present", "not_measured"} for day in answer["days"]
@@ -518,7 +554,7 @@ class Engine:
                 send,
                 200,
                 answer,
-                queued=queued,
+                timing=timing,
                 cleaning_version=self.store.cleaning_version,
                 days_pending=days_pending,
             )

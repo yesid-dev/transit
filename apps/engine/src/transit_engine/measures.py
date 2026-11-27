@@ -2983,6 +2983,8 @@ def _vehicle_rows(
     question: Question,
     version: str,
     group: EntityKind | None,
+    *,
+    include_network: bool = False,
 ) -> dict[EntityKey, Batch]:
     stats, stats_params = vehicle_stats_query(
         paths,
@@ -2993,6 +2995,7 @@ def _vehicle_rows(
         by_hour=question.group == "hour",
         by_line=question.group == "line",
         vehicle=question.vehicle,
+        include_network=include_network,
     )
     timing_cte = ""
     timing_rows = ""
@@ -3039,7 +3042,9 @@ def _vehicle_rows(
         if untracked:
             return {(None,): Batch()}
         if stats_row is not None:
-            key = (stats_row["entity"],) if group or question.group else ()
+            entity = stats_row["entity"]
+            network_total = include_network and entity is None
+            key = (entity,) if (group or question.group) and not network_total else ()
             results[key] = Batch(
                 counts=Counter(
                     {
@@ -4929,6 +4934,18 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
             window.record_vehicle_tracking(family, offset, result)
             if () in result:
                 totals.update(result[()])
+    return measure_answer(store, question, family, selected, totals, window, started)
+
+
+def measure_answer(
+    store: Store,
+    question: Question,
+    family: Family,
+    selected: tuple[Measure, ...],
+    totals: Batch,
+    window: ReadWindow,
+    started: float,
+) -> dict[str, Any]:
     distribution = question.measure == _DELAY_DISTRIBUTION_ID
     state, values, family_evidence, _ = evaluate(
         family, () if distribution else selected, totals, window, hour=question.hour
