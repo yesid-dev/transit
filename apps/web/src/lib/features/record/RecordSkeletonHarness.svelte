@@ -38,14 +38,17 @@
 	import RecordGroup from './RecordGroup.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import RecordSkeleton from './RecordSkeleton.svelte';
-	import { skeletonBlockSize } from './recordWaiting.ts';
+	import { pendingBlockSize } from './recordWaiting.ts';
 
 	let { locale = 'en' }: { locale?: Locale } = $props();
 
+	// The card body's waiting height: the shape and the foot line kept for the words.
 	function expected(waiting: RecordWaiting) {
-		const size = skeletonBlockSize(waiting);
-		const rem = size?.match(/^([\d.]+)rem$/)?.[1];
-		return rem ? `${Number(rem) * 16} px` : 'follows the layout';
+		const size = pendingBlockSize(waiting);
+		const px = (value: string) => Number(value.match(/^([\d.]+)rem$/)?.[1]) * 16;
+		return size && !size.wide.startsWith('calc')
+			? `${px(size.wide)} px, phone ${px(size.phone)} px`
+			: 'follows the layout';
 	}
 </script>
 

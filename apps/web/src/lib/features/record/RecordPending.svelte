@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Skeleton } from '@yesid/ui/skeleton';
 	import { onMount } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { getRecordPatience } from './recordPatience.ts';
@@ -45,8 +46,9 @@
 	);
 </script>
 
-<!-- The words sit over the foot of the shape, so the card keeps the shape's height when they
-     appear. Screens with a RecordPatience region announce once for every card. -->
+<!-- The shape, then a foot line kept for the words from the first frame, so nothing moves when
+     they appear and they never cover a bar. Without a shape the foot line pulses until the words
+     take its place. Screens with a RecordPatience region announce once for every card. -->
 <div
 	class="record-pending"
 	class:plain-answer={!shape}
@@ -54,39 +56,41 @@
 	data-record-pending={busy ? undefined : ''}
 	data-record-busy={busy ? '' : undefined}
 >
-	<RecordSkeleton shape={shape ?? 'line'} />
-	<p
+	{#if shape}<RecordSkeleton {shape} />{/if}
+	<div
 		class="pending-words"
-		class:shown={!!words}
 		role={register ? undefined : 'status'}
 		data-slot="record-pending-words"
 	>
-		{words}
-	</p>
+		{#if words}{words}{:else if !shape}<Skeleton class="h-4 w-48 max-w-full" />{/if}
+	</div>
 </div>
 
 <style>
 	.record-pending {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
+		align-content: start;
+		/* pendingFootRem.gap */
+		gap: 0.5rem;
 		min-inline-size: 0;
 	}
-	.record-pending > :global(*) {
-		grid-area: 1 / 1;
-	}
 	.pending-words {
-		align-self: end;
-		justify-self: start;
-		max-inline-size: 100%;
+		display: flex;
+		align-items: center;
+		/* pendingFootRem.wide: one line of small text */
+		min-block-size: 1.375rem;
+		max-inline-size: var(--measure-body);
 		margin: 0;
 		font-size: var(--text-small);
+		line-height: 1.375rem;
 		color: var(--muted-foreground);
 	}
-	.pending-words.shown {
-		padding-block: 0.125rem;
-		padding-inline-end: 0.5rem;
-		/* A screen that waits outside a card sets its own surface. */
-		background: var(--record-pending-surface, var(--card));
+	/* pendingFootRem.phone: the busy sentence takes two lines on a phone. */
+	@media (max-width: 39.999rem) {
+		.pending-words {
+			min-block-size: 2.75rem;
+		}
 	}
 	/* Older answer slots participate before they opt into a specific skeleton. */
 	:global([data-slot='screen-answer']) > .plain-answer {

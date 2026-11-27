@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { resolveWaiting, screenWaitingWords, skeletonBlockSize } from './recordWaiting.ts';
+import {
+	pendingBlockSize,
+	resolveWaiting,
+	screenWaitingWords,
+	skeletonBlockSize,
+} from './recordWaiting.ts';
 
 const px = (size: string | null) => (size ? Number(size.replace('rem', '')) * 16 : null);
 
@@ -37,6 +42,33 @@ describe('skeleton heights follow the measured filled parts', () => {
 		expect(resolveWaiting({ shape: 'rows', count: 0 }).count).toBe(1);
 		expect(resolveWaiting({ shape: 'facts', count: 2.4 }).count).toBe(2);
 		expect(resolveWaiting({ shape: 'facts', count: Number.NaN }).count).toBe(3);
+	});
+});
+
+describe('a waiting card keeps a foot line for its words', () => {
+	// The shape, an 8 px gap, then one 22 px line (two, 44 px, on a phone).
+	it.each([
+		['facts (4)', { shape: 'facts', count: 4 }, 206, 228],
+		['table (7 rows)', { shape: 'table', rows: 7 }, 370, 392],
+		['rows (8, two lines)', { shape: 'rows', count: 8 }, 550, 572],
+		['grid', 'grid', 363, 385],
+		['histogram', 'histogram', 382, 404],
+		['ladder (47)', { shape: 'ladder', count: 47 }, 650, 672],
+		['notice (2)', { shape: 'notice', count: 2 }, 296, 318],
+	] as const)('%s', (_, shape, wide, phone) => {
+		const size = pendingBlockSize(shape);
+		expect(px(size?.wide ?? null)).toBe(wide);
+		expect(px(size?.phone ?? null)).toBe(phone);
+	});
+
+	it('adds the foot line to a chart frame that follows the width', () => {
+		expect(pendingBlockSize('trend')?.wide).toBe(
+			'calc(calc(clamp(12rem, 26vw, 17rem) + 1.5rem) + 1.875rem)',
+		);
+	});
+
+	it('lets an answer follow its layout', () => {
+		expect(pendingBlockSize('answer')).toBeNull();
 	});
 });
 

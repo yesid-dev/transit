@@ -96,12 +96,30 @@ it.each([
 	expect(screen.getByRole('status')).toHaveTextContent(words);
 });
 
-it('pulses even without a shape, as one text line', () => {
-	const { container } = render(RecordPending, { locale: 'en' });
-	expect(container.querySelector('[data-waiting-shape="line"]')).toHaveAttribute(
-		'aria-busy',
-		'true',
-	);
+it('keeps the words in their own line under the shape, never over a bar', async () => {
+	vi.useFakeTimers();
+	const { container } = render(RecordPending, { locale: 'en', shape: 'grid' });
+	const pending = container.querySelector('[data-record-pending]');
+	const foot = pending?.lastElementChild;
+	// The foot line is there from the first frame, empty, so nothing moves at 3 s.
+	expect(foot).toHaveAttribute('data-slot', 'record-pending-words');
+	expect(foot?.previousElementSibling).toHaveAttribute('data-waiting-shape', 'grid');
+	expect(foot).toBeEmptyDOMElement();
+	await vi.advanceTimersByTimeAsync(3_000);
+	expect(foot).toHaveTextContent('Still calculating…');
+	expect(foot?.querySelector('[data-slot="skeleton"]')).toBeNull();
+});
+
+it('pulses one text line without a shape, then shows the words in its place', async () => {
+	vi.useFakeTimers();
+	const { container } = render(RecordPending, { locale: 'fr' });
+	const foot = container.querySelector('[data-slot="record-pending-words"]');
+	expect(container.querySelector('[data-waiting-shape]')).toBeNull();
+	expect(foot?.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(1);
+	expect(foot?.closest('[aria-busy="true"]')).not.toBeNull();
+	await vi.advanceTimersByTimeAsync(3_000);
+	expect(foot).toHaveTextContent('Calcul toujours en cours…');
+	expect(foot?.querySelector('[data-slot="skeleton"]')).toBeNull();
 });
 
 it('draws the card shell with its title while the body waits', () => {

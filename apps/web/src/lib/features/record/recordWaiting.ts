@@ -139,6 +139,28 @@ export function skeletonBlockSize(waiting: RecordWaiting): string | null {
 	}
 }
 
+/**
+ * A waiting card keeps a foot line under its shape for the words, empty and invisible before
+ * 3 s, so the words never cover a bar and the height never changes when they appear. One line
+ * of small text; two on a phone, where the busy sentence wraps. RecordPending draws these.
+ */
+export const pendingFootRem = { gap: 0.5, wide: 1.375, phone: 2.75 } as const;
+
+/**
+ * The full waiting height of a card body drawn by RecordPending: the shape's rule height plus
+ * the foot line, wide (from 40rem) and on a phone. Null when the shape follows its layout.
+ */
+export function pendingBlockSize(waiting: RecordWaiting): { wide: string; phone: string } | null {
+	const shape = skeletonBlockSize(waiting);
+	if (!shape) return null;
+	const foot = (line: number) => `${Math.round((pendingFootRem.gap + line) * 10_000) / 10_000}rem`;
+	const plus = (line: number) =>
+		shape.endsWith('rem') && !shape.startsWith('calc')
+			? rem(Number(shape.slice(0, -3)) + pendingFootRem.gap + line)
+			: `calc(${shape} + ${foot(line)})`;
+	return { wide: plus(pendingFootRem.wide), phone: plus(pendingFootRem.phone) };
+}
+
 /** Words a waiting card shows under its skeleton, small and muted. */
 export const cardWaitingWords = {
 	/** After 3 s. Before that the shape alone speaks. */
