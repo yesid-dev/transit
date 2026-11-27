@@ -5,7 +5,6 @@ export const QUESTION_ORIGIN = 'https://data.yesid.dev';
 export type EnginePeriod = DateWindow & {
 	city: string;
 	visitorIp?: string | null;
-	retryBusy?: boolean;
 };
 export type EngineQuestion = { path: string; parameters: Record<string, string> };
 export type RecordQuery = EngineQuestion & { path: '/measure' | '/ranking' };
@@ -59,6 +58,23 @@ export type FinderQuestionParameters = {
 	measure: 'on_time' | 'trips_run';
 	group: 'line' | 'stop_id';
 };
+
+/**
+ * Questions that scan every reading of the period and take seconds of engine time for each week
+ * asked. A page sends them after its quicker questions, so the quick cards fill first.
+ */
+const heavyMeasures = new Set([
+	'crowding',
+	'vehicle_days_in_service',
+	'vehicle_field_completeness',
+	'vehicle_reporting_gaps_per_100_hours',
+	'vehicle_unfinished_trips',
+	'waiting_and_gaps',
+]);
+
+export function isHeavyQuestion({ measure, vehicle }: Record<string, string | undefined>) {
+	return heavyMeasures.has(measure ?? '') || (measure === 'vehicles' && vehicle !== undefined);
+}
 
 export function finderQuestion(parameters: FinderQuestionParameters, period: EnginePeriod) {
 	return periodQuestion(period, '/measure', parameters);

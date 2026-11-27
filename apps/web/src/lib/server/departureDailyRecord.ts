@@ -1,10 +1,19 @@
-import { getRecordAnswer, query, type EnginePeriod, type RecordQuery } from './engine.ts';
+import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
+import {
+	getRecordAnswer,
+	query,
+	type EngineResult,
+	type EnginePeriod,
+	type RecordAnswer,
+	type RecordQuery,
+} from './engine.ts';
 import { cityQuestion } from './engineQuestion.ts';
 import { captureTripScopeSchema } from '#lib/live/captureSnapshot.ts';
 import type { DepartureIdentity } from '#lib/features/record/departureIdentity.ts';
 import type { Locale } from '#lib/i18n/copy.ts';
 import { sortAgencyMessages } from '#lib/site/agencyMessages.ts';
 import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
+import { readingFilter } from './readingFilter.ts';
 import { dailyQuestions } from './screenQuestions.ts';
 export { dailyQuery, type DailySection } from './screenQuestions.ts';
 
@@ -41,7 +50,9 @@ export function loadDailyRecord(
 	tracked: boolean,
 	locale: Locale,
 	lineNumber: (id: string) => string,
+	only?: ReadonlySet<string>,
 ) {
+	const include = readingFilter(only);
 	const { questions, messagesLimited } = dailyQuestions(period);
 	if (messagesLimited) {
 		questions.push({
@@ -50,7 +61,7 @@ export function loadDailyRecord(
 		});
 	}
 	const sections = questions
-		.filter(({ section }) => tracked || section !== 'messages')
+		.filter(({ section }) => (tracked || section !== 'messages') && include(section))
 		.map(({ section, query }) => {
 			const answer = getRecordAnswer(query, period);
 			if (section !== 'messages') return { section, answer };
@@ -80,6 +91,20 @@ export function loadDailyRecord(
 			};
 		});
 	return { sections, messagesLimited };
+}
+
+/** The Daily report's three stops, with their names from the timetable. */
+export function dailyDirectory(
+	ranking: Promise<EngineResult<RecordAnswer>> | undefined,
+	schedule: () => Promise<ScheduleEdition | null>,
+) {
+	return ranking?.then(async (result) => {
+		if (result.kind !== 'answer' || !('rows' in result.answer) || !result.answer.rows.length)
+			return [];
+		const edition = await schedule();
+		const ids = new Set(result.answer.rows.map(({ id }) => id));
+		return edition?.stops.filter(({ id }) => ids.has(id)) ?? [];
+	});
 }
 
 export function loadDepartureRecord(

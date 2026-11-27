@@ -10,7 +10,7 @@ import {
 	PRESETS,
 	receiptFrameParams,
 } from '#lib/site/frameState.ts';
-import { loadDailyRecord } from '#lib/server/departureDailyRecord.ts';
+import { dailyDirectory, loadDailyRecord } from '#lib/server/departureDailyRecord.ts';
 import { getScheduleEdition } from '#lib/server/engine.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { dailyReportTitle } from '#lib/site/presenter.ts';
@@ -49,14 +49,10 @@ export const load: PageServerLoad = async (event) => {
 	const { sections, messagesLimited } = scope
 		? loadDailyRecord(scope, tracked, lang, (id) => lineNumbers.get(id) ?? id)
 		: { sections: [], messagesLimited: false };
-	const ranking = sections.find(({ section }) => section === 'stops')?.answer;
-	const directory = ranking?.then(async (result) => {
-		if (result.kind !== 'answer' || !('rows' in result.answer) || !result.answer.rows.length)
-			return [];
-		const schedule = await getScheduleEdition(providerId, visitorIp);
-		const ids = new Set(result.answer.rows.map(({ id }) => id));
-		return schedule?.stops.filter(({ id }) => ids.has(id)) ?? [];
-	});
+	const directory = dailyDirectory(
+		sections.find(({ section }) => section === 'stops')?.answer,
+		() => getScheduleEdition(providerId, visitorIp),
+	);
 	const title = period
 		? dailyReportTitle(period, lang)
 		: lang === 'fr'

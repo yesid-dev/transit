@@ -1,5 +1,6 @@
 import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.ts';
 import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
+import { readingFilter, type Complete } from './readingFilter.ts';
 
 export const stopRecordQueries = {
 	punctuality: { measure: 'punctuality' },
@@ -23,10 +24,14 @@ export function stopRecordQuery(section: StopSection, stop: string): RecordQuery
 	};
 }
 
-export function loadStopRecord(scope: EnginePeriod, stop: string) {
+function readStopRecord(scope: EnginePeriod, stop: string, only?: ReadonlySet<string>) {
 	const { from, to, city } = scope;
+	const include = readingFilter(only);
 	// The engine already computes both delay percentiles alongside the three bands.
-	const punctuality = getRecordAnswer(stopRecordQuery('punctuality', stop), scope);
+	const punctuality =
+		include('punctuality') || include('delay')
+			? getRecordAnswer(stopRecordQuery('punctuality', stop), scope)
+			: null;
 	const alerts = stopRecordQuery('alerts', stop);
 	if (alertDetailsAllowed(scope)) alerts.parameters.alert_details = '1';
 	const sections: StopSection[] = [
@@ -39,25 +44,37 @@ export function loadStopRecord(scope: EnginePeriod, stop: string) {
 		'accessibility',
 		'alerts',
 	];
+	const measure = (parameters: RecordQuery['parameters']) =>
+		getRecordAnswer({ path: '/measure', parameters }, scope);
 	return {
 		period: { from, to },
 		city,
-		sections: sections.map((section) => ({
+		sections: sections.filter(include).map((section) => ({
 			section,
 			answer:
-				section === 'punctuality' || section === 'delay'
+				(section === 'punctuality' || section === 'delay') && punctuality
 					? punctuality
 					: getRecordAnswer(section === 'alerts' ? alerts : stopRecordQuery(section, stop), scope),
 		})),
 		// Keep the existing export queries and stream the display cuts independently.
-		grid: getRecordAnswer(
-			{ path: '/measure', parameters: { measure: 'late', group: 'weekday_hour', stop } },
-			scope,
-		),
-		network: getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope),
-		networkDaily: getRecordAnswer(
-			{ path: '/measure', parameters: { measure: 'on_time', group: 'day' } },
-			scope,
-		),
+		grid: include('grid') ? measure({ measure: 'late', group: 'weekday_hour', stop }) : undefined,
+		network: include('network') ? measure({ measure: 'on_time' }) : undefined,
+		networkDaily: include('networkDaily')
+			? measure({ measure: 'on_time', group: 'day' })
+			: undefined,
 	};
+}
+
+type StopRecord = Complete<ReturnType<typeof readStopRecord>>;
+
+/** The stop's readings; with `only`, just the named readings, asked again. */
+export function loadStopRecord(
+	scope: EnginePeriod,
+	stop: string,
+	only: ReadonlySet<string>,
+): Partial<StopRecord>;
+// Last, so `ReturnType` names the whole record.
+export function loadStopRecord(scope: EnginePeriod, stop: string): StopRecord;
+export function loadStopRecord(scope: EnginePeriod, stop: string, only?: ReadonlySet<string>) {
+	return readStopRecord(scope, stop, only);
 }

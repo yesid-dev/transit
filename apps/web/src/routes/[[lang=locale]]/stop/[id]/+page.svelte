@@ -16,9 +16,15 @@
 	import { errorPageCopy } from '#lib/site/errorPage.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+	const readings = recoverReadings(
+		() => data.record,
+		({ period: { from, to }, city }) => ({ screen: 'stop', from, to, city, id: data.seed.id }),
+	);
+	const stopRecord = $derived(readings());
 	const locale = getLocale();
 	const display = transitDisplay();
 	const url = $derived(new URL(page.shallow?.url.href ?? page.url.href));
@@ -51,9 +57,9 @@
 	const back = $derived.by(() => {
 		const source = new URL(url);
 		source.searchParams.set('provider', data.providerId);
-		const contentUrl = data.record
+		const contentUrl = stopRecord
 			? new URL(
-					frameHref(source, { mode: 'record', period: { ...data.record.period, preset: null } }),
+					frameHref(source, { mode: 'record', period: { ...stopRecord.period, preset: null } }),
 					url,
 				)
 			: source;
@@ -75,19 +81,19 @@
 		};
 	});
 	const archive = $derived(
-		data.outsideCurrentTimetable && data.record ? stopArchiveAvailability(data.record) : null,
+		data.outsideCurrentTimetable && stopRecord ? stopArchiveAvailability(stopRecord) : null,
 	);
 </script>
 
 {#snippet record()}
-	{#if data.record}
+	{#if stopRecord}
 		<StopEngineRecord
 			stop={data.seed}
 			code={data.stopCode}
 			{operator}
 			{locale}
 			{url}
-			record={data.record}
+			record={stopRecord}
 		/>
 	{/if}
 {/snippet}

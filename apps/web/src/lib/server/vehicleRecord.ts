@@ -64,7 +64,6 @@ export function loadVehiclePage(
 		...period,
 		city,
 		visitorIp: request.headers.get('cf-connecting-ip'),
-		retryBusy: Boolean(id),
 	};
 	return {
 		mode,

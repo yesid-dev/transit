@@ -9,7 +9,7 @@
 	import { lineViewHref } from '#lib/features/lines/lineRecordText.ts';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
-	import { recoverRecord } from '#lib/features/record/recordRecovery.svelte.ts';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import { lineRecordHeading } from '#lib/site/presenter.ts';
 	import { vehicleTrackingDisabled } from '#lib/site/providerCapabilities.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
@@ -26,9 +26,16 @@
 			? 'Cette ligne ne figure pas à l’horaire actuel.'
 			: 'This line is not in the current timetable.';
 	const subtitle = $derived(display.directory.subtitle(data.seed.id));
-	const readings = recoverRecord(
+	const readings = recoverReadings(
 		() => data.record,
-		({ city, line, direction, period }) => ({ ...period, city, id: line, direction, kind: 'line' }),
+		({ city, line, direction, period: { from, to } }) => ({
+			screen: 'line',
+			from,
+			to,
+			city,
+			id: line,
+			page: direction ? `direction=${direction}` : undefined,
+		}),
 	);
 	const record = $derived(readings());
 	const operator = $derived(data.provider?.labels[locale].operator ?? data.providerId);

@@ -78,10 +78,16 @@
 		RecordAnswer as EngineAnswer,
 		RecordMeasure,
 	} from '#lib/server/engine.ts';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import type { PageData } from './$types';
 
 	let { data: routeData }: { data: PageData } = $props();
-	const data = $derived(routeData.report);
+	const readings = recoverReadings(
+		() => routeData.report,
+		({ period, city, lang }) =>
+			period ? { screen: 'receipt', from: period.from, to: period.to, city, lang } : null,
+	);
+	const data = $derived(readings() ?? routeData.report);
 	const { lang, period, city, operator, cityName } = $derived(data);
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(lang, en, fr);

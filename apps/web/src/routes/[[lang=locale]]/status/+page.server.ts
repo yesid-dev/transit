@@ -1,14 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
-import {
-	getMeasure,
-	getMethodCatalog,
-	getRecordDataHealth,
-	getRecordMeasure,
-	getRecordSeries,
-	getScorecardAnswer,
-} from '#lib/server/engine.ts';
-import { agencyHealthQuestions, networkRecordQuestions } from '#lib/server/screenQuestions.ts';
+import { readHealthRecord } from '#lib/server/healthRecord.ts';
+import type { Complete } from '#lib/server/readingFilter.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 
@@ -20,28 +13,15 @@ export const load = (async (event) => {
 	if (mode === 'record') {
 		const alertsTracked = providerHasAlerts(provider);
 		const scope = period && { ...period, city, visitorIp };
-		const questions = agencyHealthQuestions();
 		return {
 			view: 'record' as const,
 			alerts: { tracked: alertsTracked, officialUrl: provider?.alert_links[lang] },
 			record: scope && {
 				city,
 				period: { from: scope.from, to: scope.to },
-				coverage: getMeasure('punctuality', scope),
-				accessibility: getRecordMeasure(questions.accessibility, scope),
-				alertEffects: alertsTracked ? getRecordSeries(questions.alertEffects, scope) : null,
-				deliveryDays: getRecordSeries(networkRecordQuestions.deliveryDays, scope),
-				scorecard: Object.fromEntries(
-					questions.scorecard.map(({ measure, query }) => [
-						measure,
-						getScorecardAnswer(query, scope),
-					]),
-				) as Record<
-					(typeof questions.scorecard)[number]['measure'],
-					ReturnType<typeof getScorecardAnswer>
-				>,
-				health: getRecordDataHealth(scope),
-				methods: getMethodCatalog(visitorIp),
+				...(readHealthRecord(scope, alertsTracked) as Complete<
+					ReturnType<typeof readHealthRecord>
+				>),
 			},
 		};
 	}

@@ -56,7 +56,7 @@ export function loadLineRecord(
 	scheduleOnly = false,
 	only?: ReadonlySet<string>,
 ) {
-	const scope = { ...period, city, retryBusy: true, ...(visitorIp ? { visitorIp } : {}) };
+	const scope = { ...period, city, ...(visitorIp ? { visitorIp } : {}) };
 	const sections = (
 		scheduleOnly ? Object.keys(schedule) : Object.keys(lineRecordQueries)
 	) as LineSection[];

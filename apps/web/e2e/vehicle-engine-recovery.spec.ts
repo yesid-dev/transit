@@ -13,6 +13,14 @@ for (const locale of ['en', 'fr']) {
 		);
 		const viewport = page.viewportSize()!;
 		await page.clock.install();
+		// Listen from the start: the page asks again about five seconds after its readings settle.
+		const response = page.waitForResponse((res) => {
+			const url = new URL(res.url());
+			return (
+				url.pathname === '/api/record-recovery' &&
+				url.searchParams.get('readings') === 'sections.reporting'
+			);
+		});
 		await page.goto(
 			`${prefix}/vehicle/${vehicle}?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-16`,
 		);
@@ -26,13 +34,7 @@ for (const locale of ['en', 'fr']) {
 		await control.focus();
 		await expect(control).toBeFocused();
 		const before = (await control.boundingBox())!.y;
-		const response = page.waitForResponse((res) => {
-			const url = new URL(res.url());
-			return (
-				url.pathname === '/api/record-recovery' && url.searchParams.get('sections') === 'reporting'
-			);
-		});
-		await page.clock.fastForward(60_001);
+		await page.clock.fastForward(5_001);
 		expect((await response).ok()).toBe(true);
 		await expect(reporting).toContainText(
 			fr

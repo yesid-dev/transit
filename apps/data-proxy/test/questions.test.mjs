@@ -783,7 +783,8 @@ test("rate limiting keys on hashed client IP and only runs for cache misses", as
   const f = fixture(t);
   const config = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
   const limit = Number(config.match(/simple = \{ limit = (\d+), period = 60 \}/)?.[1]);
-  assert.ok(limit >= 2 * (15 + 3));
+  // Three Line records of 16 questions, each on two periods, plus the catalog and timetable reads.
+  assert.ok(limit >= 3 * 2 * 16 + 4);
   const counts = new Map();
   f.env.QUESTION_LIMIT.limit = async ({ key }) => {
     assert.match(key, /^[a-f0-9]{64}$/);

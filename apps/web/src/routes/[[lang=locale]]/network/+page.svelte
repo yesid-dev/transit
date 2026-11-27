@@ -10,12 +10,17 @@
 	import NetworkLive from '#lib/features/network/NetworkLive.svelte';
 	import { networkMeasures } from '#lib/features/network/networkMeasures.ts';
 	import { providerDisplayNames } from '#lib/site/providerDisplay.ts';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	const locale = getLocale();
 	const url = $derived(new URL(page.url.href));
 	const names = $derived(providerDisplayNames(data.provider, locale, data.providerId));
+	const readings = recoverReadings(
+		() => (data.view === 'record' ? data.networkRecord : null),
+		({ period: { from, to }, city }) => ({ screen: 'network', from, to, city }),
+	);
 	const healthLink = $derived(
 		carryFrameState(localizeHref('/status', locale, data.providerId), url),
 	);
@@ -37,7 +42,7 @@
 <Surface>
 	{#if data.view === 'record'}
 		<NetworkRecord
-			record={data.networkRecord}
+			record={readings() ?? null}
 			subject={names.operatorCity}
 			operator={names.short}
 			{locale}

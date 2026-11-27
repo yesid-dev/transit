@@ -10,6 +10,7 @@ import {
 	getRecordCsv,
 	type MeasureAnswer,
 } from './engine.ts';
+import { getRequestEvent } from '$app/server';
 import { finderQuestions } from './engineQuestion.ts';
 
 const { env } = vi.hoisted(() => ({
@@ -80,33 +81,101 @@ it('reads the distribution as a series and treats deploy skew as unavailable', a
 	expect(await getDelayDistribution(dates)).toEqual({ kind: 'unreachable' });
 });
 
-it('keeps a timed-out Stops reading pending and returns the next answer as soon as it arrives', async () => {
-	const first = new AbortController();
-	const second = new AbortController();
-	vi.spyOn(AbortSignal, 'timeout')
-		.mockReturnValueOnce(first.signal)
-		.mockReturnValueOnce(second.signal);
-	const retry = Promise.withResolvers<Response>();
-	fetcher
-		.mockImplementationOnce(
+it('asks a record question once, with its deadline on that first request', async () => {
+	const limit = new AbortController();
+	const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(limit.signal);
+	fetcher.mockImplementation(
+		async ({ signal }) =>
+			new Promise<Response>((_resolve, reject) => {
+				signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+			}),
+	);
+	const asked = Date.now();
+	const read = getFinderSeries(finderQuestions.stops.punctuality, dates);
+	await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+	// One try with the record limit: no 20-second try whose work is thrown away.
+	expect(timeout).toHaveBeenCalledExactlyOnceWith(45_000);
+	const deadline = Number(fetcher.mock.calls[0][0].headers.get('x-transit-record-deadline'));
+	expect(deadline).toBeGreaterThan(asked + 40_000);
+	expect(deadline).toBeLessThanOrEqual(Date.now() + 45_000);
+	limit.abort(new DOMException('Timed out', 'TimeoutError'));
+	expect(await read).toEqual({ kind: 'timeout' });
+	expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+describe('questions asked while a page is served', () => {
+	function servePage() {
+		const leave = new AbortController();
+		vi.mocked(getRequestEvent).mockReturnValue({
+			request: new Request('https://transit.test/vehicles', { signal: leave.signal }),
+		} as ReturnType<typeof getRequestEvent>);
+		return leave;
+	}
+	afterEach(() => {
+		vi.mocked(getRequestEvent).mockReset();
+		vi.mocked(getRequestEvent).mockImplementation(() => {
+			throw new Error('No page is being served');
+		});
+	});
+
+	it('sends a heavy question at once when the quick ones have already answered', async () => {
+		vi.useFakeTimers();
+		try {
+			servePage();
+			fetcher.mockImplementation(async () => Response.json(measure()));
+			const heavy = getRecordAnswer(
+				{ path: '/measure', parameters: { measure: 'crowding' } },
+				dates,
+			);
+			await getRecordAnswer({ path: '/measure', parameters: { measure: 'punctuality' } }, dates);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(fetcher).toHaveBeenCalledTimes(2);
+			expect(new URL(fetcher.mock.calls[0][0].url).searchParams.get('measure')).toBe('punctuality');
+			expect(new URL(fetcher.mock.calls[1][0].url).searchParams.get('measure')).toBe('crowding');
+			expect((await heavy).kind).toBe('answer');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('never holds a heavy question on another card that has not answered', async () => {
+		vi.useFakeTimers();
+		try {
+			servePage();
+			fetcher.mockImplementation(async (request) =>
+				new URL(request.url).searchParams.get('measure') === 'crowding'
+					? Response.json(measure())
+					: new Promise<Response>(() => {}),
+			);
+			void getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, dates);
+			const heavy = getRecordAnswer(
+				{ path: '/measure', parameters: { measure: 'crowding' } },
+				dates,
+			);
+			// The quick question is sent first; the heavy one follows its short head start.
+			await vi.advanceTimersByTimeAsync(1);
+			expect(fetcher).toHaveBeenCalledTimes(1);
+			await vi.advanceTimersByTimeAsync(299);
+			expect(fetcher).toHaveBeenCalledTimes(2);
+			expect((await heavy).kind).toBe('answer');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('stops asking when the rider leaves the page', async () => {
+		const leave = servePage();
+		fetcher.mockImplementation(
 			async ({ signal }) =>
 				new Promise<Response>((_resolve, reject) => {
 					signal.addEventListener('abort', () => reject(signal.reason), { once: true });
 				}),
-		)
-		.mockReturnValueOnce(retry.promise);
-	const read = getFinderSeries(finderQuestions.stops.punctuality, dates);
-	const settled = vi.fn();
-	void read.then(settled);
-	first.abort(new DOMException('Timed out', 'TimeoutError'));
-	await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
-	expect(settled).not.toHaveBeenCalled();
-	expect(fetcher.mock.calls[1][0].url).toBe(fetcher.mock.calls[0][0].url);
-	const answer = { cells: [], evidence: measure().evidence, coverage_note: null };
-	retry.resolve(Response.json(answer));
-	expect(await read).toMatchObject({
-		kind: 'answer',
-		answer: { cells: [], evidence: { days_included: answer.evidence.days_included } },
+		);
+		const read = getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, dates);
+		await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+		leave.abort();
+		expect(fetcher.mock.calls[0][0].signal.aborted).toBe(true);
+		expect((await read).kind).toBe('timeout');
 	});
 });
 
@@ -254,7 +323,12 @@ it('preserves the proxy request and leaves the loopback transport unadorned', as
 	env.QUESTION_PROXY = { fetch: fetcher };
 	await getRecordAnswer(question, scope);
 	const proxied = fetcher.mock.calls[0]?.[0];
-	expect([...proxied.headers]).toEqual([['x-transit-visitor-ip', '192.0.2.24']]);
+	// A record question carries its deadline, so the proxy and the engine give it the same time.
+	expect([...proxied.headers].map(([name]) => name)).toEqual([
+		'x-transit-record-deadline',
+		'x-transit-visitor-ip',
+	]);
+	expect(proxied.headers.get('x-transit-visitor-ip')).toBe('192.0.2.24');
 	expect(proxied.url).toBe(
 		local.url.replace(env.QUESTION_FIXTURE_ORIGIN, 'https://data.yesid.dev'),
 	);
