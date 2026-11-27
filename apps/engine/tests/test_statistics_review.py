@@ -214,7 +214,10 @@ def test_ranking_orders_on_time_by_upper_bound_and_keeps_exact_rate(tmp_path: Pa
     (row,) = answer["rows"]
     assert (row["id"], row["value"]) == ("B", 0.525)
     assert row["ranking_bound"] == row["range"]["upper"]
-    assert {item["id"]: item["reason"] for item in answer["excluded"]} == {
+    assert answer["excluded_count"] == 2
+    excluded = _json(store, measure="on_time", **{"class": "all"})["excluded"]
+    assert answer["excluded"] == excluded[:1]
+    assert {item["id"]: item["reason"] for item in excluded} == {
         "few_trips": "too_few_to_judge",
         "few_stops": "too_few_to_judge",
     }

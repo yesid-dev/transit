@@ -60,6 +60,13 @@ def vehicle_end_sql(start: str, last_seen: str, tail: str, cadence_us: str) -> s
     )
 
 
+def vehicle_duration_us_sql(start: str, last_seen: str, tail: str, cadence_us: str) -> str:
+    return (
+        f"greatest(0, epoch_us({last_seen}) - epoch_us({start}) "
+        f"+ least({tail}, {vehicle_gap_us_sql(cadence_us)}))"
+    )
+
+
 def vehicle_hour_weight_sql(
     hour: str, bucket: str = LOCAL_HOUR_BUCKET.format("captured_at_utc")
 ) -> str:
@@ -147,7 +154,9 @@ def vehicle_stats_query(
     entity = "vehicle_id" if by_vehicle else "NULL::VARCHAR"
     silence_entity = entity
     service_entity = entity
-    service_weight = f"epoch_us({end}) - epoch_us(captured_at_utc)"
+    service_weight = vehicle_duration_us_sql(
+        "captured_at_utc", "last_seen_at_utc", tail, "cadence_us"
+    )
     service_days = "count(DISTINCT service_date)"
     service_segments = ""
     trip_starts = ""
@@ -418,11 +427,14 @@ def vehicle_stats_query(
                 {trip_vehicle_filter}
             UNION
             SELECT p.vehicle_id, p.service_date, p.trip_id, coalesce(p.route_id, t.route_id)
-            FROM {assignment_positions} p {assignment_filter}
+            FROM (
+                SELECT DISTINCT vehicle_id, service_date, trip_id, route_id
+                FROM {assignment_positions} {assignment_filter}
+                WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
+                    AND nullif(trim(vehicle_id), '') IS NOT NULL
+            ) p
             LEFT JOIN trips t USING (service_date, trip_id)
-            WHERE p.service_date IS NOT NULL AND p.trip_id IS NOT NULL
-                AND nullif(trim(p.vehicle_id), '') IS NOT NULL
-                AND (t.state IS NULL OR t.state IN ('ran', 'unconfirmed', 'added'))
+            WHERE t.state IS NULL OR t.state IN ('ran', 'unconfirmed', 'added')
         ), sequenced AS (
             SELECT p.*, cadence.cadence_us, lead(trip_id) OVER captured AS next_trip,
                 lead(service_date) OVER captured AS next_service_date,

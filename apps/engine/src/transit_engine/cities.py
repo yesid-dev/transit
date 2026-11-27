@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 import duckdb
 
+from transit_engine.cancellation import track_connection
 from transit_engine.capture import provider_declaration, provider_directory
 from transit_engine.revision import compute_answer_revision
 from transit_engine.store import CITY, Store
@@ -56,7 +57,7 @@ def service_zone(identity: dict[str, Any]) -> ZoneInfo:
 @contextmanager
 def service_query(store: Store, city: str) -> Iterator[duckdb.DuckDBPyConnection]:
     _, identity, _ = public_declaration(city)
-    with store.connect() as conn:
+    with track_connection(store.connect()) as conn:
         conn.execute("SET VARIABLE service_timezone = ?", [service_zone(identity).key])
         yield conn
 

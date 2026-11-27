@@ -332,7 +332,8 @@ async def get(
     messages: list[ASGISendEvent] = []
 
     async def receive() -> Never:
-        raise AssertionError("GET has no request body")
+        await asyncio.Event().wait()
+        raise AssertionError("the test client does not disconnect")
 
     async def send(message: ASGISendEvent) -> None:
         messages.append(message)

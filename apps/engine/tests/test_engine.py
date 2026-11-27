@@ -13,9 +13,10 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 import duckdb
 import pytest
-from uvicorn._types import ASGISendEvent, HTTPScope
+from uvicorn._types import ASGIReceiveEvent, ASGISendEvent, HTTPScope
 
 from transit_engine import timing
+from transit_engine.cancellation import track_connection
 from transit_engine.clean_manifest import (
     ALERTS,
     FEED_POLLS,
@@ -853,7 +854,8 @@ async def http(
     messages: list[ASGISendEvent] = []
 
     async def receive() -> Never:
-        raise AssertionError("GET has no request body")
+        await asyncio.Event().wait()
+        raise AssertionError("the test client does not disconnect")
 
     async def send(message: ASGISendEvent) -> None:
         messages.append(message)
@@ -1260,6 +1262,89 @@ def _accessibility_trips() -> tuple[Trip, ...]:
         Trip("null", "A", 0, "ran", None, True, (0,), wheelchair=None, stop_wheelchair=(1, 2)),
         Trip("added", "A", 0, "added", None, True, (0,)),
     )
+
+
+def test_catalogue_bypasses_record_work_and_disconnects_reclaim_slots(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exercise() -> None:
+        app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=2000)
+        loop = asyncio.get_running_loop()
+        started = asyncio.Event()
+        interrupted = asyncio.Event()
+
+        def long_query(source: Store, question: Question) -> dict[str, Any]:
+            if question.measure != "punctuality":
+                return ask(source, question)
+            with track_connection(source.connect()) as conn:
+                loop.call_soon_threadsafe(started.set)
+                try:
+                    conn.execute(
+                        """
+                        SELECT sum(sin(i))
+                        FROM range(500000000) t(i)
+                        """
+                    )
+                except duckdb.InterruptException:
+                    loop.call_soon_threadsafe(interrupted.set)
+                    raise
+            raise AssertionError("the long query should have been interrupted")
+
+        monkeypatch.setattr("transit_engine.server.ask", long_query)
+        monkeypatch.setattr("transit_engine.server.schedule_index", lambda *_a, **_kw: {})
+        query = urlencode({"city": "stm", "from": str(THURSDAY), "to": str(THURSDAY)})
+        scope = cast(HTTPScope, {
+            "type": "http", "method": "GET", "path": "/measure", "headers": [],
+            "query_string": (query + "&measure=punctuality").encode(),
+        })
+
+        async def abandoned(gone: asyncio.Event) -> None:
+            async def receive() -> ASGIReceiveEvent:
+                await gone.wait()
+                return {"type": "http.disconnect"}
+
+            async def send(_response: ASGISendEvent) -> None:
+                pytest.fail("responded to a disconnected caller")
+
+            await app(scope, receive, send)
+
+        first_gone = asyncio.Event()
+        first = asyncio.create_task(abandoned(first_gone))
+        await asyncio.wait_for(started.wait(), 3)
+        queued_gone = asyncio.Event()
+        queued = asyncio.create_task(abandoned(queued_gone))
+        async with asyncio.timeout(3):
+            while app.record.waiting != 1:
+                await asyncio.sleep(0)
+        queued_gone.set()
+        await asyncio.wait_for(queued, 3)
+        assert app.record.waiting == 0
+        status, headers, _ = await asyncio.wait_for(http(app, "/schedule-index", "city=stm"), 3)
+        assert status == 200 and headers[b"x-engine-queued"] == b"false"
+        first_gone.set()
+        await asyncio.wait_for(first, 3)
+        await asyncio.wait_for(interrupted.wait(), 3)
+        status, _, _ = await http(app, "/measure", query + "&measure=on_time")
+        assert status == 200
+
+    asyncio.run(exercise())
+
+
+def test_json_can_omit_method_prose_without_changing_values(store: Store) -> None:
+    app = Engine(store, 1, 0, 50)
+    query = urlencode({
+        "city": "stm", "from": str(THURSDAY), "to": str(THURSDAY), "measure": "on_time",
+    })
+    _, _, body = asyncio.run(http(app, "/measure", query))
+    status, _, lean_body = asyncio.run(http(app, "/measure", query + "&include_method=0"))
+    assert status == 200
+    full, lean = json.loads(body), json.loads(lean_body)
+    assert "text" in full["info"][0]
+    full["info"][0].pop("text")
+    full["info"][0].pop("csv_columns")
+    for answer in (full, lean):
+        answer["evidence"].pop("query_ms")
+    assert full == lean
 
 
 def test_accessibility_matches_python_recomputation(tmp_path: Path) -> None:

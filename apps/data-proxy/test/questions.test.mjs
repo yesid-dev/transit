@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { QUESTION_PARAMS } from "../src/question-params.js";
+import { parseQuestion, QUESTION_PARAMS } from "../src/question-params.js";
 import { probeEngine, serveBoundQuestion } from "../src/questions.js";
 import worker from "../src/worker.js";
 import { probeV2 } from "../scripts/probe-v2.mjs";
@@ -18,6 +18,15 @@ const ANSWER = {
   state_text: { en: "Measured", fr: "Mesuré" },
   evidence: { cleaning_versions: [6], days_pending: [], counts: { scheduled: 100 } },
 };
+
+test("separates compact answers from the full method in both cache keys and upstream requests", () => {
+  const question = (suffix) => parseQuestion(new URL(MEASURE + suffix, "https://data.example.test"));
+  assert.deepEqual(question("&include_method=1"), question(""));
+  const compact = question("&include_method=0");
+  assert.notDeepEqual(compact, question(""));
+  assert.match(JSON.stringify(compact), /include_method=0/);
+  assert.throws(() => question("&format=csv&include_method=0"), /requires JSON/);
+});
 
 test("passes schedule map line sets upstream and caches each cut independently", async (t) => {
   const base = "/v2/demo/schedule-map";

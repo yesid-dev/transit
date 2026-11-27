@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 import duckdb
 
+from transit_engine.cancellation import check_query, track_connection
 from transit_engine.cities import public_declaration, service_zone
 from transit_engine.clean_manifest import TRIP_DAYS, VEHICLE_POSITIONS
 from transit_engine.store import Store
@@ -17,8 +18,9 @@ def schedule_index(
     store: Store, city: str, end: date, *, index: Literal["search", "maps"] = "search"
 ) -> dict[str, Any] | None:
     schedule = None
-    with store.connect() as conn:
+    with track_connection(store.connect()) as conn:
         for offset in range(7):
+            check_query()
             day = end - timedelta(days=offset)
             prefix = f"{store.root.rstrip('/')}/{index}/v1"
             path = f"{prefix}/{city}/{day}/v{store.cleaning_version}.json"
@@ -79,6 +81,6 @@ def search_index(store: Store, city: str) -> dict[str, Any]:
         vehicles, vehicle_state = None, "not_tracked"
     else:
         days = [end - timedelta(days=offset) for offset in range(7)]
-        with store.connect() as conn:
+        with track_connection(store.connect()) as conn:
             vehicles, vehicle_state = _recent_vehicles(store, conn, city, days)
     return {"schedule": schedule, "vehicles": vehicles, "vehicle_state": vehicle_state}
