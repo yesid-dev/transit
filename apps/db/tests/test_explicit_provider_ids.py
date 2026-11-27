@@ -134,4 +134,4 @@ def test_publish_providers_explicit_stm_preserves_current_catalog(monkeypatch):
     assert result.exit_code == 0, result.output
     storage.put_json.assert_called_once_with("providers.json", expected, tier="live")
     assert expected.default_provider == "stm"
-    assert {provider.id for provider in expected.providers} == {"stm", "octranspo"}
+    assert {provider.id for provider in expected.providers} == {"stm", "octranspo", "sto"}

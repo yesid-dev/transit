@@ -25,6 +25,19 @@
           "operator": "STM"
         }
       }
+    },
+    {
+      "id": "sto",
+      "labels": {
+        "en": {
+          "city": "Gatineau",
+          "operator": "STO"
+        },
+        "fr": {
+          "city": "Gatineau",
+          "operator": "STO"
+        }
+      }
     }
   ],
   "outputs": {
@@ -47,6 +60,7 @@
     "/og/pages/stop-detail.en.png": "aaef7672f54ece8d6af4dd158e54f587f36cf43385e79931aab454f76fdd53ee",
     "/og/home/octranspo.en.png": "0b03fc6092b6e43be4237e62239dbeda56c14f4cd4b3e9ef6808eb5114a70cfb",
     "/og/home/stm.en.png": "0679191268a4fc393f107ae03189eac8616ac4bd1482f3ef9f78f94056132048",
+    "/og/home/sto.en.png": "e1482eb47e1843bd3b147f0c56523c04accc42e8e2062b166e9ac34884f87159",
     "/og/fr.png": "65d4329009b6b01596b51b4362ddf2cc58754c3802ad05e638a6d9ed15bd2e00",
     "/og/pages/map.fr.png": "16783951d31b0da66e10bb8f12471db3f23a3f83dbaf266f7f20eb653e9dc516",
     "/og/pages/lines.fr.png": "965878add1b03c7c40303e7200a4db3c9ed74fa6155bcf6febd87ba0ce068659",
@@ -65,6 +79,7 @@
     "/og/pages/lines-detail.fr.png": "a3ac359ee3c7b8560243a2c29ae856a5ccc65ea8dde36b5fc596effd8481241f",
     "/og/pages/stop-detail.fr.png": "c1a335beb44b5c3bba6b856c29bd9a9dce72012a907882fc32ac092cafc732cc",
     "/og/home/octranspo.fr.png": "1137eb1502cbeb6e9ba21f1cf8f1455e7ddce19c2947806fc74dbd07703dad70",
-    "/og/home/stm.fr.png": "2ed00145d9bf8d5ad24e508ea51a54cbdf98247ec137e3a346a339b44b3e2407"
+    "/og/home/stm.fr.png": "2ed00145d9bf8d5ad24e508ea51a54cbdf98247ec137e3a346a339b44b3e2407",
+    "/og/home/sto.fr.png": "c025a9134d743b3848acc2dc4057a858f96d7e839d382bdfc0dc7662103e8433"
   }
 }
