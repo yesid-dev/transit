@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { DashboardGrid } from '@yesid/ui/layout';
+	import { Skeleton } from '@yesid/ui/skeleton';
 	import RecordCard from './RecordCard.svelte';
 
 	type FigureLink = { href: string; label: string };
@@ -19,6 +20,8 @@
 			key: string;
 			label: string;
 			text: string | null;
+			/** Number of lines to show before streaming evidence arrives. */
+			waitingLines?: number;
 			link?: FigureLink;
 			links?: readonly FigureLink[];
 		}[];
@@ -47,11 +50,20 @@
 		minTile="17rem"
 		style={compact ? 'row-gap: calc(var(--space-card-gap) / 3)' : undefined}
 	>
-		{#each fields.filter(({ text, link, links }) => text || link || links?.length) as field (field.key)}
+		{#each fields.filter(({ text, link, links, waitingLines }) => text || link || links?.length || waitingLines) as field (field.key)}
+			{@const placeholders = field.waitingLines ?? 0}
 			<dl class="min-w-0">
 				<dt class="font-semibold text-muted-foreground">{field.label}</dt>
-				<dd>
-					{field.text}
+				<dd aria-busy={placeholders ? true : undefined}>
+					{#if placeholders}
+						{#each { length: placeholders } as _, index (index)}
+							<div class="flex min-h-[1lh] items-center" aria-hidden="true">
+								<Skeleton class={['h-4', index === placeholders - 1 ? 'w-2/3' : 'w-full']} />
+							</div>
+						{/each}
+					{:else}
+						{field.text}
+					{/if}
 					{#if field.links?.length}
 						<div class="flex flex-wrap gap-x-4">
 							{#each field.links as link (link.href)}

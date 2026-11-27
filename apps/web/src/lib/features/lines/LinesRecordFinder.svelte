@@ -849,11 +849,13 @@
 					{
 						key: 'counted',
 						label: about.counted,
+						waitingLines: initialTiming ? 2 : undefined,
 						text: counts ? `${counts}.` : null,
 					},
 					{
 						key: 'observed',
 						label: about.observed,
+						waitingLines: initialTiming ? 5 : undefined,
 						text: [
 							observation
 								? about.observedShare(
@@ -909,7 +911,7 @@
 <style>
 	@media (width >= 80rem) {
 		.finder-answer {
-			min-block-size: 7.5rem;
+			min-block-size: 8rem;
 		}
 		/* A short first page keeps the next card below the desktop viewport while readings fill. */
 		.finder-performance {

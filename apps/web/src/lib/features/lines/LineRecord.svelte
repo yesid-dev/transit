@@ -290,7 +290,7 @@
 	</section>
 {/snippet}
 
-{#snippet about(answer: RecordMeasure | null)}
+{#snippet about(answer: RecordMeasure | null, waiting = false)}
 	<AboutFigures
 		title={term.about}
 		fields={[
@@ -298,6 +298,7 @@
 			{
 				key: 'counted',
 				label: term.counted,
+				waitingLines: waiting ? 2 : undefined,
 				// This screen's own count; how counting weighs lines lives on How we measure (S5).
 				text: answer
 					? `${name}${locale === 'fr' ? '\u00a0: ' : ': '}${lineEvidenceSample(answer.evidence, locale)}.`
@@ -306,6 +307,7 @@
 			{
 				key: 'observed',
 				label: term.observed,
+				waitingLines: waiting ? 5 : undefined,
 				text: answer
 					? [
 							answer.evidence.share_observed == null
@@ -400,10 +402,11 @@
 		{#if !timetableOnly}
 			<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 				{#await punctualityAnswer}
-					{@render about(null)}
+					{@render about(null, true)}
 				{:then result}
 					{@render about(
 						result.kind === 'answer' && 'value' in result.answer ? result.answer : null,
+						result.kind === 'busy',
 					)}
 				{/await}
 			</RecordGroup>

@@ -225,7 +225,11 @@
 	/>
 {/snippet}
 
-<div id="punctuality" data-slot="screen-answer" class="min-[1280px]:-mb-4">
+<div
+	id="punctuality"
+	data-slot="screen-answer"
+	class={['min-[1280px]:-mb-4', heading && 'min-[1280px]:min-h-36']}
+>
 	{#if scheduleOnly}
 		{#snippet timetableNotice()}
 			<p>

@@ -205,7 +205,7 @@
 
 {#snippet recordBody(observed: DepartureAnswer)}
 	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
-		<div data-slot="screen-answer" class="min-[1280px]:-mb-4">
+		<div data-slot="screen-answer" class="min-[1280px]:-mb-4 min-[1280px]:min-h-36">
 			{#await observed.answer}
 				<RecordPending {heading} locale={data.lang} shape="answer" answer={observed.answer} />
 			{:then result}
@@ -476,7 +476,10 @@
 			</div>
 		{/each}
 	</RecordGroup>
-	{#snippet about(evidence?: import('#lib/server/engine.ts').RecordMeasure['evidence'])}
+	{#snippet about(
+		evidence?: import('#lib/server/engine.ts').RecordMeasure['evidence'],
+		waiting = false,
+	)}
 		{#if data.period}
 			<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 				<AboutFigures
@@ -491,6 +494,7 @@
 						{
 							key: 'observed',
 							label: t('Observed', 'Observations'),
+							waitingLines: waiting ? 4 : undefined,
 							text: evidence
 								? [
 										coverageText(evidence, data.lang).replace(/([^.!?])$/, '$1.'),
@@ -548,10 +552,11 @@
 		{/if}
 	{/snippet}
 	{#await answers.find(({ section }) => section === 'delay')?.answer}
-		{@render about()}
+		{@render about(undefined, true)}
 	{:then result}
 		{@render about(
 			result?.kind === 'answer' && 'value' in result.answer ? result.answer.evidence : undefined,
+			result?.kind === 'busy',
 		)}
 	{/await}
 {/snippet}
