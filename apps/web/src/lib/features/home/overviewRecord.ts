@@ -208,6 +208,8 @@ export function recordCounts(
 		.join(', ');
 }
 
+export const OVERVIEW_LATE_LINE_LIMIT = 3;
+
 export function lateLines(vehicles: readonly { route?: string | null; status: string }[]) {
 	const counts = new Map<string, { id: string; late: number; total: number }>();
 	for (const vehicle of vehicles) {
@@ -220,7 +222,7 @@ export function lateLines(vehicles: readonly { route?: string | null; status: st
 	return [...counts.values()]
 		.filter((line) => line.late > 0)
 		.sort((a, b) => b.late - a.late || a.id.localeCompare(b.id))
-		.slice(0, 3);
+		.slice(0, OVERVIEW_LATE_LINE_LIMIT);
 }
 
 /**

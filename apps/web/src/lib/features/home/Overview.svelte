@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ChartFrame } from '@yesid/ui/chart';
 	import { DashboardGrid } from '@yesid/ui/layout';
 	import { SvelteURL } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -246,82 +247,95 @@
 	{@const previousLabel =
 		record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
 	<RecordCard interactive title={t.record} {stamp} stampRule>
-		{#await overviewReadings}
-			<RecordPending shape="reading" {locale} answer={overviewReadings} />
-			{@render actions()}
-			<RecordSkeleton shape="facts" />
-		{:then { current, previous, delivery }}
-			{#if current.kind === 'busy'}
-				<RecordPending {locale} busy shape="reading" />
+		<div class="overview-record-readings">
+			{#await overviewReadings}
+				<RecordPending shape="reading" {locale} answer={overviewReadings} />
 				{@render actions()}
-			{:else}
-				{@render lead(current)}
-				{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-			{/if}
-			<FactList class="mt-4">
-				{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
-					{@const { on_time, classified } = current.answer.evidence.counts}
-					{#if on_time != null && classified != null}
-						<FactRow
-							label={t.onTime}
-							detail={recordDenominator(countedUnit(classified, 'event', locale), locale)}
-						>
-							<strong>{tally(on_time, locale)}</strong>
-						</FactRow>
-					{/if}
-				{:else if current.kind !== 'answer' && current.kind !== 'busy'}
-					<FactRow label={t.onTime}>{t.unavailable}</FactRow>
-				{/if}
-				{@const share = overviewValue(previous, 'on_time')}
-				{@const range = dateRange(record.previous, locale)}
-				<FactRow
-					label={previousLabel}
-					detail={share == null ? range : `${recordPercent(share, locale)}, ${range}`}
-				>
-					{#if share == null}
-						{@render gap(previous)}
-					{:else}
-						<strong>{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong>
-					{/if}
-					{#if previous.kind === 'answer' && previous.lastGood}<p>
-							{lastGoodNote[locale]}
-						</p>{/if}
-				</FactRow>
-				{@const deliveryShare = overviewValue(delivery, 'trips_run')}
-				{#if delivery.kind === 'answer' && deliveryShare != null}
-					{@const { ran, eligible } = delivery.answer.evidence.counts}
-					{@const unconfirmed = unsettledTrips(delivery.answer.evidence)}
-					{@const bounds =
-						ran != null && eligible != null && unconfirmed != null
-							? unconfirmedTripsRange(ran, eligible, unconfirmed, locale)
-							: null}
-					<FactRow
-						label={tripsRunShareLabel(locale)}
-						detail={ran != null && eligible != null
-							? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
-							: undefined}
-					>
-						<strong>{recordPercent(deliveryShare, locale)}</strong>
-						{#if bounds}<p class="text-muted-foreground">{bounds}</p>{/if}
-						{#if delivery.answer.evidence.low_coverage}
-							<p class="text-muted-foreground">
-								{coverageText(delivery.answer.evidence, locale)}
-							</p>
-						{/if}
-						{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-					</FactRow>
+				<RecordSkeleton shape="facts" />
+			{:then { current, previous, delivery }}
+				{#if current.kind === 'busy'}
+					<RecordPending {locale} busy shape="reading" />
+					{@render actions()}
 				{:else}
-					<FactRow label={tripsRunShareLabel(locale)}>{@render gap(delivery)}</FactRow>
+					{@render lead(current)}
+					{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				{/if}
-			</FactList>
-		{/await}
+				<FactList class="mt-4">
+					{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
+						{@const { on_time, classified } = current.answer.evidence.counts}
+						{#if on_time != null && classified != null}
+							<FactRow
+								label={t.onTime}
+								detail={recordDenominator(countedUnit(classified, 'event', locale), locale)}
+							>
+								<strong>{tally(on_time, locale)}</strong>
+							</FactRow>
+						{/if}
+					{:else if current.kind !== 'answer' && current.kind !== 'busy'}
+						<FactRow label={t.onTime}>{t.unavailable}</FactRow>
+					{/if}
+					{@const share = overviewValue(previous, 'on_time')}
+					{@const range = dateRange(record.previous, locale)}
+					<FactRow
+						label={previousLabel}
+						detail={share == null ? range : `${recordPercent(share, locale)}, ${range}`}
+					>
+						{#if share == null}
+							{@render gap(previous)}
+						{:else}
+							<strong>{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong
+							>
+						{/if}
+						{#if previous.kind === 'answer' && previous.lastGood}<p>
+								{lastGoodNote[locale]}
+							</p>{/if}
+					</FactRow>
+					{@const deliveryShare = overviewValue(delivery, 'trips_run')}
+					{#if delivery.kind === 'answer' && deliveryShare != null}
+						{@const { ran, eligible } = delivery.answer.evidence.counts}
+						{@const unconfirmed = unsettledTrips(delivery.answer.evidence)}
+						{@const bounds =
+							ran != null && eligible != null && unconfirmed != null
+								? unconfirmedTripsRange(ran, eligible, unconfirmed, locale)
+								: null}
+						<FactRow
+							label={tripsRunShareLabel(locale)}
+							detail={ran != null && eligible != null
+								? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
+								: undefined}
+						>
+							<strong>{recordPercent(deliveryShare, locale)}</strong>
+							{#if bounds}<p class="text-muted-foreground">{bounds}</p>{/if}
+							{#if delivery.answer.evidence.low_coverage}
+								<p class="text-muted-foreground">
+									{coverageText(delivery.answer.evidence, locale)}
+								</p>
+							{/if}
+							{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+						</FactRow>
+					{:else}
+						<FactRow label={tripsRunShareLabel(locale)}>{@render gap(delivery)}</FactRow>
+					{/if}
+				</FactList>
+			{/await}
+		</div>
 		{#if record.trend}
-			<div class="mt-4">
+			<div class="overview-trend mt-4">
 				<h3 class="font-semibold">{t.trend}</h3>
+				{#snippet skeleton()}
+					{#snippet emptyPlot()}{/snippet}
+					<ChartFrame
+						loading
+						label={t.trend}
+						xDomain={[0, 1]}
+						yDomain={[0, 1]}
+						children={emptyPlot}
+					/>
+				{/snippet}
 				{#await record.trend}
-					{#key record.trend}<RecordPending shape="trend" {locale} answer={record.trend} />{/key}
+					{#key record.trend}<RecordPending {skeleton} {locale} answer={record.trend} />{/key}
 				{:then trend}
-					{#if trend.kind === 'busy'}<RecordPending {locale} busy shape="trend" />
+					{#if trend.kind === 'busy'}<RecordPending {locale} busy {skeleton} />
 					{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
 					{:else if 'cells' in trend.answer && trend.answer.cells.length}
 						<RecordChart
@@ -512,6 +526,29 @@
 </RecordScreen>
 
 <style>
+	.overview-record-readings {
+		display: flow-root;
+	}
+	@media (width >= 64rem) {
+		/* Reserve the answer, actions, and facts, including wrapped coverage notes. */
+		.overview-record-readings {
+			min-block-size: 30rem;
+		}
+		@container (inline-size >= 32rem) {
+			.overview-record-readings {
+				min-block-size: 26rem;
+			}
+		}
+		.overview-trend {
+			/* Heading, chart area, legend gap and legend line. */
+			min-block-size: calc(1lh + 14rem + 0.5rem + 1.5 * var(--text-small));
+		}
+		/* The waiting message uses the same line as the chart legend. */
+		.overview-trend :global([data-slot='record-pending-words']) {
+			min-block-size: 1lh;
+			line-height: 1.5;
+		}
+	}
 	.screen-content {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
