@@ -2,8 +2,13 @@
 set -euo pipefail
 umask 022
 
+enable_clean_days=false
+if [[ ${1:-} == --with-clean-days ]]; then
+  enable_clean_days=true
+  shift
+fi
 if [[ $# -lt 2 || $EUID != 0 || $(uname -s) != Linux ]]; then
-  echo "Usage on the Linux VM, from a clean Git checkout: sudo bash update-live.sh <git ref> <city> [<city> ...]" >&2
+  echo "Usage on the Linux VM, from a clean Git checkout: sudo bash update-live.sh [--with-clean-days] <git ref> <city> [<city> ...]" >&2
   exit 2
 fi
 
@@ -85,6 +90,19 @@ UV_PYTHON_INSTALL_DIR="$root/python" UV_LINK_MODE=copy "$uv" sync \
 printf '%s\n' "$commit" >"$release/.revision"
 chmod 0755 "$release"
 
+unit_dir=/etc/systemd/system
+clean_units=(transit-clean-days.service transit-clean-days.timer)
+update_clean_days=false
+if $enable_clean_days || [[ -e $unit_dir/transit-clean-days.timer ]]; then
+  update_clean_days=true
+  ops=$release/apps/db/ops/linux
+  systemd-analyze verify "${clean_units[@]/#/$ops/}"
+  install -d -m 0755 "$release/duckdb-home"
+  HOME="$release/duckdb-home" "$release/apps/db/.venv/bin/python" \
+    -c 'import duckdb; duckdb.connect().install_extension("icu")'
+  chmod -R a+rX "$release/duckdb-home"
+fi
+
 for city in "$@"; do
   unit="transit-live-check-$$-$city"
   systemd-run --quiet --pipe --wait --collect --unit="$unit" \
@@ -101,3 +119,12 @@ switch_attempted=true
 activate "$release"
 if (( ${#running[@]} )); then systemctl restart "${running[@]}"; fi
 printf 'Installed Transit1 live publisher commit %s\n' "$commit"
+switch_attempted=false
+
+if $update_clean_days; then
+  install -m 0644 "${clean_units[@]/#/$ops/}" "$unit_dir/"
+  systemctl daemon-reload
+  if $enable_clean_days; then
+    systemctl enable --now transit-clean-days.timer
+  fi
+fi

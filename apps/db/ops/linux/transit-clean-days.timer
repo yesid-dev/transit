@@ -1,0 +1,13 @@
+[Unit]
+Description=Build missing Transit clean days
+
+[Timer]
+OnCalendar=*-*-* 16:17:00 UTC
+OnCalendar=*-*-* 18:43:00 UTC
+OnCalendar=*-*-* 21:13:00 UTC
+OnCalendar=*-*-* 00:37:00 UTC
+OnCalendar=*-*-* 04:07:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

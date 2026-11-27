@@ -1,0 +1,27 @@
+[Unit]
+Description=Build missing Transit clean days from R2
+Wants=network-online.target
+After=network-online.target
+OnSuccess=transit-engine-sync.service
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/transit-live/r2-read.env
+EnvironmentFile=/etc/transit-live/r2-write.env
+WorkingDirectory=/opt/transit-live/current/apps/db
+ExecStartPre=/usr/bin/find -H ${STATE_DIRECTORY} -mindepth 1 -delete
+ExecStart=/bin/bash ops/linux/run-clean-days.sh
+ExecStopPost=/usr/bin/find -H ${STATE_DIRECTORY} -mindepth 1 -delete
+StateDirectory=transit-clean-days
+StateDirectoryMode=0700
+UMask=0077
+MemoryAccounting=yes
+MemoryMax=10G
+Nice=15
+CPUWeight=10
+IOWeight=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes

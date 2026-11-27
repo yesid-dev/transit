@@ -1,4 +1,4 @@
-"""Select the provider days that the clean-days workflow builds.
+"""Select the provider days that the VM timer and GitHub workflow build.
 
 Scheduled runs build every public provider and every capture-enabled private one.
 Private entries publish to the same clean storage, which only the proxy and the
@@ -6,11 +6,14 @@ engine read, and both refuse a private city. The workflow keeps their output out
 public logs.
 """
 
+import argparse
 import json
 import os
 from datetime import UTC, date, datetime, timedelta
 
-from transit_ops.clean_days import parse_date
+import typer
+
+from transit_ops.clean_days import parse_date, run_clean_days
 from transit_ops.providers.registry import ProviderRegistry
 
 MAX_PROVIDER_DAYS = 256
@@ -63,7 +66,28 @@ def plan_entries(
     return entries
 
 
+def _run_scheduled() -> None:
+    scheduled_at = datetime.now(UTC)
+    failed = False
+    for entry in plan_entries(ProviderRegistry.from_project_root()):
+        provider = str(entry["provider"])
+        typer.echo(f"Cleaning {provider}")
+        try:
+            run_clean_days(
+                provider, "s3://transit-raw", "s3://transit-clean", selection=scheduled_at
+            )
+        except typer.Exit:
+            failed = True
+    if failed:
+        raise SystemExit(1)
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--run-scheduled", action="store_true")
+    if parser.parse_args().run_scheduled:
+        _run_scheduled()
+        return
     manual = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch"
     try:
         entries = plan_entries(

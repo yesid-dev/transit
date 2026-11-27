@@ -8,6 +8,7 @@ import yaml
 REPO_ROOT = Path(__file__).parents[3]
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "clean-days.yml"
 TIMER = REPO_ROOT / "apps" / "engine" / "ops" / "linux" / "transit-engine-sync.timer"
+CLEAN_TIMER = REPO_ROOT / "apps" / "db" / "ops" / "linux" / "transit-clean-days.timer"
 
 # The deployment no-merge window keeps 05:55 to 08:30 UTC clear of scheduled work.
 WINDOW_START = 5 * 60 + 55
@@ -34,17 +35,19 @@ def _cleaning_times() -> list[int]:
     return times
 
 
-def _copy_times() -> list[int]:
+def _timer_times(timer: Path) -> list[int]:
     times = []
-    for line in TIMER.read_text(encoding="utf-8").splitlines():
-        if match := ON_CALENDAR.fullmatch(line.strip()):
+    for line in timer.read_text(encoding="utf-8").splitlines():
+        if line.startswith("OnCalendar="):
+            match = ON_CALENDAR.fullmatch(line)
+            assert match, f"Expected a daily UTC calendar for {line!r}"
             times.append(_minutes_of_day(match[2], match[1]))
-    assert times, "The sync timer needs at least one OnCalendar time"
+    assert times, f"{timer.name} needs at least one OnCalendar time"
     return times
 
 
 def test_cleaning_stays_outside_the_no_merge_window() -> None:
-    for cleaning in _cleaning_times():
+    for cleaning in [*_cleaning_times(), *_timer_times(CLEAN_TIMER)]:
         assert not WINDOW_START <= cleaning <= WINDOW_END, (
             f"Cleaning at {cleaning // 60:02d}:{cleaning % 60:02d} UTC falls inside "
             f"the 05:55 to 08:30 UTC window"
@@ -52,8 +55,8 @@ def test_cleaning_stays_outside_the_no_merge_window() -> None:
 
 
 def test_every_cleaning_has_a_later_copy_before_the_next_days_first_cleaning() -> None:
-    cleanings = _cleaning_times()
-    copies = _copy_times()
+    cleanings = [*_cleaning_times(), *_timer_times(CLEAN_TIMER)]
+    copies = _timer_times(TIMER)
     deadline = min(cleanings) + 24 * 60
     for cleaning in sorted(cleanings):
         assert any(
@@ -82,8 +85,14 @@ def test_private_cities_publish_nothing_but_an_exit_status() -> None:
     assert "upload-artifact" not in WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_sync_timer_stays_persistent() -> None:
-    body = TIMER.read_text(encoding="utf-8")
-    assert re.search(r"^Persistent=true$", body, re.MULTILINE), (
-        "The sync timer must stay Persistent so missed copies run after a VM restart"
-    )
+def test_cleaning_and_sync_timers_catch_up_after_a_vm_restart() -> None:
+    for timer in (CLEAN_TIMER, TIMER):
+        assert re.search(r"^Persistent=true$", timer.read_text(encoding="utf-8"), re.MULTILINE)
+
+
+def test_each_vm_slot_has_a_backup_before_the_next_vm_slot() -> None:
+    vm = sorted(_timer_times(CLEAN_TIMER))
+    backup = sorted(_cleaning_times())
+    assert len(backup) == len(vm)
+    for primary, fallback, next_primary in zip(vm, backup, [*vm[1:], vm[0] + 1440], strict=True):
+        assert primary < fallback < next_primary
