@@ -139,10 +139,15 @@
 	{:else}<StateMark state={entry.state} {locale} />{/if}
 {/snippet}
 
-<RecordCard interactive title={t.live} stamp={reporting.kind === 'pending' ? undefined : stamp}>
+<RecordCard
+	interactive
+	title={t.live}
+	stamp={reporting.kind === 'pending' ? undefined : stamp}
+	stampRule
+>
 	{#if reporting.kind === 'pending'}
-		<!-- The card as it fills: the count and its sentence, the status bar, the two facts, then the
-		     three lines with the most vehicles late, as on a weekday (D4). -->
+		<!-- The card as it fills: the count and its sentence, the status bar and the two facts. The
+		     late lines below them exist only while vehicles are late, so they are not reserved. -->
 		<div class="grid min-w-0 gap-3" aria-busy="true" data-record-pending>
 			<div class="grid min-h-16 content-start gap-2">
 				<Skeleton class="h-12 w-28 max-w-full" />
@@ -150,8 +155,6 @@
 			</div>
 			<RecordSkeleton shape="bands" />
 			<RecordSkeleton shape={{ shape: 'facts', count: 2 }} />
-			<Skeleton class="mt-1 h-5 w-56 max-w-full" />
-			<RecordSkeleton shape={{ shape: 'rows', count: 3, lines: 1, lead: 'plate' }} />
 		</div>
 	{:else}
 		<div class="min-h-16">

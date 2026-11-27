@@ -578,7 +578,7 @@
 
 							<div class="report-pair">
 								<div id="delivery" class="grid min-w-0">
-									<RecordCard compactPrint title={t(...dailyTitles.delivery)} {stamp}>
+									<RecordCard compactPrint title={t(...dailyTitles.delivery)} {stamp} stampRule>
 										{#await deliveryAnswer}
 											{#key deliveryAnswer}<RecordPending
 													shape="trip-facts"
@@ -631,7 +631,7 @@
 									</RecordCard>
 								</div>
 								<div class="grid min-w-0">
-									<RecordCard compactPrint title={bandTitle} {stamp}>
+									<RecordCard compactPrint title={bandTitle} {stamp} stampRule>
 										{#await punctualityAnswer}
 											{#key punctualityAnswer}<RecordPending
 													shape="bands"
@@ -677,6 +677,7 @@
 									compactPrint
 									title={t('The day in five parts', 'La journée en cinq périodes')}
 									{stamp}
+									stampRule
 								>
 									{#await periodsAnswer}
 										{#key periodsAnswer}<RecordPending
@@ -736,7 +737,13 @@
 							</div>
 
 							<div id="messages">
-								<RecordCard interactive compactPrint title={t(...dailyTitles.messages)} {stamp}>
+								<RecordCard
+									interactive
+									compactPrint
+									title={t(...dailyTitles.messages)}
+									{stamp}
+									stampRule
+								>
 									{#if !data.tracked}
 										{@render messagesNotTracked()}
 									{:else}
@@ -849,6 +856,7 @@
 									compactPrint
 									title={t('Lines and stops to inspect', 'Lignes et arrêts à examiner')}
 									{stamp}
+									stampRule
 								>
 									{#await rankings then results}
 										{#if results.some(({ kind }) => kind !== 'answer' && kind !== 'busy')}<p>

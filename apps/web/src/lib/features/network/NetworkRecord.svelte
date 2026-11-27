@@ -417,7 +417,7 @@
 						{/snippet}
 					</NetworkRecordReading>
 					<section id="delay" class="grid min-w-0">
-						<RecordCard interactive title={copy.delay} {stamp} reserve="histogram">
+						<RecordCard interactive title={copy.delay} {stamp} stampRule reserve="histogram">
 							{#await record.delayDistribution}
 								{#key record.delayDistribution}<RecordPending
 										shape="histogram"

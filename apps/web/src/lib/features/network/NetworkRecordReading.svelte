@@ -71,7 +71,7 @@
 </script>
 
 <section {id} class="grid min-w-0">
-	<RecordCard {title} {stamp} {fill} interactive={!!control}>
+	<RecordCard {title} {stamp} stampRule {fill} interactive={!!control}>
 		<!-- The reading keeps its waiting height when it ends in a short state; what follows it stays put. -->
 		<div class="reading" class:fill style:min-block-size={reserved}>
 			{#await answer}

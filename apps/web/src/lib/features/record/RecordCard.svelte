@@ -23,6 +23,7 @@
 		edge,
 		waiting,
 		reserve,
+		stampRule = false,
 	}: {
 		title: string;
 		disclosure?: {
@@ -47,6 +48,11 @@
 		waiting?: RecordWaiting;
 		/** A body that ends in a short honest state keeps this shape's height, the state on top. */
 		reserve?: RecordWaiting;
+		/**
+		 * The stamp sits under the title whenever the card is narrower than 560 px, so two cards of a
+		 * row start their bodies at the same height (holistic pass F1.2); wider, it keeps its corner.
+		 */
+		stampRule?: boolean;
 	} = $props();
 	const reservedSize = $derived(reserve ? skeletonBlockSize(reserve) : null);
 	const id = $props.id();
@@ -118,6 +124,7 @@
 		class:nested={disclosure?.nested}
 		class:expandable={expandable && !disclosure}
 		class:compact-print={compactPrint}
+		class:stamp-rule={stampRule}
 	>
 		{#if disclosure}
 			{#if disclosure.nested}
@@ -229,6 +236,16 @@
 	}
 	.expandable {
 		container-type: inline-size;
+	}
+	.stamp-rule {
+		container-type: inline-size;
+	}
+	/* 32rem of content is a 560 px card with its 24 px sides. */
+	@container (inline-size < 32rem) {
+		.stamp-rule > header {
+			flex-direction: column;
+			align-items: flex-start;
+		}
 	}
 	@container (inline-size < 9rem) {
 		.expandable-title {

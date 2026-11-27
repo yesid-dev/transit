@@ -241,7 +241,7 @@
 {#snippet recordCard()}
 	{@const previousLabel =
 		record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
-	<RecordCard interactive title={t.record} {stamp}>
+	<RecordCard interactive title={t.record} {stamp} stampRule>
 		{#await overviewReadings}
 			<RecordPending shape="reading" {locale} answer={overviewReadings} />
 			{@render actions()}
@@ -455,7 +455,7 @@
 		</div>
 	</RecordGroup>
 	<RecordGroup>
-		<RecordCard interactive title={t.rankings} {stamp}>
+		<RecordCard interactive title={t.rankings} {stamp} stampRule>
 			<p class="mb-3 text-muted-foreground">{t.rankingIntro}</p>
 			{#await rankings then results}
 				{@const failure = results
