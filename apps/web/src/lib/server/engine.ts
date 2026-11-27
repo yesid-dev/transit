@@ -448,6 +448,7 @@ const rankingIdentity = z.object({
 const rankingsRecord = rankingEnvelope.extend({
 	kind: z.enum(['line', 'stop', 'departure', 'vehicle']),
 	measure: z.string(),
+	reference: recordMeasure.optional(),
 	available_classes: z.array(z.string()),
 	ranked_count: count,
 	rows: z.array(

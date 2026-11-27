@@ -591,6 +591,11 @@ def test_vehicle_ranking_default_floors_and_exports(
 ) -> None:
     store, _ = vehicle_history
     result = answer(store, "/ranking", kind="vehicle")
+    reference = result["reference"]
+    separate = answer(store, "/measure", measure=REPORTING_RATE)
+    reference["evidence"].pop("query_ms")
+    separate["evidence"].pop("query_ms")
+    assert reference == separate
     assert result["measure"] == REPORTING_RATE
     assert [row["id"] for row in result["rows"]] == ["101", "102"]
     assert result["rows"][0]["value"] > result["rows"][1]["value"] == 0

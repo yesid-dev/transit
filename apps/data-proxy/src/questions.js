@@ -47,7 +47,7 @@ const MAX_RECORD_BUDGET_MS = 45_000;
 const PUBLIC_HEADERS = {
   ...CORS_HEADERS,
   "access-control-expose-headers":
-    `${CORS_HEADERS["access-control-expose-headers"]}, Retry-After, X-Transit-Answer, X-Transit-Cache`,
+    `${CORS_HEADERS["access-control-expose-headers"]}, Retry-After, X-Transit-Answer, X-Transit-Cache, Server-Timing`,
   "cache-control": "no-store",
 };
 
@@ -55,16 +55,37 @@ function message(status, message, headers = {}) {
   return Response.json({ message }, { status, headers: { ...PUBLIC_HEADERS, ...headers } });
 }
 
-function busy(retryAfter) {
-  return message(503, "busy, try again", { "retry-after": retryAfter });
+function busy(retryAfter, timing) {
+  return message(503, "busy, try again", {
+    "retry-after": retryAfter,
+    ...(timing && { "server-timing": timing }),
+  });
 }
 
-function publicAnswer(body, contentType, { stale = false, lastGood = false, cached = false } = {}) {
+function engineTiming(response, started) {
+  const allowed = /^(queue|engine);dur=[0-9]{1,8}(?:\.[0-9]{1,3})?$/;
+  const durations = (response.headers.get("server-timing") ?? "")
+    .split(",").map((metric) => metric.trim()).filter((metric) => allowed.test(metric));
+  return [`upstream;dur=${(performance.now() - started).toFixed(2)}`, ...durations].join(", ");
+}
+
+function answerTiming(source, state, timing) {
+  return [`src;desc=${source}`, `cache;desc=${state}`, timing].filter(Boolean).join(", ");
+}
+
+function publicAnswer(body, contentType, {
+  stale = false, lastGood = false, cached = false, source, timing,
+} = {}) {
   const headers = { ...PUBLIC_HEADERS, "content-type": contentType };
   // Cache age or an unverified revision calls for revalidation. Probe failures use X-Transit-Answer.
   if (stale) headers["x-transit-cache"] = "stale";
   if (lastGood) headers["x-transit-answer"] = "last-good";
   if (cached) headers["cache-status"] = "Transit; hit";
+  if (source) {
+    headers["server-timing"] = answerTiming(
+      source, stale || lastGood ? "stale" : cached ? "hit" : "miss", timing,
+    );
+  }
   return new Response(body, { headers });
 }
 
@@ -111,9 +132,11 @@ async function fetchCities(env, cache, key, authorize, ctx) {
   const denied = await authorize();
   if (denied) return { error: denied };
   try {
+    const started = performance.now();
     const response = await env.ENGINE.fetch(new Request("https://transit-engine.internal/cities", {
       headers: { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` },
     }));
+    const timing = engineTiming(response, started);
     if (response.ok && response.headers.get("content-type")?.startsWith("application/json")) {
       const body = await response.text();
       const catalog = JSON.parse(body);
@@ -128,7 +151,7 @@ async function fetchCities(env, cache, key, authorize, ctx) {
         if (env.QUESTION_LAST_GOOD) ctx.waitUntil(env.QUESTION_LAST_GOOD.put(
           CITY_CATALOG_KEY, body, { expirationTtl: LAST_GOOD_TTL, metadata: { freshUntil } },
         ).catch(() => console.warn("Last-good city catalog write failed")));
-        return { body, failed: false };
+        return { body, failed: false, source: "engine", timing };
       }
     }
   } catch {}
@@ -148,7 +171,7 @@ export async function loadPublicCities(env, cache, origin, authorize, ctx, refre
     const freshUntil = Number(cached.headers.get(FRESH_UNTIL));
     const stale = !(freshUntil > Date.now());
     const lastGood = stale && background(freshUntil);
-    return { body: await cached.text(), stale, lastGood };
+    return { body: await cached.text(), stale, lastGood, cached: true, source: "edge" };
   }
 
   const saved = await savedAnswer(env, CITY_CATALOG_KEY);
@@ -159,7 +182,7 @@ export async function loadPublicCities(env, cache, origin, authorize, ctx, refre
     if (!stale) ctx.waitUntil(remember(cache, key, LAST_GOOD_TTL, saved.value, "application/json", {
       [FRESH_UNTIL]: String(freshUntil),
     }).catch(() => console.warn("Transit city cache write failed")));
-    return { body: saved.value, stale, lastGood };
+    return { body: saved.value, stale, lastGood, cached: true, source: "kv" };
   }
   return refill();
 }
@@ -184,7 +207,7 @@ async function lastGood(env, key) {
           (_, leading, space, close) => `${leading}{"stale":true${close ? "" : ","}${space}${close}`,
         )
         : value;
-      return publicAnswer(body, contentType, { lastGood: true });
+      return publicAnswer(body, contentType, { lastGood: true, source: "kv" });
     }
   } catch {
     console.warn("Last-good transit answer read failed");
@@ -236,7 +259,7 @@ async function serveLive(env, ctx, origin, question, visitorIp) {
   const cache = globalThis.caches?.default;
   const key = new Request(`${origin}/__transit_question_cache/v2/live${question.key}`);
   const cached = await cacheMatch(cache, key);
-  if (cached) return publicAnswer(cached.body, "application/json", { cached: true });
+  if (cached) return publicAnswer(cached.body, "application/json", { cached: true, source: "edge" });
   const denied = await admit(env, visitorIp);
   if (denied) return denied;
 
@@ -255,7 +278,7 @@ async function serveLive(env, ctx, origin, question, visitorIp) {
       }
       body = object.body;
     }
-    const response = publicAnswer(body, "application/json");
+    const response = publicAnswer(body, "application/json", { source: "r2" });
     if (cache) {
       const copy = new Response(response.clone().body, {
         headers: { "cache-control": `public, max-age=${LIVE_TTL}`, "content-type": "application/json" },
@@ -317,9 +340,7 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       ...provider,
       basemap_v2_url: publicBasemapUrl(provider.id, provider.basemap_url),
     }));
-    return publicAnswer(JSON.stringify(catalog), "application/json", {
-      stale: cities.stale, lastGood: cities.lastGood,
-    });
+    return publicAnswer(JSON.stringify(catalog), "application/json", cities);
   }
   const catalog = cities.body && JSON.parse(cities.body);
   const index = INDEX_ROUTES.has(question.route);
@@ -337,7 +358,9 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
   }
 
   const cached = cacheKey && await cacheMatch(cache, cacheKey);
-  if (cached) return publicAnswer(cached.body, cached.headers.get("content-type"), { cached: true });
+  if (cached) return publicAnswer(cached.body, cached.headers.get("content-type"), {
+    cached: true, source: "edge",
+  });
 
   const storageKey = key && env.QUESTION_LAST_GOOD && await hash(key);
   if (closed && storageKey) {
@@ -346,7 +369,7 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       const { value, metadata: { contentType } } = saved;
       ctx.waitUntil(remember(cache, cacheKey, CLOSED_TTL, value, contentType)
         .catch(() => console.warn("Transit question cache write failed")));
-      return publicAnswer(value, contentType, { cached: true });
+      return publicAnswer(value, contentType, { cached: true, source: "kv" });
     }
   }
 
@@ -356,6 +379,7 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
   let body;
   let contentType;
   let matchesCatalog;
+  let timing;
   let settled = false;
   const headers = { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` };
   if (deadline) headers["x-transit-record-deadline"] = String(deadline);
@@ -365,16 +389,18 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
     const signal = deadline
       ? AbortSignal.any([request.signal, AbortSignal.timeout(Math.max(0, deadline - Date.now()))])
       : request.signal;
+    const started = performance.now();
     const response = await env.ENGINE.fetch(
       new Request(question.upstream, { headers, signal, redirect: "manual" }),
     );
+    timing = engineTiming(response, started);
     const reportedRevision = answerRevision(response.headers.get(REVISION_HEADER));
     // Older engines do not validate public city membership for dated questions.
     if (requirePublicCity && !reportedRevision) return cities.error;
     const retryAfter = response.headers.get("retry-after");
     if (response.status === 503 && retryAfter) {
       await response.body?.cancel();
-      return busy(retryAfter);
+      return busy(retryAfter, answerTiming("engine", "miss", timing));
     }
     if (question.networkCorridors && response.status === 409) {
       const { reason, message } = await response.json();
@@ -428,7 +454,7 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       }).catch(() => console.warn("Last-good transit answer write failed")));
     }
   }
-  return publicAnswer(body, contentType);
+  return publicAnswer(body, contentType, { source: "engine", timing });
 }
 
 async function serveIndex(env, ctx, cache, origin, question, version, revision, city, authorize) {
@@ -447,17 +473,24 @@ async function serveIndex(env, ctx, cache, origin, question, version, revision, 
     const denied = await authorize();
     if (denied) return { response: denied };
     try {
+      const started = performance.now();
       const response = await env.ENGINE.fetch(new Request(question.upstream, {
         headers: { authorization: `Bearer ${env.TRANSIT1_ENGINE_ACCESS_TOKEN}` },
         redirect: "manual",
       }));
+      const timing = engineTiming(response, started);
       const retryAfter = response.headers.get("retry-after");
       if (response.status === 400) {
         return { response: publicEngineError(await response.json()), failed: true };
       }
       if (!response.ok || !response.headers.get("content-type")?.startsWith(contentType)) {
         await response.body?.cancel();
-        return { response: retryAfter ? busy(retryAfter) : message(503, "index unavailable"), failed: true };
+        return {
+          response: retryAfter
+            ? busy(retryAfter, answerTiming("engine", "miss", timing))
+            : message(503, "index unavailable"),
+          failed: true,
+        };
       }
       const body = await response.text();
       const index = JSON.parse(body);
@@ -473,7 +506,12 @@ async function serveIndex(env, ctx, cache, origin, question, version, revision, 
           expirationTtl: LAST_GOOD_TTL, metadata: { freshUntil, tag },
         }).catch(() => console.warn("Last-good transit index write failed")));
       }
-      return { response: publicAnswer(body, contentType, { stale: !matchesCatalog }), failed: false };
+      return {
+        response: publicAnswer(body, contentType, {
+          stale: !matchesCatalog, source: "engine", timing,
+        }),
+        failed: false,
+      };
     } catch {
       return { response: message(503, "index unavailable"), failed: true };
     }
@@ -492,7 +530,7 @@ async function serveIndex(env, ctx, cache, origin, question, version, revision, 
     const freshUntil = Number(cached.headers.get(FRESH_UNTIL));
     const stale = storedTag !== tag || !(freshUntil > Date.now());
     const lastGood = stale && background(storedTag, freshUntil);
-    return publicAnswer(cached.body, contentType, { cached: true, stale, lastGood });
+    return publicAnswer(cached.body, contentType, { cached: true, stale, lastGood, source: "edge" });
   }
   const saved = storeKey && await savedAnswer(env, storeKey);
   if (saved?.value != null && saved.metadata?.tag) {
@@ -500,7 +538,7 @@ async function serveIndex(env, ctx, cache, origin, question, version, revision, 
     const stale = storedTag !== tag || !(freshUntil > Date.now());
     keepAtEdge(saved.value, freshUntil, storedTag);
     const lastGood = stale && background(storedTag, freshUntil);
-    return publicAnswer(saved.value, contentType, { cached: true, stale, lastGood });
+    return publicAnswer(saved.value, contentType, { cached: true, stale, lastGood, source: "kv" });
   }
   return (await refill()).response;
 }

@@ -148,6 +148,7 @@ def vehicle_stats_query(
     by_hour: bool = False,
     by_line: bool = False,
     vehicle: str | None = None,
+    include_network: bool = False,
 ) -> tuple[str, list[object]]:
     tail = vehicle_tail_sql("next_capture", "last_seen_at_utc", "cadence_us")
     end = vehicle_end_sql("captured_at_utc", "last_seen_at_utc", tail, "cadence_us")
@@ -195,6 +196,16 @@ def vehicle_stats_query(
         """
         service_days += f" FILTER ({service_weight} > 0)"
         keys = "SELECT range AS entity FROM range(24) WHERE EXISTS (SELECT 1 FROM selected)"
+    # Count network service dates and distinct trips before reducing the vehicle rows.
+    entity_groups = (
+        "GROUP BY GROUPING SETS ((vehicle_id), ())" if include_network else "GROUP BY entity"
+    )
+    trip_groups = (
+        "GROUP BY GROUPING SETS ((vehicle_id, service_date, trip_id), (service_date, trip_id))"
+        if include_network else ""
+    )
+    if include_network:
+        keys += " UNION ALL SELECT NULL::VARCHAR WHERE EXISTS (SELECT 1 FROM selected)"
     coverage_sql = f", {POLL_COVERAGE_SQL}" if reporting or completion else ""
     reporting_sql = ""
     reporting_counts = "0, 0, 0, 0"
@@ -249,7 +260,8 @@ def vehicle_stats_query(
                 sum(gap_us) FILTER (covered) AS silent_us,
                 count(*) FILTER (NOT covered) AS capture_gap,
                 sum(gap_us) FILTER (NOT covered) AS capture_gap_us
-            FROM silences GROUP BY entity
+            FROM silences
+            {"GROUP BY GROUPING SETS ((entity), ())" if include_network else "GROUP BY entity"}
         )
         """
         reporting_counts = ", ".join(
@@ -452,16 +464,17 @@ def vehicle_stats_query(
                 sum({service_weight}) AS service_us
             FROM sequenced {service_segments}
             WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
-            GROUP BY entity
+            {entity_groups}
         ), trip_entities AS (
             SELECT DISTINCT {entity} AS entity, service_date, trip_id
             FROM assignments JOIN selected USING (vehicle_id) {trip_start_join}
+            {trip_groups}
         ), trip_counts AS (
             SELECT entity, count(*) AS trips_run FROM trip_entities GROUP BY entity
         ), routes AS (
             SELECT {entity} AS entity, list(DISTINCT route_id) AS lines
             FROM assignments JOIN selected USING (vehicle_id) {trip_start_join}
-            WHERE route_id IS NOT NULL GROUP BY entity
+            WHERE route_id IS NOT NULL {entity_groups}
         ), keys AS ({keys})
         {coverage_sql}
         {reporting_sql}

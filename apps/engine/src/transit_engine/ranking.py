@@ -44,7 +44,9 @@ from transit_engine.measures import (
     _info,
     _punctuality_evidence,
     _punctuality_values,
+    _vehicle_rows,
     evaluate,
+    measure_answer,
     read_window,
 )
 from transit_engine.schedule import FREQUENT_HEADWAY_SECONDS, FREQUENT_SPAN_SECONDS
@@ -407,6 +409,7 @@ def _rank_batches(
     *,
     historical: bool = False,
     days: int | None = None,
+    include_network: bool = False,
 ) -> dict[EntityKey, Batch]:
     assert family.query is not None
     question = ranking.question
@@ -415,10 +418,15 @@ def _rank_batches(
     for offset, batch in enumerate(window.batches(days=days)):
         if historical and ranking.kind != "vehicle":
             _historical_schedule(conn, batch, ranking.kind, totals, question.city, version)
-        results = family.query(conn, family, batch, question, version, ranking.kind)
+        if include_network:
+            results = _vehicle_rows(
+                conn, family, batch, question, version, ranking.kind, include_network=True
+            )
+        else:
+            results = family.query(conn, family, batch, question, version, ranking.kind)
         window.record_vehicle_tracking(family, offset, results)
         for key, result in results.items():
-            if key[0] is None or (ranking.kind == "departure" and key[2] is None):
+            if key and (key[0] is None or (ranking.kind == "departure" and key[2] is None)):
                 continue
             if key in totals:
                 totals[key].update(result)
@@ -427,13 +435,14 @@ def _rank_batches(
     return totals
 
 
-def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
+def rank(store: Store, ranking: Ranking, *, with_reference: bool = True) -> dict[str, Any]:
     started = perf_counter()
     question = ranking.question
     family, selected = _SELECTIONS[question.measure]
     (measure,) = selected
     lines: dict[str, LineSchedule] = {}
     by_vehicle = ranking.kind == "vehicle"
+    include_network = with_reference and by_vehicle and question.measure == VEHICLE_RANKING_DEFAULT
     historical = family.id in {_CROWDING_ID, _ALERT_COUNTS_ID, _VEHICLES_ID}
     has_own_states = historical or family.id in {_WAITING_ID, _CORRIDORS_ID}
     with service_query(store, question.city) as conn:
@@ -451,11 +460,15 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
             except duckdb.OutOfMemoryException:
                 totals = _rank_batches(conn, store, ranking, family, window)
         else:
-            totals = _rank_batches(conn, store, ranking, family, window, historical=historical)
+            totals = _rank_batches(
+                conn, store, ranking, family, window,
+                historical=historical, include_network=include_network,
+            )
         if not by_vehicle:
             for batch in window.batches():
                 _line_schedules(conn, batch[TRIP_DAYS], store, question, lines)
 
+    network = totals.pop((), Batch()) if include_network else None
     classes = {route: schedule.service_class for route, schedule in lines.items()}
     class_sizes: Counter[str] = Counter()
     frequent_class_sizes: Counter[str] = Counter()
@@ -609,6 +622,12 @@ def rank(store: Store, ranking: Ranking) -> dict[str, Any]:
         "range_notes": {method: note._asdict() for method, note in _RANGE_NOTES.items()},
         "info": [_info(family, measure)],
         "evidence": evidence,
+        **(
+            {"reference": measure_answer(
+                store, question, family, selected, network, window, started
+            )}
+            if network is not None else {}
+        ),
         **historical_state,
     }
 

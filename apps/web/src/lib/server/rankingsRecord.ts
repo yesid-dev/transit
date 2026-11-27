@@ -84,30 +84,39 @@ export async function loadRankingsRecord(
 			city,
 			visitorIp: request.headers.get('cf-connecting-ip'),
 		};
+	const ranking =
+		scope && include('answer')
+			? getRankingsRecord(rankingsQuery(selection).parameters, scope)
+			: null;
+	const readReference =
+		scope && include('reference')
+			? () =>
+					getRecordAnswer({ path: '/measure', parameters: { measure: selection.measure } }, scope)
+			: null;
 	return {
 		selection,
 		period,
 		city,
 		notTracked,
 		answer:
-			scope && include('answer')
-				? getRankingsRecord(rankingsQuery(selection).parameters, scope).then((result) =>
-						result.kind === 'answer'
-							? {
-									...result,
-									identities: rankingIdentities(
-										selection.kind,
-										locals?.rankingsSchedule,
-										result.answer,
-									),
-								}
-							: result,
-					)
-				: null,
+			ranking?.then((result) => {
+				if (result.kind !== 'answer') return result;
+				const { reference: _, ...answer } = result.answer;
+				return {
+					...result,
+					answer,
+					identities: rankingIdentities(selection.kind, locals?.rankingsSchedule, answer),
+				};
+			}) ?? null,
 		reference:
-			scope && include('reference')
-				? getRecordAnswer({ path: '/measure', parameters: { measure: selection.measure } }, scope)
-				: null,
+			ranking && selection.kind === 'vehicle' && readReference
+				? ranking.then((result) => {
+						if (result.kind !== 'answer') return result;
+						return result.answer.reference
+							? { ...result, answer: result.answer.reference }
+							: readReference();
+					})
+				: (readReference?.() ?? null),
 	};
 }
 

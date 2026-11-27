@@ -34,11 +34,6 @@ it.each([
 	['/hotspots', 'class=3%3Afrequent', { kind: 'line', measure: 'on_time', class: '3:frequent' }],
 	['/hotspots', 'kind=stops&class=all&measure=missing_trips', { kind: 'stop', measure: 'on_time' }],
 	['/repeat-offenders', '', { kind: 'departure', measure: 'on_time' }],
-	[
-		'/repeat-offenders',
-		'kind=buses&measure=late',
-		{ kind: 'vehicle', measure: 'vehicle_reporting_gaps_per_100_hours' },
-	],
 ] as const)('streams the engine query for %s?%s', async (path: RankingPath, query, cuts) => {
 	const finish: Array<(response: Response) => void> = [];
 	fetcher.mockImplementation(
@@ -78,6 +73,71 @@ it.each([
 		respond(new Response(null, { status: 503, headers: { 'retry-after': '1' } }));
 	expect(await record.answer).toEqual({ kind: 'busy' });
 	expect(await record.reference).toEqual({ kind: 'busy' });
+});
+
+it.each([true, false])('streams vehicle rankings with combined reference %s', async (combined) => {
+	const path = '/repeat-offenders';
+	const measure = 'vehicle_reporting_gaps_per_100_hours';
+	const url = new URL(`https://transit1.yesid.dev${path}?kind=vehicle&${dates}`);
+	const evidence = {
+		start_date: '2026-10-15',
+		end_date: '2026-11-21',
+		days_included: [],
+		days_measured: [],
+		days_not_measured: [],
+		method_version: '1',
+		cleaning_versions: [],
+		query_ms: 10,
+	};
+	const reference = {
+		coverage_note: null,
+		state: 'measured',
+		state_text: { en: 'Measured', fr: 'Mesuré' },
+		value: { [measure]: 0.5 },
+		evidence: { ...evidence, counts: { hours_in_service: 200, reporting_gaps: 1 } },
+	};
+	let finish!: (response: Response) => void;
+	fetcher
+		.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		)
+		.mockResolvedValueOnce(Response.json(reference));
+	const record = await loadRankingsRecord(path, {
+		url,
+		request: new Request(url),
+		parent: async () => ({ providerId: 'agency' }),
+	});
+	expect(fetcher).toHaveBeenCalledTimes(1);
+	expect(new URL(fetcher.mock.calls[0]![0].url).searchParams.get('kind')).toBe('vehicle');
+	finish(
+		Response.json({
+			kind: 'vehicle',
+			measure,
+			class: null,
+			available_classes: [],
+			ranked_count: 0,
+			rows: [],
+			excluded: [],
+			range_notes: {},
+			coverage_note: null,
+			evidence,
+			info: [
+				{ minimum_sample: 1, text: { en: { definition: 'Rate' }, fr: { definition: 'Taux' } } },
+			],
+			...(combined && { reference }),
+		}),
+	);
+	expect(await record.answer).toMatchObject({ kind: 'answer', answer: { measure } });
+	expect(await record.reference).toEqual({ kind: 'answer', answer: reference });
+	expect(fetcher).toHaveBeenCalledTimes(combined ? 1 : 2);
+	if (!combined) {
+		const fallback = new URL(fetcher.mock.calls[1]![0].url);
+		expect(fallback.pathname).toBe('/v2/agency/measure');
+		expect(fallback.searchParams.get('measure')).toBe(measure);
+	}
 });
 
 it('keeps vehicle tracking unavailable by provider capability', async () => {

@@ -514,12 +514,14 @@ test("canonical questions reuse the versioned edge answer and bypass the engine 
   const first = await f.fetch(MEASURE + "&hour=07&format=json&lang=fr&line=A%2FB");
   assert.equal(first.headers.get("access-control-allow-origin"), "*");
   assert.equal(first.headers.get("cache-status"), null);
+  assert.match(first.headers.get("server-timing"), /^src;desc=engine, cache;desc=miss, upstream;dur=[\d.]+$/);
   assert.deepEqual(await first.json(), ANSWER);
   const second = await f.fetch(
     "/v2/demo/measure?line=A%2fB&to=2020-01-02&hour=7&measure=on_time&from=2020-01-01",
   );
   assert.deepEqual(await second.json(), ANSWER);
   assert.equal(second.headers.get("cache-status"), "Transit; hit");
+  assert.equal(second.headers.get("server-timing"), "src;desc=edge, cache;desc=hit");
   assert.equal(f.requests.length, 1);
   assert.equal(f.visitors.length, 1);
   const forwarded = f.requests[0];
@@ -533,6 +535,19 @@ test("canonical questions reuse the versioned edge answer and bypass the engine 
   const [key, entry] = [...f.answers].find(([key]) => key.includes("/measure?"));
   assert.match(key, /\/6\/0123456789abcdef\/demo\/measure\?from=2020-01-01&hour=7&line=A%2FB&measure=on_time&to=2020-01-02$/);
   assert.equal(entry.ttl, 604800);
+});
+
+test("forwards only engine and queue durations from a new engine", async (t) => {
+  const f = fixture(t, () => Response.json(ANSWER, {
+    headers: {
+      "x-transit-days-pending": "0",
+      "server-timing": 'queue;dur=17.04, engine;dur=300.01, visitor;desc="private", engine;desc="private"',
+    },
+  }));
+  const response = await f.fetch(MEASURE, {}, "GET", true);
+  assert.match(response.headers.get("server-timing"),
+    /^src;desc=engine, cache;desc=miss, upstream;dur=[\d.]+, queue;dur=17\.04, engine;dur=300\.01$/);
+  assert.deepEqual(await response.json(), ANSWER);
 });
 
 test("a refreshed catalog separates answers by cleaning version and engine revision", async (t) => {
@@ -710,6 +725,7 @@ test("cache eviction and upstream failures return the same question's saved answ
     const response = await f.fetch(MEASURE);
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("x-transit-answer"), "last-good");
+    assert.equal(response.headers.get("server-timing"), "src;desc=kv, cache;desc=stale");
     assert.match(response.headers.get("access-control-expose-headers"), /X-Transit-Answer/);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal(await response.text(), `{"stale":true,${exactJson.slice(1)}`);
@@ -1025,6 +1041,7 @@ test("a settled period reuses a shared answer after edge eviction without spendi
   const shared = await f.fetch(MEASURE);
   assert.deepEqual(await shared.json(), ANSWER);
   assert.equal(shared.headers.get("x-transit-answer"), null);
+  assert.equal(shared.headers.get("server-timing"), "src;desc=kv, cache;desc=hit");
   assert.equal(f.requests.length, 1);
   assert.equal(f.visitors.length, 1);
   assert.equal((await f.fetch(MEASURE)).headers.get("cache-status"), "Transit; hit");

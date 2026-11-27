@@ -1311,6 +1311,7 @@ def test_bounded_wait_queue(store: Store, monkeypatch: pytest.MonkeyPatch) -> No
             assert full_headers[b"retry-after"] == wait_headers[b"retry-after"] == b"1"
             assert wait_headers[b"x-engine-queued"] == b"true"
             assert full_headers[b"x-engine-queued"] == b"false"
+            assert float(wait_headers[b"server-timing"].removeprefix(b"queue;dur=")) > 0
         finally:
             release.set()
         status, _, _ = await active
@@ -1347,8 +1348,9 @@ def _accessibility_trips() -> tuple[Trip, ...]:
     )
 
 
-def test_catalogue_bypasses_record_work_and_disconnects_reclaim_slots(
-    store: Store, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("route", ["/schedule-index", "/measure"])
+def test_short_queries_bypass_record_work_and_disconnects_reclaim_slots(
+    store: Store, monkeypatch: pytest.MonkeyPatch, route: str
 ) -> None:
     async def exercise() -> None:
         app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=2000)
@@ -1402,13 +1404,81 @@ def test_catalogue_bypasses_record_work_and_disconnects_reclaim_slots(
         queued_gone.set()
         await asyncio.wait_for(queued, 3)
         assert app.record.waiting == 0
-        status, headers, _ = await asyncio.wait_for(http(app, "/schedule-index", "city=stm"), 3)
+        quick = "city=stm" if route == "/schedule-index" else query + "&measure=alert_counts"
+        status, headers, _ = await asyncio.wait_for(http(app, route, quick), 3)
         assert status == 200 and headers[b"x-engine-queued"] == b"false"
+        assert not first.done()
         first_gone.set()
         await asyncio.wait_for(first, 3)
         await asyncio.wait_for(interrupted.wait(), 3)
         status, _, _ = await http(app, "/measure", query + "&measure=on_time")
         assert status == 200
+
+    asyncio.run(exercise())
+
+
+def test_quick_lane_bounds_waiters_and_keeps_record_capacity(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exercise() -> None:
+        app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=2000)
+        loop = asyncio.get_running_loop()
+        started = asyncio.Event()
+        stopped = asyncio.Event()
+
+        def alert_query(source: Store, question: Question) -> dict[str, Any]:
+            if question.measure != "alert_counts":
+                return ask(source, question)
+            with track_connection(source.connect()) as conn:
+                loop.call_soon_threadsafe(started.set)
+                try:
+                    conn.execute("SELECT sum(sin(i)) FROM range(500000000) t(i)")
+                except duckdb.InterruptException:
+                    loop.call_soon_threadsafe(stopped.set)
+                    raise
+            raise AssertionError("the disconnected query should have been interrupted")
+
+        monkeypatch.setattr("transit_engine.server.ask", alert_query)
+        query = f"city=stm&from={THURSDAY}&to={THURSDAY}"
+        alert = query + "&measure=alert_counts"
+
+        async def abandon(gone: asyncio.Event) -> None:
+            async def receive() -> ASGIReceiveEvent:
+                await gone.wait()
+                return {"type": "http.disconnect"}
+
+            async def send(_response: ASGISendEvent) -> None:
+                pytest.fail("responded to a disconnected caller")
+
+            await app(cast(HTTPScope, {
+                "type": "http", "method": "GET", "path": "/measure", "headers": [],
+                "query_string": alert.encode(),
+            }), receive, send)
+
+        async with asyncio.timeout(3):
+            active_gone = asyncio.Event()
+            active = asyncio.create_task(abandon(active_gone))
+            await started.wait()
+            queued_gone = asyncio.Event()
+            queued = asyncio.create_task(abandon(queued_gone))
+            while app.quick.waiting != 1:
+                await asyncio.sleep(0)
+            status, headers, _ = await http(app, "/measure", alert)
+            assert status == 503
+            assert headers[b"server-timing"] == b"queue;dur=0.00"
+            status, headers, _ = await http(app, "/measure", query + "&measure=punctuality")
+            assert status == 200
+            assert headers[b"x-engine-queued"] == b"false"
+            assert headers[b"server-timing"].startswith(b"queue;dur=0.00, engine;dur=")
+            queued_gone.set()
+            await queued
+            assert app.quick.waiting == 0
+            active_gone.set()
+            await active
+            await stopped.wait()
+            monkeypatch.setattr("transit_engine.server.ask", ask)
+            status, _, _ = await http(app, "/measure", alert)
+            assert status == 200
 
     asyncio.run(exercise())
 
