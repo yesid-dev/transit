@@ -42,7 +42,7 @@ export const copy = defineCopy({
 		mapErrorBody: 'The map could not start. Try again.',
 		mapRetry: 'Retry map',
 		modeStatus: 'Status',
-		modeOccupancy: 'Crowding',
+		modeOccupancy: 'Room on board',
 		modeAlerts: 'Notices',
 		modeRoutes: 'Lines',
 		modeStops: 'Stops',

@@ -39,7 +39,7 @@ export const lineSectionTitles = {
 		'Trajets annulés et manquants, par départ',
 	],
 	late: ['Departures late most often', 'Départs le plus souvent en retard'],
-	crowding: ['Crowding', 'Places à bord'],
+	crowding: ['Room on board', 'Places à bord'],
 	alerts: ['Agency notices on these dates', 'Avis de la société de transport à ces dates'],
 	frequency: ['Planned frequency', 'Fréquence prévue'],
 	boundaries: ['First and last trips', 'Premiers et derniers trajets'],

@@ -71,7 +71,7 @@ test('vehicle live links its scheduled departure and keeps predictions in their 
 		'Scheduled departure',
 		'Status',
 		'Next stop',
-		'How full it is',
+		'Room on board',
 		'Last report',
 	]);
 	await expect(

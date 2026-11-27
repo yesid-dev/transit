@@ -47,7 +47,7 @@ for (const locale of ['en', 'fr'] as const) {
 					.filter({ hasText: locale === 'fr' ? /^Non mesuré$/ : /^Not measured$/ }),
 			).toBeVisible();
 			await expect(
-				main.getByRole('heading', { name: locale === 'fr' ? 'Places à bord' : 'Crowding' }),
+				main.getByRole('heading', { name: locale === 'fr' ? 'Places à bord' : 'Room on board' }),
 			).toBeVisible();
 			await expect(
 				main.getByRole('heading', {
