@@ -499,17 +499,21 @@
 
 {#snippet tripsCell(row: Row)}
 	{@const counts = row.delivery?.evidence.counts}
-	<RecordTableValue
-		{locale}
-		text={tripsPending || timingPending
-			? pendingText
-			: row.trips === null
-				? tripsFailure
+	{#if !tripsPending && !timingPending && row.trips !== null}
+		<span class="min-[1024px]:@min-[48rem]:whitespace-nowrap">
+			{recordRatio(counts!.ran!, tally(counts!.scheduled!, locale), locale)}
+		</span>
+	{:else}
+		<RecordTableValue
+			{locale}
+			text={tripsPending || timingPending
+				? pendingText
+				: tripsFailure
 					? t('Unavailable', 'Indisponible')
-					: null
-				: recordRatio(counts!.ran!, tally(counts!.scheduled!, locale), locale)}
-		state={recordStateFor(row.delivery?.state)}
-	/>
+					: null}
+			state={recordStateFor(row.delivery?.state)}
+		/>
+	{/if}
 {/snippet}
 
 {#snippet eventsCell(row: Row)}
