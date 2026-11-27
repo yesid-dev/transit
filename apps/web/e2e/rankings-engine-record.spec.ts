@@ -242,6 +242,49 @@ test('uses segmented measures and explains an available choice of line classes',
 	await expect(classes).toHaveCount(0);
 });
 
+test('ranked line names have room beside the values at 1024px', async ({ page }) => {
+	await page.setViewportSize({ width: 1024, height: 900 });
+	await page.goto(`/fr/rankings?provider=stm&${dates}`);
+	const name = page.locator('#ranking tbody .phone-text').first();
+	await expect(name).toBeVisible();
+	expect((await name.boundingBox())?.width).toBeGreaterThanOrEqual(140);
+});
+
+for (const [prefix, by, compare, all, frequent, late] of [
+	['', 'By', 'Compare lines', 'All lines', 'Frequent lines', 'Late share'],
+	['/fr', 'Par', 'Comparer les lignes', 'Toutes les lignes', 'Lignes fréquentes', 'Part en retard'],
+] as const) {
+	test(`phone ranking choices open from the selected value (${prefix || 'en'})`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.goto(`${prefix}/rankings?provider=stm&${dates}`);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		const main = page.getByRole('main');
+		const picker = main.getByRole('button', { name: new RegExp(`^${compare} `, 'u') });
+		await expect(picker).toContainText(all);
+		await picker.click();
+		const classes = main.getByRole('list', { name: compare, exact: true });
+		await expect(classes.getByRole('button', { name: all, exact: true })).toHaveAttribute(
+			'aria-pressed',
+			'true',
+		);
+		await classes.getByRole('button', { name: frequent, exact: true }).click();
+		await expect(page).toHaveURL(/class=3%3Afrequent/u);
+		await expect(picker).toContainText(frequent);
+		await expect(picker).toHaveAttribute('aria-expanded', 'false');
+		await expect(main.getByRole('combobox')).toHaveCount(0);
+
+		const measure = main.getByRole('button', { name: new RegExp(`^${by} `, 'u') });
+		await measure.press('Enter');
+		const choices = main.getByRole('list', { name: by, exact: true });
+		await expect(choices.getByRole('button')).toHaveCount(7);
+		await choices.getByRole('button', { name: late, exact: true }).click();
+		await expect(page).toHaveURL(/measure=late/u);
+		await expect(measure).toContainText(late);
+	});
+}
+
 test('pages in groups of twenty and withholds a mismatched reference', async ({ page }) => {
 	await page.goto('/rankings?provider=stm&recordFrom=2026-10-28&recordTo=2026-11-03');
 	const main = page.getByRole('main');

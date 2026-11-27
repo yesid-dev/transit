@@ -630,7 +630,7 @@ for (const locale of ['en', 'fr'] as const) {
 
 		for (const item of cases) {
 			await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': item.scope });
-			for (const width of [320, 390]) {
+			for (const width of [320, 390, ...(item.label === 'lines' ? [1024] : [])]) {
 				await page.setViewportSize({ width, height: 900 });
 				await page.goto(item.url);
 				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
@@ -645,7 +645,9 @@ for (const locale of ['en', 'fr'] as const) {
 					let labelOverlapsValue = false;
 					let plateOverlapsLabel = false;
 					for (const row of rows) {
-						const primary = row.querySelector<HTMLElement>('[data-row-position="primary"]');
+						const primary = row.querySelector<HTMLElement>(
+							'.phone-text, [data-row-position="primary"]',
+						);
 						const value = row.querySelector<HTMLElement>('[data-row-position="value"]');
 						const link = row.querySelector<HTMLElement>('a.name-cell');
 						const name = row.querySelector<HTMLElement>('.name-label');

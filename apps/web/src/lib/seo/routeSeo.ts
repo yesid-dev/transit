@@ -123,7 +123,7 @@ const LINE_DETAIL: BilingualSeo = {
 
 // The map's Record view shows the record of stops and corridors, not live vehicles (WCAG 2.4.2).
 export const MAP_RECORD: BilingualSeo = {
-	title: { en: 'Map of the record', fr: 'Carte du bilan' },
+	title: { en: 'Record map', fr: 'Carte du bilan' },
 };
 
 const STOP_DETAIL: BilingualSeo = {

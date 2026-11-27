@@ -229,10 +229,12 @@
 {/snippet}
 
 {#snippet stateCell(row: RecordTableRow & HealthRow)}
-	{#if row.state === 'published'}<span class="font-semibold"
+	{#if row.state === 'published'}<span class="font-sans font-semibold"
 			>{publishStateText(row.state, locale)}</span
 		>
-	{:else if row.state === 'unavailable'}{publishStateText(row.state, locale)}
+	{:else if row.state === 'unavailable'}<span class="font-sans"
+			>{publishStateText(row.state, locale)}</span
+		>
 	{:else}<StateMark state={row.state} {locale} />{/if}
 {/snippet}
 {#snippet shareCell(row: RecordTableRow & { share: string })}{row.share}{/snippet}

@@ -10,6 +10,58 @@ test.beforeEach(({ browserName }, info) => {
 const period = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 const recordHref = '/?provider=stm&frameMode=record&' + period;
 
+for (const [prefix, controls, open, layout, columns] of [
+	['', 'Controls', 'Open controls', 'See the layout and files', 'Parquet columns'],
+	[
+		'/fr',
+		'Options',
+		'Ouvrir les options',
+		'Voir la structure et les fichiers',
+		'Colonnes du fichier Parquet',
+	],
+] as const) {
+	test(`phone figures, controls and download columns stay readable at 200% (${prefix || 'en'})`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.goto(prefix + recordHref);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));
+		const value = page
+			.getByRole('article', { name: prefix ? 'Bilan' : 'Record', exact: true })
+			.locator('.metric-value')
+			.filter({ hasText: /\d[.,]\d\s*%/u });
+		await expect(value).toBeVisible();
+		await page.evaluate(() => document.fonts.ready);
+		const lines = await value.evaluate((element) => {
+			const range = document.createRange();
+			range.selectNodeContents(element);
+			return range.getClientRects().length;
+		});
+		expect(lines).toBe(1);
+		const pill = page.getByRole('button', { name: new RegExp(`^${controls}.*${open}`, 'u') });
+		await expect(pill).toBeVisible();
+		const label = pill.getByText(controls, { exact: true });
+		await expect
+			.poll(() => label.evaluate((element) => element.scrollWidth - element.clientWidth))
+			.toBe(0);
+		await pill.click();
+		await expect(page.getByRole('dialog', { name: controls, exact: true })).toBeVisible();
+
+		await page.goto(`${prefix}/download?provider=stm&${period}`);
+		await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));
+		const disclosures = page.getByText(layout, { exact: true });
+		await expect(disclosures.first()).toBeVisible();
+		for (const disclosure of await disclosures.all()) await disclosure.click();
+		const column = page
+			.getByRole('region', { name: columns, exact: true })
+			.getByText('scheduled_departure_seconds', { exact: true })
+			.first();
+		await expect(column).toBeVisible();
+		expect(await column.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+	});
+}
+
 test('the desktop French total stays on one line and plate codes keep names aligned', async ({
 	page,
 }) => {

@@ -232,6 +232,7 @@ for (const width of [390, 1440]) {
 				hasText: fr ? 'Accès en fauteuil roulant aux arrêts' : 'Wheelchair boarding at stops',
 			});
 			await expect(stops).toContainText(fr ? 'Non publié' : 'Published');
+			await expect(stops.getByText(fr ? 'État' : 'State', { exact: true })).toBeHidden();
 			if (fr) {
 				await expect(publishes).toContainText(
 					'Transit ne collecte pas encore les avis d’OC Transpo.',

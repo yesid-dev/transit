@@ -243,6 +243,7 @@
 							</p>
 							{#if silentTrips?.length}
 								<RecordDataTable
+									rowAlign="middle"
 									{locale}
 									title={term.silent}
 									rowHeader={t('Line', 'Ligne')}

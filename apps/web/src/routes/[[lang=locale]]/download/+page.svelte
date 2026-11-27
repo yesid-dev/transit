@@ -326,15 +326,16 @@
 											</ul>
 										{/if}
 										{#snippet layoutAndFiles()}
-											<!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard access to columns that overflow at large text sizes.) -->
 											<div
-												class="code-scroll flex min-h-11 flex-wrap gap-x-2 gap-y-1 overflow-x-auto"
-												tabindex="0"
+												class="flex min-w-0 flex-wrap gap-x-2 gap-y-1"
 												role="region"
 												aria-label={t('Parquet columns', 'Colonnes du fichier Parquet')}
 											>
 												{#each downloadLayouts[key].columns as column (column)}
-													<code>{column}</code>
+													<code class="min-w-0 wrap-anywhere"
+														>{#each column.split(/(?<=_)/u) as part, index (index)}{#if index}<wbr
+																/>{/if}{part}{/each}</code
+													>
 												{/each}
 											</div>
 											{#if rows.length}<ul
@@ -400,7 +401,7 @@
 							</p>
 							<!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard access to the horizontally scrollable SQL query.) -->
 							<pre
-								class="code-scroll sql-example overflow-x-auto rounded-md border border-border p-3"
+								class="sql-example overflow-x-auto rounded-md border border-border p-3"
 								tabindex="0"
 								role="region"
 								aria-label={t('DuckDB query', 'Requête DuckDB')}><code
@@ -472,12 +473,9 @@
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
 		gap: var(--space-card-gap);
 	}
-	.code-scroll code {
-		white-space: nowrap;
-		word-break: normal;
-		overflow-wrap: normal;
-	}
 	.sql-example code {
 		white-space: pre-wrap;
+		word-break: normal;
+		overflow-wrap: normal;
 	}
 </style>

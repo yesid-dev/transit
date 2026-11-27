@@ -39,6 +39,9 @@ for (const locale of ['en', 'fr'] as const) {
 		await live.press('ArrowRight');
 		await expect(layers.getByRole('radio', { name: fr ? 'Arrêts' : 'Stops' })).toBeChecked();
 		await closeMapControls(page);
+		const title = fr ? 'Carte du bilan' : 'Record map';
+		await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+		await expect(page).toHaveTitle(new RegExp(`^${title}\\b`, 'u'));
 		const phone = page.viewportSize()!.width < 1024;
 		const legend = page.locator(
 			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',

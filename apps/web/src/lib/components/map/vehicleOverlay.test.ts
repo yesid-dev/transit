@@ -12,6 +12,7 @@ import {
 	SILENT_ICON,
 	VEHICLE_MARKER_GEOMETRY,
 	occupancyBadgeIconId,
+	statusBodyIconId,
 	type VehicleSpriteReceipt,
 } from './vehicleSprites';
 import { OCCUPANCY_CODES } from '#lib/v1/schemas/types.ts';
@@ -104,10 +105,16 @@ function harness() {
 	const sprites = {
 		pixelRatio: 2,
 		sprites: Object.fromEntries(
-			['body-a', 'body-b', HEADING_ICON, 'mark-a', 'mark-b', FULL, SILENT_ICON].map((id) => [
-				id,
-				image(id),
-			]),
+			[
+				'body-a',
+				'body-b',
+				HEADING_ICON,
+				'mark-a',
+				'mark-b',
+				FULL,
+				SILENT_ICON,
+				...(['on_time', 'early', 'late'] as const).map(statusBodyIconId),
+			].map((id) => [id, image(id)]),
 		),
 	} as unknown as VehicleSpriteReceipt;
 	const pin = image('pin', 88, 120);
@@ -157,6 +164,27 @@ function feature(
 afterEach(() => vi.restoreAllMocks());
 
 describe('vehicle moving foreground', () => {
+	it('paints compact network marks with early and late visible over on-time vehicles', () => {
+		const { overlay, calls, setCamera } = harness();
+		const body = (status: 'on_time' | 'early' | 'late') => statusBodyIconId(status);
+		const features = [
+			feature('on-time', 0, { body: body('on_time'), hasHeading: 0 }),
+			feature('early', 0, { body: body('early'), hasHeading: 0 }),
+			feature('late', 1, { body: body('late'), hasHeading: 0 }),
+		];
+		const paint = (zoom: number) => {
+			calls.length = 0;
+			setCamera({ zoom });
+			overlay.draw({ type: 'FeatureCollection', features });
+			return calls.filter((call) => call.kind === 'sprite');
+		};
+		const network = paint(10);
+		expect(network.map((call) => call.id)).toEqual([body('on_time'), body('late'), body('early')]);
+		expect(network.map((call) => call.values?.[2])).toEqual([6, 6, 6]);
+		expect(overlay.pick([400, 300])).toBe('early');
+		expect(paint(11.5)[0]?.values?.[2]).toBeGreaterThan(6);
+		overlay.destroy();
+	});
 	it('draws crowding badges from zoom 13 and centres the not-reporting badge below it', () => {
 		const { overlay, calls, setCamera } = harness();
 		const scene: VehicleFC = {
