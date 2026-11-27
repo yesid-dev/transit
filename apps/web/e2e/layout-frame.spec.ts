@@ -271,8 +271,13 @@ test('desktop controls keep their column and control changes retain focus and sc
 	page,
 	browserName,
 }) => {
+	// Reproduce the post-midnight window without depending on the runner's date or time zone.
+	await page.clock.setFixedTime(new Date('2026-11-27T05:05:00Z'));
 	await page.setViewportSize({ width: 1440, height: 900 });
-	await open(page, '/?provider=stm');
+	await open(
+		page,
+		'/?provider=stm&frameMode=record&period=7-days&recordFrom=2026-11-20&recordTo=2026-11-26',
+	);
 	const rail = page.getByRole('complementary', { name: 'Controls', exact: true });
 	expect((await rail.boundingBox())!.width).toBe(272);
 	const main = page.getByRole('main');
@@ -294,7 +299,13 @@ test('desktop controls keep their column and control changes retain focus and sc
 		.locator('[data-slot="menu-group"]')
 		.getByRole('link', { name: 'Lines', exact: true })
 		.click();
-	await expect(page).toHaveURL(/\/lines\?/);
+	await expect(page).toHaveURL(
+		(url) =>
+			url.pathname === '/lines' &&
+			url.searchParams.get('period') === '7-days' &&
+			url.searchParams.get('recordFrom') === '2026-11-20' &&
+			url.searchParams.get('recordTo') === '2026-11-26',
+	);
 	await expect(main).toBeFocused();
 	expect(await page.evaluate(() => window.scrollY)).toBe(0);
 	expect((await main.boundingBox())!.x).toBe(x);
@@ -359,7 +370,12 @@ test('desktop controls keep their column and control changes retain focus and sc
 	const rowTop = await firstLine.evaluate((row) => row.getBoundingClientRect().top);
 	try {
 		await page.keyboard.press('Space');
-		await expect(page).toHaveURL(/period=28-days/);
+		await expect(page).toHaveURL(
+			(url) =>
+				url.searchParams.get('period') === '28-days' &&
+				url.searchParams.get('recordFrom') === '2026-10-30' &&
+				url.searchParams.get('recordTo') === '2026-11-26',
+		);
 		await expect(preset).toBeFocused();
 		await expect(
 			firstLine.getByRole('cell', { name: 'Calculating…', exact: true }).first(),
