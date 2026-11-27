@@ -14,6 +14,7 @@ const providers = [
 			{ id: '51', short: '51', long: 'Édouard-Montpetit', type: 3 },
 			{ id: '1', short: '1', long: 'Verte', type: 1 },
 		],
+		destinations: ['Station Sherbrooke', 'Station Laurier'],
 		excluded: '80',
 	},
 	{
@@ -25,6 +26,7 @@ const providers = [
 			{ id: '7', short: '7', long: 'Carleton', type: 3 },
 			{ id: '1-373', short: '1', long: 'O-Train', type: 0 },
 		],
+		destinations: ['Greenboro', 'Carleton'],
 		excluded: '75',
 	},
 ] as const;
@@ -52,7 +54,15 @@ for (const provider of providers) {
 							date: '2026-11-21',
 							routes: provider.lines,
 							stops: [],
-							route_directions: {},
+							route_directions: Object.fromEntries(
+								[first, second].map((line, index) => [
+									line.id,
+									[
+										{ dir: 0, headsign: provider.destinations[index], stops: [] },
+										{ dir: 1, headsign: fr ? 'Centre-ville' : 'Downtown', stops: [] },
+									],
+								]),
+							),
 						},
 					},
 				}),
@@ -126,6 +136,12 @@ for (const provider of providers) {
 					panel.getByRole('combobox', { name: fr ? 'Jusqu’à' : 'Until', exact: true }),
 				).toHaveValue(String(hour + 1));
 				await expect(direction).toHaveValue('0');
+				const chosenDirection = direction.locator('option[value="0"]');
+				await expect(chosenDirection).toContainText(provider.destinations[0]);
+				await expect(chosenDirection).toContainText(provider.destinations[1]);
+				const fromHour = panel.getByRole('combobox', { name: fr ? 'De' : 'From', exact: true });
+				await expect(fromHour.locator('option[value="17"]')).toHaveText(fr ? '17 h' : '17:00');
+				await expect(page.locator('[data-map-reading-line-picker]:visible')).toHaveCount(1);
 				const active = panel.locator(
 					'[data-filter-group="active"] .mf-active-set button[aria-label]',
 				);
@@ -196,4 +212,34 @@ test('Record sends the chosen period and reading filters for Stops and Corridors
 	await expect(page).toHaveURL(/[?&]mapDirection=0(?:&|$)/);
 	await expect(page).not.toHaveURL(/[?&]recordDirection=/);
 	await expect.poll(() => received.at(-1)?.get('direction')).toBe('0');
+});
+
+test('one line picker focuses a single line and adds more lines without leaving that focus active', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.route('**/api/schedule-edition?city=stm', (route) =>
+		route.fulfill({
+			json: {
+				schedule: {
+					date: '2026-11-21',
+					routes: providers[0].lines,
+					stops: [],
+					route_directions: {},
+				},
+			},
+		}),
+	);
+	await page.goto('/map?provider=stm');
+	await openMapControls(page);
+	await page.locator('[data-map-filter-trigger]').click();
+	const picker = page.getByRole('button', { name: 'Add a line filter', exact: true });
+	await expect(picker).toHaveCount(1);
+	await picker.click();
+	await page.getByRole('option', { name: /^24\b/u }).click();
+	await expect(page).toHaveURL(/[?&]line=24(?:&|$)/);
+	await picker.click();
+	await page.getByRole('option', { name: /^51\b/u }).click();
+	await expect.poll(() => new URL(page.url()).searchParams.get('route')).toBe('24,51');
+	await expect(page).not.toHaveURL(/[?&]line=/);
 });

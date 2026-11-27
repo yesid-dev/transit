@@ -136,6 +136,7 @@ it('keeps reversed network stop pairs and their serving lines distinct', () => {
 		evidence,
 	});
 	const marks = recordCorridors(stops, [], answer, '', false);
+	expect(recordCorridors(stops, [], answer, '0', false)).toEqual(marks);
 	expect(
 		marks.map(({ name, lines, state, value, sample }) => [name, lines, state, value, sample]),
 	).toEqual([

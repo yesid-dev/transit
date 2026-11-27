@@ -9,8 +9,7 @@ import {
 } from './map-frame-controls';
 
 async function pickLine(page: Page, input: Locator, code: string) {
-	await input.press('ArrowDown');
-	await input.fill(code);
+	await input.click();
 	await page
 		.getByRole('listbox')
 		.getByRole('option', { name: new RegExp(`^${code}\\b`) })
@@ -111,10 +110,18 @@ for (const locale of ['en', 'fr'] as const) {
 				.getByRole('list', { name: fr ? /Lignes qui desservent/ : /Lines serving/ })
 				.getByRole('link'),
 		).toHaveAttribute('href', /\/lines\/24.*recordTo=2026-11-21/);
-		const line = page.getByRole('combobox', { name: fr ? 'Ligne' : 'Line', exact: true });
+		await openMapControls(page);
+		const filterTrigger = page.locator('[data-map-filter-trigger]');
+		if ((await filterTrigger.getAttribute('aria-expanded')) === 'false')
+			await filterTrigger.click();
+		const line = page.getByRole('button', {
+			name: fr ? 'Ajouter une ligne au filtre' : 'Add a line filter',
+		});
 		await pickLine(page, line, '24');
-		await page.getByRole('combobox', { name: 'Direction', exact: true }).press('ArrowDown');
-		await page.getByRole('listbox', { name: 'Direction' }).getByRole('option').first().click();
+		const direction = page.getByRole('combobox', { name: fr ? 'Sens' : 'Direction', exact: true });
+		await expect(direction.locator('option[value="0"]')).toContainText('Jean-Talon');
+		await direction.selectOption('0');
+		await openMapInView(page);
 		await expect.poll(() => received.at(-1)?.get('direction')).toBe('0');
 		await expect(
 			page.getByRole('heading', { name: fr ? 'Corridors en vue' : 'Corridors in view' }),
@@ -139,14 +146,20 @@ for (const locale of ['en', 'fr'] as const) {
 		await closeMapControls(page);
 		await expect.poll(() => received.at(-1)?.get('from')).toBe('2026-11-22');
 		expect(received.at(-1)?.get('line')).toBe('24');
+		await openMapControls(page);
+		if ((await filterTrigger.getAttribute('aria-expanded')) === 'false')
+			await filterTrigger.click();
+		await page
+			.locator('[data-filter-group="active"] .mf-active-set button')
+			.filter({ hasText: '24' })
+			.click();
 		await openMapInView(page);
-		await page.getByRole('button', { name: fr ? 'Effacer la ligne' : 'Clear line' }).click();
 		await expect(segment).toBeVisible();
 		await expect.poll(() => received.at(-1)?.get('layer')).toBe('corridors');
 		await page.reload();
 		await openMapInView(page);
 		await expect(segment).toBeVisible();
-		await expect(line).toHaveValue('');
+		await expect(page).not.toHaveURL(/[?&]route=/);
 		if (phone) {
 			await closeMapInView(page);
 			await openMapControls(page);
@@ -215,7 +228,9 @@ test('the corridor layer still asks for a line when the engine refuses the netwo
 	await page.goto(`/map?${recordMapPeriod}&mapLayer=corridors`);
 	await openMapInView(page);
 	await expect(page.getByText('Choose a line to see time lost between its stops.')).toBeVisible();
-	await pickLine(page, page.getByRole('combobox', { name: 'Line', exact: true }), '24');
+	await page.getByRole('button', { name: 'Choose a line', exact: true }).click();
+	await pickLine(page, page.getByRole('button', { name: 'Add a line filter', exact: true }), '24');
+	await openMapInView(page);
 	await expect(page.getByRole('searchbox', { name: 'Find a segment' })).toBeVisible();
 });
 

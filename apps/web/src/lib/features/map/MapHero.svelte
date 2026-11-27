@@ -70,11 +70,12 @@
 	} from '#lib/v1/repositories/static.ts';
 	import type { SlimStopEntry } from '#lib/v1/index.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
-	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
+	import { createFilterStore, fromSearchParams, toSearchString } from '#lib/filters/index.ts';
 	import { matchMapVehicleReading } from '#lib/filters/mapReadings.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
 	import { MAP_FOCUS_PARAM, parseMapFocus } from '#lib/search/mapFocus.ts';
 	import { hasOccupancy, lineLabel } from '#lib/site/transitDisplay.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { MapStage, nearestStops, type WithDistance } from '#lib/components/map/index.ts';
 	import { createVehicleMotion } from './vehicleMotion';
 	import { getMapRoutes } from '#lib/v1/repositories/scheduleShapes.ts';
@@ -82,6 +83,7 @@
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import MapFilters from './MapFilters.svelte';
 	import MapReadingFields from './MapReadingFields.svelte';
+	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import MapLinePicker from './MapLinePicker.svelte';
 	import MapMotionControl from './MapMotionControl.svelte';
 	import SwitchRow from '#lib/components/shared/SwitchRow.svelte';
@@ -144,6 +146,7 @@
 	const recordNotice = $derived(readRecordNotice());
 
 	const locale: Locale = getLocale();
+	const display = transitDisplay();
 	const v1 = getV1Context();
 	const manifest = v1.manifest;
 	const timeZone = v1.provider?.timezone ?? manifest.tz;
@@ -532,16 +535,43 @@
 		void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
 	}
 
-	function changeRecordScope(line: string, direction: string): void {
+	function addReadingLine(id: string): void {
 		const url = urlCoordinator.currentUrl();
-		if (line) url.searchParams.delete('route');
-		url.searchParams.set('recordLine', line);
-		url.searchParams.set('recordDirection', direction);
-		if (url.searchParams.has('mapDirection')) {
-			if (direction) url.searchParams.set('mapDirection', direction);
-			else url.searchParams.delete('mapDirection');
+		const state = readMapFilters(url.searchParams);
+		const choice = isRecordLayer ? null : readLiveMapChoice(url.searchParams);
+		if (!isRecordLayer && !state.routes.size && choice?.kind !== 'line') {
+			chooseOnMap({ kind: 'line', id });
+			return;
 		}
+		const previousLine = isRecordLayer
+			? url.searchParams.get('recordLine')
+			: choice?.kind === 'line'
+				? choice.id
+				: null;
+		const routes = new Set([...state.routes, ...(previousLine ? [previousLine] : []), id]);
+		if (choice?.kind === 'line') session.close();
+		urlCoordinator.writeFilters(toSearchString({ ...state, routes }), (params) => {
+			if (isRecordLayer) params.delete('recordLine');
+			if (choice?.kind === 'line') {
+				setLiveMapChoice(params, null);
+				params.delete(MAP_FOCUS_PARAM);
+			}
+		});
+	}
+
+	function clearCarriedRecordLine(): void {
+		const url = urlCoordinator.currentUrl();
+		url.searchParams.delete('recordLine');
+		url.searchParams.delete('recordDirection');
 		void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
+	}
+
+	function showLineFilters(): void {
+		mapFiltersOpen = true;
+		if (!wide) showMapPanel('controls');
+		void tick().then(() =>
+			document.querySelector<HTMLElement>('[data-map-reading-line-picker] button')?.focus(),
+		);
 	}
 
 	function changeReadingDirection(direction: 0 | 1 | undefined): void {
@@ -630,6 +660,19 @@
 		);
 	});
 	const terminals = $derived(scheduleTerminals(mapDirections));
+	const readingDirections = $derived.by(() => {
+		const selected = isRecordLayer ? recordLine : chosenLine?.id;
+		const lines = selected ? [selected] : mapFilterRoutes;
+		const vehicleType = filters.state.mapReadings?.vehicleType;
+		return ([0, 1] as const).flatMap((value) => {
+			const labels = lines.flatMap((id) => {
+				if (vehicleType !== undefined && mapRouteTypes.get(id) !== vehicleType) return [];
+				const signs = directionHeadsigns(mapDirections?.[id]);
+				return signs[value] ? [display.directionLabel(value, signs, locale, id)] : [];
+			});
+			return labels.length ? [{ value, label: [...new Set(labels)].join(' / ') }] : [];
+		});
+	});
 	$effect(() => {
 		if (!referenceReady) return;
 		const cache = scheduleCache;
@@ -1341,19 +1384,36 @@
 				: isRecordLayer && recordDirection === '1'
 					? 1
 					: undefined}
+			directions={readingDirections}
 			onDirection={changeReadingDirection}
 			{locale}
 		/>
-		<MapLinePicker
-			routes={session.routesIndex.filter((route) => !filters.routes.has(route.id))}
-			{locale}
-			label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
-			placeholder={tr('Add a line', 'Ajouter une ligne')}
-			additive
-			onchange={(value) => {
-				if (value) session.applyFilter({ kind: 'route', value });
-			}}
-		/>
+		{#if isRecordLayer && recordLine && !filters.routes.size}
+			<Button
+				size="sm"
+				variant="outline"
+				class="min-h-11 justify-between"
+				onclick={clearCarriedRecordLine}
+				aria-label={tr('Clear line', 'Effacer la ligne')}
+				>{display.lineName(recordLine).label} ×</Button
+			>
+		{/if}
+		<div data-map-reading-line-picker>
+			<MapLinePicker
+				routes={session.routesIndex.filter(
+					(route) =>
+						!filters.routes.has(route.id) &&
+						route.id !== (isRecordLayer ? recordLine : chosenLine?.id),
+				)}
+				{locale}
+				label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
+				placeholder={tr('Add a line', 'Ajouter une ligne')}
+				additive
+				onchange={(value) => {
+					if (value) addReadingLine(value);
+				}}
+			/>
+		</div>
 		{#if !isRecordLayer}<MapMotionControl {locale} copy={t} />{/if}
 	</div>
 {/snippet}
@@ -1396,17 +1456,6 @@
 					{/snippet}
 				</Collapsible.Trigger>
 				<Collapsible.Content>
-					{#if !isRecordLayer}
-						<MapLinePicker
-							routes={session.routesIndex}
-							{locale}
-							label={tr('Line on the map', 'Ligne sur la carte')}
-							placeholder={tr('Choose a line', 'Choisir une ligne')}
-							value={detailLineId ?? chosenLine?.id}
-							onchange={(value) =>
-								value ? chooseOnMap({ kind: 'line', id: value }) : closeDetail()}
-						/>
-					{/if}
 					<MapFilters
 						{occupancyAvailable}
 						store={filters}
@@ -1907,7 +1956,7 @@
 		stops={stopList}
 		{terminals}
 		routes={session.routesIndex}
-		onscope={changeRecordScope}
+		onlinefilters={showLineFilters}
 		children={mapContent}
 	/>
 </div>

@@ -7,6 +7,7 @@
 		type MapTimeChoice,
 	} from '#lib/filters/mapReadings.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
+	import { readerClock } from '#lib/site/presenter.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import { railLegendName } from './mapLegend';
 
@@ -16,6 +17,7 @@
 		provider,
 		locale,
 		direction,
+		directions,
 		onDirection,
 	}: {
 		store: FilterStore;
@@ -23,6 +25,7 @@
 		provider: Parameters<typeof railLegendName>[1];
 		locale: Locale;
 		direction?: 0 | 1;
+		directions: readonly { value: 0 | 1; label: string }[];
 		onDirection: (direction: 0 | 1 | undefined) => void;
 	} = $props();
 
@@ -30,6 +33,15 @@
 	const readings = $derived(store.state.mapReadings);
 	const vehicleType = $derived(readings?.vehicleType ?? '');
 	const directionValue = $derived(readings?.direction ?? direction);
+	const directionChoices = $derived(
+		([0, 1] as const).flatMap((value) => {
+			const name = directions.find((choice) => choice.value === value)?.label;
+			if (name) return [{ value, label: name }];
+			return directionValue === value
+				? [{ value, label: tr('Direction from link', 'Sens du lien') }]
+				: [];
+		}),
+	);
 	const typeChoices = $derived(
 		[...new Set(routes.map((route) => route.type))]
 			.filter((type): type is number => type != null)
@@ -123,8 +135,7 @@
 					onchange={(event) => changeHours(Number(event.currentTarget.value), range[1])}
 				>
 					{#each hourChoices.slice(0, 24) as hour (hour)}
-						<option value={hour} disabled={hour === range[1]}
-							>{String(hour).padStart(2, '0')}:00</option
+						<option value={hour} disabled={hour === range[1]}>{readerClock(hour, 0, locale)}</option
 						>
 					{/each}
 				</select>
@@ -137,27 +148,29 @@
 					onchange={(event) => changeHours(range[0], Number(event.currentTarget.value))}
 				>
 					{#each hourChoices as hour (hour)}
-						<option value={hour} disabled={hour === range[0]}
-							>{String(hour).padStart(2, '0')}:00</option
+						<option value={hour} disabled={hour === range[0]}>{readerClock(hour, 0, locale)}</option
 						>
 					{/each}
 				</select>
 			</label>
 		</div>
 	{/if}
-	<label class="grid min-w-0 gap-1 text-sm">
-		<span>{tr('Direction', 'Sens')}</span>
-		<select
-			class={selectClass}
-			value={directionValue === undefined ? '' : String(directionValue)}
-			onchange={(event) => {
-				const value = event.currentTarget.value;
-				onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined);
-			}}
-		>
-			<option value="">{tr('Both directions', 'Les deux sens')}</option>
-			<option value="0">{tr('Direction 1', 'Sens 1')}</option>
-			<option value="1">{tr('Direction 2', 'Sens 2')}</option>
-		</select>
-	</label>
+	{#if directionChoices.length}
+		<label class="grid min-w-0 gap-1 text-sm">
+			<span>{tr('Direction', 'Sens')}</span>
+			<select
+				class={selectClass}
+				value={directionValue === undefined ? '' : String(directionValue)}
+				onchange={(event) => {
+					const value = event.currentTarget.value;
+					onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined);
+				}}
+			>
+				<option value="">{tr('Both directions', 'Les deux sens')}</option>
+				{#each directionChoices as { value, label } (value)}
+					<option value={String(value)}>{label}</option>
+				{/each}
+			</select>
+		</label>
+	{/if}
 </div>
