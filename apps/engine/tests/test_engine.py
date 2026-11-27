@@ -4,6 +4,8 @@ import io
 import json
 import sys
 from collections import Counter
+from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -33,6 +35,7 @@ from transit_engine.measures import (
     ask,
     methods,
 )
+from transit_engine.partials import PartialKey, PartialResults
 from transit_engine.ranking import Ranking, rank
 from transit_engine.server import Engine
 from transit_engine.store import Store
@@ -552,6 +555,79 @@ def test_service_delivered_boundaries_and_trip_cuts(
     assert query(store, measure="trips_run", line="U")["state"] == "unknown"
 
 
+def test_stop_service_delivery_matches_daily_and_cached_trip_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def trip(
+        index: int, state: str = "ran", *, stop: str = "loop",
+        reason: str | None = None, minute: int = 0,
+    ) -> Trip:
+        delays = (0, 0) if state in {"ran", "added"} else (None, None)
+        return Trip(
+            str(index), "A", 0, state, reason, reason != "route_without_live_data",
+            delays, offset_minutes=minute, stop_ids=(stop, stop),
+        )
+
+    store = _build_store(tmp_path, 5, {
+        THURSDAY: (
+            trip(0)._replace(delays=(None, None, 0), stop_ids=("loop", "loop", "junction")),
+            *(trip(i) for i in range(1, 24)),
+            trip(24, "cancelled"), trip(25, "cancelled"), trip(26, "missing"),
+            trip(27, "unconfirmed"), trip(28, "not_measured", reason="capture_gap"),
+            trip(29, "not_measured", reason="route_without_live_data"), trip(30, "added"),
+            trip(31, stop="other"),
+        ),
+        FRIDAY: (
+            trip(0, stop="other"), trip(1, minute=19 * 60), trip(2, "cancelled"),
+            trip(3, "missing"), trip(4, "unconfirmed"),
+        ),
+    })
+    question = Question("service_delivered", "stm", THURSDAY, SATURDAY, stop="loop")
+    answer = ask(store, question)
+    evidence = answer["evidence"]
+    expected = dict(scheduled=34, ran=25, cancelled=3, missing=2, unconfirmed=2, not_measured=2)
+    assert {key: evidence["counts"][key] for key in expected} == expected
+    assert evidence["counts"]["eligible"] == 30
+    assert evidence["excluded"] == {
+        "added": 1, "route_without_live_data": 1, "capture_gap": 1, "unconfirmed": 2,
+    }
+    assert answer["value"]["trips_run"] == 25 / 30
+    day_question = replace(question, group="day")
+    daily = ask(store, day_question)
+    assert [cell["state"] for cell in daily["cells"]] == [
+        "measured", "too_few_to_judge", "not_measured",
+    ]
+    assert [cell["evidence"]["counts"]["scheduled"] for cell in daily["cells"]] == [30, 4, None]
+    for key, total in expected.items():
+        assert sum(cell["evidence"]["counts"][key] for cell in daily["cells"][:2]) == total
+
+    cache = PartialResults()
+    cached_store = replace(store, partial_results=cache)
+    read_or_compute = cache.read_or_compute
+    misses = 0
+
+    def track[T](key: PartialKey, compute: Callable[[], T]) -> T:
+        def count_miss() -> T:
+            nonlocal misses
+            misses += 1
+            return compute()
+
+        return read_or_compute(key, count_miss)
+
+    monkeypatch.setattr(cache, "read_or_compute", track)
+    for selection, reference in ((question, answer), (day_question, daily)):
+        for result in (ask(cached_store, selection), ask(cached_store, selection)):
+            result["evidence"].pop("query_ms")
+            reference["evidence"].pop("query_ms", None)
+            assert result == reference
+    assert misses == 4
+    other = ask(cached_store, replace(question, stop="other"))
+    assert misses == 6
+    network = ask(store, replace(question, stop=None))
+    for key, total in expected.items():
+        assert total + other["evidence"]["counts"][key] == network["evidence"]["counts"][key]
+
+
 @pytest.mark.parametrize("damage", ["missing", "wrong_size"])
 def test_service_hours_checks_the_schedule_file(
     delivery: tuple[Store, dict[date, tuple[Trip, ...]]], damage: str
@@ -574,6 +650,8 @@ def test_service_delivered_trip_queries_use_v3(store: Store) -> None:
     assert answer["value"] == {"missing_trips": 4 / 20}
     assert answer["evidence"]["cleaning_versions"] == [3]
     assert answer["evidence"]["counts"]["scheduled_hours"] is None
+    stop = query(store, measure="missing_trips", start=FALL_BACK, end=SUNDAY, stop="first")
+    assert stop["value"] == answer["value"]
     unknown = query(store, measure="trips_run", line="U")
     assert unknown["state"] == "not_measured"
     assert unknown["value"] == {"trips_run": None}
@@ -923,9 +1001,14 @@ def test_http_and_bilingual_csv_come_from_same_registry(
             {key: value for key, value in entry.items() if key != "family_text"} for entry in info
         ] == json.loads(answer)["info"]
         if family == "service_delivered":
-            status, _, error = await http(app, "/measure", params + "&stop=first")
-            assert status == 400
-            assert "stop does not apply" in json.loads(error)["message"]
+            status, _, stop_answer = await http(app, "/measure", params + "&stop=first")
+            assert status == 200
+            scoped = json.loads(stop_answer)
+            assert scoped["evidence"]["cuts"]["stop"] == "first"
+            for item in scoped["info"]:
+                assert STOP_EVENTS in item["tables"]
+                assert "scheduled to call here" in item["text"]["en"]["counts"]
+                assert "prévoit un passage à cet arrêt" in item["text"]["fr"]["counts"]
         for lang in ("en", "fr"):
             status, headers, payload = await http(
                 app, "/measure", params + f"&format=csv&lang={lang}"

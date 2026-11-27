@@ -390,6 +390,21 @@ test("forwards Line and Stop Record groups and departure ranking cuts", async (t
   assert.equal(params[3].get("direction"), "1");
 });
 
+test("forwards a service-delivered stop and its daily grouping", async (t) => {
+  const f = fixture(t);
+  for (const group of ["", "&group=day"]) {
+    assert.equal(
+      (await f.fetch(`/v2/demo/measure?measure=service_delivered&stop=S1&${WINDOW}${group}`)).status,
+      200,
+    );
+  }
+  const [period, daily] = f.requests.map((request) => new URL(request.url).searchParams);
+  assert.equal(period.get("measure"), "service_delivered");
+  assert.equal(period.get("stop"), "S1");
+  assert.equal(daily.get("stop"), "S1");
+  assert.equal(daily.get("group"), "day");
+});
+
 test("forwards the fleet and per-vehicle line breakdown through the public route", async (t) => {
   const f = fixture(t, (request) =>
     new URL(request.url).searchParams.get("format") === "csv"
