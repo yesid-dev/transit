@@ -13,7 +13,12 @@
 	import TicketIcon from '@lucide/svelte/icons/ticket';
 	import XIcon from '@lucide/svelte/icons/x';
 	import { tick, type Snippet } from 'svelte';
-	import type { AlertEntityKind, EntityKind, FilterStore } from '#lib/filters/index.ts';
+	import {
+		visibleEntityKinds,
+		type AlertEntityKind,
+		type EntityKind,
+		type FilterStore,
+	} from '#lib/filters/index.ts';
 	import type { RouteIndexEntry, StopIndexEntry } from '#lib/v1/index.ts';
 	import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
 	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
@@ -79,7 +84,12 @@
 			selectedVehicleIds.length +
 			selectedTripIds.length,
 	);
-	const filterCount = $derived(store.chips.length + (store.state.showOutOfService ? 1 : 0));
+	const visibleMarkers = $derived(visibleEntityKinds(store.state));
+	const filterCount = $derived(
+		store.chips.length +
+			Number(Boolean(store.state.showOutOfService)) +
+			Number(visibleMarkers.length === 0),
+	);
 	const entityOptions = $derived([
 		{ kind: 'bus', label: t.entityBus },
 		{ kind: 'stop', label: t.entityStop, stop: true },
@@ -116,7 +126,13 @@
 
 	async function focusAfterRemoval(): Promise<void> {
 		await tick();
-		rootEl?.querySelector<HTMLElement>('[data-filter-group="active"] .mf-group-trigger')?.focus();
+		const active = rootEl?.querySelector<HTMLElement>(
+			'[data-filter-group="active"] .mf-group-trigger',
+		);
+		const markers = rootEl?.querySelector<HTMLElement>(
+			'[data-filter-group="markers"] .mf-group-trigger',
+		);
+		(active ?? markers)?.focus();
 	}
 
 	async function clearFilters(): Promise<void> {
@@ -154,10 +170,6 @@
 
 	function toggleOccupancy(code: (typeof OCCUPANCY_CODES)[number]): void {
 		store.toggleOccupancy(code);
-	}
-
-	function toggleEntity(kind: EntityKind): void {
-		store.toggleEntity(kind);
 	}
 
 	function toggleAlert(kind: AlertEntityKind): void {
@@ -220,10 +232,10 @@
 						<CheckboxRow
 							type="button"
 							class="mf-chip mf-shape-chip"
-							data-on={store.entities.includes(item.kind)}
+							data-on={visibleMarkers.includes(item.kind)}
 							aria-label={item.label}
-							checked={store.entities.includes(item.kind)}
-							onclick={() => toggleEntity(item.kind)}
+							checked={visibleMarkers.includes(item.kind)}
+							onclick={() => store.toggleMarker(item.kind)}
 						>
 							<span class:mf-shape-stop={item.stop} class="mf-glyph">
 								<MarkerGlyph kind={item.kind} />
@@ -262,100 +274,102 @@
 				<p>{t.alertFilterUnavailable}</p>
 			{/if}
 
-			<MapFilterGroup
-				kind="active"
-				label={t.activeTitle}
-				open={groupOpen.active}
-				count={selectedCount}
-				ontoggle={() => toggleGroup('active')}
-			>
-				<div class="mf-active-groups">
-					{#if selectedRoutes.length > 0}
-						<div class="mf-active-set">
-							<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
-							<div class="mf-chips">
-								{#each selectedRoutes as route (route.id)}
-									<FilterChip
-										type="button"
-										class="mf-chip"
-										data-on="true"
-										aria-label="{t.filterRemove} {routeDisplay(route)}"
-										style="--chip:var(--accent-text)"
-										onclick={() => void removeRoute(route)}
-									>
-										<span class="mf-chip-text">{routeDisplay(route)}</span><span aria-hidden="true"
-											>×</span
+			{#if selectedCount > 0}
+				<MapFilterGroup
+					kind="active"
+					label={t.activeTitle}
+					open={groupOpen.active}
+					count={selectedCount}
+					ontoggle={() => toggleGroup('active')}
+				>
+					<div class="mf-active-groups">
+						{#if selectedRoutes.length > 0}
+							<div class="mf-active-set">
+								<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
+								<div class="mf-chips">
+									{#each selectedRoutes as route (route.id)}
+										<FilterChip
+											type="button"
+											class="mf-chip"
+											data-on="true"
+											aria-label="{t.filterRemove} {routeDisplay(route)}"
+											style="--chip:var(--accent-text)"
+											onclick={() => void removeRoute(route)}
 										>
-									</FilterChip>
-								{/each}
+											<span class="mf-chip-text">{routeDisplay(route)}</span><span
+												aria-hidden="true">×</span
+											>
+										</FilterChip>
+									{/each}
+								</div>
 							</div>
-						</div>
-					{/if}
-					{#if selectedStops.length > 0}
-						<div class="mf-active-set">
-							<span class="mf-active-label">{t.modeStops}</span>
-							<div class="mf-chips">
-								{#each selectedStops as stop (stop.id)}
-									<FilterChip
-										type="button"
-										class="mf-chip"
-										data-on="true"
-										aria-label="{t.filterRemove} {stopDisplay(stop)}"
-										style="--chip:var(--accent)"
-										onclick={() => void removeStop(stop)}
-									>
-										<span class="mf-chip-text">{stopDisplay(stop)}</span><span aria-hidden="true"
-											>×</span
+						{/if}
+						{#if selectedStops.length > 0}
+							<div class="mf-active-set">
+								<span class="mf-active-label">{t.modeStops}</span>
+								<div class="mf-chips">
+									{#each selectedStops as stop (stop.id)}
+										<FilterChip
+											type="button"
+											class="mf-chip"
+											data-on="true"
+											aria-label="{t.filterRemove} {stopDisplay(stop)}"
+											style="--chip:var(--accent)"
+											onclick={() => void removeStop(stop)}
 										>
-									</FilterChip>
-								{/each}
+											<span class="mf-chip-text">{stopDisplay(stop)}</span><span aria-hidden="true"
+												>×</span
+											>
+										</FilterChip>
+									{/each}
+								</div>
 							</div>
-						</div>
-					{/if}
-					{#if selectedVehicleIds.length > 0}
-						<div class="mf-active-set">
-							<span class="mf-active-label"><BusFrontIcon size={13} />{t.modeVehicles}</span>
-							<div class="mf-chips">
-								{#each selectedVehicleIds as vehicleId (vehicleId)}
-									<FilterChip
-										type="button"
-										class="mf-chip"
-										data-on="true"
-										aria-label="{t.filterRemove} {t.vehicleLabel} {vehicleId}"
-										style="--chip:var(--primary)"
-										onclick={() => void removeVehicle(vehicleId)}
-									>
-										<span class="mf-chip-text">{t.vehicleLabel} {vehicleId}</span><span
-											aria-hidden="true">×</span
+						{/if}
+						{#if selectedVehicleIds.length > 0}
+							<div class="mf-active-set">
+								<span class="mf-active-label"><BusFrontIcon size={13} />{t.modeVehicles}</span>
+								<div class="mf-chips">
+									{#each selectedVehicleIds as vehicleId (vehicleId)}
+										<FilterChip
+											type="button"
+											class="mf-chip"
+											data-on="true"
+											aria-label="{t.filterRemove} {t.vehicleLabel} {vehicleId}"
+											style="--chip:var(--primary)"
+											onclick={() => void removeVehicle(vehicleId)}
 										>
-									</FilterChip>
-								{/each}
+											<span class="mf-chip-text">{t.vehicleLabel} {vehicleId}</span><span
+												aria-hidden="true">×</span
+											>
+										</FilterChip>
+									{/each}
+								</div>
 							</div>
-						</div>
-					{/if}
-					{#if selectedTripIds.length > 0}
-						<div class="mf-active-set">
-							<span class="mf-active-label"><TicketIcon size={13} />{t.modeTrips}</span>
-							<div class="mf-chips">
-								{#each selectedTripIds as tripId (tripId)}
-									<FilterChip
-										type="button"
-										class="mf-chip"
-										data-on="true"
-										aria-label="{t.filterRemove} {t.tripLabel} {tripId}"
-										style="--chip:var(--primary)"
-										onclick={() => void removeTrip(tripId)}
-									>
-										<span class="mf-chip-text">{t.tripLabel} {tripId}</span><span aria-hidden="true"
-											>×</span
+						{/if}
+						{#if selectedTripIds.length > 0}
+							<div class="mf-active-set">
+								<span class="mf-active-label"><TicketIcon size={13} />{t.modeTrips}</span>
+								<div class="mf-chips">
+									{#each selectedTripIds as tripId (tripId)}
+										<FilterChip
+											type="button"
+											class="mf-chip"
+											data-on="true"
+											aria-label="{t.filterRemove} {t.tripLabel} {tripId}"
+											style="--chip:var(--primary)"
+											onclick={() => void removeTrip(tripId)}
 										>
-									</FilterChip>
-								{/each}
+											<span class="mf-chip-text">{t.tripLabel} {tripId}</span><span
+												aria-hidden="true">×</span
+											>
+										</FilterChip>
+									{/each}
+								</div>
 							</div>
-						</div>
-					{/if}
-				</div>
-			</MapFilterGroup>
+						{/if}
+					</div>
+				</MapFilterGroup>
+			{/if}
 
 			<MapFilterGroup
 				kind="status"

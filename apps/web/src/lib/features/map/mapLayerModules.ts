@@ -1,5 +1,6 @@
 import type { VehicleMotionFrame } from './vehicleMotion';
 import type { Map as MapLibreMap, MapMouseEvent } from 'maplibre-gl';
+import { visibleEntityKinds } from '#lib/filters/index.ts';
 import {
 	addRouteLineLayers,
 	addRouteLineSource,
@@ -83,7 +84,7 @@ const stopsModule: LayerModule = {
 			items,
 			filter?.stops.size ? null : selectedId,
 			[...(filter?.stops ?? [])].sort().join('\u0000'),
-			!filter?.entities?.length || filter.entities.includes('stop'),
+			visibleEntityKinds(filter).includes('stop'),
 			alertFilterActive,
 			alertFilterActive ? [...(alertIds ?? [])].sort().join('\u0000') : '',
 			[...(upcomingStops ?? [])].sort().join('\u0000'),
@@ -112,7 +113,7 @@ const vehiclesModule: LayerModule = {
 			join(filter.vehicles),
 			join(filter.status ?? []),
 			join(filter.occupancy ?? []),
-			join(filter.entities ?? []),
+			visibleEntityKinds(filter).includes('bus'),
 			alertFilterActive,
 			alertFilterActive ? join(vehicles.alertIds ?? []) : '',
 			vehicles.selectedId,

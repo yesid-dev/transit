@@ -32,6 +32,7 @@ export interface FilterState {
 	showOutOfService?: boolean;
 	status?: StatusCode[];
 	occupancy?: OccupancyCode[];
+	/** Visible map markers. Undefined enables both kinds, while an empty list hides both. */
 	entities?: EntityKind[];
 	alerts?: AlertEntityKind[];
 	grain?: Grain;
@@ -40,6 +41,10 @@ export interface FilterState {
 	worstN?: WorstN;
 	alertAffects?: AlertAffects;
 	alertSeverity?: SeverityCode;
+}
+
+export function visibleEntityKinds(filter?: FilterState): readonly EntityKind[] {
+	return filter?.entities ?? ENTITY_KINDS;
 }
 
 export const WORST_N_LADDER = ['5', '10', '20', '30', '50'] as const;
@@ -200,7 +205,7 @@ export function isEmptyFilterState(s: FilterState): boolean {
 		(s.vehicles?.size ?? 0) === 0 &&
 		(s.status === undefined || s.status.length === 0) &&
 		(s.occupancy === undefined || s.occupancy.length === 0) &&
-		(s.entities === undefined || s.entities.length === 0) &&
+		s.entities === undefined &&
 		(s.alerts === undefined || s.alerts.length === 0) &&
 		s.grain === undefined &&
 		s.window === undefined &&

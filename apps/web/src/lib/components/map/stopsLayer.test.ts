@@ -107,19 +107,22 @@ describe('addStopsLayer', () => {
 		expect(setPaintProperty).toHaveBeenCalledTimes(2);
 	});
 
-	it('hides stops when the shape filter selects buses only', () => {
-		const filter = {
-			routes: new Set(),
-			stops: new Set(),
-			trips: new Set(),
-			vehicles: new Set(),
-			entities: ['bus'],
-		} as unknown as FilterState;
+	it.each([{ entities: ['bus'] }, { entities: [] }])(
+		'hides stops when the marker filter excludes them ($entities)',
+		({ entities }) => {
+			const filter = {
+				routes: new Set(),
+				stops: new Set(),
+				trips: new Set(),
+				vehicles: new Set(),
+				entities,
+			} as unknown as FilterState;
 
-		expect(
-			toStopFeatures([{ id: 's1', name: 'Stop 1', lat: 45.5, lon: -73.6 }], filter).features,
-		).toEqual([]);
-	});
+			expect(
+				toStopFeatures([{ id: 's1', name: 'Stop 1', lat: 45.5, lon: -73.6 }], filter).features,
+			).toEqual([]);
+		},
+	);
 
 	it('keeps only stops with alerts when the stop alert filter is selected', () => {
 		const filter = {

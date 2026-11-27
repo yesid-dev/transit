@@ -1,6 +1,6 @@
 import type { Map as MapLibreMap, GeoJSONSource, LayerSpecification } from 'maplibre-gl';
 import type { StopIndexEntry } from '#lib/v1/schemas/index.ts';
-import type { FilterState } from '#lib/filters/index.ts';
+import { visibleEntityKinds, type FilterState } from '#lib/filters/index.ts';
 import { resolveColor, STOP_ICON } from './vehicleSprites';
 
 export const STOPS_SOURCE = 'stops';
@@ -17,10 +17,6 @@ interface StopFC {
 	features: StopFeature[];
 }
 const EMPTY_FC: StopFC = { type: 'FeatureCollection', features: [] };
-
-function showsStops(filter?: FilterState): boolean {
-	return !(filter?.entities && filter.entities.length > 0) || filter.entities.includes('stop');
-}
 
 function matchesAlertFilter(
 	stop: StopIndexEntry,
@@ -42,7 +38,7 @@ export function toStopFeatures(
 	selectedStopId: string | null = null,
 	upcomingStops?: ReadonlySet<string>,
 ): StopFC {
-	const visibleStops = showsStops(filter)
+	const visibleStops = visibleEntityKinds(filter).includes('stop')
 		? stops.filter(
 				(stop) => matchesAlertFilter(stop, filter, alertStopIds) && matchesStopFilter(stop, filter),
 			)

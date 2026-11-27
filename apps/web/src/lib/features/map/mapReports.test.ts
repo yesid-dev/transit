@@ -375,6 +375,7 @@ describe('map report view', () => {
 			routes: new Set(['9', '24']),
 			vehicles: new Set(['bus-1']),
 			status: ['late'],
+			entities: [],
 			alerts: ['has_alert'],
 		};
 		expect(mapReportFilterTokens(filter)).toEqual([
@@ -383,6 +384,7 @@ describe('map report view', () => {
 			'route:9',
 			'vehicle:bus-1',
 			'status:late',
+			'entity:none',
 			'alert:has_alert',
 		]);
 	});

@@ -1,6 +1,6 @@
 import { isInService } from '#lib/v1/live/vehicleService.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
-import type { EntityKind, FilterState } from '#lib/filters/index.ts';
+import { visibleEntityKinds, type FilterState } from '#lib/filters/index.ts';
 import {
 	statusBodyIconId,
 	occupancyBodyIconId,
@@ -37,9 +37,6 @@ function activeStatus(f: FilterState): readonly string[] | null {
 function activeOccupancy(f: FilterState): readonly string[] | null {
 	return f.occupancy && f.occupancy.length > 0 ? f.occupancy : null;
 }
-function activeEntities(f: FilterState): readonly EntityKind[] | null {
-	return f.entities && f.entities.length > 0 ? f.entities : null;
-}
 function activeAlerts(f: FilterState): readonly string[] | null {
 	return f.alerts && f.alerts.length > 0 ? f.alerts : null;
 }
@@ -68,8 +65,7 @@ export function matchesFilter(
 	if (f.vehicles.size > 0 && !f.vehicles.has(v.id)) return false;
 	const aa = activeAlerts(f);
 	if (aa && !alertVehicleIds.has(v.id)) return false;
-	const ae = activeEntities(f);
-	if (ae && !ae.includes('bus')) return false;
+	if (!visibleEntityKinds(f).includes('bus')) return false;
 	return true;
 }
 
