@@ -18,8 +18,8 @@ export const frameCopy = {
 		liveOnly: 'This screen shows the trip in progress.',
 		period: 'Period',
 		waitingForMonth: 'This month’s first complete day is not in the record yet.',
-		waitingForDay: (date: string) =>
-			`${date} is not in the record yet. Each day is added the next day.`,
+		waitingForDay: (date: string) => `${date} is not in the record yet.`,
+		waitingForDates: (dates: string) => `The dates ${dates} are not in the record yet.`,
 		presets: {
 			yesterday: 'Yesterday',
 			'7-days': '7 days',
@@ -59,8 +59,8 @@ export const frameCopy = {
 		liveOnly: 'Cet écran montre le trajet en cours.',
 		period: 'Période',
 		waitingForMonth: 'Le premier jour complet de ce mois-ci ne figure pas encore au bilan.',
-		waitingForDay: (date: string) =>
-			`La journée du ${date} ne figure pas encore au bilan. Chaque journée est ajoutée le lendemain.`,
+		waitingForDay: (date: string) => `Le ${date} ne figure pas encore au bilan.`,
+		waitingForDates: (dates: string) => `La période ${dates} ne figure pas encore au bilan.`,
 		presets: {
 			yesterday: 'Hier',
 			'7-days': '7 jours',
@@ -78,6 +78,8 @@ export const frameCopy = {
 		recordStarts: (date: string) => `Le bilan commence le ${date}.`,
 		showingLast7: 'Affichage des 7 derniers jours complets.',
 		showing: (dates: string) => `Dates affichées\u00a0: ${dates}.`,
+		showingDay: (date: string) => `Affichage du ${date}.`,
+		showingDates: (dates: string) => `Affichage ${dates}.`,
 		dayCount: (days: number) => `${days} ${days < 2 ? 'jour' : 'jours'}`,
 		missing: 'Entrez les deux dates.',
 		bounds: 'Choisissez des dates entre le début du bilan et aujourd’hui.',

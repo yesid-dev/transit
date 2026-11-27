@@ -36,6 +36,7 @@
 		type RecordTableRow,
 	} from '#lib/features/record/RecordDataTable.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordUnavailable from '#lib/features/record/RecordUnavailable.svelte';
 	import RecordTableValue from '#lib/features/record/RecordTableValue.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
@@ -159,6 +160,8 @@
 {#snippet absent(result: EngineResult<Answer>)}
 	{#if result.kind === 'busy'}
 		<RecordPending {locale} busy />
+	{:else if result.kind === 'unreachable'}
+		<RecordUnavailable {locale} retry={result.retry} />
 	{:else if result.kind !== 'answer'}
 		<p>{recordConnection[result.kind][locale]}</p>
 	{:else if result.answer.state && result.answer.state !== 'measured'}
@@ -217,6 +220,12 @@
 	{:then result}
 		{#if result.kind === 'busy'}
 			<RecordGroup><div data-slot="screen-answer"><RecordPending {locale} busy /></div></RecordGroup
+			>
+		{:else if result.kind === 'unreachable' && result.retry}
+			<RecordGroup
+				><div data-slot="screen-answer">
+					<RecordUnavailable {locale} retry={result.retry} />
+				</div></RecordGroup
 			>
 		{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
 			{@const answer = result.answer}

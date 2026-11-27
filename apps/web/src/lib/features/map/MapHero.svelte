@@ -19,6 +19,7 @@
 	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import { recordStamp, searchCount } from '#lib/site/presenter.ts';
+	import { recordPeriodNoticeReader } from '#lib/site/recordPeriodNoticeContext.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import { livePause } from '#lib/live/livePause.ts';
@@ -113,6 +114,8 @@
 	}
 
 	let { onready, onidle, onrecovering, onfailure }: Props = $props();
+	const readRecordNotice = recordPeriodNoticeReader();
+	const recordNotice = $derived(readRecordNotice());
 
 	const locale: Locale = getLocale();
 	const v1 = getV1Context();
@@ -1096,6 +1099,7 @@
 			{title}
 		</p>
 		{#if wide}<p class="text-sm text-muted-foreground">{city}</p>{/if}
+		{#if recordNotice}<p data-slot="record-start-notice">{recordNotice}</p>{/if}
 		{#if showStamp}{@render stamp()}{/if}
 		{#if !wide && !isRecordLayer}
 			<div class:sr-only={remWidth >= 24}><MapFeedStallBanner {presentation} inline /></div>

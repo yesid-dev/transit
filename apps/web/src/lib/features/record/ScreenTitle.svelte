@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { RoutePlate, SectionHeading } from '@yesid/ui/brand';
-	import { recordStartNoticeReader } from '#lib/site/recordStartNoticeContext.ts';
+	import { recordPeriodNoticeReader } from '#lib/site/recordPeriodNoticeContext.ts';
 
 	let {
 		title,
@@ -25,7 +25,7 @@
 		/** The brand dot after the title. A line, stop, vehicle or departure has none. */
 		dot?: boolean;
 	} = $props();
-	const readNotice = recordStartNoticeReader();
+	const readNotice = recordPeriodNoticeReader();
 	const notice = $derived(readNotice());
 </script>
 

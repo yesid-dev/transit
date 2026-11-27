@@ -12,19 +12,18 @@ export function tally(value: number, locale: Locale): string {
 	return intl.number(locale, { maximumFractionDigits: 0 }).format(value);
 }
 
+const temporarilyUnavailable = {
+	en: 'The record is temporarily unavailable.',
+	fr: 'Le bilan est temporairement indisponible.',
+};
+
 export const recordConnection = {
 	unconfigured: {
 		en: 'The record view is being connected. Numbers will appear here.',
 		fr: 'Le bilan sera bientôt relié aux données. Les chiffres s’afficheront ici.',
 	},
-	unreachable: {
-		en: 'The record is temporarily unavailable.',
-		fr: 'Le bilan est temporairement indisponible.',
-	},
-	timeout: {
-		en: 'The record took too long to load. Try again later.',
-		fr: 'Le bilan a pris trop de temps à charger. Réessayez plus tard.',
-	},
+	unreachable: temporarilyUnavailable,
+	timeout: temporarilyUnavailable,
 	busy: {
 		en: 'The record is busy right now. You can come back later.',
 		fr: 'Le bilan est très sollicité en ce moment. Vous pouvez revenir plus tard.',

@@ -376,6 +376,17 @@ export function longDate(date: string, locale: Locale): string {
 	return formatDateKey(date, locale, true, 'day-first', 'long');
 }
 
+export function recordNoticeDates(
+	{ from, to }: { from: string; to: string },
+	locale: Locale,
+	year: boolean,
+) {
+	const format = (day: string) => formatDateKey(day, locale, year, 'day-first', 'long');
+	if (from === to) return format(to);
+	const start = from.slice(0, 7) === to.slice(0, 7) ? String(Number(from.slice(8))) : format(from);
+	return presenterCopy[locale].dateRange(start, format(to));
+}
+
 export function compactServiceDay(date: string, locale: Locale): string {
 	return formatDateKey(date, locale, false, 'day-first');
 }

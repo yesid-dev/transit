@@ -67,7 +67,7 @@ export function loadLineRecord(
 		line,
 		direction,
 		directionalFrequency:
-			!direction && include('frequency')
+			!direction && include('directionalFrequency')
 				? getRecordAnswer(
 						{
 							path: '/measure',

@@ -3,12 +3,14 @@ import { measure, period, ranking, stateText } from '#lib/features/home/overview
 import {
 	getCaptureResponse,
 	getDelayDistribution,
+	getFinderSeries,
 	getMeasure,
 	getRanking,
 	getRecordAnswer,
 	getRecordCsv,
 	type MeasureAnswer,
 } from './engine.ts';
+import { finderQuestions } from './engineQuestion.ts';
 
 const { env } = vi.hoisted(() => ({
 	env: {
@@ -76,6 +78,36 @@ it('reads the distribution as a series and treats deploy skew as unavailable', a
 		),
 	);
 	expect(await getDelayDistribution(dates)).toEqual({ kind: 'unreachable' });
+});
+
+it('keeps a timed-out Stops reading pending and returns the next answer as soon as it arrives', async () => {
+	const first = new AbortController();
+	const second = new AbortController();
+	vi.spyOn(AbortSignal, 'timeout')
+		.mockReturnValueOnce(first.signal)
+		.mockReturnValueOnce(second.signal);
+	const retry = Promise.withResolvers<Response>();
+	fetcher
+		.mockImplementationOnce(
+			async ({ signal }) =>
+				new Promise<Response>((_resolve, reject) => {
+					signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+				}),
+		)
+		.mockReturnValueOnce(retry.promise);
+	const read = getFinderSeries(finderQuestions.stops.punctuality, dates);
+	const settled = vi.fn();
+	void read.then(settled);
+	first.abort(new DOMException('Timed out', 'TimeoutError'));
+	await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+	expect(settled).not.toHaveBeenCalled();
+	expect(fetcher.mock.calls[1][0].url).toBe(fetcher.mock.calls[0][0].url);
+	const answer = { cells: [], evidence: measure().evidence, coverage_note: null };
+	retry.resolve(Response.json(answer));
+	expect(await read).toMatchObject({
+		kind: 'answer',
+		answer: { cells: [], evidence: { days_included: answer.evidence.days_included } },
+	});
 });
 
 describe('overview engine requests', () => {

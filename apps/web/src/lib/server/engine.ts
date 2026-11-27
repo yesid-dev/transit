@@ -123,7 +123,7 @@ export type MeasureAnswer = z.infer<typeof measureAnswer>;
 export type RankingAnswer = z.infer<typeof rankingAnswer>;
 export type EngineResult<T> =
 	| { kind: 'answer'; answer: T; lastGood?: true }
-	| { kind: 'unreachable'; status?: number }
+	| { kind: 'unreachable'; status?: number; retry?: () => void }
 	| { kind: 'unconfigured' | 'timeout' | 'busy' };
 
 export async function getEngineHealth() {
@@ -212,18 +212,27 @@ export async function query<T>(
 	}
 }
 
+async function retryRecordTimeout<T>(
+	read: (retry: boolean) => Promise<EngineResult<T>>,
+	signal?: AbortSignal,
+): Promise<EngineResult<T>> {
+	const result = await read(false);
+	if (result.kind !== 'timeout' || signal?.aborted) return result;
+	// Keep the streamed card pending while a new read can pick up a warmed answer.
+	const retried = await read(true);
+	return retried.kind === 'busy' ? { kind: 'unreachable' } : retried;
+}
+
 function periodQuery<T>(
 	path: string,
 	period: EnginePeriod,
 	parameters: Record<string, string>,
 	schema: z.ZodType<T>,
 ) {
-	return query(
-		periodQuestion(period, path, parameters),
-		schema,
-		period.visitorIp,
-		period.retryBusy,
-	);
+	const question = periodQuestion(period, path, parameters);
+	return period.retryBusy
+		? query(question, schema, period.visitorIp, true)
+		: retryRecordTimeout((retry) => query(question, schema, period.visitorIp, retry));
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
@@ -540,7 +549,11 @@ export function getFinderSeries(
 	period: EnginePeriod,
 	signal?: AbortSignal,
 ) {
-	return query(finderQuestion(parameters, period), finderSeries, period.visitorIp, false, signal);
+	const question = finderQuestion(parameters, period);
+	return retryRecordTimeout(
+		(retry) => query(question, finderSeries, period.visitorIp, retry, signal),
+		signal,
+	);
 }
 
 export async function getRecordCsv(

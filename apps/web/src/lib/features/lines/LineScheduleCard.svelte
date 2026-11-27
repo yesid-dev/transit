@@ -32,6 +32,9 @@
 		{#await boundariesAnswer}
 			{#key boundariesAnswer}<RecordPending {locale} answer={boundariesAnswer} />{/key}
 		{:then boundaries}
+			{@const retry = [frequency, boundaries].flatMap((result) =>
+				result.kind === 'unreachable' && result.retry ? [result.retry] : [],
+			)}
 			{#if frequency.kind === 'busy' || boundaries.kind === 'busy'}
 				<RecordPending {locale} busy />
 			{/if}
@@ -53,6 +56,7 @@
 						({ kind }) => kind !== 'answer' && kind !== 'busy',
 					)}
 					busy={frequency.kind === 'busy' || boundaries.kind === 'busy'}
+					retry={retry.length ? () => retry.forEach((read) => read()) : undefined}
 				/>
 			{/key}
 		{/await}

@@ -136,7 +136,7 @@ it('pins the default to the last complete day', async () => {
 	expect(getRecordAnswer).not.toHaveBeenCalled();
 });
 
-it('keeps the heading dates for the unpublished Yesterday notice and skips the engine questions', async () => {
+it('opens the last built day when Yesterday has not been added', async () => {
 	await expect(
 		load(
 			event(
@@ -145,10 +145,13 @@ it('keeps the heading dates for the unpublished Yesterday notice and skips the e
 			),
 		),
 	).resolves.toMatchObject({
-		seoTitle: 'Rapport du mardi 24 novembre 2026',
-		report: { unpublished: true, sections: [] },
+		seoTitle: 'Rapport du lundi 23 novembre 2026',
+		report: { period: { from: '2026-11-23', to: '2026-11-23' } },
 	});
-	expect(getRecordAnswer).not.toHaveBeenCalled();
+	expect(getRecordAnswer).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ from: '2026-11-23', to: '2026-11-23' }),
+	);
 });
 
 it('rejects an eight-date agency message CSV request before asking the engine', () => {
