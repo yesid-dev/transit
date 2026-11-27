@@ -33,3 +33,14 @@ export function setRecordRetry(register: RegisterRetry) {
 export function getRecordRetry() {
 	return getContext<RegisterRetry | undefined>(retryKey);
 }
+
+const retryWindowKey = Symbol('record retry window');
+type ShowRetryWindow = (openAt: number | null) => void;
+
+export function setRecordRetryWindow(show: ShowRetryWindow) {
+	setContext(retryWindowKey, show);
+}
+
+export function getRecordRetryWindow() {
+	return getContext<ShowRetryWindow | undefined>(retryWindowKey);
+}

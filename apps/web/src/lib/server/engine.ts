@@ -123,10 +123,23 @@ const rankingAnswer = rankingEnvelope.extend({
 
 export type MeasureAnswer = z.infer<typeof measureAnswer>;
 export type RankingAnswer = z.infer<typeof rankingAnswer>;
+const corridorReasons = [
+	'network_corridors_unsupported',
+	'segment_runs_version_required',
+	'segment_runs_missing',
+] as const;
+type CorridorReason = (typeof corridorReasons)[number];
+
 export type EngineResult<T> =
 	| { kind: 'answer'; answer: T; lastGood?: true; cacheStale?: true }
-	| { kind: 'unreachable'; status?: number; retry?: () => void }
-	| { kind: 'unconfigured' | 'timeout' | 'busy' };
+	| { kind: 'unreachable'; status?: number; reason?: CorridorReason; retry?: () => void }
+	| { kind: 'busy'; retryAfterMs?: number }
+	| { kind: 'unconfigured' | 'timeout' };
+
+function retryDelay(header: string) {
+	const delay = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
+	return Math.min(60_000, Math.max(0, Number.isNaN(delay) ? 60_000 : delay));
+}
 
 export async function getEngineHealth() {
 	const unavailable = { proxy: 'unavailable', engine: 'unknown' } as const;
@@ -195,11 +208,19 @@ export async function query<T>(
 			question.parameters.view === 'map' &&
 			question.parameters.group === 'segment' &&
 			!question.parameters.line &&
-			(response.status === 409 || response.status === 400)
+			response.status === 409
+		) {
+			const { reason } = z.object({ reason: z.enum(corridorReasons) }).parse(await response.json());
+			return { kind: 'unreachable', status: 409, reason };
+		}
+		const retryAfter = response.headers.get('retry-after');
+		if (!response.ok) await response.body?.cancel().catch(() => {});
+		if (response.status === 503 && retryAfter !== null)
+			return { kind: 'busy', retryAfterMs: retryDelay(retryAfter) };
+		if (
+			response.status === 400 &&
+			(question.parameters.include_overall || question.parameters.view === 'map')
 		)
-			return { kind: 'unreachable', status: response.status };
-		if (response.status === 503 && response.headers.has('retry-after')) return { kind: 'busy' };
-		if (response.status === 400 && question.parameters.include_overall)
 			return { kind: 'unreachable', status: 400 };
 		if (!response.ok) return { kind: 'unreachable' };
 		const { success, data } = schema.safeParse(await response.json());
@@ -599,10 +620,12 @@ export async function getRecordCsv(
 	{ path, parameters }: RecordQuery,
 	period: EnginePeriod,
 	lang: 'en' | 'fr',
+	requestSignal?: AbortSignal,
 ) {
+	const timeout = AbortSignal.timeout(ENGINE_TIMEOUT_MS);
 	return engineFetch(
 		periodQuestion(period, path, { ...parameters, format: 'csv', lang }),
-		AbortSignal.timeout(ENGINE_TIMEOUT_MS),
+		requestSignal ? AbortSignal.any([timeout, requestSignal]) : timeout,
 		period.visitorIp,
 	);
 }

@@ -1,4 +1,3 @@
-import { error } from '@sveltejs/kit';
 import { citationSource, citationSourceText } from '#lib/site/presenter.ts';
 import { frameDateLimit, frameClock, periodError, recordStart } from '#lib/site/frameState.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
@@ -11,16 +10,21 @@ const unavailableText = {
 	en: 'The record is temporarily unavailable. Try the download again in a few minutes.',
 	fr: 'Le bilan est temporairement indisponible. Réessayez le téléchargement dans quelques minutes.',
 };
+const invalidText = {
+	en: 'This selection cannot be downloaded. Check the city, dates and reading.',
+	fr: 'Cette sélection ne peut pas être téléchargée. Vérifiez la ville, les dates et la mesure.',
+};
 
 /** A failed reading answers with a sentence to read, never a file that looks like data. */
-function unavailable(lang: 'en' | 'fr', retryAfter?: string | null) {
+function downloadError(lang: 'en' | 'fr', status: number, retryAfter?: string | null) {
 	const headers = new Headers({
 		'content-type': 'text/plain; charset=utf-8',
 		'cache-control': 'no-store',
 		'x-content-type-options': 'nosniff',
 	});
 	if (retryAfter) headers.set('retry-after', retryAfter);
-	return new Response(`${unavailableText[lang]}\n`, { status: 503, headers });
+	const message = status === 503 ? unavailableText[lang] : invalidText[lang];
+	return new Response(`${message}\n`, { status, headers });
 }
 
 function csvField(text: string) {
@@ -55,7 +59,6 @@ export function appendCsvColumn(header: string, value: string) {
 					pendingReturn = false;
 					if (char === '\n') {
 						out += '\r\n';
-						atRecordStart = true;
 						continue;
 					}
 					out += '\r';
@@ -63,12 +66,12 @@ export function appendCsvColumn(header: string, value: string) {
 				if (char === '"') quoted = !quoted;
 				if (!quoted && (char === '\n' || char === '\r')) {
 					if (!atRecordStart) out += recordEnd();
+					atRecordStart = true;
 					if (char === '\r') {
 						pendingReturn = true;
 						continue;
 					}
 					out += char;
-					atRecordStart = true;
 					continue;
 				}
 				// A byte order mark opens the file; it does not start a record.
@@ -97,24 +100,33 @@ export async function recordCsvResponse(
 	const search = url.searchParams;
 	const city = search.get('provider') ?? '';
 	const period = { from: search.get('recordFrom') ?? '', to: search.get('recordTo') ?? '' };
-	if (!/^[a-z0-9][a-z0-9_-]*$/.test(city)) error(400);
+	if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) return downloadError(lang, 400);
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	const catalog = await getCityCatalog(visitorIp).catch(() => null);
-	if (!catalog) return unavailable(lang);
+	if (!catalog) return downloadError(lang, 503);
 	const provider = catalog.providers.find(({ id }) => id === city);
-	if (!provider || periodError(period, frameDateLimit(frameClock(provider)), recordStart(provider)))
-		error(400);
+	if (!provider) return downloadError(lang, 400);
+	const limit = frameDateLimit(frameClock(provider));
+	const start = recordStart(provider);
+	if (periodError(period, limit, start)) return downloadError(lang, 400);
+	const selected = selectPeriod?.(period) ?? period;
+	if (periodError(selected, limit, start)) return downloadError(lang, 400);
 	const upstream = await getRecordCsv(
 		query,
-		{ ...(selectPeriod?.(period) ?? period), city, visitorIp },
+		{ ...selected, city, visitorIp },
 		lang,
+		request.signal,
 	).catch(() => null);
 	if (
 		!upstream?.ok ||
 		!upstream.body ||
 		!upstream.headers.get('content-type')?.startsWith('text/csv')
-	)
-		return unavailable(lang, upstream?.status === 503 ? upstream.headers.get('retry-after') : null);
+	) {
+		const status = upstream?.status ?? 503;
+		const retryAfter = status === 503 ? upstream?.headers.get('retry-after') : null;
+		await upstream?.body?.cancel().catch(() => {});
+		return downloadError(lang, [400, 404, 409, 422].includes(status) ? status : 503, retryAfter);
+	}
 	const headers = new Headers({
 		'content-type': 'text/csv; charset=utf-8',
 		'content-disposition': `attachment; filename="${filename}"`,

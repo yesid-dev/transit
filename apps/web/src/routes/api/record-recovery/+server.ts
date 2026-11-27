@@ -8,13 +8,11 @@ import {
 } from '#lib/features/record/recordReadings.ts';
 import { readScreenAgain } from '#lib/server/screenReadings.ts';
 import { periodError } from '#lib/site/frameState.ts';
+import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
+import { validEntityId } from '#lib/server/entityIdentity.ts';
 
 const MAX_READINGS = 20;
-const screensWithId = new Set<RecoveryScreen>(['line', 'stop', 'vehicle']);
-
-function validId(id: string) {
-	return id.length <= 256 && id === id.trim() && !/[^\S ]|\p{C}/u.test(id);
-}
+const screensWithId = new Set<RecoveryScreen>(['line', 'stop', 'vehicle', 'departure']);
 
 /** Asks one screen's missing readings again, with the cut of the page that asked first. */
 export const GET: RequestHandler = async ({ request, url }) => {
@@ -29,8 +27,11 @@ export const GET: RequestHandler = async ({ request, url }) => {
 	if (
 		!screen ||
 		!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city) ||
-		(screensWithId.has(screen) ? !id : id !== '') ||
-		!validId(id) ||
+		(screen === 'departure'
+			? id.length > 300 || !departureFromKey(id)
+			: screensWithId.has(screen)
+				? !validEntityId(id)
+				: id !== '') ||
 		page.length > 2048 ||
 		paths.length > MAX_READINGS ||
 		paths.some((path) => !READING_PATH.test(path)) ||

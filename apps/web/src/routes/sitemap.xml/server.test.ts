@@ -37,13 +37,19 @@ describe('sitemap.xml', () => {
 		expect(xml).not.toContain('provider=sto');
 	});
 
-	it('keeps another city’s addresses when a schedule is unavailable', async () => {
+	it('keeps another city’s addresses and restores normal caching when the schedule recovers', async () => {
 		engine.getScheduleEdition.mockImplementation(async (id) =>
 			id === 'stm' ? null : { routes: [{ id: '5' }], stops: [] },
 		);
-		const xml = await (await GET(event())).text();
+		const degraded = await GET(event());
+		expect(degraded.headers.get('cache-control')).toBe('no-store');
+		const xml = await degraded.text();
 		expect(xml).toContain('/lines/5?provider=octranspo');
 		expect(xml).not.toContain('/lines/11');
+		engine.getScheduleEdition.mockResolvedValue({ routes: [{ id: '11' }], stops: [] });
+		const recovered = await GET(event());
+		expect(recovered.headers.get('cache-control')).toContain('s-maxage=14400');
+		expect(await recovered.text()).toContain('/lines/11');
 	});
 
 	it.each(['unknown', 'sto'])('normalizes %s before requesting a schedule', async (provider) => {
@@ -55,7 +61,9 @@ describe('sitemap.xml', () => {
 
 	it('falls back to static routes when city discovery is unavailable', async () => {
 		engine.getCityCatalog.mockRejectedValue(new Error('catalog unavailable'));
-		const xml = await (await GET(event())).text();
+		const response = await GET(event());
+		expect(response.headers.get('cache-control')).toBe('no-store');
+		const xml = await response.text();
 		expect(xml).toContain('<loc>' + origin + '/vehicles</loc>');
 		expect(xml).not.toContain('/lines/');
 		expect(engine.getScheduleEdition).not.toHaveBeenCalled();

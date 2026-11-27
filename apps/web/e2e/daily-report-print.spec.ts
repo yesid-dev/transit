@@ -1,12 +1,33 @@
 import { expect, test } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { dailyMessageHold } from './daily-message-hold';
 
 const report = '/receipt?provider=stm&recordFrom=2026-11-15&recordTo=2026-11-15';
 
 test.describe('Daily report print', () => {
 	test.beforeEach(({ browserName }, info) => {
 		test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
+	});
+
+	test('waits for a slow report card before printing', async ({ page, request }) => {
+		const hold = dailyMessageHold(request);
+		await page.setExtraHTTPHeaders(hold.headers);
+		try {
+			expect((await hold.start()).status()).toBe(204);
+			await page.goto(report, { waitUntil: 'commit' });
+			await expect(page.locator('#punctuality')).toContainText('78.9%');
+			const print = page.getByRole('button', { name: 'Print', exact: true });
+			await expect(print).toBeDisabled();
+			await page.emulateMedia({ media: 'print' });
+			await expect(page.getByText('Some sections are still loading.')).toBeVisible();
+			expect((await hold.release()).status()).toBe(204);
+			await expect(page.getByText('Some sections are still loading.')).toBeHidden();
+			await page.emulateMedia({ media: 'screen' });
+			await expect(print).toBeEnabled();
+		} finally {
+			await hold.release();
+		}
 	});
 
 	for (const locale of ['en', 'fr'] as const) {

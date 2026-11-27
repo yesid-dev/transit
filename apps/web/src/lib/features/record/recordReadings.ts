@@ -17,6 +17,7 @@ export const recoveryScreens = [
 	'alerts',
 	'status',
 	'receipt',
+	'departure',
 ] as const;
 
 export type RecoveryScreen = (typeof recoveryScreens)[number];

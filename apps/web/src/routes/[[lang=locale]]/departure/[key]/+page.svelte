@@ -61,9 +61,27 @@
 	import { isBeforeTodaysDeparture } from '#lib/features/trips/departureLive.ts';
 	import type { EngineResult, RecordAnswer as Answer, RecordSeries } from '#lib/server/engine.ts';
 	import { addIsoDays } from '#lib/v1/history/selection.ts';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
+	const initial = $derived({ sections: data.sections });
+	const recovered = recoverReadings(
+		() => (data.mode === 'record' ? initial : null),
+		() => {
+			const { period, identity, day, city } = data;
+			return period && identity
+				? {
+						screen: 'departure',
+						id: JSON.stringify([identity.line, identity.direction, identity.departure]),
+						city,
+						from: period.from,
+						to: period.to,
+						page: new URLSearchParams({ day }).toString(),
+					}
+				: null;
+		},
+	);
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => (data.lang === 'fr' ? fr : en);
 	const line = $derived(data.identity ? display.line(data.identity.line) : undefined);
@@ -113,7 +131,7 @@
 		return frameHref(url, { mode: 'record', period: null });
 	});
 	const answers = $derived(
-		data.sections.map(({ section, answer }) => ({
+		(recovered() ?? data).sections.map(({ section, answer }) => ({
 			section,
 			answer,
 			title: departureTitles[section][data.lang === 'fr' ? 1 : 0],
@@ -133,13 +151,15 @@
 		data.lineMissing && observed
 			? observed.answer.then(
 					(result) =>
-						result.kind !== 'busy' &&
-						(result.kind !== 'answer' ||
-							!('cells' in result.answer) ||
-							!result.answer.cells.some(
-								({ evidence }) =>
-									(evidence.counts.scheduled ?? 0) > 0 || (evidence.counts.classified ?? 0) > 0,
-							)),
+						result.kind === 'answer' &&
+						!result.lastGood &&
+						!result.cacheStale &&
+						'cells' in result.answer &&
+						result.answer.evidence.days_included.length > 0 &&
+						!result.answer.cells.some(
+							({ evidence }) =>
+								(evidence.counts.scheduled ?? 0) > 0 || (evidence.counts.classified ?? 0) > 0,
+						),
 				)
 			: false,
 	);

@@ -115,7 +115,8 @@ describe('Stop capture and Record loading', () => {
 		},
 	);
 
-	it('returns a Live state for an absent stop without any upstream request', async () => {
+	it('keeps Live available for an archived stop without requesting capture', async () => {
+		harness.getRecordAnswer.mockResolvedValueOnce(identity('archived'));
 		const request = event({ id: 'archived' });
 		await expect(load(request)).resolves.toMatchObject({
 			outsideCurrentTimetable: true,
@@ -124,6 +125,7 @@ describe('Stop capture and Record loading', () => {
 			capture: null,
 		});
 		expect(request.fetch).not.toHaveBeenCalled();
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(...identityQuery('archived'));
 	});
 
 	it('streams the dated Record for an archived stop without requesting legacy identity', async () => {
@@ -182,36 +184,42 @@ describe('Stop capture and Record loading', () => {
 		['the engine is unreachable', { kind: 'unreachable' }, true],
 		['the dates hold no observed day', identity(null, []), true],
 		['the timetable is unavailable', identity(null), false],
-	])('keeps the Stop shell when %s', async (_, answer, timetable) => {
+	])('returns an unavailable status when %s', async (_, answer, timetable) => {
 		harness.getRecordAnswer.mockResolvedValueOnce(answer);
-		const data = await load(event({ id: '57135', query: dated, timetable }));
-		expect(data).toMatchObject({ seed: { id: '57135' } });
-		await expect(data?.stopIdentity).resolves.toBe('unconfirmed');
+		await expect(load(event({ id: '57135', query: dated, timetable }))).rejects.toMatchObject({
+			status: 503,
+		});
 	});
 
 	it.each([
-		[identity('57135'), 'available'],
-		[identity(null), 'missing'],
-	])('streams a slow identity result as %j', async (answer, state) => {
+		['record', dated],
+		['live', 'frameMode=live'],
+	])('waits for a slow %s identity before sending a 404', async (_, query) => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const pending = Promise.withResolvers<unknown>();
 		harness.getRecordAnswer.mockReturnValueOnce(pending.promise);
-		const shell = load(event({ id: '57135', query: dated }));
+		const shell = Promise.resolve(load(event({ id: '57135', query })));
+		const settled = vi.fn();
+		void shell.then(settled, settled);
 		await vi.advanceTimersByTimeAsync(1500);
-		const data = await shell;
-		expect(data).toMatchObject({ seed: { id: '57135' }, stopIdentity: expect.any(Promise) });
-		const delivery = {
-			path: '/measure',
-			parameters: { measure: 'service_delivered', stop: '57135' },
-		};
-		expect(harness.getRecordAnswer).not.toHaveBeenCalledWith(delivery, expect.anything());
-		pending.resolve(answer);
-		await expect(data?.stopIdentity).resolves.toBe(state);
+		expect(settled).not.toHaveBeenCalled();
+		pending.resolve(identity(null));
+		await expect(shell).rejects.toMatchObject({ status: 404, body: { code: 'STOP_NOT_FOUND' } });
+		expect(harness.getRecordAnswer).toHaveBeenCalledOnce();
+	});
+
+	it('starts delivery only after a slow archived Stop identity is confirmed', async () => {
+		const pending = Promise.withResolvers<unknown>();
+		harness.getRecordAnswer.mockReturnValueOnce(pending.promise);
+		const page = load(event({ id: 'archived', query: dated }));
+		await Promise.resolve();
+		expect(harness.getRecordAnswer).toHaveBeenCalledOnce();
+		pending.resolve(identity('archived'));
+		const data = await page;
 		await data?.record?.delivery;
-		if (state === 'missing') {
-			expect(harness.getRecordAnswer).not.toHaveBeenCalledWith(delivery, expect.anything());
-		} else {
-			expect(harness.getRecordAnswer).toHaveBeenCalledWith(delivery, expect.anything());
-		}
+		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
+			{ path: '/measure', parameters: { measure: 'service_delivered', stop: 'archived' } },
+			expect.objectContaining({ from: '2026-10-20', to: '2026-10-21' }),
+		);
 	});
 });

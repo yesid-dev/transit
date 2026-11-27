@@ -38,12 +38,25 @@ function event(id = '24'): Parameters<typeof load>[0] {
 	} as unknown as Parameters<typeof load>[0];
 }
 
+function archive(cells: unknown[]) {
+	return { kind: 'answer', answer: { cells, evidence: { days_included: ['2026-11-15'] } } };
+}
+
 beforeEach(() => {
 	harness.getRoute.mockReset().mockResolvedValue(null);
 	harness.getRecordAnswer.mockReset().mockResolvedValue({ kind: 'unconfigured' });
 });
 
 describe('Line Record and Schedule on transit1', () => {
+	it('distinguishes unknown lines from lines in the archive', async () => {
+		harness.getRecordAnswer.mockResolvedValueOnce(archive([]));
+		await expect(load(event('unknown'))).rejects.toMatchObject({ status: 404 });
+		harness.getRecordAnswer.mockResolvedValueOnce(archive([{ key: { line: 'retired' } }]));
+		await expect(load(event('retired'))).resolves.toMatchObject({
+			seed: { id: 'retired' },
+			outsideCurrentTimetable: true,
+		});
+	});
 	const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 	function framed(query = '') {
 		const request = event('24');
@@ -58,7 +71,9 @@ describe('Line Record and Schedule on transit1', () => {
 		Object.assign(request, {
 			parent: async () => ({ v1: null, lang: 'en', providerId: 'octranspo' }),
 		});
-		harness.getRecordAnswer.mockImplementationOnce(() => new Promise(() => {}));
+		harness.getRecordAnswer
+			.mockResolvedValueOnce(archive([{ key: { line: '24' } }]))
+			.mockImplementationOnce(() => new Promise(() => {}));
 		const data = await load(request);
 		expect(data?.record).toMatchObject({ direction: '1', city: 'octranspo' });
 		expect(data?.record?.sections.map(({ section }: { section: string }) => section)).toEqual([
@@ -156,6 +171,7 @@ describe('Line Record and Schedule on transit1', () => {
 	it('loads historical readings for a line outside the current timetable', async () => {
 		const request = framed('&frameMode=record');
 		request.params.id = 'seasonal';
+		harness.getRecordAnswer.mockResolvedValueOnce(archive([{ key: { line: 'seasonal' } }]));
 		const data = await load(request);
 		expect(data?.outsideCurrentTimetable).toBe(true);
 		expect(data?.record?.line).toBe('seasonal');
@@ -169,9 +185,10 @@ describe('Line Record and Schedule on transit1', () => {
 		expect(request.fetch).not.toHaveBeenCalled();
 	});
 
-	it('returns a Live state for a line outside the current timetable without asking for readings', async () => {
+	it('returns a Live state for an archived line after only its identity lookup', async () => {
 		const request = framed('&frameMode=live');
 		request.params.id = 'seasonal';
+		harness.getRecordAnswer.mockResolvedValueOnce(archive([{ key: { line: 'seasonal' } }]));
 		await expect(load(request)).resolves.toMatchObject({
 			frameLive: true,
 			outsideCurrentTimetable: true,
@@ -180,7 +197,7 @@ describe('Line Record and Schedule on transit1', () => {
 			record: null,
 		});
 		expect(request.fetch).not.toHaveBeenCalled();
-		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
+		expect(harness.getRecordAnswer).toHaveBeenCalledOnce();
 	});
 });
 

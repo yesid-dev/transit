@@ -2,7 +2,7 @@ import { untrack } from 'svelte';
 import { beforeNavigate } from '$app/navigation';
 import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 import type { DateWindow } from '#lib/v1/history/window.ts';
-import { getRecordRecovered, getRecordRetry } from './recordPatience.ts';
+import { getRecordRecovered, getRecordRetry, getRecordRetryWindow } from './recordPatience.ts';
 import { readingPaths, withReadings, type RecoveryScreen } from './recordReadings.ts';
 
 /** After the page's readings settle: ask again after about 5 s, then 15 s, then stop. */
@@ -21,9 +21,8 @@ export type RecoveryQuery = DateWindow & {
 	page?: string;
 };
 
-type Settled = { kind?: unknown } | null | undefined;
+type Settled = { kind?: unknown; retryAfterMs?: number } | null | undefined;
 const waitingKinds = new Set(['busy', 'timeout']);
-const isWaiting = (result: Settled) => waitingKinds.has(String(result?.kind));
 
 /**
  * Asks a screen's readings again when the engine or the visitor limit said "busy": cards that
@@ -39,6 +38,7 @@ export function recoverReadings<T extends object>(
 ) {
 	const recordRecovered = getRecordRecovered();
 	const registerRetry = getRecordRetry();
+	const showRetryWindow = getRecordRetryWindow();
 	let recovered = $state.raw<{
 		initial: T;
 		answers: ReadonlyMap<string, PromiseLike<unknown>>;
@@ -67,21 +67,36 @@ export function recoverReadings<T extends object>(
 		// The query is read once for the readings it belongs to: an address change alone asks nothing.
 		const query = current && untrack(() => getQuery(current));
 		if (!current || !query) return;
+		const isWaiting = (result: Settled) =>
+			waitingKinds.has(String(result?.kind)) ||
+			(query.screen === 'departure' && result?.kind === 'unreachable');
 		const initial: T = current;
 		const readings = readingPaths(initial);
 		if (!readings.size) return;
 
 		const controller = new AbortController();
-		const waiting = new SvelteSet<string>();
+		const waiting = new SvelteMap<string, { due: number; attempt: number }>();
 		const failed = new SvelteSet<string>();
+		const windows = new SvelteMap<string, number>();
 		const answers = new SvelteMap<string, PromiseLike<unknown>>();
 		let timer: ReturnType<typeof setTimeout> | undefined;
 		let delays = RECOVERY_DELAYS_MS;
-		let attempt = 0;
-		let eligibleAt = Infinity;
 		let inFlight = false;
 		let flight: AbortController | undefined;
 		let releaseRetry: (() => void) | undefined;
+
+		function rememberWindow(path: string, result: Settled) {
+			const delay = result?.retryAfterMs;
+			if (result?.kind === 'busy' && delay !== undefined && Number.isFinite(delay))
+				windows.set(path, Date.now() + Math.min(60_000, Math.max(0, delay)));
+		}
+
+		function queue(path: string, attempt: number) {
+			waiting.set(path, {
+				attempt,
+				due: Math.max(Date.now() + delays[attempt], windows.get(path) ?? 0),
+			});
+		}
 
 		function publish() {
 			recovered = { initial, answers: new SvelteMap(answers) };
@@ -110,7 +125,9 @@ export function recoverReadings<T extends object>(
 				if (signal.aborted) return;
 				for (const [path, result] of Object.entries(results)) {
 					// Readings that come with another (stop names with their ranking) replace theirs.
-					if (!readings.has(path) || isWaiting(result)) continue;
+					if (!readings.has(path)) continue;
+					rememberWindow(path, result);
+					if (isWaiting(result)) continue;
 					if (waiting.delete(path) && result?.kind === 'unreachable') failed.add(path);
 					answers.set(path, Promise.resolve(result));
 				}
@@ -127,55 +144,64 @@ export function recoverReadings<T extends object>(
 			releaseRetry = undefined;
 			const paths = [...failed];
 			failed.clear();
+			delays = TRY_AGAIN_DELAYS_MS;
 			for (const path of paths) {
-				waiting.add(path);
+				queue(path, 0);
 				answers.set(path, Promise.resolve({ kind: 'busy' }));
 			}
 			publish();
-			delays = TRY_AGAIN_DELAYS_MS;
-			attempt = 0;
-			eligibleAt = Date.now() + delays[attempt++];
 			schedule();
 		}
 
 		function offerTryAgain() {
-			if (failed.size && !releaseRetry) releaseRetry = registerRetry?.(tryAgain);
-		}
-
-		function giveUp() {
-			for (const path of waiting) {
-				failed.add(path);
-				answers.set(path, Promise.resolve({ kind: 'unreachable' }));
-			}
-			waiting.clear();
-			publish();
-			offerTryAgain();
+			if (!waiting.size && failed.size && !releaseRetry) releaseRetry = registerRetry?.(tryAgain);
 		}
 
 		async function recover() {
 			if (document.hidden || controller.signal.aborted || navigating) return;
 			inFlight = true;
 			flight = new AbortController();
-			const paths = [...waiting];
+			const paths = [...waiting].filter(([, step]) => step.due <= Date.now()).map(([path]) => path);
 			const batches = [];
 			for (let index = 0; index < paths.length; index += RECOVERY_READING_LIMIT) {
 				batches.push(read(paths.slice(index, index + RECOVERY_READING_LIMIT)));
 			}
 			await Promise.all(batches);
 			inFlight = false;
-			if (controller.signal.aborted || flight.signal.aborted) return;
-			if (!waiting.size) return offerTryAgain();
-			const delay = delays[attempt++];
-			if (delay === undefined) return giveUp();
-			eligibleAt = Date.now() + delay;
+			if (controller.signal.aborted) return;
+			if (flight.signal.aborted) return schedule();
+			let exhausted = false;
+			for (const path of paths) {
+				const step = waiting.get(path);
+				if (!step) continue;
+				const next = step.attempt + 1;
+				if (delays[next] !== undefined) queue(path, next);
+				else {
+					waiting.delete(path);
+					failed.add(path);
+					answers.set(path, Promise.resolve({ kind: 'unreachable' }));
+					exhausted = true;
+				}
+			}
+			if (exhausted) publish();
 			schedule();
 		}
 
 		function schedule() {
 			clearTimeout(timer);
-			if (inFlight || navigating || controller.signal.aborted || document.hidden || !waiting.size)
-				return;
-			timer = setTimeout(() => void recover(), Math.max(0, eligibleAt - Date.now()));
+			if (inFlight || navigating || controller.signal.aborted || document.hidden) return;
+			const now = Date.now();
+			const openAt = Math.max(
+				0,
+				...[...waiting.keys(), ...failed].map((path) => windows.get(path) ?? 0),
+			);
+			showRetryWindow?.(openAt > now ? openAt : null);
+			if (waiting.size) {
+				const due = Math.min(...Array.from(waiting.values(), (step) => step.due));
+				timer = setTimeout(() => void recover(), Math.max(0, due - now));
+			} else if (openAt > now) {
+				timer = setTimeout(schedule, openAt - now);
+			} else offerTryAgain();
 		}
 		document.addEventListener('visibilitychange', schedule);
 		pause = () => {
@@ -184,16 +210,16 @@ export function recoverReadings<T extends object>(
 		};
 		resume = () => {
 			// The navigation kept these readings: start their steps again, never at once.
-			if (!waiting.size) return;
-			attempt = 0;
 			delays = RECOVERY_DELAYS_MS;
-			eligibleAt = Date.now() + delays[attempt++];
+			for (const path of waiting.keys()) queue(path, 0);
 			schedule();
 		};
 
 		const settled = [...readings].map(async ([path, reading]) => {
 			try {
-				return [path, (await reading) as Settled] as const;
+				const result = (await reading) as Settled;
+				rememberWindow(path, result);
+				return [path, result] as const;
 			} catch {
 				return [path, null] as const;
 			}
@@ -202,13 +228,13 @@ export function recoverReadings<T extends object>(
 			if (controller.signal.aborted) return;
 			for (const [path, result] of results) {
 				if (!isWaiting(result)) continue;
-				waiting.add(path);
+				queue(path, 0);
 				// A reading cut at its limit waits like a busy one while it is asked again.
-				if (result?.kind === 'timeout') answers.set(path, Promise.resolve({ kind: 'busy' }));
+				if (result?.kind === 'timeout' && query.screen !== 'departure')
+					answers.set(path, Promise.resolve({ kind: 'busy' }));
 			}
 			if (!waiting.size) return;
 			if (answers.size) publish();
-			eligibleAt = Date.now() + delays[attempt++];
 			schedule();
 		});
 		return () => {
@@ -216,6 +242,7 @@ export function recoverReadings<T extends object>(
 			clearTimeout(timer);
 			pause = resume = undefined;
 			releaseRetry?.();
+			showRetryWindow?.(null);
 			document.removeEventListener('visibilitychange', schedule);
 		};
 	});

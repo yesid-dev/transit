@@ -257,10 +257,10 @@ describe('overview engine requests', () => {
 		fetcher.mockResolvedValueOnce(
 			new Response(null, {
 				status: 503,
-				headers: { 'retry-after': '30' },
+				headers: { 'retry-after': '600' },
 			}),
 		);
-		expect(await getMeasure('on_time', dates)).toEqual({ kind: 'busy' });
+		expect(await getMeasure('on_time', dates)).toEqual({ kind: 'busy', retryAfterMs: 60_000 });
 		fetcher.mockResolvedValueOnce(new Response(null, { status: 503 }));
 		expect(await getMeasure('on_time', dates)).toEqual({ kind: 'unreachable' });
 	});

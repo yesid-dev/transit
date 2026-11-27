@@ -5,6 +5,7 @@ import { linePageTitle, stopPageTitle } from '../src/lib/seo/riderPageTitle';
 import { stopDisplayName } from '../src/lib/site/transitDisplay';
 import type { ScheduleEdition } from '../src/lib/search/searchIndex';
 import { expect, test } from '@playwright/test';
+import { startStopSearchFixture } from './stop-search-fixture';
 import { createHash } from 'node:crypto';
 
 // Request HTML directly: crawler metadata must be correct before any browser JavaScript runs.
@@ -134,6 +135,28 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 }
 
+test('sends a noindex 404 after a slow stop identity lookup', async ({ request }) => {
+	const fixture = await startStopSearchFixture(request);
+	try {
+		await fixture.hold();
+		let completed = false;
+		const response = request
+			.get('/stop/unknown-entity?provider=stm&frameMode=live', { headers: fixture.headers })
+			.finally(() => {
+				completed = true;
+			});
+		await expect.poll(fixture.questions).toBe(1);
+		await new Promise((resolve) => setTimeout(resolve, 1_500));
+		expect(completed).toBe(false);
+		await fixture.release();
+		const missing = await response;
+		expect(missing.status()).toBe(404);
+		expect(await missing.text()).toContain('name="robots" content="noindex,nofollow"');
+	} finally {
+		await fixture.dispose();
+	}
+});
+
 test('ephemeral and error documents keep a single noindex tag', async ({ request }) => {
 	for (const path of ['/trip/example', '/fr/trip/example', '/missing-share-page']) {
 		const response = await request.get(path);
@@ -142,6 +165,28 @@ test('ephemeral and error documents keep a single noindex tag', async ({ request
 		expect([...head.matchAll(/<meta name="robots"/g)], path).toHaveLength(1);
 		expect(head, path).toContain('content="noindex,nofollow"');
 		expect(head, path).not.toContain('max-image-preview:large');
+	}
+});
+
+test('returns 404 and noindex for unknown entities and serves archived detail pages', async ({
+	request,
+}) => {
+	for (const [provider, prefix] of [
+		['stm', ''],
+		['octranspo', '/fr'],
+	] as const) {
+		for (const [route, archived] of [
+			['lines', 'archived-line'],
+			['stop', 'archived-stop'],
+			['vehicle', '40067'],
+		]) {
+			const query = `provider=${provider}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`;
+			const missing = await request.get(`${prefix}/${route}/unknown-entity?${query}`);
+			expect(missing.status(), route).toBe(404);
+			expect(await missing.text(), route).toContain('name="robots" content="noindex,nofollow"');
+			const found = await request.get(`${prefix}/${route}/${archived}?${query}`);
+			expect(found.status(), route).toBe(200);
+		}
 	}
 });
 

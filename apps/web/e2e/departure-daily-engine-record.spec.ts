@@ -260,6 +260,34 @@ test('a departure on an unknown line has a single timetable state', async ({ pag
 	await expect(main.locator('[data-slot="record-card"]')).toHaveCount(0);
 });
 
+test('a departure with archived readings stays available outside the current timetable', async ({
+	page,
+}) => {
+	await page.goto(`/departure/${key('archived-line')}?${departurePeriod}`);
+	const main = page.getByRole('main');
+	await expect(main.locator('[data-slot="record-card"]').first()).toBeVisible();
+	await expect(main.getByText('This line is not in the current timetable.')).toHaveCount(0);
+});
+
+test('a departure on a line absent from the timetable shows and re-reads an unavailable Record', async ({
+	page,
+}) => {
+	await page.clock.install();
+	const search = 'provider=stm&frameMode=record&recordFrom=2026-11-21&recordTo=2026-11-21';
+	await page.goto(`/departure/${key('not-published')}?${search}`);
+	const answer = page.locator('[data-slot="screen-answer"]');
+	await expect(answer).toContainText('The record is temporarily unavailable.');
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
+	const recovery = page.waitForResponse(
+		(response) =>
+			new URL(response.url()).pathname === '/api/record-recovery' &&
+			new URL(response.url()).searchParams.get('screen') === 'departure',
+	);
+	await page.clock.fastForward(5_000);
+	expect((await recovery).status()).toBe(200);
+	await expect(answer).toContainText('The record is temporarily unavailable.');
+});
+
 for (const locale of ['en', 'fr'] as const) {
 	test(`${locale} Departure busy answer shows the shared pending line`, async ({ page }) => {
 		const fr = locale === 'fr';

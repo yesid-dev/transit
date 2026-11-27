@@ -11,6 +11,7 @@ const SITEMAP_CACHE_CONTROL = 'public, max-age=3600, s-maxage=14400';
 export const GET: RequestHandler = async (event) => {
 	const config = readPublicSiteConfig();
 	let entities: SitemapEntities[] = [];
+	let complete = true;
 	if (config.indexing) {
 		try {
 			const ip = event.request.headers.get('cf-connecting-ip');
@@ -25,7 +26,8 @@ export const GET: RequestHandler = async (event) => {
 			const cities = explicit ? [selected.provider] : catalog.providers;
 			entities = await Promise.all(
 				cities.map(async ({ id }) => {
-					const edition = await getScheduleEdition(id, ip);
+					const edition = await getScheduleEdition(id, ip).catch(() => null);
+					if (!edition) complete = false;
 					return {
 						routeIds: edition?.routes.map((route) => route.id),
 						stopIds: edition?.stops.map((stop) => stop.id),
@@ -34,14 +36,14 @@ export const GET: RequestHandler = async (event) => {
 				}),
 			);
 		} catch {
-			// Static pages are still crawlable if the city catalog is unavailable.
+			complete = false;
 		}
 	}
 
 	return new Response(buildSitemapXml(config, entities), {
 		headers: {
 			'content-type': 'application/xml; charset=utf-8',
-			'cache-control': SITEMAP_CACHE_CONTROL,
+			'cache-control': complete ? SITEMAP_CACHE_CONTROL : 'no-store',
 		},
 	});
 };

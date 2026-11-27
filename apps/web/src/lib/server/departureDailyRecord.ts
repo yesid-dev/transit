@@ -111,14 +111,17 @@ export function loadDepartureRecord(
 	period: EnginePeriod,
 	identity: DepartureIdentity,
 	day: string,
+	only?: ReadonlySet<string>,
 ) {
-	return (Object.keys(departure) as DepartureSection[]).map((section) => ({
-		section,
-		answer: getRecordAnswer(
-			departureQuery(section, identity)!,
-			section === 'stops' ? { ...period, from: day, to: day } : period,
-		),
-	}));
+	return (Object.keys(departure) as DepartureSection[])
+		.filter(readingFilter(only))
+		.map((section) => ({
+			section,
+			answer: getRecordAnswer(
+				departureQuery(section, identity)!,
+				section === 'stops' ? { ...period, from: day, to: day } : period,
+			),
+		}));
 }
 
 export async function loadDepartureLive(period: EnginePeriod, identity: DepartureIdentity) {

@@ -383,13 +383,14 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       }
     }
     if (response.status === 400) {
-      if (question.networkCorridors) {
+      const error = await response.json().catch(() => null);
+      if (question.networkCorridors && error?.message === "unknown parameter") {
         return Response.json({ reason: "network_corridors_unsupported" }, {
           status: 409, headers: PUBLIC_HEADERS,
         });
       }
-      if (question.map) return lastGood(env, key);
-      const error = await response.json();
+      if (question.map && !question.networkCorridors && error?.message === "unknown parameter")
+        return lastGood(env, key);
       if (question.delayDistribution && error?.message === "unknown measure") {
         return Response.json({ reason: "delay_distribution_unsupported", message: "engine unavailable" }, {
           status: 409, headers: PUBLIC_HEADERS,
@@ -397,7 +398,12 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       }
       return publicEngineError(error);
     }
-    if (!response.ok) return lastGood(env, key);
+    if (!response.ok) {
+      await response.body?.cancel();
+      if (question.csv && [404, 409, 422].includes(response.status))
+        return message(response.status, "invalid export selection");
+      return lastGood(env, key);
+    }
 
     contentType = response.headers.get("content-type");
     const mime = contentType?.split(";")[0].trim().toLowerCase();

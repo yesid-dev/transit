@@ -25,6 +25,53 @@ const busy = Promise.resolve({ kind: 'busy' } as const);
 const asked = (fetcher: { mock: { calls: [string][] } }) =>
 	fetcher.mock.calls.map(([url]) => new URL(url, location.origin).searchParams.get('readings'));
 
+it('waits for each server deadline and withholds Try again until the last window opens', async () => {
+	vi.useFakeTimers();
+	const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+	const fetcher = vi
+		.fn(async (_url: string) => Response.json({}))
+		.mockResolvedValueOnce(Response.json({ 'sections.Days': await answer }))
+		.mockResolvedValueOnce(
+			Response.json({
+				'sections.Lines': { kind: 'busy', retryAfterMs: 15_000 },
+			}),
+		)
+		.mockResolvedValueOnce(
+			Response.json({
+				'sections.Lines': { kind: 'busy', retryAfterMs: 15_000 },
+			}),
+		);
+	vi.stubGlobal('fetch', fetcher);
+	try {
+		render(RecordRecoveryNoticeHarness, {
+			scope: '/vehicle/101',
+			sections: [
+				{ section: 'Days', answer: busy },
+				{
+					section: 'Lines',
+					answer: Promise.resolve({ kind: 'busy' as const, retryAfterMs: 60_000 }),
+				},
+			],
+		});
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(asked(fetcher)).toEqual(['sections.Days']);
+		await vi.advanceTimersByTimeAsync(54_999);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(screen.getByText(/^Next attempt available at/)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+		await vi.advanceTimersByTimeAsync(15_001);
+		expect(asked(fetcher)).toEqual(['sections.Days', 'sections.Lines', 'sections.Lines']);
+		await vi.advanceTimersByTimeAsync(14_999);
+		expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+	} finally {
+		vi.unstubAllGlobals();
+		visibility.mockRestore();
+		vi.useRealTimers();
+	}
+});
+
 it.each([
 	[
 		'en',

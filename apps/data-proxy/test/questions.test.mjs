@@ -464,6 +464,14 @@ test("preserves a network corridor refusal from an engine without complete clean
   assert.deepEqual(await result.json(), payload);
 });
 
+test("keeps an invalid network corridor question a client error", async (t) => {
+  const f = fixture(t, () => Response.json({ message: "invalid date range" }, { status: 400 }));
+  const result = await f.fetch(
+    "/v2/demo/measure?from=2026-10-17&to=2026-10-23&view=map&measure=mean_time_lost&group=segment",
+  );
+  assert.equal(result.status, 400);
+});
+
 test("rejects invalid questions before spending an engine slot or visitor budget", async (t) => {
   const f = fixture(t);
   for (const path of [

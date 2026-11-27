@@ -1,12 +1,13 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 import { loadLineRecord, lineDirection } from '#lib/server/lineRecord.ts';
+import { archivedIdentity, validEntityId } from '#lib/server/entityIdentity.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { lineIsScheduleOnly, providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { routeNameFallback } from '#lib/site/nameFallback.ts';
 import { linePageTitle } from '#lib/seo/riderPageTitle.ts';
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation, detailTabFromSearchParams } from '#lib/site/detailTabs.ts';
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
@@ -18,7 +19,8 @@ export const load: PageServerLoad = async (event) => {
 	const canonicalLocation = canonicalDetailTabLocation(url);
 	if (canonicalLocation) redirect(308, canonicalLocation);
 
-	const id = event.params.id.trim() || event.params.id;
+	const id = event.params.id;
+	if (!validEntityId(id)) error(404);
 	const tab = detailTabFromSearchParams(url.searchParams);
 	if (tab === 'schedule') {
 		const target = new URL(url);
@@ -36,6 +38,20 @@ export const load: PageServerLoad = async (event) => {
 
 	const { schedule, lang, providerId, provider, patterns } = await event.parent();
 	const knownLine = schedule?.routes.some((route) => route.id === id) ?? false;
+	const clock = frameClock(provider);
+	const visitorIp = event.request.headers.get('cf-connecting-ip');
+	if (!knownLine) {
+		const identity = await archivedIdentity('line', id, clock, { city: providerId, visitorIp });
+		if (identity === 'missing' && schedule)
+			error(404, lang === 'fr' ? 'Cette ligne est introuvable.' : 'This line could not be found.');
+		if (identity !== 'available')
+			error(
+				503,
+				lang === 'fr'
+					? 'Cette ligne est temporairement indisponible.'
+					: 'This line is temporarily unavailable.',
+			);
+	}
 	const outsideCurrentTimetable = schedule != null && !knownLine;
 	const showLiveReadings = frameLive && !outsideCurrentTimetable;
 	const directory = createLineDirectory(schedule?.routes ?? null, {
@@ -57,8 +73,7 @@ export const load: PageServerLoad = async (event) => {
 				provider?.inputs.vehicle_positions === false &&
 				provider.inputs.trip_updates === false));
 	const stops = (schedule?.stops ?? []).filter((stop) => stop.routes?.includes(id));
-	const { period } = parseAnswerFrameState(url.searchParams, frameClock(provider));
-	const visitorIp = event.request.headers.get('cf-connecting-ip');
+	const { period } = parseAnswerFrameState(url.searchParams, clock);
 	const canPredict = !!provider?.inputs.trip_updates && !scheduleOnly;
 	const capture =
 		showLiveReadings && !scheduleOnly && provider
