@@ -144,6 +144,7 @@ describe('Stop capture and Record loading', () => {
 		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
 			{ path: '/measure', parameters: { measure: 'punctuality', stop: 'archived' } },
 			expect.objectContaining({ from: '2026-10-20', to: '2026-10-21', visitorIp: '192.0.2.24' }),
+			{ lead: true },
 		);
 		expect(request.fetch).not.toHaveBeenCalled();
 	});

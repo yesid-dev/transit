@@ -1,4 +1,9 @@
-import { getRecordAnswer, type EnginePeriod, type RecordQuery } from './engine.ts';
+import {
+	getRecordAnswer,
+	type EnginePeriod,
+	type RecordOrder,
+	type RecordQuery,
+} from './engine.ts';
 import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
 import { readingFilter, type Complete } from './readingFilter.ts';
 import type { EntityIdentity } from './entityIdentity.ts';
@@ -33,17 +38,24 @@ function readStopRecord(
 ) {
 	const { from, to, city } = scope;
 	const include = readingFilter(only);
-	const ask = (query: RecordQuery) =>
+	// The answer at the top of the screen reaches the engine first (`lead`).
+	const read = (query: RecordQuery, order?: RecordOrder) =>
+		order ? getRecordAnswer(query, scope, order) : getRecordAnswer(query, scope);
+	const ask = (query: RecordQuery, order?: RecordOrder) =>
 		identity
 			? identity.then((state) =>
-					state === 'available'
-						? getRecordAnswer(query, scope)
-						: ({ kind: 'unreachable' } as const),
+					state === 'available' ? read(query, order) : ({ kind: 'unreachable' } as const),
 				)
-			: getRecordAnswer(query, scope);
+			: read(query, order);
 	// The engine already computes both delay percentiles alongside the three bands.
 	const punctuality =
-		include('punctuality') || include('delay') ? ask(stopRecordQuery('punctuality', stop)) : null;
+		include('punctuality') || include('delay')
+			? ask(stopRecordQuery('punctuality', stop), { lead: true })
+			: null;
+	// The network comparison sits beside it at the top of the screen.
+	const network = include('network')
+		? ask({ path: '/measure', parameters: { measure: 'on_time' } }, { lead: true })
+		: undefined;
 	const alerts = stopRecordQuery('alerts', stop);
 	if (alertDetailsAllowed(scope)) alerts.parameters.alert_details = '1';
 	const sections: StopSection[] = [
@@ -70,7 +82,7 @@ function readStopRecord(
 		})),
 		// Keep the existing export queries and stream the display cuts independently.
 		grid: include('grid') ? measure({ measure: 'late', group: 'weekday_hour', stop }) : undefined,
-		network: include('network') ? measure({ measure: 'on_time' }) : undefined,
+		network,
 		networkDaily: include('networkDaily')
 			? measure({ measure: 'on_time', group: 'day' })
 			: undefined,

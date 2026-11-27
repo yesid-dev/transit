@@ -86,6 +86,7 @@ it('keeps a Stop section in its place and asks the shared answer once', async ()
 	expect(engine.getRecordAnswer).toHaveBeenCalledWith(
 		{ path: '/measure', parameters: { measure: 'punctuality', stop: 'S1' } },
 		scope,
+		{ lead: true },
 	);
 });
 
