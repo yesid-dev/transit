@@ -77,6 +77,11 @@ describe('toRouteLineFeatures', () => {
 		expect(features.map((feature) => feature.properties.id)).toEqual(['161:0', '161:1', '24:0']);
 		expect(features.map((feature) => feature.properties.route_id)).toEqual(['161', '161', '24']);
 		expect(features.map((feature) => feature.properties.selected)).toEqual([0, 1, 0]);
+		expect(features.map((feature) => feature.properties.muted ?? false)).toEqual([
+			true,
+			false,
+			true,
+		]);
 		expect(features[0].geometry).toEqual(route161.directions?.[0].shape);
 	});
 
@@ -206,7 +211,7 @@ describe('addRouteLineLayers', () => {
 		expect(beforeIds).toEqual(['first-label', 'first-label', 'first-label']);
 	});
 
-	it('adds cased brand-yellow route lines with selected width and a wide hit layer', () => {
+	it('reserves accent ink for selection and draws unselected schedule-only rail dashed', () => {
 		const layers: LayerSpecification[] = [];
 		const map = {
 			getLayer: () => undefined,
@@ -230,7 +235,20 @@ describe('addRouteLineLayers', () => {
 		expect(layers[1]).toMatchObject({
 			type: 'line',
 			source: ROUTE_LINE_SOURCE,
-			paint: { 'line-color': 'rgb(255, 182, 39)' },
+			paint: {
+				'line-color': [
+					'case',
+					['==', ['get', 'selected'], 1],
+					'rgb(255, 182, 39)',
+					'rgb(112, 120, 134)',
+				],
+				'line-dasharray': [
+					'case',
+					['all', ['==', ['get', 'schedule_only'], true], ['==', ['get', 'selected'], 0]],
+					['literal', [1.5, 2]],
+					['literal', [1, 0]],
+				],
+			},
 		});
 		const routePaint = (layers[1].paint ?? {}) as Record<string, unknown>;
 		expect(JSON.stringify(routePaint['line-width'])).toContain('selected');
@@ -256,7 +274,10 @@ describe('addRouteLineLayers', () => {
 		addRouteLineLayers(map);
 
 		expect(paintCalls).toContainEqual([ROUTE_LINE_CASING_LAYER, 'line-color', 'rgb(20, 20, 20)']);
-		expect(paintCalls).toContainEqual([ROUTE_LINE_LAYER, 'line-color', 'rgb(255, 182, 39)']);
-		expect(paintCalls).toContainEqual([ROUTE_LINE_HIT_LAYER, 'line-color', 'rgb(255, 182, 39)']);
+		expect(paintCalls).toContainEqual([
+			ROUTE_LINE_LAYER,
+			'line-color',
+			['case', ['==', ['get', 'selected'], 1], 'rgb(255, 182, 39)', 'rgb(112, 120, 134)'],
+		]);
 	});
 });

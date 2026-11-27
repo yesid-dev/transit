@@ -6,6 +6,7 @@
 	import { delocalizePath, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import { createAddressLookup } from '#lib/search/addressLookup.svelte.ts';
+	import { readLiveMapChoice } from '#lib/search/liveMapChoice.ts';
 	import {
 		searchHitHref,
 		searchPageHref,
@@ -52,6 +53,7 @@
 	const queryState = $derived(searchQueryState(query));
 	let open = $state(true);
 	let form = $state<HTMLFormElement>();
+	let input = $state<HTMLInputElement>();
 	let results = $state<ReturnType<typeof SearchResultsList>>();
 	let active = $state<string | null>(null);
 	const lookup = createAddressLookup(() => ({ providerId, locale }));
@@ -120,6 +122,21 @@
 		open = false;
 	}
 
+	function followMapChoice(href: string): boolean {
+		const target = new URL(href, url);
+		if (
+			target.pathname !== url.pathname ||
+			delocalizePath(target.pathname) !== '/map' ||
+			!readLiveMapChoice(target.searchParams)
+		)
+			return false;
+
+		close();
+		input?.focus({ preventScroll: true });
+		void goto(target, { shallow: true, reset: false });
+		return true;
+	}
+
 	async function keydown(event: KeyboardEvent): Promise<void> {
 		if (event.isComposing) return;
 		if (event.key === 'Escape') {
@@ -175,6 +192,7 @@
 		role="combobox"
 		name="network-search"
 		bind:value={query}
+		bind:this={input}
 		placeholder={copy.searchPlaceholder.all}
 		aria-label={copy.searchAria.all}
 		aria-expanded={shown && listed}
@@ -204,7 +222,7 @@
 					{locale}
 					{hrefs}
 					{presentation}
-					follow={sheet?.follow}
+					follow={sheet?.follow ?? followMapChoice}
 					onchoose={close}
 				/>
 			</div>

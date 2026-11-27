@@ -534,7 +534,7 @@ for (const locale of PUBLISHED_LOCALES) {
 			.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close', exact: true })
 			.click();
 
-		// Selecting a report opens detail only: no implicit filter and no camera change.
+		// The shareable selection keeps the report scope and camera unchanged.
 		const gotoBefore = page.url();
 		const cameraBeforeSelection = await rendererCamera(page);
 		const transformBeforeSelection = await rendererTransform(page);
@@ -543,7 +543,9 @@ for (const locale of PUBLISHED_LOCALES) {
 			.locator('[data-slot="map-detail-overlay"]')
 			.filter({ hasText: 'center-late' });
 		await expect(detail).toBeVisible();
-		expect(page.url()).toBe(gotoBefore);
+		const selectedUrl = new URL(gotoBefore);
+		selectedUrl.searchParams.set('selectedVehicle', 'center-late');
+		await expect(page).toHaveURL(selectedUrl.href);
 		const selectedCamera = await rendererCamera(page);
 		for (let i = 0; i < cameraBeforeSelection.length; i++) {
 			expect(selectedCamera[i]).toBeCloseTo(cameraBeforeSelection[i], 10);
@@ -551,6 +553,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		expectSameRendererGeometry(await rendererTransform(page), transformBeforeSelection);
 
 		await page.keyboard.press('Escape');
+		await expect(page).toHaveURL(gotoBefore);
 		await expect(panel.locator('[data-report-row]')).toHaveCount(3);
 		await expect(panel.getByRole('link', { name: 'center-late', exact: true })).toBeFocused();
 		await panel.getByRole('button', { name: reports.copyLiveView }).click();
@@ -660,9 +663,13 @@ test('selecting an in-view link and pressing Escape restores its focus @theme', 
 	await page.goto('/map?provider=stm&status=late');
 	const panel = await openReports(page);
 	const row = panel.getByRole('link', { name: 'center-late', exact: true });
-	await row.click();
+	await row.focus();
+	await row.press('Enter');
 	await expect(page.locator('[data-slot="map-detail-overlay"]')).toContainText('center-late');
+	await expect(page).toHaveURL(/selectedVehicle=center-late/);
+	await expect(row).toBeFocused();
 	await page.keyboard.press('Escape');
+	await expect(page).not.toHaveURL(/selectedVehicle=/);
 	await expect(row).toBeFocused();
 	await expectFocusedTargetUncovered(page);
 });

@@ -83,6 +83,7 @@
 	import { type MapFitPadding } from './viewport';
 	import {
 		createMapCamera,
+		attachMapRenderReceipt,
 		exposeCameraProbe,
 		type CameraRecoveryView,
 		type CameraLifecycle,
@@ -596,6 +597,7 @@
 				throw error;
 			}
 			attempt.map = instance;
+			attempt.disposers.push(attachMapRenderReceipt(runtimeContainer, instance));
 			// Geometry and camera test access, omitted from production builds.
 			if (dev || import.meta.env.MODE === 'e2e') {
 				attempt.disposers.push(exposeCameraProbe(instance));

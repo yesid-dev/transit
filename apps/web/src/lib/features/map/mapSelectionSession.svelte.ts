@@ -78,7 +78,12 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			.map((route) => route.id),
 	);
 	const selectedRouteIds = $derived(
-		[...new SvelteSet([...filters.routes, ...scheduledRouteIds])].sort(),
+		[
+			...new SvelteSet([
+				...filters.routes,
+				...scheduledRouteIds.filter((id) => !filters.routes.size || filters.routes.has(id)),
+			]),
+		].sort(),
 	);
 	const selectedRoutes = createResource<RouteFile[]>(
 		async (signal) => {
@@ -113,12 +118,18 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	});
 
 	const stopList = $derived(stops.data?.stops ?? []);
+	const selectedVehicle = $derived(
+		selected?.kind === 'vehicle' ? live.index.byVehicleId.get(selected.id) : null,
+	);
+	const selectedVehicleRouteId = $derived(
+		selectedVehicle?.route ??
+			(selectedVehicle?.trip ? live.index.byTripId.get(selectedVehicle.trip)?.route : null) ??
+			null,
+	);
 	const focusedRouteId = $derived.by<string | null>(() => {
 		if (!selected) return null;
 		if (selected.kind === 'route') return selected.id;
-		if (selected.kind === 'vehicle') {
-			return live.index.byVehicleId.get(selected.id)?.route ?? null;
-		}
+		if (selected.kind === 'vehicle') return selectedVehicleRouteId;
 		return null;
 	});
 	const focusedStopId = $derived.by<string | null>(() => {
@@ -136,8 +147,13 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			enabled: () => focusedRouteId != null,
 		},
 	);
-	const shapeKey = $derived(selectedRouteIds.join('\u0000'));
-	const shapes = createResource(() => getScheduleShapes(untrack(() => selectedRouteIds)), {
+	const shapeIds = $derived(
+		focusedRouteId && !selectedRouteIds.includes(focusedRouteId)
+			? [...selectedRouteIds, focusedRouteId].sort()
+			: selectedRouteIds,
+	);
+	const shapeKey = $derived(shapeIds.join('\u0000'));
+	const shapes = createResource(() => getScheduleShapes(untrack(() => shapeIds)), {
 		key: () => shapeKey,
 		enabled: () => shapeKey !== '' && options.drawRoutes?.() !== false,
 	});
@@ -160,28 +176,25 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	);
 	const selectedRouteLineId = $derived.by<string | null>(() => {
 		if (selected?.kind === 'route') return selected.id;
-		if (selected?.kind === 'vehicle') {
-			const route = live.index.byVehicleId.get(selected.id)?.route ?? null;
-			return route != null && filters.routes.has(route) ? route : null;
-		}
+		if (selected?.kind === 'vehicle') return selectedVehicleRouteId;
 		return null;
 	});
-	const selectedVehicleRoute = $derived.by<RouteFile | null>(() => {
-		if (selected?.kind !== 'vehicle') return null;
+	const selectedMapRoute = $derived.by<RouteFile | null>(() => {
 		const focus = focusedRoute.data;
-		return focus && focus.id === selectedRouteLineId ? focus : null;
+		return focus && focus.id === selectedRouteLineId
+			? withScheduleShapes(focus, shapes.data ?? [])
+			: null;
 	});
 	const routeLineRoutes = $derived.by<RouteFile[]>(() => {
 		const out = [...routeList];
-		const vehicleRoute = selectedVehicleRoute;
-		if (vehicleRoute && !out.some((route) => route.id === vehicleRoute.id)) {
-			out.push(vehicleRoute);
+		if (selectedMapRoute && !out.some((route) => route.id === selectedMapRoute?.id)) {
+			out.push(selectedMapRoute);
 		}
 		return out;
 	});
 	const contextRoutes = $derived.by<RouteFile[]>(() => {
 		const out = [...routeList];
-		const focus = focusedRoute.data;
+		const focus = selectedMapRoute ?? focusedRoute.data;
 		if (focus && !out.some((route) => route.id === focus.id)) {
 			const scheduleOnly = options.scheduleOnly?.(focus.id, focus.type ?? null);
 			out.push(scheduleOnly ? { ...focus, schedule_only: true } : focus);
@@ -201,21 +214,6 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 	});
 	const selectedVehicleId = $derived(selected?.kind === 'vehicle' ? selected.id : null);
 	const selectedStopId = $derived(selected?.kind === 'stop' ? selected.id : null);
-	const selectedRouteLine = $derived(
-		selected?.kind === 'route'
-			? {
-					id: selected.id,
-					direction: selected.direction ?? null,
-					variantKey: selected.variantKey ?? null,
-				}
-			: selected?.kind === 'vehicle' && selectedRouteLineId != null
-				? {
-						id: selectedRouteLineId,
-						direction: null,
-						variantKey: null,
-					}
-				: null,
-	);
 	const departuresAvailable = $derived(live.familyStates.departures.health.retained);
 	const resolvedSelectedDetail = $derived(
 		resolveMapSelection(selected, {
@@ -230,6 +228,21 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 			departuresAvailable,
 		}),
 	);
+	const selectedRouteLine = $derived.by(() => {
+		if (!selected || !selectedRouteLineId) return null;
+		if (selected.kind === 'route')
+			return {
+				id: selected.id,
+				direction: selected.direction ?? null,
+				variantKey: selected.variantKey ?? null,
+			};
+		const detail = resolvedSelectedDetail?.kind === 'vehicle' ? resolvedSelectedDetail : null;
+		return {
+			id: selectedRouteLineId,
+			direction: detail?.routeDirectionVariant?.dir ?? detail?.vehicle.direction_id ?? null,
+			variantKey: detail?.routeDirectionVariant?.key ?? null,
+		};
+	});
 	const hoverPeek = $derived(
 		resolveMapHoverPeek(hovered, {
 			staleCutoffS: options.staleCutoffS,

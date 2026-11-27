@@ -22,6 +22,30 @@ export function resetNorth(map: CameraMap | null): void {
 	);
 }
 
+/** Read the renderer's submitted route and stop state without exposing the map instance. */
+export function attachMapRenderReceipt(root: HTMLElement, instance: MapLibreMap): () => void {
+	const key = Symbol.for('transit.map.renderReceipt');
+	const inspect = () => ({
+		center: instance.getCenter().toArray(),
+		routeLines: instance.getSource('route-lines')
+			? instance.querySourceFeatures('route-lines').map((feature) => feature.properties)
+			: [],
+		railDash: instance.getLayer('route-lines')
+			? instance.getPaintProperty('route-lines', 'line-dasharray')
+			: null,
+		upcomingStops: instance.getSource('stops')
+			? instance
+					.querySourceFeatures('stops')
+					.filter((feature) => feature.properties.upcoming)
+					.map((feature) => feature.properties.id)
+			: [],
+	});
+	Object.defineProperty(root, key, { configurable: true, value: inspect });
+	return () => {
+		Reflect.deleteProperty(root, key);
+	};
+}
+
 /** Called only inside MapStage's development/e2e build gate. */
 export function exposeCameraProbe(instance: MapLibreMap): () => void {
 	const inspectMap = () => ({
