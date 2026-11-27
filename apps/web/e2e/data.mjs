@@ -305,9 +305,11 @@ const stopSearchTrials = new Map();
 const fixtureHolds = new Set();
 const registeredScheduleLines = new Set();
 
-function activeSteadyFixture(city, url) {
-	const key = `steady:${city}:${url.searchParams.get('from')}:${url.searchParams.get('to')}`;
-	return fixtureHolds.has(key) ? key : undefined;
+// A Record question carries the hold its test named (x-transit-fixture-hold); only that test's
+// questions wait, whatever other tests ask for the same dates.
+function activeTestHold(request) {
+	const key = request.headers['x-transit-fixture-hold'];
+	return typeof key === 'string' && fixtureHolds.has(key) ? key : undefined;
 }
 
 function sendFixtureResponse(response, fixture, send) {
@@ -862,7 +864,7 @@ const server = createServer((request, response) => {
 					})
 				: cleanTableHealth.days;
 		response.writeHead(200, { 'content-type': 'application/json' });
-		sendFixtureResponse(response, activeSteadyFixture(health[1], url), () =>
+		sendFixtureResponse(response, activeTestHold(request), () =>
 			response.end(
 				JSON.stringify({
 					...cleanTableHealth,
@@ -1001,7 +1003,7 @@ const server = createServer((request, response) => {
 		const { hold, body, status = 200, headers = {} } = result;
 		const heldBy = holdStopSearch
 			? scope
-			: (activeSteadyFixture(question[1], url) ?? (hold === true ? 'overview' : hold));
+			: (activeTestHold(request) ?? (hold === true ? 'overview' : hold));
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		sendFixtureResponse(response, heldBy, () => response.end(JSON.stringify(body)));
 		return;

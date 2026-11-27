@@ -233,3 +233,75 @@ for (const locale of ['en', 'fr'] as const) {
 		expect(container).not.toHaveTextContent(/^(?:0\s?%?|[-\u2013\u2014])$/);
 	});
 }
+
+it.each(['en', 'fr'] as const)(
+	'draws every %s card with its final shape while the record is on its way',
+	async (locale) => {
+		const waiting = new Promise<never>(() => {});
+		const t = overviewCopy[locale];
+		const { container } = render(Overview, {
+			props: {
+				city: 'Montréal',
+				locale,
+				provider,
+				href,
+				record: {
+					period,
+					previous: previousPeriod(period),
+					punctuality: waiting,
+					baseline: waiting,
+					delivery: waiting,
+					lines: waiting,
+					stops: waiting,
+					trend: waiting,
+				},
+			},
+		});
+		for (const title of [t.record, t.live, t.rankings, t.about])
+			expect(screen.getByRole('article', { name: title })).toBeVisible();
+		const rankings = screen.getByRole('article', { name: t.rankings });
+		const rows = rankings.querySelectorAll('[data-waiting-shape="rows"]');
+		expect([...rows].map((shape) => shape.getAttribute('data-waiting-count'))).toEqual(['3', '3']);
+		// About these figures: labels and the sentences that need no answer, the rest pulsing.
+		const about = screen.getByRole('article', { name: t.about });
+		expect(within(about).getByText(t.means)).toBeVisible();
+		expect(within(about).getByText(t.definition)).toBeVisible();
+		expect(about.querySelectorAll('[data-record-pending]')).toHaveLength(2);
+		// "Seen an error?" is the Method row's second link, to How we measure's About Transit card.
+		const report = within(about).getByRole('link', { name: t.errorRow });
+		expect(report.getAttribute('href')).toMatch(/\/metrics\?.*#about-transit$/u);
+		expect(within(about).getByRole('link', { name: t.method })).toBeVisible();
+		expect(container).not.toHaveTextContent(/Calculating|Calcul en cours/u);
+	},
+);
+
+it('keeps the error link in About these figures once the record arrives', async () => {
+	render(Overview, {
+		props: {
+			city: 'Montréal',
+			locale: 'fr',
+			provider,
+			href,
+			record: {
+				period,
+				previous: previousPeriod(period),
+				punctuality: answer(measure('measured')),
+				baseline: answer(measure('measured')),
+				delivery: answer(delivered),
+				lines: answer(ranking),
+				stops: answer(ranking),
+			},
+		},
+	});
+	// The waiting card is replaced by the filled one.
+	await waitFor(() =>
+		expect(
+			screen
+				.getByRole('article', { name: overviewCopy.fr.about })
+				.querySelector('[data-record-pending]'),
+		).toBeNull(),
+	);
+	const about = screen.getByRole('article', { name: overviewCopy.fr.about });
+	const report = within(about).getByRole('link', { name: 'Vous avez vu une erreur?' });
+	expect(report.getAttribute('href')).toMatch(/#about-transit$/u);
+});

@@ -20,7 +20,7 @@
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { loadNetworkRecord } from '#lib/server/networkRecord.ts';
-	import type { RecordCell, RecordSeries } from '#lib/server/engine.ts';
+	import type { RecordCell, RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import {
@@ -51,11 +51,15 @@
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import RecordSkeleton from '../record/RecordSkeleton.svelte';
+	import type { RecordWaiting } from '../record/recordWaiting.ts';
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import CiteBlock from '../record/CiteBlock.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import AboutFigures from '../record/AboutFigures.svelte';
+	import AboutFiguresWaiting from '../home/AboutFiguresWaiting.svelte';
+	import WaitingFoot from '../home/WaitingFoot.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import NetworkRecordReading from './NetworkRecordReading.svelte';
 	import { networkCrowdingRows } from './networkRecordText.ts';
@@ -101,6 +105,9 @@
 			href: recordSectionLinks(pinned, section).csv,
 		})),
 	);
+	// The weekday and weekend rows, and the days of the trips table at its page size (D4).
+	const dayTypesWaiting: RecordWaiting = { shape: 'facts', count: 2 };
+	const deliveryDaysWaiting: RecordWaiting = { shape: 'table', rows: 7 };
 	let trendTable = $state(false);
 	let hourTable = $state(false);
 	let delayTable = $state(false);
@@ -204,12 +211,77 @@
 {#snippet missingCell(row: DeliveryDay)}{row.missing}{/snippet}
 {#snippet crowdingCell(row: CrowdingRow)}{row.share}{/snippet}
 
+{#snippet about(
+	period: { from: string; to: string },
+	city: string,
+	answer: RecordMeasure | null,
+	waiting = false,
+)}
+	{@const method = carryFrameState(localizeHref('/metrics', locale, city), pinned)}
+	{@const fields = [
+		{ key: 'period', label: term.period, text: dateRange(period, locale) },
+		{
+			key: 'counted',
+			label: term.counted,
+			waiting,
+			text: answer
+				? [
+						`${sample(answer)}.`,
+						punctualityWeighting[locale],
+						period.from === period.to ? null : pooledDays[locale],
+					]
+						.filter(Boolean)
+						.join(' ')
+				: null,
+		},
+		{
+			key: 'observed',
+			label: term.observed,
+			waiting: waiting && 4,
+			text: answer
+				? [
+						answer.evidence.share_observed == null
+							? null
+							: term.observedShare(
+									recordPercent(answer.evidence.share_observed, locale),
+									answer.evidence.counts.scheduled == null
+										? undefined
+										: tally(answer.evidence.counts.scheduled, locale),
+								),
+						timingBasis(answer.evidence.counts, locale),
+						answer.coverage_note?.[locale],
+					]
+						.filter(Boolean)
+						.join(' ')
+				: null,
+		},
+		{ key: 'means', label: term.means, text: term.definition },
+		{
+			key: 'method',
+			label: term.methodRow,
+			text: null,
+			// "Seen an error?" opens How we measure on its About Transit card, as on every screen.
+			links: [
+				{ href: method, label: term.method },
+				{ href: `${method}#about-transit`, label: term.errorRow },
+			],
+		},
+		{
+			key: 'source',
+			label: term.source,
+			text: term.feeds(agencyName(operator, page.data.provider)),
+		},
+	]}
+	{#if waiting}<AboutFiguresWaiting title={term.about} {fields} />
+	{:else}<AboutFigures title={term.about} {fields} />{/if}
+{/snippet}
+
 <RecordScreen class="min-w-0">
-	<RecordGroup
-		><ScreenTitle title={t('Network health', 'Santé du réseau')} subtitle={subject} /></RecordGroup
-	>
-	<div data-slot="screen-content">
-		<RecordGroup>
+	<!-- The title, the answer and the cards share one section: no page divider stands between the
+	     title and the answer. -->
+	<RecordGroup>
+		<ScreenTitle title={t('Network health', 'Santé du réseau')} subtitle={subject} />
+		<div class="screen-content" data-slot="screen-content">
 			<div data-slot="screen-answer">
 				{#if !record || !stamp}
 					<RecordAnswer
@@ -226,7 +298,7 @@
 								answer={record.punctuality}
 							/>{/key}
 					{:then result}
-						{#if result.kind === 'busy'}<RecordPending {locale} busy />
+						{#if result.kind === 'busy'}<RecordPending {locale} busy shape="answer" />
 						{:else if result.kind !== 'answer'}
 							<RecordAnswer
 								{locale}
@@ -283,7 +355,7 @@
 						{locale}
 						{stamp}
 						answer={record.punctuality}
-						waiting="band-comparison"
+						waiting="bands"
 					>
 						{#snippet reading(result)}
 							{#if !('cells' in result)}
@@ -300,12 +372,14 @@
 									'Un passage est en avance de plus d’une minute sur l’horaire ou en retard de plus de 5 minutes.',
 								)}
 							</p>
+						{/snippet}
+						{#snippet after()}
 							<h3 class="mt-4 font-semibold">
 								{t('Weekdays against weekends', 'Semaine et fin de semaine')}
 							</h3>
 							{#await record.dayTypes}
 								{#key record.dayTypes}<RecordPending
-										shape="comparison-facts"
+										shape={dayTypesWaiting}
 										{locale}
 										answer={record.dayTypes}
 									/>{/key}
@@ -331,16 +405,20 @@
 											</FactRow>
 										{/each}
 									</FactList>
-								{:else if days.kind === 'busy'}<RecordPending {locale} busy />
+								{:else if days.kind === 'busy'}<RecordPending
+										{locale}
+										busy
+										shape={dayTypesWaiting}
+									/>
 								{:else}<p>{t('Unavailable', 'Indisponible')}</p>{/if}
 							{/await}
 						{/snippet}
 					</NetworkRecordReading>
 					<section id="delay" class="grid min-w-0">
-						<RecordCard interactive title={copy.delay} {stamp}>
+						<RecordCard interactive title={copy.delay} {stamp} stampRule reserve="histogram">
 							{#await record.delayDistribution}
 								{#key record.delayDistribution}<RecordPending
-										shape="trend"
+										shape="histogram"
 										{locale}
 										answer={record.delayDistribution}
 									/>{/key}
@@ -355,10 +433,17 @@
 											table={delayTable}
 										/>
 									</div>
-								{:else if distribution.kind === 'busy'}<RecordPending {locale} busy />
+								{:else if distribution.kind === 'busy'}<RecordPending
+										{locale}
+										busy
+										shape="histogram"
+									/>
 								{:else}<p>{recordConnection.unreachable[locale]}</p>{/if}
 							{/await}
-							{#await record.punctuality then result}
+							{#await record.punctuality}
+								<!-- The median and the latest 1 in 10: two facts, each with its detail line. -->
+								<RecordSkeleton shape={{ shape: 'facts', count: 4 }} />
+							{:then result}
 								{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 									{@const reading = result.answer}
 									<div class="grid gap-4">
@@ -388,7 +473,7 @@
 								{/if}
 							{/await}
 							{#snippet evidence()}
-								{#await record.delayDistribution then result}
+								{#await record.delayDistribution}<WaitingFoot />{:then result}
 									{#if result.kind === 'answer'}
 										<RecordEvidenceLine
 											evidence={result.answer.evidence}
@@ -422,6 +507,7 @@
 						{locale}
 						{stamp}
 						answer={record.trend}
+						waiting="trend"
 						fill
 					>
 						{#snippet reading(result)}
@@ -446,6 +532,8 @@
 						{locale}
 						{stamp}
 						answer={record.delivery}
+						waiting="trip-facts"
+						more={deliveryDaysWaiting}
 					>
 						{#snippet reading(result)}
 							{@const outcomes =
@@ -492,7 +580,13 @@
 									state={chartState(result.state === 'measured' ? 'unknown' : result.state)}
 									{locale}
 								/>{/if}
-							{#await record.deliveryDays then days}
+							{#await record.deliveryDays}
+								{#key record.deliveryDays}<RecordPending
+										{locale}
+										answer={record.deliveryDays}
+										shape={deliveryDaysWaiting}
+									/>{/key}
+							{:then days}
 								{#if days.kind === 'answer' && 'cells' in days.answer && days.answer.cells.length}
 									{@const rows = days.answer.cells.flatMap((cell) =>
 										typeof cell.key.day !== 'string' ? [] : [deliveryDay(cell.key.day, cell)],
@@ -511,12 +605,23 @@
 											line: (row) => (row.measured ? row.facts : row.ran),
 										}}
 									/>
-								{:else if days.kind === 'busy'}<RecordPending {locale} busy />{/if}
+								{:else if days.kind === 'busy'}<RecordPending
+										{locale}
+										busy
+										shape={deliveryDaysWaiting}
+									/>{/if}
 							{/await}
 						{/snippet}
 					</NetworkRecordReading>
 				</DashboardGrid>
-				<NetworkRecordReading id="hours" title={copy.hours} {locale} {stamp} answer={record.hours}>
+				<NetworkRecordReading
+					id="hours"
+					title={copy.hours}
+					{locale}
+					{stamp}
+					answer={record.hours}
+					waiting="grid"
+				>
 					{#snippet reading(result)}
 						{#if 'cells' in result}<RecordChart
 								input={{ kind: 'hours', answer: result }}
@@ -538,6 +643,7 @@
 					{locale}
 					{stamp}
 					answer={record.crowding}
+					waiting={{ shape: 'table', rows: 6 }}
 				>
 					{#snippet reading(result)}
 						{#if !('cells' in result) && result.state === 'measured'}
@@ -562,76 +668,29 @@
 					{/snippet}
 				</NetworkRecordReading>
 			{/if}
+		</div>
+	</RecordGroup>
+	{#if record && stamp}
+		<RecordGroup>
+			<!-- On the page from the first frame; the two sentences that need the answer pulse. -->
+			{#await record.punctuality}
+				{@render about(record.period, record.city, null, true)}
+			{:then result}
+				{@render about(
+					record.period,
+					record.city,
+					result.kind === 'answer' && 'value' in result.answer ? result.answer : null,
+				)}
+			{/await}
 		</RecordGroup>
-		{#if record && stamp}
-			<RecordGroup>
-				{#await record.punctuality then result}
-					{@const answer =
-						result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-					<AboutFigures
-						title={term.about}
-						fields={[
-							{
-								key: 'period',
-								label: term.period,
-								text: dateRange(record.period, locale),
-							},
-							{
-								key: 'counted',
-								label: term.counted,
-								text: answer
-									? [
-											`${sample(answer)}.`,
-											punctualityWeighting[locale],
-											record.period.from === record.period.to ? null : pooledDays[locale],
-										]
-											.filter(Boolean)
-											.join(' ')
-									: null,
-							},
-							{
-								key: 'observed',
-								label: term.observed,
-								text: answer
-									? [
-											answer.evidence.share_observed == null
-												? null
-												: term.observedShare(
-														recordPercent(answer.evidence.share_observed, locale),
-														answer.evidence.counts.scheduled == null
-															? undefined
-															: tally(answer.evidence.counts.scheduled, locale),
-													),
-											timingBasis(answer.evidence.counts, locale),
-											answer.coverage_note?.[locale],
-										]
-											.filter(Boolean)
-											.join(' ')
-									: null,
-							},
-							{
-								key: 'means',
-								label: term.means,
-								text: term.definition,
-							},
-							{
-								key: 'method',
-								label: term.methodRow,
-								text: null,
-								link: {
-									href: carryFrameState(localizeHref('/metrics', locale, record.city), pinned),
-									label: term.method,
-								},
-							},
-							{
-								key: 'source',
-								label: term.source,
-								text: term.feeds(agencyName(operator, page.data.provider)),
-							},
-						]}
-					/>
-				{/await}
-			</RecordGroup>
-		{/if}
-	</div>
+	{/if}
 </RecordScreen>
+
+<style>
+	.screen-content {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-card-gap);
+		min-inline-size: 0;
+	}
+</style>

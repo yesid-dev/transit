@@ -4,6 +4,9 @@ import { fixtureWorkerBindings } from './fixture-worker-bindings.js';
 
 const header = 'x-transit-fixture-scope';
 const scheduleHoldHeader = 'x-transit-fixture-schedule-hold';
+// A test that holds its Record answers names its own hold, so tests on the same dates never
+// hold or release each other's questions.
+const holdHeader = 'x-transit-fixture-hold';
 const context = new AsyncLocalStorage();
 const workerFetch = globalThis.fetch.bind(globalThis);
 
@@ -14,17 +17,19 @@ globalThis.fetch = (input, init) => {
 	const url = new URL(input.url);
 	if (url.origin !== fixture.origin || !url.pathname.startsWith('/v2/'))
 		return workerFetch(input, init);
-	if (
+	const holding = Boolean(fixture.hold) && /\/(?:measure|ranking|data-health)$/.test(url.pathname);
+	const scoped = !(
 		url.searchParams.get('measure') !== 'alert_counts' &&
 		!url.pathname.endsWith('/schedule-index') &&
 		fixture.scope !== 'overview-stream' &&
 		fixture.scope !== 'overview-stop-ranking' &&
 		!(fixture.scope === 'record-yesterday' && url.pathname === '/v2/cities') &&
 		!(fixture.scope?.startsWith('stops-search:') && url.searchParams.get('group') === 'stop_id')
-	)
-		return workerFetch(input, init);
+	);
+	if (!scoped && !holding) return workerFetch(input, init);
 	const headers = new Headers(input.headers);
-	if (fixture.scope) headers.set(header, fixture.scope);
+	if (scoped && fixture.scope) headers.set(header, fixture.scope);
+	if (holding) headers.set(holdHeader, fixture.hold);
 	if (fixture.scheduleHold && url.pathname.endsWith('/schedule-index')) {
 		headers.set(scheduleHoldHeader, fixture.scheduleHold);
 	}
@@ -36,13 +41,14 @@ export default {
 		const origin = env.QUESTION_FIXTURE_ORIGIN;
 		const scope = request.headers.get(header);
 		const scheduleHold = request.headers.get(scheduleHoldHeader);
+		const hold = request.headers.get(holdHeader);
 		const binding = Object.hasOwn(fixtureWorkerBindings, scope) && fixtureWorkerBindings[scope];
 		if (binding && env[binding]) {
 			return env[binding].fetch(request);
 		}
 		return context.run(
-			origin && (scope || scheduleHold) && !env.QUESTION_PROXY
-				? { origin, scope, scheduleHold }
+			origin && (scope || scheduleHold || hold) && !env.QUESTION_PROXY
+				? { origin, scope, scheduleHold, hold }
 				: null,
 			() => worker.fetch(request, env, ctx),
 		);

@@ -12,7 +12,9 @@
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
-	import type { RecordWaitingShape } from '../record/RecordSkeleton.svelte';
+	import WaitingFoot from '../home/WaitingFoot.svelte';
+	import RecordSkeleton from '../record/RecordSkeleton.svelte';
+	import { skeletonBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
 	import { lastGoodNote, recordConnection } from '../record/recordText.ts';
 
 	let {
@@ -25,6 +27,8 @@
 		id,
 		fill = false,
 		waiting,
+		more,
+		after,
 	}: {
 		answer: Promise<EngineResult<RecordAnswer>>;
 		title: string;
@@ -34,8 +38,15 @@
 		control?: Snippet;
 		id: string;
 		fill?: boolean;
-		waiting?: RecordWaitingShape;
+		/** The body's final shape, drawn while it waits or the engine is busy, and kept as its least
+		    height when it ends in a short honest state. */
+		waiting: RecordWaiting;
+		/** More of the final shape under the first one, for a card in two parts. */
+		more?: RecordWaiting;
+		/** Parts of the card that need no answer from this reading, drawn from the first frame. */
+		after?: Snippet;
 	} = $props();
+	const reserved = $derived(skeletonBlockSize(waiting));
 
 	function sample(result: RecordMeasure | RecordSeries) {
 		const values = (key: string) => {
@@ -60,19 +71,25 @@
 </script>
 
 <section {id} class="grid min-w-0">
-	<RecordCard {title} {stamp} {fill} interactive={!!control}>
-		{#await answer}
-			{#key answer}<RecordPending {locale} {answer} shape={waiting} />{/key}
-		{:then result}
-			{#if result.kind === 'busy'}<RecordPending {locale} busy />
-			{:else if result.kind !== 'answer'}<p>{recordConnection.unreachable[locale]}</p>
-			{:else if !('rows' in result.answer)}
-				{@render reading(result.answer)}
-				{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-			{/if}
-		{/await}
+	<RecordCard {title} {stamp} stampRule {fill} interactive={!!control}>
+		<!-- The reading keeps its waiting height when it ends in a short state; what follows it stays put. -->
+		<div class="reading" class:fill style:min-block-size={reserved}>
+			{#await answer}
+				{#key answer}<RecordPending {locale} {answer} shape={waiting} />{/key}
+				{#if more}<RecordSkeleton shape={more} />{/if}
+			{:then result}
+				{#if result.kind === 'busy'}<RecordPending {locale} busy shape={waiting} />
+					{#if more}<RecordSkeleton shape={more} />{/if}
+				{:else if result.kind !== 'answer'}<p>{recordConnection.unreachable[locale]}</p>
+				{:else if !('rows' in result.answer)}
+					{@render reading(result.answer)}
+					{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+				{/if}
+			{/await}
+		</div>
+		{@render after?.()}
 		{#snippet evidence()}
-			{#await answer then result}
+			{#await answer}<WaitingFoot />{:then result}
 				{#if result.kind === 'answer' && !('rows' in result.answer)}
 					<RecordEvidenceLine
 						evidence={result.answer.evidence}
@@ -91,3 +108,17 @@
 		{/snippet}
 	</RecordCard>
 </section>
+
+<style>
+	.reading {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		align-content: start;
+		min-inline-size: 0;
+	}
+	.reading.fill {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+	}
+</style>
