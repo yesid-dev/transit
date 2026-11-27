@@ -94,6 +94,8 @@
 			{locale}
 			{url}
 			record={stopRecord}
+			{heading}
+			lineCount={data.stopLines.length}
 		/>
 	{/if}
 {/snippet}
@@ -166,23 +168,25 @@
 	{@render stopContent()}
 {/if}
 
+{#snippet heading()}
+	<ScreenTitle
+		id="stop-title"
+		title={name ?? stopLabel}
+		stopCode={name ? code : undefined}
+		{subtitle}
+		hideSubtitle={data.frameLive && data.outsideCurrentTimetable}
+		{back}
+		dot={false}
+	/>
+{/snippet}
+
 {#snippet stopContent()}
 	<Surface>
 		<RecordScreen>
-			<RecordGroup>
-				<ScreenTitle
-					id="stop-title"
-					title={name ?? stopLabel}
-					stopCode={name ? code : undefined}
-					{subtitle}
-					hideSubtitle={data.frameLive && data.outsideCurrentTimetable}
-					{back}
-					dot={false}
-				/>
-			</RecordGroup>
 			{#if data.frameLive && data.outsideCurrentTimetable}
 				<div data-slot="screen-content">
 					<RecordGroup>
+						{@render heading()}
 						<div data-slot="screen-answer" id="stop-detail-departures">
 							<RecordAnswer {locale} value={null} state="no_live_data" sentence={timetableNotice}>
 								{#snippet actions()}
@@ -200,6 +204,7 @@
 			{:else if data.frameLive}
 				{#key data.capture ?? data.seed.id}
 					<StopLive
+						{heading}
 						id={data.seed.id}
 						name={name ?? code}
 						lines={data.stopLines}
@@ -221,6 +226,7 @@
 				{#await archive}
 					<div data-slot="screen-content">
 						<RecordGroup>
+							{@render heading()}
 							<div id="punctuality" data-slot="screen-answer">
 								<RecordPending {locale} />
 							</div></RecordGroup
@@ -232,6 +238,7 @@
 					{:else}
 						<div data-slot="screen-content">
 							<RecordGroup>
+								{@render heading()}
 								<div id="punctuality" data-slot="screen-answer">
 									{#if state === 'busy'}
 										<RecordPending {locale} busy />

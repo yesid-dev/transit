@@ -1,0 +1,135 @@
+/* These sections sit inside the Stop screens' content slot. */
+.stop-cards > .record-group {
+	padding-block: var(--space-card-gap);
+}
+
+.stop-cards > .record-group:first-of-type {
+	padding-block-start: 0;
+}
+
+.stop-cards > .record-group:last-of-type {
+	padding-block-end: 0;
+}
+
+.stop-record {
+	/* Period navigation preserves the scroll position while the card bodies change. */
+	overflow-anchor: none;
+}
+
+@media (40rem <= width < 64rem) {
+	/* At tablet width the French comparison and evidence wrap above the actions.
+	   Keep the timing row and its following section edge in place until both cards fill. */
+	.stop-record-answer:lang(fr) {
+		min-block-size: 13.75rem;
+	}
+
+	.stop-timing-cards:lang(fr) {
+		min-block-size: 27.125rem;
+	}
+}
+
+@media (width >= 64rem) {
+	.stop-record {
+		container: stop-record / inline-size;
+	}
+
+	/* With the controls rail alongside the record, both the answer and the paired cards
+	   wrap more than they do at tablet width. Reserve room for their wrapped content. */
+	@container stop-record (inline-size < 44rem) {
+		.stop-record-answer {
+			min-block-size: 12.75rem;
+		}
+
+		.stop-record-answer:lang(fr) {
+			min-block-size: 16.75rem;
+		}
+
+		.stop-timing-cards {
+			min-block-size: 35.375rem;
+		}
+
+		.stop-timing-cards:lang(fr) {
+			min-block-size: 38.125rem;
+		}
+	}
+}
+
+/* The shared body shapes exclude the card header, evidence and chart controls.
+   Leave room for those here, including the wrapped legend and notes on a phone. */
+.stop-timing-cards > [data-slot='card']:first-child {
+	min-block-size: 23.5rem;
+}
+
+.stop-timing-cards > [data-slot='card']:last-child {
+	min-block-size: 24rem;
+}
+
+.stop-record #hourly > [data-slot='card'] {
+	min-block-size: 36.5rem;
+}
+
+.stop-record #daily > [data-slot='card'] {
+	min-block-size: 28.25rem;
+}
+
+.stop-record #alerts > [data-slot='card'] {
+	min-block-size: 15rem;
+}
+
+@media (width < 40rem) {
+	.stop-timing-cards > [data-slot='card']:first-child {
+		min-block-size: 27.25rem;
+	}
+
+	.stop-timing-cards > [data-slot='card']:last-child {
+		min-block-size: 28.75rem;
+	}
+
+	.stop-timing-cards > [data-slot='card']:first-child:lang(fr) {
+		min-block-size: 31.75rem;
+	}
+
+	.stop-timing-cards > [data-slot='card']:last-child:lang(fr) {
+		min-block-size: 32.5rem;
+	}
+
+	.stop-record #hourly > [data-slot='card'] {
+		min-block-size: 51.25rem;
+	}
+
+	.stop-record #daily > [data-slot='card'] {
+		min-block-size: 34.5rem;
+	}
+
+	.stop-record #alerts > [data-slot='card'] {
+		min-block-size: 18.625rem;
+	}
+}
+
+@media (width >= 80rem) {
+	.stop-cards [data-screen-intro] {
+		margin-block-end: calc(var(--space-card-gap) * -2 / 3);
+	}
+}
+
+.stop-cards [data-slot='record-card'] {
+	container-type: inline-size;
+}
+
+@container (inline-size < 32rem) {
+	.stop-cards [data-slot='record-card'] > header:has([data-slot='stamp']) {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+}
+
+@container (inline-size >= 32rem) {
+	.stop-cards [data-slot='record-card'] > header:has([data-slot='stamp']) {
+		flex-wrap: nowrap;
+		align-items: flex-start;
+	}
+
+	.stop-cards [data-slot='record-card'] > header > [data-slot='stamp'] {
+		flex: none;
+	}
+}

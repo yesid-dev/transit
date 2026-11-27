@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Skeleton } from '@yesid/ui/skeleton';
+	import './stopCards.css';
 	import { getContext, onMount, tick, untrack } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { page } from '$app/state';
@@ -52,7 +54,7 @@
 	import { finderCells, finderCsv, finderRecordUrl, finderShare } from '../record/finderText.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
 	import { recordConnection, tally, timingBasis } from '../record/recordText.ts';
-	import { indexCopy } from './stops.copy.ts';
+	import { indexCopy, stopErrorLink } from './stops.copy.ts';
 	import {
 		stopPageSize,
 		stopReading,
@@ -471,13 +473,11 @@
 		>{/each}{/snippet}
 {#snippet shareCell(row: Row)}
 	{#if row.share !== null}<strong>{recordPercent(row.share, locale)}</strong>
+	{:else if record && !result}
+		<Skeleton class="ms-auto h-4 w-12 max-w-full" />
 	{:else}<RecordTableValue
 			{locale}
-			text={record && !result
-				? t('Calculating…', 'Calcul en cours…')
-				: result && result.kind !== 'answer'
-					? t('Unavailable', 'Indisponible')
-					: null}
+			text={result && result.kind !== 'answer' ? t('Unavailable', 'Indisponible') : null}
 			state={row.state}
 		/>{/if}
 {/snippet}
@@ -499,7 +499,13 @@
 		/>{/if}
 {/snippet}
 {#snippet resultActions()}
-	{#if record && result && rows.length}
+	{#if !result}
+		<div class="flex flex-wrap gap-2" aria-hidden="true">
+			<Skeleton class={locale === 'fr' ? 'h-11 w-34' : 'h-11 w-27'} />
+			<Skeleton class={locale === 'fr' ? 'h-11 w-33' : 'h-11 w-29'} />
+			<Skeleton class={locale === 'fr' ? 'h-11 w-19' : 'h-11 w-18'} />
+		</div>
+	{:else if record && rows.length}
 		{@const href = new URL('#stop-results', pinned).href}
 		{@const headers = [
 			t('Stop ID', 'Identifiant de l’arrêt'),
@@ -548,20 +554,26 @@
 		/>
 	{/if}
 {/snippet}
+{#snippet pendingEvidence()}
+	<div class="grid min-h-[1lh] content-center" aria-hidden="true">
+		<Skeleton class="h-4 w-60 max-w-full" />
+	</div>
+{/snippet}
 
 <RecordScreen class="min-w-0">
-	<RecordGroup><ScreenTitle title={copy.heading} {subtitle} /></RecordGroup>
-	<div class="min-w-0" data-slot="screen-content">
-		<RecordGroup density="compact">
+	<div class="stop-cards min-w-0" data-slot="screen-content">
+		<RecordGroup class="gap-[var(--space-card-gap)]">
+			<div data-screen-intro><ScreenTitle title={copy.heading} {subtitle} /></div>
 			<div data-slot="screen-answer">
 				<RecordAnswer
 					{locale}
 					value={null}
 					{sentence}
-					actions={record && result && rows.length && !updatingSearch && !searchFailed
+					actions={record && rows.length && !updatingSearch && !searchFailed
 						? resultActions
 						: undefined}
 					time={stamp}
+					meta={record && !result && rows.length ? pendingEvidence : undefined}
 					evidence={evidence
 						? {
 								sample: sample ?? '',
@@ -570,6 +582,8 @@
 						: undefined}
 				/>
 			</div>
+		</RecordGroup>
+		<RecordGroup>
 			<RecordCard {title} {stamp} interactive evidence={evidence ? evidenceFoot : undefined}>
 				<div class="grid min-w-0 grid-cols-1 gap-3">
 					<form
@@ -778,7 +792,13 @@
 						key: 'method',
 						label: about.methodRow,
 						text: null,
-						link: { href: localizeHref('/metrics', locale, provider?.id), label: about.method },
+						links: [
+							{ href: localizeHref('/metrics', locale, provider?.id), label: about.method },
+							{
+								href: localizeHref('/metrics#about-transit', locale, provider?.id),
+								label: stopErrorLink[locale].label,
+							},
+						],
 					},
 					{
 						key: 'source',

@@ -177,7 +177,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await resumed;
 	});
 
-	test(`${locale}: live pages results after 20 with no line-group headings`, async ({ page }) => {
+	test(`${locale}: live pages predictions with no line-group headings`, async ({ page }) => {
 		const refresh = await installStopCapture(page, provider, 'S1', at);
 		await page.route('**/api/live-trips?city=stm&stop=S1', async (route) => {
 			const now = await page.evaluate(() => Date.now());
@@ -200,9 +200,13 @@ for (const locale of PUBLISHED_LOCALES) {
 		await page.goto(path('S1', 'frameMode=live'));
 		await refresh();
 		const table = page.locator('[data-slot="stop-live-predictions"]').getByRole('table');
-		await expect(table.locator('tbody tr')).toHaveCount(20);
+		await expect(table.locator('tbody tr')).toHaveCount(6);
 		await expect(table).toContainText(fr ? 'Retard inconnu' : 'Delay unknown');
-		await page.getByRole('button', { name: fr ? 'Afficher 1 de plus' : 'Show 1 more' }).click();
+		for (const shown of [12, 18]) {
+			await page.getByRole('button', { name: fr ? 'Afficher 6 de plus' : 'Show 6 more' }).click();
+			await expect(table.locator('tbody tr')).toHaveCount(shown);
+		}
+		await page.getByRole('button', { name: fr ? 'Afficher 3 de plus' : 'Show 3 more' }).click();
 		await expect(table.locator('tbody tr')).toHaveCount(21);
 		await expect(page.locator('[data-slot="stop-live-predictions"] h3')).toHaveCount(0);
 	});
@@ -255,7 +259,11 @@ test('stale and empty trip captures have different states', async ({ page }) => 
 	stale = false;
 	await refresh();
 	await expect(answer).toContainText('No vehicle is predicted now.');
-	await expect(page.locator('[data-slot="stop-live-predictions"]')).toHaveCount(0);
+	const predictions = page.locator('[data-slot="stop-live-predictions"]');
+	await expect(
+		predictions.getByRole('heading', { name: 'Next vehicles at this stop' }),
+	).toBeVisible();
+	await expect(predictions.getByRole('table')).toHaveCount(0);
 });
 
 test('Record shows the low coverage explanation once', async ({ page }) => {
