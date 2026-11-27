@@ -71,7 +71,7 @@ export const methodCopy = {
 			'Not a measure of lines without live data, such as the métro or the O-Train: their agencies publish no realtime data for them.',
 			'Not a count of riders, and not a cause of delay: neither is in the feeds.',
 			'Observed times are the agency’s own predictions and positions, checked against each other, not a stopwatch at the stop.',
-			'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not comparable. Each screen says how its times were observed.',
+			'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not directly comparable. Each screen says how its times were observed.',
 		],
 		about: {
 			title: 'About Transit',
@@ -159,7 +159,7 @@ export const methodCopy = {
 			'Pas une mesure des lignes sans données en direct, comme le métro ou l’O-Train\u00a0: leurs sociétés de transport ne publient aucune donnée en temps réel pour ces lignes.',
 			'Pas un décompte des usagers, ni une cause du retard\u00a0: ces données ne figurent pas dans les flux.',
 			'Les heures observées proviennent des prévisions et des positions de la société de transport, comparées entre elles, sans chronométrage à l’arrêt.',
-			'Pas une comparaison entre villes\u00a0: le flux de chaque société de transport donne ses heures à sa manière, donc les chiffres de deux villes ne sont pas comparables. Chaque écran indique comment ses heures ont été observées.',
+			'Pas une comparaison entre villes\u00a0: le flux de chaque société de transport donne ses heures à sa manière, donc les chiffres de deux villes ne sont pas directement comparables. Chaque écran indique comment ses heures ont été observées.',
 		],
 		about: {
 			title: 'À propos de Transit',

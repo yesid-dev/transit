@@ -9,11 +9,11 @@ const plain = (text: string) => text.replace(/[\u00a0\u202f]/gu, ' ');
 it.each([
 	[
 		'en',
-		'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not comparable. Each screen says how its times were observed.',
+		'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not directly comparable. Each screen says how its times were observed.',
 	],
 	[
 		'fr',
-		'Pas une comparaison entre villes : le flux de chaque société de transport donne ses heures à sa manière, donc les chiffres de deux villes ne sont pas comparables. Chaque écran indique comment ses heures ont été observées.',
+		'Pas une comparaison entre villes : le flux de chaque société de transport donne ses heures à sa manière, donc les chiffres de deux villes ne sont pas directement comparables. Chaque écran indique comment ses heures ont été observées.',
 	],
 ] as const)('says the two cities are not comparable in %s', (locale, sentence) => {
 	expect(methodCopy[locale].recordLimits.map(plain)).toContain(sentence);
