@@ -229,6 +229,7 @@
 	}
 	.map-rail {
 		display: grid;
+		grid-auto-rows: max-content;
 		gap: 1rem;
 	}
 	.map-rail.desktop {
