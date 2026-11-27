@@ -61,7 +61,9 @@
 				{#if time}<span class="answer-stamp"><Stamp {...time} /></span>{/if}
 				{#if secondRow}
 					<div class="answer-details">
-						{#if comparison}<p class="answer-comparison">{comparison}</p>{/if}
+						{#if comparison}<p class="answer-comparison" data-slot="answer-comparison">
+								{comparison}
+							</p>{/if}
 						{#if evidence || meta}
 							<div class="answer-evidence" data-slot="answer-evidence">
 								{#if evidence?.sample}<p>
