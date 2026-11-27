@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { join } from 'node:path';
 import {
 	captureFixture,
@@ -11,6 +11,7 @@ import {
 
 const path = '/vehicle/40061?provider=stm&frameMode=live';
 const previewSlot = '[data-slot="vehicle-map-preview"]';
+const attributionButton = '.maplibregl-ctrl-attrib-button';
 const scheduleMap = /\/api\/schedule-map\?city=stm&lines=/;
 const positions = { S1: [-73.5985, 45.5005], S2: [-73.6015, 45.4995] } as const;
 const directions = [
@@ -98,8 +99,17 @@ test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
 });
 
+async function expectSingleAttributionIcon(button: Locator) {
+	await expect(button).toBeVisible();
+	await expect(button).not.toHaveCSS('background-image', 'none');
+	await expect(button).toHaveCSS('background-repeat', 'no-repeat');
+	await expect(button).toHaveCSS('background-position', '50% 50%');
+	await expect(button).toHaveCSS('background-size', '24px 24px');
+}
+
 for (const [width, height, locale, scheme] of [
 	[320, 844, 'en', 'light'],
+	[390, 844, 'en', 'light'],
 	[390, 844, 'fr', 'dark'],
 	[768, 1024, 'en', 'light'],
 	[1440, 900, 'en', 'light'],
@@ -119,6 +129,7 @@ for (const [width, height, locale, scheme] of [
 		await expect(preview.locator('[data-slot="vehicle-overlay"]')).toBeVisible();
 		await expect(preview.locator('.vehicle-map-stop-name')).toHaveCount(2);
 		await expect(preview.locator('[data-slot="map-stage"]')).toBeVisible();
+		await expect(page.locator('html')).toHaveAttribute('data-theme', scheme);
 		expect((await shapes).ok()).toBe(true);
 		expect(await preview.evaluate((node) => node.getBoundingClientRect().height)).toBe(256);
 		expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
@@ -151,17 +162,18 @@ for (const [width, height, locale, scheme] of [
 		}
 
 		const link = preview.locator('[data-slot="vehicle-map-link"]');
+		const attribution = preview.locator(attributionButton);
+		await expectSingleAttributionIcon(attribution);
+		const target = (await attribution.boundingBox())!;
+		expect(target.width).toBeGreaterThanOrEqual(44);
+		expect(target.height).toBeGreaterThanOrEqual(44);
 		if (width === 768) {
-			const attribution = preview.locator('.maplibregl-ctrl-attrib-button');
-			await expect(attribution).toBeVisible();
-			const target = (await attribution.boundingBox())!;
-			expect(target.width).toBeGreaterThanOrEqual(44);
-			expect(target.height).toBeGreaterThanOrEqual(44);
 			await attribution.click();
 			await expect(preview.locator('.maplibregl-ctrl-attrib')).toHaveAttribute('open', '');
 			await attribution.click();
 			await expect(preview.locator('.maplibregl-ctrl-attrib')).not.toHaveAttribute('open', '');
 		}
+		await page.unrouteAll({ behavior: 'wait' });
 		await link.click({ position: { x: 64, y: 64 } });
 		await expect(page).toHaveURL(
 			(url) =>
@@ -170,6 +182,12 @@ for (const [width, height, locale, scheme] of [
 				url.searchParams.get('selectedVehicle') === '40061' &&
 				!url.searchParams.has('vehicle'),
 		);
+		if (width === 390 || width === 1440) {
+			await expect(page.locator('html')).toHaveAttribute('data-theme', scheme);
+			await expectSingleAttributionIcon(
+				page.locator('[data-slot="map-stage"]:not(.map-preview)').locator(attributionButton),
+			);
+		}
 	});
 }
 
@@ -198,6 +216,7 @@ test('the vehicle map waits to enter the viewport and keeps a keyboard link with
 	const link = page.getByRole('link', { name: 'Voir sur la carte', exact: true });
 	await link.focus();
 	await expect(link).toBeFocused();
+	await page.unrouteAll({ behavior: 'wait' });
 	await page.keyboard.press('Enter');
 	await expect(page).toHaveURL(
 		(url) =>
