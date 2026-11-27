@@ -46,6 +46,7 @@ for (const width of [390, 1440]) {
 			);
 			await expect(waiting).toContainText(fr ? 'des 48 intervalles prévus' : 'of 48 planned gaps');
 			const offered = main.locator('#offered');
+			await expect(offered.locator('[data-slot="chart-frame"]')).toBeVisible();
 			await expect(offered).toContainText(
 				fr
 					? /Le service prévu culminait de 7\sh\sà\s8\sh\s:\s8 trajets par heure\./u

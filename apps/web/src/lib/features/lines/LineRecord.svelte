@@ -1,7 +1,11 @@
 <script lang="ts">
 	import { tick, type Snippet } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
-	import { pendingBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
+	import {
+		pendingBlockSize,
+		skeletonBlockSize,
+		type RecordWaiting,
+	} from '../record/recordWaiting.ts';
 	import { page } from '$app/state';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
@@ -10,6 +14,7 @@
 	import AboutFigures from '#lib/features/record/AboutFigures.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import RecordSkeleton from '#lib/features/record/RecordSkeleton.svelte';
 	import RecordUnavailable from '#lib/features/record/RecordUnavailable.svelte';
 
 	import StateMark from '#lib/features/record/StateMark.svelte';
@@ -167,19 +172,34 @@
 	const anyOpen = $derived(failures.some((section) => section !== 'delivery' && opened(section)));
 	let stopsTable = $state(false);
 
+	function disclosureBlockSize(section: (typeof failures)[number]) {
+		const body = pendingBlockSize(shapes[section])?.wide;
+		const chart = skeletonBlockSize('trend');
+		return section === 'offered' && body && chart ? `calc(${chart} + 1rem + ${body})` : body;
+	}
+
 	function toggleAll() {
 		const open = !anyOpen;
 		for (const section of failures) chosen[section] = open;
 	}
 </script>
 
-{#snippet pending(answer: Promise<EngineResult<RecordAnswer>>, section: keyof typeof shapes)}
-	{#key answer}<RecordPending {locale} {answer} shape={shapes[section]} />{/key}
+{#snippet pending(
+	answer: Promise<EngineResult<RecordAnswer>> | undefined,
+	section: keyof typeof shapes,
+	busy = false,
+)}
+	{#key answer}
+		{#if section === 'offered'}
+			<div class="mb-4"><RecordSkeleton shape="trend" /></div>
+		{/if}
+		<RecordPending {locale} {answer} {busy} shape={shapes[section]} />
+	{/key}
 {/snippet}
 
 {#snippet gap(result: EngineResult<RecordAnswer>, section: keyof typeof shapes)}
 	{#if result.kind === 'busy'}
-		<RecordPending {locale} busy shape={shapes[section]} />
+		{@render pending(undefined, section, true)}
 	{:else if result.kind !== 'answer'}
 		<RecordUnavailable {locale} retry={result.kind === 'unreachable' ? result.retry : undefined} />
 	{:else}
@@ -266,10 +286,7 @@
 					expandable
 					bind:open={() => opened(section), (open) => (chosen[section] = open ?? false)}
 				>
-					<div
-						data-slot="line-disclosure-body"
-						style:min-block-size={pendingBlockSize(shapes[section])?.wide}
-					>
+					<div data-slot="line-disclosure-body" style:min-block-size={disclosureBlockSize(section)}>
 						{@render reading(section)}
 					</div>
 					{#snippet evidence()}
