@@ -36,6 +36,7 @@ export type MapLayerFeedContext = Readonly<{
 		filter: Parameters<typeof setStops>[2];
 		alertIds: Parameters<typeof setStops>[3];
 		selectedId: Parameters<typeof setStops>[4];
+		upcomingStops?: Parameters<typeof setStops>[5];
 	}>;
 	nearTarget: Readonly<{
 		target: NearTarget | null;
@@ -76,7 +77,7 @@ const stopsModule: LayerModule = {
 		addStopsLayer(map);
 	},
 	invalidationKey(ctx) {
-		const { alertIds, filter, items, selectedId } = ctx.stops;
+		const { alertIds, filter, items, selectedId, upcomingStops } = ctx.stops;
 		const alertFilterActive = (filter?.alerts?.length ?? 0) > 0;
 		return [
 			items,
@@ -85,11 +86,12 @@ const stopsModule: LayerModule = {
 			!filter?.entities?.length || filter.entities.includes('stop'),
 			alertFilterActive,
 			alertFilterActive ? [...(alertIds ?? [])].sort().join('\u0000') : '',
+			[...(upcomingStops ?? [])].sort().join('\u0000'),
 		];
 	},
 	feed(map, ctx) {
 		const stops = ctx.stops;
-		setStops(map, stops.items, stops.filter, stops.alertIds, stops.selectedId);
+		setStops(map, stops.items, stops.filter, stops.alertIds, stops.selectedId, stops.upcomingStops);
 	},
 	pick: { layerIds: [STOPS_LAYER], priority: 20 },
 };

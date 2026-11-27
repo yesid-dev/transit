@@ -1,4 +1,9 @@
-import type { Map as MapLibreMap, GeoJSONSource, LayerSpecification } from 'maplibre-gl';
+import type {
+	Map as MapLibreMap,
+	GeoJSONSource,
+	LayerSpecification,
+	ExpressionSpecification,
+} from 'maplibre-gl';
 import type { RouteDirection, RouteFile } from '#lib/v1/schemas/index.ts';
 import { routeDirectionVariants, type RouteDirectionVariant } from './routeDirection';
 import { resolveColor } from './vehicleSprites';
@@ -25,6 +30,7 @@ interface RouteLineFeature {
 		headsign: string;
 		terminal_label: string;
 		selected: number;
+		muted?: boolean;
 		schedule_only?: boolean;
 	};
 }
@@ -77,10 +83,19 @@ export function toRouteLineFeatures(
 	const features: RouteLineFeature[] = [];
 
 	for (const route of routes) {
-		for (const variant of routeDirectionVariants(route)) {
+		const drawable = routeDirectionVariants(route).flatMap((variant) => {
+			const geometry = lineString(variant.direction);
+			return geometry ? [{ variant, geometry }] : [];
+		});
+		const routeSelection =
+			selected?.id === route.id
+				? drawable.some(({ variant }) => isSelectedRouteLine(route, variant, selected))
+					? selected
+					: { id: route.id }
+				: null;
+		for (const { variant, geometry } of drawable) {
 			const { direction } = variant;
-			const geometry = lineString(direction);
-			if (!geometry) continue;
+			const highlighted = isSelectedRouteLine(route, variant, routeSelection);
 			features.push({
 				type: 'Feature',
 				geometry,
@@ -92,7 +107,8 @@ export function toRouteLineFeatures(
 					variant_key: variant.key,
 					headsign: direction.headsign ?? '',
 					terminal_label: variant.label,
-					selected: isSelectedRouteLine(route, variant, selected) ? 1 : 0,
+					selected: highlighted ? 1 : 0,
+					...(selected && !highlighted ? { muted: true } : {}),
 					...(route.schedule_only ? { schedule_only: true } : {}),
 				},
 			});
@@ -132,7 +148,13 @@ const CASING_WIDTH = [
 const HIT_WIDTH = ['interpolate', ['linear'], ['zoom'], 9, 16, 12, 20, 15, 26];
 
 function lineLayout(): LayerSpecification['layout'] {
-	return { 'line-cap': 'round', 'line-join': 'round' };
+	return { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': ['get', 'selected'] };
+}
+
+function routeInk(): ExpressionSpecification {
+	const selected = resolveColor('var(--accent-text)', 'rgb(255, 182, 39)');
+	const network = resolveColor('var(--muted-foreground)', 'rgb(112, 120, 134)');
+	return ['case', ['==', ['get', 'selected'], 1], selected, network];
 }
 
 export function addRouteLineLayers(map: MapLibreMap, beforeId?: string): void {
@@ -140,7 +162,6 @@ export function addRouteLineLayers(map: MapLibreMap, beforeId?: string): void {
 		retintRouteLineLayers(map);
 		return;
 	}
-	const routeYellow = resolveColor('var(--accent-text)', 'rgb(255, 182, 39)');
 	const casing = resolveColor('var(--background)', 'rgb(20, 20, 20)');
 
 	map.addLayer(
@@ -151,7 +172,7 @@ export function addRouteLineLayers(map: MapLibreMap, beforeId?: string): void {
 			layout: lineLayout(),
 			paint: {
 				'line-color': casing,
-				'line-opacity': 0.9,
+				'line-opacity': ['case', ['==', ['get', 'muted'], true], 0.2, 0.9],
 				'line-width': CASING_WIDTH,
 			},
 		} as unknown as LayerSpecification,
@@ -165,8 +186,14 @@ export function addRouteLineLayers(map: MapLibreMap, beforeId?: string): void {
 			source: ROUTE_LINE_SOURCE,
 			layout: lineLayout(),
 			paint: {
-				'line-color': routeYellow,
-				'line-opacity': ['case', ['==', ['get', 'schedule_only'], true], 0.55, 0.95],
+				'line-color': routeInk(),
+				'line-opacity': ['case', ['==', ['get', 'muted'], true], 0.28, 0.95],
+				'line-dasharray': [
+					'case',
+					['all', ['==', ['get', 'schedule_only'], true], ['==', ['get', 'selected'], 0]],
+					['literal', [1.5, 2]],
+					['literal', [1, 0]],
+				],
 				'line-width': LINE_WIDTH,
 			},
 		} as unknown as LayerSpecification,
@@ -180,7 +207,6 @@ export function addRouteLineLayers(map: MapLibreMap, beforeId?: string): void {
 			source: ROUTE_LINE_SOURCE,
 			layout: lineLayout(),
 			paint: {
-				'line-color': routeYellow,
 				'line-opacity': 0,
 				'line-width': HIT_WIDTH,
 			},
@@ -190,11 +216,9 @@ export function addRouteLineLayers(map: MapLibreMap, beforeId?: string): void {
 }
 
 function retintRouteLineLayers(map: MapLibreMap): void {
-	const routeYellow = resolveColor('var(--accent-text)', 'rgb(255, 182, 39)');
 	const casing = resolveColor('var(--background)', 'rgb(20, 20, 20)');
 	map.setPaintProperty(ROUTE_LINE_CASING_LAYER, 'line-color', casing);
-	map.setPaintProperty(ROUTE_LINE_LAYER, 'line-color', routeYellow);
-	map.setPaintProperty(ROUTE_LINE_HIT_LAYER, 'line-color', routeYellow);
+	map.setPaintProperty(ROUTE_LINE_LAYER, 'line-color', routeInk());
 }
 
 export function setRouteLines(

@@ -1286,12 +1286,14 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 			(heading) => heading.textContent === 'Vehicle bus-1',
 		);
 		expect(selectionIdentity).toBeDefined();
-		// A detail action is the only URL write here: picking itself must write no filter.
+		// Settle the shareable pick before exercising the independently authored filter.
+		const picked = activeLastGoto();
+		await harness.commitNavigation(picked.url.href);
 		const detailFilter = harness.detailFilter;
 		if (!detailFilter) throw new Error('expected the detail filter action');
 		detailFilter({ kind: 'route', value: '24' });
 		const selectionStart = activeLastGoto();
-		let currentUrl = new URL('http://localhost/map');
+		let currentUrl = picked.url;
 		if (options.settleSelectionUrl !== false) {
 			await harness.commitNavigation(selectionStart.url.href);
 			currentUrl = selectionStart.url;
@@ -1450,7 +1452,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 						winner.focus === 'close' ? before.close : document.body,
 					);
 				expect(harness.goto).toHaveBeenCalledTimes(gotoCalls);
-				expect(beforeCallbacks).toHaveLength(shape === 'echo' || shape === 'adopt' ? 1 : 2);
+				expect(beforeCallbacks).toHaveLength(shape === 'echo' || shape === 'adopt' ? 2 : 3);
 				if (
 					shape === 'echo' ||
 					shape === 'adopt' ||
@@ -1466,7 +1468,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 					expect(winner.url.pathname.endsWith('/')).toBe(false);
 				}
 
-				const exitUrl = winner.url;
+				let exitUrl = winner.url;
 				if (shape === 'echo' || shape === 'adopt') {
 					const gotoCallsBeforeClose = harness.goto.mock.calls.length;
 					await fireEvent.click(before.close);
@@ -1475,13 +1477,16 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 						{ onTimeout: (error) => error },
 					);
 
-					// The explicit detail action is user-authored, so closing keeps it and writes nothing.
+					// Closing removes the shareable selection and preserves the separate filter.
 					await waitFor(() => {
 						const filter = harness.toVehicleFeatures.mock.lastCall?.[1];
 						expect(filter?.routes.has('24')).toBe(true);
 						expect(filter?.vehicles.has('bus-1')).toBe(false);
 					});
-					expect(harness.goto).toHaveBeenCalledTimes(gotoCallsBeforeClose);
+					expect(harness.goto).toHaveBeenCalledTimes(gotoCallsBeforeClose + 1);
+					exitUrl = activeLastGoto().url;
+					expect(exitUrl.searchParams.has('selectedVehicle')).toBe(false);
+					await harness.commitNavigation(exitUrl.href);
 				}
 
 				await commitLines(exitUrl);
@@ -1520,8 +1525,7 @@ describe('MapHero base-parity navigation and isolated teardown (M6H)', () => {
 		await fireEvent.click(screen.getByRole('button', { name: before.closeLabel }));
 		await tick();
 
-		// Closing no longer retires an explicit filter, and the picked vehicle was never written.
-		expect(harness.goto).toHaveBeenCalledTimes(gotoCallsBefore);
+		expect(harness.goto).toHaveBeenCalledTimes(gotoCallsBefore + 1);
 		await waitFor(() => {
 			const filter = harness.toVehicleFeatures.mock.lastCall?.[1];
 			expect(filter?.routes.has('24')).toBe(true);
@@ -1845,7 +1849,8 @@ describe('MapHero reports in this view', () => {
 		const gotoCalls = harness.goto.mock.calls.length;
 		await fireEvent.click(screen.getByRole('link', { name: 'bus-1' }));
 		expect(await screen.findByRole('heading', { name: 'Vehicle bus-1' })).toBeInTheDocument();
-		expect(harness.goto).toHaveBeenCalledTimes(gotoCalls);
+		expect(harness.goto).toHaveBeenCalledTimes(gotoCalls + 1);
+		expect(harness.goto.mock.lastCall?.[0]).toBe('/map?selectedVehicle=bus-1');
 		expect(harness.focusCoordinate).not.toHaveBeenCalled();
 		const filter = harness.toVehicleFeatures.mock.lastCall?.[1];
 		expect([...(filter?.vehicles ?? [])]).toEqual([]);
@@ -2053,7 +2058,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		expect(stormUploadDelta).toBe(controlUploadDelta);
 	});
 
-	it('opens and closes a picked vehicle without writing a filter or refeeding routes', async () => {
+	it('highlights a picked vehicle and records the selection without writing a filter', async () => {
 		harness.getRoute.mockImplementation(() => new Promise<null>(() => {}) as never);
 		render(MapHero);
 		await tick();
@@ -2062,12 +2067,12 @@ describe('MapHero map-layer feed lifecycle', () => {
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
 		await waitFor(() =>
 			expect(bulkCounts()).toEqual({
-				routes: beforeCommit.routes,
+				routes: beforeCommit.routes + 1,
 				motion: beforeCommit.motion + 1,
 				stops: beforeCommit.stops,
 			}),
 		);
-		expect(harness.goto).not.toHaveBeenCalled();
+		expect(harness.goto.mock.lastCall?.[0]).toBe('/map?selectedVehicle=bus-1');
 		expect(harness.focusCoordinate).not.toHaveBeenCalled();
 		expect(
 			(
@@ -2081,7 +2086,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await waitFor(() =>
 			expect(bulkCounts()).toEqual({
-				routes: beforeClose.routes,
+				routes: beforeClose.routes + 1,
 				motion: beforeClose.motion + 1,
 				stops: beforeClose.stops,
 			}),
@@ -2104,8 +2109,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 		render(MapHero);
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
 		await screen.findByRole('button', { name: 'Clear selection' });
-		// The pick itself writes no URL; only the explicit detail action does.
-		expect(harness.goto).not.toHaveBeenCalled();
+		expect(harness.goto.mock.lastCall?.[0]).toBe('/map?selectedVehicle=bus-1');
 		const detailFilter = await waitFor(() => {
 			expect(harness.detailFilter).not.toBeNull();
 			return harness.detailFilter!;
@@ -2117,15 +2121,15 @@ describe('MapHero map-layer feed lifecycle', () => {
 
 		expect(bulkCounts()).not.toEqual(beforeTouch);
 		const navigationCount = harness.goto.mock.calls.length;
-		expect(navigationCount).toBe(1);
+		expect(navigationCount).toBe(2);
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await tick();
-		// Closing a user-authored filter neither removes nor rewrites it.
-		expect(harness.goto).toHaveBeenCalledTimes(navigationCount);
+		expect(harness.goto).toHaveBeenCalledTimes(navigationCount + 1);
 		const lastTarget = new URL(String(harness.goto.mock.lastCall?.[0]), 'http://localhost');
 		expect(lastTarget.searchParams.get('route')).toBe('24');
 		expect(lastTarget.searchParams.has('vehicle')).toBe(false);
+		expect(lastTarget.searchParams.has('selectedVehicle')).toBe(false);
 	});
 
 	it('opens and closes a picked stop without writing a filter', async () => {
@@ -2187,8 +2191,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 
 		await fireEvent.click(screen.getByTestId('map-stage-stub-pick-vehicle'));
 		await screen.findByRole('button', { name: 'Clear selection' });
-		// Selection opens detail only: no vehicle or route is written, so no URL navigation happens.
-		expect(harness.goto).not.toHaveBeenCalled();
+		expect(harness.goto.mock.lastCall?.[0]).toBe('/map?route=24&selectedVehicle=bus-1');
 
 		const beforeCloseFeed = harness.toVehicleFeatures.mock.lastCall?.[1];
 		expect([...(beforeCloseFeed?.vehicles ?? [])]).toEqual([]);
@@ -2196,7 +2199,7 @@ describe('MapHero map-layer feed lifecycle', () => {
 
 		await fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
 		await tick();
-		expect(harness.goto).not.toHaveBeenCalled();
+		expect(harness.goto.mock.lastCall?.[0]).toBe('/map?route=24');
 		const afterCloseFeed = harness.toVehicleFeatures.mock.lastCall?.[1];
 		expect([...(afterCloseFeed?.routes ?? [])]).toEqual(['24']);
 		expect([...(afterCloseFeed?.vehicles ?? [])]).toEqual([]);

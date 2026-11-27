@@ -74,6 +74,25 @@
 		min-block-size: var(--size-tap-min);
 		font-size: var(--text-small);
 	}
+	.panel-row[data-report-row] {
+		display: flex;
+		flex-wrap: wrap;
+	}
+	.panel-row[data-report-row] .code {
+		flex: 0 0 3.25rem;
+	}
+	.panel-row[data-report-row] .name {
+		flex: 1 0 auto;
+		max-inline-size: calc(100% - 3.75rem);
+	}
+	.panel-row[data-report-row] .value {
+		margin-inline-start: auto;
+		max-inline-size: 100%;
+	}
+	.panel-row[data-report-row] small {
+		flex-basis: 100%;
+		padding-inline-start: 3.75rem;
+	}
 	.code {
 		grid-area: code;
 		min-inline-size: 0;

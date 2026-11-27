@@ -232,7 +232,7 @@ describe('searchHitHref', () => {
 	});
 
 	it('keeps map focus for a line or a stop chosen on the map', () => {
-		expect(searchHitHref(routeResult, from('/map'))).toBe('/map?route=161&focus=route%3A161');
+		expect(searchHitHref(routeResult, from('/map'))).toBe('/map?frameMode=live&line=161');
 		expect(searchHitHref(stopResult, from('/map', 'x=1'))).toBe(
 			'/map?x=1&stop=52819&focus=stop%3A52819',
 		);
@@ -264,7 +264,7 @@ describe('searchHitHref', () => {
 		};
 
 		expect(searchHitHref(vehicle, from('/lines/24', current))).toBe('/vehicle/40061');
-		expect(searchHitHref(vehicle, from('/map'))).toBe('/map?vehicle=40061&focus=vehicle%3A40061');
+		expect(searchHitHref(vehicle, from('/map'))).toBe('/map?frameMode=live&selectedVehicle=40061');
 	});
 
 	it('falls through to the map near target for an address (no detail route)', () => {

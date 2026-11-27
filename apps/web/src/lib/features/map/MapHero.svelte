@@ -72,7 +72,7 @@
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
-	import { parseMapFocus } from '#lib/search/mapFocus.ts';
+	import { MAP_FOCUS_PARAM, parseMapFocus } from '#lib/search/mapFocus.ts';
 	import { hasOccupancy, lineLabel } from '#lib/site/transitDisplay.ts';
 	import { MapStage, nearestStops, type WithDistance } from '#lib/components/map/index.ts';
 	import { createVehicleMotion } from './vehicleMotion';
@@ -104,6 +104,13 @@
 	import { createMapFocusController } from './mapFocusController.svelte';
 	import { createMapUrlCoordinator, MAP_URL_REWRITE } from './mapUrlCoordinator';
 	import { mapCopy } from './map.copy';
+	import { Combobox } from '@yesid/ui/combobox';
+	import {
+		readLiveMapChoice,
+		setLiveMapChoice,
+		type LiveMapChoice,
+	} from '#lib/search/liveMapChoice.ts';
+	import { dedupeBy, foldSearchText } from '#lib/search/normalize.ts';
 	import { createMapRuntime, type MapRuntimeFeed } from './mapRuntime.svelte';
 	import { createMapSelectionSession, type MapSelection } from './mapSelectionSession.svelte';
 	import * as ownerCleanup from './mapOwnerCleanup';
@@ -321,6 +328,101 @@
 	const recordUrl = $derived(new URL(currentMapHref()));
 	const recordLayer = $derived(mapLayerFor(recordUrl.searchParams));
 	const isRecordLayer = $derived(recordLayer !== 'live');
+	const liveChoice = $derived(isRecordLayer ? null : readLiveMapChoice(recordUrl.searchParams));
+	const chosenLine = $derived(liveChoice?.kind === 'line' ? liveChoice : null);
+	const chosenTripVehicle = $derived(
+		chosenLine?.trip
+			? live.vehicles?.vehicles.find(
+					(vehicle) => vehicle.route === chosenLine.id && vehicle.trip === chosenLine.trip,
+				)
+			: undefined,
+	);
+	const followedVehicle = $derived(
+		liveChoice?.kind === 'vehicle' ? live.index.byVehicleId.get(liveChoice.id) : chosenTripVehicle,
+	);
+	const effectiveFilter = $derived(
+		chosenLine
+			? {
+					...filters.state,
+					routes: new Set([chosenLine.id]),
+					...(chosenLine.trip ? { trips: new Set([chosenLine.trip]) } : {}),
+				}
+			: filters.state,
+	);
+	const vehicleMissing = $derived(
+		liveChoice?.kind === 'vehicle' &&
+			!followedVehicle &&
+			live.familyStates.vehicles.phase === 'ready',
+	);
+	let appliedChoice: string | null = null;
+	let followedPosition: { map: MapLibreMap; id: string; lat: number; lon: number } | null = null;
+
+	function chooseOnMap(choice: LiveMapChoice | null): void {
+		const url = urlCoordinator.currentUrl();
+		const previousSearch = url.search;
+		setLiveMapChoice(url.searchParams, choice);
+		if (choice) url.searchParams.delete(MAP_FOCUS_PARAM);
+		if (previousSearch !== url.search)
+			void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
+	}
+
+	$effect(() => {
+		const choice = liveChoice;
+		const tripVehicle = chosenTripVehicle;
+		if (choice && (!map || !hasFirstIdle)) return;
+		if (choice?.kind === 'vehicle' && !followedVehicle) return;
+		const identity = choice ? JSON.stringify([choice, tripVehicle?.id]) : null;
+		if (identity === appliedChoice) return;
+		appliedChoice = identity;
+		untrack(() => {
+			if (choice) {
+				session.select(
+					choice.kind === 'vehicle'
+						? { kind: 'vehicle', id: choice.id }
+						: tripVehicle
+							? { kind: 'vehicle', id: tripVehicle.id }
+							: { kind: 'route', id: choice.id },
+					'pick',
+				);
+			} else {
+				followedPosition = null;
+			}
+		});
+	});
+
+	$effect(() => {
+		const vehicle = followedVehicle;
+		const target = map;
+		if (!vehicle || !target || recovering || !hasFirstIdle) return;
+		const previous = followedPosition;
+		const { id, lat, lon } = vehicle;
+		if (
+			previous?.map === target &&
+			previous.id === id &&
+			previous.lat === lat &&
+			previous.lon === lon
+		)
+			return;
+		followedPosition = { map: target, id, lat, lon };
+		untrack(() => {
+			camera.interact();
+			if (previous?.map !== target || previous.id !== id) focusCoordinate(target, [lon, lat], 16);
+			else target.jumpTo({ center: [lon, lat] });
+		});
+	});
+
+	let fittedLine: { map: MapLibreMap; id: string } | null = null;
+	$effect(() => {
+		const choice = chosenLine;
+		const target = map;
+		const route = routeLineRoutes.find((entry) => entry.id === choice?.id);
+		if (!choice || choice.trip || !target || recovering || !hasFirstIdle || !route) {
+			fittedLine = null;
+			return;
+		}
+		if (fittedLine?.map === target && fittedLine.id === choice.id) return;
+		if (untrack(() => fitRouteBounds(target, route))) fittedLine = { map: target, id: choice.id };
+	});
 	let recordSourceDate = $state<string | null>(null);
 	const publishRecordSourceDate = getContext<((date: string | null) => void) | undefined>(
 		mapRecordSourceDateContext,
@@ -471,6 +573,30 @@
 		return names.size === 1 ? (names.values().next().value ?? null) : null;
 	}
 	const selectedDetail = $derived(session.detail);
+	const detailLineId = $derived(
+		selectedDetail?.kind === 'vehicle'
+			? (selectedDetail.vehicle.route ?? selectedDetail.route?.id ?? null)
+			: selectedDetail?.kind === 'route'
+				? selectedDetail.id
+				: null,
+	);
+	const liveTripOptions = $derived(
+		dedupeBy(
+			(live.vehicles?.vehicles ?? []).flatMap((vehicle) => {
+				if (vehicle.route !== detailLineId || !vehicle.trip) return [];
+				const label = tr(`Vehicle ${vehicle.id}`, `Véhicule ${vehicle.id}`);
+				return [
+					{
+						value: vehicle.trip,
+						label,
+						sublabel: vehicle.trip,
+						search: foldSearchText(`${label} ${vehicle.trip}`),
+					},
+				];
+			}),
+			(option) => option.value,
+		),
+	);
 	const selectionCopy = $derived(MAP_SELECTION_DETAIL_COPY[locale]);
 	const selectionPresence = $derived(session.presence);
 	const selectionSourceHealth = $derived(session.sourceHealth);
@@ -534,7 +660,7 @@
 					health.notice === 'refresh-unavailable',
 				stale: health.isStale,
 			},
-			filter: filters.state,
+			filter: effectiveFilter,
 			alertVehicleIds,
 			alertPublication: live.alerts,
 			alertHealth: {
@@ -555,7 +681,7 @@
 			timeZone,
 			attribution:
 				datedProviderAttribution(v1.provider, locale, live.sourceDate) ?? manifest.attribution,
-			filters: mapReportFilterTokens(filters.state),
+			filters: mapReportFilterTokens(effectiveFilter),
 		});
 	});
 	const inViewCount = $derived(
@@ -634,6 +760,20 @@
 	function commitPickedSelection(next: MapSelection) {
 		showingLookup = false;
 		session.select(next, 'pick');
+		if (next.kind === 'vehicle') {
+			const choice = { kind: 'vehicle', id: next.id } as const;
+			const vehicle = live.index.byVehicleId.get(next.id);
+			if (map && vehicle)
+				followedPosition = { map, id: next.id, lat: vehicle.lat, lon: vehicle.lon };
+			appliedChoice = JSON.stringify([choice, null]);
+			chooseOnMap(choice);
+		} else if (next.kind === 'route') {
+			const choice = { kind: 'line', id: next.id } as const;
+			appliedChoice = JSON.stringify([choice, null]);
+			chooseOnMap(choice);
+		} else if (liveChoice) {
+			chooseOnMap(null);
+		}
 	}
 	function selectPickedFeature(next: MapSelection) {
 		if (isRecordLayer) return;
@@ -644,6 +784,8 @@
 	}
 	function closeDetail() {
 		session.close();
+		if (liveChoice || readLiveMapChoice(urlCoordinator.currentUrl().searchParams))
+			chooseOnMap(null);
 		showingLookup = Boolean(nearMeController.origin || nearMeController.open);
 		const id = returnVehicle;
 		returnVehicle = null;
@@ -661,12 +803,12 @@
 		});
 	}
 	function clearDetailOnEscape(event: KeyboardEvent) {
-		if (event.key !== 'Escape' || !detailOpen || event.defaultPrevented) return;
+		if (event.key !== 'Escape' || (!detailOpen && !vehicleMissing) || event.defaultPrevented)
+			return;
 		if (!(event.target instanceof HTMLElement) || !ownsMapFocus(event.target)) return;
 		event.preventDefault();
 		closeDetail();
 	}
-	const applyDetailFilter = session.applyFilter;
 	const nearbyStops = $derived<WithDistance<SlimStopEntry>[]>(
 		nearMeController.origin ? nearestStops(nearMeController.origin, stopList, 5, 1_200) : [],
 	);
@@ -844,7 +986,7 @@
 			ttlS: manifest.files.live.ttl_s,
 			sourceLagS: liveTimingFor(manifest).sourceLagS,
 			stops: stopList,
-			filter: filters.state,
+			filter: effectiveFilter,
 		}),
 	);
 
@@ -854,7 +996,7 @@
 	});
 
 	function readMapFeed(): MapRuntimeFeed {
-		const filter = filters.state;
+		const filter = effectiveFilter;
 		return {
 			routes: {
 				items: isRecordLayer ? [] : routeLineRoutes,
@@ -872,6 +1014,10 @@
 				filter,
 				alertIds: session.alertStopIds,
 				selectedId: selectedStopId,
+				upcomingStops:
+					!isRecordLayer && selectedDetail?.kind === 'vehicle'
+						? new Set(selectedDetail.nextStops.slice(0, 5).map((stop) => stop.id))
+						: undefined,
 			},
 			nearTarget: {
 				target: isRecordLayer ? null : nearMeController.origin,
@@ -1035,6 +1181,34 @@
 					: null}
 				notReporting={selectedVehicleAbsence !== null}
 			/>
+			{#if detailLineId}
+				{@const line = detailLineId}
+				{#if selectedDetail.kind === 'vehicle' || chosenLine?.trip}
+					<Button
+						size="sm"
+						variant="outline"
+						class="min-h-11"
+						onclick={() => chooseOnMap({ kind: 'line', id: line })}
+					>
+						{tr('Show the whole line', 'Voir toute la ligne')}
+					</Button>
+				{/if}
+				{#if liveTripOptions.length}
+					<Combobox
+						searchable
+						fold={foldSearchText}
+						label={tr('Trip on this line', 'Trajet sur cette ligne')}
+						placeholder={tr('Choose a trip', 'Choisir un trajet')}
+						clearLabel={tr('Clear trip', 'Effacer le trajet')}
+						emptyLabel={tr('No matching trips', 'Aucun trajet correspondant')}
+						options={liveTripOptions}
+						value={chosenLine?.trip ??
+							(selectedDetail.kind === 'vehicle' ? (selectedDetail.vehicle.trip ?? null) : null)}
+						onValueChange={(trip) =>
+							chooseOnMap({ kind: 'line', id: line, ...(trip ? { trip } : {}) })}
+					/>
+				{/if}
+			{/if}
 		{/if}
 	</Card>
 {/snippet}
@@ -1062,6 +1236,14 @@
 					{tr('Near an address', 'Près d’une adresse')}
 				</Button>
 			</div>
+			<MapLinePicker
+				routes={session.routesIndex}
+				{locale}
+				label={tr('Line on the map', 'Ligne sur la carte')}
+				placeholder={tr('Choose a line', 'Choisir une ligne')}
+				value={detailLineId ?? chosenLine?.id}
+				onchange={(value) => (value ? chooseOnMap({ kind: 'line', id: value }) : closeDetail())}
+			/>
 			<Collapsible.Root bind:open={mapFiltersOpen} class="w-full" data-map-filter-disclosure>
 				<Collapsible.Trigger>
 					{#snippet child({ props })}
@@ -1086,7 +1268,7 @@
 						placeholder={tr('Choose a line', 'Choisir une ligne')}
 						additive
 						onchange={(value) => {
-							if (value) applyDetailFilter({ kind: 'route', value });
+							if (value) session.applyFilter({ kind: 'route', value });
 						}}
 					/>
 					<MapFilters
@@ -1287,6 +1469,19 @@
 				/>
 			</div>
 		{:else}
+			{#if vehicleMissing}
+				<div class="map-missing-vehicle" role="status">
+					<p>
+						{tr(
+							'This vehicle is not reporting a position right now.',
+							'Ce véhicule ne transmet pas sa position en ce moment.',
+						)}
+					</p>
+					<Button size="sm" variant="ghost" onclick={closeDetail}
+						>{tr('Clear selection', 'Effacer la sélection')}</Button
+					>
+				</div>
+			{/if}
 			{#if !isRecordLayer}
 				{#if wide}<MapFeedStallBanner {presentation} />{/if}
 				{#if hoverPeek && wide && !peekRepeatsDetail(hoverPeek, detailOpen ? session.selected : null)}
@@ -1556,6 +1751,19 @@
 </div>
 
 <style>
+	.map-missing-vehicle {
+		position: absolute;
+		z-index: var(--z-map-detail);
+		inset-block-start: 4.25rem;
+		inset-inline: 0;
+		inline-size: fit-content;
+		max-inline-size: min(22rem, calc(100% - 7rem));
+		margin-inline: auto;
+		padding: 0.75rem;
+		border-radius: var(--radius-md);
+		background: var(--card);
+		color: var(--foreground);
+	}
 	.detail-identity {
 		display: grid;
 		gap: 0.125rem;

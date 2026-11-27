@@ -10,7 +10,7 @@ export const STOPS_LAYER = 'stops';
 interface StopFeature {
 	type: 'Feature';
 	geometry: { type: 'Point'; coordinates: [number, number] };
-	properties: { id: string; selected: number };
+	properties: { id: string; selected: number; upcoming?: true };
 }
 interface StopFC {
 	type: 'FeatureCollection';
@@ -40,6 +40,7 @@ export function toStopFeatures(
 	filter?: FilterState,
 	alertStopIds: ReadonlySet<string> = new Set(),
 	selectedStopId: string | null = null,
+	upcomingStops?: ReadonlySet<string>,
 ): StopFC {
 	const visibleStops = showsStops(filter)
 		? stops.filter(
@@ -54,6 +55,7 @@ export function toStopFeatures(
 			properties: {
 				id: s.id,
 				selected: selectedStopId === s.id || (filter?.stops.has(s.id) ?? false) ? 1 : 0,
+				...(upcomingStops?.has(s.id) ? { upcoming: true } : {}),
 			},
 		})),
 	};
@@ -65,7 +67,11 @@ export function addStopsSource(map: MapLibreMap): void {
 }
 
 const FEATURE_HOVERED = ['boolean', ['feature-state', 'hovered'], false];
-const FEATURE_SELECTED = ['boolean', ['feature-state', 'selected'], false];
+const FEATURE_SELECTED = [
+	'any',
+	['boolean', ['feature-state', 'selected'], false],
+	['==', ['get', 'upcoming'], true],
+];
 
 export const STOP_HIGHLIGHT_STYLE = Object.freeze({
 	casingToken: 'var(--background)',
@@ -265,11 +271,16 @@ export function setStops(
 	filter?: FilterState,
 	alertStopIds?: ReadonlySet<string>,
 	selectedStopId?: string | null,
+	upcomingStops?: ReadonlySet<string>,
 ): void {
 	const src = map.getSource(STOPS_SOURCE) as GeoJSONSource | undefined;
 	src?.setData(
-		toStopFeatures(stops, filter, alertStopIds, selectedStopId) as unknown as Parameters<
-			GeoJSONSource['setData']
-		>[0],
+		toStopFeatures(
+			stops,
+			filter,
+			alertStopIds,
+			selectedStopId,
+			upcomingStops,
+		) as unknown as Parameters<GeoJSONSource['setData']>[0],
 	);
 }

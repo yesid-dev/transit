@@ -30,6 +30,21 @@ export function exposeCameraProbe(instance: MapLibreMap): () => void {
 		loaded: instance.loaded(),
 		bearing: instance.getBearing(),
 		pitch: instance.getPitch(),
+		center: instance.getCenter().toArray(),
+		routeLines: () =>
+			instance.getSource('route-lines')
+				? instance.querySourceFeatures('route-lines').map((feature) => feature.properties)
+				: [],
+		railDash: instance.getLayer('route-lines')
+			? instance.getPaintProperty('route-lines', 'line-dasharray')
+			: null,
+		upcomingStops: () =>
+			instance.getSource('stops')
+				? instance
+						.querySourceFeatures('stops')
+						.filter((feature) => feature.properties.upcoming)
+						.map((feature) => feature.properties.id)
+				: [],
 		setOrientation: (bearing: number, pitch: number) => instance.jumpTo({ bearing, pitch }),
 	});
 	Object.defineProperty(window, '__transitMap', { configurable: true, get: inspectMap });

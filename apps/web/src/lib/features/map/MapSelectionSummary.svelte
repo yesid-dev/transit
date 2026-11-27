@@ -53,7 +53,7 @@
 
 <div class="selection-reading">
 	{#if detail.kind === 'vehicle'}
-		{@const routeId = detail.vehicle.route}
+		{@const routeId = detail.vehicle.route ?? detail.route?.id ?? null}
 		{@const routeName = detail.route?.long ? readName(detail.route.long, locale) : ''}
 		{@const destination = detail.routeDirection?.headsign}
 		{#if routeId}<RoutePlate code={line(routeId)} />{/if}
@@ -80,12 +80,23 @@
 		{#if notReporting}<p class="text-muted-foreground">
 				{tr('No recent position.', 'Aucune position récente.')}
 			</p>{/if}
-		<p>
-			{tr('Next stop:', 'Prochain arr\u00eat\u00a0:')}
-			{detail.nextStop
-				? stopDisplayName(detail.nextStop.name)
-				: absenceShort(detail.nextStopAbsence, locale)}
-		</p>
+		{#if detail.nextStops.length}
+			<div data-slot="map-next-stops-panel">
+				<p class="font-semibold">{tr('Next stops', 'Prochains arrêts')}</p>
+				<ol class="list-decimal ps-5">
+					{#each detail.nextStops.slice(0, 5) as stop, index (`${stop.id}:${index}`)}
+						<li>{stop.name}</li>
+					{/each}
+				</ol>
+			</div>
+		{:else}
+			<p>
+				{tr('Next stop:', 'Prochain arr\u00eat\u00a0:')}
+				{detail.nextStop
+					? stopDisplayName(detail.nextStop.name)
+					: absenceShort(detail.nextStopAbsence, locale)}
+			</p>
+		{/if}
 		<div class="selection-links">
 			<a class="text-primary underline" href={vehicleLiveHref(detail.id, url, locale, city)}
 				>{tr(`Vehicle ${detail.id}`, `Véhicule ${detail.id}`)}</a

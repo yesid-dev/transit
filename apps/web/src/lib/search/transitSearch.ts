@@ -10,7 +10,12 @@ import { routeFor } from '#lib/nav/index.ts';
 import { dedupeBy, foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 import { routeModeKey, stopGroupKey, type TransitModeKey } from '#lib/search/stopMode.ts';
 import type { LinePattern } from '#lib/site/linePatterns.ts';
-import { setMapFocusSearchParams, type MapFocusKind } from '#lib/search/mapFocus.ts';
+import {
+	clearMapFocusSearchParams,
+	setMapFocusSearchParams,
+	type MapFocusKind,
+} from '#lib/search/mapFocus.ts';
+import { setLiveMapChoice } from '#lib/search/liveMapChoice.ts';
 import {
 	copyNearTargetSearchParams,
 	mapNearId,
@@ -292,6 +297,14 @@ const RECORD_VIEW_PARAMS = ['tab', 'grain', 'from', 'to'] as const;
  */
 export function searchHitHref(hit: SearchTarget, from: SearchOrigin): string {
 	if (hit.kind === 'page') return hit.id;
+	if (from.path === '/map' && (hit.kind === 'route' || hit.kind === 'vehicle')) {
+		const params = new URLSearchParams(from.params);
+		params.set('frameMode', 'live');
+		params.delete('mapLayer');
+		clearMapFocusSearchParams(params);
+		setLiveMapChoice(params, { kind: hit.kind === 'route' ? 'line' : 'vehicle', id: hit.id });
+		return `/map?${params}`;
+	}
 	if (hit.kind === 'vehicle' && from.path !== '/map')
 		return `/vehicle/${encodeURIComponent(hit.id)}`;
 	const record =

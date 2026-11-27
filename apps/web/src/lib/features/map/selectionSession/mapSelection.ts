@@ -247,16 +247,19 @@ function resolveVehicleDirectionVariant(
 ): RouteDirectionVariant | null {
 	const variants = route ? routeDirectionVariants(route, locale, nameSeparators) : [];
 	if (variants.length === 0) return null;
+	const direction = trip?.direction_id ?? vehicle.direction_id;
+	const matchingDirection = variants.filter((variant) => variant.dir === direction);
+	const candidates = matchingDirection.length ? matchingDirection : variants;
 	const anchors = (trip?.stops ?? []).map((stop) => stop.stop);
 	const fallbackAnchors = vehicle.next_stop ? [vehicle.next_stop] : [];
 	const scoredAnchors = anchors.length > 0 ? anchors : fallbackAnchors;
-	if (scoredAnchors.length === 0) return variants[0] ?? null;
+	if (scoredAnchors.length === 0) return candidates[0] ?? null;
 
-	const [best] = [...variants].sort(
+	const [best] = [...candidates].sort(
 		(a, b) =>
 			directionScore(b.direction, scoredAnchors) - directionScore(a.direction, scoredAnchors),
 	);
-	return best && directionScore(best.direction, scoredAnchors) > 0 ? best : (variants[0] ?? null);
+	return best ?? null;
 }
 
 function buildVehicleStopProgress(
