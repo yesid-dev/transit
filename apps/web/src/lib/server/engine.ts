@@ -687,6 +687,18 @@ export function getSearchIndex(city: string, visitorIp?: string | null) {
 	return query(cityQuestion(city, '/search-index'), searchIndexSchema, visitorIp);
 }
 
+const vehicleIndexSchema = searchIndexSchema.pick({ vehicles: true, vehicle_state: true });
+
+export function getCachedVehicleIndex(
+	city: string,
+	visitorIp?: string | null,
+	signal?: AbortSignal,
+) {
+	const question = cityQuestion(city, '/search-index');
+	question.parameters.cache = 'only';
+	return query(question, vehicleIndexSchema, visitorIp, false, signal);
+}
+
 export async function getCityCatalog(visitorIp?: string | null) {
 	const result = await query(citiesQuestion, CityCatalogSchema, visitorIp);
 	if (result.kind !== 'answer') throw new Error('Provider catalog unavailable');

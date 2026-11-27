@@ -76,8 +76,8 @@ it.each([
 	});
 	for (const respond of finish)
 		respond(new Response(null, { status: 503, headers: { 'retry-after': '1' } }));
-	expect(await record.answer).toEqual({ kind: 'busy' });
-	expect(await record.reference).toEqual({ kind: 'busy' });
+	expect(await record.answer).toEqual({ kind: 'busy', retryAfterMs: 1_000 });
+	expect(await record.reference).toEqual({ kind: 'busy', retryAfterMs: 1_000 });
 });
 
 it('keeps vehicle tracking unavailable by provider capability', async () => {
@@ -114,9 +114,10 @@ it('rejects a CSV period that has not started in the selected city', async () =>
 		'https://transit1.yesid.dev/hotspots/record.csv?provider=agency&recordFrom=2026-11-22&recordTo=2026-11-22',
 	);
 	fetcher.mockResolvedValueOnce(catalog());
-	await expect(rankingsCsv('/hotspots', url, new Request(url), 'en')).rejects.toMatchObject({
-		status: 400,
-	});
+	const response = await rankingsCsv('/hotspots', url, new Request(url), 'en');
+	expect(response.status).toBe(400);
+	expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+	expect(await response.text()).toContain('Check the city, dates and reading.');
 	expect(fetcher).toHaveBeenCalledTimes(1);
 });
 

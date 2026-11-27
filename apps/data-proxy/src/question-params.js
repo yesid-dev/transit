@@ -11,7 +11,7 @@ export const QUESTION_PARAMS = {
     required: ["from", "to", "measure", "kind"],
     optional: [...COMMON_CUTS, "class", "limit"],
   },
-  "search-index": { required: [], optional: [] },
+  "search-index": { required: [], optional: ["cache"] },
   "schedule-index": { required: [], optional: [] },
   "schedule-map": { required: [], optional: ["lines"] },
   live: { required: [], optional: [] },
@@ -47,6 +47,7 @@ const VALID = {
   format: oneOf("json", "csv"),
   lang: oneOf("en", "fr"),
   view: oneOf("map"),
+  cache: oneOf("only"),
 };
 
 export function serviceDate(value) {
@@ -147,6 +148,8 @@ export function parseQuestion(url) {
     if (id.length > 256) throw new Error("invalid scope ID");
     scope = { kind, id };
   }
+  const cacheOnly = params.get("cache") === "only";
+  params.delete("cache");
   const path = city === null ? `/${route}` : `/${city}/${route}`;
   const key = params.size ? `${path}?${params}` : path;
   const upstream = new URL(`https://transit-engine.internal/${route}`);
@@ -157,5 +160,5 @@ export function parseQuestion(url) {
     throw new Error("query string is too long");
   }
   const networkCorridors = map && params.get("group") === "segment" && !params.has("line");
-  return { city, route, end, csv, key, upstream, scope, map, networkCorridors, delayDistribution };
+  return { city, route, end, csv, key, upstream, scope, map, networkCorridors, delayDistribution, cacheOnly };
 }

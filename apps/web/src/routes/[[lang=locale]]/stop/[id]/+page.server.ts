@@ -45,8 +45,8 @@ export const load: PageServerLoad = async (event) => {
 	const period = !frameLive ? parseAnswerFrameState(url.searchParams, clock).period : null;
 	const scope = { city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') };
 	if (!scheduledStop) {
-		const identity = await archivedIdentity('stop', id, clock, scope);
-		if (identity === 'missing' && schedule) {
+		const identity = schedule ? await archivedIdentity('stop', id, clock, scope) : 'unconfirmed';
+		if (identity === 'missing') {
 			error(404, {
 				code: 'STOP_NOT_FOUND',
 				message: lang === 'fr' ? 'Cet arrêt est introuvable.' : 'This stop could not be found.',

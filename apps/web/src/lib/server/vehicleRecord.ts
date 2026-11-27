@@ -104,6 +104,7 @@ export function vehicleCsv(
 								scope,
 								provider.inputs.vehicle_positions,
 								() => fetchCaptureSnapshot(scope.city, request.signal, fetcher),
+								request.signal,
 							),
 					},
 				}

@@ -68,13 +68,16 @@ describe('Line Record and Schedule on transit1', () => {
 
 	it('streams scoped sections independently, including when snapshot boot fails', async () => {
 		const request = framed('&direction=1');
+		const boot = await request.parent();
 		Object.assign(request, {
-			parent: async () => ({ v1: null, lang: 'en', providerId: 'octranspo' }),
+			parent: async () => ({ ...boot, v1: null }),
 		});
-		harness.getRecordAnswer
-			.mockResolvedValueOnce(archive([{ key: { line: '24' } }]))
-			.mockImplementationOnce(() => new Promise(() => {}));
+		harness.getRecordAnswer.mockImplementationOnce(() => new Promise(() => {}));
 		const data = await load(request);
+		expect(harness.getRecordAnswer).not.toHaveBeenCalledWith(
+			{ path: '/measure', parameters: { measure: 'on_time', group: 'line', line: '24' } },
+			expect.anything(),
+		);
 		expect(data?.record).toMatchObject({ direction: '1', city: 'octranspo' });
 		expect(data?.record?.sections.map(({ section }: { section: string }) => section)).toEqual([
 			'punctuality',

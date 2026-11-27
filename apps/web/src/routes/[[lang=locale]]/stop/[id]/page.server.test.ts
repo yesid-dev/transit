@@ -52,7 +52,7 @@ const dated = 'recordFrom=2026-10-20&recordTo=2026-10-21';
 // The identity question spans the whole record, not the dates on screen.
 const identityQuery = (stop: string) => [
 	{ path: '/measure', parameters: { measure: 'on_time', group: 'stop_id', stop } },
-	expect.objectContaining({ from: '2026-10-13', to: '2026-11-25', city: 'stm' }),
+	expect.objectContaining({ from: '2026-10-13', to: '2026-11-24', city: 'stm' }),
 ];
 const identity = (stop: string | null, days = ['2026-10-20']) => ({
 	kind: 'answer',

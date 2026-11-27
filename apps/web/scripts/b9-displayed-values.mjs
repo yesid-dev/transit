@@ -891,7 +891,8 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 	if (missing && isLine) {
 		// The sparse timetable has no line 24. The archive lookup establishes its identity
 		// independently of the period whose figures this case verifies.
-		const to = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+		const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Toronto' });
+		const to = new Date(Date.parse(today) - 86_400_000).toISOString().slice(0, 10);
 		const earliest = new Date(Date.parse(to) - 399 * 86_400_000).toISOString().slice(0, 10);
 		const from = earliest > '2026-10-13' ? earliest : '2026-10-13';
 		expectedPaths.push(`/v2/stm/measure?from=${from}&group=line&line=24&measure=on_time&to=${to}`);

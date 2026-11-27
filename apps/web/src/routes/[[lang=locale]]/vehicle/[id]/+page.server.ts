@@ -21,6 +21,7 @@ export const load: PageServerLoad = async ({ parent, url, request, params, fetch
 		{ city: providerId, visitorIp: request.headers.get('cf-connecting-ip') },
 		provider?.inputs.vehicle_positions,
 		() => fetchCaptureSnapshot(providerId, request.signal, fetch),
+		request.signal,
 	);
 	if (identity === 'missing') missingVehicle();
 	if (identity === 'unconfirmed')

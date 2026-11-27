@@ -2,7 +2,10 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { load } from './+page.server';
 
 const getRecordAnswer = vi.hoisted(() => vi.fn());
-vi.mock('#lib/server/engine.ts', () => ({ getRecordAnswer }));
+vi.mock('#lib/server/engine.ts', () => ({
+	getRecordAnswer,
+	getCachedVehicleIndex: async () => ({ kind: 'unconfigured' }),
+}));
 
 function loadVehicle(id: string) {
 	const url = new URL('https://transit.yesid.dev/vehicle/' + id + '?frameMode=live');
