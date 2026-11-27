@@ -167,6 +167,86 @@ def clean_day_command(
     typer.echo(str(destination))
 
 
+@app.command("stretch-passes")
+def stretch_passes_command(
+    provider: Annotated[str, typer.Option("--provider")],
+    day: Annotated[str, typer.Option("--date", help="Service date, YYYY-MM-DD.")],
+    clean_day: Annotated[
+        Path, typer.Option("--clean-day", help="Local v12 clean-day directory to read.")
+    ],
+    schedule: Annotated[
+        Path, typer.Option("--schedule", help="The day's pinned GTFS schedule ZIP.")
+    ],
+    out: Annotated[Path, typer.Option("--out", help="Scratch output root, never the clean root.")],
+) -> None:
+    """Prototype cleaning v13: time every ~100 m stretch from one clean day (opt-in)."""
+    import hashlib
+    import json
+    import time
+    from tempfile import TemporaryDirectory
+    from zoneinfo import ZoneInfo
+
+    from transit_ops.clean_day_inputs import declaration_for
+    from transit_ops.providers.schedule_archive import ArchiveScheduleContext
+    from transit_ops.stretch_passes import (
+        STRETCH_VERSION,
+        build_stretch_day,
+        intervals_from_parquet,
+        trip_paths,
+        write_stretch_day,
+    )
+
+    try:
+        service_date = date.fromisoformat(day)
+        if service_date.isoformat() != day:
+            raise ValueError("Expected a service date in YYYY-MM-DD form")
+        source = json.loads((clean_day / "manifest.json").read_text("utf-8"))
+        if (source.get("provider"), source.get("service_date")) != (provider, day):
+            raise ValueError("Clean-day receipt names another provider or date")
+        if (out.resolve() / provider).is_relative_to(clean_day.resolve().parents[1]):
+            raise ValueError("Write stretch passes to a scratch root, not the clean root")
+        started = time.perf_counter()
+        archive = schedule.read_bytes()
+        checksum = hashlib.sha256(archive).hexdigest()
+        if checksum != source.get("schedule_sha256"):
+            raise ValueError("Schedule ZIP differs from the clean day's pinned edition")
+        declaration = declaration_for(provider)
+        context = ArchiveScheduleContext(
+            provider_id=provider,
+            dataset_version_id=1,
+            edition_sha256=checksum,
+            archive_bytes=archive,
+            service_dates=[service_date],
+            timezone=ZoneInfo(declaration.provider.timezone),
+        )
+        paths = trip_paths(context, archive, provider, service_date)
+        loaded = time.perf_counter()
+        with TemporaryDirectory(prefix="stretch-") as temporary:
+            intervals = intervals_from_parquet(
+                clean_day / "vehicle_positions.parquet", service_date, Path(temporary)
+            )
+            built = build_stretch_day(provider, service_date, paths, intervals)
+        placed = time.perf_counter()
+        metadata = {
+            "provider": provider,
+            "service_date": day,
+            "cleaning_version": STRETCH_VERSION,
+            "schedule_sha256": checksum,
+            "source_cleaning_version": str(source.get("cleaning_version")),
+        }
+        destination, files = write_stretch_day(built, out, metadata)
+        written = time.perf_counter()
+    except (ValueError, OSError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from None
+    timings = {
+        "schedule_seconds": round(loaded - started, 2),
+        "place_seconds": round(placed - loaded, 2),
+        "write_seconds": round(written - placed, 2),
+    }
+    typer.echo(json.dumps({"destination": str(destination), "files": files, **timings}))
+
+
 @app.command("clean-days")
 def clean_days_command(
     provider: Annotated[str, typer.Option("--provider")],
