@@ -120,7 +120,7 @@
 			{#if s.shape === 'answer'}
 				<div class="answer-actions flex flex-wrap gap-2">
 					{#each range(liveAnswer ? 2 : 3) as action (action)}
-						<Skeleton class="h-11 w-24 max-w-full" />
+						<div class="answer-action-placeholder"><Skeleton class="h-11 w-full" /></div>
 					{/each}
 				</div>
 			{/if}
@@ -361,6 +361,35 @@
 	}
 	.answer-layout {
 		gap: 0.75rem 1.5rem;
+	}
+	.answer-action-placeholder {
+		flex: none;
+		inline-size: 6rem;
+		max-inline-size: 100%;
+	}
+	@container (inline-size < 36rem) {
+		/* Match the space taken by Copy link, Download and Cite in their reading order. */
+		.with-heading:not(.short-context, .live-answer) .answer-action-placeholder:nth-child(1) {
+			inline-size: 6.875rem;
+		}
+		.with-heading:not(.short-context, .live-answer) .answer-action-placeholder:nth-child(2) {
+			inline-size: 7.1875rem;
+		}
+		.with-heading:not(.short-context, .live-answer) .answer-action-placeholder:nth-child(3) {
+			inline-size: 4.4375rem;
+		}
+		.with-heading:lang(fr):not(.short-context, .live-answer)
+			.answer-action-placeholder:nth-child(1) {
+			inline-size: 8.5625rem;
+		}
+		.with-heading:lang(fr):not(.short-context, .live-answer)
+			.answer-action-placeholder:nth-child(2) {
+			inline-size: 8.0625rem;
+		}
+		.with-heading:lang(fr):not(.short-context, .live-answer)
+			.answer-action-placeholder:nth-child(3) {
+			inline-size: 4.8125rem;
+		}
 	}
 	.answer-context {
 		display: flex;

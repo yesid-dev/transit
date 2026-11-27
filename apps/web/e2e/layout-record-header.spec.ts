@@ -90,6 +90,18 @@ for (const { name, path, section } of pages)
 							);
 							await expect(code).toBeVisible();
 							const before = await frame(page);
+							const matchPhoneActions = name === 'line' && width === 390 && scale === 100;
+							const actionRows = (selector: string) =>
+								reading
+									.locator(`.answer-actions ${selector}`)
+									.evaluateAll(
+										(items) =>
+											new Set(items.map((item) => Math.round(item.getBoundingClientRect().top)))
+												.size,
+									);
+							const waitingActionRows = matchPhoneActions
+								? await actionRows('[data-slot="skeleton"]')
+								: undefined;
 							const phoneDisclosure =
 								name === 'line' && width < 640 ? page.locator('#offered') : undefined;
 							const initialDisclosureHeight = (await phoneDisclosure?.boundingBox())?.height;
@@ -107,6 +119,7 @@ for (const { name, path, section } of pages)
 								await expect(page.locator('#stop-bands-chart').getByRole('img')).toBeVisible();
 							else {
 								await expect(reading.locator('[data-slot="answer-lead"]')).toBeVisible();
+								if (matchPhoneActions) expect(await actionRows('button')).toBe(waitingActionRows);
 								if (width === 1440 && scale === 100) {
 									const geometry = await reading
 										.locator('[data-slot="record-answer"]')
