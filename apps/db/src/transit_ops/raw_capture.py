@@ -48,8 +48,13 @@ from transit_ops.settings import Settings
 
 LOGGER = logging.getLogger(__name__)
 STATIC = {FeedKind.STATIC_SCHEDULE, FeedKind.GIS_STATIC}
-MAX_STATIC_BYTES = 64 * 1024 * 1024
+# OC Transpo's schedule export reached 69 MB; the live schedule reader accepts 128 MB.
+MAX_STATIC_BYTES = 128 * 1024 * 1024
 MAX_REALTIME_BYTES = 8 * 1024 * 1024
+# A daemon keeps every download short so realtime polls are not held up; a
+# one-time schedule check may wait for a large archive.
+DOWNLOAD_SECONDS = 20
+PATIENT_DOWNLOAD_SECONDS = 180
 
 
 class Environment:
@@ -155,6 +160,7 @@ def _request(
     clock: Callable[[], float],
     *,
     limited: bool,
+    patient: bool = False,
 ) -> bytes:
     details = build_request_details(
         source_url=source, auth=feed.auth, settings=Environment(), now=now
@@ -169,10 +175,10 @@ def _request(
     allow_redirect = feed.auth.auth_type == AuthType.NONE and not limited
     opener = build_opener() if allow_redirect else build_opener(NoRedirect())
     max_size = MAX_STATIC_BYTES if feed.feed_kind in STATIC else MAX_REALTIME_BYTES
-    end = clock() + 20
+    end = clock() + (PATIENT_DOWNLOAD_SECONDS if patient else DOWNLOAD_SECONDS)
     data = BytesIO()
     try:
-        with opener.open(request, timeout=5) as response:
+        with opener.open(request, timeout=30 if patient else 5) as response:
             while block := response.read1(128 * 1024):
                 if stop.is_set() or clock() >= end:
                     raise CaptureError("Download interrupted or timed out")
@@ -232,6 +238,16 @@ def _artifact(
     return key, len(message.entity)
 
 
+def _already_stored(storage: BronzeStorage, key: str, data: bytes) -> bool:
+    """Whether the newest stored capture of this static feed has the same content."""
+    prefix, separator, _ = key.partition("ingested_at_utc=")
+    if not separator:
+        return False
+    newest = max(storage.list_keys(prefix + separator), default=None)
+    digest = sha256(data).hexdigest()[:12]
+    return newest is not None and f"__{digest}__" in newest.rsplit("/", 1)[-1]
+
+
 class CaptureRunner:
     def __init__(
         self,
@@ -242,9 +258,18 @@ class CaptureRunner:
         heartbeat: Path | None = None,
         clock: Callable[[], float] = time.monotonic,
         wall: Callable[[], datetime] = lambda: datetime.now(UTC),
+        endpoints: frozenset[str] | None = None,
+        once: bool = False,
     ) -> None:
+        """Poll the enabled feeds, or only ``endpoints``.
+
+        ``once`` checks each feed one time and returns, for a timer. A static
+        feed whose content matches its newest stored capture is then not stored
+        again, so frequent checks keep one object per published edition.
+        """
         self.city = manifest.provider.provider_id
         self.storage = storage
+        self.once = once
         self.clock = clock
         self.wall = wall
         self.heartbeat = heartbeat
@@ -252,18 +277,21 @@ class CaptureRunner:
         self.paused_until = 0.0
         now = clock()
         wall_seconds = wall().timestamp()
+        enabled = {key for key, feed in manifest.feeds.items() if feed.is_enabled}
+        if endpoints is not None and not endpoints <= enabled:
+            raise CaptureError("Unknown or disabled capture feed")
         self.polls = [
             FeedPoll(
                 feed,
                 now
                 + (
                     (feed.refresh_phase_seconds - wall_seconds) % feed.refresh_interval_seconds
-                    if storage is not None and feed.refresh_phase_seconds is not None
+                    if storage is not None and feed.refresh_phase_seconds is not None and not once
                     else 0
                 ),
             )
-            for feed in manifest.feeds.values()
-            if feed.is_enabled
+            for key, feed in manifest.feeds.items()
+            if key in enabled and (endpoints is None or key in endpoints)
         ]
         if not self.polls:
             raise CaptureError("No enabled capture feeds")
@@ -271,7 +299,11 @@ class CaptureRunner:
 
     def step(self) -> float:
         """Process the next due feed, or return the time until it may be fetched."""
-        pending = [poll for poll in self.polls if self.storage is not None or not poll.attempted_at]
+        pending = [
+            poll
+            for poll in self.polls
+            if (self.storage is not None and not self.once) or not poll.attempted_at
+        ]
         if not pending:
             return math.inf
         poll = min(pending, key=lambda item: item.due)
@@ -286,7 +318,13 @@ class CaptureRunner:
             source = _source(feed)
             self.budget.reserve(current)
             data = _request(
-                feed, source, now, self.stop, self.clock, limited=self.budget.limit is not None
+                feed,
+                source,
+                now,
+                self.stop,
+                self.clock,
+                limited=self.budget.limit is not None,
+                patient=self.once,
             )
             key, count = _artifact(self.city, feed, source, now, data)
             if self.storage is None:
@@ -295,6 +333,10 @@ class CaptureRunner:
                         {"feed": feed.endpoint_key, "bytes": len(data), "count": count, "key": key}
                     )
                 )
+            elif (
+                self.once and feed.feed_kind in STATIC and _already_stored(self.storage, key, data)
+            ):
+                LOGGER.info("Unchanged %s/%s; nothing stored", self.city, feed.endpoint_key)
             elif not self.stop.is_set():
                 with TemporaryDirectory(prefix="transit-raw-") as directory:
                     artifact = Path(directory) / "capture"
@@ -365,7 +407,16 @@ def main() -> int:
     mode.add_argument("--check-config", action="store_true")
     parser.add_argument("--rate-state", type=Path)
     parser.add_argument("--heartbeat", type=Path)
+    parser.add_argument(
+        "--feed", action="append", help="Capture only this endpoint key; may be repeated"
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Check each feed one time and exit; unchanged static files are not stored again",
+    )
     args = parser.parse_args()
+    endpoints = frozenset(args.feed) if args.feed else None
     if args.dry_run and (args.rate_state or args.heartbeat):
         parser.error("--dry-run does not write rate state or a heartbeat")
     logging.basicConfig(level=logging.INFO)
@@ -378,13 +429,13 @@ def main() -> int:
         ):
             parser.error("--rate-state is required for a provider with a download limit")
         if args.dry_run:
-            return _run(CaptureRunner(manifest, None))
+            return _run(CaptureRunner(manifest, None, endpoints=endpoints))
         settings = Settings(_env_file=None)  # type: ignore[call-arg]
         with closing(BronzeStorageScope(settings, project_root=project_root())) as scope:
             storage = scope.resolve(settings.BRONZE_STORAGE_BACKEND)
             if args.check_config:
-                for feed in manifest.feeds.values():
-                    if feed.is_enabled:
+                for key, feed in manifest.feeds.items():
+                    if feed.is_enabled and (endpoints is None or key in endpoints):
                         build_request_details(
                             source_url=_source(feed), auth=feed.auth, settings=Environment()
                         )
@@ -392,7 +443,12 @@ def main() -> int:
                 return 0
             return _run(
                 CaptureRunner(
-                    manifest, storage, rate_state=args.rate_state, heartbeat=args.heartbeat
+                    manifest,
+                    storage,
+                    rate_state=args.rate_state,
+                    heartbeat=args.heartbeat,
+                    endpoints=endpoints,
+                    once=args.once,
                 )
             )
     except Exception as error:

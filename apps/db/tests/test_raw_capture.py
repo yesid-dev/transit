@@ -3,8 +3,10 @@ import logging
 from datetime import timedelta
 from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from io import BytesIO
 from threading import Thread
 from urllib.parse import parse_qs, urlsplit
+from zipfile import ZipFile
 
 import duckdb
 import pytest
@@ -20,7 +22,7 @@ from transit_ops.ingestion.static_gtfs import build_static_object_storage_path
 from transit_ops.ingestion.storage import LocalBronzeStorage
 from transit_ops.live.playback import LivePublisher
 from transit_ops.providers.registry import load_provider_manifest
-from transit_ops.raw_capture import CaptureRunner
+from transit_ops.raw_capture import CaptureError, CaptureRunner
 
 CITY = "sto"
 PUBLIC = "test-public-credential"
@@ -241,3 +243,45 @@ def test_declared_cadence_and_aggregate_budget(feeds, tmp_path):
         times = [elapsed for elapsed, captured, _ in calls if captured == path]
         assert times == list(range(0, 600, feed.refresh_interval_seconds))
     assert "capture_download_limit" not in manifest.model_dump()
+
+
+def test_schedule_check_stores_each_edition_once_and_only_the_named_feed(feeds, tmp_path):
+    # OC Transpo publishes editions with new trip ids overnight; a timer checks the
+    # static feed alone before service and must keep one object per edition.
+    manifest, clock, calls, failed, paths, _ = feeds
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    storage = LocalBronzeStorage("local", raw)
+    static = frozenset({"static_schedule"})
+
+    def check():
+        runner = CaptureRunner(
+            manifest, storage, clock=clock, wall=clock.wall, endpoints=static, once=True
+        )
+        status = runner.run()
+        return status, sorted(p.name for p in raw.rglob("*.zip"))
+
+    status, first = check()
+    assert status == 0 and len(first) == 1
+    assert {path for _, path, _ in calls} == {"/GTFS.zip"}
+
+    clock.elapsed = 3600
+    assert check() == (0, first)
+
+    edition = BytesIO()
+    with ZipFile(BytesIO(paths["/GTFS.zip"])) as previous, ZipFile(edition, "w") as following:
+        for member in previous.infolist():
+            following.writestr(member, previous.read(member))
+        following.writestr("feed_info.txt", "feed_version\nnext\n")
+    paths["/GTFS.zip"] = edition.getvalue()
+    clock.elapsed = 7200
+    status, second = check()
+    assert status == 0 and len(second) == 2 and set(first) < set(second)
+
+    failed["/GTFS.zip"] = 503
+    clock.elapsed = 10800
+    assert check() == (1, second)
+    assert len(calls) == 4
+
+    with pytest.raises(CaptureError, match="Unknown or disabled"):
+        CaptureRunner(manifest, storage, endpoints=frozenset({"nope"}), once=True)
