@@ -97,7 +97,7 @@ describe('LegalDocument', () => {
 		);
 		const enPrivacy = JSON.stringify(legalDocument('en', 'privacy'));
 		const frPrivacy = JSON.stringify(legalDocument('fr', 'privacy'));
-		expect(enPrivacy).toContain('keyed hash of the address');
+		expect(enPrivacy).toContain('fingerprint of the address, made with a secret key');
 		expect(enPrivacy).toContain('midnight UTC');
 		expect(enPrivacy).toContain('one-minute counting window');
 		expect(enPrivacy).toContain('Search, Map and Live pages');
