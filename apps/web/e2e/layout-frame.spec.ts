@@ -380,7 +380,7 @@ test('desktop controls keep their column and control changes retain focus and sc
 		await expect(
 			firstLine.getByRole('cell', { name: 'Calculating…', exact: true }).first(),
 		).toBeVisible();
-		const pending = performance.locator('p').filter({ hasText: /^Calculating…$/ });
+		const pending = performance.locator('[data-record-pending][aria-busy="true"]').first();
 		await expect(pending).toBeVisible();
 		expect(
 			await pending.evaluate((summary) => {

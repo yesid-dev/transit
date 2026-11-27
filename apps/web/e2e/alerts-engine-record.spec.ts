@@ -198,10 +198,11 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 		waitUntil: 'commit',
 	});
 	await expect(page.locator('#answer')).toContainText('notices as published.');
-	await expect(page.locator('#messages')).toContainText('Calculating…');
+	await expect(page.locator('#messages [data-record-pending][aria-busy="true"]')).toHaveCount(1);
+	await expect(page.locator('#messages')).toContainText('Still calculating…');
 	const patience = page.locator('[data-slot="record-patience"]').getByRole('status');
 	await expect(patience).toHaveCount(1);
-	await expect(patience).toContainText('These records take longer');
+	await expect(patience).toContainText('Still calculating the record');
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const release = await request.post(
 		`http://127.0.0.1:${dataPort}/__overview/release?fixture=alerts-${date}`,
@@ -210,5 +211,5 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 	await expect(
 		page.locator('#messages').getByRole('heading', { name: 'Use stop 51234.' }),
 	).toBeVisible();
-	await expect(patience).toContainText('Readings arrived');
+	await expect(patience).toContainText('The record is on screen.');
 });

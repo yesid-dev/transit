@@ -6,6 +6,7 @@
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
 	import RecordActions from './RecordActions.svelte';
 	import RecordPending from './RecordPending.svelte';
+	import type { RecordWaiting } from './recordWaiting.ts';
 	import { recordSectionLinks } from './recordLinks.ts';
 	import { lastGoodNote, recordConnection } from './recordText.ts';
 	import { citeDates, methodEvidence } from '#lib/site/presenter.ts';
@@ -21,6 +22,7 @@
 		statement,
 		controls,
 		printable = false,
+		waiting,
 	}: {
 		section: string;
 		title: string;
@@ -32,6 +34,8 @@
 		statement?: (answer: Answer) => string;
 		controls?: Snippet;
 		printable?: boolean;
+		/** The reading's final shape while it waits, and while the engine is busy. */
+		waiting?: RecordWaiting;
 	} = $props();
 
 	const links = $derived(recordSectionLinks(url, section));
@@ -54,7 +58,7 @@
 		<h2 id={`${section}-title`}>{title}</h2>
 		{@render controls?.()}
 		{#await answer}
-			{#key answer}<RecordPending {locale} {answer} />{/key}
+			{#key answer}<RecordPending {locale} {answer} shape={waiting} />{/key}
 		{:then result}
 			{#if result.kind === 'answer'}
 				{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
@@ -73,7 +77,7 @@
 						{citation(result.answer, result.lastGood)}
 					</p>{/if}
 			{:else if result.kind === 'busy'}
-				<RecordPending {locale} busy />
+				<RecordPending {locale} busy shape={waiting} />
 			{:else}
 				<StateNotice presentation="frameless" title={recordConnection[result.kind][locale]} />
 			{/if}

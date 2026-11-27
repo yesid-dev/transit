@@ -200,7 +200,7 @@ test('a client period change streams the shell before the engine answers', async
 		await closeCompactFrameControls(page);
 		const record = page.getByRole('article', { name: 'Record', exact: true });
 		await expect(record.getByText('Record · 10 to 16 Nov 2026').first()).toBeVisible();
-		await expect(record.getByText('Calculating…').first()).toBeVisible();
+		await expect(record.locator('[data-record-pending][aria-busy="true"]').first()).toBeVisible();
 		shellMs = performance.now() - start;
 		releasedMs = performance.now() - start;
 		expect((await request.post(release)).status()).toBe(204);
@@ -366,7 +366,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	});
 	const main = page.getByRole('main');
 	await expect(main.getByText('of observed stop events were on time.')).toBeVisible();
-	await expect(main.getByText('These records take longer')).toBeVisible();
+	await expect(main.getByText('Still calculating the record')).toBeVisible();
 	await main.getByRole('button', { name: 'Cite' }).click();
 	await expect(
 		page
@@ -383,7 +383,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	await expect(
 		main.getByRole('article', { name: 'Lines and stops to investigate' }).locator('tbody tr'),
 	).toHaveCount(6);
-	await expect(main.getByText('These records take longer')).toHaveCount(0);
+	await expect(main.getByText('Still calculating the record')).toHaveCount(0);
 });
 
 test('Live and Record show the same punctuality for the same week (OV1)', async ({ page }) => {

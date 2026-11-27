@@ -4,7 +4,8 @@
 	import * as Collapsible from '@yesid/ui/collapsible';
 	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
-	import RecordSkeleton, { type RecordWaitingShape } from './RecordSkeleton.svelte';
+	import RecordSkeleton from './RecordSkeleton.svelte';
+	import { skeletonBlockSize, type RecordWaiting } from './recordWaiting.ts';
 
 	let {
 		title,
@@ -21,6 +22,7 @@
 		interactive = false,
 		edge,
 		waiting,
+		reserve,
 	}: {
 		title: string;
 		disclosure?: {
@@ -41,8 +43,12 @@
 		fill?: boolean;
 		interactive?: boolean;
 		edge?: 'brand' | 'neutral';
-		waiting?: RecordWaitingShape;
+		/** The body waits as this shape, pulsing, with the title and stamp already drawn. */
+		waiting?: RecordWaiting;
+		/** A body that ends in a short honest state keeps this shape's height, the state on top. */
+		reserve?: RecordWaiting;
 	} = $props();
+	const reservedSize = $derived(reserve ? skeletonBlockSize(reserve) : null);
 	const id = $props.id();
 	const expanded = $derived(open ?? (disclosure ? !!disclosure.initiallyOpen : true));
 </script>
@@ -81,6 +87,8 @@
 		class:fill
 		data-slot="record-card-body"
 		data-record-pending={waiting ? '' : undefined}
+		aria-busy={waiting ? 'true' : undefined}
+		style:min-block-size={reservedSize}
 	>
 		{#if waiting}<RecordSkeleton shape={waiting} />{/if}
 		{@render children()}

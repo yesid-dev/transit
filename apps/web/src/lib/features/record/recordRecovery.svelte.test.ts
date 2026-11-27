@@ -26,8 +26,18 @@ const asked = (fetcher: { mock: { calls: [string][] } }) =>
 	fetcher.mock.calls.map(([url]) => new URL(url, location.origin).searchParams.get('readings'));
 
 it.each([
-	['en', 'Waiting for a reading.', 'The record is temporarily unavailable.', 'Try again'],
-	['fr', 'En attente de données.', 'Le bilan est temporairement indisponible.', 'Réessayer'],
+	[
+		'en',
+		'Waiting for a turn. This card asks again in a few seconds.',
+		'The record is temporarily unavailable.',
+		'Try again',
+	],
+	[
+		'fr',
+		'En attente. Cette carte redemande dans quelques secondes.',
+		'Le bilan est temporairement indisponible.',
+		'Réessayer',
+	],
 ] as const)(
 	'asks again after 5 s, then 15 s, then offers one Try again for the screen in %s',
 	async (locale, pending, unavailable, retry) => {
@@ -97,7 +107,7 @@ it('waits while the page is hidden and preserves the answered control and its fo
 		// The screen-wide notice is for screen readers only, so it never moves the screen title.
 		const notice = container.querySelector<HTMLElement>('[data-slot="record-patience"]')!;
 		expect(notice).toHaveClass('sr-only');
-		expect(screen.getByRole('status')).toHaveTextContent('These records take longer');
+		expect(screen.getByRole('status')).toHaveTextContent('Still calculating the record');
 		const days = screen.getByRole('button', { name: 'Days' });
 		days.focus();
 		await vi.advanceTimersByTimeAsync(60_000);
@@ -114,7 +124,7 @@ it('waits while the page is hidden and preserves the answered control and its fo
 		expect(screen.getByRole('button', { name: 'Days' })).toBe(days);
 		expect(days).toHaveFocus();
 		expect(screen.getByRole('button', { name: 'Lines' })).toBeInTheDocument();
-		expect(screen.getByRole('status')).toHaveTextContent('Readings arrived');
+		expect(screen.getByRole('status')).toHaveTextContent('The record is on screen.');
 		await rerender({ scope: '/vehicle/102', sections: [{ section: 'Days', answer }] });
 		await vi.advanceTimersByTimeAsync(0);
 		expect(screen.queryByRole('status')).toBeNull();

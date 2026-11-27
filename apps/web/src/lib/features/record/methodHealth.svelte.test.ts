@@ -328,7 +328,7 @@ it.each([
 			period,
 			catalog: pending,
 		});
-		expect(screen.getByText('Calculating…')).toBeVisible();
+		expect(document.querySelector('[data-record-pending][aria-busy="true"]')).not.toBeNull();
 		expect(
 			screen.queryByRole('link', {
 				name: 'The method of the first Transit site, until November 2026',
@@ -361,8 +361,10 @@ it('renders absent readings and both not-measured reasons while methods can fail
 			methods: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'busy' }),
 		},
 	});
-	expect((await screen.findAllByText('Waiting for a reading.'))[0]).toBeVisible();
-	expect(screen.getAllByText('Calculating…')[0]).toBeVisible();
+	expect(
+		(await screen.findAllByText('Waiting for a turn. This card asks again in a few seconds.'))[0],
+	).toBeVisible();
+	expect(document.querySelector('[data-record-pending][aria-busy="true"]')).not.toBeNull();
 	finish({ kind: 'answer', answer });
 	const table = await screen.findByRole('table');
 	for (const label of [

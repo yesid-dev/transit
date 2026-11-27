@@ -205,9 +205,11 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 	const response = await page.goto(path, { waitUntil: 'commit' });
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.locator('[data-slot="screen-answer"]')).toContainText('80.0%');
-	await expect(page.locator('#hourly')).toContainText('Calculating');
+	// The held card waits in place, pulsing, and says it is still calculating after 3 s.
+	await expect(page.locator('#hourly [data-record-pending][aria-busy="true"]')).toHaveCount(1);
+	await expect(page.locator('#hourly')).toContainText('Still calculating…');
 	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-		'These records take longer',
+		'Still calculating the record',
 	);
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	for (const fixture of ['stop-by-line', 'stop-hour-grid']) {

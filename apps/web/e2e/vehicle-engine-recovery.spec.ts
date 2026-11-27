@@ -27,7 +27,11 @@ for (const locale of ['en', 'fr']) {
 		const reporting = page.getByRole('article', {
 			name: fr ? 'Interruptions de signalement' : 'Stopped reporting',
 		});
-		await expect(reporting).toContainText(fr ? 'En attente de données.' : 'Waiting for a reading.');
+		await expect(reporting).toContainText(
+			fr
+				? 'En attente. Cette carte redemande dans quelques secondes.'
+				: 'Waiting for a turn. This card asks again in a few seconds.',
+		);
 		const control = page.getByRole('button', {
 			name: fr ? 'Afficher plus de jours' : 'Show more days',
 		});
@@ -46,7 +50,7 @@ for (const locale of ['en', 'fr']) {
 		const notice = page.locator('[data-slot="record-patience"]');
 		await expect(notice.getByRole('status')).toHaveCount(1);
 		await expect(notice.getByRole('status')).toContainText(
-			fr ? 'Résultats reçus' : 'Readings arrived',
+			fr ? 'Le bilan est affiché.' : 'The record is on screen.',
 		);
 		// The notice is for screen readers only: it takes no room, so nothing reserves or moves.
 		const box = (await notice.boundingBox())!;

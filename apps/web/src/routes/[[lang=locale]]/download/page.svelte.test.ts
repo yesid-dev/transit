@@ -204,8 +204,8 @@ it.each([
 });
 
 it.each([
-	['en', 'Waiting for a reading.'],
-	['fr', 'En attente de données.'],
+	['en', 'Waiting for a turn. This card asks again in a few seconds.'],
+	['fr', 'En attente. Cette carte redemande dans quelques secondes.'],
 ] as const)(
 	'uses the shared pending line for a busy download answer in %s',
 	async (locale, pending) => {

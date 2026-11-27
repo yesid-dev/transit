@@ -383,7 +383,7 @@ test('the fleet names untracked data and vehicle sections stream independently',
 	);
 	const lines = page.getByRole('region', { name: 'Lines and trips it ran' });
 	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-		'These records take longer',
+		'Still calculating the record',
 	);
 	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect((await request.post(`http://127.0.0.1:${port}/__overview/release`)).status()).toBe(204);
@@ -440,11 +440,13 @@ for (const locale of ['en', 'fr'] as const) {
 	test(`${locale} Vehicle busy answer shows the shared pending line`, async ({ page }) => {
 		await page.goto(`${prefix}/vehicle/40066?provider=stm&frameMode=record&${dates}`);
 		await expect(page.locator('[data-slot="screen-answer"]')).toHaveText(
-			fr ? 'En attente de données.' : 'Waiting for a reading.',
+			fr
+				? 'En attente. Cette carte redemande dans quelques secondes.'
+				: 'Waiting for a turn. This card asks again in a few seconds.',
 		);
 		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-			fr ? 'Ce bilan demande plus de temps' : 'These records take longer',
+			fr ? 'Le calcul du bilan' : 'Still calculating the record',
 		);
 	});
 

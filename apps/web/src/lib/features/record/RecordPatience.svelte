@@ -4,15 +4,10 @@
 	import { Button } from '@yesid/ui/button';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { dateRange } from '#lib/site/presenter.ts';
 	import type { DateWindow } from '#lib/v1/history/window.ts';
-	import {
-		setRecordPatience,
-		setRecordRecovered,
-		setRecordRetry,
-		setRecordSlow,
-	} from './recordPatience.ts';
+	import { setRecordPatience, setRecordRecovered, setRecordRetry } from './recordPatience.ts';
 	import { recordConnection } from './recordText.ts';
+	import { screenWaitingWords } from './recordWaiting.ts';
 
 	let {
 		locale,
@@ -69,9 +64,6 @@
 	function tryAgain() {
 		for (const retry of [...retries]) retry();
 	}
-	// Each waiting card says it is still calculating, in its own place, so nothing above the
-	// screen title appears or moves (the screen-wide notice is for screen readers only).
-	setRecordSlow(() => (slow && pending > 0 ? stillCalculating : null));
 
 	$effect(() => {
 		void scope;
@@ -86,49 +78,17 @@
 		return () => clearTimeout(timer);
 	});
 
-	const waiting = $derived(busy > 0 || (slow && pending > 0));
-	const dates = $derived(period ? dateRange(period, locale) : null);
+	// One live region for the screen; each waiting card shows its own words under its shape.
+	const loading = $derived(pending > 0 || busy > 0);
+	const stage = $derived(
+		busy > 0 || (slow && pending > 0) ? 'still' : loading ? 'loading' : 'done',
+	);
 	const french = $derived(locale === 'fr');
-	const stillCalculating = $derived(
-		dates
-			? french
-				? `Le calcul du bilan pour la période ${dates} se poursuit.`
-				: `Still calculating the record for ${dates}.`
-			: french
-				? 'Le calcul du bilan se poursuit.'
-				: 'Still calculating the record.',
-	);
-	const reading = $derived(
-		dates
-			? french
-				? `Chargement du bilan (${dates}).`
-				: `Reading the record for ${dates}.`
-			: french
-				? 'Chargement du bilan en cours.'
-				: 'Reading the record.',
-	);
 </script>
 
-{#if waiting || answered || recovered}
+{#if loading || answered || recovered}
 	<div class="sr-only" data-slot="record-patience">
-		<p role="status">
-			{waiting
-				? french
-					? 'Ce bilan demande plus de temps.'
-					: 'These records take longer.'
-				: french
-					? 'Résultats reçus.'
-					: 'Readings arrived.'}
-			{waiting
-				? `${reading} ${
-						french
-							? 'Chaque carte se remplit dès que sa réponse arrive.'
-							: 'Each card fills in when its answer arrives.'
-					}`
-				: french
-					? 'Les résultats qui tardaient sont maintenant affichés.'
-					: 'The readings that took longer are now on screen.'}
-		</p>
+		<p role="status">{screenWaitingWords(stage, locale, period)}</p>
 	</div>
 {/if}
 {@render children()}
