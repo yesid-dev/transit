@@ -49,3 +49,16 @@ it('adds the CTA to discovered provider copy without losing the identity', () =>
 			expect(seo.description.endsWith(shareCopy('/', locale).cta + '.')).toBe(true);
 		}
 });
+
+it('describes a record of service delivered, not a trip planner', () => {
+	const planner = /schedule|predicted|route,|horaire|prévus|parcours/iu;
+	for (const locale of ['en', 'fr'] as const)
+		for (const path of paths) expect(shareCopy(path, locale).support, path).not.toMatch(planner);
+	expect(shareCopy('/lines/51', 'en').support).toBe(
+		'How on time the line ran and how much of its service was delivered',
+	);
+	expect(shareCopy('/stop/52847', 'fr').support).toBe(
+		'La ponctualité des passages à cet arrêt, jour par jour',
+	);
+	expect(resolveRouteSeo('/lines/51', 'fr').title).toBe('Bilan de la ligne');
+});

@@ -3,11 +3,11 @@ import type { Locale } from '../i18n/config';
 export const SHARE_COPY = {
 	'/': {
 		en: {
-			support: 'Transit lines, stops and reliability reports',
+			support: 'An independent public record of transit service delivered',
 			cta: 'Explore the network',
 		},
 		fr: {
-			support: 'Lignes, arrêts et bilans de fiabilité',
+			support: 'Un bilan public et indépendant du service réellement offert',
 			cta: 'Explorer le réseau',
 		},
 	},
@@ -23,51 +23,51 @@ export const SHARE_COPY = {
 	},
 	'/lines': {
 		en: {
-			support: 'Transit lines by mode, routes and schedules',
+			support: 'How on time each line ran and how much of its service was delivered',
 			cta: 'Browse lines',
 		},
 		fr: {
-			support: 'Lignes par mode, parcours et horaires',
+			support: 'La ponctualité de chaque ligne et ses trajets effectués',
 			cta: 'Voir les lignes',
 		},
 	},
 	'/stops': {
 		en: {
-			support: 'Transit stops, predicted departures and schedules',
+			support: 'How on time vehicles were at each stop, day by day',
 			cta: 'Find a stop',
 		},
 		fr: {
-			support: 'Arrêts, passages prévus et horaires',
+			support: 'La ponctualité des passages à chaque arrêt, jour par jour',
 			cta: 'Trouver un arrêt',
 		},
 	},
 	'/network': {
 		en: {
-			support: 'Transit punctuality, delays and reported service',
+			support: 'How on time the network ran and how much of its service was delivered',
 			cta: 'View network health',
 		},
 		fr: {
-			support: 'Ponctualité, retards et service signalé',
+			support: 'La ponctualité du réseau et les trajets effectués',
 			cta: 'Voir la santé du réseau',
 		},
 	},
 	'/search': {
 		en: {
-			support: 'Transit lines, stops and reported vehicles',
+			support: 'Find the record of a line, a stop or a vehicle',
 			cta: 'Search Transit',
 		},
 		fr: {
-			support: 'Lignes, arrêts et véhicules signalés',
+			support: 'Trouver le bilan d’une ligne, d’un arrêt ou d’un véhicule',
 			cta: 'Chercher dans Transit',
 		},
 	},
 	'/metrics': {
 		en: {
-			support: 'Reliability metrics from predictions, with limits',
+			support: 'What each measure counts, leaves out and cannot tell',
 			cta: 'See how we measure',
 		},
 		fr: {
-			support: 'Indicateurs de fiabilité issus des prévisions',
+			support: 'Ce que chaque mesure compte, exclut et ne peut pas dire',
 			cta: 'Voir comment on mesure',
 		},
 	},
@@ -93,11 +93,11 @@ export const SHARE_COPY = {
 	},
 	'/receipt': {
 		en: {
-			support: 'On-time performance and service by date',
+			support: 'One day of service: how on time it ran and how much was delivered',
 			cta: 'Read the daily report',
 		},
 		fr: {
-			support: 'Ponctualité et service par date',
+			support: 'Une journée de service, sa ponctualité et ses trajets effectués',
 			cta: 'Lire le rapport quotidien',
 		},
 	},
@@ -153,21 +153,21 @@ export const SHARE_COPY = {
 	},
 	'/lines/detail': {
 		en: {
-			support: 'Line route, directions and schedule',
+			support: 'How on time the line ran and how much of its service was delivered',
 			cta: 'View the line',
 		},
 		fr: {
-			support: 'Parcours, directions et horaire de la ligne',
+			support: 'La ponctualité de la ligne et ses trajets effectués, jour par jour',
 			cta: 'Voir la ligne',
 		},
 	},
 	'/stop/detail': {
 		en: {
-			support: 'Stop schedules and predicted departures',
+			support: 'How on time vehicles were at this stop, day by day',
 			cta: 'View the stop',
 		},
 		fr: {
-			support: 'Horaires et passages prévus à l’arrêt',
+			support: 'La ponctualité des passages à cet arrêt, jour par jour',
 			cta: 'Voir l’arrêt',
 		},
 	},
