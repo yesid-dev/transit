@@ -28,6 +28,32 @@
 	}
 }
 
+@media (width >= 64rem) {
+	.stop-record {
+		container: stop-record / inline-size;
+	}
+
+	/* With the controls rail alongside the record, both the answer and the paired cards
+	   wrap more than they do at tablet width. Reserve room for their wrapped content. */
+	@container stop-record (inline-size < 44rem) {
+		.stop-record-answer {
+			min-block-size: 12.75rem;
+		}
+
+		.stop-record-answer:lang(fr) {
+			min-block-size: 16.75rem;
+		}
+
+		.stop-timing-cards {
+			min-block-size: 35.375rem;
+		}
+
+		.stop-timing-cards:lang(fr) {
+			min-block-size: 38.125rem;
+		}
+	}
+}
+
 /* The shared body shapes exclude the card header, evidence and chart controls.
    Leave room for those here, including the wrapped legend and notes on a phone. */
 .stop-timing-cards > [data-slot='card']:first-child {
