@@ -83,6 +83,17 @@ describe('Lines Record', () => {
 			for (const direction of ['asc', 'desc'] as const)
 				expect(orderedLines([held, ...rows.slice(1)], { key, direction }, 'en').at(-1)).toBe(held);
 	});
+
+	it('sorts measured low-coverage rows by their share', () => {
+		const low = {
+			...rows[0]!,
+			onTime: 0.6,
+			hold: lineHold(timing({ classified: 120, observed_trips: 30 }, true), floors),
+		};
+		expect(
+			orderedLines([low, ...rows.slice(1)], { key: 'onTime', direction: 'asc' }, 'en')[0],
+		).toBe(low);
+	});
 	it('reads and validates a shareable sort, with numeric line numbers and absent readings last', () => {
 		expect(lineSort(new URLSearchParams('sort=unknown&direction=desc'))).toEqual({
 			key: 'line',

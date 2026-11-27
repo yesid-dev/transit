@@ -46,7 +46,13 @@
 	import StateMark from '../record/StateMark.svelte';
 	import { finderCsv, finderRecordUrl, type FinderResult } from '../record/finderText.ts';
 	import { recordState, recordStateFor } from '../record/recordStates.ts';
-	import { lineExclusion, lineHold, lineHoldText, type LineHold } from './linesRecord.ts';
+	import {
+		belowRankingFloor,
+		lineExclusion,
+		lineHold,
+		lineHoldText,
+		type LineHold,
+	} from './linesRecord.ts';
 	import {
 		choose,
 		lastGoodNote,
@@ -107,6 +113,7 @@
 	const tripsHeader = $derived(t('Trips that ran', 'Trajets effectués'));
 	const eventsHeader = $derived(t('Stop events', 'Passages aux arrêts'));
 	const statusHeader = $derived(t('Status', 'État'));
+	const tooFew = $derived(t('Too few to judge', 'Trop peu pour juger'));
 	let settledPeriod = $state.raw<LinesRecord['period']>();
 	const shownPeriod = $derived(settledPeriod ?? record.period);
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(shownPeriod, locale) });
@@ -207,10 +214,9 @@
 					return {
 						...row,
 						hold,
-						detail:
-							hold?.reason === 'too_few_to_judge'
-								? [row.detail, lineHoldText(hold, locale)].filter(Boolean).join(' · ')
-								: row.detail,
+						detail: belowRankingFloor(hold)
+							? [row.detail, lineHoldText(hold, locale)].filter(Boolean).join(' · ')
+							: row.detail,
 					};
 				}),
 			sort,
@@ -464,12 +470,6 @@
 		const count = countedUnit(routes.length, 'line', locale);
 		return operator ? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${count}` : count;
 	});
-
-	function heldLabel(hold: LineHold) {
-		return hold.reason === 'too_few_to_judge'
-			? t('Too few to judge', 'Trop peu pour juger')
-			: lineHoldText(hold, locale);
-	}
 </script>
 
 {#snippet citation()}
@@ -512,27 +512,26 @@
 
 {#snippet onTimeCell(row: Row)}
 	{#if initialTiming}{@render pendingCell()}
-	{:else if row.hold}
-		<span class="font-sans text-muted-foreground @min-[48rem]:whitespace-nowrap"
-			>{heldLabel(row.hold)}</span
-		>
+	{:else if belowRankingFloor(row.hold)}
+		<span class="font-sans text-muted-foreground @min-[48rem]:whitespace-nowrap">{tooFew}</span>
 	{:else}
 		<strong class="font-sans text-base">{recordPercent(row.onTime!, locale)}</strong>
+		{#if row.hold}<small class="block font-sans text-muted-foreground"
+				>{lineHoldText(row.hold, locale)}</small
+			>{/if}
 	{/if}
 {/snippet}
 
 {#snippet phoneOnTime(row: Row)}
-	{#if initialTiming}{@render pendingCell()}{:else}{row.hold
-			? heldLabel(row.hold)
+	{#if initialTiming}{@render pendingCell()}{:else}{belowRankingFloor(row.hold)
+			? tooFew
 			: recordPercent(row.onTime!, locale)}{/if}
 {/snippet}
 
 {#snippet lateCell(row: Row)}
 	{#if initialTiming}{@render pendingCell()}
-	{:else if row.hold}
-		<span class="font-sans text-muted-foreground @min-[48rem]:whitespace-nowrap"
-			>{heldLabel(row.hold)}</span
-		>
+	{:else if belowRankingFloor(row.hold)}
+		<span class="font-sans text-muted-foreground @min-[48rem]:whitespace-nowrap">{tooFew}</span>
 	{:else}<RecordTableValue
 			{locale}
 			text={row.late === null ? null : recordPercent(row.late, locale)}
@@ -760,12 +759,15 @@
 										return rowSentence(
 											[
 												row.detail,
-												!row.hold && row.late !== null && lateShare(row.late, locale),
+												!belowRankingFloor(row.hold) &&
+													row.late !== null &&
+													lateShare(row.late, locale),
 												row.trips !== null &&
 													counts?.ran != null &&
 													counts.scheduled != null &&
 													tripsRan(counts.ran, counts.scheduled, locale),
 												events != null && countedUnit(events, 'event', locale),
+												row.hold?.reason === 'low_coverage' && lineHoldText(row.hold, locale),
 											],
 											locale,
 										);

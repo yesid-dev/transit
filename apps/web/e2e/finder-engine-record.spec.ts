@@ -89,11 +89,10 @@ for (const locale of ['en', 'fr'] as const) {
 			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
 		});
 		const timing = measured.getByRole('row', { name: /Sherbrooke/ });
-		await expect(timing).not.toContainText(fr ? /80,0\s%/ : '80.0%');
+		await expect(timing).toContainText(fr ? /80,0\s%/ : '80.0%');
 		await expect(timing).toContainText(fr ? 'Faible couverture' : 'Low coverage');
 		const late = timing.locator('[data-column="late"]');
-		await expect(late).toContainText(fr ? 'Faible couverture' : 'Low coverage');
-		await expect(late).not.toContainText('%');
+		await expect(late).toContainText(fr ? /15,0\s%/ : '15.0%');
 		if (!fr) {
 			await expect(page.locator('[data-slot="record-patience"]').getByRole('status')).toBeVisible();
 			const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
@@ -146,6 +145,31 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.goBack();
 		await expect(page).toHaveURL(/\/lines\?.*sort=late&direction=desc$/);
 		await expect(timing).toBeVisible();
+	});
+
+	test(`${locale} lines below the ranking floor hide both shares without suppressing low coverage`, async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		const dates = 'provider=stm&frameMode=record&recordFrom=2026-11-07&recordTo=2026-11-12';
+		await page.goto(`${prefix}/lines?${dates}&sort=onTime&direction=asc`);
+		const table = page.getByRole('table', {
+			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
+		});
+		const thin = table
+			.getByRole('row')
+			.filter({
+				hasText: fr ? 'Il en faut 20 pour classer une ligne.' : 'A line needs 20 to be ranked.',
+			});
+		for (const column of ['onTime', 'late']) {
+			const share = thin.locator(`[data-column="${column}"]`);
+			await expect(share).toContainText(fr ? 'Trop peu pour juger' : 'Too few to judge');
+			await expect(share).not.toContainText('%');
+		}
+		const measured = table.getByRole('row', { name: /Sherbrooke/ });
+		await expect(measured).toContainText(fr ? /80,0\s%/ : '80.0%');
+		await expect(measured).toContainText(fr ? 'Faible couverture' : 'Low coverage');
+		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/24\?/u);
 	});
 
 	test(`${locale} lines find a line by number or name and keep the sort and history`, async ({

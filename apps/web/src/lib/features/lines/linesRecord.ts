@@ -71,9 +71,11 @@ export function orderedLines<T extends Reading>(
 	const key = sort.key;
 	return rows.toSorted((a, b) => {
 		const lineOrder = compare(a.number, b.number) || compare(a.id, b.id);
-		if (Boolean(a.hold) !== Boolean(b.hold)) return a.hold ? 1 : -1;
+		const aBelow = belowRankingFloor(a.hold);
+		const bBelow = belowRankingFloor(b.hold);
+		if (aBelow !== bBelow) return aBelow ? 1 : -1;
 		if (key === 'line') return lineOrder * sign;
-		if (a.hold) return lineOrder;
+		if (aBelow) return lineOrder;
 		const av = a[key];
 		const bv = b[key];
 		if (av == null) return bv == null ? lineOrder : 1;
@@ -90,6 +92,12 @@ type LineTiming = {
 export type LineHold =
 	| { reason: 'low_coverage' }
 	| { reason: 'too_few_to_judge'; unit: 'event' | 'trip-observed'; count: number; minimum: number };
+
+export function belowRankingFloor(
+	hold: LineHold | null | undefined,
+): hold is Extract<LineHold, { reason: 'too_few_to_judge' }> {
+	return hold?.reason === 'too_few_to_judge';
+}
 
 const floorUnits = { classified: 'event', observed_trips: 'trip-observed' } as const;
 
