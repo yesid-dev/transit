@@ -194,28 +194,32 @@ describe('Stop capture and Record loading', () => {
 	it.each([
 		['record', dated],
 		['live', 'frameMode=live'],
-	])('waits for a slow %s identity before sending a 404', async (_, query) => {
+	])('streams a slow %s identity before showing a missing Stop', async (_, query) => {
 		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const pending = Promise.withResolvers<unknown>();
 		harness.getRecordAnswer.mockReturnValueOnce(pending.promise);
-		const shell = Promise.resolve(load(event({ id: '57135', query })));
-		const settled = vi.fn();
-		void shell.then(settled, settled);
+		const shell = load(event({ id: '57135', query }));
 		await vi.advanceTimersByTimeAsync(1500);
-		expect(settled).not.toHaveBeenCalled();
+		const data = await shell;
+		expect(data?.seed.id).toBe('57135');
+		expect(data?.stopIdentity).toBeInstanceOf(Promise);
+		expect(harness.getRecordAnswer).toHaveBeenCalledOnce();
 		pending.resolve(identity(null));
-		await expect(shell).rejects.toMatchObject({ status: 404, body: { code: 'STOP_NOT_FOUND' } });
+		await expect(data?.stopIdentity).resolves.toBe('missing');
+		if (data?.record) await expect(data.record.delivery).resolves.toEqual({ kind: 'unreachable' });
 		expect(harness.getRecordAnswer).toHaveBeenCalledOnce();
 	});
 
 	it('starts delivery only after a slow archived Stop identity is confirmed', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 		const pending = Promise.withResolvers<unknown>();
 		harness.getRecordAnswer.mockReturnValueOnce(pending.promise);
 		const page = load(event({ id: 'archived', query: dated }));
-		await Promise.resolve();
+		await vi.advanceTimersByTimeAsync(1500);
+		const data = await page;
 		expect(harness.getRecordAnswer).toHaveBeenCalledOnce();
 		pending.resolve(identity('archived'));
-		const data = await page;
+		await expect(data?.stopIdentity).resolves.toBe('available');
 		await data?.record?.delivery;
 		expect(harness.getRecordAnswer).toHaveBeenCalledWith(
 			{ path: '/measure', parameters: { measure: 'service_delivered', stop: 'archived' } },

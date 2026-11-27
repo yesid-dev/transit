@@ -32,13 +32,12 @@ export function departureDailyEngine(url, dailyMessageHold, richReport = false) 
 		return { status: 503, body: {}, headers: { 'retry-after': '15' } };
 	if (departure && from === '2026-11-21') return { status: 503, body: {} };
 	const identityLookup = departure && measure === 'trips_run' && group === 'departure';
-	if (
-		departure &&
-		!identityLookup &&
-		(!['24', '80', 'archived-line'].includes(get('line')) ||
-			get('direction') !== '0' ||
-			departure !== '07:00:00')
-	) {
+	const line = get('line');
+	const scheduled =
+		get('direction') === '0' &&
+		((departure === '07:00:00' && ['24', '80', 'archived-line'].includes(line)) ||
+			(departure === '25:10:00' && line === '24'));
+	if (departure && !identityLookup && !scheduled) {
 		return { status: 400, body: { message: 'Wrong departure cut' } };
 	}
 	const days =
@@ -140,14 +139,10 @@ export function departureDailyEngine(url, dailyMessageHold, richReport = false) 
 			},
 		};
 	if (identityLookup) {
-		const known =
-			['24', '80', 'archived-line'].includes(get('line')) &&
-			get('direction') === '0' &&
-			departure === '07:00:00';
 		return {
 			body: {
 				...envelope,
-				cells: known ? [cell({ direction: 0, departure }, { scheduled: 1 })] : [],
+				cells: scheduled ? [cell({ direction: 0, departure }, { scheduled: 1 })] : [],
 			},
 		};
 	}

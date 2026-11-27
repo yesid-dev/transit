@@ -1,3 +1,4 @@
+import { csvText } from '../src/tests/csv';
 import { closeMapInView, openMapControls, openMapInView } from './map-frame-controls';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
@@ -174,7 +175,8 @@ async function serveFleet(page: Page, current: () => FleetFile) {
 }
 
 /** Minimal RFC 4180 reader for the downloaded bytes. */
-function parseCsv(csv: string): string[][] {
+function parseCsv(body: string): string[][] {
+	const csv = csvText(body);
 	const rows: string[][] = [];
 	let row: string[] = [];
 	let cell = '';

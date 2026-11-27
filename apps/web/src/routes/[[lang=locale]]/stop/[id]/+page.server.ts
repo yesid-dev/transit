@@ -4,13 +4,19 @@ import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
 import { loadStopRecord } from '#lib/server/stopRecord.ts';
-import { archivedIdentity, validEntityId } from '#lib/server/entityIdentity.ts';
+import {
+	archivedIdentity,
+	validEntityId,
+	type EntityIdentity,
+} from '#lib/server/entityIdentity.ts';
+import { withinBootBudget } from '#lib/server/timetable.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { stopFrameView, stopViewHref } from '#lib/site/stopFrame.ts';
 import { lineIsScheduleOnly, providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
 
 export const load: PageServerLoad = async (event) => {
+	const started = performance.now();
 	const { url } = event;
 	const canonicalLocation = canonicalDetailTabLocation(url);
 	if (canonicalLocation) redirect(308, canonicalLocation);
@@ -44,21 +50,24 @@ export const load: PageServerLoad = async (event) => {
 	const clock = frameClock(provider);
 	const period = !frameLive ? parseAnswerFrameState(url.searchParams, clock).period : null;
 	const scope = { city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') };
+	let stopIdentity: Promise<EntityIdentity> | undefined;
 	if (!scheduledStop) {
-		const identity = schedule ? await archivedIdentity('stop', id, clock, scope) : 'unconfirmed';
-		if (identity === 'missing') {
+		const identity = schedule && archivedIdentity('stop', id, clock, scope);
+		const fast = identity ? await withinBootBudget(identity, started) : 'unconfirmed';
+		if (fast === 'missing') {
 			error(404, {
 				code: 'STOP_NOT_FOUND',
 				message: lang === 'fr' ? 'Cet arrêt est introuvable.' : 'This stop could not be found.',
 			});
 		}
-		if (identity !== 'available')
+		if (fast === 'unconfirmed')
 			error(
 				503,
 				lang === 'fr'
 					? 'Cet arrêt est temporairement indisponible.'
 					: 'This stop is temporarily unavailable.',
 			);
+		if (identity && fast === undefined) stopIdentity = identity;
 	}
 	return {
 		seed: { id, name: name || id },
@@ -73,7 +82,8 @@ export const load: PageServerLoad = async (event) => {
 		tripUpdatesPublished,
 		hasAlerts,
 		...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) } : {}),
-		record: period ? loadStopRecord({ ...scope, ...period }, id) : null,
+		stopIdentity,
+		record: period ? loadStopRecord({ ...scope, ...period }, id, undefined, stopIdentity) : null,
 		capture:
 			live && (hasAlerts || (tripUpdatesPublished && !scheduleOnly))
 				? fetchCaptureSnapshot(providerId, signal, event.fetch).catch(() => null)

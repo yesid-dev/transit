@@ -1,6 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import catalog from '../../../e2e/providers.json';
 import { appendCsvColumn, recordCsvResponse } from './recordCsv.ts';
+import { csvText } from '../../tests/csv.ts';
+import { csvDataHref } from '#lib/utils/csvDownload.ts';
 
 const engine = vi.hoisted(() => ({ getCityCatalog: vi.fn(), getRecordCsv: vi.fn() }));
 vi.mock('./engine.ts', () => engine);
@@ -78,11 +80,11 @@ const source = {
 	fr: '"Données ouvertes de STM, calculs de Transit"',
 };
 it.each([
-	['en', ['id\r1\r'], `\ufeffid,Data source and licence\r1,${source.en}\r`],
+	['en', ['id\r1\r'], `id,Data source and licence\r1,${source.en}\r`],
 	[
 		'fr',
 		['\ufeffid\r', '\n"Premier\nDeuxième"\r', '\n2'],
-		`\ufeffid,Source des données et licence\r\n"Premier\nDeuxième",${source.fr}\r\n2,${source.fr}`,
+		`id,Source des données et licence\r\n"Premier\nDeuxième",${source.fr}\r\n2,${source.fr}`,
 	],
 ] as const)(
 	'attributes %s CSV once per record across stream boundaries',
@@ -100,7 +102,7 @@ it.each([
 		const response = await download(lang);
 		expect(response.headers.get('content-disposition')).toBe('attachment; filename="on_time.csv"');
 		expect(response.headers.get('cache-control')).toBe('no-store');
-		expect(new Uint8Array(await response.arrayBuffer())).toEqual(encoder.encode(expected));
+		expect(csvText(new Uint8Array(await response.arrayBuffer()))).toBe(expected);
 	},
 );
 
@@ -116,12 +118,14 @@ async function transform(
 			controller.close();
 		},
 	});
-	return new Response(source.pipeThrough(appendCsvColumn(header, value))).text();
+	const response = new Response(source.pipeThrough(appendCsvColumn(header, value)));
+	return csvText(new Uint8Array(await response.arrayBuffer()));
 }
 
 const cell = '"STM open data, CC BY 4.0, computed by Transit"';
 
 it('writes exactly one UTF-8 BOM when the source has none or splits one across chunks', async () => {
+	expect(csvDataHref('Measure\n')).toBe('data:text/csv;charset=utf-8,%EF%BB%BFMeasure%0A');
 	for (const chunks of [
 		[new TextEncoder().encode('Measure\n')],
 		[Uint8Array.of(0xef), Uint8Array.of(0xbb, 0xbf, ...new TextEncoder().encode('Measure\n'))],

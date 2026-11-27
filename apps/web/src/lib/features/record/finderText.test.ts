@@ -1,3 +1,4 @@
+import { csvDataText } from '../../../tests/csv.ts';
 import { expect, it } from 'vitest';
 import { stateText, measure } from '#lib/features/home/overviewRecord.fixture.ts';
 import { finderShare, finderTrips, finderCsv } from './finderText.ts';
@@ -58,7 +59,7 @@ it('exports raw readings, preserves zero and escapes spreadsheet text', () => {
 		{ from: '2026-10-17', to: '2026-10-18' },
 		[measure().evidence],
 	);
-	const csv = decodeURIComponent(href.slice(href.indexOf(',') + 1));
+	const csv = csvDataText(href);
 	expect(csv).toContain('"\'=1+1",0,"demo","2026-10-17","2026-10-18","punctuality-v2","6"');
 	expect(csv).toContain('"Unknown",,"demo"');
 });

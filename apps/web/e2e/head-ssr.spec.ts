@@ -135,23 +135,22 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 }
 
-test('sends a noindex 404 after a slow stop identity lookup', async ({ request }) => {
+test('starts a slow Stop document with noindex before the identity arrives', async ({
+	request,
+	baseURL,
+}) => {
 	const fixture = await startStopSearchFixture(request);
 	try {
 		await fixture.hold();
-		let completed = false;
-		const response = request
-			.get('/stop/unknown-entity?provider=stm&frameMode=live', { headers: fixture.headers })
-			.finally(() => {
-				completed = true;
-			});
+		const response = fetch(new URL('/stop/unknown-entity?provider=stm&frameMode=live', baseURL), {
+			headers: fixture.headers,
+		});
 		await expect.poll(fixture.questions).toBe(1);
-		await new Promise((resolve) => setTimeout(resolve, 1_500));
-		expect(completed).toBe(false);
+		const document = await response;
+		expect(document.status).toBe(200);
 		await fixture.release();
-		const missing = await response;
-		expect(missing.status()).toBe(404);
-		expect(await missing.text()).toContain('name="robots" content="noindex,nofollow"');
+		const html = await document.text();
+		expect(html.split('</head>')[0]).toContain('name="robots" content="noindex"');
 	} finally {
 		await fixture.dispose();
 	}

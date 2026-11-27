@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Surface } from '@yesid/ui/layout';
+	import { ErrorPage, Surface } from '@yesid/ui/layout';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
@@ -13,6 +13,7 @@
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { providerDisplayNames, publishedNetwork } from '#lib/site/providerDisplay.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
+	import { errorPageCopy } from '#lib/site/errorPage.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
@@ -67,6 +68,18 @@
 			label: locale === 'fr' ? 'Tous les arrêts' : 'All stops',
 		};
 	});
+	const missingCopy = errorPageCopy[locale].stopNotFound;
+	let confirmed = $state<Promise<'available' | 'missing' | 'unconfirmed'>>();
+	$effect(() => {
+		const identity = data.stopIdentity;
+		let active = true;
+		void identity?.then((result) => {
+			if (active && result === 'available') confirmed = identity;
+		});
+		return () => {
+			active = false;
+		};
+	});
 	const archive = $derived(
 		data.outsideCurrentTimetable && stopRecord ? stopArchiveAvailability(stopRecord) : null,
 	);
@@ -87,7 +100,73 @@
 	{/if}
 {/snippet}
 
-{@render stopContent()}
+<svelte:head>
+	{#if data.stopIdentity && confirmed !== data.stopIdentity}
+		<meta name="robots" content="noindex" />
+	{/if}
+</svelte:head>
+
+{#snippet identityStatus(unconfirmed = false)}
+	<Surface>
+		<RecordScreen>
+			<RecordGroup>
+				<ScreenTitle id="stop-title" title={stopLabel} {back} dot={false} />
+			</RecordGroup>
+			<div data-slot="screen-content">
+				<RecordGroup>
+					{#if unconfirmed}
+						<RecordAnswer
+							{locale}
+							value={null}
+							state="unknown"
+							sentence={locale === 'fr'
+								? 'Le bilan de cet arrêt est temporairement indisponible.'
+								: 'The record for this stop is temporarily unavailable.'}
+						>
+							{#snippet actions()}
+								<a
+									class="inline-flex min-h-11 items-center text-primary underline"
+									href={url.href}
+									data-sveltekit-reload
+								>
+									{locale === 'fr' ? 'Réessayer' : 'Try again'}
+								</a>
+							{/snippet}
+						</RecordAnswer>
+					{:else}
+						<RecordPending {locale} />
+					{/if}
+				</RecordGroup>
+			</div>
+		</RecordScreen>
+	</Surface>
+{/snippet}
+
+{#if data.stopIdentity}
+	{#await data.stopIdentity}
+		{@render identityStatus()}
+	{:then identity}
+		{#if identity === 'missing'}
+			<ErrorPage
+				status={404}
+				heading={missingCopy.heading}
+				body={missingCopy.body}
+				illustration="none"
+				suggestionsLabel={errorPageCopy[locale].suggestionsLabel}
+				suggestions={missingCopy.suggestions.map(({ href, label }) => ({
+					href: localizeHref(href, locale),
+					label,
+				}))}
+			/>
+		{:else if identity === 'unconfirmed'}
+			{@render identityStatus(true)}
+		{:else}
+			{@render stopContent()}
+		{/if}
+	{/await}
+{:else}
+	{@render stopContent()}
+{/if}
 
 {#snippet heading()}
 	<ScreenTitle

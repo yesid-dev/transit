@@ -1,3 +1,4 @@
+import { csvText } from '../src/tests/csv';
 import { expect, test } from '@playwright/test';
 
 test.use({ bypassCSP: true });
@@ -218,15 +219,15 @@ for (const width of [390, 1440]) {
 				.getAttribute('href');
 			const download = await request.get(accessCsv!);
 			expect(download.headers()['content-disposition']).toContain('stop-accessibility.csv');
-			expect(await download.text()).toContain(`accessible_stops,${fr ? 0 : 1}`);
+			expect(csvText(await download.body())).toContain(`accessible_stops,${fr ? 0 : 1}`);
 			const hourlyCsv = await sheet
 				.getByRole('link', { name: fr ? 'Par heure' : 'By hour' })
 				.getAttribute('href');
 			// French runs on OC Transpo, English on STM; each row names its source.
-			expect(await (await request.get(hourlyCsv!)).text()).toBe(
+			expect(csvText(await (await request.get(hourlyCsv!)).body())).toBe(
 				fr
-					? '\ufeffMesure,Valeur,Source des données et licence\non_time,0.8,"Données ouvertes d’OC Transpo, calculs de Transit"\n'
-					: '\ufeffMeasure,Value,Data source and licence\non_time,0.8,"STM open data, computed by Transit"\n',
+					? 'Mesure,Valeur,Source des données et licence\non_time,0.8,"Données ouvertes d’OC Transpo, calculs de Transit"\n'
+					: 'Measure,Value,Data source and licence\non_time,0.8,"STM open data, computed by Transit"\n',
 			);
 			await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
 		});

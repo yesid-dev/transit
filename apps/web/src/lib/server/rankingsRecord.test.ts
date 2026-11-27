@@ -1,3 +1,4 @@
+import { csvText } from '../../tests/csv.ts';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { loadRankingsRecord, rankingHeadsigns, rankingsCsv } from './rankingsRecord.ts';
 import type { RankingPath } from '#lib/features/rankings/rankingSelection.ts';
@@ -145,7 +146,7 @@ it('forwards the same cuts and locale to the engine CSV and streams its rows wit
 	expect(response.headers.get('content-disposition')).toBe(
 		'attachment; filename="rankings-line.csv"',
 	);
-	expect(await response.text()).toBe(
+	expect(csvText(new Uint8Array(await response.arrayBuffer()))).toBe(
 		'Rang,Type,Source des données et licence\n1,line,"Données ouvertes d’Agency, calculs de Transit"\n',
 	);
 });

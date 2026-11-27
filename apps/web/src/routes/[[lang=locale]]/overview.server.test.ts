@@ -24,6 +24,7 @@ vi.mock('#lib/server/engine.ts', () => engine);
 
 import { GET } from './record.csv/+server';
 import { load } from './+page.server';
+import { csvText } from '../../tests/csv.ts';
 
 const from = '2026-11-08';
 const to = '2026-11-14';
@@ -59,14 +60,8 @@ describe('Overview exports', () => {
 				'fr',
 				request.signal,
 			);
-			// The byte order mark and line ending are kept; the source and licence column is added.
-			expect(new Uint8Array(await response.arrayBuffer())).toEqual(
-				new Uint8Array([
-					...bytes.slice(0, 4),
-					...new TextEncoder().encode(',Source des données et licence'),
-					13,
-					10,
-				]),
+			expect(csvText(new Uint8Array(await response.arrayBuffer()))).toBe(
+				'a,Source des données et licence\r\n',
 			);
 		},
 	);

@@ -1,3 +1,4 @@
+import { csvText } from '../src/tests/csv';
 import { expect, test } from '@playwright/test';
 import { stmAlertId } from './alert-fixture.mjs';
 import { captureUrl, refreshAlertsCapture } from './capture-fixture';
@@ -104,7 +105,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 		expect(download.headers()['content-disposition']).toBe(
 			`attachment; filename="alerts-${section}.csv"`,
 		);
-		expect(await download.text()).toMatch(/^\ufeffMesure,Du,Au/u);
+		expect(csvText(await download.body())).toMatch(/^Mesure,Du,Au/u);
 	}
 
 	const duplicate = stmAlertId(14);

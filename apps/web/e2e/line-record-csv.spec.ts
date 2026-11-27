@@ -1,3 +1,4 @@
+import { csvText } from '../src/tests/csv';
 import { readFileSync } from 'node:fs';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
@@ -44,12 +45,10 @@ for (const provider of ['stm', 'octranspo'])
 					const source = fr
 						? `Données ouvertes ${provider === 'stm' ? 'de la STM' : 'd’OC Transpo'}, calculs de Transit`
 						: `${provider === 'stm' ? 'STM' : 'OC Transpo'} open data, computed by Transit`;
-					expect(readFileSync((await download.path())!, 'utf8')).toBe(
-						'\ufeff' +
-							(fr
-								? 'Mesure,Valeur,Source des données et licence'
-								: 'Measure,Value,Data source and licence') +
-							`\npunctuality,0.8,"${source}"\n`,
+					expect(csvText(readFileSync((await download.path())!))).toBe(
+						(fr
+							? 'Mesure,Valeur,Source des données et licence'
+							: 'Measure,Value,Data source and licence') + `\npunctuality,0.8,"${source}"\n`,
 					);
 					expect(new URL(page.url()).pathname).toBe((fr ? '/fr' : '') + '/lines/24');
 					expect(snapshotRequests).toEqual([]);

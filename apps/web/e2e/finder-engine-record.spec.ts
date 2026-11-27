@@ -1,3 +1,4 @@
+import { csvDataText } from '../src/tests/csv';
 import { expect } from '@playwright/test';
 import { textDefects } from './layout-helpers';
 import { startStopSearchFixture, test } from './stop-search-fixture';
@@ -124,7 +125,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const csv = sheet.getByRole('link', {
 			name: fr ? 'Performance des lignes' : 'Line performance',
 		});
-		expect(decodeURIComponent((await csv.getAttribute('href'))!)).toContain('0.8,0.15,90,105,100');
+		expect(csvDataText((await csv.getAttribute('href'))!)).toContain('0.8,0.15,90,105,100');
 		await expect(
 			sheet.getByRole('link', {
 				name: fr ? 'Lignes sans données en direct' : 'Lines without live data',
@@ -318,7 +319,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const csv = page.getByRole('link', {
 			name: fr ? 'Performance des lignes' : 'Line performance',
 		});
-		expect(decodeURIComponent((await csv.getAttribute('href'))!)).toContain(unavailable);
+		expect(csvDataText((await csv.getAttribute('href'))!)).toContain(unavailable);
 
 		await page.goto(`${prefix}/lines?${query.replace('2026-11-08', '2026-11-06')}`);
 		await expect(page.locator('[data-slot="record-patience"]').getByRole('status')).toHaveCount(1);
@@ -372,7 +373,7 @@ for (const locale of ['en', 'fr'] as const) {
 				const csv = await downloads
 					.getByRole('link', { name: fr ? 'Résultats de recherche d’arrêts' : 'Stop results' })
 					.getAttribute('href');
-				expect(decodeURIComponent(csv!)).toContain('"Fixture stop",0.8,100,80');
+				expect(csvDataText(csv!)).toContain('"Fixture stop",0.8,100,80');
 				await downloads
 					.locator('[data-slot="sheet-footer"]')
 					.getByRole('button', { name: fr ? 'Fermer' : 'Close' })

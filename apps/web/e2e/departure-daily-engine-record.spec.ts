@@ -1,3 +1,4 @@
+import { csvText } from '../src/tests/csv';
 import { expect, test } from '@playwright/test';
 import { dailyMessageHold } from './daily-message-hold';
 import { captureTrip, captureTripReport } from './capture-fixture';
@@ -81,9 +82,9 @@ for (const width of [390, 1440]) {
 				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
-			const csvText = await csvResponse.text();
-			expect(csvText).toContain(fr ? 'Retard observé (s)' : 'Observed delay (s)');
-			expect(csvText).toContain('2026-11-18,2026-11-18,-61');
+			const content = csvText(await csvResponse.body());
+			expect(content).toContain(fr ? 'Retard observé (s)' : 'Observed delay (s)');
+			expect(content).toContain('2026-11-18,2026-11-18,-61');
 			await expect(main).not.toContainText(
 				/\b(?:\d+ s (?:late|early)|seconds|secondes|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
 			);
@@ -147,8 +148,8 @@ for (const width of [390, 1440]) {
 				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
-			expect(await csvResponse.text()).toMatch(
-				fr ? /^\ufeffMesure,Du,Au/u : /^\ufeffMeasure,From,To/u,
+			expect(csvText(await csvResponse.body())).toMatch(
+				fr ? /^Mesure,Du,Au/u : /^Measure,From,To/u,
 			);
 			await downloads.locator('[data-slot="sheet-footer"]').getByRole('button', close).click();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
