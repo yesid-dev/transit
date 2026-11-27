@@ -32,6 +32,25 @@ const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x61, 13, 10]);
 
 describe('Overview exports', () => {
 	it.each([
+		['en', '', 'Choose which reading to download.'],
+		['fr', '/fr', 'Choisissez la mesure à télécharger.'],
+	] as const)(
+		'explains a missing section in %s with a plain-text 400',
+		async (lang, prefix, message) => {
+			const url = new URL(
+				`https://example.test${prefix}/record.csv?provider=fixture&recordFrom=${from}&recordTo=${to}`,
+			);
+			const response = await GET({ url, request: new Request(url), params: { lang } } as Parameters<
+				typeof GET
+			>[0]);
+			expect(response.status).toBe(400);
+			expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+			expect(await response.text()).toBe(`${message}\n`);
+			expect(engine.getRecordCsv).not.toHaveBeenCalled();
+		},
+	);
+
+	it.each([
 		['punctuality', '/measure', { measure: 'punctuality' }, from, to],
 		['previous', '/measure', { measure: 'on_time' }, '2026-11-01', '2026-11-07'],
 		['delivery', '/measure', { measure: 'trips_run' }, from, to],

@@ -94,6 +94,25 @@ async function hash(value) {
   return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+const hmac = { name: "HMAC", hash: "SHA-256" };
+const textBytes = new TextEncoder();
+const importRateKey = (bytes) => crypto.subtle.importKey("raw", bytes, hmac, false, ["sign"]);
+let rateDayKey;
+
+async function visitorLimitKey(secret, address) {
+  // The data-only routes can still enforce one shared limit without engine credentials.
+  if (!secret) return "shared";
+  const day = new Date().toISOString().slice(0, 10);
+  if (rateDayKey?.secret !== secret || rateDayKey.day !== day) {
+    const key = importRateKey(textBytes.encode(secret))
+      .then((master) => crypto.subtle.sign(hmac, master, textBytes.encode(`transit/question-limit/v1/${day}`)))
+      .then(importRateKey);
+    rateDayKey = { secret, day, key };
+  }
+  const digest = await crypto.subtle.sign(hmac, await rateDayKey.key, textBytes.encode(address || "unknown"));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export function cleaningVersion(value) {
   const version = String(value ?? "");
   return /^[1-9][0-9]{0,15}$/.test(version) ? version : null;
@@ -121,7 +140,8 @@ export function serviceToday(timezone) {
 
 export async function admit(env, visitorIp) {
   try {
-    const { success } = await env.QUESTION_LIMIT.limit({ key: await hash(visitorIp || "unknown") });
+    const key = await visitorLimitKey(env.TRANSIT1_ENGINE_ACCESS_TOKEN, visitorIp);
+    const { success } = await env.QUESTION_LIMIT.limit({ key });
     return success ? null : busy("60");
   } catch {
     return message(503, "question limiter unavailable", { "retry-after": "60" });

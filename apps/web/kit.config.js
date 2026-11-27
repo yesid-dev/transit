@@ -2,8 +2,16 @@ import adapter from '@sveltejs/adapter-cloudflare';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { projectRunes } from '@yesid/config/svelte/project-runes.js';
 import boot from '@yesid/ui/boot.json' with { type: 'json' };
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const dev = process.env.NODE_ENV === 'development';
+export const reloadNoticeHash = /** @type {`sha256-${string}`} */ (
+	'sha256-' +
+		createHash('sha256')
+			.update(readFileSync(new URL('./src/lib/pwa/reloadNotice.js', import.meta.url)))
+			.digest('base64')
+);
 
 /**
  * The document CSP in SvelteKit's unquoted form. `_headers` serves it without hashes on static
@@ -54,6 +62,7 @@ const config = {
 		directives: cspDirectives(
 			/** @type {`sha256-${string}`} */ (boot.hash),
 			/** @type {`sha256-${string}`} */ (boot.announcementHash),
+			reloadNoticeHash,
 		),
 	},
 	// src/lib/pwa/register.ts registers the worker behind the kill switch and production gate.

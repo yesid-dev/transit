@@ -6,7 +6,7 @@ import { LEGAL_EFFECTIVE_DATES, legalDocument } from './legal.copy';
 const reviewed = {
 	privacy: {
 		date: '2026-11-27',
-		fingerprint: '4d57c226ba4a25078680a39df194c7cfe32cbe013ffd71d95138e67f9197d857',
+		fingerprint: 'a1200cfacbcc093ff3420c74f5928e98a3f1316e24c7827e4ac96a88c67954e8',
 	},
 	terms: {
 		date: '2026-11-27',

@@ -97,6 +97,18 @@ describe('LegalDocument', () => {
 		);
 		const enPrivacy = JSON.stringify(legalDocument('en', 'privacy'));
 		const frPrivacy = JSON.stringify(legalDocument('fr', 'privacy'));
+		expect(enPrivacy).toContain('fingerprint of the address, made with a secret key');
+		expect(enPrivacy).toContain('midnight UTC');
+		expect(enPrivacy).toContain('one-minute counting window');
+		expect(enPrivacy).toContain('Search, Map and Live pages');
+		expect(enPrivacy).toContain('insert the script');
+		expect(enPrivacy).toContain('Pause live updates choice in sessionStorage');
+		expect(frPrivacy).toContain('empreinte de l’adresse calculée avec une clé secrète');
+		expect(frPrivacy).toContain('minuit UTC');
+		expect(frPrivacy).toContain('fenêtre de comptage est d’une minute');
+		expect(frPrivacy).toContain('pages Recherche, Carte et En direct');
+		expect(frPrivacy).toContain('insérer le script');
+		expect(frPrivacy).toContain('choix Suspendre les mises à jour dans sessionStorage');
 		expect(enPrivacy).toContain('public website');
 		expect(enPrivacy).not.toContain('public service');
 		expect(frPrivacy).toContain('accessible au public');

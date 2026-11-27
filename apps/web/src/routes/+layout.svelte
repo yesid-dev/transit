@@ -399,6 +399,10 @@
 
 	onNavigate(viewTransition);
 
+	$effect(() => {
+		if (updated.current) window.dispatchEvent(new Event('transit:new-version'));
+	});
+
 	afterNavigate(({ from, to, type, shallow }) => {
 		if (shallow && type === 'goto') return;
 		if (!to || type === 'enter' || type === 'popstate') return;

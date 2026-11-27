@@ -12,6 +12,8 @@ import { configureTransitUi } from '#lib/ui/configure.ts';
 import { preloadFont } from '@yesid/tokens/fonts';
 import { injectAnnouncementBannerBoot, injectThemeBoot } from '@yesid/ui/head';
 import { announcement } from '#lib/site/announcement.ts';
+import { version } from '$app/env';
+import reloadNotice from '#lib/pwa/reloadNotice.js?raw';
 
 export const init: ServerInit = configureTransitUi;
 
@@ -209,7 +211,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const resolved = await resolve(event, {
 		transformPageChunk: ({ html }) =>
 			injectAnnouncementBannerBoot(
-				injectThemeBoot(html.replace('%lang%', lang)),
+				injectThemeBoot(
+					html
+						.replace('%lang%', lang)
+						.replace('%transit.appVersion%', encodeURIComponent(version))
+						.replace('%transit.reloadBoot%', () => `<script>${reloadNotice}</script>`),
+				),
 				announcement.enabled ? announcement.id : undefined,
 			),
 		preload: ({ type, path }) => type !== 'font' || preloadFont(path),

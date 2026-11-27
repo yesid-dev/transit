@@ -18,6 +18,19 @@
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="tap">
+		<aside
+			id="app-reload-notice"
+			data-version="%transit.appVersion%"
+			data-version-url="%sveltekit.assets%/_app/version.json"
+			class="fixed inset-x-3 bottom-3 z-[200] mx-auto max-w-sm rounded-md border border-border bg-background p-3 text-foreground shadow-lg"
+			hidden
+		>
+			<span data-reload-message role="status"></span>
+			<button type="button" class="ml-2 min-h-11 rounded-md px-3 font-semibold underline">
+				Reload
+			</button>
+		</aside>
+		%transit.reloadBoot%
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>
