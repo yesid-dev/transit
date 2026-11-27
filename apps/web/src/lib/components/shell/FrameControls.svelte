@@ -16,12 +16,13 @@
 
 <script lang="ts">
 	import { tick } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { ControlsRail, DateRangePicker } from '@yesid/ui/layout';
-	import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from '@yesid/ui/sheet';
+	import * as Sheet from '@yesid/ui/sheet';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { longDate } from '#lib/site/presenter.ts';
 	import {
@@ -86,6 +87,9 @@
 	);
 	let open = $state(false);
 	let tooLong = $state(false);
+	// Match the kit breakpoint and retain the bottom side's original phone motion.
+	const windowLayout = new MediaQuery('min-width: 768px');
+	let datesTitle = $state<HTMLElement | null>(null);
 
 	async function navigate(href: string | URL, shallow: boolean) {
 		// SegmentedChoice moves focus after onSelect when the reader uses an arrow key.
@@ -178,24 +182,43 @@
 			<span>{summary.dates} · {summary.duration}</span>
 		</p>
 	{/if}
-	<Sheet
+	<Sheet.Root
 		bind:open
 		onOpenChange={(value) => {
 			if (value) tooLong = false;
 		}}
 	>
-		<SheetTrigger>
+		<Sheet.Trigger>
 			{#snippet child({ props })}
 				<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11 max-w-full">
 					{copy.custom}
 				</Button>
 			{/snippet}
-		</SheetTrigger>
-		<!-- Step 2 of the head pass: a centred window from 768 px with the kit's side="center". -->
-		<SheetContent closeLabel={copy.close} class="overflow-y-auto p-4" data-lenis-prevent>
-			<div class="mx-auto grid w-full max-w-xl gap-4 pr-8">
-				<SheetTitle>{copy.period}</SheetTitle>
-				<SheetDescription>{copy.note(startLabel)}</SheetDescription>
+		</Sheet.Trigger>
+		<Sheet.Content
+			side={windowLayout.current ? 'center' : 'bottom'}
+			closeLabel={windowLayout.current ? copy.closeDates : copy.close}
+			class={windowLayout.current ? undefined : 'overflow-y-auto p-4'}
+			data-lenis-prevent
+			onOpenAutoFocus={(event) => {
+				if (!windowLayout.current || !datesTitle) return;
+				event.preventDefault();
+				datesTitle.focus();
+			}}
+		>
+			<Sheet.Header class={windowLayout.current ? undefined : 'mx-auto w-full max-w-xl p-0 pr-8'}>
+				<Sheet.Title
+					bind:ref={datesTitle}
+					tabindex={windowLayout.current ? -1 : undefined}
+					class={windowLayout.current ? 'w-fit text-lg' : undefined}
+				>
+					{windowLayout.current ? copy.datesTitle : copy.period}
+				</Sheet.Title>
+			</Sheet.Header>
+			<Sheet.Body
+				class={windowLayout.current ? 'grid gap-4' : 'mx-auto grid w-full max-w-xl gap-4 px-0 pr-8'}
+			>
+				<Sheet.Description>{copy.note(startLabel)}</Sheet.Description>
 				{#if extension}
 					<SegmentedChoice
 						options={presets}
@@ -227,9 +250,20 @@
 					onValueChange={applyDates}
 				/>
 				{#if tooLong}<p role="alert">{copy.tooLong(MAX_RECORD_DAYS)}</p>{/if}
-			</div>
-		</SheetContent>
-	</Sheet>
+			</Sheet.Body>
+			{#if windowLayout.current}
+				<Sheet.Footer class="items-end">
+					<Sheet.Close>
+						{#snippet child({ props })}
+							<Button {...props} variant="outline" size="cta-sm" class="min-h-11">
+								{copy.closeDates}
+							</Button>
+						{/snippet}
+					</Sheet.Close>
+				</Sheet.Footer>
+			{/if}
+		</Sheet.Content>
+	</Sheet.Root>
 	<p class="w-full text-sm text-muted-foreground">{copy.note(startLabel)}</p>
 {/snippet}
 

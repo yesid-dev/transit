@@ -17,16 +17,23 @@
 </script>
 
 <div class="grid min-w-0 justify-items-start gap-2" data-slot="cite-block">
-	<p class="m-0 min-w-0" data-slot="cite-text">
+	<p
+		class="m-0 min-w-0 group-data-[cite-window]/cite:max-w-[72ch] group-data-[cite-window]/cite:wrap-anywhere group-data-[cite-window]/cite:font-mono"
+		data-slot="cite-text"
+	>
 		{#each citationParts(text) as part, index (index)}{#if part.address}{#each part.text.split(/(?<=[/?&=#_.:%-])/u) as piece, pieceIndex (pieceIndex)}{piece}<wbr
 					/>{/each}{:else}{part.text}{/if}{/each}
 	</p>
-	<CopyAction
-		size="cta-sm"
-		{text}
-		label={fr ? 'Copier' : 'Copy'}
-		done={fr ? 'Citation copiée.' : 'Citation copied.'}
-		fallback={fr ? 'Copiez la citation ci-dessous.' : 'Copy the citation below.'}
-		fallbackLabel={fr ? 'Citation' : 'Citation'}
-	/>
+	<div
+		class="min-w-0 max-w-full group-data-[cite-window]/cite:row-start-1 group-data-[cite-window]/cite:justify-self-end"
+	>
+		<CopyAction
+			size="cta-sm"
+			{text}
+			label={fr ? 'Copier' : 'Copy'}
+			done={fr ? 'Citation copiée.' : 'Citation copied.'}
+			fallback={fr ? 'Copiez la citation ci-dessous.' : 'Copy the citation below.'}
+			fallbackLabel={fr ? 'Citation' : 'Citation'}
+		/>
+	</div>
 </div>

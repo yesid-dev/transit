@@ -186,7 +186,7 @@ test('a client period change streams the shell before the engine answers', async
 	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'overview-stream' });
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	await (await openFrameControls(page)).getByRole('button', { name: 'Choose other dates' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Period', exact: true });
+	const dialog = page.getByRole('dialog', { name: 'Choose dates', exact: true });
 	await dialog.getByLabel('From', { exact: true }).fill('2026-11-10');
 	await dialog.getByLabel('To', { exact: true }).fill('2026-11-16');
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
@@ -447,7 +447,7 @@ test('changing the custom period updates the Record card and Back restores the v
 	const record = main.getByRole('article', { name: 'Record', exact: true });
 	await expect(record.getByText('Record · 8 to 14 Nov 2026').first()).toBeVisible();
 	await (await openFrameControls(page)).getByRole('button', { name: 'Choose other dates' }).click();
-	const dialog = page.getByRole('dialog', { name: 'Period', exact: true });
+	const dialog = page.getByRole('dialog', { name: 'Choose dates', exact: true });
 	await dialog.getByLabel('From', { exact: true }).fill('2026-11-08');
 	await dialog.getByLabel('To', { exact: true }).fill('2026-11-08');
 	await dialog.getByRole('button', { name: 'Show these dates' }).click();
