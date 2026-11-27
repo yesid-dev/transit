@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { Chart as LcChart, Svg, Points, Rule, Axis, Grid, Highlight, Tooltip } from 'layerchart';
+	import ChartDetails from '../ChartDetails.svelte';
+	import LayerChartTargets from '../LayerChartTargets.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
+	import { Chart as LcChart, Svg, Points, Rule, Axis, Grid, Highlight } from 'layerchart';
 	import { scaleBand, scaleLinear } from 'd3-scale';
 	import { cn } from '#lib/utils/index.ts';
 	import ChartFrame from '../ChartFrame.svelte';
@@ -29,6 +32,24 @@
 	const padding = { top: 12, right: 18, bottom: 44, left: 84 };
 
 	const fmtVal = (v: number | null): string => (v == null ? '' : String(v));
+	const reading = (value: number | null | undefined) =>
+		chartDatumValue(value, spec.unit, spec.locale);
+	const sample = (count: number | null | undefined) =>
+		count == null
+			? []
+			: [{ label: 'Observations', value: chartDatumValue(count, '', spec.locale) }];
+	const readings = $derived(
+		groups.map((group) => ({
+			key: group,
+			heading: group,
+			rows: spec.points
+				.filter((point) => point.group === group)
+				.flatMap((point) => [
+					{ label: spec.title, value: reading(point.value) },
+					...sample(point.n),
+				]),
+		})),
+	);
 </script>
 
 <figure
@@ -36,47 +57,42 @@
 	aria-label={spec.title}
 	data-slot="dot-strip-mark"
 >
-	<ChartFrame height={frameHeight} class="dv-stripmark-plot">
-		<LcChart
-			data={reals}
-			x={xOf}
-			xScale={scaleLinear().clamp(true)}
-			{xDomain}
-			y={yOf}
-			yScale={scaleBand().padding(0.4)}
-			yDomain={groups}
-			{padding}
-			tooltipContext={{ mode: 'band' }}
-		>
-			<Svg>
-				<Grid x class="dv-stripmark-grid" />
-				<Axis
-					placement="bottom"
-					label={spec.unit ? `${spec.title} (${spec.unit})` : spec.title}
-					labelPlacement="middle"
-					ticks={5}
-					format={(v) => `${v}`}
-					class="dv-stripmark-axis"
-				/>
-				<Axis placement="left" rule={false} class="dv-stripmark-axis" />
-				{#if spec.medianRef != null}
-					<Rule x={spec.medianRef} class="dv-stripmark-mean" />
-				{/if}
-				<Points data={bySeverity('watch')} r={4.5} class="dv-stripmark-watch" />
-				<Points data={bySeverity('high')} r={4.5} class="dv-stripmark-high" />
-				<Points data={bySeverity('critical')} r={4.5} class="dv-stripmark-critical" />
-				<Highlight points axis="y" />
-			</Svg>
-			<Tooltip.Root>
-				{#snippet children({ data }: { data: DotStripDatum })}
-					<Tooltip.Header>{data.group}</Tooltip.Header>
-					<Tooltip.List>
-						<Tooltip.Item label={spec.title} value={`${fmtVal(data.value)}${spec.unit}`} />
-					</Tooltip.List>
-				{/snippet}
-			</Tooltip.Root>
-		</LcChart>
-	</ChartFrame>
+	<ChartDetails label={spec.title} {readings}>
+		<ChartFrame height={frameHeight} class="dv-stripmark-plot">
+			<LcChart
+				data={reals}
+				x={xOf}
+				xScale={scaleLinear().clamp(true)}
+				{xDomain}
+				y={yOf}
+				yScale={scaleBand().padding(0.4)}
+				yDomain={groups}
+				{padding}
+				tooltipContext={{ mode: 'band' }}
+			>
+				<Svg>
+					<Grid x class="dv-stripmark-grid" />
+					<Axis
+						placement="bottom"
+						label={spec.unit ? `${spec.title} (${spec.unit})` : spec.title}
+						labelPlacement="middle"
+						ticks={5}
+						format={(v) => `${v}`}
+						class="dv-stripmark-axis"
+					/>
+					<Axis placement="left" rule={false} class="dv-stripmark-axis" />
+					{#if spec.medianRef != null}
+						<Rule x={spec.medianRef} class="dv-stripmark-mean" />
+					{/if}
+					<Points data={bySeverity('watch')} r={4.5} class="dv-stripmark-watch" />
+					<Points data={bySeverity('high')} r={4.5} class="dv-stripmark-high" />
+					<Points data={bySeverity('critical')} r={4.5} class="dv-stripmark-critical" />
+					<Highlight points axis="y" />
+					<LayerChartTargets values={groups} axis="y" />
+				</Svg>
+			</LcChart>
+		</ChartFrame>
+	</ChartDetails>
 
 	<table class="sr-only">
 		<caption>{spec.title}</caption>

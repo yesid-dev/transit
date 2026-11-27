@@ -1,5 +1,5 @@
 import { observeChartFrames } from '../__fixtures__/observeChartFrames';
-import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TrendMark from './TrendMark.svelte';
 import type { TrendSpec } from '../ChartSpec';
@@ -124,29 +124,29 @@ describe('TrendMark datum formatting', () => {
 			const view = render(TrendMark, { props: { spec } });
 			const { container } = view;
 			const overlays = await waitFor(() => {
-				const rows = [...container.querySelectorAll('rect.lc-tooltip-rect')].sort(
+				const rows = [...container.querySelectorAll('rect[data-chart-datum]')].sort(
 					(a, b) => Number(a.getAttribute('x')) - Number(b.getAttribute('x')),
 				);
 				expect(rows.length).toBeGreaterThanOrEqual(2);
 				return [rows[0], rows[rows.length - 1]];
 			});
-			await fireEvent.pointerEnter(overlays[0], { pointerType: 'mouse', clientX: 80, clientY: 50 });
-			const tooltip = await waitFor(() => {
-				const element = document.querySelector('.lc-tooltip-content') as HTMLElement;
-				expect(element).not.toBeNull();
-				return element;
-			});
-			expect(within(tooltip).getByText(locale === 'fr' ? '66,7%' : '66.7%')).toBeInTheDocument();
+			await fireEvent.pointerMove(overlays[0], { pointerType: 'mouse', clientX: 80, clientY: 50 });
+			const tooltip = await screen.findByRole('tooltip');
+			expect(
+				within(tooltip).getByText(locale === 'fr' ? '66,666667 %' : '66.666667%'),
+			).toBeInTheDocument();
 			expect(
 				within(tooltip).getByText(locale === 'fr' ? 'Aucune donnée' : 'No data'),
 			).toBeInTheDocument();
-			expect(tooltip.textContent).not.toMatch(/66[.,]666|No data min|Aucune donnée min/);
-			await fireEvent.pointerEnter(overlays[1], {
+			expect(tooltip.textContent).not.toMatch(/No data min|Aucune donnée min/);
+			await fireEvent.pointerMove(overlays[1], {
 				pointerType: 'mouse',
 				clientX: 350,
 				clientY: 50,
 			});
-			await waitFor(() => expect(within(tooltip).getByText('0%')).toBeInTheDocument());
+			await waitFor(() =>
+				expect(within(tooltip).getByText(locale === 'fr' ? '0 %' : '0%')).toBeInTheDocument(),
+			);
 			expect(within(tooltip).getByText('0 min')).toBeInTheDocument();
 			expect(points[0].y).toBe(200 / 3);
 			expect(points[0].y2).toBeNull();

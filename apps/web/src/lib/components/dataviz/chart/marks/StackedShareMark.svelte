@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { Chart as LcChart, Svg, Tooltip } from 'layerchart';
+	import ChartDetails from '../ChartDetails.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
+	import { Chart as LcChart, Svg } from 'layerchart';
 	import { scaleLinear, scaleBand } from 'd3-scale';
 	import { cn } from '#lib/utils/index.ts';
 	import ChartFrame from '../ChartFrame.svelte';
@@ -51,6 +53,22 @@
 
 	const round = (v: number): number => Math.round(v);
 	const summary = $derived(spec.segments.map((s) => `${s.label} ${round(s.share)}%`).join(', '));
+	const readings = $derived(
+		spec.segments.map((segment) => ({
+			key: segment.key,
+			heading: segment.label,
+			rows: [
+				{
+					label: spec.locale === 'fr' ? 'Part' : 'Share',
+					value: chartDatumValue(segment.share, '%', spec.locale),
+					colorVar: fillFor(segment),
+				},
+				...(segment.n == null
+					? []
+					: [{ label: 'Observations', value: chartDatumValue(segment.n, '', spec.locale) }]),
+			],
+		})),
+	);
 </script>
 
 <figure
@@ -58,31 +76,25 @@
 	aria-label={`${spec.title}: ${summary}`}
 	data-slot="stacked-share-mark"
 >
-	<ChartFrame height={frameHeight} class="dv-share-plot">
-		<LcChart
-			data={segs}
-			x={(d: ShareSeg) => d.start}
-			xScale={scaleLinear()}
-			xDomain={[0, 100]}
-			y={() => ''}
-			yScale={scaleBand()}
-			yDomain={['']}
-			padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
-			tooltipContext={{ mode: 'band' }}
-		>
-			<Svg>
-				<StackedShareBar segments={segs} />
-			</Svg>
-			<Tooltip.Root>
-				<Tooltip.Header>{spec.title}</Tooltip.Header>
-				<Tooltip.List>
-					{#each segs as s (s.key)}
-						<Tooltip.Item label={s.label} value={`${round(s.share)}%`} color={s.fill} />
-					{/each}
-				</Tooltip.List>
-			</Tooltip.Root>
-		</LcChart>
-	</ChartFrame>
+	<ChartDetails label={spec.title} {readings}>
+		<ChartFrame height={frameHeight} class="dv-share-plot">
+			<LcChart
+				data={segs}
+				x={(d: ShareSeg) => d.start}
+				xScale={scaleLinear()}
+				xDomain={[0, 100]}
+				y={() => ''}
+				yScale={scaleBand()}
+				yDomain={['']}
+				padding={{ top: 0, right: 0, bottom: 0, left: 0 }}
+				tooltipContext={{ mode: 'band' }}
+			>
+				<Svg>
+					<StackedShareBar segments={segs} />
+				</Svg>
+			</LcChart>
+		</ChartFrame>
+	</ChartDetails>
 
 	{#if spec.legend && segs.length > 0}
 		<ul

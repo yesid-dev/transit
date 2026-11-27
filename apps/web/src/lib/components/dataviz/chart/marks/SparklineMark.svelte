@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { Chart as LcChart, Svg, Spline, Points, Highlight, Tooltip } from 'layerchart';
+	import ChartDetails from '../ChartDetails.svelte';
+	import LayerChartTargets from '../LayerChartTargets.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
+	import { Chart as LcChart, Svg, Spline, Points, Highlight } from 'layerchart';
 	import { scaleLinear, scalePoint } from 'd3-scale';
 	import { curveMonotoneX } from 'd3-shape';
 	import { cn } from '#lib/utils/index.ts';
@@ -34,66 +37,70 @@
 	const summary = $derived(
 		lastReal ? `${spec.label}: ${num(lastReal.y)}${spec.unit}` : `${spec.label}: ·`,
 	);
+	const reading = (value: number | null | undefined) =>
+		chartDatumValue(value, spec.unit, spec.locale);
+	const readings = $derived(
+		rows.map((row) => ({
+			key: String(row._i),
+			heading: row.x,
+			rows: [{ label: spec.label, value: reading(row.y), colorVar: color }],
+		})),
+	);
 </script>
 
-<figure
-	class={cn('dv-sparkline m-0 inline-block', className)}
-	aria-label={summary}
-	data-slot="sparkline-mark"
-	data-ripple-exempt
-	style:width={width === '100%' ? '100%' : undefined}
-	style:max-width="100%"
->
-	<div
-		class="dv-sparkline-plot"
-		style:width={widthCss}
+<ChartDetails label={spec.title} {readings}>
+	<figure
+		class={cn('dv-sparkline m-0 inline-block', className)}
+		aria-label={summary}
+		data-slot="sparkline-mark"
+		data-ripple-exempt
+		style:width={width === '100%' ? '100%' : undefined}
 		style:max-width="100%"
-		style:height={`${height}px`}
 	>
-		<LcChart
-			data={rows}
-			x={(d: Row) => d.x}
-			y={(d: Row) => d.y ?? yDomain[0]}
-			xScale={scalePoint()}
-			xDomain={rows.map((r) => r.x)}
-			yScale={scaleLinear()}
-			{yDomain}
-			padding={{ top: 3, right: 3, bottom: 3, left: 3 }}
-			tooltipContext={{ mode: 'band' }}
+		<div
+			class="dv-sparkline-plot"
+			style:width={widthCss}
+			style:max-width="100%"
+			style:height={`${height}px`}
 		>
-			<Svg>
-				<Spline
-					y={(d: Row) => d.y ?? yDomain[0]}
-					curve={curveMonotoneX}
-					defined={(d: Row) => d.y != null}
-					style={`stroke:${color}`}
-					class="dv-sparkline-spline"
-				/>
-				{#if spec.showLast && lastReal}
-					<Points data={[lastReal]} r={2.5} style={`fill:${color}`} class="dv-sparkline-last" />
-				{/if}
-				<Highlight points />
-			</Svg>
-			<Tooltip.Root>
-				{#snippet children({ data: d }: { data: Row })}
-					<Tooltip.Header>{d.x}</Tooltip.Header>
-					<Tooltip.List>
-						<Tooltip.Item label={spec.label} value={`${num(d.y)}${spec.unit}`} {color} />
-					</Tooltip.List>
-				{/snippet}
-			</Tooltip.Root>
-		</LcChart>
-	</div>
+			<LcChart
+				data={rows}
+				x={(d: Row) => d.x}
+				y={(d: Row) => d.y ?? yDomain[0]}
+				xScale={scalePoint()}
+				xDomain={rows.map((r) => r.x)}
+				yScale={scaleLinear()}
+				{yDomain}
+				padding={{ top: 3, right: 3, bottom: 3, left: 3 }}
+				tooltipContext={{ mode: 'band' }}
+			>
+				<Svg>
+					<Spline
+						y={(d: Row) => d.y ?? yDomain[0]}
+						curve={curveMonotoneX}
+						defined={(d: Row) => d.y != null}
+						style={`stroke:${color}`}
+						class="dv-sparkline-spline"
+					/>
+					{#if spec.showLast && lastReal}
+						<Points data={[lastReal]} r={2.5} style={`fill:${color}`} class="dv-sparkline-last" />
+					{/if}
+					<Highlight points />
+					<LayerChartTargets values={rows.map((row) => row.x)} />
+				</Svg>
+			</LcChart>
+		</div>
 
-	<table class="sr-only">
-		<caption>{spec.title}</caption>
-		<tbody>
-			{#each rows as r (r._i)}
-				<tr><th scope="row">{r.x}</th><td>{num(r.y)}{r.y == null ? '' : spec.unit}</td></tr>
-			{/each}
-		</tbody>
-	</table>
-</figure>
+		<table class="sr-only">
+			<caption>{spec.title}</caption>
+			<tbody>
+				{#each rows as r (r._i)}
+					<tr><th scope="row">{r.x}</th><td>{num(r.y)}{r.y == null ? '' : spec.unit}</td></tr>
+				{/each}
+			</tbody>
+		</table>
+	</figure>
+</ChartDetails>
 
 <style>
 	:global(.dv-sparkline-spline) {

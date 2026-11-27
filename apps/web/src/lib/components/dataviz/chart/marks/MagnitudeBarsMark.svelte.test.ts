@@ -431,13 +431,13 @@ describe('MagnitudeBarsMark — touch datum popover integration', () => {
 
 	it('replaces an active mouse tooltip with the keyboard datum dialog', async () => {
 		const { container } = renderReadyMark(baseSpec('95% CI', true));
-		const overlay = await rowOverlay(container);
-		await fireEvent.pointerEnter(overlay, {
+		await rowOverlay(container);
+		await fireEvent.pointerMove(container.querySelector('.desktop-rankings [data-chart-datum]')!, {
 			pointerType: 'mouse',
 			clientX: 120,
 			clientY: 240,
 		});
-		await waitFor(() => expect(document.querySelector('.lc-tooltip-root')).toBeInTheDocument());
+		await waitFor(() => expect(screen.queryByRole('tooltip')).toBeInTheDocument());
 
 		const target = within(container.querySelector('.desktop-rankings')!).getByRole('button', {
 			name: 'Stop One',
@@ -448,7 +448,7 @@ describe('MagnitudeBarsMark — touch datum popover integration', () => {
 		await fireEvent.keyDown(target, { key: 'Enter' });
 
 		const dialog = await screen.findByRole('dialog', { name: 'Stop One' });
-		expect(document.querySelector('.lc-tooltip-root')).not.toBeInTheDocument();
+		expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 		expect(target).toHaveAttribute('aria-expanded', 'true');
 		await fireEvent.keyDown(document, { key: 'Escape' });
 		await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -507,16 +507,14 @@ describe('MagnitudeBarsMark — touch datum popover integration', () => {
 			);
 		});
 
-		expect(document.querySelector('.lc-tooltip-root')).not.toBeInTheDocument();
-		expect(document.querySelector('.lc-tooltip-content')).not.toBeInTheDocument();
+		expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 
 		await fireEvent.pointerUp(overlay, touch);
 		await pointerClick(overlay, 'touch');
 
 		const dialogs = await screen.findAllByRole('dialog', { name: 'Stop One' });
 		expect(dialogs).toHaveLength(1);
-		expect(document.querySelector('.lc-tooltip-root')).not.toBeInTheDocument();
-		expect(document.querySelector('.lc-tooltip-content')).not.toBeInTheDocument();
+		expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 		expect(navigate).not.toHaveBeenCalled();
 
 		const action = within(dialogs[0]).getByRole('link', {
@@ -560,10 +558,13 @@ describe('MagnitudeBarsMark — touch datum popover integration', () => {
 		};
 		await fireEvent.pointerOver(overlay, mouse);
 		await fireEvent.pointerEnter(overlay, mouse);
-		await fireEvent.pointerMove(overlay, mouse);
+		await fireEvent.pointerMove(
+			container.querySelector('.desktop-rankings [data-chart-datum]')!,
+			mouse,
+		);
 
 		await waitFor(() => {
-			expect(document.querySelectorAll('.lc-tooltip-root')).toHaveLength(1);
+			expect(screen.queryAllByRole('tooltip')).toHaveLength(1);
 		});
 		expect(screen.queryAllByRole('dialog', { name: 'Stop One' })).toHaveLength(0);
 		expect(navigate).not.toHaveBeenCalled();
@@ -591,17 +592,14 @@ describe('MagnitudeBarsMark — touch datum popover integration', () => {
 
 	it('keeps hover metrics and evidence while removing the hardcoded pseudo action', async () => {
 		const { container } = renderReadyMark(baseSpec('95% CI', true));
-		await fireEvent.pointerEnter(await rowOverlay(container), {
+		await rowOverlay(container);
+		await fireEvent.pointerMove(container.querySelector('.desktop-rankings [data-chart-datum]')!, {
 			pointerType: 'mouse',
 			clientX: 120,
 			clientY: 240,
 		});
 
-		const hover = await waitFor(() => {
-			const content = document.querySelector<HTMLElement>('.lc-tooltip-content');
-			if (!content) throw new Error('Expected rendered LayerChart hover content');
-			return content;
-		});
+		const hover = await screen.findByRole('tooltip');
 		expect(within(hover).getByText('Stop One')).toBeInTheDocument();
 		expect(within(hover).getByText('44%')).toBeInTheDocument();
 		expect(within(hover).getByText('31%–57%')).toBeInTheDocument();
@@ -609,23 +607,20 @@ describe('MagnitudeBarsMark — touch datum popover integration', () => {
 		expect(within(hover).queryByText('↦ open stop')).not.toBeInTheDocument();
 	});
 
-	it('keeps a non-opted-in mark on pan-y with its native mouse tooltip', async () => {
+	it('keeps a non-opted-in mark on pan-y with the shared mouse tooltip', async () => {
 		const { container } = renderReadyMark(baseSpec('95% CI'));
 		expect((await tooltipContext(container)).style.getPropertyValue('--touch-action')).toBe(
 			'pan-y',
 		);
 
-		await fireEvent.pointerEnter(await rowOverlay(container), {
+		await rowOverlay(container);
+		await fireEvent.pointerMove(container.querySelector('.desktop-rankings [data-chart-datum]')!, {
 			pointerType: 'mouse',
 			clientX: 120,
 			clientY: 240,
 		});
 
-		const hover = await waitFor(() => {
-			const content = document.querySelector<HTMLElement>('.lc-tooltip-content');
-			if (!content) throw new Error('Expected non-opted native LayerChart tooltip');
-			return content;
-		});
+		const hover = await screen.findByRole('tooltip');
 		expect(within(hover).getByText('Stop One')).toBeInTheDocument();
 		expect(within(hover).getByText('44%')).toBeInTheDocument();
 	});

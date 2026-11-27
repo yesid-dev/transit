@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ChartDetails from '../ChartDetails.svelte';
+	import LayerChartTargets from '../LayerChartTargets.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
 	import {
 		Chart as LcChart,
 		Svg,
@@ -9,7 +12,6 @@
 		Grid,
 		Rule,
 		Highlight,
-		Tooltip,
 	} from 'layerchart';
 	import { scaleLinear, scalePoint } from 'd3-scale';
 	import { curveMonotoneX } from 'd3-shape';
@@ -53,78 +55,85 @@
 
 	const padding = { top: 12, right: 20, bottom: 44, left: 56 };
 	const num = (v: unknown): string => (v == null ? '·' : String(v));
+	const reading = (value: number | null | undefined) =>
+		chartDatumValue(value, spec.unit, spec.locale);
+	const readings = $derived(
+		rows.map((row) => ({
+			key: String(row._i),
+			heading: row.x,
+			rows: spec.series.map((series, index) => ({
+				label: series.label,
+				value: reading(series.points[row._i]),
+				colorVar: colorOf(series, index),
+			})),
+		})),
+	);
 </script>
 
 <figure class={cn('dv-line m-0', className)} aria-label={spec.title} data-slot="line-mark">
 	<ChartLegend items={legendItems} />
-	<ChartFrame height="16rem" class="dv-line-plot">
-		<LcChart
-			data={rows}
-			x={(d: Row) => d.x}
-			y={(d: Row) => (primaryKey ? yVal(d, primaryKey) : 0)}
-			xScale={scalePoint()}
-			{xDomain}
-			yScale={scaleLinear()}
-			{yDomain}
-			{padding}
-			tooltipContext={{ mode: 'band' }}
-		>
-			<Svg>
-				<Grid y class="dv-line-grid" />
-				<Axis placement="bottom" class="dv-line-axis" label={spec.xLabel} labelPlacement="middle" />
-				<Axis
-					placement="left"
-					class="dv-line-axis"
-					label={spec.yLabel}
-					labelPlacement="middle"
-					ticks={4}
-				/>
-				{#if spec.target != null}
-					<Rule y={spec.target} class="dv-line-target" />
-				{/if}
-				{#each spec.series as s, i (s.key)}
-					{#if s.area}
-						<Area
-							y1={(d: Row) => yVal(d, s.key)}
-							y0={() => yDomain[0]}
+	<ChartDetails label={spec.title} {readings}>
+		<ChartFrame height="16rem" class="dv-line-plot">
+			<LcChart
+				data={rows}
+				x={(d: Row) => d.x}
+				y={(d: Row) => (primaryKey ? yVal(d, primaryKey) : 0)}
+				xScale={scalePoint()}
+				{xDomain}
+				yScale={scaleLinear()}
+				{yDomain}
+				{padding}
+				tooltipContext={{ mode: 'band' }}
+			>
+				<Svg>
+					<Grid y class="dv-line-grid" />
+					<Axis
+						placement="bottom"
+						class="dv-line-axis"
+						label={spec.xLabel}
+						labelPlacement="middle"
+					/>
+					<Axis
+						placement="left"
+						class="dv-line-axis"
+						label={spec.yLabel}
+						labelPlacement="middle"
+						ticks={4}
+					/>
+					{#if spec.target != null}
+						<Rule y={spec.target} class="dv-line-target" />
+					{/if}
+					{#each spec.series as s, i (s.key)}
+						{#if s.area}
+							<Area
+								y1={(d: Row) => yVal(d, s.key)}
+								y0={() => yDomain[0]}
+								curve={curveMonotoneX}
+								defined={(d: Row) => d[s.key] != null}
+								style={`fill:${colorOf(s, i)};opacity:0.12`}
+							/>
+						{/if}
+						<Spline
+							y={(d: Row) => yVal(d, s.key)}
 							curve={curveMonotoneX}
 							defined={(d: Row) => d[s.key] != null}
-							style={`fill:${colorOf(s, i)};opacity:0.12`}
+							style={`stroke:${colorOf(s, i)}`}
+							class={cn('dv-line-spline', s.dashed && 'dv-line-dashed')}
 						/>
-					{/if}
-					<Spline
-						y={(d: Row) => yVal(d, s.key)}
-						curve={curveMonotoneX}
-						defined={(d: Row) => d[s.key] != null}
-						style={`stroke:${colorOf(s, i)}`}
-						class={cn('dv-line-spline', s.dashed && 'dv-line-dashed')}
-					/>
-					<Points
-						data={rows.filter((r) => r[s.key] != null)}
-						y={(d: Row) => yVal(d, s.key)}
-						r={3}
-						style={`fill:${colorOf(s, i)}`}
-						class="dv-line-dot"
-					/>
-				{/each}
-				<Highlight points lines />
-			</Svg>
-			<Tooltip.Root>
-				{#snippet children({ data: d }: { data: Row })}
-					<Tooltip.Header>{d.x}</Tooltip.Header>
-					<Tooltip.List>
-						{#each spec.series as s, i (s.key)}
-							<Tooltip.Item
-								label={s.label}
-								value={`${num(d[s.key])}${spec.unit}`}
-								color={colorOf(s, i)}
-							/>
-						{/each}
-					</Tooltip.List>
-				{/snippet}
-			</Tooltip.Root>
-		</LcChart>
-	</ChartFrame>
+						<Points
+							data={rows.filter((r) => r[s.key] != null)}
+							y={(d: Row) => yVal(d, s.key)}
+							r={3}
+							style={`fill:${colorOf(s, i)}`}
+							class="dv-line-dot"
+						/>
+					{/each}
+					<Highlight points lines />
+					<LayerChartTargets values={rows.map((row) => row.x)} />
+				</Svg>
+			</LcChart>
+		</ChartFrame>
+	</ChartDetails>
 
 	<table class="sr-only">
 		<caption>{spec.title}</caption>

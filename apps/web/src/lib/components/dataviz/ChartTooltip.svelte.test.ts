@@ -29,7 +29,7 @@ describe('ChartTooltip portal + viewport anchoring', () => {
 	it('anchors the portaled tip in viewport pixel coordinates (left/top px)', async () => {
 		render(SeverityBar, { props });
 		const bar = screen.getByRole('progressbar');
-		await fireEvent.pointerEnter(bar);
+		await fireEvent.pointerMove(bar, { pointerType: 'mouse' });
 
 		const tip = document.body.querySelector('[role="tooltip"]') as HTMLElement;
 		expect(tip).not.toBeNull();
@@ -38,10 +38,10 @@ describe('ChartTooltip portal + viewport anchoring', () => {
 		expect(tip.classList.contains('chart-tooltip')).toBe(true);
 	});
 
-	it('reveals the hovered content on pointer enter', async () => {
+	it('reveals the hovered content on pointer move', async () => {
 		render(SeverityBar, { props });
 		const bar = screen.getByRole('progressbar');
-		await fireEvent.pointerEnter(bar);
+		await fireEvent.pointerMove(bar, { pointerType: 'mouse' });
 
 		const tip = document.body.querySelector('[role="tooltip"]') as HTMLElement;
 		expect(tip).not.toBeNull();
@@ -52,8 +52,8 @@ describe('ChartTooltip portal + viewport anchoring', () => {
 	it('hides (aria-hidden) on pointer leave', async () => {
 		render(SeverityBar, { props });
 		const bar = screen.getByRole('progressbar');
-		await fireEvent.pointerEnter(bar);
-		await fireEvent.pointerLeave(bar);
+		await fireEvent.pointerMove(bar, { pointerType: 'mouse' });
+		await fireEvent.pointerLeave(screen.getByRole('group', { name: 'Late share' }));
 		const tip = document.body.querySelector('[role="tooltip"]') as HTMLElement;
 		expect(tip.getAttribute('aria-hidden')).toBe('true');
 	});

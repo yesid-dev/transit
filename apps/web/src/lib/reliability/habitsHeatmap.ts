@@ -47,6 +47,7 @@ export function buildHabitsHeatmap(
 			worstGlyph: opts.worstGlyph,
 		},
 		valueLabel: opts.valueLabel,
+		unit: '%',
 		rowAxisLabel: opts.rowAxisLabel,
 		colAxisLabel: opts.colAxisLabel,
 		fullRowLabels: opts.fullRowLabels,

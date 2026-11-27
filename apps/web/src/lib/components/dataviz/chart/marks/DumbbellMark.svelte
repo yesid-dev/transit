@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { Chart as LcChart, Svg, Bar, Points, Axis, Grid, Tooltip } from 'layerchart';
+	import ChartDetails from '../ChartDetails.svelte';
+	import LayerChartTargets from '../LayerChartTargets.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
+	import { Chart as LcChart, Svg, Bar, Points, Axis, Grid } from 'layerchart';
 	import { scaleBand, scaleLinear } from 'd3-scale';
 	import { cn } from '#lib/utils/index.ts';
 	import ChartFrame from '../ChartFrame.svelte';
@@ -43,6 +46,20 @@
 	const padding = $derived({ top: 12, right: 18, bottom: 42, left: gutter.left });
 
 	const fmt = (v: number | null | undefined): string => (v == null ? '' : String(v));
+	const reading = (value: number | null | undefined) =>
+		chartDatumValue(value, spec.unit, spec.locale);
+	const readings = $derived(
+		spec.rows.map((row) => ({
+			key: row.key,
+			heading: row.label,
+			rows: [
+				{ label: spec.scheduledLabel, value: reading(row.scheduled) },
+				{ label: spec.observedLabel, value: reading(row.observed) },
+				...(row.excess == null ? [] : [{ label: structure.gap, value: reading(row.excess) }]),
+				...(row.note ? [{ label: '', value: row.note }] : []),
+			],
+		})),
+	);
 </script>
 
 <figure class={cn('dv-dumbbell m-0', className)} aria-label={spec.title} data-slot="dumbbell-mark">
@@ -55,70 +72,54 @@
 		>
 	</div>
 
-	<ChartFrame height={frameHeight} class="dv-dumbbell-plot">
-		{#key layerStructureKey}
-			<LcChart
-				data={reals}
-				x={schedOf}
-				y={yOf}
-				xScale={scaleLinear().clamp(true)}
-				{xDomain}
-				yScale={scaleBand().padding(0.5)}
-				yDomain={labels}
-				{padding}
-				tooltipContext={{ mode: 'band' }}
-			>
-				<Svg>
-					<Grid x class="dv-dumbbell-grid" />
-					<Axis
-						placement="bottom"
-						label={spec.xLabel}
-						labelPlacement="middle"
-						ticks={5}
-						format={(v) => `${v}`}
-						class="dv-dumbbell-axis"
-					/>
-					<Axis
-						placement="left"
-						rule={false}
-						format={(l: string) => gutter.truncate(l)}
-						class="dv-dumbbell-axis"
-					/>
-					{#each reals as row (row.key)}
-						<Bar data={row} x1={obsOf} radius={2} class="dv-dumbbell-conn" />
-					{/each}
-					<Points r={4} class="dv-dumbbell-sched" />
-					<Points data={obsBySeverity('watch')} x={obsOf} r={5} class="dv-dumbbell-obs-watch" />
-					<Points data={obsBySeverity('high')} x={obsOf} r={5} class="dv-dumbbell-obs-high" />
-					<Points
-						data={obsBySeverity('critical')}
-						x={obsOf}
-						r={5}
-						class="dv-dumbbell-obs-critical"
-					/>
-				</Svg>
-				<Tooltip.Root>
-					{#snippet children({ data }: { data: DumbbellDatum })}
-						<Tooltip.Header>{data.label}</Tooltip.Header>
-						<Tooltip.List>
-							<Tooltip.Item
-								label={spec.scheduledLabel}
-								value={`${fmt(data.scheduled)}${spec.unit}`}
-							/>
-							<Tooltip.Item
-								label={spec.observedLabel}
-								value={`${fmt(data.observed)}${spec.unit}`}
-							/>
-							{#if data.excess != null}
-								<Tooltip.Item label={structure.gap} value={`${fmt(data.excess)}${spec.unit}`} />
-							{/if}
-							{#if data.note}<Tooltip.Item label="" value={data.note} />{/if}
-						</Tooltip.List>
-					{/snippet}
-				</Tooltip.Root>
-			</LcChart>
-		{/key}
-	</ChartFrame>
+	<ChartDetails label={spec.title} {readings}>
+		<ChartFrame height={frameHeight} class="dv-dumbbell-plot">
+			{#key layerStructureKey}
+				<LcChart
+					data={reals}
+					x={schedOf}
+					y={yOf}
+					xScale={scaleLinear().clamp(true)}
+					{xDomain}
+					yScale={scaleBand().padding(0.5)}
+					yDomain={labels}
+					{padding}
+					tooltipContext={{ mode: 'band' }}
+				>
+					<Svg>
+						<Grid x class="dv-dumbbell-grid" />
+						<Axis
+							placement="bottom"
+							label={spec.xLabel}
+							labelPlacement="middle"
+							ticks={5}
+							format={(v) => `${v}`}
+							class="dv-dumbbell-axis"
+						/>
+						<Axis
+							placement="left"
+							rule={false}
+							format={(l: string) => gutter.truncate(l)}
+							class="dv-dumbbell-axis"
+						/>
+						{#each reals as row (row.key)}
+							<Bar data={row} x1={obsOf} radius={2} class="dv-dumbbell-conn" />
+						{/each}
+						<Points r={4} class="dv-dumbbell-sched" />
+						<Points data={obsBySeverity('watch')} x={obsOf} r={5} class="dv-dumbbell-obs-watch" />
+						<Points data={obsBySeverity('high')} x={obsOf} r={5} class="dv-dumbbell-obs-high" />
+						<Points
+							data={obsBySeverity('critical')}
+							x={obsOf}
+							r={5}
+							class="dv-dumbbell-obs-critical"
+						/>
+						<LayerChartTargets values={labels} axis="y" />
+					</Svg>
+				</LcChart>
+			{/key}
+		</ChartFrame>
+	</ChartDetails>
 
 	<table class="sr-only">
 		<caption>{spec.title}</caption>

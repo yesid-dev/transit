@@ -229,6 +229,7 @@ export interface MetricSpec extends ChartSpecBase {
 
 export interface ShareSegment {
 	readonly key: string;
+	readonly n?: number | null;
 	readonly label: string;
 	readonly share: number;
 	readonly occupancy?: OccupancyCode;
@@ -247,6 +248,7 @@ export interface StackedShareSpec extends ChartSpecBase {
 
 export interface HeatmapCell {
 	readonly value: number | null;
+	readonly n?: number | null;
 	readonly absentReason?: AbsenceReasonKey;
 }
 
@@ -270,6 +272,8 @@ export interface HeatmapSpec extends ChartSpecBase {
 	readonly cells: readonly (readonly HeatmapCell[])[];
 	readonly tiers?: HeatmapTiers;
 	readonly valueLabel?: string;
+	/** A percent heatmap stores shares in [0, 1]. */
+	readonly unit?: string;
 	readonly rowAxisLabel?: string;
 	readonly colAxisLabel?: string;
 	readonly fullRowLabels?: readonly string[];

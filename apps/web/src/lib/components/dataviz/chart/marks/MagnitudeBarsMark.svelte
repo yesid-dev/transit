@@ -1,8 +1,10 @@
 <script lang="ts">
-	import { Chart as LcChart, Svg, Bars, Axis, Grid, Tooltip } from 'layerchart';
+	import { Chart as LcChart, Svg, Bars, Axis, Grid } from 'layerchart';
 	import { scaleBand, scaleLinear } from 'd3-scale';
 	import { goto } from '$app/navigation';
 	import { cn } from '#lib/utils/index.ts';
+	import ChartDetails from '../ChartDetails.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
 	import ChartDatumPopover from '../ChartDatumPopover.svelte';
 	import ChartFrame from '../ChartFrame.svelte';
 	import {
@@ -100,22 +102,36 @@
 		popover.openFromTrigger(event.currentTarget, datum.tapPopover);
 	}
 
+	const reading = (value: number | null) => chartDatumValue(value, spec.unit, spec.locale);
+	const readings = $derived(
+		spec.rows.map((row) => ({
+			key: row.key,
+			heading: row.label,
+			rows: [
+				{ label: spec.xLabel ?? spec.title, value: reading(row.value) },
+				...(row.n == null
+					? []
+					: [{ label: 'Observations', value: chartDatumValue(row.n, '', spec.locale) }]),
+				...(spec.ciLabel && row.wilsonLo != null && row.wilsonHi != null
+					? [
+							{
+								label: spec.ciLabel,
+								value: reading(row.wilsonLo) + '–' + reading(row.wilsonHi),
+							},
+						]
+					: []),
+				...(row.note ? [{ label: '', value: row.note }] : []),
+			],
+		})),
+	);
 	const fmt = (v: number | null): string => (v == null ? '' : String(v));
 	const fmtWithUnit = (v: number | null): string => (v == null ? '' : `${fmt(v)}${spec.unit}`);
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-<figure
-	bind:this={figure}
-	class={cn('dv-barmark m-0', className)}
-	aria-label={spec.title}
-	tabindex={hasKeyboardRows ? 0 : -1}
-	data-slot="magnitude-bars-mark"
-	use:chartDatumPopoverBoundary={popover}
->
+{#snippet plot()}
 	<div class="mobile-rankings" data-slot="stacked-rankings" role="list" aria-label={spec.title}>
-		{#each spec.rows as row (row.key)}
-			<div role="listitem" class="mobile-ranking">
+		{#each spec.rows as row, index (row.key)}
+			<div data-chart-datum={index} role="listitem" class="mobile-ranking">
 				{#if row.tapPopover}
 					<button
 						class="ranking-name dv-barmark-keyboard-row"
@@ -200,7 +216,7 @@
 							{#if spec.ciLabel}
 								<MagnitudeCiWhiskers rows={reals} domain={xDomain} />
 							{/if}
-							{#each spec.rows as row (row.key)}
+							{#each spec.rows as row, index (row.key)}
 								{@const band = context.yScale as ReturnType<typeof scaleBand>}
 								{@const rowY = band(row.key)}
 								{@const rowHeight = band.bandwidth()}
@@ -209,6 +225,7 @@
 									{@const rowTop = Number(rowY) - (rowStep - rowHeight) / 2}
 									{#if row.tapPopover}
 										<g
+											data-chart-datum={index}
 											role="button"
 											aria-label={row.spoken ?? row.label}
 											aria-haspopup="dialog"
@@ -222,41 +239,43 @@
 										</g>
 									{:else if row.href}
 										<a
+											data-chart-datum={index}
 											href={row.href}
 											aria-label={row.spoken ?? row.label}
 											class="dv-barmark-keyboard-row"
 										>
 											<rect x="0" y={rowTop} width={context.width} height={rowStep} />
 										</a>
+									{:else}
+										<rect
+											data-chart-datum={index}
+											x="0"
+											y={rowTop}
+											width={context.width}
+											height={rowStep}
+											fill="transparent"
+										/>
 									{/if}
 								{/if}
 							{/each}
 						</Svg>
-						{#if !hasTapPopover || popover.showNativeTooltip}
-							<Tooltip.Root>
-								{#snippet children({ data }: { data: MagnitudeDatum })}
-									<Tooltip.Header>{data.label}</Tooltip.Header>
-									<Tooltip.List>
-										<Tooltip.Item
-											label={spec.xLabel ?? spec.title}
-											value={fmtWithUnit(data.value)}
-										/>
-										{#if spec.ciLabel && data.wilsonLo != null && data.wilsonHi != null}
-											<Tooltip.Item
-												label={spec.ciLabel}
-												value={`${fmtWithUnit(data.wilsonLo)}–${fmtWithUnit(data.wilsonHi)}`}
-											/>
-										{/if}
-										{#if data.note}<Tooltip.Item label="" value={data.note} />{/if}
-									</Tooltip.List>
-								{/snippet}
-							</Tooltip.Root>
-						{/if}
 					{/snippet}
 				</LcChart>
 			{/key}
 		</ChartFrame>
 	</div>
+{/snippet}
+
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<figure
+	bind:this={figure}
+	class={cn('dv-barmark m-0', className)}
+	aria-label={spec.title}
+	tabindex={hasKeyboardRows ? 0 : -1}
+	data-slot="magnitude-bars-mark"
+	use:chartDatumPopoverBoundary={popover}
+>
+	<ChartDetails label={spec.title} {readings} suspended={popover.open} children={plot} />
 	<ChartDatumPopover controller={popover} />
 
 	<table class="sr-only">

@@ -18,13 +18,14 @@
 	const round = (v: number): number => Math.round(v);
 </script>
 
-{#each segments as s (s.key)}
+{#each segments as s, index (s.key)}
 	{@const x0 = x(s.start)}
 	{@const x1 = x(s.end)}
 	{#if s.href}
 		<a href={s.href} aria-label={`${s.label}: ${round(s.share)}%`} class="dv-share-link">
 			<rect
 				class="dv-share-seg"
+				data-chart-datum={index}
 				data-occ={s.key}
 				x={x0}
 				y={0}
@@ -36,6 +37,7 @@
 	{:else}
 		<rect
 			class="dv-share-seg"
+			data-chart-datum={index}
 			data-occ={s.key}
 			x={x0}
 			y={0}
