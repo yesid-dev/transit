@@ -33,6 +33,7 @@
 		delayReading,
 		methodEvidence,
 		noPublishedNotices,
+		citationSource,
 		pageCitation,
 		recordPercent,
 		recordStamp,
@@ -154,7 +155,16 @@
 {/snippet}
 
 {#snippet citation()}
-	<CiteBlock {locale} text={pageCitation(subject, record.period, pinned.href, locale)} />
+	<CiteBlock
+		{locale}
+		text={pageCitation(
+			subject,
+			record.period,
+			pinned.href,
+			locale,
+			citationSource(operator, page.data.provider, locale),
+		)}
+	/>
 {/snippet}
 
 {#snippet figures()}

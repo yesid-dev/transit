@@ -27,7 +27,7 @@ export function rankingsEngine(url, city) {
 		...(kind === 'departure' ? { line: '24', direction: 0, departure: '07:15:00' } : {}),
 		sample: reporting ? 20.5 : 100,
 		counts: reporting
-			? { reporting_gaps: 5 }
+			? { reporting_gaps: 5, silent_hours: 0.1 }
 			: wait
 				? {
 						observed_headways: 100,

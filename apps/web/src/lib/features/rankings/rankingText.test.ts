@@ -8,12 +8,15 @@ import {
 	exclusionText,
 	measureMeaning,
 	rankedNoun,
+	rankingCitation,
 	rankingCountLines,
 	rankingLead,
 	rankingRange,
 	rankingValue,
+	rankingWay,
 	serviceClassDefinition,
 } from './rankingText.ts';
+import { citationSource } from '#lib/site/presenter.ts';
 
 const entry = { id: '24', classes: ['3:regular'], counts: {}, sample: 100 };
 const row = {
@@ -220,4 +223,88 @@ it('never says top-ranked in either language', () => {
 			);
 			expect(text).not.toMatch(/top-ranked|en tête/);
 		}
+});
+
+const plainText = (text: string | null) => text?.replace(/[\u00a0\u202f]/gu, ' ') ?? null;
+
+it('says which way each on-time row misses, from the counts the engine returns', () => {
+	// OC Transpo line 659, 19 to 25 November 2026: 560 early, 170 on time, 48 late.
+	const line659 = { counts: { classified: 778, early: 560, on_time: 170, late: 48 } };
+	expect(rankingWay(line659, 'on_time', 'en')).toBe('early 72.0%, late 6.2%');
+	expect(plainText(rankingWay(line659, 'on_time', 'fr'))).toBe('en avance 72,0 %, en retard 6,2 %');
+	// A late or early ranking already names its way.
+	expect(rankingWay(line659, 'late', 'en')).toBeNull();
+	expect(rankingWay(line659, 'early', 'en')).toBeNull();
+	expect(rankingWay({ counts: {} }, 'on_time', 'en')).toBeNull();
+});
+
+it('says how long a vehicle’s interruptions last beside their count', () => {
+	// STM vehicle 44019: 83 interruptions, 1.45 silent hours, 17.5 hours in service.
+	const vehicle = {
+		...row,
+		sample: 17.527747080555557,
+		counts: { reporting_gaps: 83, silent_hours: 1.450030923611111 },
+	};
+	expect(rankingCountLines(vehicle, reporting, 'en').map(plainText)).toEqual([
+		'83 times in 18 hours',
+		'lasting 63 s on average',
+	]);
+	expect(rankingCountLines(vehicle, reporting, 'fr').map(plainText)).toEqual([
+		'83 interruptions en 18 heures',
+		'd’une durée moyenne de 63 s',
+	]);
+});
+
+it('cites a ranking with the agency’s name, its source and licence, and the read date', () => {
+	const ranked: RankingsRecord = {
+		...answer,
+		class: 'all',
+		evidence: { ...answer.evidence, start_date: '2026-11-19', end_date: '2026-11-25' },
+	};
+	const licence = {
+		download_licence: {
+			name: {
+				en: 'Open Government Licence, City of Ottawa, v2.0',
+				fr: 'Licence du gouvernement ouvert, Ville d’Ottawa, version 2.0',
+			},
+			source: { fr: 'd’OC Transpo' },
+		},
+	};
+	const href =
+		'https://t.test/rankings?provider=octranspo&frameMode=record&recordFrom=2026-11-19&recordTo=2026-11-25#ranking';
+	const text = rankingCitation(
+		'Lines',
+		'On-time share',
+		'OC Transpo',
+		ranked,
+		'en',
+		href,
+		undefined,
+		citationSource('OC Transpo', licence, 'en'),
+		'2026-11-27',
+	);
+	expect(text).toMatch(
+		/^Transit · Lines · On-time share · OC Transpo. 19 to 25 Nov 2026. All service classes./u,
+	);
+	expect(text).toContain(
+		'Source: OC Transpo open data, Open Government Licence, City of Ottawa, v2.0, computed by Transit. Read 27 Nov 2026. ' +
+			href,
+	);
+	expect(text).not.toContain('octranspo.');
+	const french = plainText(
+		rankingCitation(
+			'Lignes',
+			'Part à l’heure',
+			'OC Transpo',
+			ranked,
+			'fr',
+			href,
+			undefined,
+			citationSource('OC Transpo', licence, 'fr'),
+			'2026-11-27',
+		),
+	);
+	expect(french).toContain(
+		'Source : données ouvertes d’OC Transpo, Licence du gouvernement ouvert, Ville d’Ottawa, version 2.0, calculs de Transit. Consulté le 27 nov. 2026.',
+	);
 });

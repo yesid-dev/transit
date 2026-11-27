@@ -300,7 +300,14 @@ for (const width of [390, 1440]) {
 				await expect(exports.getByRole('link')).toHaveCount(6);
 				const exportHref = await exports.getByRole('link').first().getAttribute('href');
 				const csv = await request.get(exportHref!);
-				expect(await csv.text()).toBe('measure,from,to\npunctuality,2026-11-08,2026-11-14\n');
+				// Each row names its source and licence; the fixture city declares no licence name.
+				const agency = provider === 'stm' ? 'STM' : 'OC Transpo';
+				const of = provider === 'stm' ? 'de la STM' : 'd’OC Transpo';
+				expect(await csv.text()).toBe(
+					fr
+						? `measure,from,to,Source des données et licence\npunctuality,2026-11-08,2026-11-14,"Données ouvertes ${of}, calculs de Transit"\n`
+						: `measure,from,to,Data source and licence\npunctuality,2026-11-08,2026-11-14,"${agency} open data, computed by Transit"\n`,
+				);
 				await page.keyboard.press('Escape');
 				await expect(download).toBeFocused();
 				await cite.click();

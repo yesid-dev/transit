@@ -1,12 +1,17 @@
 import {
+	citationRead,
+	citationSourceSentence,
 	citeDates,
 	lowCoverageReason,
 	methodEvidence,
+	missDirection,
 	registryUnitText,
 	minuteReading,
 	recordPercent,
 	rankingComparison,
+	reportingGapLength,
 	singularCount,
+	type CitationSource,
 } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import type { EngineResult, RecordAnswer, RankingsRecord } from '#lib/server/engine.ts';
@@ -90,6 +95,14 @@ export function rankingLead(
 			? choose(locale, 'for', 'pour')
 			: choose(locale, 'among the', 'parmi les');
 	return `${leadPhrases[measure][locale][extreme ? 0 : 1]} ${among} ${countText}${choose(locale, ':', '\u00a0:')}`;
+}
+
+/**
+ * Which way a ranked line or stop misses its on-time window: "early 72.0%, late 6.2%". Only the
+ * on-time ranking needs it: its "worst" rows are often early, not late.
+ */
+export function rankingWay(row: Pick<Row, 'counts'>, measure: RankingMeasure, locale: Locale) {
+	return measure === 'on_time' ? missDirection(row.counts, locale) : null;
 }
 
 const sampleUnits = {
@@ -190,12 +203,14 @@ export function rankingCountLines(row: Row, measure: RankingMeasure, locale: Loc
 				Math.round(row.sample) === 1
 					? choose(locale, 'hour', 'heure')
 					: choose(locale, 'hours', 'heures');
+			const length = reportingGapLength(gaps, row.counts.silent_hours, locale);
 			return [
 				choose(
 					locale,
 					`${number(gaps, locale)} ${gaps === 1 ? 'time' : 'times'} in ${hours} ${unit}`,
 					`${number(gaps, locale)} ${singularCount(gaps, locale) ? 'interruption' : 'interruptions'} en ${hours} ${unit}`,
 				),
+				...(length ? [length] : []),
 			];
 		}
 	} else if (measure === 'excess_wait_time') {
@@ -339,6 +354,8 @@ export function rankingCitation(
 	locale: Locale,
 	href: string,
 	lastGood?: true,
+	source?: CitationSource | null,
+	read: string = new Date().toISOString().slice(0, 10),
 ) {
 	const { evidence } = answer;
 	const dates = citeDates({ from: evidence.start_date, to: evidence.end_date }, locale);
@@ -349,5 +366,8 @@ export function rankingCitation(
 			? `${answer.class === 'all' ? choose(locale, 'All service classes', 'Toutes les classes de service') : classText(answer.class, locale)}. `
 			: '';
 	const older = lastGood ? choose(locale, ' Older answer.', ' Calcul précédent.') : '';
-	return `Transit · ${title} · ${measure} · ${city}. ${dates}. ${service}${measured} ${methodEvidence(evidence, locale)}${older} ${href}`;
+	const cited = source
+		? ` ${citationSourceSentence(source, locale)} ${citationRead(read, locale)}`
+		: '';
+	return `Transit · ${title} · ${measure} · ${city}. ${dates}. ${service}${measured} ${methodEvidence(evidence, locale)}${older}${cited} ${href}`;
 }

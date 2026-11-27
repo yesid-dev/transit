@@ -130,11 +130,16 @@ describe('overview engine requests', () => {
 		},
 	);
 
-	it('asks for three worst rows and leaves the class up to the engine', async () => {
+	it('asks for the three worst lines of every class, the list Rankings opens on', async () => {
 		fetcher.mockResolvedValue(Response.json(ranking));
 		expect(await getRanking('line', dates)).toEqual({ kind: 'answer', answer: ranking });
 		expect(fetcher.mock.calls[0]?.[0].url).toBe(
-			'https://data.yesid.dev/v2/stm/ranking?from=2026-11-08&to=2026-11-14&kind=line&measure=on_time&limit=3',
+			'https://data.yesid.dev/v2/stm/ranking?from=2026-11-08&to=2026-11-14&kind=line&measure=on_time&class=all&limit=3',
+		);
+		fetcher.mockClear();
+		await getRanking('stop', dates);
+		expect(fetcher.mock.calls[0]?.[0].url).toBe(
+			'https://data.yesid.dev/v2/stm/ranking?from=2026-11-08&to=2026-11-14&kind=stop&measure=on_time&limit=3',
 		);
 	});
 

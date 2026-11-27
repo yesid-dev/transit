@@ -120,7 +120,7 @@ it('rejects a CSV period that has not started in the selected city', async () =>
 	expect(fetcher).toHaveBeenCalledTimes(1);
 });
 
-it('forwards the same cuts and locale to the engine CSV and streams its bytes', async () => {
+it('forwards the same cuts and locale to the engine CSV and streams its rows with their source', async () => {
 	const url = new URL(
 		`https://transit1.yesid.dev/fr/hotspots/record.csv?provider=agency&${dates}&class=all&measure=median_delay`,
 	);
@@ -144,5 +144,7 @@ it('forwards the same cuts and locale to the engine CSV and streams its bytes', 
 	expect(response.headers.get('content-disposition')).toBe(
 		'attachment; filename="rankings-line.csv"',
 	);
-	expect(await response.text()).toBe('Rang,Type\n1,line\n');
+	expect(await response.text()).toBe(
+		'Rang,Type,Source des données et licence\n1,line,"Données ouvertes d’Agency, calculs de Transit"\n',
+	);
 });

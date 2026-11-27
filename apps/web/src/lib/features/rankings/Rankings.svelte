@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { tick } from 'svelte';
 	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
@@ -13,6 +14,7 @@
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import { frameHref } from '#lib/site/frameState.ts';
 	import {
+		citationSource,
 		countedUnit,
 		dateRange,
 		recordStamp,
@@ -70,6 +72,7 @@
 		rankingReference,
 		rankingValue,
 		rankingVerdict,
+		rankingWay,
 		sampleText,
 		serviceClassDefinition,
 	} from './rankingText.ts';
@@ -381,6 +384,7 @@
 )}
 	{@const first = data.rows[0]}
 	{@const entry = first ? name(first, identities) : null}
+	{@const way = first ? rankingWay(first, measure, locale) : null}
 	{#snippet actions()}
 		<RecordActionGroup {locale} href={links.share} files={[{ href: links.csv, label: listLabel }]}>
 			{#snippet citation()}<CiteBlock
@@ -388,11 +392,12 @@
 					text={rankingCitation(
 						listLabel,
 						measureLabel,
-						record.city,
+						operator ?? record.city,
 						data,
 						locale,
 						links.share,
 						lastGood,
+						citationSource(operator ?? record.city, page.data.provider, locale),
 					)}
 				/>{/snippet}
 		</RecordActionGroup>
@@ -406,7 +411,8 @@
 				>
 				{rankingLead(data, first, measure, rankedCount(data), locale)}
 				{#if entry.href}<a class="text-primary underline" href={entry.href}>{leader(entry)}</a
-					>{:else}{leader(entry)}{/if}.
+					>{:else}{leader(entry)}{/if}{#if way}
+					({way}){/if}.
 			</p>
 			{#if stamp}<div><Stamp {...stamp} /></div>{/if}
 			{@render actions()}
@@ -430,9 +436,11 @@
 {#snippet tableCard(data: RankingsRecord, identities: RankingIdentities)}
 	{@const rows = data.rows.map((entry): Ranked => {
 		const row = name(entry, identities);
-		const facts = [row.detail, coverageText(entry, locale)].filter(
-			(fact): fact is string => !!fact,
-		);
+		const facts = [
+			row.detail,
+			rankingWay(entry, measure, locale),
+			coverageText(entry, locale),
+		].filter((fact): fact is string => !!fact);
 		return { ...row, entry, facts, detail: facts.join(' · ') || undefined };
 	})}
 	{@const plates = rows.some((row) => row.plate || row.leadingCode)}

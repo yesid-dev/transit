@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { DashboardGrid } from '@yesid/ui/layout';
+	import { SvelteURL } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { page } from '$app/state';
-	import { recordStart } from '#lib/site/frameState.ts';
+	import { frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
 		agencyName,
+		citationSource,
 		countedUnit,
 		longDate,
 		methodEvidence,
@@ -14,6 +16,7 @@
 		recordPercent,
 		recordRatio,
 		recordStamp,
+		unconfirmedTripsRange,
 	} from '#lib/site/presenter.ts';
 	import type {
 		EngineResult,
@@ -110,6 +113,16 @@
 		countedUnit(periodDays(record.period.from, record.period.to), 'day', locale),
 	);
 	const rankings = $derived(Promise.all([record.lines, record.stops]));
+	// Copy link and Cite hand out the address pinned to the dates shown, as every other screen.
+	const pinned = $derived.by(() => {
+		const target = new SvelteURL(href);
+		target.hash = '';
+		target.searchParams.set('provider', provider);
+		return new URL(
+			frameHref(target, { mode: 'record', period: { ...record.period, preset: null } }),
+			href,
+		).href;
+	});
 
 	function link(path: string, live = false) {
 		const target = new URL(localizeHref(path, locale, provider), href);
@@ -157,8 +170,9 @@
 		text={pageCitation(
 			city || (locale === 'fr' ? 'Aperçu' : 'Overview'),
 			record.period,
-			href,
+			pinned,
 			locale,
+			citationSource(operator, page.data.provider, locale),
 		)}
 	/>
 {/snippet}
@@ -170,7 +184,7 @@
 {/snippet}
 
 {#snippet actions()}
-	<RecordActionGroup {locale} {href} {files} {citation} {figures} />
+	<RecordActionGroup {locale} href={pinned} {files} {citation} {figures} />
 {/snippet}
 
 {#snippet lead(current: EngineResult<MeasureAnswer>)}
@@ -273,6 +287,13 @@
 				{@const deliveryShare = overviewValue(delivery, 'trips_run')}
 				{#if delivery.kind === 'answer' && deliveryShare != null}
 					{@const { ran, eligible } = delivery.answer.evidence.counts}
+					{@const unconfirmed =
+						delivery.answer.evidence.counts.unconfirmed ??
+						delivery.answer.evidence.excluded?.unconfirmed}
+					{@const bounds =
+						ran != null && eligible != null && unconfirmed != null
+							? unconfirmedTripsRange(ran, eligible, unconfirmed, locale)
+							: null}
 					<FactRow
 						label={t.delivery}
 						detail={ran != null && eligible != null
@@ -280,6 +301,7 @@
 							: undefined}
 					>
 						<strong>{recordPercent(deliveryShare, locale)}</strong>
+						{#if bounds}<p class="text-muted-foreground">{bounds}</p>{/if}
 						{#if delivery.answer.evidence.low_coverage}
 							<p class="text-muted-foreground">
 								{coverageText(delivery.answer.evidence, locale)}

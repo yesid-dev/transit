@@ -122,7 +122,9 @@ test('Data health opens the agency figures from a previously copied Network link
 	await expect(page.locator('#poll_success')).toContainText('At least 20 samples per reading.');
 	const csv = await request.get(`/network/record.csv?${period}&section=poll_success`);
 	expect(csv.headers()['content-disposition']).toContain('network-poll-success.csv');
-	expect(await csv.text()).toBe('Measure,Value\npoll_success,2026-11-11\n');
+	expect(await csv.text()).toBe(
+		'Measure,Value,Data source and licence\npoll_success,2026-11-11,"STM open data, computed by Transit"\n',
+	);
 });
 
 for (const width of [390, 1440]) {

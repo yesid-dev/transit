@@ -20,6 +20,7 @@
 		dateRange,
 		hoursReading,
 		methodEvidence,
+		citationSource,
 		pageCitation,
 		recordStamp,
 		sampleWithMinimum,
@@ -178,7 +179,16 @@
 		files={records.map(({ title, links }) => ({ label: title, href: links.csv }))}
 	>
 		{#snippet citation()}
-			<CiteBlock {locale} text={pageCitation(title, data.period, url.href, locale)} />
+			<CiteBlock
+				{locale}
+				text={pageCitation(
+					title,
+					data.period,
+					url.href,
+					locale,
+					operator ? citationSource(operator, page.data.provider, locale) : null,
+				)}
+			/>
 		{/snippet}
 		{#snippet figures()}
 			{#each records as { section, citeTitle, answer, links } (section)}
@@ -461,6 +471,7 @@
 													reading.value.vehicle_reporting_gaps_per_100_hours,
 													counts.reporting_gaps,
 													locale,
+													counts.silent_hours,
 												) ??
 													vehicleReading(reading, 'vehicle_reporting_gaps_per_100_hours', locale)}
 											</p>

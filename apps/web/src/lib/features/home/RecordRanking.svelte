@@ -2,7 +2,7 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
-	import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
+	import { countedUnit, missDirection, recordPercent } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
@@ -53,7 +53,10 @@
 					kind === 'stop' ? { text: stop?.code || row.id, outline: outlineStopCode } : undefined,
 				plate: line ? { code: line.number ?? row.id } : undefined,
 				href: link((kind === 'line' ? '/lines/' : '/stop/') + encodeURIComponent(row.id)),
-				detail: countedUnit(row.sample, 'event', locale),
+				// "778 stop events · early 72.0%, late 6.2%": which way the line or stop misses.
+				detail: [countedUnit(row.sample, 'event', locale), missDirection(row.counts, locale)]
+					.filter(Boolean)
+					.join(' · '),
 				share: recordPercent(row.value, locale),
 			};
 		});

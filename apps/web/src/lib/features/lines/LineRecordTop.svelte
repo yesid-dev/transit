@@ -31,6 +31,7 @@
 		countedUnit,
 		frenchAgency,
 		pageCitation,
+		citationSource,
 		recordPercent,
 		recordStamp,
 	} from '#lib/site/presenter.ts';
@@ -146,7 +147,16 @@
 {/snippet}
 
 {#snippet citation()}
-	<CiteBlock {locale} text={pageCitation(name, record.period, pinned.href, locale)} />
+	<CiteBlock
+		{locale}
+		text={pageCitation(
+			name,
+			record.period,
+			pinned.href,
+			locale,
+			citationSource(operator, page.data.provider, locale),
+		)}
+	/>
 {/snippet}
 
 {#snippet figures()}
