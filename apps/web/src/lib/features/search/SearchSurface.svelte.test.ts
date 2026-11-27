@@ -102,6 +102,21 @@ const hubStops = (): StopIndexEntry[] =>
 		lon: -73.59,
 	}));
 
+it('leaves focus alone on load and focuses the field when a reader chooses an example', async () => {
+	vi.stubGlobal('matchMedia', (query: string) => ({
+		matches: query === '(hover: hover) and (pointer: fine)',
+	}));
+	setUrlQuery('');
+	render(SearchSurface);
+	const field = screen.getByRole('textbox');
+	const example = await screen.findByRole('link', { name: /^1$/ });
+	expect(document.body).toHaveFocus();
+
+	await fireEvent.click(example);
+	expect(field).toHaveFocus();
+	expect(field).toHaveValue('1');
+});
+
 it.each(['en', 'fr'] as const)(
 	'pages through ranked stop results and carries focus in %s',
 	async (locale) => {

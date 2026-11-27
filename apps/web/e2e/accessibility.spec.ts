@@ -269,12 +269,9 @@ for (const locale of PUBLISHED_LOCALES) {
 			const main = page.getByRole('main');
 			const skip = page.getByRole('link', { name: navPillCopy[locale].skipToContent, exact: true });
 			const announcement = page.locator('[data-slot="announcement-banner"]');
-			const searchFocus =
-				path.startsWith('/search?') &&
-				(await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches));
-			if (searchFocus) {
-				await expect(main.getByRole('textbox')).toBeFocused();
-			} else if (await announcement.isVisible()) {
+			const search = path.startsWith('/search?');
+			if (search) await expect(page.locator('body')).toBeFocused();
+			if (await announcement.isVisible()) {
 				await page.keyboard.press('Tab');
 				await expect(announcement.getByRole('link')).toBeFocused();
 				await page.keyboard.press('Tab');
@@ -286,7 +283,8 @@ for (const locale of PUBLISHED_LOCALES) {
 			await page.keyboard.press('Enter');
 			await expect(main).toBeFocused();
 			await page.keyboard.press('Tab');
-			await expect(main.locator(':focus')).toHaveCount(1);
+			if (search) await expect(main.getByRole('textbox')).toBeFocused();
+			else await expect(main.locator(':focus')).toHaveCount(1);
 			await expect(page.getByRole('banner')).toHaveCount(1);
 			await expect(main).toHaveAttribute('id', 'main');
 			const footer = page.getByRole('contentinfo');

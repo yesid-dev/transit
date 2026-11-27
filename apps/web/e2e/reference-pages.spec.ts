@@ -6,21 +6,24 @@ for (const [locale, prefix, provider] of [
 	['en', '', 'stm'],
 	['fr', '/fr', 'octranspo'],
 ] as const) {
-	test(`Search has one field and a working example in ${locale}`, async ({ page }) => {
+	test(`Search has one field and a working example in ${locale}`, async ({ page, hasTouch }) => {
 		await page.goto(`${prefix}/search?provider=${provider}`);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const main = page.getByRole('main');
 		const field = main.getByRole('textbox');
 		await expect(field).toBeVisible();
-		if (await page.evaluate(() => matchMedia('(hover: hover) and (pointer: fine)').matches)) {
-			await expect(field).toBeFocused();
-		}
+		await expect(page.locator('body')).toBeFocused();
+		if (hasTouch) await field.tap();
+		else await field.click();
+		await expect(field).toBeFocused();
 		await expect(page.locator('[data-slot="app-frame-chrome"] input[type="search"]')).toHaveCount(
 			0,
 		);
 		const examples = main.getByRole('link').filter({ hasText: /^\d+$/ });
 		await expect(examples.first()).toBeVisible();
 		const example = (await examples.first().textContent())!.trim();
-		await examples.first().click();
+		await examples.first().press('Enter');
+		await expect(field).toBeFocused();
 		await expect(field).toHaveValue(example);
 		await expect(
 			main.getByRole('link', {
