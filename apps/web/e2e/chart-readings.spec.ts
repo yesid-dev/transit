@@ -72,8 +72,9 @@ for (const [width, locale, theme] of [
 
 		const trend = page.locator('#trend [data-chart-details]');
 		await trend.locator('[data-chart-datum]').first().hover();
-		await expect(tip).toContainText(fr ? 'novembre' : 'November');
-		await expect(tip).toContainText(fr ? 'passages aux arrêts' : 'stop events');
+		await expect(tip).toContainText(fr ? '20 nov. 2026' : '20 Nov 2026');
+		await expect(tip).toContainText(fr ? 'Ce qui est compté\u00a0:' : 'Counted:');
+		await expect(tip).toContainText(fr ? /55\s720 passages aux arrêts/u : '55,720 stop events');
 		if (output)
 			await page.screenshot({ path: join(output, `trend-${width}-${locale}-${theme}.png`) });
 		const grid = page.locator('#hours [data-chart-details]');
@@ -82,6 +83,7 @@ for (const [width, locale, theme] of [
 			.filter({ has: page.locator('[data-level]') })
 			.first();
 		await measured.hover();
+		await expect(tip).toContainText(fr ? /\d{1,2}\u00a0h\b/u : /\d{2}:\d{2}/u);
 		await expect(tip).toContainText(fr ? 'Part en retard' : 'Late share');
 		await expect(tip).toContainText(fr ? 'passages aux arrêts' : 'stop events');
 		if (output)

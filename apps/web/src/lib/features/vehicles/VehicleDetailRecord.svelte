@@ -24,6 +24,7 @@
 		methodEvidence,
 		citationSource,
 		pageCitation,
+		recordDate,
 		recordStamp,
 		sampleWithMinimum,
 	} from '#lib/site/presenter.ts';
@@ -475,7 +476,7 @@
 						targets="[data-slot='day-strip-cell']"
 						readings={cells.slice(0, shownDays).map((day) => ({
 							key: day.id,
-							heading: day.dateLabel,
+							heading: recordDate(day.id, locale),
 							rows: [
 								{
 									label: t('Hours in service', 'Heures en service'),

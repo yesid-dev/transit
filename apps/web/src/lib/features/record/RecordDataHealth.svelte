@@ -27,6 +27,7 @@
 		longDate,
 		methodEvidence,
 		officialAlertsLabel,
+		recordDate,
 		recordStamp,
 		sampleWithMinimum,
 		singularCount,
@@ -581,9 +582,7 @@
 											readings={shown.rows.flatMap((row) =>
 												shown.columns.map(({ id }, index) => ({
 													key: row.id + '/' + id,
-													heading: intl
-														.dateTime(locale, { dateStyle: 'long', timeZone: 'UTC' })
-														.format(new Date(id)),
+													heading: recordDate(id, locale),
 													rows: [{ label: row.label, value: row.cells[index].name }],
 												})),
 											)}

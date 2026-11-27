@@ -1,6 +1,6 @@
 <script lang="ts">
 	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
-	import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
+	import { countedLabel, countedUnit, recordDate, recordPercent } from '#lib/site/presenter.ts';
 	import { DayStrip } from '@yesid/ui/chart';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import type { RecordSeries } from '#lib/server/engine.ts';
@@ -47,12 +47,12 @@
 		targets="[data-slot='day-strip-cell']"
 		readings={days.map((day) => ({
 			key: day.id,
-			heading: day.dateLabel,
+			heading: recordDate(day.id, locale),
 			rows: [
 				{ label: measured, value: day.report?.value ?? missing },
 				...(day.count == null
 					? []
-					: [{ label: '', value: countedUnit(day.count, 'event', locale) }]),
+					: [{ label: countedLabel(locale), value: countedUnit(day.count, 'event', locale) }]),
 			],
 		}))}
 	>
