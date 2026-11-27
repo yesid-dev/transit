@@ -1236,14 +1236,6 @@
 					{tr('Near an address', 'Près d’une adresse')}
 				</Button>
 			</div>
-			<MapLinePicker
-				routes={session.routesIndex}
-				{locale}
-				label={tr('Line on the map', 'Ligne sur la carte')}
-				placeholder={tr('Choose a line', 'Choisir une ligne')}
-				value={detailLineId ?? chosenLine?.id}
-				onchange={(value) => (value ? chooseOnMap({ kind: 'line', id: value }) : closeDetail())}
-			/>
 			<Collapsible.Root bind:open={mapFiltersOpen} class="w-full" data-map-filter-disclosure>
 				<Collapsible.Trigger>
 					{#snippet child({ props })}
@@ -1264,8 +1256,16 @@
 					<MapLinePicker
 						routes={session.routesIndex}
 						{locale}
-						label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
+						label={tr('Line on the map', 'Ligne sur la carte')}
 						placeholder={tr('Choose a line', 'Choisir une ligne')}
+						value={detailLineId ?? chosenLine?.id}
+						onchange={(value) => (value ? chooseOnMap({ kind: 'line', id: value }) : closeDetail())}
+					/>
+					<MapLinePicker
+						routes={session.routesIndex}
+						{locale}
+						label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
+						placeholder={tr('Add a line filter', 'Ajouter une ligne au filtre')}
 						additive
 						onchange={(value) => {
 							if (value) session.applyFilter({ kind: 'route', value });

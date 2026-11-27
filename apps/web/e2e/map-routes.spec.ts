@@ -215,6 +215,7 @@ for (const locale of ['en', 'fr'] as const) {
 			),
 		).toBeVisible();
 		await openMapControls(page);
+		await page.getByRole('button', { name: fr ? 'Filtres de la carte' : 'Map filters' }).click();
 		const line = page.getByRole('combobox', {
 			name: fr ? 'Ligne sur la carte' : 'Line on the map',
 		});
