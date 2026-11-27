@@ -20,6 +20,7 @@
 		delayReading,
 		longDate,
 		methodEvidence,
+		citationSource,
 		pageCitation,
 		recordPercent,
 		recordStamp,
@@ -310,7 +311,19 @@
 												{#snippet citation()}
 													<CiteBlock
 														locale={data.lang}
-														text={pageCitation(data.seoTitle, data.period, pinned.href, data.lang)}
+														text={pageCitation(
+															data.seoTitle,
+															data.period,
+															pinned.href,
+															data.lang,
+															data.provider
+																? citationSource(
+																		data.provider.labels[data.lang].operator,
+																		data.provider,
+																		data.lang,
+																	)
+																: null,
+														)}
 													/>
 												{/snippet}
 												{#snippet figures()}

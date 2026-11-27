@@ -1,7 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const engine = vi.hoisted(() => ({
-	getCityCatalog: vi.fn(async () => ({ providers: [{ id: 'fixture', timezone: 'UTC' }] })),
+	getCityCatalog: vi.fn(async () => ({
+		providers: [
+			{
+				id: 'fixture',
+				timezone: 'UTC',
+				labels: { fr: { operator: 'STM' }, en: { operator: 'STM' } },
+				download_licence: {
+					name: { fr: 'CC BY 4.0', en: 'CC BY 4.0' },
+					source: { fr: 'de la STM' },
+				},
+			},
+		],
+	})),
 	getRecordCsv: vi.fn(),
 	getMeasure: vi.fn(),
 	getRanking: vi.fn(),
@@ -23,10 +35,11 @@ describe('Overview exports', () => {
 		['previous', '/measure', { measure: 'on_time' }, '2026-11-01', '2026-11-07'],
 		['delivery', '/measure', { measure: 'trips_run' }, from, to],
 		['trend', '/measure', { measure: 'on_time', group: 'day' }, from, to],
-		['lines', '/ranking', { kind: 'line', measure: 'on_time', limit: '3' }, from, to],
+		// Every service class, the same list Rankings opens on.
+		['lines', '/ranking', { kind: 'line', measure: 'on_time', class: 'all', limit: '3' }, from, to],
 		['stops', '/ranking', { kind: 'stop', measure: 'on_time', limit: '3' }, from, to],
 	] as const)(
-		'asks the engine for the %s CSV and preserves its bytes',
+		'asks the engine for the %s CSV and keeps its bytes, with a source column',
 		async (section, path, parameters, start, end) => {
 			engine.getRecordCsv.mockResolvedValueOnce(
 				new Response(bytes, { headers: { 'content-type': 'text/csv' } }),
@@ -44,9 +57,35 @@ describe('Overview exports', () => {
 				{ from: start, to: end, city: 'fixture', visitorIp: null },
 				'fr',
 			);
-			expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+			// The byte order mark and line ending are kept; the source and licence column is added.
+			expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+				new Uint8Array([
+					...bytes.slice(0, 4),
+					...new TextEncoder().encode(',Source des données et licence'),
+					13,
+					10,
+				]),
+			);
 		},
 	);
+
+	it('answers a failed reading with a sentence, not a file that looks like data', async () => {
+		engine.getRecordCsv.mockResolvedValueOnce(new Response('{}', { status: 503 }));
+		const url = new URL(
+			`https://example.test/record.csv?provider=fixture&recordFrom=${from}&recordTo=${to}&section=lines`,
+		);
+		const response = await GET({
+			url,
+			request: new Request(url),
+			params: {},
+		} as unknown as Parameters<typeof GET>[0]);
+		expect(response.status).toBe(503);
+		expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+		expect(response.headers.get('content-disposition')).toBeNull();
+		expect(await response.text()).toBe(
+			'The record is temporarily unavailable. Try the download again in a few minutes.\n',
+		);
+	});
 });
 
 it('returns the page shell before a client navigation has a schedule or engine answers', async () => {

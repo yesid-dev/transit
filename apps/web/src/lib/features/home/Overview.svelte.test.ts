@@ -150,7 +150,72 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		const label = locale === 'fr' ? 'Copier le lien' : 'Copy link';
 		await fireEvent.click(screen.getByRole('button', { name: label }));
-		expect(await navigator.clipboard.readText()).toBe(href);
+		expect(await navigator.clipboard.readText()).toBe(
+			`https://transit.test/?provider=${provider}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
+		);
+	});
+
+	it(`pins the copied link to the dates shown, and says which way rows miss, in ${locale}`, async () => {
+		const plainText = (text: string | null) => text?.replace(/[\u00a0\u202f]/gu, ' ');
+		render(Overview, {
+			props: {
+				city: 'Ottawa',
+				locale,
+				provider,
+				// A visit without dates in its address: the default period is shown.
+				href: `https://transit.test/${locale === 'fr' ? 'fr' : ''}?provider=${provider}`,
+				record: {
+					period,
+					previous: previousPeriod(period),
+					punctuality: answer(measure()),
+					baseline: answer(measure()),
+					delivery: answer({
+						...delivered,
+						evidence: {
+							...delivered.evidence,
+							counts: { ran: 105_782, eligible: 106_631, unconfirmed: 5343 },
+						},
+					}),
+					lines: answer<RankingAnswer>({
+						...ranking,
+						rows: [
+							{
+								...ranking.rows[0],
+								id: '659',
+								sample: 778,
+								value: 170 / 778,
+								counts: { classified: 778, early: 560, on_time: 170, late: 48 },
+							},
+						],
+					}),
+					stops: answer<RankingAnswer>({
+						...ranking,
+						kind: 'stop',
+						rows: [],
+						state: 'no_live_data',
+					}),
+				},
+			},
+		});
+		const rankings = screen.getByRole('article', { name: copy.rankings });
+		await waitFor(() =>
+			expect(plainText(rankings.textContent)).toContain(
+				locale === 'fr' ? 'en avance 72,0 %, en retard 6,2 %' : 'early 72.0%, late 6.2%',
+			),
+		);
+		const record = screen.getByRole('article', { name: copy.record });
+		await waitFor(() =>
+			expect(plainText(record.textContent)).toContain(
+				locale === 'fr'
+					? '5 343 autres trajets n’ont pas pu être confirmés, effectués ou non : entre 94,5 % et 99,2 % des trajets ont été effectués.'
+					: '5,343 more trips could not be confirmed, run or not: between 94.5% and 99.2% ran.',
+			),
+		);
+		const label = locale === 'fr' ? 'Copier le lien' : 'Copy link';
+		await fireEvent.click(screen.getByRole('button', { name: label }));
+		expect(await navigator.clipboard.readText()).toBe(
+			`https://transit.test/${locale === 'fr' ? 'fr' : ''}?provider=${provider}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
+		);
 	});
 
 	it.each(states)(`renders the %s state as a mark and words in ${locale}`, (state) => {

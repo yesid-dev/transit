@@ -18,6 +18,7 @@
 		agencyName,
 		frenchAgency,
 		methodEvidence,
+		citationSource,
 		pageCitation,
 		recordPercent,
 		recordRatio,
@@ -450,7 +451,16 @@
 </script>
 
 {#snippet citation()}
-	<CiteBlock {locale} text={pageCitation(title, record.period, pinned.href, locale)} />
+	<CiteBlock
+		{locale}
+		text={pageCitation(
+			title,
+			record.period,
+			pinned.href,
+			locale,
+			operator ? citationSource(operator, provider, locale) : null,
+		)}
+	/>
 {/snippet}
 
 {#snippet figures()}

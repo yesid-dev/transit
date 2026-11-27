@@ -806,6 +806,39 @@ export function reportingGapsReading(
 	per100Hours: number | null | undefined,
 	gaps: number | null | undefined,
 	locale: Locale,
+	silentHours?: number | null,
+) {
+	const reading = reportingGapsRate(per100Hours, gaps, locale);
+	const length = reportingGapLength(gaps, silentHours, locale);
+	return reading && length ? `${reading}, ${length}` : reading;
+}
+
+/**
+ * How long an interruption lasts on average, from the silent time and the count the engine
+ * returns: "about 74 s each on average". A feed that pauses about a minute between reports reads
+ * very differently from a vehicle silent for minutes.
+ */
+export function reportingGapLength(
+	gaps: number | null | undefined,
+	silentHours: number | null | undefined,
+	locale: Locale,
+) {
+	if (gaps == null || gaps <= 0 || silentHours == null || !Number.isFinite(silentHours))
+		return null;
+	const seconds = (silentHours * 3600) / gaps;
+	const length =
+		seconds < 120
+			? `${intl.number(locale, { maximumFractionDigits: 0 }).format(seconds)}\u00a0s`
+			: minuteReading(seconds / 60, locale)!;
+	if (locale === 'fr')
+		return gaps === 1 ? `d’une durée de ${length}` : `d’une durée moyenne de ${length}`;
+	return gaps === 1 ? `lasting ${length}` : `lasting ${length} on average`;
+}
+
+function reportingGapsRate(
+	per100Hours: number | null | undefined,
+	gaps: number | null | undefined,
+	locale: Locale,
 ) {
 	const fr = locale === 'fr';
 	const rate =
@@ -1164,14 +1197,71 @@ export function officialAlertsLabel(locale: Locale) {
 	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check the official notices';
 }
 
-/** The citation for a whole page: who published it, what, which dates and where to find it. */
+/** Whose data a citation rests on: the agency and the licence it publishes under. */
+export type CitationSource = { agency: AgencyName; licence?: string | null };
+
+/** The source of a city's figures, from its catalog entry. */
+export function citationSource(
+	operator: string,
+	provider:
+		| {
+				download_licence?: {
+					name?: Record<Locale, string>;
+					source?: { fr: string };
+				} | null;
+		  }
+		| null
+		| undefined,
+	locale: Locale,
+): CitationSource {
+	return {
+		agency: agencyName(operator, provider),
+		licence: provider?.download_licence?.name?.[locale] ?? null,
+	};
+}
+
+/** "<Agency> open data, <licence>, computed by Transit": the source as one CSV cell. */
+export function citationSourceText({ agency, licence }: CitationSource, locale: Locale) {
+	const licensed = licence ? `, ${licence}` : '';
+	return locale === 'fr'
+		? `Données ouvertes ${frenchAgency(agency).of}${licensed}, calculs de Transit`
+		: `${agency.name} open data${licensed}, computed by Transit`;
+}
+
+/** "Source: <Agency> open data, <licence>, computed by Transit." */
+export function citationSourceSentence(source: CitationSource, locale: Locale) {
+	const text = citationSourceText(source, locale);
+	return locale === 'fr'
+		? `Source\u00a0: ${text.charAt(0).toLocaleLowerCase('fr')}${text.slice(1)}.`
+		: `Source: ${text}.`;
+}
+
+/** The day a reader accessed the figures, for the citation: "Accessed 27 Nov 2026." */
+export function citationAccessed(day: string, locale: Locale) {
+	const date = dateRange({ from: day, to: day }, locale);
+	return locale === 'fr' ? `Consulté le ${date}.` : `Accessed ${date}.`;
+}
+
+/**
+ * The citation for a whole page, in one format on every screen: who published it, what, which
+ * dates, the source and licence of the data, the day it was accessed, and where to find it at
+ * those dates. `accessed` is a date key; it defaults to today (UTC).
+ */
 export function pageCitation(
 	subject: string,
 	period: { from: string; to: string } | null | undefined,
 	href: string,
 	locale: Locale,
+	source?: CitationSource | null,
+	accessed: string = new Date().toISOString().slice(0, 10),
 ): string {
-	return [`Transit · ${subject}.`, period ? `${citeDates(period, locale)}.` : '', href]
+	return [
+		`Transit · ${subject}.`,
+		period ? `${citeDates(period, locale)}.` : '',
+		source ? citationSourceSentence(source, locale) : '',
+		source ? citationAccessed(accessed, locale) : '',
+		href,
+	]
 		.filter(Boolean)
 		.join(' ');
 }
@@ -1311,6 +1401,47 @@ export function unconfirmedTrips(count: number, locale: Locale) {
 			? `${n} trajet n’a pas pu être confirmé, effectué ou non.`
 			: `${n} trajets n’ont pas pu être confirmés, effectués ou non.`;
 	return `${n} ${count === 1 ? 'trip' : 'trips'} could not be confirmed, run or not.`;
+}
+
+/**
+ * Beside a share of trips that ran: the trips whose outcome was never settled, and the two ends
+ * the share could reach if none or all of them ran. "5,343 more trips could not be confirmed,
+ * run or not: between 94.5% and 99.2% ran."
+ */
+export function unconfirmedTripsRange(
+	ran: number,
+	known: number,
+	unconfirmed: number,
+	locale: Locale,
+) {
+	if (!(unconfirmed > 0) || !(known >= ran) || ran < 0) return null;
+	const all = known + unconfirmed;
+	const low = recordPercent(ran / all, locale);
+	const high = recordPercent((ran + unconfirmed) / all, locale);
+	const n = intl.number(locale).format(unconfirmed);
+	if (locale === 'fr')
+		return unconfirmed < 2
+			? `${n} autre trajet n’a pas pu être confirmé, effectué ou non\u00a0: entre ${low} et ${high} des trajets ont été effectués.`
+			: `${n} autres trajets n’ont pas pu être confirmés, effectués ou non\u00a0: entre ${low} et ${high} des trajets ont été effectués.`;
+	return `${n} more ${unconfirmed === 1 ? 'trip' : 'trips'} could not be confirmed, run or not: between ${low} and ${high} ran.`;
+}
+
+/**
+ * Which way the stop events missed, beside an on-time share: "early 72.0%, late 6.2%". A low
+ * on-time share is often early arrival, not lateness; the reader needs both to say which.
+ */
+export function missDirection(
+	counts: Record<string, number | null | undefined> | null | undefined,
+	locale: Locale,
+) {
+	const early = counts?.early;
+	const late = counts?.late;
+	const classified = counts?.classified;
+	if (early == null || late == null || classified == null || !(classified > 0)) return null;
+	const share = (count: number) => recordPercent(count / classified, locale);
+	return locale === 'fr'
+		? `en avance ${share(early)}, en retard ${share(late)}`
+		: `early ${share(early)}, late ${share(late)}`;
 }
 
 export function showAllStops(count: number, locale: Locale) {

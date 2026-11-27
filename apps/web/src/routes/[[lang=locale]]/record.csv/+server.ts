@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { recordCsvResponse } from '#lib/server/recordCsv.ts';
 import type { RecordQuery } from '#lib/server/engine.ts';
+import { overviewRankingParameters } from '#lib/server/engineQuestion.ts';
 import { overviewTrendQuery } from '#lib/server/screenQuestions.ts';
 import { previousPeriod } from '#lib/features/home/periodComparison.ts';
 import type { RequestHandler } from './$types';
@@ -10,8 +11,8 @@ const sections = {
 	previous: { path: '/measure', parameters: { measure: 'on_time' } },
 	delivery: { path: '/measure', parameters: { measure: 'trips_run' } },
 	trend: overviewTrendQuery,
-	lines: { path: '/ranking', parameters: { kind: 'line', measure: 'on_time', limit: '3' } },
-	stops: { path: '/ranking', parameters: { kind: 'stop', measure: 'on_time', limit: '3' } },
+	lines: { path: '/ranking', parameters: overviewRankingParameters('line') },
+	stops: { path: '/ranking', parameters: overviewRankingParameters('stop') },
 } satisfies Record<string, RecordQuery>;
 
 export const GET: RequestHandler = ({ url, request, params }) => {

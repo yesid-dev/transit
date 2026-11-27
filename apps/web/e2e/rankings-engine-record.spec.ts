@@ -70,10 +70,15 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						);
 						// A vehicle's 24.4 interruptions per 100 hours read per hour: 0.2.
 						await expect(table).toContainText(kind === 'vehicle' ? /0[,.]2/u : /48[,.]0\s*%/u);
-						if (kind === 'vehicle')
+						if (kind === 'vehicle') {
 							await expect(table).toContainText(
 								fr ? '5 interruptions en 21 heures' : '5 times in 21 hours',
 							);
+							// 0.1 silent hours over 5 interruptions: 72 s each on average.
+							await expect(table).toContainText(
+								fr ? /d’une durée moyenne de 72\s?s/u : /lasting 72\s?s on average/u,
+							);
+						}
 						if (kind === 'line') {
 							await expect(table.getByRole('rowheader')).toContainText(
 								fr ? 'East B9 à West B9' : 'East B9 to West B9',
@@ -81,6 +86,12 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							await expect(table.getByRole('rowheader')).toContainText(
 								fr ? 'Faible couverture' : 'Low coverage',
 							);
+							// The on-time list says which way each line misses: 4 early, 48 late of 100.
+							const way = fr
+								? /en avance 4,0\s?%, en retard 48,0\s?%/u
+								: /early 4\.0%, late 48\.0%/u;
+							await expect(table.getByRole('rowheader')).toContainText(way);
+							await expect(lead).toContainText(way);
 							// On a phone the counts join the row's one muted sentence.
 							await expect(
 								width === 1440

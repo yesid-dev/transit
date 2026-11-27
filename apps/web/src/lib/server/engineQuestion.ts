@@ -35,8 +35,16 @@ export function measureQuestion(
 	return periodQuestion(period, '/measure', { measure });
 }
 
+/**
+ * The Overview's three lowest lines or stops. Lines are ranked across every service class, the
+ * same list Rankings opens on; without a class the engine ranks one class only.
+ */
+export function overviewRankingParameters(kind: 'line' | 'stop'): Record<string, string> {
+	return { kind, measure: 'on_time', ...(kind === 'line' ? { class: 'all' } : {}), limit: '3' };
+}
+
 export function overviewRankingQuestion(kind: 'line' | 'stop', period: EnginePeriod) {
-	return periodQuestion(period, '/ranking', { kind, measure: 'on_time', limit: '3' });
+	return periodQuestion(period, '/ranking', overviewRankingParameters(kind));
 }
 
 export const finderQuestions = {

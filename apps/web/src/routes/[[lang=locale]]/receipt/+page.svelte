@@ -58,6 +58,7 @@
 		methodEvidence,
 		noticeCountEvidence,
 		noticeSampleEvidence,
+		citationSource,
 		pageCitation,
 		recordStamp,
 		recordPercent,
@@ -306,6 +307,7 @@
 			period,
 			pinned.href,
 			lang,
+			citationSource(operator ?? cityName, routeData.provider, lang),
 		)}
 	/>
 {/snippet}
