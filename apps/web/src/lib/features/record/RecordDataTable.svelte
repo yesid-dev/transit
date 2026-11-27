@@ -80,7 +80,7 @@
 		stackAt,
 		pageSize,
 		rowHeading,
-		rowAlign,
+		rowAlign = 'middle',
 		phone,
 	}: {
 		locale: Locale;
@@ -97,7 +97,7 @@
 		stackAt?: 'compact' | 'tablet';
 		pageSize?: number;
 		rowHeading?: Snippet<[Row]>;
-		rowAlign?: 'top' | 'middle';
+		rowAlign?: 'middle';
 		phone?: RecordPhoneRow<Row>;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
@@ -129,6 +129,12 @@
 	const number = $derived(intl.number(locale));
 	const sortBy = $derived(locale === 'fr' ? 'Trier par' : 'Sort by');
 	const sortedHeader = $derived(allColumns.find(({ key }) => key === sort?.key)?.header);
+	const headerClass = [
+		'[&_thead_th]:normal-case! [&_thead_th]:tracking-normal!',
+		'[&_thead_th]:align-bottom! [&_thead_tr]:items-end',
+		'max-[1024px]:[&_thead_button]:items-end!',
+		'min-[1024px]:[&_thead_th]:align-middle!',
+	].join(' ');
 
 	function sortHeaderLabel(header: string) {
 		if (header !== sortedHeader) return `${sortBy} ${header}`;
@@ -209,13 +215,15 @@
 		{rowAlign}
 		class="@container"
 		tableClass={[
-			'[&_thead_th]:normal-case! [&_thead_th]:tracking-normal!',
+			headerClass,
 			'[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
+			'min-[1024px]:[&_thead_th:not([data-column=name])]:whitespace-nowrap',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
 			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',
 			'@min-[38rem]:[&_td[data-numeric]]:whitespace-nowrap',
 			'@min-[38rem]:[&_td[data-numeric]_small]:whitespace-normal',
+			'[&_tbody_:is(th,td)]:items-center [&_tbody_[data-row-position]]:self-center!',
 		].join(' ')}
 		responsive={scrollMinWidth
 			? { mode: 'scroll', minWidth: scrollMinWidth }
@@ -305,6 +313,8 @@
 				sortLabels={sort ? { by: sortHeaderLabel } : undefined}
 				pageSize={page}
 				{pageLabels}
+				{rowAlign}
+				tableClass={headerClass}
 				responsive={{ mode: 'rows', primary: 'name', value: '', labels: false }}
 			/>
 		{/snippet}
@@ -318,7 +328,7 @@
 		display: grid;
 		/* The value keeps at most 30% of the row, so the name's column stays wide enough to read. */
 		grid-template-columns: minmax(0, 1fr) fit-content(30%);
-		align-items: baseline;
+		align-items: center;
 		column-gap: 0.5rem;
 		row-gap: 0.125rem;
 		min-inline-size: 0;
@@ -330,7 +340,7 @@
 	.phone-lead {
 		display: inline-flex;
 		gap: 0.5rem;
-		align-items: baseline;
+		align-items: center;
 	}
 	.phone-text {
 		min-inline-size: 0;
@@ -389,8 +399,7 @@
 		font-variant-numeric: tabular-nums;
 		text-align: end;
 	}
-	/* The name wraps inside the text column; plates follow it as words. Top-aligned, so the row
-	lines the code box and the value up with the name's first line, as in the wireframe. */
+	/* The name wraps inside the text column, and plates follow it as words. */
 	.phone-link {
 		display: inline-block;
 		vertical-align: top;

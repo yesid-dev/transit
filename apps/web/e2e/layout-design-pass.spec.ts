@@ -517,7 +517,7 @@ test('French Daily keeps the completed-trips value beside its label at 390px @la
 test('Lines gives spare table width to names while readings keep their width @layout', async ({
 	page,
 }) => {
-	await setWidth(page, 768);
+	await setWidth(page, 1280);
 	await page.goto('/lines?provider=stm&frameMode=record&recordFrom=2026-11-04&recordTo=2026-11-10');
 	const table = page.getByRole('table', { name: 'Every measured line', exact: true });
 	await expect(table.getByText('73.2%', { exact: true }).first()).toBeVisible();
@@ -533,24 +533,101 @@ test('Lines gives spare table width to names while readings keep their width @la
 				row: row.getBoundingClientRect().width,
 			}));
 
-	const tablet = await dimensions();
+	const narrower = await dimensions();
 	await setWidth(page, 1440);
 	const desktop = await dimensions();
-	expect(tablet.readings).toHaveLength(4);
+	expect(narrower.readings).toHaveLength(4);
 	expect(desktop.readings).toHaveLength(4);
-	expect(desktop.row).toBeGreaterThan(tablet.row);
+	expect(desktop.row).toBeGreaterThan(narrower.row);
 	for (const [index, reading] of desktop.readings.entries()) {
-		expect(Math.abs(reading - tablet.readings[index])).toBeLessThanOrEqual(1);
+		expect(Math.abs(reading - narrower.readings[index])).toBeLessThanOrEqual(1);
 	}
-	expect(Math.abs(desktop.name - tablet.name - (desktop.row - tablet.row))).toBeLessThanOrEqual(4);
-	const lateHeader = table.locator('thead').getByText('Late', { exact: true });
-	const lateLines = await lateHeader.evaluate((label) => {
-		const text = document.createRange();
-		text.selectNodeContents(label);
-		return text.getClientRects().length;
-	});
-	expect(lateLines).toBe(1);
+	expect(Math.abs(desktop.name - narrower.name - (desktop.row - narrower.row))).toBeLessThanOrEqual(
+		4,
+	);
 });
+
+async function expectReadingCentres(table: Locator, selector: string) {
+	const cells = table.locator('tbody tr').first().locator(selector);
+	await expect(cells.first()).toBeVisible();
+	const centres = await cells.evaluateAll((elements) =>
+		elements.map((element) => {
+			const { top, height } = element.getBoundingClientRect();
+			return top + height / 2;
+		}),
+	);
+	expect(centres.length).toBeGreaterThan(1);
+	expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
+}
+
+async function expectReadingHeaders(table: Locator, singleLine: boolean) {
+	const headers = table.locator('thead th[data-numeric]');
+	await expect(headers.first()).toBeVisible();
+	const geometry = await headers.evaluateAll((cells) =>
+		cells.map((cell) => {
+			const text = document.createRange();
+			text.selectNodeContents(cell.querySelector('button > span') ?? cell);
+			const lines = [...text.getClientRects()];
+			return { label: cell.textContent?.trim(), lines: lines.length, bottom: lines.at(-1)?.bottom };
+		}),
+	);
+	for (const { label, lines } of geometry) {
+		if (singleLine) expect(lines, label).toBe(1);
+		else expect(lines, label).toBeGreaterThan(0);
+	}
+	const bottoms = geometry.map(({ bottom }) => bottom!);
+	expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
+}
+
+for (const locale of ['en', 'fr'] as const) {
+	test(`record rows share a centre and reading headers fit in ${locale} @layout`, async ({
+		page,
+	}) => {
+		const prefix = locale === 'fr' ? '/fr' : '';
+		await setWidth(page, 1440);
+		await page.goto(
+			`${prefix}/lines?provider=stm&frameMode=record&recordFrom=2026-11-04&recordTo=2026-11-10`,
+		);
+		const lines = page.getByRole('table', {
+			name: locale === 'fr' ? 'Toutes les lignes mesurées' : 'Every measured line',
+			exact: true,
+		});
+		await expect(lines.getByText(/^73[.,]2\s*%$/u).first()).toBeVisible();
+		await page.evaluate(() => document.fonts.ready);
+		const tableCells = ':scope > :is(th, td) > .data-table-cell-content';
+		await expectReadingCentres(lines, tableCells);
+		await expectReadingHeaders(lines, true);
+
+		await setWidth(page, 768);
+		await expect(lines.locator('thead th[data-numeric]').first()).toHaveCSS(
+			'vertical-align',
+			'bottom',
+		);
+		await expectReadingHeaders(lines, false);
+		await expectReadingCentres(lines, tableCells);
+
+		for (const width of [390, 1024]) {
+			await setWidth(page, width);
+			await expectReadingCentres(lines, '.phone-row > :is(.phone-text, .phone-value)');
+		}
+
+		// The Lines rail uses compact rows at 1024 px. Network trend still has reading headers.
+		await page.goto(
+			`${prefix}/network?provider=stm&frameMode=record&recordFrom=2026-11-20&recordTo=2026-11-22`,
+		);
+		const trend = page.locator('#trend');
+		await trend
+			.getByRole('button', { name: locale === 'fr' ? 'Tableau' : 'Table', exact: true })
+			.click();
+		const network = trend.getByRole('table');
+		await page.evaluate(() => document.fonts.ready);
+		for (const width of [1024, 1440]) {
+			await setWidth(page, width);
+			await expectReadingCentres(network, tableCells);
+			await expectReadingHeaders(network, true);
+		}
+	});
+}
 
 test('Overview Live late lines keep the plate, linked name and value together @layout', async ({
 	page,
