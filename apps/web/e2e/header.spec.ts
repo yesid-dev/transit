@@ -258,10 +258,7 @@ test('the kit network changes on legal pages and custom dates change a record ro
 		await page.getByRole('button', { name: /^Controls.*Open controls/ }).click();
 	}
 	await page.getByRole('button', { name: 'Choose other dates', exact: true }).click();
-	const dialog = page.getByRole('dialog', {
-		name: page.viewportSize()!.width >= 768 ? 'Choose dates' : 'Period',
-		exact: true,
-	});
+	const dialog = page.getByRole('dialog', { name: 'Choose dates', exact: true });
 	const dates = dialog.locator('[data-slot="date-range-picker"]');
 	await dates.getByLabel('From', { exact: true }).fill('2026-10-20');
 	await dates.getByLabel('To', { exact: true }).fill('2026-10-21');

@@ -16,13 +16,13 @@
 
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import { ControlsRail, DateRangePicker } from '@yesid/ui/layout';
 	import * as Sheet from '@yesid/ui/sheet';
+	import { actionSheetLayout } from '#lib/components/shared/actionSheetLayout.svelte.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { longDate } from '#lib/site/presenter.ts';
 	import {
@@ -87,8 +87,7 @@
 	);
 	let open = $state(false);
 	let tooLong = $state(false);
-	// Match the kit breakpoint and retain the bottom side's original phone motion.
-	const windowLayout = new MediaQuery('min-width: 768px');
+	const windowLayout = actionSheetLayout();
 	let datesTitle = $state<HTMLElement | null>(null);
 
 	async function navigate(href: string | URL, shallow: boolean) {
@@ -188,7 +187,7 @@
 			if (value) tooLong = false;
 		}}
 	>
-		<Sheet.Trigger>
+		<Sheet.Trigger {...windowLayout.trigger}>
 			{#snippet child({ props })}
 				<Button {...props} variant="outline" size="cta-sm" wrap class="min-h-11 max-w-full">
 					{copy.custom}
@@ -196,27 +195,29 @@
 			{/snippet}
 		</Sheet.Trigger>
 		<Sheet.Content
-			side={windowLayout.current ? 'center' : 'bottom'}
-			closeLabel={windowLayout.current ? copy.closeDates : copy.close}
-			class={windowLayout.current ? undefined : 'overflow-y-auto p-4'}
+			side={windowLayout.side}
+			closeLabel={windowLayout.centered ? copy.closeDates : copy.close}
+			class={windowLayout.centered ? undefined : 'overflow-y-auto p-4'}
 			data-lenis-prevent
 			onOpenAutoFocus={(event) => {
-				if (!windowLayout.current || !datesTitle) return;
+				if (!windowLayout.centered || !datesTitle) return;
 				event.preventDefault();
 				datesTitle.focus();
 			}}
 		>
-			<Sheet.Header class={windowLayout.current ? undefined : 'mx-auto w-full max-w-xl p-0 pr-8'}>
+			<Sheet.Header class={windowLayout.centered ? undefined : 'mx-auto w-full max-w-xl p-0 pr-8'}>
 				<Sheet.Title
 					bind:ref={datesTitle}
-					tabindex={windowLayout.current ? -1 : undefined}
-					class={windowLayout.current ? 'w-fit text-lg' : undefined}
+					tabindex={windowLayout.centered ? -1 : undefined}
+					class={windowLayout.titleClass}
 				>
-					{windowLayout.current ? copy.datesTitle : copy.period}
+					{copy.datesTitle}
 				</Sheet.Title>
 			</Sheet.Header>
 			<Sheet.Body
-				class={windowLayout.current ? 'grid gap-4' : 'mx-auto grid w-full max-w-xl gap-4 px-0 pr-8'}
+				class={windowLayout.centered
+					? 'grid gap-4'
+					: 'mx-auto grid w-full max-w-xl gap-4 px-0 pr-8'}
 			>
 				<Sheet.Description>{copy.note(startLabel)}</Sheet.Description>
 				{#if extension}
@@ -251,7 +252,7 @@
 				/>
 				{#if tooLong}<p role="alert">{copy.tooLong(MAX_RECORD_DAYS)}</p>{/if}
 			</Sheet.Body>
-			{#if windowLayout.current}
+			{#if windowLayout.centered}
 				<Sheet.Footer class="items-end">
 					<Sheet.Close>
 						{#snippet child({ props })}

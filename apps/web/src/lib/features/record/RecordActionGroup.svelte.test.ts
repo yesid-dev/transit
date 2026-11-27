@@ -35,9 +35,9 @@ it('creates the direct export only when Download is pressed and releases the anc
 });
 
 it.each([
-	['en', false, 'Cite', 'Cite', 'Close'],
+	['en', false, 'Cite', 'Cite this record', 'Close'],
 	['en', true, 'Cite', 'Cite this record', 'Close'],
-	['fr', false, 'Citer', 'Citer', 'Fermer'],
+	['fr', false, 'Citer', 'Citer ce bilan', 'Fermer'],
 	['fr', true, 'Citer', 'Citer ce bilan', 'Fermer'],
 ] as const)(
 	'renders %s Cite and Download (window: %s)',

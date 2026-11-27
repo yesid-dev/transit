@@ -4,7 +4,7 @@
 	import * as Sheet from '@yesid/ui/sheet';
 	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
-	import { MediaQuery } from 'svelte/reactivity';
+	import { actionSheetLayout } from '#lib/components/shared/actionSheetLayout.svelte.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import CopyAction from '#lib/features/hotspots/sections/CopyAction.svelte';
 
@@ -40,11 +40,10 @@
 		printNote?: string;
 	} = $props();
 	const fr = $derived(locale === 'fr');
-	// The kit's responsive side uses short motion on phones too. Keep the original bottom slide.
-	const windowLayout = new MediaQuery('min-width: 768px');
+	const windowLayout = actionSheetLayout();
 	const closeLabel = $derived(fr ? 'Fermer' : 'Close');
 	const citeLabel = $derived(fr ? 'Citer' : 'Cite');
-	const citeWindowTitle = $derived(fr ? 'Citer ce bilan' : 'Cite this record');
+	const citeSheetTitle = $derived(fr ? 'Citer ce bilan' : 'Cite this record');
 	let downloadTitle = $state<HTMLElement | null>(null);
 	let citeTitle = $state<HTMLElement | null>(null);
 	const uid = $props.id();
@@ -52,7 +51,7 @@
 	const printNoteId = `${uid}-print`;
 
 	function focusTitle(event: Event, title: HTMLElement | null) {
-		if (!windowLayout.current || !title) return;
+		if (!windowLayout.centered || !title) return;
 		event.preventDefault();
 		title.focus();
 	}
@@ -74,7 +73,7 @@
 </script>
 
 {#snippet closeFooter()}
-	<Sheet.Footer class={windowLayout.current ? 'items-end' : undefined}>
+	<Sheet.Footer class={windowLayout.centered ? 'items-end' : undefined}>
 		<Sheet.Close>
 			{#snippet child({ props })}
 				<Button {...props} variant="outline" size="cta-sm" class="min-h-11">
@@ -111,7 +110,7 @@
 			>
 		{:else if files.length}
 			<Sheet.Root>
-				<Sheet.Trigger>
+				<Sheet.Trigger {...windowLayout.trigger}>
 					{#snippet child({ props })}<Button
 							{...props}
 							variant="outline"
@@ -120,17 +119,17 @@
 						>{/snippet}
 				</Sheet.Trigger>
 				<Sheet.Content
-					side={windowLayout.current ? 'center' : 'bottom'}
-					showCloseButton={windowLayout.current}
+					side={windowLayout.side}
+					showCloseButton={windowLayout.centered}
 					{closeLabel}
-					class={windowLayout.current ? undefined : 'max-h-[90dvh] overflow-y-auto'}
+					class={windowLayout.centered ? undefined : 'max-h-[90dvh] overflow-y-auto'}
 					onOpenAutoFocus={(event) => focusTitle(event, downloadTitle)}
 				>
 					<Sheet.Header>
 						<Sheet.Title
 							bind:ref={downloadTitle}
-							tabindex={windowLayout.current ? -1 : undefined}
-							class={windowLayout.current ? 'w-fit text-lg' : undefined}
+							tabindex={windowLayout.centered ? -1 : undefined}
+							class={windowLayout.titleClass}
 							>{fr ? 'Télécharger les fichiers CSV' : 'Download the CSV files'}</Sheet.Title
 						>
 					</Sheet.Header>
@@ -141,7 +140,7 @@
 									<div
 										class={[
 											'flex min-w-0 items-center justify-between gap-x-4',
-											!windowLayout.current && 'flex-wrap',
+											!windowLayout.centered && 'flex-wrap',
 										]}
 									>
 										{#if file.href}<a
@@ -154,7 +153,7 @@
 												data-slot="download-file-size">{file.size}</span
 											>{/if}
 									</div>
-									{#if file.columns?.length && windowLayout.current}
+									{#if file.columns?.length && windowLayout.centered}
 										<Collapsible.Root>
 											<Collapsible.Trigger class="min-h-11 cursor-pointer text-start underline">
 												{fr ? 'Colonnes du CSV' : 'CSV columns'}
@@ -182,7 +181,7 @@
 			</Sheet.Root>
 		{/if}
 		<Sheet.Root>
-			<Sheet.Trigger>
+			<Sheet.Trigger {...windowLayout.trigger}>
 				{#snippet child({ props })}<Button
 						{...props}
 						variant="outline"
@@ -191,27 +190,27 @@
 					>{/snippet}
 			</Sheet.Trigger>
 			<Sheet.Content
-				side={windowLayout.current ? 'center' : 'bottom'}
-				showCloseButton={windowLayout.current}
+				side={windowLayout.side}
+				showCloseButton={windowLayout.centered}
 				{closeLabel}
 				style="--sheet-center-width: 48rem"
-				class={windowLayout.current ? undefined : 'max-h-[90dvh] overflow-y-auto'}
+				class={windowLayout.centered ? undefined : 'max-h-[90dvh] overflow-y-auto'}
 				onOpenAutoFocus={(event) => focusTitle(event, citeTitle)}
 			>
 				<Sheet.Header>
 					<Sheet.Title
 						bind:ref={citeTitle}
-						tabindex={windowLayout.current ? -1 : undefined}
-						class={windowLayout.current ? 'w-fit text-lg' : undefined}
+						tabindex={windowLayout.centered ? -1 : undefined}
+						class={windowLayout.titleClass}
 					>
-						{windowLayout.current ? citeWindowTitle : citeLabel}
+						{citeSheetTitle}
 					</Sheet.Title>
 				</Sheet.Header>
 				<Sheet.Body>
 					<div
 						class="group/cite grid min-w-0 gap-6 wrap-break-word"
 						data-slot="cite-sheet-body"
-						data-cite-window={windowLayout.current ? '' : undefined}
+						data-cite-window={windowLayout.centered ? '' : undefined}
 					>
 						<div class="grid min-w-0 gap-4" data-slot="cite-page">{@render citation()}</div>
 						{#if figures}

@@ -353,7 +353,7 @@ for (const locale of ['en', 'fr'] as const) {
 				);
 				await actions.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
 				const citation = page.getByRole('dialog', {
-					name: width >= 768 ? (fr ? 'Citer ce bilan' : 'Cite this record') : fr ? 'Citer' : 'Cite',
+					name: fr ? 'Citer ce bilan' : 'Cite this record',
 				});
 				await expect(
 					citation.getByText(fr ? /Méthode v1, nettoyage v8\./ : /Method v1, cleaning v8\./),

@@ -59,9 +59,9 @@ it.each(['en', 'fr'] as const)('renders one selected View hint in %s', async (lo
 });
 
 it.each([
-	['en', false, 'Period', 'Close controls'],
+	['en', false, 'Choose dates', 'Close controls'],
 	['en', true, 'Choose dates', 'Close'],
-	['fr', false, 'Période', 'Fermer les options'],
+	['fr', false, 'Choisir des dates', 'Fermer les options'],
 	['fr', true, 'Choisir des dates', 'Fermer'],
 ] as const)('names the %s custom date picker (window: %s)', async (locale, wide, title, close) => {
 	vi.spyOn(window, 'matchMedia').mockImplementation(

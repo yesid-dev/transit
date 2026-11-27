@@ -24,12 +24,12 @@ for (const locale of ['en', 'fr'] as const) {
 			},
 			{
 				trigger: fr ? 'Citer' : 'Cite',
-				title: centered ? (fr ? 'Citer ce bilan' : 'Cite this record') : fr ? 'Citer' : 'Cite',
+				title: fr ? 'Citer ce bilan' : 'Cite this record',
 				width: 768,
 			},
 			{
 				trigger: fr ? 'Choisir d’autres dates' : 'Choose other dates',
-				title: centered ? (fr ? 'Choisir des dates' : 'Choose dates') : fr ? 'Période' : 'Period',
+				title: fr ? 'Choisir des dates' : 'Choose dates',
 				width: 640,
 				dates: true,
 			},
@@ -42,7 +42,9 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(dialog).toBeVisible();
 				const box = (await dialog.boundingBox())!;
 				if (centered) {
-					await expect(dialog.getByRole('heading', { name: action.title })).toBeFocused();
+					const title = dialog.getByRole('heading', { name: action.title });
+					await expect(title).toBeFocused();
+					await expect(title).toHaveCSS('outline-style', 'solid');
 					expect(box.width).toBeCloseTo(Math.min(action.width, width - 32), 0);
 					expect(box.x * 2 + box.width).toBeCloseTo(width, 0);
 					expect(box.y * 2 + box.height).toBeCloseTo(height, 0);
@@ -62,13 +64,17 @@ for (const locale of ['en', 'fr'] as const) {
 					await expect(dialog).toBeHidden();
 					await expect(opener).toBeFocused();
 
-					await opener.press('Enter');
+					await opener.click();
 					await expect(dialog).toBeVisible();
+					await expect(title).toBeFocused();
+					await expect(title).toHaveCSS('outline-style', 'none');
 					await page.mouse.click(4, 4);
 					await expect(dialog).toBeHidden();
 					await expect(opener).toBeFocused();
 
-					await opener.press('Enter');
+					await opener.press('Space');
+					await expect(title).toBeFocused();
+					await expect(title).toHaveCSS('outline-style', 'solid');
 					await footerClose.click();
 				} else {
 					expect(box.x).toBeCloseTo(0, 0);
