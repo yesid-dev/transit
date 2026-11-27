@@ -775,10 +775,12 @@ export function liveStampAge(seconds: number | null, locale: Locale, state: Live
 export function tickingLiveStamp(
 	updatedAt: Date,
 	locale: Locale,
-	options: { label?: string; late?: boolean } = {},
+	options: { label?: string; late?: boolean; now?: number } = {},
 ): StampProps {
 	const late = options.late ?? false;
-	const age = Number.isFinite(+updatedAt) ? Math.max(0, (Date.now() - +updatedAt) / 1000) : null;
+	const age = Number.isFinite(+updatedAt)
+		? Math.max(0, ((options.now ?? Date.now()) - +updatedAt) / 1000)
+		: null;
 	if (livePause.paused && age !== null && !late)
 		return { kind: 'live', label: liveStampAge(age, locale), late };
 	return {

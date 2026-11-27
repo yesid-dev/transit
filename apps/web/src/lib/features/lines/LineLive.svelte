@@ -21,6 +21,7 @@
 		frenchAgency,
 		liveDelayLabels,
 		liveStampAge,
+		tickingLiveStamp,
 		lineNoVehicleSentence,
 		lineVehicleSentence,
 		noHeadingNote,
@@ -162,15 +163,15 @@
 		share: counts[status],
 		valueLabel: countedUnit(counts[status], 'vehicle', locale),
 	}))}
-	{@const age = feed?.captured_at ? Math.max(0, now - Date.parse(feed.captured_at)) / 1000 : null}
-	{@const stamp =
-		age === null
-			? undefined
-			: {
-					kind: 'live' as const,
-					label: liveStampAge(age, locale, state === 'stale' ? 'behind' : 'current'),
-					late: state === 'stale',
-				}}
+	{@const capturedAt = feed?.captured_at}
+	{@const age = capturedAt ? Math.max(0, now - Date.parse(capturedAt)) / 1000 : null}
+	{@const stamp = capturedAt
+		? tickingLiveStamp(new Date(capturedAt), locale, {
+				now,
+				late: state === 'stale',
+				label: state === 'stale' ? liveStampAge(age, locale, 'behind') : undefined,
+			})
+		: undefined}
 	{@const silent = lineSilentCount(snapshot, line, now)}
 	{@const limits =
 		historical &&
