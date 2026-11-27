@@ -13,7 +13,10 @@
 
 	const copy = $derived(errorPageCopy[locale]);
 	const localized = (suggestions: readonly { label: string; href: string }[]) =>
-		suggestions.map((suggestion) => ({ ...suggestion, href: localizeHref(suggestion.href, locale) }));
+		suggestions.map((suggestion) => ({
+			...suggestion,
+			href: localizeHref(suggestion.href, locale),
+		}));
 	const view = $derived.by(() => {
 		const code = is404 ? page.error?.code : undefined;
 		if (code === 'TRIP_ENDED') {
