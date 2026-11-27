@@ -1,4 +1,5 @@
 import { untrack } from 'svelte';
+import { beforeNavigate } from '$app/navigation';
 import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
 import type { DateWindow } from '#lib/v1/history/window.ts';
 import { getRecordRecovered, getRecordRetry } from './recordPatience.ts';
@@ -28,7 +29,9 @@ const isWaiting = (result: Settled) => waitingKinds.has(String(result?.kind));
  * Asks a screen's readings again when the engine or the visitor limit said "busy": cards that
  * wait show "Waiting for a reading." while it asks; after the last try they show the honest
  * end state, and the screen offers one "Try again" for all of them. Answered readings keep their
- * place: only the missing ones are asked and replaced.
+ * place: only the missing ones are asked and replaced. A navigation, such as a screen's own
+ * "Try again" that reloads its data, stops any automatic ask until it completes: the screen asks
+ * once, never twice.
  */
 export function recoverReadings<T extends object>(
 	getRoot: () => T | null | undefined,
@@ -40,6 +43,24 @@ export function recoverReadings<T extends object>(
 		initial: T;
 		answers: ReadonlyMap<string, PromiseLike<unknown>>;
 	} | null>(null);
+	let navigating = false;
+	let pause: (() => void) | undefined;
+	let resume: (() => void) | undefined;
+
+	beforeNavigate(({ from, to, complete }) => {
+		// A jump to a place on the same page reloads nothing.
+		const sameDocument =
+			from && to && from.url.pathname === to.url.pathname && from.url.search === to.url.search;
+		if (sameDocument && from.url.hash !== to.url.hash) return;
+		navigating = true;
+		pause?.();
+		void complete
+			.catch(() => {})
+			.finally(() => {
+				navigating = false;
+				resume?.();
+			});
+	});
 
 	$effect(() => {
 		const current = getRoot();
@@ -59,6 +80,7 @@ export function recoverReadings<T extends object>(
 		let attempt = 0;
 		let eligibleAt = Infinity;
 		let inFlight = false;
+		let flight: AbortController | undefined;
 		let releaseRetry: (() => void) | undefined;
 
 		function publish() {
@@ -79,12 +101,13 @@ export function recoverReadings<T extends object>(
 			try {
 				const signal = AbortSignal.any([
 					controller.signal,
+					flight!.signal,
 					AbortSignal.timeout(RECOVERY_REQUEST_MS),
 				]);
 				const response = await fetch(`/api/record-recovery?${params}`, { signal });
 				if (!response.ok) return;
 				const results: Record<string, Settled> = await response.json();
-				if (controller.signal.aborted) return;
+				if (signal.aborted) return;
 				for (const [path, result] of Object.entries(results)) {
 					// Readings that come with another (stop names with their ranking) replace theirs.
 					if (!readings.has(path) || isWaiting(result)) continue;
@@ -130,8 +153,9 @@ export function recoverReadings<T extends object>(
 		}
 
 		async function recover() {
-			if (document.hidden || controller.signal.aborted) return;
+			if (document.hidden || controller.signal.aborted || navigating) return;
 			inFlight = true;
+			flight = new AbortController();
 			const paths = [...waiting];
 			const batches = [];
 			for (let index = 0; index < paths.length; index += RECOVERY_READING_LIMIT) {
@@ -139,7 +163,7 @@ export function recoverReadings<T extends object>(
 			}
 			await Promise.all(batches);
 			inFlight = false;
-			if (controller.signal.aborted) return;
+			if (controller.signal.aborted || flight.signal.aborted) return;
 			if (!waiting.size) return offerTryAgain();
 			const delay = delays[attempt++];
 			if (delay === undefined) return giveUp();
@@ -149,10 +173,23 @@ export function recoverReadings<T extends object>(
 
 		function schedule() {
 			clearTimeout(timer);
-			if (inFlight || controller.signal.aborted || document.hidden || !waiting.size) return;
+			if (inFlight || navigating || controller.signal.aborted || document.hidden || !waiting.size)
+				return;
 			timer = setTimeout(() => void recover(), Math.max(0, eligibleAt - Date.now()));
 		}
 		document.addEventListener('visibilitychange', schedule);
+		pause = () => {
+			clearTimeout(timer);
+			flight?.abort();
+		};
+		resume = () => {
+			// The navigation kept these readings: start their steps again, never at once.
+			if (!waiting.size) return;
+			attempt = 0;
+			delays = RECOVERY_DELAYS_MS;
+			eligibleAt = Date.now() + delays[attempt++];
+			schedule();
+		};
 
 		const settled = [...readings].map(async ([path, reading]) => {
 			try {
@@ -177,6 +214,7 @@ export function recoverReadings<T extends object>(
 		return () => {
 			controller.abort();
 			clearTimeout(timer);
+			pause = resume = undefined;
 			releaseRetry?.();
 			document.removeEventListener('visibilitychange', schedule);
 		};

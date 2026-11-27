@@ -3,6 +3,23 @@ import { expect, it, vi } from 'vitest';
 import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
 import RecordRecoveryNoticeHarness from './RecordRecoveryNoticeHarness.svelte';
 
+type Navigation = { from: { url: URL }; to: { url: URL }; complete: Promise<void> };
+const navigation = vi.hoisted(() => ({ listeners: new Set<(navigation: Navigation) => void>() }));
+vi.mock('$app/navigation', () => ({
+	beforeNavigate: (listener: (navigation: Navigation) => void) => {
+		navigation.listeners.add(listener);
+	},
+}));
+
+/** A screen's own "Try again": it reloads the page's data in place. */
+function reloadPage() {
+	const done = Promise.withResolvers<void>();
+	const url = new URL('/vehicle/101', location.origin);
+	for (const listener of navigation.listeners)
+		listener({ from: { url }, to: { url }, complete: done.promise });
+	return done.resolve;
+}
+
 const answer = Promise.resolve({ kind: 'answer' } as EngineResult<RecordAnswer>);
 const busy = Promise.resolve({ kind: 'busy' } as const);
 const asked = (fetcher: { mock: { calls: [string][] } }) =>
@@ -101,6 +118,73 @@ it('waits while the page is hidden and preserves the answered control and its fo
 		await rerender({ scope: '/vehicle/102', sections: [{ section: 'Days', answer }] });
 		await vi.advanceTimersByTimeAsync(0);
 		expect(screen.queryByRole('status')).toBeNull();
+	} finally {
+		vi.unstubAllGlobals();
+		visibility.mockRestore();
+		vi.useRealTimers();
+	}
+});
+
+it('a manual retry while an automatic re-ask is pending sends one request', async () => {
+	vi.useFakeTimers();
+	navigation.listeners.clear();
+	const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+	const fetcher = vi.fn(async (_url: string) => Response.json({}));
+	vi.stubGlobal('fetch', fetcher);
+	try {
+		const { rerender } = render(RecordRecoveryNoticeHarness, {
+			scope: '/vehicle/101',
+			sections: [{ section: 'Lines', answer: busy }],
+		});
+		await vi.advanceTimersByTimeAsync(4_000);
+		// The rider presses the screen's own Try again: the page asks for its data once.
+		const finished = reloadPage();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(fetcher).not.toHaveBeenCalled();
+		await rerender({
+			scope: '/vehicle/101',
+			sections: [{ section: 'Lines', answer: Promise.resolve({ kind: 'busy' } as const) }],
+		});
+		finished();
+		await vi.advanceTimersByTimeAsync(4_999);
+		expect(fetcher).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(asked(fetcher)).toEqual(['sections.Lines']);
+	} finally {
+		vi.unstubAllGlobals();
+		visibility.mockRestore();
+		vi.useRealTimers();
+	}
+});
+
+it('a manual retry cancels an automatic re-ask already in flight', async () => {
+	vi.useFakeTimers();
+	navigation.listeners.clear();
+	const visibility = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+	const signals: AbortSignal[] = [];
+	const fetcher = vi.fn(
+		(_url: string, init?: RequestInit) =>
+			new Promise<Response>((_resolve, reject) => {
+				signals.push(init!.signal!);
+				init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason));
+			}),
+	);
+	vi.stubGlobal('fetch', fetcher);
+	try {
+		render(RecordRecoveryNoticeHarness, {
+			scope: '/vehicle/101',
+			sections: [{ section: 'Lines', answer: busy }],
+		});
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		const finished = reloadPage();
+		expect(signals[0].aborted).toBe(true);
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		finished();
+		await vi.advanceTimersByTimeAsync(5_000);
+		// The same readings, kept by the navigation: their steps start again, one request.
+		expect(fetcher).toHaveBeenCalledTimes(2);
 	} finally {
 		vi.unstubAllGlobals();
 		visibility.mockRestore();
