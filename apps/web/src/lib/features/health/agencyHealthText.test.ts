@@ -377,10 +377,10 @@ describe('the agency scorecard in plain words', () => {
 		[
 			'fr',
 			[
-				'18 812 sur 18 941 trajets sur les lignes vues en direct, 3 des 7 jours',
-				'2 179 sur 21 120 trajets prévus, 3 des 7 jours',
+				'18 812 sur 18 941 trajets sur les lignes vues en direct, 3 jours sur 7',
+				'2 179 sur 21 120 trajets prévus, 3 jours sur 7',
 			],
-			'21 120 trajets prévus, 3 des 7 jours',
+			'21 120 trajets prévus, 3 jours sur 7',
 		],
 	] as const)(
 		'puts both coverage rows and the foot on the measured days (%s)',

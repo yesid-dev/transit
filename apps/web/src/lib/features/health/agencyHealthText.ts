@@ -280,7 +280,7 @@ export function measuredDaysText(answer: ScorecardAnswer, locale: Locale) {
 	return choose(
 		locale,
 		`${tally(included, locale)} of the ${total}`,
-		`${tally(included, locale)} des ${total}`,
+		`${countedUnit(included, 'day', locale)} sur ${tally(selected, locale)}`,
 	);
 }
 
