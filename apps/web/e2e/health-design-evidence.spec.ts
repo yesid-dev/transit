@@ -30,7 +30,7 @@ for (const [city, locale, width, theme] of process.env.TRANSIT_E2E_HEALTH_SCREEN
 				);
 				const main = page.getByRole('main');
 				await expect(main.locator('[data-slot="record-card"]').first()).toBeVisible();
-				await expect(main.getByText(/^(Calculating|Calcul en cours)/)).toHaveCount(0);
+				await expect(main.locator('[data-record-pending]')).toHaveCount(0);
 				if (mode === 'live' && refresh) {
 					await refresh();
 					await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
