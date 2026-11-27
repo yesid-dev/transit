@@ -53,6 +53,7 @@
 		class="answer-grid"
 		class:with-heading={Boolean(heading)}
 		class:has-actions={Boolean(actions)}
+		class:wide-details={Boolean(meta) && !comparison && !evidence}
 		class:has-statement={Boolean(statement)}
 		class:aside
 		class:one-row={!secondRow}
@@ -212,13 +213,35 @@
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
 		.with-heading.aside.has-actions {
+			--answer-actions-track: 20rem;
+			--answer-stamp-track: 15rem;
 			grid-template-areas: 'heading stamp actions' 'statement statement details';
-			grid-template-columns: minmax(0, 1fr) 14rem 20rem;
+			grid-template-columns: minmax(0, 1fr) calc(var(--answer-stamp-track) - 1rem) var(
+					--answer-actions-track
+				);
 			column-gap: 1rem;
 			align-items: start;
 		}
 		.with-heading.aside.has-actions:lang(fr) {
-			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
+			--answer-actions-track: 23rem;
+			--answer-stamp-track: 16rem;
+		}
+		/* Let a long evidence line start below the stamp without narrowing the title above it. */
+		.with-heading.aside.has-actions.wide-details {
+			--details-extension: clamp(
+				0rem,
+				calc(46% - var(--answer-actions-track)),
+				var(--answer-stamp-track)
+			);
+			grid-template-areas: 'heading stamp stamp actions' 'statement statement details details';
+			grid-template-columns:
+				minmax(0, 1fr) calc(var(--answer-stamp-track) - var(--details-extension))
+				var(--details-extension) var(--answer-actions-track);
+			column-gap: 0;
+		}
+		.with-heading.aside.has-actions.wide-details > :is(.answer-heading, .answer-statement),
+		.with-heading.aside.has-actions.wide-details .answer-stamp {
+			margin-inline-end: 1rem;
 		}
 		.with-heading.aside.has-actions.one-row {
 			grid-template-areas: 'heading stamp actions' 'statement statement statement';

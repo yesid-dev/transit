@@ -52,6 +52,15 @@ for (const width of [390, 1440]) {
 			).toHaveCount(2);
 			const stops = main.getByRole('article', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' });
 			await expect(stops).toContainText(fr ? '5,3 min de retard' : '5.3 min late');
+			const relatedStop = stops.getByRole('link', { name: fr ? /^Voir l’arrêt /u : /^See stop /u });
+			await expect(relatedStop).toHaveAttribute('href', /\/stop\/[^?]+\?.*provider=stm/u);
+			const tripsOnDay = stops.getByRole('link', {
+				name: fr ? 'Trajets effectués ici à cette date' : 'Trips that ran here on this date',
+			});
+			await expect(tripsOnDay).toHaveAttribute(
+				'href',
+				/\/stop\/[^?]+\?.*recordFrom=2026-11-20&recordTo=2026-11-20#delivery$/u,
+			);
 			await main.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
 			const citation = page.getByRole('dialog', {
 				name: fr ? 'Citer ce bilan' : 'Cite this record',
@@ -84,6 +93,15 @@ for (const width of [390, 1440]) {
 			).toContainText(fr ? 'Non mesuré' : 'Not measured');
 			await expect(stops).not.toContainText(/0%|0 min/);
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
+			if (width === 1440) {
+				await tripsOnDay.click();
+				await expect(page).toHaveURL(/recordFrom=2026-11-19&recordTo=2026-11-19#delivery$/u);
+				await expect(
+					page.locator('#delivery').getByRole('heading', {
+						name: fr ? 'Trajets effectués à cet arrêt' : 'Trips that ran at this stop',
+					}),
+				).toBeVisible();
+			}
 		});
 
 		test(`${lang} at ${width}px shows the Daily report and preserves evidence in print`, async ({
@@ -196,7 +214,26 @@ test('Departure opens the current prediction report for an exact trip identity',
 	).toHaveAttribute('download', 'trip-T1-all-predictions.csv');
 	await page.goto(`/departure/${key('24')}?provider=stm&frameMode=live`);
 	await expect(page.getByText('No live data for this departure today.')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'See this departure’s Record' })).toHaveAttribute(
+		'href',
+		/\/departure\/[^?]+\?.*frameMode=record/u,
+	);
 });
+
+for (const locale of ['en', 'fr'] as const) {
+	test(`${locale} Live departure explains a future scheduled start`, async ({ page }) => {
+		const fr = locale === 'fr';
+		const path = fr ? '/fr' : '';
+		const nextDay = encodeURIComponent(JSON.stringify(['24', 0, '25:10:00']));
+		await page.goto(`${path}/departure/${nextDay}?provider=stm&frameMode=live`);
+		await expect(page.getByRole('main')).toContainText(fr ? 'Départ prévu' : 'Scheduled departure');
+		await expect(page.getByRole('main')).toContainText(
+			fr
+				? 'Les données en direct s’affichent dès que son véhicule commence à transmettre.'
+				: 'Live data appears once its vehicle starts reporting.',
+		);
+	});
+}
 
 test('a ranked departure links to its exact line, direction, time and range', async ({ page }) => {
 	await page.goto(

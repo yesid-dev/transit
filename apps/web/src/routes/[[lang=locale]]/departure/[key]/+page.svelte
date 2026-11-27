@@ -58,6 +58,7 @@
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import DeparturePredictions from '#lib/features/trips/DeparturePredictions.svelte';
+	import { isBeforeTodaysDeparture } from '#lib/features/trips/departureLive.ts';
 	import type { EngineResult, RecordAnswer as Answer, RecordSeries } from '#lib/server/engine.ts';
 	import { addIsoDays } from '#lib/v1/history/selection.ts';
 	import type { PageData } from './$types';
@@ -67,6 +68,12 @@
 	const t = (en: string, fr: string) => (data.lang === 'fr' ? fr : en);
 	const line = $derived(data.identity ? display.line(data.identity.line) : undefined);
 	const clock = $derived(data.identity ? scheduledClock(data.identity.departure, data.lang) : null);
+	const beforeDeparture = $derived(
+		data.mode === 'live' &&
+			!data.lineMissing &&
+			data.identity &&
+			isBeforeTodaysDeparture(data.identity.departure, data.provider?.timezone ?? 'UTC'),
+	);
 	const direction = $derived(
 		data.identity
 			? display.directionLabel(
@@ -92,6 +99,19 @@
 		data.identity ? local(`/lines/${encodeURIComponent(data.identity.line)}`) : undefined,
 	);
 	const stopHref = (id: string) => local(`/stop/${encodeURIComponent(id)}`);
+	function stopDayHref(id: string) {
+		const url = new SvelteURL(stopHref(id), pinned);
+		url.hash = 'delivery';
+		return frameHref(url, {
+			mode: 'record',
+			period: { from: data.day, to: data.day, preset: null },
+		});
+	}
+	const recordHref = $derived.by(() => {
+		const url = new SvelteURL(pinned);
+		url.searchParams.delete('trip');
+		return frameHref(url, { mode: 'record', period: null });
+	});
 	const answers = $derived(
 		data.sections.map(({ section, answer }) => ({
 			section,
@@ -195,7 +215,7 @@
 		back={lineHref
 			? {
 					href: lineHref,
-					label: t('See the line', 'Voir la ligne'),
+					label: t(`Line ${line}`, `Ligne ${line}`),
 					compactLabel: t('Line', 'Ligne'),
 				}
 			: undefined}
@@ -358,12 +378,36 @@
 								{@const reading = result.answer}
 								{#if result.lastGood}<p>{lastGoodNote[data.lang]}</p>{/if}
 								{#if section === 'stops' && 'cells' in reading && reading.cells.length}
+									{@const stopId = reading.cells.find(({ key }) => typeof key.stop === 'string')
+										?.key.stop}
 									<RecordChart
 										input={{ kind: 'ladder', answer: reading, stop, observed: true }}
 										title={heading}
 										locale={data.lang}
 										id="departure-stop-ladder"
 									/>
+									{#if typeof stopId === 'string'}
+										<nav
+											class="flex flex-wrap gap-x-4"
+											aria-label={t('Stop links', 'Liens vers l’arrêt')}
+										>
+											<a
+												class="inline-flex min-h-11 items-center text-primary underline"
+												href={stopHref(stopId)}
+											>
+												{t(`See stop ${stop(stopId).name}`, `Voir l’arrêt ${stop(stopId).name}`)}
+											</a>
+											<a
+												class="inline-flex min-h-11 items-center text-primary underline"
+												href={stopDayHref(stopId)}
+											>
+												{t(
+													'Trips that ran here on this date',
+													'Trajets effectués ici à cette date',
+												)}
+											</a>
+										</nav>
+									{/if}
 									{#if reading.cells.some((cell) => cell.evidence.observed_delay_seconds == null && (cell.state !== 'measured' || cell.value.median_delay == null))}
 										<p class="text-small text-muted-foreground">
 											{t(
@@ -584,6 +628,12 @@
 									sentence={direction ?? t('Reported predictions', 'Prévisions communiquées')}
 									locale={data.lang}
 								/>
+							{:else if !trips.length && beforeDeparture}
+								<RecordAnswer
+									value={clock}
+									sentence={t('Scheduled departure', 'Départ prévu')}
+									locale={data.lang}
+								/>
 							{:else}
 								<RecordAnswer
 									value={null}
@@ -606,9 +656,28 @@
 									locale={data.lang}
 									stopNames={data.stopNames}
 								/>{/key}
-						{:else}<RecordCard title={tripCopy[data.lang].reportedPredictions}>
-								<p>{tripCopy[data.lang].noPredictions}</p>
-							</RecordCard>{/if}
+						{:else}
+							<RecordCard title={tripCopy[data.lang].reportedPredictions}>
+								{#if !trips.length && beforeDeparture}
+									<p>
+										{t(
+											`This departure is scheduled for ${clock}. Live data appears once its vehicle starts reporting.`,
+											`Ce départ est prévu à ${clock}. Les données en direct s’affichent dès que son véhicule commence à transmettre.`,
+										)}
+									</p>
+								{:else}
+									<p>{tripCopy[data.lang].noPredictions}</p>
+									{#if !trips.length && !data.lineMissing && clock}
+										<a
+											class="inline-flex min-h-11 items-center text-primary underline"
+											href={recordHref}
+										>
+											{t('See this departure’s Record', 'Voir le bilan de ce départ')}
+										</a>
+									{/if}
+								{/if}
+							</RecordCard>
+						{/if}
 						{#if trips.length > 1}
 							<ul class="grid gap-2">
 								{#each trips as id (id)}
