@@ -146,7 +146,7 @@ for (const locale of ['en', 'fr']) {
 	test(`${locale} phone address lookup shares the map sheet with nearby stops @layout`, async ({
 		page,
 	}) => {
-		test.skip(page.viewportSize()!.width !== 390, 'one phone project per browser and theme');
+		await page.setViewportSize({ width: 390, height: 844 });
 		const fr = locale === 'fr';
 		const t = mapCopy[fr ? 'fr' : 'en'];
 		const result = {

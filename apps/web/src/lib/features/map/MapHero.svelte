@@ -568,7 +568,7 @@
 				? tr('Stops', 'Arrêts')
 				: tr('Vehicles', 'Véhicules'),
 	);
-	function peekReading(recordHeadline: string | null): string {
+	function peekReading(recordHeadline: string | null, compact = false): string {
 		const mode = isRecordLayer ? frameCopy[locale].record : tr('Live', 'En direct');
 		let reading: string;
 		if (isRecordLayer && recordHeadline !== null) {
@@ -592,7 +592,8 @@
 						: one
 							? tr('vehicle', 'véhicule')
 							: tr('vehicles', 'véhicules');
-			reading = searchCount(inViewCount, locale) + ' ' + noun + ' ' + tr('in view', 'en vue');
+			reading = searchCount(inViewCount, locale) + ' ' + noun;
+			if (!compact) reading += ' ' + tr('in view', 'en vue');
 		}
 		return mode + ' · ' + reading;
 	}
@@ -1414,11 +1415,15 @@
 				bind:ref={inViewTrigger}
 				data-testid="map-list-button"
 				aria-haspopup="dialog"
+				aria-label={peekReading(recordHeadline)}
 				wrap
 				onclick={() => showMapPanel('list', inViewTrigger)}
 			>
 				<span class="peek-handle" aria-hidden="true"></span>
-				<span class="min-w-0 tabular-nums">{peekReading(recordHeadline)}</span>
+				<span class="min-w-0 tabular-nums" aria-hidden="true">
+					<span class="peek-reading-compact">{peekReading(recordHeadline, true)}</span>
+					<span class="peek-reading-full">{peekReading(recordHeadline)}</span>
+				</span>
 			</Button>
 			<Button
 				variant="ghost"
@@ -1647,12 +1652,19 @@
 		background: var(--card);
 		box-shadow: var(--shadow-card);
 	}
-	.peek-controls-label {
+	.peek-controls-label,
+	.peek-handle,
+	.peek-reading-full {
 		display: none;
 	}
 	@media (min-width: 390px) {
-		.peek-controls-label {
+		.peek-controls-label,
+		.peek-handle,
+		.peek-reading-full {
 			display: inline;
+		}
+		.peek-reading-compact {
+			display: none;
 		}
 	}
 	.peek-handle {
