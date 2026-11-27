@@ -113,9 +113,10 @@
 	.crumb-sep {
 		color: var(--muted-foreground);
 	}
-	/* A 44 px target that does not make its row taller than the plate or the title beside it. */
+	/* A 44 px target that reaches into the space above the row, never into the title below it, so
+	   the row stays as tall as the plate or the title beside it. */
 	.crumb {
-		margin-block: -0.5rem;
+		margin-block-start: -0.5rem;
 	}
 	.record-link {
 		display: inline-flex;

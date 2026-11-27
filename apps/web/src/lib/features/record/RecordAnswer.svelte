@@ -51,6 +51,7 @@
 		class:aside
 		class:one-row={!secondRow}
 		class:bare={!context}
+		class:short-context={!comparison && value !== null}
 	>
 		<div class="answer-statement">
 			<AnswerLead {value} {sentence} absent={state ? absent : undefined} {size} />
@@ -122,20 +123,21 @@
 		gap: 0.5rem;
 		min-inline-size: 0;
 	}
-	/* From a tablet's reading width the actions sit at the right of a stamp alone. A longer context
-	   keeps the full width, with the actions under it. */
+	/* From a tablet's reading width the actions sit at the right of the stamp and what was counted.
+	   A comparison line keeps the full width, with the actions under it; so does an answer with no
+	   figure, which keeps the height its figure-sized placeholder reserved. */
 	@container (min-width: 36rem) {
-		.has-actions.one-row {
+		.has-actions.short-context {
 			grid-template-areas: 'statement statement' 'context actions';
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
-		.has-actions.one-row .answer-statement {
+		.has-actions.short-context .answer-statement {
 			grid-area: statement;
 		}
-		.has-actions.one-row .answer-context {
+		.has-actions.short-context .answer-context {
 			grid-area: context;
 		}
-		.has-actions.one-row .answer-actions {
+		.has-actions.short-context .answer-actions {
 			grid-area: actions;
 			justify-content: end;
 		}
