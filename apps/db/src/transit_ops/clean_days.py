@@ -338,8 +338,15 @@ def run_clean_days(
     *,
     selection: tuple[str, str] | datetime,
     summary: TextIO | None = None,
+    clean_tables: bool = True,
+    stretch_tables: bool = True,
 ) -> None:
-    """Clean explicit dates or catch up as of the scheduled run's start time."""
+    """Clean explicit dates or catch up as of the scheduled run's start time.
+
+    ``clean_tables`` builds missing v12 days and ``stretch_tables`` builds the
+    stretch timing of v12 days that exist. The scheduled service runs them as two
+    units, so stretch timing never delays a v12 day or the engine's copy of it.
+    """
     scheduled_at = selection if isinstance(selection, datetime) else None
     zone = None
     try:
@@ -396,6 +403,8 @@ def run_clean_days(
             if clean.exists(marker):
                 skipped.append(day)
                 ready = True
+            elif not clean_tables:
+                pass
             else:
                 with claim_clean_day(clean, f"{clean_prefix}{provider}/{day}") as acquired:
                     if not acquired:
@@ -427,7 +436,7 @@ def run_clean_days(
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)
-        if not ready:
+        if not ready or not stretch_tables:
             continue
         # Stretch timing follows its v12 day. Its failure leaves the v12 day, and the
         # engine's copy of it, as they are; the next run tries the day again.

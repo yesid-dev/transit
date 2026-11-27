@@ -4,7 +4,11 @@ The inputs are three files of the published v12 day, checked against its receipt
 and the schedule ZIP the receipt pins (stops, trips and shapes only). The output
 goes to its own prefix, ``stretch/v13/<provider>/<date>/``, create-only, with a
 receipt written last, so the v12 day folders and the engine's mirror of them never
-change.
+change. Data files carry their checksum in their names and the receipt lists
+them under ``tables``: the receipt alone says what the day's data is.
+
+Everything is staged in a temporary folder that is removed when the day is
+published, so nothing stays on the builder's disk.
 """
 
 import csv
@@ -212,7 +216,16 @@ def _write_table(
         temp_dir=temporary, validate_csv_input=False,
     )  # fmt: skip
     source.unlink()
-    return {"sha256": window.sha256, "byte_size": target.stat().st_size, "rows": window.rows}
+    # Name the file by its bytes. A retry after a half-finished publish then never
+    # meets a different file under the same create-only key. Readers take the names
+    # from the receipt, so a file no receipt lists is not data.
+    named = target.rename(staged / f"{name}-{window.sha256[:16]}.parquet")
+    return {
+        "name": named.name,
+        "sha256": window.sha256,
+        "byte_size": named.stat().st_size,
+        "rows": window.rows,
+    }
 
 
 def stage_stretch_day(
@@ -228,22 +241,25 @@ def stage_stretch_day(
     }
     staged = temporary / "version"
     staged.mkdir()
-    files = {
-        "stretches.parquet": _write_table(
+    written = {
+        "stretches": _write_table(
             "stretches", STRETCHES, day.stretch_rows(), staged, temporary, metadata
         ),
-        "stretch_passes.parquet": _write_table(
+        "stretch_passes": _write_table(
             "stretch_passes", STRETCH_PASSES, day.pass_rows(), staged, temporary, metadata
         ),
-        "stretch_summary.parquet": _write_table(
+        "stretch_summary": _write_table(
             "stretch_summary", STRETCH_SUMMARY, day.summary_rows(zone), staged, temporary,
             metadata,
         ),
     }  # fmt: skip
+    files = {str(entry.pop("name")): entry for entry in written.values()}
+    tables = {table: name for table, name in zip(written, files, strict=True)}
     receipt = {
         **metadata,
         "source_cleaning_version": str(_SOURCE_VERSION),
         "source_manifest_sha256": hashlib.sha256(source_manifest).hexdigest(),
+        "tables": tables,
         "files": files,
         "facts": asdict(day.facts),
         "built_at_utc": datetime.now(UTC).isoformat(),

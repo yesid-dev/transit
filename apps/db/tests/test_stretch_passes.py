@@ -210,15 +210,15 @@ def test_trips_sharing_a_stop_pair_share_stretches(tmp_path: Path):
     with duckdb.connect() as connection:
         count, moving = connection.execute(
             "SELECT count(*), count(moving_speed_kmh) FROM read_parquet(?)",
-            [str(destination / "stretch_passes.parquet")],
+            [str(destination / receipt["tables"]["stretch_passes"])],
         ).fetchone()
         stretches = connection.execute(
             "SELECT count(*), sum(length_m) FROM read_parquet(?)",
-            [str(destination / "stretches.parquet")],
+            [str(destination / receipt["tables"]["stretches"])],
         ).fetchone()
         summary = connection.execute(
             "SELECT sum(passes) FROM read_parquet(?)",
-            [str(destination / "stretch_summary.parquet")],
+            [str(destination / receipt["tables"]["stretch_summary"])],
         ).fetchone()
     assert (count, moving) == (20, 20)
     assert stretches == (10, pytest.approx(1000, abs=0.5))

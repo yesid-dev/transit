@@ -2,7 +2,7 @@
 Description=Build missing Transit clean days from R2
 Wants=network-online.target
 After=network-online.target
-OnSuccess=transit-engine-sync.service
+OnSuccess=transit-engine-sync.service transit-stretch-days.service
 
 [Service]
 Type=oneshot

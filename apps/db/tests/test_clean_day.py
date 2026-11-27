@@ -1801,7 +1801,7 @@ def test_range_builds_skips_and_continues(
         earlier_key = f"out/{earlier_marker}"
         assert fake.writes.count(earlier_key) == 1
         fake.writes.remove(earlier_key)
-        assert fake.writes == [
+        assert fake.writes[:9] == [
             f"out/{version_key('stm', DAY)}/{name}"
             for name in (
                 "trip_days.parquet",
@@ -1814,16 +1814,16 @@ def test_range_builds_skips_and_continues(
                 "alerts.parquet",
                 "manifest.json",
             )
-        ] + [
-            # Stretch timing follows the measured day, with its receipt last.
-            f"out/{stretch_key_prefix('stm', DAY)}/{name}"
-            for name in (
-                "stretches.parquet",
-                "stretch_passes.parquet",
-                "stretch_summary.parquet",
-                "manifest.json",
-            )
         ]
+        # Stretch timing follows the measured day: content-named tables, receipt last.
+        stretch = f"out/{stretch_key_prefix('stm', DAY)}/"
+        assert [key.removeprefix(stretch).split("-")[0] for key in fake.writes[9:]] == [
+            "stretches",
+            "stretch_passes",
+            "stretch_summary",
+            "manifest.json",
+        ]
+        assert all(key.startswith(stretch) for key in fake.writes[9:])
     with duckdb.connect() as db:
         polls = _rows(db, (dest / marker).with_name("feed_polls.parquet"))
         alerts = _rows(db, (dest / marker).with_name("alerts.parquet"))

@@ -66,15 +66,21 @@ def plan_entries(
     return entries
 
 
-def _run_scheduled() -> None:
+def _run_scheduled(*, stretch: bool = False) -> None:
+    """Build missing v12 days, or with ``stretch`` only the stretch timing of built days."""
     scheduled_at = datetime.now(UTC)
     failed = False
     for entry in plan_entries(ProviderRegistry.from_project_root()):
         provider = str(entry["provider"])
-        typer.echo(f"Cleaning {provider}")
+        typer.echo(f"{'Timing stretches for' if stretch else 'Cleaning'} {provider}")
         try:
             run_clean_days(
-                provider, "s3://transit-raw", "s3://transit-clean", selection=scheduled_at
+                provider,
+                "s3://transit-raw",
+                "s3://transit-clean",
+                selection=scheduled_at,
+                clean_tables=not stretch,
+                stretch_tables=stretch,
             )
         except typer.Exit:
             failed = True
@@ -84,9 +90,12 @@ def _run_scheduled() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-scheduled", action="store_true")
-    if parser.parse_args().run_scheduled:
-        _run_scheduled()
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--run-scheduled", action="store_true")
+    mode.add_argument("--run-stretch", action="store_true")
+    arguments = parser.parse_args()
+    if arguments.run_scheduled or arguments.run_stretch:
+        _run_scheduled(stretch=arguments.run_stretch)
         return
     manual = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch"
     try:
