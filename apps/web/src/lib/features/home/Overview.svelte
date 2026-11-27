@@ -463,7 +463,12 @@
 		<div class="screen-content" data-slot="screen-content">
 			<p data-screen-intro>{t.intro(cityList(cities, locale))}</p>
 
-			<DashboardGrid gutter={false} minTile="22rem" class="items-start" data-slot="screen-answer">
+			<DashboardGrid
+				gutter={false}
+				minTile="max(22rem, calc((100% - var(--space-card-gap)) / 2))"
+				class="overview-cards items-start"
+				data-slot="screen-answer"
+			>
 				{#each mode === 'live' ? [liveCard, recordCard] : [recordCard, liveCard] as card (card)}
 					{@render card()}
 				{/each}
@@ -554,5 +559,9 @@
 		grid-template-columns: minmax(0, 1fr);
 		gap: var(--space-card-gap);
 		min-inline-size: 0;
+	}
+	/* Keep the empty second track while the browser parses the first card. */
+	.screen-content :global(.overview-cards) {
+		grid-template-columns: repeat(auto-fill, minmax(min(var(--min-tile), 100%), 1fr));
 	}
 </style>

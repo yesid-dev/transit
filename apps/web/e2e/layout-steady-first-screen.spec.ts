@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { streamingLayoutTest as test } from './layout-test';
@@ -24,7 +24,98 @@ type ShiftEntry = PerformanceEntry & {
 };
 type ShiftWindow = Window & { steadyShifts: Shift[] };
 
+async function observeShifts(page: Page) {
+	await page.addInitScript(() => {
+		const shifts: Shift[] = [];
+		const rect = ({ x, y, width, height }: DOMRectReadOnly): ShiftRect => ({
+			x: Math.round(x),
+			y: Math.round(y),
+			width: Math.round(width),
+			height: Math.round(height),
+		});
+		(window as ShiftWindow).steadyShifts = shifts;
+		new PerformanceObserver((list) => {
+			for (const entry of list.getEntries() as ShiftEntry[]) {
+				if (entry.hadRecentInput) continue;
+				shifts.push({
+					at: Math.round(entry.startTime),
+					value: entry.value,
+					sources: entry.sources.flatMap(({ node, previousRect, currentRect }) => {
+						const element = node instanceof Element ? node : node?.parentElement;
+						if (!element) return [];
+						const section = element.closest('[id], [data-slot]');
+						const label = section?.id
+							? `${element.tagName} #${section.id}`
+							: `${element.tagName} [${section?.getAttribute('data-slot') ?? ''}]`;
+						return [{ node: label, previous: rect(previousRect), current: rect(currentRect) }];
+					}),
+				});
+			}
+		}).observe({ type: 'layout-shift', buffered: true });
+	});
+}
+
 const time = Date.parse('2026-11-23T16:00:00Z');
+
+test('Overview reserves the second card column before its HTML is parsed @layout', async ({
+	page,
+}, info) => {
+	await observeShifts(page);
+	const paint = () =>
+		page.evaluate(
+			() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+		);
+	let release!: () => void;
+	const parsed = new Promise<void>((resolve) => (release = resolve));
+	await page.route('**/__overview-parser-gate', async (route) => {
+		await parsed;
+		await route.fulfill({ contentType: 'text/javascript', body: '' });
+	});
+	const routePath = '/?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14';
+	await page.route(
+		(url) => url.pathname === '/' && url.searchParams.has('recordFrom'),
+		async (route) => {
+			const response = await route.fetch();
+			const html = await response.text();
+			const secondCard = /<div data-slot="card"[^>]*\bclass="[^"]*\boverview-live\b[^"]*"[^>]*>/u;
+			expect(secondCard.test(html), 'the response contains the Live now card').toBe(true);
+			// Pause parsing at the boundary so the first card renders on its own.
+			await route.fulfill({
+				response,
+				body: html.replace(secondCard, '<script src="/__overview-parser-gate"></script>$&'),
+			});
+		},
+	);
+	try {
+		await page.goto(routePath, { waitUntil: 'commit' });
+		const grid = page.locator('[data-slot="screen-answer"]');
+		const record = grid.getByRole('article', { name: 'Record', exact: true });
+		const body = record.locator('[data-slot="record-card-body"]');
+		await expect(body).toBeVisible();
+		await expect(grid.getByRole('article')).toHaveCount(1);
+		await page.evaluate(() => document.fonts.ready);
+		await paint();
+		const before = await body.boundingBox();
+		release();
+		const live = grid.getByRole('article', { name: 'Live now', exact: true });
+		await expect(live).toBeVisible();
+		await paint();
+		const after = await body.boundingBox();
+		const shifts = await page.evaluate(() => (window as ShiftWindow).steadyShifts);
+		await info.attach('overview-streamed-columns', {
+			body: JSON.stringify({ before, after, shifts }),
+			contentType: 'application/json',
+		});
+		expect.soft(after).toEqual(before);
+		expect((await live.boundingBox())!.x).toBeGreaterThan(after!.x);
+		expect(
+			shifts.reduce((sum, { value }) => sum + value, 0),
+			JSON.stringify(shifts),
+		).toBe(0);
+	} finally {
+		release();
+	}
+});
 const widths = [390, 768, 1024, 1440];
 const targets = new Set<Screen>([
 	'overview',
@@ -96,23 +187,7 @@ for (const city of ['stm', 'octranspo'] as const)
 				await page.setViewportSize({ width, height: 900 });
 				await page.clock.setFixedTime(time);
 				await page.setExtraHTTPHeaders({ 'x-transit-fixture-hold': fixture });
-				await page.addInitScript(() => {
-					const shifts: { value: number; sources: string[] }[] = [];
-					Object.assign(window, { overviewShifts: shifts });
-					new PerformanceObserver((list) => {
-						for (const entry of list.getEntries() as ShiftEntry[]) {
-							if (entry.hadRecentInput) continue;
-							shifts.push({
-								value: entry.value,
-								sources: entry.sources.map(({ node }) => {
-									const element = node instanceof Element ? node : node?.parentElement;
-									const section = element?.closest('[id], [data-slot]');
-									return `${element?.tagName} ${section?.id || section?.getAttribute('data-slot')}`;
-								}),
-							});
-						}
-					}).observe({ type: 'layout-shift', buffered: true });
-				});
+				await observeShifts(page);
 				const routes = city === 'stm' ? ['24', '67', '165'] : ['6', '7', '14'];
 				await page.route(captureUrl, async (route) => {
 					await capture;
@@ -179,9 +254,7 @@ for (const city of ['stm', 'octranspo'] as const)
 					await expect(live.locator('tbody tr')).toHaveCount(3);
 					await settled(page);
 					const ready = await snapshot();
-					const shifts = await page.evaluate(
-						() => Reflect.get(window, 'overviewShifts') as { value: number }[],
-					);
+					const shifts = await page.evaluate(() => (window as ShiftWindow).steadyShifts);
 					await picture('ready');
 					await info.attach('overview-load-geometry', {
 						body: JSON.stringify({ waiting, recordReady, ready, shifts }),
@@ -260,36 +333,7 @@ for (const { screen, href } of designPassCases.filter(
 						(theme) => localStorage.setItem('theme', theme),
 						locale === 'fr' ? 'dark' : 'light',
 					);
-					await page.addInitScript(() => {
-						const shifts: Shift[] = [];
-						const rect = ({ x, y, width, height }: DOMRectReadOnly): ShiftRect => ({
-							x: Math.round(x),
-							y: Math.round(y),
-							width: Math.round(width),
-							height: Math.round(height),
-						});
-						(window as ShiftWindow).steadyShifts = shifts;
-						new PerformanceObserver((list) => {
-							for (const entry of list.getEntries() as ShiftEntry[]) {
-								if (entry.hadRecentInput) continue;
-								shifts.push({
-									at: Math.round(entry.startTime),
-									value: entry.value,
-									sources: entry.sources.flatMap(({ node, previousRect, currentRect }) => {
-										const element = node instanceof Element ? node : node?.parentElement;
-										if (!element) return [];
-										const section = element.closest('[id], [data-slot]');
-										const label = section?.id
-											? `${element.tagName} #${section.id}`
-											: `${element.tagName} [${section?.getAttribute('data-slot') ?? ''}]`;
-										return [
-											{ node: label, previous: rect(previousRect), current: rect(currentRect) },
-										];
-									}),
-								});
-							}
-						}).observe({ type: 'layout-shift', buffered: true });
-					});
+					await observeShifts(page);
 					if (screen === 'vehicles-live')
 						// A city's fleet fills the first page of rows, as on the live site; Ottawa's feed
 						// gives no direction or next stop.
