@@ -292,6 +292,12 @@ for (const width of [390, 1440]) {
 				const cite = record.getByRole('button', { name: fr ? 'Citer' : 'Cite' });
 				await page.keyboard.press('Tab');
 				await expect(cite).toBeFocused();
+				const trend = record.locator('#overview-record-trend [data-chart-details]');
+				await expect(trend).toHaveCount(1);
+				await page.keyboard.press('Tab');
+				await expect(trend).toBeFocused();
+				await page.keyboard.press('ArrowRight');
+				await expect(trend).toBeFocused();
 				await page.keyboard.press('Tab');
 				await expect(firstLink).toBeFocused();
 				const trendTable = record.getByRole('button', {

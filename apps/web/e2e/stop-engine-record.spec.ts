@@ -106,9 +106,14 @@ for (const width of [390, 1440]) {
 					? /Ce qui est compté\s:\s8[ \u00a0\u202f]285 passages/u
 					: 'Counted: 8,285 stop events, 230 observed trips, 7 days',
 			);
-			await expect(
-				grid.getByRole('cell', { name: fr ? /lundi, 6 h.*en retard/ : /Monday, 06h.*late/ }),
-			).toBeVisible();
+			const sixOClock = grid.getByRole('cell', {
+				name: fr
+					? 'lundi, 6 h : 33,0 % en retard, 106 passages aux arrêts'
+					: 'Monday, 06:00: 33.0% late, 106 stop events',
+				exact: true,
+			});
+			await expect(sixOClock).toBeVisible();
+			await expect(sixOClock).toHaveText('33');
 			await expect(grid.locator('td:has([data-state="few"])').first()).toHaveAccessibleName(
 				fr ? /trop peu de données.*23/ : /too few to judge.*23/,
 			);
