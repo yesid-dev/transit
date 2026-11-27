@@ -42,10 +42,16 @@ export type RecordFeatures = {
 	}[];
 };
 
+function ramp(anchor: string) {
+	return [19, 29, 39, 49, 59].map(
+		(strength) => `color-mix(in srgb, var(${anchor}), var(--foreground) ${strength}%)`,
+	);
+}
+
 export const recordColours = {
-	light: ['#a76039', '#934627', '#802f22', '#6b2023', '#501725'],
-	dark: ['#b28871', '#d48d68', '#ee9b69', '#ffad70', '#ffc88d'],
-} as const;
+	stops: ramp('--dataviz-severity-high'),
+	corridors: ramp('--dataviz-status-early'),
+};
 
 export const recordStopRadii = {
 	network: [2.5, 3.25, 4, 5, 6],
@@ -248,7 +254,7 @@ export function recordCorridors(
 
 export function recordFeatures(
 	marks: readonly RecordMark[],
-	palette: keyof typeof recordColours,
+	colours: readonly string[],
 	stops: boolean,
 	mutedInk: string,
 ): RecordFeatures {
@@ -264,7 +270,7 @@ export function recordFeatures(
 					state,
 					main: main === true,
 					step,
-					colour: step === null ? mutedInk : recordColours[palette][step]!,
+					colour: step === null ? mutedInk : colours[step]!,
 					offset: direction == null ? 0 : 3,
 				},
 			};

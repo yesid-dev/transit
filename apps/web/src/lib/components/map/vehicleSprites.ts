@@ -1,5 +1,4 @@
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { statusGlyph } from '@yesid/ui/brand';
 import {
 	STATUS_CODES,
 	OCCUPANCY_CODES,
@@ -48,6 +47,10 @@ export const SILENT_FILL_TOKEN = 'var(--foreground)';
 export const SILENT_FILL_FALLBACK = '#f5f5f5';
 export const SILENT_HALO_TOKEN = 'var(--background)';
 
+export function mapOccupancyColour(code: OccupancyCode) {
+	return `color-mix(in srgb, ${occupancyVar(code)}, var(--foreground) 45%)`;
+}
+
 export function resolveColor(varExpr: string, fallback: string): string {
 	if (typeof document === 'undefined') return fallback;
 	const probe = document.createElement('span');
@@ -87,20 +90,29 @@ function roundedRect(
 	ctx.closePath();
 }
 
-function statusCanvas(code: StatusCode, fill: string, halo: string): HTMLCanvasElement {
+function vehicleCanvas(fill: string, halo: string): HTMLCanvasElement {
 	const ctx = spriteContext();
-	const { path, viewBox } = statusGlyph(code);
-	const [left, top, width, height] = viewBox.split(' ').map(Number);
-	const scale = SIZE / Math.max(width!, height!);
-	const shape = new Path2D(path);
-	ctx.scale(scale, scale);
-	ctx.translate((SIZE / scale - width!) / 2 - left!, (SIZE / scale - height!) / 2 - top!);
 	ctx.lineJoin = 'round';
-	ctx.lineWidth = 1.5;
-	ctx.strokeStyle = halo;
-	ctx.stroke(shape);
+	const x = 6.5;
+	const y = 3.5;
+	const width = SIZE - x * 2;
+	const height = SIZE - y * 2;
+	roundedRect(ctx, x, y, width, height, 4);
 	ctx.fillStyle = fill;
-	ctx.fill(shape, 'evenodd');
+	ctx.fill();
+	ctx.lineWidth = 2;
+	ctx.strokeStyle = halo;
+	ctx.stroke();
+
+	const inset = 2.4;
+	roundedRect(ctx, x + inset, y + inset, width - inset * 2, 5.6, 2);
+	ctx.fillStyle = halo;
+	ctx.fill();
+	for (const headlight of [x + inset + 1.2, x + width - inset - 1.2]) {
+		ctx.beginPath();
+		ctx.arc(headlight, SIZE - y - 3.4, 1.15, 0, Math.PI * 2);
+		ctx.fill();
+	}
 	return ctx.canvas;
 }
 
@@ -316,13 +328,13 @@ export function bakeVehicleSprites(
 	for (const status of STATUS_CODES) {
 		add(
 			statusBodyIconId(status),
-			statusCanvas(status, vehicleFill(statusVar(status), '#8a8a8a'), vehicleHalo),
+			vehicleCanvas(vehicleFill(statusVar(status), '#8a8a8a'), vehicleHalo),
 		);
 	}
 	for (const occupancy of OCCUPANCY_CODES) {
-		const fill = vehicleFill(occupancyVar(occupancy), '#7a5fb0');
+		const fill = vehicleFill(mapOccupancyColour(occupancy), '#7a5fb0');
 		for (const status of STATUS_CODES) {
-			add(occupancyBodyIconId(status, occupancy), statusCanvas(status, fill, vehicleHalo));
+			add(occupancyBodyIconId(status, occupancy), vehicleCanvas(fill, vehicleHalo));
 		}
 	}
 	for (const code of OCCUPANCY_CODES as readonly OccupancyCode[]) {
@@ -336,7 +348,7 @@ export function bakeVehicleSprites(
 	}
 	add(
 		VEHICLE_ICON,
-		statusCanvas('unknown', vehicleFill(VEHICLE_FILL_TOKEN, VEHICLE_FILL_FALLBACK), vehicleHalo),
+		vehicleCanvas(vehicleFill(VEHICLE_FILL_TOKEN, VEHICLE_FILL_FALLBACK), vehicleHalo),
 	);
 	add(HEADING_ICON, chevronCanvas(foreground, vehicleHalo));
 	add(SILENT_ICON, silentBadgeCanvas(foreground, vehicleHalo));

@@ -1,4 +1,4 @@
-import { openMapControls } from './map-frame-controls';
+import { expectAboveMapSource, openMapControls } from './map-frame-controls';
 import { waitForStableHeader } from './layout-header-settle';
 import { test } from './layout-test';
 import { expect, type Page } from '@playwright/test';
@@ -65,6 +65,21 @@ for (const provider of ['stm', 'octranspo'])
 						exact: true,
 					});
 					await expect(sw).toBeDisabled();
+					if (width >= 1024) {
+						await expectAboveMapSource(page, page.locator('[data-slot="map-details"]'));
+						await expectAboveMapSource(
+							page,
+							page.locator('[data-frame-controls="desktop"]').locator('xpath=ancestor::aside'),
+						);
+					} else {
+						await expectAboveMapSource(
+							page,
+							page.getByRole('dialog', {
+								name: locale === 'fr' ? 'Options' : 'Controls',
+								exact: true,
+							}),
+						);
+					}
 					const heading = panel.getByRole('heading', { name: 'Positions' });
 					const h = (await heading.boundingBox())!;
 					const row = (await sw.boundingBox())!;

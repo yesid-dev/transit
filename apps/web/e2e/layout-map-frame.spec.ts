@@ -1,6 +1,8 @@
 import { expect } from '@playwright/test';
 import { test } from './layout-test';
 import { mapChromeShareBudget, mapOpenLegendViewportHeight } from './design-pass-debt';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import { closeMapControls, openMapControls } from './map-frame-controls';
 
 for (const locale of ['en', 'fr']) {
 	test(`${locale} map chrome leaves room for the map and text enlargement @layout`, async ({
@@ -97,5 +99,42 @@ for (const locale of ['en', 'fr']) {
 		expect(geometry.bottom).toBeLessThanOrEqual(mapOpenLegendViewportHeight);
 		expect(geometry.clipped).toBe(false);
 		expect(new Set(geometry.track).size).toBe(1);
+	});
+
+	test(`${locale} crowding legend orders the five levels under their swatches @layout`, async ({
+		page,
+	}) => {
+		const fr = locale === 'fr';
+		const phone = page.viewportSize()!.width < 1024;
+		const at = Date.parse('2026-11-23T16:00:00Z');
+		await page.clock.setFixedTime(at);
+		await page.route(captureUrl, (route) =>
+			route.fulfill({
+				json: captureFixture(at, { vehicle_positions: [captureVehicle(at, { occupancy: 0 })] }),
+			}),
+		);
+		await page.goto(`${fr ? '/fr' : ''}/map?provider=stm`);
+		await openMapControls(page);
+		await page.locator('[data-map-filter-trigger]').click();
+		const crowding = page.locator('[data-filter-group="crowding"]');
+		await crowding.getByRole('checkbox', { name: fr ? 'Vide' : 'Empty', exact: true }).click();
+		await closeMapControls(page);
+		if (phone) await page.getByTestId('map-legend-button').click();
+		const legend = page.locator(
+			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
+		);
+		const ramp = legend.getByRole('list', { name: fr ? 'Places à bord' : 'Room on board' });
+		await expect(ramp).toBeVisible();
+		await expect(ramp.getByRole('listitem')).toHaveText(
+			fr
+				? ['Vide', 'Plusieurs places', 'Peu de places', 'Debout', 'Plein']
+				: ['Empty', 'Many seats', 'Few seats', 'Standing', 'Full'],
+		);
+		const colours = await ramp
+			.locator('li > [aria-hidden="true"]')
+			.evaluateAll((swatches) =>
+				swatches.map((swatch) => getComputedStyle(swatch).backgroundColor),
+			);
+		expect(new Set(colours).size).toBe(5);
 	});
 }

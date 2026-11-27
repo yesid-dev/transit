@@ -17,13 +17,9 @@
 	import type { RouteIndexEntry, StopIndexEntry } from '#lib/v1/index.ts';
 	import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
 	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
+	import { mapOccupancyColour } from '#lib/components/map/vehicleSprites.ts';
 	import { mapStatusLabel } from './mapStatusLabels';
-	import {
-		STATUS_GLYPH,
-		occupancyGlyph,
-		occupancyVar,
-		statusVar,
-	} from '#lib/components/dataviz/tokens.ts';
+	import { STATUS_GLYPH, occupancyGlyph, statusVar } from '#lib/components/dataviz/tokens.ts';
 	import MapFilterGroup from './MapFilterGroup.svelte';
 	import type { MapFilterGroupKind } from './MapFilterGroup.svelte';
 	import MarkerGlyph from './MarkerGlyph.svelte';
@@ -406,7 +402,7 @@
 								data-on={store.occupancy.includes(code)}
 								aria-label={OCCUPANCY_LABELS[locale][code]}
 								checked={store.occupancy.includes(code)}
-								style="--chip:{occupancyVar(code)}"
+								style="--chip:{mapOccupancyColour(code)}"
 								onclick={() => toggleOccupancy(code)}
 							>
 								<span class="mf-swatch"></span>

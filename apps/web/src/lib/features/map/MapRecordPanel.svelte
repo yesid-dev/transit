@@ -35,6 +35,7 @@
 		ALL_CORRIDORS_MIN_ZOOM,
 		OTHER_STOPS_MIN_ZOOM,
 		overviewCorridors,
+		recordColours,
 		recordCorridors,
 		recordFeatures,
 		recordMapSampleText,
@@ -228,9 +229,20 @@
 			'var(--muted-foreground)',
 			palette === 'dark' ? '#949494' : '#545e75',
 		);
+		// MapLibre takes sRGB values, while the legend can use the CSS token mixes directly.
+		const canvas = document.createElement('canvas');
+		canvas.width = canvas.height = 1;
+		const context = canvas.getContext('2d', { willReadFrequently: true });
+		const resolvedRamp = recordColours[stopLayer ? 'stops' : 'corridors'].map((colour) => {
+			if (!context) return mutedInk;
+			context.fillStyle = resolveColor(colour, mutedInk);
+			context.fillRect(0, 0, 1, 1);
+			const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
+			return `rgb(${red}, ${green}, ${blue})`;
+		});
 		return attachRecordMap(
 			map,
-			recordFeatures(drawn, palette, stopLayer, mutedInk),
+			recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk),
 			(id) => (selectedId = id),
 			network,
 		);

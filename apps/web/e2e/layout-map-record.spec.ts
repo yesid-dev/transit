@@ -1,12 +1,60 @@
 import { expect, type Locator } from '@playwright/test';
+import { vectorStyleFromBasemap } from '../src/lib/components/map/basemap';
 import { test } from './layout-test';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
 import {
 	closeMapControls,
 	closeMapInView,
+	expectAboveMapSource,
 	openMapControls,
 	openMapInView,
 } from './map-frame-controls';
+
+async function expectPaletteContrast(legend: Locator, theme: 'light' | 'dark') {
+	const basemap = vectorStyleFromBasemap(
+		{ url: 'fixture.pmtiles', attribution: '', generated_utc: '2026-11-21T00:00:00Z' },
+		theme,
+	);
+	const backgrounds = basemap.layers.flatMap((layer) => {
+		if (layer.id === 'earth' || layer.id === 'landuse-green') {
+			return layer.type === 'fill' ? [String(layer.paint?.['fill-color'])] : [];
+		}
+		if (layer.id === 'water' && layer.type === 'line') return [String(layer.paint?.['line-color'])];
+		return [];
+	});
+	expect(backgrounds).toHaveLength(3);
+	const contrast = await legend
+		.locator('ol > li > [aria-hidden="true"]')
+		.evaluateAll((swatches, backgrounds) => {
+			const canvas = document.createElement('canvas');
+			canvas.width = canvas.height = 1;
+			const context = canvas.getContext('2d', { willReadFrequently: true })!;
+			function luminance(colour: string) {
+				context.fillStyle = colour;
+				context.fillRect(0, 0, 1, 1);
+				const channels = context.getImageData(0, 0, 1, 1).data.slice(0, 3);
+				return [...channels].reduce((luminance, channel, index) => {
+					const value = channel / 255;
+					const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+					return luminance + linear * [0.2126, 0.7152, 0.0722][index]!;
+				}, 0);
+			}
+			const ramp = swatches.map((swatch) => luminance(getComputedStyle(swatch).backgroundColor));
+			const minimum = Math.min(
+				...backgrounds.flatMap((background) => {
+					const base = luminance(background);
+					return ramp.map((step) => (Math.max(base, step) + 0.05) / (Math.min(base, step) + 0.05));
+				}),
+			);
+			return { ramp, minimum };
+		}, backgrounds);
+	expect(contrast.ramp).toHaveLength(5);
+	expect(contrast.ramp).toEqual(
+		[...contrast.ramp].sort((a, b) => (theme === 'light' ? b - a : a - b)),
+	);
+	expect(contrast.minimum).toBeGreaterThanOrEqual(3);
+	return contrast.minimum;
+}
 
 async function expectUnbrokenWords(legend: Locator, textSize: string) {
 	const result = await legend.evaluate((root) => {
@@ -36,6 +84,33 @@ async function expectUnbrokenWords(legend: Locator, textSize: string) {
 	});
 	expect(result.count).toBeGreaterThan(0);
 	expect(result.broken, `Legend words broken or overflowing at ${textSize}`).toEqual([]);
+}
+
+for (const locale of ['en', 'fr'] as const) {
+	test(`Ottawa ${locale} Record map panels clear the source strip @layout`, async ({
+		page,
+		viewport,
+	}) => {
+		await recordMapFixture(page, true, 'octranspo');
+		await page.goto(
+			`${locale === 'fr' ? '/fr' : ''}/map?${recordMapPeriod.replace('stm', 'octranspo')}&mapLayer=stops`,
+		);
+		if (viewport!.width < 1024) {
+			await openMapInView(page);
+			await expect(
+				page.getByRole('searchbox', { name: locale === 'fr' ? 'Trouver un arrêt' : 'Find a stop' }),
+			).toBeVisible();
+			return;
+		}
+		for (const width of [1440, 1280, 1024]) {
+			await page.setViewportSize({ width, height: viewport!.height });
+			await expectAboveMapSource(page, page.locator('[data-slot="map-details"]'));
+			await expectAboveMapSource(
+				page,
+				page.locator('[data-frame-controls="desktop"]').locator('xpath=ancestor::aside'),
+			);
+		}
+	});
 }
 
 for (const locale of ['en', 'fr'] as const) {
@@ -71,6 +146,23 @@ for (const locale of ['en', 'fr'] as const) {
 			await expect(legend).toBeVisible();
 			await assertWithinMap(legend);
 			await expectUnbrokenWords(legend, '100%');
+			const minimum = await expectPaletteContrast(
+				legend,
+				info.project.use.colorScheme === 'dark' ? 'dark' : 'light',
+			);
+			await info.attach('basemap-contrast', {
+				body: minimum.toFixed(2),
+				contentType: 'text/plain',
+			});
+			if (phone) {
+				await expectAboveMapSource(page, page.locator('[data-slot="map-legend-sheet"]'));
+			} else {
+				await expectAboveMapSource(page, page.locator('[data-slot="map-details"]'));
+				await expectAboveMapSource(
+					page,
+					page.locator('[data-frame-controls="desktop"]').locator('xpath=ancestor::aside'),
+				);
+			}
 			if (layer !== 'stops') {
 				const labels = (await legend.locator('ol > li').allTextContents()).map((label) =>
 					label.trim(),
@@ -142,6 +234,16 @@ for (const locale of ['en', 'fr'] as const) {
 						`record-map-${layer}-${locale}-${viewport.width}-${info.project.use.colorScheme}.png`,
 					),
 				});
+			}
+			if (!phone) {
+				for (const width of [1280, 1024]) {
+					await page.setViewportSize({ width, height: viewport?.height ?? 900 });
+					await expectAboveMapSource(page, page.locator('[data-slot="map-details"]'));
+					await expectAboveMapSource(
+						page,
+						page.locator('[data-frame-controls="desktop"]').locator('xpath=ancestor::aside'),
+					);
+				}
 			}
 		});
 	}

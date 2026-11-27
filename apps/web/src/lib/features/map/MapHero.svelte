@@ -1175,8 +1175,8 @@
 	<h1 class="sr-only" data-slot="map-heading">{title}</h1>
 	<MapFrame
 		label={regionLabel}
-		class="map-hero-frame absolute inset-x-0 bottom-0"
-		style="top: var(--map-frame-top)"
+		class="map-hero-frame absolute inset-x-0"
+		style="top: var(--map-frame-top); bottom: var(--map-frame-bottom)"
 		details={wide ? { label: viewLabel, content: desktopPanel } : undefined}
 	>
 		{@render stage()}
@@ -1375,6 +1375,7 @@
 		height: 100%;
 		background: var(--background);
 		--map-frame-top: var(--chrome-offset);
+		--map-frame-bottom: 0px;
 		--map-mobile-control-bottom: calc(var(--map-touch-row-bottom) + var(--size-tap-min) + 0.5rem);
 		--map-north-clearance: calc(var(--map-mobile-control-bottom) + 10.25rem);
 		--map-controls-width: 0px;
@@ -1390,7 +1391,8 @@
 	}
 	.map-surface {
 		position: absolute;
-		inset: calc(0px - var(--map-frame-top)) 0 0;
+		/* The frame keeps its panels above the credit. The canvas keeps its original viewport. */
+		inset: calc(0px - var(--map-frame-top)) 0 calc(0px - var(--map-frame-bottom));
 		overflow: hidden;
 	}
 	.map-hero[data-record-layer]:not([data-record-layer='live'])
@@ -1468,10 +1470,11 @@
 		grid-auto-flow: column;
 		inset-block-start: auto;
 		inset-inline-end: calc(min(20rem, 31%) + 1.5rem);
-		inset-block-end: calc(var(--map-source-clearance, 0px) + 0.75rem);
+		inset-block-end: 0.75rem;
 	}
 	.map-hero[data-map-wide='true'] {
 		--map-frame-top: calc(var(--chrome-offset) - 0.75rem);
+		--map-frame-bottom: var(--map-source-clearance, 0px);
 		--map-detail-offset: min(20rem, 31%);
 		--map-attribution-bottom: calc(
 			var(--map-source-clearance, 0px) + var(--size-tap-min) + 1.25rem
