@@ -3,6 +3,7 @@ import { FILTER_SEARCH_PARAM_KEYS } from '#lib/filters/index.ts';
 export interface MapUrlRewriteOptions {
 	readonly replace: true;
 	readonly reset: false;
+	readonly shallow?: true;
 }
 
 export type MapUrlNavigate = (target: string, options: MapUrlRewriteOptions) => unknown;

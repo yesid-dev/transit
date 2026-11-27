@@ -11,20 +11,36 @@ import {
 import { openMapControls, openMapInView } from './map-frame-controls';
 
 type RouteMark = { route_id: string; direction: number; selected: number; muted?: boolean };
+type MapReceipt = {
+	center: number[];
+	routeLines: RouteMark[];
+	railDash: unknown;
+	upcomingStops: string[];
+};
+
+function mapReceipt(page: Page): Promise<MapReceipt> {
+	return page
+		.locator('[data-map-runtime]')
+		.evaluate((root) => Reflect.get(root, Symbol.for('transit.map.renderReceipt'))());
+}
 
 async function routeMarks(page: Page): Promise<RouteMark[]> {
-	return page.evaluate(() => Reflect.get(window, '__transitMap')?.routeLines() ?? []);
+	return (await mapReceipt(page)).routeLines;
 }
 
 for (const locale of ['en', 'fr'] as const) {
 	test(`${locale} selects and restores a vehicle, line and running trip`, async ({
 		page,
 	}, info) => {
-		const phone = page.viewportSize()!.width < 1024;
-		const width = phone ? 390 : 1440;
-		await page.setViewportSize({ width, height: phone ? 844 : 900 });
+		const viewport = page.viewportSize()!;
+		const compact = viewport.width < 1024;
+		const width = viewport.width < 600 ? 390 : compact ? viewport.width : 1440;
+		await page.setViewportSize({
+			width,
+			height: width === 390 ? 844 : compact ? viewport.height : 900,
+		});
 		const fr = locale === 'fr';
-		const city = phone === fr ? 'stm' : 'octranspo';
+		const city = compact === fr ? 'stm' : 'octranspo';
 		const theme = fr ? 'dark' : 'light';
 		const [lon, lat] = city === 'stm' ? [-73.6, 45.5] : [-75.69, 45.41];
 		const at = Date.parse('2026-11-23T16:00:00Z');
@@ -133,7 +149,7 @@ for (const locale of ['en', 'fr'] as const) {
 					expect.objectContaining({ route_id: 'rail-fixture', selected: 0, schedule_only: true }),
 				]),
 			);
-		expect(await page.evaluate(() => Reflect.get(window, '__transitMap')?.railDash)).toEqual(
+		expect((await mapReceipt(page)).railDash).toEqual(
 			expect.arrayContaining([['literal', [1.5, 2]]]),
 		);
 		await picture('rail');
@@ -154,9 +170,7 @@ for (const locale of ['en', 'fr'] as const) {
 				]),
 			);
 		await expect(panel.locator('[data-slot="map-next-stops-panel"]')).toContainText('First Avenue');
-		await expect
-			.poll(() => page.evaluate(() => Reflect.get(window, '__transitMap')?.upcomingStops() ?? []))
-			.toContain('S1');
+		await expect.poll(async () => (await mapReceipt(page)).upcomingStops).toContain('S1');
 		await picture('vehicle');
 		if (!fr) {
 			capturedAt = at + 15_000;
@@ -166,9 +180,7 @@ for (const locale of ['en', 'fr'] as const) {
 				observed_at: new Date(capturedAt).toISOString(),
 			};
 			await page.clock.fastForward(25_000);
-			await expect
-				.poll(() => page.evaluate(() => Reflect.get(window, '__transitMap')?.center[1]))
-				.toBeCloseTo(lat + 0.001, 5);
+			await expect.poll(async () => (await mapReceipt(page)).center[1]).toBeCloseTo(lat + 0.001, 5);
 		}
 
 		await panel

@@ -166,15 +166,17 @@ for (const locale of PUBLISHED_LOCALES) {
 		);
 	});
 
-	test(`${locale}: on the map the header search keeps map focus`, async ({ page }, { project }) => {
+	test(`${locale}: on the map selecting a line keeps focus in the header search`, async ({ page }, {
+		project,
+	}) => {
 		test.skip(project.name !== 'desktop', 'the header search box shows from 1280px');
 		await page.goto(localizeHref(map, locale));
 		await (await headerRow(page, line.long, lineRow(line))).click();
 		await expect(page).toHaveURL(
 			(url) =>
-				url.pathname === localizeHref(map, locale) &&
-				url.searchParams.get('focus') === `route:${line.id}`,
+				url.pathname === localizeHref(map, locale) && url.searchParams.get('line') === line.id,
 		);
+		await expect(page.locator('[data-slot="nav-search"]').getByRole('combobox')).toBeFocused();
 	});
 
 	test(`${locale}: from a Line Record another line opens for the same dates`, async ({ page }, {

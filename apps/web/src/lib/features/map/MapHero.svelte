@@ -363,7 +363,7 @@
 		setLiveMapChoice(url.searchParams, choice);
 		if (choice) url.searchParams.delete(MAP_FOCUS_PARAM);
 		if (previousSearch !== url.search)
-			void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
+			void urlCoordinator.goto(url.pathname + url.search, { ...MAP_URL_REWRITE, shallow: true });
 	}
 
 	$effect(() => {
@@ -528,7 +528,6 @@
 	let inViewTrigger = $state<HTMLButtonElement | null>(null);
 	let controlsTrigger = $state<HTMLButtonElement | null>(null);
 	let sheetTrigger: HTMLButtonElement | null = null;
-	let detailBack = $state<HTMLButtonElement | null>(null);
 	let inViewBody = $state<HTMLDivElement | null>(null);
 	let returnVehicle = $state<string | null>(null);
 	const stopList = $derived(session.stops);
@@ -738,7 +737,6 @@
 		commitPickedSelection({ kind: 'vehicle', id });
 		void tick().then(() => {
 			if (wide && scroller) scroller.scrollTop = 0;
-			detailBack?.focus({ preventScroll: wide });
 		});
 	}
 	function inViewScroller(): HTMLElement | null {
@@ -1152,7 +1150,6 @@
 				</span>
 			</h2>
 			<Button
-				bind:ref={detailBack}
 				variant="ghost"
 				size="sm"
 				class="min-h-11"

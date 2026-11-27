@@ -40,8 +40,8 @@
 		active?: string | null;
 		/** The address row: a request to send, or what that request answered. */
 		address?: { state: 'ask' | 'loading' | 'none' | 'failed'; onask: () => void } | null;
-		/** Set by the phone sheet: it takes a plain click on a row and leads the reader there itself. */
-		follow?: (href: string) => void;
+		/** Handles plain clicks. Return false to leave a result to normal link navigation. */
+		follow?: (href: string) => boolean | void;
 		onchoose?: () => void;
 	}
 
@@ -154,9 +154,8 @@
 		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
 			return;
 		if (hit && hit.kind !== 'page') trackEvent('Search Result', { kind: hit.kind });
-		if (!follow) return onchoose?.();
+		if (!follow || follow(href) === false) return onchoose?.();
 		event.preventDefault();
-		follow(href);
 	}
 	/** Stop names the agency writes in capitals read in title case; the search keys stay as published. */
 	function shownLabel(hit: { kind: string; label: string }): string {
