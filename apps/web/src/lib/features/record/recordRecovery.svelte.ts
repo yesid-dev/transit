@@ -27,7 +27,7 @@ const isWaiting = (result: Settled) => waitingKinds.has(String(result?.kind));
 
 /**
  * Asks a screen's readings again when the engine or the visitor limit said "busy": cards that
- * wait show "Waiting for a reading." while it asks; after the last try they show the honest
+ * wait show "Waiting for a turn. This card asks again in a few seconds." while it asks; after the last try they show the honest
  * end state, and the screen offers one "Try again" for all of them. Answered readings keep their
  * place: only the missing ones are asked and replaced. A navigation, such as a screen's own
  * "Try again" that reloads its data, stops any automatic ask until it completes: the screen asks

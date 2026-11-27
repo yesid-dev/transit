@@ -50,7 +50,7 @@ for (const locale of ['en', 'fr']) {
 		const notice = page.locator('[data-slot="record-patience"]');
 		await expect(notice.getByRole('status')).toHaveCount(1);
 		await expect(notice.getByRole('status')).toContainText(
-			fr ? 'Résultats reçus' : 'Readings arrived',
+			fr ? 'Le bilan est affiché.' : 'The record is on screen.',
 		);
 		// The notice is for screen readers only: it takes no room, so nothing reserves or moves.
 		const box = (await notice.boundingBox())!;

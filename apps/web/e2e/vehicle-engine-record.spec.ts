@@ -383,7 +383,7 @@ test('the fleet names untracked data and vehicle sections stream independently',
 	);
 	const lines = page.getByRole('region', { name: 'Lines and trips it ran' });
 	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-		'These records take longer',
+		'Still calculating the record',
 	);
 	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	expect((await request.post(`http://127.0.0.1:${port}/__overview/release`)).status()).toBe(204);
@@ -446,7 +446,7 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-			fr ? 'Ce bilan demande plus de temps' : 'These records take longer',
+			fr ? 'Le calcul du bilan' : 'Still calculating the record',
 		);
 	});
 

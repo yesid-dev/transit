@@ -143,7 +143,7 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 	const hold = dailyMessageHold(request);
 	const other = dailyMessageHold(request);
 	const messages = page.getByRole('article', { name: 'Agency notices' });
-	const pending = 'These records take longer';
+	const pending = 'Still calculating the record';
 	try {
 		expect((await hold.start()).status()).toBe(204);
 		await page.setExtraHTTPHeaders(hold.headers);
@@ -229,7 +229,7 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await expect(page.locator('[data-slot="record-patience"]')).toHaveCount(1);
 		await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-			fr ? 'Ce bilan demande plus de temps' : 'These records take longer',
+			fr ? 'Le calcul du bilan' : 'Still calculating the record',
 		);
 	});
 }

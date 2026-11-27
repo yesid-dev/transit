@@ -207,7 +207,7 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 	await expect(page.locator('[data-slot="screen-answer"]')).toContainText('80.0%');
 	await expect(page.locator('#hourly')).toContainText('Calculating');
 	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
-		'These records take longer',
+		'Still calculating the record',
 	);
 	const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	for (const fixture of ['stop-by-line', 'stop-hour-grid']) {

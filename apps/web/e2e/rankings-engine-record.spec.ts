@@ -328,7 +328,7 @@ test('the ranking streams before its readings complete', async ({ page, request 
 	);
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.getByRole('heading', { name: 'Worst lines', exact: true })).toBeVisible();
-	await expect(page.getByText('These records take longer')).toBeVisible();
+	await expect(page.getByText('Still calculating the record')).toBeVisible();
 	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const release = await request.post(
 		`http://127.0.0.1:${port}/__overview/release?fixture=rankings`,

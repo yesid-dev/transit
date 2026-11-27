@@ -21,17 +21,6 @@ export function getRecordRecovered() {
 	return getContext<(() => void) | undefined>(recoveryKey);
 }
 
-const slowKey = Symbol('record slow');
-
-/** The words a waiting card shows once the screen's records take longer, or null before. */
-export function setRecordSlow(read: () => string | null) {
-	setContext(slowKey, read);
-}
-
-export function getRecordSlow() {
-	return getContext<(() => string | null) | undefined>(slowKey);
-}
-
 const retryKey = Symbol('record retry');
 
 /** Offers the screen's one "Try again" for readings that could not arrive; returns its removal. */
