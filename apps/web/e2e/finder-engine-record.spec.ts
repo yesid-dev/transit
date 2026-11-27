@@ -390,6 +390,30 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 	});
 
+	test(`${locale} stops offers one retry when the reading ends busy`, async ({ page, request }) => {
+		const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+		const counter = `http://127.0.0.1:${port}/__stops-search`;
+		const questions = async (): Promise<number> => (await request.get(counter)).json();
+		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops-search' });
+		await page.goto(`${prefix}/stops?${query.replace('2026-11-08', '2026-11-06')}&q=Fixture`);
+		const results = page.locator('#stop-results');
+		await expect(
+			results.getByText(
+				fr ? 'Le bilan est temporairement indisponible.' : 'The record is temporarily unavailable.',
+				{ exact: true },
+			),
+		).toHaveCount(1);
+		await expect(
+			results.getByText(fr ? 'Calcul en cours…' : 'Calculating…', { exact: true }),
+		).toHaveCount(0);
+		const retry = results.getByRole('button', { name: fr ? 'Réessayer' : 'Try again' });
+		await expect(retry).toHaveCount(1);
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		const before = await questions();
+		await retry.click();
+		await expect.poll(questions).toBe(before + 1);
+	});
+
 	test(`${locale} stops page the timetable and link an archived code`, async ({ page }) => {
 		await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'stops' });
 		await page.setViewportSize({ width: 390, height: 900 });
