@@ -22,7 +22,7 @@
 	import { sheetCopy } from '#lib/components/shell/sheet.copy.ts';
 	import MaximizeIcon from '@lucide/svelte/icons/maximize';
 	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
-	import { recordStamp, searchCount } from '#lib/site/presenter.ts';
+	import { tickingLiveStamp, recordStamp, searchCount } from '#lib/site/presenter.ts';
 	import { recordPeriodNoticeReader } from '#lib/site/recordPeriodNoticeContext.ts';
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
@@ -647,6 +647,11 @@
 		liveStamp({ ...presentation.stamp, notResponding: presentation.stamp.ageLabel != null }),
 	);
 	const liveStampLabel = $derived(stampText(liveTime, locale, timeZone));
+	const liveStampProps = $derived(
+		liveTime.state === 'current' && liveTime.generatedUtc
+			? tickingLiveStamp(new Date(liveTime.generatedUtc), locale, { label: liveStampLabel })
+			: { kind: 'live' as const, label: liveStampLabel, late: presentation.stamp.isStale },
+	);
 
 	let mapFiltersOpen = $state(false);
 	let reportCamera = $state.raw<MapReportCamera | null>(null);
@@ -1367,7 +1372,7 @@
 		title={liveStampLabel}
 	>
 		<time class="min-w-0 whitespace-normal" datetime={liveTime.generatedUtc ?? undefined}>
-			<Stamp kind="live" label={liveStampLabel} late={presentation.stamp.isStale} />
+			<Stamp {...liveStampProps} />
 		</time>
 	</span>
 {/snippet}

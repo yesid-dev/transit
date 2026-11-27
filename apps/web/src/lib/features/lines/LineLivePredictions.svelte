@@ -9,7 +9,7 @@
 		clockTime,
 		liveDelayLabels,
 		liveStatusWords,
-		liveStampAge,
+		tickingLiveStamp,
 		predictedIn,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -47,7 +47,7 @@
 	function stamp(report: CaptureTripReport | null): StampProps | undefined {
 		const at = report?.feed.captured_at;
 		return at && feedState(report?.feed, now) === 'live'
-			? { kind: 'live', label: liveStampAge(Math.max(0, now - Date.parse(at)) / 1000, locale) }
+			? tickingLiveStamp(new Date(at), locale, { now })
 			: undefined;
 	}
 </script>

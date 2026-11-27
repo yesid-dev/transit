@@ -19,6 +19,7 @@
 		clockTime,
 		expectedReading,
 		liveStampAge,
+		tickingLiveStamp,
 		relativeReportAge,
 		stopNextVehicleSentence,
 	} from '#lib/site/presenter.ts';
@@ -111,15 +112,15 @@
 	{@const readings =
 		report && feed === 'live' ? stopLiveReadings(report, id, now, directions) : null}
 	{@const time = report?.feed.captured_at ? Date.parse(report.feed.captured_at) : null}
-	{@const age = time === null ? null : Math.max(0, (now - time) / 1000)}
+	{@const age = time === null ? null : Math.max(0, now - time) / 1000}
 	{@const stamp =
-		age === null
+		time === null
 			? undefined
-			: {
-					kind: 'live' as const,
-					label: liveStampAge(age, locale, feed === 'live' ? 'current' : 'behind'),
+			: tickingLiveStamp(new Date(time), locale, {
+					now,
 					late: feed !== 'live',
-				}}
+					label: feed !== 'live' ? liveStampAge(age, locale, 'behind') : undefined,
+				})}
 	<RecordGroup class="gap-[var(--space-card-gap)]">
 		<div data-screen-intro>{@render heading()}</div>
 		<div id="stop-detail-departures" class="stop-live-answer" data-slot="screen-answer">

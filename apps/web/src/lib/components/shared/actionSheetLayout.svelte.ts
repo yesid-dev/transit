@@ -18,8 +18,7 @@ export function actionSheetLayout() {
 			return viewport.current;
 		},
 		get side(): SheetContentProps['side'] {
-			// The kit's responsive side uses short motion on phones too. Keep the original bottom slide.
-			return viewport.current ? 'center' : 'bottom';
+			return { base: 'bottom', md: 'center' };
 		},
 		get titleClass() {
 			if (!viewport.current) return undefined;
