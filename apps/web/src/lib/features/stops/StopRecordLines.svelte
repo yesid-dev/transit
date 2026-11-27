@@ -77,7 +77,6 @@
 					{
 						key: 'excess_wait_time',
 						header: t(waitingMeasures[0][1], waitingMeasures[0][2]),
-						numeric: true,
 						cell: excess,
 					},
 					{
@@ -133,9 +132,15 @@
 			{#if id === waitingMeasures[0][0]}<span class="font-sans">{row.coverageGap}</span>{/if}
 		{:else}
 			{@const reading = waitingReadingParts(row.cell, id, locale)}
-			{reading.value}
-			{#if reading.detail}
-				<span class="block font-sans text-small text-muted-foreground">{reading.detail}</span>
+			{@const detail =
+				reading.detail ??
+				(id === 'excess_wait_time' ? coverageText(row.cell.evidence, locale) : '')}
+			<span class:waiting-number={!!(reading.measured || reading.detail)}>{reading.value}</span>
+			{#if detail}
+				<span
+					class="block font-sans text-small text-muted-foreground"
+					class:waiting-count={id !== 'excess_wait_time'}>{detail}</span
+				>
 			{/if}
 		{/if}
 	</div>
@@ -179,10 +184,6 @@
 						.definition}
 					{#if definition}<p><strong>{t(en, fr)}</strong> {definition}</p>{/if}
 				{/each}
-				{#each rows as row (row.id)}
-					{@const coverage = row.coverageGap ? '' : coverageText(row.cell.evidence, locale)}
-					{#if coverage}<p>{row.name.label}{t(':', '\u00a0:')} {coverage}</p>{/if}
-				{/each}
 			</div>
 		</Collapsible.Content>
 	</Collapsible.Root>
@@ -192,6 +193,16 @@
 	@container (inline-size >= 38rem) {
 		.waiting-explanation {
 			min-inline-size: min(16rem, 30cqi);
+		}
+		.waiting-number,
+		.waiting-count {
+			white-space: nowrap;
+		}
+		.waiting-count {
+			display: inline;
+		}
+		.waiting-count::before {
+			content: ' · ';
 		}
 	}
 </style>

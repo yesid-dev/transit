@@ -79,14 +79,20 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 		counts?.scheduled ?? counts?.punctuality_scheduled,
 		locale,
 	);
-	if (share_observed != null && counts?.frequent_headways != null) {
-		const rate = recordPercent(share_observed, locale);
-		const total = tally(counts.frequent_headways, locale);
-		coverage = choose(
-			locale,
-			`${rate} of ${total} planned gaps between vehicles seen, when vehicles are due every 10 minutes or less`,
-			`${rate} des ${total} intervalles prévus entre deux véhicules observés, quand les véhicules passent aux 10 minutes ou moins`,
-		);
+	if (counts?.frequent_headways != null) {
+		const matched = counts.covered_scheduled_headways;
+		const planned = counts.frequent_headways;
+		coverage = '';
+		if (matched != null && planned > 0 && matched <= planned) {
+			const rate = recordPercent(matched / planned, locale);
+			const sample = tally(matched, locale);
+			const total = tally(planned, locale);
+			coverage = choose(
+				locale,
+				`Measured on ${sample} of the ${total} gaps planned when vehicles are due every 10 minutes or less (${rate})`,
+				`Mesuré sur ${sample} des ${total} intervalles prévus quand les véhicules passent aux 10 minutes ou moins (${rate})`,
+			);
+		}
 	}
 	if (share_eligible != null) {
 		const rate = recordPercent(share_eligible, locale);

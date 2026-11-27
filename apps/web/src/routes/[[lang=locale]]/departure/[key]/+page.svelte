@@ -89,10 +89,7 @@
 		const url = new SvelteURL(page.url.href);
 		url.searchParams.set('provider', data.city);
 		if (data.mode === 'record') url.searchParams.set('day', data.day);
-		return new URL(
-			frameHref(url, { mode: data.mode, period: data.period && { ...data.period, preset: null } }),
-			url,
-		);
+		return new URL(frameHref(url, { mode: data.mode, period: data.period }), url);
 	});
 	const local = (path: string) => carryFrameState(localizeHref(path, data.lang, data.city), pinned);
 	const lineHref = $derived(
@@ -110,7 +107,7 @@
 	const recordHref = $derived.by(() => {
 		const url = new SvelteURL(pinned);
 		url.searchParams.delete('trip');
-		return frameHref(url, { mode: 'record', period: null });
+		return frameHref(url, { mode: 'record', period: data.period });
 	});
 	const answers = $derived(
 		data.sections.map(({ section, answer }) => ({

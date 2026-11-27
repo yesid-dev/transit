@@ -22,26 +22,24 @@ const measured: RecordCell = {
 };
 
 it('reads a pooled wait with its matched basis and a disruption share with its observed sample', () => {
-	expect(waitingReading(measured, 'excess_wait_time', 'en')).toBe(
-		'0.7 min · 20 gaps between vehicles seen, compared with 14 planned gaps in those periods (28.0% of all gaps planned at that frequency), when vehicles are due every 10 minutes or less',
-	);
+	expect(waitingReading(measured, 'excess_wait_time', 'en')).toBe('0.7 min');
 	expect(waitingReading(measured, 'long_gaps', 'en')).toBe('0.0% (0 of 20)');
 	expect(waitingReading(measured, 'bunching', 'fr')).toMatch(/20,0\s% \(4 sur 20\)/);
 	expect(coverageText(measured.evidence, 'en')).toBe(
-		'40.0% of 50 planned gaps between vehicles seen, when vehicles are due every 10 minutes or less · Low coverage',
+		'Measured on 14 of the 50 gaps planned when vehicles are due every 10 minutes or less (28.0%) · Low coverage',
 	);
 });
 
 it.each([
 	[
 		'en',
-		'0.6 min · 36,474 gaps between vehicles seen, compared with 29,394 planned gaps in those periods (50.6% of all gaps planned at that frequency), when vehicles are due every 10 minutes or less',
+		'Measured on 29,394 of the 58,113 gaps planned when vehicles are due every 10 minutes or less (50.6%) · Low coverage',
 	],
 	[
 		'fr',
-		'0,6 min · 36 474 intervalles entre deux véhicules observés, comparés à 29 394 intervalles prévus durant ces périodes (50,6 % des intervalles prévus à cette fréquence), quand les véhicules passent aux 10 minutes ou moins',
+		'Mesuré sur 29 394 des 58 113 intervalles prévus quand les véhicules passent aux 10 minutes ou moins (50,6 %) · Faible couverture',
 	],
-] as const)('compares observed and planned gaps on their own bases in %s', (locale, sentence) => {
+] as const)('uses matched scheduled gaps for coverage in %s', (locale, sentence) => {
 	const line = {
 		...measured,
 		value: { excess_wait_time: 37.51566405237588 },
@@ -54,9 +52,7 @@ it.each([
 			},
 		},
 	};
-	expect(waitingReading(line, 'excess_wait_time', locale).replace(/[\u00a0\u202f]/gu, ' ')).toBe(
-		sentence,
-	);
+	expect(coverageText(line.evidence, locale).replace(/[\u00a0\u202f]/gu, ' ')).toBe(sentence);
 });
 
 it('keeps an unavailable wait and a coverage-gated reading distinct from an observed zero', () => {

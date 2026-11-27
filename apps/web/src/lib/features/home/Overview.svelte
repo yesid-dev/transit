@@ -4,7 +4,7 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { page } from '$app/state';
-	import { frameHref, recordStart } from '#lib/site/frameState.ts';
+	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
 		agencyName,
 		citationSource,
@@ -128,11 +128,9 @@
 	});
 
 	function link(path: string, live = false) {
-		const target = new URL(localizeHref(path, locale, provider), href);
-		target.searchParams.set('frameMode', live ? 'live' : 'record');
-		target.searchParams.set('recordFrom', record.period.from);
-		target.searchParams.set('recordTo', record.period.to);
-		return target.pathname + target.search;
+		const source = new URL(pinned);
+		if (live) source.searchParams.set('frameMode', 'live');
+		return carryFrameState(localizeHref(path, locale, provider), source);
 	}
 
 	function file(section: string, label: string) {

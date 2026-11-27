@@ -80,15 +80,20 @@ for (const locale of ['en', 'fr'] as const) {
 		request,
 	}) => {
 		const dates = fr ? query : query.replace('2026-11-08', '2026-11-09');
-		const response = await page.goto(`${prefix}/lines?${dates}`, { waitUntil: 'commit' });
+		const response = await page.goto(`${prefix}/lines?${dates}&period=7-days`, {
+			waitUntil: 'commit',
+		});
 		expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 
 		const measured = page.getByRole('table', {
 			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
 		});
 		const timing = measured.getByRole('row', { name: /Sherbrooke/ });
-		await expect(timing).toContainText(fr ? /80,0\s%/ : '80.0%');
+		await expect(timing).not.toContainText(fr ? /80,0\s%/ : '80.0%');
 		await expect(timing).toContainText(fr ? 'Faible couverture' : 'Low coverage');
+		const late = timing.locator('[data-column="late"]');
+		await expect(late).toContainText(fr ? 'Faible couverture' : 'Low coverage');
+		await expect(late).not.toContainText('%');
 		if (!fr) {
 			await expect(page.locator('[data-slot="record-patience"]').getByRole('status')).toBeVisible();
 			const dataPort = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
@@ -103,7 +108,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const railLine = scheduleOnly.getByRole('row').filter({
 			has: page.getByRole('link', { name: /Confederation/ }),
 		});
-		await expect(railLine).toContainText(fr ? 'Horaire seulement.' : 'Schedule only.');
+		await expect(railLine).not.toContainText(fr ? 'Horaire seulement.' : 'Schedule only.');
 		await expect(railLine.locator('[data-slot="route-plate"]')).toHaveAttribute(
 			'data-schedule-only',
 			'true',
@@ -137,7 +142,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.getByRole('radio', { name: fr ? 'Part en retard' : 'Late share' }).click();
 		await expect(page).toHaveURL(/sort=late&direction=desc$/);
 		await timing.getByRole('link').click();
-		await expect(page).toHaveURL(/\/lines\/24\?/);
+		await expect(page).toHaveURL(/\/lines\/24\?.*period=7-days/);
 		await page.goBack();
 		await expect(page).toHaveURL(/\/lines\?.*sort=late&direction=desc$/);
 		await expect(timing).toBeVisible();
@@ -303,7 +308,9 @@ for (const locale of ['en', 'fr'] as const) {
 			await expect(cell).toBeVisible();
 			await expect(cell).not.toContainText(/\b0%?\b/);
 		}
-		await expect(excluded).toContainText(fr ? 'sur un minimum de 500' : 'the minimum is 500');
+		await expect(excluded).toContainText(
+			fr ? 'Il en faut 500 pour afficher une part.' : 'A line needs 500 to show a share.',
+		);
 	});
 
 	test(`${locale} lines distinguish a failed connection from a busy engine`, async ({ page }) => {

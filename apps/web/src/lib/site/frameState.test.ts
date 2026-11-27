@@ -138,6 +138,26 @@ describe('app frame URL state', () => {
 			mode: 'record',
 		});
 	});
+
+	it('marks the selected preset from exact dates when an in-app link carries only the range', () => {
+		const current = clock(today);
+		const period = presetPeriod('28-days', current)!;
+		const source = url('/lines?recordFrom=2026-10-25&recordTo=2026-11-21');
+		const link = carryFrameState('/lines/24', source);
+		expect(parseFrameState(url(link).searchParams, current).period).toEqual(period);
+		expect(parseFrameState(url('/lines?period=28-days').searchParams, current).period).toEqual(
+			period,
+		);
+	});
+
+	it('carries the selected preset with the same pinned dates and drops it for a different window', () => {
+		const source = url('/lines?period=28-days&recordFrom=2026-10-25&recordTo=2026-11-21');
+		const period = { from: '2026-10-25', to: '2026-11-21', preset: null };
+		const same = frameHref(source, { mode: 'record', period });
+		expect(url(same).searchParams.get('period')).toBe('28-days');
+		const next = frameHref(source, { mode: 'record', period: { ...period, from: '2026-11-19' } });
+		expect(url(next).searchParams.has('period')).toBe(false);
+	});
 });
 
 it('ties record presets to the complete day but keeps Yesterday and pinned dates by the city clock', () => {

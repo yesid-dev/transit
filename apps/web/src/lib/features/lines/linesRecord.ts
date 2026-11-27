@@ -56,7 +56,10 @@ export function observedLineReadings(readings: readonly Coverage[]) {
 	return shares.length === 1 ? { share: shares[0]!, scheduled: undefined } : null;
 }
 
-type Reading = { id: string; number: string } & Record<Exclude<LineSortKey, 'line'>, number | null>;
+type Reading = { id: string; number: string; hold?: LineHold | null } & Record<
+	Exclude<LineSortKey, 'line'>,
+	number | null
+>;
 
 export function orderedLines<T extends Reading>(
 	rows: readonly T[],
@@ -68,7 +71,9 @@ export function orderedLines<T extends Reading>(
 	const key = sort.key;
 	return rows.toSorted((a, b) => {
 		const lineOrder = compare(a.number, b.number) || compare(a.id, b.id);
+		if (Boolean(a.hold) !== Boolean(b.hold)) return a.hold ? 1 : -1;
 		if (key === 'line') return lineOrder * sign;
+		if (a.hold) return lineOrder;
 		const av = a[key];
 		const bv = b[key];
 		if (av == null) return bv == null ? lineOrder : 1;
@@ -107,14 +112,14 @@ export function lineHold(
 	return timing.evidence.low_coverage ? { reason: 'low_coverage' } : null;
 }
 
-/** The hold in one short phrase: "Low coverage" or "Too few to judge: 2 observed trips, the minimum is 20". */
+/** Explain the ranking floor separately from the displayed reading state. */
 export function lineHoldText(hold: LineHold, locale: Locale) {
 	if (hold.reason === 'low_coverage') return lowCoverageLabel[locale];
 	const count = countedUnit(hold.count, hold.unit, locale);
 	const minimum = intl.number(locale).format(hold.minimum);
 	return locale === 'fr'
-		? `Trop peu de données pour conclure\u00a0: ${count}, sur un minimum de ${minimum}`
-		: `Too few to judge: ${count}, the minimum is ${minimum}`;
+		? `${count}. Il en faut ${minimum} pour classer une ligne.`
+		: `${count}. A line needs ${minimum} to be ranked.`;
 }
 
 export function lineSpread(rows: readonly { onTime: number | null }[], locale: Locale) {

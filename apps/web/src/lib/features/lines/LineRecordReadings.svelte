@@ -222,6 +222,7 @@
 	<LineReadingTable
 		{title}
 		{locale}
+		fitReadings
 		headers={[t('Departure', 'Départ'), t('Late share', 'Part en retard')]}
 		rows={answer.rows.map((row) => ({
 			label: `${scheduledClock(row.departure, locale)} · ${dir(row.direction)}`,
@@ -272,6 +273,7 @@
 			{title}
 			{locale}
 			pageSize={7}
+			fitReadings
 			headers={[t('Local time', 'Heure locale'), tripsPerHour]}
 			rows={answer.cells.map((cell) => {
 				const hour = Number(cell.key.hour);

@@ -27,6 +27,8 @@ interface FrameState {
 
 const KEYS = ['frameMode', 'period', 'recordFrom', 'recordTo'] as const;
 const isoDay = (date: Date) => date.toISOString().slice(0, 10);
+const chosenPreset = (params: URLSearchParams) =>
+	PRESETS.find((option) => option === params.get('period'));
 
 type FrameProvider =
 	| Pick<PublicCity, 'timezone' | 'record_through' | 'record_from'>
@@ -125,10 +127,16 @@ export function presetPeriod(preset: Preset, clock: FrameClock): FramePeriod | n
 
 export function parseFrameState(params: URLSearchParams, clock: FrameClock): FrameState {
 	const mode = params.get('frameMode') === 'live' ? 'live' : 'record';
-	const preset = PRESETS.find((option) => option === params.get('period')) ?? null;
+	const requested = chosenPreset(params);
 	const from = params.get('recordFrom') ?? '';
 	const to = params.get('recordTo') ?? '';
-	const period = { preset, from, to };
+	const preset =
+		requested ??
+		PRESETS.find((option) => {
+			const choice = presetPeriod(option, clock);
+			return choice?.from === from && choice.to === to;
+		});
+	const period = { preset: preset ?? null, from, to };
 	if (
 		!periodError(period, frameDateLimit(clock), clock.recordStart) &&
 		(!unpublishedRecordDates(params, clock) || unpublishedYesterday(period, clock))
@@ -137,6 +145,7 @@ export function parseFrameState(params: URLSearchParams, clock: FrameClock): Fra
 	return {
 		mode,
 		period:
+			(!from && !to && requested ? presetPeriod(requested, clock) : null) ??
 			presetPeriod('7-days', clock) ??
 			presetPeriod(clock.recordThrough ? '12-months' : 'yesterday', clock),
 	};
@@ -209,10 +218,14 @@ export function carryFrameState(href: string, source: URL): string {
 
 export function frameHref(url: URL, { mode, period }: FrameState): string {
 	const target = new URL(url);
+	const sameDates =
+		period?.from === target.searchParams.get('recordFrom') &&
+		period?.to === target.searchParams.get('recordTo');
+	const preset = period?.preset ?? (sameDates ? chosenPreset(target.searchParams) : undefined);
 	target.searchParams.set('frameMode', mode);
 	for (const key of KEYS.slice(1)) target.searchParams.delete(key);
 	if (period) {
-		if (period.preset) target.searchParams.set('period', period.preset);
+		if (preset) target.searchParams.set('period', preset);
 		target.searchParams.set('recordFrom', period.from);
 		target.searchParams.set('recordTo', period.to);
 	}
