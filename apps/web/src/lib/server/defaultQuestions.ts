@@ -6,6 +6,7 @@ import {
 } from '#lib/features/rankings/rankingSelection.ts';
 import { type FrameClock, parseFrameState } from '#lib/site/frameState.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
+import type { DateWindow } from '#lib/v1/history/window.ts';
 import {
 	dataHealthQuestion,
 	finderQuestion,
@@ -31,6 +32,7 @@ export type WarmCity = {
 	id: string;
 	timezone: string;
 	inputs: Record<string, boolean>;
+	record_from?: string | null;
 	record_through?: string | null;
 };
 
@@ -41,9 +43,10 @@ export function defaultPeriod(clock: FrameClock) {
 export function defaultCityQuestions(
 	city: WarmCity,
 	period: NonNullable<ReturnType<typeof defaultPeriod>>,
+	dailyPeriod: DateWindow = { from: period.to, to: period.to },
 ) {
 	const scope = { ...period, city: city.id };
-	const dailyScope = { ...scope, from: scope.to };
+	const dailyScope = { ...dailyPeriod, city: city.id };
 	const tracked = providerHasAlerts(city);
 	const overview = overviewSelection(scope);
 	const [trend, trendPeriod] = overview.trend;

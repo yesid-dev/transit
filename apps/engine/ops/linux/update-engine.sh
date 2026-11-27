@@ -95,11 +95,18 @@ trap 'exit 143' TERM
 trap 'exit 129' HUP
 
 release_paths=(.python-version apps/engine apps/db/config/providers)
-if git cat-file -e "$commit:apps/web/scripts/warm-default-views.ts" 2>/dev/null; then
-  release_paths+=(.bun-version apps/web/package.json apps/web/scripts/warm-default-views.ts apps/web/src/lib)
-fi
 git archive "$commit" "${release_paths[@]}" |
   tar --extract --directory "$release" --no-same-owner --no-same-permissions
+warm_runner=apps/web/scripts/warm-default-views.ts
+if [[ -f $release/apps/engine/ops/linux/build-warm-runner.sh ]]; then
+  # Keep the entry point used by the installed systemd unit across releases.
+  bash "$release/apps/engine/ops/linux/build-warm-runner.sh" \
+    "$commit" "$root/bin/bun" "$release/$warm_runner"
+elif git cat-file -e "$commit:$warm_runner" 2>/dev/null; then
+  # Historical releases retain their original layout for rollback.
+  git archive "$commit" .bun-version apps/web/package.json "$warm_runner" apps/web/src/lib |
+    tar --extract --directory "$release" --no-same-owner --no-same-permissions
+fi
 UV_PYTHON_INSTALL_DIR="$root/python" UV_LINK_MODE=copy "$root/bin/uv" sync \
   --directory "$release/apps/engine" --managed-python --locked --no-dev --no-editable
 printf '%s\n' "$commit" >"$release/.revision"
@@ -115,7 +122,8 @@ systemctl restart "$service"
 revision=$(healthy)
 switch_attempted=false
 printf 'Installed Transit engine commit %s\n' "$commit"
-if [[ -n $revision && $revision != "$previous_revision" ]]; then
+if [[ -f $release/$warm_runner && ( -f $release/apps/engine/ops/linux/build-warm-runner.sh || \
+  ( -n $revision && $revision != "$previous_revision" ) ) ]]; then
   # Let the public proxy's 30-second city catalog expire before warming answers.
   sleep 30
   systemctl restart --no-block transit-engine-warm.service

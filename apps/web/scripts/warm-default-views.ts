@@ -7,12 +7,12 @@ import {
 	sharedDefaultQuestion,
 	type WarmCity,
 } from '../src/lib/server/defaultQuestions.ts';
-import { frameClock } from '../src/lib/site/frameState.ts';
+import { frameClock, presetPeriod } from '../src/lib/site/frameState.ts';
 import { citiesQuestion, questionUrl } from '../src/lib/server/engineQuestion.ts';
 
-// Keep one request in flight and leave room below the public limit of 30 new
-// questions per minute, even when every request is a cache miss.
-const START_INTERVAL_MS = 2_200;
+// Leave the engine slot available for rider traffic between background requests,
+// including after slow responses. The public limit is 30 misses per minute.
+const REQUEST_GAP_MS = 2_200;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 function requestOptions() {
@@ -28,22 +28,21 @@ export async function warmQuestions(
 	}: { fetcher?: typeof fetch; now?: () => number; wait?: (ms: number) => Promise<void> } = {},
 ) {
 	const start = now();
-	let nextStart = start;
 	const requests = [];
 	for (const url of urls) {
-		const pause = nextStart - now();
-		if (pause > 0) await wait(pause);
+		if (requests.length) await wait(REQUEST_GAP_MS);
 		const sent = now();
-		nextStart = sent + START_INTERVAL_MS;
 		let outcome: 'answered' | 'busy' | 'deferred' | 'failed' = 'failed';
-		let answer: string | null = null;
-		let cache: string | null = null;
+		let hit = false;
 		let edge: string | null = null;
+		let status: number | null = null;
 		try {
 			const response = await fetcher(url, requestOptions());
-			answer = response.headers.get('x-transit-answer');
-			cache = response.headers.get('cache-status');
-			edge = response.headers.get('cf-ray')?.split('-').at(-1) ?? null;
+			status = response.status;
+			hit =
+				response.headers.get('cache-status')?.includes('Transit; hit') === true ||
+				response.headers.get('x-transit-cache')?.toLowerCase() === 'hit';
+			edge = response.headers.get('cf-ray')?.match(/-([A-Z]{3})$/)?.[1] ?? null;
 			if (response.status === 409) {
 				const { reason } = await response.json();
 				if (
@@ -55,7 +54,7 @@ export async function warmQuestions(
 			} else {
 				await response.arrayBuffer();
 				if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
-					if (answer !== 'last-good') outcome = 'answered';
+					if (response.headers.get('x-transit-answer') !== 'last-good') outcome = 'answered';
 				} else if (response.status === 503 && response.headers.has('retry-after')) {
 					outcome = 'busy';
 				}
@@ -63,7 +62,7 @@ export async function warmQuestions(
 		} catch {
 			// A transport failure is counted and the remaining questions still run.
 		}
-		requests.push({ outcome, answer, cache, edge, elapsedMs: Math.round(now() - sent) });
+		requests.push({ outcome, status, hit, edge, elapsedMs: Math.round(now() - sent) });
 	}
 	return { requests, elapsedMs: Math.round(now() - start) };
 }
@@ -109,14 +108,16 @@ async function main(args: string[]) {
 	if (!dryRun && (!root || !version || !/^[1-9][0-9]*$/.test(version))) {
 		throw new Error('Set ENGINE_CLEAN_ROOT and ENGINE_CLEANING_VERSION for the local clean mirror');
 	}
-	const counts: Record<string, number> = {};
-	const periods: { from: string; to: string }[] = [];
 	const missing: string[] = [];
-	const urls: string[] = [];
+	const defaults = [];
+	const followUps = [];
 	for (const city of cities) {
-		const period = defaultPeriod(frameClock(city, now));
-		if (!period) throw new Error('Default Record period unavailable');
-		periods.push(period);
+		const clock = frameClock(city, now);
+		const period = defaultPeriod(clock);
+		if (!period) {
+			missing.push(city.id);
+			continue;
+		}
 		if (root && version && !dryRun) {
 			try {
 				await access(join(root, city.id, period.to, `v${version}`, 'manifest.json'));
@@ -125,46 +126,75 @@ async function main(args: string[]) {
 				continue;
 			}
 		}
-		const cityUrls = defaultCityQuestions(city, period);
-		counts[city.id] = cityUrls.length;
-		urls.push(...cityUrls);
+		const defaultUrls = defaultCityQuestions(city, period);
+		defaults.push({ city: city.id, pass: 'default', urls: defaultUrls });
+		const uniqueUrls = new Set(defaultUrls);
+		for (const preset of ['28-days', 'this-month'] as const) {
+			const extraPeriod = presetPeriod(preset, clock);
+			if (extraPeriod?.to === period.to) {
+				for (const url of defaultCityQuestions(city, extraPeriod, extraPeriod)) uniqueUrls.add(url);
+			}
+		}
+		const extraUrls = [...uniqueUrls].slice(defaultUrls.length);
+		if (extraUrls.length) followUps.push({ city: city.id, pass: 'follow-up', urls: extraUrls });
 	}
-	urls.push(sharedDefaultQuestion);
+	const batches = [
+		...defaults,
+		{ city: null, pass: 'default', urls: [sharedDefaultQuestion] },
+		...followUps,
+	];
 	if (dryRun) {
-		console.log(urls.join('\n'));
-		console.log(JSON.stringify({ perCity: counts, shared: 1, total: urls.length }));
+		console.log(batches.flatMap(({ urls }) => urls).join('\n'));
 		return;
 	}
 
-	const probeUrl = verifyCache && urls[0] !== sharedDefaultQuestion ? urls[0] : null;
-	const { requests } = await warmQuestions(probeUrl ? [...urls, probeUrl] : urls);
-	const repeat = probeUrl ? requests.pop() : undefined;
-	const answered = requests.filter(({ outcome }) => outcome === 'answered').length;
-	const busy = requests.filter(({ outcome }) => outcome === 'busy').length;
-	const deferred = requests.filter(({ outcome }) => outcome === 'deferred').length;
-	const failed = requests.length - answered - busy - deferred;
+	let sent = 0;
+	let answered = 0;
+	let busy = 0;
+	let deferred = 0;
+	let failed = 0;
+	for (const { city, pass, urls } of batches) {
+		if (sent) await delay(REQUEST_GAP_MS);
+		const { requests, elapsedMs } = await warmQuestions(urls);
+		const outcomes = { answered: 0, busy: 0, deferred: 0, failed: 0 };
+		for (const [index, request] of requests.entries()) {
+			outcomes[request.outcome]++;
+			if (request.outcome !== 'answered') {
+				console.log(JSON.stringify({ city, pass, url: urls[index], ...request }));
+			}
+		}
+		console.log(JSON.stringify({ city, pass, sent: requests.length, ...outcomes, elapsedMs }));
+		sent += requests.length;
+		answered += outcomes.answered;
+		busy += outcomes.busy;
+		deferred += outcomes.deferred;
+		failed += outcomes.failed;
+	}
+	let probesPassed = true;
+	if (verifyCache) {
+		const probeUrls = [
+			...defaults.flatMap(({ urls }) => urls.slice(0, 1)),
+			...defaults.flatMap(({ urls }) => urls.slice(1, 3)),
+		].slice(0, 3);
+		await delay(REQUEST_GAP_MS);
+		const { requests } = await warmQuestions(probeUrls);
+		const probes = requests.map((request, index) => ({ url: probeUrls[index], ...request }));
+		console.log(JSON.stringify({ probes }));
+		probesPassed =
+			probes.length === 3 && probes.every(({ outcome, hit }) => outcome === 'answered' && hit);
+	}
 	console.log(
 		JSON.stringify({
-			period: {
-				from: periods.map(({ from }) => from).sort()[0],
-				to: periods
-					.map(({ to }) => to)
-					.sort()
-					.at(-1),
-			},
-			perCity: counts,
-			shared: 1,
 			missing,
-			sent: requests.length,
+			sent,
 			answered,
 			busy,
 			deferred,
 			failed,
 			elapsedMs: Math.round(performance.now() - started),
-			...(repeat && { probe: { first: requests[0], repeat } }),
 		}),
 	);
-	if (missing.length || busy || failed || (verifyCache && !repeat?.cache?.includes('; hit'))) {
+	if (missing.length || busy || failed || !probesPassed) {
 		process.exitCode = 1;
 	}
 }
