@@ -706,6 +706,52 @@ async function verifyLineReadings(page, cell, onTime, label) {
 	return readings;
 }
 
+async function verifyStopDelivery(page, answer, locale, label) {
+	const { counts, excluded } = answer.evidence;
+	const { scheduled, eligible, ran, cancelled, missing } = counts;
+	const unknown = scheduled - eligible - (excluded.route_without_live_data ?? 0);
+	const share = answer.value.trips_run;
+	invariant(
+		answer.state === 'measured' &&
+			share != null &&
+			eligible > 0 &&
+			unknown > 0 &&
+			excluded.added != null,
+		`${label} stop delivery fixture must include a measured share, unknown outcomes and added trips`,
+	);
+	const card = page.getByRole('article', {
+		name: locale === 'fr' ? 'Trajets effectués à cet arrêt' : 'Trips that ran at this stop',
+		exact: true,
+	});
+	const facts = card.locator('[data-slot="fact-list"]');
+	await facts.waitFor();
+	const displayed = (await facts.locator('dd').allTextContents()).map(parseNumber);
+	const percent = (fraction) => Math.round(fraction * 1000) / 10;
+	const expected = [percent(share), cancelled, missing, excluded.added];
+	invariant(
+		JSON.stringify(displayed) === JSON.stringify(expected),
+		`${label} stop delivery share, cancelled, missing or added trips drifted: ${JSON.stringify(displayed)} (expected ${JSON.stringify(expected)})`,
+	);
+	const range = await card
+		.getByText(
+			locale === 'fr'
+				? /(?:n’a|n’ont) pas pu être confirmés?/u
+				: /could not be confirmed, run or not/u,
+		)
+		.innerText();
+	const displayedRange = [
+		parseNumber(range),
+		...(range.match(/\d+(?:[.,]\d+)?\s*%/gu) ?? []).map(parseNumber),
+	];
+	const total = eligible + unknown;
+	const expectedRange = [unknown, percent(ran / total), percent((ran + unknown) / total)];
+	invariant(
+		JSON.stringify(displayedRange) === JSON.stringify(expectedRange),
+		`${label} stop delivery uncertainty drifted: ${JSON.stringify(displayedRange)} (expected ${JSON.stringify(expectedRange)})`,
+	);
+	return { readings: [...displayed, ...displayedRange], text: await card.innerText() };
+}
+
 async function verifyEngineRecord(page, cell, replay, errors, html) {
 	const label = `${cell.fixture}/${cell.locale}/${cell.surface}`;
 	const isLine = cell.surface === 'line';
@@ -775,16 +821,6 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 	await page.keyboard.press('Escape');
 	await sheet.waitFor({ state: 'hidden' });
 	await verifyAccessibility(page, cell);
-	const data = replay.state.ledger;
-	invariant(errors.length === 0, `${label} browser errors: ${errors.join(' | ')}`);
-	invariant(replay.state.outbound.length === 0, `${label} outbound: ${replay.state.outbound}`);
-	invariant(
-		data.every(
-			(entry) => entry.lane === 'ssr' && entry.status === 200 && entry.path.startsWith('/v2/'),
-		),
-		`${label} touched a snapshot or made an unknown request: ${JSON.stringify(data)}`,
-	);
-	const queries = data.filter(({ path }) => /\/(measure|ranking)\?/u.test(path));
 	const direction = new URL(cell.path, 'http://b9.local').searchParams.get('direction');
 	const expectedQueries = isLine
 		? [
@@ -807,6 +843,7 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 			]
 		: [
 				{ measure: 'punctuality' },
+				{ measure: 'service_delivered' },
 				{ measure: 'on_time', group: 'line' },
 				{ measure: 'waiting_and_gaps', group: 'line' },
 				{ measure: 'on_time', group: 'hour' },
@@ -835,6 +872,22 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 		params.sort();
 		return `/v2/stm/${query.kind ? 'ranking' : 'measure'}?${params}`;
 	});
+	let delivery;
+	if (!isLine) {
+		const path = expectedPaths.find((path) => path.includes('measure=service_delivered'));
+		const { body } = recordFixture(new URL(path, 'http://b9.local'), cell.fixture);
+		delivery = await verifyStopDelivery(page, body, cell.locale, label);
+	}
+	const data = replay.state.ledger;
+	invariant(errors.length === 0, `${label} browser errors: ${errors.join(' | ')}`);
+	invariant(replay.state.outbound.length === 0, `${label} outbound: ${replay.state.outbound}`);
+	invariant(
+		data.every(
+			(entry) => entry.lane === 'ssr' && entry.status === 200 && entry.path.startsWith('/v2/'),
+		),
+		`${label} touched a snapshot or made an unknown request: ${JSON.stringify(data)}`,
+	);
+	const queries = data.filter(({ path }) => /\/(measure|ranking)\?/u.test(path));
 	const actualPaths = queries.map(({ path }) => {
 		const url = new URL(path, 'http://b9.local');
 		url.searchParams.sort();
@@ -844,7 +897,9 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 		JSON.stringify(actualPaths.sort()) === JSON.stringify(expectedPaths.sort()),
 		`${label} made incomplete or incorrectly scoped engine reads\nexpected: ${JSON.stringify(expectedPaths)}\nactual: ${JSON.stringify(actualPaths)}`,
 	);
-	const hydrated = normalizeObservation(await section.innerText());
+	const hydrated = normalizeObservation(
+		[await section.innerText(), delivery?.text].filter(Boolean).join(' '),
+	);
 	await page.setViewportSize({ width: 320, height: 900 });
 	invariant(
 		await page
@@ -854,9 +909,12 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 	);
 	return {
 		cell: label,
-		actual: missing
-			? ['not_measured']
-			: [...(await bands.locator('dd').allTextContents()), ...lineReadings],
+		actual: [
+			...(missing
+				? ['not_measured']
+				: [...(await bands.locator('dd').allTextContents()), ...lineReadings]),
+			...(delivery?.readings ?? []),
+		],
 		ssr: ssrText(html),
 		hydrated,
 		ledger: data.map(({ lane, path, status }) => `${lane}|${path}|${status}`).sort(),
