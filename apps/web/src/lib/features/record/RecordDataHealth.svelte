@@ -602,12 +602,6 @@
 									<p class="mb-3">{daysSummary(result.answer)}</p>
 									<!-- A phone shows the last 7 days, so the most recent day is always in view. -->
 									<PhoneSwitch wide={wideGrid} narrow={narrowGrid} />
-									<p class="mt-3">
-										{t(
-											'A day with a gap is left out of the figures that need it, and each figure says how many days it counted.',
-											'Un jour avec une lacune est exclu des résultats qui en dépendent, et chaque résultat indique combien de jours il compte.',
-										)}
-									</p>
 								{:else}<StateMark state="not_measured" {locale} />{/if}
 								{#if result.lastGood}<p class="mt-2">{lastGoodNote[locale]}</p>{/if}
 							{:else}{@render unavailable(result)}{/if}
