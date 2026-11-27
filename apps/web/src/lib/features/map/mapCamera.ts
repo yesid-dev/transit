@@ -12,6 +12,7 @@ import { duration } from '@yesid/motion/tokens';
 import type { RouteFile } from '#lib/v1/index.ts';
 import { routeBoundsFromFile } from './mapGeo';
 import { deferMapFocusInset } from './mapFocusInset';
+import { RECORD_EXTRUSION_ID } from './recordExtrusions';
 
 const FOCUS_EVENT_DATA = { cameraIntent: 'focus' } as const;
 
@@ -22,11 +23,26 @@ export function resetNorth(map: CameraMap | null): void {
 	);
 }
 
+export function setRecordPerspective(
+	map: Pick<CameraMap, 'jumpTo' | 'easeTo'>,
+	raised: boolean,
+	reducedMotion: boolean,
+): void {
+	const view = { pitch: raised ? 50 : 0 };
+	const intent = { cameraIntent: 'record-perspective' };
+	if (reducedMotion || !shouldAnimate('motion-gated')) map.jumpTo(view, intent);
+	else map.easeTo({ ...view, duration: duration.slower }, intent);
+}
+
 /** Read the renderer's submitted route and stop state without exposing the map instance. */
 export function attachMapRenderReceipt(root: HTMLElement, instance: MapLibreMap): () => void {
 	const key = Symbol.for('transit.map.renderReceipt');
 	const inspect = () => ({
 		center: instance.getCenter().toArray(),
+		pitch: instance.getPitch(),
+		raisedCorridors: instance.getSource(RECORD_EXTRUSION_ID)
+			? instance.querySourceFeatures(RECORD_EXTRUSION_ID).map((feature) => feature.properties)
+			: [],
 		routeLines: instance.getSource('route-lines')
 			? instance.querySourceFeatures('route-lines').map((feature) => feature.properties)
 			: [],

@@ -11,6 +11,7 @@ import {
 	recordUnmeasuredLine,
 	type RecordFeatures,
 } from './recordMap';
+import { RECORD_EXTRUSION_ID, type RecordExtrusions } from './recordExtrusions';
 
 const sourceId = 'record-map';
 const pointsId = 'record-map-stops';
@@ -23,6 +24,7 @@ const segmentIds = [
 	'record-map-measured',
 ];
 const allIds = [
+	RECORD_EXTRUSION_ID,
 	pointDetailId,
 	pointsId,
 	`${pointDetailId}-other`,
@@ -69,6 +71,7 @@ export function attachRecordMap(
 	onpick: (id: string) => void,
 	network: boolean,
 	outline: string,
+	extrusions?: RecordExtrusions,
 ) {
 	function draw() {
 		if (map.getSource(sourceId)) return;
@@ -138,6 +141,19 @@ export function attachRecordMap(
 				paint: { 'circle-color': ['get', 'colour'], 'circle-radius': 1.25 },
 			});
 		}
+		if (extrusions?.features.length) {
+			map.addSource(RECORD_EXTRUSION_ID, { type: 'geojson', data: extrusions });
+			map.addLayer({
+				id: RECORD_EXTRUSION_ID,
+				type: 'fill-extrusion',
+				source: RECORD_EXTRUSION_ID,
+				paint: {
+					'fill-extrusion-color': ['get', 'colour'],
+					'fill-extrusion-height': ['get', 'height'],
+					'fill-extrusion-vertical-gradient': false,
+				},
+			});
+		}
 	}
 	function pick(event: MapMouseEvent) {
 		const layers = allIds.filter((id) => map.getLayer(id));
@@ -166,6 +182,7 @@ export function attachRecordMap(
 		map.off('click', pick);
 		for (const id of allIds) if (map.getLayer(id)) map.removeLayer(id);
 		if (map.getLayer(outlineId)) map.removeLayer(outlineId);
+		if (map.getSource(RECORD_EXTRUSION_ID)) map.removeSource(RECORD_EXTRUSION_ID);
 		if (map.getSource(sourceId)) map.removeSource(sourceId);
 	};
 }

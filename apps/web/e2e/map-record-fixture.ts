@@ -8,11 +8,16 @@ const stops = [
 	{ id: 'MR5', name: 'Jean-Talon', lat: 45.547, lon: -73.621, routes: ['24'] },
 ];
 
-export async function recordMapFixture(page: Page, networkAvailable = true, provider = 'stm') {
+export async function recordMapFixture(
+	page: Page,
+	networkAvailable = true,
+	provider = 'stm',
+	locations = stops,
+) {
 	const received: URLSearchParams[] = [];
 	await page.clock.setFixedTime(new Date('2026-11-23T16:00:00Z'));
 	await page.route(`**/api/stops/slim?provider=${provider}`, (route) =>
-		route.fulfill({ json: { generated_utc: '2026-11-21T00:00:00Z', stops } }),
+		route.fulfill({ json: { generated_utc: '2026-11-21T00:00:00Z', stops: locations } }),
 	);
 	await page.route(`**/api/schedule-edition?city=${provider}`, (route) =>
 		route.fulfill({
@@ -24,12 +29,12 @@ export async function recordMapFixture(page: Page, networkAvailable = true, prov
 						24: [
 							{
 								dir: 0,
-								headsign: 'Jean-Talon',
-								stops: stops.map(({ id }, seq) => ({ id, seq })),
+								headsign: locations.at(-1)?.name,
+								stops: locations.map(({ id }, seq) => ({ id, seq })),
 							},
 						],
 					},
-					stops,
+					stops: locations,
 				},
 			},
 		}),

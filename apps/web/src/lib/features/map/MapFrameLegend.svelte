@@ -21,6 +21,7 @@
 		collapsible = false,
 		railName,
 		scheduleOnlyLines = true,
+		threeD = false,
 	}: {
 		locale: Locale;
 		layer: RecordMapLayer;
@@ -30,6 +31,7 @@
 		railName?: string;
 		/** False hides the rail key for a city that declares no line without live data. */
 		scheduleOnlyLines?: boolean;
+		threeD?: boolean;
 	} = $props();
 
 	let open = $state(true);
@@ -240,6 +242,14 @@
 		persistKey={collapsible ? 'transit:map-legend-open' : undefined}
 		data-map-legend={collapsible ? 'desktop' : 'phone'}
 	/>
+	{#if threeD && layer === 'corridors' && open}
+		<p class="px-2 pb-2 text-sm text-muted-foreground" data-slot="record-3d-legend">
+			{tr(
+				'Height follows the square root of time lost.',
+				'La hauteur suit la racine carrée du temps perdu.',
+			)}
+		</p>
+	{/if}
 </ChartDetails>
 
 <style>
