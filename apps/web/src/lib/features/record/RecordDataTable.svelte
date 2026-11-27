@@ -62,7 +62,6 @@
 	 * Optional `pageSize` and `rowHeading` preserve established page sizes and row-heading content.
 	 * Use `pageSize={0}` when the caller fetches additional rows a page at a time.
 	 * `leadingColumn` puts an identifier before the name on wide screens.
-	 * `nameWidth` reserves room for a custom row heading on wide screens.
 	 * When sorting is enabled, the caller reads and writes the URL and supplies the resulting
 	 * order and direction. Headers request a direction change; optional choices select a column.
 	 * `phone` turns each row into the phone row pattern (see RecordPhoneRow) when the table is at
@@ -75,14 +74,13 @@
 		rows,
 		columns = [],
 		leadingColumn,
-		nameWidth,
 		value,
 		sort,
 		scrollMinWidth,
 		stackAt,
 		pageSize,
 		rowHeading,
-		rowAlign,
+		rowAlign = 'middle',
 		phone,
 	}: {
 		locale: Locale;
@@ -91,6 +89,7 @@
 		rows: readonly Row[];
 		columns?: readonly Column<Row>[];
 		leadingColumn?: Column<Row>;
+		/** Remove with the Rankings caller in S-fleet. The shared name column owns its width. */
 		nameWidth?: string;
 		value?: string;
 		sort?: RecordTableSort;
@@ -98,7 +97,7 @@
 		stackAt?: 'compact' | 'tablet';
 		pageSize?: number;
 		rowHeading?: Snippet<[Row]>;
-		rowAlign?: 'top' | 'middle';
+		rowAlign?: 'middle';
 		phone?: RecordPhoneRow<Row>;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
@@ -108,10 +107,10 @@
 			header: rowHeader,
 			rowHeader: true,
 			sortable: !!sort,
-			width: nameWidth ?? (sort ? 'max(12ch, calc(100cqi - 75ch))' : undefined),
 			cell: nameCell,
 		},
-		...columns,
+		// Ignore caller-supplied widths so readings set the numeric columns' size.
+		...columns.map((column) => (column.numeric ? { ...column, width: undefined } : column)),
 	]);
 	const valueColumn = $derived(columns.find(({ key }) => key === value));
 	const phoneColumns = $derived<Column<Row>[]>([
@@ -130,6 +129,26 @@
 	const number = $derived(intl.number(locale));
 	const sortBy = $derived(locale === 'fr' ? 'Trier par' : 'Sort by');
 	const sortedHeader = $derived(allColumns.find(({ key }) => key === sort?.key)?.header);
+	const headerClass = [
+		'[&_thead_th]:normal-case! [&_thead_th]:tracking-normal!',
+		'[&_thead_th]:align-bottom! [&_thead_tr]:items-end',
+		'[&_thead_button]:items-end!',
+	].join(' ');
+	// Measure the card as well as the viewport. Tables with more columns need
+	// more room to keep localized headers on one line.
+	const wideHeaderClass = $derived(
+		allColumns.length < 4
+			? [
+					'min-[1024px]:@min-[33rem]:[&_thead_th:not([data-column=name])]:whitespace-nowrap',
+					'min-[1024px]:@min-[33rem]:[&_thead_th]:align-middle!',
+					'min-[1024px]:@min-[33rem]:[&_thead_button]:items-center!',
+				].join(' ')
+			: [
+					'min-[1024px]:@min-[48rem]:[&_thead_th:not([data-column=name])]:whitespace-nowrap',
+					'min-[1024px]:@min-[48rem]:[&_thead_th]:align-middle!',
+					'min-[1024px]:@min-[48rem]:[&_thead_button]:items-center!',
+				].join(' '),
+	);
 
 	function sortHeaderLabel(header: string) {
 		if (header !== sortedHeader) return `${sortBy} ${header}`;
@@ -153,10 +172,10 @@
 		{@render rowHeading(row)}
 	{:else if page && !row.href}
 		<div class="inline-flex min-h-11 items-center">
-			<RecordTableName {row} {plates} columnCount={allColumns.length} />
+			<RecordTableName {row} {plates} columnCount={allColumns.length} plateOnName={!!phone} />
 		</div>
 	{:else}
-		<RecordTableName {row} {plates} columnCount={allColumns.length} />
+		<RecordTableName {row} {plates} columnCount={allColumns.length} plateOnName={!!phone} />
 	{/if}
 {/snippet}
 {#snippet phoneValue(row: Row)}
@@ -195,6 +214,8 @@
 			>{row.leadingCode.text}</span
 		>{/if}<span class="name-label">{row.label}</span>{/snippet}
 {#snippet wideTable()}
+	<!-- The small percentage keeps numeric columns at their intrinsic width.
+	     Reading notes can wrap within each column. -->
 	<DataTable
 		caption={title}
 		columns={allColumns}
@@ -206,6 +227,19 @@
 		pageSize={page}
 		{pageLabels}
 		{rowAlign}
+		class="@container"
+		tableClass={[
+			headerClass,
+			wideHeaderClass,
+			'[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
+			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
+			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
+			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',
+			'@min-[38rem]:[&_tbody_td]:[overflow-wrap:normal]',
+			'@min-[38rem]:[&_tbody_[data-slot=status-mark]]:[overflow-wrap:normal]!',
+			'[&_tbody_[data-slot=route-plate]]:whitespace-nowrap',
+			'[&_tbody_:is(th,td)]:items-center [&_tbody_[data-row-position]]:self-center!',
+		].join(' ')}
 		responsive={scrollMinWidth
 			? { mode: 'scroll', minWidth: scrollMinWidth }
 			: stackAt
@@ -294,6 +328,8 @@
 				sortLabels={sort ? { by: sortHeaderLabel } : undefined}
 				pageSize={page}
 				{pageLabels}
+				{rowAlign}
+				tableClass={headerClass}
 				responsive={{ mode: 'rows', primary: 'name', value: '', labels: false }}
 			/>
 		{/snippet}
@@ -307,7 +343,7 @@
 		display: grid;
 		/* The value keeps at most 30% of the row, so the name's column stays wide enough to read. */
 		grid-template-columns: minmax(0, 1fr) fit-content(30%);
-		align-items: baseline;
+		align-items: center;
 		column-gap: 0.5rem;
 		row-gap: 0.125rem;
 		min-inline-size: 0;
@@ -319,7 +355,7 @@
 	.phone-lead {
 		display: inline-flex;
 		gap: 0.5rem;
-		align-items: baseline;
+		align-items: center;
 	}
 	.phone-text {
 		min-inline-size: 0;
@@ -346,7 +382,6 @@
 		.phone-row > .phone-value {
 			grid-row: 2;
 			grid-column: 1;
-			text-align: start;
 		}
 		.phone-row.lead > .phone-value {
 			grid-column: 2;
@@ -374,12 +409,12 @@
 		text-align: center;
 	}
 	.phone-value {
+		font-family: var(--font-mono);
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 		text-align: end;
 	}
-	/* The name wraps inside the text column; plates follow it as words. Top-aligned, so the row
-	lines the code box and the value up with the name's first line, as in the wireframe. */
+	/* The name wraps inside the text column, and plates follow it as words. */
 	.phone-link {
 		display: inline-block;
 		vertical-align: top;

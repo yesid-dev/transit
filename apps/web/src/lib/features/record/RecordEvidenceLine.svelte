@@ -21,10 +21,10 @@
 
 {#if sample || note}
 	<div
-		class="flex min-w-0 flex-wrap justify-between gap-x-4 gap-y-1 font-mono text-small text-muted-foreground"
+		class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-small text-muted-foreground"
 		data-method={method || undefined}
 	>
 		{#if sample}<span>{sample}</span>{/if}
-		{#if note}<span>{note}</span>{/if}
+		{#if note}<span class="ms-auto text-end">{note}</span>{/if}
 	</div>
 {/if}
