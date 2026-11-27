@@ -8,6 +8,7 @@
 	import type { RecordState } from './recordStates';
 
 	let {
+		heading,
 		value,
 		sentence,
 		state,
@@ -20,6 +21,7 @@
 		evidence,
 		size = 'lg',
 	}: {
+		heading?: Snippet;
 		value: string | null;
 		sentence: string;
 		state?: RecordState;
@@ -49,6 +51,7 @@
 <div class="record-answer" data-slot="record-answer">
 	<div
 		class="answer-grid"
+		class:with-heading={Boolean(heading)}
 		class:has-actions={Boolean(actions)}
 		class:has-statement={Boolean(statement)}
 		class:aside
@@ -56,6 +59,7 @@
 		class:bare={!context}
 		class:short-context={!comparison && value !== null}
 	>
+		{#if heading}<div class="answer-heading" data-record-heading-row>{@render heading()}</div>{/if}
 		<div class="answer-statement">
 			{#if statement}{@render statement()}{:else}<AnswerLead
 					{value}
@@ -101,6 +105,7 @@
 		gap: 0.75rem 1.5rem;
 		min-inline-size: 0;
 	}
+	.answer-heading,
 	.answer-statement {
 		min-inline-size: 0;
 	}
@@ -141,6 +146,12 @@
 			grid-template-areas: 'statement statement' 'context actions';
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
+		.with-heading.has-actions:where(.short-context) {
+			grid-template-areas: 'heading heading' 'statement statement' 'context actions';
+		}
+		.with-heading.has-actions:where(.short-context) .answer-heading {
+			grid-area: heading;
+		}
 		.has-actions:where(.short-context) .answer-statement {
 			grid-area: statement;
 		}
@@ -175,6 +186,15 @@
 		.has-actions.bare {
 			grid-template-areas: 'statement actions';
 		}
+		.with-heading.has-actions {
+			grid-template-areas: 'heading heading' 'statement actions' 'context context';
+		}
+		.with-heading.has-actions.bare {
+			grid-template-areas: 'heading heading' 'statement actions';
+		}
+		.with-heading.has-actions .answer-heading {
+			grid-area: heading;
+		}
 	}
 	/* On a wide desktop answer the stamp joins the actions at the right of the figure, and the
 	   comparison and what was counted share the row under it. A Live answer with only a stamp is
@@ -190,6 +210,20 @@
 		.aside.one-row:not(.has-actions) {
 			grid-template-areas: 'statement stamp';
 			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.with-heading.aside.has-actions {
+			grid-template-areas: 'heading stamp actions' 'statement statement details';
+			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
+			align-items: start;
+		}
+		.with-heading.aside.has-actions.one-row {
+			grid-template-areas: 'heading stamp actions' 'statement statement statement';
+		}
+		.with-heading.aside:not(.has-actions) {
+			grid-template-areas: 'heading stamp' 'statement statement';
+		}
+		.with-heading.aside .answer-heading {
+			grid-area: heading;
 		}
 		.aside .answer-statement {
 			grid-area: statement;

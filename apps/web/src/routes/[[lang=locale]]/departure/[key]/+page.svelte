@@ -192,17 +192,22 @@
 		title={data.seoTitle}
 		plate={line}
 		subtitle={direction}
-		back={lineHref ? { href: lineHref, label: t('See the line', 'Voir la ligne') } : undefined}
+		back={lineHref
+			? {
+					href: lineHref,
+					label: t('See the line', 'Voir la ligne'),
+					compactLabel: t('Line', 'Ligne'),
+				}
+			: undefined}
 		dot={false}
 	/>
 {/snippet}
 
 {#snippet recordBody(observed: DepartureAnswer)}
 	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
-		<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
 		<div data-slot="screen-answer" class="min-[1280px]:-mb-4">
 			{#await observed.answer}
-				<RecordPending locale={data.lang} shape="answer" answer={observed.answer} />
+				<RecordPending {heading} locale={data.lang} shape="answer" answer={observed.answer} />
 			{:then result}
 				{#if result.kind === 'answer' && 'cells' in result.answer}
 					{@const answer = result.answer}
@@ -213,6 +218,7 @@
 					{@const tooFew = days.observed > 0 && lateShare.share == null}
 					<div id="observed">
 						<RecordAnswer
+							{heading}
 							value={lateShare.share == null ? null : recordPercent(lateShare.share, data.lang)}
 							state={tooFew ? 'too_few_to_judge' : absent}
 							locale={data.lang}
@@ -288,9 +294,10 @@
 						</RecordActionGroup>
 					{/snippet}
 				{:else if result.kind === 'busy'}
-					<RecordPending locale={data.lang} busy shape="answer" />
+					<RecordPending {heading} locale={data.lang} busy shape="answer" />
 				{:else}
 					<RecordAnswer
+						{heading}
 						value={null}
 						state="unknown"
 						sentence={result.kind === 'answer'
@@ -517,6 +524,15 @@
 							link: {
 								href: local('/metrics'),
 								label: t('How we measure', 'Comment on mesure'),
+							},
+						},
+						{
+							key: 'error',
+							label: t('Seen an error?', 'Vous avez vu une erreur?'),
+							text: null,
+							link: {
+								href: local('/metrics#about-transit'),
+								label: t('About Transit', 'À propos de Transit'),
 							},
 						},
 						{

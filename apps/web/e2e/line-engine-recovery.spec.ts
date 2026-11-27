@@ -30,13 +30,21 @@ for (const locale of ['en', 'fr']) {
 			await request.delete(registration);
 		}
 		const crowding = page.locator('#crowding');
+		const stops = page.locator('#stops h2 button');
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
+		if (viewport.width < 640) {
+			const crowdingToggle = crowding.getByRole('heading').getByRole('button');
+			await expect(crowdingToggle).toHaveAttribute('aria-expanded', 'false');
+			await crowdingToggle.click();
+			await expect(stops).toHaveAttribute('aria-expanded', 'false');
+			await stops.click();
+		}
 		await expect(crowding).toContainText(
 			fr
 				? 'En attente. Cette carte redemande dans quelques secondes.'
 				: 'Waiting for a turn. This card asks again in a few seconds.',
 		);
 
-		const stops = page.locator('#stops h2 button');
 		const delivery = page.locator('#delivery h2 button');
 		await delivery.click();
 		await expect(stops).toHaveAttribute('aria-expanded', 'true');

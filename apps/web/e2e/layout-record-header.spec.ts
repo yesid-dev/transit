@@ -106,16 +106,22 @@ for (const { name, path, section } of pages)
 										.evaluate((answer) => {
 											const box = (selector: string) =>
 												answer.querySelector(selector)!.getBoundingClientRect();
+											const title = box('[data-slot="screen-title"]');
 											const stamp = box('.answer-stamp');
 											const actions = box('.answer-actions');
 											const evidence = box('[data-slot="answer-evidence"]');
 											return {
 												separateEvidence: evidence.top >= stamp.bottom,
+												titleBesideStamp: title.top < stamp.bottom && title.bottom > stamp.top,
 												actionsBesideStamp:
 													actions.top < stamp.bottom && actions.bottom > stamp.top,
 											};
 										});
-									expect(geometry).toEqual({ separateEvidence: true, actionsBesideStamp: true });
+									expect(geometry).toEqual({
+										separateEvidence: true,
+										titleBesideStamp: true,
+										actionsBesideStamp: true,
+									});
 								}
 							}
 							const cutContent =

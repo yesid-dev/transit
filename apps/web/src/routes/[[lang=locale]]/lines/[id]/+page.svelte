@@ -51,6 +51,7 @@
 		return {
 			href: carryFrameState(lines, contentUrl),
 			label: locale === 'fr' ? 'Toutes les lignes' : 'All lines',
+			compactLabel: locale === 'fr' ? 'Lignes' : 'Lines',
 		};
 	});
 </script>
@@ -114,6 +115,7 @@
 		{:else if record}
 			<LineRecord
 				{heading}
+				outsideTimetable={data.outsideCurrentTimetable}
 				name={data.seed.name}
 				scheduleOnly={data.scheduleOnly}
 				{locale}

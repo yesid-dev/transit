@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
@@ -48,6 +49,7 @@
 	import LineRecordEvidence, { lineEvidenceSample } from './LineRecordEvidence.svelte';
 
 	let {
+		heading,
 		name,
 		scheduleOnly,
 		timetableOnly,
@@ -57,6 +59,7 @@
 		headsigns,
 		operator,
 	}: {
+		heading?: Snippet;
 		name: string;
 		scheduleOnly?: boolean;
 		timetableOnly: boolean;
@@ -202,6 +205,7 @@
 {#snippet lead(answer: RecordMeasure, lastGood: boolean, comparison?: string)}
 	{@const share = measuredShare(answer, 'on_time')}
 	<RecordAnswer
+		{heading}
 		value={share === null ? null : recordPercent(share, locale)}
 		sentence={share === null
 			? rateStateText(answer, locale)
@@ -232,6 +236,7 @@
 			</p>
 		{/snippet}
 		<RecordAnswer
+			{heading}
 			value={null}
 			sentence={t('No live data for this line', 'Aucune donnée en direct pour cette ligne')}
 			{locale}
@@ -242,6 +247,7 @@
 	{:else}
 		{#await punctualityAnswer}
 			{#key punctualityAnswer}<RecordPending
+					{heading}
 					shape={comparisonShape}
 					{locale}
 					answer={punctualityAnswer}
@@ -258,6 +264,7 @@
 								)}
 						</p>{/snippet}
 					<RecordAnswer
+						{heading}
 						value={null}
 						sentence={rateStateText(answer, locale)}
 						{locale}
@@ -278,6 +285,7 @@
 					{/await}
 				{/if}
 			{:else}
+				{@render heading?.()}
 				{@render gap(result, comparisonShape)}
 			{/if}
 		{/await}

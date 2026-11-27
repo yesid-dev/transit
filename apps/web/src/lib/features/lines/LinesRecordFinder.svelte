@@ -631,29 +631,33 @@
 	{#if timingEvidence}<RecordEvidenceLine {locale} evidence={timingEvidence} />{/if}
 {/snippet}
 
+{#snippet heading()}<ScreenTitle {title} {subtitle} />{/snippet}
+
 <RecordScreen class="min-w-0">
 	<div class="min-w-0" data-slot="screen-content">
 		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
-			<div data-screen-intro class="min-[1280px]:-mb-4"><ScreenTitle {title} {subtitle} /></div>
 			<div
 				class:opacity-65={timingPending && !initialTiming}
-				inert={timingPending && !initialTiming}
-				class="min-[1280px]:-mb-4"
+				aria-busy={timingPending || undefined}
+				class="finder-answer min-[1280px]:-mb-4"
 				data-slot="screen-answer"
 			>
 				{#if initialTiming}
-					<RecordPending {locale} shape="answer" answer={record.punctuality} />
+					<RecordPending {heading} {locale} shape="answer" answer={record.punctuality} />
 				{:else if spread !== null}
 					<RecordAnswer
+						{heading}
 						{locale}
 						time={stamp}
 						value={spread}
+						size="md"
 						sentence={answer}
 						evidence={timingEvidence ? { sample: headlineSample ?? '' } : undefined}
 						{actions}
 					/>
 				{:else if measured.length}
 					<RecordAnswer
+						{heading}
 						{locale}
 						time={stamp}
 						value={null}
@@ -663,6 +667,7 @@
 					/>
 				{:else if punctuality && punctuality.kind !== 'busy'}
 					<RecordAnswer
+						{heading}
 						{locale}
 						time={stamp}
 						value={null}
@@ -670,6 +675,8 @@
 						state={timingFailure ? undefined : 'not_measured'}
 						{actions}
 					/>
+				{:else}
+					<RecordPending {heading} {locale} shape="answer" busy />
 				{/if}
 			</div>
 
@@ -900,6 +907,16 @@
 </RecordScreen>
 
 <style>
+	@media (width >= 80rem) {
+		.finder-answer {
+			min-block-size: 7.5rem;
+		}
+		/* A short first page keeps the next card below the desktop viewport while readings fill. */
+		.finder-performance {
+			display: grid;
+			min-block-size: clamp(0px, calc(100svh - 16rem), 40rem);
+		}
+	}
 	@media (width >= 1024px) {
 		.finder-performance {
 			container-type: inline-size;

@@ -37,6 +37,7 @@
 
 	let {
 		heading,
+		outsideTimetable,
 		name,
 
 		scheduleOnly,
@@ -49,6 +50,7 @@
 		operator,
 	}: {
 		heading: Snippet;
+		outsideTimetable: boolean;
 		name: string;
 
 		scheduleOnly?: boolean;
@@ -359,8 +361,11 @@
 		<div data-screen-intro class="sr-only"><RecordPending {locale} /></div>
 	{/if}
 	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
-		<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
+		{#if outsideTimetable}
+			<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
+		{/if}
 		<LineRecordTop
+			heading={outsideTimetable ? undefined : heading}
 			{name}
 			{scheduleOnly}
 			{timetableOnly}

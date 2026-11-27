@@ -98,14 +98,18 @@ test('Record listing headers show a title and a page edge without artwork', asyn
 		const edge = screen.locator('[data-slot="page-section-boundary"]').first();
 		await expect(edge).toHaveAttribute('data-variant', 'hand-drawn');
 		await expect(edge.locator('svg')).toBeVisible();
-		const order = await screen.evaluate((element, compactHeader) => {
+		const order = await screen.evaluate((element, path) => {
 			const title = element.querySelector('h1')!;
 			const boundary = element.querySelector('[data-slot="page-section-boundary"]')!;
 			const answer = element.querySelector('[data-slot="screen-answer"]')!;
-			const listing = element.querySelector('[data-slot="record-card"]')!;
 			const precedes = (first: Element, second: Element) =>
 				Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
-			if (compactHeader) {
+			if (path === '/lines') {
+				const section = title.closest('[data-page-section-edges]')!;
+				return section.contains(answer) && precedes(section, boundary);
+			}
+			const listing = element.querySelector('[data-slot="record-card"]')!;
+			if (path === '/vehicles') {
 				const section = title.closest('[data-page-section-edges]');
 				return (
 					!!section &&
@@ -117,7 +121,7 @@ test('Record listing headers show a title and a page edge without artwork', asyn
 				);
 			}
 			return precedes(title, answer) && precedes(title, boundary) && precedes(boundary, listing);
-		}, path === '/vehicles');
+		}, path);
 		expect(order).toBe(true);
 		await expect(screen.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
 	}
