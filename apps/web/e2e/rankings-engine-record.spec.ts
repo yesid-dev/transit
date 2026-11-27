@@ -58,6 +58,15 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						await expect(main.getByRole('table')).toHaveCount(0);
 					} else {
 						const table = main.getByRole('table', { name: fr ? frList : enList, exact: true });
+						await expect(
+							main.getByText(fr ? 'Vous avez vu une erreur?' : 'Seen an error?', { exact: true }),
+						).toBeVisible();
+						await expect(
+							main.getByRole('link', {
+								name: fr ? 'À propos de Transit' : 'About Transit',
+								exact: true,
+							}),
+						).toHaveAttribute('href', /\/metrics.*#about-transit$/u);
 						await expect(table.locator('tbody tr')).toHaveCount(1);
 						await expect(table.getByRole('link')).toHaveCount(1);
 						const lead = main
@@ -216,13 +225,17 @@ test('shows separate exclusions and honest empty and unavailable states', async 
 		});
 });
 
+async function pick(page: import('@playwright/test').Page, label: string, option: string) {
+	await page.getByRole('combobox', { name: label, exact: true }).click();
+	await page.getByRole('option', { name: option, exact: true }).click();
+}
+
 test('keeps one history entry per rank and measure choice', async ({ page }) => {
 	await page.goto(`/rankings?provider=stm&${dates}`);
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-	const main = page.getByRole('main');
-	await main.getByRole('radio', { name: 'Stops', exact: true }).click();
+	await pick(page, 'Rank', 'Stops');
 	await expect(page).toHaveURL(/kind=stop/u);
-	await main.getByRole('radio', { name: 'Late share', exact: true }).click();
+	await pick(page, 'By', 'Late share');
 	await expect(page).toHaveURL(/kind=stop.*measure=late/u);
 	await page.goBack();
 	await expect(page).toHaveURL(
@@ -234,26 +247,18 @@ test('keeps one history entry per rank and measure choice', async ({ page }) => 
 	);
 });
 
-test('uses segmented measures and explains an available choice of line classes', async ({
-	page,
-}) => {
+test('uses the desktop rail to select a line class and explains it', async ({ page }) => {
 	await page.goto(`/rankings?provider=stm&${dates}`);
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const main = page.getByRole('main');
-	await expect(
-		main.getByRole('radiogroup', { name: 'By', exact: true }).getByRole('radio'),
-	).toHaveCount(7);
+	const choices = page.getByRole('group', { name: 'Ranking choices' });
 	await expect(main.getByRole('combobox')).toHaveCount(0);
-	const classes = main.getByRole('radiogroup', { name: 'Compare lines' });
-	// An address without a class ranks every line, and the highlight says so.
-	await expect(classes.getByRole('radio', { name: 'All lines' })).toBeChecked();
+	const classes = choices.getByRole('combobox', { name: 'Compare lines' });
+	await expect(classes).toContainText('All lines');
 	await expect(main.getByText('Includes every service class.')).toBeVisible();
-	const frequent = classes.getByRole('radio', { name: 'Frequent lines' });
-	await frequent.focus();
-	await frequent.press('Enter');
+	await pick(page, 'Compare lines', 'Frequent lines');
 	await expect(page).toHaveURL(/class=3%3Afrequent/u);
-	await expect(frequent).toBeChecked();
-	await expect(frequent).toBeFocused();
+	await expect(classes).toContainText('Frequent lines');
 	await expect(main.getByText('10 minutes or less.', { exact: false })).toBeVisible();
 	// The chosen class is said in the title block and in the answer's count.
 	await expect(main.getByText('frequent lines, by on-time share', { exact: false })).toBeVisible();
@@ -264,6 +269,63 @@ test('uses segmented measures and explains an available choice of line classes',
 	await expect(main.getByRole('table', { name: 'Lines' })).toBeVisible();
 	await expect(classes).toHaveCount(0);
 });
+
+for (const [width, height] of [
+	[1440, 900],
+	[1280, 720],
+] as const) {
+	test(
+		'Compare lines is reachable by keyboard and pointer at ' + width + 'x' + height,
+		async ({ page }, info) => {
+			await page.setViewportSize({ width, height });
+			const rail = page.getByRole('complementary', { name: 'Controls', exact: true });
+			const classes = rail.getByRole('combobox', { name: 'Compare lines', exact: true });
+			const scrollTop = () => rail.evaluate((element) => element.scrollTop);
+			async function openRankings() {
+				await page.goto('/rankings?provider=stm&' + dates);
+				await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+				await expect(classes).toContainText('All lines');
+			}
+
+			await openRankings();
+			const beforeKeyboard = await scrollTop();
+			await rail.getByRole('combobox', { name: 'By', exact: true }).focus();
+			for (
+				let step = 0;
+				step < 4 && !(await classes.evaluate((el) => el === document.activeElement));
+				step++
+			) {
+				await page.keyboard.press('Tab');
+			}
+			await expect(classes).toBeFocused();
+			await expect(classes).toBeInViewport({ ratio: 0.95 });
+			const afterKeyboard = await scrollTop();
+			await page.keyboard.press('Enter');
+			await expect(page.getByRole('option', { name: 'Frequent lines', exact: true })).toBeVisible();
+
+			await openRankings();
+			const beforePointer = await scrollTop();
+			await rail.hover();
+			await page.mouse.wheel(0, 700);
+			await expect(classes).toBeInViewport({ ratio: 0.95 });
+			const afterPointer = await scrollTop();
+			await pick(page, 'Compare lines', 'Frequent lines');
+			await expect(page).toHaveURL(/class=3%3Afrequent/u);
+
+			await info.attach('rankings-rail-scroll', {
+				body: JSON.stringify({
+					width,
+					height,
+					beforeKeyboard,
+					afterKeyboard,
+					beforePointer,
+					afterPointer,
+				}),
+				contentType: 'application/json',
+			});
+		},
+	);
+}
 
 test('ranked line names have room beside the values at 1024px', async ({ page }) => {
 	await page.setViewportSize({ width: 1024, height: 900 });
@@ -283,8 +345,10 @@ for (const [prefix, by, compare, all, frequent, late] of [
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.goto(`${prefix}/rankings?provider=stm&${dates}`);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-		const main = page.getByRole('main');
-		const picker = main.getByRole('combobox', { name: compare, exact: true });
+		const controls = page.getByRole('button', { name: /Open controls|Ouvrir les options/u });
+		await controls.click();
+		const sheet = page.getByRole('dialog');
+		const picker = sheet.getByRole('combobox', { name: compare, exact: true });
 		await expect(picker).toContainText(all);
 		await picker.click();
 		const classes = page.getByRole('listbox', { name: compare, exact: true });
@@ -296,9 +360,9 @@ for (const [prefix, by, compare, all, frequent, late] of [
 		await expect(page).toHaveURL(/class=3%3Afrequent/u);
 		await expect(picker).toContainText(frequent);
 		await expect(picker).toHaveAttribute('aria-expanded', 'false');
-		await expect(main.locator('input[role="combobox"]')).toHaveCount(0);
+		await expect(page.getByRole('main').getByRole('combobox')).toHaveCount(0);
 
-		const measure = main.getByRole('combobox', { name: by, exact: true });
+		const measure = sheet.getByRole('combobox', { name: by, exact: true });
 		await measure.press('Enter');
 		const choices = page.getByRole('listbox', { name: by, exact: true });
 		await expect(choices.getByRole('option')).toHaveCount(7);
@@ -333,6 +397,9 @@ test('the ranking streams before its readings complete', async ({ page, request 
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.getByRole('heading', { name: 'Worst lines', exact: true })).toBeVisible();
 	await expect(page.getByText('Still calculating the record')).toBeVisible();
+	const cards = page.getByRole('main').locator('[data-slot="card"]');
+	await expect(cards).toHaveCount(3);
+	await expect(cards.locator('[data-waiting-shape="rows"]')).toBeVisible();
 	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const release = await request.post(
 		`http://127.0.0.1:${port}/__overview/release?fixture=rankings`,

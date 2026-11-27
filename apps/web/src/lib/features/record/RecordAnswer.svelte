@@ -11,6 +11,7 @@
 		value,
 		sentence,
 		state,
+		statement,
 		locale,
 		time,
 		comparison,
@@ -22,6 +23,7 @@
 		value: string | null;
 		sentence: string;
 		state?: RecordState;
+		statement?: Snippet;
 		locale: Locale;
 		time?: StampProps;
 		comparison?: string;
@@ -48,13 +50,19 @@
 	<div
 		class="answer-grid"
 		class:has-actions={Boolean(actions)}
+		class:has-statement={Boolean(statement)}
 		class:aside
 		class:one-row={!secondRow}
 		class:bare={!context}
 		class:short-context={!comparison && value !== null}
 	>
 		<div class="answer-statement">
-			<AnswerLead {value} {sentence} absent={state ? absent : undefined} {size} />
+			{#if statement}{@render statement()}{:else}<AnswerLead
+					{value}
+					{sentence}
+					absent={state ? absent : undefined}
+					{size}
+				/>{/if}
 		</div>
 		{#if context}
 			<div class="answer-context" data-slot="answer-context">
@@ -159,6 +167,10 @@
 		.has-actions .answer-actions {
 			grid-area: actions;
 			justify-content: end;
+		}
+		/* A custom statement can have a link on its last line. Keep the next focus stop beside it. */
+		.has-actions.has-statement .answer-actions {
+			align-self: end;
 		}
 		.has-actions.bare {
 			grid-template-areas: 'statement actions';

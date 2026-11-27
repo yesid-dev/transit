@@ -7,11 +7,17 @@
 <script lang="ts">
 	import { Card } from '@yesid/ui/card';
 	import { Skeleton } from '@yesid/ui/skeleton';
-	import { LADDER_CAP, resolveWaiting, skeletonBlockSize } from './recordWaiting.ts';
+	import { LADDER_CAP, resolveWaiting, skeletonBlockSize, skeletonRem } from './recordWaiting.ts';
 
 	let { shape }: { shape: RecordWaiting } = $props();
 	const s = $derived(resolveWaiting(shape));
 	const blockSize = $derived(skeletonBlockSize(shape));
+	// The shared shape keeps its rule height. A caller with taller rows can reserve more space.
+	const minRowBlockSize = $derived(
+		s.shape === 'rows'
+			? `calc(${s.header ? skeletonRem.header : 0}rem + ${s.count} * var(--record-waiting-row-height, 0rem))`
+			: undefined,
+	);
 	const range = (length: number) => Array.from({ length }, (_, index) => index);
 </script>
 
@@ -68,6 +74,7 @@
 	aria-hidden="true"
 	aria-busy="true"
 	style:block-size={blockSize}
+	style:min-block-size={minRowBlockSize}
 >
 	{#if s.shape === 'answer' || s.shape === 'reading'}
 		<!-- Laid out as RecordAnswer: the statement; the stamp and what was counted on one line; an
@@ -270,10 +277,10 @@
 		grid-template-columns: auto minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 0.75rem;
-		block-size: 2.4375rem;
+		block-size: var(--record-waiting-row-height, 2.4375rem);
 	}
 	.list-row.two-lines {
-		block-size: 3.8125rem;
+		block-size: var(--record-waiting-row-height, 3.8125rem);
 	}
 	.list-row[data-lead='none'] {
 		grid-template-columns: minmax(0, 1fr) auto;

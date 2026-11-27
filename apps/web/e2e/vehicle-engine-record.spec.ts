@@ -397,6 +397,31 @@ test('the fleet names untracked data and vehicle sections stream independently',
 	await expect(lines).toContainText('12');
 });
 
+test('vehicle Record renders six cards before any reading completes', async ({ page, request }) => {
+	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+	const fixture = 'steady:stm:2026-11-06:2026-11-12';
+	const endpoint = (action: string) =>
+		`http://127.0.0.1:${port}/__overview/${action}?fixture=${encodeURIComponent(fixture)}`;
+	await request.post(endpoint('hold'));
+	try {
+		await page.goto('/vehicle/40061?provider=stm&recordFrom=2026-11-06&recordTo=2026-11-12', {
+			waitUntil: 'commit',
+		});
+		const main = page.getByRole('main');
+		await expect(main.locator('[data-slot="record-card"]')).toHaveCount(6);
+		await expect(
+			main
+				.getByRole('article', { name: 'Its on-time record' })
+				.locator('[data-waiting-shape="bands"]'),
+		).toBeVisible();
+	} finally {
+		await request.post(endpoint('release'));
+	}
+	await expect(
+		page.getByRole('article', { name: 'Day by day' }).locator('[data-slot="day-strip-cell"]'),
+	).toHaveCount(7);
+});
+
 test('a vehicle without reports has a state in both languages', async ({ page }) => {
 	for (const lang of ['en', 'fr']) {
 		await page.goto(

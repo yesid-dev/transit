@@ -66,11 +66,13 @@
 	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordScreen from '../record/RecordScreen.svelte';
-	import RecordSkeleton from '../record/RecordSkeleton.svelte';
+	import RecordUnavailable from '../record/RecordUnavailable.svelte';
+	import { pendingBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { fleetPageSize, fleetView, type VehicleFleetAnswer } from './vehicleFleet.ts';
+	import FleetLiveAnswer from './FleetLiveAnswer.svelte';
 	import { vehicleHref } from './vehicleLinks.ts';
 	import { notTracked, sectionTitles } from './vehicleText.ts';
 
@@ -302,6 +304,13 @@
 		await navigate(view.query, selectedFilter, false, index + count);
 	}
 
+	const rowShape = $derived<RecordWaiting>({
+		shape: 'rows',
+		count: view.shown,
+		lines: 1,
+		lead: 'none',
+	});
+	const rowHeight = $derived(pendingBlockSize(rowShape));
 	const count = $derived(liveMode ? liveRows.length : (record?.total ?? 0));
 	const countLabels = $derived(
 		countTemplates(
@@ -509,16 +518,11 @@
 
 <Surface>
 	<RecordScreen class="min-w-0">
-		<RecordGroup><ScreenTitle title={data.seoTitle} {subtitle} /></RecordGroup>
 		<div class="min-w-0" data-slot="screen-content">
-			<RecordGroup density="compact">
-				<div data-slot="screen-answer">
-					{#if untracked}
-						<RecordAnswer {locale} value={null} state="not_tracked" sentence={notTracked[locale]} />
-					{:else if liveMode ? liveLoading : !result && data.fleet}
-						<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
-						<RecordSkeleton shape="answer" />
-					{:else if liveMode}
+			<RecordGroup class="gap-(--space-card-gap)">
+				<ScreenTitle title={data.seoTitle} {subtitle} />
+				{#if liveMode && !untracked}
+					<FleetLiveAnswer {locale} pending={liveLoading} withAction>
 						<RecordAnswer
 							{locale}
 							time={stamp}
@@ -533,32 +537,46 @@
 									)}
 							{actions}
 						/>
-					{:else}
-						<RecordAnswer
-							{locale}
-							time={stamp}
-							value={record?.fleet ? tally(record.active, locale) : null}
-							sentence={record?.fleet
-								? singularCount(record.active, locale)
-									? t(
-											'vehicle reported on a trip on these dates.',
-											'véhicule a signalé une position pendant un trajet à ces dates.',
-										)
-									: t(
-											'vehicles reported on a trip on these dates.',
-											'véhicules ont signalé une position pendant un trajet à ces dates.',
-										)
-								: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
-							evidence={record
-								? {
-										sample,
-										lastGood: result?.kind === 'answer' && result.lastGood,
-									}
-								: undefined}
-							actions={record ? actions : undefined}
-						/>
-					{/if}
-				</div>
+					</FleetLiveAnswer>
+				{:else}
+					<div data-slot="screen-answer" class="fleet-answer">
+						{#if untracked}
+							<RecordAnswer
+								{locale}
+								value={null}
+								state="not_tracked"
+								sentence={notTracked[locale]}
+							/>
+						{:else if !result || result.kind === 'busy'}
+							<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
+							<RecordPending {locale} shape="reading" busy={result?.kind === 'busy'} />
+						{:else}
+							<RecordAnswer
+								{locale}
+								time={stamp}
+								value={record?.fleet ? tally(record.active, locale) : null}
+								sentence={record?.fleet
+									? singularCount(record.active, locale)
+										? t(
+												'vehicle reported on a trip on these dates.',
+												'véhicule a signalé une position pendant un trajet à ces dates.',
+											)
+										: t(
+												'vehicles reported on a trip on these dates.',
+												'véhicules ont signalé une position pendant un trajet à ces dates.',
+											)
+									: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
+								evidence={record
+									? {
+											sample,
+											lastGood: result?.kind === 'answer' && result.lastGood,
+										}
+									: undefined}
+								actions={record ? actions : undefined}
+							/>
+						{/if}
+					</div>
+				{/if}
 				{#if untracked}
 					<RecordCard
 						title={t(
@@ -587,7 +605,20 @@
 						</div>
 					</RecordCard>
 				{:else}
-					<RecordCard {title} {stamp} interactive evidence={record ? evidenceFoot : undefined}>
+					<RecordCard
+						{title}
+						{stamp}
+						class={!liveMode &&
+						!view.query &&
+						!selectedFilter &&
+						(waitingForRows || count >= fleetPageSize)
+							? 'max-sm:min-h-[126.625rem] lg:min-h-[100.125rem]'
+							: undefined}
+						stampRule
+						stampPending={liveMode && liveLoading}
+						interactive
+						evidence={liveMode ? undefined : evidenceFoot}
+					>
 						<div class="grid min-w-0 grid-cols-1 gap-3">
 							<form
 								method="GET"
@@ -624,9 +655,9 @@
 								>
 							</form>
 							<p class="sr-only" role="status">
-								{pending ? '' : filterCountText(count, countLabels, locale)}
+								{waitingForRows ? '' : filterCountText(count, countLabels, locale)}
 							</p>
-							{#if !pending && (view.query || selectedFilter)}<FilterSummary
+							{#if !waitingForRows && (view.query || selectedFilter)}<FilterSummary
 									{count}
 									countLabel={countLabels}
 									{locale}
@@ -646,31 +677,35 @@
 								id={liveMode ? 'vehicles-live' : 'fleet'}
 								aria-label={title}
 								class="fleet-results min-w-0"
-								data-waiting={waitingForRows ? '' : undefined}
+								class:record-fleet-results={!liveMode}
+								data-reserved={waitingForRows || count === 0 || count >= view.shown
+									? ''
+									: undefined}
+								style:--fleet-rows-wide={rowHeight?.wide}
+								style:--fleet-rows-phone={rowHeight?.phone}
 								bind:this={results}
 							>
-								{#if pending}<p role="status">
-										{t('Finding vehicles…', 'Recherche de véhicules…')}
+								{#if waitingForRows}
+									{#key data.fleet}<RecordPending
+											{locale}
+											answer={data.fleet}
+											shape={rowShape}
+											busy={!liveMode && result?.kind === 'busy'}
+										/>{/key}
+								{:else if liveMode && (!live?.vehicles || health?.isStale)}
+									<p role="status">
+										{t(
+											'Live reports are temporarily unavailable.',
+											'Les signalements en direct sont temporairement indisponibles.',
+										)}
 									</p>
-								{:else if liveMode && (!live?.vehicles || health?.isStale)}<p role="status">
-										{liveLoading
-											? t('Loading live reports…', 'Chargement des signalements en direct…')
-											: t(
-													'Live reports are temporarily unavailable.',
-													'Les signalements en direct sont temporairement indisponibles.',
-												)}
-									</p>
-								{:else if !liveMode && !result}
-									{#if data.fleet}{#key data.fleet}<RecordPending
-												{locale}
-												answer={data.fleet}
-											/>{/key}{/if}
-								{:else if !liveMode && result?.kind === 'busy'}<RecordPending {locale} busy />
-								{:else if !liveMode && result && result.kind !== 'answer' && result.kind !== 'not_tracked'}<p
-										role="status"
-									>
-										{recordConnection[result.kind][locale]}
-									</p>
+								{:else if !liveMode && result?.kind === 'unreachable'}
+									<RecordUnavailable
+										{locale}
+										retry={'retry' in result ? result.retry : undefined}
+									/>
+								{:else if !liveMode && result && result.kind !== 'answer' && result.kind !== 'not_tracked'}
+									<p role="status">{recordConnection[result.kind][locale]}</p>
 								{:else if !count}<p role="status">
 										{view.query
 											? t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')
@@ -806,6 +841,15 @@
 									link: { href: href('/metrics'), label: about.method },
 								},
 								{
+									key: 'error',
+									label: t('Seen an error?', 'Vous avez vu une erreur?'),
+									text: null,
+									link: {
+										href: href('/metrics') + '#about-transit',
+										label: t('About Transit', 'À propos de Transit'),
+									},
+								},
+								{
 									key: 'source',
 									label: about.source,
 									text: operator
@@ -822,7 +866,23 @@
 </Surface>
 
 <style>
-	.fleet-results[data-waiting] {
-		min-block-size: min(42rem, calc(100dvh - var(--app-frame-header-height, 0px)));
+	.fleet-results[data-reserved] {
+		min-block-size: var(--fleet-rows-wide);
+	}
+	.fleet-answer {
+		min-block-size: 11.25rem;
+	}
+	@media (width < 40rem) {
+		.record-fleet-results {
+			/* Phone rows include the secondary vehicle facts and their touch target. */
+			--record-waiting-row-height: 5.25rem;
+		}
+
+		.fleet-results[data-reserved] {
+			min-block-size: var(--fleet-rows-phone);
+		}
+		.fleet-answer {
+			min-block-size: 19.8125rem;
+		}
 	}
 </style>

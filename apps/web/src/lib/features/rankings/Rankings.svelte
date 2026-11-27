@@ -1,12 +1,15 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { tick } from 'svelte';
+	import { getContext, untrack } from 'svelte';
 	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
-	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
 	import { Combobox } from '@yesid/ui/combobox';
+	import {
+		frameSurfaceRailContext,
+		type RegisterFrameSurfaceRail,
+	} from '#lib/components/shell/frameSurfaceRail.ts';
 	import { RangeMark } from '@yesid/ui/chart';
-	import { Surface } from '@yesid/ui/layout';
+	import { ControlsRail, Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { RankingsRecord } from '#lib/server/engine.ts';
@@ -32,6 +35,8 @@
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
 	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import RecordUnavailable from '../record/RecordUnavailable.svelte';
+	import { pendingBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
 	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordTableName from '../record/RecordTableName.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
@@ -43,7 +48,6 @@
 		cautiousRanking,
 		choose,
 		coverageText,
-		lastGoodNote,
 		recordConnection,
 		tally,
 	} from '../record/recordText.ts';
@@ -126,7 +130,19 @@
 		return new URL(frameHref(target, { mode: 'record', period }), url);
 	});
 	const links = $derived(recordSectionLinks(pinned, 'ranking'));
-	let rankingControls: HTMLDivElement | undefined = $state();
+	const register = getContext<RegisterFrameSurfaceRail | undefined>(frameSurfaceRailContext);
+	$effect(() => untrack(() => register?.(controls)));
+	const rowShape = $derived<RecordWaiting>({
+		shape: 'rows',
+		count: 20,
+		lines: 2,
+		lead: kind === 'stop' ? 'code' : kind === 'vehicle' ? 'none' : 'plate',
+	});
+	const rowHeight = $derived(pendingBlockSize(rowShape));
+	const cardTitle = $derived(measure === reporting ? title : title + ', ' + by);
+	const excludedTitle = $derived(t('Excluded, with the reason', 'Exclusions et motifs'));
+	const aboutTitle = $derived(t('About these figures', 'À propos de ces chiffres'));
+	type Result = Awaited<NonNullable<typeof record.answer>>;
 	let referenceResult = $state<{
 		query: NonNullable<typeof record.reference>;
 		answer: Awaited<typeof record.reference>;
@@ -147,34 +163,14 @@
 		};
 	});
 
-	async function select(selection: RankingSelection) {
+	function select(selection: RankingSelection) {
 		if (
 			selection.kind === kind &&
 			selection.measure === measure &&
 			selection.serviceClass === serviceClass
 		)
 			return;
-		const focused = document.activeElement;
-		const group = focused?.closest('[role="radiogroup"]');
-		const label =
-			group && rankingControls?.contains(group) ? group.getAttribute('aria-label') : null;
-		await goto(rankingHref(selection, locale, url.searchParams), { reset: false });
-		if (!label) return;
-		// The class choices depend on the ranking answer that is still streaming.
-		await record.answer;
-		await tick();
-		if (
-			document.activeElement !== document.body ||
-			kind !== selection.kind ||
-			measure !== selection.measure ||
-			serviceClass !== selection.serviceClass
-		)
-			return;
-		const groups = rankingControls?.querySelectorAll('[role="radiogroup"]') ?? [];
-		const next = [...groups].find((item) => item.getAttribute('aria-label') === label);
-		next
-			?.querySelector<HTMLElement>('[role="radio"][aria-checked="true"]')
-			?.focus({ preventScroll: true });
+		void goto(rankingHref(selection, locale, url.searchParams), { reset: false });
 	}
 	function selectKind(next: RankingKind) {
 		const nextMeasure = rankingMeasures[next].includes(measure)
@@ -309,75 +305,76 @@
 	}
 </script>
 
-{#snippet classControl(data: RankingsRecord)}
-	{@const classes = [...new Set(data.available_classes)]}
-	{#if data.kind === 'line' && classes.length > 1}
-		{@const label = t('Compare lines', 'Comparer les lignes')}
-		{@const options = ['all', ...classes].map((key) => ({
-			key,
-			label: classText(key, locale, classes),
-		}))}
-		{@const current = serviceClass ?? data.class ?? 'all'}
-		{@const pickClass = (next: string) => {
-			if (next !== current) void select({ kind, measure, serviceClass: next });
-		}}
-		<div class="grid min-w-0 gap-1 @max-[36rem]:hidden">
-			<p>{label}</p>
-			<SegmentedChoice {options} value={current} {label} onSelect={pickClass} />
-		</div>
-		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
-			<p aria-hidden="true">{label}</p>
-			<Combobox
-				searchable={false}
-				options={options.map(({ key, label }) => ({ value: key, label }))}
-				value={current}
-				{label}
-				onValueChange={(next) => {
-					if (next !== null) pickClass(next);
-				}}
-			/>
-		</div>
-	{/if}
+{#snippet choice(
+	label: string,
+	options: readonly { key: string; label: string }[],
+	value: string,
+	selectValue: (key: string) => void,
+)}
+	<div class="grid min-w-0 gap-1">
+		<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+		<Combobox
+			searchable={false}
+			{label}
+			{value}
+			options={options.map(({ key, label }) => ({ value: key, label }))}
+			onValueChange={(key) => {
+				if (key) selectValue(key);
+			}}
+		/>
+	</div>
 {/snippet}
 
 {#snippet controls()}
-	<div bind:this={rankingControls} class="flex min-w-0 flex-wrap gap-x-6 gap-y-3">
-		<div class="grid min-w-0 gap-1 @max-[13rem]:w-full">
-			<p>{t('Rank', 'Classer')}</p>
-			<SegmentedChoice
-				variant="fit-row"
-				options={kindOptions}
-				value={kind}
-				label={t('Rank', 'Classer')}
-				onSelect={selectKind}
-			/>
+	<ControlsRail label={t('Ranking choices', 'Choix de classement')}>
+		<div class="grid w-full min-w-0 gap-3">
+			{@render choice(t('Rank', 'Classer'), kindOptions, kind, (key) =>
+				selectKind(key as RankingKind),
+			)}
+			{@render choice(t('By', 'Par'), byOptions, measure, (key) =>
+				selectMeasure(key as RankingMeasure),
+			)}
+			{#if kind === 'line'}
+				{#await record.answer then result}
+					{#if result?.kind === 'answer'}
+						{@const data = result.answer}
+						{@const classes = [...new Set(data.available_classes)]}
+						{#if classes.length > 1}
+							{@const options = ['all', ...classes].map((key) => ({
+								key,
+								label: classText(key, locale, classes),
+							}))}
+							{@render choice(
+								t('Compare lines', 'Comparer les lignes'),
+								options,
+								serviceClass ?? data.class ?? 'all',
+								(key) => select({ kind, measure, serviceClass: key }),
+							)}
+						{/if}
+					{/if}
+				{/await}
+			{/if}
 		</div>
-		<div class="grid min-w-0 gap-1 @max-[36rem]:hidden">
-			<p>{t('By', 'Par')}</p>
-			<SegmentedChoice
-				options={byOptions}
-				value={measure}
-				label={t('By', 'Par')}
-				onSelect={selectMeasure}
-			/>
-		</div>
-		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
-			<p aria-hidden="true">{t('By', 'Par')}</p>
-			<Combobox
-				searchable={false}
-				options={byOptions.map(({ key, label }) => ({ value: key, label }))}
-				value={measure}
-				label={t('By', 'Par')}
-				onValueChange={(next) => {
-					const option = byOptions.find(({ key }) => key === next);
-					if (option) selectMeasure(option.key);
-				}}
-			/>
-		</div>
-		{#await record.answer then result}
-			{#if result?.kind === 'answer'}{@render classControl(result.answer)}{/if}
-		{/await}
-	</div>
+	</ControlsRail>
+{/snippet}
+
+{#snippet missing(result: Result | null, shape: RecordWaiting, allowRetry = false)}
+	{#if result?.kind === 'busy'}
+		<RecordPending {locale} busy {shape} />
+	{:else if result?.kind === 'unreachable' && allowRetry}
+		<RecordUnavailable {locale} retry={result.retry} />
+	{:else if result?.kind === 'answer' && result.answer.state === 'not_tracked'}
+		<p>
+			{t(
+				'No entries can be ranked on these dates.',
+				'Aucun élément ne peut être classé à ces dates.',
+			)}
+		</p>
+	{:else if !result || result.kind === 'answer'}
+		<StateMark state="not_measured" {locale} />
+	{:else}
+		<p>{recordConnection[result.kind][locale]}</p>
+	{/if}
 {/snippet}
 
 {#snippet untrackedAnswer()}
@@ -385,6 +382,7 @@
 		{locale}
 		value={null}
 		state="not_tracked"
+		time={stamp}
 		sentence={t(
 			'Vehicle reporting is not tracked for this network.',
 			'Les signalements des véhicules ne sont pas suivis sur ce réseau.',
@@ -418,20 +416,31 @@
 		</RecordActionGroup>
 	{/snippet}
 	{#if first && entry}
-		<div class="grid min-w-0 gap-3">
-			<p class="text-body">
-				<span
-					class="block font-heading text-title leading-none font-extrabold text-accent-text tabular-nums sm:mr-2 sm:inline"
-					>{rankingValue(first.value, measure, locale)}</span
-				>
-				{rankingLead(data, first, measure, rankedCount(data), locale)}
-				{#if entry.href}<a class="text-primary underline" href={entry.href}>{leader(entry)}</a
-					>{:else}{leader(entry)}{/if}{rankingHeadlineEnd(way)}
-			</p>
-			{#if stamp}<div><Stamp {...stamp} /></div>{/if}
-			{@render actions()}
-			{#if lastGood}<p class="text-small text-muted-foreground">{lastGoodNote[locale]}</p>{/if}
-		</div>
+		<RecordAnswer
+			{locale}
+			value={rankingValue(first.value, measure, locale)}
+			sentence={rankingLead(data, first, measure, rankedCount(data), locale) +
+				' ' +
+				leader(entry) +
+				rankingHeadlineEnd(way)}
+			time={stamp}
+			{actions}
+			evidence={lastGood ? { sample: '', lastGood } : undefined}
+		>
+			{#snippet statement()}
+				<p class="ranking-reading">
+					<span
+						class="font-heading text-title leading-none font-extrabold text-accent-text tabular-nums"
+						>{rankingValue(first.value, measure, locale)}</span
+					>
+					<span>
+						{rankingLead(data, first, measure, rankedCount(data), locale)}
+						{#if entry.href}<a class="text-primary underline" href={entry.href}>{leader(entry)}</a
+							>{:else}{leader(entry)}{/if}{rankingHeadlineEnd(way)}
+					</span>
+				</p>
+			{/snippet}
+		</RecordAnswer>
 	{:else}
 		<RecordAnswer
 			{locale}
@@ -543,73 +552,64 @@
 			<RecordTableName {row} {plates} columnCount={columns.length + 1} plateOnName />
 		</div>
 	{/snippet}
-	<RecordCard
-		title={measure === reporting ? title : `${title}, ${by}`}
-		{stamp}
-		interactive={rows.some((row) => row.href) || rows.length > 20}
+	<div
+		class="grid min-w-0 grid-cols-1 gap-3"
+		data-sparse-ranking={rows.length > 0 && rows.length < 20 ? '' : undefined}
 	>
-		<div id="ranking" class="grid min-w-0 grid-cols-1 gap-3">
-			{#if rows.length}
-				{#if bounded.length}<p class="text-small">
-						{t(
-							'Nearby positions may not really differ. When the ranges of two rows overlap, the gap between them can be chance.',
-							'Deux rangs proches peuvent se valoir. Quand leurs plages se chevauchent, l’écart peut être dû au hasard.',
-						)}
-					</p>{/if}
-				<RecordDataTable
-					{locale}
-					title={listLabel}
-					{rowHeader}
-					nameWidth="40%"
-					{rows}
-					{columns}
-					value="value"
-					pageSize={rows.length > 20 ? 20 : undefined}
-					rowHeading={heading}
-					phone={{
-						includeRailTier: true,
-						before: rank,
-						value: phoneValue,
-						line: (row) =>
-							rowSentence([...row.facts, ...rankingCountLines(row.entry, measure, locale)], locale),
-						below: range,
-					}}
-				/>
-				{#if !bounded.length}<p class="text-small text-muted-foreground">
-						{t(
-							'No range is available for these ranks.',
-							'Aucune plage n’est disponible pour ces rangs.',
-						)}
-					</p>{:else}<p class="text-small text-muted-foreground">
-						{#if ref}{t(
-								'The dashed tick is the network over the same dates.',
-								'Le trait pointillé représente le réseau aux mêmes dates.',
-							)}
-						{/if}
-						{wilson
-							? t(
-									'The line is the range in which the value would fall about 95 times in 100 for another equal period.',
-									'Le trait indique l’intervalle où la valeur se situerait environ 95 fois sur 100 sur une autre période de même durée.',
-								)
-							: data.range_notes[bounded[0].entry.range.method]?.[locale]}
-						{#if bounded.length < rows.length}{t(
-								'A blank range means none is available for that rank.',
-								'Une plage vide signifie qu’aucune n’est disponible pour ce rang.',
-							)}{/if}
-					</p>{/if}
-			{:else}<StateMark state={resultState(data)} {locale} />{/if}
-			{#if data.coverage_note}<p class="text-muted-foreground">{data.coverage_note[locale]}</p>{/if}
-		</div>
-		{#snippet evidence()}<RecordEvidenceLine
-				evidence={data.evidence}
-				sample={rankedCount(data)}
+		{#if rows.length}
+			{#if bounded.length}<p class="text-small">
+					{t(
+						'Nearby positions may not really differ. When the ranges of two rows overlap, the gap between them can be chance.',
+						'Deux rangs proches peuvent se valoir. Quand leurs plages se chevauchent, l’écart peut être dû au hasard.',
+					)}
+				</p>{/if}
+			<RecordDataTable
 				{locale}
-			/>{/snippet}
-	</RecordCard>
+				title={listLabel}
+				{rowHeader}
+				{rows}
+				{columns}
+				value="value"
+				pageSize={rows.length > 20 ? 20 : undefined}
+				rowHeading={heading}
+				phone={{
+					includeRailTier: true,
+					before: rank,
+					value: phoneValue,
+					line: (row) =>
+						rowSentence([...row.facts, ...rankingCountLines(row.entry, measure, locale)], locale),
+					below: range,
+				}}
+			/>
+			{#if !bounded.length}<p class="text-small text-muted-foreground">
+					{t(
+						'No range is available for these ranks.',
+						'Aucune plage n’est disponible pour ces rangs.',
+					)}
+				</p>{:else}<p class="text-small text-muted-foreground">
+					{#if ref}{t(
+							'The dashed tick is the network over the same dates.',
+							'Le trait pointillé représente le réseau aux mêmes dates.',
+						)}
+					{/if}
+					{wilson
+						? t(
+								'The line is the range in which the value would fall about 95 times in 100 for another equal period.',
+								'Le trait indique l’intervalle où la valeur se situerait environ 95 fois sur 100 sur une autre période de même durée.',
+							)
+						: data.range_notes[bounded[0].entry.range.method]?.[locale]}
+					{#if bounded.length < rows.length}{t(
+							'A blank range means none is available for that rank.',
+							'Une plage vide signifie qu’aucune n’est disponible pour ce rang.',
+						)}{/if}
+				</p>{/if}
+		{:else}<StateMark state={resultState(data)} {locale} />{/if}
+		{#if data.coverage_note}<p class="text-muted-foreground">{data.coverage_note[locale]}</p>{/if}
+	</div>
 {/snippet}
 
 {#snippet excludedCard(data: RankingsRecord, identities: RankingIdentities)}
-	{@const title = t('Excluded, with the reason', 'Exclusions et motifs')}
+	{@const title = excludedTitle}
 	{#if data.excluded.length}
 		{#snippet reason(row: Excluded)}{exclusionText(row.entry, measure, locale)}{/snippet}
 		<RecordCard {title} disclosure={{ id: 'excluded', description: exclusions(data) }}>
@@ -633,98 +633,106 @@
 {#snippet about(data: RankingsRecord)}
 	{@const info = data.info[0]}
 	{@const minimum = sampleText(info.ranking_minimum_sample ?? info.minimum_sample, measure, locale)}
-	{#await record.reference then result}
-		{@const reference = rankingReference(result, data, measure, locale)}
-		<AboutFigures
-			title={t('About these figures', 'À propos de ces chiffres')}
-			fields={[
-				{
-					key: 'period',
-					label: t('Period', 'Période'),
-					text: dateRange({ from: data.evidence.start_date, to: data.evidence.end_date }, locale),
+	{@const result = settledReference ?? null}
+	{@const reference = rankingReference(result, data, measure, locale)}
+	<AboutFigures
+		title={aboutTitle}
+		class="lg:min-h-[27rem]"
+		fields={[
+			{
+				key: 'period',
+				label: t('Period', 'Période'),
+				text: dateRange({ from: data.evidence.start_date, to: data.evidence.end_date }, locale),
+			},
+			{
+				key: 'counted',
+				label: t('Counted', 'Ce qui est compté'),
+				text: `${rankedCount(data)} · ${countedUnit(data.evidence.days_measured.length, 'day', locale)}`,
+			},
+			{
+				key: 'observed',
+				label: t('Observed', 'Ce qui est observé'),
+				text:
+					reference && result?.kind === 'answer' && 'value' in result.answer
+						? coverageText(result.answer.evidence, locale) || null
+						: null,
+			},
+			{
+				key: 'means',
+				label: measureLabel,
+				text: measureMeaning(measure, info.text[locale].definition, locale),
+			},
+			{
+				key: 'ordering',
+				label: t('Rank order', 'Ordre du classement'),
+				text: data.rows.some((row) => row.ranking_bound != null) ? cautiousRanking[locale] : null,
+			},
+			{
+				key: 'class',
+				label: data.class ? classText(data.class, locale, data.available_classes) : '',
+				text:
+					data.kind === 'line' && data.class ? serviceClassDefinition(data.class, locale) : null,
+			},
+			{
+				key: 'minimum',
+				label: t('Minimum', 'Minimum'),
+				text: lineRankingFloor(measure, info.ranking_floors?.line, locale) ?? minimum,
+			},
+			{
+				key: 'comparison',
+				label: t('Reference', 'Repère'),
+				text:
+					reference?.label ??
+					t(
+						'A comparable reference is unavailable for these dates.',
+						'Aucune référence comparable n’est disponible à ces dates.',
+					),
+			},
+			{
+				key: 'method',
+				label: t('Method', 'Méthode'),
+				text: null,
+				link: { href: entityHref('/metrics'), label: t('How we measure', 'Comment on mesure') },
+			},
+			{
+				key: 'error',
+				label: t('Seen an error?', 'Vous avez vu une erreur?'),
+				text: null,
+				link: {
+					href: entityHref('/metrics') + '#about-transit',
+					label: t('About Transit', 'À propos de Transit'),
 				},
-				{
-					key: 'counted',
-					label: t('Counted', 'Ce qui est compté'),
-					text: `${rankedCount(data)} · ${countedUnit(data.evidence.days_measured.length, 'day', locale)}`,
-				},
-				{
-					key: 'observed',
-					label: t('Observed', 'Ce qui est observé'),
-					text:
-						reference && result?.kind === 'answer' && 'value' in result.answer
-							? coverageText(result.answer.evidence, locale) || null
-							: null,
-				},
-				{
-					key: 'means',
-					label: measureLabel,
-					text: measureMeaning(measure, info.text[locale].definition, locale),
-				},
-				{
-					key: 'ordering',
-					label: t('Rank order', 'Ordre du classement'),
-					text: data.rows.some((row) => row.ranking_bound != null) ? cautiousRanking[locale] : null,
-				},
-				{
-					key: 'class',
-					label: data.class ? classText(data.class, locale, data.available_classes) : '',
-					text:
-						data.kind === 'line' && data.class ? serviceClassDefinition(data.class, locale) : null,
-				},
-				{
-					key: 'minimum',
-					label: t('Minimum', 'Minimum'),
-					text: lineRankingFloor(measure, info.ranking_floors?.line, locale) ?? minimum,
-				},
-				{
-					key: 'comparison',
-					label: t('Reference', 'Repère'),
-					text:
-						reference?.label ??
-						t(
-							'A comparable reference is unavailable for these dates.',
-							'Aucune référence comparable n’est disponible à ces dates.',
-						),
-				},
-				{
-					key: 'method',
-					label: t('Method', 'Méthode'),
-					text: null,
-					link: { href: entityHref('/metrics'), label: t('How we measure', 'Comment on mesure') },
-				},
-				{ key: 'source', label: t('Source', 'Source'), text: operator ?? record.city },
-			]}
-		/>
-	{/await}
+			},
+			{ key: 'source', label: t('Source', 'Source'), text: operator ?? record.city },
+		]}
+	/>
 {/snippet}
 
 <div class="@container">
 	<Surface class="@max-[13rem]:[--space-page-x:var(--space-card-gap)]">
 		<RecordScreen>
-			<RecordGroup
-				><ScreenTitle
-					{title}
-					subtitle={[
-						operator,
-						kind === 'line' && serviceClass && serviceClass !== 'all'
-							? classText(serviceClass, locale).toLocaleLowerCase(locale)
-							: null,
-						by,
-					]
-						.filter(Boolean)
-						.join(', ')}
-				/></RecordGroup
-			>
 			<div data-slot="screen-content" class="min-w-0">
-				<RecordGroup>
-					<div data-slot="screen-answer">
+				<RecordGroup class="gap-(--space-card-gap)">
+					<ScreenTitle
+						{title}
+						subtitle={[
+							operator,
+							kind === 'line' && serviceClass && serviceClass !== 'all'
+								? classText(serviceClass, locale).toLocaleLowerCase(locale)
+								: null,
+							by,
+						]
+							.filter(Boolean)
+							.join(', ')}
+					/>
+					<div data-slot="screen-answer" class="ranking-answer">
 						{#if record.notTracked}
 							{@render untrackedAnswer()}
 						{:else if !record.answer}
 							<RecordAnswer
 								{locale}
 								value={null}
+								time={stamp}
 								state="not_measured"
 								sentence={t(
 									'No entries can be ranked on these dates.',
@@ -733,38 +741,119 @@
 							/>
 						{:else}
 							{#await record.answer}
-								<RecordPending {locale} answer={record.answer} />
+								<RecordPending {locale} shape="answer" answer={record.answer} />
 							{:then result}
 								{#if result.kind === 'answer'}
-									{#if kind === 'vehicle' && result.answer.state === 'not_tracked'}
+									{#if result.answer.state === 'not_tracked'}
 										{@render untrackedAnswer()}
-									{:else}{@render renderAnswer(
-											result.answer,
-											result.identities,
-											result.lastGood,
-										)}{/if}
-								{:else if result.kind === 'busy'}<RecordPending {locale} busy />
-								{:else}<RecordAnswer
-										{locale}
-										value={null}
-										sentence={recordConnection[result.kind][locale]}
-									/>{/if}
+									{:else}
+										{@render renderAnswer(result.answer, result.identities, result.lastGood)}
+									{/if}
+								{:else}
+									{@render missing(result, 'answer', true)}
+								{/if}
 							{/await}
 						{/if}
 					</div>
-					{@render controls()}
-					{#await record.answer then result}{#if result?.kind === 'answer' && !(kind === 'vehicle' && result.answer.state === 'not_tracked')}{@render tableCard(
-								result.answer,
-								result.identities,
-							)}{/if}{/await}
-				</RecordGroup>
-				{#await record.answer then result}
-					{#if result?.kind === 'answer' && !(kind === 'vehicle' && result.answer.state === 'not_tracked')}
-						<RecordGroup>{@render excludedCard(result.answer, result.identities)}</RecordGroup>
-						<RecordGroup>{@render about(result.answer)}</RecordGroup>
+					{#if !record.notTracked}
+						<RecordCard title={cardTitle} {stamp} stampRule interactive>
+							<div
+								id="ranking"
+								class="ranking-list"
+								style:--ranking-rows-wide={rowHeight?.wide}
+								style:--ranking-rows-phone={rowHeight?.phone}
+							>
+								{#await record.answer}
+									<RecordPending {locale} shape={rowShape} answer={record.answer ?? undefined} />
+								{:then result}
+									{#if result?.kind === 'answer' && result.answer.state !== 'not_tracked'}
+										{@render tableCard(result.answer, result.identities)}
+									{:else}
+										{@render missing(result, rowShape)}
+									{/if}
+								{/await}
+							</div>
+							{#snippet evidence()}
+								{#await record.answer then result}
+									{#if result?.kind === 'answer' && result.answer.state !== 'not_tracked'}
+										<RecordEvidenceLine
+											evidence={result.answer.evidence}
+											sample={rankedCount(result.answer)}
+											{locale}
+										/>
+									{/if}
+								{/await}
+							{/snippet}
+						</RecordCard>
 					{/if}
-				{/await}
+				</RecordGroup>
+				{#if !record.notTracked}
+					<RecordGroup class="gap-(--space-card-gap)">
+						{#await record.answer}
+							<RecordCard title={excludedTitle} reserve="line"
+								><RecordPending {locale} shape="line" /></RecordCard
+							>
+						{:then result}
+							{#if result?.kind === 'answer' && result.answer.state !== 'not_tracked'}
+								{@render excludedCard(result.answer, result.identities)}
+							{:else}
+								<RecordCard title={excludedTitle}>{@render missing(result, 'line')}</RecordCard>
+							{/if}
+						{/await}
+					</RecordGroup>
+					<RecordGroup class="gap-(--space-card-gap)">
+						{#await record.answer}
+							<RecordCard title={aboutTitle}
+								><RecordPending {locale} shape={{ shape: 'facts', count: 4 }} /></RecordCard
+							>
+						{:then result}
+							{#if result?.kind === 'answer' && result.answer.state !== 'not_tracked'}
+								{@render about(result.answer)}
+							{:else}
+								<AboutFigures
+									title={aboutTitle}
+									class="lg:min-h-[27rem]"
+									fields={[
+										{
+											key: 'method',
+											label: t('Method', 'Méthode'),
+											text: null,
+											link: {
+												href: entityHref('/metrics'),
+												label: t('How we measure', 'Comment on mesure'),
+											},
+										},
+									]}
+								/>
+							{/if}
+						{/await}
+					</RecordGroup>
+				{/if}
 			</div>
 		</RecordScreen>
 	</Surface>
 </div>
+
+<style>
+	.ranking-reading {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.25rem 0.75rem;
+		margin: 0;
+	}
+	.ranking-answer {
+		min-block-size: 6.75rem;
+	}
+	.ranking-list:not(:has([data-sparse-ranking])) {
+		min-block-size: var(--ranking-rows-wide);
+	}
+	@media (width < 40rem) {
+		.ranking-answer {
+			min-block-size: 13.25rem;
+		}
+		.ranking-list {
+			min-block-size: var(--ranking-rows-phone);
+		}
+	}
+</style>

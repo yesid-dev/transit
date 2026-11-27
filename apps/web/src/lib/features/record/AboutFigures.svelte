@@ -6,6 +6,7 @@
 
 	let {
 		title,
+		class: className,
 		fields,
 		compact = false,
 		compactPrint = false,
@@ -13,6 +14,7 @@
 		interactive = false,
 	}: {
 		title: string;
+		class?: string;
 		fields: readonly {
 			key: string;
 			label: string;
@@ -35,6 +37,7 @@
 
 <RecordCard
 	{title}
+	class={className}
 	{compactPrint}
 	{edge}
 	interactive={interactive || fields.some(({ link, links }) => link || links?.length)}

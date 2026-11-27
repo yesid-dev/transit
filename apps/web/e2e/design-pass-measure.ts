@@ -130,7 +130,10 @@ export async function contentOrder(page: Page) {
 		const content = main.querySelector('[data-slot="screen-content"]');
 		const firstContent = (element: Element) =>
 			[...element.children].find(
-				(child) => !child.matches('[data-slot="page-section-boundary"], [data-screen-intro]'),
+				(child) =>
+					!child.matches(
+						'[data-slot="page-section-boundary"], [data-slot="screen-title"], [data-screen-intro]',
+					),
 			);
 		const firstChild = content && firstContent(content);
 		const firstReading = firstChild?.hasAttribute('data-page-section-edges')
