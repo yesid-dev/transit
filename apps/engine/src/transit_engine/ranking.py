@@ -152,7 +152,9 @@ class Ranking:
             raise ValueError("line and direction ranking filters apply to corridors or departures")
         if self.kind == "vehicle" and family.id != _VEHICLES_ID:
             raise ValueError("vehicle rankings require a vehicle measure")
-        if self.kind == "stop" and family.id == _SERVICE_DELIVERED_ID:
+        if family.id == _SERVICE_DELIVERED_ID and (
+            self.kind == "stop" or self.question.stop is not None
+        ):
             raise ValueError("trip measures do not apply to stops")
         if self.question.measure in _BOUNDARIES and self.kind != "line":
             raise ValueError("first and last trip measures apply to lines")

@@ -438,9 +438,9 @@ class Question:
             raise ValueError("accessibility does not apply to scheduled departures")
         if family.id == _ACCESSIBILITY_ID and self.group is not None:
             raise ValueError("accessibility does not support series grouping")
-        if family.id == _SERVICE_DELIVERED_ID and self.stop is not None:
-            raise ValueError("stop does not apply to service delivered trip measures")
         if self.measure in _BOUNDARIES:
+            if self.stop is not None:
+                raise ValueError("first and last departures do not support a stop cut")
             if (self.line is None and not ranking) or (
                 self.day_type is None and self.group is None
             ):
@@ -1373,8 +1373,21 @@ def _service_delivered_rows(
 ) -> dict[EntityKey, Batch]:
     window = "provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?"
     hour_sql = _LOCAL_HOUR.format("scheduled_start_utc")
-    cut_sql, filters = _cuts(question, hour_sql)
+    trip_cut = replace(question, stop=None) if question.stop is not None else question
+    cut_sql, filters = _cuts(trip_cut, hour_sql)
     scope = [question.city, version, question.start, question.end]
+    stop_join = ""
+    stop_params: list[object] = []
+    if question.stop is not None:
+        # A scheduled trip's stop rows keep its timetable, including untimed calls.
+        # A semi join keeps one trip instance even if it calls at the stop twice.
+        stop_join = f"""
+            SEMI JOIN (
+                SELECT service_date, trip_id FROM read_parquet(?, hive_partitioning = false)
+                WHERE {window} AND stop_id = ?
+            ) stops USING (service_date, trip_id)
+        """
+        stop_params = [paths[STOP_EVENTS], *scope, question.stop]
     trips_sql = f"""
         SELECT service_date, trip_id, route_id, direction_id, scheduled_start_utc, state,
             route_has_live_data,
@@ -1383,10 +1396,10 @@ def _service_delivered_rows(
             state IN ('ran', 'cancelled', 'missing') AS eligible,
             CASE WHEN state = 'cancelled'
                 THEN epoch(scheduled_start_utc - cancellation_notice_utc) END AS lead_seconds
-        FROM read_parquet(?, hive_partitioning = false)
+        FROM read_parquet(?, hive_partitioning = false) {stop_join}
         WHERE {window} AND {cut_sql}
     """
-    parameters = [paths[TRIP_DAYS], *scope, *filters]
+    parameters = [paths[TRIP_DAYS], *stop_params, *scope, *filters]
     counters = dict(_DELIVERY_AGGREGATES)
     if group:
         counters["live_candidates"] = "count(*) FILTER (state <> 'added' AND route_has_live_data)"
@@ -1422,7 +1435,9 @@ def _service_delivered_rows(
         """
         duration_params = [paths[SCHEDULED_STOP_TIMES], *scope]
     entity = _entity_sql(group, question.group, hour_sql)
-    boundaries = question.line is not None if group is None else question.measure in _BOUNDARIES
+    boundaries = question.stop is None and (
+        question.line is not None if group is None else question.measure in _BOUNDARIES
+    )
     boundary_sql = ""
     boundary_rows = ""
     if (
@@ -1522,6 +1537,14 @@ _BOUNDARY_LIMITS = Text(
     "Dates with no scheduled departure add no trip.",
     "Elle ne révèle pas l’heure réelle du départ, seulement s’il a été confirmé. Les dates "
     "sans départ prévu n’ajoutent aucun trajet.",
+)
+_STOP_DELIVERY_COUNTS = Text(
+    "For this stop, each trip scheduled to call here counts once, even if it calls twice. "
+    "An outcome applies to the whole trip. A trip that ran may have been confirmed "
+    "at another stop.",
+    "Ce bilan compte une fois chaque trajet dont l’horaire prévoit un passage à cet arrêt, même "
+    "s’il y passe deux fois. L’issue s’applique au trajet entier. Un trajet effectué peut avoir "
+    "été confirmé à un autre arrêt.",
 )
 _SERVICE_DELIVERED = Family(
     id=_SERVICE_DELIVERED_ID,
@@ -4082,6 +4105,8 @@ class ReadWindow:
 
 def _partial_scope(question: Question, family: Family) -> bool:
     cuts = question.cuts()
+    if family.id == _SERVICE_DELIVERED_ID:
+        return cuts.keys() == {"stop"} and question.group in {None, "day"}
     if family.id == _VEHICLES_ID:
         return (
             (question.measure == "vehicle_days_in_service" and question.group == "vehicle"
@@ -4108,7 +4133,7 @@ def _daily_partial[T](
         return compute()
     key = (
         store.root, question.city, day, str(window.versions[day]), family.id,
-        family.method_version, measure, question.group, question.vehicle,
+        family.method_version, measure, question.group, question.vehicle, question.stop,
         window.partial_receipts[day],
     )
     return store.partial_results.read_or_compute(key, compute)
@@ -4143,6 +4168,7 @@ def read_window(
     # Bound window sorts over dense position records and stop sequences.
     batch_days = (
         1 if VEHICLE_POSITIONS in tables or family.id == _WAITING_ID
+        or (family.id == _SERVICE_DELIVERED_ID and question.stop is not None)
         or (family.id == _CORRIDORS_ID and not question.network_corridors) else None
     )
     window = ReadWindow({table: [] for table in tables}, batch_days=batch_days)
@@ -4882,6 +4908,15 @@ def ask(store: Store, question: Question) -> dict[str, Any]:
             f"Network corridors require cleaning version {SEGMENT_RUNS_VERSION} or later",
         )
     family, selected = _SELECTIONS[question.measure]
+    if family is _SERVICE_DELIVERED and question.stop is not None:
+        family = replace(family, tables=(*family.tables, STOP_EVENTS))
+        selected = tuple(
+            replace(measure, counts=Text(
+                f"{_STOP_DELIVERY_COUNTS.en} {(measure.counts or family.counts).en}",
+                f"{_STOP_DELIVERY_COUNTS.fr} {(measure.counts or family.counts).fr}",
+            ))
+            for measure in selected
+        )
     if question.group:
         return _series_answer(store, question, family, selected, question.group, started)
     totals = Batch()
