@@ -157,7 +157,13 @@
 			<Collapsible.Root open={expanded} onOpenChange={(value) => (open = value)}>
 				{@render header()}
 				<Collapsible.Content>
-					<div class="disclosure mt-4 min-w-0 gap-4" class:fill>{@render children()}</div>
+					<div
+						class="disclosure mt-4 min-w-0 gap-4"
+						class:fill
+						data-slot="record-disclosure-content"
+					>
+						{@render children()}
+					</div>
 				</Collapsible.Content>
 			</Collapsible.Root>
 			{#if expanded}{@render cardFooter()}{/if}

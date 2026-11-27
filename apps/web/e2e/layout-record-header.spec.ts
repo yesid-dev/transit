@@ -90,6 +90,9 @@ for (const { name, path, section } of pages)
 							);
 							await expect(code).toBeVisible();
 							const before = await frame(page);
+							const phoneDisclosure =
+								name === 'line' && width < 640 ? page.locator('#offered') : undefined;
+							const initialDisclosureHeight = (await phoneDisclosure?.boundingBox())?.height;
 							const gap = await page
 								.locator('[data-slot="app-frame-header"]')
 								.evaluate((element) => {
@@ -131,6 +134,12 @@ for (const { name, path, section } of pages)
 							const cutContent =
 								name === 'stop' ? cut.getByRole('table') : cut.locator('[data-slot="stop-ladder"]');
 							await expect(cutContent).toHaveCount(0);
+							if (phoneDisclosure) {
+								await expect(
+									phoneDisclosure.getByRole('heading').getByRole('button'),
+								).toHaveAttribute('aria-expanded', 'false');
+								expect((await phoneDisclosure.boundingBox())?.height).toBe(initialDisclosureHeight);
+							}
 							expect(await frame(page)).toEqual(before);
 							expect((await releaseCut()).status()).toBe(204);
 							if (name === 'line' && width < 640) await cut.getByRole('button').first().click();

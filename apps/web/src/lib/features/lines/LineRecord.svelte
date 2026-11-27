@@ -437,7 +437,7 @@
 	}
 	@media (width < 40rem) {
 		/* The first HTML frame follows the phone's closed state before matchMedia is available. */
-		.initially-closed [data-slot='line-disclosure-body'],
+		.initially-closed :global([data-slot='record-disclosure-content']),
 		.initially-closed :global([data-slot='record-card'] > footer) {
 			display: none;
 		}
