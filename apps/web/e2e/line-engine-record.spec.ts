@@ -83,6 +83,20 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#delivery table')).toBeVisible();
 		});
 
+		test(`${locale} at ${width}px Live reads the planned frequency toward a terminus`, async ({
+			page,
+		}) => {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(path.replace('frameMode=record', 'frameMode=live'));
+			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+			const schedule = page.getByRole('main').locator('#schedule');
+			await expect(schedule).toContainText(fr ? 'toutes les 12 min' : 'every 12 min');
+			await expect(schedule).toContainText(
+				fr ? 'direction qui compte le plus de trajets' : 'direction with the most scheduled trips',
+			);
+			await expect(schedule.locator('#frequency')).not.toContainText(fr ? 'Inconnu' : 'Unknown');
+		});
+
 		test(`${locale} at ${width}px opens the schedule tab with its periods`, async ({ page }) => {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(path + '&direction=1&tab=schedule');

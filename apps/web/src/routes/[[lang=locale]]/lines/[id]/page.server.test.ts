@@ -12,6 +12,9 @@ vi.mock('#lib/v1/repositories/static.ts', () => ({
 	getRoute: (...args: unknown[]) => harness.getRoute(...args),
 }));
 
+import { render, waitFor } from '@testing-library/svelte';
+import LineScheduleCard from '#lib/features/lines/LineScheduleCard.svelte';
+import { plannedInterval, towardReading } from '#lib/site/presenter.ts';
 import { load } from './+page.server';
 
 function event(id = '24'): Parameters<typeof load>[0] {
@@ -179,4 +182,77 @@ describe('Line Record and Schedule on transit1', () => {
 		expect(request.fetch).not.toHaveBeenCalled();
 		expect(harness.getRecordAnswer).not.toHaveBeenCalled();
 	});
+});
+
+describe('Line Live Schedule card', () => {
+	const weekday = {
+		period_text: { en: 'Morning peak', fr: 'Pointe du matin' },
+		start_hour: 6,
+		end_hour: 9,
+		day_type: 'weekday',
+		days: 5,
+		scheduled_trips: 105,
+		scheduled_clock_hours: 15,
+		scheduled_frequency: 7,
+	};
+	const measured = { state: 'measured', state_text: { en: '', fr: '' } };
+	const evidence = { counts: {}, days_included: ['2026-11-09'] };
+	const toward = (rate: number) => ({ ...weekday, scheduled_frequency: rate });
+
+	beforeEach(() => {
+		harness.getRecordAnswer.mockImplementation(async ({ parameters }) => {
+			if (parameters.measure === 'scheduled_frequency' && parameters.group === 'direction')
+				return {
+					kind: 'answer',
+					answer: {
+						coverage_note: null,
+						evidence,
+						cells: [0, 1].map((direction) => ({
+							...measured,
+							key: { direction },
+							value: {},
+							evidence: { ...evidence, periods: [toward(direction === 0 ? 4 : 3)] },
+						})),
+					},
+				};
+			if (parameters.measure === 'scheduled_frequency')
+				return {
+					kind: 'answer',
+					answer: {
+						...measured,
+						coverage_note: null,
+						value: { scheduled_frequency: 7 },
+						evidence: { ...evidence, periods: [weekday] },
+					},
+				};
+			if (parameters.measure === 'service_delivered')
+				return { kind: 'answer', answer: { coverage_note: null, evidence, cells: [] } };
+			return { kind: 'unconfigured' };
+		});
+	});
+
+	it.each(['en', 'fr'] as const)(
+		'reads the planned frequency toward the busier terminus (%s)',
+		async (locale) => {
+			const url = new URL(
+				'https://transit1.yesid.dev/lines/24?recordFrom=2026-11-08&recordTo=2026-11-14&frameMode=live',
+			);
+			const request = event('24');
+			Object.assign(request, { url });
+			const data = await load(request);
+			const { container } = render(LineScheduleCard, {
+				record: data!.record!,
+				locale,
+				url,
+				headsigns: { 0: 'Tunney’s Pasture', 1: 'Blair' },
+			});
+			const expected = `${plannedInterval(4, locale)} ${towardReading('Tunney’s Pasture', locale, undefined, false)}`;
+			await waitFor(() =>
+				expect(container.querySelector('#frequency')).toHaveTextContent(expected),
+			);
+			expect(container.querySelector('#frequency')).not.toHaveTextContent(
+				locale === 'fr' ? 'Inconnu' : 'Unknown',
+			);
+		},
+	);
 });

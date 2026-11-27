@@ -88,8 +88,8 @@ export const load: PageServerLoad = async (event) => {
 						frameLive
 							? new Set(
 									scheduleOnly
-										? ['frequency', 'boundaries']
-										: ['frequency', 'boundaries', 'punctuality'],
+										? ['frequency', 'directionalFrequency', 'boundaries']
+										: ['frequency', 'directionalFrequency', 'boundaries', 'punctuality'],
 								)
 							: undefined,
 					)
