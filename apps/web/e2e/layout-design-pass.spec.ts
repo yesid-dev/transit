@@ -12,7 +12,7 @@ import {
 } from './capture-fixture';
 import { designPassCases, readingScreens, type Screen } from './design-pass-cases';
 import { recordMapFixture } from './map-record-fixture';
-import { measureDesignPass, setWidth } from './design-pass-measure';
+import { layoutMetrics, measureDesignPass, setWidth } from './design-pass-measure';
 import { expectDesignPass } from './design-pass-debt';
 import { openFrameControls } from './frame-controls';
 import { textDefects } from './layout-helpers';
@@ -50,6 +50,31 @@ const cohesionScreens = new Set<Screen>([
 	'search-query',
 	'roadmap',
 ]);
+
+test('zoomed edges ignore only the AnswerLead measuring box and its contents @layout', async ({
+	page,
+}) => {
+	await setWidth(page, 390);
+	await page.setContent(`
+		<style>
+			html { font-size: 200%; }
+			body { margin: 0; overflow: clip; }
+			figure, [data-slot="answer-fit-measure"], [data-slot="answer-fit-measure"] > span {
+				display: block;
+				width: 500px;
+				height: 1rem;
+				margin: 0;
+			}
+		</style>
+		<span data-slot="answer-fit-measure"><span></span></span>
+		<figure></figure>
+	`);
+	expect(await layoutMetrics(page, true)).toMatchObject({ edges: 110, edgeCount: 1 });
+	await page.locator('figure').evaluate((figure) => {
+		document.querySelector('[data-slot="answer-fit-measure"]')!.append(figure);
+	});
+	expect(await layoutMetrics(page, true)).toMatchObject({ edges: 0, edgeCount: 0 });
+});
 
 async function expectFilterPlaceholder(
 	filter: Locator,

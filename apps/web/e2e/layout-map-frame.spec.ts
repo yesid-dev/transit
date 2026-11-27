@@ -23,13 +23,18 @@ for (const locale of ['en', 'fr']) {
 			'ready',
 		);
 		await expect(page.locator('h1')).toHaveCount(1);
+		const chrome = page.locator('[data-slot="app-frame-chrome"]');
+		await expect(chrome).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+		await expect(chrome).toHaveCSS('background-image', 'none');
+		await expect(chrome).toHaveCSS('pointer-events', 'none');
+		await expect(page.locator('[data-slot="map-mobile-peek"]')).toBeVisible();
+		await expect(page.locator('[data-slot="surface-rail-mobile"]')).toHaveCount(0);
 		const measure = () =>
 			page.evaluate(() => {
 				const selectors = [
 					'[data-slot="map-live-chip"]',
 					'[data-slot="map-mobile-peek"]',
 					'.map-camera-actions',
-					'[data-slot="surface-rail-mobile"] button',
 					'[data-slot="map-legend-fab"] button',
 				];
 				const map = document.querySelector('[data-slot="map-frame"]')!.getBoundingClientRect();

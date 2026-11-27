@@ -363,7 +363,9 @@ describe('EntityDetail — optional article cover', () => {
 		const reliabilitySummary = reliabilityLayout?.querySelector(
 			'[data-slot="reliability-rail-summary"]',
 		);
-		expect(reliabilityRail?.parentElement).toBe(reliabilityLayout);
+		expect(reliabilityRail?.closest('[data-slot="reliability-rail-layout"]')).toBe(
+			reliabilityLayout,
+		);
 		expect(reliabilityContent?.parentElement).toBe(reliabilityLayout);
 		expect(reliabilityContent?.firstElementChild).toBe(reliabilitySummary);
 		expect(reliabilitySummary).toContainElement(screen.getByText('Service banner'));
