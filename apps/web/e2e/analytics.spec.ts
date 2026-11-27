@@ -116,6 +116,28 @@ test('one page load and one client-side navigation each send exactly one pagevie
 	).toEqual([]);
 });
 
+test('uses an edge-injected Cloudflare beacon without adding a second script', async ({ page }) => {
+	const beacon = await captureBeacon(page);
+	const payloads = await capturePlausible(page);
+	await page.addInitScript(() => {
+		const observer = new MutationObserver(() => {
+			if (!document.head) return;
+			observer.disconnect();
+			const script = document.createElement('script');
+			script.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+			script.defer = true;
+			document.head.append(script);
+		});
+		observer.observe(document, { childList: true, subtree: true });
+	});
+	await page.goto(`http://${domain}:${port}/privacy`);
+	await expect.poll(() => payloads.some(({ n }) => n === 'pageview')).toBe(true);
+	await expect.poll(() => beacon.length).toBe(1);
+	await expect(
+		page.locator('script[src^="https://static.cloudflareinsights.com/beacon.min.js"]'),
+	).toHaveCount(1);
+});
+
 test('a portfolio link click is a custom event', async ({ page, context }) => {
 	const payloads = await capturePlausible(page);
 	await captureBeacon(page);

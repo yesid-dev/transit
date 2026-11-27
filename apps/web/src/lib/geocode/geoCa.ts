@@ -8,13 +8,14 @@ export type GeocodeFetcher = (input: URL, init?: RequestInit) => Promise<Respons
 
 /** Geo.ca could not answer (HTTP, network or payload failure): not the same as finding nothing. */
 export class GeocodeUnavailable extends Error {
-	constructor() {
-		super('geocoder_unavailable');
+	constructor(readonly reason: 'unavailable' | 'timeout' | 'cancelled' = 'unavailable') {
+		super(`geocoder_${reason}`);
 		this.name = 'GeocodeUnavailable';
 	}
 }
 
 const GEO_CA_KEYS = 'locate,nominatim,fsa,geonames';
+const GEO_CA_DEADLINE_MS = 4_000;
 const CANADIAN_POSTAL_CODE_RE =
 	/\b([ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z])\s*(\d[ABCEGHJ-NPRSTV-Z]\d)\b/i;
 
@@ -45,15 +46,10 @@ export async function geocode(
 	query: string,
 	area: GeocodeArea,
 	fetcher: GeocodeFetcher = fetch,
+	signal?: AbortSignal,
 ): Promise<GeocodedLocation | null> {
-	// The single-result call keeps its contract: a failed lookup is no location.
-	try {
-		const [first] = await geocodeSuggestions(query, area, fetcher, 1);
-		return first ?? null;
-	} catch (error) {
-		if (error instanceof GeocodeUnavailable) return null;
-		throw error;
-	}
+	const [first] = await geocodeSuggestions(query, area, fetcher, 1, signal);
+	return first ?? null;
 }
 
 export async function geocodeSuggestions(
@@ -61,30 +57,42 @@ export async function geocodeSuggestions(
 	area: GeocodeArea,
 	fetcher: GeocodeFetcher = fetch,
 	limit = 5,
+	signal?: AbortSignal,
 ): Promise<GeocodedLocation[]> {
 	if (!query.trim() || limit <= 0) return [];
 
-	return (await geocodeGeoCa(query, area, fetcher)).slice(0, limit);
+	return (await geocodeGeoCa(query, area, fetcher, signal)).slice(0, limit);
 }
 
 async function geocodeGeoCa(
 	query: string,
 	area: GeocodeArea,
 	fetcher: GeocodeFetcher,
+	caller?: AbortSignal,
 ): Promise<GeocodedLocation[]> {
+	const deadline = AbortSignal.timeout(GEO_CA_DEADLINE_MS);
+	const signal = caller ? AbortSignal.any([caller, deadline]) : deadline;
 	let payload: unknown;
 	try {
+		signal.throwIfAborted();
 		const response = await fetcher(geoCaSearchUrl(query, area), {
+			signal,
 			headers: {
 				accept: 'application/json',
 				'accept-language': `${area.lang}-CA,${area.lang};q=0.8`,
 				'user-agent': 'transit1.yesid.dev citizen map (https://transit1.yesid.dev)',
 			},
 		});
-		if (!response.ok) throw new GeocodeUnavailable();
+		if (!response.ok) {
+			void response.body?.cancel().catch(() => {});
+			throw new GeocodeUnavailable();
+		}
 		payload = await response.json();
+		signal.throwIfAborted();
 	} catch {
-		throw new GeocodeUnavailable();
+		throw new GeocodeUnavailable(
+			caller?.aborted ? 'cancelled' : deadline.aborted ? 'timeout' : 'unavailable',
+		);
 	}
 	if (!Array.isArray(payload)) throw new GeocodeUnavailable();
 
@@ -97,11 +105,15 @@ function rankedGeoCaLocations(
 	bbox: readonly number[],
 ): GeocodedLocation[] {
 	const ranked: RankedLocation[] = [];
+	let hasValidRow = false;
 	for (const item of payload) {
+		if (item === null || typeof item !== 'object' || Array.isArray(item)) continue;
 		const result = item as GeoCaResult;
-		const lat = Number(result.lat);
-		const lon = Number(result.lng);
-		if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+		const lat = coordinate(result.lat);
+		const lon = coordinate(result.lng);
+		if (!Number.isFinite(lat) || Math.abs(lat) > 90 || !Number.isFinite(lon) || Math.abs(lon) > 180)
+			continue;
+		hasValidRow = true;
 		if (!isInsideBounds(lat, lon, bbox)) continue;
 
 		const label = typeof result.name === 'string' ? result.name : query.trim();
@@ -123,7 +135,13 @@ function rankedGeoCaLocations(
 		});
 	}
 
+	if (payload.length && !hasValidRow) throw new GeocodeUnavailable();
 	return rankedLocations(ranked);
+}
+
+function coordinate(value: unknown): number {
+	if (typeof value === 'number') return value;
+	return typeof value === 'string' && value.trim() ? Number(value) : Number.NaN;
 }
 
 function rankedLocations(ranked: RankedLocation[]): GeocodedLocation[] {

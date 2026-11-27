@@ -76,46 +76,37 @@ export const GET: RequestHandler = async ({ url, request, fetch }) => {
 		);
 	}
 
-	if (parsed.value.suggest) {
-		const requestedLimit = Number(url.searchParams.get('limit') ?? 5);
-		const limit = Number.isFinite(requestedLimit)
-			? Math.min(Math.max(Math.trunc(requestedLimit), 1), 6)
-			: 5;
-		const results = await geocodeSuggestions(parsed.value.query, area, fetch, limit).catch(
-			(error: unknown) => {
-				if (error instanceof GeocodeUnavailable) return null;
-				throw error;
-			},
-		);
-		// A failed lookup is not an empty one: the header says "unavailable", never "no address".
-		if (!results)
-			return json(
-				{ error: 'geocoder_unavailable' },
-				{ status: 503, headers: { 'cache-control': 'no-store' } },
+	const headers = { 'cache-control': 'private, no-store' };
+	try {
+		if (parsed.value.suggest) {
+			const requestedLimit = Number(url.searchParams.get('limit') ?? 5);
+			const limit = Number.isFinite(requestedLimit)
+				? Math.min(Math.max(Math.trunc(requestedLimit), 1), 6)
+				: 5;
+			const results = await geocodeSuggestions(
+				parsed.value.query,
+				area,
+				fetch,
+				limit,
+				request.signal,
 			);
+			return json({ results }, { headers });
+		}
+		const result = await geocode(parsed.value.query, area, fetch, request.signal);
+		return result
+			? json(result, { headers })
+			: json({ error: 'not_found' }, { status: 404, headers });
+	} catch (error) {
+		if (!(error instanceof GeocodeUnavailable)) throw error;
+		const statuses = { unavailable: 503, timeout: 504, cancelled: 499 } as const;
 		return json(
-			{ results },
+			{ error: error.message },
 			{
-				headers: {
-					'cache-control': 'private, no-store',
-				},
+				status: statuses[error.reason],
+				headers: { 'cache-control': 'no-store' },
 			},
 		);
 	}
-
-	const result = await geocode(parsed.value.query, area, fetch);
-	if (!result) {
-		return json(
-			{ error: 'not_found' },
-			{ status: 404, headers: { 'cache-control': 'private, no-store' } },
-		);
-	}
-
-	return json(result, {
-		headers: {
-			'cache-control': 'private, no-store',
-		},
-	});
 };
 
 function parseGeocodeRequest(searchParams: URLSearchParams): ParseResult {

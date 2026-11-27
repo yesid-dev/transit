@@ -1,4 +1,3 @@
-import { error } from '@sveltejs/kit';
 import {
 	canonicalDepartureHref,
 	departureFromKey,
@@ -8,7 +7,7 @@ import {
 	departureQuery,
 	identifyDeparture,
 } from '#lib/server/departureDailyRecord.ts';
-import { missingRecordCsv, recordCsvResponse } from '#lib/server/recordCsv.ts';
+import { invalidRecordCsv, missingRecordCsv, recordCsvResponse } from '#lib/server/recordCsv.ts';
 import { validEntityId } from '#lib/server/entityIdentity.ts';
 import { frameClock } from '#lib/site/frameState.ts';
 import type { RequestHandler } from './$types';
@@ -20,7 +19,7 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 		return missingRecordCsv(lang, 'DEPARTURE_NOT_FOUND');
 	const section = url.searchParams.get('section') ?? '';
 	const query = departureQuery(section, identity);
-	if (!query) error(400);
+	if (!query) return invalidRecordCsv(lang);
 	return recordCsvResponse(query, url, request, lang, `departure-${section}.csv`, {
 		identity: {
 			code: 'DEPARTURE_NOT_FOUND',

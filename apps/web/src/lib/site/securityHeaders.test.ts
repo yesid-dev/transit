@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import boot from '@yesid/ui/boot.json';
 import { SECURITY_HEADERS } from '@yesid/seo-kit/headers';
 
-import config, { cspDirectives } from '../../../kit.config.js';
+import config, { cspDirectives, reloadNoticeHash } from '../../../kit.config.js';
 import { DOCUMENT_SECURITY_HEADERS } from './securityHeaders';
 
 function parseHeadersFileGlobBlock(): Record<string, string> {
@@ -60,6 +60,7 @@ describe('content security policy', () => {
 			'self',
 			boot.hash,
 			boot.announcementHash,
+			reloadNoticeHash,
 			'https://static.cloudflareinsights.com',
 		]);
 		expect(csp?.directives?.['connect-src']).toEqual([

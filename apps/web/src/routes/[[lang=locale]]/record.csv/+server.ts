@@ -1,5 +1,4 @@
-import { error } from '@sveltejs/kit';
-import { recordCsvResponse } from '#lib/server/recordCsv.ts';
+import { invalidRecordCsv, recordCsvResponse } from '#lib/server/recordCsv.ts';
 import type { RecordQuery } from '#lib/server/engine.ts';
 import { overviewRankingParameters } from '#lib/server/engineQuestion.ts';
 import { overviewTrendQuery } from '#lib/server/screenQuestions.ts';
@@ -16,13 +15,14 @@ const sections = {
 } satisfies Record<string, RecordQuery>;
 
 export const GET: RequestHandler = ({ url, request, params }) => {
+	const lang = params.lang === 'fr' ? 'fr' : 'en';
 	const section = url.searchParams.get('section') ?? '';
-	if (!Object.hasOwn(sections, section)) error(400);
+	if (!Object.hasOwn(sections, section)) return invalidRecordCsv(lang);
 	return recordCsvResponse(
 		sections[section as keyof typeof sections],
 		url,
 		request,
-		params.lang === 'fr' ? 'fr' : 'en',
+		lang,
 		`overview-${section}.csv`,
 		{ selectPeriod: section === 'previous' ? previousPeriod : undefined },
 	);

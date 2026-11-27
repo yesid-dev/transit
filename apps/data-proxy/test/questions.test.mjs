@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseQuestion, QUESTION_PARAMS } from "../src/question-params.js";
-import { probeEngine, serveBoundQuestion } from "../src/questions.js";
+import { admit, probeEngine, serveBoundQuestion } from "../src/questions.js";
 import worker from "../src/worker.js";
 import { probeV2 } from "../scripts/probe-v2.mjs";
 import { fetchEngine } from "../../engine/upstream.js";
@@ -873,6 +873,29 @@ test("rate limiting keys on hashed client IP and only runs for cache misses", as
   assert.equal(f.requests.length, limit);
   assert.equal((await f.fetch(next, { "cf-connecting-ip": "192.0.2.2" })).status, 200);
   assert.equal(counts.size, 2);
+});
+
+test("question rate keys are secret-derived, rotate at UTC midnight and share an anonymous fallback", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: new Date("2026-11-27T23:59:59Z") });
+  const keys = [];
+  const env = {
+    TRANSIT1_ENGINE_ACCESS_TOKEN: "fixture-engine-secret",
+    QUESTION_LIMIT: { async limit({ key }) { keys.push(key); return { success: true }; } },
+  };
+  const ip = "192.0.2.1";
+  assert.equal(await admit(env, ip), null);
+  assert.equal(await admit(env, ip), null);
+  assert.equal(keys[0], keys[1]);
+  assert.match(keys[0], /^[a-f0-9]{64}$/);
+  const plain = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  assert.notEqual(keys[0], Buffer.from(plain).toString("hex"));
+  t.mock.timers.tick(1000);
+  assert.equal(await admit(env, ip), null);
+  assert.notEqual(keys[0], keys[2]);
+  delete env.TRANSIT1_ENGINE_ACCESS_TOKEN;
+  assert.equal(await admit(env, ip), null);
+  assert.equal(await admit(env, "192.0.2.2"), null);
+  assert.deepEqual(keys.slice(3), ["shared", "shared"]);
 });
 
 test("missing binding and unknown registry measures get honest responses", async (t) => {

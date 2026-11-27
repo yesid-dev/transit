@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 const workers = vi.hoisted(() => ({ env: {} as Record<string, unknown> }));
 vi.mock('cloudflare:workers', () => workers);
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,6 +33,7 @@ function event(
 		headers?: Record<string, HeaderValue>;
 		ip?: string | null;
 		platformEnv?: Record<string, unknown>;
+		signal?: AbortSignal;
 	} = {},
 ): Parameters<Handler>[0] {
 	workers.env = options.platformEnv ?? {};
@@ -48,7 +51,7 @@ function event(
 	}
 	return {
 		url,
-		request: { headers },
+		request: new Request(url, { headers, signal: options.signal }),
 		fetch: vi.fn(),
 	} as unknown as Parameters<Handler>[0];
 }
@@ -95,6 +98,7 @@ it('resolves Ottawa geography and French language before geocoding', async () =>
 		'Bank Street',
 		{ bbox: OTTAWA_BOUNDS, context: 'Ottawa, Ontario', lang: 'fr' },
 		request.fetch,
+		request.request.signal,
 	);
 });
 
@@ -204,7 +208,12 @@ describe('/api/geocode input contract', () => {
 		const response = await GET(event(`?q=${encodeURIComponent(query)}`));
 
 		expect(response.status).toBe(200);
-		expect(providers.geocode).toHaveBeenCalledWith(query, AREA, expect.any(Function));
+		expect(providers.geocode).toHaveBeenCalledWith(
+			query,
+			AREA,
+			expect.any(Function),
+			expect.any(AbortSignal),
+		);
 	});
 
 	it('accepts the exact query upper bound', async () => {
@@ -232,6 +241,7 @@ describe('/api/geocode input contract', () => {
 			AREA,
 			expect.any(Function),
 			4,
+			expect.any(AbortSignal),
 		);
 		expect(await responseBody(response)).toEqual({
 			results: [
@@ -376,23 +386,58 @@ describe('/api/geocode limiter', () => {
 });
 
 describe('/api/geocode upstream failure', () => {
-	it('answers a bounded, non-cacheable 503 when Geo.ca fails, and an empty list only when it answered', async () => {
+	const actualProvider = async () => {
 		const actual =
 			await vi.importActual<typeof import('#lib/geocode/geoCa.ts')>('#lib/geocode/geoCa.ts');
 		providers.geocodeSuggestions.mockImplementation(actual.geocodeSuggestions);
-		const suggest = (upstream: Response) => {
-			const request = event('?q=casgrain&suggest=1&limit=2');
-			Object.assign(request, { fetch: vi.fn(async () => upstream) });
-			return GET(request);
-		};
+		providers.geocode.mockImplementation(actual.geocode);
+	};
 
-		const failed = await suggest(new Response('', { status: 503 }));
-		expect(failed.status).toBe(503);
-		expect(failed.headers.get('cache-control')).toBe('no-store');
-		expect(await responseBody(failed)).toEqual({ error: 'geocoder_unavailable' });
+	it.each(['', '&suggest=1'])(
+		'distinguishes no match from a malformed upstream payload in %s',
+		async (mode) => {
+			await actualProvider();
+			const lookup = (upstream: string) =>
+				GET({ ...event('?q=casgrain' + mode), fetch: vi.fn(async () => new Response(upstream)) });
 
-		const empty = await suggest(new Response('[]'));
-		expect(empty.status).toBe(200);
-		expect(await responseBody(empty)).toEqual({ results: [] });
+			const failed = await lookup('[null,{"name":"no coordinates"}]');
+			expect(failed.status).toBe(503);
+			expect(failed.headers.get('cache-control')).toBe('no-store');
+			expect(await responseBody(failed)).toEqual({ error: 'geocoder_unavailable' });
+			const empty = await lookup('[]');
+			expect(empty.status).toBe(mode ? 200 : 404);
+			expect(await responseBody(empty)).toEqual(mode ? { results: [] } : { error: 'not_found' });
+		},
+	);
+
+	it.each([
+		['', 'timeout', 504],
+		['&suggest=1', 'timeout', 504],
+		['', 'cancelled', 499],
+		['&suggest=1', 'cancelled', 499],
+	] as const)('propagates %s %s to the upstream fetch', async (mode, reason, status) => {
+		await actualProvider();
+		const controller = new AbortController();
+		const deadline =
+			reason === 'timeout'
+				? vi.spyOn(AbortSignal, 'timeout').mockReturnValueOnce(controller.signal)
+				: undefined;
+		const request = event('?q=casgrain' + mode, {
+			signal: reason === 'cancelled' ? controller.signal : undefined,
+		});
+		const fetcher = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+			controller.abort();
+			init?.signal?.throwIfAborted();
+			throw new Error('Abort was not propagated');
+		});
+		try {
+			const response = await GET({ ...request, fetch: fetcher });
+			expect(fetcher.mock.calls[0][1]?.signal?.aborted).toBe(true);
+			expect(response.status).toBe(status);
+			expect(await responseBody(response)).toEqual({ error: `geocoder_${reason}` });
+			if (deadline) expect(deadline).toHaveBeenCalledWith(4000);
+		} finally {
+			deadline?.mockRestore();
+		}
 	});
 });

@@ -15,6 +15,9 @@ declare module 'cloudflare:workers' {
 		GEOCODE_SHARED_RATE_LIMITER?: {
 			limit(options: { key: string }): Promise<{ success: boolean }>;
 		};
+		TELEMETRY_RATE_LIMITER?: {
+			limit(options: { key: string }): Promise<{ success: boolean }>;
+		};
 		[key: string]: unknown;
 	};
 	export function waitUntil(promise: Promise<unknown>): void;

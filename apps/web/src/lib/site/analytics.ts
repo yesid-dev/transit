@@ -5,23 +5,26 @@ import {
 	type AnalyticsPropValues,
 } from '@yesid/analytics/config';
 
+export const ANALYTICS_EVENTS = [
+	'Search Result',
+	'Locate Me',
+	'Address Pick',
+	'Nearby Stop',
+	'Portfolio Click',
+	'Repo Click',
+	'404',
+] as const;
+
+export const ANALYTICS_DIMENSIONS = {
+	locale: ['en', 'fr'],
+	kind: ['route', 'stop', 'vehicle', 'address'],
+	placement: ['menu', 'footer', 'page'],
+} as const;
+
 const cityPreset = (providers: readonly string[]) =>
 	defineAnalyticsPreset({
-		events: [
-			'Search Result',
-			'Locate Me',
-			'Address Pick',
-			'Nearby Stop',
-			'Portfolio Click',
-			'Repo Click',
-			'404',
-		],
-		props: {
-			locale: ['en', 'fr'],
-			provider: providers,
-			kind: ['route', 'stop', 'vehicle', 'address'],
-			placement: ['menu', 'footer', 'page'],
-		},
+		events: ANALYTICS_EVENTS,
+		props: { ...ANALYTICS_DIMENSIONS, provider: providers },
 	});
 
 type Preset = ReturnType<typeof cityPreset>;
@@ -69,6 +72,9 @@ function servedFrom(domain: string | undefined): domain is string {
 }
 
 function loadCloudflareBeacon(token: string): void {
+	// Cloudflare can insert the snippet into the HTML before Transit starts.
+	if (document.querySelector('script[src^="https://static.cloudflareinsights.com/beacon.min.js"]'))
+		return;
 	const script = document.createElement('script');
 	script.type = 'module';
 	script.src = `https://static.cloudflareinsights.com/beacon.min.js?token=${token}`;
@@ -84,8 +90,8 @@ function onOutboundClick(event: MouseEvent): void {
 
 /**
  * Starts Plausible (pageviews and the events above, sent through Transit's own relay route) and
- * the Cloudflare Web Analytics beacon. Both stay off unless the page is served from `domain`, so
- * local, preview and fork hosts send nothing. Only the first call per page load starts anything.
+ * the configured Cloudflare Web Analytics beacon. This app starts its own senders only on the
+ * configured site. Cloudflare can independently add its beacon at the edge.
  */
 export function startAnalytics({
 	domain,

@@ -1,4 +1,3 @@
-import { error } from '@sveltejs/kit';
 import { frameClock, type FrameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import {
 	getRecordAnswer,
@@ -6,7 +5,7 @@ import {
 	type EnginePeriod,
 	type RecordQuery,
 } from './engine.ts';
-import { missingRecordCsv, recordCsvResponse } from './recordCsv.ts';
+import { invalidRecordCsv, missingRecordCsv, recordCsvResponse } from './recordCsv.ts';
 import { validEntityId, vehicleIdentity } from './entityIdentity.ts';
 import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 
@@ -86,7 +85,8 @@ export function vehicleCsv(
 	const section = url.searchParams.get('section') ?? '';
 	const lang = language === 'fr' ? 'fr' : 'en';
 	if (id !== undefined && !validEntityId(id)) return missingRecordCsv(lang, 'VEHICLE_NOT_FOUND');
-	if (!Object.hasOwn(queries, section) || (section === 'fleet') === Boolean(id)) error(400);
+	if (!Object.hasOwn(queries, section) || (section === 'fleet') === Boolean(id))
+		return invalidRecordCsv(lang);
 	return recordCsvResponse(
 		recordQuery(section as VehicleSection, id),
 		url,

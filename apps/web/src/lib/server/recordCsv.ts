@@ -43,6 +43,22 @@ export function missingRecordCsv(lang: 'en' | 'fr', code: DetailCode) {
 	return csvFailure(404, `${detailNotFoundCopy[code][lang].heading}.`);
 }
 
+const invalidInput = {
+	section: { en: 'Choose which reading to download.', fr: 'Choisissez la mesure à télécharger.' },
+	city: {
+		en: 'Choose a transit network for this download.',
+		fr: 'Choisissez un réseau de transport pour ce téléchargement.',
+	},
+	dates: {
+		en: 'Choose a valid date range for this download.',
+		fr: 'Choisissez une période valide pour ce téléchargement.',
+	},
+};
+
+export function invalidRecordCsv(lang: 'en' | 'fr', field: keyof typeof invalidInput = 'section') {
+	return csvFailure(400, invalidInput[field][lang]);
+}
+
 function downloadError(lang: 'en' | 'fr', status: number, retryAfter?: string | null) {
 	return csvFailure(status, status === 503 ? unavailableText[lang] : invalidText[lang], retryAfter);
 }
@@ -122,6 +138,8 @@ export async function recordCsvResponse(
 	const search = url.searchParams;
 	const city = search.get('provider') ?? '';
 	const period = { from: search.get('recordFrom') ?? '', to: search.get('recordTo') ?? '' };
+	if (!city) return invalidRecordCsv(lang, 'city');
+	if (!period.from || !period.to) return invalidRecordCsv(lang, 'dates');
 	if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) return downloadError(lang, 400);
 	const visitorIp = request.headers.get('cf-connecting-ip');
 	const catalog = await getCityCatalog(visitorIp).catch(() => null);

@@ -277,7 +277,7 @@ describe('geocode', () => {
 		expect(fetcher.mock.calls[0]?.[0].origin).toBe('https://geolocator.api.geo.ca');
 	});
 
-	it('returns null without a public fallback when Geo.ca is unavailable', async () => {
+	it('reports Geo.ca is unavailable without a public fallback', async () => {
 		const fetcher = vi.fn<GeocodeFetcher>(async (url) => {
 			if (url.origin === 'https://geolocator.api.geo.ca') {
 				throw new Error('geo.ca unavailable');
@@ -293,7 +293,9 @@ describe('geocode', () => {
 			]);
 		});
 
-		await expect(geocode('Berri-UQAM', AREA, fetcher)).resolves.toBeNull();
+		await expect(geocode('Berri-UQAM', AREA, fetcher)).rejects.toMatchObject({
+			reason: 'unavailable',
+		});
 		expect(fetcher).toHaveBeenCalledOnce();
 		expect(fetcher.mock.calls[0]?.[0].origin).toBe('https://geolocator.api.geo.ca');
 	});
@@ -346,16 +348,22 @@ describe('upstream failure', () => {
 		['a network failure', async () => Promise.reject(new Error('offline'))],
 		['an unreadable body', async () => new Response('not json')],
 		['a non-array payload', async () => new Response('{"error":"busy"}')],
+		['an array with only malformed results', async () => new Response('[null,{"lat":null}]')],
 	] as [string, GeocodeFetcher][])('reports %s instead of an empty answer', async (_, fetcher) => {
 		await expect(geocodeSuggestions('casgrain', AREA, fetcher, 2)).rejects.toBeInstanceOf(
 			GeocodeUnavailable,
 		);
-		// The single-result call keeps its contract: no location.
-		await expect(geocode('casgrain', AREA, fetcher)).resolves.toBeNull();
+		await expect(geocode('casgrain', AREA, fetcher)).rejects.toBeInstanceOf(GeocodeUnavailable);
 	});
 
 	it('answers an empty list only for a completed search with nothing in the area', async () => {
 		const fetcher: GeocodeFetcher = async () => new Response('[]');
 		await expect(geocodeSuggestions('casgrain', AREA, fetcher, 2)).resolves.toEqual([]);
+	});
+
+	it('ranks valid results alongside malformed rows', async () => {
+		const fetcher: GeocodeFetcher = async () =>
+			jsonResponse([null, { key: 'locate', name: 'Montréal', lat: 45.5, lng: -73.6 }]);
+		await expect(geocode('Montréal', AREA, fetcher)).resolves.toMatchObject({ label: 'Montréal' });
 	});
 });

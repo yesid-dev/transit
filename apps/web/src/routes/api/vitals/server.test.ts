@@ -1,5 +1,9 @@
+// @vitest-environment node
+
 const workers = vi.hoisted(() => ({ env: {} as Record<string, unknown> }));
 vi.mock('cloudflare:workers', () => workers);
+const flags = vi.hoisted(() => ({ PUBLIC_VITALS_ENABLED: 'true' }));
+vi.mock('$app/env/public', () => flags);
 import { describe, expect, it, vi } from 'vitest';
 import { POST } from './+server';
 
@@ -16,17 +20,28 @@ const sample = {
 };
 
 function event(opts: {
-	body?: string;
+	body?: string | ReadableStream<Uint8Array>;
 	binding?: unknown;
 	contentLength?: string;
+	enabled?: boolean;
+	allowed?: boolean;
 }): Parameters<Handler>[0] {
-	const headers = new Map<string, string>([['content-type', 'application/json']]);
+	flags.PUBLIC_VITALS_ENABLED = opts.enabled === false ? '' : 'true';
+	const headers = new Headers({
+		'content-type': 'application/json',
+		'cf-connecting-ip': '192.0.2.14',
+	});
 	if (opts.contentLength !== undefined) headers.set('content-length', opts.contentLength);
-	workers.env = opts.binding === undefined ? {} : { WEB_VITALS: opts.binding };
-	const request = {
-		headers: { get: (k: string) => headers.get(k.toLowerCase()) ?? null },
-		text: async () => opts.body ?? '',
+	workers.env = {
+		WEB_VITALS: opts.binding,
+		TELEMETRY_RATE_LIMITER: { limit: async () => ({ success: opts.allowed !== false }) },
 	};
+	const request = new Request('https://transit.yesid.dev/api/vitals', {
+		method: 'POST',
+		headers,
+		body: opts.body,
+		duplex: 'half',
+	} as RequestInit & { duplex: 'half' });
 	return {
 		request,
 	} as unknown as Parameters<Handler>[0];
@@ -54,7 +69,7 @@ describe('/api/vitals POST handler', () => {
 
 		const firstArg = writeDataPoint.mock.calls[0][0];
 		expect(firstArg.indexes).toEqual(['LCP']);
-		expect(firstArg.blobs).toEqual(['LCP', 'good', '/lines/11', 'navigate', '4g']);
+		expect(firstArg.blobs).toEqual(['LCP', 'good', '/lines/[id]', 'navigate', '4g']);
 		expect(firstArg.doubles).toEqual([1200]);
 	});
 
@@ -104,6 +119,57 @@ describe('/api/vitals POST handler', () => {
 			}),
 		);
 		expect(res.status).toBe(413);
+	});
+
+	it('enforces the UTF-8 byte cap while pulling chunks and cancels without buffering the rest', async () => {
+		const pull = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) =>
+			controller.enqueue(new TextEncoder().encode('é'.repeat(1100))),
+		);
+		const cancel = vi.fn();
+		const writeDataPoint = vi.fn();
+		const body = new ReadableStream({ pull, cancel }, { highWaterMark: 0 });
+		const response = await POST(event({ body, binding: { writeDataPoint } }));
+		expect(response.status).toBe(413);
+		expect(pull).toHaveBeenCalledTimes(2);
+		expect(cancel).toHaveBeenCalledOnce();
+		expect(writeDataPoint).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		[{ enabled: false }, 204],
+		[{ allowed: false }, 429],
+	] as const)('does not consume a disabled or unadmitted body', async (options, status) => {
+		const pull = vi.fn();
+		const writeDataPoint = vi.fn();
+		const body = new ReadableStream<Uint8Array>({ pull }, { highWaterMark: 0 });
+		const response = await POST(event({ ...options, body, binding: { writeDataPoint } }));
+		expect(response.status).toBe(status);
+		expect(pull).not.toHaveBeenCalled();
+		expect(writeDataPoint).not.toHaveBeenCalled();
+	});
+
+	it('drops unmatched paths and keeps only fixed route and connection dimensions', async () => {
+		const writeDataPoint = vi.fn();
+		await POST(
+			event({
+				binding: { writeDataPoint },
+				body: JSON.stringify({
+					samples: [
+						{ ...sample, path: '/fr/stop/identifier', conn: 'unexpected value' },
+						{ ...sample, path: '/arbitrary/path' },
+						{ ...sample, path: '/lines/11?q=search' },
+					],
+				}),
+			}),
+		);
+		expect(writeDataPoint).toHaveBeenCalledOnce();
+		expect(writeDataPoint.mock.calls[0][0].blobs).toEqual([
+			'LCP',
+			'good',
+			'/stop/[id]',
+			'navigate',
+			null,
+		]);
 	});
 
 	it('still 204 when writeDataPoint throws (best-effort RUM)', async () => {
