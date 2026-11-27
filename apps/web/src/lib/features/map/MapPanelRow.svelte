@@ -72,26 +72,15 @@
 		column-gap: 0.5rem;
 		padding-block: 0.375rem;
 		min-block-size: var(--size-tap-min);
+		min-inline-size: 0;
 		font-size: var(--text-small);
 	}
+	.panel-row > * {
+		min-inline-size: 0;
+	}
 	.panel-row[data-report-row] {
-		display: flex;
-		flex-wrap: wrap;
-	}
-	.panel-row[data-report-row] .code {
-		flex: 0 0 3.25rem;
-	}
-	.panel-row[data-report-row] .name {
-		flex: 1 0 auto;
-		max-inline-size: calc(100% - 3.75rem);
-	}
-	.panel-row[data-report-row] .value {
-		margin-inline-start: auto;
-		max-inline-size: 100%;
-	}
-	.panel-row[data-report-row] small {
-		flex-basis: 100%;
-		padding-inline-start: 3.75rem;
+		grid-template-columns: 3.25rem minmax(0, 1fr) 7rem;
+		overflow-wrap: anywhere;
 	}
 	.code {
 		grid-area: code;
@@ -121,8 +110,8 @@
 		position: absolute;
 		inset: 0;
 	}
-	.name,
-	small {
+	.panel-row:not([data-report-row]) .name,
+	.panel-row:not([data-report-row]) small {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

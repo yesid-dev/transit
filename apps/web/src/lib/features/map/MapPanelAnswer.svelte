@@ -4,6 +4,6 @@
 	let { value, sentence }: { value: string; sentence: string } = $props();
 </script>
 
-<div data-slot="screen-answer">
+<div class="[min-inline-size:0] [overflow-wrap:anywhere]" data-slot="screen-answer">
 	<AnswerLead {value} {sentence} size="md" />
 </div>
