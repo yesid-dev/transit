@@ -15,12 +15,14 @@ import {
 } from '#lib/site/presenter.ts';
 import {
 	collectionGaps,
+	feedCheckRows,
 	predictionReadings,
 	predictionsNotMeasured,
 	publishingRows,
 	publishStateText,
 	stopEventCoverage,
 	tripCoverageFacts,
+	tripsLeftOutByDay,
 	vehicleReportRows,
 } from './agencyHealthText.ts';
 
@@ -362,6 +364,12 @@ describe('the agency scorecard in plain words', () => {
 		answer.evidence.start_date = '2026-11-19';
 		answer.evidence.end_date = '2026-11-25';
 		answer.evidence.days_included = ['2026-11-22', '2026-11-23', '2026-11-24'];
+		answer.evidence.capture_gap_days.live_trip_coverage = [
+			'2026-11-19',
+			'2026-11-20',
+			'2026-11-21',
+			'2026-11-25',
+		];
 		return answer;
 	};
 
@@ -395,6 +403,11 @@ describe('the agency scorecard in plain words', () => {
 				locale === 'fr' ? ['99,3 %', '10,3 %'] : ['99.3%', '10.3%'],
 			);
 			expect(plain(facts.sample)).toBe(foot);
+			expect(facts.gapNote).toBe(
+				locale === 'en'
+					? 'This figure leaves out days with gaps in live data (19 Nov, 20 Nov, 21 Nov, 25 Nov).'
+					: 'Ce résultat exclut les jours où les données en direct étaient incomplètes (19 nov., 20 nov., 21 nov., 25 nov.).',
+			);
 		},
 	);
 
@@ -460,12 +473,80 @@ describe('gaps in collection', () => {
 		checks.evidence.days_not_measured_reasons = { '2026-11-24': 'no_raw_captures' };
 		expect(collectionGaps(checks, locale)).toBe(sentence);
 	});
-	it('says when no day has a gap', () => {
-		expect(collectionGaps(scorecard('poll_success', {}, {}, {}), 'en')).toBe(
-			'No gap in collection in these dates.',
+	it('only makes a claim about gaps when the checks report an affected day', () => {
+		const checks = scorecard('poll_success', {}, {}, {});
+		expect(collectionGaps(checks, 'en')).toBeNull();
+		checks.evidence.capture_gap_days.poll_success = ['2026-11-24'];
+		expect(collectionGaps(checks, 'en')).toBe(
+			'Days with a gap in collection: 24 Nov (collection interrupted).',
 		);
 	});
 });
+
+it.each([
+	[
+		'en',
+		'20 Nov: 1,061 trips left out because live data was interrupted.',
+		[
+			'21,184 / 21,184 checks · 675 of 21,184 with a feed over 10 min old',
+			'31,941 / 31,941 checks · 1,033 of 31,941 with a feed over 10 min old',
+		],
+	],
+	[
+		'fr',
+		'20 nov.\u00a0: 1\u00a0061 trajets écartés à cause d’une interruption des données en direct.',
+		[
+			'21\u00a0184 / 21\u00a0184 contrôles · 675 sur 21\u00a0184 avec un flux datant de plus de 10 min',
+			'31\u00a0941 / 31\u00a0941 contrôles · 1\u00a0033 sur 31\u00a0941 avec un flux datant de plus de 10 min',
+		],
+	],
+] as const)(
+	'names excluded trips and stale checks in %s even when all checks succeed',
+	(locale, trips, stale) => {
+		const delivery = {
+			coverage_note: null,
+			evidence,
+			cells: [
+				[19, 3],
+				[20, 1061],
+				[21, 2],
+				[22, 0],
+				[25, 12],
+			].map(([day, count]) => ({
+				key: { day: `2026-11-${day}` },
+				state: 'measured' as const,
+				state_text: { en: '', fr: '' },
+				value: {},
+				evidence: { days_included: [], counts: {}, excluded: { capture_gap: count } },
+			})),
+		} satisfies RecordSeries;
+		const age = scorecard(
+			'feed_age_at_capture',
+			{},
+			{
+				trip_updates: { attempts: 21184, successful: 21184, samples: 21183, overflow: 675 },
+				vehicle_positions: { attempts: 31941, successful: 31941, samples: 31941, overflow: 1033 },
+				alerts: { attempts: 3082, successful: 3082, samples: 0, overflow: 0 },
+			},
+			{},
+		);
+		const polls = scorecard(
+			'poll_success',
+			{ trip_updates: 1, vehicle_positions: 1 },
+			{
+				trip_updates: { attempts: 21184, successful: 21184 },
+				vehicle_positions: { attempts: 31941, successful: 31941 },
+			},
+			{ trip_updates: 'measured', vehicle_positions: 'measured' },
+		);
+		const tripNotes = tripsLeftOutByDay(delivery, locale);
+		expect(tripNotes).toHaveLength(4);
+		expect(spaces(tripNotes[1])).toBe(trips);
+		const rows = feedCheckRows(polls, locale, age);
+		expect(spaces(rows.slice(0, 2).map(({ detail }) => detail))).toEqual(stale);
+		expect(rows[2].detail).toBeUndefined();
+	},
+);
 
 it.each([
 	['en', 'Not tracked: Transit did not collect STM’s notices on these dates.'],

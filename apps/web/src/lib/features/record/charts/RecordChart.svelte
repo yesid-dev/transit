@@ -23,6 +23,7 @@
 		chartState,
 		histogramChart,
 		hourChart,
+		hourGridNote,
 		hourGridTooFew,
 		minimumSample,
 		stopLadderChart,
@@ -132,6 +133,9 @@
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
 			<HourGrid {...reading.props} />
+			{#if input.kind === 'hours'}
+				<p class="text-small text-muted-foreground">{hourGridNote(input.answer, locale)}</p>
+			{/if}
 		{:else}
 			<StateMark state={chartState(input.answer.state)} {locale} />
 		{/if}

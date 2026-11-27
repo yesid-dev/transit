@@ -96,6 +96,7 @@ export const agencyScorecardMeasures = [
 	'live_trip_coverage',
 	'prediction_error',
 	'poll_success',
+	'feed_age_at_capture',
 ] as const satisfies readonly NetworkMeasure[];
 
 export type AgencyScorecardMeasure = (typeof agencyScorecardMeasures)[number];

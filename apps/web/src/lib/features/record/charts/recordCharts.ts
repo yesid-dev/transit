@@ -171,6 +171,7 @@ export function minimumSample(series: RecordSeries, measure: string) {
 }
 
 function serviceHours(series: RecordSeries) {
+	const startHour = 4;
 	const active = [
 		...new Set(
 			series.cells.flatMap((cell) => {
@@ -190,23 +191,30 @@ function serviceHours(series: RecordSeries) {
 					: [];
 			}),
 		),
-	].sort((a, b) => a - b);
+	].map((hour) => (hour + 24 - startHour) % 24);
 	if (!active.length) return [];
 
-	// The longest gap between active hours identifies the overnight break.
-	// In a tie, keep the earliest start so equivalent schedules do not jump.
-	let start = active[0];
-	let length = 0;
-	let largestGap = 0;
-	for (const [index, hour] of active.entries()) {
-		const previous = active[(index + active.length - 1) % active.length];
-		const gap = ((hour - previous + 23) % 24) + 1;
-		if (gap <= largestGap) continue;
-		start = hour;
-		length = 25 - gap;
-		largestGap = gap;
-	}
-	return Array.from({ length }, (_, offset) => (start + offset) % 24);
+	// Display a service day from 04h and trim only the unused hours at either end.
+	const start = Math.min(...active);
+	return Array.from(
+		{ length: Math.max(...active) - start + 1 },
+		(_, i) => (start + i + startHour) % 24,
+	);
+}
+
+export function hourGridNote(series: RecordSeries, locale: Locale) {
+	const { start_date, end_date } = series.evidence;
+	const serviceDay = choose(
+		locale,
+		'Hours after midnight belong to the service day that began the evening before.',
+		'Les heures après minuit appartiennent à la journée de service commencée la veille au soir.',
+	);
+	if (Date.parse(end_date) - Date.parse(start_date) !== 6 * 86_400_000) return serviceDay;
+	return `${serviceDay} ${choose(
+		locale,
+		'One day per cell. Choose 28 days for a steadier picture.',
+		'Un jour par case. Choisissez 28 jours pour un portrait plus stable.',
+	)}`;
 }
 
 /** A grid with no hour to judge: some hours too few, none with a reading. */

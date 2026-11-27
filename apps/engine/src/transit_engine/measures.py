@@ -516,7 +516,7 @@ _GROUP_LABELS = {
     "day": Text("Service date", "Date de service"),
     "hour": Text("Local hour", "Heure locale"),
     "day_type": Text("Service day type", "Type de jour de service"),
-    "weekday": Text("ISO weekday", "Jour de la semaine ISO"),
+    "weekday": Text("Service weekday", "Jour de la semaine de service"),
     "direction": Text("Direction", "Direction"),
     "stop_sequence": Text("Stop sequence", "Ordre de l’arrêt"),
     "stop": Text("Stop ID", "Identifiant de l’arrêt"),

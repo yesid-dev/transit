@@ -17,7 +17,7 @@ import {
 	recordRatio,
 } from '#lib/site/presenter.ts';
 import { publishedAlertEffect, unstatedEffect } from '../alerts/alertCards.ts';
-import { networkRows } from '../network/networkRecordText.ts';
+import { feedLabels, networkRows } from '../network/networkRecordText.ts';
 import { healthReason } from '../record/dataHealthText.ts';
 import { recordState, recordStateFor, type RecordState } from '../record/recordStates.ts';
 import { choose, tally } from '../record/recordText.ts';
@@ -345,9 +345,20 @@ export function tripCoverageFacts(answer: ScorecardAnswer, locale: Locale) {
 			: []),
 	];
 	const base = scheduled ?? eligible;
+	const included = new Set(answer.evidence.days_included);
+	const skipped = (answer.evidence.capture_gap_days[measure] ?? []).filter(
+		(day) => !included.has(day),
+	);
+	const skippedDays = skipped.map((day) => compactServiceDay(day, locale)).join(', ');
 	return {
 		facts,
 		sample: base != null ? `${countedUnit(base, 'trip-scheduled', locale)}, ${days}` : null,
+		gapNote: skipped.length
+			? t(
+					`This figure leaves out days with gaps in live data (${skippedDays}).`,
+					`Ce résultat exclut les jours où les données en direct étaient incomplètes (${skippedDays}).`,
+				)
+			: null,
 	};
 }
 
@@ -510,27 +521,41 @@ export function minimumNote(answer: ScorecardAnswer, measure: string, locale: Lo
 			);
 }
 
-/** One row for each live feed: the share of checks it answered, and the checks under its name. */
-export function feedCheckRows(answer: ScorecardAnswer, locale: Locale) {
-	return networkRows('poll_success', answer, locale).rows.map(([label, answered, ratio]) => ({
-		id: label,
-		label,
-		answered,
-		detail: ratio ? choose(locale, `${ratio} checks`, `${ratio} contrôles`) : undefined,
-	}));
+/** Each feed's row shows its check outcomes and how often its file was stale. */
+export function feedCheckRows(answer: ScorecardAnswer, locale: Locale, age?: ScorecardAnswer) {
+	const ages = age?.evidence.counts.feed_age_at_capture ?? {};
+	const countsByLabel = new Map(
+		Object.entries(feedLabels).map(([feed, labels]) => [choose(locale, ...labels), ages[feed]]),
+	);
+	return networkRows('poll_success', answer, locale).rows.map(([label, answered, ratio]) => {
+		const { overflow, attempts } = object(countsByLabel.get(label));
+		const checked = ratio ? choose(locale, `${ratio} checks`, `${ratio} contrôles`) : null;
+		const stale =
+			typeof overflow === 'number' && overflow > 0 && typeof attempts === 'number'
+				? recordRatio(overflow, tally(attempts, locale), locale)
+				: null;
+		const detail = [
+			checked,
+			stale &&
+				choose(
+					locale,
+					`${stale} with a feed over 10 min old`,
+					`${stale} avec un flux datant de plus de 10 min`,
+				),
+		]
+			.filter(Boolean)
+			.join(' · ');
+		return { id: label, label, answered, detail: detail || undefined };
+	});
 }
 
 /** The days Transit could not check the feeds, each with its reason, in one sentence. */
 export function collectionGaps(answer: ScorecardAnswer, locale: Locale) {
 	const { days_not_measured, days_not_measured_reasons, capture_gap_days } = answer.evidence;
-	const interrupted = new Set(capture_gap_days.poll_success);
-	if (!days_not_measured.length)
-		return choose(
-			locale,
-			'No gap in collection in these dates.',
-			'Aucune lacune de collecte à ces dates.',
-		);
-	const days = days_not_measured.map((day) => {
+	const interrupted = new Set(capture_gap_days.poll_success ?? []);
+	const affected = [...new Set([...days_not_measured, ...interrupted])].sort();
+	if (!affected.length) return null;
+	const days = affected.map((day) => {
 		const reason = interrupted.has(day)
 			? choose(locale, 'collection interrupted', 'collecte interrompue')
 			: healthReason(days_not_measured_reasons[day], locale).toLocaleLowerCase(locale);
@@ -541,4 +566,20 @@ export function collectionGaps(answer: ScorecardAnswer, locale: Locale) {
 		`Days with a gap in collection: ${days.join(', ')}.`,
 		`Jours avec une lacune de collecte\u00a0: ${days.join(', ')}.`,
 	);
+}
+
+export function tripsLeftOutByDay(answer: RecordSeries, locale: Locale) {
+	return answer.cells.flatMap(({ key: { day }, evidence }) => {
+		const count = evidence.excluded?.capture_gap;
+		if (typeof day !== 'string' || count == null || count <= 0) return [];
+		const date = compactServiceDay(day, locale);
+		const trips = countedUnit(count, 'trip', locale);
+		return [
+			choose(
+				locale,
+				`${date}: ${trips} left out because live data was interrupted.`,
+				`${date}\u00a0: ${trips} ${count === 1 ? 'écarté' : 'écartés'} à cause d’une interruption des données en direct.`,
+			),
+		];
+	});
 }

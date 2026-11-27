@@ -143,7 +143,7 @@ test('Network shows the unavailable state when the live capture fails after a su
 for (const locale of ['en', 'fr'] as const) {
 	const fr = locale === 'fr';
 	const root = fr ? '/fr' : '';
-	test(`Network 24-hour grid keeps 23h, word states, legend and phone scroll region in ${locale}`, async ({
+	test(`Network 24-hour grid follows the service day and keeps word states and phone scroll in ${locale}`, async ({
 		page,
 	}) => {
 		// This week's fixture has all 24 hours and every named state.
@@ -156,8 +156,11 @@ for (const locale of ['en', 'fr'] as const) {
 			await page.evaluate(() => document.fonts.ready);
 			const headers = grid.locator('thead th');
 			await expect(headers).toHaveCount(24);
-			await expect(headers.first()).toHaveText(fr ? '0 h' : '00h');
-			await expect(headers.last()).toHaveText(fr ? '23 h' : '23h');
+			await expect(headers.first()).toHaveText(fr ? '4 h' : '04h');
+			await expect(headers.last()).toHaveText(fr ? '3 h' : '03h');
+			await expect(page.locator('#hours')).toContainText(
+				fr ? 'Un jour par case. Choisissez 28 jours' : 'One day per cell. Choose 28 days',
+			);
 
 			const metrics = await grid.evaluate((rootEl) => {
 				const region = rootEl.querySelector<HTMLElement>('[role="region"]')!;

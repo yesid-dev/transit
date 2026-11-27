@@ -46,6 +46,7 @@
 		scorecardState,
 		stopEventCoverage,
 		tripCoverageFacts,
+		tripsLeftOutByDay,
 		vehicleReportRows,
 		type HealthRow,
 	} from '../health/agencyHealthText.ts';
@@ -87,6 +88,7 @@
 			coverage: Result<MeasureAnswer>;
 			accessibility: Result<RecordMeasure>;
 			alertEffects: Result<RecordSeries> | null;
+			deliveryDays: Result<RecordSeries>;
 			scorecard: Record<AgencyScorecardMeasure, Result<ScorecardAnswer>>;
 			health: Result<DataHealthAnswer>;
 			methods: Result<MethodEntry[]>;
@@ -168,8 +170,8 @@
 		).length;
 		if (!gaps)
 			return t(
-				'Every day of these dates is in the record.',
-				'Chaque jour de cette période est dans le bilan.',
+				'The files tracked here are present for every day in this period.',
+				'Les fichiers suivis ici sont présents pour chaque jour de cette période.',
 			);
 		return t(
 			`${tally(gaps, locale)} of ${countedUnit(days, 'day', locale)} ${gaps === 1 ? 'has' : 'have'} a gap.`,
@@ -300,14 +302,16 @@
 {/snippet}
 
 {#snippet coverageBody(answer: ScorecardAnswer)}
+	{@const coverage = tripCoverageFacts(answer, locale)}
 	<FactList>
-		{#each tripCoverageFacts(answer, locale).facts as fact (fact.id)}
+		{#each coverage.facts as fact (fact.id)}
 			<FactRow label={fact.label} labelDetail={fact.detail ?? undefined}>
 				{#if fact.value}<span class="font-semibold">{fact.value}</span>
 				{:else}<StateMark state="unknown" {locale} />{/if}
 			</FactRow>
 		{/each}
 	</FactList>
+	{#if coverage.gapNote}<p>{coverage.gapNote}</p>{/if}
 {/snippet}
 
 {#snippet reportsBody(answer: ScorecardAnswer)}
@@ -360,13 +364,12 @@
 	/>
 {/snippet}
 
-{#snippet feedsBody(answer: ScorecardAnswer)}
-	{@const gaps = collectionGaps(answer, locale)}
+{#snippet feedTable(answer: ScorecardAnswer, age?: ScorecardAnswer)}
 	<RecordDataTable
 		{locale}
 		title={titles.feeds}
 		rowHeader={t('Feed', 'Flux')}
-		rows={feedCheckRows(answer, locale)}
+		rows={feedCheckRows(answer, locale, age)}
 		columns={[
 			{
 				key: 'answered',
@@ -377,7 +380,24 @@
 		]}
 		value="answered"
 	/>
-	<p class="mt-3">{gaps}</p>
+{/snippet}
+
+{#snippet feedsBody(answer: ScorecardAnswer)}
+	{@const gaps = collectionGaps(answer, locale)}
+	{#await record?.scorecard.feed_age_at_capture}
+		{@render feedTable(answer)}
+	{:then result}
+		{@render feedTable(answer, result?.kind === 'answer' ? result.answer : undefined)}
+	{/await}
+	{#if gaps}<p class="mt-3">{gaps}</p>{/if}
+	{#if record}
+		{#await record.deliveryDays then result}
+			{#if result.kind === 'answer'}
+				{@const notes = tripsLeftOutByDay(result.answer, locale)}
+				{#if notes.length}<p class="mt-3">{notes.join(' ')}</p>{/if}
+			{/if}
+		{/await}
+	{/if}
 {/snippet}
 
 <RecordScreen class="min-w-0">
@@ -582,12 +602,6 @@
 									<p class="mb-3">{daysSummary(result.answer)}</p>
 									<!-- A phone shows the last 7 days, so the most recent day is always in view. -->
 									<PhoneSwitch wide={wideGrid} narrow={narrowGrid} />
-									<p class="mt-3">
-										{t(
-											'A day with a gap is left out of the figures that need it, and each figure says how many days it counted.',
-											'Un jour avec une lacune est exclu des résultats qui en dépendent, et chaque résultat indique combien de jours il compte.',
-										)}
-									</p>
 								{:else}<StateMark state="not_measured" {locale} />{/if}
 								{#if result.lastGood}<p class="mt-2">{lastGoodNote[locale]}</p>{/if}
 							{:else}{@render unavailable(result)}{/if}

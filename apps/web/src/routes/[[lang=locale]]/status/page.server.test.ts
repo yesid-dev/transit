@@ -63,6 +63,7 @@ it.each(['live', 'record'] as const)(
 			await expect(data.record.methods).resolves.toEqual({ kind: 'answer', answer: [] });
 			await expect(data.record.health).resolves.toEqual({ kind: 'busy' });
 			await expect(data.record.coverage).resolves.toEqual({ kind: 'busy' });
+			await expect(data.record.deliveryDays).resolves.toEqual({ kind: 'busy' });
 			await Promise.all([data.record.accessibility, ...Object.values(data.record.scorecard)]);
 			// Alerts are not collected for this fixture, so no alert question is asked.
 			expect(data.record.alertEffects).toBeNull();
@@ -72,11 +73,28 @@ it.each(['live', 'record'] as const)(
 		expect(appFetch.mock.calls.map(([input]) => String(input))).toEqual(
 			mode === 'live' ? ['/api/live?city=stm'] : [],
 		);
-		const paths = ports.engine.mock.calls.map(([request]) => new URL(request.url).pathname).sort();
-		expect(paths).toEqual(
+		const questions = ports.engine.mock.calls.map(([request]) => {
+			const question = new URL(request.url);
+			question.searchParams.delete('from');
+			question.searchParams.delete('to');
+			question.searchParams.sort();
+			return question.pathname + question.search;
+		});
+		expect(questions.sort()).toEqual(
 			mode === 'live'
 				? ['/v2/stm/live']
-				: ['/v2/how-we-measure', '/v2/stm/data-health', ...Array(6).fill('/v2/stm/measure')],
+				: [
+						'/v2/how-we-measure',
+						'/v2/stm/data-health',
+						'/v2/stm/measure?group=day&measure=service_delivered',
+						'/v2/stm/measure?measure=accessible_trips',
+						'/v2/stm/measure?measure=feed_age_at_capture',
+						'/v2/stm/measure?measure=live_trip_coverage',
+						'/v2/stm/measure?measure=poll_success',
+						'/v2/stm/measure?measure=prediction_error',
+						'/v2/stm/measure?measure=punctuality',
+						'/v2/stm/measure?measure=vehicle_field_completeness',
+					],
 		);
 	},
 );
@@ -113,6 +131,7 @@ it('reads the same last complete days as every other screen', async () => {
 		data.record.coverage,
 		data.record.health,
 		data.record.accessibility,
+		data.record.deliveryDays,
 		data.record.alertEffects,
 		...Object.values(data.record.scorecard),
 	]);

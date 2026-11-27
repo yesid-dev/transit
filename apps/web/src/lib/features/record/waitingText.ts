@@ -32,7 +32,11 @@ export function waitingReadingParts(cell: RecordCell, measure: WaitingMeasure, l
 	}
 
 	const value = cell.value[measure];
-	const { observed_headways: observed, covered_scheduled_headways: matched } = cell.evidence.counts;
+	const {
+		observed_headways: observed,
+		covered_scheduled_headways: matched,
+		frequent_headways: frequent,
+	} = cell.evidence.counts;
 	const unknown = choose(locale, 'Unknown', 'Inconnu');
 	if (
 		(cell.evidence.measure_states?.[measure] ?? cell.state) !== 'measured' ||
@@ -46,12 +50,14 @@ export function waitingReadingParts(cell: RecordCell, measure: WaitingMeasure, l
 		if (!matched) return { value: unknown };
 		const duration = minuteReading(value / 60, locale);
 		const scheduled = tally(matched, locale);
+		const coverage =
+			frequent && matched <= frequent ? recordPercent(matched / frequent, locale) : null;
 		return {
 			value: duration,
 			detail: choose(
 				locale,
-				`${total} gaps between vehicles seen, ${scheduled} planned, when vehicles are due every 10 minutes or less`,
-				`${total} intervalles entre deux véhicules observés, ${scheduled} prévus, quand les véhicules passent aux 10 minutes ou moins`,
+				`${total} gaps between vehicles seen, compared with ${scheduled} planned gaps in those periods${coverage ? ` (${coverage} of all gaps planned at that frequency)` : ''}, when vehicles are due every 10 minutes or less`,
+				`${total} intervalles entre deux véhicules observés, comparés à ${scheduled} intervalles prévus durant ces périodes${coverage ? ` (${coverage} des intervalles prévus à cette fréquence)` : ''}, quand les véhicules passent aux 10 minutes ou moins`,
 			),
 		};
 	}

@@ -33,7 +33,7 @@ for (const width of [390, 1440]) {
 			await trend.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
 			await expect(trend.getByRole('rowheader')).toHaveCount(2);
 			const waiting = main.locator('#waiting');
-			await expect(waiting).toContainText(fr ? 'Les usagers ont attendu' : 'Riders waited');
+			await expect(waiting).toContainText(fr ? 'l’attente estimée' : 'estimated waits');
 			await expect(waiting).toContainText(
 				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
 			);

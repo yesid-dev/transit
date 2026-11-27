@@ -2,7 +2,36 @@ import { describe, expect, it } from 'vitest';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
 import { measure, period, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import { punctualityBands, recordMessage } from '#lib/features/record/recordText.ts';
-import { crowdingFinding, lineAnswer, lineCitation, offeredFinding } from './lineRecordText.ts';
+import {
+	crowdingFinding,
+	lineAnswer,
+	lineCitation,
+	offeredFinding,
+	waitingFinding,
+} from './lineRecordText.ts';
+
+it.each([
+	['en', 'On the gaps Transit could measure, estimated waits were 0.6 min longer than scheduled.'],
+	[
+		'fr',
+		'Pour les intervalles que Transit a pu mesurer, l’attente estimée dépassait l’horaire de 0,6 min.',
+	],
+] as const)('limits excess wait to measured gaps in %s', (locale, sentence) => {
+	const basedOn = measure();
+	const fixture: RecordMeasure = {
+		...basedOn,
+		value: { excess_wait_time: 37.51566405237588 },
+		evidence: {
+			...basedOn.evidence,
+			counts: {
+				observed_headways: 36474,
+				covered_scheduled_headways: 29394,
+				frequent_headways: 58113,
+			},
+		},
+	};
+	expect(waitingFinding(fixture, locale)?.replace(/[\u00a0\u202f]/gu, ' ')).toBe(sentence);
+});
 
 const base = measure();
 const answer: RecordMeasure = {

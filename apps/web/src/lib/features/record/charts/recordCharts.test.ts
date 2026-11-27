@@ -4,6 +4,7 @@ import {
 	bandChart,
 	histogramChart,
 	hourChart,
+	hourGridNote,
 	hourGridTooFew,
 	rangeChart,
 	stopLadderChart,
@@ -147,8 +148,8 @@ describe('record charts', () => {
 	});
 
 	it.each([
-		['en', '00h', '23h', 'few', 'none'],
-		['fr', '0 h', '23 h', 'peu', 'aucun'],
+		['en', '04h', '03h', 'few', 'none'],
+		['fr', '4 h', '3 h', 'peu', 'aucun'],
 	] as const)(
 		'keeps all 24 active hours and every named state in %s',
 		(locale, firstHour, lastHour, fewWord, noneWord) => {
@@ -176,10 +177,33 @@ describe('record charts', () => {
 			expect(grid.columns).toHaveLength(24);
 			expect(grid.columns[0]?.label).toBe(firstHour);
 			expect(grid.columns[23]?.label).toBe(lastHour);
-			expect(grid.rows[0]?.cells[0]).toMatchObject({ state: 'unmeasured', level: null });
-			expect(grid.rows[0]?.cells[1]).toMatchObject({ state: 'few', text: fewWord, level: null });
-			expect(grid.rows[0]?.cells[2]).toMatchObject({ state: 'none', text: noneWord, level: null });
+			expect(grid.rows[0]?.cells[20]).toMatchObject({ state: 'unmeasured', level: null });
+			expect(grid.rows[0]?.cells[21]).toMatchObject({ state: 'few', text: fewWord, level: null });
+			expect(grid.rows[0]?.cells[22]).toMatchObject({ state: 'none', text: noneWord, level: null });
 			expect(grid.rows[0]?.cells[23]).toMatchObject({ text: '17' });
+		},
+	);
+
+	it.each([
+		[
+			'en',
+			'Hours after midnight belong to the service day that began the evening before.',
+			'One day per cell. Choose 28 days for a steadier picture.',
+		],
+		[
+			'fr',
+			'Les heures après minuit appartiennent à la journée de service commencée la veille au soir.',
+			'Un jour par case. Choisissez 28 jours pour un portrait plus stable.',
+		],
+	] as const)(
+		'explains the service day and the seven-day sample in %s',
+		(locale, afterMidnight, oneDay) => {
+			const data = series(cell({ weekday: 5, hour: 2 }));
+			data.evidence.start_date = '2026-11-19';
+			data.evidence.end_date = '2026-11-25';
+			expect(hourGridNote(data, locale)).toBe(`${afterMidnight} ${oneDay}`);
+			data.evidence.start_date = '2026-10-29';
+			expect(hourGridNote(data, locale)).toBe(afterMidnight);
 		},
 	);
 

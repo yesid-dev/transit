@@ -1,14 +1,51 @@
-import { recordPercent } from '#lib/site/presenter.ts';
+import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
 import { minuteReading } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { healthReading } from '#lib/features/record/dataHealthText.ts';
 import { choose, tally } from '#lib/features/record/recordText.ts';
-import type { ScorecardAnswer } from '#lib/server/engine.ts';
+import type { RecordMeasure, ScorecardAnswer } from '#lib/server/engine.ts';
+import type { TripOutcomes } from '../record/tripOutcomes.ts';
 
 import type { NetworkMeasure } from './networkMeasures.ts';
 export { networkMeasures, type NetworkMeasure } from './networkMeasures.ts';
 
-const feeds = {
+export function deliveryUncertainty(outcomes: TripOutcomes, locale: Locale) {
+	const { ran, known, statusUnknown } = outcomes;
+	if (!known || !statusUnknown) return null;
+	const trips = countedUnit(statusUnknown, 'trip', locale);
+	const lower = recordPercent(ran / (known + statusUnknown), locale);
+	const higher = recordPercent((ran + statusUnknown) / (known + statusUnknown), locale);
+	return choose(
+		locale,
+		`Status could not be confirmed for ${trips}. Including those trips, between ${lower} and ${higher} ran.`,
+		`Impossible de confirmer le statut de ${trips}. En les comptant, la part des trajets effectués se situe entre ${lower} et ${higher}.`,
+	);
+}
+
+const crowdingLevels = [
+	['empty', 'Empty', 'Vide'],
+	['many_seats', 'Many seats available', 'Plusieurs places assises libres'],
+	['few_seats', 'Few seats available', 'Peu de places assises libres'],
+	['standing', 'Standing room only', 'Places debout seulement'],
+	['crushed', 'Limited standing room', 'Peu de places debout'],
+	['full', 'Full', 'Plein'],
+] as const;
+
+export function networkCrowdingRows(value: RecordMeasure['value'], locale: Locale) {
+	return crowdingLevels.flatMap(([id, en, fr]) => {
+		const share = value[`crowding_${id}`];
+		if (share === 0) return [];
+		return [
+			{
+				id,
+				label: choose(locale, en, fr),
+				share: share == null ? choose(locale, 'Unknown', 'Inconnu') : recordPercent(share, locale),
+			},
+		];
+	});
+}
+
+export const feedLabels = {
 	trip_updates: ['Trip updates', 'Mises à jour des trajets'],
 	vehicle_positions: ['Vehicle positions', 'Positions des véhicules'],
 	alerts: ['Service alerts', 'Avis de service'],
@@ -71,7 +108,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				t('Successful checks', 'Vérifications réussies'),
 				t('Successes / attempts', 'Réussites / tentatives'),
 			],
-			rows: Object.entries(feeds).map(([feed, label]) => {
+			rows: Object.entries(feedLabels).map(([feed, label]) => {
 				const value = values[feed];
 				const { attempts, successful } = object(counts[feed]);
 				const reading =
@@ -92,7 +129,7 @@ export function networkRows(measure: NetworkMeasure, answer: ScorecardAnswer, lo
 				t('9 in 10 under', '9 sur 10 sous'),
 				t('Samples', 'Observations'),
 			],
-			rows: Object.entries(feeds).map(([feed, label]) => {
+			rows: Object.entries(feedLabels).map(([feed, label]) => {
 				const { median_seconds, p90_seconds } = object(values[feed]);
 				const sample = object(counts[feed]);
 				const noTimestamp =
