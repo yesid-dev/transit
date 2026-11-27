@@ -204,7 +204,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12 notices');
 	await expect(page.locator('#alerts-window')).toContainText('12 notices are in effect now.');
 	await expect(page.locator('#alerts-window')).toContainText(
-		'12 notices, from 13 as STM published them',
+		'12 notices across 13 publications by STM.',
 	);
 	await expect(page.locator('#alerts-breakdown')).toContainText('Not stated');
 	await expect(page.locator('#alerts-breakdown')).toContainText(
@@ -237,6 +237,13 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
 	await openFrameControls(page);
 	await expect(effect).toHaveValue('Detour');
+
+	await page.goto('/fr/alerts?provider=stm&frameMode=live');
+	await refreshAlertsCapture(page);
+	await expect(page.locator('#alerts-window')).toContainText('12 avis sont en vigueur.');
+	await expect(page.locator('#alerts-window')).toContainText(
+		'12 avis, en 13 publications par la STM.',
+	);
 });
 
 test('data health distinguishes an aged capture from an unavailable response', async ({ page }) => {

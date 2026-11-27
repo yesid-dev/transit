@@ -26,12 +26,14 @@ const manifest = ManifestSchema.parse({
 function renderLive(
 	locale: 'en' | 'fr',
 	counts: { non_responding: number | null; scheduled_now?: number },
+	noticePublications?: readonly string[],
 ) {
 	const family = { phase: 'ready', health: { state: 'live', retained: true } };
 	createLiveStore.mockReturnValue({
 		start: vi.fn(),
 		stop: vi.fn(),
 		familyStates: { network: family, alerts: family },
+		alerts: noticePublications ? { alerts: noticePublications.map((id) => ({ id })) } : null,
 		network: {
 			generated_utc: generated,
 			vehicles_in_service: 5,
@@ -49,10 +51,25 @@ function renderLive(
 		},
 	});
 	render(OverviewLiveCard, {
-		props: { locale, manifest, alertsAvailable: false, operator: 'STM', link: (path) => path },
+		props: {
+			locale,
+			manifest,
+			alertsAvailable: noticePublications != null,
+			operator: 'STM',
+			link: (path) => path,
+		},
 	});
 	return within(screen.getByText(overviewCopy[locale].silent).parentElement!);
 }
+
+it.each([
+	['en', 'Notice publications'],
+	['fr', 'Publications d’avis'],
+] as const)('labels the source publication count in %s', (locale, label) => {
+	renderLive(locale, { non_responding: null }, ['original', 'reissue', 'future']);
+	const row = within(screen.getByText(label).parentElement!);
+	expect(row.getByText('3')).toBeVisible();
+});
 
 it.each([
 	['en', 'of 1,306 trips scheduled now', '2 of 3', 'Line', 'Late'],
