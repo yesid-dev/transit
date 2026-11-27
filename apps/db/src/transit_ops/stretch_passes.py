@@ -1,32 +1,27 @@
 """Place each vehicle reading along its trip's shape and time every ~100 m stretch.
 
-Prototype for cleaning version 13 (stretch passes). Nothing in the scheduled
-cleaner calls it: the ``stretch-passes`` command builds one day into a scratch
-root, beside (never inside) the published v12 clean day.
+Cleaning version 13 (stretch passes) derives from a measured v12 clean day. Each
+stop-to-stop run of a trip is cut into equal pieces of about 100 m, so the pieces
+of one run add up to that run exactly. A stretch is named by its two stops and
+its piece, which stays stable across shapes and schedule editions.
 
-Each stop-to-stop run of a trip is cut into equal pieces of about 100 m, so the
-pieces of one run add up to that run exactly. A stretch is named by its two
-stops and its piece, which stays stable across shapes and schedule editions.
+The readings are the clean day's vehicle intervals: a vehicle that stayed within
+15 m of one place is one interval from its first reading to its last.
 
-The readings are the clean day's vehicle intervals: a vehicle that stayed
-within 15 m of one place is one interval from its first reading to its last.
+This module is pure: :mod:`transit_ops.stretch_day` reads the inputs and writes
+the receipts.
 """
 
-import csv
-import json
 from bisect import bisect_right
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from hashlib import sha256
 from math import cos, hypot, pi, radians
-from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
-from transit_ops.lake.parquet_codec import write_window
-from transit_ops.lake.parquet_verify import Expected, check_window_files
 from transit_ops.lake.table_schema import TableSchema
-from transit_ops.providers.schedule_archive import ArchiveScheduleContext, _shape_coordinates
 
 STRETCH_VERSION = "13"
 STRETCH_METRES = 100.0
@@ -40,16 +35,26 @@ MOVED_METRES = 10.0
 MAX_SPEED_MPS = 30.0
 # GPS jitter can place a later reading a little behind an earlier one.
 BACKTRACK_METRES = 30.0
+# When this many readings in a row agree the vehicle is behind its last placed
+# point (by at most RETRACT_METRES), that point was a fix too far ahead: take it back.
+RETRACT_READINGS = 2
+RETRACT_METRES = 1_000.0
 # Do not time a stretch across a hole in the readings longer than this.
 MAX_GAP_SECONDS = 300.0
+# The daily summary counts passes timed from readings at most this far apart.
+SUMMARY_MAX_GAP_SECONDS = 90
 _EARTH_RADIUS_METRES = 6_371_008.8
 
 _TIME = "timestamp with time zone"
+_DAY = (
+    ("provider", "text", True),
+    ("service_date", "date", True),
+    ("cleaning_version", "text", True),
+)
 STRETCHES = TableSchema.from_columns(
     (
-        ("provider", "text", True),
-        ("service_date", "date", True),
-        ("cleaning_version", "text", True),
+        *_DAY,
+        ("stretch_key", "bigint", True),
         ("from_stop", "text", True),
         ("to_stop", "text", True),
         ("pieces", "smallint", True),
@@ -65,9 +70,7 @@ STRETCHES = TableSchema.from_columns(
 )
 STRETCH_PASSES = TableSchema.from_columns(
     (
-        ("provider", "text", True),
-        ("service_date", "date", True),
-        ("cleaning_version", "text", True),
+        *_DAY,
         ("trip_id", "text", True),
         ("route_id", "text", False),
         ("direction_id", "integer", False),
@@ -86,6 +89,55 @@ STRETCH_PASSES = TableSchema.from_columns(
     ),
     ("provider", "service_date", "trip_id", "vehicle_id", "from_sequence", "piece"),
 )
+# One row per stretch, vehicle type, local hour, pass time and whole km/h. The
+# pass time is whole seconds, as stored on the passes, so quantiles over any
+# period of these counts equal the quantiles over the passes themselves.
+STRETCH_SUMMARY = TableSchema.from_columns(
+    (
+        *_DAY,
+        ("stretch_key", "bigint", True),
+        ("route_type", "smallint", True),
+        ("hour", "smallint", True),
+        ("pass_seconds", "integer", True),
+        ("speed_kmh", "smallint", True),
+        ("passes", "integer", True),
+        ("stopped_at_stop_seconds", "bigint", True),
+        ("stopped_between_stops_seconds", "bigint", True),
+    ),
+    (
+        "provider", "service_date", "stretch_key", "route_type", "hour",
+        "pass_seconds", "speed_kmh",
+    ),
+)  # fmt: skip
+
+
+class PassRow(NamedTuple):
+    """One stretch pass, in STRETCH_PASSES column order."""
+
+    provider: str
+    service_date: date
+    cleaning_version: str
+    trip_id: str
+    route_id: str | None
+    direction_id: int | None
+    vehicle_id: str
+    from_stop: str
+    to_stop: str
+    from_sequence: int
+    pieces: int
+    piece: int
+    entered_at: datetime
+    exited_at: datetime
+    moving_speed_kmh: float | None
+    stopped_at_stop_seconds: int
+    stopped_between_stops_seconds: int
+    gap_seconds: int
+
+
+def stretch_key(from_stop: str, to_stop: str, pieces: int, piece: int) -> int:
+    """A stable signed 64-bit name for a stretch, the same on every day and host."""
+    text = "\x1f".join((from_stop, to_stop, str(pieces), str(piece)))
+    return int.from_bytes(sha256(text.encode()).digest()[:8], "big", signed=True)
 
 
 class PathStop(NamedTuple):
@@ -102,6 +154,7 @@ class TripPath:
     shape_id: str
     shape: Sequence[tuple[float, float]]  # (lon, lat)
     stops: Sequence[PathStop]
+    route_type: int | None = None
 
 
 class VehicleInterval(NamedTuple):
@@ -186,6 +239,8 @@ class StretchFacts:
     intervals: int = 0
     placed: int = 0
     off_route: int = 0
+    stale_timestamps: int = 0
+    retracted: int = 0
     frozen_holds: int = 0
     unknown_trip: int = 0
     trips_without_shape: int = 0
@@ -195,19 +250,71 @@ class StretchFacts:
     skipped_gap_pieces: int = 0
     implausible_speeds: int = 0
     stops_far_from_shape: int = 0
+    summary_passes: int = 0
+
+
+type Row = tuple[object, ...]
 
 
 @dataclass
 class StretchDay:
     provider: str
     date: date
-    stretches: dict[tuple[str, str, int, int], tuple[object, ...]] = field(default_factory=dict)
-    passes: list[tuple[object, ...]] = field(default_factory=list)
+    stretches: dict[tuple[str, str, int, int], Row] = field(default_factory=dict)
+    passes: list[PassRow] = field(default_factory=list)
+    route_types: dict[str, int] = field(default_factory=dict)  # by trip
     facts: StretchFacts = field(default_factory=StretchFacts)
 
-    def stretch_rows(self) -> Iterator[tuple[object, ...]]:
+    def stretch_rows(self) -> Iterator[Row]:
         for key in sorted(self.stretches):
             yield self.stretches[key]
+
+    def pass_rows(self) -> list[PassRow]:
+        """Passes sorted by line and direction, so a line reads few row groups."""
+        return sorted(
+            self.passes,
+            key=lambda row: (
+                row.route_id or "",
+                -1 if row.direction_id is None else row.direction_id,
+                row.trip_id,
+                row.vehicle_id,
+                row.from_sequence,
+                row.piece,
+            ),
+        )
+
+    def summary_rows(self, zone: ZoneInfo) -> list[Row]:
+        """Count passes per stretch, vehicle type, local hour, pass time and km/h.
+
+        Only passes timed from readings at most SUMMARY_MAX_GAP_SECONDS apart and
+        with a measured speed count, so every row is one the questions would use.
+        """
+        cells: dict[tuple[int, int, int, int, int], list[int]] = {}
+        keys: dict[tuple[str, str, int, int], int] = {}
+        for row in self.passes:
+            route_type = self.route_types.get(row.trip_id)
+            speed = row.moving_speed_kmh
+            if speed is None or route_type is None or row.gap_seconds > SUMMARY_MAX_GAP_SECONDS:
+                continue
+            ident = (row.from_stop, row.to_stop, row.pieces, row.piece)
+            if (key := keys.get(ident)) is None:
+                key = keys[ident] = stretch_key(*ident)
+            cell = (
+                key,
+                route_type,
+                row.entered_at.astimezone(zone).hour,
+                int((row.exited_at - row.entered_at).total_seconds()),
+                int(speed),
+            )
+            totals = cells.setdefault(cell, [0, 0, 0])
+            totals[0] += 1
+            totals[1] += row.stopped_at_stop_seconds
+            totals[2] += row.stopped_between_stops_seconds
+        self.facts.summary_passes = sum(totals[0] for totals in cells.values())
+        return [
+            (self.provider, self.date, STRETCH_VERSION, *cell, *cells[cell])
+            for cell in sorted(cells)
+        ]
 
 
 @dataclass
@@ -234,61 +341,17 @@ def _stop_distances(line: _Line, stops: Sequence[PathStop], facts: StretchFacts)
     return distances
 
 
-def trip_paths(
-    schedule: ArchiveScheduleContext, archive: bytes, provider: str, day: date
-) -> dict[str, TripPath]:
-    """Each scheduled trip of the day with its shape and ordered stops."""
-    trips = {}
-    for trip_id in schedule.days[day].trip_ids:
-        trip = schedule.trip(day, trip_id)
-        if trip is not None:
-            trips[trip_id] = trip
-    shapes = _shape_coordinates(
-        archive, provider, 0, {trip.shape_id for trip in trips.values() if trip.shape_id}
-    )
-    paths = {}
-    for trip_id, trip in trips.items():
-        coords = shapes.get(trip.shape_id or "", [])
-        stops = []
-        for time in schedule.stop_times(day, trip_id):
-            point = schedule.stop(day, time.stop_id)
-            lat = point.lat if point is not None else None
-            lon = point.lon if point is not None else None
-            stops.append(PathStop(time.stop_sequence, time.stop_id, lat, lon))
-        paths[trip_id] = TripPath(
-            trip.route_id, trip.direction_id, trip.shape_id or "", coords, stops
-        )
-    return paths
-
-
 def _trajectory(
     path: _Path, readings: Sequence[VehicleInterval], facts: StretchFacts
 ) -> list[_Vertex]:
     line = path.line
     vertices: list[_Vertex] = []
     previous: tuple[float, float, float] | None = None  # second, x, y
-    for reading in readings:
-        x, y = line.xy(reading.lat, reading.lon)
+    behind: list[tuple[VehicleInterval, float, float, float]] = []
+
+    def place(reading: VehicleInterval, found: float, x: float, y: float) -> None:
+        nonlocal previous
         second = reading.observed
-        if vertices and second <= vertices[-1].second:
-            # A hold overlapping this reading ends just before it.
-            if vertices[-1].hold:
-                held = vertices.pop()
-                if second > vertices[-1].second + 1e-3:
-                    vertices.append(_Vertex(second - 1e-3, held.distance, True))
-            if second <= vertices[-1].second:
-                continue
-        if previous is None:
-            found = line.locate(x, y, 0.0, line.length, OFF_ROUTE_METRES)
-        else:
-            last = vertices[-1].distance
-            straight = hypot(x - previous[1], y - previous[2])
-            lo = max(last + straight - 2 * OFF_ROUTE_METRES, last) - BACKTRACK_METRES
-            hi = last + MAX_SPEED_MPS * (second - previous[0]) + 2 * OFF_ROUTE_METRES
-            found = line.locate(x, y, lo, hi, OFF_ROUTE_METRES)
-        if found is None:
-            facts.off_route += 1
-            continue
         facts.placed += 1
         distance = found if not vertices else max(found, vertices[-1].distance)
         if (
@@ -307,6 +370,65 @@ def _trajectory(
             held_until = reading.last_seen - (reading.captured - reading.observed)
             if held_until > second:
                 vertices.append(_Vertex(held_until, distance, True))
+
+    for reading in readings:
+        x, y = line.xy(reading.lat, reading.lon)
+        second = reading.observed
+        if vertices and second <= vertices[-1].second:
+            # A hold overlapping this reading ends just before it.
+            if vertices[-1].hold:
+                held = vertices.pop()
+                if second > vertices[-1].second + 1e-3:
+                    vertices.append(_Vertex(second - 1e-3, held.distance, True))
+            if second <= vertices[-1].second:
+                facts.stale_timestamps += 1
+                continue
+        if previous is None:
+            found = line.locate(x, y, 0.0, line.length, OFF_ROUTE_METRES)
+        else:
+            last = vertices[-1].distance
+            straight = hypot(x - previous[1], y - previous[2])
+            lo = max(last + straight - 2 * OFF_ROUTE_METRES, last) - BACKTRACK_METRES
+            hi = last + MAX_SPEED_MPS * (second - previous[0]) + 2 * OFF_ROUTE_METRES
+            found = line.locate(x, y, lo, hi, OFF_ROUTE_METRES)
+        if found is not None:
+            facts.off_route += len(behind)
+            behind.clear()
+            place(reading, found, x, y)
+            continue
+        back = (
+            line.locate(
+                x,
+                y,
+                max(vertices[-1].distance - RETRACT_METRES, 0.0),
+                vertices[-1].distance - BACKTRACK_METRES,
+                OFF_ROUTE_METRES,
+            )
+            if vertices
+            else None
+        )
+        if back is None:
+            facts.off_route += 1
+            continue
+        if behind and back < behind[-1][1] - BACKTRACK_METRES:
+            # Readings behind the vehicle must still move forward among themselves.
+            facts.off_route += len(behind)
+            behind.clear()
+        behind.append((reading, back, x, y))
+        if len(behind) < RETRACT_READINGS:
+            continue
+        # Several readings agree the vehicle is behind the last placed point: that
+        # point (and any after it) came from a fix too far ahead. Take them back.
+        while vertices and vertices[-1].distance > behind[0][1]:
+            vertices.pop()
+            facts.retracted += 1
+        for waiting, distance, wx, wy in behind:
+            if not vertices or waiting.observed > vertices[-1].second:
+                place(waiting, distance, wx, wy)
+            else:
+                facts.stale_timestamps += 1
+        behind.clear()
+    facts.off_route += len(behind)
     return vertices
 
 
@@ -362,6 +484,16 @@ class _Walker:
             i += 1
         return widest
 
+    def distance_at(self, second: float) -> float:
+        s = self.seconds
+        i = bisect_right(s, second) - 1
+        if i < 0:
+            return self.distances[0]
+        if i >= len(s) - 1:
+            return self.distances[-1]
+        a, b = self.v[i], self.v[i + 1]
+        return a.distance + (second - a.second) / (b.second - a.second) * (b.distance - a.distance)
+
 
 def _passes(
     day: StretchDay, trip_id: str, vehicle: str, path: _Path, vertices: Sequence[_Vertex]
@@ -376,26 +508,24 @@ def _passes(
             continue
         pieces = max(1, round((end - start) / STRETCH_METRES))
         step = (end - start) / pieces
-        key_base = (start_stop.stop_id, end_stop.stop_id, pieces)
-        for piece in range(pieces):
-            low, high = start + piece * step, start + (piece + 1) * step
-            key = (*key_base, piece + 1)
-            if key not in day.stretches:
+        for piece in range(1, pieces + 1):
+            low, high = start + (piece - 1) * step, start + piece * step
+            ident = (start_stop.stop_id, end_stop.stop_id, pieces, piece)
+            if ident not in day.stretches:
                 from_lat, from_lon = path.line.latlon(low)
                 to_lat, to_lon = path.line.latlon(high)
-                day.stretches[key] = (
-                    day.provider, day.date, STRETCH_VERSION, start_stop.stop_id,
-                    end_stop.stop_id, pieces, piece + 1, round(step, 1),
-                    from_lat, from_lon, to_lat, to_lon, path.trip.shape_id,
+                day.stretches[ident] = (
+                    day.provider, day.date, STRETCH_VERSION, stretch_key(*ident), *ident,
+                    round(step, 1), from_lat, from_lon, to_lat, to_lon, path.trip.shape_id,
                 )  # fmt: skip
             # Leave line-end layovers out: time from leaving the first stop's
             # surroundings, and up to reaching the last stop's surroundings.
             entry = (
                 walker.leave(min(origin + STOP_RADIUS_METRES, high))
-                if index == 0 and piece == 0
+                if index == 0 and piece == 1
                 else walker.reach(low)
             )
-            last_piece = index == len(stops) - 2 and piece == pieces - 1
+            last_piece = index == len(stops) - 2 and piece == pieces
             exit_ = (
                 walker.reach(max(terminus - STOP_RADIUS_METRES, low)) if last_piece
                 else walker.reach(high)
@@ -408,12 +538,12 @@ def _passes(
                 continue
             at_stop = between = 0.0
             for begin, finish, moved, where in walker.spans(entry, exit_):
-                if finish > begin and moved < MOVED_METRES:
+                if moved < MOVED_METRES:
                     if min(abs(where - start), abs(where - end)) <= STOP_RADIUS_METRES:
                         at_stop += finish - begin
                     else:
                         between += finish - begin
-            covered = _distance_at(walker, exit_) - _distance_at(walker, entry)
+            covered = walker.distance_at(exit_) - walker.distance_at(entry)
             moving = exit_ - entry - at_stop - between
             speed = covered / moving if moving >= 1.0 and covered > 0 else None
             if speed is not None and speed > MAX_SPEED_MPS:
@@ -421,12 +551,11 @@ def _passes(
                 # wrong. Keep its times, so runs still add up, but not its speed.
                 day.facts.implausible_speeds += 1
                 speed = None
-            speed = None if speed is None else round(speed * 3.6, 1)
             entered, exited = round(entry), round(exit_)
             at_stop_s = min(round(at_stop), exited - entered)
             between_s = min(round(between), exited - entered - at_stop_s)
             day.passes.append(
-                (
+                PassRow(
                     day.provider,
                     day.date,
                     STRETCH_VERSION,
@@ -438,10 +567,10 @@ def _passes(
                     end_stop.stop_id,
                     start_stop.sequence,
                     pieces,
-                    piece + 1,
+                    piece,
                     datetime.fromtimestamp(entered, UTC),
                     datetime.fromtimestamp(exited, UTC),
-                    speed,
+                    None if speed is None else round(speed * 3.6, 1),
                     at_stop_s,
                     between_s,
                     round(gap),
@@ -449,17 +578,6 @@ def _passes(
             )
             count += 1
     return count
-
-
-def _distance_at(walker: _Walker, second: float) -> float:
-    s = walker.seconds
-    i = bisect_right(s, second) - 1
-    if i < 0:
-        return walker.distances[0]
-    if i >= len(s) - 1:
-        return walker.distances[-1]
-    a, b = walker.v[i], walker.v[i + 1]
-    return a.distance + (second - a.second) / (b.second - a.second) * (b.distance - a.distance)
 
 
 def build_stretch_day(
@@ -470,6 +588,9 @@ def build_stretch_day(
 ) -> StretchDay:
     """Stretch passes from intervals sorted by trip, vehicle and observed time."""
     result = StretchDay(provider, day)
+    result.route_types = {
+        trip_id: trip.route_type for trip_id, trip in paths.items() if trip.route_type is not None
+    }
     facts = result.facts
     built: dict[str, _Path | None] = {}
 
@@ -517,67 +638,3 @@ def build_stretch_day(
         group.append(interval)
     flush()
     return result
-
-
-_INTERVAL_SQL = """
-    SELECT trip_id, vehicle_id, epoch(observed_at_utc), epoch(captured_at_utc),
-        epoch(last_seen_at_utc), readings, latitude, longitude
-    FROM read_parquet(?, hive_partitioning = false)
-    WHERE service_date = ? AND trip_id IS NOT NULL
-        AND latitude IS NOT NULL AND longitude IS NOT NULL
-    ORDER BY trip_id, vehicle_id, observed_at_utc, captured_at_utc
-"""
-
-
-def intervals_from_parquet(path: Path, day: date, temp_dir: Path) -> Iterator[VehicleInterval]:
-    from transit_ops.lake.parquet_codec import connect
-
-    with connect(temp_dir) as connection:
-        cursor = connection.execute(_INTERVAL_SQL, [str(path), day])
-        while rows := cursor.fetchmany(50_000):
-            for row in rows:
-                yield VehicleInterval(*row)
-
-
-def write_stretch_day(
-    day: StretchDay, root: Path, metadata: Mapping[str, str]
-) -> tuple[Path, dict[str, dict[str, int | str]]]:
-    """Write both tables and a receipt create-only under ``root``."""
-    destination = root / day.provider / day.date.isoformat() / f"v{STRETCH_VERSION}"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        raise FileExistsError(f"Stretch day already exists: {destination}")
-    files: dict[str, dict[str, int | str]] = {}
-    with TemporaryDirectory(prefix=".stretch-day-", dir=destination.parent) as directory:
-        temporary = Path(directory)
-        staged = temporary / "version"
-        staged.mkdir()
-        for name, schema, rows in (
-            ("stretches", STRETCHES, day.stretch_rows()),
-            ("stretch_passes", STRETCH_PASSES, iter(day.passes)),
-        ):
-            source = temporary / f"{name}.csv"
-            with source.open("w", encoding="utf-8", newline="") as stream:
-                writer = csv.writer(stream, lineterminator="\n")
-                writer.writerow(column.name for column in schema.columns)
-                writer.writerows(rows)
-            target = staged / f"{name}.parquet"
-            window = write_window(
-                source, schema, target, metadata=dict(metadata), temp_dir=temporary,
-                validate_csv_input=False,
-            )  # fmt: skip
-            check_window_files(
-                source, target, schema,
-                expect=Expected(window.content_sha256, window.rows, window.sha256),
-                temp_dir=temporary, validate_csv_input=False,
-            )  # fmt: skip
-            files[target.name] = {
-                "sha256": window.sha256,
-                "byte_size": target.stat().st_size,
-                "rows": window.rows,
-            }
-            source.unlink()
-        receipt = {**metadata, "files": files, "facts": asdict(day.facts)}
-        (staged / "manifest.json").write_text(json.dumps(receipt, sort_keys=True) + "\n", "utf-8")
-        staged.rename(destination)
-    return destination, files

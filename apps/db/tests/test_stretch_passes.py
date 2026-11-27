@@ -1,21 +1,31 @@
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime
+from hashlib import sha256
 from math import cos, pi, radians
 from pathlib import Path
+from random import Random
+from zoneinfo import ZoneInfo
 
 import duckdb
 import pytest
 
+from transit_ops.ingestion.storage import LocalBronzeStorage
+from transit_ops.stretch_day import SOURCE_FILES, publish_stretch_day, stretch_key_prefix
 from transit_ops.stretch_passes import (
     STRETCH_VERSION,
+    PassRow,
     PathStop,
     TripPath,
     VehicleInterval,
     build_stretch_day,
-    write_stretch_day,
+    stretch_key,
 )
 
 DAY = date(2026, 11, 25)
+ZONE = ZoneInfo("America/Toronto")
+# stretch_key('a', 'b', 1, 1): fixed so the key never changes between releases.
+STABLE_KEY = -2661859989655278354
 LAT = 45.5
 LON = -73.6
 START = datetime(2026, 11, 25, 12, tzinfo=UTC).timestamp()
@@ -173,14 +183,30 @@ def test_a_long_hole_in_the_readings_is_not_timed():
     }  # fmt: skip
 
 
+def _source_manifest() -> bytes:
+    return json.dumps(
+        {
+            "provider": "stm",
+            "service_date": DAY.isoformat(),
+            "cleaning_version": "12",
+            "schedule_sha256": "0" * 64,
+            "files": {name: {} for name in SOURCE_FILES},
+        }
+    ).encode()
+
+
 def test_trips_sharing_a_stop_pair_share_stretches(tmp_path: Path):
     other = [reading._replace(trip_id="t2", vehicle_id="v2") for reading in _drive()]
-    day = build_stretch_day("stm", DAY, {"t1": _path(), "t2": _path()}, [*_drive(), *other])
+    paths = {"t1": replace(_path(), route_type=3), "t2": replace(_path(), route_type=3)}
+    day = build_stretch_day("stm", DAY, paths, [*_drive(), *other])
     assert len(day.stretches) == 10 and len(day.passes) == 20
-    destination, files = write_stretch_day(day, tmp_path, {"provider": "stm"})
-    assert destination == tmp_path / "stm" / DAY.isoformat() / f"v{STRETCH_VERSION}"
+    storage = LocalBronzeStorage(storage_backend="local", root=tmp_path)
+    files = publish_stretch_day(day, _source_manifest(), ZONE, storage, "")
+    destination = tmp_path / stretch_key_prefix("stm", DAY)
+    assert destination == tmp_path / "stretch" / "v13" / "stm" / DAY.isoformat()
     receipt = json.loads((destination / "manifest.json").read_text("utf-8"))
     assert receipt["files"] == files and receipt["facts"]["passes"] == 20
+    assert receipt["source_manifest_sha256"] == sha256(_source_manifest()).hexdigest()
     with duckdb.connect() as connection:
         count, moving = connection.execute(
             "SELECT count(*), count(moving_speed_kmh) FROM read_parquet(?)",
@@ -190,7 +216,204 @@ def test_trips_sharing_a_stop_pair_share_stretches(tmp_path: Path):
             "SELECT count(*), sum(length_m) FROM read_parquet(?)",
             [str(destination / "stretches.parquet")],
         ).fetchone()
+        summary = connection.execute(
+            "SELECT sum(passes) FROM read_parquet(?)",
+            [str(destination / "stretch_summary.parquet")],
+        ).fetchone()
     assert (count, moving) == (20, 20)
     assert stretches == (10, pytest.approx(1000, abs=0.5))
+    assert summary == (20,)
+    # Create-only: the same day cannot be written again with other bytes.
     with pytest.raises(FileExistsError):
-        write_stretch_day(day, tmp_path, {"provider": "stm"})
+        publish_stretch_day(
+            build_stretch_day("stm", DAY, paths, _drive()), _source_manifest(), ZONE, storage, ""
+        )
+
+
+def test_a_fix_too_far_ahead_is_taken_back():
+    # The reading at 60 s says 700 m; the next two agree the vehicle was near 450 m.
+    readings = [_at(0, 0), _at(20, 200), _at(40, 300), _at(60, 700), _at(80, 450)]
+    readings += [_at(90, 520), _at(120, 800), _at(140, 1000)]
+    day, rows = _passes(readings)
+    assert day.facts.retracted == 1
+    assert day.facts.off_route == 0
+    assert len(rows) == 10
+    by_piece = {(row["from_stop"], row["piece"]): row for row in rows}
+    # 300 m at 40 s to 450 m at 80 s: the stretch from 400 m starts at 66.7 s.
+    assert by_piece["stop1", 5]["entered"].timestamp() == START + 67
+
+
+def test_one_reading_behind_is_jitter_and_is_not_taken_back():
+    readings = [_at(0, 0), _at(20, 300), _at(40, 150), _at(60, 600), _at(80, 1000)]
+    day, rows = _passes(readings)
+    assert day.facts.retracted == 0 and day.facts.off_route == 1
+    assert len(rows) == 10
+
+
+def test_rows_are_sorted_by_line_then_trip():
+    paths = {
+        trip: replace(_path(), route_id=route)
+        for trip, route in (("a", "r9"), ("b", "r1"), ("c", "r5"))
+    }
+    readings = [
+        reading._replace(trip_id=trip, vehicle_id=trip) for trip in "abc" for reading in _drive()
+    ]
+    day = build_stretch_day("stm", DAY, paths, readings)
+    assert [row.route_id for row in day.pass_rows()][::10] == ["r1", "r5", "r9"]
+
+
+def test_the_stretch_key_is_stable():
+    assert stretch_key("51234", "51240", 3, 2) != stretch_key("51240", "51234", 3, 2)
+    assert stretch_key("a", "b", 1, 1) == STABLE_KEY
+
+
+def test_the_summary_counts_every_usable_pass_and_keeps_exact_quantiles():
+    rng = Random(7)
+    paths = {f"t{i}": replace(_path(), route_type=3) for i in range(30)}
+    readings = []
+    for i in range(30):
+        drive = _drive(speed=rng.uniform(5, 15), every=rng.choice((15, 20, 30)))
+        readings += [reading._replace(trip_id=f"t{i}", vehicle_id=f"v{i}") for reading in drive]
+    day = build_stretch_day("stm", DAY, paths, readings)
+    rows = day.summary_rows(ZONE)
+    usable = [
+        row for row in day.passes if row.moving_speed_kmh is not None and row.gap_seconds <= 90
+    ]
+    assert sum(row[8] for row in rows) == len(usable) == day.facts.summary_passes
+    assert {row[4] for row in rows} == {3}
+    assert {row[5] for row in rows} == {7}  # 12:00 UTC is 07:00 in Montréal in November
+    key = stretch_key("stop1", "stop2", 5, 3)
+    times = sorted(
+        int((row.exited_at - row.entered_at).total_seconds())
+        for row in usable
+        if (row.from_stop, row.pieces, row.piece) == ("stop1", 5, 3)
+    )
+    expanded = sorted(
+        seconds for row in rows if row[3] == key for seconds in [row[6]] * int(row[8])
+    )
+    assert expanded == times
+
+
+def _metres_east(lon: float) -> float:
+    return (lon - LON) * cos(radians(LAT)) * _METRES_PER_DEGREE
+
+
+def _random_trip(
+    rng: Random, trip: str
+) -> tuple[TripPath, list[VehicleInterval], list[tuple[float, float]]]:
+    """A trip on a 2 km street: when it truly was at each stop, and its clean intervals."""
+    stops = [0.0]
+    while stops[-1] < 1_850:
+        stops.append(stops[-1] + rng.uniform(60, 450))
+    stops[-1] = 2_000.0
+    path = TripPath(
+        "r1",
+        0,
+        "s1",
+        [(_lon(x), LAT) for x in range(0, 2_001, 40)],
+        [PathStop(i + 1, f"{trip}-{i + 1}", LAT, _lon(x)) for i, x in enumerate(stops)],
+        3,
+    )
+    # True motion: a dwell at every stop, then a leg at its own speed.
+    timeline = [(0.0, 0.0)]
+    at_stop = []  # (arrival, departure) at each stop
+    for target in stops[1:]:
+        second, where = timeline[-1]
+        arrival = second
+        second += rng.uniform(0, 40)
+        at_stop.append((arrival, second))
+        timeline.append((second, where))
+        second += (target - where) / rng.uniform(3, 20)
+        timeline.append((second, target))
+    at_stop.append((timeline[-1][0], timeline[-1][0]))
+
+    def true_at(t: float) -> float:
+        for (t0, d0), (t1, d1) in zip(timeline, timeline[1:], strict=False):
+            if t0 <= t <= t1:
+                return d0 if t1 == t0 else d0 + (t - t0) / (t1 - t0) * (d1 - d0)
+        return timeline[-1][1]
+
+    intervals: list[VehicleInterval] = []
+    t = 0.0
+    while t <= timeline[-1][0] + 30:
+        along = true_at(t) + rng.uniform(-5, 5)
+        detour = rng.random() < 0.02
+        observed = START + t
+        last = intervals[-1] if intervals else None
+        # The clean day keeps a vehicle within 15 m of one place as one interval.
+        if (
+            last is not None
+            and not detour
+            and abs(_metres_east(last.lon) - along) <= 15
+            and abs(_lat(0) - last.lat) < 1e-3
+            and observed - (last.last_seen - 2) <= 60
+        ):
+            intervals[-1] = last._replace(last_seen=observed + 2, readings=last.readings + 1)
+        else:
+            north = 200.0 if detour else rng.uniform(-8, 8)
+            intervals.append(
+                VehicleInterval(
+                    trip, trip, observed, observed + 2, observed + 2, 1, _lat(north), _lon(along)
+                )
+            )
+        t += rng.choice((15, 20, 30, 45))
+    return path, intervals, at_stop
+
+
+def test_random_trips_keep_the_math_of_every_pass():
+    rng = Random(20261127)
+    paths, readings, truth = {}, [], {}
+    for i in range(60):
+        trip = f"t{i:02}"
+        paths[trip], intervals, truth[trip] = _random_trip(rng, trip)
+        readings += intervals
+    day = build_stretch_day("stm", DAY, paths, readings)
+    by_trip: dict[str, list[PassRow]] = {}
+    for row in day.pass_rows():
+        by_trip.setdefault(row.trip_id, []).append(row)
+        duration = (row.exited_at - row.entered_at).total_seconds()
+        assert duration >= 0
+        assert 0 <= row.stopped_at_stop_seconds + row.stopped_between_stops_seconds <= duration
+        assert row.moving_speed_kmh is None or 0 < row.moving_speed_kmh <= 108
+    errors = []
+    for trip, rows in by_trip.items():
+        for before, after in zip(rows, rows[1:], strict=False):
+            assert after.entered_at >= before.exited_at  # no overlap
+        runs: dict[int, list[PassRow]] = {}
+        for row in rows:
+            runs.setdefault(row.from_sequence, []).append(row)
+        last = len(paths[trip].stops) - 1
+        for sequence, pieces in runs.items():
+            if [row.piece for row in pieces] != list(range(1, pieces[0].pieces + 1)):
+                continue
+            for before, after in zip(pieces, pieces[1:], strict=False):
+                assert before.exited_at == after.entered_at  # the pieces add up to the run
+            if sequence in (1, last):
+                continue  # line ends leave out their first and last 30 m
+            # A stop is passed at some moment from arrival to departure, so the run
+            # lies between the shortest and the longest arrival-departure spans.
+            run = (pieces[-1].exited_at - pieces[0].entered_at).total_seconds()
+            (arrive_a, leave_a), (arrive_b, leave_b) = truth[trip][sequence - 1 : sequence + 1]
+            low, high = arrive_b - leave_a, leave_b - arrive_a
+            errors.append(max(low - run, run - high, 0.0))
+    # The pieces of each stop-to-stop run cover the run's whole length.
+    lengths: dict[tuple[str, str, int], float] = {}
+    for (from_stop, to_stop, pieces, _), row in day.stretches.items():
+        lengths[from_stop, to_stop, pieces] = lengths.get(
+            (from_stop, to_stop, pieces), 0.0
+        ) + float(
+            row[8]  # type: ignore[arg-type]
+        )
+    for (from_stop, to_stop, pieces), total in lengths.items():
+        a, b = (
+            stop
+            for stop in paths[from_stop.split("-")[0]].stops
+            if stop.stop_id in (from_stop, to_stop)
+        )
+        assert total == pytest.approx(
+            _metres_east(b.lon) - _metres_east(a.lon), abs=0.1 * pieces + 1
+        )  # type: ignore[arg-type]
+    assert len(errors) > 200
+    errors.sort()
+    assert errors[int(len(errors) * 0.9)] <= 5  # nine runs in ten within 5 s of the truth
+    assert errors[-1] <= 45  # none off by more than one reading interval
