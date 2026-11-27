@@ -13,7 +13,7 @@ from test_historical_measures import _write_table, utc
 from transit_engine.clean_manifest import FEED_POLLS, STOP_EVENTS, TRIP_DAYS, VEHICLE_POSITIONS
 from transit_engine.server import Engine
 from transit_engine.store import Store
-from transit_engine.vehicles import VEHICLE_COUNTS, vehicle_stats_query
+from transit_engine.vehicles import TRACKED_VEHICLES_SQL, VEHICLE_COUNTS, vehicle_stats_query
 
 REPORTING_RATE = "vehicle_reporting_gaps_per_100_hours"
 UNFINISHED_RATE = "vehicle_unfinished_trips_per_100_trips"
@@ -22,17 +22,23 @@ OUTAGE_DAY = SUNDAY + timedelta(days=1)
 
 
 @pytest.mark.parametrize(
-    "reassigned, resumed, covered",
-    [(False, False, True), (True, False, True), (True, True, True), (True, False, False)],
+    "reassigned, resumed, covered, after_midnight",
+    [
+        (False, False, True, False),
+        (True, False, True, False),
+        (True, True, True, False),
+        (True, False, False, False),
+        (True, False, True, True),
+    ],
 )
 def test_capture_clock_and_same_vehicle_terminus_evidence(
-    tmp_path: Path, reassigned: bool, resumed: bool, covered: bool
+    tmp_path: Path, reassigned: bool, resumed: bool, covered: bool, after_midnight: bool
 ) -> None:
     day = THURSDAY
     store = _build_store(
         tmp_path, 10, {day: (Trip("placeholder", "A", 0, "ran", None, True, (0,)),)}
     )
-    start = utc(day, 6)
+    start = utc(day + timedelta(days=int(after_midnight)), 6)
     end = start + timedelta(seconds=20)
     trips: list[tuple[object, ...]] = [
         (trip, "A", trip, "ran", None, True, start, end, end, "v1") for trip in ("v1", "v2")
@@ -122,6 +128,13 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(
             row[0]: dict(zip(VEHICLE_COUNTS, row[2:], strict=True))
             for row in conn.execute(sql, params).fetchall()
         }
+        conn.execute("DELETE FROM selected_vehicles WHERE vehicle_id = 'v1'")
+        sql, params = vehicle_stats_query(
+            paths, ["stm", "10", day, day], True, False, True, vehicle="v2"
+        )
+        scoped = conn.execute(sql, params).fetchall()
+        assert len(scoped) == 1
+        assert dict(zip(VEHICLE_COUNTS, scoped[0][2:], strict=True)) == results["v2"]
     assert [results[v]["service_us"] for v in ("v1", "v2")] == [40_000_000, 40_000_000]
     unfinished = reassigned and not resumed and covered
     assert [results[v]["completion_sample"] for v in ("v1", "v2")] == [
@@ -131,6 +144,42 @@ def test_capture_clock_and_same_vehicle_terminus_evidence(
     assert [results[v]["unfinished_trips"] for v in ("v1", "v2")] == [0, int(unfinished)]
     assert results["v2"]["completion_unknown"] == int(covered and not unfinished)
     assert results["v2"]["completion_capture_gap"] == (0 if covered else 2)
+
+
+@pytest.mark.parametrize("corroborated", [False, True])
+def test_stable_position_identifies_a_trip_without_a_stable_trip_vehicle(
+    tmp_path: Path, corroborated: bool
+) -> None:
+    day = THURSDAY
+    store = _build_store(
+        tmp_path, 10, {day: (Trip("placeholder", "A", 0, "ran", None, True, (0,)),)}
+    )
+    with store.connect() as conn:
+        _write_table(
+            conn,
+            store,
+            day,
+            TRIP_DAYS,
+            "trip_id VARCHAR, vehicle_id VARCHAR, state VARCHAR",
+            [("a", None, "ran"), ("b", "unstable", "ran")],
+        )
+        _write_table(
+            conn,
+            store,
+            day,
+            VEHICLE_POSITIONS,
+            "vehicle_id VARCHAR, trip_id VARCHAR, readings BIGINT",
+            [("known", "b" if corroborated else "elsewhere", 3), ("unstable", "a", 1)],
+        )
+        directory = tmp_path / "stm" / day.isoformat() / "v10"
+        row = conn.execute(
+            TRACKED_VEHICLES_SQL,
+            [
+                [str(directory / VEHICLE_POSITIONS)], "stm", "10",
+                [str(directory / TRIP_DAYS)], "stm", "10",
+            ],
+        ).fetchone()
+    assert row == (["known"] if corroborated else None, ["known"])
 
 
 class Interval(NamedTuple):
