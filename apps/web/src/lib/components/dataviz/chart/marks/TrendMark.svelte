@@ -1,4 +1,7 @@
 <script lang="ts">
+	import ChartDetails from '../ChartDetails.svelte';
+	import LayerChartTargets from '../LayerChartTargets.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
 	import {
 		Chart as LcChart,
 		Svg,
@@ -9,14 +12,12 @@
 		Axis,
 		Grid,
 		Highlight,
-		Tooltip,
 	} from 'layerchart';
 	import { scaleLinear, scalePoint, scaleTime } from 'd3-scale';
 	import { curveMonotoneX } from 'd3-shape';
-	import { cn, fmtCount, fmtNumber } from '#lib/utils/index.ts';
+	import { cn } from '#lib/utils/index.ts';
 	import { intl } from '#lib/i18n/index.ts';
 	import { absenceShort } from '#lib/site/absence.ts';
-	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import { spacedTicks } from '../responsiveTicks';
 	import { trendTimeAxis } from '../trendTimeAxis';
 	import ChartFrame from '../ChartFrame.svelte';
@@ -71,16 +72,8 @@
 	const y2Defined = (d: TrendDatum) => d.y2 != null && !Number.isNaN(d.y2);
 	const bandDefined = (d: TrendDatum) =>
 		d.bandLo != null && d.bandHi != null && !Number.isNaN(d.bandLo) && !Number.isNaN(d.bandHi);
-
-	const noData = $derived(absenceShort('no-observations', spec.locale));
 	const axisNumber = (value: unknown): string =>
 		intl.number(spec.locale, { maximumSignificantDigits: 3 }).format(Number(value));
-	const num = (value: number | null | undefined): string | null =>
-		fmtNumber(value, { rounding: 'auto', locale: spec.locale });
-	const valueLabel = (value: number | null | undefined, unit: string): string => {
-		const formatted = num(value);
-		return formatted == null ? noData : `${formatted}${unit}`;
-	};
 	const primaryColor = $derived(spec.colorVar ?? 'var(--dataviz-status-on-time)');
 
 	const otpReals = $derived(data.filter((p) => p.y != null));
@@ -102,6 +95,41 @@
 				]
 			: []),
 	]);
+	const reading = (value: number | null | undefined, unit = spec.unit) =>
+		value == null
+			? absenceShort('no-observations', spec.locale)
+			: chartDatumValue(value, unit, spec.locale);
+	const sample = (count: number | null | undefined) =>
+		count == null
+			? []
+			: [{ label: 'Observations', value: chartDatumValue(count, '', spec.locale) }];
+	const readings = $derived(
+		data.map((point) => ({
+			key: String(point.x),
+			heading: point.xLabel,
+			rows: [
+				{ label: spec.label, value: reading(point.y), colorVar: primaryColor },
+				...(spec.secondary
+					? [
+							{
+								label: spec.secondary.label,
+								value: reading(point.y2, spec.secondary.unit),
+								colorVar: 'var(--dataviz-status-late)',
+							},
+						]
+					: []),
+				...(point.bandLo == null || point.bandHi == null
+					? []
+					: [
+							{
+								label: structure.confidenceInterval95,
+								value: reading(point.bandLo) + ' – ' + reading(point.bandHi),
+							},
+						]),
+				...sample(point.n),
+			],
+		})),
+	);
 </script>
 
 <figure class={cn('dv-trendmark m-0', className)} aria-label={spec.title} data-slot="trend-mark">
@@ -111,138 +139,104 @@
 			>{/if}
 	</div>
 	<div bind:clientWidth={plotWidth}>
-		<ChartFrame height="17rem" class="dv-trendmark-plot">
-			{#key spec.xScale}
-				<LcChart
-					{data}
-					x={xOf}
-					y={(d: TrendDatum) => d.y ?? 0}
-					xScale={isTime ? scaleTime() : scalePoint()}
-					{xDomain}
-					yScale={scaleLinear()}
-					{yDomain}
-					{padding}
-					tooltipContext={{ mode: isTime ? 'bisect-x' : 'band' }}
-				>
-					<Svg>
-						<Grid y class="dv-trendmark-grid" />
-						<Axis placement="left" ticks={4} format={axisNumber} class="dv-trendmark-axis" />
-						<Axis
-							placement="bottom"
-							tickLength={16}
-							ticks={xTicks}
-							format={xTickFormat}
-							class="dv-trendmark-axis"
-						/>
-						{#if hasBand}
-							<Area
-								y0={(d: TrendDatum) => d.bandLo ?? 0}
-								y1={(d: TrendDatum) => d.bandHi ?? 0}
-								curve={curveMonotoneX}
-								defined={bandDefined}
-								class="dv-trendmark-band"
+		<ChartDetails label={spec.title} {readings}>
+			<ChartFrame height="17rem" class="dv-trendmark-plot">
+				{#key spec.xScale}
+					<LcChart
+						{data}
+						x={xOf}
+						y={(d: TrendDatum) => d.y ?? 0}
+						xScale={isTime ? scaleTime() : scalePoint()}
+						{xDomain}
+						yScale={scaleLinear()}
+						{yDomain}
+						{padding}
+						tooltipContext={{ mode: isTime ? 'bisect-x' : 'band' }}
+					>
+						<Svg>
+							<Grid y class="dv-trendmark-grid" />
+							<Axis placement="left" ticks={4} format={axisNumber} class="dv-trendmark-axis" />
+							<Axis
+								placement="bottom"
+								tickLength={16}
+								ticks={xTicks}
+								format={xTickFormat}
+								class="dv-trendmark-axis"
 							/>
-						{/if}
-						{#if spec.target != null}
-							<Rule y={spec.target} class="dv-trendmark-target" />
-						{/if}
-						<Spline
-							y={(d: TrendDatum) => d.y ?? 0}
-							curve={curveMonotoneX}
-							defined={yDefined}
-							style={`stroke:${primaryColor}`}
-							class="dv-trendmark-otp"
-						/>
-						<Points
-							data={dotsLowN}
-							r={2.5}
-							style={`fill:${primaryColor}`}
-							class="dv-trendmark-otp-dot"
-						/>
-						<Points
-							data={dotsMidN}
-							r={4}
-							style={`fill:${primaryColor}`}
-							class="dv-trendmark-otp-dot"
-						/>
-						<Points
-							data={dotsHighN}
-							r={6}
-							style={`fill:${primaryColor}`}
-							class="dv-trendmark-otp-dot"
-						/>
-						<Highlight points lines />
-					</Svg>
-					{#key $prefersReducedMotion}
-						<Tooltip.Root
-							contained="window"
-							motion={$prefersReducedMotion ? 'none' : 'spring'}
-							fadeDuration={$prefersReducedMotion ? 0 : 100}
-						>
-							{#snippet children({ data: d }: { data: TrendDatum })}
-								<Tooltip.Header>{d.xLabel}</Tooltip.Header>
-								<Tooltip.List>
-									<Tooltip.Item
-										label={spec.label}
-										value={valueLabel(d.y, spec.unit)}
-										color={primaryColor}
-									/>
-									{#if spec.secondary}
-										<Tooltip.Item
-											label={spec.secondary.label}
-											value={valueLabel(d.y2, spec.secondary.unit)}
-											color="var(--dataviz-status-late)"
-										/>
-									{/if}
-									{#if num(d.bandLo) != null && num(d.bandHi) != null}
-										<Tooltip.Item
-											label={structure.confidenceInterval95}
-											value={`${num(d.bandLo)}-${num(d.bandHi)}${spec.unit}`}
-										/>
-									{/if}
-									{#if d.n != null}
-										<Tooltip.Item
-											label="n"
-											value={fmtCount(d.n, { locale: spec.locale, noData })}
-										/>
-									{/if}
-								</Tooltip.List>
-							{/snippet}
-						</Tooltip.Root>
-					{/key}
-				</LcChart>
-
-				{#if spec.secondary && hasSecondary && secYDomain}
-					<div class="dv-trendmark-overlay" aria-hidden="true">
-						<LcChart
-							{data}
-							x={xOf}
-							y={(d: TrendDatum) => d.y2 ?? 0}
-							xScale={isTime ? scaleTime() : scalePoint()}
-							{xDomain}
-							yScale={scaleLinear()}
-							yDomain={secYDomain}
-							{padding}
-						>
-							<Svg>
-								<Axis
-									placement="right"
-									ticks={4}
-									format={axisNumber}
-									class="dv-trendmark-axis dv-trendmark-axis--retard"
-								/>
-								<Spline
-									y={(d: TrendDatum) => d.y2 ?? 0}
+							{#if hasBand}
+								<Area
+									y0={(d: TrendDatum) => d.bandLo ?? 0}
+									y1={(d: TrendDatum) => d.bandHi ?? 0}
 									curve={curveMonotoneX}
-									defined={y2Defined}
-									class="dv-trendmark-retard"
+									defined={bandDefined}
+									class="dv-trendmark-band"
 								/>
-							</Svg>
-						</LcChart>
-					</div>
-				{/if}
-			{/key}
-		</ChartFrame>
+							{/if}
+							{#if spec.target != null}
+								<Rule y={spec.target} class="dv-trendmark-target" />
+							{/if}
+							<Spline
+								y={(d: TrendDatum) => d.y ?? 0}
+								curve={curveMonotoneX}
+								defined={yDefined}
+								style={`stroke:${primaryColor}`}
+								class="dv-trendmark-otp"
+							/>
+							<Points
+								data={dotsLowN}
+								r={2.5}
+								style={`fill:${primaryColor}`}
+								class="dv-trendmark-otp-dot"
+							/>
+							<Points
+								data={dotsMidN}
+								r={4}
+								style={`fill:${primaryColor}`}
+								class="dv-trendmark-otp-dot"
+							/>
+							<Points
+								data={dotsHighN}
+								r={6}
+								style={`fill:${primaryColor}`}
+								class="dv-trendmark-otp-dot"
+							/>
+							<Highlight points lines />
+							<LayerChartTargets values={data.map(xOf)} />
+						</Svg>
+					</LcChart>
+
+					{#if spec.secondary && hasSecondary && secYDomain}
+						<div class="dv-trendmark-overlay" aria-hidden="true">
+							<LcChart
+								{data}
+								x={xOf}
+								y={(d: TrendDatum) => d.y2 ?? 0}
+								xScale={isTime ? scaleTime() : scalePoint()}
+								{xDomain}
+								yScale={scaleLinear()}
+								yDomain={secYDomain}
+								{padding}
+							>
+								<Svg>
+									<Axis
+										placement="right"
+										ticks={4}
+										format={axisNumber}
+										class="dv-trendmark-axis dv-trendmark-axis--retard"
+									/>
+									<Spline
+										y={(d: TrendDatum) => d.y2 ?? 0}
+										curve={curveMonotoneX}
+										defined={y2Defined}
+										class="dv-trendmark-retard"
+									/>
+								</Svg>
+							</LcChart>
+						</div>
+					{/if}
+				{/key}
+			</ChartFrame>
+		</ChartDetails>
 	</div>
 
 	<ChartLegend class="mt-1.5" items={legendItems} />
@@ -260,8 +254,8 @@
 			{#each spec.points as p (p.xLabel)}
 				<tr>
 					<th scope="row">{p.xLabel}</th>
-					<td>{valueLabel(p.y, spec.unit)}</td>
-					{#if spec.secondary}<td>{valueLabel(p.y2, spec.secondary.unit)}</td>{/if}
+					<td>{reading(p.y)}</td>
+					{#if spec.secondary}<td>{reading(p.y2, spec.secondary.unit)}</td>{/if}
 				</tr>
 			{/each}
 		</tbody>

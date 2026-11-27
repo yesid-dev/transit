@@ -1,7 +1,10 @@
 <script lang="ts">
+	import ChartDetails from '../ChartDetails.svelte';
+	import LayerChartTargets from '../LayerChartTargets.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
 	import { spacedTicks } from '../responsiveTicks';
 	import { intl } from '#lib/i18n/index.ts';
-	import { Chart as LcChart, Svg, Rule, Axis, Grid, Tooltip } from 'layerchart';
+	import { Chart as LcChart, Svg, Rule, Axis, Grid } from 'layerchart';
 	import { scaleLinear } from 'd3-scale';
 	import { cn } from '#lib/utils/index.ts';
 	import ChartFrame from '../ChartFrame.svelte';
@@ -94,51 +97,58 @@
 	const sharePct = (count: number): string =>
 		total > 0 ? `${Math.round((count / total) * 100)}%` : '';
 	const minutesTick = (sec: number): string => `${Math.round(sec / 60)}`;
+	const readings = $derived(
+		bars.map((bar) => ({
+			key: String(bar.key),
+			heading: fmtRange(bar),
+			rows: [
+				{
+					label: spec.yLabel ?? structure.tripsTitle,
+					value: chartDatumValue(bar.count, '', spec.locale),
+				},
+				{ label: structure.share, value: sharePct(bar.count) },
+			],
+		})),
+	);
 </script>
 
 <figure class={cn('dv-histmark m-0', className)} aria-label={spec.title} data-slot="histogram-mark">
 	<div bind:clientWidth={plotWidth}>
-		<ChartFrame height="14rem" class="dv-histmark-plot">
-			<LcChart
-				data={bars}
-				x={(d: Bar) => d.center}
-				xScale={scaleLinear()}
-				{xDomain}
-				y={(d: Bar) => d.density}
-				yScale={scaleLinear()}
-				{yDomain}
-				{padding}
-				tooltipContext={{ mode: 'bisect-x' }}
-			>
-				<Svg>
-					<Grid y class="dv-histmark-grid" />
-					<Axis
-						placement="bottom"
-						label={spec.xLabel}
-						labelPlacement="middle"
-						ticks={xTicks}
-						format={minutesTick}
-						class="dv-histmark-axis"
-					/>
-					<HistogramBars {bars} />
-					{#if medianRef != null}
-						<Rule x={medianRef} class="dv-histmark-median" />
-					{/if}
-					{#if p90Ref != null}
-						<Rule x={p90Ref} class="dv-histmark-p90" />
-					{/if}
-				</Svg>
-				<Tooltip.Root>
-					{#snippet children({ data: d }: { data: Bar })}
-						<Tooltip.Header>{fmtRange(d)}</Tooltip.Header>
-						<Tooltip.List>
-							<Tooltip.Item label={spec.yLabel ?? structure.tripsTitle} value={`${d.count}`} />
-							<Tooltip.Item label={structure.share} value={sharePct(d.count)} />
-						</Tooltip.List>
-					{/snippet}
-				</Tooltip.Root>
-			</LcChart>
-		</ChartFrame>
+		<ChartDetails label={spec.title} {readings}>
+			<ChartFrame height="14rem" class="dv-histmark-plot">
+				<LcChart
+					data={bars}
+					x={(d: Bar) => d.center}
+					xScale={scaleLinear()}
+					{xDomain}
+					y={(d: Bar) => d.density}
+					yScale={scaleLinear()}
+					{yDomain}
+					{padding}
+					tooltipContext={{ mode: 'bisect-x' }}
+				>
+					<Svg>
+						<Grid y class="dv-histmark-grid" />
+						<Axis
+							placement="bottom"
+							label={spec.xLabel}
+							labelPlacement="middle"
+							ticks={xTicks}
+							format={minutesTick}
+							class="dv-histmark-axis"
+						/>
+						<HistogramBars {bars} />
+						{#if medianRef != null}
+							<Rule x={medianRef} class="dv-histmark-median" />
+						{/if}
+						{#if p90Ref != null}
+							<Rule x={p90Ref} class="dv-histmark-p90" />
+						{/if}
+						<LayerChartTargets values={bars.map((bar) => bar.center)} />
+					</Svg>
+				</LcChart>
+			</ChartFrame>
+		</ChartDetails>
 	</div>
 
 	<table class="sr-only">

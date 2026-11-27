@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { Chart as LcChart, Svg, Axis, Tooltip } from 'layerchart';
+	import ChartDetails from '../ChartDetails.svelte';
+	import { chartDatumValue } from '#lib/site/presenter.ts';
+	import { Chart as LcChart, Svg, Axis } from 'layerchart';
 	import { scaleBand } from 'd3-scale';
 	import { cn } from '#lib/utils/index.ts';
 	import ChartFrame from '../ChartFrame.svelte';
@@ -73,6 +75,34 @@
 	const frameHeight = $derived(`${Math.max(3, rows) * 1.6 + 2.5}rem`);
 	const gutterPadding = { top: 10, right: 0, bottom: 34, left: 44 };
 	const cellPadding = { top: 10, right: 12, bottom: 34, left: 4 };
+	const readings = $derived(
+		data.map((cell) => ({
+			key: cell.key,
+			heading: cell.fullRowLabel + ' · ' + cell.colLabel,
+			rows: [
+				{
+					label: spec.valueLabel ?? spec.title,
+					value:
+						cell.value == null
+							? cell.tierLabel
+							: chartDatumValue(
+									spec.unit === '%' ? cell.value * 100 : cell.value,
+									spec.unit ?? '',
+									spec.locale,
+								),
+				},
+				...(cell.value == null ? [] : [{ label: '', value: cell.tierLabel }]),
+				...(spec.cells[cell.r]?.[cell.c]?.n == null
+					? []
+					: [
+							{
+								label: 'Observations',
+								value: chartDatumValue(spec.cells[cell.r][cell.c].n, '', spec.locale),
+							},
+						]),
+			],
+		})),
+	);
 </script>
 
 <figure
@@ -110,43 +140,34 @@
 			</ChartFrame>
 		{/snippet}
 		{#snippet scroller()}
-			<ChartFrame height={frameHeight} class="dv-heatmap-cells">
-				<LcChart
-					{data}
-					x={(d: FlatCell) => d.c}
-					xScale={scaleBand().padding(0.06)}
-					xDomain={colIdx}
-					y={(d: FlatCell) => d.r}
-					yScale={scaleBand().padding(0.06)}
-					yDomain={rowIdx}
-					padding={cellPadding}
-					tooltipContext={{ mode: 'bounds', touchEvents: 'auto' }}
-				>
-					<Svg>
-						<Axis
-							placement="bottom"
-							ticks={tickIdx}
-							format={(i: number) => tickLabel(i)}
-							rule={false}
-							label={spec.colAxisLabel}
-							labelPlacement="middle"
-							class="dv-heatmap-axis"
-						/>
-						<HeatmapCells cells={data} worstTier={HEATMAP_WORST_TIER} {worstGlyph} />
-					</Svg>
-					<Tooltip.Root contained="window" anchor="top">
-						{#snippet children({ data: d }: { data: FlatCell })}
-							<Tooltip.Header>{d.fullRowLabel} · {d.colLabel}</Tooltip.Header>
-							<Tooltip.List class="grid-cols-1">
-								<Tooltip.Item
-									label={spec.valueLabel ?? spec.title}
-									value={`${d.worst && worstGlyph ? worstGlyph + ' ' : ''}${d.tierLabel}`}
-								/>
-							</Tooltip.List>
-						{/snippet}
-					</Tooltip.Root>
-				</LcChart>
-			</ChartFrame>
+			<ChartDetails label={spec.title} {readings}>
+				<ChartFrame height={frameHeight} class="dv-heatmap-cells">
+					<LcChart
+						{data}
+						x={(d: FlatCell) => d.c}
+						xScale={scaleBand().padding(0.06)}
+						xDomain={colIdx}
+						y={(d: FlatCell) => d.r}
+						yScale={scaleBand().padding(0.06)}
+						yDomain={rowIdx}
+						padding={cellPadding}
+						tooltipContext={{ mode: 'bounds', touchEvents: 'auto' }}
+					>
+						<Svg>
+							<Axis
+								placement="bottom"
+								ticks={tickIdx}
+								format={(i: number) => tickLabel(i)}
+								rule={false}
+								label={spec.colAxisLabel}
+								labelPlacement="middle"
+								class="dv-heatmap-axis"
+							/>
+							<HeatmapCells cells={data} worstTier={HEATMAP_WORST_TIER} {worstGlyph} />
+						</Svg>
+					</LcChart>
+				</ChartFrame>
+			</ChartDetails>
 		{/snippet}
 	</ScrollFrame>
 

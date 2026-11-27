@@ -35,8 +35,9 @@
 	const glyphSize = $derived(Math.max(6, Math.min(bw, bh) * 0.7));
 </script>
 
-{#each cells as d (d.key)}
+{#each cells as d, index (d.key)}
 	<rect
+		data-chart-datum={index}
 		x={px(d.c)}
 		y={py(d.r)}
 		width={bw}

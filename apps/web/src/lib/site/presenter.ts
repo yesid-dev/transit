@@ -111,6 +111,16 @@ export function readerClock(hour: number, minute: number, locale: Locale): strin
 	return minute === 0 ? hours : `${hours}\u00a0${String(minute).padStart(2, '0')}`;
 }
 
+export function chartDatumValue(value: number | null | undefined, unit: string, locale: Locale) {
+	if (value == null || !Number.isFinite(value))
+		return locale === 'fr' ? 'Non mesuré' : 'Not measured';
+	const suffix = unit.trim();
+	if (suffix === '%') {
+		return intl.number(locale, { style: 'percent', maximumFractionDigits: 6 }).format(value / 100);
+	}
+	const number = intl.number(locale, { maximumFractionDigits: 6 }).format(value);
+	return suffix ? number + (locale === 'fr' ? '\u00a0' : ' ') + suffix : number;
+}
 export function clockTime(date: Date, locale: Locale, timeZone = 'UTC'): string {
 	const face = formatClock(date, locale, timeZone);
 	const parts = /^(\d{2}):(\d{2})$/u.exec(face);

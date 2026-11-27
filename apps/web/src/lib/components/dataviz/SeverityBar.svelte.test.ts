@@ -62,7 +62,7 @@ describe('SeverityBar — absolute domain (S7 relative-to-max fix)', () => {
 		const bar = container.querySelector('[role="progressbar"]') as HTMLElement;
 
 		expect(bar).toHaveAttribute('aria-label', 'Retard, Élevé');
-		await fireEvent.focus(bar);
+		await fireEvent.keyDown(screen.getByRole('group', { name: 'Retard' }), { key: 'Home' });
 		expect(await screen.findByRole('tooltip')).toHaveTextContent('Élevé');
 	});
 });

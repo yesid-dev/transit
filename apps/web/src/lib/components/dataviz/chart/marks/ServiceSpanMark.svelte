@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { Chart as LcChart, Svg, Axis, Tooltip } from 'layerchart';
+	import ChartDetails from '../ChartDetails.svelte';
+
+	import { Chart as LcChart, Svg, Axis } from 'layerchart';
 	import { scaleLinear, scaleBand } from 'd3-scale';
 	import { cn } from '#lib/utils/index.ts';
 	import ChartFrame from '../ChartFrame.svelte';
@@ -32,6 +34,21 @@
 	const lastMark = $derived(delayMark(spec.lastDelayMin));
 
 	const padding = { top: 4, right: 8, bottom: 22, left: 8 };
+	const readings = $derived([
+		{
+			key: spec.title,
+			heading: spec.title,
+			rows: [
+				{ label: spec.firstLabel, value: spec.firstClock },
+				{ label: spec.lastLabel, value: spec.lastClock },
+				{ label: spec.firstDelayLabel, value: firstMark.has ? firstMark.text : spec.noDataLabel },
+				{ label: spec.lastDelayLabel, value: lastMark.has ? lastMark.text : spec.noDataLabel },
+				...[spec.spanLabel, spec.tripsLabel]
+					.filter((item) => item != null)
+					.map((value) => ({ label: '', value })),
+			],
+		},
+	]);
 </script>
 
 <figure
@@ -39,52 +56,37 @@
 	aria-label={spec.title}
 	data-slot="service-span-timeline"
 >
-	<ChartFrame height="3rem" class="dv-span-plot">
-		<LcChart
-			data={[{ k: '' }]}
-			x={() => 0}
-			xScale={scaleLinear()}
-			{xDomain}
-			y={() => ''}
-			yScale={scaleBand()}
-			yDomain={['']}
-			{padding}
-			tooltipContext={{ mode: 'band' }}
-		>
-			<Svg>
-				<Axis
-					placement="bottom"
-					ticks={tickMins}
-					format={(m: number) => tickLabel(m)}
-					rule={false}
-					class="dv-span-axis"
-				/>
-				<ServiceSpanBar
-					elapsedMin={spec.elapsedMin}
-					domainEnd={spec.domain[1]}
-					{gridMins}
-					title={spec.title}
-				/>
-			</Svg>
-			<Tooltip.Root>
-				<Tooltip.Header>{spec.title}</Tooltip.Header>
-				<Tooltip.List>
-					<Tooltip.Item label={spec.firstLabel} value={spec.firstClock} />
-					<Tooltip.Item label={spec.lastLabel} value={spec.lastClock} />
-					{#if spec.spanLabel}<Tooltip.Item label="" value={spec.spanLabel} />{/if}
-					{#if spec.tripsLabel}<Tooltip.Item label="" value={spec.tripsLabel} />{/if}
-					<Tooltip.Item
-						label={spec.firstDelayLabel}
-						value={firstMark.has ? firstMark.text : spec.noDataLabel}
+	<ChartDetails label={spec.title} {readings}>
+		<ChartFrame height="3rem" class="dv-span-plot">
+			<LcChart
+				data={[{ k: '' }]}
+				x={() => 0}
+				xScale={scaleLinear()}
+				{xDomain}
+				y={() => ''}
+				yScale={scaleBand()}
+				yDomain={['']}
+				{padding}
+				tooltipContext={{ mode: 'band' }}
+			>
+				<Svg>
+					<Axis
+						placement="bottom"
+						ticks={tickMins}
+						format={(m: number) => tickLabel(m)}
+						rule={false}
+						class="dv-span-axis"
 					/>
-					<Tooltip.Item
-						label={spec.lastDelayLabel}
-						value={lastMark.has ? lastMark.text : spec.noDataLabel}
+					<ServiceSpanBar
+						elapsedMin={spec.elapsedMin}
+						domainEnd={spec.domain[1]}
+						{gridMins}
+						title={spec.title}
 					/>
-				</Tooltip.List>
-			</Tooltip.Root>
-		</LcChart>
-	</ChartFrame>
+				</Svg>
+			</LcChart>
+		</ChartFrame>
+	</ChartDetails>
 
 	<div class="dv-span-ends">
 		<div class="dv-span-end" data-end="first">
