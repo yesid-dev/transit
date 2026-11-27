@@ -554,6 +554,11 @@ test('Overview Live late lines keep the plate, linked name and value together @l
 		const value = (await row.getByText(/^\d+ of \d+$/u).boundingBox())!;
 		expect(name.x).toBeGreaterThanOrEqual(plate.x + plate.width);
 		expect(value.x).toBeGreaterThan(name.x);
+		if (width === 1440) {
+			const center = ({ y, height }: { y: number; height: number }) => y + height / 2;
+			expect(Math.abs(center(plate) - center(value))).toBeLessThanOrEqual(4);
+			expect(Math.abs(center(name) - center(value))).toBeLessThanOrEqual(4);
+		}
 		const evidence = process.env.TRANSIT_COHESION_B_EVIDENCE;
 		if (evidence)
 			await table.screenshot({
