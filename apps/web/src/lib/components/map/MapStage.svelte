@@ -857,6 +857,12 @@
 		text-underline-offset: 0.2em;
 	}
 
+	.map-stage :global(.maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button) {
+		background-repeat: no-repeat;
+		background-position: center;
+		background-size: 24px 24px;
+	}
+
 	.map-stage :global(.maplibregl-ctrl-attrib-button)::after {
 		content: '';
 		position: absolute;
