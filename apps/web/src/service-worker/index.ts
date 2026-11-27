@@ -27,7 +27,11 @@ const STATIC_FILES = assets
 	.map(({ path }) => `/${path}`)
 	.filter((file) => {
 		const path = new URL(file, ORIGIN).pathname;
-		return path !== '/offline.html' && !path.startsWith(MAP_POSTER_PATH_PREFIX);
+		return (
+			path !== '/offline.html' &&
+			!path.startsWith(MAP_POSTER_PATH_PREFIX) &&
+			!path.startsWith('/map/glyphs/')
+		);
 	});
 
 const FONT_FILES = immutable

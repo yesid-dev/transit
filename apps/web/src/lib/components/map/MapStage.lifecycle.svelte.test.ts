@@ -360,11 +360,12 @@ afterEach(() => {
 describe('MapStage boot lifecycle', () => {
 	it('classifies every protocol fault and retries after each rejected shared registration', async () => {
 		harness.state.pmtilesImportError = new Error('pmtiles import failed');
+		const loadPmtiles = vi.fn(harness.importers.pmtiles);
 		const failures: Failure[] = [];
 		const signals: AbortSignal[] = [];
 		render(Stage, {
 			props: {
-				importers: harness.importers,
+				importers: { ...harness.importers, pmtiles: loadPmtiles },
 				bounds: STAGE_BOUNDS,
 				basemapLoader: ({ signal }: { signal: AbortSignal }) => {
 					signals.push(signal);
@@ -375,6 +376,8 @@ describe('MapStage boot lifecycle', () => {
 				},
 			},
 		});
+		await waitFor(() => expect(loadPmtiles).toHaveBeenCalledOnce());
+		expect(harness.state.maps).toHaveLength(0);
 		releaseImports();
 		await waitFor(() => expect(failures).toHaveLength(1));
 		expect(failures[0]?.kind).toBe('protocol');

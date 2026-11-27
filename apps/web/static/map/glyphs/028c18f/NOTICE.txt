@@ -1,0 +1,6 @@
+Noto Sans Regular and Noto Sans Medium map label glyphs.
+
+The PBF files are byte-for-byte copies from:
+https://github.com/protomaps/basemaps-assets/tree/028c18f713baecad011301ff7a69acc39bcc2ae7/fonts
+
+Copyright and license terms are in OFL.txt.

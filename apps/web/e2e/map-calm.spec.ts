@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { captureUrl } from './capture-fixture';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 import {
 	closeMapInView,
 	mapControlsPill,
@@ -79,6 +79,39 @@ for (const record of [false, true]) {
 		}
 	});
 }
+
+test('Live map draws its first vehicle reading while stops and timetable are pending', async ({
+	page,
+}) => {
+	const now = Date.now();
+	await page.route(captureUrl, (route) =>
+		route.fulfill({
+			json: captureFixture(now, { vehicle_positions: [captureVehicle(now)] }),
+		}),
+	);
+	const stopsUrl = '**/api/stops/slim?**';
+	const timetableUrl = '**/api/schedule-edition?**';
+	const stops = holdResponse(page, stopsUrl);
+	const timetable = holdResponse(page, timetableUrl);
+	await Promise.all([stops.route, timetable.route]);
+
+	try {
+		await Promise.all([
+			page.waitForRequest(stopsUrl),
+			page.waitForRequest(timetableUrl),
+			page.goto('/map?provider=stm'),
+		]);
+		await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+			'data-map-progressive-state',
+			'ready',
+		);
+		await expect(page.locator('[data-motion-vehicle-count="1"]')).toBeVisible();
+		await expect(page.getByRole('button', { name: 'Zoom in' })).toBeEnabled();
+	} finally {
+		stops.release();
+		timetable.release();
+	}
+});
 
 async function expectQuietClick(page: Page, target: Locator) {
 	await target.click();
