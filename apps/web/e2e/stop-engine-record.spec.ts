@@ -100,8 +100,8 @@ for (const width of [390, 1440]) {
 			const grid = main.locator('#hourly');
 			const hours = grid.getByRole('columnheader');
 			await expect(hours).toHaveCount(20);
-			await expect(hours.first()).toHaveText(fr ? '5 h' : '05h');
-			await expect(hours.last()).toHaveText(fr ? '0 h' : '00h');
+			await expect(hours.first()).toHaveText(fr ? '5 h' : '05');
+			await expect(hours.last()).toHaveText(fr ? '0 h' : '00');
 			await expect(grid).toContainText(fr ? 'Les heures après minuit' : 'Hours after midnight');
 			await expect(grid).toContainText(fr ? /moins de 30 passages/ : 'under 30 stop events');
 			await expect(grid.getByText(fr ? 'Non mesuré' : 'Not measured', { exact: true })).toHaveCount(

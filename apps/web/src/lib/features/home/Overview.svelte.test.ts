@@ -136,6 +136,13 @@ for (const locale of ['en', 'fr'] as const) {
 		const total = locale === 'fr' ? /^sur 507.?800 passages aux arrêts$/ : 'of 507,800 stop events';
 		expect(within(record).getByText(total)).toBeVisible();
 		expect(within(record).getByText(recordState('too_few_to_judge')[locale])).toBeVisible();
+		const deliveryRange = within(record).getByText(
+			locale === 'fr' ? /entre 81,1\s% et 91,0\s%/u : /between 81\.1% and 91\.0% ran/u,
+		);
+		const note = deliveryRange.closest('dd');
+		expect(note).toHaveClass('col-span-full', 'font-sans');
+		expect(note?.previousElementSibling).toHaveTextContent(locale === 'fr' ? /90,0\s%/u : '90.0%');
+		expect(note?.previousElementSibling).not.toContainElement(deliveryRange);
 		const about = await screen.findByRole('article', { name: copy.about });
 		const observed =
 			locale === 'fr'

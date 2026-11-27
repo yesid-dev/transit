@@ -238,7 +238,12 @@
 	{#await answer}
 		{@render pending(answer, section)}
 	{:then result}
-		{#if result.kind === 'answer' && !recordMessage(result, locale)}
+		{@const explainsUntracked =
+			result.kind === 'answer' &&
+			'value' in result.answer &&
+			result.answer.state === 'not_tracked' &&
+			(section === 'alerts' || section === 'crowding')}
+		{#if result.kind === 'answer' && (explainsUntracked || !recordMessage(result, locale))}
 			{#if section === 'stops' && 'cells' in result.answer}
 				<LineStopLadder
 					series={result.answer}

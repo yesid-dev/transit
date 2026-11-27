@@ -108,26 +108,26 @@ describe('record charts', () => {
 			'en',
 		).props;
 		expect(grid.columns.map(({ label }) => label)).toEqual([
-			'05h',
-			'06h',
-			'07h',
-			'08h',
-			'09h',
-			'10h',
-			'11h',
-			'12h',
-			'13h',
-			'14h',
-			'15h',
-			'16h',
-			'17h',
-			'18h',
-			'19h',
-			'20h',
-			'21h',
-			'22h',
-			'23h',
-			'00h',
+			'05',
+			'06',
+			'07',
+			'08',
+			'09',
+			'10',
+			'11',
+			'12',
+			'13',
+			'14',
+			'15',
+			'16',
+			'17',
+			'18',
+			'19',
+			'20',
+			'21',
+			'22',
+			'23',
+			'00',
 		]);
 		expect(grid.stateLabels.few).toBe('few: too few to judge, under 30 stop events');
 		expect(grid.rows[0]?.cells[1]).toMatchObject({
@@ -148,7 +148,7 @@ describe('record charts', () => {
 	});
 
 	it.each([
-		['en', '04h', '03h', 'few', 'none'],
+		['en', '04', '03', 'few', 'none'],
 		['fr', '4 h', '3 h', 'peu', 'aucun'],
 	] as const)(
 		'keeps all 24 active hours and every named state in %s',

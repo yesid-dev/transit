@@ -300,20 +300,23 @@
 							ran != null && eligible != null && unconfirmed != null
 								? unconfirmedTripsRange(ran, eligible, unconfirmed, locale)
 								: null}
+						{#snippet deliveryNote()}
+							{#if bounds}<p>{bounds}</p>{/if}
+							{#if delivery.answer.evidence.low_coverage}
+								<p>{coverageText(delivery.answer.evidence, locale)}</p>
+							{/if}
+							{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
+						{/snippet}
 						<FactRow
 							label={tripsRunShareLabel(locale)}
 							detail={ran != null && eligible != null
 								? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
 								: undefined}
+							note={bounds || delivery.answer.evidence.low_coverage || delivery.lastGood
+								? deliveryNote
+								: undefined}
 						>
 							<strong>{recordPercent(deliveryShare, locale)}</strong>
-							{#if bounds}<p class="text-muted-foreground">{bounds}</p>{/if}
-							{#if delivery.answer.evidence.low_coverage}
-								<p class="text-muted-foreground">
-									{coverageText(delivery.answer.evidence, locale)}
-								</p>
-							{/if}
-							{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 						</FactRow>
 					{:else}
 						<FactRow label={tripsRunShareLabel(locale)}>{@render gap(delivery)}</FactRow>

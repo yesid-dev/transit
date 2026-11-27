@@ -254,6 +254,18 @@ for (const width of [390, 1440]) {
 						.first(),
 				).toBeVisible();
 				await expect(record).toContainText(fr ? /90 sur 100/ : /90 of 100/);
+				const deliveryRange = record.getByText(
+					fr ? /entre 81,1\s% et 91,0\s%/u : /between 81\.1% and 91\.0% ran/u,
+				);
+				await expect(deliveryRange).toBeVisible();
+				const rangeUsesRowWidth = await deliveryRange.evaluate((note) => {
+					const row = note.closest('[data-slot="fact-row"]');
+					return (
+						row != null &&
+						note.getBoundingClientRect().width >= row.getBoundingClientRect().width - 1
+					);
+				});
+				expect(rangeUsesRowWidth).toBe(true);
 				await expect(record).toContainText(
 					fr ? 'Par rapport aux 7 jours précédents' : 'Against the 7 days before',
 				);
