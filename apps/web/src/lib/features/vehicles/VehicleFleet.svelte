@@ -514,7 +514,7 @@
 				<div data-slot="screen-answer">
 					{#if untracked}
 						<RecordAnswer {locale} value={null} state="not_tracked" sentence={notTracked[locale]} />
-					{:else if liveMode && liveLoading}
+					{:else if liveMode ? liveLoading : !result && data.fleet}
 						<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
 						<RecordSkeleton shape="answer" />
 					{:else if liveMode}
