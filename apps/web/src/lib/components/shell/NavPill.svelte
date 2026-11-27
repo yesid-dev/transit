@@ -30,6 +30,7 @@
 	import SearchSheet from './SearchSheet.svelte';
 	import {
 		carryFrameState,
+		dailyReportPeriod,
 		frameHref,
 		parseFrameState,
 		type FrameClock,
@@ -89,7 +90,8 @@
 	const hrefFor = (href: string) => {
 		const localized = localizeHref(href, locale, providerId);
 		if (href !== '/receipt') return carryFrameState(localized, url);
-		const { period } = parseFrameState(url.searchParams, clock);
+		// The Daily report is one day: never carry a week into it.
+		const period = dailyReportPeriod(parseFrameState(url.searchParams, clock).period, clock);
 		return frameHref(new URL(localized, url), { mode: 'record', period });
 	};
 	const home = $derived(hrefFor('/'));

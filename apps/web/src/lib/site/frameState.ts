@@ -170,6 +170,21 @@ export function recordAnswerPeriod(period: FrameState['period'], clock: FrameClo
 		: period;
 }
 
+/**
+ * The menu's Daily report opens one day, never a week: the day already in view, or else
+ * Yesterday. Until Yesterday is built, the report answers with the last built day and says so.
+ */
+export function dailyReportPeriod(
+	period: FrameState['period'],
+	clock: FrameClock,
+): FramePeriod | null {
+	if (period && period.from === period.to) return period;
+	const yesterday = presetPeriod('yesterday', clock);
+	if (yesterday) return yesterday;
+	const through = lastBuiltDay(clock);
+	return through ? { from: through, to: through, preset: null } : null;
+}
+
 export function receiptFrameParams(params: URLSearchParams, clock: FrameClock) {
 	const date = params.get('date');
 	if (!date || params.has('recordFrom')) return params;

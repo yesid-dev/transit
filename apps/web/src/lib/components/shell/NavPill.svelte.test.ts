@@ -114,6 +114,17 @@ it('keeps city, period and mode in both existing and upcoming menu destinations'
 	}
 });
 
+it('opens the Daily report from the menu on one day, not the week in view', async () => {
+	const url = new URL('https://transit.test/lines?provider=stm&frameMode=record&period=7-days');
+	const view = render(NavPill, { props: { locale: 'en', url, providerId: 'stm' } });
+	await fireEvent.click(view.getByRole('button', { name: navPillCopy.en.openMenu }));
+	const href = view.getByRole('link', { name: 'Daily report' }).getAttribute('href')!;
+	const params = new URL(href, url).searchParams;
+	expect(new URL(href, url).pathname).toBe('/receipt');
+	expect(params.get('period')).toBe('yesterday');
+	expect(params.get('recordFrom')).toBe(params.get('recordTo'));
+});
+
 vi.mock('$app/env/public', async () => ({
 	...(await import('./../../../tests/publicEnv.ts')).PUBLIC_ENV,
 	...{},
