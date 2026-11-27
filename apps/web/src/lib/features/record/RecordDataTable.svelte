@@ -109,8 +109,7 @@
 			sortable: !!sort,
 			cell: nameCell,
 		},
-		// Let the kit size numeric columns from their readings and reserve a minimum
-		// for the name through the table's styling hook.
+		// Ignore caller-supplied widths so readings set the numeric columns' size.
 		...columns.map((column) => (column.numeric ? { ...column, width: undefined } : column)),
 	]);
 	const valueColumn = $derived(columns.find(({ key }) => key === value));
@@ -195,6 +194,8 @@
 			>{row.leadingCode.text}</span
 		>{/if}<span class="name-label">{row.label}</span>{/snippet}
 {#snippet wideTable()}
+	<!-- In wide tables, the small percentage keeps numeric columns at their intrinsic
+	     width. Keeping readings together gives those columns their content floor. -->
 	<DataTable
 		caption={title}
 		columns={allColumns}
@@ -206,7 +207,16 @@
 		pageSize={page}
 		{pageLabels}
 		{rowAlign}
-		tableClass="[&_thead_th]:normal-case! [&_thead_th]:tracking-normal! [&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]"
+		class="@container"
+		tableClass={[
+			'[&_thead_th]:normal-case! [&_thead_th]:tracking-normal!',
+			'[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
+			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
+			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
+			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',
+			'@min-[38rem]:[&_td[data-numeric]]:whitespace-nowrap',
+			'@min-[38rem]:[&_td[data-numeric]_small]:whitespace-normal',
+		].join(' ')}
 		responsive={scrollMinWidth
 			? { mode: 'scroll', minWidth: scrollMinWidth }
 			: stackAt

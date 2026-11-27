@@ -514,6 +514,44 @@ test('French Daily keeps the completed-trips value beside its label at 390px @la
 	expect(boxes.value.left).toBeGreaterThan(boxes.label.right);
 });
 
+test('Lines gives spare table width to names while readings keep their width @layout', async ({
+	page,
+}) => {
+	await setWidth(page, 768);
+	await page.goto('/lines?provider=stm&frameMode=record&recordFrom=2026-11-04&recordTo=2026-11-10');
+	const table = page.getByRole('table', { name: 'Every measured line', exact: true });
+	await expect(table.getByText('73.2%', { exact: true }).first()).toBeVisible();
+	await page.evaluate(() => document.fonts.ready);
+
+	const dimensions = () =>
+		table
+			.locator('tbody tr')
+			.first()
+			.evaluate((row) => ({
+				name: row.querySelector('th')!.getBoundingClientRect().width,
+				readings: [...row.querySelectorAll('td')].map((cell) => cell.getBoundingClientRect().width),
+				row: row.getBoundingClientRect().width,
+			}));
+
+	const tablet = await dimensions();
+	await setWidth(page, 1440);
+	const desktop = await dimensions();
+	expect(tablet.readings).toHaveLength(4);
+	expect(desktop.readings).toHaveLength(4);
+	expect(desktop.row).toBeGreaterThan(tablet.row);
+	for (const [index, reading] of desktop.readings.entries()) {
+		expect(Math.abs(reading - tablet.readings[index])).toBeLessThanOrEqual(1);
+	}
+	expect(Math.abs(desktop.name - tablet.name - (desktop.row - tablet.row))).toBeLessThanOrEqual(4);
+	const lateHeader = table.locator('thead').getByText('Late', { exact: true });
+	const lateLines = await lateHeader.evaluate((label) => {
+		const text = document.createRange();
+		text.selectNodeContents(label);
+		return text.getClientRects().length;
+	});
+	expect(lateLines).toBe(1);
+});
+
 test('Overview Live late lines keep the plate, linked name and value together @layout', async ({
 	page,
 }) => {
