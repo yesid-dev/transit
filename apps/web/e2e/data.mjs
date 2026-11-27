@@ -772,35 +772,43 @@ const server = createServer((request, response) => {
 			}
 		}
 
-		response.writeHead(200, { 'content-type': 'application/json' }).end(
-			JSON.stringify({
-				schedule: {
-					date: '2026-11-21',
-					routes: [...editionRoutes.values()],
-					...(kind === 'schedule-index'
-						? {
-								route_directions: Object.fromEntries(
-									Object.entries(routeDirections).map(([id, directions]) => [
-										id,
-										directions.map(({ dir, headsign, stops }) => ({ dir, headsign, stops })),
-									]),
-								),
-							}
+		const scheduleHold = request.headers['x-transit-fixture-schedule-hold'];
+		const heldBy =
+			kind === 'schedule-index' && fixtureHolds.has(scheduleHold) ? scheduleHold : undefined;
+		response.writeHead(200, { 'content-type': 'application/json' });
+		sendFixtureResponse(response, heldBy, () =>
+			response.end(
+				JSON.stringify({
+					schedule: {
+						date: '2026-11-21',
+						routes: [...editionRoutes.values()],
+						...(kind === 'schedule-index'
+							? {
+									route_directions: Object.fromEntries(
+										Object.entries(routeDirections).map(([id, directions]) => [
+											id,
+											directions.map(({ dir, headsign, stops }) => ({ dir, headsign, stops })),
+										]),
+									),
+								}
+							: {}),
+						stops: [
+							...editionStops.values(),
+							{
+								id: 'clean-search-stop',
+								name: 'Crémazie Clean',
+								code: '98765',
+								lat: 45.5,
+								lon: -73.6,
+								routes: [],
+							},
+						],
+					},
+					...(kind === 'search-index'
+						? { vehicles: [{ id: '40061' }], vehicle_state: 'ready' }
 						: {}),
-					stops: [
-						...editionStops.values(),
-						{
-							id: 'clean-search-stop',
-							name: 'Crémazie Clean',
-							code: '98765',
-							lat: 45.5,
-							lon: -73.6,
-							routes: [],
-						},
-					],
-				},
-				...(kind === 'search-index' ? { vehicles: [{ id: '40061' }], vehicle_state: 'ready' } : {}),
-			}),
+				}),
+			),
 		);
 		return;
 	}

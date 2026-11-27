@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
+import { fixtureWorkerBindings } from './fixture-worker-bindings.js';
 import config from './wrangler.json' with { type: 'json' };
 
 const require = createRequire(import.meta.url);
@@ -41,7 +42,13 @@ const application = {
 		QUESTION_FIXTURE_ORIGIN: fixture,
 	},
 };
-const recordYesterday = `${config.name}-record-yesterday`;
+const fixtureWorkers = Object.entries(fixtureWorkerBindings).map(([scope, binding]) => ({
+	binding,
+	name: `${config.name}-${scope}`,
+}));
+const serviceBindings = Object.fromEntries(
+	fixtureWorkers.map(({ binding, name }) => [binding, name]),
+);
 
 // Wrangler dev's HTTP proxy decodes and recompresses gzip, losing the Worker flush boundaries.
 const worker = new Miniflare(
@@ -52,9 +59,9 @@ const worker = new Miniflare(
 			{
 				...application,
 				name: config.name,
-				serviceBindings: { RECORD_YESTERDAY_FIXTURE: recordYesterday },
+				serviceBindings,
 			},
-			{ ...application, name: recordYesterday },
+			...fixtureWorkers.map(({ name }) => ({ ...application, name })),
 		],
 	}),
 );
