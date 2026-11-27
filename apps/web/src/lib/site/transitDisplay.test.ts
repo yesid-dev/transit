@@ -87,6 +87,14 @@ describe('OC stop display names', () => {
 		['OC TRANSPO / ST-LAURENT', 'OC Transpo / St-Laurent'],
 		['RIDEAU NB / O-TRAIN 1', 'Rideau NB / O-TRAIN 1'],
 		['Station Berri-UQAM', 'Station Berri-UQAM'],
+		// Mc and O' keep the capital after them; French elisions read as particles.
+		["SLATER/O'CONNOR", "Slater/O'Connor"],
+		['MCARTHUR / ST-LAURENT', 'McArthur / St-Laurent'],
+		['MACDONALD-CARTIER', 'Macdonald-Cartier'],
+		["RUE DE L'ÉGLISE", "Rue de l'Église"],
+		["D'IBERVILLE / NOTRE-DAME", "D'Iberville / Notre-Dame"],
+		['MAPLE LANE / SPRINGFIELD', 'Maple Lane / Springfield'],
+		['POB CENTRAL', 'POB Central'],
 	])('%s → %s', (raw, display) => expect(stopDisplayName(raw)).toBe(display));
 });
 

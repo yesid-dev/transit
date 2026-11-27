@@ -10,7 +10,7 @@ import {
 	providerLocalDateKey,
 } from '#lib/utils/time.ts';
 import { presenterCopy } from './presenter.copy.ts';
-import { formatTransitName } from './transitDisplay.ts';
+import { formatTransitName, stopDisplayName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { stampCopy, type LiveState } from '#lib/v1/stamp.copy.ts';
 import { compassPoint, type LinePattern } from './linePatterns';
@@ -156,8 +156,8 @@ function publishedAlertUnit(count: number, locale: Locale) {
 			? 'avis tel que publié'
 			: 'avis tels que publiés'
 		: count === 1
-			? 'alert as published'
-			: 'alerts as published';
+			? 'notice as published'
+			: 'notices as published';
 }
 
 export function publishedAlertCount(count: number, locale: Locale) {
@@ -174,7 +174,7 @@ export function noticeCountEvidence(
 	const total = intl.number(locale).format(published);
 	return locale === 'fr'
 		? `${noticeCount(grouped, locale)}, issu${grouped === 1 ? '' : 's'} de ${total} avis publié${published === 1 ? '' : 's'} par ${frenchAgency(agency).subject}, un par ligne et par mise à jour.`
-		: `${noticeCount(grouped, locale)}, from ${total} ${published === 1 ? 'alert' : 'alerts'} as ${agency.name} published ${published === 1 ? 'it' : 'them'}, one per line and reissue.`;
+		: `${noticeCount(grouped, locale)}, from ${total} as ${agency.name} published ${published === 1 ? 'it' : 'them'}, one per line and reissue.`;
 }
 
 export function alertAnswerSentence(
@@ -262,9 +262,17 @@ export function terminusName(name: string): string {
  * stop du …", never "Vers du …".
  */
 function terminusPlace(name: string, locale: Locale, rule?: NameSeparators) {
-	const shown = formatTransitName(terminusName(name), locale, rule);
-	if (!/^(?:du|de|des|d['’])(?=[\s\p{L}])/u.test(shown)) return shown;
-	return `${locale === 'fr' ? 'l’arrêt' : 'the stop'} ${shown}`;
+	const published = formatTransitName(terminusName(name), locale, rule);
+	// A name written in capitals reads in title case; its leading particle is still a particle.
+	const shouted = published === published.toLocaleUpperCase();
+	const shown = stopDisplayName(published);
+	// In capitals only a whole word is a particle: "DE LA GAUCHETIÈRE", never "DUFFERIN".
+	const particle = (
+		shouted ? /^(?:du|de|des)(?=\s)|^d['’](?=\p{L})/iu : /^(?:du|de|des|d['’])(?=[\s\p{L}])/u
+	).exec(shown)?.[0];
+	if (!particle) return shown;
+	const place = particle.toLowerCase() + shown.slice(particle.length);
+	return `${locale === 'fr' ? 'l’arrêt' : 'the stop'} ${place}`;
 }
 
 export function riderHeadsign(headsign: string | null | undefined, pattern?: LinePattern) {
@@ -527,7 +535,7 @@ export function noPublishedNotices(
 			? 'Aucun avis dans le bilan disponible pour ces dates.'
 			: 'No notices in the available record for these dates.';
 	if (locale === 'en') {
-		return `${agency.name} published no alert${scope === 'network' ? '' : ` for this ${scope}`} on these dates.`;
+		return `${agency.name} published no notice${scope === 'network' ? '' : ` for this ${scope}`} on these dates.`;
 	}
 	const subject = frenchAgency(agency).subject;
 	const forScope = { stop: ' pour cet arrêt', line: ' pour cette ligne', network: '' }[scope];
@@ -588,7 +596,16 @@ export function rankingComparison(
 
 export function countedUnit(
 	value: number,
-	unit: 'line' | 'stop' | 'event' | 'trip' | 'day' | 'vehicle' | 'distinct-alert' | 'measured-day',
+	unit:
+		| 'line'
+		| 'stop'
+		| 'event'
+		| 'trip'
+		| 'day'
+		| 'vehicle'
+		| 'reading'
+		| 'distinct-alert'
+		| 'measured-day',
 	locale: Locale,
 ) {
 	const labels = {
@@ -599,8 +616,12 @@ export function countedUnit(
 		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
 		'measured-day': { en: ['measured day', 'measured days'], fr: ['jour mesuré', 'jours mesurés'] },
 		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
+		reading: {
+			en: ['vehicle reading', 'vehicle readings'],
+			fr: ['relevé de véhicule', 'relevés de véhicules'],
+		},
 		'distinct-alert': {
-			en: ['distinct alert', 'distinct alerts'],
+			en: ['distinct notice', 'distinct notices'],
 			fr: ['avis distinct', 'avis distincts'],
 		},
 	};
@@ -1011,7 +1032,7 @@ export function frenchAgency({ name, frenchOf }: AgencyName) {
 export function alertsNotCollected(agency: AgencyName, locale: Locale) {
 	return locale === 'fr'
 		? `Transit ne collecte pas encore les avis ${frenchAgency(agency).of}.`
-		: `Transit does not collect ${agency.name}’s alerts yet.`;
+		: `Transit does not collect ${agency.name}’s notices yet.`;
 }
 
 /** The state and its sentence on one line: "Not tracked: Transit does not collect …". */
@@ -1025,11 +1046,11 @@ export function alertsNotTrackedLine(agency: AgencyName, locale: Locale) {
 export function alertsNotTrackedOnDates(agency: AgencyName, locale: Locale) {
 	return locale === 'fr'
 		? `Non suivi\u00a0: Transit n’a pas collecté les avis ${frenchAgency(agency).of} à ces dates.`
-		: `Not tracked: Transit did not collect ${agency.name}’s alerts on these dates.`;
+		: `Not tracked: Transit did not collect ${agency.name}’s notices on these dates.`;
 }
 
 export function officialAlertsLabel(locale: Locale) {
-	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check official service alerts';
+	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check the official notices';
 }
 
 /** The citation for a whole page: who published it, what, which dates and where to find it. */
