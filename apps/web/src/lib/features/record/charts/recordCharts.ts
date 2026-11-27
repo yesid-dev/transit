@@ -209,6 +209,14 @@ function serviceHours(series: RecordSeries) {
 	return Array.from({ length }, (_, offset) => (start + offset) % 24);
 }
 
+/** A grid with no hour to judge: some hours too few, none with a reading. */
+export function hourGridTooFew(series: RecordSeries) {
+	return (
+		series.cells.some(({ state }) => state === 'too_few_to_judge') &&
+		!series.cells.some((cell) => measuredShare(cell, 'late') !== null)
+	);
+}
+
 export function hourChart(
 	series: RecordSeries,
 	title: string,

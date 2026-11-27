@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { RecordMeasure } from '#lib/server/engine.ts';
+import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
 import { measure, period, stateText } from '#lib/features/home/overviewRecord.fixture.ts';
 import { punctualityBands, recordMessage } from '#lib/features/record/recordText.ts';
-import { lineAnswer, lineCitation } from './lineRecordText.ts';
+import { crowdingFinding, lineAnswer, lineCitation, offeredFinding } from './lineRecordText.ts';
 
 const base = measure();
 const answer: RecordMeasure = {
@@ -56,4 +56,38 @@ describe('Line Record text', () => {
 		expect(citation.split(dates)).toHaveLength(2);
 		expect(citation).toContain(locale === 'en' ? '80 of 100' : '80 sur 100');
 	});
+});
+
+it.each([
+	['en', 'Vehicles most often had few seats free: 33.9% of the time.'],
+	[
+		'fr',
+		'Les véhicules avaient le plus souvent peu de places assises libres\u00a0: 33,9\u00a0% du temps.',
+	],
+] as const)('says the most frequent occupancy in plain words, in %s', (locale, sentence) => {
+	expect(crowdingFinding({ key: 'crowding_few_seats', share: 0.339 }, locale)).toBe(sentence);
+});
+
+it('says reported percentages and leaves unknown levels unsaid', () => {
+	expect(crowdingFinding({ key: 'percentage', percentage: 40, share: 0.2 }, 'en')).toBe(
+		'Vehicles most often were reported 40.0% full: 20.0% of the time.',
+	);
+	expect(crowdingFinding({ key: 'crowding_unheard_of', share: 0.2 }, 'en')).toBeNull();
+});
+
+it('says the busiest planned hour in trips an hour', () => {
+	const cell = (hour: number, rate: number) => ({
+		key: { hour },
+		state: 'measured' as const,
+		state_text: { en: '', fr: '' },
+		value: { scheduled_frequency: rate },
+		evidence: { counts: {}, days_included: [] },
+	});
+	const series = { cells: [cell(7, 21.17), cell(0, 3.86)] } as unknown as RecordSeries;
+	expect(offeredFinding(series, 'en')).toBe(
+		'Planned service peaked from 07:00 to 08:00: about 21 trips an hour.',
+	);
+	expect(offeredFinding(series, 'fr')?.replace(/[\u00a0\u202f]/gu, ' ')).toBe(
+		'Le service prévu culminait de 7 h à 8 h : environ 21 trajets par heure.',
+	);
 });

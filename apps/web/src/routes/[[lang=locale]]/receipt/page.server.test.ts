@@ -83,8 +83,11 @@ it('streams the alert total over eight dates without requesting message details'
 
 it('streams the five newest agency messages by first start, natural line order, and displayed text', async () => {
 	const message = (id: string, line: string, text: string, ...days: number[]) => ({
+		source: 'feed',
 		id,
+		version: '1',
 		routes: [line],
+		stops: [],
 		header: { en: 'Your line', fr: 'Votre ligne' },
 		description: { en: null, fr: text },
 		periods: days.map((day) => ({
@@ -122,6 +125,8 @@ it('streams the five newest agency messages by first start, natural line order, 
 				'2',
 				'5',
 			]);
+			// Seven alerts, six notices: "Travaux." on lines 10 and 2 the same day is one notice.
+			expect(streamed.answer.evidence.notice_total).toBe(6);
 		},
 	);
 });

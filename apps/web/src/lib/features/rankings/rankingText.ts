@@ -61,14 +61,15 @@ const leadPhrases: Record<RankingMeasure, Record<Locale, [extreme: string, ranke
 			'est la part de trajets manquants classée la plus forte',
 		],
 	},
+	// The rate per 100 hours stays on How we measure; riders read it per hour.
 	[reporting]: {
 		en: [
-			'interruptions per 100 hours in service, the highest rate',
-			'interruptions per 100 hours in service, the rate ranked highest',
+			'times an hour it stopped reporting, the highest rate',
+			'times an hour it stopped reporting, the rate ranked highest',
 		],
 		fr: [
-			'interruptions par 100 heures en service, le taux le plus élevé',
-			'interruptions par 100 heures en service, le taux classé le plus élevé',
+			'interruptions des signalements par heure, le taux le plus élevé',
+			'interruptions des signalements par heure, le taux classé le plus élevé',
 		],
 	},
 };
@@ -116,7 +117,7 @@ export function rankingValue(value: number, measure: RankingMeasure, locale: Loc
 	if (measure === reporting)
 		return intl
 			.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-			.format(value);
+			.format(value / 100);
 	return recordPercent(value, locale);
 }
 
@@ -182,10 +183,21 @@ export function rankingCountLines(row: Row, measure: RankingMeasure, locale: Loc
 	const lines = [sampleText(row.sample, measure, locale)];
 	const { observed_trips: trips, observed_trip_pairs: pairs, reporting_gaps: gaps } = row.counts;
 	if (measure === reporting) {
-		if (gaps != null)
-			lines.push(
-				`${number(gaps, locale)} ${singularCount(gaps, locale) ? 'interruption' : 'interruptions'}`,
-			);
+		// "155 times in 21 hours": the count and the hours the rate comes from.
+		if (gaps != null) {
+			const hours = intl.number(locale, { maximumFractionDigits: 0 }).format(row.sample);
+			const unit =
+				Math.round(row.sample) === 1
+					? choose(locale, 'hour', 'heure')
+					: choose(locale, 'hours', 'heures');
+			return [
+				choose(
+					locale,
+					`${number(gaps, locale)} ${gaps === 1 ? 'time' : 'times'} in ${hours} ${unit}`,
+					`${number(gaps, locale)} ${singularCount(gaps, locale) ? 'interruption' : 'interruptions'} en ${hours} ${unit}`,
+				),
+			];
+		}
 	} else if (measure === 'excess_wait_time') {
 		if (pairs != null)
 			lines.push(

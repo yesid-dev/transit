@@ -259,6 +259,8 @@ const recordCell = recordState.extend({
 		days_included: z.array(z.iso.date()),
 		observed_delay_seconds: z.number().nullable().optional(),
 		trip_ids: z.array(z.string()).optional(),
+		/** Set by the Daily report before it keeps its first few notices. */
+		notice_total: z.number().int().nonnegative().optional(),
 		alert_messages: z
 			.array(
 				z.object({
@@ -326,6 +328,7 @@ const recordMethod = z.object({
 	id: z.string().optional(),
 	minimum_sample: count.optional(),
 	minimum_coverage: share.optional(),
+	ranking_floors: rankingFloors.optional(),
 	text: z
 		.object({
 			en: z.object({ definition: z.string().optional(), counts: z.string(), limits: z.string() }),

@@ -104,7 +104,9 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							await expect(
 								table.getByRole('columnheader', { name: fr ? /^Plage/u : /^Range/u }),
 							).toHaveCount(0);
-							await expect(table).toContainText(fr ? 'par 100 h' : 'per 100 h');
+							await expect(
+								table.getByRole('columnheader', { name: fr ? 'Par heure' : 'Times an hour' }),
+							).toHaveCount(1);
 						} else {
 							await expect(
 								table.getByText(fr ? 'Moins bien que le réseau' : 'Worse than the network'),

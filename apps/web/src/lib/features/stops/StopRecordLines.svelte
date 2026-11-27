@@ -49,6 +49,8 @@
 		series.cells.flatMap((cell): Row[] => {
 			const id = cell.key.line;
 			if (typeof id !== 'string' || cell.state === 'no_frequent_periods') return [];
+			// A line with no stop event here says nothing about this stop: no row.
+			if (!waiting && !cell.evidence.counts.classified && cell.state !== 'measured') return [];
 			const name = display.lineName(id);
 			return [
 				{

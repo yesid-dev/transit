@@ -9,12 +9,13 @@
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import {
+		crowdingFinding,
 		deliveryFinding,
 		departureFinding,
 		offeredFinding,
 		waitingFinding,
 	} from './lineRecordText.ts';
-	import { intl, type Locale } from '#lib/i18n/index.ts';
+	import type { Locale } from '#lib/i18n/index.ts';
 	import {
 		choose,
 		coverageText,
@@ -32,7 +33,9 @@
 		deliveryFacts,
 		recordRatio,
 		tooFewDepartures,
-		tripsInHours,
+		unconfirmedTrips,
+		tripsAnHour,
+		tripsOverDays,
 		agencyName,
 		noPublishedNotices,
 	} from '#lib/site/presenter.ts';
@@ -103,7 +106,7 @@
 				const share = answer.value[key];
 				return share == null
 					? []
-					: [{ label, share, seconds: total == null ? null : share * total }];
+					: [{ key, label, share, seconds: total == null ? null : share * total }];
 			}),
 			...(answer.evidence.percentage_levels ?? []).flatMap(
 				({ percentage, share, vehicle_seconds }) =>
@@ -111,6 +114,8 @@
 						? []
 						: [
 								{
+									key: 'percentage',
+									percentage,
 									label: t(
 										`Occupancy reported at ${p(percentage / 100)}`,
 										`Occupation déclarée à ${p(percentage / 100)}`,
@@ -193,14 +198,7 @@
 				{coverageText(answer.evidence, locale)}.
 			</p>{/if}
 	{:else if section === 'crowding'}
-		{@render opening(
-			topOccupancy
-				? t(
-						`The largest reported share was ${p(topOccupancy.share)} of vehicle time with usable occupancy data (${topOccupancy.label}).`,
-						`La plus grande part déclarée était de ${p(topOccupancy.share)} du temps des véhicules avec une mesure d’occupation utilisable (${topOccupancy.label}).`,
-					)
-				: null,
-		)}
+		{@render opening(topOccupancy ? crowdingFinding(topOccupancy, locale) : null)}
 		<LineReadingTable
 			{title}
 			{locale}
@@ -254,9 +252,12 @@
 											? unknown
 											: trips === 0
 												? t('No service scheduled', 'Aucun service prévu')
-												: intl.number(locale, { maximumFractionDigits: 2 }).format(frequency),
+												: tripsAnHour(frequency, locale),
+									// Each timetable day gives this clock hour once.
 									detail:
-										trips == null || hours == null ? undefined : tripsInHours(trips, hours, locale),
+										trips == null || hours == null
+											? undefined
+											: tripsOverDays(trips, hours, locale),
 								},
 					],
 				};
@@ -264,8 +265,8 @@
 		/>
 		<p class="mt-3 text-small text-muted-foreground">
 			{t(
-				'Scheduled trips per local clock hour, averaged over the timetable days available.',
-				'Trajets prévus par heure locale, en moyenne sur les jours dont l’horaire est disponible.',
+				'The trips the timetable plans in each hour, on average over the days it covers.',
+				'Les trajets que l’horaire prévoit dans chaque heure, en moyenne sur les jours qu’il couvre.',
 			)}
 		</p>
 		<a class="inline-flex min-h-11 items-center text-primary underline" href="#delivery"
@@ -276,7 +277,13 @@
 		>
 	{:else if section === 'delivery'}
 		{@const finding = deliveryFinding(answer, locale)}
-		{@render opening(finding)}
+		{@const thin =
+			answer.cells.some((cell) => cell.state === 'too_few_to_judge') &&
+			answer.cells.every(
+				(cell) => cell.state === 'too_few_to_judge' || cell.state === 'not_measured',
+			)}
+		<!-- No departure has enough trips: the state and its reason, once, in one line. -->
+		{#if finding || !thin}{@render opening(finding)}{/if}
 		{#if answer.cells.some((cell) => cell.state === 'measured')}
 			<LineReadingTable
 				{title}
@@ -305,12 +312,18 @@
 					};
 				})}
 			/>
-		{:else if answer.cells.length && answer.cells.every((cell) => cell.state === 'too_few_to_judge')}
+		{:else if thin}
 			{@const most = Math.max(...answer.cells.map((cell) => cell.evidence.counts.scheduled ?? 0))}
 			{@const minimum = answer.info?.[0]?.minimum_sample}
+			{@const unconfirmed = answer.cells.reduce(
+				(total, cell) =>
+					total + (cell.state === 'not_measured' ? (cell.evidence.counts.unconfirmed ?? 0) : 0),
+				0,
+			)}
 			<p>
-				{#if finding}<StateMark state="too_few_to_judge" {locale} />{/if}
+				<StateMark state="too_few_to_judge" {locale} />
 				{tooFewDepartures(most, minimum ?? null, locale)}
+				{#if unconfirmed}{unconfirmedTrips(unconfirmed, locale)}{/if}
 			</p>
 		{/if}
 	{/if}

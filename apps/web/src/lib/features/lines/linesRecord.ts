@@ -6,8 +6,9 @@ import { lineIsScheduleOnly } from '#lib/site/providerCapabilities.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 import { finderCells, finderShare, finderTrips, type FinderResult } from '../record/finderText.ts';
-import { recordPercent } from '#lib/site/presenter.ts';
+import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
 import { recordStateFor, type RecordState } from '../record/recordStates.ts';
+import { lowCoverageLabel } from '../record/recordText.ts';
 import { foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 
 export const lineSortKeys = ['line', 'onTime', 'late', 'trips'] as const;
@@ -74,6 +75,46 @@ export function orderedLines<T extends Reading>(
 		if (bv == null) return -1;
 		return (av - bv) * sign || lineOrder;
 	});
+}
+
+type LineTiming = {
+	evidence: { low_coverage?: boolean; counts: Record<string, number | null> };
+};
+
+/** Why a line with an on-time share is not one Rankings would rank. */
+export type LineHold =
+	| { reason: 'low_coverage' }
+	| { reason: 'too_few_to_judge'; unit: 'event' | 'trip-observed'; count: number; minimum: number };
+
+const floorUnits = { classified: 'event', observed_trips: 'trip-observed' } as const;
+
+/**
+ * Rankings leaves a line out when a count is under its ranking floor (too few to judge) or
+ * when too few scheduled stop events were observed (low coverage). The Lines headline uses
+ * the same rule. A floor whose count the answer does not carry is not applied.
+ */
+export function lineHold(
+	timing: LineTiming | undefined,
+	floors: Readonly<Record<string, number>> | undefined,
+): LineHold | null {
+	if (!timing) return null;
+	for (const [key, minimum] of Object.entries(floors ?? {})) {
+		const unit = floorUnits[key as keyof typeof floorUnits];
+		const count = timing.evidence.counts[key];
+		if (unit && count != null && count < minimum)
+			return { reason: 'too_few_to_judge', unit, count, minimum };
+	}
+	return timing.evidence.low_coverage ? { reason: 'low_coverage' } : null;
+}
+
+/** The hold in one short phrase: "Low coverage" or "Too few to judge: 2 observed trips, the minimum is 20". */
+export function lineHoldText(hold: LineHold, locale: Locale) {
+	if (hold.reason === 'low_coverage') return lowCoverageLabel[locale];
+	const count = countedUnit(hold.count, hold.unit, locale);
+	const minimum = intl.number(locale).format(hold.minimum);
+	return locale === 'fr'
+		? `Trop peu de données pour conclure\u00a0: ${count}, sur un minimum de ${minimum}`
+		: `Too few to judge: ${count}, the minimum is ${minimum}`;
 }
 
 export function lineSpread(rows: readonly { onTime: number | null }[], locale: Locale) {

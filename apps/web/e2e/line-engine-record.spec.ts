@@ -40,11 +40,13 @@ for (const width of [390, 1440]) {
 			await expect(waiting).toContainText(fr ? 'des 48 intervalles prévus' : 'of 48 planned gaps');
 			const offered = main.locator('#offered');
 			await expect(offered).toContainText(
-				fr ? 'Le service prévu atteignait un maximum de 8' : 'Planned service peaked at 8',
+				fr
+					? /Le service prévu culminait de 7\sh\sà\s8\sh\s:\s8 trajets par heure\./u
+					: 'Planned service peaked from 07:00 to 08:00: 8 trips an hour.',
 			);
 			await expect(
 				offered.getByRole('row', { name: fr ? /7\sh\sà\s8\sh/u : /07:00.*08:00/ }),
-			).toContainText(fr ? '8 trajets en 1 heure' : '8 trips in 1 hour');
+			).toContainText(fr ? '8 trajets sur 1 jour' : '8 trips over 1 day');
 			await expect(offered).toContainText(fr ? 'Aucun service prévu' : 'No service scheduled');
 			await offered
 				.getByRole('link', { name: fr ? /Voir les trajets/ : /See scheduled and delivered trips/ })

@@ -11,6 +11,7 @@ import {
 	type AgencyName,
 	compactServiceDay,
 	countedUnit,
+	frenchAgency,
 	hoursReading,
 	recordPercent,
 	recordRatio,
@@ -94,7 +95,9 @@ function accessibilityRow(
 		return { id, label, state: 'not_measured', note: null };
 	const total = accessible + notAccessible + noInformation + noColumn;
 	const declared = accessible + notAccessible;
-	const unit = (value: number) => countedUnit(value, id === 'stops' ? 'stop' : 'trip', locale);
+	// The stops served and the trips scheduled on these dates, named apart from the timetable's stops.
+	const unit = (value: number) =>
+		countedUnit(value, id === 'stops' ? 'stop-served' : 'trip-scheduled', locale);
 	if (!total) return { id, label, state: 'unknown', note: null };
 	if (!declared)
 		return {
@@ -241,8 +244,8 @@ export function publishingSample(accessibility: EngineResult<RecordMeasure>, loc
 			0,
 		);
 	return [
-		countedUnit(sum('stops'), 'stop', locale),
-		countedUnit(sum('trips'), 'trip', locale),
+		countedUnit(sum('stops'), 'stop-served', locale),
+		countedUnit(sum('trips'), 'trip-scheduled', locale),
 		countedUnit(answer.evidence.days_included.length, 'day', locale),
 	].join(', ');
 }
@@ -267,7 +270,24 @@ export function scorecardDays(answer: ScorecardAnswer, locale: Locale) {
 	return countedUnit(answer.evidence.days_included.length, 'day', locale);
 }
 
-/** Live trip coverage in two plain readings, each with its counts. */
+/** "3 of the 7 days" when the measure covers part of the dates, else "7 days". */
+export function measuredDaysText(answer: ScorecardAnswer, locale: Locale) {
+	const { start_date, end_date, days_included } = answer.evidence;
+	const included = new Set(days_included).size;
+	const selected = Math.round((Date.parse(end_date) - Date.parse(start_date)) / 86_400_000) + 1;
+	if (!(included < selected)) return scorecardDays(answer, locale);
+	const total = countedUnit(selected, 'day', locale);
+	return choose(
+		locale,
+		`${tally(included, locale)} of the ${total}`,
+		`${tally(included, locale)} des ${total}`,
+	);
+}
+
+/**
+ * Live trip coverage in two plain readings on one base: the trips scheduled on the days the
+ * measure covers. Days with a capture gap are left out of both rows and of the foot.
+ */
 export function tripCoverageFacts(answer: ScorecardAnswer, locale: Locale) {
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const measure = 'live_trip_coverage';
@@ -275,41 +295,59 @@ export function tripCoverageFacts(answer: ScorecardAnswer, locale: Locale) {
 	const value = number(answer.value[measure]);
 	const appeared = number(counts.appeared);
 	const eligible = number(counts.eligible);
-	const neverSeen = number(counts.never_seen);
-	const scheduled = number(counts.scheduled);
-	const neverSeenShare = number(counts.never_seen_share);
+	const neverSeenAll = number(counts.never_seen);
+	const scheduledAll = number(counts.scheduled);
+	// Without a capture gap, the whole-period counts already share the base.
+	const gapFree =
+		eligible != null &&
+		neverSeenAll != null &&
+		scheduledAll != null &&
+		scheduledAll === eligible + neverSeenAll;
+	const neverSeen = number(counts.never_seen_on_measured_days) ?? (gapFree ? neverSeenAll : null);
+	const scheduled = number(counts.scheduled_on_measured_days) ?? (gapFree ? scheduledAll : null);
+	const days = measuredDaysText(answer, locale);
+	const partial = days !== scorecardDays(answer, locale);
+	const onDays = (text: string) => (partial ? `${text}, ${days}` : text);
 	const trips = (n: number) => countedUnit(n, 'trip', locale);
-	return {
-		facts: [
-			{
-				id: 'with_live_data',
-				label: t('Trips with live data', 'Trajets avec des données en direct'),
-				value: answer.state === 'measured' && value != null ? recordPercent(value, locale) : null,
-				detail:
-					appeared != null && eligible
-						? t(
+	const facts = [
+		{
+			id: 'with_live_data',
+			label: t('Trips with live data', 'Trajets avec des données en direct'),
+			value: answer.state === 'measured' && value != null ? recordPercent(value, locale) : null,
+			detail:
+				appeared != null && eligible
+					? onDays(
+							t(
 								`${recordRatio(appeared, trips(eligible), locale)} on lines seen in live data`,
 								`${recordRatio(appeared, trips(eligible), locale)} sur les lignes vues en direct`,
-							)
-						: null,
-			},
-			{
-				id: 'lines_never_seen',
-				label: t(
-					'Scheduled trips on lines never seen in live data',
-					'Trajets prévus sur les lignes jamais vues en direct',
-				),
-				value: neverSeenShare != null ? recordPercent(neverSeenShare, locale) : null,
-				detail:
-					neverSeen != null && scheduled
-						? t(
+							),
+						)
+					: null,
+		},
+		// A row on another base would not add up with the first, so it waits for the counts.
+		...(neverSeen != null && scheduled
+			? [
+					{
+						id: 'lines_never_seen',
+						label: t(
+							'Scheduled trips on lines never seen in live data',
+							'Trajets prévus sur les lignes jamais vues en direct',
+						),
+						value: recordPercent(neverSeen / scheduled, locale),
+						detail: onDays(
+							t(
 								`${recordRatio(neverSeen, trips(scheduled), locale)} scheduled`,
 								`${recordRatio(neverSeen, trips(scheduled), locale)} prévus`,
-							)
-						: null,
-			},
-		],
-		sample: scheduled != null ? `${trips(scheduled)}, ${scorecardDays(answer, locale)}` : null,
+							),
+						),
+					},
+				]
+			: []),
+	];
+	const base = scheduled ?? eligible;
+	return {
+		facts,
+		sample: base != null ? `${countedUnit(base, 'trip-scheduled', locale)}, ${days}` : null,
 	};
 }
 
@@ -410,6 +448,34 @@ export function predictionReadings(answer: ScorecardAnswer, locale: Locale) {
 			`${tally(checked, locale)} ${checked < 2 ? 'prévision vérifiée' : 'prévisions vérifiées'}, ${scorecardDays(answer, locale)}`,
 		),
 	};
+}
+
+/**
+ * Predictions are checked only against a report of the vehicle stopped at the stop. A feed
+ * that never sends one gives nothing to check: the card is "Not measured", with that reason.
+ */
+export function predictionsNotMeasured(
+	answer: ScorecardAnswer,
+	agency: AgencyName,
+	locale: Locale,
+) {
+	const counts = answer.evidence.counts.prediction_error ?? {};
+	let stopped = 0;
+	let other = 0;
+	for (const horizon of Object.values(counts)) {
+		const bases = object(object(horizon).by_basis);
+		for (const [basis, count] of Object.entries(bases)) {
+			const n = number(count) ?? 0;
+			if (basis === 'vehicle_stopped') stopped += n;
+			else other += n;
+		}
+	}
+	if (stopped > 0 || other === 0) return null;
+	return choose(
+		locale,
+		`${agency.name}’s feed never reports a vehicle stopped at a stop, so no prediction could be checked against an arrival.`,
+		`Le flux ${frenchAgency(agency).of} ne signale jamais un véhicule arrêté à un arrêt\u00a0: aucune prévision n’a donc pu être vérifiée par rapport à une arrivée.`,
+	);
 }
 
 /** The foot of the feed checks card: every check Transit made, over its days. */

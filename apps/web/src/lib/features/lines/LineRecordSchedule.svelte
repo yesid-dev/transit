@@ -8,6 +8,7 @@
 		scheduledClock,
 		plannedInterval,
 		dailyScheduledTrips,
+		sparseService,
 		towardReading,
 	} from '#lib/site/presenter.ts';
 	import type { RecordMeasure, RecordSeries, getRecordAnswer } from '#lib/server/engine.ts';
@@ -86,6 +87,16 @@
 			sign = headsigns[id];
 		}
 		if (rate == null) return t('Unknown', 'Inconnu');
+		// At most one trip an hour: say the trips of the part, not an interval over empty hours.
+		if (rate <= 1 && period.days)
+			return sparseService(
+				period.scheduled_trips / period.days,
+				{ start: period.start_hour, end: period.end_hour },
+				edges
+					.filter(({ measure }) => measure === 'last_trip')
+					.map((edge) => edge.scheduled_departure),
+				locale,
+			);
 		const interval = plannedInterval(rate, locale);
 		return sign
 			? `${interval} ${towardReading(sign, locale, display.directory.nameSeparators, false)}`

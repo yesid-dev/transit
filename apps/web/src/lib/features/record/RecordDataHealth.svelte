@@ -38,6 +38,7 @@
 		minimumNote,
 		minimumSample,
 		predictionReadings,
+		predictionsNotMeasured,
 		publishingRows,
 		publishingSample,
 		publishStateText,
@@ -251,6 +252,7 @@
 	result: Result<ScorecardAnswer>,
 	body: Snippet<[ScorecardAnswer]>,
 	sample: (answer: ScorecardAnswer) => string | null,
+	notMeasured?: (answer: ScorecardAnswer) => string | null,
 )}
 	<section {id} class="min-w-0">
 		<RecordCard title={cardTitle} {stamp}>
@@ -259,8 +261,13 @@
 			{:then settled}
 				{#if settled.kind === 'answer'}
 					{@const answer = settled.answer}
+					{@const reason = notMeasured?.(answer) ?? null}
 					{@const only = scorecardState(answer, id)}
-					{#if only}
+					{#if reason}
+						<!-- The whole card is one state: the state and its reason, once. -->
+						<p><StateMark state="not_measured" {locale} /></p>
+						<p class="mt-2 text-small text-muted-foreground">{reason}</p>
+					{:else if only}
 						<p><StateMark state={only} {locale} /></p>
 						{#if only === 'too_few_to_judge'}
 							<p class="mt-2 text-small text-muted-foreground">
@@ -281,7 +288,9 @@
 						<RecordEvidenceLine
 							{locale}
 							evidence={settled.answer.evidence}
-							sample={sample(settled.answer)}
+							sample={notMeasured?.(settled.answer)
+								? scorecardDays(settled.answer, locale)
+								: sample(settled.answer)}
 						/>
 					{/if}
 				{/await}
@@ -514,6 +523,7 @@
 						record.scorecard.prediction_error,
 						predictionsBody,
 						(answer) => predictionReadings(answer, locale).sample,
+						(answer) => predictionsNotMeasured(answer, agency, locale),
 					)}
 					{@render scorecardCard(
 						'poll_success',

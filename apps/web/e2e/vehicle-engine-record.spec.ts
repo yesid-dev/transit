@@ -417,9 +417,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(answer).not.toContainText(fr ? 'Le jour restant' : 'On the other day');
 		await expect(
 			page.getByRole('article', { name: fr ? 'Jour par jour' : 'Day by day' }),
-		).toContainText(
-			fr ? '6 jours en service sur 6 jours mesurés' : '6 days in service of 6 measured days',
-		);
+		).toContainText(fr ? '6 sur 6 jours mesurés en service' : '6 of 6 measured days in service');
 		await expect(
 			page.getByRole('article', {
 				name: fr ? 'Interruptions de signalement' : 'Stopped reporting',

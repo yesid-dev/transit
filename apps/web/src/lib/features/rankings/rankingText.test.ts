@@ -66,7 +66,12 @@ it('only ranks vehicles on reporting gaps, including visits to old completion li
 it('keeps a measured zero count and shows trips only when reported', () => {
 	expect(
 		rankingCountLines({ ...row, sample: 20.5, counts: { reporting_gaps: 0 } }, reporting, 'en'),
-	).toEqual(['20.5 hours in service', '0 interruptions']);
+	).toEqual(['0 times in 21 hours']);
+	// "about 7 times an hour (155 times in 21 hours)": the rate per hour and where it comes from.
+	expect(
+		rankingCountLines({ ...row, sample: 21.47, counts: { reporting_gaps: 155 } }, reporting, 'fr'),
+	).toEqual(['155 interruptions en 21 heures']);
+	expect(rankingValue(721.9, reporting, 'en')).toBe('7.2');
 	expect(rankingCountLines(row, 'on_time', 'fr')).toEqual(['100 passages observés aux arrêts']);
 	expect(rankingCountLines({ ...row, counts: { observed_trips: 1 } }, 'on_time', 'fr')).toEqual([
 		'100 passages observés aux arrêts',
@@ -92,8 +97,8 @@ it.each([
 	],
 	[
 		reporting,
-		'interruptions per 100 hours in service, the highest rate',
-		'interruptions par 100 heures en service, le taux le plus élevé',
+		'times an hour it stopped reporting, the highest rate',
+		'interruptions des signalements par heure, le taux le plus élevé',
 	],
 ] as const)('leads with the appropriate wording for %s', (measure, en, fr) => {
 	const ranked = { rows: Array.from({ length: 20 }, () => row), ranked_count: 20 };

@@ -101,7 +101,11 @@ export function vehicleReportDays(
 	const entries = [];
 	for (let day = period.from; day <= period.to; day = addIsoDays(day, 1)) {
 		const cell = byDay.get(day);
-		const state = cell || !measuredDays.has(day) ? vehicleDayState(cell) : 'not_reporting';
+		// On a day the network was measured, a missing row or an "unknown" row with no reading
+		// means this vehicle sent no report, not that the day went unmeasured.
+		const silent =
+			!cell || (cell.state === 'unknown' && cell.value.vehicle_days_in_service == null);
+		const state = silent && measuredDays.has(day) ? 'not_reporting' : vehicleDayState(cell);
 		const hours = cell?.value.vehicle_hours_in_service ?? null;
 		const date = longDate(day, locale);
 		const report =
