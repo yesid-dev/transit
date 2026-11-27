@@ -10,6 +10,7 @@ import {
 	rankedNoun,
 	rankingCitation,
 	rankingCountLines,
+	rankingHeadline,
 	rankingLead,
 	rankingRange,
 	rankingValue,
@@ -308,3 +309,53 @@ it('cites a ranking with the agency’s name, its source and licence, and the ac
 		'Source : données ouvertes d’OC Transpo, Licence du gouvernement ouvert, Ville d’Ottawa, version 2.0, calculs de Transit. Consulté le 27 nov. 2026.',
 	);
 });
+
+it.each([
+	[
+		'en',
+		'line',
+		'line 659 Longfields-Davidson Heights / Leikin',
+		{ classified: 778, early: 560, late: 48 },
+		'116 lines with enough to judge',
+		'is the lowest on-time share among the 116 lines with enough to judge: line 659 Longfields-Davidson Heights / Leikin (early 72.0%, late 6.2%).',
+	],
+	[
+		'fr',
+		'line',
+		'ligne 659 Longfields-Davidson Heights / Leikin',
+		{ classified: 778, early: 560, late: 48 },
+		'116 lignes avec assez de données pour conclure',
+		'est la plus faible part à l’heure parmi les 116 lignes avec assez de données pour conclure : ligne 659 Longfields-Davidson Heights / Leikin (en avance 72,0 %, en retard 6,2 %).',
+	],
+	[
+		'en',
+		'stop',
+		'Saint-Hubert / Viger',
+		{ classified: 1000, early: 757, late: 27 },
+		'50 stops with enough to judge',
+		'is the lowest on-time share among the 50 stops with enough to judge: Saint-Hubert / Viger (early 75.7%, late 2.7%).',
+	],
+	[
+		'fr',
+		'stop',
+		'Saint-Hubert / Viger',
+		{ classified: 1000, early: 757, late: 27 },
+		'50 arrêts avec assez de données pour conclure',
+		'est la plus faible part à l’heure parmi les 50 arrêts avec assez de données pour conclure : Saint-Hubert / Viger (en avance 75,7 %, en retard 2,7 %).',
+	],
+] as const)(
+	'keeps a space before the miss direction in the %s %s headline',
+	(locale, _kind, leader, counts, countText, sentence) => {
+		const first = { ...row, value: 0.219, counts };
+		const lead = rankingLead(
+			{ rows: [first, { ...row, value: 0.5 }], ranked_count: 2 },
+			first,
+			'on_time',
+			countText,
+			locale,
+		);
+		const headline = rankingHeadline(lead, leader, rankingWay(first, 'on_time', locale));
+		expect(plainText(headline)).toBe(sentence);
+		expect(rankingHeadline(lead, leader, null)).toBe(`${lead} ${leader}.`);
+	},
+);

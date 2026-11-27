@@ -67,6 +67,7 @@
 		rankedNoun,
 		rankingCitation,
 		rankingCountLines,
+		rankingHeadlineEnd,
 		rankingLead,
 		rankingRange,
 		rankingReference,
@@ -411,8 +412,7 @@
 				>
 				{rankingLead(data, first, measure, rankedCount(data), locale)}
 				{#if entry.href}<a class="text-primary underline" href={entry.href}>{leader(entry)}</a
-					>{:else}{leader(entry)}{/if}{#if way}
-					({way}){/if}.
+					>{:else}{leader(entry)}{/if}{rankingHeadlineEnd(way)}
 			</p>
 			{#if stamp}<div><Stamp {...stamp} /></div>{/if}
 			{@render actions()}
