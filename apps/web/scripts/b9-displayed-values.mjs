@@ -1025,6 +1025,8 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 					timeout: 15_000,
 				});
 				invariant(response?.ok(), `${cell.path} returned ${response?.status()}`);
+				// Ready readings are drawn on the server; the page's controls answer once it has hydrated.
+				await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 				const ssrHtml = await response.text();
 				let record;
 				try {

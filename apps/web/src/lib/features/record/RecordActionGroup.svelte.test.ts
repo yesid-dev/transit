@@ -76,3 +76,38 @@ it.each([
 		}
 	},
 );
+
+it.each([
+	[
+		'en',
+		'/download?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#daily-files',
+	],
+	[
+		'fr',
+		'/fr/download?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14#daily-files',
+	],
+] as const)(
+	'links Download to the same dates on the Download page, and opens the window on a click (%s)',
+	async (locale, page) => {
+		const view = render(RecordActionGroup, {
+			locale,
+			href: `https://transit.example${locale === 'fr' ? '/fr' : ''}/lines/24?provider=stm&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`,
+			files: [{ href: '/record.csv?section=daily', label: 'CSV fixture' }],
+			citation: createRawSnippet(() => ({ render: () => '<p>Citation</p>' })),
+		});
+		const name = locale === 'fr' ? 'Télécharger' : 'Download';
+		const trigger = view.getByRole('button', { name }) as HTMLButtonElement;
+		// Before the page hydrates, pressing it submits a form that leads to the files.
+		expect(trigger.type).toBe('submit');
+		const form = trigger.form!;
+		const target = new URL(form.action);
+		for (const [field, value] of new FormData(form))
+			target.searchParams.append(field, String(value));
+		expect(target.pathname + target.search + target.hash).toBe(page);
+		// Once hydrated, a click opens the window in place and submits nothing.
+		const click = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+		trigger.dispatchEvent(click);
+		expect(click.defaultPrevented).toBe(true);
+		expect(await view.findByRole('dialog')).toBeVisible();
+	},
+);

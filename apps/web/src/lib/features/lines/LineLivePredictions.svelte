@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { StatusMark, type StampProps } from '@yesid/ui/brand';
 	import { Badge } from '@yesid/ui/badge';
@@ -35,7 +36,7 @@
 		line: string;
 		stops: LineMainStop[];
 		headsigns: Readonly<Record<number, string>>;
-		seed: Promise<CaptureTripReport | null>;
+		seed: Awaitable<CaptureTripReport | null>;
 		refreshed: boolean;
 		now: number;
 		locale: Locale;

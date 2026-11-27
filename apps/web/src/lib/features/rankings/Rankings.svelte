@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isSettled, type Ready } from '#lib/site/ready.ts';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { getContext, untrack } from 'svelte';
@@ -89,7 +90,7 @@
 		url,
 		operator,
 	}: {
-		record: Awaited<ReturnType<typeof loadRankingsRecord>>;
+		record: Ready<Awaited<ReturnType<typeof loadRankingsRecord>>>;
 		locale: Locale;
 		url: URL;
 		operator?: string;
@@ -149,12 +150,16 @@
 		answer: Awaited<typeof record.reference>;
 	}>();
 	const settledReference = $derived(
-		referenceResult?.query === record.reference ? referenceResult?.answer : undefined,
+		record.reference && isSettled(record.reference)
+			? record.reference
+			: referenceResult?.query === record.reference
+				? referenceResult?.answer
+				: undefined,
 	);
 	$effect(() => {
 		const query = record.reference;
 		let active = true;
-		if (!query) return;
+		if (!query || isSettled(query)) return;
 		const accept = (answer: Awaited<typeof query> | null) => {
 			if (active) referenceResult = { query, answer };
 		};

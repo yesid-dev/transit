@@ -57,13 +57,13 @@ it.each(['live', 'record'] as const)(
 		} as unknown as Parameters<typeof load>[0]);
 		expect(data?.view).toBe(mode);
 		if (data?.view === 'live') {
-			await expect(data.capture).resolves.toMatchObject({ city: 'stm', version: 2 });
+			expect(await data.capture).toMatchObject({ city: 'stm', version: 2 });
 		}
 		if (data?.view === 'record' && data.record) {
-			await expect(data.record.methods).resolves.toEqual({ kind: 'answer', answer: [] });
-			await expect(data.record.health).resolves.toEqual({ kind: 'busy', retryAfterMs: 30_000 });
-			await expect(data.record.coverage).resolves.toEqual({ kind: 'busy', retryAfterMs: 30_000 });
-			await expect(data.record.deliveryDays).resolves.toEqual({
+			expect(await data.record.methods).toEqual({ kind: 'answer', answer: [] });
+			expect(await data.record.health).toEqual({ kind: 'busy', retryAfterMs: 30_000 });
+			expect(await data.record.coverage).toEqual({ kind: 'busy', retryAfterMs: 30_000 });
+			expect(await data.record.deliveryDays).toEqual({
 				kind: 'busy',
 				retryAfterMs: 30_000,
 			});

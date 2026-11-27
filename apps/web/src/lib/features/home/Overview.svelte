@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { ChartFrame } from '@yesid/ui/chart';
+	import { whenAll, type Awaitable } from '#lib/site/ready.ts';
 	import { DashboardGrid } from '@yesid/ui/layout';
 	import { SvelteURL } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -72,8 +73,8 @@
 	} from './overviewRecord.ts';
 	import { overviewCopy } from './overviewRecord.copy.ts';
 
-	type Measure = Promise<EngineResult<MeasureAnswer>>;
-	type Ranking = Promise<EngineResult<RankingAnswer>>;
+	type Measure = Awaitable<EngineResult<MeasureAnswer>>;
+	type Ranking = Awaitable<EngineResult<RankingAnswer>>;
 	type Totals = { lines: number; stops: number } | null;
 
 	let {
@@ -108,9 +109,9 @@
 			delivery: Measure;
 			lines: Ranking;
 			stops: Ranking;
-			directory?: Promise<ScheduleEdition['stops']>;
+			directory?: Awaitable<ScheduleEdition['stops']>;
 			totals?: Totals | Promise<Totals>;
-			trend?: Promise<EngineResult<EngineRecord>>;
+			trend?: Awaitable<EngineResult<EngineRecord>>;
 			manifest?: Manifest | null;
 		};
 	} = $props();
@@ -121,7 +122,7 @@
 	const days = $derived(
 		countedUnit(periodDays(record.period.from, record.period.to), 'day', locale),
 	);
-	const rankings = $derived(Promise.all([record.lines, record.stops]));
+	const rankings = $derived(whenAll([record.lines, record.stops], (pair) => pair));
 	// Copy link and Cite hand out the address pinned to the dates shown, as every other screen.
 	const pinned = $derived.by(() => {
 		const target = new SvelteURL(href);
@@ -157,7 +158,8 @@
 	]);
 	let liveCaptureAge = $state<number | null>(null);
 	const overviewReadings = $derived(
-		Promise.all([record.punctuality, record.baseline, record.delivery]).then(
+		whenAll(
+			[record.punctuality, record.baseline, record.delivery],
 			([current, previous, delivery]) => ({ kind: current.kind, current, previous, delivery }),
 		),
 	);

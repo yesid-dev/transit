@@ -14,6 +14,7 @@ import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { stopFrameView, stopViewHref } from '#lib/site/stopFrame.ts';
 import { lineIsScheduleOnly, providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
+import { readyAnswers, streamed } from '#lib/server/readyAnswers.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const started = performance.now();
@@ -69,7 +70,7 @@ export const load: PageServerLoad = async (event) => {
 			);
 		if (identity && fast === undefined) stopIdentity = identity;
 	}
-	return {
+	return readyAnswers({
 		seed: { id, name: name || id },
 		stopCode: scheduledStop?.code,
 		stopLines: lines,
@@ -86,13 +87,15 @@ export const load: PageServerLoad = async (event) => {
 		record: period ? loadStopRecord({ ...scope, ...period }, id, undefined, stopIdentity) : null,
 		capture:
 			live && (hasAlerts || (tripUpdatesPublished && !scheduleOnly))
-				? fetchCaptureSnapshot(providerId, signal, event.fetch).catch(() => null)
+				? streamed(fetchCaptureSnapshot(providerId, signal, event.fetch).catch(() => null))
 				: null,
 		trips:
 			live && tripUpdatesPublished && !scheduleOnly
-				? fetchCaptureTripScope(providerId, { kind: 'stop', id }, signal, event.fetch).catch(
-						() => null,
+				? streamed(
+						fetchCaptureTripScope(providerId, { kind: 'stop', id }, signal, event.fetch).catch(
+							() => null,
+						),
 					)
 				: null,
-	};
+	});
 };

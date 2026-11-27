@@ -176,6 +176,8 @@ for (const provider of ['stm', 'octranspo'] as const) {
 					contentType: 'application/json',
 				});
 				if (!unsupported && kind === 'line') {
+					// Before hydration, Download leads to the Download page; the window opens once hydrated.
+					await expect(page.locator('html[data-hydrated]')).toBeAttached();
 					await main.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
 					const csv = await page.getByRole('dialog').getByRole('link').first().getAttribute('href');
 					const response = await request.get(csv!);
@@ -209,6 +211,8 @@ test('shows separate exclusions and honest empty and unavailable states', async 
 	await page.goto(
 		'/rankings?kind=departure&provider=stm&recordFrom=2026-11-08&recordTo=2026-11-08',
 	);
+	// The ranking is drawn on the server; its controls answer once the page has hydrated.
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	const main = page.getByRole('main');
 	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
 		'No entries can be ranked on these dates.',
@@ -435,6 +439,7 @@ test('the ranking streams before its readings complete', async ({ page, request 
 
 test('the rank and measure controls reflow at 200% text', async ({ page }) => {
 	await page.goto(`/fr/rankings?provider=stm&${dates}`);
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await page.addStyleTag({ content: 'html {font-size:200%}' });
 	const main = page.getByRole('main');
 	await expect(main.locator('[data-slot="range-mark"]')).toBeVisible();

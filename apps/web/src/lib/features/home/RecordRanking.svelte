@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RankingAnswer } from '#lib/server/engine.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
@@ -25,9 +26,9 @@
 	}: {
 		locale: Locale;
 		kind: 'line' | 'stop';
-		ranking: Promise<EngineResult<RankingAnswer>>;
+		ranking: Awaitable<EngineResult<RankingAnswer>>;
 		link: (path: string) => string;
-		directory?: Promise<ScheduleEdition['stops']>;
+		directory?: Awaitable<ScheduleEdition['stops']>;
 		heading?: string;
 		outlineStopCode?: boolean;
 	} = $props();

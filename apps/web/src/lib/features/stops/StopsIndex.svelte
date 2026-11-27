@@ -34,6 +34,7 @@
 	import { nearestStops, type LatLon } from '#lib/components/map/nearbyStops.ts';
 	import { isSlimStopsIndex } from '#lib/v1/repositories/stopsSlim.ts';
 	import type { StopsRecord } from '#lib/server/finderRecord.ts';
+	import { isSettled, type Awaitable } from '#lib/site/ready.ts';
 	import type { StopSearchResult } from '#lib/server/stopListing.ts';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
@@ -73,7 +74,9 @@
 		provider,
 	}: {
 		locale: Locale;
-		record: (Omit<StopsRecord, 'punctuality'> & { punctuality: Promise<StopListingResult> }) | null;
+		record:
+			| (Omit<StopsRecord, 'punctuality'> & { punctuality: Awaitable<StopListingResult> })
+			| null;
 		listing: StopListing | null;
 		view: ReturnType<typeof stopListingView>;
 		provider: PublicCity | null;
@@ -122,16 +125,23 @@
 	);
 
 	let results = $state<HTMLElement>();
-	let initialResult = $state.raw<StopListingResult | null>(null);
+	// A reading that came drawn on the server is shown at once; a streamed one when it arrives.
+	let streamedResult = $state.raw<{ seed: unknown; answer: StopListingResult } | null>(null);
+	const initialResult = $derived.by(() => {
+		const reading = initialRecord?.punctuality;
+		if (reading === undefined) return null;
+		if (isSettled(reading)) return reading;
+		return streamedResult?.seed === reading ? streamedResult.answer : null;
+	});
 	const result = $derived<StopListingResult | null>(
 		loadedSearch ? (loadedSearch.finderRecord?.punctuality ?? null) : initialResult,
 	);
 	$effect(() => {
 		const reading = initialRecord?.punctuality;
+		if (reading === undefined || isSettled(reading)) return;
 		let active = true;
-		initialResult = null;
-		void reading?.then((answer) => {
-			if (active) initialResult = answer;
+		void reading.then((answer) => {
+			if (active) streamedResult = { seed: reading, answer };
 		});
 		return () => {
 			active = false;

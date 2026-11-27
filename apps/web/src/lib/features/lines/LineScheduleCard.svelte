@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Ready } from '#lib/site/ready.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { loadLineRecord } from '#lib/server/lineRecord.ts';
 	import { recordStamp } from '#lib/site/presenter.ts';
@@ -10,7 +11,7 @@
 		url,
 		headsigns,
 	}: {
-		record: ReturnType<typeof loadLineRecord>;
+		record: Ready<ReturnType<typeof loadLineRecord>>;
 		locale: Locale;
 		url: URL;
 		headsigns: Record<number, string>;

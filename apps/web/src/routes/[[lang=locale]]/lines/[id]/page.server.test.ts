@@ -52,7 +52,7 @@ describe('Line Record and Schedule on transit1', () => {
 		harness.getRecordAnswer.mockResolvedValueOnce(archive([]));
 		await expect(load(event('unknown'))).rejects.toMatchObject({ status: 404 });
 		harness.getRecordAnswer.mockResolvedValueOnce(archive([{ key: { line: 'retired' } }]));
-		await expect(load(event('retired'))).resolves.toMatchObject({
+		expect(await load(event('retired'))).toMatchObject({
 			seed: { id: 'retired' },
 			outsideCurrentTimetable: true,
 		});
@@ -132,7 +132,7 @@ describe('Line Record and Schedule on transit1', () => {
 			},
 			period,
 		);
-		await expect(data?.record?.sections.at(-1)?.answer).resolves.toEqual({ kind: 'unconfigured' });
+		expect(await data?.record?.sections.at(-1)?.answer).toEqual({ kind: 'unconfigured' });
 		expect(harness.getRoute).not.toHaveBeenCalled();
 	});
 
@@ -192,7 +192,7 @@ describe('Line Record and Schedule on transit1', () => {
 		const request = framed('&frameMode=live');
 		request.params.id = 'seasonal';
 		harness.getRecordAnswer.mockResolvedValueOnce(archive([{ key: { line: 'seasonal' } }]));
-		await expect(load(request)).resolves.toMatchObject({
+		expect(await load(request)).toMatchObject({
 			frameLive: true,
 			outsideCurrentTimetable: true,
 			capture: null,

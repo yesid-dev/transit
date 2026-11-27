@@ -36,7 +36,7 @@ it.each(['record', 'live'] as const)('uses only the expected Alerts reader in %s
 	} as unknown as Parameters<typeof load>[0]);
 
 	if (mode === 'live') {
-		await expect(result?.alertRecord.capture).resolves.toMatchObject({ city: 'stm', alerts: [] });
+		expect(await result?.alertRecord.capture).toMatchObject({ city: 'stm', alerts: [] });
 		expect(fetcher.mock.calls.map(([path]) => path)).toEqual(['/api/live?city=stm']);
 		expect(loadAlertRecord).not.toHaveBeenCalled();
 	} else {

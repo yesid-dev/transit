@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { tick, type Snippet } from 'svelte';
+	import { tick, untrack, type Snippet } from 'svelte';
 	import { MediaQuery } from 'svelte/reactivity';
 	import {
 		pendingBlockSize,
 		skeletonBlockSize,
 		type RecordWaiting,
 	} from '../record/recordWaiting.ts';
+	import { isSettled, type Awaitable, type Ready } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
@@ -61,7 +62,7 @@
 		scheduleOnly?: boolean;
 		locale: Locale;
 		url: URL;
-		record: ReturnType<typeof loadLineRecord>;
+		record: Ready<ReturnType<typeof loadLineRecord>>;
 		headsigns: Record<number, string>;
 		stopNames: Record<string, string>;
 		stopCodes: Record<string, string>;
@@ -114,15 +115,25 @@
 			active = false;
 		};
 	});
-	let timetableOnly = $state(false);
+	const timetableOnlyOf = (result: EngineResult<RecordAnswer>) =>
+		result.kind === 'answer' && 'value' in result.answer && lineTimetableOnly(result.answer);
+	// A reading drawn on the server decides at once, on the server and on hydration alike.
+	let timetableOnly = $state(
+		untrack(() => {
+			const first = record.sections.find(({ section }) => section === 'punctuality')?.answer;
+			return !scheduleOnly && !!first && isSettled(first) && timetableOnlyOf(first);
+		}),
+	);
 	$effect(() => {
 		if (scheduleOnly) return;
 		const pending = punctualityAnswer;
+		if (isSettled(pending)) {
+			timetableOnly = timetableOnlyOf(pending);
+			return;
+		}
 		let active = true;
 		void pending.then((result) => {
-			if (active)
-				timetableOnly =
-					result.kind === 'answer' && 'value' in result.answer && lineTimetableOnly(result.answer);
+			if (active) timetableOnly = timetableOnlyOf(result);
 		});
 		return () => {
 			active = false;
@@ -185,7 +196,7 @@
 </script>
 
 {#snippet pending(
-	answer: Promise<EngineResult<RecordAnswer>> | undefined,
+	answer: Awaitable<EngineResult<RecordAnswer>> | undefined,
 	section: keyof typeof shapes,
 	busy = false,
 )}

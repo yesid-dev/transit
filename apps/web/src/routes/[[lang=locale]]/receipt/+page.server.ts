@@ -14,6 +14,7 @@ import { dailyDirectory, loadDailyRecord } from '#lib/server/departureDailyRecor
 import { getScheduleEdition } from '#lib/server/engine.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 import { dailyReportTitle } from '#lib/site/presenter.ts';
+import { readyAnswers } from '#lib/server/readyAnswers.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { providerId, lang, provider, schedule } = await event.parent();
@@ -58,7 +59,7 @@ export const load: PageServerLoad = async (event) => {
 		: lang === 'fr'
 			? 'Rapport quotidien'
 			: 'Daily report';
-	return {
+	return readyAnswers({
 		seoTitle: title,
 		report: {
 			title,
@@ -73,5 +74,5 @@ export const load: PageServerLoad = async (event) => {
 			messagesLimited,
 			directory,
 		},
-	};
+	});
 };

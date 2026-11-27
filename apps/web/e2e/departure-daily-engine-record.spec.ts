@@ -136,6 +136,8 @@ for (const width of [390, 1440]) {
 					name: fr ? 'Voir 1 avis dans les avis de service' : 'See 1 notice in Service alerts',
 				}),
 			).toHaveAttribute('href', /\/alerts\?.*recordFrom=2026-11-18/);
+			// The report is drawn on the server; its buttons answer once the page has hydrated.
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			await main
 				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
 				.click();

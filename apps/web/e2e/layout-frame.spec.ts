@@ -270,6 +270,7 @@ test('the reading rail shares the content gutter and clears the header', async (
 test('desktop controls keep their column and control changes retain focus and scroll', async ({
 	page,
 	browserName,
+	request,
 }) => {
 	// Reproduce the post-midnight window without depending on the runner's date or time zone.
 	await page.clock.setFixedTime(new Date('2026-11-27T05:05:00Z'));
@@ -331,36 +332,14 @@ test('desktop controls keep their column and control changes retain focus and sc
 	await expect(punctuality).toBeVisible();
 	await page.evaluate(() => document.fonts.ready);
 	await preset.focus();
-	await page.evaluate(() => {
-		window.scrollTo(0, 250);
-		// Deliver the real route data first and hold its streamed answers until the pending check.
-		const fetch = window.fetch;
-		window.fetch = async (...args) => {
-			const response = await fetch(...args);
-			if (!response.url.includes('/lines/__data.json?') || !response.url.includes('period=28-days'))
-				return response;
-			window.fetch = fetch;
-			const data = await response.text();
-			const firstLineEnd = data.indexOf('\n') + 1;
-			const encoder = new TextEncoder();
-			return new Response(
-				new ReadableStream({
-					start(controller) {
-						controller.enqueue(encoder.encode(data.slice(0, firstLineEnd)));
-						window.addEventListener(
-							'release-lines-answers',
-							() => {
-								controller.enqueue(encoder.encode(data.slice(firstLineEnd)));
-								controller.close();
-							},
-							{ once: true },
-						);
-					},
-				}),
-				{ headers: response.headers, status: response.status },
-			);
-		};
-	});
+	await page.evaluate(() => window.scrollTo(0, 250));
+	// Hold the new period's Record answers at the fixture engine, so they stream after the page.
+	const hold = 'layout-frame-lines-28-days';
+	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+	const holdUrl = (action: string) =>
+		`http://127.0.0.1:${port}/__overview/${action}?fixture=${encodeURIComponent(hold)}`;
+	await request.post(holdUrl('hold'));
+	await page.setExtraHTTPHeaders({ 'x-transit-fixture-hold': hold });
 	const before = await position();
 	expect(before.scroll).toBe(250);
 	const rowTop = await firstLine.evaluate((row) => row.getBoundingClientRect().top);
@@ -388,7 +367,8 @@ test('desktop controls keep their column and control changes retain focus and sc
 		).toBe(true);
 		expect(await position(), 'while line readings are pending').toEqual(before);
 	} finally {
-		await page.evaluate(() => window.dispatchEvent(new Event('release-lines-answers')));
+		await request.post(holdUrl('release'));
+		await page.setExtraHTTPHeaders({});
 	}
 	await expect(trips).toBeVisible();
 	await expect(punctuality).toBeVisible();

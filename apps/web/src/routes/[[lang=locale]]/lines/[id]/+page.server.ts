@@ -14,6 +14,7 @@ import { canonicalDetailTabLocation, detailTabFromSearchParams } from '#lib/site
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
 import { selectMainStops } from '#lib/features/lines/lineLiveReadings.ts';
 import { uniqueDirectionHeadsigns } from '#lib/live/stopPrediction.ts';
+import { readyAnswers, streamed } from '#lib/server/readyAnswers.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { url } = event;
@@ -81,9 +82,11 @@ export const load: PageServerLoad = async (event) => {
 	const canPredict = !!provider?.inputs.trip_updates && !scheduleOnly;
 	const capture =
 		showLiveReadings && !scheduleOnly && provider
-			? fetchCaptureSnapshot(providerId, event.request.signal, event.fetch).catch(() => null)
+			? streamed(
+					fetchCaptureSnapshot(providerId, event.request.signal, event.fetch).catch(() => null),
+				)
 			: null;
-	return {
+	return readyAnswers({
 		seed: { id, name: name.label },
 		knownLine,
 		outsideCurrentTimetable,
@@ -119,13 +122,15 @@ export const load: PageServerLoad = async (event) => {
 		mainStops: showLiveReadings && !scheduleOnly ? selectMainStops(stops, directions ?? []) : [],
 		trips:
 			showLiveReadings && canPredict
-				? fetchCaptureTripScope(
-						providerId,
-						{ kind: 'line', id },
-						event.request.signal,
-						event.fetch,
-					).catch(() => null)
+				? streamed(
+						fetchCaptureTripScope(
+							providerId,
+							{ kind: 'line', id },
+							event.request.signal,
+							event.fetch,
+						).catch(() => null),
+					)
 				: null,
 		hasAlerts: providerHasAlerts(provider),
-	};
+	});
 };

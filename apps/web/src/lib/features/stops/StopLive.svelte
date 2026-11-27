@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import type { Snippet } from 'svelte';
 	import './stopCards.css';
 	import { page } from '$app/state';
@@ -67,8 +68,8 @@
 		directions?: ScheduleEdition['route_directions'];
 		/** Termini of this stop's lines, so a compass headsign names where the vehicle goes. */
 		patterns?: Readonly<Record<string, LinePattern>>;
-		capture: Promise<CaptureSnapshot | null> | null;
-		trips: Promise<CaptureTripReport | null> | null;
+		capture: Awaitable<CaptureSnapshot | null> | null;
+		trips: Awaitable<CaptureTripReport | null> | null;
 		scheduleOnly: boolean;
 		tripUpdatesPublished: boolean;
 		hasAlerts: boolean;

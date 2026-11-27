@@ -55,7 +55,7 @@ it.each(['live', 'record'] as const)(
 		} as unknown as Parameters<typeof load>[0]);
 		expect(data?.view).toBe(mode);
 		if (data?.view === 'live')
-			await expect(data.capture).resolves.toMatchObject({ city: 'stm', version: 2 });
+			expect(await data.capture).toMatchObject({ city: 'stm', version: 2 });
 		if (data?.view === 'record' && data.networkRecord)
 			await Promise.all(Object.values(data.networkRecord));
 		expect(ports.bucket).not.toHaveBeenCalled();

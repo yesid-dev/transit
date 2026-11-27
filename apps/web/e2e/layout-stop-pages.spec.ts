@@ -29,6 +29,8 @@ for (const locale of ['en', 'fr'] as const)
 					.filter({ hasText: /Fixture stop/u });
 				await expect(row.getByRole('link', { name: 'Fixture stop' })).toBeVisible();
 				await expect(row).toContainText(locale === 'fr' ? /80,0\s+%/u : '80.0%');
+				// The list is drawn on the server; its filter answers once the page has hydrated.
+				await expect(page.locator('html[data-hydrated]')).toBeAttached();
 				await page.getByTestId('stops-filter-input').fill('Fixture');
 				await expect(page.getByRole('table').getByRole('rowheader')).toHaveCount(1);
 				await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);

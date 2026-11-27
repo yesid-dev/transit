@@ -12,6 +12,8 @@ for (const locale of ['en', 'fr'] as const) {
 	const fr = locale === 'fr';
 	test(`How we measure disclosure defaults in ${locale}`, async ({ page }) => {
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
+		// The cards are drawn on the server; their saved open state applies on hydration.
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const main = page.getByRole('main');
 		const cards = main.locator('[data-record-disclosure]:not([id$="-notes"])');
 		const open = main.locator('[data-record-disclosure]:not([id$="-notes"])[data-open="true"]');

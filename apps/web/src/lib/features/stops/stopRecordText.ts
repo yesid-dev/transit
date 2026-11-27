@@ -1,4 +1,5 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
+import type { Ready } from '#lib/site/ready.ts';
 import {
 	choose,
 	lastGoodNote,
@@ -34,7 +35,7 @@ export function stopLowCoverage(result: EngineResult<RecordAnswer>) {
 	);
 }
 
-export async function stopArchiveAvailability(record: ReturnType<typeof loadStopRecord>) {
+export async function stopArchiveAvailability(record: Ready<ReturnType<typeof loadStopRecord>>) {
 	const results = await Promise.all([...record.sections.map(({ answer }) => answer), record.grid]);
 	const hasReading = (answer: RecordMeasure | RecordSeries | RecordSeries['cells'][number]) =>
 		('counts' in answer.evidence &&

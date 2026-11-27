@@ -1,11 +1,12 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import { ControlsRail } from '@yesid/ui/layout';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
 	import { recordAlertCards } from './alertCards.ts';
 
-	let { messages, locale }: { messages?: Promise<EngineResult<RecordAnswer>>; locale: Locale } =
+	let { messages, locale }: { messages?: Awaitable<EngineResult<RecordAnswer>>; locale: Locale } =
 		$props();
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 </script>

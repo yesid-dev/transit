@@ -640,6 +640,8 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.goto(
 			`${prefix}/network?provider=stm&frameMode=record&recordFrom=2026-11-20&recordTo=2026-11-22`,
 		);
+		// The record is drawn on the server; its toggles answer once the page has hydrated.
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const trend = page.locator('#trend');
 		await trend
 			.getByRole('button', { name: locale === 'fr' ? 'Tableau' : 'Table', exact: true })

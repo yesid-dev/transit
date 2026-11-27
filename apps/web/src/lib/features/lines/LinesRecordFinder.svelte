@@ -27,6 +27,7 @@
 		tripsRan,
 	} from '#lib/site/presenter.ts';
 	import type { LinesRecord } from '#lib/server/finderRecord.ts';
+	import { isSettled, type Ready } from '#lib/site/ready.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
@@ -82,7 +83,7 @@
 	}: {
 		locale: Locale;
 		url: URL;
-		record: LinesRecord;
+		record: Ready<LinesRecord>;
 		routes: RouteIndexEntry[];
 		provider: PublicCity | null;
 		sort: LineSort;
@@ -133,10 +134,14 @@
 		},
 	});
 
-	let punctuality = $state.raw<FinderResult | null>(null);
-	let delivery = $state.raw<FinderResult | null>(null);
-	let timingPending = $state(true);
-	let tripsPending = $state(true);
+	// Readings that came drawn on the server fill the table from the first paint.
+	const first = untrack(() => record);
+	const firstTiming = isSettled(first.punctuality) ? first.punctuality : null;
+	const firstTrips = isSettled(first.trips) ? first.trips : null;
+	let punctuality = $state.raw<FinderResult | null>(firstTiming);
+	let delivery = $state.raw<FinderResult | null>(firstTiming ? firstTrips : null);
+	let timingPending = $state(!firstTiming);
+	let tripsPending = $state(!firstTrips);
 	const initialTiming = $derived(timingPending && punctuality === null);
 	let readingCity: string | null = null;
 	let performanceCard = $state<HTMLDivElement>();
@@ -151,30 +156,42 @@
 			settledPeriod = undefined;
 		}
 		readingCity = city;
-		timingPending = true;
-		tripsPending = true;
-		void timing.then(async (answer) => {
-			if (!current) return;
-			const before = performanceCard?.getBoundingClientRect();
-			punctuality = answer;
+		// A settled reading is shown at once, so hydration never goes back to waiting.
+		if (isSettled(trips)) {
+			nextDelivery = trips;
+			tripsPending = false;
+		} else tripsPending = true;
+		if (isSettled(timing)) {
+			punctuality = timing;
 			settledPeriod = period;
 			delivery = nextDelivery;
 			timingPending = false;
-			await tick();
-			if (current && before && before.top < 0 && before.bottom > 120 && performanceCard) {
-				const after = performanceCard.getBoundingClientRect();
-				// A shorter list can lose the row that was being read. Keep its card in view.
-				const top = after.height > 120 - before.top ? before.top : 120;
-				const delta = after.top - top;
-				if (Math.abs(delta) > 1) window.scrollBy(0, delta);
-			}
-		});
-		void trips.then((answer) => {
-			if (!current) return;
-			nextDelivery = answer;
-			tripsPending = false;
-			if (!timingPending) delivery = answer;
-		});
+		} else {
+			timingPending = true;
+			void timing.then(async (answer) => {
+				if (!current) return;
+				const before = performanceCard?.getBoundingClientRect();
+				punctuality = answer;
+				settledPeriod = period;
+				delivery = nextDelivery;
+				timingPending = false;
+				await tick();
+				if (current && before && before.top < 0 && before.bottom > 120 && performanceCard) {
+					const after = performanceCard.getBoundingClientRect();
+					// A shorter list can lose the row that was being read. Keep its card in view.
+					const top = after.height > 120 - before.top ? before.top : 120;
+					const delta = after.top - top;
+					if (Math.abs(delta) > 1) window.scrollBy(0, delta);
+				}
+			});
+		}
+		if (!isSettled(trips))
+			void trips.then((answer) => {
+				if (!current) return;
+				nextDelivery = answer;
+				tripsPending = false;
+				if (!timingPending) delivery = answer;
+			});
 		return () => {
 			current = false;
 		};

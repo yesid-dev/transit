@@ -13,6 +13,8 @@ for (const [path, back] of [
 		const headline = page.locator('#punctuality [data-slot="answer-lead"]');
 		await expect(headline).toBeVisible();
 		const reading = await headline.textContent();
+		// The record is drawn on the server; the header's menu opens once the page has hydrated.
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await page.getByRole('button', { name: 'Open menu', exact: true }).click();
 		await page
 			.getByRole('navigation', { name: 'Navigation menu' })

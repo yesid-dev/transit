@@ -2,6 +2,7 @@
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import { onMount, type Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import { getRecordPatience } from './recordPatience.ts';
 	import { cardWaitingWords, STILL_CALCULATING_MS, type RecordWaiting } from './recordWaiting.ts';
 	import RecordSkeleton from './RecordSkeleton.svelte';
@@ -22,7 +23,7 @@
 		liveAnswer?: boolean;
 		fullWidthContext?: boolean;
 		busy?: boolean;
-		answer?: Promise<{ kind: string }>;
+		answer?: Awaitable<{ kind: string }>;
 		/** The final shape of the card body. Without one, one pulsing text line. */
 		shape?: RecordWaiting;
 		/** A caller can supply a skeleton for a layout with no shared shape. */
@@ -48,10 +49,11 @@
 			done = true;
 			release?.(success);
 		}
-		void answer?.then(
-			(result) => finish(result.kind === 'answer'),
-			() => finish(false),
-		);
+		if (answer !== undefined)
+			void Promise.resolve(answer).then(
+				(result) => finish(result.kind === 'answer'),
+				() => finish(false),
+			);
 		// An await block may unmount before the promise's other listeners have run.
 		return () => queueMicrotask(finish);
 	});

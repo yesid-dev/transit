@@ -100,7 +100,8 @@ for (const { name, path, section } of pages)
 												.size,
 									);
 							const waitingActionRows = matchPhoneActions
-								? await actionRows('[data-slot="skeleton"]')
+								? // Before scripts run: the answer's actions as drawn, waiting or already on the server.
+									await actionRows(':is([data-slot="skeleton"], button)')
 								: undefined;
 							const phoneDisclosure =
 								name === 'line' && width < 640 ? page.locator('#offered') : undefined;

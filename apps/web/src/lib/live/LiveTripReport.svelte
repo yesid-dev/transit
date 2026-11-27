@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import type { Snippet } from 'svelte';
 	import {
 		fetchCaptureTripScope,
@@ -19,7 +20,7 @@
 		city: string;
 		kind: CaptureScope['kind'];
 		id: string;
-		seed: Promise<CaptureTripReport | null>;
+		seed: Awaitable<CaptureTripReport | null>;
 		now: number;
 		refreshed: boolean;
 		children: Snippet<[CaptureTripReport | null]>;

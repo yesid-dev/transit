@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import { untrack } from 'svelte';
 	import { Button } from '@yesid/ui/button';
 	import RecordScreen from './RecordScreen.svelte';
@@ -38,7 +39,7 @@
 		city,
 		period,
 	}: {
-		catalog: Promise<EngineResult<MethodEntry[]>>;
+		catalog: Awaitable<EngineResult<MethodEntry[]>>;
 		locale: Locale;
 		url: URL;
 		city: string;
