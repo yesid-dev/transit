@@ -8,7 +8,8 @@
 	import RecordActionGroup from '#lib/features/record/RecordActionGroup.svelte';
 	import CiteBlock from '#lib/features/record/CiteBlock.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
-	import { dateAndClock, liveStatusWords, mapDirectionReading } from '#lib/site/presenter.ts';
+	import { dateAndClock, liveStatusWords } from '#lib/site/presenter.ts';
+	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { mapReportsCopy } from './mapReports.copy';
 	import { mapReportsCsv } from './mapReportsCsv';
 	import { mapStatusLabel } from './mapStatusLabels';
@@ -36,6 +37,7 @@
 		limit?: number;
 	} = $props();
 	const PAGE_SIZE = 12;
+	const display = transitDisplay();
 	const t = $derived(mapReportsCopy(locale));
 	const count = (value: number) => intl.number(locale).format(value);
 	const french = $derived(locale === 'fr');
@@ -105,7 +107,13 @@
 								locale,
 							)}
 						/>
-						{#if heading}<small>{mapDirectionReading(heading, locale)}</small>{/if}
+						{#if heading}<small
+								>{display.toward(
+									display.directory.headsign(row.routeId, heading) ?? heading,
+									locale,
+									false,
+								)}</small
+							>{/if}
 					</span>
 					<a
 						class="map-in-view-link text-primary underline"

@@ -64,7 +64,12 @@
 	const clock = $derived(data.identity ? scheduledClock(data.identity.departure, data.lang) : null);
 	const direction = $derived(
 		data.identity
-			? display.directionLabel(data.identity.direction, data.headsigns, data.lang)
+			? display.directionLabel(
+					data.identity.direction,
+					data.headsigns,
+					data.lang,
+					data.identity.line,
+				)
 			: undefined,
 	);
 

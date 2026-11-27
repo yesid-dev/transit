@@ -6,7 +6,12 @@
 	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
 	import RecordTableName from '../record/RecordTableName.svelte';
 	import { carryFrameState } from '#lib/site/frameState.ts';
-	import { clockTime, liveDelayLabels, liveStatusWords, predictedIn } from '#lib/site/presenter.ts';
+	import {
+		clockTime,
+		expectedReading,
+		liveDelayLabels,
+		liveStatusWords,
+	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 	import { choose } from '../record/recordText.ts';
@@ -22,6 +27,7 @@
 		timeZone,
 		now,
 		patterns,
+		pageSize,
 	}: {
 		rows: StopPrediction[];
 		caption: string;
@@ -31,6 +37,8 @@
 		timeZone: string;
 		now: number;
 		patterns?: Readonly<Record<string, LinePattern>>;
+		/** Rows shown before Show more. */
+		pageSize?: number;
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
@@ -70,7 +78,11 @@
 		return () => observer.disconnect();
 	});
 	const columns = $derived<DataTableColumn<Row>[]>([
-		{ key: 'toward', header: t('Toward', 'Vers'), cell: toward },
+		// A feed that gives no trip a direction gets one sentence under the table, not a column of
+		// "Unavailable".
+		...(rows.some((row) => row.toward)
+			? [{ key: 'toward', header: t('Toward', 'Vers'), cell: toward }]
+			: []),
 		{ key: 'scheduled', header: t('Scheduled', 'Horaire'), cell: scheduled },
 		{ key: 'expected', header: t('Expected', 'Attendu'), cell: expected },
 		{ key: 'status', header: t('Status', 'État'), cell: statusCell },
@@ -92,7 +104,7 @@
 {/snippet}
 
 {#snippet expected(row: Row)}
-	{@const time = predictedIn(row.predictedAt, now, locale)}
+	{@const time = expectedReading(row.predictedAt, now, locale, timeZone)}
 	{@const href =
 		row.line && row.start
 			? departureHref(url, locale, city, row.line, row.direction, row.start, 'live', row.trip)
@@ -127,9 +139,10 @@
 		rows={readings}
 		stackAt="compact"
 		scrollMinWidth={needsScroll ? '36rem' : undefined}
+		pageSize={pageSize !== undefined && rows.length > pageSize ? pageSize : undefined}
 	>
 		{#snippet rowHeading(row)}
-			<RecordTableName {row} plates={hasPlates} columnCount={5} inlinePlate />
+			<RecordTableName {row} plates={hasPlates} columnCount={columns.length + 1} inlinePlate />
 		{/snippet}
 	</RecordDataTable>
 </div>

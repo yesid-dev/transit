@@ -153,7 +153,13 @@
 		<RecordGroup><ScreenTitle title={words.sheetTitle} {subtitle} compact /></RecordGroup>
 		<RecordGroup
 			><div data-slot="screen-content">
-				<section class="search-content" data-slot="screen-state" {id} aria-label={words.sheetTitle}>
+				<section
+					class="search-content"
+					class:searching={queryState !== 'empty'}
+					data-slot="screen-state"
+					{id}
+					aria-label={words.sheetTitle}
+				>
 					<p class="search-lede">{t.lede}</p>
 					<div class="search-field">
 						<SearchInput
@@ -278,6 +284,12 @@
 		background: var(--muted);
 		color: var(--muted-foreground);
 		padding: var(--space-card-gap);
+	}
+	/* With a query, the results own the first screen: the footer stays below it while the index
+	   loads and the rows arrive, so it never jumps (closing scan S1). */
+	.search-content.searching {
+		align-content: start;
+		min-block-size: calc(100dvh - var(--app-frame-header-height, 0px));
 	}
 	.search-idle p {
 		max-inline-size: var(--measure-notice);

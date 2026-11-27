@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import LiveTripReport from '#lib/live/LiveTripReport.svelte';
@@ -10,10 +11,12 @@
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import {
+		agencyName,
+		noHeadingNote,
 		singularCount,
 		clockTime,
+		expectedReading,
 		liveStampAge,
-		predictedIn,
 		relativeReportAge,
 		stopNextVehicleSentence,
 	} from '#lib/site/presenter.ts';
@@ -66,6 +69,11 @@
 	const title = $derived(t('Next vehicles at this stop', 'Prochains véhicules à cet arrêt'));
 	const link = (path: string) => carryFrameState(localizeHref(path, locale, city), url);
 	const display = transitDisplay();
+	/** The next hour, and at least six rows; the rest stays behind Show more. */
+	function firstRows(rows: readonly StopPrediction[], now: number) {
+		const hour = rows.filter(({ predictedAt }) => predictedAt - now <= 60 * 60_000).length;
+		return Math.max(6, hour);
+	}
 	function nextSentence(row: StopPrediction) {
 		return stopNextVehicleSentence(
 			{
@@ -81,7 +89,8 @@
 
 {#snippet pending()}
 	<RecordGroup>
-		<div id="stop-detail-departures" data-slot="screen-answer">
+		<!-- Keeps the room of the answer and the first rows, so the footer does not jump. -->
+		<div id="stop-detail-departures" data-slot="screen-answer" class="stop-live-waiting">
 			<p role="status">
 				{t('Checking live predictions…', 'Vérification des prévisions en direct…')}
 			</p>
@@ -124,7 +133,7 @@
 				<!-- At zero the answer is the next vehicle, never a big 0. -->
 				<RecordAnswer
 					{locale}
-					value={predictedIn(readings.rows[0].predictedAt, now, locale)}
+					value={expectedReading(readings.rows[0].predictedAt, now, locale, timeZone)}
 					sentence={nextSentence(readings.rows[0])}
 					time={stamp}
 				/>
@@ -171,6 +180,7 @@
 				>
 					<StopPredictionTable
 						rows={readings.rows}
+						pageSize={firstRows(readings.rows, now)}
 						caption={title}
 						{locale}
 						{city}
@@ -193,6 +203,10 @@
 								'Trips with no prediction are not listed.',
 								'Les trajets sans prévision ne sont pas affichés.',
 							)}
+							{#if !readings.rows.some(({ toward }) => toward)}{noHeadingNote(
+									agencyName(operator, page.data.provider),
+									locale,
+								)}{/if}
 						</p>
 					{/snippet}
 				</RecordCard>
@@ -266,3 +280,9 @@
 		{@render content(null, null, Date.now())}
 	{/if}
 </div>
+
+<style>
+	.stop-live-waiting {
+		min-block-size: min(42rem, calc(100dvh - var(--app-frame-header-height, 0px)));
+	}
+</style>

@@ -22,6 +22,9 @@ import {
 	publishedAlertCount,
 	delayReading,
 	directionLabel,
+	directionName,
+	expectedReading,
+	noHeadingNote,
 	frenchAgency,
 	lineSubtitle,
 	plannedInterval,
@@ -418,10 +421,10 @@ it.each([
 	[
 		'fr',
 		'À l’heure',
-		'(4 min de retard)',
+		'(4 min après l’horaire)',
 		'14 min de retard',
 		'2 min d’avance',
-		'(0,5 min d’avance)',
+		'(0,5 min avant l’horaire)',
 	],
 ] as const)(
 	'words a live status mark without repeating the band in %s',
@@ -577,11 +580,7 @@ it.each([
 });
 
 it.each([
-	[
-		'en',
-		'Toward Station Laurier (Est)',
-		'Toward the stop du Square-Victoria / Saint-Antoine (Est)',
-	],
+	['en', 'Toward Station Laurier (Est)', 'Toward du Square-Victoria / Saint-Antoine (Est)'],
 	['fr', 'Vers Station Laurier (est)', 'Vers l’arrêt du Square-Victoria / Saint-Antoine (est)'],
 ] as const)('names a terminus as riders do in %s', (locale, laurier, particle) => {
 	expect(terminusName('Station Laurier (Saint-Joseph / Berri)')).toBe('Station Laurier');
@@ -595,7 +594,7 @@ it.each([
 	expect(towardReading(riderHeadsign('Est', pattern)!, locale)).toBe(laurier);
 	expect(towardReading('du Square-Victoria / Saint-Antoine (Est)', locale)).toBe(particle);
 	expect(towardReading('du Square-Victoria / Saint-Antoine (Est)', locale)).not.toMatch(
-		/Vers du|Toward du/,
+		/Vers du|the stop/,
 	);
 });
 
@@ -612,7 +611,7 @@ it.each([
 });
 
 it.each([
-	['en', 'Maple Lane / Springfield to Greenboro C', 'Toward the stop de l’Église'],
+	['en', 'Maple Lane / Springfield to Greenboro C', 'Toward de l’Église'],
 	['fr', 'De Maple Lane / Springfield à Greenboro C', 'Vers l’arrêt de l’Église'],
 ] as const)('reads termini written in capitals in title case in %s', (locale, line, toward) => {
 	expect(lineSubtitle(3, ['MAPLE LANE / SPRINGFIELD', 'GREENBORO C'], locale)).toBe(line);
@@ -673,4 +672,94 @@ it.each([
 	expect(predictedIn(30_000, 0, locale)).toBe(soon.replace('3', '1'));
 	expect(predictedIn(0, 0, locale)).toBe(now);
 	expect(predictedIn(180_000, 0, locale)).toBe(soon);
+});
+
+it.each([
+	[
+		'en',
+		[
+			'Toward Station Crémazie (Est)',
+			'Toward YUL Aéroport Montréal-Trudeau (Ouest)',
+			'Toward Station Laurier (Est via Jarry)',
+			'Toward the east via Jarry',
+			'Toward the south via Perras / Lacordaire',
+		],
+		['East', 'East via Jarry', 'Station Laurier (Est)'],
+	],
+	[
+		'fr',
+		[
+			'Vers Station Crémazie (est)',
+			'Vers YUL Aéroport Montréal-Trudeau (ouest)',
+			'Vers Station Laurier (est via Jarry)',
+			'Vers l’est via Jarry',
+			'Vers le sud via Perras / Lacordaire',
+		],
+		['Est', 'Est via Jarry', 'Station Laurier (est)'],
+	],
+] as const)('writes every direction one way in %s', (locale, sentences, cells) => {
+	const pattern = { termini: { 'est via jarry': 'Station Laurier (Saint-Joseph / Berri)' } };
+	expect([
+		towardReading('Est destination Station Crémazie', locale),
+		towardReading('Ouest - Vers YUL Aéroport Montréal-Trudeau', locale),
+		towardReading(riderHeadsign('Est via  Jarry', pattern)!, locale),
+		towardReading('Est via Jarry', locale),
+		towardReading('Sud via  Perras / Lacordaire', locale),
+	]).toEqual(sentences);
+	expect([
+		directionName('Est', locale, undefined, 'cell'),
+		directionName('Est via Jarry', locale, undefined, 'cell'),
+		directionName('Station Laurier (Est)', locale, undefined, 'cell'),
+	]).toEqual(cells);
+	// The word "Toward" / "Vers" is written once, never twice.
+	for (const sentence of sentences) expect(sentence).not.toMatch(/^(Toward|Vers) (Toward|Vers)/iu);
+});
+
+it.each([
+	[
+		'en',
+		'De Lorimier / Crémazie to Station Papineau',
+		'De Louvain / de l’Acadie to des Régrattiers',
+	],
+	[
+		'fr',
+		'De Lorimier / Crémazie → Station Papineau',
+		'De l’arrêt de Louvain / de l’Acadie à l’arrêt des Régrattiers',
+	],
+] as const)(
+	'reads a descriptor without a stumble and with typographic apostrophes in %s',
+	(locale, surname, particles) => {
+		expect(lineSubtitle(3, ['De Lorimier / Crémazie', 'Station Papineau'], locale)).toBe(surname);
+		expect(lineSubtitle(3, ["de Louvain / de l'Acadie", 'des Régrattiers'], locale)).toBe(
+			particles,
+		);
+	},
+);
+
+it.each([
+	[
+		'en',
+		'OC Transpo’s feed does not say where a vehicle is heading.',
+		'OC Transpo’s feed does not say where a vehicle is heading or its next stop.',
+	],
+	[
+		'fr',
+		'Le flux d’OC Transpo n’indique pas la direction de ses véhicules.',
+		'Le flux d’OC Transpo n’indique ni la direction ni le prochain arrêt de ses véhicules.',
+	],
+] as const)('says once that a feed gives no direction in %s', (locale, direction, both) => {
+	const oc = agencyName('OC Transpo', { download_licence: { source: { fr: 'd’OC Transpo' } } });
+	expect(noHeadingNote(oc, locale)).toBe(direction);
+	expect(noHeadingNote(oc, locale, true)).toBe(both);
+});
+
+it.each([
+	['en', 'in 9 min', 'in 60 min', '19:45'],
+	['fr', 'dans 9 min', 'dans 60 min', '19 h 45'],
+] as const)('gives the clock time past the hour in %s', (locale, soon, hour, later) => {
+	const now = Date.parse('2026-11-26T22:00:00Z');
+	const zone = 'America/Toronto';
+	expect(expectedReading(now + 9 * 60_000, now, locale, zone)).toBe(soon);
+	expect(expectedReading(now + 60 * 60_000, now, locale, zone)).toBe(hour);
+	expect(expectedReading(Date.parse('2026-11-27T00:45:00Z'), now, locale, zone)).toBe(later);
 });

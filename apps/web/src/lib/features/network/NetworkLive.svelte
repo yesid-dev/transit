@@ -18,7 +18,6 @@
 		rowSentence,
 		singularCount,
 	} from '#lib/site/presenter.ts';
-	import { presenterCopy } from '#lib/site/presenter.copy.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 	import { choose, tally } from '../record/recordText.ts';
@@ -159,6 +158,7 @@
 					schedule,
 					locale,
 					display.directory.nameSeparators,
+					(line, sign) => display.directory.headsign(line, sign),
 				)}
 				{@const bands = live?.status_dist
 					? (
@@ -252,7 +252,9 @@
 									title={term.silent}
 									rowHeader={t('Line', 'Ligne')}
 									rowHeading={line}
-									{columns}
+									columns={silentTrips.some(({ toward }) => toward)
+										? columns
+										: columns.filter(({ key }) => key !== 'toward')}
 									rows={silentTrips.map((row) => ({
 										...row,
 										id: row.tripId,
@@ -265,15 +267,7 @@
 									value="silent"
 									phone={{
 										line: (row) =>
-											rowSentence(
-												[
-													departureAt(row.departure, locale),
-													row.toward
-														? presenterCopy[locale].toward(row.toward)
-														: presenterCopy[locale].unknownDirection.toLocaleLowerCase(locale),
-												],
-												locale,
-											),
+											rowSentence([departureAt(row.departure, locale), row.heading], locale),
 									}}
 								/>
 							{:else}

@@ -263,7 +263,7 @@
 	<RecordGroup>
 		<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
 		{#if scheduleOnly}
-			<LineScheduleCard {record} {locale} {url} {headsigns} />
+			<LineScheduleCard {record} {locale} {url} {headsigns} reserve />
 		{/if}
 	</RecordGroup>
 	{#if scheduleOnly}

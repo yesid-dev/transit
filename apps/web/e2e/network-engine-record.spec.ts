@@ -101,7 +101,10 @@ test('Network health reads scheduled trips and individual silent trips from the 
 		for (const name of ['Line', 'Departure', 'Toward', 'Silent for'])
 			await expect(silent.getByRole('columnheader', { name })).toBeVisible();
 	await expect(silent.getByText('40 min', { exact: true })).toBeVisible();
-	await expect(silent.getByText(phone ? /unknown direction/u : /Unknown/u).first()).toBeVisible();
+	// A trip whose direction the timetable cannot tell keeps the Unknown mark in its cell; the
+	// phone sentence leaves the direction out rather than saying "unknown direction".
+	if (phone) await expect(silent).not.toContainText(/unknown direction/u);
+	else await expect(silent.getByText(/Unknown/u).first()).toBeVisible();
 	await expect(silent.getByRole('link', { name: 'Sherbrooke' })).toHaveAttribute(
 		'href',
 		/\/lines\/24\?.*frameMode=live/u,

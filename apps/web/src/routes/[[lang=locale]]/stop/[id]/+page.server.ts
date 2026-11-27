@@ -1,5 +1,4 @@
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
-import { linePatterns } from '#lib/site/linePatterns.ts';
 import { stopPageTitle } from '#lib/seo/riderPageTitle.ts';
 import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
@@ -29,7 +28,7 @@ export const load: PageServerLoad = async (event) => {
 	}
 
 	const id = event.params.id.trim() || event.params.id;
-	const { lang, providerId, schedule, provider } = await event.parent();
+	const { lang, providerId, schedule, provider, patterns } = await event.parent();
 	const scheduledStop = schedule?.stops.find((stop) => stop.id === id);
 	const outsideCurrentTimetable = schedule != null && !scheduledStop;
 	const name = scheduledStop?.name.trim();
@@ -82,11 +81,9 @@ export const load: PageServerLoad = async (event) => {
 		seed: { id, name: name || id },
 		stopCode: scheduledStop?.code,
 		stopLines: lines,
-		// Only this stop's lines: their termini name where a compass headsign goes.
-		linePatterns:
-			schedule && lines.length
-				? Object.fromEntries(lines.flatMap((line) => Object.entries(linePatterns(schedule, line))))
-				: undefined,
+		// Only this stop's lines, read by the layout from the whole timetable: their termini name
+		// where a compass headsign goes.
+		linePatterns: patterns,
 		outsideCurrentTimetable,
 		frameLive,
 		scheduleOnly,

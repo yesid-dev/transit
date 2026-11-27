@@ -26,8 +26,8 @@ describe('declared names', () => {
 		],
 		[
 			"Tunney's Pasture <> Innovation / Carling Campus ~ Innovation /  Complexe Carling",
-			"Tunney's Pasture / Innovation / Carling Campus",
-			"Tunney's Pasture / Innovation /  Complexe Carling",
+			'Tunney’s Pasture / Innovation / Carling Campus',
+			'Tunney’s Pasture / Innovation /  Complexe Carling',
 		],
 		['St-Laurent', 'St-Laurent', 'St-Laurent'],
 		['A - Antares', 'A - Antares', 'A - Antares'],
@@ -39,7 +39,8 @@ describe('declared names', () => {
 	])('formats %s in both languages', (raw, en, fr) => {
 		expect(formatTransitName(raw, 'en', separators)).toBe(en);
 		expect(formatTransitName(raw, 'fr', separators)).toBe(fr);
-		expect(formatTransitName(raw, 'fr')).toBe(raw);
+		// Without separators a name stays as published, apart from its typographic apostrophes.
+		expect(formatTransitName(raw, 'fr')).toBe(raw.replaceAll("'", '’'));
 	});
 
 	it.each([
@@ -71,7 +72,7 @@ describe('declared names', () => {
 describe('OC stop display names', () => {
 	it.each([
 		['RIDEAU / CUMBERLAND', 'Rideau / Cumberland'],
-		["TUNNEY'S PASTURE A", "Tunney's Pasture A"],
+		["TUNNEY'S PASTURE A", 'Tunney’s Pasture A'],
 		['ST-LAURENT A', 'St-Laurent A'],
 		['SUSSEX / AD. 100', 'Sussex / AD. 100'],
 		['RENAUD / DE LA MÉLODIE', 'Renaud / de la Mélodie'],
@@ -88,11 +89,11 @@ describe('OC stop display names', () => {
 		['RIDEAU NB / O-TRAIN 1', 'Rideau NB / O-TRAIN 1'],
 		['Station Berri-UQAM', 'Station Berri-UQAM'],
 		// Mc and O' keep the capital after them; French elisions read as particles.
-		["SLATER/O'CONNOR", "Slater/O'Connor"],
+		["SLATER/O'CONNOR", 'Slater/O’Connor'],
 		['MCARTHUR / ST-LAURENT', 'McArthur / St-Laurent'],
 		['MACDONALD-CARTIER', 'Macdonald-Cartier'],
-		["RUE DE L'ÉGLISE", "Rue de l'Église"],
-		["D'IBERVILLE / NOTRE-DAME", "D'Iberville / Notre-Dame"],
+		["RUE DE L'ÉGLISE", 'Rue de l’Église'],
+		["D'IBERVILLE / NOTRE-DAME", 'D’Iberville / Notre-Dame'],
 		['MAPLE LANE / SPRINGFIELD', 'Maple Lane / Springfield'],
 		['POB CENTRAL', 'POB Central'],
 	])('%s → %s', (raw, display) => expect(stopDisplayName(raw)).toBe(display));

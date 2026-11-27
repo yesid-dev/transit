@@ -128,7 +128,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(answer).not.toContainText(fr ? 'vers Nord' : 'toward Nord');
 		const predictions = page.locator('[data-slot="stop-live-predictions"]');
 		await expect(predictions.locator('tbody [data-column="status"]').first()).toContainText(
-			fr ? /À l’heure\s*\(4 min de retard\)/u : /On time\s*\(4 min behind\)/u,
+			fr ? /À l’heure\s*\(4 min après l’horaire\)/u : /On time\s*\(4 min behind\)/u,
 		);
 		// The "Delay unknown" helper shows only when a row has that state.
 		await expect(predictions).not.toContainText(fr ? 'Retard inconnu' : 'Delay unknown');

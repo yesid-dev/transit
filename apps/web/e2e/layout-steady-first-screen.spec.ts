@@ -1,7 +1,7 @@
 import { expect } from '@playwright/test';
 import { join } from 'node:path';
 import { streamingLayoutTest as test } from './layout-test';
-import { captureUrl } from './capture-fixture';
+import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 import { designPassCases, type Screen } from './design-pass-cases';
 import { settled } from './design-pass-measure';
 import { localizeHref } from '../src/lib/i18n/routing';
@@ -43,6 +43,10 @@ const targets = new Set<Screen>([
 	'download',
 	'vehicle-record',
 	'vehicle-live',
+	// The lists that streamed their rows in after the first screen (closing scan S1).
+	'vehicles-live',
+	'stop-live',
+	'search-query',
 ]);
 const artwork = new Set<Screen>([
 	'overview',
@@ -57,6 +61,7 @@ const captureRefresh = new Set<Screen>([
 	'data-health-live',
 	'alerts-live',
 	'vehicle-live',
+	'stop-live',
 ]);
 const recordAnswers = new Set<Screen>([
 	'overview',
@@ -155,6 +160,20 @@ for (const { screen, href } of designPassCases.filter(
 							}
 						}).observe({ type: 'layout-shift', buffered: true });
 					});
+					if (screen === 'vehicles-live')
+						// A city's fleet fills the first page of rows, as on the live site; Ottawa's feed
+						// gives no direction or next stop.
+						await page.route(captureUrl, async (route) => {
+							const at = await page.evaluate(() => Date.now());
+							const vehicle_positions = Array.from({ length: 30 }, (_, index) =>
+								captureVehicle(at, {
+									id: `report-${index}`,
+									vehicle_id: String(40100 + index),
+									...(city === 'octranspo' ? { direction_id: null, stop_id: null } : {}),
+								}),
+							);
+							await route.fulfill({ json: captureFixture(at, { city, vehicle_positions }) });
+						});
 					if (held) expect((await hold('hold')).ok()).toBe(true);
 					try {
 						path.searchParams.delete('provider');
