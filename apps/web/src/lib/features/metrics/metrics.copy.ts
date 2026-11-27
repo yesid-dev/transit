@@ -11,7 +11,7 @@ export const metricsCopy = defineCopy({
 			gaps: 'Qu’est-ce que ces chiffres ne peuvent pas dire ?',
 		},
 		kicker: 'Méthode · science des mesures',
-		heading: 'Comment on mesure',
+		heading: 'La méthode du premier site Transit, jusqu’en novembre 2026',
 		lede: 'Chaque chiffre de fiabilité dans cette archive est une estimation dérivée des prévisions en temps réel, et non une mesure certifiée. Voici, pour chaque indicateur, ce qu’il mesure vraiment, le calcul exact, le SQL, ce qu’il n’est pas et ses limites.',
 		sections: {
 			definition: 'Définition',
@@ -152,7 +152,7 @@ export const metricsCopy = defineCopy({
 			gaps: 'What can these numbers not tell you?',
 		},
 		kicker: 'Methodology · metric science',
-		heading: 'How we measure',
+		heading: 'The method of the first Transit site, until November 2026',
 		lede: 'Every reliability number in this archive is an estimate derived from the predicted realtime feed, not a certified measurement. Here, for each measure, is what it actually measures, the exact math, the SQL, what it is not, and its honest limits.',
 		sections: {
 			definition: 'Definition',
@@ -164,7 +164,7 @@ export const metricsCopy = defineCopy({
 		},
 		provenance: {
 			label: 'Sources and populations',
-			body: 'The measures derive from GTFS schedules, GTFS-RT predictions, vehicle positions and alerts. Historical delay statistics count observations, including repeated updates. Live punctuality and coverage describe map-eligible vehicle positions; live percentiles give each current trip-average delay equal weight. Each definition states its population and period. These data do not directly measure arrivals at stops or passenger counts. An unavailable denominator remains unknown.',
+			body: 'The measures derive from GTFS schedules, GTFS-RT predictions, vehicle positions and notices. Historical delay statistics count observations, including repeated updates. Live punctuality and coverage describe map-eligible vehicle positions; live percentiles give each current trip-average delay equal weight. Each definition states its population and period. These data do not directly measure arrivals at stops or passenger counts. An unavailable denominator remains unknown.',
 			unavailable:
 				'The live feed-conformance check could not be loaded right now. The definitions below remain available.',
 			howWeMeasure: {

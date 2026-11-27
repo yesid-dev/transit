@@ -472,12 +472,6 @@
 									{/await}
 								{/if}
 							{/await}
-							<p class="print:hidden">
-								{t(
-									'A summary you can cite, for one day or several.',
-									'Un résumé à citer, pour une journée ou plusieurs.',
-								)}
-							</p>
 						</section>
 
 						<div class="report-pair">
@@ -653,7 +647,7 @@
 										{:else if count === 0}
 											<p>
 												{t(
-													'No alerts in the tracked record for these dates.',
+													'No notices in the tracked record for these dates.',
 													'Aucun avis enregistré dans le bilan à ces dates.',
 												)}
 											</p>

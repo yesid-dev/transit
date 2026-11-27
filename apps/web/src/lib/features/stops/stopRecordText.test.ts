@@ -8,6 +8,7 @@ import {
 	stopCitation,
 	stopComparison,
 	stopCoverageGap,
+	stopEvidenceSample,
 } from './stopRecordText.ts';
 
 const base = measure();
@@ -134,3 +135,14 @@ it('compares measured shares over the same dates in both languages', () => {
 		),
 	).toBeUndefined();
 });
+
+it.each(['en', 'fr'] as const)(
+	'never leaves a card foot that holds only the days in %s',
+	(locale) => {
+		const days = { ...answer.evidence, days_included: ['2026-11-18', '2026-11-19'] };
+		expect(stopEvidenceSample({ ...answer, evidence: days }, 'alerts', locale)).toBe('');
+		expect(stopEvidenceSample({ ...answer, evidence: days }, 'accessibility', locale)).toBe(
+			locale === 'en' ? '100 stop events, 2 days' : '100 passages aux arrêts, 2 jours',
+		);
+	},
+);

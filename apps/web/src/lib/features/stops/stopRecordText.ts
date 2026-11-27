@@ -64,7 +64,7 @@ export const stopSectionTitles = {
 	daily: ['Day by day', 'Jour par jour'],
 	delay: ['Typical delay', 'Retard typique'],
 	accessibility: ['Wheelchair boarding', 'Embarquement en fauteuil roulant'],
-	alerts: ['Alerts for this stop', 'Avis pour cet arrêt'],
+	alerts: ['Notices for this stop', 'Avis pour cet arrêt'],
 } satisfies Record<StopSection, [string, string]>;
 
 export function stopEvidenceSample(
@@ -91,7 +91,7 @@ export function stopEvidenceSample(
 					`${tally(total, locale)} observed ${singularCount(total, locale) ? 'interval' : 'intervals'}`,
 					`${tally(total, locale)} ${singularCount(total, locale) ? 'intervalle observé' : 'intervalles observés'}`,
 				);
-	return [
+	const counted = [
 		section === 'waiting'
 			? intervals
 			: section === 'alerts' || total === null
@@ -102,10 +102,10 @@ export function stopEvidenceSample(
 				? null
 				: countedUnit(trips, 'trip', locale)
 			: null,
-		days ? countedUnit(days, 'day', locale) : null,
-	]
-		.filter(Boolean)
-		.join(', ');
+	].filter(Boolean);
+	// A foot says what was counted over the days; the days alone say nothing.
+	if (!counted.length) return '';
+	return [...counted, days ? countedUnit(days, 'day', locale) : null].filter(Boolean).join(', ');
 }
 
 export function stopAnswer(answer: RecordMeasure, locale: Locale, withDates = true): string {
