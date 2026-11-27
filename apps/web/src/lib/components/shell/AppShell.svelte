@@ -303,9 +303,6 @@
 	.app-shell-root[data-full-viewport='true'] :global([data-slot='surface-rail-mobile']) {
 		--surface-rail-stack-offset: var(--map-source-clearance);
 	}
-	.app-shell-root:has(:global(.home-construction-floor)) {
-		overflow-anchor: none;
-	}
 	/* Portalled search and map dialogs retain the app's stacking and safe-area tokens. */
 	.app-shell-root:has(:global([data-slot='footer'] :focus-visible))
 		:global([data-slot='app-frame-chrome']) {

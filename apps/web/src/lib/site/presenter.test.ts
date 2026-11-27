@@ -823,3 +823,12 @@ it.each([
 	expect(expectedReading(now + 60 * 60_000, now, locale, zone)).toBe(hour);
 	expect(expectedReading(Date.parse('2026-11-27T00:45:00Z'), now, locale, zone)).toBe(later);
 });
+
+it('names the covered cities once each, alphabetically, in each language', async () => {
+	const { cityList } = await import('./presenter.ts');
+	expect(cityList(['Ottawa', 'Montréal', 'Ottawa'], 'en')).toBe('Montréal and Ottawa');
+	expect(cityList(['Ottawa', 'Montréal'], 'fr')).toBe('Montréal et Ottawa');
+	expect(cityList(['Ottawa', 'Gatineau', 'Montréal'], 'en')).toBe('Gatineau, Montréal, and Ottawa');
+	expect(cityList(['Montréal'], 'fr')).toBe('Montréal');
+	expect(cityList([' ', ''], 'en')).toBeNull();
+});

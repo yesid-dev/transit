@@ -8,6 +8,7 @@
 	import {
 		agencyName,
 		citationSource,
+		cityList,
 		countedUnit,
 		longDate,
 		methodEvidence,
@@ -56,6 +57,7 @@
 	import { periodDays } from './periodComparison.ts';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import AboutFiguresWaiting from './AboutFiguresWaiting.svelte';
+	import OverviewContribute from './OverviewContribute.svelte';
 	import OverviewLiveCard from './OverviewLiveCard.svelte';
 	import RecordRanking from './RecordRanking.svelte';
 	import {
@@ -83,6 +85,7 @@
 		alertsAvailable = false,
 		officialAlertsUrl,
 		operatorOf,
+		cities = [],
 		record,
 	}: {
 		locale: Locale;
@@ -94,6 +97,8 @@
 		alertsAvailable?: boolean;
 		officialAlertsUrl?: string;
 		operatorOf?: string | null;
+		/** Every city Transit covers today, named in the introduction. */
+		cities?: readonly string[];
 		record: {
 			period: DateWindow;
 			previous: DateWindow;
@@ -442,7 +447,7 @@
 			/>
 		{/await}
 		<div class="screen-content" data-slot="screen-content">
-			<p data-screen-intro>{t.intro}</p>
+			<p data-screen-intro>{t.intro(cityList(cities, locale))}</p>
 
 			<DashboardGrid gutter={false} minTile="22rem" class="items-start" data-slot="screen-answer">
 				{#each mode === 'live' ? [liveCard, recordCard] : [recordCard, liveCard] as card (card)}
@@ -496,6 +501,13 @@
 				)}
 			{/await}
 		{/if}
+	</RecordGroup>
+	<RecordGroup>
+		<OverviewContribute
+			{locale}
+			errorHref={`${link('/metrics')}#about-transit`}
+			downloadHref={link('/download')}
+		/>
 	</RecordGroup>
 </RecordScreen>
 

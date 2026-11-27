@@ -3,8 +3,8 @@ import { frenchAgency, type AgencyName } from '#lib/site/presenter.ts';
 export const overviewCopy = {
 	en: {
 		title: (city: string) => `${city} network`,
-		intro:
-			'Transit is an independent public record of the transit service delivered, not a trip planner.',
+		intro: (cities: string | null) =>
+			`Transit is an independent public record of the service transit agencies actually deliver, built from their own open data. ${cities ? `It covers ${cities} today, and more cities are coming. ` : ''}It is not a trip planner.`,
 		record: 'Record',
 		unavailable: 'Unavailable',
 		live: 'Live now',
@@ -55,12 +55,24 @@ export const overviewCopy = {
 		previousWeekday: 'Same weekday last week',
 		downloadRankings: 'Lines and stops to investigate: lines',
 		downloadStops: 'Lines and stops to investigate: stops',
+		contribute: {
+			title: 'Help keep the record honest',
+			lead: 'Transit gets better when more people check it, and you don’t need to write code to help.',
+			error: 'Spot a number that looks wrong? Tell us which page and which date.',
+			cite: 'Use the figures in your reporting, your research or your questions to the agency, and cite them.',
+			citeLink: 'Download the data',
+			code: 'The code is open. Read it, report a problem or improve it on GitHub.',
+			codeLink: 'Transit on GitHub',
+			city: 'Want your city here? Any agency that openly publishes its timetable and live vehicle positions can be added.',
+			cityLink: 'Suggest a city',
+			thanks: 'Every careful look makes the record more useful to the next rider. Thank you.',
+		},
 	},
 	fr: {
 		title: (city: string) =>
 			`Réseau ${/^[aeiouyàâäéèêëîïôöùûüÿœ]/iu.test(city) ? 'd’' : 'de '}${city}`,
-		intro:
-			'Transit dresse un bilan public et indépendant du service de transport effectué. Ce n’est pas un planificateur de trajets.',
+		intro: (cities: string | null) =>
+			`Transit dresse un bilan public et indépendant du service réellement offert, à partir des données ouvertes des sociétés de transport. ${cities ? `Il couvre ${cities} aujourd’hui, et d’autres villes suivront. ` : ''}Ce n’est pas un planificateur de trajets.`,
 		record: 'Bilan',
 		unavailable: 'Indisponible',
 		live: 'En direct',
@@ -111,5 +123,18 @@ export const overviewCopy = {
 		previousWeekday: 'Même jour de la semaine précédente',
 		downloadRankings: 'Lignes et arrêts à examiner : lignes',
 		downloadStops: 'Lignes et arrêts à examiner : arrêts',
+		contribute: {
+			title: 'Aidez à garder le bilan honnête',
+			lead: 'Transit s’améliore quand plus de gens le vérifient, et nul besoin de savoir programmer pour aider.',
+			error: 'Un chiffre vous semble faux? Dites-nous sur quelle page et à quelle date.',
+			cite: 'Utilisez les chiffres dans vos articles, vos recherches ou vos questions à la société de transport, et citez-les.',
+			citeLink: 'Télécharger les données',
+			code: 'Le code est ouvert. Consultez-le, signalez un problème ou améliorez-le sur GitHub.',
+			codeLink: 'Transit sur GitHub',
+			city: 'Vous voulez votre ville ici? Toute société de transport qui publie ouvertement ses horaires et la position de ses véhicules en temps réel peut être ajoutée.',
+			cityLink: 'Proposer une ville',
+			thanks:
+				'Chaque regard attentif rend le bilan plus utile pour la prochaine personne qui l’utilise. Merci.',
+		},
 	},
 } as const;
