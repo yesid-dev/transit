@@ -27,10 +27,13 @@ const MAX_POSTER_BYTES = 125 * 1024;
 const PLAYWRIGHT_CORE_VERSION = browserToolchain.playwrightCoreVersion;
 const PINNED_CHROMIUM_VERSION = browserToolchain.browser.version;
 const SHA256 = /^[0-9a-f]{64}$/u;
+const GLYPH_REQUEST =
+	/^\/map\/glyphs\/([0-9a-f]{7})\/(Noto%20Sans%20(?:Regular|Medium))\/([0-9]+-[0-9]+\.pbf)$/u;
 const RENDER_INPUT_PATHS = [
 	'browser-toolchain.json',
 	'scripts/build-map-posters.ts',
 	'src/lib/components/map/basemap.ts',
+	'src/lib/components/map/mapGlyphs.ts',
 	'src/lib/components/map/viewport.ts',
 	'src/lib/features/map/mapCameraFraming.ts',
 ];
@@ -241,8 +244,16 @@ async function serveMaplibre(archive: Buffer) {
 			),
 		),
 	);
-	const server = createServer((request, response) => {
-		if (request.url === '/') {
+	const server = createServer(async (request, response) => {
+		const glyph = GLYPH_REQUEST.exec(request.url ?? '');
+		if (glyph) {
+			const [, version, font, range] = glyph;
+			const bytes = await readFile(
+				resolve(outputDir, 'glyphs', version, decodeURIComponent(font), range),
+			).catch(() => undefined);
+			response.writeHead(bytes ? 200 : 404, { 'Content-Type': 'application/x-protobuf' });
+			response.end(bytes);
+		} else if (request.url === '/') {
 			response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
 			response.end('<main id="map"></main>');
 		} else if (request.url === '/archive.pmtiles') {

@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "provider_id": "octranspo",
-  "rendered_utc": "2026-11-26T17:39:41.571Z",
+  "rendered_utc": "2026-11-27T20:50:42.190Z",
   "source": {
     "pmtiles_url": "/data/v1/octranspo/static/basemap/ottawa.pmtiles",
     "sha256": "45ae63071c10619e0500654ff5fd66f320fe8e01e72be7fd0cda965945a4e21d",
@@ -28,11 +28,15 @@
     },
     {
       "path": "scripts/build-map-posters.ts",
-      "sha256": "81e4f217791dfb068560000e076a5fdb8a7c8a87ba2b1d7877e5623b998b10c2"
+      "sha256": "4bc7a3b5b1f82ffe86067f357765d5f12ee10466372816d37d3919b7f60a507a"
     },
     {
       "path": "src/lib/components/map/basemap.ts",
-      "sha256": "0399a4fdea1a3c7c87a79d919bb675f1c26bcf445eb6e697dbe3983eecb36908"
+      "sha256": "3ea2e175e87d73b85c598e1862d230ed1b2bbf200d995274ac33e2ddb8f1d56f"
+    },
+    {
+      "path": "src/lib/components/map/mapGlyphs.ts",
+      "sha256": "a6acb072be99be958e1ff79d19e41b073cdf6ad8eda904c293ebefaf1ab0b598"
     },
     {
       "path": "src/lib/components/map/viewport.ts",
@@ -54,8 +58,8 @@
       "width": 390,
       "height": 844,
       "format": "avif",
-      "bytes": 20955,
-      "sha256": "e0e0458d8ee1e9a595305f9a5dcd410aa936711ab2cd74c1bab280586b599a52"
+      "bytes": 20249,
+      "sha256": "644620a449282f0f68ed80e3faf8789f3c3ea4fd662ced793a6cacee9028b377"
     },
     {
       "filename": "basemap-ottawa-dark-desktop-45ae63071c10.avif",
@@ -63,8 +67,8 @@
       "width": 1280,
       "height": 720,
       "format": "avif",
-      "bytes": 76475,
-      "sha256": "d1ab75d9b9f49bfd5751509268cdd5123c191452e66f4fb883ffc4a144ad9869"
+      "bytes": 74880,
+      "sha256": "2ac5956477ab3e3b88a30a0d1920169f3644b8fd2052117141f3815cd62d5f53"
     },
     {
       "filename": "basemap-ottawa-light-mobile-45ae63071c10.avif",
@@ -72,8 +76,8 @@
       "width": 390,
       "height": 844,
       "format": "avif",
-      "bytes": 22416,
-      "sha256": "6f18cde0e7c5c26b9b0d3cc36b10745a3e52f2ea3a6abf0cc186d1bfc8e45c7b"
+      "bytes": 21655,
+      "sha256": "528276db75640d8e56fe58b28dd896799c7a91bfd1c32f7a58c750996157e149"
     },
     {
       "filename": "basemap-ottawa-light-desktop-45ae63071c10.avif",
@@ -81,8 +85,8 @@
       "width": 1280,
       "height": 720,
       "format": "avif",
-      "bytes": 85263,
-      "sha256": "0796404ff324c8fb7d1c0a967de42df03a81a6ffe8ecf16b6f28057f5ea07bca"
+      "bytes": 83596,
+      "sha256": "81f0d3ff3e7d352fe290de7121568983d8e7fb1283acf590e4821bedda1bc5b3"
     }
   ]
 }
