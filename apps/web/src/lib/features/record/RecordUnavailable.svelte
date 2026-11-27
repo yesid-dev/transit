@@ -9,6 +9,8 @@
 <p>{recordConnection.unreachable[locale]}</p>
 {#if retry}
 	<div>
-		<Button onclick={retry}>{locale === 'fr' ? 'Réessayer' : 'Try again'}</Button>
+		<Button type="button" size="sm" class="min-h-11 min-w-11" onclick={retry}>
+			{locale === 'fr' ? 'Réessayer' : 'Try again'}
+		</Button>
 	</div>
 {/if}
