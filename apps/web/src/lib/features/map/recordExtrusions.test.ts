@@ -3,7 +3,7 @@ import { setRecordPerspective } from './mapCamera';
 import { recordExtrusions } from './recordExtrusions';
 import { recordFeatures, type RecordMark } from './recordMap';
 
-it('raises measured losses by their square root and reuses the flat map colours', () => {
+it('raises stretches in proportion to time lost and reuses the flat map colours', () => {
 	const measured: RecordMark = {
 		id: 'short',
 		name: 'First stretch',
@@ -30,7 +30,7 @@ it('raises measured losses by their square root and reuses the flat map colours'
 	const values = new Map(marks.map(({ id, value }) => [id, value]));
 	const raised = recordExtrusions(flat, (id) => values.get(id)).features;
 	expect(raised.map(({ properties }) => properties.id)).toEqual(['short', 'long']);
-	expect(raised[1].properties.height).toBe(raised[0].properties.height * 2);
+	expect(raised.map(({ properties }) => properties.height)).toEqual([36, 144]);
 	expect(raised.map(({ properties }) => properties.colour)).toEqual(
 		flat.features.slice(0, 2).map(({ properties }) => properties.colour),
 	);

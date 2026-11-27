@@ -16,7 +16,7 @@ export interface RecordExtrusions {
 
 const METRES_PER_LATITUDE_DEGREE = 111_320;
 const HALF_WIDTH_METRES = 12;
-const HEIGHT_SCALE = 24;
+const METRES_PER_SECOND_LOST = 4;
 
 function corridorStrip(from: Coordinate, to: Coordinate): Polygon | null {
 	const latitude = ((from[1] + to[1]) * Math.PI) / 360;
@@ -61,7 +61,7 @@ export function recordExtrusions(
 			properties: {
 				id: properties.id,
 				colour: properties.colour,
-				height: HEIGHT_SCALE * Math.sqrt(value),
+				height: METRES_PER_SECOND_LOST * value,
 			},
 		});
 	}

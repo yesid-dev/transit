@@ -244,10 +244,7 @@
 	/>
 	{#if threeD && layer === 'corridors' && open}
 		<p class="px-2 pb-2 text-sm text-muted-foreground" data-slot="record-3d-legend">
-			{tr(
-				'Height follows the square root of time lost.',
-				'La hauteur suit la racine carrée du temps perdu.',
-			)}
+			{tr('Taller lines show more time lost.', 'Un trait plus haut indique plus de temps perdu.')}
 		</p>
 	{/if}
 </ChartDetails>
