@@ -40,7 +40,7 @@
 		tripsOverDays,
 		agencyName,
 		alertsNotTrackedOnDates,
-		frenchAgency,
+		roomOnBoardUnavailable,
 		noPublishedNotices,
 	} from '#lib/site/presenter.ts';
 	import type { RecordAnswer, RecordCell } from '#lib/server/engine.ts';
@@ -152,10 +152,7 @@
 		<p>{alertsNotTrackedOnDates(agencyName(operator, provider), locale)}</p>
 	{:else if section === 'crowding' && answer.state === 'not_tracked'}
 		<p>
-			{t(
-				`Transit did not record room on board for ${operator} on these dates.`,
-				`Transit n’a pas relevé la place à bord des véhicules ${frenchAgency(agencyName(operator, provider)).of} à ces dates.`,
-			)}
+			{roomOnBoardUnavailable(agencyName(operator, provider), locale, provider?.inputs.occupancy)}
 		</p>
 	{:else if section === 'alerts'}
 		{@const messages = groupAlertCards(recordAlertCards(answer.evidence.alert_messages))}

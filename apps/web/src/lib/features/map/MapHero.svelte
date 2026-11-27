@@ -900,8 +900,8 @@
 		if (isRecordLayer && recordHeadline !== null) {
 			reading =
 				recordLayer === 'stops'
-					? tr(`Up to ${recordHeadline} late`, `Max. ${recordHeadline} en retard`)
-					: tr(`Up to ${recordHeadline} lost`, `Max. ${recordHeadline} de temps perdu`);
+					? tr(`Up to ${recordHeadline} late`, `Jusqu’à ${recordHeadline} en retard`)
+					: tr(`Up to ${recordHeadline} lost`, `Jusqu’à ${recordHeadline} de temps perdu`);
 		} else if (!isRecordLayer && (nearMeController.open || nearMeController.origin)) {
 			reading = tr('Nearby stops', 'Arrêts à proximité');
 		} else if (inViewCount === null) {
@@ -1492,6 +1492,7 @@
 						{occupancyAvailable}
 						store={filters}
 						{alertsAvailable}
+						officialAlertsUrl={v1.provider?.alert_links[locale]}
 						alertsUnavailableReason={v1.provider && !alertsAvailable
 							? `${tr('No notices to filter:', 'Aucun avis à filtrer\u00a0:')} ${alertsNotPublished(agencyName(providerName, v1.provider), locale, Boolean(v1.provider?.alert_links[locale]))}`
 							: undefined}

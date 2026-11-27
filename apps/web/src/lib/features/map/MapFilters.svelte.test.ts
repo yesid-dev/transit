@@ -77,11 +77,19 @@ describe('MapFilters', () => {
 
 	it.each(['en', 'fr'] as const)('hides unavailable alert filtering (%s)', async (locale) => {
 		const store = createFilterStore(emptyFilterState(), () => {});
-		const view = render(MapFilters, { props: { store, locale, alertsAvailable: false } });
+		const officialAlertsUrl = 'https://transport.example/notices';
+		const view = render(MapFilters, {
+			props: { store, locale, alertsAvailable: false, officialAlertsUrl },
+		});
 		expect(view.container.querySelector('[data-filter-group="alerts"]')).toBeNull();
 		expect(
 			view.getByText(locale === 'en' ? 'No notices to filter.' : 'Aucun avis à filtrer.'),
 		).toBeVisible();
+		expect(
+			view.getByRole('link', {
+				name: locale === 'fr' ? 'Consulter les avis officiels' : 'Check the official notices',
+			}),
+		).toHaveAttribute('href', officialAlertsUrl);
 		expect(store.alerts).toEqual([]);
 	});
 

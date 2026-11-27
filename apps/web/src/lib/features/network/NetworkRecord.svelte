@@ -6,6 +6,7 @@
 		citationSource,
 		pageCitation,
 		recordPercent,
+		roomOnBoardUnavailable,
 		tripOutcomeHeaders,
 		tripOutcomeLabels,
 		tripOutcomeNote,
@@ -662,9 +663,10 @@
 							/>
 						{:else if result.state === 'not_tracked'}
 							<p>
-								{t(
-									'Crowding is not tracked in this city.',
-									'L’occupation des véhicules n’est pas suivie dans cette ville.',
+								{roomOnBoardUnavailable(
+									agencyName(operator, page.data.provider),
+									locale,
+									page.data.provider?.inputs.occupancy,
 								)}
 							</p>
 						{:else}<StateMark state={chartState(result.state)} {locale} />{/if}

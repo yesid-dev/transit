@@ -4,6 +4,7 @@
 	import FilterChip from '#lib/components/shared/FilterChip.svelte';
 	import { Separator } from '@yesid/ui/separator';
 	import { Button } from '@yesid/ui/button';
+	import { officialAlertsLabel } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
@@ -35,6 +36,7 @@
 		locale: Locale;
 		alertsAvailable?: boolean;
 		alertsUnavailableReason?: string;
+		officialAlertsUrl?: string;
 		occupancyAvailable?: boolean;
 		routes?: readonly RouteIndexEntry[];
 		focusedLine?: string;
@@ -51,6 +53,7 @@
 		locale,
 		alertsAvailable = true,
 		alertsUnavailableReason,
+		officialAlertsUrl,
 		occupancyAvailable = true,
 		routes = [],
 		focusedLine,
@@ -325,6 +328,10 @@
 						</MapFilterGroup>
 					{:else}
 						<p>{alertsUnavailableReason ?? t.alertFilterUnavailable}</p>
+						{#if officialAlertsUrl}<a
+								class="inline-flex min-h-11 items-center text-primary underline"
+								href={officialAlertsUrl}>{officialAlertsLabel(locale)}</a
+							>{/if}
 					{/if}
 				{/if}
 

@@ -61,6 +61,11 @@ for (const locale of ['en', 'fr'] as const) {
 		const title = fr ? 'Carte du bilan' : 'Record map';
 		await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
 		await expect(page).toHaveTitle(new RegExp(`^${title}\\b`, 'u'));
+		if (phone)
+			await expect(page.getByTestId('map-list-button')).toHaveAttribute(
+				'aria-label',
+				fr ? /Jusqu’à .+ en retard/u : /Up to .+ late/u,
+			);
 		const legend = page.locator(
 			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 		);

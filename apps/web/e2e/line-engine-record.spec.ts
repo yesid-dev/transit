@@ -77,7 +77,7 @@ for (const width of [390, 1440]) {
 			).toBeVisible();
 			await expect(main.locator('#late')).toContainText(fr ? 'se classe premier' : 'ranked first');
 			await expect(main.locator('#crowding')).toContainText(
-				fr ? 'Transit n’a pas relevé la place à bord' : '25.0%',
+				fr ? 'Les données sur la place à bord sont indisponibles à ces dates.' : '25.0%',
 			);
 			await expect(main.locator('#alerts')).toContainText(
 				fr

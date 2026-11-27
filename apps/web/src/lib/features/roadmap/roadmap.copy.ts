@@ -49,7 +49,7 @@ export const roadmapCopy = defineCopy({
 		follow: {
 			before: 'Transit is open source. Follow the work or suggest an idea on ',
 			repository: 'GitHub',
-			between: ', or write to me through the ',
+			between: ', or write to us through the ',
 			contact: 'contact link',
 			after: '.',
 		},
@@ -67,7 +67,7 @@ export const roadmapCopy = defineCopy({
 		follow: {
 			before: 'Transit est un logiciel libre. Suivez le travail ou proposez une idée sur ',
 			repository: 'GitHub',
-			between: ', ou écrivez-moi par le ',
+			between: ', ou écrivez-nous par le ',
 			contact: 'lien de contact',
 			after: '.',
 		},

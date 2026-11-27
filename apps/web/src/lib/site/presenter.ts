@@ -1243,6 +1243,20 @@ export function officialAlertsLabel(locale: Locale) {
 	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check the official notices';
 }
 
+export function roomOnBoardUnavailable(agency: AgencyName, locale: Locale, published?: boolean) {
+	if (published === false)
+		return locale === 'fr'
+			? `${frenchAgency(agency).start} ne publie pas la place à bord.`
+			: `${agency.name} does not publish room on board.`;
+	if (published === true)
+		return locale === 'fr'
+			? `Transit n’a pas relevé la place à bord des véhicules ${frenchAgency(agency).of} à ces dates.`
+			: `Transit did not record room on board for ${agency.name} on these dates.`;
+	return locale === 'fr'
+		? 'Les données sur la place à bord sont indisponibles à ces dates.'
+		: 'Room-on-board data is unavailable for these dates.';
+}
+
 /** Whose data a citation rests on: the agency and the licence it publishes under. */
 export type CitationSource = { agency: AgencyName; licence?: string | null };
 

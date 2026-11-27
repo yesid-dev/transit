@@ -52,6 +52,7 @@ import {
 	rankingComparison,
 	recordStamp,
 	rowSentence,
+	roomOnBoardUnavailable,
 	scheduledClock,
 	serviceTime,
 	tooFewDepartures,
@@ -67,6 +68,24 @@ import {
 	versionNumber,
 } from './presenter.ts';
 import { livePause } from '#lib/live/livePause.ts';
+
+it.each([
+	['en', false, 'Example Transit does not publish room on board.'],
+	['fr', false, 'Example Transit ne publie pas la place à bord.'],
+	['en', true, 'Transit did not record room on board for Example Transit on these dates.'],
+	[
+		'fr',
+		true,
+		'Transit n’a pas relevé la place à bord des véhicules d’Example Transit à ces dates.',
+	],
+	['en', undefined, 'Room-on-board data is unavailable for these dates.'],
+	['fr', undefined, 'Les données sur la place à bord sont indisponibles à ces dates.'],
+] as const)(
+	'attributes room-on-board gaps only when publication is declared in %s (%s)',
+	(locale, published, message) => {
+		expect(roomOnBoardUnavailable({ name: 'Example Transit' }, locale, published)).toBe(message);
+	},
+);
 
 it.each([
 	[
