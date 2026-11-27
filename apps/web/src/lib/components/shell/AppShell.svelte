@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { keepFooterFocusInView } from './footerFocus.ts';
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { NavigationLifecycle } from '@yesid/ui/brand';
 	import { setContext, type Snippet } from 'svelte';
@@ -179,9 +178,7 @@
 {/snippet}
 
 {#snippet streamingFooter()}
-	<div class="streaming-footer" onfocusin={(event) => keepFooterFocusInView(event)}>
-		{@render footer?.()}
-	</div>
+	<div class="streaming-footer">{@render footer?.()}</div>
 {/snippet}
 
 <div
@@ -305,11 +302,6 @@
 	}
 	.app-shell-root[data-full-viewport='true'] :global([data-slot='surface-rail-mobile']) {
 		--surface-rail-stack-offset: var(--map-source-clearance);
-	}
-	/* The growing construction ground sits above the footer: neither may anchor scrolling, or the
-	   reveal would push the page it is revealing. Content above keeps its scroll anchoring. */
-	.app-shell-root:has(:global(.home-construction-floor)) .streaming-footer {
-		overflow-anchor: none;
 	}
 	/* Portalled search and map dialogs retain the app's stacking and safe-area tokens. */
 	.app-shell-root:has(:global([data-slot='footer'] :focus-visible))

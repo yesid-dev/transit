@@ -21,6 +21,16 @@ const floorHeight = (page: Page) =>
 	page
 		.locator('.home-construction-floor')
 		.evaluate((floor) => floor.getBoundingClientRect().height);
+/** The footer's place in the page, which the reveal must never move. */
+const footerTop = (page: Page) =>
+	page
+		.getByTestId('footer')
+		.evaluate((footer) => Math.round(footer.getBoundingClientRect().top + window.scrollY));
+/** How far each prop's artwork sits below its resting place, in px. */
+const lifts = (page: Page) =>
+	page
+		.locator('[data-construction-prop] > svg')
+		.evaluateAll((all) => all.map((svg) => new DOMMatrix(getComputedStyle(svg).transform).m42));
 const progress = (page: Page) =>
 	props(page).evaluate((el) => Number(el.getAttribute('data-progress')));
 
@@ -94,22 +104,25 @@ test('the props rise with the scroll at their live sizes, and sink back', async 
 	await page.emulateMedia({ reducedMotion: 'no-preference' });
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await open(page, 'en');
-	// Far above the ground: nothing shows and the ground takes no room.
+	// Far above the ground: nothing shows, yet the ground already holds its full height.
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
-	expect(await floorHeight(page)).toBe(0);
+	expect(await floorHeight(page)).toBe(240);
+	const footer = await footerTop(page);
 
-	// Halfway through the reveal (marker at 95% minus half of 25% of the viewport).
+	// Halfway through the reveal (marker at 95% minus half of 25% of the viewport): the props are
+	// half risen inside the ground, and nothing outside it has moved.
 	await placeMarker(page, 0.95 - 0.125);
 	await expect(props(page)).toHaveAttribute('data-state', 'revealing');
 	await expect.poll(() => progress(page)).toBeGreaterThan(0.3);
 	expect(await progress(page)).toBeLessThan(0.7);
-	const half = await floorHeight(page);
-	expect(half).toBeGreaterThan(60);
-	expect(half).toBeLessThan(180);
+	const half = await lifts(page);
+	expect(Math.min(...half)).toBeGreaterThan(0);
+	expect([await floorHeight(page), await footerTop(page)]).toEqual([240, footer]);
 
 	await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 	await expect(props(page)).toHaveAttribute('data-state', 'visible');
-	expect(await floorHeight(page)).toBe(240);
+	expect(await lifts(page)).toEqual(half.map(() => 0));
+	expect([await floorHeight(page), await footerTop(page)]).toEqual([240, footer]);
 	const widths = await page
 		.locator('[data-construction-prop]')
 		.evaluateAll((all) =>
@@ -124,6 +137,7 @@ test('the props rise with the scroll at their live sizes, and sink back', async 
 
 	await page.evaluate(() => window.scrollTo(0, 0));
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
+	expect(await footerTop(page)).toBe(footer);
 });
 
 for (const width of [320, 390] as const) {
@@ -150,11 +164,12 @@ test('with reduced motion the props appear at once and never slide', async ({ pa
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await open(page, 'en');
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
-	// Where the moving scene would be half revealed, the reduced scene is already whole.
+	const footer = await footerTop(page);
+	// Where the moving scene would be half revealed, the reduced scene is already whole, in place.
 	await placeMarker(page, 0.95 - 0.125);
 	await expect(props(page)).toHaveAttribute('data-state', 'visible');
 	expect(await progress(page)).toBe(1);
-	expect(await floorHeight(page)).toBe(240);
+	expect([await floorHeight(page), await footerTop(page)]).toEqual([240, footer]);
 	const transforms = await page
 		.locator('[data-construction-prop] > svg')
 		.evaluateAll((all) => all.map((svg) => getComputedStyle(svg).transform));

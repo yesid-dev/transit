@@ -138,7 +138,6 @@
 		return mode === 'record' && period !== null && alertDetailsAllowed(period);
 	});
 	let constructionEdge = $state<HTMLElement>();
-	let constructionProgress = $state(1);
 
 	const noIndex = $derived(!siteConfig.indexing || isEphemeralPath(page.url.pathname));
 
@@ -527,13 +526,8 @@
 				{#if seoPath === '/'}
 					{#key page.url.pathname}
 						<div bind:this={constructionEdge} class="construction-anchor" aria-hidden="true"></div>
-						<div class="home-construction-floor" style="--ground-progress:{constructionProgress}">
-							<ConstructionProps
-								layout="spread"
-								floodlight
-								revealAt={constructionEdge}
-								bind:progress={constructionProgress}
-							/>
+						<div class="home-construction-floor">
+							<ConstructionProps layout="spread" floodlight revealAt={constructionEdge} />
 						</div>
 					{/key}
 				{/if}
@@ -623,9 +617,11 @@
 			--layout-control-rail-width: min(16rem, 25%);
 		}
 	}
+	/* The ground keeps its full height from the first paint: the props rise inside it (the kit moves
+	   them with transform alone), so revealing them never moves the footer or anything below. */
 	.home-construction-floor {
 		position: relative;
-		height: calc(240px * var(--ground-progress, 1));
+		height: 240px;
 		flex-shrink: 0;
 		overflow: clip;
 	}
@@ -637,7 +633,7 @@
 	}
 	@media (--tablet-max) {
 		.home-construction-floor {
-			height: calc(100px * var(--ground-progress, 1));
+			height: 100px;
 		}
 	}
 	.footer-disclaimer {
