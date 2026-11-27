@@ -81,27 +81,23 @@ describe('MapProgressive automatic live boot', () => {
 		expect(view.getByRole('status')).toHaveTextContent(loading);
 	});
 	it.each(['en', 'fr'] as const)(
-		'uses only the selected poster and source date in %s',
+		'uses the selected city image and keeps the source links in %s',
 		async (locale) => {
 			harness.locale = locale;
-			for (const [id, city, stem, sourceDate] of [
-				['stm', 'Montréal', 'montreal', '2026-11-08'],
-				['octranspo', 'Ottawa', 'ottawa', '2026-11-08'],
+			for (const [id, city, stem] of [
+				['stm', 'Montréal', 'montreal'],
+				['octranspo', 'Ottawa', 'ottawa'],
 			]) {
 				harness.provider = id;
 				harness.city = city;
 				harness.posters = `/map/basemap-${stem}-posters.json`;
 				const view = render(MapProgressive, { props: { importHero: neverImport } });
-				expect(view.getByRole('img')).toHaveAttribute(
-					'src',
-					expect.stringContaining(`/map/basemap-${stem}-`),
-				);
-				expect(view.getByRole('img')).toHaveAttribute('alt', expect.stringContaining(city));
-				const date = new Intl.DateTimeFormat(locale === 'fr' ? 'fr-CA' : 'en-CA', {
-					dateStyle: 'medium',
-					timeZone: 'UTC',
-				}).format(new Date(sourceDate));
-				expect(view.getByText(new RegExp(date))).toBeVisible();
+				const image = view.container.querySelector('picture img');
+				expect(image).toHaveAttribute('src', expect.stringContaining(`/map/basemap-${stem}-`));
+				expect(image).toHaveAttribute('alt', '');
+				expect(view.getByRole('heading', { level: 1 })).toHaveTextContent(city);
+				expect(view.getByRole('link', { name: /OpenStreetMap contributors/ })).toBeVisible();
+				expect(view.getByRole('link', { name: /Protomaps/ })).toBeVisible();
 				cleanup();
 			}
 		},
@@ -115,55 +111,50 @@ describe('MapProgressive automatic live boot', () => {
 			harness.posters = posters;
 
 			const view = render(MapProgressive, { props: { importHero: neverImport } });
-			expect(view.queryByRole('img')).toBeNull();
-			expect(view.getByText(/Basemap preview unavailable for Ottawa/)).toBeVisible();
+			expect(view.container.querySelector('picture img')).toBeNull();
+			expect(view.getByRole('heading', { level: 1 })).toHaveTextContent('Live map · Ottawa');
+			expect(view.getByRole('status')).toHaveTextContent('Loading the live map…');
 		},
 	);
 
 	it.each([
-		[
-			'en',
-			'Basemap preview unavailable for Ottawa. The live map loads automatically.',
-			'Basemap preview unavailable for Ottawa.',
-			'Static, non-live basemap. No vehicles, stops, notices or freshness data are shown.',
-		],
+		['en', 'Live map · Ottawa', 'Loading the live map…', 'Try live map again'],
 		[
 			'fr',
-			'Aperçu cartographique indisponible · Ottawa. La carte en direct se charge automatiquement.',
-			'Aperçu cartographique indisponible · Ottawa.',
-			'Fond de carte statique, pas en direct. Aucun véhicule, arrêt, avis de service ou renseignement de fraîcheur n’est affiché.',
+			'Carte en direct · Ottawa',
+			'Chargement de la carte en direct…',
+			'Réessayer la carte en direct',
 		],
 	] as const)(
-		'promises automatic loading only while the live map boots in %s',
-		async (locale, booting, unavailable, staticBody) => {
+		'shows one loading sentence and replaces it with recovery on failure in %s',
+		async (locale, title, loading, retry) => {
 			harness.locale = locale;
 			harness.provider = 'octranspo';
 			harness.city = 'Ottawa';
 
 			const fixture = await import('./__fixtures__/MapProgressiveHeroStub.svelte');
-			for (const [posters, failedBody] of [
-				['', unavailable],
-				['/map/basemap-ottawa-posters.json', staticBody],
-			]) {
+			for (const posters of ['', '/map/basemap-ottawa-posters.json']) {
 				harness.posters = posters;
 				const view = render(MapProgressive, { props: { importHero: async () => fixture } });
-				const body = () =>
-					view.container.querySelector('.map-progressive-body')?.textContent?.trim();
 				await view.findByTestId('map-progressive-hero-stub');
-				if (!posters) expect(body()).toBe(booting);
+				const heading = view.getByRole('heading', { level: 1, name: title });
+				expect(heading.parentElement?.textContent?.trim().replace(/\s+/g, ' ')).toBe(
+					`${title} ${loading}`,
+				);
 				await fireEvent.click(view.getByTestId('progressive-stub-failure'));
-				expect(body()).toBe(failedBody);
+				expect(view.queryByText(loading)).toBeNull();
+				expect(view.getByRole('alert')).toBeVisible();
+				expect(view.getByRole('button', { name: retry })).toBeEnabled();
 				cleanup();
 			}
 		},
 	);
 
-	it('removes a failed image and its source-date claim', async () => {
+	it('removes a failed image while the map keeps loading', async () => {
 		const view = render(MapProgressive, { props: { importHero: neverImport } });
-		await fireEvent.error(view.getByRole('img'));
-		expect(view.queryByRole('img')).toBeNull();
-		expect(view.queryByText(/Basemap data/)).toBeNull();
-		expect(view.getByText(/Basemap preview unavailable for Montréal/)).toBeVisible();
+		await fireEvent.error(view.container.querySelector('picture img')!);
+		expect(view.container.querySelector('picture img')).toBeNull();
+		expect(view.getByRole('status')).toHaveTextContent('Loading the live map…');
 	});
 
 	it('imports immediately on mount without a CTA, intent seam, timer, idle, or frame gate', async () => {
@@ -190,9 +181,7 @@ describe('MapProgressive automatic live boot', () => {
 				'booting',
 			);
 			expect(view.getByRole('heading', { level: 1 })).toHaveTextContent('Live map');
-			expect(view.getByText(/The live interactive map loads automatically\./u)).toBeVisible();
-			expect(view.queryByText(/Static, non-live basemap/u)).toBeNull();
-			expect(view.getByRole('status')).toHaveTextContent('Loading live map');
+			expect(view.getByRole('status')).toHaveTextContent('Loading the live map…');
 			expect(view.queryByRole('button', { name: /load live interactive map/iu })).toBeNull();
 			expect(view.container.querySelector('[data-map-wake]')).toBeNull();
 			expect(view.getByTestId('map-progressive')).not.toHaveAttribute('data-map-intent-time');
@@ -216,7 +205,7 @@ describe('MapProgressive automatic live boot', () => {
 		expect(importer).toHaveBeenCalledOnce();
 	});
 
-	it('keeps the poster mounted and the live layer inert until first MapLibre idle', async () => {
+	it('keeps the poster mounted and the live layer inert until the map and first data settle', async () => {
 		const pending = deferred<HeroModule>();
 		const view = render(MapProgressive, { props: { importHero: () => pending.promise } });
 
@@ -233,6 +222,11 @@ describe('MapProgressive automatic live boot', () => {
 		await fireEvent.click(view.getByTestId('progressive-stub-ready'));
 		expect(view.getByTestId('map-progressive-poster')).toHaveAttribute('data-visible', 'true');
 		expect(view.getByTestId('map-progressive-live')).toHaveAttribute('aria-hidden', 'true');
+		expect(view.getByTestId('map-progressive-live')).toHaveAttribute('inert');
+
+		await fireEvent.click(view.getByTestId('progressive-stub-idle-before-data'));
+		expect(view.getByTestId('map-progressive')).toHaveAttribute('data-map-idle-time');
+		expect(view.getByTestId('map-progressive-poster')).toHaveAttribute('data-visible', 'true');
 		expect(view.getByTestId('map-progressive-live')).toHaveAttribute('inert');
 
 		await fireEvent.click(view.getByTestId('progressive-stub-idle'));

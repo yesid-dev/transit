@@ -18,24 +18,13 @@ export const copy = defineCopy({
 			postal: 'Postal code',
 			place: 'Place',
 		},
-		staticKicker: '{city} · STATIC',
-		staticHeading: '{city} transit map',
-		staticBody:
-			'Static, non-live basemap. No vehicles, stops, notices or freshness data are shown.',
 		bootHeading: 'Live map · {city}',
-		bootBody:
-			'The live interactive map loads automatically. This static basemap stays visible until it is ready.',
-		staticUnavailable: 'Basemap preview unavailable for {city}.',
-		bootUnavailable: 'Basemap preview unavailable for {city}. The live map loads automatically.',
-		staticSnapshot: 'Basemap data · {date}',
-		staticImageAlt: 'Static basemap · {city}',
-		mapBooting: 'Loading live map · {city}…',
+		mapBooting: 'Loading the live map…',
 		mapImportError: 'Live map could not start · {city}.',
 		mapImportRetry: 'Try live map again',
 		staticNoScript: 'JavaScript is required to load the live interactive map.',
 		recordPoster: {
 			title: 'Record map',
-			preview: 'This preview shows the basemap. Record readings appear when the map is ready.',
 			loading: 'Loading the Record map…',
 			failed: 'The Record map could not load.',
 			retry: 'Try again',
@@ -153,26 +142,13 @@ export const copy = defineCopy({
 			postal: 'Code postal',
 			place: 'Lieu',
 		},
-		staticKicker: '{city} · STATIQUE',
-		staticHeading: 'Carte du réseau · {city}',
-		staticBody:
-			'Fond de carte statique, pas en direct. Aucun véhicule, arrêt, avis de service ou renseignement de fraîcheur n’est affiché.',
 		bootHeading: 'Carte en direct · {city}',
-		bootBody:
-			'La carte interactive en direct se charge automatiquement. Ce fond de carte statique reste visible jusqu’à ce qu’elle soit prête.',
-		staticUnavailable: 'Aperçu cartographique indisponible · {city}.',
-		bootUnavailable:
-			'Aperçu cartographique indisponible · {city}. La carte en direct se charge automatiquement.',
-		staticSnapshot: 'Données cartographiques · {date}',
-		staticImageAlt: 'Fond de carte statique · {city}',
-		mapBooting: 'Chargement de la carte en direct · {city}…',
+		mapBooting: 'Chargement de la carte en direct…',
 		mapImportError: 'La carte en direct n’a pas pu démarrer · {city}.',
 		mapImportRetry: 'Réessayer la carte en direct',
 		staticNoScript: 'JavaScript est requis pour charger la carte interactive en direct.',
 		recordPoster: {
 			title: 'Carte du bilan',
-			preview:
-				'Cet aperçu montre le fond de carte. Les mesures du bilan apparaîtront quand la carte sera prête.',
 			loading: 'Chargement de la carte du bilan…',
 			failed: 'La carte du bilan n’a pas pu se charger.',
 			retry: 'Réessayer',

@@ -10,6 +10,10 @@
 	import type { PublicCity, PublicProvider } from '#lib/v1/schemas/providers.ts';
 	import NavPill from './NavPill.svelte';
 	import { frameSurfaceRailContext, type RegisterFrameSurfaceRail } from './frameSurfaceRail.ts';
+	import {
+		mapControlsVisibilityContext,
+		type RegisterMapControlsVisibility,
+	} from './mapControlsVisibility.ts';
 	import FrameControls, {
 		FrameControlsContentContext,
 		FrameControlsExtensionContext,
@@ -72,6 +76,15 @@
 	const clock = $derived(frameClock(provider, now));
 	const frame = $derived(frameControlsState(url, clock, errorPage));
 	const compactMap = $derived(fullViewport && remWidth > 0 && shellWidth < 64 * remWidth);
+	let mapControlsVisibility = $state.raw<() => boolean>();
+	const registerMapControlsVisibility: RegisterMapControlsVisibility = (visible) => {
+		mapControlsVisibility = visible;
+		return () => {
+			if (mapControlsVisibility === visible) mapControlsVisibility = undefined;
+		};
+	};
+	setContext(mapControlsVisibilityContext, registerMapControlsVisibility);
+	const mapControlsVisible = $derived(mapControlsVisibility?.() ?? false);
 	provideRecordPeriodNotice(
 		() =>
 			recordStartNotice(frame.beforeRecord, locale) ?? recordEndNotice(frame.afterRecord, locale),
@@ -132,7 +145,15 @@
 
 {#snippet rail(context: SurfaceRailContext)}
 	{#if fullViewport}
-		<div class="map-rail" class:desktop={context.presentation === 'desktop'} data-lenis-prevent>
+		<div
+			class="map-rail"
+			class:desktop={context.presentation === 'desktop'}
+			data-lenis-prevent
+			data-ripple-exempt
+			data-map-rail-visible={mapControlsVisible}
+			aria-hidden={mapControlsVisible ? undefined : true}
+			inert={!mapControlsVisible}
+		>
 			{@render railContents(context)}
 		</div>
 	{:else}
@@ -231,6 +252,16 @@
 		display: grid;
 		grid-auto-rows: max-content;
 		gap: 1rem;
+		transition: opacity var(--duration-normal) var(--ease-out);
+	}
+	.map-rail[data-map-rail-visible='false'] {
+		visibility: hidden;
+		opacity: 0;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.map-rail {
+			transition: none;
+		}
 	}
 	.map-rail.desktop {
 		max-block-size: max(

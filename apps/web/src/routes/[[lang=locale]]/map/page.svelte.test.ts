@@ -9,20 +9,14 @@ it.each(
 		{
 			locale: 'en' as const,
 			path: '/map',
-			heading: 'Montréal transit map',
-			bodyCopy: 'Static, non-live basemap',
-			bootHeading: 'Live map',
-			bootBody: 'The live interactive map loads automatically',
-			bootStatus: 'Loading live map',
+			heading: 'Live map',
+			bootStatus: 'Loading the live map',
 			activationCopy: 'Load live interactive map',
 		},
 		{
 			locale: 'fr' as const,
 			path: '/fr/map',
-			heading: 'Carte du réseau · Montréal',
-			bodyCopy: 'Fond de carte statique, pas en direct',
-			bootHeading: 'Carte en direct',
-			bootBody: 'La carte interactive en direct se charge automatiquement',
+			heading: 'Carte en direct',
 			bootStatus: 'Chargement de la carte en direct',
 			activationCopy: 'Charger la carte interactive en direct',
 		},
@@ -33,24 +27,11 @@ it.each(
 			provider: 'octranspo',
 			city: 'Ottawa',
 			asset: 'ottawa',
-			heading: row.heading.replace('Montréal', 'Ottawa'),
 		},
 	]),
 )(
 	'$path ($provider) server-compiles to the selected boot poster without browser APIs',
-	async ({
-		locale,
-		path,
-		heading,
-		bodyCopy,
-		bootHeading,
-		bootBody,
-		bootStatus,
-		activationCopy,
-		provider,
-		city,
-		asset,
-	}) => {
+	async ({ locale, path, heading, bootStatus, activationCopy, provider, city, asset }) => {
 		const server = await createServer({
 			configFile: 'vite.config.ts',
 			appType: 'custom',
@@ -93,12 +74,9 @@ it.each(
 			const rendered = render(page.default, { context });
 			const body = rendered.body;
 			expect(body).toContain('map-progressive');
-			expect(body).toContain(heading);
+			expect(body).toContain(`${heading} · ${city}`);
 			expect(body).toContain(`/map/basemap-${asset}-`);
 			expect(body).not.toContain(`/map/basemap-${asset === 'ottawa' ? 'montreal' : 'ottawa'}-`);
-			expect(body).toContain(bodyCopy);
-			expect(body).not.toContain(bootHeading);
-			expect(body).not.toContain(bootBody);
 			expect(body).not.toContain(bootStatus);
 			expect(body).not.toContain(activationCopy);
 			expect(body).not.toContain('data-map-wake');

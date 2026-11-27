@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { Manifest, RouteFile, Vehicle } from '#lib/v1/schemas/index.ts';
 	import type { VehicleMapStop } from './vehicleLocationRoute.ts';
@@ -58,10 +59,17 @@
 	bind:this={preview}
 	class="vehicle-map-preview"
 	data-slot="vehicle-map-preview"
+	data-ripple-exempt
 	data-ready={ready}
 >
 	{#if Canvas && !unavailable}
-		<div class="absolute inset-0" class:invisible={!ready} inert={!ready}>
+		<div
+			class="vehicle-map-runtime absolute inset-0"
+			class:invisible={!ready}
+			aria-hidden={ready ? undefined : true}
+			inert={!ready}
+			style:transition={$prefersReducedMotion ? 'none' : undefined}
+		>
 			<Canvas
 				{vehicle}
 				{manifest}
@@ -111,5 +119,19 @@
 		border-radius: var(--radius-lg);
 		background-color: var(--muted);
 		--map-attribution-bottom: 0.75rem;
+	}
+
+	.vehicle-map-runtime {
+		transition: opacity var(--duration-normal) var(--ease-out);
+	}
+
+	.vehicle-map-preview[data-ready='false'] .vehicle-map-runtime {
+		opacity: 0;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.vehicle-map-runtime {
+			transition: none;
+		}
 	}
 </style>

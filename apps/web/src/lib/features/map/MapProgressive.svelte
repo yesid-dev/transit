@@ -9,6 +9,8 @@
 	export interface ProgressiveMapHeroProps {
 		onready?: () => void;
 		onidle?: () => void;
+		oninitialdata?: (settled: boolean) => void;
+		controlsVisible?: boolean;
 		onrecovering?: () => void;
 		onfailure?: (failure: ProgressiveMapFailure | null) => void;
 	}
@@ -21,12 +23,16 @@
 <script lang="ts">
 	import { Button } from '@yesid/ui/button';
 	import { getContext, onDestroy, onMount } from 'svelte';
-	import { intl, getLocale } from '#lib/i18n/index.ts';
+	import { getLocale } from '#lib/i18n/index.ts';
 	import { theme } from '@yesid/ui/state';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import { mapCopy } from './map.copy';
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { mapSourceCreditContext } from '#lib/site/mapRecordSourceDate.ts';
+	import {
+		mapControlsVisibilityContext,
+		type RegisterMapControlsVisibility,
+	} from '#lib/components/shell/mapControlsVisibility.ts';
 
 	interface Props {
 		importHero?: () => Promise<ProgressiveMapHeroModule>;
@@ -43,7 +49,6 @@
 	const t = $derived(mapCopy(locale, city));
 	const receipts = import.meta.glob<{
 		provider_id: string;
-		source: { osm_updated_utc: string };
 		posters: Array<{ filename: string; theme: string; width: number }>;
 	}>('/static/map/*-posters.json', { eager: true, import: 'default' });
 	const selected = receipts[`/static${v1.provider?.posters_url}`];
@@ -57,17 +62,13 @@
 	);
 	let posterFailed = $state(false);
 	const hasPoster = $derived(Boolean(posterMobile && posterDesktop && !posterFailed));
-	const sourceDate = receipt
-		? intl
-				.dateTime(locale, {
-					dateStyle: 'medium',
-					timeZone: 'UTC',
-				})
-				.format(new Date(receipt.source.osm_updated_utc))
-		: '';
 
 	let root = $state<HTMLDivElement | null>(null);
 	let phase = $state<ProgressiveState>('static');
+	const registerControls = getContext<RegisterMapControlsVisibility | undefined>(
+		mapControlsVisibilityContext,
+	);
+	$effect(() => registerControls?.(() => phase === 'ready'));
 	let LiveMap = $state.raw<ProgressiveMapHeroModule['default'] | null>(null);
 	let importPending: Promise<void> | null = null;
 	let liveFailure: ProgressiveMapFailure | null = null;
@@ -75,6 +76,7 @@
 	let attempt = $state(0);
 	let readyTime = $state<number | null>(null);
 	let idleTime = $state<number | null>(null);
+	let initialDataSettled = $state(false);
 	let idleAttempt = 0;
 	let alive = true;
 
@@ -142,9 +144,12 @@
 		if (idleAttempt === attempt || phase !== 'booting' || readyTime === null) return;
 		idleAttempt = attempt;
 		idleTime = clock();
-		phase = 'ready';
 		publish('transit:maplibre-idle', idleTime);
 	}
+
+	$effect(() => {
+		if (phase === 'booting' && idleTime !== null && initialDataSettled) phase = 'ready';
+	});
 
 	function handleRecovering(): void {
 		if (!LiveMap || phase === 'failed') return;
@@ -189,6 +194,7 @@
 
 <div
 	class="map-progressive"
+	data-ripple-exempt
 	data-testid="map-progressive"
 	data-map-progressive-state={phase}
 	data-map-attempt={attempt}
@@ -208,6 +214,8 @@
 			<LiveMap
 				onready={handleReady}
 				onidle={handleIdle}
+				oninitialdata={(settled) => (initialDataSettled = settled)}
+				controlsVisible={phase === 'ready'}
 				onrecovering={handleRecovering}
 				onfailure={handleFailure}
 			/>
@@ -239,7 +247,7 @@
 					onerror={() => (posterFailed = true)}
 					width="390"
 					height="844"
-					alt={t.staticImageAlt}
+					alt=""
 					fetchpriority="high"
 					decoding="async"
 				/>
@@ -249,26 +257,9 @@
 
 		{#if phase !== 'ready'}
 			<div class="map-progressive-copy">
-				<p class="map-progressive-kicker">{t.staticKicker}</p>
 				<h1 id="map-progressive-heading">
-					{record ? t.recordPoster.title : phase === 'booting' ? t.bootHeading : t.staticHeading}
+					{record ? t.recordPoster.title : t.bootHeading}
 				</h1>
-				<p class="map-progressive-body">
-					{record
-						? hasPoster
-							? t.recordPoster.preview
-							: t.staticUnavailable
-						: phase === 'booting'
-							? hasPoster
-								? t.bootBody
-								: t.bootUnavailable
-							: hasPoster
-								? t.staticBody
-								: t.staticUnavailable}
-				</p>
-				{#if hasPoster}<p class="map-progressive-snapshot">
-						{t.staticSnapshot.replace('{date}', sourceDate)}
-					</p>{/if}
 				<p class="map-progressive-status" role="status" aria-live="polite">
 					{phase === 'booting' ? (record ? t.recordPoster.loading : t.mapBooting) : ''}
 				</p>
@@ -324,11 +315,13 @@
 
 	.map-progressive-live {
 		z-index: 1;
+		visibility: hidden;
 		opacity: 0;
 	}
 
 	.map-progressive-live[data-visible='true'] {
 		z-index: 3;
+		visibility: visible;
 		opacity: 1;
 	}
 
@@ -381,34 +374,12 @@
 		width: min(34rem, calc(100% - 2rem));
 	}
 
-	.map-progressive-kicker {
-		margin: 0 0 0.45rem;
-		font: 700 0.72rem/1.2 var(--font-mono);
-		letter-spacing: var(--tracking-eyebrow);
-		text-transform: uppercase;
-	}
-
 	h1 {
 		margin: 0;
 		font-size: var(--text-display);
 		font-weight: 700;
 		line-height: 0.98;
 		letter-spacing: var(--tracking-tight);
-	}
-
-	.map-progressive-body {
-		max-width: var(--measure-body);
-		margin: 0.8rem 0 0;
-		font-size: clamp(0.92rem, 1.6vw, 1.05rem);
-		line-height: 1.5;
-		text-wrap: balance;
-	}
-
-	.map-progressive-snapshot {
-		margin: 0.45rem 0 0;
-		font: 600 0.72rem/1.3 var(--font-mono);
-		letter-spacing: 0.04em;
-		color: color-mix(in srgb, var(--reflective) 82%, transparent);
 	}
 
 	.map-progressive-status,
