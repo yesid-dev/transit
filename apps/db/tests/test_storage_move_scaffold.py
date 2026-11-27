@@ -107,12 +107,20 @@ def test_empty_lane_invocation_performs_no_work(lane, monkeypatch):
 
 def test_existing_cli_commands_keep_their_registration_and_help():
     commands = get_command(app).commands
-    assert set(commands) - set(LANES) == set(BASELINE) | {"clean-day", "clean-days", "live-oracle"}
+    assert set(commands) - set(LANES) == set(BASELINE) | {
+        "clean-day",
+        "clean-days",
+        "live-oracle",
+        "stretch-passes",
+    }
     assert commands["clean-days"].help == (
         "Build clean Parquet tables for an inclusive range of provider service days."
     )
     assert commands["clean-day"].help == (
         "Build stop_events and trip_days for one provider service day."
+    )
+    assert commands["stretch-passes"].help == (
+        "Build one day's stretch passes, summary and stretches from a local v12 day."
     )
     snapshot = {name: command_snapshot(commands[name]) for name in BASELINE}
     canonical = json.dumps(snapshot, sort_keys=True, separators=(",", ":"))

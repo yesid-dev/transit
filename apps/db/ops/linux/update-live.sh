@@ -91,7 +91,7 @@ printf '%s\n' "$commit" >"$release/.revision"
 chmod 0755 "$release"
 
 unit_dir=/etc/systemd/system
-clean_units=(transit-clean-days.service transit-clean-days.timer)
+clean_units=(transit-clean-days.service transit-clean-days.timer transit-stretch-days.service)
 update_clean_days=false
 if $enable_clean_days || [[ -e $unit_dir/transit-clean-days.timer ]]; then
   update_clean_days=true

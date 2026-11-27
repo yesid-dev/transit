@@ -17,4 +17,9 @@ export PYTHONPATH="$app_dir/src"
 export TMPDIR="$STATE_DIRECTORY"
 export TRANSIT_CLEAN_BUILDER_COMMIT
 TRANSIT_CLEAN_BUILDER_COMMIT=$(< "$release/.revision")
-exec "$app_dir/.venv/bin/python" -m transit_ops.clean_days_plan --run-scheduled
+mode=${1:---run-scheduled}
+case $mode in
+  --run-scheduled | --run-stretch) ;;
+  *) echo "Usage: run-clean-days.sh [--run-scheduled | --run-stretch]" >&2; exit 2 ;;
+esac
+exec "$app_dir/.venv/bin/python" -m transit_ops.clean_days_plan "$mode"

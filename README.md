@@ -206,6 +206,21 @@ The read variables are `CLEAN_SOURCE_S3_ENDPOINT`,
 `CLEAN_SOURCE_S3_ACCESS_KEY_ID`, `CLEAN_SOURCE_S3_SECRET_ACCESS_KEY` and
 optionally `CLEAN_SOURCE_S3_REGION` and `CLEAN_SOURCE_S3_SESSION_TOKEN`.
 
+Each measured clean day is followed by its stretch timing (cleaning version 13)
+under `stretch/v13/<city>/<date>/` in the same destination. It holds the
+`stretches`, `stretch_passes` and `stretch_summary` tables and a receipt written
+last. Each table file carries its checksum in its name, and the receipt lists
+them under `tables`; only listed files are data. Every stop-to-stop run is cut
+into pieces of about 100 m, and each pass records entry and exit, speed while
+moving and time stopped. It reads three files of the v12 day, checked against
+the v12 receipt, and the schedule ZIP that receipt pins. On the VM,
+`transit-stretch-days.service` builds it after `transit-clean-days.service`
+succeeds and the engine has copied the new v12 days, so it never delays them.
+A failure is reported without failing the run, and the next run tries again.
+An explicit `clean-days --from --to` range builds both kinds of day. To build
+one day from local copies, use `transit-ops stretch-passes --provider --date
+--clean-day --schedule --out`.
+
 ### Public live answer
 
 `GET /v2/{city}/live` serves the capture publisher's city snapshot. Its optional

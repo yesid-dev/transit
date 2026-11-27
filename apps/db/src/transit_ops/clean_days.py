@@ -1,5 +1,6 @@
 """Rebuild an inclusive range from the raw capture and schedule archive."""
 
+import hashlib
 import json
 import os
 import re
@@ -48,6 +49,13 @@ from transit_ops.lake.objects import put_create_only
 from transit_ops.providers.schedule import service_day_start
 from transit_ops.providers.schedule_archive import ArchiveScheduleContext
 from transit_ops.s3 import ObjectStorageError
+from transit_ops.stretch_day import (
+    CleanDayNotMeasured,
+    build_from_clean_dir,
+    fetch_clean_day,
+    publish_stretch_day,
+    stretch_key_prefix,
+)
 
 _S3_URL = re.compile(r"s3://([a-z0-9][a-z0-9.-]*)(?:/([a-zA-Z0-9._/-]*))?")
 _ORIGINAL = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2})/([0-9]{8}T[0-9]{12}Z)__([0-9a-f]{12})__[^/]+")
@@ -265,6 +273,45 @@ def _build_day(
     return None, ignored
 
 
+def _schedule_archive(
+    raw: BronzeStorage,
+    editions: dict[date, tuple[Edition, ...]],
+    checksum: str,
+    archives: dict[str, bytes],
+) -> bytes:
+    """The schedule ZIP a clean day pins, kept for the next day of the same edition."""
+    if (data := archives.get(checksum)) is not None:
+        return data
+    for edition in {edition for group in editions.values() for edition in group}:
+        if checksum.startswith(edition.sha256):
+            data = raw.read_bytes(edition.key)
+            if hashlib.sha256(data).hexdigest() == checksum:
+                archives.clear()
+                archives[checksum] = data
+                return data
+    raise ValueError("No schedule edition matches the clean day's pinned checksum")
+
+
+def _build_stretch_day(
+    declaration: ProviderManifest,
+    day: date,
+    editions: dict[date, tuple[Edition, ...]],
+    raw: BronzeStorage,
+    clean: BronzeStorage,
+    clean_prefix: str,
+    archives: dict[str, bytes],
+) -> None:
+    provider = declaration.provider.provider_id
+    with TemporaryDirectory(prefix="stretch-source-") as temporary:
+        folder = Path(temporary)
+        manifest = fetch_clean_day(clean, clean_prefix, provider, day, folder)
+        checksum = str(json.loads(manifest)["schedule_sha256"])
+        archive = _schedule_archive(raw, editions, checksum, archives)
+        built = build_from_clean_dir(provider, day, folder, archive, folder)
+        zone = ZoneInfo(declaration.provider.timezone)
+        publish_stretch_day(built, manifest, zone, clean, clean_prefix)
+
+
 def day_captures(
     raw: BronzeStorage,
     raw_prefix: str,
@@ -291,8 +338,15 @@ def run_clean_days(
     *,
     selection: tuple[str, str] | datetime,
     summary: TextIO | None = None,
+    clean_tables: bool = True,
+    stretch_tables: bool = True,
 ) -> None:
-    """Clean explicit dates or catch up as of the scheduled run's start time."""
+    """Clean explicit dates or catch up as of the scheduled run's start time.
+
+    ``clean_tables`` builds missing v12 days and ``stretch_tables`` builds the
+    stretch timing of v12 days that exist. The scheduled service runs them as two
+    units, so stretch timing never delays a v12 day or the engine's copy of it.
+    """
     scheduled_at = selection if isinstance(selection, datetime) else None
     zone = None
     try:
@@ -331,47 +385,80 @@ def run_clean_days(
     incomplete: list[date] = []
     unmeasured: dict[date, UnmeasuredReason] = {}
     failed: dict[date, str] = {}
+    stretch_built: list[date] = []
+    stretch_failed: dict[date, str] = {}
+    archives: dict[str, bytes] = {}
     for ordinal in range(start_day.toordinal(), end_day.toordinal() + 1):
         day = date.fromordinal(ordinal)
-        if zone is not None and scheduled_at is not None and scheduled_at < capture_window_end(
-            service_day_start(day, zone)
+        if (
+            zone is not None
+            and scheduled_at is not None
+            and scheduled_at < capture_window_end(service_day_start(day, zone))
         ):
             incomplete.append(day)
             continue
         marker = f"{clean_prefix}{version_key(provider, day)}/manifest.json"
+        ready = False
         try:
             if clean.exists(marker):
                 skipped.append(day)
-                continue
-            with claim_clean_day(clean, f"{clean_prefix}{provider}/{day}") as acquired:
-                if not acquired:
-                    busy.append(day)
-                    continue
-                if isinstance(clean, S3BronzeStorage) and clean.exists(marker):
-                    skipped.append(day)
-                    continue
-                if editions is None:
-                    editions = discover_editions(raw, raw_prefix, declaration)
-                outcome, ignored = _build_day(
-                    declaration,
-                    day,
-                    editions,
-                    raw,
-                    raw_prefix,
-                    clean,
-                    clean_prefix,
-                    scheduled_at=scheduled_at,
-                )
-                if outcome is None:
-                    built.append(day)
-                elif outcome == "incomplete":
-                    incomplete.append(day)
-                else:
-                    settle(day, outcome, ignored)
-                    unmeasured[day] = outcome
+                ready = True
+            elif not clean_tables:
+                pass
+            else:
+                with claim_clean_day(clean, f"{clean_prefix}{provider}/{day}") as acquired:
+                    if not acquired:
+                        busy.append(day)
+                    elif isinstance(clean, S3BronzeStorage) and clean.exists(marker):
+                        skipped.append(day)
+                        ready = True
+                    else:
+                        if editions is None:
+                            editions = discover_editions(raw, raw_prefix, declaration)
+                        outcome, ignored = _build_day(
+                            declaration,
+                            day,
+                            editions,
+                            raw,
+                            raw_prefix,
+                            clean,
+                            clean_prefix,
+                            scheduled_at=scheduled_at,
+                        )
+                        if outcome is None:
+                            built.append(day)
+                            ready = True
+                        elif outcome == "incomplete":
+                            incomplete.append(day)
+                        else:
+                            settle(day, outcome, ignored)
+                            unmeasured[day] = outcome
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)
+        if not ready or not stretch_tables:
+            continue
+        # Stretch timing follows its v12 day. Its failure leaves the v12 day, and the
+        # engine's copy of it, as they are; the next run tries the day again.
+        stretch_marker = f"{clean_prefix}{stretch_key_prefix(provider, day)}/manifest.json"
+        try:
+            if clean.exists(stretch_marker):
+                continue
+            with claim_clean_day(
+                clean, f"{clean_prefix}{stretch_key_prefix(provider, day)}"
+            ) as acquired:
+                if not acquired or (
+                    isinstance(clean, S3BronzeStorage) and clean.exists(stretch_marker)
+                ):
+                    continue
+                if editions is None:
+                    editions = discover_editions(raw, raw_prefix, declaration)
+                _build_stretch_day(declaration, day, editions, raw, clean, clean_prefix, archives)
+                stretch_built.append(day)
+        except CleanDayNotMeasured:
+            continue
+        except Exception as error:
+            stretch_failed[day] = _failure_reason(error)
     counts = Counter(unmeasured.values())
     typer.echo(
         f"Built {len(built)}, skipped {len(skipped)}, no raw captures {counts['no_raw_captures']}, "
@@ -382,6 +469,7 @@ def run_clean_days(
         typer.echo(f"Unreadable schedule archive {unreadable}")
     if busy:
         typer.echo(f"Deferred {len(busy)} locked service days: {', '.join(map(str, busy))}")
+    typer.echo(f"Stretch timing built {len(stretch_built)}, failed {len(stretch_failed)}")
     if summary is not None:
         print(f"## Clean service days for {provider}\n", file=summary)
         groups: dict[str, Iterable[date]] = {
@@ -391,9 +479,13 @@ def run_clean_days(
             "Still incomplete": incomplete,
             "Recorded as not measured": unmeasured,
             "Failed": failed,
+            "Stretch timing built": stretch_built,
+            "Stretch timing failed": stretch_failed,
         }
         for label, days in groups.items():
             print(f"- {label}: {', '.join(map(str, days)) or 'none'}", file=summary)
+    for day, reason in stretch_failed.items():
+        typer.echo(f"{day}: stretch timing: {reason}", err=True)
     for day, reason in failed.items():
         typer.echo(f"{day}: {reason}", err=True)
     if failed:

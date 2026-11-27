@@ -59,27 +59,44 @@ def test_manual_backfill_marks_a_private_city(registry: ProviderRegistry) -> Non
     assert blank == [{"provider": "alpha", "day": "2026-06-01", "private": False}]
 
 
+@pytest.mark.parametrize(
+    ("flag", "tables"), [("--run-scheduled", (True, False)), ("--run-stretch", (False, True))]
+)
 def test_vm_run_uses_the_scheduled_plan_and_continues_after_a_city_fails(
-    registry: ProviderRegistry, monkeypatch: pytest.MonkeyPatch
+    registry: ProviderRegistry,
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    tables: tuple[bool, bool],
 ) -> None:
-    runs: list[tuple[str, str, str, datetime]] = []
+    runs: list[tuple[str, str, str, datetime, tuple[bool, bool]]] = []
 
-    def clean(provider: str, source: str, dest: str, *, selection: datetime) -> None:
-        runs.append((provider, source, dest, selection))
+    def clean(
+        provider: str,
+        source: str,
+        dest: str,
+        *,
+        selection: datetime,
+        clean_tables: bool,
+        stretch_tables: bool,
+    ) -> None:
+        runs.append((provider, source, dest, selection, (clean_tables, stretch_tables)))
         if provider == "alpha":
             raise typer.Exit(1)
 
     monkeypatch.setattr(ProviderRegistry, "from_project_root", lambda: registry)
     monkeypatch.setattr(clean_days_plan, "run_clean_days", clean)
-    monkeypatch.setattr(sys, "argv", ["clean_days_plan", "--run-scheduled"])
+    monkeypatch.setattr(sys, "argv", ["clean_days_plan", flag])
     with pytest.raises(SystemExit) as error:
         clean_days_plan.main()
 
     assert error.value.code == 1
     assert [provider for provider, *_ in runs] == ["alpha", "beta"]
-    _, _, _, started_at = runs[0]
+    started_at = runs[0][3]
     assert started_at.tzinfo is UTC
-    assert all(run[1:] == ("s3://transit-raw", "s3://transit-clean", started_at) for run in runs)
+    # The v12 run never times stretches; the stretch run never builds v12 days.
+    assert all(
+        run[1:] == ("s3://transit-raw", "s3://transit-clean", started_at, tables) for run in runs
+    )
 
 
 @pytest.mark.parametrize(

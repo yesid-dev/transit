@@ -34,6 +34,7 @@ from transit_ops.ingestion.i3 import build_i3_object_storage_path
 from transit_ops.ingestion.realtime_gtfs import build_realtime_object_storage_path
 from transit_ops.ingestion.storage import S3BronzeStorage
 from transit_ops.providers.registry import load_provider_manifest
+from transit_ops.stretch_day import stretch_key_prefix
 
 DAY = date(2026, 6, 1)
 NEXT = date(2026, 6, 2)
@@ -141,9 +142,7 @@ def test_days_before_the_declared_first_day_are_neither_built_nor_marked(
         str(raw),
         str(dest),
         selection=(
-            datetime(2026, 11, 24, 2, 56, tzinfo=UTC)
-            if scheduled
-            else ("2026-11-15", "2026-11-22")
+            datetime(2026, 11, 24, 2, 56, tzinfo=UTC) if scheduled else ("2026-11-15", "2026-11-22")
         ),
         summary=summary,
     )
@@ -175,9 +174,17 @@ def test_clean_days_command_appends_its_summary(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         app,
         [
-            "clean-days", "--provider", "stm", "--source", str(tmp_path / "raw"),
-            "--dest", str(dest), "--scheduled-at", "2026-11-24T02:56:00+00:00",
-            "--summary", str(summary),
+            "clean-days",
+            "--provider",
+            "stm",
+            "--source",
+            str(tmp_path / "raw"),
+            "--dest",
+            str(dest),
+            "--scheduled-at",
+            "2026-11-24T02:56:00+00:00",
+            "--summary",
+            str(summary),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -261,11 +268,13 @@ def test_dated_notice_uses_latest_decoded_source_update(tmp_path: Path) -> None:
         DayCapture(
             "trip_updates", "trip_updates", captured, str(index), _feed(source).SerializeToString()
         )
-        for index, (captured, source) in enumerate([
-            (MIDNIGHT, MIDNIGHT - timedelta(minutes=1)),
-            (MIDNIGHT + timedelta(minutes=2), MIDNIGHT + timedelta(minutes=1)),
-            (MIDNIGHT + timedelta(minutes=3), MIDNIGHT + timedelta(days=1)),
-        ])
+        for index, (captured, source) in enumerate(
+            [
+                (MIDNIGHT, MIDNIGHT - timedelta(minutes=1)),
+                (MIDNIGHT + timedelta(minutes=2), MIDNIGHT + timedelta(minutes=1)),
+                (MIDNIGHT + timedelta(minutes=3), MIDNIGHT + timedelta(days=1)),
+            ]
+        )
     ]
     legacy = clean_day_inputs.clean_from_inputs(manifest, DAY, schedules, captures)
     assert legacy.source_date is None
@@ -363,12 +372,19 @@ def test_gps_observation_requires_a_feed_without_stopped_reports(
         rows = _rows(db, _run(tmp_path, DAY) / "stop_events.parquet")
     by_sequence = {row["stop_sequence"]: row for row in rows}
     _, _, plain = recompute(
-        tmp_path / "schedule.zip", captures, DAY, {"r"},
-        zone=ZoneInfo("America/Toronto"), no_live_types=set(),
+        tmp_path / "schedule.zip",
+        captures,
+        DAY,
+        {"r"},
+        zone=ZoneInfo("America/Toronto"),
+        no_live_types=set(),
     )
     if has_stopped:
         assert [by_sequence[seq]["basis"] for seq in range(1, 5)] == [
-            "trip_update_passed", "trip_update_passed", "trip_update_passed", "not_observed",
+            "trip_update_passed",
+            "trip_update_passed",
+            "trip_update_passed",
+            "not_observed",
         ]
         assert by_sequence[2]["delay_seconds"] == 60
         assert not any(reading.basis == "vehicle_nearby" for reading in plain.values())
@@ -1052,9 +1068,7 @@ def _verify_schedule(
 
 def test_private_summary_reports_an_unmeasured_day_without_table_counts(tmp_path: Path) -> None:
     (tmp_path / "manifest.json").write_text(
-        json.dumps(
-            {"provider": "test", "service_date": "2026-06-01", "status": "no_raw_captures"}
-        ),
+        json.dumps({"provider": "test", "service_date": "2026-06-01", "status": "no_raw_captures"}),
         encoding="utf-8",
     )
     summary = StringIO()
@@ -1096,9 +1110,19 @@ def test_private_details_reports_alert_languages_and_unmatched_stop_ids(
     _save(tmp_path, feed, "service_alerts", stamp, "sto")
     output = tmp_path / "private"
     result = CliRunner().invoke(
-        app, [
-            "clean-days", "--provider", "sto", "--from", DAY.isoformat(),
-            "--to", DAY.isoformat(), "--source", str(tmp_path), "--dest", str(output),
+        app,
+        [
+            "clean-days",
+            "--provider",
+            "sto",
+            "--from",
+            DAY.isoformat(),
+            "--to",
+            DAY.isoformat(),
+            "--source",
+            str(tmp_path),
+            "--dest",
+            str(output),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -1777,7 +1801,7 @@ def test_range_builds_skips_and_continues(
         earlier_key = f"out/{earlier_marker}"
         assert fake.writes.count(earlier_key) == 1
         fake.writes.remove(earlier_key)
-        assert fake.writes == [
+        assert fake.writes[:9] == [
             f"out/{version_key('stm', DAY)}/{name}"
             for name in (
                 "trip_days.parquet",
@@ -1791,6 +1815,15 @@ def test_range_builds_skips_and_continues(
                 "manifest.json",
             )
         ]
+        # Stretch timing follows the measured day: content-named tables, receipt last.
+        stretch = f"out/{stretch_key_prefix('stm', DAY)}/"
+        assert [key.removeprefix(stretch).split("-")[0] for key in fake.writes[9:]] == [
+            "stretches",
+            "stretch_passes",
+            "stretch_summary",
+            "manifest.json",
+        ]
+        assert all(key.startswith(stretch) for key in fake.writes[9:])
     with duckdb.connect() as db:
         polls = _rows(db, (dest / marker).with_name("feed_polls.parquet"))
         alerts = _rows(db, (dest / marker).with_name("alerts.parquet"))

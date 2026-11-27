@@ -167,6 +167,57 @@ def clean_day_command(
     typer.echo(str(destination))
 
 
+@app.command("stretch-passes")
+def stretch_passes_command(
+    provider: Annotated[str, typer.Option("--provider")],
+    day: Annotated[str, typer.Option("--date", help="Service date, YYYY-MM-DD.")],
+    clean_day: Annotated[
+        Path, typer.Option("--clean-day", help="Local copy of the measured v12 clean day.")
+    ],
+    schedule: Annotated[
+        Path, typer.Option("--schedule", help="The schedule ZIP the clean day pins.")
+    ],
+    out: Annotated[
+        Path, typer.Option("--out", help="Local root; the day goes under stretch/v13/.")
+    ],
+) -> None:
+    """Build one day's stretch passes, summary and stretches from a local v12 day."""
+    import json
+    import time
+    from dataclasses import asdict
+    from tempfile import TemporaryDirectory
+    from zoneinfo import ZoneInfo
+
+    from transit_ops.clean_day_inputs import declaration_for
+    from transit_ops.ingestion.storage import LocalBronzeStorage
+    from transit_ops.stretch_day import build_from_clean_dir, publish_stretch_day
+
+    try:
+        service_date = date.fromisoformat(day)
+        if service_date.isoformat() != day:
+            raise ValueError("Expected a service date in YYYY-MM-DD form")
+        zone = ZoneInfo(declaration_for(provider).provider.timezone)
+        started = time.perf_counter()
+        with TemporaryDirectory(prefix="stretch-") as temporary:
+            built = build_from_clean_dir(
+                provider, service_date, clean_day, schedule.read_bytes(), Path(temporary)
+            )
+        placed = time.perf_counter()
+        out.mkdir(parents=True, exist_ok=True)
+        storage = LocalBronzeStorage(storage_backend="local", root=out)
+        manifest = (clean_day / "manifest.json").read_bytes()
+        files = publish_stretch_day(built, manifest, zone, storage, "")
+        written = time.perf_counter()
+    except (ValueError, OSError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(1) from None
+    timings = {
+        "place_seconds": round(placed - started, 2),
+        "write_seconds": round(written - placed, 2),
+    }
+    typer.echo(json.dumps({"files": files, "facts": asdict(built.facts), **timings}))
+
+
 @app.command("clean-days")
 def clean_days_command(
     provider: Annotated[str, typer.Option("--provider")],

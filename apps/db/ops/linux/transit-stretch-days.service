@@ -1,0 +1,28 @@
+[Unit]
+Description=Build missing Transit stretch timing from clean days in R2
+Wants=network-online.target
+# Started on the cleaner's success, after the engine has copied the new v12 days,
+# so stretch timing never delays them. Its staging folder is emptied every run.
+After=network-online.target transit-engine-sync.service
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+EnvironmentFile=/etc/transit-live/r2-read.env
+EnvironmentFile=/etc/transit-live/r2-write.env
+WorkingDirectory=/opt/transit-live/current/apps/db
+ExecStartPre=/usr/bin/find -H ${STATE_DIRECTORY} -mindepth 1 -delete
+ExecStart=/bin/bash ops/linux/run-clean-days.sh --run-stretch
+ExecStopPost=/usr/bin/find -H ${STATE_DIRECTORY} -mindepth 1 -delete
+StateDirectory=transit-stretch-days
+StateDirectoryMode=0700
+UMask=0077
+MemoryAccounting=yes
+MemoryMax=4G
+Nice=19
+CPUWeight=5
+IOWeight=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
