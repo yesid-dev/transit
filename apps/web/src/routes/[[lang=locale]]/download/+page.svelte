@@ -327,12 +327,12 @@
 										{/if}
 										{#snippet layoutAndFiles()}
 											<div
-												class="flex min-w-0 flex-wrap gap-x-2 gap-y-1"
+												class="download-columns flex min-w-0 flex-wrap gap-x-2 gap-y-1"
 												role="region"
 												aria-label={t('Parquet columns', 'Colonnes du fichier Parquet')}
 											>
 												{#each downloadLayouts[key].columns as column (column)}
-													<code class="min-w-0 wrap-anywhere"
+													<code
 														>{#each column.split(/(?<=_)/u) as part, index (index)}{#if index}<wbr
 																/>{/if}{part}{/each}</code
 													>
@@ -472,6 +472,14 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
 		gap: var(--space-card-gap);
+	}
+	.download-columns {
+		container-type: inline-size;
+	}
+	.download-columns code {
+		max-inline-size: 100%;
+		font-size: min(1em, 11cqi);
+		overflow-wrap: normal;
 	}
 	.sql-example code {
 		white-space: pre-wrap;

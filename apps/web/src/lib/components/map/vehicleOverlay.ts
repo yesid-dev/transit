@@ -349,7 +349,7 @@ export function createVehicleOverlay(
 				});
 		}
 		for (const { feature, x, y, baseSize } of symbols) {
-			if (feature.properties.hasHeading !== 1) continue;
+			if (zoom < 12 || feature.properties.hasHeading !== 1) continue;
 			const angle = headingAngle(feature, x, y, width, height);
 			ctx.save();
 			ctx.translate(x, y);
