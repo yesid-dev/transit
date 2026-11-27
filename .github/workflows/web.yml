@@ -512,6 +512,10 @@ jobs:
       - name: Unit tests
         run: bun run test
 
+      - name: Smoke test the engine warm runner archive
+        working-directory: ${{ github.workspace }}
+        run: node apps/engine/test/warm-runner-release.mjs
+
   e2e:
     needs: [classify, queue-gate, web-dependencies]
     if: ${{ !cancelled() && needs.web-dependencies.result == 'success' && (needs.classify.result != 'success' || needs.classify.outputs.run_e2e != 'false') && (github.event_name != 'push' || github.ref != 'refs/heads/main' || needs.queue-gate.result != 'success' || needs.queue-gate.outputs.queue_proven != 'true') }}

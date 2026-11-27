@@ -10,7 +10,7 @@ import { load as health } from '../../routes/[[lang=locale]]/status/+page.server
 import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 import { warmQuestions } from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
-import { frameClock } from '#lib/site/frameState.ts';
+import { frameClock, frameHref, presetPeriod } from '#lib/site/frameState.ts';
 import { getScheduleEdition } from './engine.ts';
 import { GET as mapRecord } from '../../routes/api/map-record/+server.ts';
 
@@ -24,7 +24,7 @@ afterEach(() => {
 	fetcher.mockClear();
 });
 
-it.each([
+const providers = [
 	{
 		id: 'fixture-north',
 		timezone: 'America/Toronto',
@@ -37,16 +37,18 @@ it.each([
 		record_through: '2026-11-19',
 		inputs: { i3_alerts: false, service_alerts: false },
 	},
-])('warms the same questions that the default screens request for $id', async (provider) => {
+];
+
+it.each(
+	providers.flatMap((provider) =>
+		(['default', '28-days', 'this-month'] as const).map((preset) => ({ provider, preset })),
+	),
+)('warms the $preset screen questions for $provider.id', async ({ provider, preset }) => {
 	vi.useFakeTimers({ toFake: ['Date'] });
 	const now = new Date('2026-11-22T06:30:00Z');
 	vi.setSystemTime(now);
-	const period = defaultPeriod(frameClock(provider, now))!;
-	expect(period).toMatchObject(
-		provider.id === 'fixture-north'
-			? { from: '2026-11-14', to: '2026-11-20' }
-			: { from: '2026-11-13', to: '2026-11-19' },
-	);
+	const clock = frameClock(provider, now);
+	const period = (preset === 'default' ? defaultPeriod(clock) : presetPeriod(preset, clock))!;
 	const origin = 'https://transit1.yesid.dev';
 	const request = new Request(origin);
 	const label = { city: 'Fixture', operator: 'Fixture' };
@@ -58,14 +60,20 @@ it.each([
 	const captureFetch = vi.fn(async () => new Response(null, { status: 503 }));
 	const visit = <T>(load: (event: T) => unknown, path: string) =>
 		load({
-			url: new URL(path, origin),
+			url:
+				preset === 'default' || path.includes('frameMode=live')
+					? new URL(path, origin)
+					: new URL(frameHref(new URL(path, origin), { mode: 'record', period }), origin),
 			request,
 			parent,
 			params: {},
 			fetch: captureFetch,
 			locals: { overviewSchedule: null },
 		} as T);
-	const receipt = '/receipt?frameMode=record&recordFrom=' + period.to + '&recordTo=' + period.to;
+	const receipt =
+		preset === 'default'
+			? `/receipt?frameMode=record&recordFrom=${period.to}&recordTo=${period.to}`
+			: '/receipt';
 	await Promise.all([
 		visit(overview, '/'),
 		visit(lines, '/lines'),
@@ -96,7 +104,8 @@ it.each([
 		url.searchParams.sort();
 		return url.href;
 	});
-	const warm = [...defaultCityQuestions(provider, period), sharedDefaultQuestion];
+	const dailyPeriod = preset === 'default' ? undefined : period;
+	const warm = [...defaultCityQuestions(provider, period, dailyPeriod), sharedDefaultQuestion];
 	expect(captureFetch).toHaveBeenCalledExactlyOnceWith(
 		`/api/live?city=${provider.id}`,
 		expect.anything(),
@@ -217,7 +226,7 @@ it('stays under 30 starts per rolling minute and waits for slow responses', asyn
 			return Response.json({});
 		},
 	});
-	expect(starts[1]).toBe(5_000);
+	expect(starts[1]).toBe(7_200);
 	for (const start of starts) {
 		expect(starts.filter((time) => time >= start && time < start + 60_000).length).toBeLessThan(30);
 	}
