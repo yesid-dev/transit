@@ -16,6 +16,9 @@ html {
 :root {
 	--text-stat-value: 1.75rem;
 	--map-stop-fill: var(--muted-foreground);
+	--map-late-share-anchor: var(--dataviz-severity-critical);
+	/* yesid.design has no blue measure anchor outside the transport status palette. */
+	--map-time-lost-anchor: light-dark(#1f6f9c, #4aa3d4);
 	--size-detail-panel: 360px;
 	--size-detail-rail: 3.7rem;
 	--shadow-detail-panel:
@@ -32,6 +35,10 @@ html {
    ink, as vehicle bodies on the map do. Shape, dash, position and the legend glyphs carry the
    status. Separators and bands drawn in the card colour take Canvas. */
 @media (forced-colors: active) {
+	:root {
+		--map-late-share-anchor: CanvasText;
+		--map-time-lost-anchor: CanvasText;
+	}
 	svg {
 		--dataviz-status-early: CanvasText;
 		--dataviz-status-on-time: CanvasText;

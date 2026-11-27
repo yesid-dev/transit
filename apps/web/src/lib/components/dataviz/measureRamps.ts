@@ -10,8 +10,8 @@ function sequentialRamp(anchor: string, chroma: number) {
 
 /** Colours follow the kit's current colour scheme. Position always runs from low to high. */
 export const measureRamps = {
-	lateShare: sequentialRamp('--dataviz-status-late', 28),
-	timeLost: sequentialRamp('--dataviz-status-early', 25),
+	lateShare: sequentialRamp('--map-late-share-anchor', 28),
+	timeLost: sequentialRamp('--map-time-lost-anchor', 25),
 	crowding: sequentialRamp('--dataviz-occupancy-few-seats', 26),
 };
 
