@@ -163,17 +163,8 @@ for (const locale of PUBLISHED_LOCALES) {
 
 		// The choice holds while the visitor moves to another Live screen in the same tab.
 		await page.goto(localizeHref('/network?frameMode=live', locale, provider));
-		await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
-		const rail2 = page.locator('.app-frame-controls-rail');
-		if (!(await rail2.isVisible())) {
-			// By keyboard: the Controls pill may sit under the footer on a short page.
-			await page
-				.getByRole('button', {
-					name: fr ? /^Options.*Ouvrir les options/ : /^Controls.*Open controls/,
-				})
-				.focus();
-			await page.keyboard.press('Enter');
-		}
+		// The Controls pill may sit under the footer on a short page.
+		const rail2 = await openFrameControls(page, locale, 'keyboard');
 		const next = rail2.getByRole('switch', { name });
 		await expect(next).toHaveAttribute('aria-checked', 'true');
 		const resumed = page.waitForResponse((response) => captureUrl.test(response.url()));
