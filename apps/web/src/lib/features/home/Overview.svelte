@@ -44,6 +44,7 @@
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { recordSectionLinks } from '../record/recordLinks.ts';
+	import { unsettledTrips } from '../record/tripOutcomes.ts';
 	import {
 		lastGoodNote,
 		recordConnection,
@@ -287,9 +288,7 @@
 				{@const deliveryShare = overviewValue(delivery, 'trips_run')}
 				{#if delivery.kind === 'answer' && deliveryShare != null}
 					{@const { ran, eligible } = delivery.answer.evidence.counts}
-					{@const unconfirmed =
-						delivery.answer.evidence.counts.unconfirmed ??
-						delivery.answer.evidence.excluded?.unconfirmed}
+					{@const unconfirmed = unsettledTrips(delivery.answer.evidence)}
 					{@const bounds =
 						ran != null && eligible != null && unconfirmed != null
 							? unconfirmedTripsRange(ran, eligible, unconfirmed, locale)

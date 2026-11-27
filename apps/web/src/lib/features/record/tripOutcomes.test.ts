@@ -5,9 +5,15 @@ import {
 	tripOutcomeNote,
 	tripsRunBase,
 	tripsRunSentence,
+	unconfirmedTripsRange,
 } from '#lib/site/presenter.ts';
 import { realTripsRun } from './tripOutcomes.fixture.ts';
-import { sumTripOutcomes, tripOutcomes, type TripOutcomes } from './tripOutcomes.ts';
+import {
+	sumTripOutcomes,
+	tripOutcomes,
+	unsettledTrips,
+	type TripOutcomes,
+} from './tripOutcomes.ts';
 
 type Row = readonly [number, number, number, number, number, number];
 function evidence([scheduled, eligible, ran, cancelled, missing, noLive]: Row) {
@@ -77,5 +83,48 @@ describe('trip outcomes on real engine answers', () => {
 		const french = [...Object.values(tripOutcomeLabels('fr')), tripOutcomeNote('fr')].join(' ');
 		expect(french).not.toMatch(/agence/u);
 		expect(tripOutcomeLabels('fr').cancelled).toBe('Annulés, avec avis de la société de transport');
+	});
+});
+
+// The truth pass's recount for STM, 19 to 25 November 2026: 5,343 trips never settled.
+describe('the delivered-trips range', () => {
+	const week = {
+		counts: { scheduled: 122_410, eligible: 106_631, ran: 105_782, cancelled: 834, missing: 15 },
+		excluded: { route_without_live_data: 10_436, capture_gap: 0, unconfirmed: 5343 },
+	};
+
+	it('counts the Status unknown column, capture gaps included, so the range matches the table', () => {
+		expect(unsettledTrips(week)).toBe(5343);
+		const gap = {
+			counts: { scheduled: 1000, eligible: 800, ran: 790, cancelled: 6, missing: 4 },
+			excluded: { route_without_live_data: 100, capture_gap: 60, unconfirmed: 40 },
+		};
+		expect(unsettledTrips(gap)).toBe(100);
+		expect(tripOutcomes(gap)?.statusUnknown).toBe(100);
+	});
+
+	it('falls back to the engine count when the answer has no breakdown', () => {
+		expect(unsettledTrips({ counts: { ran: 9, eligible: 10, unconfirmed: 1 } })).toBe(1);
+		expect(unsettledTrips({ counts: { ran: 9, eligible: 10 }, excluded: { unconfirmed: 2 } })).toBe(
+			2,
+		);
+		expect(unsettledTrips({ counts: { ran: 9, eligible: 10 } })).toBeNull();
+	});
+
+	it.each([
+		['en', '5,343 more trips could not be confirmed, run or not: between 94.5% and 99.2% ran.'],
+		[
+			'fr',
+			'5 343 autres trajets n’ont pas pu être confirmés, effectués ou non : entre 94,5 % et 99,2 % des trajets ont été effectués.',
+		],
+	] as const)('says one sentence on every screen in %s', (locale, sentence) => {
+		const outcomes = tripOutcomes(week)!;
+		const range = unconfirmedTripsRange(
+			outcomes.ran,
+			outcomes.known,
+			unsettledTrips(week)!,
+			locale,
+		);
+		expect(range && plain(range)).toBe(sentence);
 	});
 });

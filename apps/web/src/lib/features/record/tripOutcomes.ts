@@ -46,3 +46,18 @@ export function sumTripOutcomes(rows: readonly TripOutcomes[]): TripOutcomes {
 		for (const key of Object.keys(total) as (keyof TripOutcomes)[]) total[key] += row[key];
 	return total;
 }
+
+/**
+ * Trips whose outcome the record never settled, for the delivered-trips range every screen
+ * prints the same way (presenter.ts unconfirmedTripsRange). It is the "Status unknown" column
+ * of the full breakdown when the answer carries one, so the range and the table agree; an
+ * answer without the breakdown falls back to the engine's unconfirmed count.
+ */
+export function unsettledTrips(evidence: {
+	counts: CountMap;
+	excluded?: CountMap | null;
+}): number | null {
+	const outcomes = tripOutcomes(evidence);
+	if (outcomes) return outcomes.statusUnknown;
+	return evidence.counts.unconfirmed ?? evidence.excluded?.unconfirmed ?? null;
+}

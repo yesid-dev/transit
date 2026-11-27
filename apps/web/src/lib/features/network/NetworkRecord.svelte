@@ -2,11 +2,14 @@
 	import { page } from '$app/state';
 	import {
 		agencyName,
+		citationSource,
+		pageCitation,
 		recordPercent,
 		tripOutcomeHeaders,
 		tripOutcomeLabels,
 		tripOutcomeNote,
 		tripsRunBase,
+		unconfirmedTripsRange,
 	} from '#lib/site/presenter.ts';
 	import { tripOutcomes } from '../record/tripOutcomes.ts';
 	import FactList from '#lib/features/record/FactList.svelte';
@@ -22,11 +25,9 @@
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import {
 		countedUnit,
-		citeDates,
 		dateRange,
 		delayReading,
 		deliveryFacts,
-		methodEvidence,
 		recordRatio,
 		recordStamp,
 		rowSentence,
@@ -57,7 +58,7 @@
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import NetworkRecordReading from './NetworkRecordReading.svelte';
-	import { deliveryUncertainty, networkCrowdingRows } from './networkRecordText.ts';
+	import { networkCrowdingRows } from './networkRecordText.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 
 	let {
@@ -92,7 +93,7 @@
 		trend: t('Day by day', 'Jour par jour'),
 		delivery: t('Trips run, cancelled and missing', 'Trajets effectués, annulés et manquants'),
 		hours: t('By hour and weekday', 'Par heure et jour de la semaine'),
-		crowding: t('Crowding', 'Places à bord'),
+		crowding: t('Room on board', 'Places à bord'),
 	});
 	const csv = $derived(
 		Object.entries(copy).map(([section, label]) => ({
@@ -258,10 +259,13 @@
 										{#snippet citation()}
 											<CiteBlock
 												{locale}
-												text={`Transit. ${t('Network health', 'Santé du réseau')} (${record.city}). ${citeDates(
+												text={pageCitation(
+													`${t('Network health', 'Santé du réseau')}, ${subject}`,
 													record.period,
+													pinned.href,
 													locale,
-												)}. ${methodEvidence(answer.evidence, locale)} ${pinned.href}`}
+													citationSource(operator, page.data.provider, locale),
+												)}
 											/>
 										{/snippet}
 									</RecordActionGroup>
@@ -449,7 +453,12 @@
 									? tripOutcomes(result.evidence)
 									: null}
 							{#if outcomes && !('cells' in result)}
-								{@const uncertainty = deliveryUncertainty(outcomes, locale)}
+								{@const uncertainty = unconfirmedTripsRange(
+									outcomes.ran,
+									outcomes.known,
+									outcomes.statusUnknown,
+									locale,
+								)}
 								<dl class="mb-4 grid gap-2">
 									<div class="flex flex-wrap justify-between gap-x-3">
 										<dt>{term.delivery}</dt>
@@ -535,7 +544,7 @@
 							<RecordDataTable
 								{locale}
 								title={copy.crowding}
-								rowHeader={t('Space on board', 'Place à bord')}
+								rowHeader={t('Room on board', 'Places à bord')}
 								columns={crowdingColumns}
 								rows={networkCrowdingRows(result.value, locale)}
 								scrollMinWidth="24rem"

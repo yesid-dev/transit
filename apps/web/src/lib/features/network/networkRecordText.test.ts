@@ -1,9 +1,7 @@
 import { expect, it } from 'vitest';
 import { measure } from '#lib/features/home/overviewRecord.fixture.ts';
 import type { ScorecardAnswer } from '#lib/server/engine.ts';
-import { tripOutcomes } from '../record/tripOutcomes.ts';
 import {
-	deliveryUncertainty,
 	networkCrowdingRows,
 	networkMeasures,
 	networkRows,
@@ -22,24 +20,6 @@ const base: ScorecardAnswer = {
 		days_not_measured_reasons: {},
 	},
 };
-
-it.each([
-	[
-		'en',
-		'Status could not be confirmed for 5,343 trips. Including those trips, between 94.5% and 99.2% ran.',
-	],
-	[
-		'fr',
-		'Impossible de confirmer le statut de 5 343 trajets. En les comptant, la part des trajets effectués se situe entre 94,5 % et 99,2 %.',
-	],
-] as const)('bounds delivery across unknown outcomes in %s', (locale, sentence) => {
-	const outcomes = tripOutcomes({
-		counts: { scheduled: 122410, eligible: 106631, ran: 105782, cancelled: 834, missing: 15 },
-		excluded: { route_without_live_data: 10436, capture_gap: 0 },
-	});
-	expect(outcomes).not.toBeNull();
-	expect(deliveryUncertainty(outcomes!, locale)?.replace(/[\u00a0\u202f]/gu, ' ')).toBe(sentence);
-});
 
 it.each([
 	['en', ['Many seats available', 'Few seats available', 'Standing room only', 'Full']],
