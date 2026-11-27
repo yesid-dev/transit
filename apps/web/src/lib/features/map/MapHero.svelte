@@ -27,7 +27,6 @@
 	import { liveStamp, stampText } from '#lib/v1/stamp.ts';
 	import RefreshButton from '#lib/components/shell/RefreshButton.svelte';
 	import { livePause } from '#lib/live/livePause.ts';
-	import { formatRelativeSeconds } from '#lib/utils/time.ts';
 	import {
 		FrameControlsContentContext,
 		FrameControlsExtensionContext,
@@ -503,44 +502,7 @@
 	const liveTime = $derived(
 		liveStamp({ ...presentation.stamp, notResponding: presentation.stamp.ageLabel != null }),
 	);
-	const liveStampLabel = $derived(
-		!wide &&
-			remWidth >= 24 &&
-			!livePause.paused &&
-			liveTime.ageSeconds !== null &&
-			liveTime.state === 'current'
-			? `${tr('Live', 'En direct')} · ${formatRelativeSeconds(liveTime.ageSeconds, locale)}`
-			: stampText(liveTime, locale, timeZone),
-	);
-	const compactNotice = $derived.by(() => {
-		switch (presentation.bannerState) {
-			case 'global-stall':
-				return tr('Live feed stalled', 'Direct interrompu');
-			case 'partial-stall':
-				return tr('Partial live data', 'Direct partiel');
-			case 'no-vehicles':
-				return tr('No vehicles', 'Aucun véhicule');
-			case 'unavailable':
-			case 'selected-family-failure':
-				return tr('Live data unavailable', 'Direct indisponible');
-			default:
-				return null;
-		}
-	});
-	const compactLiveStampLabel = $derived(
-		livePause.paused
-			? tr('Live paused', 'Direct en pause')
-			: (compactNotice ??
-					(liveTime.state === 'current' && liveTime.ageSeconds !== null
-						? tr('Live', 'En direct') +
-							' · ' +
-							(liveTime.ageSeconds < 10
-								? tr('now', 'maintenant')
-								: formatRelativeSeconds(liveTime.ageSeconds, locale))
-						: liveTime.ageSeconds === null
-							? tr('Update time unknown', 'Heure de mise à jour inconnue')
-							: tr('Last report', 'Dernier signalement'))),
-	);
+	const liveStampLabel = $derived(stampText(liveTime, locale, timeZone));
 
 	let mapFiltersOpen = $state(false);
 	let reportCamera = $state.raw<MapReportCamera | null>(null);
@@ -1196,7 +1158,7 @@
 	/>
 {/snippet}
 
-{#snippet liveStampContent(label: string)}
+{#snippet liveStampContent()}
 	<span
 		class="inline-flex min-w-0"
 		data-slot="freshness-stamp"
@@ -1205,8 +1167,8 @@
 		data-stale={presentation.stamp.isStale}
 		title={liveStampLabel}
 	>
-		<time class="min-w-0" datetime={liveTime.generatedUtc ?? undefined}>
-			<Stamp kind="live" {label} late={presentation.stamp.isStale} />
+		<time class="min-w-0 whitespace-normal" datetime={liveTime.generatedUtc ?? undefined}>
+			<Stamp kind="live" label={liveStampLabel} late={presentation.stamp.isStale} />
 		</time>
 	</span>
 {/snippet}
@@ -1220,7 +1182,7 @@
 		</div>
 	{:else if !isRecordLayer && presentation.stamp.visible}
 		<div class="map-stamp-line">
-			{@render liveStampContent(liveStampLabel)}
+			{@render liveStampContent()}
 			<RefreshButton {locale} fixedTapTarget />
 		</div>
 	{/if}
@@ -1370,9 +1332,9 @@
 		{@render stage()}
 		{#if !wide && !isRecordLayer}
 			<div class="map-live-chip map-head" data-slot="map-live-chip">
-				{#if presentation.stamp.visible || compactNotice}
-					<RefreshButton {locale} visibleLabel={compactLiveStampLabel}
-						>{@render liveStampContent(compactLiveStampLabel)}</RefreshButton
+				{#if presentation.stamp.visible || presentation.bannerState !== 'idle'}
+					<RefreshButton {locale} visibleLabel={liveStampLabel}
+						>{@render liveStampContent()}</RefreshButton
 					>
 				{/if}
 				{#if !inViewOpen && !detailOpen}
@@ -1392,16 +1354,6 @@
 					status={northStatus}
 					onreset={turnNorth}
 					docked
-				/>
-			{/if}
-			{#if !wide && !mapFailure}
-				<MapNorthControl
-					copy={t}
-					{...orientation}
-					status={northStatus}
-					onreset={turnNorth}
-					docked
-					reserveSpace={false}
 				/>
 			{/if}
 			<Button
@@ -1441,6 +1393,16 @@
 						aria-hidden="true"
 					/>{/if}</Button
 			>
+			{#if !wide && !mapFailure}
+				<MapNorthControl
+					copy={t}
+					{...orientation}
+					status={northStatus}
+					onreset={turnNorth}
+					docked
+					reserveSpace={false}
+				/>
+			{/if}
 		</div>
 	</MapFrame>
 	{#if !wide}
@@ -1487,7 +1449,7 @@
 				{detents}
 				bind:detent={inViewDetent}
 				handleLabel={sheetCopy[locale].height}
-				class="max-h-dvh overflow-hidden p-4"
+				class="max-h-dvh overflow-hidden p-4 data-[detent=peek]:py-2"
 				data-slot="bottom-sheet"
 				data-m6c2-detail-sheet
 				data-map-in-view-sheet
@@ -1718,6 +1680,11 @@
 		justify-items: end;
 		gap: 0.5rem;
 		z-index: 1;
+	}
+	.map-hero[data-map-wide='false'] .map-camera-actions :global([data-slot='map-north']) {
+		position: absolute;
+		inset-block-start: calc(100% + 0.5rem);
+		inset-inline-end: 0;
 	}
 	@media (orientation: landscape) and (max-height: 32rem) {
 		.map-hero[data-map-wide='false'] .map-camera-actions {

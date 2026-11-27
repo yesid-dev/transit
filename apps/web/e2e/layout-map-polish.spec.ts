@@ -72,13 +72,17 @@ for (const provider of ['stm', 'octranspo'])
 							page.locator('[data-frame-controls="desktop"]').locator('xpath=ancestor::aside'),
 						);
 					} else {
-						await expectAboveMapSource(
-							page,
-							page.getByRole('dialog', {
-								name: locale === 'fr' ? 'Options' : 'Controls',
-								exact: true,
-							}),
-						);
+						const sheet = page.locator('[data-map-in-view-sheet]');
+						await expect(
+							sheet.getByRole('tab', { name: locale === 'fr' ? 'Options' : 'Controls' }),
+						).toHaveAttribute('aria-selected', 'true');
+						await expect(page.locator('[data-slot="map-source-footer"]')).toBeHidden();
+						const box = (await sheet.boundingBox())!;
+						const viewport = page.viewportSize()!;
+						expect(box.x).toBeGreaterThanOrEqual(0);
+						expect(box.y).toBeGreaterThanOrEqual(0);
+						expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+						expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
 					}
 					const heading = panel.getByRole('heading', { name: 'Positions' });
 					const h = (await heading.boundingBox())!;

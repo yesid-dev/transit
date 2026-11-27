@@ -296,6 +296,10 @@ for (const provider of read('providers').providers) {
 				await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
 				await page.clock.setFixedTime(epoch + 900_000);
 				await page.goto((locale === 'fr' ? '/fr' : '') + '/map?provider=' + provider.id);
+				await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+					'data-map-progressive-state',
+					'ready',
+				);
 				const frame = page.locator('[data-slot="map-frame"]');
 				const title = frame.locator('[data-slot="map-title"]');
 				const stamp = frame.locator('[data-slot="freshness-stamp"]');

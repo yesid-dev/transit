@@ -103,7 +103,7 @@
 		size={children ? 'sm' : 'icon-tap'}
 		class={children ? 'min-h-11 max-w-full gap-1 px-0' : undefined}
 		style={fixedTapTarget ? 'width: var(--size-tap-min); height: var(--size-tap-min);' : undefined}
-		aria-label={visibleLabel ? `${visibleLabel}. ${label}` : label}
+		aria-label={visibleLabel && !refreshing ? `${visibleLabel}. ${label}` : label}
 		title={label}
 		onclick={onClick}
 		disabled={refreshing}

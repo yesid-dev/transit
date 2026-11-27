@@ -9,6 +9,7 @@ import { SURFACE_NAV } from '../src/lib/content/nav';
 import { copy as mapCopy } from '../src/lib/features/map/map.copy';
 import { PUBLISHED_LOCALES } from '../src/lib/i18n/config';
 import { localizeHref } from '../src/lib/i18n/routing';
+import { stampCopy } from '../src/lib/v1/stamp.copy';
 
 const fixture = (name: string) =>
 	JSON.parse(readFileSync(new URL(`./${name}`, import.meta.url), 'utf8'));
@@ -247,7 +248,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		const chip = page.locator('[data-slot="map-live-chip"]');
 		const compact = await chip.isVisible();
 		if (compact) {
-			await expect(chip).toContainText(locale === 'fr' ? 'Direct interrompu' : 'Live feed stalled');
+			await expect(chip).toContainText(stampCopy[locale].live('data', 'not-responding', null));
 		}
 		const controls = [
 			compact ? chip : banner,
