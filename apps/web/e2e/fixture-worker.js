@@ -1,7 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import worker from '../.svelte-kit/cloudflare/_worker.js';
+import { fixtureWorkerBindings } from './fixture-worker-bindings.js';
 
 const header = 'x-transit-fixture-scope';
+const scheduleHoldHeader = 'x-transit-fixture-schedule-hold';
 const context = new AsyncLocalStorage();
 const workerFetch = globalThis.fetch.bind(globalThis);
 
@@ -22,7 +24,10 @@ globalThis.fetch = (input, init) => {
 	)
 		return workerFetch(input, init);
 	const headers = new Headers(input.headers);
-	headers.set(header, fixture.scope);
+	if (fixture.scope) headers.set(header, fixture.scope);
+	if (fixture.scheduleHold && url.pathname.endsWith('/schedule-index')) {
+		headers.set(scheduleHoldHeader, fixture.scheduleHold);
+	}
 	return workerFetch(new Request(input, { headers }), init);
 };
 
@@ -30,12 +35,16 @@ export default {
 	fetch(request, env, ctx) {
 		const origin = env.QUESTION_FIXTURE_ORIGIN;
 		const scope = request.headers.get(header);
-		// This scenario publishes a different catalogue. Give it a separate Worker cache.
-		if (scope === 'record-yesterday' && env.RECORD_YESTERDAY_FIXTURE) {
-			return env.RECORD_YESTERDAY_FIXTURE.fetch(request);
+		const scheduleHold = request.headers.get(scheduleHoldHeader);
+		const binding = Object.hasOwn(fixtureWorkerBindings, scope) && fixtureWorkerBindings[scope];
+		if (binding && env[binding]) {
+			return env[binding].fetch(request);
 		}
-		return context.run(origin && scope && !env.QUESTION_PROXY ? { origin, scope } : null, () =>
-			worker.fetch(request, env, ctx),
+		return context.run(
+			origin && (scope || scheduleHold) && !env.QUESTION_PROXY
+				? { origin, scope, scheduleHold }
+				: null,
+			() => worker.fetch(request, env, ctx),
 		);
 	},
 };
