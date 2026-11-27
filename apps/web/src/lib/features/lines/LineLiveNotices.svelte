@@ -131,7 +131,7 @@
 	{#snippet links()}
 		{#if tracked}
 			<a class="inline-flex min-h-11 items-center text-primary underline" {href}
-				>{t('All alerts in effect', 'Tous les avis en vigueur')}</a
+				>{t('All notices in effect', 'Tous les avis en vigueur')}</a
 			>
 		{:else if officialAlertsUrl}
 			<a class="inline-flex min-h-11 items-center text-primary underline" href={officialAlertsUrl}

@@ -352,11 +352,11 @@
 		<ShowMore {shown} total={ordered.length} {pageSize} {labels} onMore={showMore} />
 	{:else}
 		<p role="status">
-			{t('No alerts match these filters.', 'Aucun avis ne correspond à ces filtres.')}
+			{t('No notices match these filters.', 'Aucun avis ne correspond à ces filtres.')}
 		</p>
 	{/if}
 {:else}
-	<p>{t('No alerts in effect.', 'Aucun avis en vigueur.')}</p>
+	<p>{t('No notices in effect.', 'Aucun avis en vigueur.')}</p>
 {/if}
 
 <style>

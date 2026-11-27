@@ -100,7 +100,7 @@ for (const width of [390, 1440]) {
 			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five parts');
 			await expect(periods.getByRole('rowheader')).toHaveCount(5);
 			await expect(periods).toContainText(fr ? 'Trop peu observé' : 'Too little observed');
-			const messages = section(fr ? 'Avis de la société de transport' : 'Agency messages');
+			const messages = section(fr ? 'Avis de la société de transport' : 'Agency notices');
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveCount(1);
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveAttribute('lang', lang);
 			await expect(messages).toContainText(fr ? 'Détour sur la ligne 24' : 'Detour on 24');
@@ -115,7 +115,7 @@ for (const width of [390, 1440]) {
 			const csv = await page
 				.getByRole('dialog')
 				.getByRole('link', {
-					name: fr ? 'Avis de la société de transport' : 'Agency messages',
+					name: fr ? 'Avis de la société de transport' : 'Agency notices',
 					exact: true,
 				})
 				.getAttribute('href');
@@ -142,7 +142,7 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 	const href = '/receipt?provider=stm&frameMode=record&recordFrom=2026-11-17&recordTo=2026-11-17';
 	const hold = dailyMessageHold(request);
 	const other = dailyMessageHold(request);
-	const messages = page.getByRole('article', { name: 'Agency messages' });
+	const messages = page.getByRole('article', { name: 'Agency notices' });
 	const pending = 'These records take longer';
 	try {
 		expect((await hold.start()).status()).toBe(204);
@@ -161,7 +161,7 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 
 		expect((await hold.release()).status()).toBe(204);
 		await expect(messages).toContainText(
-			'Not tracked: Transit did not collect STM’s alerts on these dates.',
+			'Not tracked: Transit did not collect STM’s notices on these dates.',
 		);
 	} finally {
 		await hold.release();

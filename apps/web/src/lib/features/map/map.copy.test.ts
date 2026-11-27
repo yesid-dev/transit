@@ -34,7 +34,7 @@ describe('map copy', () => {
 			bootUnavailable:
 				'Basemap preview unavailable for Example City. The live map loads automatically.',
 			staticBody:
-				'Static, non-live basemap. No vehicles, stops, service alerts, or freshness data are shown.',
+				'Static, non-live basemap. No vehicles, stops, notices or freshness data are shown.',
 			staticUnavailable: 'Basemap preview unavailable for Example City.',
 		});
 		expect(mapCopy('fr', 'Example City')).toMatchObject({

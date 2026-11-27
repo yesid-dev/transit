@@ -112,9 +112,9 @@ it.each([
 		expect(dot.getAttribute('class')).toContain(color);
 	},
 );
-it('an alerts stamp from a feed says Live alerts', () => {
+it('an alerts stamp from a feed says Live notices', () => {
 	const { container } = render(FreshnessStamp, {
 		props: { presentation: stampFixture(), subject: 'alerts', locale: 'en' },
 	});
-	expect(container.querySelector('time')).toHaveTextContent('Live alerts · updated 12 s ago');
+	expect(container.querySelector('time')).toHaveTextContent('Live notices · updated 12 s ago');
 });

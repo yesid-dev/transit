@@ -121,7 +121,7 @@ function alertRows(
 ): HealthRow[] {
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const alerts = { id: 'alerts', label: t('Service alerts', 'Avis de service') };
-	const effect = { id: 'alert_effects', label: t('Effect of each alert', 'Effet de chaque avis') };
+	const effect = { id: 'alert_effects', label: t('Effect of each notice', 'Effet de chaque avis') };
 	// One row says it once: the effects of alerts Transit does not collect are not tracked either.
 	if (!effects)
 		return [{ ...alerts, state: 'alerts_not_tracked', note: alertsNotCollected(agency, locale) }];
@@ -147,7 +147,7 @@ function alertRows(
 	}
 	const alertCount = (value: number) =>
 		t(
-			`${tally(value, locale)} ${value === 1 ? 'alert' : 'alerts'}`,
+			`${tally(value, locale)} ${value === 1 ? 'notice' : 'notices'}`,
 			`${tally(value, locale)} avis`,
 		);
 	if (!total)
@@ -155,12 +155,12 @@ function alertRows(
 			{
 				...alerts,
 				state: 'published',
-				note: t('No alert in these dates', 'Aucun avis à ces dates'),
+				note: t('No notice in these dates', 'Aucun avis à ces dates'),
 			},
 			{
 				...effect,
 				state: 'not_measured',
-				note: t('No alert to check', 'Aucun avis à vérifier'),
+				note: t('No notice to check', 'Aucun avis à vérifier'),
 			},
 		];
 	return [

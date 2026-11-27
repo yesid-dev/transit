@@ -132,7 +132,7 @@ describe('alertDisplayText', () => {
 				},
 				'en',
 			),
-		).toEqual({ text: 'Service alert', lang: 'en', isFallback: false });
+		).toEqual({ text: 'Notice', lang: 'en', isFallback: false });
 	});
 
 	it('uses the bilingual generic fallback only when no meaningful source copy exists', () => {
@@ -143,22 +143,22 @@ describe('alertDisplayText', () => {
 		};
 
 		expect(alertDisplayText(genericOnly, 'en')).toEqual({
-			text: 'Service alert',
+			text: 'Notice',
 			lang: 'en',
 			isFallback: false,
 		});
 		expect(alertDisplayText(genericOnly, 'fr')).toEqual({
-			text: 'Alerte de service',
+			text: 'Avis',
 			lang: 'fr',
 			isFallback: false,
 		});
 		expect(alertDisplayText({}, 'en')).toEqual({
-			text: 'Service alert',
+			text: 'Notice',
 			lang: 'en',
 			isFallback: false,
 		});
 		expect(alertDisplayText({}, 'fr')).toEqual({
-			text: 'Alerte de service',
+			text: 'Avis',
 			lang: 'fr',
 			isFallback: false,
 		});

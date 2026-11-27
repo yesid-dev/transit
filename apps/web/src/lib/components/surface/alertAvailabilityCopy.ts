@@ -10,7 +10,7 @@ export const alertUnavailableCopy = defineCopy({
 	en: {
 		title: 'Service alerts unavailable',
 		body: (operator: string) =>
-			`No ${operator} alert feed is connected here. This does not mean there are no disruptions.`,
-		link: 'Check official service alerts',
+			`No ${operator} notice feed is connected here. This does not mean there are no disruptions.`,
+		link: 'Check the official notices',
 	},
 });

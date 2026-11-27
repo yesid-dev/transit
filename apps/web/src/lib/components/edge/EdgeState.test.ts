@@ -13,7 +13,7 @@ const TITLES = {
 	'stale-offline': { en: 'Data is behind', fr: 'Données en retard' },
 	'no-results': { en: 'No results', fr: 'Aucun résultat' },
 	empty: { en: 'Nothing to show', fr: 'Rien à afficher' },
-	'empty-avis': { en: 'No alerts', fr: 'Aucun avis' },
+	'empty-avis': { en: 'No notices', fr: 'Aucun avis' },
 	'error-v1': { en: 'Data unavailable', fr: 'Données indisponibles' },
 } satisfies Record<string, Record<Locale, string>>;
 

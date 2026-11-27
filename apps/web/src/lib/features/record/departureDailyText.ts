@@ -19,7 +19,7 @@ export const dailyTitles = {
 	periods: ['The day in five periods', 'La journée en cinq périodes'],
 	lines: ['Lines to inspect', 'Lignes à examiner'],
 	stops: ['Stops to inspect', 'Arrêts à examiner'],
-	messages: ['Agency messages', 'Avis de la société de transport'],
+	messages: ['Agency notices', 'Avis de la société de transport'],
 } as const;
 
 export const departureTitles = {

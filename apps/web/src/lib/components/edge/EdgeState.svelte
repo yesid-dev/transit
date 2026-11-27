@@ -113,8 +113,8 @@
 			},
 			en: {
 				glyph: '○',
-				title: 'No alerts',
-				body: 'No alerts are reported in this window.',
+				title: 'No notices',
+				body: 'No notices are reported in this window.',
 			},
 		},
 		'error-v1': {

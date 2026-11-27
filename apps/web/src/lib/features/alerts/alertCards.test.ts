@@ -57,7 +57,7 @@ it.each([
 	[
 		'en',
 		'Stop Sherbrooke / Davidson is closed.',
-		'STM published no alert for this stop on these dates.',
+		'STM published no notice for this stop on these dates.',
 		'Notices for line 361',
 	],
 	[

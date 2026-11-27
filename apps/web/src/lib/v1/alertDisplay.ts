@@ -5,12 +5,12 @@ const FALLBACK = defineCopy({
 	fr: {
 		unspecified: '(langue source non précisée)',
 		unavailable: '(traduction indisponible)',
-		serviceAlert: 'Alerte de service',
+		serviceAlert: 'Avis',
 	},
 	en: {
 		unspecified: '(Source language unspecified)',
 		unavailable: '(Translation unavailable)',
-		serviceAlert: 'Service alert',
+		serviceAlert: 'Notice',
 	},
 });
 

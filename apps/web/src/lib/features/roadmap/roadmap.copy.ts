@@ -83,7 +83,7 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 			fr: 'Le réseau en ce moment.',
 		},
 		description: {
-			en: 'Where each vehicle is, how late it runs and the agency’s service alerts, as its live feed reports them.',
+			en: 'Where each vehicle is, how late it runs and the agency’s notices, as its live feed reports them.',
 			fr: 'Où se trouve chaque véhicule, son retard et les avis de service de la société de transport, tels que son flux en temps réel les donne.',
 		},
 		screens: ['overview', 'map', 'network', 'alerts'],
