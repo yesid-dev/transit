@@ -61,6 +61,26 @@ export function loadLineRecord(
 		scheduleOnly ? Object.keys(schedule) : Object.keys(lineRecordQueries)
 	) as LineSection[];
 	const include = (section: string) => !only || only.has(section);
+	const ask = (section: LineSection) => {
+		const query = lineRecordQuery(section, line, direction);
+		return getRecordAnswer(
+			section === 'alerts' && alertDetailsAllowed(period)
+				? { ...query, parameters: { ...query.parameters, alert_details: '1' } }
+				: query,
+			scope,
+		);
+	};
+	// The answer at the top of the screen reaches the engine first.
+	const punctuality =
+		sections.includes('punctuality') && include('punctuality')
+			? getRecordAnswer(lineRecordQuery('punctuality', line, direction), scope, { lead: true })
+			: null;
+	const network =
+		!scheduleOnly && include('network')
+			? getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope, {
+					lead: true,
+				})
+			: null;
 	return {
 		period,
 		city,
@@ -76,10 +96,7 @@ export function loadLineRecord(
 						scope,
 					)
 				: null,
-		network:
-			!scheduleOnly && include('network')
-				? getRecordAnswer({ path: '/measure', parameters: { measure: 'on_time' } }, scope)
-				: null,
+		network,
 		networkDaily:
 			!scheduleOnly && include('networkDaily')
 				? getRecordAnswer(
@@ -87,17 +104,9 @@ export function loadLineRecord(
 						scope,
 					)
 				: null,
-		sections: sections.filter(include).map((section) => {
-			const query = lineRecordQuery(section, line, direction);
-			return {
-				section,
-				answer: getRecordAnswer(
-					section === 'alerts' && alertDetailsAllowed(period)
-						? { ...query, parameters: { ...query.parameters, alert_details: '1' } }
-						: query,
-					scope,
-				),
-			};
-		}),
+		sections: sections.filter(include).map((section) => ({
+			section,
+			answer: section === 'punctuality' && punctuality ? punctuality : ask(section),
+		})),
 	};
 }

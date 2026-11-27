@@ -250,40 +250,68 @@ function servedPage() {
  * only orders arrival: no card ever waits for another card's answer.
  */
 const QUICK_HEAD_START_MS = 300;
-const quickReadings = new WeakMap<object, Promise<unknown>[]>();
+/**
+ * How long the page's other quick questions give its lead questions (the reading at the top of the
+ * screen) to reach the engine first. Like the heavy head start, it only orders arrival.
+ */
+const LEAD_HEAD_START_MS = 150;
+type PageReadings = { lead: Promise<unknown>[]; quick: Promise<unknown>[] };
+const pageReadings = new WeakMap<object, PageReadings>();
+
+/** Whether a record question carries the reading at the top of its screen. */
+export type RecordOrder = { lead?: boolean };
+
+/** Resolves when the readings settle or the head start ends, whichever comes first. */
+async function headStart(readings: Promise<unknown>[], ms: number) {
+	let hold: ReturnType<typeof setTimeout> | undefined;
+	await Promise.race([
+		Promise.allSettled(readings),
+		new Promise((resolve) => (hold = setTimeout(resolve, ms))),
+	]);
+	clearTimeout(hold);
+}
 
 /**
  * Asks a record question once, with the record limit, for the page that is being served. A rider
  * who leaves the page cancels it, so the engine stops working for nobody. The engine answers two
- * questions at a time in the order they arrive: a heavy question is sent once the page's quick
- * questions have settled, or after their short head start, so the quick ones are ahead of it.
+ * questions at a time in the order they arrive, so the page sends them in three steps: its lead
+ * questions at once, its other quick questions once the lead ones it has already asked settle (or
+ * after their short head start), and a heavy question once the quick ones settle (or after theirs).
  */
 async function recordQuery<T>(
 	question: EngineQuestion,
 	schema: z.ZodType<T>,
 	visitorIp: string | null | undefined,
 	signal?: AbortSignal,
+	order: RecordOrder = {},
 ): Promise<EngineResult<T>> {
 	const page = servedPage();
 	const requestSignal = signal ?? page?.request.signal;
 	if (!page) return query(question, schema, visitorIp, true, requestSignal);
-	let quick = quickReadings.get(page);
-	if (!quick) quickReadings.set(page, (quick = []));
+	let readings = pageReadings.get(page);
+	if (!readings) pageReadings.set(page, (readings = { lead: [], quick: [] }));
+	const ask = () => query(question, schema, visitorIp, true, requestSignal);
+	if (order.lead) {
+		const reading = ask();
+		readings.lead.push(reading);
+		readings.quick.push(reading);
+		return reading;
+	}
 	if (!isHeavyQuestion(question.parameters)) {
-		const reading = query(question, schema, visitorIp, true, requestSignal);
-		quick.push(reading);
+		const lead = [...readings.lead];
+		const reading = lead.length
+			? headStart(lead, LEAD_HEAD_START_MS).then(() =>
+					requestSignal?.aborted ? ({ kind: 'timeout' } as const) : ask(),
+				)
+			: ask();
+		readings.quick.push(reading);
 		return reading;
 	}
 	// The page asks its other questions in the same turn; let them all be counted first.
 	await new Promise((resolve) => setTimeout(resolve, 0));
-	let hold: ReturnType<typeof setTimeout> | undefined;
-	await Promise.race([
-		Promise.allSettled(quick),
-		new Promise((resolve) => (hold = setTimeout(resolve, QUICK_HEAD_START_MS))),
-	]);
-	clearTimeout(hold);
+	await headStart(readings.quick, QUICK_HEAD_START_MS);
 	if (requestSignal?.aborted) return { kind: 'timeout' };
-	return query(question, schema, visitorIp, true, requestSignal);
+	return ask();
 }
 
 function periodQuery<T>(
@@ -292,8 +320,15 @@ function periodQuery<T>(
 	parameters: Record<string, string>,
 	schema: z.ZodType<T>,
 	signal?: AbortSignal,
+	order?: RecordOrder,
 ) {
-	return recordQuery(periodQuestion(period, path, parameters), schema, period.visitorIp, signal);
+	return recordQuery(
+		periodQuestion(period, path, parameters),
+		schema,
+		period.visitorIp,
+		signal,
+		order,
+	);
 }
 
 export function getMeasure(measure: MeasureAnswer['measure'], period: EnginePeriod) {
@@ -509,7 +544,11 @@ export function getRankingsRecord(parameters: Record<string, string>, period: En
 	return periodQuery('/ranking', period, parameters, rankingsRecord);
 }
 
-export function getRecordAnswer({ path, parameters }: RecordQuery, period: EnginePeriod) {
+export function getRecordAnswer(
+	{ path, parameters }: RecordQuery,
+	period: EnginePeriod,
+	order?: RecordOrder,
+) {
 	const schema: z.ZodType<RecordAnswer> =
 		path === '/ranking'
 			? parameters.kind === 'departure'
@@ -520,7 +559,7 @@ export function getRecordAnswer({ path, parameters }: RecordQuery, period: Engin
 				: parameters.group
 					? recordSeries
 					: recordMeasure;
-	return periodQuery(path, period, parameters, schema);
+	return periodQuery(path, period, parameters, schema, undefined, order);
 }
 
 /** One /measure answer without a group, with its counts by name. */

@@ -13,6 +13,8 @@ import {
 } from './engine.ts';
 import { getRequestEvent } from '$app/server';
 import { finderQuestions } from './engineQuestion.ts';
+import { loadLineRecord } from './lineRecord.ts';
+import { loadStopRecord } from './stopRecord.ts';
 
 const { env } = vi.hoisted(() => ({
 	env: {
@@ -159,6 +161,80 @@ describe('questions asked while a page is served', () => {
 			await vi.advanceTimersByTimeAsync(299);
 			expect(fetcher).toHaveBeenCalledTimes(2);
 			expect((await heavy).kind).toBe('answer');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("sends the page's other quick questions after its lead question", async () => {
+		vi.useFakeTimers();
+		try {
+			servePage();
+			fetcher.mockImplementation(async (request) =>
+				new URL(request.url).searchParams.get('measure') === 'punctuality'
+					? new Promise<Response>(() => {})
+					: Response.json(measure()),
+			);
+			void getRecordAnswer({ path: '/measure', parameters: { measure: 'punctuality' } }, dates, {
+				lead: true,
+			});
+			const other = getRecordAnswer(
+				{ path: '/measure', parameters: { measure: 'on_time' } },
+				dates,
+			);
+			// The lead question goes first; the other one follows its short head start.
+			await vi.advanceTimersByTimeAsync(1);
+			expect(fetcher).toHaveBeenCalledTimes(1);
+			expect(new URL(fetcher.mock.calls[0][0].url).searchParams.get('measure')).toBe('punctuality');
+			await vi.advanceTimersByTimeAsync(149);
+			expect(fetcher).toHaveBeenCalledTimes(2);
+			expect((await other).kind).toBe('answer');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('sends the other quick questions as soon as the lead one answers', async () => {
+		vi.useFakeTimers();
+		try {
+			servePage();
+			fetcher.mockImplementation(async () => Response.json(measure()));
+			const lead = getRecordAnswer(
+				{ path: '/measure', parameters: { measure: 'punctuality' } },
+				dates,
+				{ lead: true },
+			);
+			const other = getRecordAnswer(
+				{ path: '/measure', parameters: { measure: 'on_time' } },
+				dates,
+			);
+			await lead;
+			await vi.advanceTimersByTimeAsync(1);
+			expect(fetcher).toHaveBeenCalledTimes(2);
+			expect((await other).kind).toBe('answer');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it.each([
+		['Line', () => loadLineRecord(period, 'stm', '51', null)],
+		['Stop', () => loadStopRecord(dates, '51229')],
+	])('sends the top readings of the %s page to the engine first', async (_screen, load) => {
+		vi.useFakeTimers();
+		try {
+			servePage();
+			fetcher.mockImplementation(() => new Promise<Response>(() => {}));
+			load();
+			const asked = () =>
+				fetcher.mock.calls.map(([request]) => {
+					const url = new URL(request.url);
+					return [url.searchParams.get('measure'), url.searchParams.get('group')].join(' ');
+				});
+			await vi.advanceTimersByTimeAsync(1);
+			expect(asked().toSorted()).toEqual(['on_time ', 'punctuality ']);
+			await vi.advanceTimersByTimeAsync(149);
+			expect(asked().length).toBeGreaterThan(2);
 		} finally {
 			vi.useRealTimers();
 		}
