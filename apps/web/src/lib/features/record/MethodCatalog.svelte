@@ -384,6 +384,29 @@
 									</ul>
 								</div>
 							</RecordCard>
+							<RecordCard
+								title={copy.about.title}
+								bind:open={openCards['about-transit']}
+								disclosure={{ id: 'about-transit', description: copy.about.summary }}
+							>
+								<!-- An email address is one long word: let it wrap at 200% text on a phone. -->
+								<dl class="method-parts [overflow-wrap:anywhere]">
+									{#each copy.about.fields as field (field.label)}
+										<div>
+											<dt>{field.label}</dt>
+											<dd>{field.text}</dd>
+											{#if 'link' in field}
+												<dd>
+													<a
+														class="method-link inline-flex min-h-11 items-center"
+														href={field.link.href}>{field.link.label}</a
+													>
+												</dd>
+											{/if}
+										</div>
+									{/each}
+								</dl>
+							</RecordCard>
 						</RecordGroup>
 						{#if extraViews.length}
 							<RecordGroup aria-labelledby="more-methods">

@@ -33,17 +33,17 @@ const featured = [
 		id: 'trip-delivery',
 		name: ['Trips that ran, cancelled and missing', 'Trajets effectués, annulés et manquants'],
 		summary: [
-			'A scheduled trip ran, was cancelled with a notice from the agency, or is missing: no vehicle was seen and no notice was found.',
-			'Un trajet prévu a été effectué, a été annulé avec un avis de la société de transport ou est manquant\u00a0: aucun véhicule n’a été observé et aucun avis n’a été relevé.',
+			'A scheduled trip ran, was cancelled with a notice from the agency, or is missing: no vehicle was seen and no notice was found. A trip with a cancellation notice counts as cancelled, as the agency said, even when a vehicle was seen at some of its stops.',
+			'Un trajet prévu a été effectué, a été annulé avec un avis de la société de transport ou est manquant\u00a0: aucun véhicule n’a été observé et aucun avis n’a été relevé. Un trajet visé par un avis d’annulation compte comme annulé, comme l’a dit la société de transport, même si un véhicule a été vu à certains de ses arrêts.',
 		],
 		has: (id: string) => ['trips_run', 'cancelled_trips', 'missing_trips'].includes(id),
 	},
 	{
 		id: 'delay-percentiles',
-		name: ['Median delay and 90th percentile', 'Retard médian et 90e centile'],
+		name: ['Median delay and the latest 1 in 10', 'Retard médian et dixième le plus en retard'],
 		summary: [
-			'About half of observed stop events were at or below the median delay. About nine in ten were at or below the 90th percentile.',
-			'Environ la moitié des passages observés avaient un retard inférieur ou égal à la médiane. Environ neuf sur dix avaient un retard inférieur ou égal au 90e centile.',
+			'About half of observed stop events were at or below the median delay. The latest 1 in 10 is the delay that about nine in ten stayed at or below.',
+			'Environ la moitié des passages observés avaient un retard inférieur ou égal à la médiane. Le dixième le plus en retard est le retard que neuf passages sur dix environ n’ont pas dépassé.',
 		],
 		has: (id: string) => id === 'median_delay' || id === 'p90_delay',
 	},

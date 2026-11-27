@@ -12,8 +12,8 @@ export const downloadTables = {
 		fr: 'Une ligne par arrêt prévu d’un trajet, avec les heures d’arrivée et de départ.',
 	},
 	vehicle_positions: {
-		en: 'One row per vehicle position reading, with its trip, position and occupancy.',
-		fr: 'Une ligne par relevé de véhicule, avec le trajet, la position et l’occupation.',
+		en: 'One row per run of identical reports from a vehicle, with how many readings it holds, its trip, position and occupancy.',
+		fr: 'Une ligne par suite de relevés identiques d’un véhicule, avec le nombre de relevés, le trajet, la position et l’occupation.',
 	},
 	alerts: {
 		en: 'One row per notice version and source, with its text, affected lines and stops.',
