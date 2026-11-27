@@ -148,7 +148,7 @@
 				<Skeleton class="h-12 w-28 max-w-full" />
 				<Skeleton class="h-5 w-64 max-w-full" />
 			</div>
-			<Skeleton class="h-7 w-full" />
+			<RecordSkeleton shape="bands" />
 			<RecordSkeleton shape={{ shape: 'facts', count: 2 }} />
 			<Skeleton class="mt-1 h-5 w-56 max-w-full" />
 			<RecordSkeleton shape={{ shape: 'rows', count: 3, lines: 1, lead: 'plate' }} />
