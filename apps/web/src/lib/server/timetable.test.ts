@@ -73,7 +73,13 @@ it('keeps the checked timetable through ordinary requests and during a revision 
 		'/cities',
 		'/demo/schedule-index',
 	]);
-	refresh.resolve(answer({ schedule: newEdition }));
+	refresh.resolve({ ...answer({ schedule: edition }), cacheStale: true });
+	await vi.advanceTimersByTimeAsync(0);
+	await expect(readTimetable(options).loadEdition('demo')).resolves.toBe(edition);
+
+	await vi.advanceTimersByTimeAsync(30_000);
+	schedule = Promise.resolve(answer({ schedule: newEdition }));
+	readTimetable(options);
 	await vi.advanceTimersByTimeAsync(0);
 	await expect(readTimetable(options).loadEdition('demo')).resolves.toBe(newEdition);
 });
