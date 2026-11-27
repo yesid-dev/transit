@@ -146,7 +146,7 @@
 {#snippet rail(context: SurfaceRailContext)}
 	{#if fullViewport}
 		<div
-			class="map-rail"
+			class="map-rail [&>*]:[min-inline-size:0]"
 			class:desktop={context.presentation === 'desktop'}
 			data-lenis-prevent
 			data-ripple-exempt
@@ -250,7 +250,9 @@
 	}
 	.map-rail {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		grid-auto-rows: max-content;
+		min-inline-size: 0;
 		gap: 1rem;
 		transition: opacity var(--duration-normal) var(--ease-out);
 	}

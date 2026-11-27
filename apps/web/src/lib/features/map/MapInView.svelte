@@ -80,7 +80,11 @@
 {@render detail?.()}
 
 <Separator decorative />
-<section aria-labelledby={uid} data-slot="map-in-view">
+<section
+	class="[min-inline-size:0] [&>*]:[min-inline-size:0]"
+	aria-labelledby={uid}
+	data-slot="map-in-view"
+>
 	<div class="flex items-baseline justify-between gap-2">
 		<h2 id={uid} class="text-lg font-semibold" tabindex="-1" data-map-in-view-title>
 			{french ? 'Véhicules en vue' : 'Vehicles in view'}
@@ -115,6 +119,7 @@
 				>
 					{#snippet value()}
 						<StatusMark
+							class="justify-end"
 							status={row.status}
 							{...liveStatusWords(
 								row.status,

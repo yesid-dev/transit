@@ -1141,12 +1141,12 @@
 {#snippet detailPanel()}
 	<Card
 		edge="neutral"
-		class="gap-2 p-3"
+		class="gap-2 p-3 [min-inline-size:0] [&>*]:[min-inline-size:0]"
 		data-slot="map-detail-overlay"
 		data-selection-kind={session.selected?.kind}
 	>
 		<div class="flex items-baseline justify-between gap-2">
-			<h2 class="text-lg font-semibold">
+			<h2 class="text-lg font-semibold [min-inline-size:0]">
 				<span class="detail-identity" data-slot="detail-identity" data-kind={selectedDetail?.kind}>
 					{#if selectedDetail}
 						<span class="detail-identity-kind"
@@ -1399,7 +1399,10 @@
 {/snippet}
 
 {#snippet inViewPanel(recordContent: Snippet<[Snippet | undefined]> | undefined)}
-	<div class="grid gap-4" bind:this={inViewBody}>
+	<div
+		class="grid grid-cols-1 gap-4 [min-inline-size:0] [&>*]:[min-inline-size:0]"
+		bind:this={inViewBody}
+	>
 		{#if isRecordLayer}
 			{@render recordContent?.(stamp)}
 		{:else if detailOpen && (nearMeController.origin || nearMeController.open)}
@@ -1528,10 +1531,12 @@
 		</div>
 	{/snippet}
 	{#snippet desktopPanel()}
-		{#if isRecordLayer || (!nearMeController.open && !nearMeController.origin)}
-			<div class="map-head">{@render titleCard()}</div>
-		{/if}
-		{@render inViewPanel(recordContent)}
+		<div class="grid grid-cols-1 gap-3 [min-inline-size:0] [&>*]:[min-inline-size:0]">
+			{#if isRecordLayer || (!nearMeController.open && !nearMeController.origin)}
+				<div class="map-head">{@render titleCard()}</div>
+			{/if}
+			{@render inViewPanel(recordContent)}
+		</div>
 	{/snippet}
 	<!-- First in reading order (WCAG 1.3.2): the visible title sits in the panel over the map. -->
 	<h1 class="sr-only" data-slot="map-heading">{title}</h1>

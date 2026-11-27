@@ -51,7 +51,7 @@
 	>
 {/snippet}
 
-<div class="selection-reading">
+<div class="selection-reading [&>*]:[min-inline-size:0]">
 	{#if detail.kind === 'vehicle'}
 		{@const routeId = detail.vehicle.route ?? detail.route?.id ?? null}
 		{@const routeName = detail.route?.long ? readName(detail.route.long, locale) : ''}
@@ -175,7 +175,10 @@
 <style>
 	.selection-reading {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		justify-items: start;
+		min-inline-size: 0;
+		overflow-wrap: anywhere;
 		gap: calc(var(--spacing) * 2);
 	}
 	.selection-links {
@@ -188,6 +191,7 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: var(--size-tap-min);
+		min-inline-size: 0;
 	}
 	.stop-code {
 		border: 1px solid var(--border);
