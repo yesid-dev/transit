@@ -107,7 +107,12 @@ def test_empty_lane_invocation_performs_no_work(lane, monkeypatch):
 
 def test_existing_cli_commands_keep_their_registration_and_help():
     commands = get_command(app).commands
-    assert set(commands) - set(LANES) == set(BASELINE) | {"clean-day", "clean-days", "live-oracle"}
+    assert set(commands) - set(LANES) == set(BASELINE) | {
+        "clean-day",
+        "clean-days",
+        "live-oracle",
+        "stretch-passes",
+    }
     assert commands["clean-days"].help == (
         "Build clean Parquet tables for an inclusive range of provider service days."
     )
