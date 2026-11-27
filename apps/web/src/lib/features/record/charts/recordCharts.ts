@@ -13,11 +13,14 @@ import { intl, type Locale } from '#lib/i18n/index.ts';
 import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
 import {
+	countedLabel,
 	countedUnit,
 	dateRange,
 	delayRange,
 	delayReading,
 	sampleWithMinimum,
+	readerClock,
+	recordDate,
 	recordPercent,
 	stopTrendGap,
 } from '#lib/site/presenter.ts';
@@ -261,14 +264,14 @@ export function hourChart(
 		return {
 			id,
 			label: weekday('short'),
-			cells: columns.map(({ id: hour, label }): HourGridCell => {
+			cells: columns.map(({ id: hour }): HourGridCell => {
 				const reading = cells.get(`${id}/${hour}`);
 				const counts = reading?.evidence.counts;
 				const value = measuredShare(reading, 'late');
-				const context = `${day}, ${label}`;
+				const context = `${day}, ${readerClock(Number(hour), 0, locale)}`;
 				const count = counts?.classified;
 				const detail = count == null ? undefined : countedUnit(count, 'event', locale);
-				const separator = choose(locale, ': ', ' : ');
+				const separator = choose(locale, ': ', '\u00a0: ');
 				if (value !== null) {
 					const share = recordPercent(value, locale);
 					const status = choose(locale, `${share} late`, `${share} en retard`);
@@ -356,6 +359,7 @@ type TrendProps = {
 	yTicks: ChartTick[];
 	xDomain: [number, number];
 	yDomain: [number, number];
+	samples: { label: string; value: string }[][];
 	last?: { x: number; y: number; label: string };
 	gapNote?: string;
 };
@@ -380,13 +384,11 @@ export function trendChart(
 	const reference = network
 		? dates.map((day, x) => ({ x, y: measuredShare(referenceDaily.get(day), 'on_time') }))
 		: [];
-	const label = (day: string, options: Intl.DateTimeFormatOptions) =>
-		intl.dateTime(locale, { ...options, timeZone: 'UTC' }).format(new Date(day));
 	const reading = (value: number | null, cell?: SeriesCell) =>
 		value === null ? recordState(chartState(cell?.state))[locale] : recordPercent(value, locale);
 	const rows = dates.map((day, index) => ({
 		id: day,
-		label: label(day, { dateStyle: 'long' }),
+		label: recordDate(day, locale),
 		value: reading(points[index].y, daily.get(day)),
 		detail: network ? reading(reference[index].y, referenceDaily.get(day)) : undefined,
 	}));
@@ -423,6 +425,23 @@ export function trendChart(
 			].join('. '),
 			points,
 			reference,
+			samples: dates.map((date) => {
+				const own = daily.get(date)?.evidence.counts.classified;
+				const compare = referenceDaily.get(date)?.evidence.counts.classified;
+				return [
+					...(own == null
+						? []
+						: [{ label: countedLabel(locale), value: countedUnit(own, 'event', locale) }]),
+					...(compare == null
+						? []
+						: [
+								{
+									label: choose(locale, 'Network count:', 'Compté dans le réseau\u00a0:'),
+									value: countedUnit(compare, 'event', locale),
+								},
+							]),
+				];
+			}),
 			ticks: dates.flatMap((day, index) =>
 				index === 0 || index === dates.length - 1
 					? [
@@ -515,7 +534,9 @@ export function stopLadderChart(
 	locale: Locale,
 	stop: (id: string) => Pick<StopLadderStop, 'name' | 'code' | 'href' | 'timingPoint'>,
 	observed = false,
-): ChartReading<StopLadderProps> {
+): ChartReading<
+	Omit<StopLadderProps, 'stops'> & { stops: readonly (StopLadderStop & { sample?: string })[] }
+> {
 	const stops = series.cells.flatMap((cell, index) => {
 		if (typeof cell.key.stop !== 'string') return [];
 		const median = cell.state === 'measured' ? (cell.value.median_delay ?? null) : null;
@@ -539,6 +560,7 @@ export function stopLadderChart(
 				id: `${cell.key.stop}/${index}`,
 				value,
 				valueLabel: state ?? delayReading(value, locale),
+				sample: count == null || sample ? undefined : countedUnit(count, 'event', locale),
 				state,
 			},
 		];

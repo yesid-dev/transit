@@ -240,11 +240,17 @@
 				const key = cell.key.hour;
 				const hour =
 					typeof key === 'number' || (typeof key === 'string' && key.trim()) ? Number(key) : NaN;
+				const frequency =
+					cell.state === 'measured' ? (cell.value.scheduled_frequency ?? null) : null;
+				const count = cell.evidence.counts.scheduled_trips;
 				return Number.isInteger(hour) && hour >= 0 && hour < 24
 					? [
 							{
 								x: hour,
-								y: cell.state === 'measured' ? (cell.value.scheduled_frequency ?? null) : null,
+								y: frequency,
+								heading: scheduleHours(hour, hour + 1, locale),
+								value: frequency == null ? cell.state_text[locale] : tripsAnHour(frequency, locale),
+								sample: count == null ? undefined : countedUnit(count, 'trip', locale),
 							},
 						]
 					: [];

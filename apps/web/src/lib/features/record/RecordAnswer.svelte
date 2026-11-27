@@ -3,7 +3,8 @@
 	import type { StampProps } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { choose, lastGoodNote } from './recordText.ts';
+	import { countedLabel } from '#lib/site/presenter.ts';
+	import { lastGoodNote } from './recordText.ts';
 	import StateMark from './StateMark.svelte';
 	import type { RecordState } from './recordStates';
 
@@ -82,7 +83,7 @@
 						{#if evidence || meta}
 							<div class="answer-evidence" data-slot="answer-evidence">
 								{#if evidence?.sample}<p>
-										{`${choose(locale, 'Counted:', 'Ce qui est compté\u00a0:')} ${evidence.sample}`}
+										{`${countedLabel(locale)} ${evidence.sample}`}
 									</p>{/if}
 								{#if evidence?.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 								{@render meta?.()}

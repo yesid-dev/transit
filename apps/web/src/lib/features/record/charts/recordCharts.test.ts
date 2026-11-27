@@ -132,18 +132,18 @@ describe('record charts', () => {
 		expect(grid.stateLabels.few).toBe('few: too few to judge, under 30 stop events');
 		expect(grid.rows[0]?.cells[1]).toMatchObject({
 			text: '17',
-			name: 'Monday, 06h: 16.6% late, 58 stop events',
+			name: 'Monday, 06:00: 16.6% late, 58 stop events',
 		});
 		expect(grid.rows[0]?.cells[2]).toMatchObject({ text: 'few', level: null, state: 'few' });
 		expect(grid.rows[0]?.cells[3]).toMatchObject({
 			text: 'none',
 			level: null,
 			state: 'none',
-			name: 'Monday, 08h: no service at that hour',
+			name: 'Monday, 08:00: no service at that hour',
 		});
 		expect(grid.rows[1]?.cells[3]?.state).toBe('unmeasured');
 		expect(hourChart(data, 'Heures', 'fr').props.rows[0]?.cells[1]?.name).toMatch(
-			/lundi, 6 h : 16,6\s% en retard, 58 passages aux arrêts/,
+			/lundi, 6\u00a0h\u00a0: 16,6\s% en retard, 58 passages aux arrêts/u,
 		);
 	});
 
@@ -217,7 +217,7 @@ describe('record charts', () => {
 		const chart = trendChart(data, 'Daily', 'en', reference);
 		expect(chart.props.points.map(({ y }) => y)).toEqual([0.751, null, 0.751]);
 		expect(chart.props.reference.map(({ y }) => y)).toEqual([null, null, 0.807]);
-		expect(chart.table.rows[0]?.value).toBe('75.1%');
+		expect(chart.table.rows[0]).toMatchObject({ label: '8 Nov 2026', value: '75.1%' });
 		expect(chart.props.yDomain).toEqual([0.75, 0.85]);
 		expect(chart.props.ticks.map(({ label }) => label)).toEqual(['8 Nov', '10 Nov']);
 		expect(chart.props.last?.label).toBe('75.1%');

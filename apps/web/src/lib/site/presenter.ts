@@ -480,6 +480,10 @@ export function recordNoticeDates(
 	return presenterCopy[locale].dateRange(start, format(to));
 }
 
+export function recordDate(date: string, locale: Locale): string {
+	return formatDateKey(date, locale, true, 'day-first');
+}
+
 export function compactServiceDay(date: string, locale: Locale): string {
 	return formatDateKey(date, locale, false, 'day-first');
 }
@@ -494,7 +498,7 @@ export function shortServiceDay(date: string, locale: Locale) {
 }
 
 export function dateRange({ from, to }: { from: string; to: string }, locale: Locale): string {
-	const end = formatDateKey(to, locale, true, 'day-first');
+	const end = recordDate(to, locale);
 	if (from === to) return end;
 	const sameYear = from.slice(0, 4) === to.slice(0, 4);
 	const sameMonth = from.slice(0, 7) === to.slice(0, 7);
@@ -679,6 +683,10 @@ export function rankingComparison(
 	if (higher === worseIsHigher)
 		return locale === 'fr' ? 'Moins bien que le réseau' : 'Worse than the network';
 	return locale === 'fr' ? 'Mieux que le réseau' : 'Better than the network';
+}
+
+export function countedLabel(locale: Locale): string {
+	return locale === 'fr' ? 'Ce qui est compté\u00a0:' : 'Counted:';
 }
 
 export function countedUnit(

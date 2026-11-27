@@ -674,9 +674,13 @@ async function verifyLineReadings(page, cell, onTime, label) {
 	const measuredHour = page.locator('#line-hour-chart td[aria-label]').first();
 	await measuredHour.waitFor();
 	const hour = await measuredHour.getAttribute('aria-label');
+	// Validate the whole clock before extracting the late share and count.
+	const hourEvidence = hour?.match(
+		fr ? /^\p{L}+, 7\s+h\s+: (.+)$/u : /^\p{L}+, 07:00: (.+)$/u,
+	)?.[1];
 	invariant(
-		JSON.stringify(hour?.match(/\d+(?:[.,]\d+)?/gu)?.map(parseNumber)) ===
-			JSON.stringify([7, late, 100]),
+		JSON.stringify(hourEvidence?.match(/\d+(?:[.,]\d+)?/gu)?.map(parseNumber)) ===
+			JSON.stringify([late, 100]),
 		`${label} hourly late share or stop count drifted: ${hour}`,
 	);
 	readings.push({ selector: 'hourly accessible reading', actual: hour });

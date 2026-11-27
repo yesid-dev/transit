@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		StopLadder,
 		type StopLadderStop,
 		ChartAxis,
 		ChartBarSeries,
@@ -8,6 +7,8 @@
 		ChartLegend,
 		ChartLineSeries,
 	} from '@yesid/ui/chart';
+	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
+	import ChartPlotTargets from '#lib/components/dataviz/chart/ChartPlotTargets.svelte';
 	import { StatusMark } from '@yesid/ui/brand';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { type Locale } from '#lib/i18n/index.ts';
@@ -17,6 +18,7 @@
 	import RecordDataTable from '../RecordDataTable.svelte';
 	import { tally } from '../recordText.ts';
 	import StateMark from '../StateMark.svelte';
+	import RecordStopLadder from './RecordStopLadder.svelte';
 	import RecordBandBar from './RecordBandBar.svelte';
 	import {
 		bandChart,
@@ -74,6 +76,19 @@
 								...trendChart(input.answer, title, locale, input.network, input.stop),
 							},
 	);
+	const details = $derived(
+		reading.table.rows.map((row, index) => ({
+			key: row.id,
+			heading: row.label,
+			rows: [
+				{ label: reading.table.columns.value, value: row.value },
+				...(row.detail && reading.table.columns.detail
+					? [{ label: reading.table.columns.detail, value: row.detail }]
+					: []),
+				...(reading.kind === 'trend' ? (reading.props.samples[index] ?? []) : []),
+			],
+		})),
+	);
 	/** An hour grid with no hour to judge says so once, with its count, and shows no grid. */
 	const fewHours = $derived.by(() => {
 		if (input.kind !== 'hours' || !hourGridTooFew(input.answer)) return null;
@@ -129,10 +144,10 @@
 			{#snippet absent()}<StateMark state={chartState(input.answer.state)} {locale} />{/snippet}
 		</RecordBandBar>
 	{:else if reading.kind === 'ladder'}
-		<StopLadder {...reading.props} />
+		<RecordStopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
-			<LateShareHourGrid {...reading.props} />
+			<LateShareHourGrid {...reading.props} readings={details} />
 			{#if input.kind === 'hours'}
 				<p class="text-small text-muted-foreground">{hourGridNote(input.answer, locale)}</p>
 			{/if}
@@ -146,36 +161,39 @@
 					<StatusMark status={band.status} label={band.label} />
 				{/each}
 			</div>
-			<ChartFrame
-				class="sm:min-h-96"
-				label={reading.props.label}
-				xDomain={reading.props.xDomain}
-				yDomain={reading.props.yDomain}
-			>
-				{#snippet children(plot)}
-					<ChartAxis
-						{plot}
-						axis="y"
-						ticks={plot.left < 2.5 * plot.unit
-							? reading.props.yTicks.map((tick) =>
-									tick.value === 0 ? tick : { ...tick, label: tick.label.replace(/\s*%$/u, '') },
-								)
-							: reading.props.yTicks}
-					/>
-					<ChartAxis {plot} axis="x" ticks={reading.props.ticks} />
-					<ChartBarSeries {plot} points={reading.props.points} bandWidth={1} />
-					{#each reading.props.boundaries as x (x)}
-						<ChartLineSeries
+			<ChartDetails label={title} readings={details}>
+				<ChartFrame
+					class="sm:min-h-96"
+					label={reading.props.label}
+					xDomain={reading.props.xDomain}
+					yDomain={reading.props.yDomain}
+				>
+					{#snippet children(plot)}
+						<ChartAxis
 							{plot}
-							points={reading.props.yDomain.map((y) => ({ x, y }))}
-							reference
+							axis="y"
+							ticks={plot.left < 2.5 * plot.unit
+								? reading.props.yTicks.map((tick) =>
+										tick.value === 0 ? tick : { ...tick, label: tick.label.replace(/\s*%$/u, '') },
+									)
+								: reading.props.yTicks}
 						/>
-					{/each}
-				{/snippet}
-				{#snippet legend()}
-					<p class="text-right text-small text-muted-foreground">{reading.props.axis}</p>
-				{/snippet}
-			</ChartFrame>
+						<ChartAxis {plot} axis="x" ticks={reading.props.ticks} />
+						<ChartBarSeries {plot} points={reading.props.points} bandWidth={1} />
+						{#each reading.props.boundaries as x (x)}
+							<ChartLineSeries
+								{plot}
+								points={reading.props.yDomain.map((y) => ({ x, y }))}
+								reference
+							/>
+						{/each}
+						<ChartPlotTargets {plot} positions={reading.props.points.map(({ x }) => x)} />
+					{/snippet}
+					{#snippet legend()}
+						<p class="text-right text-small text-muted-foreground">{reading.props.axis}</p>
+					{/snippet}
+				</ChartFrame>
+			</ChartDetails>
 		{:else}
 			<StateMark state={chartState(input.answer.state)} {locale} />
 			{#if input.kind === 'histogram' && input.answer.state === 'too_few_to_judge'}
@@ -189,56 +207,60 @@
 			{/if}
 		{/if}
 	{:else if reading.props.points.some(({ y }) => y !== null) || reading.props.reference.some(({ y }) => y !== null)}
-		<ChartFrame
-			label={reading.props.label}
-			xDomain={reading.props.xDomain}
-			yDomain={reading.props.yDomain}
-		>
-			{#snippet children(plot)}
-				<ChartAxis {plot} axis="x" ticks={reading.props.ticks} />
-				<ChartAxis {plot} axis="y" ticks={reading.props.yTicks} />
-				{#if reading.props.last}
-					<ChartLineSeries {plot} points={reading.props.points} />
-				{/if}
-				{#if reading.props.reference.some(({ y }) => y !== null)}
-					<ChartLineSeries
-						{plot}
-						points={reading.props.reference.length === 1
-							? reading.props.xDomain.map((x) => ({ x, y: reading.props.reference[0].y }))
-							: reading.props.reference}
-						reference
+		<ChartDetails label={title} readings={details}>
+			<ChartFrame
+				label={reading.props.label}
+				xDomain={reading.props.xDomain}
+				yDomain={reading.props.yDomain}
+			>
+				{#snippet children(plot)}
+					<ChartAxis {plot} axis="x" ticks={reading.props.ticks} />
+					<ChartAxis {plot} axis="y" ticks={reading.props.yTicks} />
+					{#if reading.props.last}
+						<ChartLineSeries {plot} points={reading.props.points} />
+					{/if}
+					{#if reading.props.reference.some(({ y }) => y !== null)}
+						<ChartLineSeries
+							{plot}
+							points={reading.props.reference.length === 1
+								? reading.props.xDomain.map((x) => ({ x, y: reading.props.reference[0].y }))
+								: reading.props.reference}
+							reference
+						/>
+					{/if}
+					{#if reading.props.last}
+						{@const last = reading.props.last}
+						{@const lastIndex = reading.props.points.findIndex(({ x }) => x === last.x)}
+						{@const previous = reading.props.points[lastIndex - 1]?.y}
+						{@const pointY = plot.y(last.y)}
+						{@const below =
+							pointY < plot.top + plot.unit ||
+							(previous != null && previous > last.y && pointY + plot.unit <= plot.bottom)}
+						<text
+							class="trend-end"
+							x={Math.min(plot.right, plot.x(last.x) + plot.unit * 0.4)}
+							y={below ? pointY + plot.unit : pointY - plot.unit * 0.4}
+							text-anchor="end">{last.label}</text
+						>
+					{/if}
+					<ChartPlotTargets {plot} positions={reading.props.points.map(({ x }) => x)} />
+				{/snippet}
+				{#snippet legend()}
+					<ChartLegend
+						label={title}
+						items={[
+							...(reading.props.last
+								? [{ kind: 'line' as const, label: reading.table.columns.value }]
+								: []),
+							...(reading.table.columns.detail &&
+							reading.props.reference.some(({ y }) => y !== null)
+								? [{ kind: 'reference' as const, label: reading.table.columns.detail }]
+								: []),
+						]}
 					/>
-				{/if}
-				{#if reading.props.last}
-					{@const last = reading.props.last}
-					{@const lastIndex = reading.props.points.findIndex(({ x }) => x === last.x)}
-					{@const previous = reading.props.points[lastIndex - 1]?.y}
-					{@const pointY = plot.y(last.y)}
-					{@const below =
-						pointY < plot.top + plot.unit ||
-						(previous != null && previous > last.y && pointY + plot.unit <= plot.bottom)}
-					<text
-						class="trend-end"
-						x={Math.min(plot.right, plot.x(last.x) + plot.unit * 0.4)}
-						y={below ? pointY + plot.unit : pointY - plot.unit * 0.4}
-						text-anchor="end">{last.label}</text
-					>
-				{/if}
-			{/snippet}
-			{#snippet legend()}
-				<ChartLegend
-					label={title}
-					items={[
-						...(reading.props.last
-							? [{ kind: 'line' as const, label: reading.table.columns.value }]
-							: []),
-						...(reading.table.columns.detail && reading.props.reference.some(({ y }) => y !== null)
-							? [{ kind: 'reference' as const, label: reading.table.columns.detail }]
-							: []),
-					]}
-				/>
-			{/snippet}
-		</ChartFrame>
+				{/snippet}
+			</ChartFrame>
+		</ChartDetails>
 	{:else}
 		<StateMark state={chartState(input.answer.state)} {locale} />
 	{/if}

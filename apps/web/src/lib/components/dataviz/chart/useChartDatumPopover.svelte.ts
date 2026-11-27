@@ -26,7 +26,11 @@ export interface ChartDatumPopoverController {
 	readonly y: number;
 	readonly showNativeTooltip: boolean;
 	notePointerSource(event: PointerEvent | MouseEvent, trigger?: HTMLElement): void;
-	openFromTrigger(trigger: HTMLElement | SVGElement, model: ChartDatumPopoverModel): void;
+	openFromTrigger(
+		trigger: HTMLElement | SVGElement,
+		model: ChartDatumPopoverModel,
+		anchor?: Element,
+	): void;
 	activate(event: MouseEvent, model: ChartDatumPopoverModel): boolean;
 	close(restoreFocus?: boolean): void;
 }
@@ -128,8 +132,12 @@ export function createChartDatumPopover(): ChartDatumPopoverController {
 		model = null;
 		releaseTrigger(restoreFocus);
 	};
-	const openFromTrigger = (trigger: ChartDatumTrigger, nextModel: ChartDatumPopoverModel): void => {
-		const rect = trigger.getBoundingClientRect();
+	const openFromTrigger = (
+		trigger: ChartDatumTrigger,
+		nextModel: ChartDatumPopoverModel,
+		anchor: Element = trigger,
+	): void => {
+		const rect = anchor.getBoundingClientRect();
 		x = rect.left + rect.width / 2;
 		y = rect.top + rect.height / 2;
 		associateTrigger(trigger);

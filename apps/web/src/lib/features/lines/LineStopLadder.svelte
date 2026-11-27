@@ -2,7 +2,7 @@
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { SegmentedChoice } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
-	import { StopLadder } from '@yesid/ui/chart';
+	import RecordStopLadder from '#lib/features/record/charts/RecordStopLadder.svelte';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import PhoneSwitch from '#lib/features/record/PhoneSwitch.svelte';
 	import { LADDER_CAP } from '../record/recordWaiting.ts';
@@ -109,7 +109,7 @@
 {#snippet fullLadder()}
 	{@const capped = !showAll && reading.props.stops.length > LADDER_CAP}
 	{@const shown = capped ? reading.props.stops.slice(0, LADDER_CAP) : reading.props.stops}
-	<StopLadder
+	<RecordStopLadder
 		{...reading.props}
 		stops={shown}
 		max={ladderMax}
@@ -165,7 +165,7 @@
 	{:else if reading.props.stops.length > short.length && !showAll}
 		<PhoneSwitch wide={fullLadder}>
 			{#snippet narrow()}
-				<StopLadder {...reading.props} stops={short} max={ladderMax} {threshold} />
+				<RecordStopLadder {...reading.props} stops={short} max={ladderMax} {threshold} />
 				{@render showAllButton()}
 			{/snippet}
 		</PhoneSwitch>

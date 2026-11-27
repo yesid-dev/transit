@@ -2,7 +2,11 @@
 	import { HourGrid, type HourGridProps } from '@yesid/ui/chart';
 	import { measureRampInk, measureRamps } from './measureRamps';
 
-	let props: HourGridProps = $props();
+	import ChartDetails from './chart/ChartDetails.svelte';
+	import type { ChartDatumPopoverModel } from './chart/useChartDatumPopover.svelte';
+
+	let { readings, ...props }: HourGridProps & { readings: readonly ChartDatumPopoverModel[] } =
+		$props();
 	// The kit's HourGrid reads these tokens for both its measured cells and legend swatches.
 	const palette = measureRamps.lateShare
 		.map(
@@ -13,5 +17,7 @@
 </script>
 
 <div class="min-w-0 [&_ul[role=list]_[data-level]]:min-h-[16px]" style={palette}>
-	<HourGrid {...props} />
+	<ChartDetails label={props.label} {readings} targets="tbody td">
+		<HourGrid {...props} />
+	</ChartDetails>
 </div>

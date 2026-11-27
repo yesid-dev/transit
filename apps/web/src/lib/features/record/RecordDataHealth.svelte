@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
+	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import { HourGrid, type HourGridCell } from '@yesid/ui/chart';
 	import { DashboardGrid } from '@yesid/ui/layout';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
@@ -26,6 +27,7 @@
 		longDate,
 		methodEvidence,
 		officialAlertsLabel,
+		recordDate,
 		recordStamp,
 		sampleWithMinimum,
 		singularCount,
@@ -574,13 +576,25 @@
 								{#snippet dayGrid(count: number)}
 									{@const shown = grid(result.answer, count)}
 									<div>
-										<HourGrid
+										<ChartDetails
 											label={titles.days}
-											columns={shown.columns}
-											rows={shown.rows}
-											scale={{ label: '', steps: [] }}
-											stateLabels={{ few: '', none: '', unmeasured: '' }}
-										/>
+											targets="tbody td"
+											readings={shown.rows.flatMap((row) =>
+												shown.columns.map(({ id }, index) => ({
+													key: row.id + '/' + id,
+													heading: recordDate(id, locale),
+													rows: [{ label: row.label, value: row.cells[index].name }],
+												})),
+											)}
+										>
+											<HourGrid
+												label={titles.days}
+												columns={shown.columns}
+												rows={shown.rows}
+												scale={{ label: '', steps: [] }}
+												stateLabels={{ few: '', none: '', unmeasured: '' }}
+											/>
+										</ChartDetails>
 										<ul
 											class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-small text-muted-foreground"
 											role="list"
