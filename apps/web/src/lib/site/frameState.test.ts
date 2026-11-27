@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	carryFrameState,
+	dailyReportPeriod,
 	frameHref,
 	frameClock,
 	parseAnswerFrameState,
@@ -198,4 +199,27 @@ it('answers unpublished Yesterday with the last built day while preserving the r
 	for (const through of ['2026-11-26', null]) {
 		expect(parseAnswerFrameState(params, clock('2026-11-27', through)).period).toEqual(requested);
 	}
+});
+
+it('opens the Daily report on one day, never a week', () => {
+	const built = clock('2026-11-27', '2026-11-26');
+	const week = presetPeriod('7-days', built);
+	expect(dailyReportPeriod(week, built)).toEqual({
+		preset: 'yesterday',
+		from: '2026-11-26',
+		to: '2026-11-26',
+	});
+	const day = { preset: null, from: '2026-11-20', to: '2026-11-20' };
+	expect(dailyReportPeriod(day, built)).toEqual(day);
+	// Before Yesterday is built, the report asks for Yesterday and answers with the last built day.
+	const pending = clock('2026-11-27', '2026-11-25');
+	const period = dailyReportPeriod(presetPeriod('28-days', pending), pending)!;
+	expect(period).toEqual({ preset: 'yesterday', from: '2026-11-26', to: '2026-11-26' });
+	const href = frameHref(url('/receipt'), { mode: 'record', period });
+	expect(parseAnswerFrameState(url(href).searchParams, pending).period).toEqual({
+		preset: 'yesterday',
+		from: '2026-11-25',
+		to: '2026-11-25',
+	});
+	expect(dailyReportPeriod(null, clock(RECORD_START))).toBeNull();
 });

@@ -654,11 +654,13 @@ async function verifyLineReadings(page, cell, onTime, label) {
 	);
 	readings.push({ selector: 'observed coverage', actual });
 	await check('#punctuality .answer-value', [[onTime]]);
-	await check('#punctuality .answer-meta > p:first-child', [[100, 1]]);
+	await check('#punctuality [data-slot="answer-evidence"] > p:first-child', [[100, 1]]);
 	// Method and cleaning versions stay in downloads and citations, never on screen.
-	const meta = await page.locator('#punctuality .answer-meta').first().innerText();
+	const meta = await page.locator('#punctuality [data-slot="answer-evidence"]').first().innerText();
 	invariant(!/\bv\d/u.test(meta), `${label} answer shows a version code: ${meta}`);
-	await check('#punctuality .answer-context > p', [[onTime === 40 ? 41.2 : 1.2, network]]);
+	await check('#punctuality [data-slot="answer-comparison"]', [
+		[onTime === 40 ? 41.2 : 1.2, network],
+	]);
 	await check('#directions dd', [
 		[80, 100],
 		[80, 100],

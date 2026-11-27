@@ -19,7 +19,7 @@ for (const width of [390, 1440]) {
 			await expect(main.getByRole('heading', { level: 1 })).toContainText(
 				fr ? 'Ligne 24' : 'Line 24',
 			);
-			const meta = answer.locator('.answer-meta');
+			const meta = answer.locator('[data-slot="answer-evidence"]');
 			await expect(meta.locator('p').first()).toContainText(fr ? 'Ce qui est compté' : 'Counted:');
 			await expect(meta).not.toContainText(fr ? 'nettoyage' : 'cleaning');
 			await expect(main.locator('#directions dd').first()).toContainText(fr ? /80,0\s%/u : '80.0%');

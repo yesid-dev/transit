@@ -70,26 +70,34 @@
 	style:block-size={blockSize}
 >
 	{#if s.shape === 'answer' || s.shape === 'reading'}
-		<div class="answer-reading">
+		<!-- Laid out as RecordAnswer: the statement; the stamp and what was counted on one line; an
+		     answer's actions beside the statement on a desktop, with the stamp beside them when wide. -->
+		<div
+			class="answer-layout"
+			class:with-actions={s.shape === 'answer'}
+			class:short-context={!s.comparison}
+		>
 			<div class="answer-statement">
 				<Skeleton class="h-12 w-32 max-w-full" />
 				<Skeleton class="h-5 w-96 max-w-full" />
 			</div>
-			<Skeleton class="h-7 w-56 max-w-full" />
-			<!-- An answer carries one evidence line ("Counted: …"); versions are never on screen. -->
-			<div class="grid gap-2">
-				<Skeleton class="h-4 w-72 max-w-full" />
-				{#if s.shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
-				{#if s.comparison}<Skeleton class="mt-3 h-4 w-80 max-w-full" />{/if}
+			<div class="answer-context">
+				<div class="answer-stamp"><Skeleton class="h-7 w-56 max-w-full" /></div>
+				<!-- An answer carries one evidence line ("Counted: …"); versions are never on screen. -->
+				<div class="answer-evidence grid gap-2">
+					<Skeleton class="h-4 w-72 max-w-full" />
+					{#if s.shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
+					{#if s.comparison}<Skeleton class="mt-3 h-4 w-80 max-w-full" />{/if}
+				</div>
 			</div>
+			{#if s.shape === 'answer'}
+				<div class="answer-actions flex flex-wrap gap-2">
+					{#each [1, 2, 3] as action (action)}
+						<Skeleton class="h-11 w-24 max-w-full" />
+					{/each}
+				</div>
+			{/if}
 		</div>
-		{#if s.shape === 'answer'}
-			<div class="flex flex-wrap gap-2">
-				{#each [1, 2, 3] as action (action)}
-					<Skeleton class="h-11 w-24 max-w-full" />
-				{/each}
-			</div>
-		{/if}
 	{:else if s.shape === 'trend'}
 		<Skeleton class="h-[clamp(12rem,26vw,17rem)] w-full rounded-lg" />
 		<Skeleton class="h-4 w-48 max-w-full" />
@@ -250,7 +258,7 @@
 	[data-waiting-shape='listing'] {
 		min-block-size: min(42rem, calc(100dvh - var(--app-frame-header-height, 0px)));
 	}
-	.answer-reading,
+	.answer-layout,
 	.answer-statement {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
@@ -324,9 +332,66 @@
 			}
 		}
 	}
-	@media (min-width: 80rem) {
-		[data-waiting-shape='answer'] {
+	.answer-layout {
+		gap: 0.75rem 1.5rem;
+	}
+	.answer-context {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.375rem 1rem;
+		min-inline-size: 0;
+	}
+	.answer-evidence {
+		flex: 1 1 8rem;
+		min-inline-size: 0;
+	}
+	/* As RecordAnswer: beside a short context from 36rem; under a comparison line until 52rem. */
+	@container (min-width: 36rem) {
+		.with-actions.short-context {
+			grid-template-areas: 'statement statement' 'context actions';
 			grid-template-columns: minmax(0, 1fr) auto;
+		}
+		.with-actions.short-context > .answer-statement {
+			grid-area: statement;
+		}
+		.with-actions.short-context > .answer-context {
+			grid-area: context;
+		}
+		.with-actions.short-context > .answer-actions {
+			grid-area: actions;
+			align-self: center;
+		}
+	}
+	@container (min-width: 52rem) {
+		.with-actions {
+			grid-template-areas: 'statement actions' 'context context';
+		}
+		.with-actions > .answer-statement {
+			grid-area: statement;
+		}
+		.with-actions > .answer-context {
+			grid-area: context;
+		}
+		.with-actions > .answer-actions {
+			grid-area: actions;
+			align-self: center;
+		}
+	}
+	@container (min-width: 64rem) {
+		.with-actions {
+			grid-template-areas: 'statement stamp actions' 'evidence evidence evidence';
+			grid-template-columns: minmax(0, 1fr) auto auto;
+		}
+		.with-actions > .answer-context {
+			display: contents;
+		}
+		.with-actions .answer-stamp {
+			grid-area: stamp;
+			align-self: center;
+		}
+		.with-actions .answer-evidence {
+			grid-area: evidence;
 		}
 	}
 </style>

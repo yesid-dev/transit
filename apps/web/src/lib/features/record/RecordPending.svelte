@@ -101,9 +101,10 @@
 			min-block-size: 18.5rem;
 		}
 	}
+	/* On a desktop an answer is two rows: the figure with its stamp and actions, then one context line. */
 	@media (min-width: 80rem) {
 		:global([data-slot='screen-answer']) > .plain-answer {
-			min-block-size: 10rem;
+			min-block-size: 7rem;
 		}
 	}
 </style>

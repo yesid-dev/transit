@@ -191,6 +191,7 @@
 				</Button>
 			{/snippet}
 		</SheetTrigger>
+		<!-- Step 2 of the head pass: a centred window from 768 px with the kit's side="center". -->
 		<SheetContent closeLabel={copy.close} class="overflow-y-auto p-4" data-lenis-prevent>
 			<div class="mx-auto grid w-full max-w-xl gap-4 pr-8">
 				<SheetTitle>{copy.period}</SheetTitle>
