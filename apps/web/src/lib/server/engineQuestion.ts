@@ -96,6 +96,7 @@ export function mapRecordQuestion(
 	line?: string,
 	direction?: string,
 	layer?: 'corridors',
+	cuts?: { lines?: readonly string[]; vehicleType?: number; hours?: readonly [number, number] },
 ) {
 	return periodQuestion(period, '/measure', {
 		view: 'map',
@@ -103,8 +104,12 @@ export function mapRecordQuestion(
 			? {
 					measure: 'mean_time_lost',
 					group: 'segment',
-					...(line ? { line, ...(direction ? { direction } : {}) } : {}),
+					...(line ? { line } : {}),
 				}
 			: { measure: 'late', group: 'stop_id' }),
+		...(direction ? { direction } : {}),
+		...(cuts?.lines ? { lines: JSON.stringify(cuts.lines) } : {}),
+		...(cuts?.vehicleType !== undefined ? { route_type: String(cuts.vehicleType) } : {}),
+		...(cuts?.hours ? { hour_from: String(cuts.hours[0]), hour_to: String(cuts.hours[1]) } : {}),
 	});
 }

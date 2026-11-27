@@ -10,6 +10,7 @@ import {
 import { notReporting } from './vehicleProjection';
 
 export const VEHICLE_BODY_LAYER = 'vehicle-body';
+export type VehicleMapFilter = FilterState & { matchesReading?: (vehicle: Vehicle) => boolean };
 
 export interface VehicleFeature {
 	type: 'Feature';
@@ -52,7 +53,7 @@ export function colourDimension(f: FilterState): 'status' | 'occupancy' {
 /** The renderer's one matching rule. Lists that describe the map's vehicles reuse it. */
 export function matchesFilter(
 	v: Vehicle,
-	f: FilterState,
+	f: VehicleMapFilter,
 	alertVehicleIds: ReadonlySet<string>,
 ): boolean {
 	const as = activeStatus(f);
@@ -66,7 +67,7 @@ export function matchesFilter(
 	const aa = activeAlerts(f);
 	if (aa && !alertVehicleIds.has(v.id)) return false;
 	if (!visibleEntityKinds(f).includes('bus')) return false;
-	return true;
+	return f.matchesReading?.(v) ?? true;
 }
 
 /** The map's scope rule: in-service vehicles, plus out-of-service ones when ticked. */
@@ -76,7 +77,7 @@ export function inVehicleScope(v: Vehicle, f: FilterState): boolean {
 
 function iconFor(
 	v: Vehicle,
-	f: FilterState,
+	f: VehicleMapFilter,
 	dim: 'status' | 'occupancy',
 	alertVehicleIds: ReadonlySet<string>,
 ): {
@@ -110,7 +111,7 @@ export interface VehicleSilenceContext {
 
 export function toVehicleFeatures(
 	vehicles: readonly Vehicle[],
-	filter: FilterState,
+	filter: VehicleMapFilter,
 	alertVehicleIds: ReadonlySet<string> = new Set(),
 	selectedVehicleId: string | null = null,
 	silence?: VehicleSilenceContext,

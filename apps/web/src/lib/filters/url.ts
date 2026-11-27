@@ -1,4 +1,5 @@
 import type { FilterState, IdSetKey } from './state';
+import { MAP_READING_KEYS, readMapReadingFilters, writeMapReadingFilters } from './mapReadings';
 import {
 	emptyFilterState,
 	normalizeStatus,
@@ -33,7 +34,7 @@ const KEY_ORDER = [
 	'severity',
 ] as const;
 
-export const FILTER_SEARCH_PARAM_KEYS = Object.freeze(KEY_ORDER);
+export const FILTER_SEARCH_PARAM_KEYS = Object.freeze([...KEY_ORDER, ...MAP_READING_KEYS]);
 
 const SET_KEY_TO_FIELD: Record<'route' | 'stop' | 'trip' | 'vehicle', IdSetKey> = {
 	route: 'routes',
@@ -93,6 +94,8 @@ export function fromSearchParams(sp: URLSearchParams): FilterState {
 
 	const alerts = normalizeAlerts(collect(sp, 'alert'));
 	if (alerts) state.alerts = alerts;
+	const mapReadings = readMapReadingFilters(sp);
+	if (mapReadings) state.mapReadings = mapReadings;
 
 	const grainTokens = dedupe(collect(sp, 'grain'));
 	const grain = grainTokens.find((g) => isGrain(g));
@@ -189,6 +192,7 @@ export function toSearchParams(s: FilterState): URLSearchParams {
 		}
 	}
 
+	writeMapReadingFilters(sp, s.mapReadings);
 	return sp;
 }
 

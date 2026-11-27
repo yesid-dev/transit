@@ -38,6 +38,7 @@
 		routes?: readonly RouteIndexEntry[];
 		stops?: readonly StopIndexEntry[];
 		header?: Snippet;
+		record?: boolean;
 		class?: string;
 	}
 
@@ -49,6 +50,7 @@
 		routes = [],
 		stops = [],
 		header,
+		record = false,
 		class: className = '',
 	}: Props = $props();
 
@@ -72,12 +74,16 @@
 	const selectedRoutes = $derived(
 		selectedRouteIds.map((id) => routeById.get(id) ?? fallbackRoute(id)),
 	);
-	const selectedStopIds = $derived(Array.from(store.stops).sort((a, b) => collator.compare(a, b)));
+	const selectedStopIds = $derived(
+		record ? [] : Array.from(store.stops).sort((a, b) => collator.compare(a, b)),
+	);
 	const selectedStops = $derived(selectedStopIds.map((id) => stopById.get(id) ?? fallbackStop(id)));
 	const selectedVehicleIds = $derived(
-		Array.from(store.vehicles).sort((a, b) => collator.compare(a, b)),
+		record ? [] : Array.from(store.vehicles).sort((a, b) => collator.compare(a, b)),
 	);
-	const selectedTripIds = $derived(Array.from(store.trips).sort((a, b) => collator.compare(a, b)));
+	const selectedTripIds = $derived(
+		record ? [] : Array.from(store.trips).sort((a, b) => collator.compare(a, b)),
+	);
 	const selectedCount = $derived(
 		selectedRoutes.length +
 			selectedStops.length +
@@ -85,10 +91,16 @@
 			selectedTripIds.length,
 	);
 	const visibleMarkers = $derived(visibleEntityKinds(store.state));
+	const readingCount = $derived(
+		Object.values(store.state.mapReadings ?? {}).filter((value) => value !== undefined).length,
+	);
 	const filterCount = $derived(
-		store.chips.length +
-			Number(Boolean(store.state.showOutOfService)) +
-			Number(visibleMarkers.length === 0),
+		readingCount +
+			(record
+				? selectedRoutes.length
+				: store.chips.length +
+					Number(Boolean(store.state.showOutOfService)) +
+					Number(visibleMarkers.length === 0)),
 	);
 	const entityOptions = $derived([
 		{ kind: 'bus', label: t.entityBus },
@@ -191,7 +203,7 @@
 				{#if filterCount > 0}
 					<span class="mf-head-count">{filterCount}</span>
 				{/if}
-				{#if !store.isEmpty}
+				{#if record ? filterCount > 0 : !store.isEmpty}
 					<Button
 						variant="ghost"
 						size="sm"
@@ -212,226 +224,232 @@
 			{/if}
 		</div>
 
-		<Separator decorative />
-		<div class="mf-body">
-			<MapFilterGroup
-				kind="markers"
-				label={t.legendTitle}
-				open={groupOpen.markers}
-				ontoggle={() => toggleGroup('markers')}
-			>
-				<div class="mf-chips mf-entity-chips">
-					<CheckboxRow
-						type="button"
-						class="mf-chip"
-						data-on={!!store.state.showOutOfService}
-						checked={!!store.state.showOutOfService}
-						onclick={() => store.toggleOutOfService()}>{t.outOfServiceVehicles}</CheckboxRow
+		{#if !record || selectedCount > 0}
+			<Separator decorative />
+			<div class="mf-body">
+				{#if !record}
+					<MapFilterGroup
+						kind="markers"
+						label={t.legendTitle}
+						open={groupOpen.markers}
+						ontoggle={() => toggleGroup('markers')}
 					>
-					{#each entityOptions as item (item.kind)}
-						<CheckboxRow
-							type="button"
-							class="mf-chip mf-shape-chip"
-							data-on={visibleMarkers.includes(item.kind)}
-							aria-label={item.label}
-							checked={visibleMarkers.includes(item.kind)}
-							onclick={() => store.toggleMarker(item.kind)}
-						>
-							<span class:mf-shape-stop={item.stop} class="mf-glyph">
-								<MarkerGlyph kind={item.kind} />
-							</span>
-							<span class="mf-chip-text">{item.label}</span>
-						</CheckboxRow>
-					{/each}
-				</div>
-			</MapFilterGroup>
-
-			{#if alertsAvailable}
-				<MapFilterGroup
-					kind="alerts"
-					label={t.modeAlerts}
-					open={groupOpen.alerts}
-					ontoggle={() => toggleGroup('alerts')}
-				>
-					<div class="mf-chips">
-						{#each alertOptions as item (item.kind)}
-							<CheckboxRow
-								type="button"
-								class="mf-chip mf-alert-chip"
-								data-on={store.alerts.includes(item.kind)}
-								checked={store.alerts.includes(item.kind)}
-								style="--chip:var(--dataviz-severity-high)"
-								onclick={() => toggleAlert(item.kind)}
-							>
-								<span class="mf-swatch"></span>
-								<span class="mf-chip-text">{item.label}</span>
-								<span class="sr-only"> {item.aria}</span>
-							</CheckboxRow>
-						{/each}
-					</div>
-				</MapFilterGroup>
-			{:else}
-				<p>{t.alertFilterUnavailable}</p>
-			{/if}
-
-			{#if selectedCount > 0}
-				<MapFilterGroup
-					kind="active"
-					label={t.activeTitle}
-					open={groupOpen.active}
-					count={selectedCount}
-					ontoggle={() => toggleGroup('active')}
-				>
-					<div class="mf-active-groups">
-						{#if selectedRoutes.length > 0}
-							<div class="mf-active-set">
-								<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
-								<div class="mf-chips">
-									{#each selectedRoutes as route (route.id)}
-										<FilterChip
-											type="button"
-											class="mf-chip"
-											data-on="true"
-											aria-label="{t.filterRemove} {routeDisplay(route)}"
-											style="--chip:var(--accent-text)"
-											onclick={() => void removeRoute(route)}
-										>
-											<span class="mf-chip-text">{routeDisplay(route)}</span><span
-												aria-hidden="true">×</span
-											>
-										</FilterChip>
-									{/each}
-								</div>
-							</div>
-						{/if}
-						{#if selectedStops.length > 0}
-							<div class="mf-active-set">
-								<span class="mf-active-label">{t.modeStops}</span>
-								<div class="mf-chips">
-									{#each selectedStops as stop (stop.id)}
-										<FilterChip
-											type="button"
-											class="mf-chip"
-											data-on="true"
-											aria-label="{t.filterRemove} {stopDisplay(stop)}"
-											style="--chip:var(--accent)"
-											onclick={() => void removeStop(stop)}
-										>
-											<span class="mf-chip-text">{stopDisplay(stop)}</span><span aria-hidden="true"
-												>×</span
-											>
-										</FilterChip>
-									{/each}
-								</div>
-							</div>
-						{/if}
-						{#if selectedVehicleIds.length > 0}
-							<div class="mf-active-set">
-								<span class="mf-active-label"><BusFrontIcon size={13} />{t.modeVehicles}</span>
-								<div class="mf-chips">
-									{#each selectedVehicleIds as vehicleId (vehicleId)}
-										<FilterChip
-											type="button"
-											class="mf-chip"
-											data-on="true"
-											aria-label="{t.filterRemove} {t.vehicleLabel} {vehicleId}"
-											style="--chip:var(--primary)"
-											onclick={() => void removeVehicle(vehicleId)}
-										>
-											<span class="mf-chip-text">{t.vehicleLabel} {vehicleId}</span><span
-												aria-hidden="true">×</span
-											>
-										</FilterChip>
-									{/each}
-								</div>
-							</div>
-						{/if}
-						{#if selectedTripIds.length > 0}
-							<div class="mf-active-set">
-								<span class="mf-active-label"><TicketIcon size={13} />{t.modeTrips}</span>
-								<div class="mf-chips">
-									{#each selectedTripIds as tripId (tripId)}
-										<FilterChip
-											type="button"
-											class="mf-chip"
-											data-on="true"
-											aria-label="{t.filterRemove} {t.tripLabel} {tripId}"
-											style="--chip:var(--primary)"
-											onclick={() => void removeTrip(tripId)}
-										>
-											<span class="mf-chip-text">{t.tripLabel} {tripId}</span><span
-												aria-hidden="true">×</span
-											>
-										</FilterChip>
-									{/each}
-								</div>
-							</div>
-						{/if}
-					</div>
-				</MapFilterGroup>
-			{/if}
-
-			<MapFilterGroup
-				kind="status"
-				label={t.modeStatus}
-				help={t.statusHelp}
-				open={groupOpen.status}
-				ontoggle={() => toggleGroup('status')}
-			>
-				<div class="mf-chips">
-					{#each STATUS_CODES as code (code)}
-						<CheckboxRow
-							type="button"
-							class="mf-chip"
-							data-on={store.status.includes(code)}
-							aria-label={mapStatusLabel(locale, code)}
-							checked={store.status.includes(code)}
-							style="--chip:{statusVar(code)}"
-							onclick={() => toggleStatus(code)}
-						>
-							<span class="mf-swatch"></span>
-							<span
-								class="mf-state-glyph"
-								data-m6d-glyph-kind="status"
-								data-m6d-glyph-code={code}
-								aria-hidden="true">{STATUS_GLYPH[code]}</span
-							>
-							<span class="mf-chip-text">{mapStatusLabel(locale, code)}</span>
-						</CheckboxRow>
-					{/each}
-				</div>
-			</MapFilterGroup>
-
-			{#if occupancyAvailable}<MapFilterGroup
-					kind="crowding"
-					label={t.modeOccupancy}
-					open={groupOpen.crowding}
-					ontoggle={() => toggleGroup('crowding')}
-				>
-					<div class="mf-chips">
-						{#each OCCUPANCY_CODES as code (code)}
+						<div class="mf-chips mf-entity-chips">
 							<CheckboxRow
 								type="button"
 								class="mf-chip"
-								data-on={store.occupancy.includes(code)}
-								aria-label={OCCUPANCY_LABELS[locale][code]}
-								checked={store.occupancy.includes(code)}
-								style="--chip:{mapOccupancyColour(code)}"
-								onclick={() => toggleOccupancy(code)}
+								data-on={!!store.state.showOutOfService}
+								checked={!!store.state.showOutOfService}
+								onclick={() => store.toggleOutOfService()}>{t.outOfServiceVehicles}</CheckboxRow
 							>
-								<span class="mf-swatch"></span>
-								<span
-									class="mf-state-glyph"
-									data-m6d-glyph-kind="crowding"
-									data-m6d-glyph-code={code}
-									aria-hidden="true">{occupancyGlyph(code)}</span
+							{#each entityOptions as item (item.kind)}
+								<CheckboxRow
+									type="button"
+									class="mf-chip mf-shape-chip"
+									data-on={visibleMarkers.includes(item.kind)}
+									aria-label={item.label}
+									checked={visibleMarkers.includes(item.kind)}
+									onclick={() => store.toggleMarker(item.kind)}
 								>
-								<span class="mf-chip-text">{OCCUPANCY_LABELS[locale][code]}</span>
-							</CheckboxRow>
-						{/each}
-					</div>
-				</MapFilterGroup>{/if}
-		</div>
+									<span class:mf-shape-stop={item.stop} class="mf-glyph">
+										<MarkerGlyph kind={item.kind} />
+									</span>
+									<span class="mf-chip-text">{item.label}</span>
+								</CheckboxRow>
+							{/each}
+						</div>
+					</MapFilterGroup>
+
+					{#if alertsAvailable}
+						<MapFilterGroup
+							kind="alerts"
+							label={t.modeAlerts}
+							open={groupOpen.alerts}
+							ontoggle={() => toggleGroup('alerts')}
+						>
+							<div class="mf-chips">
+								{#each alertOptions as item (item.kind)}
+									<CheckboxRow
+										type="button"
+										class="mf-chip mf-alert-chip"
+										data-on={store.alerts.includes(item.kind)}
+										checked={store.alerts.includes(item.kind)}
+										style="--chip:var(--dataviz-severity-high)"
+										onclick={() => toggleAlert(item.kind)}
+									>
+										<span class="mf-swatch"></span>
+										<span class="mf-chip-text">{item.label}</span>
+										<span class="sr-only"> {item.aria}</span>
+									</CheckboxRow>
+								{/each}
+							</div>
+						</MapFilterGroup>
+					{:else}
+						<p>{t.alertFilterUnavailable}</p>
+					{/if}
+				{/if}
+
+				{#if selectedCount > 0}
+					<MapFilterGroup
+						kind="active"
+						label={t.activeTitle}
+						open={groupOpen.active}
+						count={selectedCount}
+						ontoggle={() => toggleGroup('active')}
+					>
+						<div class="mf-active-groups">
+							{#if selectedRoutes.length > 0}
+								<div class="mf-active-set">
+									<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
+									<div class="mf-chips">
+										{#each selectedRoutes as route (route.id)}
+											<FilterChip
+												type="button"
+												class="mf-chip"
+												data-on="true"
+												aria-label="{t.filterRemove} {routeDisplay(route)}"
+												style="--chip:var(--accent-text)"
+												onclick={() => void removeRoute(route)}
+											>
+												<span class="mf-chip-text">{routeDisplay(route)}</span><span
+													aria-hidden="true">×</span
+												>
+											</FilterChip>
+										{/each}
+									</div>
+								</div>
+							{/if}
+							{#if selectedStops.length > 0}
+								<div class="mf-active-set">
+									<span class="mf-active-label">{t.modeStops}</span>
+									<div class="mf-chips">
+										{#each selectedStops as stop (stop.id)}
+											<FilterChip
+												type="button"
+												class="mf-chip"
+												data-on="true"
+												aria-label="{t.filterRemove} {stopDisplay(stop)}"
+												style="--chip:var(--accent)"
+												onclick={() => void removeStop(stop)}
+											>
+												<span class="mf-chip-text">{stopDisplay(stop)}</span><span
+													aria-hidden="true">×</span
+												>
+											</FilterChip>
+										{/each}
+									</div>
+								</div>
+							{/if}
+							{#if selectedVehicleIds.length > 0}
+								<div class="mf-active-set">
+									<span class="mf-active-label"><BusFrontIcon size={13} />{t.modeVehicles}</span>
+									<div class="mf-chips">
+										{#each selectedVehicleIds as vehicleId (vehicleId)}
+											<FilterChip
+												type="button"
+												class="mf-chip"
+												data-on="true"
+												aria-label="{t.filterRemove} {t.vehicleLabel} {vehicleId}"
+												style="--chip:var(--primary)"
+												onclick={() => void removeVehicle(vehicleId)}
+											>
+												<span class="mf-chip-text">{t.vehicleLabel} {vehicleId}</span><span
+													aria-hidden="true">×</span
+												>
+											</FilterChip>
+										{/each}
+									</div>
+								</div>
+							{/if}
+							{#if selectedTripIds.length > 0}
+								<div class="mf-active-set">
+									<span class="mf-active-label"><TicketIcon size={13} />{t.modeTrips}</span>
+									<div class="mf-chips">
+										{#each selectedTripIds as tripId (tripId)}
+											<FilterChip
+												type="button"
+												class="mf-chip"
+												data-on="true"
+												aria-label="{t.filterRemove} {t.tripLabel} {tripId}"
+												style="--chip:var(--primary)"
+												onclick={() => void removeTrip(tripId)}
+											>
+												<span class="mf-chip-text">{t.tripLabel} {tripId}</span><span
+													aria-hidden="true">×</span
+												>
+											</FilterChip>
+										{/each}
+									</div>
+								</div>
+							{/if}
+						</div>
+					</MapFilterGroup>
+				{/if}
+
+				{#if !record}
+					<MapFilterGroup
+						kind="status"
+						label={t.modeStatus}
+						help={t.statusHelp}
+						open={groupOpen.status}
+						ontoggle={() => toggleGroup('status')}
+					>
+						<div class="mf-chips">
+							{#each STATUS_CODES as code (code)}
+								<CheckboxRow
+									type="button"
+									class="mf-chip"
+									data-on={store.status.includes(code)}
+									aria-label={mapStatusLabel(locale, code)}
+									checked={store.status.includes(code)}
+									style="--chip:{statusVar(code)}"
+									onclick={() => toggleStatus(code)}
+								>
+									<span class="mf-swatch"></span>
+									<span
+										class="mf-state-glyph"
+										data-m6d-glyph-kind="status"
+										data-m6d-glyph-code={code}
+										aria-hidden="true">{STATUS_GLYPH[code]}</span
+									>
+									<span class="mf-chip-text">{mapStatusLabel(locale, code)}</span>
+								</CheckboxRow>
+							{/each}
+						</div>
+					</MapFilterGroup>
+
+					{#if occupancyAvailable}<MapFilterGroup
+							kind="crowding"
+							label={t.modeOccupancy}
+							open={groupOpen.crowding}
+							ontoggle={() => toggleGroup('crowding')}
+						>
+							<div class="mf-chips">
+								{#each OCCUPANCY_CODES as code (code)}
+									<CheckboxRow
+										type="button"
+										class="mf-chip"
+										data-on={store.occupancy.includes(code)}
+										aria-label={OCCUPANCY_LABELS[locale][code]}
+										checked={store.occupancy.includes(code)}
+										style="--chip:{mapOccupancyColour(code)}"
+										onclick={() => toggleOccupancy(code)}
+									>
+										<span class="mf-swatch"></span>
+										<span
+											class="mf-state-glyph"
+											data-m6d-glyph-kind="crowding"
+											data-m6d-glyph-code={code}
+											aria-hidden="true">{occupancyGlyph(code)}</span
+										>
+										<span class="mf-chip-text">{OCCUPANCY_LABELS[locale][code]}</span>
+									</CheckboxRow>
+								{/each}
+							</div>
+						</MapFilterGroup>{/if}
+				{/if}
+			</div>
+		{/if}
 	</div>
 </Card>
 

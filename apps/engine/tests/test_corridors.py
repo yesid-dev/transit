@@ -221,7 +221,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
         _trip("B", 0, (0, 25), 10),
         _trip("B", 1, (0, 481), 10),
         _trip("B", 2, (0, 0), 12),
-        _trip("Rail", 0, (None, None), live=False),
+        _trip("Rail", 0, (None, None), live=False, route_type=1),
     )
     polls = tuple(
         Poll(feed, second)
@@ -236,26 +236,27 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     directory = tmp_path / "stm" / str(THURSDAY) / f"v{version}"
     start = datetime(2026, 11, 19, 12, tzinfo=UTC)
     rows: list[tuple[object, ...]] = [
-        ("A", start, start, start + timedelta(seconds=120 + i % 3), 120 + i % 3, None)
+        (f"A-{i}", "A", start, start, start + timedelta(seconds=120 + i % 3), 120 + i % 3, None)
         for i in range(30)
     ]
     # Equal observation times do not establish a clear run between two stops.
-    rows.append(("A", start, start, start, 0, None))
+    rows.append(("A-30", "A", start, start, start, 0, None))
     later = start + timedelta(minutes=10)
     rows.extend([
-        ("B", later, later, later + timedelta(seconds=145), 145, None),
-        ("B", later, later, later + timedelta(seconds=601), 601, "excessive_observed_run"),
-        ("B", later + timedelta(minutes=2), later + timedelta(minutes=2),
+        ("B-0", "B", later, later, later + timedelta(seconds=145), 145, None),
+        ("B-1", "B", later, later, later + timedelta(seconds=601), 601, "excessive_observed_run"),
+        ("B-2", "B", later + timedelta(minutes=2), later + timedelta(minutes=2),
          later + timedelta(minutes=4), 120, None),
-        ("Rail", start, None, None, None, "route_without_live_data"),
+        ("Rail-0", "Rail", start, None, None, None, "route_without_live_data"),
     ])
     with duckdb.connect() as conn:
         conn.execute("""
-            CREATE TABLE facts (route_id VARCHAR, scheduled_departure_at TIMESTAMPTZ,
+            CREATE TABLE facts (trip_id VARCHAR, route_id VARCHAR,
+                scheduled_departure_at TIMESTAMPTZ,
                 observed_departure_at TIMESTAMPTZ, observed_arrival_at TIMESTAMPTZ,
                 observed_run_seconds BIGINT, exclusion VARCHAR)
         """)
-        conn.executemany("INSERT INTO facts VALUES (?, ?, ?, ?, ?, ?)", rows)
+        conn.executemany("INSERT INTO facts VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
         conn.execute("""
             COPY (
                 SELECT 'stm' AS provider, ?::VARCHAR AS cleaning_version, ?::DATE AS service_date,
@@ -314,6 +315,13 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     assert network["sample"] == [32]
     assert network["state"] == [3]
     assert network["evidence"]["source_date"] == "2026-11-19"
+    selected = query(
+        clean, measure="mean_time_lost", group="segment", map_view=True, lines=("A", "Rail"),
+        route_type=3, hour_from=23, hour_to=8, direction=0,
+    )
+    assert selected["lines"] == [["A"]]
+    assert selected["value"] == [-90 / 31]
+    assert selected["sample"] == [31]
 
     layer_cut = {"measure": "clear_run_time_lost", "group": "segment", "map_view": True}
     cached = replace(clean, partial_results=PartialResults())
@@ -401,7 +409,10 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
 def test_map_answers_keep_samples_and_non_value_states(tmp_path: Path) -> None:
     known = tuple(_trip("A", i, (360, 380)) for i in range(32))
     on_time = tuple(
-        _trip("B", i, (0, 0), stop_times=(STOPS[0]._replace(stop_id="on-time"), STOPS[1]))
+        _trip(
+            "B", i, (0, 0), route_type=0,
+            stop_times=(STOPS[0]._replace(stop_id="on-time"), STOPS[1]),
+        )
         for i in range(30)
     )
     thin = _trip("A", 33, (0, 40), direction=1)
@@ -427,6 +438,19 @@ def test_map_answers_keep_samples_and_non_value_states(tmp_path: Path) -> None:
     assert stop_values["on-time"] == (3, 0, 30)
     assert stop_values["to"] == (0, None, 0)
     assert stop_values["from"] == (3, 970, 33)
+    status, filtered_stops = ask_map(
+        measure="late", group="stop_id", lines='["A","B"]', route_type=3,
+        hour_from=7, hour_to=8, direction=0,
+    )
+    assert status == 200
+    assert "on-time" not in filtered_stops["stop"]
+    at = filtered_stops["stop"].index("from")
+    assert (filtered_stops["value"][at], filtered_stops["sample"][at]) == (1000, 32)
+    _, outside_hours = ask_map(
+        measure="late", group="stop_id", lines='["A","B"]', route_type=3,
+        hour_from=9, hour_to=10, direction=0,
+    )
+    assert outside_hours["stop"] == []
 
     status, segments = ask_map(measure="mean_time_lost", group="segment", line="A")
     assert status == 200
@@ -448,5 +472,5 @@ def test_map_answers_keep_samples_and_non_value_states(tmp_path: Path) -> None:
     status, refusal = ask_map(measure="mean_time_lost", group="segment")
     assert status == 409
     assert refusal["reason"] == "segment_runs_version_required"
-    assert ask_map(measure="mean_time_lost", group="segment", direction=0)[0] == 400
+    assert ask_map(measure="mean_time_lost", group="segment", direction=0)[0] == 409
     assert ask_map(measure="late", group="stop_id", format="csv")[0] == 400

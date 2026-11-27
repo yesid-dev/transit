@@ -61,12 +61,26 @@ describe('filter URL key inventory', () => {
 			'n',
 			'affects',
 			'severity',
+			'vehicleType',
+			'timeOfDay',
+			'mapDirection',
 		]);
 		expect(Object.isFrozen(FILTER_SEARCH_PARAM_KEYS)).toBe(true);
 	});
 });
 
 describe('fromSearchParams — parsing + self-healing', () => {
+	it('round-trips the map view with multiple lines and hours that cross midnight', () => {
+		const state = fromSearchParams(sp('route=51,24&vehicleType=0&timeOfDay=22-06&mapDirection=1'));
+		expect(state.mapReadings).toEqual({ vehicleType: 0, timeOfDay: '22-6', direction: 1 });
+		expect(toSearchParams(state).toString()).toBe(
+			'route=24%2C51&vehicleType=0&timeOfDay=22-6&mapDirection=1',
+		);
+		expect(
+			fromSearchParams(sp('vehicleType=-1&timeOfDay=7-7&mapDirection=2')).mapReadings,
+		).toBeUndefined();
+	});
+
 	it('collects comma-joined id sets, deduped', () => {
 		const s = fromSearchParams(sp('route=10,80,10,165'));
 		expect([...s.routes].sort()).toEqual(['10', '165', '80']);

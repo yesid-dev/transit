@@ -71,6 +71,7 @@
 	import type { SlimStopEntry } from '#lib/v1/index.ts';
 	import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 	import { createFilterStore, fromSearchParams } from '#lib/filters/index.ts';
+	import { matchMapVehicleReading } from '#lib/filters/mapReadings.ts';
 	import { nearTargetFromSearchParams } from '#lib/search/mapNear.ts';
 	import { MAP_FOCUS_PARAM, parseMapFocus } from '#lib/search/mapFocus.ts';
 	import { hasOccupancy, lineLabel } from '#lib/site/transitDisplay.ts';
@@ -80,6 +81,7 @@
 	import { motionMode } from '#lib/stores/index.ts';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
 	import MapFilters from './MapFilters.svelte';
+	import MapReadingFields from './MapReadingFields.svelte';
 	import MapLinePicker from './MapLinePicker.svelte';
 	import MapMotionControl from './MapMotionControl.svelte';
 	import SwitchRow from '#lib/components/shared/SwitchRow.svelte';
@@ -376,15 +378,35 @@
 	const followedVehicle = $derived(
 		liveChoice?.kind === 'vehicle' ? live.index.byVehicleId.get(liveChoice.id) : chosenTripVehicle,
 	);
-	const effectiveFilter = $derived(
-		chosenLine
-			? {
-					...filters.state,
-					routes: new Set([chosenLine.id]),
-					...(chosenLine.trip ? { trips: new Set([chosenLine.trip]) } : {}),
-				}
-			: filters.state,
+	const mapRouteTypes = $derived(
+		new Map(session.routesIndex.map((route) => [route.id, route.type])),
 	);
+	const lineScopeActive = $derived(
+		(!chosenLine && filters.routes.size > 0) ||
+			filters.state.mapReadings?.vehicleType !== undefined,
+	);
+	function matchesMapLine(id: string, type = mapRouteTypes.get(id)): boolean {
+		const vehicleType = filters.state.mapReadings?.vehicleType;
+		return (
+			(chosenLine !== null || !filters.routes.size || filters.routes.has(id)) &&
+			(vehicleType === undefined || type === vehicleType)
+		);
+	}
+	const matchesReading = $derived.by(() => {
+		const scope = filters.state.mapReadings;
+		if (!scope) return undefined;
+		const types = mapRouteTypes;
+		return matchMapVehicleReading(scope, (id) => types.get(id), timeZone ?? 'America/Toronto');
+	});
+	const effectiveFilter = $derived.by(() => {
+		const state = matchesReading ? { ...filters.state, matchesReading } : filters.state;
+		if (!chosenLine) return state;
+		return {
+			...state,
+			routes: new Set([chosenLine.id]),
+			...(chosenLine.trip ? { trips: new Set([chosenLine.trip]) } : {}),
+		};
+	});
 	const vehicleMissing = $derived(
 		liveChoice?.kind === 'vehicle' &&
 			!followedVehicle &&
@@ -484,22 +506,23 @@
 			frameClock(v1.provider ?? (timeZone ? { timezone: timeZone } : null)),
 		).period,
 	);
+	const mapFilterRoutes = $derived([...filters.routes].sort());
 	const recordLine = $derived(
-		recordUrl.searchParams.get('recordLine') ??
-			(session.selected?.kind === 'route'
-				? session.selected.id
-				: filters.routes.size === 1
-					? [...filters.routes][0]
-					: '') ??
-			'',
+		mapFilterRoutes.length > 1
+			? ''
+			: (mapFilterRoutes[0] ??
+					recordUrl.searchParams.get('recordLine') ??
+					(session.selected?.kind === 'route' ? session.selected.id : '')),
 	);
 	const recordDirection = $derived(
-		recordUrl.searchParams.get('recordDirection') ??
-			(session.selected?.kind === 'route' &&
-			session.selected.id === recordLine &&
-			session.selected.direction != null
-				? String(session.selected.direction)
-				: ''),
+		filters.state.mapReadings?.direction !== undefined
+			? String(filters.state.mapReadings.direction)
+			: (recordUrl.searchParams.get('recordDirection') ??
+					(session.selected?.kind === 'route' &&
+					session.selected.id === recordLine &&
+					session.selected.direction != null
+						? String(session.selected.direction)
+						: '')),
 	);
 
 	function changeRecordLayer(layer: Exclude<RecordMapLayer, 'live'>): void {
@@ -511,9 +534,26 @@
 
 	function changeRecordScope(line: string, direction: string): void {
 		const url = urlCoordinator.currentUrl();
+		if (line) url.searchParams.delete('route');
 		url.searchParams.set('recordLine', line);
 		url.searchParams.set('recordDirection', direction);
+		if (url.searchParams.has('mapDirection')) {
+			if (direction) url.searchParams.set('mapDirection', direction);
+			else url.searchParams.delete('mapDirection');
+		}
 		void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
+	}
+
+	function changeReadingDirection(direction: 0 | 1 | undefined): void {
+		const url = urlCoordinator.currentUrl();
+		if (isRecordLayer && url.searchParams.has('recordDirection')) {
+			url.searchParams.delete('recordDirection');
+			if (direction === undefined) url.searchParams.delete('mapDirection');
+			else url.searchParams.set('mapDirection', String(direction));
+			void urlCoordinator.goto(url.pathname + url.search, { ...MAP_URL_REWRITE, shallow: true });
+			return;
+		}
+		filters.setMapReadings({ ...filters.state.mapReadings, direction });
 	}
 
 	// One camera capture per settled move or resize. Animation frames never rebuild the list.
@@ -650,7 +690,34 @@
 	const hoverPeek = $derived(session.hoverPeek);
 	const routeList = $derived(session.routeList);
 	const railName = $derived(railLegendName(locale, page.data.provider, session.routesIndex));
-	const routeLineRoutes = $derived(session.routeLineRoutes);
+	const routeLineRoutes = $derived.by(() => {
+		const routes = session.routeLineRoutes;
+		const direction = filters.state.mapReadings?.direction;
+		const scoped = lineScopeActive
+			? routes.filter((route) => matchesMapLine(route.id, route.type ?? undefined))
+			: routes;
+		return direction === undefined
+			? scoped
+			: scoped.map((route) => ({
+					...route,
+					directions: route.directions?.filter((item) => item.dir === direction) ?? [],
+				}));
+	});
+	const scopedStops = $derived.by(() => {
+		const direction = filters.state.mapReadings?.direction;
+		if (!lineScopeActive && direction === undefined) return stopList;
+		const scopedLines = Object.entries(mapDirections ?? {}).filter(([line]) =>
+			matchesMapLine(line),
+		);
+		const ids = new Set(
+			scopedLines.flatMap(([, directions]) =>
+				directions
+					.filter((item) => direction === undefined || item.dir === direction)
+					.flatMap((item) => item.stops?.map(({ id }) => id) ?? []),
+			),
+		);
+		return stopList.filter((stop) => ids.has(stop.id));
+	});
 	const selectedRouteLine = $derived(session.selectedRouteLine);
 	const selectedVehicleId = $derived(session.selectedVehicleId);
 	const selectedStopId = $derived(session.selectedStopId);
@@ -1061,7 +1128,7 @@
 				selectedId: selectedVehicleId,
 			},
 			stops: {
-				items: isRecordLayer ? [] : stopList,
+				items: isRecordLayer ? [] : scopedStops,
 				filter,
 				alertIds: session.alertStopIds,
 				selectedId: selectedStopId,
@@ -1263,29 +1330,55 @@
 	</Card>
 {/snippet}
 
-{#snippet motionHeader()}
-	<MapMotionControl {locale} copy={t} />
+{#snippet readingFilterHeader()}
+	<div class="grid min-w-0 gap-2">
+		<MapReadingFields
+			store={filters}
+			routes={session.routesIndex}
+			provider={manifest.provider}
+			direction={isRecordLayer && recordDirection === '0'
+				? 0
+				: isRecordLayer && recordDirection === '1'
+					? 1
+					: undefined}
+			onDirection={changeReadingDirection}
+			{locale}
+		/>
+		<MapLinePicker
+			routes={session.routesIndex.filter((route) => !filters.routes.has(route.id))}
+			{locale}
+			label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
+			placeholder={tr('Add a line', 'Ajouter une ligne')}
+			additive
+			onchange={(value) => {
+				if (value) session.applyFilter({ kind: 'route', value });
+			}}
+		/>
+		{#if !isRecordLayer}<MapMotionControl {locale} copy={t} />{/if}
+	</div>
 {/snippet}
 
 {#snippet mapControls()}
-	{#if !isRecordLayer && !mapFailure}
+	{#if !mapFailure}
 		<div class="contents" data-map-controls data-ripple-exempt>
-			<div class="grid w-full grid-cols-2 gap-2">
-				<Button
-					variant="outline"
-					size="sm"
-					class="min-h-11 px-2"
-					wrap
-					onclick={() => {
-						trackEvent('Locate Me');
-						showNearbyPanel();
-						nearMeController.useLocation();
-					}}>{t.nearMe}</Button
-				>
-				<Button variant="outline" size="sm" class="min-h-11 px-2" wrap onclick={openAddress}>
-					{tr('Near an address', 'Près d’une adresse')}
-				</Button>
-			</div>
+			{#if !isRecordLayer}
+				<div class="grid w-full grid-cols-2 gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						class="min-h-11 px-2"
+						wrap
+						onclick={() => {
+							trackEvent('Locate Me');
+							showNearbyPanel();
+							nearMeController.useLocation();
+						}}>{t.nearMe}</Button
+					>
+					<Button variant="outline" size="sm" class="min-h-11 px-2" wrap onclick={openAddress}>
+						{tr('Near an address', 'Près d’une adresse')}
+					</Button>
+				</div>
+			{/if}
 			<Collapsible.Root bind:open={mapFiltersOpen} class="w-full" data-map-filter-disclosure>
 				<Collapsible.Trigger>
 					{#snippet child({ props })}
@@ -1303,24 +1396,17 @@
 					{/snippet}
 				</Collapsible.Trigger>
 				<Collapsible.Content>
-					<MapLinePicker
-						routes={session.routesIndex}
-						{locale}
-						label={tr('Line on the map', 'Ligne sur la carte')}
-						placeholder={tr('Choose a line', 'Choisir une ligne')}
-						value={detailLineId ?? chosenLine?.id}
-						onchange={(value) => (value ? chooseOnMap({ kind: 'line', id: value }) : closeDetail())}
-					/>
-					<MapLinePicker
-						routes={session.routesIndex}
-						{locale}
-						label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
-						placeholder={tr('Add a line filter', 'Ajouter une ligne au filtre')}
-						additive
-						onchange={(value) => {
-							if (value) session.applyFilter({ kind: 'route', value });
-						}}
-					/>
+					{#if !isRecordLayer}
+						<MapLinePicker
+							routes={session.routesIndex}
+							{locale}
+							label={tr('Line on the map', 'Ligne sur la carte')}
+							placeholder={tr('Choose a line', 'Choisir une ligne')}
+							value={detailLineId ?? chosenLine?.id}
+							onchange={(value) =>
+								value ? chooseOnMap({ kind: 'line', id: value }) : closeDetail()}
+						/>
+					{/if}
 					<MapFilters
 						{occupancyAvailable}
 						store={filters}
@@ -1328,16 +1414,19 @@
 						{locale}
 						routes={session.routesIndex}
 						stops={stopList}
-						header={motionHeader}
+						record={isRecordLayer}
+						header={readingFilterHeader}
 					/>
-					<ul class="grid list-none gap-1 p-0 text-sm text-muted-foreground">
-						{#each legendDetails.groups.slice(1).flatMap((group) => group.rows) as row (row.id)}
-							<li>{row.label}{row.definition ? ` · ${row.definition}` : ''}</li>
-						{/each}
-					</ul>
-					{#if legendDetails.note}<p class="text-sm text-muted-foreground">
-							{legendDetails.note}
-						</p>{/if}
+					{#if !isRecordLayer}
+						<ul class="grid list-none gap-1 p-0 text-sm text-muted-foreground">
+							{#each legendDetails.groups.slice(1).flatMap((group) => group.rows) as row (row.id)}
+								<li>{row.label}{row.definition ? ` · ${row.definition}` : ''}</li>
+							{/each}
+						</ul>
+						{#if legendDetails.note}<p class="text-sm text-muted-foreground">
+								{legendDetails.note}
+							</p>{/if}
+					{/if}
 				</Collapsible.Content>
 			</Collapsible.Root>
 		</div>
@@ -1808,6 +1897,8 @@
 		{map}
 		layer={recordLayer}
 		line={recordLine}
+		lines={mapFilterRoutes}
+		readings={filters.state.mapReadings}
 		direction={recordDirection}
 		city={manifest.provider}
 		period={recordPeriod}

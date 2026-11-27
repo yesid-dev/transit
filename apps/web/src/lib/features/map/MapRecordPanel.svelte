@@ -23,6 +23,7 @@
 	import type { RouteFile, StopIndexEntry } from '#lib/v1/schemas/index.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
+	import { mapReadingHours, type MapReadingFilters } from '#lib/filters/mapReadings.ts';
 	import type { MapRecordAnswer } from './recordMapAnswer';
 	import {
 		isCoordinateInCapturedView,
@@ -50,6 +51,8 @@
 		map: MapLibreMap | null;
 		layer: RecordMapLayer;
 		line: string;
+		lines?: readonly string[];
+		readings?: MapReadingFilters;
 		direction: string;
 		city: string;
 		period: ReturnType<typeof parseFrameState>['period'];
@@ -71,6 +74,8 @@
 		map,
 		layer,
 		line,
+		lines = [],
+		readings,
 		direction,
 		city,
 		period,
@@ -93,6 +98,14 @@
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
 	const stopLayer = $derived(layer === 'stops');
 	const network = $derived(layer === 'corridors' && !line);
+	const hours = $derived(mapReadingHours(readings?.timeOfDay));
+	const scopedDirection = $derived(
+		readings?.direction !== undefined
+			? String(readings.direction)
+			: !stopLayer && line
+				? direction
+				: '',
+	);
 	const scope = $derived(
 		period && layer !== 'live'
 			? new URLSearchParams({
@@ -100,7 +113,12 @@
 					from: period.from,
 					to: period.to,
 					...(network ? { layer: 'corridors' } : {}),
-					...(!stopLayer && line ? { line, ...(direction ? { direction } : {}) } : {}),
+					...(!stopLayer && line ? { line } : lines.length ? { lines: JSON.stringify(lines) } : {}),
+					...(scopedDirection ? { direction: scopedDirection } : {}),
+					...(readings?.vehicleType !== undefined
+						? { route_type: String(readings.vehicleType) }
+						: {}),
+					...(hours ? { hour_from: String(hours[0]), hour_to: String(hours[1]) } : {}),
 				}).toString()
 			: '',
 	);

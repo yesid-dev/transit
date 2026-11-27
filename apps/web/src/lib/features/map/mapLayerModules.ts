@@ -113,6 +113,7 @@ const vehiclesModule: LayerModule = {
 			join(filter.vehicles),
 			join(filter.status ?? []),
 			join(filter.occupancy ?? []),
+			filter.matchesReading,
 			visibleEntityKinds(filter).includes('bus'),
 			alertFilterActive,
 			alertFilterActive ? join(vehicles.alertIds ?? []) : '',

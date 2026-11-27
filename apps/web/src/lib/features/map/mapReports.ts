@@ -281,5 +281,9 @@ export function mapReportFilterTokens(filter: FilterState): string[] {
 	if (filter.entities?.length === 0) tokens.push('entity:none');
 	for (const kind of filter.entities ?? []) tokens.push(`entity:${kind}`);
 	for (const kind of filter.alerts ?? []) tokens.push(`alert:${kind}`);
+	const readings = filter.mapReadings;
+	if (readings?.vehicleType !== undefined) tokens.push(`vehicle_type:${readings.vehicleType}`);
+	if (readings?.timeOfDay !== undefined) tokens.push(`time_of_day:${readings.timeOfDay}`);
+	if (readings?.direction !== undefined) tokens.push(`direction:${readings.direction}`);
 	return tokens;
 }
