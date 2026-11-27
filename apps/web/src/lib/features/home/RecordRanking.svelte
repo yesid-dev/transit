@@ -8,6 +8,7 @@
 	import { stopNameFallback } from '#lib/site/absence.ts';
 	import RecordDataTable, { type RecordTableRow } from '../record/RecordDataTable.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
+	import type { RecordSkeletonSpec } from '../record/recordWaiting.ts';
 	import StateMark from '../record/StateMark.svelte';
 	import { lastGoodNote } from '../record/recordText.ts';
 	import { overviewCopy } from './overviewRecord.copy';
@@ -38,6 +39,13 @@
 		kind === 'line' ? (locale === 'fr' ? 'Ligne' : 'Line') : locale === 'fr' ? 'Arrêt' : 'Stop',
 	);
 	type Row = RecordTableRow & { share: string };
+	// The preview's three rows, a name over its counts, behind a line plate or a stop code.
+	const waiting = $derived<RecordSkeletonSpec>({
+		shape: 'rows',
+		count: 3,
+		lines: 2,
+		lead: kind === 'line' ? 'plate' : 'code',
+	});
 
 	function rankRows(answer: RankingAnswer, stops: ScheduleEdition['stops']): Row[] {
 		return previewRows(answer.rows).map((row) => {
@@ -88,9 +96,9 @@
 <div class="min-w-0" data-slot="record-ranking">
 	<h3 class="font-semibold">{heading ?? title}</h3>
 	{#await ranking}
-		{#key ranking}<RecordPending {locale} answer={ranking} />{/key}
+		{#key ranking}<RecordPending {locale} answer={ranking} shape={waiting} />{/key}
 	{:then result}
-		{#if result.kind === 'busy'}<RecordPending {locale} busy />
+		{#if result.kind === 'busy'}<RecordPending {locale} busy shape={waiting} />
 		{:else if result.kind !== 'answer'}<p>{overviewCopy[locale].unavailable}</p>
 		{:else}
 			{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}

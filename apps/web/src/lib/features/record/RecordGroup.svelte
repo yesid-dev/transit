@@ -12,13 +12,15 @@
 	}: PageSectionProps & { density?: 'compact'; waiting?: RecordWaiting } = $props();
 </script>
 
-<!-- Keep the answer and its first cards in one group, and About these figures in the last. -->
+<!-- Keep the answer and its first cards in one group, and About these figures in the last.
+     Cards inside a group and the space on each side of a section edge share the kit's card gap
+     (holistic pass F3), so stacked cards and grids of cards sit the same distance apart. -->
 <PageSection
 	{...rest}
 	data-record-pending={waiting ? '' : undefined}
 	aria-busy={waiting ? 'true' : undefined}
 	class={[
-		'grid min-w-0 grid-cols-1 gap-6 py-6 first:pt-0 last:pb-0 print:py-0',
+		'grid min-w-0 grid-cols-1 gap-(--space-card-gap) py-(--space-card-gap) first:pt-0 last:pb-0 print:py-0',
 		'record-group',
 		density === 'compact' && 'max-sm:gap-4',
 		className,

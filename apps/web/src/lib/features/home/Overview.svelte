@@ -54,6 +54,7 @@
 	} from '../record/recordText.ts';
 	import { periodDays } from './periodComparison.ts';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
+	import AboutFiguresWaiting from './AboutFiguresWaiting.svelte';
 	import OverviewLiveCard from './OverviewLiveCard.svelte';
 	import RecordRanking from './RecordRanking.svelte';
 	import {
@@ -247,7 +248,7 @@
 			<RecordSkeleton shape="facts" />
 		{:then { current, previous, delivery }}
 			{#if current.kind === 'busy'}
-				<RecordPending {locale} busy />
+				<RecordPending {locale} busy shape="reading" />
 				{@render actions()}
 			{:else}
 				{@render lead(current)}
@@ -316,7 +317,7 @@
 				{#await record.trend}
 					{#key record.trend}<RecordPending shape="trend" {locale} answer={record.trend} />{/key}
 				{:then trend}
-					{#if trend.kind === 'busy'}<RecordPending {locale} busy />
+					{#if trend.kind === 'busy'}<RecordPending {locale} busy shape="trend" />
 					{:else if trend.kind !== 'answer'}<p>{t.unavailable}</p>
 					{:else if 'cells' in trend.answer && trend.answer.cells.length}
 						<RecordChart
@@ -371,59 +372,67 @@
 	{/key}
 {/snippet}
 
-{#snippet evidence(current: MeasureAnswer | null, delivery: MeasureAnswer | null)}
+{#snippet evidence(current: MeasureAnswer | null, delivery: MeasureAnswer | null, waiting = false)}
 	{@const counts = current?.evidence.counts}
 	{@const events = counts?.classified}
 	{@const trips = delivery?.evidence.counts.ran}
 	{@const observed = current?.evidence.share_observed}
 	{@const scheduled = counts?.scheduled ?? counts?.punctuality_scheduled}
 	{@const basis = timingBasis(counts, locale)}
-	<AboutFigures
-		title={t.about}
-		fields={[
-			{ key: 'period', label: t.period, text: `${dateRange(record.period, locale)}, ${days}.` },
-			{
-				key: 'counted',
-				label: t.counted,
-				text: recordCounts(events, trips, days, locale),
-			},
-			{
-				key: 'observed',
-				label: t.observed,
-				text: [
-					observed == null
-						? null
-						: t.observedShare(
-								recordPercent(observed, locale),
-								scheduled == null ? undefined : tally(scheduled, locale),
-							),
-					current?.evidence.low_coverage ? lowCoverageText(locale) + '.' : null,
-					basis,
-					current?.coverage_note?.[locale],
-					delivery && !delivery.evidence.low_coverage && (delivery.evidence.share_eligible ?? 1) < 1
-						? coverageText(delivery.evidence, locale) + '.'
-						: null,
-				]
-					.filter(Boolean)
-					.join(' '),
-			},
-			{ key: 'means', label: t.means, text: t.definition },
-			{
-				key: 'method',
-				label: t.methodRow,
-				text: null,
-				link: { href: link('/metrics'), label: t.method },
-			},
-			{
-				key: 'source',
-				label: t.source,
-				text: `${t.feeds(agencyName(operator, page.data.provider))} ${t.recordStart(locale === 'fr' ? longDate(cityStart, locale) : dateRange({ from: cityStart, to: cityStart }, locale))}`,
-			},
-		]}
-	/>
+	{@const fields = [
+		{ key: 'period', label: t.period, text: `${dateRange(record.period, locale)}, ${days}.` },
+		{
+			key: 'counted',
+			label: t.counted,
+			waiting,
+			text: recordCounts(events, trips, days, locale),
+		},
+		{
+			key: 'observed',
+			label: t.observed,
+			waiting: waiting && 5,
+			text: [
+				observed == null
+					? null
+					: t.observedShare(
+							recordPercent(observed, locale),
+							scheduled == null ? undefined : tally(scheduled, locale),
+						),
+				current?.evidence.low_coverage ? lowCoverageText(locale) + '.' : null,
+				basis,
+				current?.coverage_note?.[locale],
+				delivery && !delivery.evidence.low_coverage && (delivery.evidence.share_eligible ?? 1) < 1
+					? coverageText(delivery.evidence, locale) + '.'
+					: null,
+			]
+				.filter(Boolean)
+				.join(' '),
+		},
+		{ key: 'means', label: t.means, text: t.definition },
+		{
+			key: 'method',
+			label: t.methodRow,
+			text: null,
+			link: { href: link('/metrics'), label: t.method },
+		},
+		{
+			key: 'source',
+			label: t.source,
+			text: `${t.feeds(agencyName(operator, page.data.provider))} ${t.recordStart(locale === 'fr' ? longDate(cityStart, locale) : dateRange({ from: cityStart, to: cityStart }, locale))}`,
+		},
+		{
+			key: 'error',
+			label: t.errorRow,
+			text: null,
+			link: { href: `${link('/metrics')}#about-transit`, label: t.errorLink },
+		},
+	]}
+	{#if waiting}<AboutFiguresWaiting title={t.about} {fields} />
+	{:else}<AboutFigures title={t.about} {fields} />{/if}
 {/snippet}
 
 <RecordScreen class="min-w-0 wrap-break-word">
+	<!-- The title and the first cards share one section: no page divider stands between them. -->
 	<RecordGroup>
 		{#await record.totals}
 			<ScreenTitle title={t.title(city)} subtitle={operator} />
@@ -435,9 +444,7 @@
 					: undefined}
 			/>
 		{/await}
-	</RecordGroup>
-	<div data-slot="screen-content">
-		<RecordGroup>
+		<div class="screen-content" data-slot="screen-content">
 			<p data-screen-intro>{t.intro}</p>
 
 			<DashboardGrid gutter={false} minTile="22rem" class="items-start" data-slot="screen-answer">
@@ -445,52 +452,61 @@
 					{@render card()}
 				{/each}
 			</DashboardGrid>
-		</RecordGroup>
-		<RecordGroup>
-			<RecordCard interactive title={t.rankings} {stamp}>
-				<p class="mb-3 text-muted-foreground">{t.rankingIntro}</p>
-				{#await rankings then results}
-					{@const failure = results
-						.map(({ kind }) => kind)
-						.find((kind) => kind !== 'answer' && kind !== 'busy')}
-					{#if failure}<p class="mb-3">{recordConnection[failure][locale]}</p>{/if}
-				{/await}
-				<DashboardGrid gutter={false} minTile="18rem">
-					<RecordRanking {locale} kind="line" ranking={record.lines} {link} />
-					<RecordRanking
-						{locale}
-						kind="stop"
-						ranking={record.stops}
-						{link}
-						directory={record.directory}
-					/>
-				</DashboardGrid>
-				{#snippet links()}
-					<a
-						class="inline-flex min-h-11 items-center text-primary underline"
-						href={link('/rankings')}>{t.allRankings}</a
-					>
-				{/snippet}
-			</RecordCard>
-		</RecordGroup>
-		<RecordGroup>
-			{#if mode === 'live'}
-				<AboutLiveFigures
+		</div>
+	</RecordGroup>
+	<RecordGroup>
+		<RecordCard interactive title={t.rankings} {stamp}>
+			<p class="mb-3 text-muted-foreground">{t.rankingIntro}</p>
+			{#await rankings then results}
+				{@const failure = results
+					.map(({ kind }) => kind)
+					.find((kind) => kind !== 'answer' && kind !== 'busy')}
+				{#if failure}<p class="mb-3">{recordConnection[failure][locale]}</p>{/if}
+			{/await}
+			<DashboardGrid gutter={false} minTile="18rem">
+				<RecordRanking {locale} kind="line" ranking={record.lines} {link} />
+				<RecordRanking
 					{locale}
-					{operator}
-					healthLink={link('/status', true)}
-					captureAge={liveCaptureAge}
+					kind="stop"
+					ranking={record.stops}
+					{link}
+					directory={record.directory}
 				/>
-			{:else}
-				{#await record.punctuality then current}
-					{#await record.delivery then delivery}
-						{@render evidence(
-							current.kind === 'answer' ? current.answer : null,
-							delivery.kind === 'answer' ? delivery.answer : null,
-						)}
-					{/await}
-				{/await}
-			{/if}
-		</RecordGroup>
-	</div>
+			</DashboardGrid>
+			{#snippet links()}
+				<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/rankings')}
+					>{t.allRankings}</a
+				>
+			{/snippet}
+		</RecordCard>
+	</RecordGroup>
+	<RecordGroup>
+		{#if mode === 'live'}
+			<AboutLiveFigures
+				{locale}
+				{operator}
+				healthLink={link('/status', true)}
+				captureAge={liveCaptureAge}
+			/>
+		{:else}
+			<!-- On the page from the first frame; the two sentences that need the answer pulse. -->
+			{#await overviewReadings}
+				{@render evidence(null, null, true)}
+			{:then { current, delivery }}
+				{@render evidence(
+					current.kind === 'answer' ? current.answer : null,
+					delivery.kind === 'answer' ? delivery.answer : null,
+				)}
+			{/await}
+		{/if}
+	</RecordGroup>
 </RecordScreen>
+
+<style>
+	.screen-content {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-card-gap);
+		min-inline-size: 0;
+	}
+</style>

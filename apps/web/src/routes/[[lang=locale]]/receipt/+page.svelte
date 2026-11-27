@@ -52,7 +52,6 @@
 		agencyName,
 		alertsNotTrackedLine,
 		alertsNotTrackedOnDates,
-		citeDates,
 		dateRange,
 		longDate,
 		methodEvidence,
@@ -80,7 +79,11 @@
 		RecordMeasure,
 	} from '#lib/server/engine.ts';
 	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
+	import type { RecordWaiting } from '#lib/features/record/recordWaiting.ts';
+	import AboutFiguresWaiting from '#lib/features/home/AboutFiguresWaiting.svelte';
+	import WaitingFoot from '#lib/features/home/WaitingFoot.svelte';
 	import type { PageData } from './$types';
+	import { dailySectionCitation } from './dailyCitation.ts';
 
 	let { data: routeData }: { data: PageData } = $props();
 	const readings = recoverReadings(
@@ -133,6 +136,12 @@
 	const periodsAnswer = $derived(answers.get('periods'));
 	const messagesAnswer = $derived(answers.get('messages'));
 	const bandTitle = $derived(t('Early, on time and late', 'En avance, à l’heure et en retard'));
+	const source = $derived(citationSource(operator ?? cityName, routeData.provider, lang));
+	// Each card waits as its final shape (holistic pass D4); a busy card keeps it.
+	const waiting = {
+		periods: { shape: 'rows', count: 5, lines: 2, lead: 'none' },
+		messages: { shape: 'notice', count: 3 },
+	} as const satisfies Record<string, RecordWaiting>;
 
 	async function ranked(
 		answer: Promise<EngineResult<EngineAnswer>> | undefined,
@@ -158,9 +167,8 @@
 	function readingText(result: EngineResult<EngineAnswer> | undefined) {
 		const answer = measure(result);
 		if (answer) return recordState(readingState(answer))[lang];
-		return result?.kind === 'busy'
-			? t('Waiting for a reading.', 'En attente de données.')
-			: unavailable;
+		// The waiting words of a busy card, as a part of the answer's sentence (D6).
+		return result?.kind === 'busy' ? t('Waiting for a turn', 'En attente') : unavailable;
 	}
 	function evidenceSample(answer: EngineAnswer, section: DailySection) {
 		const days = countedUnit(answer.evidence.days_included.length, 'day', lang);
@@ -246,25 +254,23 @@
 		result: Extract<EngineResult<EngineAnswer>, { kind: 'answer' }>,
 	) {
 		const { answer, lastGood } = result;
-		const subject = t('Daily report', 'Rapport quotidien') + ', ' + cityName;
-		const range = citeDates(
-			{ from: answer.evidence.start_date, to: answer.evidence.end_date },
+		// As every page citation: the source and licence of the data and the day it was read.
+		return dailySectionCitation(
+			{
+				subject: t('Daily report', 'Rapport quotidien') + ', ' + cityName,
+				section: dailyTitles[section][lang === 'fr' ? 1 : 0],
+				period: { from: answer.evidence.start_date, to: answer.evidence.end_date },
+				statement:
+					section === 'punctuality' && 'value' in answer
+						? onTimeStatement(answer, lang)
+						: undefined,
+				method: methodEvidence(answer.evidence, lang),
+				note: lastGood ? lastGoodNote[lang] : undefined,
+				source,
+				href: recordSectionLinks(pinned, section).share,
+			},
 			lang,
 		);
-		return [
-			[
-				'Transit ·',
-				subject + '.',
-				dailyTitles[section][lang === 'fr' ? 1 : 0] + '.',
-				range + '.',
-			].join(' '),
-			section === 'punctuality' && 'value' in answer ? onTimeStatement(answer, lang) : '',
-			methodEvidence(answer.evidence, lang),
-			lastGood ? lastGoodNote[lang] : '',
-			recordSectionLinks(pinned, section).share,
-		]
-			.filter(Boolean)
-			.join(' ');
 	}
 	type PeriodRow = Omit<ReturnType<typeof dailyPeriods>[number], 'detail'> & {
 		id: string;
@@ -344,8 +350,8 @@
 		/>
 	</div>
 {/snippet}
-{#snippet failure(result: EngineResult<EngineAnswer> | undefined)}
-	{#if result?.kind === 'busy'}<RecordPending locale={lang} busy />
+{#snippet failure(result: EngineResult<EngineAnswer> | undefined, shape?: RecordWaiting)}
+	{#if result?.kind === 'busy'}<RecordPending locale={lang} busy {shape} />
 	{:else}<p>{connection}</p>{/if}
 {/snippet}
 {#snippet missingMeasure(answer: RecordMeasure, trip = false)}
@@ -461,11 +467,74 @@
 	</div>
 {/snippet}
 
+{#snippet about(current: RecordMeasure | undefined, waiting = false)}
+	{@const counts = current?.evidence.counts}
+	{@const days = current?.evidence.days_included.length}
+	{@const observed = current?.evidence.share_observed}
+	{@const fields = [
+		{ key: 'period', label: copy.period, text: period ? dateRange(period, lang) : null },
+		{
+			key: 'counted',
+			label: copy.counted,
+			waiting,
+			text: recordCounts(
+				counts?.classified,
+				null,
+				days ? countedUnit(days, 'day', lang) : '',
+				lang,
+			),
+		},
+		{
+			key: 'observed',
+			label: copy.observed,
+			waiting: waiting && 5,
+			text: [
+				observed == null
+					? null
+					: copy.observedShare(
+							recordPercent(observed, lang),
+							counts?.scheduled == null ? undefined : tally(counts.scheduled, lang),
+						),
+				current?.evidence.low_coverage ? lowCoverageText(lang) + '.' : null,
+				timingBasis(counts, lang),
+				current?.coverage_note?.[lang],
+			]
+				.filter(Boolean)
+				.join(' '),
+		},
+		{ key: 'means', label: copy.means, text: copy.definition },
+		{
+			key: 'method',
+			label: copy.methodRow,
+			text: null,
+			link: { href: link('/metrics'), label: copy.method },
+		},
+		{
+			key: 'source',
+			label: copy.source,
+			text: [
+				copy.feeds(agencyName(operator ?? cityName, routeData.provider)),
+				copy.recordStart(longDate(recordStart(page.data.provider), lang)),
+			].join(' '),
+		},
+		{
+			key: 'error',
+			label: copy.errorRow,
+			text: null,
+			link: { href: `${link('/metrics')}#about-transit`, label: copy.errorLink },
+		},
+	]}
+	<div>
+		{#if waiting}<AboutFiguresWaiting title={copy.about} {fields} />
+		{:else}<AboutFigures compactPrint title={copy.about} {fields} />{/if}
+	</div>
+{/snippet}
+
 <Surface class="print:py-0!">
 	<article class="daily-report min-w-0">
 		<RecordScreen>
-			<RecordGroup><ScreenTitle title={data.title} {subtitle} /></RecordGroup>
 			{#if !period}
+				<RecordGroup><ScreenTitle title={data.title} {subtitle} /></RecordGroup>
 				<p role="status">
 					{t(
 						'This date is outside the available record.',
@@ -473,397 +542,366 @@
 					)}
 				</p>
 			{:else if data.sections.length}
-				<div
-					class="report-content min-w-0 print:grid print:grid-cols-2 print:gap-3"
-					data-slot="screen-content"
-				>
+				<div class="report-content min-w-0 print:grid print:grid-cols-2 print:gap-3">
+					<!-- The title, the answer and the cards share one section: no page divider stands
+					     between the title and the answer. -->
 					<RecordGroup class="print:contents">
-						<section
-							id="punctuality"
-							aria-label={t(...dailyTitles.punctuality)}
-							data-slot="screen-answer"
-							class="grid min-w-0 gap-3"
-						>
-							{#await answers.get('punctuality')}
-								{@const pending = answers.get('punctuality')}
-								{#key pending}<RecordPending shape="answer" locale={lang} answer={pending} />{/key}
-							{:then current}
-								{#if current}
-									{#await answers.get('delivery')}
-										{@render lead(current, undefined)}
-									{:then delivery}
-										{@render lead(current, delivery)}
-									{/await}
-								{/if}
-							{/await}
-						</section>
-
-						<div class="report-pair">
-							<div id="delivery" class="grid min-w-0">
-								<RecordCard compactPrint title={t(...dailyTitles.delivery)} {stamp}>
-									{#await deliveryAnswer}
-										{#key deliveryAnswer}<RecordPending
-												shape="trip-facts"
-												locale={lang}
-												answer={deliveryAnswer}
-											/>{/key}
-									{:then result}
-										{@const service = measure(result)}
-										{#if !service}{@render failure(result)}
-										{:else if service.state !== 'measured'}{@render missingMeasure(service, true)}
-										{:else}
-											{@const outcomes = tripOutcomes(service.evidence)}
-											{#if outcomes}
-												<FactList
-													leading={false}
-													class="print:[&_[data-slot=fact-row]]:min-h-0 print:[&_[data-slot=fact-row]]:py-0.5"
-												>
-													{#each deliveryRows as key (key)}
-														{@const share = key === 'ran' ? tripsRun(service) : null}
-														<FactRow
-															label={deliveryLabels[key]}
-															detail={share == null
-																? undefined
-																: recordPercent(share, lang) +
-																	' ' +
-																	tripsRunSentence(outcomes.known, lang)}
-														>
-															<strong>{tally(outcomes[key], lang)}</strong>
-														</FactRow>
-													{/each}
-												</FactList>
-											{:else}<StateMark state="unknown" locale={lang} />{/if}
-										{/if}
-									{/await}
-									<!-- The definitions need no data: they stand while the counts stream in. -->
-									<p class="mt-3 text-muted-foreground">{tripOutcomeNote(lang)}</p>
-									<p class="mt-3 text-muted-foreground">
-										{t(
-											'A cancelled trip comes with a notice from the agency. A missing trip has no vehicle reporting and no notice.',
-											'Un trajet annulé fait l’objet d’un avis de la société de transport. Pour un trajet manquant, aucun véhicule ne transmet de données et aucun avis n’a été publié.',
-										)}
-									</p>
-									{#snippet evidence()}
-										{#await deliveryAnswer then result}{#if result}{@render footerEvidence(
-													result,
-													'delivery',
-												)}{/if}{/await}
-									{/snippet}
-								</RecordCard>
-							</div>
-							<div class="grid min-w-0">
-								<RecordCard compactPrint title={bandTitle} {stamp}>
-									{#await punctualityAnswer}
-										{#key punctualityAnswer}<RecordPending
-												shape="bands"
-												locale={lang}
-												answer={punctualityAnswer}
-											/>{/key}
-									{:then result}
-										{@const punctuality = measure(result)}
-										{#if !punctuality}{@render failure(result)}
-										{:else if punctuality.state !== 'measured'}{@render missingMeasure(punctuality)}
-										{:else}
-											{#if ['early', 'on_time', 'late'].every((band) => measuredShare(punctuality, band) != null)}
-												<RecordChart
-													title={bandTitle}
-													id="punctuality-bands"
-													locale={lang}
-													input={{ kind: 'bands', answer: punctuality }}
-												/>
-												<p class="mt-3 text-muted-foreground">
-													{t(
-														earlyLateDefinitionEn,
-														'En avance\u00a0: plus d’une minute avant l’horaire. En retard\u00a0: plus de 5 minutes après l’horaire.',
-													)}
-												</p>
-											{:else}<StateMark state="unknown" locale={lang} />{/if}
-										{/if}
-									{/await}
-									{#snippet evidence()}
-										{#await punctualityAnswer then result}{#if result}{@render footerEvidence(
-													result,
-													'punctuality',
-												)}{/if}{/await}
-									{/snippet}
-								</RecordCard>
-							</div>
-						</div>
-
-						<div id="periods">
-							<RecordCard
-								compactPrint
-								title={t('The day in five parts', 'La journée en cinq périodes')}
-								{stamp}
+						<div class="report-title"><ScreenTitle title={data.title} {subtitle} /></div>
+						<div class="report-sections" data-slot="screen-content">
+							<section
+								id="punctuality"
+								aria-label={t(...dailyTitles.punctuality)}
+								data-slot="screen-answer"
+								class="grid min-w-0 gap-3"
 							>
-								{#await periodsAnswer}
-									{#key periodsAnswer}<RecordPending locale={lang} answer={periodsAnswer} />{/key}
-								{:then result}
-									{#if result?.kind === 'answer' && 'cells' in result.answer}
-										<RecordDataTable
+								{#await answers.get('punctuality')}
+									{@const pending = answers.get('punctuality')}
+									{#key pending}<RecordPending
+											shape="answer"
 											locale={lang}
-											title={t(
-												'Late share by part of the day',
-												'Part en retard selon la période de la journée',
-											)}
-											rowHeader={t('Part of the day', 'Période de la journée')}
-											{columns}
-											rows={dailyPeriods(result.answer, lang).map(({ detail, ...row }) => ({
-												...row,
-												id: String(row.start),
-												stateDetail: detail,
-											}))}
-											scrollMinWidth="26rem"
-											phone={{
-												value: phoneLate,
-												line: (row) =>
-													rowSentence(
-														[
-															row.hours,
-															row.stateDetail ??
-																(row.classified > 0 && countedUnit(row.classified, 'event', lang)),
-														],
-														lang,
-													),
-											}}
-										/>
-									{:else}
-										{@render failure(result)}
-										{#if result?.kind !== 'busy'}
-											<ul>
-												{#each dailyPeriods(null, lang) as row (row.start)}<li>
-														{row.label} · {unavailable}
-													</li>{/each}
-											</ul>
-										{/if}
+											answer={pending}
+										/>{/key}
+								{:then current}
+									{#if current?.kind === 'busy'}
+										<RecordPending shape="answer" locale={lang} busy />
+									{:else if current}
+										{#await answers.get('delivery')}
+											{@render lead(current, undefined)}
+										{:then delivery}
+											{@render lead(current, delivery)}
+										{/await}
 									{/if}
 								{/await}
-								{#snippet evidence()}
-									{#await periodsAnswer then result}{#if result}{@render footerEvidence(
-												result,
-												'periods',
-											)}{/if}{/await}
-								{/snippet}
-							</RecordCard>
-						</div>
+							</section>
 
-						<div id="messages">
-							<RecordCard interactive compactPrint title={t(...dailyTitles.messages)} {stamp}>
-								{#if !data.tracked}
-									{@render messagesNotTracked()}
-								{:else}
-									{#await messagesAnswer}
-										{#key messagesAnswer}<RecordPending
+							<div class="report-pair">
+								<div id="delivery" class="grid min-w-0">
+									<RecordCard compactPrint title={t(...dailyTitles.delivery)} {stamp}>
+										{#await deliveryAnswer}
+											{#key deliveryAnswer}<RecordPending
+													shape="trip-facts"
+													locale={lang}
+													answer={deliveryAnswer}
+												/>{/key}
+										{:then result}
+											{@const service = measure(result)}
+											{#if !service}{@render failure(result, 'trip-facts')}
+											{:else if service.state !== 'measured'}{@render missingMeasure(service, true)}
+											{:else}
+												{@const outcomes = tripOutcomes(service.evidence)}
+												{#if outcomes}
+													<FactList
+														leading={false}
+														class="print:[&_[data-slot=fact-row]]:min-h-0 print:[&_[data-slot=fact-row]]:py-0.5"
+													>
+														{#each deliveryRows as key (key)}
+															{@const share = key === 'ran' ? tripsRun(service) : null}
+															<FactRow
+																label={deliveryLabels[key]}
+																detail={share == null
+																	? undefined
+																	: recordPercent(share, lang) +
+																		' ' +
+																		tripsRunSentence(outcomes.known, lang)}
+															>
+																<strong>{tally(outcomes[key], lang)}</strong>
+															</FactRow>
+														{/each}
+													</FactList>
+												{:else}<StateMark state="unknown" locale={lang} />{/if}
+											{/if}
+										{/await}
+										<!-- The definitions need no data: they stand while the counts stream in. -->
+										<p class="mt-3 text-muted-foreground">{tripOutcomeNote(lang)}</p>
+										<p class="mt-3 text-muted-foreground">
+											{t(
+												'A cancelled trip comes with a notice from the agency. A missing trip has no vehicle reporting and no notice.',
+												'Un trajet annulé fait l’objet d’un avis de la société de transport. Pour un trajet manquant, aucun véhicule ne transmet de données et aucun avis n’a été publié.',
+											)}
+										</p>
+										{#snippet evidence()}
+											{#await deliveryAnswer}<WaitingFoot
+												/>{:then result}{#if result}{@render footerEvidence(
+														result,
+														'delivery',
+													)}{/if}{/await}
+										{/snippet}
+									</RecordCard>
+								</div>
+								<div class="grid min-w-0">
+									<RecordCard compactPrint title={bandTitle} {stamp}>
+										{#await punctualityAnswer}
+											{#key punctualityAnswer}<RecordPending
+													shape="bands"
+													locale={lang}
+													answer={punctualityAnswer}
+												/>{/key}
+										{:then result}
+											{@const punctuality = measure(result)}
+											{#if !punctuality}{@render failure(result, 'bands')}
+											{:else if punctuality.state !== 'measured'}{@render missingMeasure(
+													punctuality,
+												)}
+											{:else}
+												{#if ['early', 'on_time', 'late'].every((band) => measuredShare(punctuality, band) != null)}
+													<RecordChart
+														title={bandTitle}
+														id="punctuality-bands"
+														locale={lang}
+														input={{ kind: 'bands', answer: punctuality }}
+													/>
+													<p class="mt-3 text-muted-foreground">
+														{t(
+															earlyLateDefinitionEn,
+															'En avance\u00a0: plus d’une minute avant l’horaire. En retard\u00a0: plus de 5 minutes après l’horaire.',
+														)}
+													</p>
+												{:else}<StateMark state="unknown" locale={lang} />{/if}
+											{/if}
+										{/await}
+										{#snippet evidence()}
+											{#await punctualityAnswer}<WaitingFoot
+												/>{:then result}{#if result}{@render footerEvidence(
+														result,
+														'punctuality',
+													)}{/if}{/await}
+										{/snippet}
+									</RecordCard>
+								</div>
+							</div>
+
+							<div id="periods">
+								<RecordCard
+									compactPrint
+									title={t('The day in five parts', 'La journée en cinq périodes')}
+									{stamp}
+								>
+									{#await periodsAnswer}
+										{#key periodsAnswer}<RecordPending
 												locale={lang}
-												answer={messagesAnswer}
+												answer={periodsAnswer}
+												shape={waiting.periods}
 											/>{/key}
 									{:then result}
-										{@const messages = measure(result)}
-										{@const count = messages?.evidence.counts.alerts}
-										{@const notices =
-											messages?.state === 'measured' && !data.messagesLimited
-												? recordNoticeCards(messages)
-												: null}
-										{#if !messages}{@render failure(result)}
-										{:else if messages.state === 'not_tracked'}
-											{@render messagesNotTracked(true)}
-										{:else if messages.state !== 'measured'}{@render missingMeasure(messages)}
-										{:else if count === 0}
-											<p>
-												{t(
-													'No notices in the tracked record for these dates.',
-													'Aucun avis enregistré dans le bilan à ces dates.',
+										{#if result?.kind === 'answer' && 'cells' in result.answer}
+											<RecordDataTable
+												locale={lang}
+												title={t(
+													'Late share by part of the day',
+													'Part en retard selon la période de la journée',
 												)}
-											</p>
-										{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
-										{:else if notices?.length}
-											<ul class="message-rows">
-												{#each notices as message (message.key)}
-													{@const { title, body } = agencyMessage(message, lang, message.stops)}
-													{@const dates = agencyMessagePeriods(
-														message.periods,
-														lang,
-														data.timeZone,
-														false,
-													)}
-													<li class="message-row grid min-w-0 gap-x-4 py-2 print:py-0.5">
-														<div class="flex flex-wrap items-start gap-x-2">
-															{#each message.routes as id (id)}
-																{@const line = display.lineName(id)}
-																<a
-																	class="inline-flex min-h-11 min-w-11 items-center"
-																	href={link('/lines/' + encodeURIComponent(id))}
-																	aria-label={line.spoken}
-																	><RoutePlate code={line.number ?? id} /></a
-																>
-															{/each}
-														</div>
-														<div class="min-w-0">
-															<h3 class="font-semibold" lang={title.lang}>
-																{title.text}
-															</h3>
-															{#if message.stops.length > 1}
-																<p class="text-muted-foreground">
-																	{t('Stops:', 'Arrêts\u00a0:')}
-																	{message.stops.join(' · ')}
-																</p>
-															{/if}
-															{#if dates.length}<p
-																	class="text-muted-foreground"
-																	data-slot="agency-message-dates"
-																>
-																	{dates.join(' · ')}
-																</p>
-															{/if}
-															{#if body}<p
-																	class="text-muted-foreground print:hidden"
-																	lang={body.lang}
-																>
-																	{agencyMessagePreview(body)}
-																</p>
-															{/if}
-														</div>
-													</li>
-												{/each}
-											</ul>
-										{:else}<p>
-												{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}
-											</p>
-										{/if}
-										{#if messages?.state === 'measured' && count != null && count > 0}
-											<a
-												class="inline-flex min-h-11 items-center text-primary underline"
-												href={link('/alerts')}
-											>
-												{dailyAlertsLink(
-													messages.evidence.notice_total ?? notices?.length ?? count,
-													lang,
-													notices == null,
-												)}
-											</a>
+												rowHeader={t('Part of the day', 'Période de la journée')}
+												{columns}
+												rows={dailyPeriods(result.answer, lang).map(({ detail, ...row }) => ({
+													...row,
+													id: String(row.start),
+													stateDetail: detail,
+												}))}
+												scrollMinWidth="26rem"
+												phone={{
+													value: phoneLate,
+													line: (row) =>
+														rowSentence(
+															[
+																row.hours,
+																row.stateDetail ??
+																	(row.classified > 0 &&
+																		countedUnit(row.classified, 'event', lang)),
+															],
+															lang,
+														),
+												}}
+											/>
+										{:else}
+											{@render failure(result, waiting.periods)}
+											{#if result?.kind !== 'busy'}
+												<ul>
+													{#each dailyPeriods(null, lang) as row (row.start)}<li>
+															{row.label} · {unavailable}
+														</li>{/each}
+												</ul>
+											{/if}
 										{/if}
 									{/await}
-								{/if}
-								{#snippet evidence()}
-									{#await messagesAnswer then result}{#if result}{@render footerEvidence(
-												result,
-												'messages',
-											)}{/if}{/await}
-								{/snippet}
-							</RecordCard>
-						</div>
+									{#snippet evidence()}
+										{#await periodsAnswer}<WaitingFoot
+											/>{:then result}{#if result}{@render footerEvidence(
+													result,
+													'periods',
+												)}{/if}{/await}
+									{/snippet}
+								</RecordCard>
+							</div>
 
-						<div id="lines">
-							<RecordCard
-								interactive
-								compactPrint
-								title={t('Lines and stops to inspect', 'Lignes et arrêts à examiner')}
-								{stamp}
-							>
-								{#await rankings then results}
-									{#if results.some(({ kind }) => kind !== 'answer' && kind !== 'busy')}<p>
-											{connection}
-										</p>{/if}
-								{/await}
-								<DashboardGrid gutter={false} minTile="18rem">
-									<RecordRanking
-										locale={lang}
-										kind="line"
-										ranking={lineRanking}
-										{link}
-										heading={t(
-											'Lines with the lowest on-time share',
-											'Lignes où la part des passages à l’heure est la plus faible',
-										)}
-									/>
-									<div id="stops">
+							<div id="messages">
+								<RecordCard interactive compactPrint title={t(...dailyTitles.messages)} {stamp}>
+									{#if !data.tracked}
+										{@render messagesNotTracked()}
+									{:else}
+										{#await messagesAnswer}
+											{#key messagesAnswer}<RecordPending
+													locale={lang}
+													answer={messagesAnswer}
+													shape={waiting.messages}
+												/>{/key}
+										{:then result}
+											{@const messages = measure(result)}
+											{@const count = messages?.evidence.counts.alerts}
+											{@const notices =
+												messages?.state === 'measured' && !data.messagesLimited
+													? recordNoticeCards(messages)
+													: null}
+											{#if !messages}{@render failure(result, waiting.messages)}
+											{:else if messages.state === 'not_tracked'}
+												{@render messagesNotTracked(true)}
+											{:else if messages.state !== 'measured'}{@render missingMeasure(messages)}
+											{:else if count === 0}
+												<p>
+													{t(
+														'No notices in the tracked record for these dates.',
+														'Aucun avis enregistré dans le bilan à ces dates.',
+													)}
+												</p>
+											{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
+											{:else if notices?.length}
+												<ul class="message-rows">
+													{#each notices as message (message.key)}
+														{@const { title, body } = agencyMessage(message, lang, message.stops)}
+														{@const dates = agencyMessagePeriods(
+															message.periods,
+															lang,
+															data.timeZone,
+															false,
+														)}
+														<li class="message-row grid min-w-0 gap-x-4 py-2 print:py-0.5">
+															<div class="flex flex-wrap items-start gap-x-2">
+																{#each message.routes as id (id)}
+																	{@const line = display.lineName(id)}
+																	<a
+																		class="inline-flex min-h-11 min-w-11 items-center"
+																		href={link('/lines/' + encodeURIComponent(id))}
+																		aria-label={line.spoken}
+																		><RoutePlate code={line.number ?? id} /></a
+																	>
+																{/each}
+															</div>
+															<div class="min-w-0">
+																<h3 class="font-semibold" lang={title.lang}>
+																	{title.text}
+																</h3>
+																{#if message.stops.length > 1}
+																	<p class="text-muted-foreground">
+																		{t('Stops:', 'Arrêts\u00a0:')}
+																		{message.stops.join(' · ')}
+																	</p>
+																{/if}
+																{#if dates.length}<p
+																		class="text-muted-foreground"
+																		data-slot="agency-message-dates"
+																	>
+																		{dates.join(' · ')}
+																	</p>
+																{/if}
+																{#if body}<p
+																		class="text-muted-foreground print:hidden"
+																		lang={body.lang}
+																	>
+																		{agencyMessagePreview(body)}
+																	</p>
+																{/if}
+															</div>
+														</li>
+													{/each}
+												</ul>
+											{:else}<p>
+													{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}
+												</p>
+											{/if}
+											{#if messages?.state === 'measured' && count != null && count > 0}
+												<a
+													class="inline-flex min-h-11 items-center text-primary underline"
+													href={link('/alerts')}
+												>
+													{dailyAlertsLink(
+														messages.evidence.notice_total ?? notices?.length ?? count,
+														lang,
+														notices == null,
+													)}
+												</a>
+											{/if}
+										{/await}
+									{/if}
+									{#snippet evidence()}
+										{#await messagesAnswer}<WaitingFoot
+											/>{:then result}{#if result}{@render footerEvidence(
+													result,
+													'messages',
+												)}{/if}{/await}
+									{/snippet}
+								</RecordCard>
+							</div>
+
+							<div id="lines">
+								<RecordCard
+									interactive
+									compactPrint
+									title={t('Lines and stops to inspect', 'Lignes et arrêts à examiner')}
+									{stamp}
+								>
+									{#await rankings then results}
+										{#if results.some(({ kind }) => kind !== 'answer' && kind !== 'busy')}<p>
+												{connection}
+											</p>{/if}
+									{/await}
+									<DashboardGrid gutter={false} minTile="18rem">
 										<RecordRanking
 											locale={lang}
-											kind="stop"
-											outlineStopCode
-											ranking={stopRanking}
-											directory={data.directory}
+											kind="line"
+											ranking={lineRanking}
 											{link}
 											heading={t(
-												'Stops with the lowest on-time share',
-												'Arrêts où la part des passages à l’heure est la plus faible',
+												'Lines with the lowest on-time share',
+												'Lignes où la part des passages à l’heure est la plus faible',
 											)}
 										/>
-									</div>
-								</DashboardGrid>
-								{#snippet evidence()}
-									{#await rankings then [lines, stops]}
-										{@const evidence = rankingEvidence(lines, stops)}
-										{#if evidence.versions}
-											<RecordEvidenceLine
+										<div id="stops">
+											<RecordRanking
 												locale={lang}
-												sample={evidence.sample}
-												versions={evidence.versions}
-												note={evidence.stale}
+												kind="stop"
+												outlineStopCode
+												ranking={stopRanking}
+												directory={data.directory}
+												{link}
+												heading={t(
+													'Stops with the lowest on-time share',
+													'Arrêts où la part des passages à l’heure est la plus faible',
+												)}
 											/>
-										{/if}
-									{/await}
-								{/snippet}
-							</RecordCard>
+										</div>
+									</DashboardGrid>
+									{#snippet evidence()}
+										{#await rankings}<WaitingFoot />{:then [lines, stops]}
+											{@const evidence = rankingEvidence(lines, stops)}
+											{#if evidence.versions}
+												<RecordEvidenceLine
+													locale={lang}
+													sample={evidence.sample}
+													versions={evidence.versions}
+													note={evidence.stale}
+												/>
+											{/if}
+										{/await}
+									{/snippet}
+								</RecordCard>
+							</div>
 						</div>
 					</RecordGroup>
 					<RecordGroup class="print:contents">
-						{#await answers.get('punctuality') then result}
-							{@const current = measure(result)}
-							{@const counts = current?.evidence.counts}
-							{@const days = current?.evidence.days_included.length}
-							{@const observed = current?.evidence.share_observed}
-							<div>
-								<AboutFigures
-									compactPrint
-									title={copy.about}
-									fields={[
-										{ key: 'period', label: copy.period, text: dateRange(period, lang) },
-										{
-											key: 'counted',
-											label: copy.counted,
-											text: recordCounts(
-												counts?.classified,
-												null,
-												days ? countedUnit(days, 'day', lang) : '',
-												lang,
-											),
-										},
-										{
-											key: 'observed',
-											label: copy.observed,
-											text: [
-												observed == null
-													? null
-													: copy.observedShare(
-															recordPercent(observed, lang),
-															counts?.scheduled == null ? undefined : tally(counts.scheduled, lang),
-														),
-												current?.evidence.low_coverage ? lowCoverageText(lang) + '.' : null,
-												timingBasis(counts, lang),
-												current?.coverage_note?.[lang],
-											]
-												.filter(Boolean)
-												.join(' '),
-										},
-										{ key: 'means', label: copy.means, text: copy.definition },
-										{
-											key: 'method',
-											label: copy.methodRow,
-											text: null,
-											link: { href: link('/metrics'), label: copy.method },
-										},
-										{
-											key: 'source',
-											label: copy.source,
-											text: [
-												copy.feeds(agencyName(operator ?? cityName, routeData.provider)),
-												copy.recordStart(longDate(recordStart(page.data.provider), lang)),
-											].join(' '),
-										},
-									]}
-								/>
-							</div>
+						<!-- On the page from the first frame; the two sentences that need the answer pulse. -->
+						{#await answers.get('punctuality')}
+							{@render about(undefined, true)}
+						{:then result}
+							{@render about(measure(result))}
 						{/await}
 						<div class="hidden print:block report-citation">
 							{#await answers.get('punctuality') then result}
@@ -878,10 +916,18 @@
 </Surface>
 
 <style>
+	/* A short card keeps its own height instead of a band of nothing under its rows (F1.1). */
 	.report-pair {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr));
+		align-items: start;
 		gap: var(--space-card-gap);
+	}
+	.report-sections {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-card-gap);
+		min-inline-size: 0;
 	}
 	.message-row {
 		grid-template-columns: fit-content(30%) minmax(0, 1fr);
@@ -936,7 +982,11 @@
 			--primary: CanvasText;
 			--secondary-foreground: CanvasText;
 		}
-		.report-content :is(#punctuality, .report-pair, .report-citation) {
+		/* The sections join the report's two print columns. */
+		.report-sections {
+			display: contents;
+		}
+		.report-content :is(.report-title, #punctuality, .report-pair, .report-citation) {
 			grid-column: 1 / -1;
 		}
 		.report-pair {

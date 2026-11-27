@@ -21,12 +21,6 @@ import {
 
 // Keep temporary exceptions counted so a removed class cannot give a new use a free pass.
 const recordLayoutAllowlist: Record<string, Record<string, { count: number; owner: string }>> = {
-	'lib/features/record/RecordGroup.svelte': {
-		'gap-6': { count: 1, owner: 'S-network (shared RecordGroup used by the wave 2 screens)' },
-	},
-	'lib/features/network/NetworkLive.svelte': {
-		'gap-6': { count: 1, owner: 'S-network (band and facts inside the Vehicles by status card)' },
-	},
 	'lib/features/record/RecordActionGroup.svelte': {
 		'gap-6': { count: 1, owner: 'Cite sheet body, outside the card-spacing rule' },
 	},
