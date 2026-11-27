@@ -51,6 +51,10 @@
 	"median_time_lost": ["Median time lost", "Temps perdu médian"],
 	"p90_time_lost": ["90th percentile time lost", "90e centile du temps perdu"],
 	"mean_time_lost": ["Mean time lost", "Temps perdu moyen"],
+	"clear_run_time_lost": [
+		"Time lost against the clear run",
+		"Temps perdu par rapport au parcours fluide"
+	],
 	"total_vehicle_minutes_lost": [
 		"Total vehicle-minutes lost",
 		"Total des minutes-véhicules perdues"

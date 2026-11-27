@@ -14,6 +14,7 @@ from transit_engine import measures
 from transit_engine.cities import service_query
 from transit_engine.clean_manifest import STOP_EVENTS
 from transit_engine.measures import answer_csv
+from transit_engine.partials import PartialResults
 from transit_engine.server import Engine
 
 
@@ -58,6 +59,25 @@ def test_waiting_at_a_stop_groups_lines_without_mixing_their_intervals(tmp_path:
         assert cell["evidence"]["counts"] == answer["evidence"]["counts"]
     assert by_line[0]["value"]["excess_wait_time"] > 0
     assert by_line[1]["value"]["excess_wait_time"] == 0
+
+    cached = replace(store, partial_results=PartialResults())
+    layer_cut: dict[str, object] = {
+        "measure": "excess_wait_time", "group": "line_stop", "map_view": True, "stop": "first",
+    }
+    layer = query(cached, **layer_cut)
+    assert layer["line"] == ["A", "B", "C"]
+    assert layer["direction"] == [0, 0, 0]
+    assert layer["stop"] == ["first"] * 3
+    assert layer["state"] == [cell["state"] for cell in by_line]
+    assert layer["value"] == [cell["value"]["excess_wait_time"] for cell in by_line]
+    for index in (0, 1):
+        expected = layer["weighted_excess"][index] / layer["wait_weight"][index]
+        assert layer["value"][index] == expected
+    scoped = query(cached, **layer_cut, lines=("A",), route_type=3, time_band="morning")
+    assert scoped["line"] == ["A"] and scoped["value"] == [layer["value"][0]]
+    assert not query(cached, **layer_cut, hour_from=19, hour_to=20)["line"]
+    unsupported = query(cached, **layer_cut, route_type=0)
+    assert unsupported["stop"] == []
 
 
 def test_waiting_and_rankings_require_sustained_service(tmp_path: Path) -> None:

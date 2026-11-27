@@ -45,6 +45,7 @@ from transit_engine.corridors import (
     MIN_SEGMENT_RUNS,
     SEGMENT_BIN_SECONDS,
     SEGMENT_RUNS_SQL,
+    clear_run_times,
 )
 from transit_engine.histogram import DELAY_BIN_SECONDS as DELAY_BIN_SECONDS
 from transit_engine.histogram import percentile as _percentile
@@ -309,6 +310,8 @@ _WAITING_ID = "waiting_and_gaps"
 _SERVICE_OFFERED_ID = "service_offered"
 _VEHICLES_ID = "vehicles"
 _CORRIDORS_ID = "corridors"
+_CLEAR_RUN_ID = "clear_run"
+CLEAR_RUN_TIME_LOST = "clear_run_time_lost"
 CORRIDOR_RANKING_DEFAULT = "median_time_lost"
 _ACCESSIBILITY_ID = "accessibility"
 _DELAY_DISTRIBUTION_ID = "delay_distribution"
@@ -347,6 +350,11 @@ class Question:
     alert_details: bool = False
     map_view: bool = False
     include_overall: bool = False
+    lines: tuple[str, ...] = ()
+    route_type: int | None = None
+    time_band: str | None = None
+    hour_from: int | None = None
+    hour_to: int | None = None
 
     def __post_init__(self, ranking: bool) -> None:
         if self.measure not in _SELECTIONS:
@@ -354,6 +362,35 @@ class Question:
         if not CITY.fullmatch(self.city) or self.start > self.end:
             raise ValueError("provide a city and an ordered service date range")
         family, _ = _SELECTIONS[self.measure]
+        if self.measure == CLEAR_RUN_TIME_LOST or self.group == "line_stop":
+            if not self.layer_map:
+                raise ValueError("clear runs and waits by line and stop require their map view")
+        layer_cuts = {"lines", "route_type", "time_band", "hour_from", "hour_to"}
+        if self.layer_map:
+            allowed = layer_cuts | {"line", "direction", "stop", "hour", "day_type"}
+            if self.cuts().keys() - allowed:
+                raise ValueError("invalid map layer cut")
+            if self.stop is not None and self.group != "line_stop":
+                raise ValueError("stop applies to the waits map")
+            if self.line is not None and self.lines:
+                raise ValueError("choose line or lines")
+            if self.route_type is not None and not 0 <= self.route_type <= 9999:
+                raise ValueError("invalid route_type")
+            if self.time_band is not None and (
+                self.time_band != "all" and self.time_band not in {period.id for period in PERIODS}
+            ):
+                raise ValueError("invalid time_band")
+            has_range = self.hour_from is not None or self.hour_to is not None
+            if has_range and (
+                self.hour_from is None
+                or self.hour_to is None
+                or not 0 <= self.hour_from < self.hour_to <= 24
+            ):
+                raise ValueError("provide hour_from < hour_to within 0 to 24")
+            if sum((has_range, self.hour is not None, self.time_band is not None)) > 1:
+                raise ValueError("choose hour, time_band, or a custom hour range")
+        elif self.cuts().keys() & layer_cuts:
+            raise ValueError("layer filters apply to the clear-run and waits maps")
         if self.measure == _DELAY_DISTRIBUTION_ID and (ranking or self.group is not None):
             raise ValueError("delay_distribution requires an ungrouped measure")
         if self.include_overall and not (
@@ -361,7 +398,8 @@ class Question:
         ):
             raise ValueError("include_overall requires vehicles by day for one vehicle")
         if self.map_view and not (
-            (self.measure == "late" and self.group == "stop_id" and not self.cuts())
+            self.layer_map
+            or (self.measure == "late" and self.group == "stop_id" and not self.cuts())
             or (
                 self.measure == "mean_time_lost" and self.group == "segment"
                 and (not self.cuts() or (
@@ -465,9 +503,28 @@ class Question:
 
     @property
     def network_corridors(self) -> bool:
-        return self.map_view and self.group == "segment" and self.line is None
+        return (
+            self.map_view and self.measure == "mean_time_lost"
+            and self.group == "segment" and self.line is None
+        )
 
-    def cuts(self) -> dict[str, str | int]:
+    @property
+    def layer_map(self) -> bool:
+        return self.map_view and (
+            (self.measure == CLEAR_RUN_TIME_LOST and self.group == "segment")
+            or (self.measure == "excess_wait_time" and self.group == "line_stop")
+        )
+
+    def layer_hours(self) -> tuple[int, int] | None:
+        if self.hour_from is not None and self.hour_to is not None:
+            return self.hour_from, self.hour_to
+        if self.time_band is not None:
+            return next(
+                ((p.start_hour, p.end_hour) for p in PERIODS if p.id == self.time_band), None
+            )
+        return (6, 24) if self.measure == CLEAR_RUN_TIME_LOST and self.hour is None else None
+
+    def cuts(self) -> dict[str, str | int | tuple[str, ...]]:
         cuts = {
             "line": self.line,
             "direction": self.direction,
@@ -480,6 +537,11 @@ class Question:
             "vehicle": self.vehicle,
             "from_stop": self.from_stop,
             "to_stop": self.to_stop,
+            "lines": self.lines or None,
+            "route_type": self.route_type,
+            "time_band": self.time_band,
+            "hour_from": self.hour_from,
+            "hour_to": self.hour_to,
         }
         return {name: value for name, value in cuts.items() if value is not None}
 
@@ -739,6 +801,10 @@ def _cuts(
     filters = []
     parameters: list[object] = []
     for name, value in question.cuts().items():
+        if name == "lines":
+            filters.append("route_id = ANY(?)")
+            parameters.append(list(value) if isinstance(value, tuple) else value)
+            continue
         expression = {
             "line": "route_id",
             "direction": "direction_id",
@@ -755,6 +821,9 @@ def _cuts(
                 parameters.append(hour * 3600 + minute * 60 + second)
             else:
                 parameters.append(value)
+    if question.layer_map and hour_sql is not None and (hours := question.layer_hours()):
+        filters.append(f"({hour_sql}) >= ? AND ({hour_sql}) < ?")
+        parameters.extend(hours)
     return " AND ".join(filters) or "true", parameters
 
 
@@ -2248,7 +2317,7 @@ _WAITING_PERIOD_KEYS = "service_date, route_id, direction_id, stop_id, period"
 
 
 def _waiting_schedule_summary(
-    aggregates: str, entity: str, routes: str, counters: dict[str, str]
+    aggregates: str, entity: str, routes: str, counters: dict[str, str], *, by_stop: bool = False
 ) -> tuple[str, str]:
     keys = _WAITING_PERIOD_KEYS
     # For distinct, whole-second passages, the positive gaps telescope to the
@@ -2290,9 +2359,11 @@ def _waiting_schedule_summary(
         )
     """
     totals = ", ".join(f"sum({name}) AS {name}" for name in counters)
+    schedule_keys = "s.route_id, s.direction_id, s.stop_id" if by_stop else "s.route_id"
+    passage_keys = "p.route_id, p.direction_id, p.stop_id" if by_stop else "p.route_id"
     evidence = f"""
         simple_evidence AS (
-            SELECT s.route_id, scheduled_stops, live_candidates,
+            SELECT {schedule_keys}, scheduled_stops, live_candidates,
                 IF(s.direction_id IS NULL, 0, live_candidates) AS live_direction_stops,
                 IF(s.direction_id IS NULL, scheduled_stops, 0) AS unknown_direction,
                 IF(s.direction_id IS NULL, 0, scheduled_stops - 1) AS scheduled_headways,
@@ -2303,12 +2374,12 @@ def _waiting_schedule_summary(
             FROM schedule_summary s LEFT JOIN simple_frequency f USING ({keys})
             WHERE simple
         ), irregular_evidence AS (
-            SELECT p.route_id, {aggregates}
+            SELECT {passage_keys}, {aggregates}
             FROM (
                 SELECT p.*, f.scheduled_mean IS NOT NULL AS frequent
                 FROM irregular_pairs p LEFT JOIN irregular_frequency f USING ({keys})
             ) p
-            GROUP BY p.route_id
+            GROUP BY {passage_keys}
         ), schedule_evidence AS (
             SELECT {entity} AS entity, {routes} AS routes, {totals}
             FROM (SELECT * FROM simple_evidence UNION ALL BY NAME SELECT * FROM irregular_evidence)
@@ -2366,7 +2437,16 @@ def _waiting_rows(
     observed_counts.update(
         {m.id: f"count(*) FILTER (eligible AND ({m.band}))" for m in family.measures if m.band}
     )
-    wait_counts = ("covered_scheduled_headways", "scheduled_seconds", "scheduled_squared_seconds")
+    wait_counts: tuple[str, ...] = (
+        "covered_scheduled_headways", "scheduled_seconds", "scheduled_squared_seconds",
+    )
+    if question.layer_map:
+        layer_counts = ("scheduled_stops", "live_candidates", "live_direction_stops")
+        schedule_counts = {
+            key: schedule_counts[key] for key in (*layer_counts, "frequent_headways")
+        }
+        observed_counts = {"observed_headways": observed_counts["observed_headways"]}
+        wait_counts = ()
     counters = (*schedule_counts, *observed_counts, *wait_counts)
     schedule_aggregates = ", ".join(f"{sql} AS {name}" for name, sql in schedule_counts.items())
     observed_aggregates = ", ".join(f"{sql} AS {name}" for name, sql in observed_counts.items())
@@ -2405,12 +2485,14 @@ def _waiting_rows(
     schedule_cut_params = cut_params
     if (
         group in (None, "line")
-        and question.group is None
+        and question.group in (None, "line_stop")
         and question.hour is None
         and question.departure is None
+        and question.layer_hours() is None
     ):
         schedule_sql, schedule_evidence = _waiting_schedule_summary(
-            schedule_aggregates, entity, routes, schedule_counts
+            schedule_aggregates, entity, routes, schedule_counts,
+            by_stop=question.group == "line_stop",
         )
         comparable_schedule = f"""
             SELECT {entity} AS entity, {keys}, event_at, previous_at,
@@ -2425,6 +2507,8 @@ def _waiting_rows(
         schedule_cut_params = []
     # Each batch holds one service day. Share the projected scan across the
     # scheduled, observed and unknown passages for that day.
+    trip_type = "AND route_type = ?" if question.route_type is not None else ""
+    trip_type_params = [question.route_type] if question.route_type is not None else []
     rows = conn.execute(
         f"""
         WITH events AS MATERIALIZED (
@@ -2452,6 +2536,7 @@ def _waiting_rows(
                     FROM read_parquet(?, hive_partitioning = false)
                     WHERE provider = ? AND cleaning_version = ?
                         AND service_date BETWEEN ? AND ? AND route_id IS NOT NULL
+                        {trip_type}
                 ) t
                     USING (provider, cleaning_version, service_date, trip_id)
                 WHERE s.provider = ? AND s.cleaning_version = ?
@@ -2589,6 +2674,7 @@ def _waiting_rows(
             paths[STOP_EVENTS],
             paths[TRIP_DAYS],
             *window,
+            *trip_type_params,
             *window,
             *scope_params,
             paths[FEED_POLLS],
@@ -3274,6 +3360,107 @@ _CORRIDOR_COUNTS = {
 }
 
 
+def _clear_run_rows(
+    conn: duckdb.DuckDBPyConnection,
+    family: Family,
+    paths: dict[str, list[str]],
+    question: Question,
+    version: str,
+    group: EntityKind | None,
+) -> dict[EntityKey, Batch]:
+    hour = local_hour_sql(conn, "scheduled_departure_at", question.start, question.end)
+    cut, parameters = _cuts(question, hour)
+    window = [question.city, version, question.start, question.end]
+    if question.route_type is not None:
+        cut += """ AND (service_date, trip_id) IN (
+            SELECT service_date, trip_id FROM read_parquet(?, hive_partitioning = false)
+            WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
+                AND route_type = ?
+        )"""
+        parameters.extend((paths[TRIP_DAYS], *window, question.route_type))
+    runs = SEGMENT_RUNS_SQL.format(
+        cut=f"route_id IS NOT NULL AND ({cut})", trip_identity="trip_id,"
+    )
+    rows = conn.execute(
+        f"""
+        WITH {runs}, timed_runs AS (
+            SELECT *, exclusion IS NULL AND observed_seconds > 0 AS timed FROM runs
+        )
+        SELECT row(route_id, direction_id, from_stop, to_stop),
+            histogram(observed_seconds) FILTER (timed),
+            count(*) AS scheduled_runs,
+            count(*) FILTER (timed) AS observed_runs,
+            count(DISTINCT (service_date, trip_id)) FILTER (timed) AS trips_counted,
+            coalesce(sum(observed_seconds) FILTER (timed), 0) AS observed_seconds,
+            count(*) FILTER (exclusion = 'route_without_live_data') AS without_live,
+            count(*) FILTER (exclusion = 'cancelled') AS cancelled,
+            count(*) FILTER (exclusion = 'capture_gap') AS capture_gap
+        FROM timed_runs GROUP BY route_id, direction_id, from_stop, to_stop
+        """,
+        [paths[FEED_POLLS], *window, paths[SEGMENT_RUNS], *window, *parameters],
+    ).fetchall()
+    names = (
+        "scheduled_runs", "observed_runs", "trips_counted", "observed_seconds",
+        "route_without_live_data", "cancelled", "capture_gap",
+    )
+    return {
+        tuple(key): Batch(
+            counts=Counter(dict(zip(names, counts, strict=True))),
+            histogram=Counter(histogram or {}),
+        )
+        for key, histogram, *counts in rows
+    }
+
+
+_CLEAR_RUN = Family(
+    id=_CLEAR_RUN_ID,
+    label=Text("Clear run", "Parcours fluide"),
+    method_version="clear-run-v1",
+    since="2026-11-27",
+    tables=(SEGMENT_RUNS, FEED_POLLS),
+    minimum_cleaning_version=SEGMENT_RUNS_VERSION,
+    minimum_sample=MIN_SEGMENT_RUNS,
+    coverage=(0.25, 0.50),
+    query=_clear_run_rows,
+    counts=Text(
+        "Sorts eligible stop-to-stop times for the same line and direction. The clear run "
+        "is the observed time at the fastest tenth's boundary. Time lost is the exact median "
+        "minus that time. At least 20 runs are needed. By default, the scheduled departure "
+        "at the first stop must fall from 06:00 up to midnight in the local time zone.",
+        "Classe les durées admissibles entre deux arrêts pour la même ligne et la même direction. "
+        "Le parcours fluide est la durée observée à la limite du dixième le plus rapide. "
+        "Le temps perdu est la médiane exacte moins cette durée. Il faut au moins 20 parcours. "
+        "Par défaut, le départ prévu au premier arrêt doit tomber de 6 h à minuit, heure locale.",
+    ),
+    exclusions=Text(
+        "Uses consecutive stop observations with comparable timing sources and continuous "
+        "feed coverage. Runs with missing readings, equal timestamps or implausible times "
+        "are left out.",
+        "Utilise les signalements à deux arrêts consécutifs, de source comparable, avec une "
+        "collecte continue. Les parcours aux relevés manquants, aux heures identiques ou aux "
+        "durées invraisemblables sont exclus.",
+    ),
+    limits=Text(
+        "A run can include time spent stopped at one end. The result locates extra time "
+        "on the stretch. It cannot identify the cause, and a slowdown shared by all trips "
+        "is already part of the reference.",
+        "Un parcours peut inclure le temps passé à l’un des deux arrêts. Le résultat situe "
+        "le temps supplémentaire sur le tronçon. Il ne précise pas la cause, et un "
+        "ralentissement commun à tous les trajets fait déjà partie de la référence.",
+    ),
+    measures=(Measure(
+        CLEAR_RUN_TIME_LOST,
+        "seconds",
+        Text(
+            "Extra time on a typical trip compared with the fastest tenth of observed runs.",
+            "Temps supplémentaire d’un trajet typique par rapport au dixième le plus rapide "
+            "des parcours observés.",
+        ),
+        ranking_kinds=(),
+    ),),
+)
+
+
 def _corridor_rows(
     conn: duckdb.DuckDBPyConnection,
     family: Family,
@@ -3334,7 +3521,7 @@ def _corridor_rows(
     routes = "list(DISTINCT route_id)" if group or question.network_corridors else "NULL"
     window = [question.city, version, question.start, question.end]
     if SEGMENT_RUNS in paths:
-        runs = SEGMENT_RUNS_SQL.format(cut=cut)
+        runs = SEGMENT_RUNS_SQL.format(cut=cut, trip_identity="")
         args = [paths[FEED_POLLS], *window, paths[SEGMENT_RUNS], *window, *parameters]
     else:
         runs = CORRIDOR_RUNS_SQL.format(cut=cut, trip_filter=trip_filter, stop_filter=stop_filter)
@@ -3876,6 +4063,7 @@ _FAMILIES = (
     _SERVICE_OFFERED,
     _VEHICLES,
     _CORRIDORS,
+    _CLEAR_RUN,
     _SCORECARD,
     _ACCESSIBILITY,
 )
@@ -4136,6 +4324,8 @@ class ReadWindow:
 
 
 def _partial_scope(question: Question, family: Family) -> bool:
+    if question.layer_map:
+        return True
     cuts = question.cuts()
     if family.id == _SERVICE_DELIVERED_ID:
         return cuts.keys() == {"stop"} and question.group in {None, "day"}
@@ -4163,11 +4353,13 @@ def _daily_partial[T](
 ) -> T:
     if store.partial_results is None or day not in window.partial_receipts:
         return compute()
-    key = (
+    key: tuple[str | None, ...] = (
         store.root, question.city, day, str(window.versions[day]), family.id,
         family.method_version, measure, question.group, question.vehicle, question.stop,
         window.partial_receipts[day],
     )
+    if question.layer_map:
+        key += (json.dumps(question.cuts(), sort_keys=True),)
     return store.partial_results.read_or_compute(key, compute)
 
 
@@ -4188,6 +4380,8 @@ def read_window(
         )
     )
     preferred_tables: tuple[str, ...] = ()
+    if family is _CLEAR_RUN and question.route_type is not None:
+        tables += (TRIP_DAYS,)
     if family.id == _CORRIDORS_ID:
         preferred_tables = (SEGMENT_RUNS, FEED_POLLS)
         if group is not None:
@@ -4199,7 +4393,7 @@ def read_window(
         tables += (TRIP_DAYS, STOP_EVENTS) if group == "stop" else (TRIP_DAYS,)
     # Bound window sorts over dense position records and stop sequences.
     batch_days = (
-        1 if VEHICLE_POSITIONS in tables or family.id == _WAITING_ID
+        1 if VEHICLE_POSITIONS in tables or family.id in {_WAITING_ID, _CLEAR_RUN_ID}
         or (family.id == _SERVICE_DELIVERED_ID and question.stop is not None)
         or (family.id == _CORRIDORS_ID and not question.network_corridors) else None
     )
@@ -4286,7 +4480,9 @@ def read_window(
         if not settled:
             window.pending.append(day_key)
         if files is None:
-            if question.network_corridors and checked.invalid_table == SEGMENT_RUNS:
+            if (question.network_corridors or family is _CLEAR_RUN) and (
+                checked.invalid_table == SEGMENT_RUNS
+            ):
                 raise NetworkCorridorsUnavailable(
                     "segment_runs_missing", f"Clean segment runs are unavailable for {day_key}"
                 )
@@ -4479,16 +4675,7 @@ def _corridor_answer(
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
     counts = totals.counts
     sample = counts["observed_runs"]
-    without_live = counts["route_without_live_data"]
-    scheduled = counts["scheduled_runs"] - without_live - counts["cancelled"]
-    state = _state(
-        family,
-        sample,
-        scheduled,
-        counts["capture_gap"],
-        without_live,
-        window.no_days_measured,
-    )
+    state, scheduled = _corridor_state(family, counts, window)
     values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
     if state == "measured":
         lost = counts["observed_seconds"] - counts["scheduled_seconds"]
@@ -4508,6 +4695,17 @@ def _corridor_answer(
     return state, values, evidence, dict.fromkeys(values, sample)
 
 
+def _corridor_state(
+    family: Family, counts: Counter[str], window: ReadWindow
+) -> tuple[str, int]:
+    without_live = counts["route_without_live_data"]
+    scheduled = counts["scheduled_runs"] - without_live - counts["cancelled"]
+    return _state(
+        family, counts["observed_runs"], scheduled, counts["capture_gap"],
+        without_live, window.no_days_measured,
+    ), scheduled
+
+
 def _waiting_answer(
     family: Family,
     selected: tuple[Measure, ...],
@@ -4518,20 +4716,7 @@ def _waiting_answer(
     sample = counts["observed_headways"]
     frequent = counts["frequent_headways"]
     covered_sample = min(sample, frequent)
-    state = _state(
-        family,
-        sample,
-        frequent,
-        0,
-        0,
-        window.no_days_measured,
-        coverage_sample=covered_sample,
-    )
-    if not window.no_days_measured and not frequent and not sample:
-        if counts["live_direction_stops"]:
-            state = "no_frequent_periods"
-        elif counts["scheduled_stops"] and not counts["live_candidates"]:
-            state = "no_live_data"
+    state = _waiting_state(family, counts, window)
     values: dict[str, float | None] = dict.fromkeys(m.id for m in selected)
     states = dict.fromkeys(values, state)
     if state == "measured":
@@ -4564,6 +4749,20 @@ def _waiting_answer(
         values,
         evidence,
         dict.fromkeys(values, sample),
+    )
+
+
+def _waiting_state(family: Family, counts: Counter[str], window: ReadWindow) -> str:
+    sample = counts["observed_headways"]
+    frequent = counts["frequent_headways"]
+    if not window.no_days_measured and not frequent and not sample:
+        if counts["live_direction_stops"]:
+            return "no_frequent_periods"
+        if counts["scheduled_stops"] and not counts["live_candidates"]:
+            return "no_live_data"
+    return _state(
+        family, sample, frequent, 0, 0, window.no_days_measured,
+        coverage_sample=min(sample, frequent),
     )
 
 
@@ -4945,7 +5144,9 @@ def _accessibility_answer(
 def ask(store: Store, question: Question) -> dict[str, Any]:
     """Read validated days and compute the selected measure or family with its evidence."""
     started = perf_counter()
-    if question.network_corridors and store.cleaning_version < SEGMENT_RUNS_VERSION:
+    if (question.network_corridors or question.measure == CLEAR_RUN_TIME_LOST) and (
+        store.cleaning_version < SEGMENT_RUNS_VERSION
+    ):
         raise NetworkCorridorsUnavailable(
             "segment_runs_version_required",
             f"Network corridors require cleaning version {SEGMENT_RUNS_VERSION} or later",
@@ -5173,6 +5374,106 @@ def _series_query_batches(
 _MAP_STATES = {"too_few_to_judge": 1, "no_live_data": 2, "measured": 3}
 
 
+def _layer_totals(
+    conn: duckdb.DuckDBPyConnection,
+    store: Store,
+    question: Question,
+    family: Family,
+    window: ReadWindow,
+) -> dict[EntityKey, Batch]:
+    query = family.query
+    assert query is not None
+    version = str(store.cleaning_version)
+
+    def daily(paths: dict[str, list[str]]) -> dict[
+        EntityKey, tuple[dict[str, int], dict[int, int], float]
+    ]:
+        return {
+            key: (dict(part.counts), dict(part.histogram), part.waiting_weighted_excess)
+            for key, part in query(conn, family, paths, question, version, None).items()
+        }
+
+    totals: dict[EntityKey, Batch] = {}
+    for offset, paths in enumerate(window.batches()):
+        parts = _daily_partial(
+            store, window, family, question, window.included[offset],
+            question.measure, bind(daily, paths),
+        )
+        for key, (counts, histogram, weighted_excess) in parts.items():
+            part = totals.get(key)
+            if part is None:
+                totals[key] = Batch(
+                    counts=Counter(counts), histogram=Counter(histogram),
+                    waiting_weighted_excess=weighted_excess,
+                )
+            else:
+                part.counts.update(counts)
+                part.histogram.update(histogram)
+                part.waiting_weighted_excess += weighted_excess
+    return totals
+
+
+def _layer_map_answer(
+    store: Store,
+    question: Question,
+    family: Family,
+    selected: tuple[Measure, ...],
+    group: SeriesGroup,
+    started: float,
+    window: ReadWindow,
+    totals: dict[EntityKey, Batch],
+) -> dict[str, Any]:
+    fields: dict[str, list[Any]] = {column: [] for column in GROUP_COLUMNS[group]}
+    for column in ("value", "sample", "state", "share_observed", "low_coverage"):
+        fields[column] = []
+    clear = family is _CLEAR_RUN
+    extras = (
+        ("clear_run_seconds", "median_run_seconds", "trips_counted", "observed_seconds")
+        if clear else ("frequent_headways", "wait_weight", "weighted_excess")
+    )
+    fields.update({column: [] for column in extras})
+    for key in sorted(totals, key=lambda row: tuple((value is None, value) for value in row)):
+        check_query()
+        part = totals[key]
+        counts = part.counts
+        readings: tuple[int | float | None, ...]
+        if clear:
+            state, scheduled = _corridor_state(family, counts, window)
+            sample = counts["observed_runs"]
+            coverage = _coverage_evidence(family, sample, scheduled)
+            reference = median = value = None
+            if state == "measured":
+                reference, median = clear_run_times(part.histogram, sample)
+                value = median - reference
+            readings = (reference, median, counts["trips_counted"], counts["observed_seconds"])
+        else:
+            state = _waiting_state(family, counts, window)
+            sample, frequent = counts["observed_headways"], counts["frequent_headways"]
+            coverage = _coverage_evidence(family, min(sample, frequent), frequent)
+            weight = counts["wait_weight"]
+            weighted = part.waiting_weighted_excess if weight else None
+            value = weighted / weight if state == "measured" and weighted is not None else None
+            if state == "measured" and value is None:
+                state = "unknown"
+            readings = (frequent, weight, weighted)
+        for column, item in zip(GROUP_COLUMNS[group], key, strict=True):
+            fields[column].append(item)
+        for column, reading in zip(extras, readings, strict=True):
+            fields[column].append(reading)
+        fields["value"].append(value)
+        fields["sample"].append(sample)
+        fields["state"].append(state)
+        fields["share_observed"].append(coverage.get("share_observed"))
+        fields["low_coverage"].append(coverage.get("low_coverage", False))
+    return {
+        "measure": question.measure,
+        "minimum_sample": family.minimum_sample,
+        **fields,
+        "evidence": window.evidence(store, question, family, started),
+        "info": [_info(family, measure) for measure in selected],
+    }
+
+
 def _map_series(
     store: Store,
     question: Question,
@@ -5255,6 +5556,11 @@ def _series_answer(
     occupancy_days: set[str] = set()
     with service_query(store, question.city) as conn:
         window = read_window(conn, store, question, family, selected)
+        if question.layer_map:
+            layer_totals = _layer_totals(conn, store, question, family, window)
+            return _layer_map_answer(
+                store, question, family, selected, group, started, window, layer_totals
+            )
         alert_days = set(window.measured) if alerts else set()
         for offset, result in enumerate(_series_query_batches(conn, store, family, query, window)):
             window.record_vehicle_tracking(family, offset, result)
