@@ -241,8 +241,15 @@ for (const width of [390, 1440]) {
 				fr ? '22 trajets, 5 jours en service' : '22 trips, 5 days in service',
 			);
 			await main.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
-			await expect(page.getByRole('dialog')).toContainText(/v1[\s\S]*#punctuality/);
-			await page.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true }).click();
+			const citation = page.getByRole('dialog', {
+				name: fr ? 'Citer ce bilan' : 'Cite this record',
+				exact: true,
+			});
+			await expect(citation).toContainText(/v1[\s\S]*#punctuality/);
+			await citation
+				.locator('[data-slot="sheet-footer"]')
+				.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true })
+				.click();
 			await main
 				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
 				.click();

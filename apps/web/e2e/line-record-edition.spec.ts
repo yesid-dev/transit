@@ -57,7 +57,10 @@ for (const { provider, locale, width } of cases) {
 			await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14&direction=1');
 			const section = page.locator('#punctuality');
 			const cite = section.getByText(locale === 'fr' ? 'Citer' : 'Cite', { exact: true });
-			const dialog = page.getByRole('dialog');
+			const dialog = page.getByRole('dialog', {
+				name: locale === 'fr' ? 'Citer ce bilan' : 'Cite this record',
+				exact: true,
+			});
 			const evidence = dialog.getByText(
 				locale === 'fr'
 					? /40 sur 100.*Méthode v1, nettoyage v7/u
@@ -65,7 +68,10 @@ for (const { provider, locale, width } of cases) {
 			);
 			await cite.click();
 			await expect(evidence).toBeVisible();
-			await dialog.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close' }).click();
+			await dialog
+				.locator('[data-slot="sheet-footer"]')
+				.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close', exact: true })
+				.click();
 			const copy = section.getByRole('button', { name: transitTerms[locale].action.copyLink });
 			expect((await copy.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
 			await copy.focus();

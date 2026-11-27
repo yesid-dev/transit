@@ -130,7 +130,10 @@ for (const locale of ['en', 'fr'] as const) {
 				name: fr ? 'Lignes sans données en direct' : 'Lines without live data',
 			}),
 		).toHaveAttribute('download', /^lines-without-live-data-.*\.csv$/);
-		await sheet.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
+		await sheet
+			.locator('[data-slot="sheet-footer"]')
+			.getByRole('button', { name: fr ? 'Fermer' : 'Close' })
+			.click();
 		await page.getByRole('radio', { name: fr ? 'Part en retard' : 'Late share' }).click();
 		await expect(page).toHaveURL(/sort=late&direction=desc$/);
 		await timing.getByRole('link').click();
@@ -349,14 +352,19 @@ for (const locale of ['en', 'fr'] as const) {
 					/\/stop\/S1.*recordFrom=2026-11-08.*recordTo=2026-11-14/,
 				);
 				await actions.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
-				const citation = page.getByRole('dialog', { name: fr ? 'Citer' : 'Cite' });
+				const citation = page.getByRole('dialog', {
+					name: fr ? 'Citer ce bilan' : 'Cite this record',
+				});
 				await expect(
 					citation.getByText(fr ? /Méthode v1, nettoyage v8\./ : /Method v1, cleaning v8\./),
 				).toBeVisible();
 				await expect(citation.locator('[data-slot="cite-text"]')).toContainText(
 					/q=Fixture.*#stop-results/,
 				);
-				await citation.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
+				await citation
+					.locator('[data-slot="sheet-footer"]')
+					.getByRole('button', { name: fr ? 'Fermer' : 'Close' })
+					.click();
 				await actions.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
 				const downloads = page.getByRole('dialog', {
 					name: fr ? 'Télécharger les fichiers CSV' : 'Download the CSV files',
@@ -365,7 +373,10 @@ for (const locale of ['en', 'fr'] as const) {
 					.getByRole('link', { name: fr ? 'Résultats de recherche d’arrêts' : 'Stop results' })
 					.getAttribute('href');
 				expect(decodeURIComponent(csv!)).toContain('"Fixture stop",0.8,100,80');
-				await downloads.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
+				await downloads
+					.locator('[data-slot="sheet-footer"]')
+					.getByRole('button', { name: fr ? 'Fermer' : 'Close' })
+					.click();
 				await expect(
 					main.getByRole('link', { name: fr ? 'Près d’une adresse' : 'Near an address' }),
 				).toHaveAttribute('href', /\/map\?[^#]*\blookup=address(?:&|$)/u);
