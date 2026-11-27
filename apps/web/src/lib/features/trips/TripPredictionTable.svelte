@@ -66,15 +66,15 @@
 		{rows}
 		columns={[
 			{ key: 'stop', header: t.columns.stop, rowHeader: true, cell: stopCell },
-			{ key: 'time', header: t.columns.time, cell: timeCell },
-			{ key: 'offset', header: t.columns.offset, cell: offsetCell },
+			{ key: 'time', header: t.columns.time, cell: timeCell, numeric: true, width: '1%' },
+			{ key: 'offset', header: t.columns.offset, cell: offsetCell, numeric: true, width: '1%' },
 		] satisfies readonly DataTableColumn<StopEta>[]}
 		key={(prediction, index) => `${prediction.stop}-${index}`}
 		caption={t.reportedPredictions}
 		responsive={{ mode: 'stack', at: 'tablet' }}
 		frame="none"
 		headerBand="none"
-		tableClass="trip-predictions"
+		tableClass="trip-predictions [&_thead_th]:normal-case! [&_thead_th]:tracking-normal!"
 		class="trip-prediction-table"
 	/>
 </div>

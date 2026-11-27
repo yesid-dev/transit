@@ -55,22 +55,24 @@
 	});
 </script>
 
+{#snippet heading()}
+	<ScreenTitle
+		id="line-title"
+		title={lineRecordHeading(name, locale)}
+		plate={name.number ?? undefined}
+		subtitle={subtitle ?? (data.outsideCurrentTimetable ? timetableNotice : undefined)}
+		hideSubtitle={data.frameLive && data.outsideCurrentTimetable && !subtitle}
+		{back}
+		dot={false}
+	/>
+{/snippet}
+
 <Surface>
 	<RecordScreen>
-		<RecordGroup>
-			<ScreenTitle
-				id="line-title"
-				title={lineRecordHeading(name, locale)}
-				plate={name.number ?? undefined}
-				subtitle={subtitle ?? (data.outsideCurrentTimetable ? timetableNotice : undefined)}
-				hideSubtitle={data.frameLive && data.outsideCurrentTimetable && !subtitle}
-				{back}
-				dot={false}
-			/>
-		</RecordGroup>
 		{#if data.frameLive && data.outsideCurrentTimetable}
-			<RecordGroup
-				><div data-slot="screen-content">
+			<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+				<div data-screen-intro>{@render heading()}</div>
+				<div data-slot="screen-content">
 					<div id="line-detail-profile" data-slot="screen-answer">
 						<RecordAnswer {locale} value={null} state="no_live_data" sentence={timetableNotice}>
 							{#snippet actions()}
@@ -88,6 +90,7 @@
 		{:else if data.frameLive}
 			{#key data.capture ?? data.seed.id}
 				<LineLive
+					{heading}
 					line={data.seed.id}
 					name={data.seed.name}
 					city={data.providerId}
@@ -110,6 +113,7 @@
 			{/key}
 		{:else if record}
 			<LineRecord
+				{heading}
 				name={data.seed.name}
 				scheduleOnly={data.scheduleOnly}
 				{locale}
@@ -120,6 +124,10 @@
 				stopCodes={data.stopCodes}
 				{operator}
 			/>
+		{:else}
+			<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)"
+				>{@render heading()}</RecordGroup
+			>
 		{/if}
 	</RecordScreen>
 </Surface>

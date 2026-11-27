@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Skeleton } from '@yesid/ui/skeleton';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import { goto } from '$app/navigation';
@@ -14,6 +15,7 @@
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import { pendingBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
 	import RecordUnavailable from '#lib/features/record/RecordUnavailable.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
@@ -48,6 +50,7 @@
 	let {
 		name,
 		scheduleOnly,
+		timetableOnly,
 		locale,
 		record,
 		pinned,
@@ -56,6 +59,7 @@
 	}: {
 		name: string;
 		scheduleOnly?: boolean;
+		timetableOnly: boolean;
 		locale: Locale;
 		record: ReturnType<typeof loadLineRecord>;
 		pinned: URL;
@@ -75,6 +79,13 @@
 	const directionsAnswer = $derived(answerFor('directions'));
 	const dailyAnswer = $derived(answerFor('daily'));
 	const hourlyAnswer = $derived(answerFor('hourly'));
+	const comparisonShape = { shape: 'answer', comparison: true } as const;
+	const chartSlots = {
+		bands: pendingBlockSize('bands'),
+		trend: pendingBlockSize('trend'),
+		grid: pendingBlockSize('grid'),
+	};
+	const directionShape = { shape: 'facts', count: 2 } as const;
 	const networkAnswer = $derived(record.network);
 	const networkDailyAnswer = $derived(record.networkDaily);
 	const files = $derived(
@@ -128,9 +139,9 @@
 	{/if}
 {/snippet}
 
-{#snippet gap(result: EngineResult<Answer>)}
+{#snippet gap(result: EngineResult<Answer>, shape?: RecordWaiting)}
 	{#if result.kind === 'busy'}
-		<RecordPending {locale} busy />
+		<RecordPending {locale} busy {shape} />
 	{:else if result.kind !== 'answer'}
 		<RecordUnavailable {locale} retry={result.kind === 'unreachable' ? result.retry : undefined} />
 	{:else}
@@ -210,7 +221,7 @@
 	/>
 {/snippet}
 
-<div id="punctuality" data-slot="screen-answer">
+<div id="punctuality" data-slot="screen-answer" class="min-[1280px]:-mb-4">
 	{#if scheduleOnly}
 		{#snippet timetableNotice()}
 			<p>
@@ -231,7 +242,7 @@
 	{:else}
 		{#await punctualityAnswer}
 			{#key punctualityAnswer}<RecordPending
-					shape="answer"
+					shape={comparisonShape}
 					{locale}
 					answer={punctualityAnswer}
 				/>{/key}
@@ -267,18 +278,21 @@
 					{/await}
 				{/if}
 			{:else}
-				{@render gap(result)}
+				{@render gap(result, comparisonShape)}
 			{/if}
 		{/await}
 	{/if}
 </div>
 
-{#if !scheduleOnly}
-	{#await punctualityAnswer then result}
-		{@const headline = result}
-		{#if !(result.kind === 'answer' && 'value' in result.answer && lineTimetableOnly(result.answer))}
-			<DashboardGrid gutter={false} minTile="20rem">
-				<RecordCard title={bands} {stamp}>
+{#if !scheduleOnly && !timetableOnly}
+	<div class="paired-line-readings">
+		<DashboardGrid gutter={false} minTile="20rem" class="items-start">
+			<RecordCard title={bands} {stamp}>
+				<div
+					class="reading-body"
+					style:--slot-wide={chartSlots.bands?.wide}
+					style:--slot-phone={chartSlots.bands?.phone}
+				>
 					{#await punctualityAnswer}
 						{#key punctualityAnswer}<RecordPending
 								shape="bands"
@@ -299,72 +313,82 @@
 									'En avance signifie plus d’une minute avant l’heure prévue. En retard signifie plus de 5 minutes après l’heure prévue.',
 								)}
 							</p>
-						{:else}{@render gap(result)}{/if}
+						{:else}{@render gap(result, 'bands')}{/if}
 					{/await}
-					<div id="directions" class="mt-3 grid gap-2">
-						<h3 class="font-semibold">{title('directions')}</h3>
-						{#await directionsAnswer}
-							{#key directionsAnswer}<RecordPending
-									shape="table"
-									{locale}
-									answer={directionsAnswer}
-								/>{/key}
-						{:then result}
-							{@const cells =
-								result.kind === 'answer' && 'cells' in result.answer
-									? result.answer.cells.filter(
-											(cell) =>
-												// An unknown direction with nothing observed is no reading.
-												!(
-													(cell.key.direction == null ||
-														!headsigns[Number(cell.key.direction)]?.trim()) &&
-													!cell.evidence.counts.classified &&
-													measuredShare(cell, 'on_time') === null
-												),
-										)
-									: []}
-							{#if cells.length}
-								<FactList leading={false}>
-									{#each cells as cell (cell.key.direction)}
-										{@const share = measuredShare(cell, 'on_time')}
-										{@const classified = cell.evidence.counts.classified}
-										<FactRow
-											label={directionLabel(cell.key.direction, headsigns, locale)}
-											detail={share === null
-												? undefined
-												: t('on time', 'à l’heure') +
-													(classified == null
-														? ''
-														: ', ' + countedUnit(classified, 'event', locale))}
-										>
-											{#if share !== null}
-												<strong>{recordPercent(share, locale)}</strong>
-											{:else}
-												<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
-												{rateStateText(cell, locale)}
-											{/if}
-										</FactRow>
-									{/each}
-								</FactList>
-							{:else if result.kind === 'answer' || headline.kind === 'answer'}
-								{@render gap(result)}
-							{/if}
-						{/await}
-					</div>
-					{#snippet evidence()}
-						{#await punctualityAnswer then result}
-							{#if result.kind === 'answer'}<LineRecordEvidence
-									evidence={result.answer.evidence}
-									{locale}
-								/>{/if}
-						{/await}
-					{/snippet}
-				</RecordCard>
+				</div>
+				<div id="directions" class="mt-3 grid gap-2">
+					<h3 class="font-semibold">{title('directions')}</h3>
+					{#await directionsAnswer}
+						{#key directionsAnswer}<RecordPending
+								shape={directionShape}
+								{locale}
+								answer={directionsAnswer}
+							/>{/key}
+					{:then result}
+						{@const cells =
+							result.kind === 'answer' && 'cells' in result.answer
+								? result.answer.cells.filter(
+										(cell) =>
+											// An unknown direction with nothing observed is no reading.
+											!(
+												(cell.key.direction == null ||
+													!headsigns[Number(cell.key.direction)]?.trim()) &&
+												!cell.evidence.counts.classified &&
+												measuredShare(cell, 'on_time') === null
+											),
+									)
+								: []}
+						{#if cells.length}
+							<FactList leading={false}>
+								{#each cells as cell (cell.key.direction)}
+									{@const share = measuredShare(cell, 'on_time')}
+									{@const classified = cell.evidence.counts.classified}
+									<FactRow
+										label={directionLabel(cell.key.direction, headsigns, locale)}
+										detail={share === null
+											? undefined
+											: t('on time', 'à l’heure') +
+												(classified == null ? '' : ', ' + countedUnit(classified, 'event', locale))}
+									>
+										{#if share !== null}
+											<strong>{recordPercent(share, locale)}</strong>
+										{:else}
+											<StateMark state={chartState(cell.state)} {locale} hiddenLabel />
+											{rateStateText(cell, locale)}
+										{/if}
+									</FactRow>
+								{/each}
+							</FactList>
+						{:else}
+							{#await punctualityAnswer then headline}
+								{#if result.kind === 'answer' || headline.kind === 'answer'}
+									{@render gap(result, directionShape)}
+								{/if}
+							{/await}
+						{/if}
+					{/await}
+				</div>
+				{#snippet evidence()}
+					{#await punctualityAnswer}
+						<Skeleton class="h-5 w-48 max-w-full" />
+					{:then result}
+						{#if result.kind === 'answer'}<LineRecordEvidence
+								evidence={result.answer.evidence}
+								{locale}
+							/>{/if}
+					{/await}
+				{/snippet}
+			</RecordCard>
 
-				<div id="daily" class="grid min-w-0">
-					<RecordCard interactive title={title('daily')} {stamp}>
+			<div id="daily" class="grid min-w-0">
+				<RecordCard interactive title={title('daily')} {stamp} reserve="trend">
+					<div
+						class="reading-body"
+						style:--slot-wide={chartSlots.trend?.wide}
+						style:--slot-phone={chartSlots.trend?.phone}
+					>
 						{#await dailyAnswer}
-							{#key dailyAnswer}<RecordPending {locale} answer={dailyAnswer} />{/key}
+							{#key dailyAnswer}<RecordPending shape="trend" {locale} answer={dailyAnswer} />{/key}
 						{:then result}
 							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
 								{@const answer = result.answer}
@@ -390,66 +414,101 @@
 								{#await networkDailyAnswer}{@render trend()}{:then network}{@render trend(
 										network,
 									)}{/await}
-							{:else}{@render gap(result)}{/if}
+							{:else}{@render gap(result, 'trend')}{/if}
 						{/await}
-						{#snippet evidence()}
-							{#await dailyAnswer then result}
-								{#if result.kind === 'answer'}
-									<LineRecordEvidence evidence={result.answer.evidence} {locale} />
-								{/if}
-							{/await}
-						{/snippet}
-						{#snippet toggle()}
-							{#await dailyAnswer then result}
-								{#if result.kind === 'answer'}
-									{#if 'cells' in result.answer && result.answer.cells.length}
-										<RecordChartToggle
-											bind:table={dailyTable}
-											controls="line-daily-chart"
-											{locale}
-										/>
-									{/if}
-								{/if}
-							{/await}
-						{/snippet}
-					</RecordCard>
-				</div>
-			</DashboardGrid>
-
-			<div id="hourly" data-slot="line-hour-grid" class="min-w-0">
-				<RecordCard interactive title={title('hourly')} {stamp}>
-					{@render directionControl()}
-					{#await hourlyAnswer}
-						{#key hourlyAnswer}<RecordPending {locale} answer={hourlyAnswer} />{/key}
-					{:then result}
-						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-							<RecordChart
-								title={title('hourly')}
-								id="line-hour-chart"
-								table={hoursTable}
-								input={{ kind: 'hours', answer: result.answer }}
-								{locale}
-							/>
-						{:else}{@render gap(result)}{/if}
-					{/await}
+					</div>
 					{#snippet evidence()}
-						{#await hourlyAnswer then result}
+						{#await dailyAnswer then result}
 							{#if result.kind === 'answer'}
 								<LineRecordEvidence evidence={result.answer.evidence} {locale} />
 							{/if}
 						{/await}
 					{/snippet}
 					{#snippet toggle()}
-						{#await hourlyAnswer then result}
+						{#await dailyAnswer}
+							<Skeleton class="h-11 w-24" />
+						{:then result}
 							{#if result.kind === 'answer'}
 								{#if 'cells' in result.answer && result.answer.cells.length}
-									<RecordChartToggle bind:table={hoursTable} controls="line-hour-chart" {locale} />
+									<RecordChartToggle bind:table={dailyTable} controls="line-daily-chart" {locale} />
 								{/if}
 							{/if}
 						{/await}
 					{/snippet}
 				</RecordCard>
 			</div>
-		{/if}
-	{/await}
+		</DashboardGrid>
+	</div>
+
+	<div id="hourly" data-slot="line-hour-grid" class="min-w-0">
+		<RecordCard interactive title={title('hourly')} {stamp} reserve="grid">
+			{@render directionControl()}
+			<div
+				class="reading-body"
+				style:--slot-wide={chartSlots.grid?.wide}
+				style:--slot-phone={chartSlots.grid?.phone}
+			>
+				{#await hourlyAnswer}
+					{#key hourlyAnswer}<RecordPending shape="grid" {locale} answer={hourlyAnswer} />{/key}
+				{:then result}
+					{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+						<RecordChart
+							title={title('hourly')}
+							id="line-hour-chart"
+							table={hoursTable}
+							input={{ kind: 'hours', answer: result.answer }}
+							{locale}
+						/>
+					{:else}{@render gap(result, 'grid')}{/if}
+				{/await}
+			</div>
+			{#snippet evidence()}
+				{#await hourlyAnswer then result}
+					{#if result.kind === 'answer'}
+						<LineRecordEvidence evidence={result.answer.evidence} {locale} />
+					{/if}
+				{/await}
+			{/snippet}
+			{#snippet toggle()}
+				{#await hourlyAnswer}
+					<Skeleton class="h-11 w-24" />
+				{:then result}
+					{#if result.kind === 'answer'}
+						{#if 'cells' in result.answer && result.answer.cells.length}
+							<RecordChartToggle bind:table={hoursTable} controls="line-hour-chart" {locale} />
+						{/if}
+					{/if}
+				{/await}
+			{/snippet}
+		</RecordCard>
+	</div>
 {/if}
+
+<style>
+	.reading-body {
+		min-block-size: var(--slot-wide);
+	}
+	@media (width < 40rem) {
+		.reading-body {
+			min-block-size: var(--slot-phone);
+		}
+	}
+	.paired-line-readings :global([data-slot='record-card']) {
+		container-type: inline-size;
+	}
+	@container (inline-size < 32rem) {
+		.paired-line-readings :global([data-slot='record-card'] > header) {
+			align-items: flex-start;
+			flex-direction: column;
+		}
+	}
+	@container (inline-size >= 32rem) {
+		.paired-line-readings :global([data-slot='record-card'] > header) {
+			align-items: flex-start;
+			flex-wrap: nowrap;
+		}
+		.paired-line-readings :global([data-slot='record-card'] > header h2) {
+			min-inline-size: 0;
+		}
+	}
+</style>

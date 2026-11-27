@@ -27,6 +27,7 @@ for (const width of [390, 1440]) {
 			const late = page.getByRole('article', {
 				name: fr ? 'Départs le plus souvent en retard' : 'Departures late most often',
 			});
+			if (width === 390) await late.getByRole('button').first().click();
 			const departure = late.getByRole('link', { name: fr ? /^7\sh\b/u : /^07:00\b/u });
 			await expect(departure).toBeVisible();
 			await expect(late).toContainText(

@@ -32,6 +32,13 @@ for (const width of [390, 1440]) {
 			const trend = main.locator('#daily');
 			await trend.getByRole('button', { name: fr ? 'Tableau' : 'Table', exact: true }).click();
 			await expect(trend.getByRole('rowheader')).toHaveCount(2);
+			if (width === 390) {
+				const stopLadder = main.locator('#stops').getByRole('button').first();
+				await expect(stopLadder).toHaveAttribute('aria-expanded', 'false');
+				await main
+					.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all', exact: true })
+					.click();
+			}
 			const waiting = main.locator('#waiting');
 			await expect(waiting).toContainText(fr ? 'l’attente estimée' : 'estimated waits');
 			await expect(waiting).toContainText(

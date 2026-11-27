@@ -137,17 +137,17 @@
 	   A comparison line keeps the full width, with the actions under it; so does an answer with no
 	   figure, which keeps the height its figure-sized placeholder reserved. */
 	@container (min-width: 36rem) {
-		.has-actions.short-context {
+		.has-actions:where(.short-context) {
 			grid-template-areas: 'statement statement' 'context actions';
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
-		.has-actions.short-context .answer-statement {
+		.has-actions:where(.short-context) .answer-statement {
 			grid-area: statement;
 		}
-		.has-actions.short-context .answer-context {
+		.has-actions:where(.short-context) .answer-context {
 			grid-area: context;
 		}
-		.has-actions.short-context .answer-actions {
+		.has-actions:where(.short-context) .answer-actions {
 			grid-area: actions;
 			justify-content: end;
 		}

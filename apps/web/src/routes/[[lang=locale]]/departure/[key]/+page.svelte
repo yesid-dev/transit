@@ -7,7 +7,11 @@
 	import { Button } from '@yesid/ui/button';
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
 	import { Surface } from '@yesid/ui/layout';
-	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import type { DataTableColumn } from '@yesid/ui/table';
+	import RecordDataTable from '#lib/features/record/RecordDataTable.svelte';
+	import type { RecordWaiting } from '#lib/features/record/recordWaiting.ts';
+	import RecordUnavailable from '#lib/features/record/RecordUnavailable.svelte';
+	import { tripCopy } from '#lib/features/trips/trips.copy.ts';
 	import { localizeHref } from '#lib/i18n/index.ts';
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -99,6 +103,12 @@
 
 	const term = $derived(overviewCopy[data.lang]);
 	const observed = $derived(answers.find(({ section }) => section === 'observed'));
+	const cardAnswers = $derived(
+		answers.flatMap((entry) =>
+			entry.section === 'observed' ? [] : [{ ...entry, section: entry.section }],
+		),
+	);
+	type DepartureAnswer = (typeof answers)[number];
 	const missingLine = $derived(
 		data.lineMissing && observed
 			? observed.answer.then(
@@ -150,46 +160,403 @@
 		code: data.stopCodes[id],
 		href: stopHref(id),
 	});
-	type MissedRow = { day: string; cancelled: number | null; missing: number | null };
+	type MissedRow = { id: string; label: string; cancelled: number | null; missing: number | null };
+	const shapes = $derived({
+		stops: { shape: 'ladder', count: Object.keys(data.stopNames).length },
+		delay: { shape: 'facts', count: 2 },
+		missed: 'line',
+	} satisfies Record<Exclude<(typeof answers)[number]['section'], 'observed'>, RecordWaiting>);
+	const predictionsShape = { shape: 'table', rows: 6 } as const;
 	const missedColumns = $derived<DataTableColumn<MissedRow>[]>([
-		{ key: 'day', header: t('Service date', 'Date de service'), rowHeader: true, cell: missedDay },
 		{ key: 'cancelled', header: t('Cancelled', 'Annulés'), numeric: true, cell: cancelled },
 		{ key: 'missing', header: t('Missing', 'Manquants'), numeric: true, cell: missing },
 	]);
 </script>
 
-{#snippet missedDay(row: MissedRow)}{compactServiceDay(row.day, data.lang)}{/snippet}
 {#snippet cancelled(row: MissedRow)}{row.cancelled ?? recordState('unknown')[data.lang]}{/snippet}
 {#snippet missing(row: MissedRow)}{row.missing ?? recordState('unknown')[data.lang]}{/snippet}
 
-{#snippet connection(result: EngineResult<Answer>)}
+{#snippet connection(result: EngineResult<Answer>, shape: RecordWaiting)}
 	{#if result.kind === 'busy'}
-		<RecordPending locale={data.lang} busy />
+		<RecordPending locale={data.lang} busy {shape} />
 	{:else if result.kind !== 'answer'}
-		<p>{recordConnection[result.kind][data.lang]}</p>
+		<RecordUnavailable
+			locale={data.lang}
+			retry={result.kind === 'unreachable' ? result.retry : undefined}
+		/>
 	{/if}
+{/snippet}
+
+{#snippet heading()}
+	<ScreenTitle
+		title={data.seoTitle}
+		plate={line}
+		subtitle={direction}
+		back={lineHref ? { href: lineHref, label: t('See the line', 'Voir la ligne') } : undefined}
+		dot={false}
+	/>
+{/snippet}
+
+{#snippet recordBody(observed: DepartureAnswer)}
+	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+		<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
+		<div data-slot="screen-answer" class="min-[1280px]:-mb-4">
+			{#await observed.answer}
+				<RecordPending locale={data.lang} shape="answer" answer={observed.answer} />
+			{:then result}
+				{#if result.kind === 'answer' && 'cells' in result.answer}
+					{@const answer = result.answer}
+					{@const days = departureDays(answer)}
+					{@const lateShare = departureLateShare(answer)}
+					{@const lateDetail = departureLateDetail(answer, data.lang)}
+					{@const absent = recordStateFor(answer.state ?? answer.cells[0]?.state ?? 'not_measured')}
+					{@const tooFew = days.observed > 0 && lateShare.share == null}
+					<div id="observed">
+						<RecordAnswer
+							value={lateShare.share == null ? null : recordPercent(lateShare.share, data.lang)}
+							state={tooFew ? 'too_few_to_judge' : absent}
+							locale={data.lang}
+							time={recordTime}
+							sentence={lateShare.share != null
+								? departureLateSentence(data.lang)
+								: recordState(tooFew ? 'too_few_to_judge' : absent)[data.lang]}
+							{actions}
+						>
+							{#snippet meta()}
+								{#if tooFew && lateShare.minimum != null}<p>
+										{sampleWithMinimum(
+											countedUnit(lateShare.classified, 'event', data.lang),
+											lateShare.minimum,
+											data.lang,
+										)}
+									</p>
+								{:else if lateDetail}<p>{lateDetail}</p>{/if}
+							{/snippet}
+						</RecordAnswer>
+					</div>
+					{#snippet actions()}
+						<RecordActionGroup
+							locale={data.lang}
+							href={pinned.href}
+							files={answers.map(({ links, title }) => ({
+								href: links.csv,
+								label: title,
+							}))}
+						>
+							{#snippet citation()}
+								<CiteBlock
+									locale={data.lang}
+									text={pageCitation(
+										data.seoTitle,
+										data.period,
+										pinned.href,
+										data.lang,
+										data.provider
+											? citationSource(
+													data.provider.labels[data.lang].operator,
+													data.provider,
+													data.lang,
+												)
+											: null,
+									)}
+								/>
+							{/snippet}
+							{#snippet figures()}
+								{#each answers as { section, answer: pending, title, links } (section)}
+									{#await pending then entry}
+										{#if entry.kind === 'answer'}
+											{@const evidence = entry.answer.evidence}
+											<CiteBlock
+												locale={data.lang}
+												text={[
+													`Transit · ${data.seoTitle}. ${title}. ${citeDates(
+														{ from: evidence.start_date, to: evidence.end_date },
+														data.lang,
+													)}.`,
+													section === 'observed' && days.observed ? observedStatement(answer) : '',
+													methodEvidence(evidence, data.lang),
+													entry.lastGood ? lastGoodNote[data.lang] : '',
+													links.share,
+												]
+													.filter(Boolean)
+													.join(' ')}
+											/>
+										{/if}
+									{/await}
+								{/each}
+							{/snippet}
+						</RecordActionGroup>
+					{/snippet}
+				{:else if result.kind === 'busy'}
+					<RecordPending locale={data.lang} busy shape="answer" />
+				{:else}
+					<RecordAnswer
+						value={null}
+						state="unknown"
+						sentence={result.kind === 'answer'
+							? recordState('unknown')[data.lang]
+							: recordConnection[result.kind][data.lang]}
+						locale={data.lang}
+						time={recordTime}
+					/>
+				{/if}
+			{/await}
+		</div>
+		{#each cardAnswers as { section, title: heading, answer } (section)}
+			<div id={section} class="min-w-0">
+				{#snippet dayChoices()}
+					{#if section === 'stops'}
+						<nav class="flex flex-wrap gap-2" aria-label={t('Service date', 'Date de service')}>
+							{#if start > 0}
+								<Button href={dateHref(dates[start - 1])} variant="outline" class="min-h-11"
+									>{t('Earlier dates', 'Dates précédentes')}</Button
+								>
+							{/if}
+							{#each dates.slice(start, start + 7) as day (day)}
+								<Button
+									href={dateHref(day)}
+									variant={day === data.day ? 'default' : 'outline'}
+									class="min-h-11 min-w-11"
+									aria-current={day === data.day ? 'date' : undefined}
+									aria-label={longDate(day, data.lang)}>{compactServiceDay(day, data.lang)}</Button
+								>
+							{/each}
+							{#if dates[start + 7]}
+								<Button href={dateHref(dates[start + 7])} variant="outline" class="min-h-11"
+									>{t('Later dates', 'Dates suivantes')}</Button
+								>
+							{/if}
+						</nav>
+					{/if}
+				{/snippet}
+				{#await answer}
+					<RecordCard title={heading} stamp={section === 'stops' ? dayTime : recordTime}>
+						<div class="grid min-w-0 gap-3">
+							{@render dayChoices()}
+							<RecordPending locale={data.lang} {answer} shape={shapes[section]} />
+						</div>
+					</RecordCard>
+				{:then result}
+					<RecordCard
+						interactive={section === 'stops' && dates.length > 0}
+						title={heading}
+						stamp={section === 'stops' ? dayTime : recordTime}
+						reserve={shapes[section]}
+					>
+						<div class="grid min-w-0 gap-3">
+							{@render dayChoices()}
+							{#if result.kind !== 'answer'}
+								{@render connection(result, shapes[section])}
+							{:else}
+								{@const reading = result.answer}
+								{#if result.lastGood}<p>{lastGoodNote[data.lang]}</p>{/if}
+								{#if section === 'stops' && 'cells' in reading && reading.cells.length}
+									<RecordChart
+										input={{ kind: 'ladder', answer: reading, stop, observed: true }}
+										title={heading}
+										locale={data.lang}
+										id="departure-stop-ladder"
+									/>
+									{#if reading.cells.some((cell) => cell.evidence.observed_delay_seconds == null && (cell.state !== 'measured' || cell.value.median_delay == null))}
+										<p class="text-small text-muted-foreground">
+											{t(
+												'A stop needs a usable reading to show an observed delay.',
+												'Un passage doit avoir une lecture utilisable pour afficher le retard observé.',
+											)}
+										</p>
+									{/if}
+								{:else if section === 'delay' && 'value' in reading && reading.state === 'measured'}
+									<dl class="delay-readings">
+										<div>
+											<dt>{t('Median delay', 'Retard médian')}</dt>
+											<dd class="font-heading text-heading font-extrabold">
+												{delayReading(
+													reading.value.median_delay,
+													data.lang,
+													recordState('unknown')[data.lang],
+												)}
+											</dd>
+											<dd>
+												{t(
+													'Half of the vehicles were later than this.',
+													'La moitié des véhicules sont passés plus tard.',
+												)}
+											</dd>
+										</div>
+										<div>
+											<dt>{t('90th percentile', '90e centile')}</dt>
+											<dd class="font-heading text-heading font-extrabold">
+												{delayReading(
+													reading.value.p90_delay,
+													data.lang,
+													recordState('unknown')[data.lang],
+												)}
+											</dd>
+											<dd>
+												{t(
+													'1 vehicle in 10 was later than this.',
+													'1 véhicule sur 10 est passé plus tard.',
+												)}
+											</dd>
+										</div>
+									</dl>
+								{:else if section === 'missed' && 'cells' in reading && reading.cells.some(({ evidence }) => (evidence.counts.eligible ?? 0) > 0)}
+									{@const rows = reading.cells.flatMap(
+										({ key, evidence: { counts } }): MissedRow[] =>
+											typeof key.day === 'string' &&
+											(counts.cancelled ?? 0) + (counts.missing ?? 0) > 0
+												? [
+														{
+															id: key.day,
+															label: compactServiceDay(key.day, data.lang),
+															cancelled: counts.cancelled ?? null,
+															missing: counts.missing ?? null,
+														},
+													]
+												: [],
+									)}
+									{#if rows.length}
+										<RecordDataTable
+											locale={data.lang}
+											title={heading}
+											rowHeader={t('Service date', 'Date de service')}
+											columns={missedColumns}
+											{rows}
+											scrollMinWidth="20rem"
+											pageSize={0}
+										/>
+									{:else}
+										<p>
+											{t(
+												'No cancellations or missing trips among the departures with known status.',
+												'Aucun trajet annulé ou manquant parmi les départs dont l’état est connu.',
+											)}
+										</p>
+									{/if}
+								{:else}
+									<StateMark state={recordStateFor(reading.state)} locale={data.lang} />
+								{/if}
+							{/if}
+						</div>
+						{#snippet evidence()}
+							{#if result.kind === 'answer'}
+								{@const evidence = result.answer.evidence}
+								{@const count = 'counts' in evidence ? evidence.counts.classified : undefined}
+								{@const seriesCount =
+									'cells' in result.answer
+										? result.answer.cells.reduce(
+												(sum, cell) =>
+													sum +
+													(section === 'missed'
+														? (cell.evidence.counts.eligible ?? 0)
+														: (cell.evidence.counts.classified ?? 0)),
+												0,
+											)
+										: null}
+								<RecordEvidenceLine
+									{evidence}
+									sample={count
+										? countedUnit(count, 'event', data.lang)
+										: seriesCount
+											? countedUnit(seriesCount, section === 'missed' ? 'trip' : 'event', data.lang)
+											: null}
+									locale={data.lang}
+								/>
+							{/if}
+						{/snippet}
+					</RecordCard>
+				{/await}
+			</div>
+		{/each}
+	</RecordGroup>
+	{#snippet about(evidence?: import('#lib/server/engine.ts').RecordMeasure['evidence'])}
+		{#if data.period}
+			<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+				<AboutFigures
+					compact
+					title={t('About these figures', 'À propos de ces chiffres')}
+					fields={[
+						{
+							key: 'period',
+							label: t('Period', 'Période'),
+							text: dateRange(data.period, data.lang),
+						},
+						{
+							key: 'observed',
+							label: t('Observed', 'Observations'),
+							text: evidence
+								? [
+										coverageText(evidence, data.lang).replace(/([^.!?])$/, '$1.'),
+										timingBasis(evidence.counts, data.lang),
+									]
+										.filter(Boolean)
+										.join(' ')
+								: null,
+						},
+						{
+							key: 'counted',
+							label: t('Counted', 'Ce qui est compté'),
+							text: t(
+								'The answer is the late share of the observed stop events of this departure on these dates. An observed day has at least one classified stop event.',
+								'La réponse est la part des passages observés de ce départ qui étaient en retard à ces dates. Jour observé : au moins un passage classé.',
+							),
+						},
+						{
+							key: 'missed',
+							label: t('Cancelled and missing departures', 'Départs annulés et manquants'),
+							text: t(
+								'Cancelled: the agency announced it. Missing: it was scheduled and no vehicle was seen during continuous capture.',
+								'Annulé\u00a0: annoncé par la société de transport. Manquant : départ prévu, sans véhicule vu en collecte continue.',
+							),
+						},
+						{ key: 'means', label: term.means, text: term.definition },
+						{
+							key: 'method',
+							label: t('Method', 'Méthode'),
+							text: null,
+							link: {
+								href: local('/metrics'),
+								label: t('How we measure', 'Comment on mesure'),
+							},
+						},
+						{
+							key: 'source',
+							label: term.source,
+							text: data.provider
+								? term.feeds(agencyName(data.provider.labels[data.lang].operator, data.provider))
+								: null,
+						},
+					]}
+				/>
+			</RecordGroup>
+		{/if}
+	{/snippet}
+	{#await answers.find(({ section }) => section === 'delay')?.answer}
+		{@render about()}
+	{:then result}
+		{@render about(
+			result?.kind === 'answer' && 'value' in result.answer ? result.answer.evidence : undefined,
+		)}
+	{/await}
 {/snippet}
 
 <Surface>
 	<RecordScreen>
-		<RecordGroup>
-			<ScreenTitle
-				title={data.seoTitle}
-				plate={line}
-				subtitle={direction}
-				back={lineHref ? { href: lineHref, label: t('See the line', 'Voir la ligne') } : undefined}
-				dot={false}
-			/>
-		</RecordGroup>
 		<div data-slot="screen-content">
 			{#if data.mode === 'live'}
-				<RecordGroup density="compact">
+				<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+					<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
 					{#await data.liveTrips}
-						<RecordPending locale={data.lang} />
+						<div data-slot="screen-answer" class="min-[1280px]:-mb-4">
+							<RecordPending locale={data.lang} shape="answer" />
+						</div>
+						<RecordCard title={tripCopy[data.lang].reportedPredictions}>
+							<RecordPending locale={data.lang} shape={predictionsShape} />
+						</RecordCard>
 					{:then result}
 						{@const trips = result?.trips ?? []}
 						{@const selected = result?.selected ?? (trips.length === 1 ? trips[0] : null)}
-						<div data-slot="screen-answer">
+						<div data-slot="screen-answer" class="min-[1280px]:-mb-4">
 							{#if selected && data.v1}
 								<RecordAnswer
 									value={clock}
@@ -217,7 +584,10 @@
 									id={selected}
 									locale={data.lang}
 									stopNames={data.stopNames}
-								/>{/key}{/if}
+								/>{/key}
+						{:else}<RecordCard title={tripCopy[data.lang].reportedPredictions}>
+								<p>{tripCopy[data.lang].noPredictions}</p>
+							</RecordCard>{/if}
 						{#if trips.length > 1}
 							<ul class="grid gap-2">
 								{#each trips as id (id)}
@@ -238,16 +608,11 @@
 					{/await}
 				</RecordGroup>
 			{:else if observed}
-				{#await missingLine}
-					<RecordGroup>
-						<div data-slot="screen-answer">
-							<RecordPending locale={data.lang} answer={observed.answer} />
-						</div>
-					</RecordGroup>
-				{:then missing}
+				{#await missingLine then missing}
 					{#if missing}
-						<RecordGroup>
-							<div data-slot="screen-answer">
+						<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+							<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
+							<div data-slot="screen-answer" class="min-[1280px]:-mb-4">
 								<RecordAnswer
 									value={null}
 									state="unknown"
@@ -259,354 +624,21 @@
 								/>
 							</div>
 						</RecordGroup>
-					{:else}
-						<RecordGroup density="compact">
-							<div data-slot="screen-answer">
-								{#await observed.answer}
-									<RecordPending locale={data.lang} answer={observed.answer} />
-								{:then result}
-									{#if result.kind === 'answer' && 'cells' in result.answer}
-										{@const answer = result.answer}
-										{@const days = departureDays(answer)}
-										{@const lateShare = departureLateShare(answer)}
-										{@const lateDetail = departureLateDetail(answer, data.lang)}
-										{@const absent = recordStateFor(
-											answer.state ?? answer.cells[0]?.state ?? 'not_measured',
-										)}
-										{@const tooFew = days.observed > 0 && lateShare.share == null}
-										<div id="observed">
-											<RecordAnswer
-												value={lateShare.share == null
-													? null
-													: recordPercent(lateShare.share, data.lang)}
-												state={tooFew ? 'too_few_to_judge' : absent}
-												locale={data.lang}
-												time={recordTime}
-												sentence={lateShare.share != null
-													? departureLateSentence(data.lang)
-													: recordState(tooFew ? 'too_few_to_judge' : absent)[data.lang]}
-												{actions}
-											>
-												{#snippet meta()}
-													{#if tooFew && lateShare.minimum != null}<p>
-															{sampleWithMinimum(
-																countedUnit(lateShare.classified, 'event', data.lang),
-																lateShare.minimum,
-																data.lang,
-															)}
-														</p>
-													{:else if lateDetail}<p>{lateDetail}</p>{/if}
-												{/snippet}
-											</RecordAnswer>
-										</div>
-										{#snippet actions()}
-											<RecordActionGroup
-												locale={data.lang}
-												href={pinned.href}
-												files={answers.map(({ links, title }) => ({
-													href: links.csv,
-													label: title,
-												}))}
-											>
-												{#snippet citation()}
-													<CiteBlock
-														locale={data.lang}
-														text={pageCitation(
-															data.seoTitle,
-															data.period,
-															pinned.href,
-															data.lang,
-															data.provider
-																? citationSource(
-																		data.provider.labels[data.lang].operator,
-																		data.provider,
-																		data.lang,
-																	)
-																: null,
-														)}
-													/>
-												{/snippet}
-												{#snippet figures()}
-													{#each answers as { section, answer: pending, title, links } (section)}
-														{#await pending then entry}
-															{#if entry.kind === 'answer'}
-																{@const evidence = entry.answer.evidence}
-																<CiteBlock
-																	locale={data.lang}
-																	text={[
-																		`Transit · ${data.seoTitle}. ${title}. ${citeDates(
-																			{ from: evidence.start_date, to: evidence.end_date },
-																			data.lang,
-																		)}.`,
-																		section === 'observed' && days.observed
-																			? observedStatement(answer)
-																			: '',
-																		methodEvidence(evidence, data.lang),
-																		entry.lastGood ? lastGoodNote[data.lang] : '',
-																		links.share,
-																	]
-																		.filter(Boolean)
-																		.join(' ')}
-																/>
-															{/if}
-														{/await}
-													{/each}
-												{/snippet}
-											</RecordActionGroup>
-										{/snippet}
-									{:else if result.kind === 'busy'}
-										<RecordPending locale={data.lang} busy />
-									{:else}
-										<RecordAnswer
-											value={null}
-											state="unknown"
-											sentence={result.kind === 'answer'
-												? recordState('unknown')[data.lang]
-												: recordConnection[result.kind][data.lang]}
-											locale={data.lang}
-											time={recordTime}
-										/>
-									{/if}
-								{/await}
-							</div>
-							{#each answers.filter(({ section }) => section !== 'observed') as { section, title: heading, answer } (section)}
-								<div id={section} class="min-w-0">
-									{#await answer}
-										<RecordCard title={heading} stamp={section === 'stops' ? dayTime : recordTime}>
-											<RecordPending locale={data.lang} {answer} />
-										</RecordCard>
-									{:then result}
-										<RecordCard
-											interactive={section === 'stops' && dates.length > 0}
-											title={heading}
-											stamp={section === 'stops' ? dayTime : recordTime}
-										>
-											<div class="grid min-w-0 gap-3">
-												{#if section === 'stops'}
-													<nav
-														class="flex flex-wrap gap-2"
-														aria-label={t('Service date', 'Date de service')}
-													>
-														{#if start > 0}
-															<Button
-																href={dateHref(dates[start - 1])}
-																variant="outline"
-																class="min-h-11">{t('Earlier dates', 'Dates précédentes')}</Button
-															>
-														{/if}
-														{#each dates.slice(start, start + 7) as day (day)}
-															<Button
-																href={dateHref(day)}
-																variant={day === data.day ? 'default' : 'outline'}
-																class="min-h-11 min-w-11"
-																aria-current={day === data.day ? 'date' : undefined}
-																aria-label={longDate(day, data.lang)}
-																>{compactServiceDay(day, data.lang)}</Button
-															>
-														{/each}
-														{#if dates[start + 7]}
-															<Button
-																href={dateHref(dates[start + 7])}
-																variant="outline"
-																class="min-h-11">{t('Later dates', 'Dates suivantes')}</Button
-															>
-														{/if}
-													</nav>
-												{/if}
-												{#if result.kind !== 'answer'}
-													{@render connection(result)}
-												{:else}
-													{@const reading = result.answer}
-													{#if result.lastGood}<p>{lastGoodNote[data.lang]}</p>{/if}
-													{#if section === 'stops' && 'cells' in reading && reading.cells.length}
-														<RecordChart
-															input={{ kind: 'ladder', answer: reading, stop, observed: true }}
-															title={heading}
-															locale={data.lang}
-															id="departure-stop-ladder"
-														/>
-														{#if reading.cells.some((cell) => cell.evidence.observed_delay_seconds == null && (cell.state !== 'measured' || cell.value.median_delay == null))}
-															<p class="text-small text-muted-foreground">
-																{t(
-																	'A stop needs a usable reading to show an observed delay.',
-																	'Un passage doit avoir une lecture utilisable pour afficher le retard observé.',
-																)}
-															</p>
-														{/if}
-													{:else if section === 'delay' && 'value' in reading && reading.state === 'measured'}
-														<dl class="delay-readings">
-															<div>
-																<dt>{t('Median delay', 'Retard médian')}</dt>
-																<dd class="font-heading text-heading font-extrabold">
-																	{delayReading(
-																		reading.value.median_delay,
-																		data.lang,
-																		recordState('unknown')[data.lang],
-																	)}
-																</dd>
-																<dd>
-																	{t(
-																		'Half of the vehicles were later than this.',
-																		'La moitié des véhicules sont passés plus tard.',
-																	)}
-																</dd>
-															</div>
-															<div>
-																<dt>{t('90th percentile', '90e centile')}</dt>
-																<dd class="font-heading text-heading font-extrabold">
-																	{delayReading(
-																		reading.value.p90_delay,
-																		data.lang,
-																		recordState('unknown')[data.lang],
-																	)}
-																</dd>
-																<dd>
-																	{t(
-																		'1 vehicle in 10 was later than this.',
-																		'1 véhicule sur 10 est passé plus tard.',
-																	)}
-																</dd>
-															</div>
-														</dl>
-													{:else if section === 'missed' && 'cells' in reading && reading.cells.some(({ evidence }) => (evidence.counts.eligible ?? 0) > 0)}
-														{@const rows = reading.cells.flatMap(
-															({ key, evidence: { counts } }): MissedRow[] =>
-																typeof key.day === 'string' &&
-																(counts.cancelled ?? 0) + (counts.missing ?? 0) > 0
-																	? [
-																			{
-																				day: key.day,
-																				cancelled: counts.cancelled ?? null,
-																				missing: counts.missing ?? null,
-																			},
-																		]
-																	: [],
-														)}
-														{#if rows.length}
-															<DataTable
-																caption={heading}
-																columns={missedColumns}
-																{rows}
-																key={(row) => row.day}
-																responsive={{ mode: 'scroll', minWidth: '20rem' }}
-															/>
-														{:else}
-															<p>
-																{t(
-																	'No cancellations or missing trips among the departures with known status.',
-																	'Aucun trajet annulé ou manquant parmi les départs dont l’état est connu.',
-																)}
-															</p>
-														{/if}
-													{:else}
-														<StateMark state={recordStateFor(reading.state)} locale={data.lang} />
-													{/if}
-												{/if}
-											</div>
-											{#snippet evidence()}
-												{#if result.kind === 'answer'}
-													{@const evidence = result.answer.evidence}
-													{@const count =
-														'counts' in evidence ? evidence.counts.classified : undefined}
-													{@const seriesCount =
-														'cells' in result.answer
-															? result.answer.cells.reduce(
-																	(sum, cell) =>
-																		sum +
-																		(section === 'missed'
-																			? (cell.evidence.counts.eligible ?? 0)
-																			: (cell.evidence.counts.classified ?? 0)),
-																	0,
-																)
-															: null}
-													<RecordEvidenceLine
-														{evidence}
-														sample={count
-															? countedUnit(count, 'event', data.lang)
-															: seriesCount
-																? countedUnit(
-																		seriesCount,
-																		section === 'missed' ? 'trip' : 'event',
-																		data.lang,
-																	)
-																: null}
-														locale={data.lang}
-													/>
-												{/if}
-											{/snippet}
-										</RecordCard>
-									{/await}
-								</div>
-							{/each}
-						</RecordGroup>
-						{#await answers.find(({ section }) => section === 'delay')?.answer then result}
-							{#if data.period && result?.kind === 'answer' && 'value' in result.answer}
-								{@const evidence = result.answer.evidence}
-								<RecordGroup>
-									<AboutFigures
-										compact
-										title={t('About these figures', 'À propos de ces chiffres')}
-										fields={[
-											{
-												key: 'period',
-												label: t('Period', 'Période'),
-												text: dateRange(data.period, data.lang),
-											},
-											{
-												key: 'observed',
-												label: t('Observed', 'Observations'),
-												text: [
-													coverageText(evidence, data.lang).replace(/([^.!?])$/, '$1.'),
-													timingBasis(evidence.counts, data.lang),
-												]
-													.filter(Boolean)
-													.join(' '),
-											},
-											{
-												key: 'counted',
-												label: t('Counted', 'Ce qui est compté'),
-												text: t(
-													'The answer is the late share of the observed stop events of this departure on these dates. An observed day has at least one classified stop event.',
-													'La réponse est la part des passages observés de ce départ qui étaient en retard à ces dates. Jour observé : au moins un passage classé.',
-												),
-											},
-											{
-												key: 'missed',
-												label: t(
-													'Cancelled and missing departures',
-													'Départs annulés et manquants',
-												),
-												text: t(
-													'Cancelled: the agency announced it. Missing: it was scheduled and no vehicle was seen during continuous capture.',
-													'Annulé\u00a0: annoncé par la société de transport. Manquant : départ prévu, sans véhicule vu en collecte continue.',
-												),
-											},
-											{ key: 'means', label: term.means, text: term.definition },
-											{
-												key: 'method',
-												label: t('Method', 'Méthode'),
-												text: null,
-												link: {
-													href: local('/metrics'),
-													label: t('How we measure', 'Comment on mesure'),
-												},
-											},
-											{
-												key: 'source',
-												label: term.source,
-												text: data.provider
-													? term.feeds(
-															agencyName(data.provider.labels[data.lang].operator, data.provider),
-														)
-													: null,
-											},
-										]}
-									/>
-								</RecordGroup>
-							{/if}
-						{/await}
 					{/if}
 				{/await}
+				{#if missingLine === false}
+					{@render recordBody(observed)}
+				{:else}
+					{#await missingLine}
+						{@render recordBody(observed)}
+					{:then missing}
+						{#if !missing}{@render recordBody(observed)}{/if}
+					{/await}
+				{/if}
+			{:else}
+				<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)"
+					><div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div></RecordGroup
+				>
 			{/if}
 		</div>
 	</RecordScreen>

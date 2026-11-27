@@ -17,6 +17,7 @@
 	import { groupAlertCards, liveAlertCards, type NoticeCard } from '../alerts/alertCards.ts';
 	import NoticeRows from '../alerts/NoticeRows.svelte';
 	import { choose } from '../record/recordText.ts';
+	import RecordPending from '../record/RecordPending.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 
 	let {
@@ -29,6 +30,7 @@
 		timeZone,
 		href,
 		stopNames = {},
+		pending = false,
 	}: {
 		snapshot: CaptureSnapshot | null;
 		now: number;
@@ -36,6 +38,7 @@
 		scope: { kind: 'line'; id: string } | { kind: 'stop'; id: string; lines: readonly string[] };
 		operator?: string;
 		tracked: boolean;
+		pending?: boolean;
 		timeZone: string;
 		href: string;
 		stopNames?: Readonly<Record<string, string>>;
@@ -107,7 +110,9 @@
 		: t('Agency notices', 'Avis de la société de transport')}
 	{stamp}
 >
-	{#if !tracked}
+	{#if pending}
+		<RecordPending {locale} shape={{ shape: 'notice', count: 2 }} />
+	{:else if !tracked}
 		{@render empty(alertsNotTrackedLine(agency, locale))}
 	{:else if !ready}
 		{@render empty(

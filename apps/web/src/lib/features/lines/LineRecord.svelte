@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { tick, type Snippet } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import { pendingBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
 	import { page } from '$app/state';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { Button } from '@yesid/ui/button';
@@ -33,17 +36,19 @@
 	import { lineSectionTitles, lineTimetableOnly, lineViewHref } from './lineRecordText.ts';
 
 	let {
+		heading,
 		name,
 
 		scheduleOnly,
 		locale,
 		url,
-		record,
+		record: requested,
 		headsigns,
 		stopNames,
 		stopCodes,
 		operator,
 	}: {
+		heading: Snippet;
 		name: string;
 
 		scheduleOnly?: boolean;
@@ -55,6 +60,78 @@
 		stopCodes: Record<string, string>;
 		operator: string;
 	} = $props();
+
+	// Keep an already settled period on screen while its replacement is being read.
+	// A different line or direction must never inherit the old readings.
+	let settled = $state.raw<typeof requested>();
+	const sameLine = $derived(
+		settled?.city === requested.city &&
+			settled.line === requested.line &&
+			settled.direction === requested.direction,
+	);
+	const replacing = $derived(
+		sameLine &&
+			settled &&
+			(settled.period.from !== requested.period.from || settled.period.to !== requested.period.to),
+	);
+	const record = $derived(replacing && settled ? settled : requested);
+	let screen = $state<HTMLDivElement>();
+	async function keepReadingPosition() {
+		if (window.scrollY === 0 || !screen) return;
+		const visible = [...screen.querySelectorAll<HTMLElement>('[data-slot="record-card"]')].find(
+			(card) => card.getBoundingClientRect().bottom > 120,
+		);
+		if (!visible) return;
+		const top = visible.getBoundingClientRect().top;
+		await tick();
+		if (!visible.isConnected) return;
+		// The resolved await blocks can undo their pending stubs in a subsequent microtask.
+		requestAnimationFrame(() => {
+			if (visible.isConnected) window.scrollBy(0, visible.getBoundingClientRect().top - top);
+		});
+	}
+	$effect(() => {
+		const next = requested;
+		let active = true;
+		void Promise.allSettled([
+			...next.sections.map(({ answer }) => answer),
+			next.directionalFrequency,
+			next.network,
+			next.networkDaily,
+		]).then(() => {
+			if (!active) return;
+			if (replacing) void keepReadingPosition();
+			settled = next;
+		});
+		return () => {
+			active = false;
+		};
+	});
+	let timetableOnly = $state(false);
+	$effect(() => {
+		if (scheduleOnly) return;
+		const pending = punctualityAnswer;
+		let active = true;
+		void pending.then((result) => {
+			if (active)
+				timetableOnly =
+					result.kind === 'answer' && 'value' in result.answer && lineTimetableOnly(result.answer);
+		});
+		return () => {
+			active = false;
+		};
+	});
+	const wide = new MediaQuery('(min-width: 40rem)', true);
+	const stopRows = $derived(Object.keys(stopNames).length);
+	const shapes = $derived({
+		stops: { shape: 'ladder', count: stopRows },
+		delivery: 'line',
+		late: { shape: 'rows', count: 8, lines: 2, lead: 'none' },
+		waiting: { shape: 'facts', count: 4 },
+		offered: { shape: 'table', rows: 7 },
+		crowding: { shape: 'table', rows: 6 },
+		alerts: { shape: 'notice', count: 2 },
+	} satisfies Partial<Record<LineSection, RecordWaiting>>);
 
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const title = (section: LineSection) => t(...lineSectionTitles[section]);
@@ -82,30 +159,25 @@
 
 	const punctualityAnswer = $derived(answerFor('punctuality'));
 	const failures = ['stops', 'delivery', 'late', 'waiting', 'offered', 'crowding'] as const;
-	let opened = $state<Record<(typeof failures)[number], boolean>>({
-		stops: true,
-		delivery: true,
-		late: true,
-		waiting: true,
-		offered: true,
-		crowding: true,
-	});
-	const anyOpen = $derived(failures.some((section) => opened[section]));
+	let chosen = $state<Partial<Record<(typeof failures)[number], boolean>>>({});
+	const opened = (section: (typeof failures)[number]) =>
+		chosen[section] ?? (section === 'delivery' || wide.current);
+	const anyOpen = $derived(failures.some((section) => section !== 'delivery' && opened(section)));
 	let stopsTable = $state(false);
 
 	function toggleAll() {
 		const open = !anyOpen;
-		for (const section of failures) opened[section] = open;
+		for (const section of failures) chosen[section] = open;
 	}
 </script>
 
-{#snippet pending(answer: Promise<EngineResult<RecordAnswer>>)}
-	{#key answer}<RecordPending {locale} {answer} />{/key}
+{#snippet pending(answer: Promise<EngineResult<RecordAnswer>>, section: keyof typeof shapes)}
+	{#key answer}<RecordPending {locale} {answer} shape={shapes[section]} />{/key}
 {/snippet}
 
-{#snippet gap(result: EngineResult<RecordAnswer>)}
+{#snippet gap(result: EngineResult<RecordAnswer>, section: keyof typeof shapes)}
 	{#if result.kind === 'busy'}
-		<RecordPending {locale} busy />
+		<RecordPending {locale} busy shape={shapes[section]} />
 	{:else if result.kind !== 'answer'}
 		<RecordUnavailable {locale} retry={result.kind === 'unreachable' ? result.retry : undefined} />
 	{:else}
@@ -120,10 +192,10 @@
 	{/if}
 {/snippet}
 
-{#snippet reading(section: LineSection)}
+{#snippet reading(section: keyof typeof shapes)}
 	{@const answer = answerFor(section)}
 	{#await answer}
-		{@render pending(answer)}
+		{@render pending(answer, section)}
 	{:then result}
 		{#if result.kind === 'answer' && !recordMessage(result, locale)}
 			{#if section === 'stops' && 'cells' in result.answer}
@@ -155,7 +227,7 @@
 			{#if result.lastGood}<p class="mt-3 text-small text-muted-foreground">
 					{lastGoodNote[locale]}
 				</p>{/if}
-		{:else}{@render gap(result)}{/if}
+		{:else}{@render gap(result, section)}{/if}
 	{/await}
 {/snippet}
 
@@ -170,7 +242,7 @@
 {/snippet}
 
 {#snippet failureGroup()}
-	<RecordGroup aria-labelledby="line-failures-heading">
+	<section aria-labelledby="line-failures-heading" class="grid min-w-0 gap-(--space-card-gap)">
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<h2 id="line-failures-heading" class="text-heading font-bold">
 				{t('Where and when it fails', 'Où et quand le service fait défaut')}
@@ -180,15 +252,24 @@
 			>
 		</div>
 		{#each failures as section (section)}
-			<div id={section} class="min-w-0">
+			<div
+				id={section}
+				class="min-w-0"
+				class:initially-closed={section !== 'delivery' && chosen[section] === undefined}
+			>
 				<RecordCard
 					title={title(section)}
 					{stamp}
 					interactive
 					expandable
-					bind:open={opened[section]}
+					bind:open={() => opened(section), (open) => (chosen[section] = open ?? false)}
 				>
-					{@render reading(section)}
+					<div
+						data-slot="line-disclosure-body"
+						style:min-block-size={pendingBlockSize(shapes[section])?.wide}
+					>
+						{@render reading(section)}
+					</div>
 					{#snippet evidence()}
 						{@render sectionEvidence(section)}
 					{/snippet}
@@ -204,7 +285,7 @@
 				</RecordCard>
 			</div>
 		{/each}
-	</RecordGroup>
+	</section>
 {/snippet}
 
 {#snippet about(answer: RecordMeasure | null)}
@@ -252,6 +333,15 @@
 				label: term.source,
 				text: term.feeds(agencyName(operator, page.data.provider)),
 			},
+			{
+				key: 'error',
+				label: t('Seen an error?', 'Vous avez vu une erreur?'),
+				text: null,
+				link: {
+					href: link('/metrics#about-transit'),
+					label: t('About Transit', 'À propos de Transit'),
+				},
+			},
 		]}
 	/>
 	<a class="inline-flex min-h-11 w-fit items-center text-primary underline" href={corridorMap}
@@ -259,44 +349,75 @@
 	>
 {/snippet}
 
-<div data-slot="screen-content" class="min-w-0">
-	<RecordGroup>
-		<LineRecordTop {name} {scheduleOnly} {locale} {record} {pinned} {headsigns} {operator} />
+<div
+	data-slot="screen-content"
+	class="line-record-content min-w-0"
+	bind:this={screen}
+	aria-busy={replacing || undefined}
+>
+	{#if replacing}
+		<div data-screen-intro class="sr-only"><RecordPending {locale} /></div>
+	{/if}
+	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+		<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
+		<LineRecordTop
+			{name}
+			{scheduleOnly}
+			{timetableOnly}
+			{locale}
+			{record}
+			{pinned}
+			{headsigns}
+			{operator}
+		/>
 		{#if scheduleOnly}
-			<LineScheduleCard {record} {locale} {url} {headsigns} reserve />
+			<LineScheduleCard {record} {locale} {url} {headsigns} />
+		{:else if !timetableOnly}
+			{@render failureGroup()}
 		{/if}
 	</RecordGroup>
 	{#if scheduleOnly}
-		<RecordGroup><LineMeasurementLimits {locale} methodHref={link('/metrics')} /></RecordGroup>
+		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)"
+			><LineMeasurementLimits {locale} methodHref={link('/metrics')} /></RecordGroup
+		>
 	{:else}
-		{#await punctualityAnswer then result}
-			{@const answer = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-			{#if !lineTimetableOnly(answer)}
-				{@render failureGroup()}
-			{/if}
-		{/await}
-		<RecordGroup>
+		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 			<LineScheduleCard {record} {locale} {url} {headsigns} />
-			{#await punctualityAnswer then result}
-				{@const answer =
-					result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-				{#if !lineTimetableOnly(answer)}
-					<div id="alerts">
-						<RecordCard interactive title={title('alerts')} {stamp}>
-							{@render reading('alerts')}
-							{#snippet evidence()}
-								{@render sectionEvidence('alerts')}
-							{/snippet}
-						</RecordCard>
-					</div>
-				{/if}
-			{/await}
-		</RecordGroup>
-		{#await punctualityAnswer then result}
-			{@const answer = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-			{#if !lineTimetableOnly(answer)}
-				<RecordGroup>{@render about(answer)}</RecordGroup>
+			{#if !timetableOnly}
+				<div id="alerts">
+					<RecordCard interactive title={title('alerts')} {stamp} reserve={shapes.alerts}>
+						{@render reading('alerts')}
+						{#snippet evidence()}{@render sectionEvidence('alerts')}{/snippet}
+					</RecordCard>
+				</div>
 			{/if}
-		{/await}
+		</RecordGroup>
+		{#if !timetableOnly}
+			<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+				{#await punctualityAnswer}
+					{@render about(null)}
+				{:then result}
+					{@render about(
+						result.kind === 'answer' && 'value' in result.answer ? result.answer : null,
+					)}
+				{/await}
+			</RecordGroup>
+		{/if}
 	{/if}
 </div>
+
+<style>
+	.line-record-content {
+		overflow-anchor: none;
+	}
+	@media (width < 40rem) {
+		/* The first HTML frame follows the phone's closed state before matchMedia is available. */
+		.initially-closed [data-slot='line-disclosure-body'],
+		.initially-closed :global([data-slot='record-card'] > footer) {
+			display: none;
+		}
+	}
+	[aria-busy='true'] > :global(.record-group) {
+		opacity: 0.65;
+	}
+</style>
