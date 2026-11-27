@@ -33,12 +33,17 @@ for (const [prefix, controls, open, layout, columns] of [
 			.filter({ hasText: /\d[.,]\d\s*%/u });
 		await expect(value).toBeVisible();
 		await page.evaluate(() => document.fonts.ready);
-		const lines = await value.evaluate((element) => {
+		const figure = await value.evaluate((element) => {
+			const column = element.closest('.answer-value')!.getBoundingClientRect();
 			const range = document.createRange();
 			range.selectNodeContents(element);
-			return range.getClientRects().length;
+			const { left, right } = range.getBoundingClientRect();
+			return {
+				lines: range.getClientRects().length,
+				fits: left >= column.left - 1 && right <= column.right + 1,
+			};
 		});
-		expect(lines).toBe(1);
+		expect(figure).toEqual({ lines: 1, fits: true });
 		const pill = page.getByRole('button', { name: new RegExp(`^${controls}.*${open}`, 'u') });
 		await expect(pill).toBeVisible();
 		const label = pill.getByText(controls, { exact: true });

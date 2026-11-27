@@ -284,25 +284,29 @@ for (const [prefix, by, compare, all, frequent, late] of [
 		await page.goto(`${prefix}/rankings?provider=stm&${dates}`);
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const main = page.getByRole('main');
-		const picker = main.getByRole('button', { name: new RegExp(`^${compare} `, 'u') });
+		const picker = main.getByRole('combobox', { name: compare, exact: true });
 		await expect(picker).toContainText(all);
 		await picker.click();
-		const classes = main.getByRole('list', { name: compare, exact: true });
-		await expect(classes.getByRole('button', { name: all, exact: true })).toHaveAttribute(
-			'aria-pressed',
+		const classes = page.getByRole('listbox', { name: compare, exact: true });
+		await expect(classes.getByRole('option', { name: all, exact: true })).toHaveAttribute(
+			'aria-selected',
 			'true',
 		);
-		await classes.getByRole('button', { name: frequent, exact: true }).click();
+		await classes.getByRole('option', { name: frequent, exact: true }).click();
 		await expect(page).toHaveURL(/class=3%3Afrequent/u);
 		await expect(picker).toContainText(frequent);
 		await expect(picker).toHaveAttribute('aria-expanded', 'false');
-		await expect(main.getByRole('combobox')).toHaveCount(0);
+		await expect(main.locator('input[role="combobox"]')).toHaveCount(0);
 
-		const measure = main.getByRole('button', { name: new RegExp(`^${by} `, 'u') });
+		const measure = main.getByRole('combobox', { name: by, exact: true });
 		await measure.press('Enter');
-		const choices = main.getByRole('list', { name: by, exact: true });
-		await expect(choices.getByRole('button')).toHaveCount(7);
-		await choices.getByRole('button', { name: late, exact: true }).click();
+		const choices = page.getByRole('listbox', { name: by, exact: true });
+		await expect(choices.getByRole('option')).toHaveCount(7);
+		await measure.press('Escape');
+		await expect(choices).toBeHidden();
+		await expect(measure).toBeFocused();
+		await measure.press('Enter');
+		await choices.getByRole('option', { name: late, exact: true }).click();
 		await expect(page).toHaveURL(/measure=late/u);
 		await expect(measure).toContainText(late);
 	});

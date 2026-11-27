@@ -191,18 +191,15 @@
 {#snippet lead(current: EngineResult<MeasureAnswer>)}
 	{@const value = overviewValue(current, 'on_time')}
 	{@const gap = overviewState(current, locale)}
-	<div class="overview-answer">
-		<RecordAnswer
-			{locale}
-			value={value == null ? null : recordPercent(value, locale)}
-			size="md"
-			sentence={value != null ? t.answer : gap.sentence}
-			state={gap.state}
-			{actions}
-		>
-			{#snippet meta()}{#if gap.detail}<p>{gap.detail}</p>{/if}{/snippet}
-		</RecordAnswer>
-	</div>
+	<RecordAnswer
+		{locale}
+		value={value == null ? null : recordPercent(value, locale)}
+		sentence={value != null ? t.answer : gap.sentence}
+		state={gap.state}
+		{actions}
+	>
+		{#snippet meta()}{#if gap.detail}<p>{gap.detail}</p>{/if}{/snippet}
+	</RecordAnswer>
 {/snippet}
 
 {#snippet gap(result: EngineResult<MeasureAnswer>)}
@@ -497,10 +494,3 @@
 		</RecordGroup>
 	</div>
 </RecordScreen>
-
-<style>
-	.overview-answer {
-		/* Keep the regular AnswerLead size until the percent needs to fit an enlarged phone layout. */
-		--text-heading: min(clamp(2.25rem, var(--text-display), 2.875rem), 22cqi);
-	}
-</style>
