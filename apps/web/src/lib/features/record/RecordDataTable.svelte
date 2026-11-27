@@ -210,7 +210,12 @@
 			? { mode: 'scroll', minWidth: scrollMinWidth }
 			: stackAt
 				? { mode: 'stack', at: stackAt }
-				: { mode: 'rows', primary: 'name', value: value ?? '', labels: false }}
+				: {
+						mode: 'rows',
+						primary: 'name',
+						value: value ?? '',
+						labels: !valueColumn || allColumns.length !== 2,
+					}}
 	/>
 {/snippet}
 {#if sort?.choices}

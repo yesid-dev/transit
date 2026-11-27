@@ -237,8 +237,10 @@
 		>
 	{:else}<StateMark state={row.state} {locale} />{/if}
 {/snippet}
-{#snippet shareCell(row: RecordTableRow & { share: string })}{row.share}{/snippet}
-{#snippet rightCell(row: RecordTableRow & { right: string })}{row.right}{/snippet}
+{#snippet shareCell(row: RecordTableRow & { share: string })}<span class="reading">{row.share}</span
+	>{/snippet}
+{#snippet rightCell(row: RecordTableRow & { right: string })}<span class="reading">{row.right}</span
+	>{/snippet}
 {#snippet answeredCell(row: RecordTableRow & { answered: string })}{row.answered}{/snippet}
 {#snippet checkedCell(row: RecordTableRow & { checked: string })}{row.checked}{/snippet}
 
@@ -677,3 +679,9 @@
 		{/if}
 	</div>
 </RecordScreen>
+
+<style>
+	.reading {
+		font-family: var(--font-body);
+	}
+</style>
