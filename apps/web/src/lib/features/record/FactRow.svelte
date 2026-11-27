@@ -47,9 +47,11 @@
 </div>
 
 <style>
+	/* The label keeps at least 9rem (or 45% of a narrow row): a long value wraps instead of
+	   squeezing the label to one word per line. */
 	.fact {
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-columns: minmax(min(9rem, 45%), 1fr) minmax(0, max-content);
 		min-block-size: 2.75rem;
 		align-items: center;
 		gap: 0.25em 1em;
@@ -59,7 +61,7 @@
 		display: var(--fact-leading, block);
 	}
 	.fact.has-detail {
-		grid-template-columns: minmax(min-content, 1fr) minmax(0, max-content);
+		grid-template-columns: minmax(min(9rem, 45%), 1fr) minmax(0, max-content);
 		align-items: start;
 	}
 	/* The label and its line take the free width; the value sits on the label's first line. */

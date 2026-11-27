@@ -13,7 +13,7 @@ import { presenterCopy } from './presenter.copy.ts';
 import { formatTransitName, stopDisplayName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import { stampCopy, type LiveState } from '#lib/v1/stamp.copy.ts';
-import { compassPoint, type LinePattern } from './linePatterns';
+import { compassSign, signKey, type LinePattern } from './linePatterns';
 import { livePause } from '#lib/live/livePause.ts';
 import type { StampProps } from '@yesid/ui/brand';
 
@@ -85,10 +85,6 @@ export function mapRecordReading(value: number, stops: boolean, locale: Locale):
 			.number(locale, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 })
 			.format(value / 1000);
 	return `${intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 60)} min`;
-}
-
-export function mapDirectionReading(name: string, locale: Locale): string {
-	return towardReading(name, locale, undefined, false);
 }
 
 /** Inclusive delay bounds, shown exactly to the second as signed minutes:seconds. */
@@ -253,13 +249,13 @@ export function dailyScheduledTrips(trips: number, locale: Locale) {
  */
 export function terminusName(name: string): string {
 	const bracketed = /^(.*\S)\s*\(([^()]*)\)$/u.exec(name.trim());
-	return bracketed && !compassPoint.test(bracketed[2].trim()) ? bracketed[1] : name.trim();
+	return bracketed && !compassSign.test(bracketed[2].trim()) ? bracketed[1] : name.trim();
 }
 
 /**
  * A terminus written as a place a rider goes. A name that starts with a lowercase particle ("du
- * Square-Victoria / Saint-Antoine") is a cross street, so it reads as "l’arrêt du …" and "the
- * stop du …", never "Vers du …".
+ * Square-Victoria / Saint-Antoine") is a cross street: French reads it as "l’arrêt du …", never
+ * "Vers du …"; English keeps the agency's name as it is.
  */
 function terminusPlace(name: string, locale: Locale, rule?: NameSeparators) {
 	const published = formatTransitName(terminusName(name), locale, rule);
@@ -272,42 +268,64 @@ function terminusPlace(name: string, locale: Locale, rule?: NameSeparators) {
 	).exec(shown)?.[0];
 	if (!particle) return shown;
 	const place = particle.toLowerCase() + shown.slice(particle.length);
-	return `${locale === 'fr' ? 'l’arrêt' : 'the stop'} ${place}`;
+	return locale === 'fr' ? `l’arrêt ${place}` : place;
 }
 
 export function riderHeadsign(headsign: string | null | undefined, pattern?: LinePattern) {
-	const sign = headsign?.trim();
-	const terminus = sign && compassPoint.test(sign) && pattern?.termini[sign.toLowerCase()];
+	const sign = headsign?.trim().replace(/\s+/gu, ' ');
+	const terminus = sign && compassSign.test(sign) && pattern?.termini[signKey(sign)];
 	return terminus ? `${terminusName(terminus)} (${sign})` : sign;
 }
 
+/** "Est destination Station Crémazie", "Ouest - Vers YUL Aéroport": a compass word and a terminus. */
+const compassDestination =
+	/^(est|ouest|nord|sud|east|west|north|south)\s*-?\s*(?:destination|vers|to|toward)\s+(\S.*)$/iu;
+
+const compassWords: Record<string, { sentence: [string, string]; cell: [string, string] }> = {
+	est: { sentence: ['the east', 'l’est'], cell: ['East', 'Est'] },
+	ouest: { sentence: ['the west', 'l’ouest'], cell: ['West', 'Ouest'] },
+	nord: { sentence: ['the north', 'le nord'], cell: ['North', 'Nord'] },
+	sud: { sentence: ['the south', 'le sud'], cell: ['South', 'Sud'] },
+};
+
+/** The agency's compass word beside a terminus: "(Est)" in English, "(est)" in French. */
+function compassBracket(sign: string, locale: Locale) {
+	return locale === 'fr' ? sign.charAt(0).toLocaleLowerCase('fr') + sign.slice(1) : sign;
+}
+
+/**
+ * Where a trip goes, the one way every screen writes it. A known terminus reads as the terminus
+ * with the agency's compass word in brackets ("Station Laurier (Est)", "(est)" in French). A
+ * compass word with no terminus reads in the reader's language: "the east" / "l’est" in a
+ * sentence, "East" / "Est" in a table cell under a "Toward" heading. Any other headsign reads as
+ * published. Pass a headsign already resolved by the line directory (`riderHeadsign`).
+ */
 export function directionName(
 	headsign: string | null | undefined,
 	locale: Locale,
 	rule?: NameSeparators,
+	place: 'sentence' | 'cell' = 'sentence',
 ): string {
-	const name = headsign?.trim();
+	const name = headsign?.trim().replace(/\s+/gu, ' ');
 	if (!name) return presenterCopy[locale].unknownDirection;
+	const destination = compassDestination.exec(name);
+	if (destination)
+		return `${terminusPlace(destination[2], locale, rule)} (${compassBracket(destination[1], locale)})`;
 	const terminus = /^(.*) \(([^()]*)\)$/u.exec(name);
-	if (terminus && compassPoint.test(terminus[2])) {
-		const compass = locale === 'fr' ? terminus[2].toLowerCase() : terminus[2];
-		return `${terminusPlace(terminus[1], locale, rule)} (${compass})`;
-	}
-	if (compassPoint.test(name)) {
-		const words: Record<string, [string, string]> = {
-			est: ['the east', 'l’est'],
-			ouest: ['the west', 'l’ouest'],
-			nord: ['the north', 'le nord'],
-			sud: ['the south', 'le sud'],
-		};
+	if (terminus && compassSign.test(terminus[2]))
+		return `${terminusPlace(terminus[1], locale, rule)} (${compassBracket(terminus[2], locale)})`;
+	const compass = compassSign.exec(name);
+	if (compass) {
 		const key =
-			{ east: 'est', west: 'ouest', north: 'nord', south: 'sud' }[name.toLowerCase()] ??
-			name.toLowerCase();
-		return words[key][locale === 'fr' ? 1 : 0];
+			{ east: 'est', west: 'ouest', north: 'nord', south: 'sud' }[compass[1].toLowerCase()] ??
+			compass[1].toLowerCase();
+		const word = compassWords[key][place][locale === 'fr' ? 1 : 0];
+		return compass[2] ? `${word} ${compass[2].trim()}` : word;
 	}
 	return terminusPlace(name, locale, rule);
 }
 
+/** "Toward Station Laurier (Est)", "Vers l’est"; `capital = false` for the middle of a sentence. */
 export function towardReading(name: string, locale: Locale, rule?: NameSeparators, capital = true) {
 	const label = presenterCopy[locale].toward(directionName(name, locale, rule));
 	return capital ? label : label[0].toLowerCase() + label.slice(1);
@@ -334,10 +352,12 @@ export function lineSubtitle(
 function routeBetween(stops: string[], locale: Locale, afterMode: boolean) {
 	if (locale !== 'fr') {
 		const route = stops.join(' to ');
-		return afterMode ? route : route.replace(/^the stop /u, 'The stop ');
+		return afterMode ? route : route.charAt(0).toLocaleUpperCase('en') + route.slice(1);
 	}
 	if (stops.length !== 2) return stops.join(' à ');
 	const [from, to] = stops;
+	// "De De Lorimier / Crémazie à …" stumbles: a terminus that starts with "De" takes an arrow.
+	if (/^d(?:e|u|es)\s|^d['’]/iu.test(from)) return `${from} → ${to}`;
 	const de = afterMode ? 'de' : 'De';
 	const start = /^[aeiouyhàâäéèêëîïôöùûüœ]/iu.test(from)
 		? `${de.slice(0, 1)}’${from}`
@@ -1076,6 +1096,37 @@ export function sentenceStart(text: string): string {
 }
 
 /** The muted second line of a phone row: the secondary facts as one sentence, no labels. */
+/**
+ * Said once under a live table when the city's feed gives no direction for its vehicles (and,
+ * with `nextStop`, no next stop either), instead of "Unknown" on every row.
+ */
+export function noHeadingNote(agency: AgencyName, locale: Locale, nextStop = false) {
+	if (locale === 'fr') {
+		const of = frenchAgency(agency).of;
+		return nextStop
+			? `Le flux ${of} n’indique ni la direction ni le prochain arrêt de ses véhicules.`
+			: `Le flux ${of} n’indique pas la direction de ses véhicules.`;
+	}
+	return nextStop
+		? `${agency.name}’s feed does not say where a vehicle is heading or its next stop.`
+		: `${agency.name}’s feed does not say where a vehicle is heading.`;
+}
+
+/**
+ * When a predicted vehicle is expected: "in 9 min" within the hour, the clock time alone past it
+ * ("19:45", "19 h 45").
+ */
+export function expectedReading(
+	predictedAt: number,
+	now: number,
+	locale: Locale,
+	timeZone: string,
+) {
+	return predictedAt - now > 60 * 60_000
+		? clockTime(new Date(predictedAt), locale, timeZone)
+		: predictedIn(predictedAt, now, locale);
+}
+
 export function rowSentence(parts: readonly (string | null | undefined | false)[], locale: Locale) {
 	const text = parts.filter(Boolean).join(', ');
 	return text ? text.charAt(0).toLocaleUpperCase(locale) + text.slice(1) : null;

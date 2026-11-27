@@ -4,7 +4,7 @@
 	import { absenceShort } from '#lib/site/absence.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
-	import { liveStatusWords, mapDirectionReading } from '#lib/site/presenter.ts';
+	import { liveStatusWords } from '#lib/site/presenter.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { vehicleLiveHref } from '#lib/features/vehicles/vehicleLinks.ts';
@@ -32,7 +32,8 @@
 		notReporting?: boolean;
 		scheduleOnly?: boolean;
 	} = $props();
-	const { line, readName } = transitDisplay();
+	const display = transitDisplay();
+	const { line, readName } = display;
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 
 	function pageHref(kind: 'lines' | 'stop', id: string, mode: 'live' | 'record') {
@@ -59,7 +60,11 @@
 		{#if routeName || destination}
 			<p>
 				{routeName}{routeName && destination ? ', ' : ''}{destination
-					? mapDirectionReading(destination, locale)
+					? display.toward(
+							display.directory.headsign(routeId, destination) ?? destination,
+							locale,
+							false,
+						)
 					: ''}
 			</p>
 		{/if}

@@ -29,6 +29,9 @@
 		hoursInService,
 		hoursReading,
 		lastReport,
+		liveDelayLabels,
+		liveStatusWords,
+		noHeadingNote,
 		tickingLiveStamp,
 		methodEvidence,
 		recordRatio,
@@ -36,7 +39,6 @@
 		relativeReportAge,
 		rowSentence,
 	} from '#lib/site/presenter.ts';
-	import { presenterCopy } from '#lib/site/presenter.copy.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import {
 		frameSurfaceRailContext,
@@ -64,12 +66,13 @@
 	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordScreen from '../record/RecordScreen.svelte';
+	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { fleetPageSize, fleetView, type VehicleFleetAnswer } from './vehicleFleet.ts';
 	import { vehicleHref } from './vehicleLinks.ts';
-	import { notTracked, sectionTitles, vehicleStatus } from './vehicleText.ts';
+	import { notTracked, sectionTitles } from './vehicleText.ts';
 
 	let { data }: { data: PageData } = $props();
 	const locale = getLocale();
@@ -175,6 +178,9 @@
 				.catch(() => {});
 		}
 	});
+	// A feed that gives no vehicle a direction (OC Transpo) gets one sentence under the table,
+	// not "Unknown direction" on every row.
+	const headings = $derived(reporting.some((vehicle) => vehicle.direction_id != null));
 	function direction(vehicle: Vehicle) {
 		const route = vehicle.route ? routes.get(vehicle.route) : null;
 		const directions =
@@ -186,7 +192,7 @@
 			vehicle.route,
 			(next ?? (directions.length === 1 ? directions[0] : null))?.headsign,
 		);
-		return sign ? display.toward(sign, locale) : display.directionName(null, locale);
+		return sign ? display.toward(sign, locale) : null;
 	}
 
 	const register = getContext<RegisterFrameSurfaceRail | undefined>(frameSurfaceRailContext);
@@ -353,11 +359,23 @@
 		{ key: 'trips', header: t('Trips', 'Trajets'), numeric: true, cell: tripsCell },
 	]);
 	const liveColumns = $derived<DataTableColumn<LiveRow>[]>([
-		{ key: 'line', header: t('Line and direction', 'Ligne et direction'), cell: lineCell },
+		{
+			key: 'line',
+			header: headings ? t('Line and direction', 'Ligne et direction') : t('Line', 'Ligne'),
+			cell: lineCell,
+		},
 		{ key: 'status', header: t('Status', 'État'), cell: statusCell },
 		{ key: 'report', header: t('Last report', 'Dernier signalement'), cell: reportCell },
 	]);
 	const archiveLinks = $derived(recordSectionLinks(pinned, 'fleet'));
+	// Before the first reading (also while the page is served) the list is loading, not unavailable.
+	const liveLoading = $derived(
+		!!live && !live.vehicles && live.familyStates.vehicles.phase !== 'failed',
+	);
+	// While the first rows load, the list keeps the room of a page of rows, so nothing below jumps.
+	const waitingForRows = $derived(
+		pending || (liveMode ? liveLoading : !result || result.kind === 'busy'),
+	);
 </script>
 
 {#snippet filters(context: SurfaceRailContext)}
@@ -417,10 +435,11 @@
 		/>{/if}{/snippet}
 {#snippet lineCell({ vehicle }: LiveRow)}
 	{#if vehicle.route}
+		{@const toward = headings ? direction(vehicle) : null}
 		<span class="inline-flex flex-wrap items-center gap-2"
-			><RoutePlate code={display.lineName(vehicle.route).number ?? vehicle.route} />{direction(
-				vehicle,
-			)}</span
+			><RoutePlate
+				code={display.lineName(vehicle.route).number ?? vehicle.route}
+			/>{#if toward}{toward}{:else if headings}<StateMark state="unknown" {locale} />{/if}</span
 		>
 	{:else}<StateMark state="unknown" {locale} />{/if}
 {/snippet}
@@ -431,8 +450,12 @@
 		/>
 	{:else}<StatusMark
 			status={vehicle.status}
-			label={vehicleStatus(vehicle, locale)}
-			detail={vehicle.delay_min ? `${tally(Math.abs(vehicle.delay_min), locale)} min` : undefined}
+			{...liveStatusWords(
+				vehicle.status,
+				liveDelayLabels(locale)[vehicle.status],
+				vehicle.delay_min * 60,
+				locale,
+			)}
 			style="overflow-wrap: normal; word-break: normal"
 		/>{/if}
 {/snippet}
@@ -491,6 +514,9 @@
 				<div data-slot="screen-answer">
 					{#if untracked}
 						<RecordAnswer {locale} value={null} state="not_tracked" sentence={notTracked[locale]} />
+					{:else if liveMode && liveLoading}
+						<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
+						<RecordSkeleton shape="answer" />
 					{:else if liveMode}
 						<RecordAnswer
 							{locale}
@@ -618,14 +644,15 @@
 							<section
 								id={liveMode ? 'vehicles-live' : 'fleet'}
 								aria-label={title}
-								class="min-w-0"
+								class="fleet-results min-w-0"
+								data-waiting={waitingForRows ? '' : undefined}
 								bind:this={results}
 							>
 								{#if pending}<p role="status">
 										{t('Finding vehicles…', 'Recherche de véhicules…')}
 									</p>
 								{:else if liveMode && (!live?.vehicles || health?.isStale)}<p role="status">
-										{live?.familyStates.vehicles.phase === 'loading'
+										{liveLoading
 											? t('Loading live reports…', 'Chargement des signalements en direct…')
 											: t(
 													'Live reports are temporarily unavailable.',
@@ -666,11 +693,11 @@
 										phone={{
 											after: phonePlate,
 											line: ({ vehicle }) => {
-												const toward = vehicle.route ? direction(vehicle) : '';
+												const toward = vehicle.route && headings ? direction(vehicle) : null;
 												const report = vehicle.reported_utc || vehicle.updated_utc;
 												return rowSentence(
 													[
-														toward && presenterCopy[locale].toward(toward),
+														toward,
 														report &&
 															Number.isFinite(Date.parse(report)) &&
 															lastReport(
@@ -693,6 +720,9 @@
 										labels={paging}
 										onMore={(n) => void more(n)}
 									/>
+									{#if !headings && operator}<p class="text-small text-muted-foreground">
+											{noHeadingNote(agencyName(operator, page.data.provider), locale)}
+										</p>{/if}
 								{:else}
 									<RecordDataTable
 										{locale}
@@ -789,3 +819,9 @@
 		</div>
 	</RecordScreen>
 </Surface>
+
+<style>
+	.fleet-results[data-waiting] {
+		min-block-size: min(42rem, calc(100dvh - var(--app-frame-header-height, 0px)));
+	}
+</style>

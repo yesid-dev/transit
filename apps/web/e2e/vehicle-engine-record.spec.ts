@@ -84,9 +84,9 @@ test('vehicle live links its scheduled departure and keeps predictions in their 
 	hasTime = false;
 	await page.goto(path);
 	// A missing time is a state, not a link; the departure keeps its own link.
-	await expect(service.getByRole('link', { name: 'Departure time not published' })).toHaveCount(0);
+	await expect(service.getByRole('link', { name: 'Not given in the live feed' })).toHaveCount(0);
 	await expect(service.locator('[data-slot="departure-time-missing"]')).toHaveText(
-		'Departure time not published',
+		'Not given in the live feed',
 	);
 	const fallback = service.getByRole('link', { name: 'This departure', exact: true });
 	await expect(fallback).toHaveAttribute('href', /\/departure\/trip\?.*trip=T1/);

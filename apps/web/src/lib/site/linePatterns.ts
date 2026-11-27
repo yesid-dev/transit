@@ -2,6 +2,10 @@ import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
 import type { RouteStop } from '#lib/v1/schemas/route.ts';
 
 export const compassPoint = /^(est|ouest|nord|sud|east|west|north|south)$/iu;
+/** A compass headsign, alone or with the street it runs on ("Est", "Est via Jarry"). */
+export const compassSign = /^(est|ouest|nord|sud|east|west|north|south)(\s+via\s+\S.*)?$/iu;
+/** One spelling for a headsign: agencies sometimes publish a double space ("Sud via  Perras"). */
+export const signKey = (sign: string) => sign.trim().replace(/\s+/gu, ' ').toLowerCase();
 
 export type LinePattern = {
 	ends?: [string, string];
@@ -13,11 +17,17 @@ function stopsAtEnds(stops?: RouteStop[]) {
 	return [ordered[0], ordered.at(-1)];
 }
 
-export function linePatterns(schedule: ScheduleEdition, only?: string) {
+/** `only` limits the result to some lines; 'all' or nothing gives every line. */
+export function linePatterns(
+	schedule: ScheduleEdition,
+	only?: string | ReadonlySet<string> | 'all',
+) {
+	const wanted =
+		only == null || only === 'all' ? null : typeof only === 'string' ? new Set([only]) : only;
 	const stops = new Map(schedule.stops.map(({ id, name }) => [id, name]));
 	const patterns: Record<string, LinePattern> = Object.create(null);
 	for (const [line, directions] of Object.entries(schedule.route_directions ?? {})) {
-		if (only != null && only !== line) continue;
+		if (wanted && !wanted.has(line)) continue;
 		const branches = directions.map(({ dir, headsign, stops: pattern }) => ({
 			dir,
 			headsign: headsign?.trim(),
@@ -34,8 +44,8 @@ export function linePatterns(schedule: ScheduleEdition, only?: string) {
 			headsign,
 			ends: [, end],
 		} of branches) {
-			const sign = headsign?.toLowerCase();
-			if (!sign || !compassPoint.test(sign) || !end) continue;
+			const sign = headsign && signKey(headsign);
+			if (!sign || !compassSign.test(sign) || !end) continue;
 			termini.set(sign, termini.has(sign) && termini.get(sign) !== end ? null : end);
 		}
 		const [first, last] = main?.ends ?? [];

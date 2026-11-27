@@ -39,12 +39,16 @@ function transitNameParts(name: string, rule: NameSeparators): NameParts[] | nul
 	return parts;
 }
 
+/** An apostrophe inside a word, as agencies publish it ("l'Acadie"), set as the typographic one. */
+export function typographicApostrophes(text: string): string {
+	return text.replace(/(?<=\p{L})'(?=\p{L})/gu, '’');
+}
+
 export function formatTransitName(name: string, locale: Locale, rule?: NameSeparators): string {
-	if (!rule) return name;
-	const parts = transitNameParts(name, rule);
-	if (!parts) return name;
+	const parts = rule ? transitNameParts(name, rule) : null;
+	if (!rule || !parts) return typographicApostrophes(name);
 	const side = rule.language_order[0] === locale ? 0 : 1;
-	return parts.map((part) => part[side] ?? part[0]).join(' / ');
+	return typographicApostrophes(parts.map((part) => part[side] ?? part[0]).join(' / '));
 }
 
 export function transitNameAliases(
@@ -96,8 +100,9 @@ export function stopDisplayName(name: string): string {
 		/\b(\d+)(ST|ND|RD|TH)\b/g,
 		(_, number, suffix) => number + suffix.toLowerCase(),
 	);
-	if (name !== name.toLocaleUpperCase() || !/\p{L}/u.test(name)) return withOrdinals;
-	return withOrdinals.replace(
+	if (name !== name.toLocaleUpperCase() || !/\p{L}/u.test(name))
+		return typographicApostrophes(withOrdinals);
+	return typographicApostrophes(withOrdinals).replace(
 		/[\p{L}\p{N}]+(?:[.'’-][\p{L}\p{N}]+)*\.?/gu,
 		(word, offset: number) => {
 			if (abbreviations.has(word) || /^[A-Z]$/.test(word) || /\d/.test(word)) return word;

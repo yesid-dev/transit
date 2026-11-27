@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { captureTripScopeSchema, type CaptureTripReport } from '#lib/live/captureSnapshot.ts';
 import { createLineDirectory } from '#lib/site/lineDirectory.ts';
 import { directionName, stopNextVehicleSentence } from '#lib/site/presenter.ts';
-import { formatTransitName } from '#lib/site/transitDisplay.ts';
 import { riderToward, stopLiveReadings } from './stopLiveReadings.ts';
 
 const now = Date.parse('2026-11-25T13:12:00Z');
@@ -131,9 +130,11 @@ describe('riderToward', () => {
 	});
 	const display = {
 		directory,
-		directionName: (name: string | null | undefined, lang: 'en' | 'fr') =>
-			directionName(name, lang),
-		readName: (name: string, lang: 'en' | 'fr') => formatTransitName(name, lang),
+		directionName: (
+			name: string | null | undefined,
+			lang: 'en' | 'fr',
+			place?: 'sentence' | 'cell',
+		) => directionName(name, lang, undefined, place),
 	};
 
 	it.each([

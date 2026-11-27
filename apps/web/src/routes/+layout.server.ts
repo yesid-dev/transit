@@ -106,6 +106,44 @@ function scheduleForPage(
 	}
 }
 
+/**
+ * The lines whose termini a page needs, so every screen that names a direction can write it as
+ * the terminus ("Toward Station Laurier (Est)"). Computed from the whole timetable, before the
+ * page's trimmed copy drops each direction's stops.
+ */
+function patternLines(
+	route: string | null,
+	params: Partial<Record<string, string>>,
+	url: URL,
+	schedule: ScheduleEdition,
+): 'all' | ReadonlySet<string> | null {
+	switch (route) {
+		case localRoute + '/lines':
+		case localRoute + '/vehicles':
+		case localRoute + '/vehicle/[id]':
+		case localRoute + '/rankings':
+		case localRoute + '/map':
+			return 'all';
+		case localRoute + '/network':
+			return networkRecordView(url) ? null : 'all';
+		case localRoute + '/lines/[id]': {
+			const id = params.id?.trim() || params.id;
+			return id ? new Set([id]) : null;
+		}
+		case localRoute + '/departure/[key]': {
+			const line = departureFromKey(params.key ?? '')?.line;
+			return line ? new Set([line]) : null;
+		}
+		case localRoute + '/stop/[id]': {
+			const id = params.id?.trim() || params.id;
+			const lines = schedule.stops.find((stop) => stop.id === id)?.routes ?? [];
+			return lines.length ? new Set(lines) : null;
+		}
+		default:
+			return null;
+	}
+}
+
 export const load: LayoutServerLoad = async (event) => {
 	const { params, locals } = event;
 	const lang = (params.lang as Locale | undefined) ?? locals.locale ?? DEFAULT_LOCALE;
@@ -135,11 +173,8 @@ export const load: LayoutServerLoad = async (event) => {
 	const v1 =
 		loadSnapshots && selection.provider ? captureContext(selection.provider, lang, schedule) : null;
 	const provider = selection.provider;
-	const patternPages = ['/lines', '/lines/[id]', '/vehicles', '/vehicle/[id]', '/rankings'];
-	const patterns =
-		schedule && patternPages.some((path) => route === localRoute + path)
-			? linePatterns(schedule, route === localRoute + '/lines/[id]' ? params.id?.trim() : undefined)
-			: undefined;
+	const lines = schedule ? patternLines(route, params, event.url, schedule) : null;
+	const patterns = schedule && lines ? linePatterns(schedule, lines) : undefined;
 	const period =
 		!loadSnapshots && needsSchedule && provider?.download_licence?.source_date_required
 			? parseAnswerFrameState(event.url.searchParams, frameClock(provider)).period

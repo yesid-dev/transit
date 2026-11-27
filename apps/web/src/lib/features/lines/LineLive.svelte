@@ -22,6 +22,7 @@
 		liveStampAge,
 		lineNoVehicleSentence,
 		lineVehicleSentence,
+		noHeadingNote,
 		scheduledClock,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -283,7 +284,19 @@
 								{bands}
 							/>
 						</div>
-						<LiveVehicleTable {rows} {locale} {now} {title} />
+						<LiveVehicleTable
+							{rows}
+							{locale}
+							{now}
+							{title}
+							noHeading={rows.some(({ toward }) => toward !== null)
+								? undefined
+								: noHeadingNote(
+										agencyName(operator, page.data.provider),
+										locale,
+										rows.every(({ stop }) => stop === null),
+									)}
+						/>
 					{:else}
 						<p>
 							{t(

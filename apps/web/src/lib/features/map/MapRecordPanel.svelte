@@ -273,7 +273,7 @@
 	const heads = $derived(directionHeadsigns(route?.directions));
 	const directionOptions = $derived(
 		[0, 1].map((id) => {
-			const label = display.directionLabel(id, heads, locale);
+			const label = display.directionLabel(id, heads, locale, line);
 			return { value: String(id), label, search: foldSearchText(label) };
 		}),
 	);

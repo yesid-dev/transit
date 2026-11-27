@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { StatusMark } from '@yesid/ui/brand';
-	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
+	import type { DataTableColumn } from '@yesid/ui/table';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import {
+		lastReport,
 		liveDelayLabels,
 		liveStatusWords,
 		relativeReportAge,
-		searchCount,
+		rowSentence,
 	} from '#lib/site/presenter.ts';
+	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { choose } from '../record/recordText.ts';
 	import type { LiveVehicleRow } from './lineLiveReadings.ts';
@@ -18,17 +20,39 @@
 		destination?: string | null;
 		nextStop?: { name: string; href: string };
 	};
-	let { rows, locale, now, title }: { rows: Row[]; locale: Locale; now: number; title: string } =
-		$props();
+	let {
+		rows,
+		locale,
+		now,
+		title,
+		noHeading,
+	}: {
+		rows: Row[];
+		locale: Locale;
+		now: number;
+		title: string;
+		/** Said once under the table when the feed gives no direction or next stop. */
+		noHeading?: string;
+	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 
-	const number = (count: number) => searchCount(count, locale);
-	const columns = $derived<DataTableColumn<Row>[]>([
+	// A feed that gives no vehicle a next stop (OC Transpo) loses the column, not each row.
+	const stops = $derived(rows.some(({ stop }) => stop !== null));
+	const tableRows = $derived(
+		rows.map((row) => ({
+			...row,
+			label: t(`Vehicle ${row.id}`, `Véhicule ${row.id}`),
+			detail: row.destination ?? undefined,
+		})),
+	);
+	type TableRow = (typeof tableRows)[number];
+	const columns = $derived<DataTableColumn<TableRow>[]>([
 		{ key: 'status', header: t('Status', 'État'), cell: status },
-		{ key: 'vehicle', header: t('Vehicle', 'Véhicule'), cell: vehicle, rowHeader: true },
-		{ key: 'next', header: t('Next stop', 'Prochain arrêt'), cell: next },
+		...(stops ? [{ key: 'next', header: t('Next stop', 'Prochain arrêt'), cell: next }] : []),
 		{ key: 'last', header: t('Last report', 'Dernier signalement'), cell: last, numeric: true },
 	]);
+	const report = (row: Row) =>
+		row.reportedAt === null ? null : relativeReportAge((now - row.reportedAt) / 1000, locale);
 </script>
 
 {#snippet status(row: Row)}
@@ -36,19 +60,6 @@
 		status={row.status}
 		{...liveStatusWords(row.status, liveDelayLabels(locale)[row.status], row.delay, locale)}
 	/>
-{/snippet}
-
-{#snippet vehicle(row: Row)}
-	{#if row.href}
-		<a class="inline-flex min-h-11 min-w-11 items-center text-primary underline" href={row.href}>
-			{t('Vehicle', 'Véhicule')}
-			{row.id}
-		</a>
-	{:else}
-		<span>{t('Vehicle', 'Véhicule')} {row.id}</span>
-	{/if}
-	{#if row.destination}<span class="block text-small text-muted-foreground">{row.destination}</span
-		>{/if}
 {/snippet}
 
 {#snippet next(row: Row)}
@@ -64,12 +75,18 @@
 	{/if}
 {/snippet}
 
+{#snippet nextStopLine(row: Row)}
+	{#if row.nextStop}<span class="text-small"
+			>{t('Next stop', 'Prochain arrêt')}{t(': ', '\u00a0: ')}<a
+				class="text-primary underline"
+				href={row.nextStop.href}>{stopDisplayName(row.nextStop.name)}</a
+			></span
+		>{/if}
+{/snippet}
+
 {#snippet last(row: Row)}
-	{#if row.reportedAt !== null}
-		{relativeReportAge((now - row.reportedAt) / 1000, locale)}
-	{:else}
-		<StateMark state="unknown" {locale} />
-	{/if}
+	{@const age = report(row)}
+	{#if age !== null}{age}{:else}<StateMark state="unknown" {locale} />{/if}
 {/snippet}
 
 {#if rows.some(({ delay }) => delay === null)}
@@ -80,16 +97,19 @@
 		)}
 	</p>
 {/if}
-<DataTable
-	caption={title}
+<RecordDataTable
+	{locale}
+	{title}
+	rowHeader={t('Vehicle', 'Véhicule')}
 	{columns}
-	{rows}
-	key={(row) => row.id}
-	responsive={{ mode: 'scroll', minWidth: '38rem' }}
-	pageSize={rows.length > 20 ? 20 : undefined}
-	pageLabels={{
-		showing: (shown, total) =>
-			t(`Showing ${number(shown)} of ${number(total)}`, `${number(shown)} sur ${number(total)}`),
-		more: (count) => t(`Show ${number(count)} more`, `Afficher ${number(count)} de plus`),
+	rows={tableRows}
+	value="status"
+	phone={{
+		line: (row) => {
+			const age = report(row);
+			return rowSentence([row.destination, age && lastReport(age, locale)], locale);
+		},
+		below: nextStopLine,
 	}}
 />
+{#if noHeading}<p class="mt-3 text-small text-muted-foreground">{noHeading}</p>{/if}

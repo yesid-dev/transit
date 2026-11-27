@@ -363,7 +363,7 @@
 								{:else}
 									<!-- A missing time is a state, not a link; the departure keeps its own link. -->
 									<span data-slot="departure-time-missing"
-										>{t('Departure time not published', 'Heure de départ non publiée')}</span
+										>{t('Not given in the live feed', 'Non indiqué dans le flux en direct')}</span
 									>
 									{#if departureLink}<a
 											class="inline-flex min-h-11 items-center text-primary underline"
