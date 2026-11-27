@@ -31,6 +31,7 @@ from transit_ops.clean_day_inputs import (
     realtime_capture_present,
     realtime_feeds,
 )
+from transit_ops.clean_day_lock import claim_clean_day
 from transit_ops.clean_day_output import (
     UnmeasuredReason,
     publish_clean_day,
@@ -326,6 +327,7 @@ def run_clean_days(
     editions = None
     built: list[date] = []
     skipped: list[date] = []
+    busy: list[date] = []
     incomplete: list[date] = []
     unmeasured: dict[date, UnmeasuredReason] = {}
     failed: dict[date, str] = {}
@@ -336,30 +338,38 @@ def run_clean_days(
         ):
             incomplete.append(day)
             continue
-        marker = f"{clean_prefix}{version_key(provider, day)}/manifest.json"
+        version = clean_prefix + version_key(provider, day)
+        marker = f"{version}/manifest.json"
         try:
             if clean.exists(marker):
                 skipped.append(day)
                 continue
-            if editions is None:
-                editions = discover_editions(raw, raw_prefix, declaration)
-            outcome, ignored = _build_day(
-                declaration,
-                day,
-                editions,
-                raw,
-                raw_prefix,
-                clean,
-                clean_prefix,
-                scheduled_at=scheduled_at,
-            )
-            if outcome is None:
-                built.append(day)
-            elif outcome == "incomplete":
-                incomplete.append(day)
-            else:
-                settle(day, outcome, ignored)
-                unmeasured[day] = outcome
+            with claim_clean_day(clean, version) as acquired:
+                if not acquired:
+                    busy.append(day)
+                    continue
+                if isinstance(clean, S3BronzeStorage) and clean.exists(marker):
+                    skipped.append(day)
+                    continue
+                if editions is None:
+                    editions = discover_editions(raw, raw_prefix, declaration)
+                outcome, ignored = _build_day(
+                    declaration,
+                    day,
+                    editions,
+                    raw,
+                    raw_prefix,
+                    clean,
+                    clean_prefix,
+                    scheduled_at=scheduled_at,
+                )
+                if outcome is None:
+                    built.append(day)
+                elif outcome == "incomplete":
+                    incomplete.append(day)
+                else:
+                    settle(day, outcome, ignored)
+                    unmeasured[day] = outcome
         except Exception as error:
             # A failed day must leave the next service day eligible for rebuilding.
             failed[day] = _failure_reason(error)
@@ -371,11 +381,14 @@ def run_clean_days(
     )
     if unreadable := counts["schedule_archive_unreadable"]:
         typer.echo(f"Unreadable schedule archive {unreadable}")
+    if busy:
+        typer.echo(f"Deferred {len(busy)} locked service days")
     if summary is not None:
         print(f"## Clean service days for {provider}\n", file=summary)
         groups: dict[str, Iterable[date]] = {
             "Built": built,
             "Skipped as already built": skipped,
+            "Deferred while locked": busy,
             "Still incomplete": incomplete,
             "Recorded as not measured": unmeasured,
             "Failed": failed,
