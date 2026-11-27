@@ -6,6 +6,7 @@ import {
 } from '#lib/live/captureSnapshot.ts';
 import { fixAgeS, isVehicleStale, STALE_CUTOFF_S } from '#lib/components/map/vehicleProjection.ts';
 import { departureHref } from '#lib/features/record/departureIdentity.ts';
+import { localizeHref } from '#lib/i18n/index.ts';
 import { vehicleLiveHref } from '#lib/features/vehicles/vehicleLinks.ts';
 import { query } from '#lib/server/engine.ts';
 import { cityQuestion } from '#lib/server/engineQuestion.ts';
@@ -33,7 +34,7 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 			(entry) => entry.family === 'vehicle_positions',
 		);
 		const captured = feed?.captured_at;
-		if (captured && captureDisplayState(feed, now) === 'live') {
+		if (captured && captureDisplayState(feed, now, positions.answer.published_at) === 'live') {
 			const vehicle = positions.answer.vehicle_positions?.find(
 				(row) =>
 					row.trip_id === id &&
@@ -46,6 +47,18 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 				redirect(307, vehicleLiveHref(vehicle.vehicle_id ?? vehicle.id, url, lang, city));
 		}
 	}
+	/** An ended trip names its line when any live row still carries it, even a stale one. */
+	function ended(route: string | null | undefined): never {
+		error(404, {
+			code: 'TRIP_ENDED',
+			message: lang === 'fr' ? 'Ce trajet ne circule plus.' : 'This trip is no longer running.',
+			line: route ? localizeHref(`/lines/${encodeURIComponent(route)}`, lang, city) : undefined,
+		});
+	}
+	const lastPosition =
+		positions?.kind === 'answer' && positions.answer.city === city
+			? positions.answer.vehicle_positions?.find((row) => row.trip_id === id && row.route_id)
+			: undefined;
 	if (trips.kind === 'answer' && trips.answer.city === city) {
 		const trip = trips.answer.trip_updates.find((row) => row.trip_id === id);
 		if (trip?.route_id && trip.start_time) {
@@ -61,7 +74,7 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 			);
 			if (href) redirect(307, href);
 		}
-		error(404);
+		ended(trip?.route_id ?? lastPosition?.route_id);
 	}
 	if (!provider.inputs.trip_updates && !provider.inputs.vehicle_positions) error(404);
 	error(

@@ -168,9 +168,15 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 		const missing = await request.get(`${prefix}/trip/retired-trip?${query}`);
 		expect(missing.status()).toBe(404);
-		expect(await missing.text()).toContain(
+		// An ended trip is not a missing page: it says so and points to the lines.
+		const ended = await missing.text();
+		expect(ended).toContain(
+			locale === 'fr' ? 'Ce trajet ne circule plus' : 'This trip is no longer running',
+		);
+		expect(ended).not.toContain(
 			locale === 'fr' ? 'Cette page n’existe pas' : 'This page does not exist',
 		);
+		expect(ended).toContain(`href="${prefix}/lines`);
 	});
 }
 

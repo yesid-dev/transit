@@ -26,6 +26,18 @@ describe('error page shared copy', () => {
 		);
 	});
 
+	it('names an ended trip in both locales, not a missing page', () => {
+		expect(errorDocumentHead(404, 'en', 'TRIP_ENDED').title).toBe(
+			'404 · This trip is no longer running',
+		);
+		expect(errorDocumentHead(404, 'fr', 'TRIP_ENDED').title).toBe(
+			'404 · Ce trajet ne circule plus',
+		);
+		expect(errorPageCopy.fr.tripEnded.suggestions.map(({ href }) => href)).toEqual(
+			errorPageCopy.en.tripEnded.suggestions.map(({ href }) => href),
+		);
+	});
+
 	it('uses the generic error heading for non-404 statuses', () => {
 		expect(errorDocumentHead(500, 'en').title).toBe('500 · Something went wrong');
 	});

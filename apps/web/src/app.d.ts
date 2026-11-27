@@ -2,7 +2,9 @@ declare global {
 	namespace App {
 		interface Error {
 			message: string;
-			code?: 'STOP_NOT_FOUND';
+			code?: 'STOP_NOT_FOUND' | 'TRIP_ENDED';
+			/** The ended trip's line page, when the live feed still names its line. */
+			line?: string;
 		}
 		interface Locals {
 			locale?: 'en' | 'fr';

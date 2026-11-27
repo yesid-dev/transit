@@ -12,37 +12,46 @@
 	const is404 = $derived(status === 404);
 
 	const copy = $derived(errorPageCopy[locale]);
-	const missingStop = $derived(is404 && page.error?.code === 'STOP_NOT_FOUND');
-	const view = $derived(
-		missingStop
-			? {
-					heading: copy.stopNotFound.heading,
-					body: copy.stopNotFound.body,
-					illustration: 'none' as const,
-					suggestions: copy.stopNotFound.suggestions.map((suggestion) => ({
-						...suggestion,
-						href: localizeHref(suggestion.href, locale),
-					})),
-				}
-			: is404
-				? {
-						heading: copy.notFound.heading,
-						body: copy.notFound.description,
-						statusNote: copy.notFound.statusNote,
-						signLabel: 'STATION',
-						suggestions: copy.notFound.suggestions.map((suggestion) => ({
-							...suggestion,
-							href: localizeHref(suggestion.href, locale),
-						})),
-					}
-				: {
-						label: copy.generic.label,
-						heading: copy.generic.heading,
-						body: copy.generic.body,
-						detail: page.error?.message,
-						suggestions: [{ href: localizeHref('/', locale), label: copy.generic.home }],
-					},
-	);
+	const localized = (suggestions: readonly { label: string; href: string }[]) =>
+		suggestions.map((suggestion) => ({ ...suggestion, href: localizeHref(suggestion.href, locale) }));
+	const view = $derived.by(() => {
+		const code = is404 ? page.error?.code : undefined;
+		if (code === 'TRIP_ENDED') {
+			// The server already localized the line's address and kept its city.
+			const line = page.error?.line;
+			return {
+				heading: copy.tripEnded.heading,
+				body: copy.tripEnded.body,
+				illustration: 'none' as const,
+				suggestions: [
+					...(line ? [{ href: line, label: copy.tripEnded.line }] : []),
+					...localized(copy.tripEnded.suggestions),
+				],
+			};
+		}
+		if (code === 'STOP_NOT_FOUND')
+			return {
+				heading: copy.stopNotFound.heading,
+				body: copy.stopNotFound.body,
+				illustration: 'none' as const,
+				suggestions: localized(copy.stopNotFound.suggestions),
+			};
+		if (is404)
+			return {
+				heading: copy.notFound.heading,
+				body: copy.notFound.description,
+				statusNote: copy.notFound.statusNote,
+				signLabel: 'STATION',
+				suggestions: localized(copy.notFound.suggestions),
+			};
+		return {
+			label: copy.generic.label,
+			heading: copy.generic.heading,
+			body: copy.generic.body,
+			detail: page.error?.message,
+			suggestions: [{ href: localizeHref('/', locale), label: copy.generic.home }],
+		};
+	});
 
 	const documentHead = $derived(errorDocumentHead(status, locale, page.error?.code));
 	let tracked404: string | undefined;
