@@ -169,8 +169,8 @@ export function noticeCountEvidence(
 	if (grouped === published) return `${noticeCount(grouped, locale)}.`;
 	const total = intl.number(locale).format(published);
 	return locale === 'fr'
-		? `${noticeCount(grouped, locale)}, issu${grouped === 1 ? '' : 's'} de ${total} avis publié${published === 1 ? '' : 's'} par ${frenchAgency(agency).subject}, un par ligne et par mise à jour.`
-		: `${noticeCount(grouped, locale)}, from ${total} as ${agency.name} published ${published === 1 ? 'it' : 'them'}, one per line and reissue.`;
+		? `${noticeCount(grouped, locale)}, en ${total} publications par ${frenchAgency(agency).subject}.`
+		: `${noticeCount(grouped, locale)} across ${total} publications by ${agency.name}.`;
 }
 
 /** A few notices out of all of them: "5 of 1,230 notices." */
@@ -593,8 +593,8 @@ export function noticeStopName(text: string, stop: string, locale: Locale) {
 }
 
 export const countedNotice = {
-	en: 'Each notice counts once, however many times the agency reissued it.',
-	fr: 'Chaque avis compte une fois, même si la société de transport l’a republié.',
+	en: 'Counts distinct notices in effect during these dates. The publication count includes each version.',
+	fr: 'Compte les avis distincts en vigueur à ces dates. Le nombre de publications comprend chaque version.',
 };
 
 export function noticesForLines(lines: readonly string[], locale: Locale) {
@@ -647,13 +647,15 @@ export function recordStamp(period: { from: string; to: string }, locale: Locale
 }
 
 export function recordPercent(value: number, locale: Locale) {
+	// Reserve the displayed 100.0% for a complete share.
+	const displayed = value < 1 && value >= 0.9995 ? 0.999 : value;
 	return intl
 		.number(locale, {
 			style: 'percent',
 			minimumFractionDigits: 1,
 			maximumFractionDigits: 1,
 		})
-		.format(value);
+		.format(displayed);
 }
 
 export function rankingComparison(
@@ -842,7 +844,7 @@ function reportingGapsRate(
 ) {
 	const fr = locale === 'fr';
 	const rate =
-		per100Hours == null || !Number.isFinite(per100Hours)
+		per100Hours == null || !Number.isFinite(per100Hours) || ((gaps ?? 0) > 0 && per100Hours < 10)
 			? null
 			: intl.number(locale, { maximumFractionDigits: 1 }).format(per100Hours / 100);
 	if (gaps == null)
@@ -871,6 +873,10 @@ export function vehicleHours(seconds: number, locale: Locale) {
 
 export function hoursReading(hours: number, locale: Locale) {
 	return `${intl.number(locale, { maximumFractionDigits: 1 }).format(hours)}\u00a0h`;
+}
+
+export function recordHours(hours: number, locale: Locale) {
+	return intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(hours);
 }
 
 export function relativeReportAge(seconds: number, locale: Locale) {

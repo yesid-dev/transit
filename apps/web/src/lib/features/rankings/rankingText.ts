@@ -7,6 +7,7 @@ import {
 	missDirection,
 	registryUnitText,
 	minuteReading,
+	recordHours,
 	recordPercent,
 	rankingComparison,
 	reportingGapLength,
@@ -202,7 +203,8 @@ export function sampleText(sample: number, measure: RankingMeasure, locale: Loca
 				: measure === 'cancelled_trips' || measure === 'missing_trips'
 					? 'trips'
 					: 'events';
-	return `${number(sample, locale)} ${sampleUnits[unit][locale]}`;
+	const formatted = unit === 'hours' ? recordHours(sample, locale) : number(sample, locale);
+	return `${formatted} ${sampleUnits[unit][locale]}`;
 }
 
 export function rankingCountLines(row: Row, measure: RankingMeasure, locale: Locale) {
@@ -211,9 +213,9 @@ export function rankingCountLines(row: Row, measure: RankingMeasure, locale: Loc
 	if (measure === reporting) {
 		// "155 times in 21 hours": the count and the hours the rate comes from.
 		if (gaps != null) {
-			const hours = intl.number(locale, { maximumFractionDigits: 0 }).format(row.sample);
+			const hours = recordHours(row.sample, locale);
 			const unit =
-				Math.round(row.sample) === 1
+				Math.round(row.sample * 10) === 10
 					? choose(locale, 'hour', 'heure')
 					: choose(locale, 'hours', 'heures');
 			const length = reportingGapLength(gaps, row.counts.silent_hours, locale);

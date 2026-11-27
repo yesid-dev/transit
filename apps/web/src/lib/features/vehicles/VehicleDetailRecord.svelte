@@ -701,8 +701,8 @@
 				key: 'gaps',
 				label: t('Stopped reporting means', 'Interruption de signalement'),
 				text: t(
-					'More than a minute between successive position reports on the same trip. The feed cannot tell whether the vehicle kept running.',
-					'Plus d’une minute entre deux signalements successifs sur le même trajet. Le flux n’indique pas si le véhicule a continué de rouler.',
+					'A long pause between two position reports on the same trip. The feed cannot tell whether the vehicle kept running.',
+					'Une longue interruption entre deux signalements de position sur le même trajet. Le flux n’indique pas si le véhicule a continué de rouler.',
 				),
 			},
 			{

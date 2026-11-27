@@ -48,6 +48,12 @@ from transit_engine.corridors import (
 )
 from transit_engine.histogram import DELAY_BIN_SECONDS as DELAY_BIN_SECONDS
 from transit_engine.histogram import percentile as _percentile
+from transit_engine.notice_reissues import (
+    NoticeKey,
+    NoticeVariant,
+    notice_text,
+    translation_reissues,
+)
 from transit_engine.schedule import (
     BUNCHING_FRACTION,
     FREQUENT_HEADWAY_SECONDS,
@@ -90,6 +96,7 @@ from transit_engine.series import (
 )
 from transit_engine.store import CITY, CheckedDay, Store
 from transit_engine.vehicles import (
+    MIN_REPORTING_SILENCE_MINUTES,
     MIN_STABLE_ID_READINGS,
     MIN_STABLE_READING_SHARE,
     MIN_VEHICLE_RANKING_HOURS,
@@ -173,6 +180,10 @@ class AlertSpan(NamedTuple):
     start: int
     end: int
 
+    @property
+    def publication(self) -> NoticeKey:
+        return self.source, self.alert_id, self.version
+
 
 class OfferedCounts(NamedTuple):
     route_id: str
@@ -195,7 +206,8 @@ class Batch:
     vehicle_routes: set[str] = field(default_factory=set)
     stop_accessibility: dict[str, tuple[date, int | None]] = field(default_factory=dict)
     trip_ids: set[str] = field(default_factory=set)
-    alert_messages: dict[tuple[str, str, str], dict[str, Any]] = field(default_factory=dict)
+    alert_variants: dict[NoticeKey, NoticeVariant] = field(default_factory=dict)
+    alert_messages: dict[NoticeKey, dict[str, Any]] = field(default_factory=dict)
     waiting_weighted_excess: float = 0.0
 
     def update(self, other: Batch) -> None:
@@ -212,6 +224,7 @@ class Batch:
             if previous is None or declaration[0] > previous[0]:
                 self.stop_accessibility[stop] = declaration
         self.trip_ids.update(other.trip_ids)
+        self.alert_variants.update(other.alert_variants)
         self.alert_messages.update(other.alert_messages)
 
 
@@ -1991,11 +2004,10 @@ def _alert_rows(
         "cause": "cause",
     }[question.group if question.group in _ALERT_ENTITY_GROUPS else group]
     projection = "entity, source, alert_id, version, epoch_us(starts), epoch_us(ends)"
-    text_columns = (
-        ", header_en, header_fr, description_en, description_fr" if question.alert_details else ""
+    notice_columns = (
+        ", route_ids, stop_ids, effect, cause, published_periods, "
+        "header_en, header_fr, description_en, description_fr"
     )
-    message_columns = f", route_ids, stop_ids{text_columns}" if question.alert_details else ""
-    projection += message_columns
     segments = ""
     temporal = question.group is not None and question.group not in _ALERT_ENTITY_GROUPS
     if temporal:
@@ -2033,10 +2045,13 @@ def _alert_rows(
                 timezone(getvariable('service_timezone'), (?::DATE + 1)::TIMESTAMP) AS window_end
         ), periods AS (
             SELECT source, alert_id, version, first_seen_at_utc, last_seen_at_utc,
-                route_ids, stop_ids, effect, cause,
+                route_ids, stop_ids, effect, cause, header_en, header_fr,
+                description_en, description_fr,
+                CASE WHEN list_count(list_transform(active_periods, lambda p: p.start_utc)) > 0
+                    THEN to_json(active_periods) END AS published_periods,
                 unnest(CASE WHEN len(active_periods) = 0
                     THEN [{{'start_utc': NULL, 'end_utc': NULL}}]
-                    ELSE active_periods END) AS period{text_columns}
+                    ELSE active_periods END) AS period
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ? AND ({" AND ".join(filters) or "true"})
         ), clipped AS (
@@ -2044,27 +2059,36 @@ def _alert_rows(
                 greatest(coalesce(period.start_utc, first_seen_at_utc), window_start) AS starts,
                 least(coalesce(period.end_utc, last_seen_at_utc), window_end) AS ends,
                 period.start_utc IS NULL AND period.end_utc IS NULL AS observed_only,
-                first_seen_at_utc, last_seen_at_utc, window_end{message_columns}
+                first_seen_at_utc, last_seen_at_utc, window_end{notice_columns}
             FROM periods CROSS JOIN bounds
         ), valid AS (
-            SELECT DISTINCT entity, source, alert_id, version, starts, ends{message_columns}
+            SELECT DISTINCT entity, source, alert_id, version, starts, ends{notice_columns}
             FROM clipped
             WHERE starts < ends OR (observed_only AND first_seen_at_utc = last_seen_at_utc
                 AND starts = first_seen_at_utc AND starts < window_end AND starts = ends)
         )
-        SELECT DISTINCT {projection} FROM valid {segments}
+        SELECT DISTINCT {projection}{notice_columns} FROM valid {segments}
         """,
         [question.start, question.end, alert_paths, question.city, version, *arguments],
     ).fetchall()
     result: dict[EntityKey, Batch] = {}
-    for entity, source, alert_id, revision, start, end, *message in rows:
+    for entity, source, alert_id, revision, start, end, *notice in rows:
         key = tuple(entity) if temporal else (entity,) if group or question.group else ()
-        result.setdefault(key, Batch()).alert_spans.add(
-            AlertSpan(source, alert_id, revision, start, end)
-        )
-        if message:
-            routes, stops, header_en, header_fr, description_en, description_fr = message
-            result[key].alert_messages[source, alert_id, revision] = {
+        batch = result.setdefault(key, Batch())
+        span = AlertSpan(source, alert_id, revision, start, end)
+        batch.alert_spans.add(span)
+        (
+            routes, stops, effect, cause, periods, header_en, header_fr,
+            description_en, description_fr,
+        ) = notice
+        if periods and span.publication not in batch.alert_variants:
+            batch.alert_variants[span.publication] = NoticeVariant(
+                (tuple(routes), tuple(stops), periods, effect, cause),
+                notice_text(header_en, description_en),
+                notice_text(header_fr, description_fr),
+            )
+        if question.alert_details:
+            batch.alert_messages[span.publication] = {
                 "source": source,
                 "id": alert_id,
                 "version": revision,
@@ -2079,7 +2103,7 @@ def _alert_rows(
 _ALERT_COUNTS = Family(
     id=_ALERT_COUNTS_ID,
     label=Text("Service alerts", "Avis de service"),
-    method_version="alert-counts-v1",
+    method_version="alert-counts-v2",
     since="2026-11-22",
     tables=(ALERTS,),
     minimum_sample=0,
@@ -2095,15 +2119,17 @@ _ALERT_COUNTS = Family(
         "days_alerts_tracked": Text("Days with alert tracking", "Jours avec suivi des avis"),
     },
     counts=Text(
-        "Counts each distinct service alert, each published revision and the hours those alerts "
-        "stayed in effect during the selected dates. Each alert ID and version counts once per "
-        "source. For each alert, overlapping active periods across its versions are merged into "
-        "one union, clipped to the requested local dates, then summed across alerts.",
-        "Compte chaque avis de service distinct, chaque version publiée et les heures pendant "
-        "lesquelles ces avis sont restés en vigueur aux dates choisies. Chaque identifiant "
-        "d’avis et chaque version comptent une fois par source. Pour chaque avis, on fusionne "
-        "les périodes actives qui se chevauchent entre ses versions, on les limite aux dates "
-        "locales demandées, puis on additionne les durées de tous les avis.",
+        "A notice and its bilingual reissue count as one when they share the message in one "
+        "language, the same published periods with a known start, and the same lines, stops, "
+        "cause and effect. If the source supplies an ID, it must match. Each published version "
+        "is counted separately. For each notice, "
+        "overlapping periods are merged, clipped to the requested local dates, then added up.",
+        "Un avis et sa réémission bilingue comptent pour un seul avis s’ils ont le même texte "
+        "dans une langue, les mêmes périodes publiées avec un début connu, ainsi que les mêmes "
+        "lignes, arrêts, cause et effet. Si la source fournit un identifiant, il doit être "
+        "le même. Chaque version publiée est comptée séparément. Pour "
+        "chaque avis, les périodes qui se chevauchent sont fusionnées, limitées aux dates "
+        "locales demandées, puis additionnées.",
     ),
     exclusions=Text(
         "Line and stop views include only alerts tagged with that line or stop by the agency; "
@@ -3074,7 +3100,7 @@ def _vehicle_rows(
 _VEHICLES = Family(
     id=_VEHICLES_ID,
     label=Text("Vehicles", "Véhicules"),
-    method_version="vehicles-v4",
+    method_version="vehicles-v5",
     since="2026-11-22",
     tables=(VEHICLE_POSITIONS, TRIP_DAYS, FEED_POLLS),
     query=_vehicle_rows,
@@ -3154,13 +3180,12 @@ _VEHICLES = Family(
             "vehicle_reporting_gaps",
             "count",
             Text(
-                "Times a vehicle went silent for more than three reporting intervals during a "
-                "single trip. That equals more than two missed reports, measured against each "
-                "network’s median spacing between feed publications that day.",
-                "Nombre de fois qu’un véhicule est resté silencieux pendant plus de trois "
-                "intervalles de signalement au cours d’un même trajet. Cela correspond à plus "
-                "de deux relevés manqués, mesurés selon la cadence médiane du flux de ce réseau "
-                "ce jour-là.",
+                f"Counts pauses longer than {MIN_REPORTING_SILENCE_MINUTES} minutes and longer "
+                "than three times the feed’s median reporting interval that day, between two "
+                "successive vehicle reports on the same trip.",
+                f"Compte les interruptions de plus de {MIN_REPORTING_SILENCE_MINUTES} minutes "
+                "qui dépassent aussi trois fois l’intervalle de signalement médian du flux "
+                "ce jour-là, entre deux relevés successifs du véhicule sur le même trajet.",
             ),
             extra_tables=(FEED_POLLS,),
             exclusions=_VEHICLE_REPORTING_EXCLUSIONS,
@@ -3181,12 +3206,14 @@ _VEHICLES = Family(
             VEHICLE_RANKING_DEFAULT,
             "per_100_vehicle_hours",
             Text(
-                "Rate of reporting gaps per 100 observed vehicle-hours in service. A silence "
-                "counts when it exceeds three reporting intervals (more than two missed "
-                "reports) between consecutive sightings on the same trip.",
+                "Rate of reporting gaps per 100 observed vehicle-hours in service. A gap "
+                f"counts when it exceeds {MIN_REPORTING_SILENCE_MINUTES} minutes and three "
+                "times the feed’s median reporting interval that day, between successive "
+                "reports on the same trip.",
                 "Taux d’interruptions du signal par 100 heures-véhicules observées en service. "
-                "Un silence compte s’il dépasse trois intervalles de signalement (plus de deux "
-                "relevés manqués) entre deux relevés successifs du même trajet.",
+                f"Une interruption compte si elle dépasse {MIN_REPORTING_SILENCE_MINUTES} minutes "
+                "et trois fois l’intervalle de signalement médian du flux ce jour-là, entre "
+                "deux relevés successifs sur le même trajet.",
             ),
             counts=Text(
                 "Divides counted reporting gaps by observed hours in service, scaled to 100 "
@@ -4358,10 +4385,21 @@ def _alert_duration(spans: set[AlertSpan]) -> int:
     return total
 
 
+def _canonical_alert_spans(
+    spans: set[AlertSpan], reissues: dict[NoticeKey, NoticeKey]
+) -> set[AlertSpan]:
+    if not reissues:
+        return spans
+    return {
+        AlertSpan(*reissues.get(span.publication, span.publication), span.start, span.end)
+        for span in spans
+    }
+
+
 def _alert_answer(
     selected: tuple[Measure, ...], totals: Batch, window: ReadWindow
 ) -> tuple[str, dict[str, float | None], dict[str, Any], dict[str, int]]:
-    spans = totals.alert_spans
+    spans = _canonical_alert_spans(totals.alert_spans, translation_reissues(totals.alert_variants))
     state = "measured"
     if (window.not_tracked and not window.measured) or (
         totals.counts["schedule_not_tracked"]
@@ -4372,7 +4410,7 @@ def _alert_answer(
     elif not window.measured:
         state = "not_measured"
     alert_count = len({(span.source, span.alert_id) for span in spans})
-    version_count = len({(span.source, span.alert_id, span.version) for span in spans})
+    version_count = len({span.publication for span in totals.alert_spans})
     duration = _alert_duration(spans)
     counts = {
         "alerts": alert_count,
@@ -4955,16 +4993,26 @@ def measure_answer(
     if question.alert_details:
         messages = None
         if state == "measured":
-            periods: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+            reissues = translation_reissues(totals.alert_variants)
+            spans = _canonical_alert_spans(totals.alert_spans, reissues)
+            reissue_ids: dict[NoticeKey, set[str]] = {}
+            for original, target in reissues.items():
+                if original[1] != target[1]:
+                    reissue_ids.setdefault(target, set()).add(original[1])
+            periods: dict[NoticeKey, list[dict[str, str]]] = {}
             epoch = datetime(1970, 1, 1, tzinfo=UTC)
-            for span in sorted(totals.alert_spans, key=lambda span: (span.start, span.end)):
-                periods.setdefault((span.source, span.alert_id, span.version), []).append({
+            for span in sorted(spans, key=lambda span: (span.start, span.end)):
+                periods.setdefault(span.publication, []).append({
                     "start": (epoch + timedelta(microseconds=span.start)).isoformat(),
                     "end": (epoch + timedelta(microseconds=span.end)).isoformat(),
                 })
             messages = [
-                {**totals.alert_messages[key], "periods": periods[key]}
-                for key in sorted(totals.alert_messages)
+                {
+                    **totals.alert_messages[key],
+                    "periods": periods[key],
+                    **({"reissue_ids": sorted(reissue_ids[key])} if key in reissue_ids else {}),
+                }
+                for key in sorted(periods)
             ]
         family_evidence["alert_messages"] = messages
     return {

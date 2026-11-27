@@ -5,8 +5,9 @@ from transit_engine.clean_manifest import FEED_POLLS, STOP_EVENTS, TRIP_DAYS, VE
 from transit_engine.series import LOCAL_HOUR, LOCAL_HOUR_BUCKET
 
 # Each feed publishes at its own cadence, so silences are measured in reporting intervals.
-# Allow two missed reports: a gap or a carried-forward tail spans at most three intervals.
+# Carry a reading for up to three intervals. A counted silence also has a five-minute floor.
 VEHICLE_REPORTING_GAP_INTERVALS = 3
+MIN_REPORTING_SILENCE_MINUTES = 5
 _DAY_US = 86_400_000_000
 MIN_STABLE_ID_READINGS = 2
 MIN_STABLE_READING_SHARE = 0.5
@@ -254,7 +255,9 @@ def vehicle_stats_query(
             FROM sequenced s
             WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
                 AND (service_date, trip_id) = (next_service_date, next_trip)
-                AND gap_us > {vehicle_gap_us_sql("cadence_us")}
+                AND gap_us > greatest(
+                    {vehicle_gap_us_sql("cadence_us")}, {MIN_REPORTING_SILENCE_MINUTES * 60_000_000}
+                )
         ), reporting AS (
             SELECT entity, count(*) FILTER (covered) AS gaps,
                 sum(gap_us) FILTER (covered) AS silent_us,

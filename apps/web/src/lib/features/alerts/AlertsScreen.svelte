@@ -209,7 +209,7 @@
 {/snippet}
 
 {#snippet evidenceFooter(evidence?: RecordEvidence, count?: number | null, note?: string)}
-	{@const sample = count == null ? null : publishedAlertCount(count, locale)}
+	{@const sample = count == null ? null : noticeCount(count, locale)}
 	{#if evidence}
 		<RecordEvidenceLine {evidence} {locale} {sample} {note} />
 	{:else if sample}
@@ -231,7 +231,7 @@
 	{/if}
 {/snippet}
 
-{#snippet cutRows(rows: AlertCut[], group: 'effect' | 'line', live = false)}
+{#snippet cutRows(rows: AlertCut[], group: 'effect' | 'line')}
 	{#if rows.length}
 		{#if group === 'effect'}
 			<dl class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -259,9 +259,7 @@
 					{ key: 'line', header: t('Line', 'Ligne'), rowHeader: true, cell: lineCell },
 					{
 						key: 'count',
-						header: live
-							? t('Notices', 'Avis')
-							: t('Notices as published', 'Avis tels que publiés'),
+						header: t('Notices', 'Avis'),
 						numeric: true,
 						cell: cutValue,
 					},
@@ -479,16 +477,15 @@
 	</div>
 {/snippet}
 
-{#snippet recordLead(result: EngineResult<EngineAnswer>, published: number, grouped?: number)}
-	{@const count = grouped ?? published}
+{#snippet recordLead(result: EngineResult<EngineAnswer>, count: number, published: number)}
 	{#snippet recordActions()}{@render actions(result)}{/snippet}
 	<RecordAnswer
 		value={tally(count, locale)}
-		sentence={alertAnswerSentence(count, locale, false, grouped == null)}
+		sentence={alertAnswerSentence(count, locale, false)}
 		{locale}
 		time={stamp}
 		evidence={{
-			sample: grouped == null ? '' : noticeCountEvidence(grouped, published, operator, locale),
+			sample: count === published ? '' : noticeCountEvidence(count, published, operator, locale),
 			lastGood: result.kind === 'answer' && result.lastGood,
 		}}
 		actions={recordActions}
@@ -584,7 +581,7 @@
 								</div>
 								{#if liveCards.some(({ effect }) => effect)}<div id="alerts-breakdown">
 										<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
-											{@render cutRows(liveAlertCut(liveNotices, 'effect'), 'effect', true)}
+											{@render cutRows(liveAlertCut(liveNotices, 'effect'), 'effect')}
 										</RecordCard>
 									</div>{/if}
 							</RecordGroup>
@@ -599,7 +596,7 @@
 									expandable={lineCount > 0}
 									open={false}
 								>
-									{@render cutRows(liveAlertCut(liveNotices, 'line'), 'line', true)}
+									{@render cutRows(liveAlertCut(liveNotices, 'line'), 'line')}
 									{#snippet evidence()}
 										<RecordEvidenceLine
 											versions=""
@@ -656,8 +653,9 @@
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts != null}
 								{@const count = result.answer.value.alerts}
+								{@const published = result.answer.value.alert_versions ?? count}
 								{#await messages}
-									{@render recordLead(result, count)}
+									{@render recordLead(result, count, published)}
 								{:then detail}
 									{@const reading =
 										detail?.kind === 'answer' &&
@@ -667,8 +665,8 @@
 											: null}
 									{@render recordLead(
 										result,
-										reading?.value.alerts ?? count,
-										reading ? recordNoticeCards(reading)?.length : undefined,
+										(reading && recordNoticeCards(reading)?.length) ?? count,
+										reading?.value.alert_versions ?? published,
 									)}
 								{/await}
 							{:else}

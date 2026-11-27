@@ -101,13 +101,21 @@ const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
 it('explains the grouped and published units only when their counts differ', () => {
 	const agency = { name: 'STM', frenchOf: 'de la STM' };
 	expect(noticeCountEvidence(213, 1707, agency, 'en')).toBe(
-		'213 notices, from 1,707 as STM published them, one per line and reissue.',
+		'213 notices across 1,707 publications by STM.',
 	);
 	expect(normalize(noticeCountEvidence(213, 1707, agency, 'fr'))).toBe(
-		'213 avis, issus de 1 707 avis publiés par la STM, un par ligne et par mise à jour.',
+		'213 avis, en 1 707 publications par la STM.',
 	);
 	expect(publishedAlertCount(1707, 'en')).toBe('1,707 notices as published');
 	expect(normalize(publishedAlertCount(1707, 'fr'))).toBe('1 707 avis tels que publiés');
+});
+
+it.each([
+	['en', '99.9%', '100.0%'],
+	['fr', '99,9 %', '100,0 %'],
+] as const)('keeps missing trips visible in a nearly complete share in %s', (locale, near, all) => {
+	expect(normalize(recordPercent(111_953 / 111_974, locale))).toBe(near);
+	expect(normalize(recordPercent(1, locale))).toBe(all);
 });
 
 it.each([

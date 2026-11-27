@@ -81,7 +81,7 @@ for (const provider of ['stm', 'octranspo'] as const) {
 						await expect(table).toContainText(kind === 'vehicle' ? /0[,.]2/u : /48[,.]0\s*%/u);
 						if (kind === 'vehicle') {
 							await expect(table).toContainText(
-								fr ? '5 interruptions en 21 heures' : '5 times in 21 hours',
+								fr ? '5 interruptions en 20,5 heures' : '5 times in 20.5 hours',
 							);
 							// 0.1 silent hours over 5 interruptions: 72 s each on average.
 							await expect(table).toContainText(

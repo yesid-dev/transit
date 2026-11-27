@@ -230,6 +230,51 @@ def _get(store: Store, path: str, measure: str, **cuts: object) -> dict[str, Any
     return result
 
 
+def test_alert_count_merges_a_real_bilingual_reissue_and_keeps_its_publications(
+    tmp_path: Path,
+) -> None:
+    day = date(2026, 11, 20)
+    store = _build_store(tmp_path, 6, {day: ()})
+    # The published French-only and bilingual versions of the same relocated stops.
+    original = "25927876cbed78e020053a1cddbbad18d80dc31f142788a2972cdf1b0d2df5d5"
+    translated = "028319ad293bacefd8505ff1d587824fffa994808a9138ee66574550dec35756"
+    fr = (
+        "Cet arrêt est relocalisé, en raison de travaux, à partir du 26 octobre 2026 à 00h00 "
+        "jusqu'à la fin des travaux."
+    )
+    en = (
+        "This stop is relocated, due to roadworks, from October 26 2026 at 00h00 "
+        "until the end of the roadworks."
+    )
+    published = [{"start_utc": datetime(2026, 10, 26, 4), "end_utc": None}]
+    rows = [
+        (
+            f"anonymous:{version}", version, utc(day, 12), utc(day, 14), published, [line],
+            ["57463", "57499"], None, None, "api_i3_json", title, "Votre arrêt", body, fr,
+        )
+        for version, line, title, body in (
+            (original, "204", None, None),
+            (translated, "204", "Your stop", en),
+            ("other-line", "205", None, None),
+        )
+    ]
+    with store.connect() as conn:
+        conn.execute("SET TimeZone = 'UTC'")
+        _write_table(conn, store, day, ALERTS, _ALERT_SCHEMA, rows)
+
+    window = {"from": day, "to": day}
+    detailed = _get(store, "/measure", "alert_counts", alert_details=1, **window)
+    assert detailed["value"] == {"alerts": 2, "alert_versions": 3, "alert_hours": 18}
+    messages = detailed["evidence"]["alert_messages"]
+    assert len(messages) == 2
+    bilingual = next(message for message in messages if message["routes"] == ["204"])
+    assert bilingual["description"] == {"en": en, "fr": fr}
+    assert bilingual["reissue_ids"] == [f"anonymous:{original}"]
+    assert len(bilingual["periods"]) == 1
+    cut = _get(store, "/measure", "alert_counts", line="204", **window)
+    assert cut["value"] == {"alerts": 1, "alert_versions": 2, "alert_hours": 9}
+
+
 def test_alert_details_follow_the_same_window_and_clipping(
     history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
 ) -> None:

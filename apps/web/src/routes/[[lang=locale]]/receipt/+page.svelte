@@ -185,7 +185,7 @@
 				return total == null
 					? noticeCountEvidence(
 							notices.length,
-							counts.alerts,
+							counts.alert_versions ?? counts.alerts,
 							agencyName(operator ?? cityName, routeData.provider),
 							lang,
 						)
@@ -832,7 +832,6 @@
 													{dailyAlertsLink(
 														messages.evidence.notice_total ?? notices?.length ?? count,
 														lang,
-														notices == null,
 													)}
 												</a>
 											{/if}
