@@ -159,7 +159,7 @@ test('starts a slow Stop document with noindex before the identity arrives', asy
 test('missing detail identities return localized 404 pages and plain 404 CSV responses', async ({
 	request,
 }) => {
-	const departure = encodeURIComponent(JSON.stringify(['24', 0, '03:33:00']));
+	const departure = '24-0-0333';
 	for (const [provider, prefix] of [
 		['stm', ''],
 		['octranspo', '/fr'],
@@ -247,7 +247,7 @@ for (const locale of ['en', 'fr'] as const) {
 	}) => {
 		const prefix = locale === 'fr' ? '/fr' : '';
 		const query = 'provider=octranspo&recordFrom=2026-11-08&recordTo=2026-11-14';
-		const departureKey = encodeURIComponent(JSON.stringify(['24', 0, '07:00:00']));
+		const departureKey = '24-0-0700';
 		for (const [id, destination, selected] of [
 			['T1', '/vehicle/40061', null],
 			['departure-without-vehicle', `/departure/${departureKey}`, 'departure-without-vehicle'],

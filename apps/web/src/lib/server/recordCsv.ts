@@ -35,6 +35,7 @@ type CsvOptions = {
 	identity?: {
 		code: DetailCode;
 		check: (provider: PublicCity, scope: IdentityScope) => Promise<EntityIdentity>;
+		canonicalHref?: string | null;
 	};
 };
 
@@ -137,6 +138,8 @@ export async function recordCsvResponse(
 		const state = await identity.check(provider, scope).catch(() => 'unconfirmed');
 		if (state === 'missing') return missingRecordCsv(lang, identity.code);
 		if (state === 'unconfirmed') return downloadError(lang, 503);
+		if (identity.canonicalHref)
+			return new Response(null, { status: 308, headers: { location: identity.canonicalHref } });
 	}
 	const upstream = await getRecordCsv(query, { ...selected, ...scope }, lang, request.signal).catch(
 		() => null,

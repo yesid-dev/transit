@@ -1,5 +1,8 @@
 import { error } from '@sveltejs/kit';
-import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
+import {
+	canonicalDepartureHref,
+	departureFromKey,
+} from '#lib/features/record/departureIdentity.ts';
 import {
 	departureDay,
 	departureQuery,
@@ -22,6 +25,7 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 		identity: {
 			code: 'DEPARTURE_NOT_FOUND',
 			check: (provider, scope) => identifyDeparture(identity, frameClock(provider), scope),
+			canonicalHref: canonicalDepartureHref(url, identity),
 		},
 		selectPeriod:
 			section === 'stops'

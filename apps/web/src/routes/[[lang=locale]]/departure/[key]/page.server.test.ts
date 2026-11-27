@@ -4,7 +4,7 @@ const getRecordAnswer = vi.hoisted(() => vi.fn());
 vi.mock('#lib/server/engine.ts', () => ({ getRecordAnswer }));
 import { load } from './+page.server';
 
-const key = JSON.stringify(['A', 1, '07:42:00']);
+const key = 'A-1-0742';
 function event(search: string, id = key) {
 	const url = new URL(
 		`https://transit1.yesid.dev/fr/departure/${encodeURIComponent(id)}?${search}`,
@@ -87,10 +87,25 @@ it('keeps Live available without fetching the historical sections', async () => 
 	expect(getRecordAnswer.mock.calls[0][0].parameters.group).toBe('departure');
 });
 
+it('redirects a confirmed legacy key before asking for the record sections', async () => {
+	const search =
+		'provider=demo&period=7-days&recordFrom=2026-11-16&recordTo=2026-11-19&day=2026-11-18';
+	await expect(load(event(search, JSON.stringify(['A', 1, '07:42:00'])))).rejects.toMatchObject({
+		status: 308,
+		location: `/fr/departure/A-1-0742?${search}`,
+	});
+	expect(getRecordAnswer).toHaveBeenCalledOnce();
+});
+
 it('answers 404 for a departure absent from the archive and 503 for an unavailable identity', async () => {
 	const search = 'recordFrom=2026-11-16&recordTo=2026-11-19';
 	getRecordAnswer.mockResolvedValueOnce(archive(false));
 	await expect(load(event(search))).rejects.toMatchObject({
+		status: 404,
+		body: { code: 'DEPARTURE_NOT_FOUND' },
+	});
+	getRecordAnswer.mockResolvedValueOnce(archive(false));
+	await expect(load(event(search, JSON.stringify(['A', 1, '07:42:00'])))).rejects.toMatchObject({
 		status: 404,
 		body: { code: 'DEPARTURE_NOT_FOUND' },
 	});

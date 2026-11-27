@@ -1,7 +1,11 @@
 import { directionHeadsigns } from '#lib/features/lines/directions.ts';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { departureFromKey, isDepartureTripId } from '#lib/features/record/departureIdentity.ts';
+import {
+	canonicalDepartureHref,
+	departureFromKey,
+	isDepartureTripId,
+} from '#lib/features/record/departureIdentity.ts';
 import {
 	departureDay,
 	identifyDeparture,
@@ -82,6 +86,8 @@ export const load: PageServerLoad = async (event) => {
 				},
 			);
 		if (state === 'unconfirmed' && !liveMatch) return unavailable();
+		const canonical = canonicalDepartureHref(event.url, identity);
+		if (canonical) redirect(308, canonical);
 	}
 	return {
 		identity,
