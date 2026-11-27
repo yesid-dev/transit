@@ -7,6 +7,7 @@
 	import { Surface } from '@yesid/ui/layout';
 	import { SearchInput } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
+	import { Card } from '@yesid/ui/card';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '@yesid/ui/tabs';
 	import { getLocale, getLocalizeHref } from '#lib/i18n/index.ts';
 	import { createResource } from '#lib/v1/resource.svelte.ts';
@@ -148,128 +149,152 @@
 	});
 </script>
 
+<!-- One centred column: the title, the field and the results share its edges at every width. -->
 <Surface>
-	<RecordScreen>
-		<RecordGroup><ScreenTitle title={words.sheetTitle} {subtitle} compact /></RecordGroup>
-		<RecordGroup
-			><div data-slot="screen-content">
-				<section
-					class="search-content"
-					class:searching={queryState !== 'empty'}
-					data-slot="screen-state"
-					{id}
-					aria-label={words.sheetTitle}
-				>
-					<p class="search-lede">{t.lede}</p>
-					<div class="search-field">
-						<SearchInput
-							label={t.inputLabel}
-							placeholder={t.inputPlaceholder}
-							visibleLabel
-							textSize="body"
-							autocomplete="off"
-							bind:value={
-								() => query,
-								(next) => {
-									query = next;
-									rows = PAGE_SIZE;
+	<div class="search-column" data-slot="search-column">
+		<RecordScreen>
+			<RecordGroup><ScreenTitle title={words.sheetTitle} {subtitle} compact /></RecordGroup>
+			<RecordGroup
+				><div data-slot="screen-content">
+					<section
+						class="search-content"
+						data-slot="screen-state"
+						{id}
+						aria-label={words.sheetTitle}
+					>
+						<p class="search-lede">{t.lede}</p>
+						<div>
+							<SearchInput
+								label={t.inputLabel}
+								placeholder={t.inputPlaceholder}
+								visibleLabel
+								textSize="body"
+								autocomplete="off"
+								bind:value={
+									() => query,
+									(next) => {
+										query = next;
+										rows = PAGE_SIZE;
+									}
 								}
-							}
-						/>
-					</div>
-					{#if queryState === 'empty'}
-						<div class="search-idle" role="note">
-							<StateMark state="unknown" {locale} hiddenLabel />
-							<div>
-								<p class="font-semibold">{words.idleTitle}</p>
-								<p>{words.idleBody}</p>
-							</div>
+							/>
 						</div>
-					{:else if queryState === 'short'}
-						<SearchResultsList
-							id={`${id}-results`}
-							label={words.results}
-							list={shown}
-							query={text}
-							{locale}
-							{hrefs}
-							page={resultPage}
-						/>
-					{:else}
-						<Tabs
-							value={scope}
-							onValueChange={(next) => {
-								rows = PAGE_SIZE;
-								scope = searchScope(next);
-							}}
+						<Card
+							textSize="inherit"
+							interactive={queryState !== 'empty'}
+							class="search-body min-w-0 px-4 sm:px-6"
+							data-search-card=""
 						>
-							<TabsList
-								variant="line"
-								class="flex h-auto w-full flex-wrap justify-start gap-1"
-								aria-label={words.results}
-							>
-								{#each tabs as tab (tab.key)}
-									<TabsTrigger
-										value={tab.key}
-										class="h-auto min-h-11 min-w-11 flex-none px-3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-										>{tab.label}</TabsTrigger
-									>
-								{/each}
-							</TabsList>
-							{#each tabs as tab (tab.key)}
-								<TabsContent
-									value={tab.key}
-									class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+							{#if queryState === 'empty'}
+								<div class="search-idle" role="note">
+									<StateMark state="unknown" {locale} hiddenLabel />
+									<div>
+										<p class="font-semibold">{words.idleTitle}</p>
+										<p>{words.idleBody}</p>
+									</div>
+								</div>
+							{:else if queryState === 'short'}
+								<SearchResultsList
+									id={`${id}-results`}
+									label={words.results}
+									list={shown}
+									query={text}
+									{locale}
+									{hrefs}
+									page={resultPage}
+								/>
+							{:else}
+								<Tabs
+									value={scope}
+									onValueChange={(next) => {
+										rows = PAGE_SIZE;
+										scope = searchScope(next);
+									}}
 								>
-									{#if scope === tab.key}
-										<SearchResultsList
-											id={`${id}-results`}
-											label={words.results}
-											list={shown}
-											query={text}
-											{locale}
-											{hrefs}
-											page={resultPage}
-										/>
-										{#if address}
-											<p class="sr-only" role="status">{address === 'ask' ? '' : addressText}</p>
-											<Button
-												variant="outline"
-												wrap
-												type="button"
-												aria-describedby={address === 'ask' ? `${id}-address-notice` : undefined}
-												aria-disabled={address === 'ask' ? undefined : 'true'}
-												onclick={ask}>{addressText}</Button
+									<TabsList
+										variant="line"
+										class="flex h-auto w-full flex-wrap justify-start gap-1"
+										aria-label={words.results}
+									>
+										{#each tabs as tab (tab.key)}
+											<TabsTrigger
+												value={tab.key}
+												class="h-auto min-h-11 min-w-11 flex-none px-3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+												>{tab.label}</TabsTrigger
 											>
-											{#if address === 'ask'}
-												<p
-													id={`${id}-address-notice`}
-													class="mt-2 text-small text-muted-foreground"
-												>
-													{words.addressNotice}
-												</p>
+										{/each}
+									</TabsList>
+									{#each tabs as tab (tab.key)}
+										<TabsContent
+											value={tab.key}
+											class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+										>
+											{#if scope === tab.key}
+												<SearchResultsList
+													id={`${id}-results`}
+													label={words.results}
+													list={shown}
+													query={text}
+													{locale}
+													{hrefs}
+													page={resultPage}
+												/>
+												{#if address}
+													<div class="search-address">
+														<p class="sr-only" role="status">
+															{address === 'ask' ? '' : addressText}
+														</p>
+														<Button
+															variant="outline"
+															wrap
+															type="button"
+															aria-describedby={address === 'ask'
+																? `${id}-address-notice`
+																: undefined}
+															aria-disabled={address === 'ask' ? undefined : 'true'}
+															onclick={ask}>{addressText}</Button
+														>
+														{#if address === 'ask'}
+															<p
+																id={`${id}-address-notice`}
+																class="text-small text-muted-foreground"
+															>
+																{words.addressNotice}
+															</p>
+														{/if}
+													</div>
+												{/if}
 											{/if}
-										{/if}
-									{/if}
-								</TabsContent>
-							{/each}
-						</Tabs>
-					{/if}
-				</section>
-			</div></RecordGroup
-		>
-	</RecordScreen>
+										</TabsContent>
+									{/each}
+								</Tabs>
+							{/if}
+						</Card>
+					</section>
+				</div></RecordGroup
+			>
+		</RecordScreen>
+	</div>
 </Surface>
 
 <style>
+	/* The page's one column, centred: its left and right margins are equal at every width, and the
+	   header pill overhangs it evenly. Narrower screens give it the whole width between the gutters. */
+	.search-column {
+		inline-size: 100%;
+		max-inline-size: var(--measure-body);
+		margin-inline: auto;
+		min-width: 0;
+	}
+	/* The results, or the note before any typing, own the first screen in every state, so the
+	   footer never jumps when the first letter is typed or the rows arrive (closing scan S1). */
 	.search-content {
 		display: grid;
+		align-content: start;
 		gap: var(--space-card-gap);
 		min-width: 0;
+		min-block-size: calc(100dvh - var(--app-frame-header-height, 0px));
 		margin-block-end: var(--space-card-gap);
-	}
-	.search-field {
-		max-inline-size: var(--measure-lede);
 	}
 	.search-lede {
 		max-inline-size: var(--measure-lede);
@@ -279,19 +304,15 @@
 	.search-idle {
 		display: flex;
 		gap: 0.5rem;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-lg);
-		background: var(--muted);
 		color: var(--muted-foreground);
-		padding: var(--space-card-gap);
-	}
-	/* With a query, the results own the first screen: the footer stays below it while the index
-	   loads and the rows arrive, so it never jumps (closing scan S1). */
-	.search-content.searching {
-		align-content: start;
-		min-block-size: calc(100dvh - var(--app-frame-header-height, 0px));
 	}
 	.search-idle p {
 		max-inline-size: var(--measure-notice);
+	}
+	.search-address {
+		display: grid;
+		justify-items: start;
+		gap: 0.5rem;
+		margin-block-start: 1rem;
 	}
 </style>
