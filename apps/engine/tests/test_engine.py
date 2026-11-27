@@ -938,6 +938,22 @@ def test_http_and_bilingual_csv_come_from_same_registry(
     asyncio.run(run())
 
 
+@pytest.mark.parametrize(
+    ("lang", "weekday_column"), [("en", "Service weekday"), ("fr", "Jour de la semaine de service")]
+)
+def test_weekday_hour_csv_labels_service_weekday(
+    store: Store, lang: str, weekday_column: str
+) -> None:
+    app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
+    params = urlencode({
+        "measure": "late", "city": "stm", "from": THURSDAY, "to": THURSDAY,
+        "group": "weekday_hour", "format": "csv", "lang": lang,
+    })
+    status, _, payload = asyncio.run(http(app, "/measure", params))
+    assert status == 200
+    assert weekday_column in next(csv.reader(io.StringIO(payload.decode())))
+
+
 @pytest.mark.parametrize("reason", ["no_raw_captures", "no_schedule_edition"])
 def test_pending_days_distinguish_incomplete_days_from_permanent_receipts(
     tmp_path: Path, reason: str

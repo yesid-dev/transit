@@ -45,7 +45,9 @@
 		scorecardDays,
 		scorecardState,
 		stopEventCoverage,
+		staleFeedChecks,
 		tripCoverageFacts,
+		tripsLeftOutByDay,
 		vehicleReportRows,
 		type HealthRow,
 	} from '../health/agencyHealthText.ts';
@@ -87,6 +89,7 @@
 			coverage: Result<MeasureAnswer>;
 			accessibility: Result<RecordMeasure>;
 			alertEffects: Result<RecordSeries> | null;
+			deliveryDays: Result<RecordSeries>;
 			scorecard: Record<AgencyScorecardMeasure, Result<ScorecardAnswer>>;
 			health: Result<DataHealthAnswer>;
 			methods: Result<MethodEntry[]>;
@@ -168,8 +171,8 @@
 		).length;
 		if (!gaps)
 			return t(
-				'Every day of these dates is in the record.',
-				'Chaque jour de cette période est dans le bilan.',
+				'The files tracked here are present for every day in this period.',
+				'Les fichiers suivis ici sont présents pour chaque jour de cette période.',
 			);
 		return t(
 			`${tally(gaps, locale)} of ${countedUnit(days, 'day', locale)} ${gaps === 1 ? 'has' : 'have'} a gap.`,
@@ -300,14 +303,16 @@
 {/snippet}
 
 {#snippet coverageBody(answer: ScorecardAnswer)}
+	{@const coverage = tripCoverageFacts(answer, locale)}
 	<FactList>
-		{#each tripCoverageFacts(answer, locale).facts as fact (fact.id)}
+		{#each coverage.facts as fact (fact.id)}
 			<FactRow label={fact.label} labelDetail={fact.detail ?? undefined}>
 				{#if fact.value}<span class="font-semibold">{fact.value}</span>
 				{:else}<StateMark state="unknown" {locale} />{/if}
 			</FactRow>
 		{/each}
 	</FactList>
+	{#if coverage.gapNote}<p>{coverage.gapNote}</p>{/if}
 {/snippet}
 
 {#snippet reportsBody(answer: ScorecardAnswer)}
@@ -377,7 +382,22 @@
 		]}
 		value="answered"
 	/>
-	<p class="mt-3">{gaps}</p>
+	{#if gaps}<p class="mt-3">{gaps}</p>{/if}
+	{#if record}
+		{#await record.deliveryDays then result}
+			{#if result.kind === 'answer'}
+				{@const notes = tripsLeftOutByDay(result.answer, locale)}
+				{#if notes.length}<p class="mt-3">{notes.join(' ')}</p>{/if}
+			{/if}
+		{/await}
+		{#await record.scorecard.feed_age_at_capture then result}
+			{#if result.kind === 'answer'}
+				{#each staleFeedChecks(result.answer, locale) as note (note)}
+					<p class="mt-3">{note}</p>
+				{/each}
+			{/if}
+		{/await}
+	{/if}
 {/snippet}
 
 <RecordScreen class="min-w-0">

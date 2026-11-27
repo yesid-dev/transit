@@ -8,7 +8,7 @@ import {
 	getRecordSeries,
 	getScorecardAnswer,
 } from '#lib/server/engine.ts';
-import { agencyHealthQuestions } from '#lib/server/screenQuestions.ts';
+import { agencyHealthQuestions, networkRecordQuestions } from '#lib/server/screenQuestions.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 
@@ -30,6 +30,7 @@ export const load = (async (event) => {
 				coverage: getMeasure('punctuality', scope),
 				accessibility: getRecordMeasure(questions.accessibility, scope),
 				alertEffects: alertsTracked ? getRecordSeries(questions.alertEffects, scope) : null,
+				deliveryDays: getRecordSeries(networkRecordQuestions.deliveryDays, scope),
 				scorecard: Object.fromEntries(
 					questions.scorecard.map(({ measure, query }) => [
 						measure,

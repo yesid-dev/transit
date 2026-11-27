@@ -103,8 +103,8 @@ export function waitingFinding(answer: RecordMeasure, locale: Locale) {
 	if (excess.value && excess.detail)
 		return choose(
 			locale,
-			`Riders waited ${excess.value} longer than the timetable promised, when vehicles are due every 10 minutes or less.`,
-			`Les usagers ont attendu ${excess.value} de plus que ce que promettait l’horaire, quand les véhicules passent aux 10 minutes ou moins.`,
+			`On the gaps Transit could measure, estimated waits were ${excess.value} longer than scheduled.`,
+			`Pour les intervalles que Transit a pu mesurer, l’attente estimée dépassait l’horaire de ${excess.value}.`,
 		);
 	const gaps = waitingReadingParts(answer, 'long_gaps', locale);
 	if (gaps.detail)

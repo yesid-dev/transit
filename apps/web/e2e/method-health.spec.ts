@@ -242,6 +242,13 @@ for (const width of [390, 1440]) {
 				).toHaveAttribute('href', 'https://www.octranspo.com/fr/alertes/');
 			}
 			const predictions = main.locator('#prediction_error');
+			const checks = main.locator('#poll_success');
+			await expect(checks).toContainText(
+				fr
+					? '4 sur 25 contrôles ont reçu un flux datant de plus de 10 minutes.'
+					: '4 of 25 checks returned a feed over 10 minutes old.',
+			);
+			if (fr) await expect(checks).toContainText('12 trajets écartés');
 			await expect(predictions).toContainText(
 				fr
 					? '90 prévisions sur 100 faites une minute à l’avance étaient justes à une minute près.'

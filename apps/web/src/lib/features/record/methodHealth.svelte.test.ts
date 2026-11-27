@@ -6,6 +6,7 @@ import type {
 	MeasureAnswer,
 	MethodEntry,
 	RecordMeasure,
+	RecordSeries,
 	ScorecardAnswer,
 } from '#lib/server/engine.ts';
 import health from '../../../../e2e/clean-table-health.json';
@@ -22,11 +23,13 @@ const agencyWaiting = () => {
 		coverage: waiting<MeasureAnswer>(),
 		accessibility: waiting<RecordMeasure>(),
 		alertEffects: null,
+		deliveryDays: waiting<RecordSeries>(),
 		scorecard: {
 			vehicle_field_completeness: waiting<ScorecardAnswer>(),
 			live_trip_coverage: waiting<ScorecardAnswer>(),
 			prediction_error: waiting<ScorecardAnswer>(),
 			poll_success: waiting<ScorecardAnswer>(),
+			feed_age_at_capture: waiting<ScorecardAnswer>(),
 		},
 	};
 };

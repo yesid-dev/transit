@@ -24,10 +24,18 @@ export function networkServiceFixture(url) {
 	const counts = { classified: 55720, scheduled: 58338, early: 3120, on_time: 44966, late: 7634 };
 	// Scheduled = no live data + status unknown + ran + cancelled + missing, as the engine answers.
 	const delivery = { scheduled: 18515, eligible: 15861, ran: 15476, cancelled: 125, missing: 260 };
-	const tripExclusions = { route_without_live_data: 1654, unconfirmed: 1000, capture_gap: 0 };
+	const tripsWithGap = query.get('city') === 'octranspo' ? '2026-11-12' : null;
 	const trips = (days_included) => ({
 		...measured({ trips_run: delivery.ran / delivery.eligible }, delivery, days_included),
-		evidence: { counts: delivery, excluded: tripExclusions, days_included },
+		evidence: {
+			counts: delivery,
+			excluded: {
+				route_without_live_data: 1654,
+				unconfirmed: 1000,
+				capture_gap: days_included.includes(tripsWithGap) ? 12 : 0,
+			},
+			days_included,
+		},
 	});
 	const evidence = {
 		start_date: from,
@@ -185,7 +193,7 @@ export const networkFixtures = {
 	feed_age_at_capture: {
 		value: { trip_updates: { median_seconds: 8, p90_seconds: 'over_10_minutes' } },
 		dimensions: { trip_updates: 'measured' },
-		counts: { trip_updates: { samples: 25 } },
+		counts: { trip_updates: { attempts: 25, successful: 20, samples: 20, overflow: 4 } },
 	},
 	feed_update_interval: {
 		value: { trip_updates: { median_seconds: 24, p90_seconds: 43 } },

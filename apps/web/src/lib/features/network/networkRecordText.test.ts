@@ -1,7 +1,14 @@
 import { expect, it } from 'vitest';
 import { measure } from '#lib/features/home/overviewRecord.fixture.ts';
 import type { ScorecardAnswer } from '#lib/server/engine.ts';
-import { networkMeasures, networkRows, networkUnmeasuredDays } from './networkRecordText.ts';
+import { tripOutcomes } from '../record/tripOutcomes.ts';
+import {
+	deliveryUncertainty,
+	networkCrowdingRows,
+	networkMeasures,
+	networkRows,
+	networkUnmeasuredDays,
+} from './networkRecordText.ts';
 
 const base: ScorecardAnswer = {
 	...measure(),
@@ -15,6 +22,51 @@ const base: ScorecardAnswer = {
 		days_not_measured_reasons: {},
 	},
 };
+
+it.each([
+	[
+		'en',
+		'Status could not be confirmed for 5,343 trips. Including those trips, between 94.5% and 99.2% ran.',
+	],
+	[
+		'fr',
+		'Impossible de confirmer le statut de 5 343 trajets. En les comptant, la part des trajets effectués se situe entre 94,5 % et 99,2 %.',
+	],
+] as const)('bounds delivery across unknown outcomes in %s', (locale, sentence) => {
+	const outcomes = tripOutcomes({
+		counts: { scheduled: 122410, eligible: 106631, ran: 105782, cancelled: 834, missing: 15 },
+		excluded: { route_without_live_data: 10436, capture_gap: 0 },
+	});
+	expect(outcomes).not.toBeNull();
+	expect(deliveryUncertainty(outcomes!, locale)?.replace(/[\u00a0\u202f]/gu, ' ')).toBe(sentence);
+});
+
+it.each([
+	['en', ['Many seats available', 'Few seats available', 'Standing room only', 'Full']],
+	[
+		'fr',
+		[
+			'Plusieurs places assises libres',
+			'Peu de places assises libres',
+			'Places debout seulement',
+			'Plein',
+		],
+	],
+] as const)('shows the occupancy levels reported in %s', (locale, labels) => {
+	const rows = networkCrowdingRows(
+		{
+			crowding_empty: 0,
+			crowding_many_seats: 0.556,
+			crowding_few_seats: 0.276,
+			crowding_standing: 0.159,
+			crowding_crushed: 0,
+			crowding_full: 0.009,
+		},
+		locale,
+	);
+	expect(rows.map(({ label }) => label)).toEqual(labels);
+	expect(rows.find(({ id }) => id === 'full')?.share).toBe(locale === 'en' ? '0.9%' : '0,9\u00a0%');
+});
 
 it('shows per-feed results, counts and too-few and untracked states', () => {
 	const data: ScorecardAnswer = {

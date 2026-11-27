@@ -57,6 +57,7 @@
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import NetworkRecordReading from './NetworkRecordReading.svelte';
+	import { deliveryUncertainty, networkCrowdingRows } from './networkRecordText.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 
 	let {
@@ -448,6 +449,7 @@
 									? tripOutcomes(result.evidence)
 									: null}
 							{#if outcomes && !('cells' in result)}
+								{@const uncertainty = deliveryUncertainty(outcomes, locale)}
 								<dl class="mb-4 grid gap-2">
 									<div class="flex flex-wrap justify-between gap-x-3">
 										<dt>{term.delivery}</dt>
@@ -460,6 +462,9 @@
 											<span class="block text-small text-muted-foreground"
 												>{tripsRunBase(outcomes.ran, outcomes.known, locale)}</span
 											>
+											{#if uncertainty}
+												<span class="block text-small text-muted-foreground">{uncertainty}</span>
+											{/if}
 										</dd>
 									</div>
 									{#each [['cancelled', outcomes.cancelled], ['missing', outcomes.missing], ['statusUnknown', outcomes.statusUnknown], ['noLiveData', outcomes.noLiveData], ['scheduled', outcomes.scheduled]] as const as [key, count] (key)}
@@ -532,21 +537,7 @@
 								title={copy.crowding}
 								rowHeader={t('Space on board', 'Place à bord')}
 								columns={crowdingColumns}
-								rows={[
-									['empty', t('Empty', 'Vide')],
-									['many_seats', t('Many seats available', 'Plusieurs places assises libres')],
-									['few_seats', t('Few seats available', 'Peu de places assises libres')],
-									['standing', t('Standing room only', 'Places debout seulement')],
-									['crushed', t('Limited standing room', 'Peu de places debout')],
-									['full', t('Full', 'Plein')],
-								].map(([id, label]) => {
-									const share = result.value['crowding_' + id];
-									return {
-										id,
-										label,
-										share: share == null ? t('Unknown', 'Inconnu') : recordPercent(share, locale),
-									};
-								})}
+								rows={networkCrowdingRows(result.value, locale)}
 								scrollMinWidth="24rem"
 								value="share"
 								phone={{}}
