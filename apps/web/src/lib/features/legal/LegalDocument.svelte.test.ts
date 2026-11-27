@@ -150,7 +150,7 @@ describe('LegalDocument', () => {
 			expect(text).not.toMatch(/Workers (?:Issues|Logs)|workflow|service worker|suivi d’un lien/u);
 		}
 		const en = JSON.stringify(legalDocument('en', 'privacy').sections);
-		expect(en).toContain("Cloudflare's error reports are turned off");
+		expect(en).toContain('Cloudflare’s error reports are turned off');
 		expect(en).toContain('Cloudflare keeps these error logs for at most seven days');
 		expect(en).toContain('a link to the automated check');
 		expect(en).toContain('A browser offline module can keep on your device');
