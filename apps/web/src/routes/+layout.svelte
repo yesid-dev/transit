@@ -227,6 +227,7 @@
 				label:
 					footerWords.shortLinks[link.href as keyof typeof footerWords.shortLinks] ??
 					link.label[locale],
+				...(link.href === '/rankings?kind=departure' ? { ariaLabel: link.label[locale] } : {}),
 				...(link === YESID_HOUSE_LINK
 					? { external: true, ariaLabel: `${link.label[locale]} ${navPillCopy[locale].newTab}` }
 					: {}),

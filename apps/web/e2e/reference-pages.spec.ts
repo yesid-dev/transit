@@ -44,9 +44,17 @@ test('dark Daily report and How we measure print with readable ink and no site c
 	for (const path of ['/receipt', '/metrics']) {
 		await page.goto(`${path}?provider=stm&${dates}`);
 		const main = page.getByRole('main');
+		const citation = main.locator('.site-print-citation');
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 		await expect(main.locator('[data-slot="record-card"]').first()).toBeVisible();
+		await expect(citation).toBeHidden();
 		await page.emulateMedia({ media: 'print' });
+		if (path === '/receipt') {
+			await expect(citation).toHaveCount(0);
+		} else {
+			await expect(citation).toBeVisible();
+			await expect(citation).toContainText(new URL(page.url()).pathname);
+		}
 		await expect(page.locator('[data-slot="app-frame-chrome"]')).toBeHidden();
 		await expect(page.getByTestId('footer')).toBeHidden();
 		await expect(main.getByRole('button', { name: 'Cite', exact: true })).toBeHidden();

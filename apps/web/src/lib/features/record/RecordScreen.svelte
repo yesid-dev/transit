@@ -12,11 +12,13 @@
 <!-- Place once inside Surface. RecordGroup owns each logical section of the screen. -->
 <PageSections {...rest} divider="hand-drawn" data-record-screen>
 	{@render children()}
-	{#if address && !daily}<p class="hidden print:block site-print-citation">
-			{locale === 'fr' ? 'Source\u00a0: Transit.' : 'Source: Transit.'}
-			{address}
-		</p>{/if}
 </PageSections>
+{#if address && !daily}
+	<p class="hidden print:block site-print-citation">
+		{locale === 'fr' ? 'Source\u00a0: Transit.' : 'Source: Transit.'}
+		{address}
+	</p>
+{/if}
 
 <style>
 	.site-print-citation {

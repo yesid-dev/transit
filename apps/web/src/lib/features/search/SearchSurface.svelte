@@ -41,9 +41,30 @@
 	const t = $derived(copy[locale]);
 	let field = $state<HTMLDivElement>();
 	onMount(() => {
-		if (window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) {
-			field?.querySelector('input')?.focus();
-		}
+		const input = field?.querySelector('input');
+		if (!input || !window.matchMedia?.('(hover: hover) and (pointer: fine)').matches) return;
+		input.focus();
+
+		const autofocus = new AbortController();
+		const once = { once: true, signal: autofocus.signal };
+		const finish = () => autofocus.abort();
+		// A first Tab from the untouched field starts the normal page tab order at the skip link.
+		input.addEventListener(
+			'keydown',
+			(event) => {
+				if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
+					return;
+				const skip = document.querySelector<HTMLAnchorElement>('a.skip-link[href="#main"]');
+				if (!skip) return;
+				event.preventDefault();
+				skip.focus();
+			},
+			once,
+		);
+		input.addEventListener('pointerdown', finish, once);
+		input.addEventListener('input', finish, once);
+		input.addEventListener('blur', finish, once);
+		return finish;
 	});
 	const words = $derived(headerSearchCopy[locale]);
 	const labels = $derived(provider?.labels[locale]);
