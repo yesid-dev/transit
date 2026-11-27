@@ -71,9 +71,11 @@
 {#snippet fourth(row: Row)}{@render reading(row.values[3])}{/snippet}
 {#snippet phoneValue(row: Row)}{row.phone?.value ?? text(row.values[0])}{/snippet}
 {#snippet reading(item: Reading)}
-	{#if typeof item === 'string'}{item}{:else}
-		{item.value}
-		{#if item.detail}<span class="block text-small text-muted-foreground">{item.detail}</span>{/if}
+	{#if typeof item === 'string'}<span class:font-sans={!numeric}>{item}</span>{:else}
+		<span class="font-sans">{item.value}</span>
+		{#if item.detail}<span class="block font-sans text-small text-muted-foreground"
+				>{item.detail}</span
+			>{/if}
 	{/if}
 {/snippet}
 <RecordDataTable

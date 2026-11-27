@@ -229,14 +229,18 @@
 {/snippet}
 
 {#snippet stateCell(row: RecordTableRow & HealthRow)}
-	{#if row.state === 'published'}<span class="font-semibold"
+	{#if row.state === 'published'}<span class="font-sans font-semibold"
 			>{publishStateText(row.state, locale)}</span
 		>
-	{:else if row.state === 'unavailable'}{publishStateText(row.state, locale)}
+	{:else if row.state === 'unavailable'}<span class="font-sans"
+			>{publishStateText(row.state, locale)}</span
+		>
 	{:else}<StateMark state={row.state} {locale} />{/if}
 {/snippet}
-{#snippet shareCell(row: RecordTableRow & { share: string })}{row.share}{/snippet}
-{#snippet rightCell(row: RecordTableRow & { right: string })}{row.right}{/snippet}
+{#snippet shareCell(row: RecordTableRow & { share: string })}<span class="reading">{row.share}</span
+	>{/snippet}
+{#snippet rightCell(row: RecordTableRow & { right: string })}<span class="reading">{row.right}</span
+	>{/snippet}
 {#snippet answeredCell(row: RecordTableRow & { answered: string })}{row.answered}{/snippet}
 {#snippet checkedCell(row: RecordTableRow & { checked: string })}{row.checked}{/snippet}
 
@@ -675,3 +679,9 @@
 		{/if}
 	</div>
 </RecordScreen>
+
+<style>
+	.reading {
+		font-family: var(--font-body);
+	}
+</style>

@@ -115,7 +115,7 @@
 {#snippet count(row: Row)}
 	{@const minimum = minimumSample(series, 'on_time')}
 	{#if row.state === 'too_few_to_judge' && row.sample !== null && minimum != null}
-		<span class="text-small text-muted-foreground"
+		<span class="font-sans text-small text-muted-foreground"
 			>{t(
 				`${countedUnit(row.sample, 'event', locale)}, the minimum is ${tally(minimum, locale)}`,
 				`${countedUnit(row.sample, 'event', locale)}, le minimum est de ${tally(minimum, locale)}`,
@@ -127,11 +127,12 @@
 
 {#snippet waitingValue(row: Row, id: (typeof waitingMeasures)[number][0])}
 	{#if row.coverageGap}
-		{#if id === waitingMeasures[0][0]}{row.coverageGap}{/if}
+		{#if id === waitingMeasures[0][0]}<span class="font-sans">{row.coverageGap}</span>{/if}
 	{:else}
 		{@const reading = waitingReadingParts(row.cell, id, locale)}
 		{reading.value}
-		{#if reading.detail}<span class="block text-small text-muted-foreground">{reading.detail}</span
+		{#if reading.detail}<span class="block font-sans text-small text-muted-foreground"
+				>{reading.detail}</span
 			>{/if}
 	{/if}
 {/snippet}

@@ -72,6 +72,9 @@
 	const locale = $derived<Locale>(localeProp ?? contextLocale ?? DEFAULT_LOCALE);
 	const copy = $derived(frameCopy[locale]);
 	let announcementHeight = $state(0);
+	let shellWidth = $state(0);
+	let remWidth = $state(0);
+	const controlsLabelOnly = $derived(shellWidth > 0 && shellWidth < 14 * remWidth);
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
 	const frame = $derived(frameControlsState(url, clock, errorPage));
@@ -141,8 +144,11 @@
 	data-full-viewport={fullViewport}
 	style:--map-source-clearance={fullViewport ? `${mapCreditHeight}px` : undefined}
 	data-slot="app-shell"
+	bind:clientWidth={shellWidth}
 	onfocusin={() => (now = new Date())}
 >
+	<!-- The kit pill truncates both parts when the summary and label do not fit together. -->
+	<span aria-hidden="true" class="invisible absolute w-[1rem]" bind:clientWidth={remWidth}></span>
 	<AppFrame
 		{header}
 		footer={footer && !fullViewport ? streamingFooter : footer}
@@ -152,13 +158,14 @@
 			? {
 					rail,
 					label: copy.controls,
-					summary: controlsExtension?.hideSummary?.()
-						? undefined
-						: frame.mode === 'live'
-							? copy.live
-							: frame.period?.preset
-								? copy.presets[frame.period.preset]
-								: copy.record,
+					summary:
+						controlsLabelOnly || controlsExtension?.hideSummary?.()
+							? undefined
+							: frame.mode === 'live'
+								? copy.live
+								: frame.period?.preset
+									? copy.presets[frame.period.preset]
+									: copy.record,
 					openAria: copy.open,
 					closeAria: copy.close,
 					mobileVisible: mobileControlsVisible,

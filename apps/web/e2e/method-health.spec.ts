@@ -232,6 +232,7 @@ for (const width of [390, 1440]) {
 				hasText: fr ? 'Accès en fauteuil roulant aux arrêts' : 'Wheelchair boarding at stops',
 			});
 			await expect(stops).toContainText(fr ? 'Non publié' : 'Published');
+			await expect(stops.getByText(fr ? 'État' : 'State', { exact: true })).toBeHidden();
 			if (fr) {
 				await expect(publishes).toContainText(
 					'Transit ne collecte pas encore les avis d’OC Transpo.',
@@ -240,11 +241,34 @@ for (const width of [390, 1440]) {
 					publishes.getByRole('link', { name: 'Consulter les avis officiels' }),
 				).toHaveAttribute('href', 'https://www.octranspo.com/fr/alertes/');
 			}
-			await expect(main.locator('#prediction_error')).toContainText(
+			const predictions = main.locator('#prediction_error');
+			await expect(predictions).toContainText(
 				fr
 					? '90 prévisions sur 100 faites une minute à l’avance étaient justes à une minute près.'
 					: '90 predictions in 100 made a minute ahead were right within a minute.',
 			);
+			if (width === 390) {
+				const oneMinute = predictions.getByRole('row', {
+					name: fr ? /1 min à l’avance/ : /1 min ahead/,
+				});
+				const count = oneMinute.getByRole('cell').filter({ hasText: '40' });
+				await expect(
+					count.getByText(fr ? 'Arrivées vérifiées' : 'Arrivals checked', { exact: true }),
+				).toBeVisible();
+			}
+
+			const reports = main.locator('#vehicle_field_completeness');
+			const prose = reports.getByText(
+				fr
+					? 'Part du temps de signalement où chaque détail était fourni.'
+					: 'Share of vehicle reporting time with each detail.',
+			);
+			const readingFont = await prose.evaluate((element) => getComputedStyle(element).fontFamily);
+			for (const state of fr ? ['Inconnu', 'Non publié'] : ['Unknown', 'Not published']) {
+				const reading = reports.getByText(state, { exact: true }).first();
+				await expect(reading).toBeVisible();
+				await expect(reading).toHaveCSS('font-family', readingFont);
+			}
 			// Each coverage label keeps the row's width: its counts sit under it, not beside it.
 			for (const row of await main.locator('#live_trip_coverage [data-slot="fact-row"]').all()) {
 				const [label, whole] = await Promise.all([

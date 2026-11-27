@@ -60,7 +60,7 @@
 	}
 </script>
 
-{#snippet share(row: Row)}<strong>{row.share}</strong>{/snippet}
+{#snippet share(row: Row)}<strong class="font-sans">{row.share}</strong>{/snippet}
 {#snippet rows(answer: RankingAnswer, stops: ScheduleEdition['stops'] = [])}
 	<RecordDataTable
 		{locale}
@@ -76,6 +76,7 @@
 			},
 		]}
 		value="share"
+		rowAlign="middle"
 		phone={{ line: (row) => row.detail }}
 	/>
 	{#if answer.coverage_note}<p>{answer.coverage_note[locale]}</p>{/if}

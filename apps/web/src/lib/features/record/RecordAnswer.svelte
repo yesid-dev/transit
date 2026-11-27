@@ -17,6 +17,7 @@
 		actions,
 		meta,
 		evidence,
+		size = 'lg',
 	}: {
 		value: string | null;
 		sentence: string;
@@ -27,6 +28,7 @@
 		actions?: Snippet;
 		meta?: Snippet;
 		evidence?: { sample: string; lastGood?: boolean };
+		size?: 'md' | 'lg';
 	} = $props();
 </script>
 
@@ -49,5 +51,5 @@
 	{comparison}
 	{actions}
 	meta={evidence || meta ? evidenceMeta : undefined}
-	size="lg"
+	{size}
 />

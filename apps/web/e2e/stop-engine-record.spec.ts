@@ -116,6 +116,9 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#accessibility')).toContainText(fr ? 'Non publié' : 'Accessible');
 
 			const waiting = main.locator('#waiting');
+			const waitingLine = waiting.getByRole('row').filter({
+				has: page.getByRole('rowheader', { name: /\b80\b/ }),
+			});
 			if (width === 390) {
 				for (const card of [main.locator('#byLine'), waiting]) {
 					const frame = card.locator('[data-slot="data-table-frame"]');
@@ -123,6 +126,11 @@ for (const width of [390, 1440]) {
 					expect(
 						await frame.evaluate((element) => element.scrollWidth - element.clientWidth),
 					).toBeLessThanOrEqual(1);
+				}
+				for (const label of fr
+					? ['Attente excédentaire', 'Intervalles prolongés', 'Véhicules trop rapprochés']
+					: ['Excess wait time', 'Long gaps', 'Bunching']) {
+					await expect(waitingLine.getByText(label, { exact: true })).toBeVisible();
 				}
 			}
 			await expect(bands.locator('footer')).toContainText(
@@ -139,9 +147,7 @@ for (const width of [390, 1440]) {
 			const alertsFooter = main.locator('#alerts footer');
 			if (fr) await expect(alertsFooter).toBeHidden();
 			else await expect(alertsFooter.locator('span')).toHaveText(['4 days']);
-			await expect(
-				waiting.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /\b80\b/ }) }),
-			).toContainText(
+			await expect(waitingLine).toContainText(
 				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
 			);
 			await expect(

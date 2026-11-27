@@ -30,6 +30,7 @@
 	 * wrap each in a no-wrap span so it never breaks inside.
 	 */
 	export type RecordPhoneRow<Row> = {
+		includeRailTier?: boolean;
 		line?: (row: Row) => string | null | undefined;
 		before?: Snippet<[Row]>;
 		below?: Snippet<[Row]>;
@@ -81,6 +82,7 @@
 		stackAt,
 		pageSize,
 		rowHeading,
+		rowAlign,
 		phone,
 	}: {
 		locale: Locale;
@@ -96,6 +98,7 @@
 		stackAt?: 'compact' | 'tablet';
 		pageSize?: number;
 		rowHeading?: Snippet<[Row]>;
+		rowAlign?: 'top' | 'middle';
 		phone?: RecordPhoneRow<Row>;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
@@ -202,11 +205,17 @@
 		sortLabels={sort ? { by: sortHeaderLabel } : undefined}
 		pageSize={page}
 		{pageLabels}
+		{rowAlign}
 		responsive={scrollMinWidth
 			? { mode: 'scroll', minWidth: scrollMinWidth }
 			: stackAt
 				? { mode: 'stack', at: stackAt }
-				: { mode: 'rows', primary: 'name', value: value ?? '' }}
+				: {
+						mode: 'rows',
+						primary: 'name',
+						value: value ?? '',
+						labels: !valueColumn || allColumns.length !== 2,
+					}}
 	/>
 {/snippet}
 {#if sort?.choices}
@@ -215,7 +224,11 @@
 			? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
 			: choice,
 	)}
-	<div class="sort-choice-frame" class:with-phone={!!phone}>
+	<div
+		class="sort-choice-frame"
+		class:with-phone={!!phone}
+		class:rail-tier={phone?.includeRailTier}
+	>
 		<div class="sort-choices mb-2 flex flex-wrap items-center gap-2">
 			<span class="basis-full sm:basis-auto">{sortBy}</span>
 			<div class="sort-choice-default">
@@ -269,7 +282,7 @@
 {/if}
 
 {#if phone}
-	<PhoneSwitch wide={wideTable}>
+	<PhoneSwitch wide={wideTable} includeRailTier={phone.includeRailTier}>
 		{#snippet narrow()}
 			<DataTable
 				caption={title}
@@ -281,7 +294,7 @@
 				sortLabels={sort ? { by: sortHeaderLabel } : undefined}
 				pageSize={page}
 				{pageLabels}
-				responsive={{ mode: 'rows', primary: 'name', value: '' }}
+				responsive={{ mode: 'rows', primary: 'name', value: '', labels: false }}
 			/>
 		{/snippet}
 	</PhoneSwitch>
@@ -447,6 +460,11 @@
 	@container (inline-size > 28rem) {
 		.sort-reverse {
 			display: none;
+		}
+	}
+	@media (1024px <= width < 1280px) {
+		.rail-tier .sort-reverse {
+			display: inline;
 		}
 	}
 </style>

@@ -3,8 +3,7 @@
 	import { tick } from 'svelte';
 	import { SvelteMap, SvelteURLSearchParams } from 'svelte/reactivity';
 	import { SegmentedChoice, Stamp } from '@yesid/ui/brand';
-	import { Combobox } from '@yesid/ui/combobox';
-	import { foldSearchText } from '#lib/search/normalize.ts';
+	import RankingChoice from './RankingChoice.svelte';
 	import { RangeMark } from '@yesid/ui/chart';
 	import { Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
@@ -306,30 +305,15 @@
 			label: classText(key, locale, classes),
 		}))}
 		{@const current = serviceClass ?? data.class ?? 'all'}
-		{@const pickClass = (next: string | null) => {
-			// Clearing the field means every line again.
-			const target = next ?? 'all';
-			if (target !== current) void select({ kind, measure, serviceClass: target });
+		{@const pickClass = (next: string) => {
+			if (next !== current) void select({ kind, measure, serviceClass: next });
 		}}
 		<div class="grid min-w-0 gap-1 @max-[36rem]:hidden">
 			<p>{label}</p>
 			<SegmentedChoice {options} value={current} {label} onSelect={pickClass} />
 		</div>
-		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
-			<p aria-hidden="true">{label}</p>
-			<Combobox
-				options={options.map(({ key, label }) => ({
-					value: key,
-					label,
-					search: foldSearchText(label),
-				}))}
-				value={current}
-				onValueChange={pickClass}
-				{label}
-				clearLabel={t('Show all lines', 'Afficher toutes les lignes')}
-				emptyLabel={t('No matching choice', 'Aucun choix correspondant')}
-				fold={foldSearchText}
-			/>
+		<div class="w-full min-w-0 @min-[36rem]:hidden">
+			<RankingChoice {options} value={current} {label} onSelect={pickClass} />
 		</div>
 	{/if}
 {/snippet}
@@ -355,23 +339,12 @@
 				onSelect={selectMeasure}
 			/>
 		</div>
-		<div class="grid w-full min-w-0 gap-1 @min-[36rem]:hidden">
-			<p aria-hidden="true">{t('By', 'Par')}</p>
-			<Combobox
-				options={byOptions.map(({ key, label }) => ({
-					value: key,
-					label,
-					search: foldSearchText(label),
-				}))}
+		<div class="w-full min-w-0 @min-[36rem]:hidden">
+			<RankingChoice
+				options={byOptions}
 				value={measure}
-				onValueChange={(next) => {
-					const choice = byOptions.find(({ key }) => key === next);
-					if (choice) selectMeasure(choice.key);
-				}}
+				onSelect={selectMeasure}
 				label={t('By', 'Par')}
-				clearLabel={t('Clear', 'Effacer')}
-				emptyLabel={t('No matching measure', 'Aucune mesure correspondante')}
-				fold={foldSearchText}
 			/>
 		</div>
 		{#await record.answer then result}
@@ -462,7 +435,8 @@
 		: null}
 	{@const wilson = bounded.some(({ entry }) => entry.range.method.endsWith('wilson_95'))}
 	{@const scale = domain(data)}
-	{#snippet value(row: Ranked)}<strong>{rankingValue(row.entry.value, measure, locale)}</strong
+	{#snippet value(row: Ranked)}<strong class="font-sans"
+			>{rankingValue(row.entry.value, measure, locale)}</strong
 		>{/snippet}
 	{#snippet phoneValue(row: Ranked)}{rankingValue(
 			row.entry.value,
@@ -493,7 +467,7 @@
 				measure,
 				locale,
 			)}
-			<div class="inline-grid min-w-0 max-w-full">
+			<div class="inline-grid min-w-0 max-w-full font-sans">
 				<RangeMark
 					low={lower}
 					high={upper}
@@ -562,6 +536,7 @@
 					pageSize={rows.length > 20 ? 20 : undefined}
 					rowHeading={heading}
 					phone={{
+						includeRailTier: true,
 						before: rank,
 						value: phoneValue,
 						line: (row) =>

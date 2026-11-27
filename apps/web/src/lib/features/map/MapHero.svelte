@@ -42,6 +42,7 @@
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
 	import { scheduleTerminals, type RecordMapLayer } from './recordMap';
+	import { MAP_RECORD } from '#lib/seo/routeSeo.ts';
 	import { goto } from '$app/navigation';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import type { MapStageFailure } from '#lib/components/map/MapStage.svelte';
@@ -486,7 +487,7 @@
 		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
 	);
 	const title = $derived(
-		isRecordLayer ? tr('Record map', 'Carte du bilan') : tr('Live map', 'Carte en direct'),
+		isRecordLayer ? MAP_RECORD.title[locale] : tr('Live map', 'Carte en direct'),
 	);
 	const viewLabel = tr('What is in view', 'Ce qui est en vue');
 	// The map region is named for what it draws: vehicles live, the record of stops otherwise.

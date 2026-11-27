@@ -7,6 +7,7 @@ import {
 	SILENT_ICON,
 	VEHICLE_MARKER_GEOMETRY,
 	resolveColor,
+	statusBodyIconId,
 	type VehicleSpriteReceipt,
 } from './vehicleSprites';
 
@@ -63,6 +64,8 @@ interface ProjectedVehicle {
 }
 
 const BOX = VEHICLE_MARKER_GEOMETRY.box;
+const LATE_BODY = statusBodyIconId('late');
+const EARLY_BODY = statusBodyIconId('early');
 const ICON_PADDING = 2;
 const RAD = Math.PI / 180;
 let nextGeneration = 0;
@@ -70,6 +73,15 @@ let nextGeneration = 0;
 function lerp(value: number, from: number, to: number, first: number, last: number): number {
 	const t = Math.max(0, Math.min(1, (value - from) / (to - from)));
 	return first + (last - first) * t;
+}
+
+function vehicleScale(zoom: number, detailScale: number): number {
+	return lerp(zoom, 11, 12, 6 / BOX, detailScale);
+}
+
+function delayPriority({ feature }: ProjectedVehicle): number {
+	const { body } = feature.properties;
+	return Number(body === LATE_BODY || body === EARLY_BODY);
 }
 
 function sameTarget(a: NearTarget | null, b: NearTarget | null): boolean {
@@ -107,6 +119,7 @@ export function createVehicleOverlay(
 	onUnavailable?: () => void,
 ): VehicleOverlay {
 	const glCanvas = map.getCanvas();
+	const forcedColors = window.matchMedia('(forced-colors: active)');
 	const canvas = document.createElement('canvas');
 	canvas.setAttribute('aria-hidden', 'true');
 	canvas.dataset.slot = 'vehicle-overlay';
@@ -203,13 +216,8 @@ export function createVehicleOverlay(
 	}
 
 	function collisionHalfBox(y: number, height: number, zoom: number): number {
-		const layoutSize = lerp(
-			Math.floor(zoom) + 1,
-			11,
-			15,
-			VEHICLE_MARKER_GEOMETRY.bodyIconSize.z11,
-			VEHICLE_MARKER_GEOMETRY.bodyIconSize.z15,
-		);
+		const { z11, z15 } = VEHICLE_MARKER_GEOMETRY.bodyIconSize;
+		const layoutSize = lerp(Math.floor(zoom) + 1, 11, 15, z11, z15);
 		return ((BOX / 2) * layoutSize + ICON_PADDING) * (0.5 + 0.5 * depthRatio(y, height));
 	}
 
@@ -274,13 +282,10 @@ export function createVehicleOverlay(
 		ctx.clearRect(0, 0, width, height);
 		hits = [];
 		const zoom = map.getZoom();
-		const baseSize = lerp(
-			zoom,
-			11,
-			15,
-			VEHICLE_MARKER_GEOMETRY.bodyIconSize.z11,
-			VEHICLE_MARKER_GEOMETRY.bodyIconSize.z15,
-		);
+		const { z11, z15 } = VEHICLE_MARKER_GEOMETRY.bodyIconSize;
+		const detailScale = lerp(zoom, 11, 15, z11, z15);
+		// Keep the larger silhouette and its internal contrast in forced-colors mode.
+		const baseSize = forcedColors.matches ? detailScale : vehicleScale(zoom, detailScale);
 		const projected: ProjectedVehicle[] = features.features.map((feature, index) => {
 			const [lon, lat] = feature.geometry.coordinates;
 			const point = map.project([lon, lat]);
@@ -303,7 +308,9 @@ export function createVehicleOverlay(
 				x <= width + BOX * 4 &&
 				y <= height + BOX * 4,
 		);
-		const symbols = [...visible].sort((a, b) => a.y - b.y || b.index - a.index);
+		const symbols = [...visible].sort(
+			(a, b) => delayPriority(a) - delayPriority(b) || a.y - b.y || b.index - a.index,
+		);
 
 		for (const { feature, x, y } of visible) {
 			const hovered = feature.properties.id === hoveredId;
@@ -344,7 +351,7 @@ export function createVehicleOverlay(
 				});
 		}
 		for (const { feature, x, y, baseSize } of symbols) {
-			if (feature.properties.hasHeading !== 1) continue;
+			if (zoom < 12 || feature.properties.hasHeading !== 1) continue;
 			const angle = headingAngle(feature, x, y, width, height);
 			ctx.save();
 			ctx.translate(x, y);

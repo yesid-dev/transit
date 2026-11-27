@@ -446,8 +446,8 @@
 {#snippet onTimeCell(row: Row)}
 	{#if timingPending}{pendingText}
 	{:else}
-		<strong class="text-base">{recordPercent(row.onTime!, locale)}</strong>
-		{#if row.timing?.evidence.low_coverage}<small class="block text-muted-foreground"
+		<strong class="font-sans text-base">{recordPercent(row.onTime!, locale)}</strong>
+		{#if row.timing?.evidence.low_coverage}<small class="block font-sans text-muted-foreground"
 				>{lowCoverageText(locale)}</small
 			>{/if}
 	{/if}
@@ -494,9 +494,9 @@
 		{@const state = reason.state}
 		<StateMark {state} {locale} />
 		{#if reason.text}
-			<p class="text-muted-foreground">{reason.text[locale]}</p>
+			<p class="font-sans text-muted-foreground">{reason.text[locale]}</p>
 		{:else if state === 'too_few_to_judge' && row.timing?.evidence.counts.classified != null}
-			<p class="text-muted-foreground">
+			<p class="font-sans text-muted-foreground">
 				{countedUnit(row.timing.evidence.counts.classified, 'event', locale)}{minimum == null
 					? '.'
 					: t(
@@ -505,14 +505,14 @@
 						)}
 			</p>
 		{:else if row.timing?.evidence.coverage_reason === 'insufficient_coverage'}
-			<p class="text-muted-foreground">
+			<p class="font-sans text-muted-foreground">
 				{t(
 					'There were too few readings to cover the scheduled stops.',
 					'Il y avait trop peu de relevés pour couvrir les arrêts prévus.',
 				)}
 			</p>
 		{:else if row.timing?.state_text[locale] && row.timing.state_text[locale] !== recordState(state)[locale]}
-			<p class="text-muted-foreground">{row.timing.state_text[locale]}</p>
+			<p class="font-sans text-muted-foreground">{row.timing.state_text[locale]}</p>
 		{/if}
 	{/if}
 {/snippet}
@@ -639,6 +639,7 @@
 								value="onTime"
 								sort={sortChoices}
 								phone={{
+									includeRailTier: true,
 									value: phoneOnTime,
 									line: (row) => {
 										if (timingPending) return null;

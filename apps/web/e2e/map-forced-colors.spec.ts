@@ -82,7 +82,8 @@ for (const scheme of ['light', 'dark'] as const) {
 			);
 			await page.goto(`/map?provider=stm&mapview=${lon},${lat},${zoom},0,0`);
 			const painted = () => page.evaluate(() => (window as OverlayProbe).vehiclePaints ?? []);
-			const expected = zoom === 11 ? [20.28, 15.21] : [33.8, 25.35];
+			const expected = zoom === 11 ? [6, 4.5] : [33.8, 25.35];
+			const forcedSizes = zoom === 11 ? [20.28, 15.21] : expected;
 			const sizes = async () => (await painted()).map(({ size }) => Number(size.toFixed(2)));
 			await expect.poll(sizes).toEqual(expected);
 			const ordinary = await painted();
@@ -107,7 +108,7 @@ for (const scheme of ['light', 'dark'] as const) {
 				expect(forced[0].halo).toEqual(pair[1]);
 				expect(forced[0].corner[3]).toBe(0);
 				for (const badge of forced.slice(1)) expect(badge.plate).toEqual(pair[0]);
-				expect(await sizes()).toEqual(expected);
+				expect(await sizes()).toEqual(forcedSizes);
 			}
 
 			await page.emulateMedia({ forcedColors: 'active', colorScheme: scheme });

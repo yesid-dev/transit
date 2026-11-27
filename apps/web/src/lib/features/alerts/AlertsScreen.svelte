@@ -266,7 +266,7 @@
 				] satisfies readonly DataTableColumn<AlertCut>[]}
 				rows={sortAlertLineCut(rows, locale, display.line)}
 				key={(row, index) => (row.key ? `line:${row.key}` : `unknown:${index}`)}
-				responsive={{ mode: 'rows', primary: 'line', value: 'count' }}
+				responsive={{ mode: 'rows', primary: 'line', value: 'count', labels: false }}
 				pageSize={rows.length > linePageSize ? linePageSize : undefined}
 				pageLabels={paging}
 			/>
