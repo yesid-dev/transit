@@ -47,6 +47,7 @@ describe('RefreshButton action and recovery', () => {
 			await waitFor(() => expect(mocks.invalidateAll).toHaveBeenCalledOnce());
 			expect(dataRefresh.epoch).toBe(initialEpoch + 1);
 			expect(screen.getByRole('button', { name: busyLabel })).toBeDisabled();
+			expect(screen.getByRole('button', { name: busyLabel })).toHaveAttribute('aria-busy', 'true');
 			expect(button.querySelector('[data-motion="refresh-busy"]')).toBeInTheDocument();
 			const joined = dataRefresh.run();
 			expect(mocks.invalidateAll).toHaveBeenCalledOnce();

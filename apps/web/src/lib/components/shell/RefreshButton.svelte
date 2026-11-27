@@ -98,6 +98,7 @@
 		class={children ? 'min-h-11 max-w-full gap-1 px-0' : undefined}
 		style={fixedTapTarget ? 'width: var(--size-tap-min); height: var(--size-tap-min);' : undefined}
 		aria-label={children ? undefined : label}
+		aria-busy={refreshing || undefined}
 		title={label}
 		onclick={onClick}
 		disabled={refreshing}

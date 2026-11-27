@@ -152,11 +152,12 @@ for (const locale of PUBLISHED_LOCALES) {
 			const busy = page.locator('[data-motion="refresh-busy"]');
 			try {
 				await (await revealRefresh(page, locale)).click();
+				// A chip that shows the live stamp keeps that text in its name, then says it is busy.
 				const refreshing = page.getByRole('button', {
-					name: navPillCopy[locale].refreshing,
-					exact: true,
+					name: new RegExp(`${navPillCopy[locale].refreshing}$`, 'u'),
 				});
 				await expect(refreshing).toHaveAttribute('data-refreshing', 'true');
+				await expect(refreshing).toHaveAttribute('aria-busy', 'true');
 				await expect(refreshing).toBeDisabled();
 				await expect(busy).toBeVisible();
 				const motion = await runningMotion(page);
