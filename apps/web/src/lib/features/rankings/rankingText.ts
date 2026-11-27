@@ -105,6 +105,19 @@ export function rankingWay(row: Pick<Row, 'counts'>, measure: RankingMeasure, lo
 	return measure === 'on_time' ? missDirection(row.counts, locale) : null;
 }
 
+/**
+ * What follows the leader's name in the ranking headline: " (early 72.0%, late 6.2%)." or ".".
+ * The space is part of the text: markup whitespace at the edge of a Svelte block is trimmed.
+ */
+export function rankingHeadlineEnd(way: string | null) {
+	return way ? ` (${way}).` : '.';
+}
+
+/** The headline after its figure: "<lead> <leader> (<way>)." */
+export function rankingHeadline(lead: string, leader: string, way: string | null) {
+	return `${lead} ${leader}${rankingHeadlineEnd(way)}`;
+}
+
 const sampleUnits = {
 	headways: { en: 'observed intervals', fr: 'intervalles observés' },
 	events: { en: 'observed stop events', fr: 'passages observés aux arrêts' },

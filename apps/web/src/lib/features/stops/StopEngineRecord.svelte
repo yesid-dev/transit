@@ -381,7 +381,7 @@
 									{delayReading(measure.value.median_delay, locale)}
 								</FactRow>
 								<FactRow
-									label={t('90th percentile', '90e centile')}
+									label={t('Latest 1 in 10', 'Le dixième le plus en retard')}
 									emphasis
 									detail={t(
 										'1 vehicle in 10 was later than this.',

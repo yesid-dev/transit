@@ -124,7 +124,7 @@ const SURFACES: Record<string, BilingualSeo> = {
 };
 
 const LINE_DETAIL: BilingualSeo = {
-	title: { en: 'Line detail', fr: 'Détail de la ligne' },
+	title: { en: 'Line record', fr: 'Bilan de la ligne' },
 };
 
 // The map's Record view shows the record of stops and corridors, not live vehicles (WCAG 2.4.2).
@@ -133,7 +133,7 @@ export const MAP_RECORD: BilingualSeo = {
 };
 
 const STOP_DETAIL: BilingualSeo = {
-	title: { en: 'Stop detail', fr: 'Détail de l’arrêt' },
+	title: { en: 'Stop record', fr: 'Bilan de l’arrêt' },
 };
 
 function entryFor(path: string, params: URLSearchParams): BilingualSeo {

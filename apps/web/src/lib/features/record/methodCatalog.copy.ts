@@ -71,7 +71,31 @@ export const methodCopy = {
 			'Not a measure of lines without live data, such as the métro or the O-Train: their agencies publish no realtime data for them.',
 			'Not a count of riders, and not a cause of delay: neither is in the feeds.',
 			'Observed times are the agency’s own predictions and positions, checked against each other, not a stopwatch at the stop.',
+			'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not directly comparable. Each screen says how its times were observed.',
 		],
+		about: {
+			title: 'About Transit',
+			summary: 'Who publishes this record, how to cite it and how to report an error.',
+			fields: [
+				{
+					label: 'Who publishes it',
+					text: 'Yesid Fernando Otalora, a sole proprietor in Quebec, builds and runs Transit as an independent public project. Transit is not affiliated with any transit agency.',
+				},
+				{
+					label: 'Why it exists',
+					text: 'To keep a public record, open to checking, of the service each agency delivered, computed from the agency’s own open data.',
+				},
+				{
+					label: 'How to cite it',
+					text: 'Use Cite on any screen. It gives the dates and a link that keeps those dates.',
+				},
+				{
+					label: 'Seen an error?',
+					text: 'Write to contact@yesid.dev with the page address and the figure that looks wrong.',
+					link: { href: 'mailto:contact@yesid.dev', label: 'Email contact@yesid.dev' },
+				},
+			],
+		},
 	},
 	fr: {
 		intro:
@@ -135,6 +159,30 @@ export const methodCopy = {
 			'Pas une mesure des lignes sans données en direct, comme le métro ou l’O-Train\u00a0: leurs sociétés de transport ne publient aucune donnée en temps réel pour ces lignes.',
 			'Pas un décompte des usagers, ni une cause du retard\u00a0: ces données ne figurent pas dans les flux.',
 			'Les heures observées proviennent des prévisions et des positions de la société de transport, comparées entre elles, sans chronométrage à l’arrêt.',
+			'Pas une comparaison entre villes\u00a0: le flux de chaque société de transport donne ses heures à sa manière, donc les chiffres de deux villes ne sont pas directement comparables. Chaque écran indique comment ses heures ont été observées.',
 		],
+		about: {
+			title: 'À propos de Transit',
+			summary: 'Qui publie ce bilan, comment le citer et comment signaler une erreur.',
+			fields: [
+				{
+					label: 'Qui le publie',
+					text: 'Yesid Fernando Otalora, travailleur autonome au Québec, conçoit et exploite Transit comme projet public indépendant. Transit n’est affilié à aucune société de transport.',
+				},
+				{
+					label: 'Pourquoi il existe',
+					text: 'Pour tenir un bilan public et vérifiable du service offert par chaque société de transport, calculé à partir de ses propres données ouvertes.',
+				},
+				{
+					label: 'Comment le citer',
+					text: 'Utilisez Citer sur n’importe quel écran. La citation donne les dates et un lien qui garde ces dates.',
+				},
+				{
+					label: 'Vous avez vu une erreur?',
+					text: 'Écrivez à contact@yesid.dev avec l’adresse de la page et le chiffre qui semble faux.',
+					link: { href: 'mailto:contact@yesid.dev', label: 'Écrire à contact@yesid.dev' },
+				},
+			],
+		},
 	},
 } as const;

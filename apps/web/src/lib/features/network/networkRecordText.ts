@@ -1,26 +1,12 @@
-import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
+import { recordPercent } from '#lib/site/presenter.ts';
 import { minuteReading } from '#lib/site/presenter.ts';
 import { intl, type Locale } from '#lib/i18n/index.ts';
 import { healthReading } from '#lib/features/record/dataHealthText.ts';
 import { choose, tally } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure, ScorecardAnswer } from '#lib/server/engine.ts';
-import type { TripOutcomes } from '../record/tripOutcomes.ts';
 
 import type { NetworkMeasure } from './networkMeasures.ts';
 export { networkMeasures, type NetworkMeasure } from './networkMeasures.ts';
-
-export function deliveryUncertainty(outcomes: TripOutcomes, locale: Locale) {
-	const { ran, known, statusUnknown } = outcomes;
-	if (!known || !statusUnknown) return null;
-	const trips = countedUnit(statusUnknown, 'trip', locale);
-	const lower = recordPercent(ran / (known + statusUnknown), locale);
-	const higher = recordPercent((ran + statusUnknown) / (known + statusUnknown), locale);
-	return choose(
-		locale,
-		`Status could not be confirmed for ${trips}. Including those trips, between ${lower} and ${higher} ran.`,
-		`Impossible de confirmer le statut de ${trips}. En les comptant, la part des trajets effectués se situe entre ${lower} et ${higher}.`,
-	);
-}
 
 const crowdingLevels = [
 	['empty', 'Empty', 'Vide'],

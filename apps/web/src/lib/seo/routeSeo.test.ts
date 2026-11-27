@@ -123,8 +123,8 @@ describe('resolveRouteSeo', () => {
 	});
 
 	it('falls detail routes back to section-level SEO', () => {
-		expect(resolveRouteSeo('/lines/1', 'en').title).toBe('Line detail');
-		expect(resolveRouteSeo('/stop/5', 'en').title).toBe('Stop detail');
+		expect(resolveRouteSeo('/lines/1', 'en').title).toBe('Line record');
+		expect(resolveRouteSeo('/stop/5', 'en').title).toBe('Stop record');
 	});
 
 	it('keeps neutral descriptions nonempty and concise', () => {

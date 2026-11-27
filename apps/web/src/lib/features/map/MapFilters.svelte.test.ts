@@ -91,7 +91,7 @@ describe('MapFilters', () => {
 		});
 
 		expect(getByText('Status')).toBeTruthy();
-		expect(getByText('Crowding')).toBeTruthy();
+		expect(getByText('Room on board')).toBeTruthy();
 		expect(getByText('Markers')).toBeTruthy();
 		expect(getAllByText('Notices').length).toBeGreaterThan(0);
 		expect(
@@ -107,7 +107,7 @@ describe('MapFilters', () => {
 				group.getAttribute('data-filter-group'),
 			),
 		).toEqual(['markers', 'alerts', 'active', 'status', 'crowding']);
-		for (const name of ['Markers', 'Notices', 'Status', 'Crowding']) {
+		for (const name of ['Markers', 'Notices', 'Status', 'Room on board']) {
 			expect(getByRole('button', { name })).toHaveAttribute('aria-expanded', 'true');
 		}
 		expect(getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-expanded', 'false');

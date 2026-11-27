@@ -91,7 +91,12 @@ for (const provider of ['stm', 'octranspo'] as const) {
 								? /en avance 4,0\s?%, en retard 48,0\s?%/u
 								: /early 4\.0%, late 48\.0%/u;
 							await expect(table.getByRole('rowheader')).toContainText(way);
-							await expect(lead).toContainText(way);
+							// The headline keeps a space between the name and the parenthesis.
+							await expect(lead).toContainText(
+								fr
+									? /\S \(en avance 4,0\s?%, en retard 48,0\s?%\)\.$/u
+									: /\S \(early 4\.0%, late 48\.0%\)\.$/u,
+							);
 							// On a phone the counts join the row's one muted sentence.
 							await expect(
 								width === 1440

@@ -202,7 +202,7 @@
 		<LineReadingTable
 			{title}
 			{locale}
-			headers={[t('Occupancy level', 'Places à bord'), t('Share', 'Part')]}
+			headers={[t('Room on board', 'Places à bord'), t('Share', 'Part')]}
 			rows={occupancy.map(({ label, share, seconds }) => ({
 				label,
 				values: [

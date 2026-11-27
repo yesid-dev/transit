@@ -67,8 +67,9 @@
 		tripOutcomeLabels,
 		tripOutcomeNote,
 		tripsRunSentence,
+		unconfirmedTripsRange,
 	} from '#lib/site/presenter.ts';
-	import { tripOutcomes } from '#lib/features/record/tripOutcomes.ts';
+	import { tripOutcomes, unsettledTrips } from '#lib/features/record/tripOutcomes.ts';
 	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { DailySection } from '#lib/server/departureDailyRecord.ts';
@@ -388,6 +389,16 @@
 	{@const service = measure(delivery)}
 	{@const value = measuredShare(punctuality, 'on_time')}
 	{@const trips = tripsRun(service)}
+	{@const unsettled = service && trips != null ? unsettledTrips(service.evidence) : null}
+	{@const bounds =
+		service && unsettled != null
+			? unconfirmedTripsRange(
+					service.evidence.counts.ran ?? -1,
+					service.evidence.counts.eligible ?? -1,
+					unsettled,
+					lang,
+				)
+			: null}
 	{@const punctualityText =
 		value == null
 			? t('On-time share', 'Part des passages à l’heure') + ' · ' + readingText(current)
@@ -422,6 +433,7 @@
 					days ? countedUnit(days, 'day', lang) : '',
 					lang,
 				)}
+				{#if bounds}<p>{bounds}</p>{/if}
 				{#if sample}<p>{t('Counted:', 'Ce qui est compté :')} {sample}</p>{/if}
 				{#if current.kind !== 'answer'}{@render failure(current)}{/if}
 				{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[lang]}</p>{/if}
