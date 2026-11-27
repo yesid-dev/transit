@@ -56,9 +56,21 @@
 		{@const routeId = detail.vehicle.route ?? detail.route?.id ?? null}
 		{@const routeName = detail.route?.long ? readName(detail.route.long, locale) : ''}
 		{@const destination = detail.routeDirection?.headsign}
-		{#if routeId}<RoutePlate code={line(routeId)} />{/if}
+		<div class="selection-vehicle-line">
+			{#if routeId}<RoutePlate code={line(routeId)} />{/if}
+			<StatusMark
+				class="selection-delay"
+				status={detail.vehicle.status}
+				{...liveStatusWords(
+					detail.vehicle.status,
+					mapStatusLabel(locale, detail.vehicle.status),
+					detail.vehicle.delay_min == null ? null : detail.vehicle.delay_min * 60,
+					locale,
+				)}
+			/>
+		</div>
 		{#if routeName || destination}
-			<p>
+			<p data-slot="map-selection-destination">
 				{routeName}{routeName && destination ? ', ' : ''}{destination
 					? display.toward(
 							display.directory.headsign(routeId, destination) ?? destination,
@@ -68,15 +80,6 @@
 					: ''}
 			</p>
 		{/if}
-		<StatusMark
-			status={detail.vehicle.status}
-			{...liveStatusWords(
-				detail.vehicle.status,
-				mapStatusLabel(locale, detail.vehicle.status),
-				detail.vehicle.delay_min == null ? null : detail.vehicle.delay_min * 60,
-				locale,
-			)}
-		/>
 		{#if notReporting}<p class="text-muted-foreground">
 				{tr('No recent position.', 'Aucune position récente.')}
 			</p>{/if}
@@ -180,6 +183,17 @@
 		min-inline-size: 0;
 		overflow-wrap: anywhere;
 		gap: calc(var(--spacing) * 2);
+	}
+	.selection-vehicle-line {
+		display: flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		inline-size: 100%;
+	}
+	.selection-vehicle-line :global(.selection-delay) {
+		min-inline-size: 0;
+		margin-inline-start: auto;
+		justify-content: flex-end;
 	}
 	.selection-links {
 		display: flex;

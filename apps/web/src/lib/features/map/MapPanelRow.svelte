@@ -59,8 +59,8 @@
 			data-map-row-name>{name}</button
 		>
 	{/if}
-	{#if detail}<small title={detail}>{detail}</small>{/if}
 	<span class="value" data-map-row-value>{@render value()}</span>
+	{#if detail}<small title={detail}>{detail}</small>{/if}
 </li>
 
 <style>
@@ -79,11 +79,8 @@
 		min-inline-size: 0;
 	}
 	.panel-row[data-report-row] {
-		grid-template: 'code name value' auto '. detail value' auto / 3.25rem minmax(0, 1fr) 7rem;
+		grid-template-columns: 3.25rem minmax(0, 1fr) 7rem;
 		overflow-wrap: anywhere;
-	}
-	.panel-row[data-report-row] .value {
-		align-self: start;
 	}
 	.code {
 		grid-area: code;

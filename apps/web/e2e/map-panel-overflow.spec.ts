@@ -96,6 +96,15 @@ for (const fixture of fixtures) {
 				await expect(delay).toContainText(/11\s*min/u);
 				await expectFits(left);
 				await expectFits(right);
+				const destinationBounds = await destination.boundingBox();
+				const nameBounds = await row.locator('[data-map-row-name]').boundingBox();
+				const delayBounds = await delay.boundingBox();
+				expect(destinationBounds!.x).toBeCloseTo(nameBounds!.x, 0);
+				expect(destinationBounds!.x + destinationBounds!.width).toBeCloseTo(
+					delayBounds!.x + delayBounds!.width,
+					0,
+				);
+				expect(destinationBounds!.y).toBeGreaterThan(delayBounds!.y);
 				expect(
 					await delay.evaluate((column) => {
 						const pane = column.closest('aside[data-slot="map-details"]')!;
@@ -123,7 +132,14 @@ for (const fixture of fixtures) {
 					await page.screenshot({ path: join(evidence, 'stm-en-1440.png') });
 
 				await row.getByRole('link', { name: vehicleId }).click();
-				await expect(selection.getByText(fixture.match, { exact: false })).toBeVisible();
+				const selectedDestination = selection.locator('[data-slot="map-selection-destination"]');
+				const selectedDelay = selection.locator('.selection-delay');
+				await expect(selectedDestination).toContainText(fixture.match);
+				await expect(selectedDelay).toContainText(/11\s*min/u);
+				const selectedDestinationBounds = await selectedDestination.boundingBox();
+				const selectedDelayBounds = await selectedDelay.boundingBox();
+				expect(selectedDestinationBounds!.x).toBeLessThan(selectedDelayBounds!.x);
+				expect(selectedDestinationBounds!.y).toBeGreaterThan(selectedDelayBounds!.y);
 				await expectFits(selection);
 				await expectFits(right);
 				await expectFits(left);
