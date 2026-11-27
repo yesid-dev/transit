@@ -98,7 +98,12 @@ from transit_engine.series import (
 from transit_engine.store import CITY, CheckedDay, Store
 from transit_engine.stretches import MIN_PASSES as MIN_STRETCH_PASSES
 from transit_engine.stretches import Cut as StretchCut
-from transit_engine.stretches import stretch_day, stretch_readings
+from transit_engine.stretches import (
+    month_rollup,
+    remote_stretches,
+    stretch_day,
+    stretch_readings,
+)
 from transit_engine.vehicles import (
     MIN_REPORTING_SILENCE_MINUTES,
     MIN_STABLE_ID_READINGS,
@@ -3548,11 +3553,13 @@ _STRETCH_TIMING = Family(
     limits=Text(
         "Positions arrive about every 20 to 60 s, so a single pass is timed to about 15 s. "
         "The result locates extra time on the stretch. It cannot identify the "
-        "cause, and a slowdown shared by all passes is already part of the clear run.",
+        "cause, and a slowdown shared by all passes is already part of the clear run. A "
+        "stretch with fewer than 20 passes in the chosen period is not measured.",
         "Les positions arrivent environ toutes les 20 à 60 s, donc un passage est "
         "chronométré à environ 15 s près. Le résultat situe le temps supplémentaire "
         "sur le tronçon. Il ne précise pas la cause, et un ralentissement commun à tous les "
-        "passages fait déjà partie du parcours fluide.",
+        "passages fait déjà partie du parcours fluide. Un tronçon qui compte moins de 20 "
+        "passages sur la période choisie n’est pas mesuré.",
     ),
     measures=(
         Measure(
@@ -3594,9 +3601,32 @@ def _stretch_answer(
     cut = StretchCut(hours, question.route_type, lines, question.direction)
     with service_query(store, question.city) as conn:
         window = read_window(conn, store, question, family, selected)
+        remote = None if store.s3_endpoint else remote_stretches(conn)
+        measured = set(window.measured)
+        months: list[dict[str, str]] = []
+        rolled: set[str] = set()
+        if not cut.by_line:
+            for month in sorted({day_key[:7] for day_key in window.included}):
+                rollup = month_rollup(store, question.city, month)
+                if rollup is None:
+                    continue
+                month_paths, rollup_days = rollup
+                keys = {day.isoformat() for day in rollup_days}
+                # A month stands in for its days only when every one of them is in the
+                # window and measured; otherwise its days are read one by one.
+                inside = all(question.start <= day <= question.end for day in rollup_days)
+                if inside and keys <= measured:
+                    months.append(month_paths)
+                    rolled |= keys
         days, trip_days, included = [], [], []
         for index, day_key in enumerate(window.included):
-            paths = stretch_day(conn, store, question.city, date.fromisoformat(day_key))
+            if day_key in rolled:
+                included.append(day_key)
+                continue
+            day = date.fromisoformat(day_key)
+            paths = stretch_day(conn, store, question.city, day)
+            if paths is None and remote is not None:
+                paths = stretch_day(conn, remote, question.city, day)
             if paths is None:
                 # The v12 day exists, but its stretch timing is not published yet.
                 window.measured.remove(day_key)
@@ -3608,7 +3638,7 @@ def _stretch_answer(
             trip_days.append(window.paths[TRIP_DAYS][index])
         window.included = included
         window.missing.sort()
-        readings = stretch_readings(conn, days, cut, trip_days)
+        readings = stretch_readings(conn, days, cut, trip_days, months, question.day_type)
     columns = (
         "from_stop", "to_stop", "pieces", "piece", "length_m",
         "from_lat", "from_lon", "to_lat", "to_lon", "passes",
@@ -3624,9 +3654,9 @@ def _stretch_answer(
         check_query()
         for column in columns:
             fields[column].append(getattr(reading, column))
-        measured = reading.clear_run_seconds is not None
-        fields["value"].append(getattr(reading, value_of) if value_of and measured else None)
-        fields["state"].append("measured" if measured else "too_few_to_judge")
+        timed = reading.clear_run_seconds is not None
+        fields["value"].append(getattr(reading, value_of) if value_of and timed else None)
+        fields["state"].append("measured" if timed else "too_few_to_judge")
     return {
         "measure": question.measure,
         "minimum_sample": family.minimum_sample,

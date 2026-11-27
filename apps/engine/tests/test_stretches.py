@@ -16,6 +16,7 @@ from transit_engine.clean_manifest import SEGMENT_RUNS
 from transit_engine.server import Engine
 from transit_engine.store import Store
 from transit_engine.stretches import receipt_tables, stretch_directory
+from transit_engine.sync_clean import build_month_rollups
 
 ZONE = ZoneInfo("America/Toronto")
 NOON = datetime(2026, 11, 19, 17, tzinfo=UTC)  # 12:00 in Montréal
@@ -309,3 +310,64 @@ def test_the_engine_answers_stretch_layers_over_http(tmp_path: Path) -> None:
     assert answer["measure"] == "stretch_clear_run_speed"
     assert answer["evidence"]["cuts"]["lines"] == ["A"]
     assert _row(answer, ("a", "b", 2, 1))["state"] == "measured"
+
+
+class _NoRemote:
+    """Every input is local in these tests, so the mirror never needs R2."""
+
+    def run(self, *args: str, **_: object) -> bytes:
+        raise AssertionError(f"unexpected R2 call {args}")
+
+
+def _roll_up(store: Store, today: date = date(2026, 12, 5)) -> int:
+    root = Path(store.root)
+    prefix = root / "stretch" / "v13"
+    inventory = {
+        path.relative_to(root).as_posix(): path.stat().st_size
+        for path in prefix.rglob("*")
+        if path.is_file() and "months" not in path.parts
+    }
+    published = {
+        key: ("stm", date.fromisoformat(key.split("/")[3]))
+        for key in inventory
+        if key.endswith("/manifest.json")
+    }
+    return build_month_rollups(_NoRemote(), root, 0, today, inventory, published)  # type: ignore[arg-type]
+
+
+def test_a_month_rollup_answers_exactly_like_its_days(tmp_path: Path) -> None:
+    passes = _passes()
+    store = _store(tmp_path, passes, days=(THURSDAY, FRIDAY))
+    month = {"start": date(2026, 11, 1), "end": date(2026, 11, 30)}
+    by_day = query(store, **LAYER, **month)
+    weekday = query(store, **LAYER, **month, day_type="weekday", route_type=3)
+    assert _roll_up(store) == 1
+    assert _roll_up(store) == 0  # nothing changed, nothing rebuilt
+    folder = Path(store.root) / "stretch" / "v13" / "stm" / "months" / "2026-11"
+    receipt = json.loads((folder / "manifest.json").read_bytes())
+    assert sorted(receipt["days"]) == [str(THURSDAY), str(FRIDAY)]
+    rolled = query(store, **LAYER, **month)
+    for column in ("from_stop", "passes", "clear_run_seconds", "median_seconds",
+                   "total_time_lost_seconds", "clear_run_speed_kmh", "value", "state"):  # fmt: skip
+        assert rolled[column] == by_day[column], column
+    assert rolled["evidence"]["days_included"] == by_day["evidence"]["days_included"]
+    # The rollup alone answers: with the daily summaries hidden, nothing changes.
+    daily = sorted((Path(store.root) / "stretch" / "v13" / "stm").glob("2026-*/stretch_summary-*"))
+    for path in daily:
+        path.rename(path.with_suffix(".hidden"))
+    assert query(store, **LAYER, **month)["passes"] == by_day["passes"]
+    for path in daily:
+        path.with_suffix(".hidden").rename(path)
+    assert _row(rolled, ("a", "b", 2, 1))["passes"] == 2 * 46
+    typed = query(store, **LAYER, **month, day_type="weekday", route_type=3)
+    assert typed["passes"] == weekday["passes"] and typed["value"] == weekday["value"]
+    assert query(store, **LAYER, **month, day_type="sunday")["from_stop"] == []
+    # A window that holds only part of the month reads its days one by one.
+    one = query(store, **LAYER, start=THURSDAY, end=THURSDAY)
+    assert _row(one, ("a", "b", 2, 1))["passes"] == 46
+    # A rollup whose files no longer match its receipt is not used.
+    summary = next(folder.glob("stretch_summary-*.parquet"))
+    summary.write_bytes(summary.read_bytes() + b"x")
+    assert query(store, **LAYER, **month)["passes"] == by_day["passes"]
+    # The current month is never rolled up: its days are still arriving.
+    assert _roll_up(store, today=date(2026, 11, 28)) == 0

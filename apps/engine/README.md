@@ -180,6 +180,13 @@ the reason `stretch_timing_missing`. Without a line or direction cut the answer
 reads the daily summary. With one it reads the passes. Both count passes timed
 from readings at most 90 seconds apart, with a measured speed.
 
+The engine host keeps the last 30 days of stretch days and a rollup of every past
+month's summaries (by day type, hour, pass time and speed). A question without a
+line or direction cut reads a month's rollup when the window holds every day the
+rollup counts; other days are read one by one. With `ENGINE_STRETCH_R2_ROOT` and
+the R2 read key, a day the host no longer keeps is read from R2 with the same
+receipt checks, so older days stay measured.
+
 ## Open-data scorecard
 
 Use `measure=open_data_scorecard` for all seven measures or select one measure ID
@@ -455,6 +462,10 @@ table against its receipt's SHA-256 digest and writing the receipt last. R2 keep
 day. A local stretch day older than 30 days is removed only when R2 holds the same
 receipt byte for byte, R2 lists each table at the receipt's size, and the local
 files still match their digests. Otherwise the day stays and the run reports it.
+It then adds up each past month's daily summaries into one local rollup under
+`stretch/v13/<city>/months/<YYYY-MM>/`, reading each input from the local copy or a
+checked download. A month is rebuilt only when its set of day receipts in R2
+changes, and the current month is not rolled up while its days still arrive.
 
 Install the Bun version in the repository's `.bun-version` at `/opt/transit-engine/bin/bun`
 for the warmer and install `transit-engine-warm.service` along with the updated sync unit.

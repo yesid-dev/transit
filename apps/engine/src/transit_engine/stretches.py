@@ -18,10 +18,12 @@ speed is the speed at the same boundary from the fast end, in whole km/h.
 """
 
 import json
+import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from importlib.metadata import distribution
 from pathlib import Path
 from stat import S_ISREG
 
@@ -122,6 +124,124 @@ def stretch_day(
     return paths
 
 
+MONTH_TABLES = ("stretches", "stretch_summary")
+
+
+def month_directory(store: Store, city: str, month: str) -> str:
+    if not CITY.fullmatch(city) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", month):
+        raise ValueError("Invalid city or month")
+    return f"{store.root.rstrip('/')}/stretch/v{STRETCH_VERSION}/{city}/months/{month}"
+
+
+def month_receipt(
+    payload: bytes, city: str, month: str
+) -> tuple[dict[str, tuple[str, int]], tuple[date, ...]] | None:
+    """A month rollup's table files and the days it adds up, or None."""
+    try:
+        receipt = json.loads(payload)
+    except ValueError:
+        return None
+    if not isinstance(receipt, dict) or (
+        receipt.get("provider"),
+        receipt.get("month"),
+        receipt.get("cleaning_version"),
+    ) != (city, month, STRETCH_VERSION):
+        return None
+    tables, files, days = receipt.get("tables"), receipt.get("files"), receipt.get("days")
+    if (
+        not isinstance(tables, dict)
+        or set(tables) != set(MONTH_TABLES)
+        or not isinstance(files, dict)
+        or not isinstance(days, dict)
+        or not days
+    ):
+        return None
+    try:
+        listed = tuple(sorted(date.fromisoformat(day) for day in days))
+    except (TypeError, ValueError):
+        return None
+    if any(day.strftime("%Y-%m") != month for day in listed):
+        return None
+    named = {}
+    for table, name in tables.items():
+        entry = files.get(name) if isinstance(name, str) else None
+        if not isinstance(entry, dict):
+            return None
+        digest, size = entry.get("sha256"), entry.get("byte_size")
+        if (
+            not isinstance(digest, str)
+            or not _SHA256.fullmatch(digest)
+            or type(size) is not int
+            or size <= 0
+            or name != f"{table}-{digest[:16]}.parquet"
+        ):
+            return None
+        named[table] = (name, size)
+    return named, listed
+
+
+def month_rollup(
+    store: Store, city: str, month: str
+) -> tuple[dict[str, str], tuple[date, ...]] | None:
+    """A local month rollup's paths and days, when its receipt and file sizes check out."""
+    check_query()
+    if store.s3_endpoint:
+        return None  # Only the engine host's mirror builds month rollups.
+    directory = month_directory(store, city, month)
+    try:
+        payload = Path(f"{directory}/manifest.json").read_bytes()
+    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        return None
+    parsed = month_receipt(payload, city, month)
+    if parsed is None:
+        return None
+    named, days = parsed
+    paths = {}
+    for table, (name, size) in named.items():
+        path = Path(f"{directory}/{name}")
+        try:
+            info = path.stat()
+        except (FileNotFoundError, NotADirectoryError):
+            return None
+        if not S_ISREG(info.st_mode) or info.st_size != size:
+            return None
+        paths[table] = path.as_posix()
+    return paths, days
+
+
+def remote_stretches(conn: duckdb.DuckDBPyConnection) -> Store | None:
+    """R2 as a second source for stretch days a local mirror no longer keeps.
+
+    The engine host keeps the latest 30 days. With ``ENGINE_STRETCH_R2_ROOT`` and the
+    R2 read key, older days are read from R2 with the same receipt checks.
+    """
+    root = os.environ.get("ENGINE_STRETCH_R2_ROOT", "")
+    if not root:
+        return None
+    endpoint = os.environ.get("TRANSIT1_R2_ENDPOINT", "").removeprefix("https://").rstrip("/")
+    key = os.environ.get("TRANSIT1_R2_READ_ACCESS_KEY_ID", "")
+    secret = os.environ.get("TRANSIT1_R2_READ_SECRET_ACCESS_KEY", "")
+    if not re.fullmatch(r"s3://[a-z0-9][a-z0-9.-]*", root.rstrip("/")) or not (
+        re.fullmatch(r"[a-z0-9-]+\.r2\.cloudflarestorage\.com", endpoint) and key and secret
+    ):
+        raise ValueError("ENGINE_STRETCH_R2_ROOT needs an s3:// bucket and the R2 read key")
+    try:
+        conn.execute("LOAD httpfs")
+    except duckdb.Error:
+        # Local engines do not install extensions; load the locked wheel's binary.
+        wheel = distribution("duckdb-core-ext-httpfs")
+        binary = next(file for file in wheel.files or () if file.name == "httpfs.duckdb_extension")
+        conn.load_extension(str(wheel.locate_file(binary)))
+    conn.execute(
+        """CREATE OR REPLACE SECRET stretch_r2 (
+            TYPE s3, KEY_ID ?, SECRET ?, ENDPOINT ?, REGION 'auto', URL_STYLE 'path',
+            USE_SSL true, SCOPE ?
+        )""",
+        [key, secret, endpoint, f"{root.rstrip('/')}/stretch/"],
+    )
+    return Store(root.rstrip("/"), s3_endpoint=endpoint)
+
+
 @dataclass(frozen=True)
 class StretchReading:
     from_stop: str
@@ -153,39 +273,64 @@ class Cut:
         return bool(self.lines) or self.direction is not None
 
 
-def _cells_sql(cut: Cut, days: int, trip_days: bool) -> tuple[str, list[object]]:
-    """One row per stretch key, pass seconds and km/h with its pass count."""
-    many = "[" + ", ".join(["?"] * days) + "]"
+def _listed(files: Sequence[str]) -> str:
+    return "[" + ", ".join(["?"] * len(files)) + "]"
+
+
+def _cells_sql(
+    cut: Cut,
+    days: Sequence[dict[str, str]],
+    months: Sequence[dict[str, str]],
+    trip_days: Sequence[str],
+    day_type: str | None,
+) -> tuple[str, list[object]]:
+    """One row per stretch key, pass seconds and km/h with its pass count, and its inputs."""
     if not cut.by_line:
         type_cut = "AND route_type = ?" if cut.route_type is not None else ""
-        sql = f"""
-            SELECT stretch_key, pass_seconds, speed_kmh, sum(passes) AS n
-            FROM read_parquet({many}, hive_partitioning = false)
-            WHERE hour >= ? AND hour < ? {type_cut}
-            GROUP BY ALL
-        """
-        return sql, [*cut.hours, *([cut.route_type] if cut.route_type is not None else [])]
+        typed: list[object] = [
+            *cut.hours,
+            *([cut.route_type] if cut.route_type is not None else []),
+        ]
+        parts: list[str] = []
+        summary: list[object] = []
+        for sources, kind in ((days, None), (months, day_type)):
+            if not sources:
+                continue
+            # A month counts its passes by day type; read_window already chose the days.
+            files = [paths["stretch_summary"] for paths in sources]
+            parts.append(f"""
+                SELECT stretch_key, pass_seconds, speed_kmh, passes
+                FROM read_parquet({_listed(files)}, hive_partitioning = false)
+                WHERE hour >= ? AND hour < ? {type_cut} {"AND day_type = ?" if kind else ""}
+            """)
+            summary += [*files, *typed, *([kind] if kind else [])]
+        union = " UNION ALL ".join(parts)
+        sql = f"""SELECT stretch_key, pass_seconds, speed_kmh, sum(passes) AS n
+            FROM ({union}) GROUP BY ALL"""
+        return sql, summary
+    passes = [paths["stretch_passes"] for paths in days]
+    parameters: list[object] = [*passes]
+    join = ""
+    if cut.route_type is not None:
+        trips = _listed(trip_days)
+        join = f"""JOIN (SELECT DISTINCT service_date, trip_id FROM read_parquet({trips},
+            hive_partitioning = false) WHERE route_type = ?) t USING (service_date, trip_id)"""
+        parameters += [*trip_days, cut.route_type]
     filters = ["p.gap_seconds <= ?", "p.moving_speed_kmh IS NOT NULL", "hour >= ?", "hour < ?"]
-    parameters: list[object] = [MAX_GAP_SECONDS, *cut.hours]
+    parameters += [MAX_GAP_SECONDS, *cut.hours]
     if cut.lines:
         filters.append("p.route_id = ANY(?)")
         parameters.append(list(cut.lines))
     if cut.direction is not None:
         filters.append("p.direction_id = ?")
         parameters.append(cut.direction)
-    join = ""
-    if cut.route_type is not None:
-        assert trip_days
-        join = f"""JOIN (SELECT DISTINCT service_date, trip_id FROM read_parquet({many},
-            hive_partitioning = false) WHERE route_type = ?) t USING (service_date, trip_id)"""
-        filters.append("true")
     sql = f"""
         SELECT s.stretch_key, p.pass_seconds, p.speed_kmh, count(*) AS n
         FROM (
             SELECT *, (epoch(exited_at) - epoch(entered_at))::INTEGER AS pass_seconds,
                 floor(moving_speed_kmh)::INTEGER AS speed_kmh,
                 hour(timezone(getvariable('service_timezone'), entered_at)) AS hour
-            FROM read_parquet({many}, hive_partitioning = false)
+            FROM read_parquet({_listed(passes)}, hive_partitioning = false)
         ) p {join}
         JOIN stretch_keys s USING (from_stop, to_stop, pieces, piece)
         WHERE {" AND ".join(filters)}
@@ -199,12 +344,20 @@ def stretch_readings(
     days: Sequence[dict[str, str]],
     cut: Cut,
     trip_days: Sequence[str] = (),
+    months: Sequence[dict[str, str]] = (),
+    day_type: str | None = None,
 ) -> list[StretchReading]:
-    """Clear-run time, median, time lost and clear-run speed for every stretch seen."""
-    if not days:
+    """Clear-run time, median, time lost and clear-run speed for every stretch seen.
+
+    ``months`` are month rollups of the daily summaries. They serve only questions
+    without a line or direction cut, and never repeat a day given in ``days``.
+    """
+    if not days and not months:
         return []
+    if months and cut.by_line:
+        raise ValueError("Month rollups hold no line or direction")
     check_query()
-    stretch_files = [paths["stretches"] for paths in days]
+    stretch_files = [paths["stretches"] for paths in (*days, *months)]
     # The latest day names each stretch's geometry; keys are the same on every day.
     conn.execute(
         """CREATE OR REPLACE TEMP TABLE stretch_keys AS
@@ -212,34 +365,33 @@ def stretch_readings(
             SELECT stretch_key, from_stop, to_stop, pieces, piece, length_m,
                 from_lat, from_lon, to_lat, to_lon,
                 row_number() OVER (PARTITION BY stretch_key ORDER BY service_date DESC) AS rank
-            FROM read_parquet(?, hive_partitioning = false)
+            FROM read_parquet(?, hive_partitioning = false, union_by_name = true)
         ) WHERE rank = 1""",
         [stretch_files],
     )
-    table = "stretch_passes" if cut.by_line else "stretch_summary"
-    cells, parameters = _cells_sql(cut, len(days), bool(trip_days))
-    sources: list[object] = [paths[table] for paths in days]
-    if cut.by_line and cut.route_type is not None:
-        sources += [*trip_days, cut.route_type]
+    cells, parameters = _cells_sql(cut, days, months, trip_days, day_type)
     rows = conn.execute(
         f"""
         WITH cells AS ({cells}),
         times AS (
             SELECT stretch_key, pass_seconds, sum(n) AS n FROM cells GROUP BY ALL
         ), timed AS (
-            SELECT *, sum(n) OVER (PARTITION BY stretch_key ORDER BY pass_seconds) AS upto,
-                sum(n) OVER (PARTITION BY stretch_key) AS total
+            SELECT *, sum(n) OVER up AS upto, sum(n * pass_seconds) OVER up AS upto_seconds,
+                sum(n) OVER whole AS total, sum(n * pass_seconds) OVER whole AS total_seconds
             FROM times
+            WINDOW up AS (PARTITION BY stretch_key ORDER BY pass_seconds),
+                whole AS (PARTITION BY stretch_key)
         ), clear AS (
+            -- At the clear-run row, the slower passes are the rows after it: their time
+            -- above the clear run is what they add beyond that row's running totals.
             SELECT stretch_key, max(total) AS passes,
                 min(pass_seconds) FILTER (upto >= (total + 9) // 10) AS clear_run,
+                arg_min(
+                    total_seconds - upto_seconds - pass_seconds * (total - upto), pass_seconds
+                ) FILTER (upto >= (total + 9) // 10) AS total_lost,
                 min(pass_seconds) FILTER (upto >= (total + 1) // 2) AS lower_median,
                 min(pass_seconds) FILTER (upto >= (total + 2) // 2) AS upper_median
             FROM timed GROUP BY stretch_key
-        ), lost AS (
-            SELECT t.stretch_key,
-                sum(t.n * greatest(t.pass_seconds - c.clear_run, 0))::BIGINT AS total_lost
-            FROM times t JOIN clear c USING (stretch_key) GROUP BY t.stretch_key
         ), speeds AS (
             SELECT stretch_key, speed_kmh, sum(n) AS n FROM cells GROUP BY ALL
         ), fast AS (
@@ -252,12 +404,12 @@ def stretch_readings(
         )
         SELECT k.from_stop, k.to_stop, k.pieces, k.piece, k.length_m,
             k.from_lat, k.from_lon, k.to_lat, k.to_lon,
-            c.passes, c.clear_run, c.lower_median, c.upper_median, l.total_lost, f.clear_speed
-        FROM clear c JOIN lost l USING (stretch_key) JOIN fast f USING (stretch_key)
+            c.passes, c.clear_run, c.lower_median, c.upper_median, c.total_lost, f.clear_speed
+        FROM clear c JOIN fast f USING (stretch_key)
         JOIN stretch_keys k USING (stretch_key)
         ORDER BY k.from_stop, k.to_stop, k.pieces, k.piece
         """,
-        [*sources, *parameters],
+        parameters,
     ).fetchall()
     readings = []
     for (from_stop, to_stop, pieces, piece, length, from_lat, from_lon, to_lat, to_lon, passes,
