@@ -163,3 +163,28 @@ test('with reduced motion the props appear at once and never slide', async ({ pa
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
 	expect(await progress(page)).toBe(0);
 });
+
+for (const reducedMotion of ['no-preference', 'reduce'] as const) {
+	test(`a footer link reached by keyboard stays in view while the ground opens (${reducedMotion})`, async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion });
+		await page.setViewportSize({ width: 1280, height: 900 });
+		await open(page, 'en');
+		await page.keyboard.press('Home');
+		const house = page
+			.getByTestId('footer-brand')
+			.locator('[data-slot="product-brand"] a[data-slot="wordmark"]');
+		await house.focus();
+		await expect(house).toBeFocused();
+		await expect(props(page)).toHaveAttribute('data-state', 'visible');
+		await expect(house).toBeInViewport({ ratio: 1 });
+		expect(
+			await house.evaluate((link) => {
+				const { left, top, width, height } = link.getBoundingClientRect();
+				const hit = document.elementFromPoint(left + width / 2, top + height / 2);
+				return hit === link || link.contains(hit);
+			}),
+		).toBe(true);
+	});
+}

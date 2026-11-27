@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keepFooterFocusInView } from './footerFocus.ts';
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { NavigationLifecycle } from '@yesid/ui/brand';
 	import { setContext, type Snippet } from 'svelte';
@@ -178,7 +179,9 @@
 {/snippet}
 
 {#snippet streamingFooter()}
-	<div class="streaming-footer">{@render footer?.()}</div>
+	<div class="streaming-footer" onfocusin={(event) => keepFooterFocusInView(event)}>
+		{@render footer?.()}
+	</div>
 {/snippet}
 
 <div
