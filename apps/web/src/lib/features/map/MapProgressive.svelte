@@ -9,6 +9,8 @@
 	export interface ProgressiveMapHeroProps {
 		onready?: () => void;
 		onidle?: () => void;
+		oninitialdata?: (settled: boolean) => void;
+		controlsVisible?: boolean;
 		onrecovering?: () => void;
 		onfailure?: (failure: ProgressiveMapFailure | null) => void;
 	}
@@ -27,6 +29,10 @@
 	import { mapCopy } from './map.copy';
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { mapSourceCreditContext } from '#lib/site/mapRecordSourceDate.ts';
+	import {
+		mapControlsVisibilityContext,
+		type RegisterMapControlsVisibility,
+	} from '#lib/components/shell/mapControlsVisibility.ts';
 
 	interface Props {
 		importHero?: () => Promise<ProgressiveMapHeroModule>;
@@ -68,6 +74,10 @@
 
 	let root = $state<HTMLDivElement | null>(null);
 	let phase = $state<ProgressiveState>('static');
+	const registerControls = getContext<RegisterMapControlsVisibility | undefined>(
+		mapControlsVisibilityContext,
+	);
+	$effect(() => registerControls?.(() => phase === 'ready'));
 	let LiveMap = $state.raw<ProgressiveMapHeroModule['default'] | null>(null);
 	let importPending: Promise<void> | null = null;
 	let liveFailure: ProgressiveMapFailure | null = null;
@@ -75,6 +85,7 @@
 	let attempt = $state(0);
 	let readyTime = $state<number | null>(null);
 	let idleTime = $state<number | null>(null);
+	let initialDataSettled = $state(false);
 	let idleAttempt = 0;
 	let alive = true;
 
@@ -142,9 +153,12 @@
 		if (idleAttempt === attempt || phase !== 'booting' || readyTime === null) return;
 		idleAttempt = attempt;
 		idleTime = clock();
-		phase = 'ready';
 		publish('transit:maplibre-idle', idleTime);
 	}
+
+	$effect(() => {
+		if (phase === 'booting' && idleTime !== null && initialDataSettled) phase = 'ready';
+	});
 
 	function handleRecovering(): void {
 		if (!LiveMap || phase === 'failed') return;
@@ -189,6 +203,7 @@
 
 <div
 	class="map-progressive"
+	data-ripple-exempt
 	data-testid="map-progressive"
 	data-map-progressive-state={phase}
 	data-map-attempt={attempt}
@@ -208,6 +223,8 @@
 			<LiveMap
 				onready={handleReady}
 				onidle={handleIdle}
+				oninitialdata={(settled) => (initialDataSettled = settled)}
+				controlsVisible={phase === 'ready'}
 				onrecovering={handleRecovering}
 				onfailure={handleFailure}
 			/>
@@ -324,11 +341,13 @@
 
 	.map-progressive-live {
 		z-index: 1;
+		visibility: hidden;
 		opacity: 0;
 	}
 
 	.map-progressive-live[data-visible='true'] {
 		z-index: 3;
+		visibility: visible;
 		opacity: 1;
 	}
 

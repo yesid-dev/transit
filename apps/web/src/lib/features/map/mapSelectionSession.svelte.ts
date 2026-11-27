@@ -393,6 +393,9 @@ export function createMapSelectionSession(options: MapSelectionSessionOptions) {
 		});
 	}
 	return {
+		get stopsSettled() {
+			return stops.settled;
+		},
 		get selected() {
 			return selected;
 		},

@@ -216,7 +216,7 @@ describe('MapProgressive automatic live boot', () => {
 		expect(importer).toHaveBeenCalledOnce();
 	});
 
-	it('keeps the poster mounted and the live layer inert until first MapLibre idle', async () => {
+	it('keeps the poster mounted and the live layer inert until the map and first data settle', async () => {
 		const pending = deferred<HeroModule>();
 		const view = render(MapProgressive, { props: { importHero: () => pending.promise } });
 
@@ -233,6 +233,11 @@ describe('MapProgressive automatic live boot', () => {
 		await fireEvent.click(view.getByTestId('progressive-stub-ready'));
 		expect(view.getByTestId('map-progressive-poster')).toHaveAttribute('data-visible', 'true');
 		expect(view.getByTestId('map-progressive-live')).toHaveAttribute('aria-hidden', 'true');
+		expect(view.getByTestId('map-progressive-live')).toHaveAttribute('inert');
+
+		await fireEvent.click(view.getByTestId('progressive-stub-idle-before-data'));
+		expect(view.getByTestId('map-progressive')).toHaveAttribute('data-map-idle-time');
+		expect(view.getByTestId('map-progressive-poster')).toHaveAttribute('data-visible', 'true');
 		expect(view.getByTestId('map-progressive-live')).toHaveAttribute('inert');
 
 		await fireEvent.click(view.getByTestId('progressive-stub-idle'));

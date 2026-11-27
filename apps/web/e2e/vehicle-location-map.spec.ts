@@ -110,11 +110,31 @@ for (const [width, height, locale, scheme] of [
 		await page.emulateMedia({ colorScheme: scheme });
 		await page.addInitScript((value) => localStorage.setItem('theme', value), scheme);
 		await livePosition(page);
+		let releaseWorker!: () => void;
+		const workerGate = new Promise<void>((resolve) => (releaseWorker = resolve));
+		if (width === 768) {
+			await page.route(/\/maplibre-gl-worker[^/]*\.m?js(?:\?|$)/, async (route) => {
+				await workerGate;
+				await route.continue();
+			});
+		}
 		const prefix = locale === 'fr' ? '/fr' : '';
 		const shapes = page.waitForResponse((response) => scheduleMap.test(response.url()));
-		await page.goto(prefix + path);
+		await page.goto(prefix + path, { waitUntil: 'domcontentloaded' });
 		const preview = page.locator(previewSlot);
 		await preview.scrollIntoViewIfNeeded();
+		if (width === 768) {
+			try {
+				const attribution = preview.locator('.maplibregl-ctrl-attrib-button');
+				await expect(attribution).toBeAttached();
+				await expect(attribution).toBeHidden();
+				await expect(preview.locator('.vehicle-map-runtime')).toHaveAttribute('inert', '');
+				await expect(preview.getByRole('status')).toHaveText('Loading the map…');
+				await expect(preview.locator('[data-slot="vehicle-map-link"]')).toHaveCount(0);
+			} finally {
+				releaseWorker();
+			}
+		}
 		await expect(preview).toHaveAttribute('data-ready', 'true');
 		await expect(preview.locator('[data-slot="vehicle-overlay"]')).toBeVisible();
 		await expect(preview.locator('.vehicle-map-stop-name')).toHaveCount(2);

@@ -59,6 +59,7 @@
 		routes: readonly RouteIndexEntry[];
 		onscope: (line: string, direction: string) => void;
 		onsourcedate: (date: string | null) => void;
+		ondata?: (settled: boolean) => void;
 		reportCamera?: MapReportCamera | null;
 		oncount?: (count: number | null) => void;
 		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
@@ -77,6 +78,7 @@
 		routes,
 		onscope,
 		onsourcedate,
+		ondata,
 		reportCamera,
 		oncount,
 		children,
@@ -112,6 +114,9 @@
 	);
 	let routeResult = $state.raw<{ id: string; route: RouteFile | null } | null>(null);
 	const route = $derived(routeResult?.id === line ? routeResult.route : null);
+	$effect(() => {
+		ondata?.(!pending && (layer !== 'corridors' || !line || routeResult?.id === line));
+	});
 	let selectedId = $state<string | null>(null);
 	let search = $state('');
 	let searchInput = $state<HTMLInputElement | null>(null);

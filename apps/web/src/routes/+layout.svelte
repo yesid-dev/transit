@@ -350,7 +350,24 @@
 			providers: data.providers.map((provider) => provider.id),
 			context: () => ({ locale, provider: data.providerId }),
 		});
-		const disposeRipple = initGlobalRipple({ exclude: '[data-ripple-exempt]' });
+		const disposeRipple = initGlobalRipple({
+			exclude: [
+				'[data-slot="card"]',
+				'[data-slot="record-card"]',
+				'[data-slot="chart-legend"]',
+				'[data-slot="hour-grid"]',
+				'[data-slot="day-strip"]',
+				'[data-slot="band-bar"]',
+				'[data-slot="range-mark"]',
+				'[data-slot="stop-ladder"]',
+				'[data-slot="severity-bar"]',
+				'[data-slot="still-map"]',
+				'[data-full-viewport="true"] [data-slot="surface-rail"]',
+				// The map's kit comboboxes portal their listboxes outside the map shell.
+				'body:has([data-map-progressive-state]) [data-slot="combobox-content"]',
+				'[data-slot="sheet-overlay"]:has(+ [data-map-in-view-sheet])',
+			].join(', '),
+		});
 
 		const disposeVitals =
 			env.PUBLIC_VITALS_ENABLED === 'true'
@@ -437,6 +454,7 @@
 					? 'var(--map-touch-controls-clearance)'
 					: undefined}
 				class="flex w-full flex-col {isFullBleed ? 'map-flow overflow-hidden' : 'page-flow'}"
+				data-ripple-exempt={isFullBleed ? '' : undefined}
 			>
 				{#if data.loadSnapshots && !v1 && !dataIndependentRoute}
 					<div class="mx-auto flex h-full max-w-2xl flex-col items-center justify-center gap-4 p-6">
@@ -460,6 +478,7 @@
 					class="map-source-footer bg-card px-3 py-2 text-center text-xs text-muted-foreground"
 					class:dated-map-credit={datedMapCredit}
 					data-slot="map-source-footer"
+					data-ripple-exempt
 					bind:clientHeight={mapCreditHeight}
 				>
 					<Separator decorative class="absolute inset-x-0 top-0" />

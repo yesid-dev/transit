@@ -115,11 +115,20 @@
 	interface Props {
 		onready?: () => void;
 		onidle?: () => void;
+		oninitialdata?: (settled: boolean) => void;
+		controlsVisible?: boolean;
 		onrecovering?: () => void;
 		onfailure?: (failure: MapStageFailure | null) => void;
 	}
 
-	let { onready, onidle, onrecovering, onfailure }: Props = $props();
+	let {
+		onready,
+		onidle,
+		oninitialdata,
+		controlsVisible = true,
+		onrecovering,
+		onfailure,
+	}: Props = $props();
 	const readRecordNotice = recordPeriodNoticeReader();
 	const recordNotice = $derived(readRecordNotice());
 
@@ -322,6 +331,16 @@
 	const recordLayer = $derived(mapLayerFor(recordUrl.searchParams));
 	const isRecordLayer = $derived(recordLayer !== 'live');
 	let recordSourceDate = $state<string | null>(null);
+	let recordDataSettled = $state(false);
+	$effect(() => {
+		const { phase, lastGoodAt, error } = live.familyStates.vehicles;
+		oninitialdata?.(
+			session.stopsSettled &&
+				(isRecordLayer
+					? recordDataSettled
+					: phase === 'ready' || phase === 'failed' || lastGoodAt !== null || Boolean(error)),
+		);
+	});
 	const publishRecordSourceDate = getContext<((date: string | null) => void) | undefined>(
 		mapRecordSourceDateContext,
 	);
@@ -1440,6 +1459,8 @@
 				<span class="peek-controls-label">{frameCopy[locale].controls}</span>
 			</Button>
 		</div>
+	{/if}
+	{#if !wide && controlsVisible}
 		<Sheet
 			open={inViewOpen || detailOpen}
 			onOpenChange={(open) => {
@@ -1537,6 +1558,7 @@
 	<span class="map-layout-marker" aria-hidden="true" bind:clientWidth={remWidth}></span>
 	<MapRecordPanel
 		onsourcedate={(date) => (recordSourceDate = date)}
+		ondata={(settled) => (recordDataSettled = settled)}
 		oncount={(count) => (recordCount = count)}
 		{reportCamera}
 		{map}

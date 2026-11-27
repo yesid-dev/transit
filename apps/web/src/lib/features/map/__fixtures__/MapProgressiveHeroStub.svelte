@@ -7,11 +7,12 @@
 	interface Props {
 		onready?: () => void;
 		onidle?: () => void;
+		oninitialdata?: (settled: boolean) => void;
 		onrecovering?: () => void;
 		onfailure?: (failure: Failure | null) => void;
 	}
 
-	let { onready, onidle, onrecovering, onfailure }: Props = $props();
+	let { onready, onidle, oninitialdata, onrecovering, onfailure }: Props = $props();
 	let retryCount = $state(0);
 
 	function fail(): void {
@@ -35,7 +36,17 @@
 	<button type="button" data-testid="progressive-stub-ready" onclick={() => onready?.()}
 		>ready</button
 	>
-	<button type="button" data-testid="progressive-stub-idle" onclick={() => onidle?.()}>idle</button>
+	<button
+		type="button"
+		data-testid="progressive-stub-idle"
+		onclick={() => {
+			oninitialdata?.(true);
+			onidle?.();
+		}}>idle</button
+	>
+	<button type="button" data-testid="progressive-stub-idle-before-data" onclick={() => onidle?.()}>
+		idle before data
+	</button>
 	<button type="button" data-testid="progressive-stub-recovering" onclick={() => onrecovering?.()}>
 		recovering
 	</button>

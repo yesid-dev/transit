@@ -9,7 +9,7 @@
 	let narrow = $state(0);
 </script>
 
-<div class="record-bands">
+<div class="record-bands" data-ripple-exempt>
 	<div class="measure" aria-hidden="true" bind:clientWidth={narrow}></div>
 	<BandBar {label} {bands} {absent} rows={!narrow} />
 	{#if narrow || !hasTrack}
