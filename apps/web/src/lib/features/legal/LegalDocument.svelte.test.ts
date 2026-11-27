@@ -131,8 +131,8 @@ describe('LegalDocument', () => {
 	});
 
 	it.each([
-		['en', 'Pause live updates', 'waits for Enter', '26 November 2026'],
-		['fr', 'Suspendre les mises à jour', 'attend la touche Entrée', '26 novembre 2026'],
+		['en', 'Pause live updates', 'until you press Enter', '26 November 2026'],
+		['fr', 'Suspendre les mises à jour', 'avant la touche Entrée', '26 novembre 2026'],
 	] as const)(
 		'names the live pause and the city picker on the %s Accessibility page',
 		(locale, pause, picker, date) => {
