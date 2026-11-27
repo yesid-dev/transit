@@ -60,10 +60,14 @@ export async function openMapInView(page: Page) {
 	const trigger = page.locator('.map-in-view-button');
 	if (!(await trigger.isVisible())) return;
 	const sheet = page.locator('[data-map-in-view-sheet]');
-	if (await sheet.isVisible()) {
-		const list = sheet.getByRole('tab').first();
+	const openSheet = sheet.and(page.locator('[data-state="open"]'));
+	if (await openSheet.isVisible()) {
+		const list = openSheet.getByRole('tab').first();
 		if ((await list.getAttribute('aria-selected')) !== 'true') await list.click();
-	} else await trigger.click();
+	} else {
+		await expect(sheet).toBeHidden();
+		await trigger.click();
+	}
 }
 
 export async function closeMapInView(page: Page) {
