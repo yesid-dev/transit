@@ -4,9 +4,8 @@
 	import { setContext, type Snippet } from 'svelte';
 	import { DEFAULT_LOCALE, getLocale, type Locale } from '#lib/i18n/index.ts';
 	import type { SearchList } from '#lib/search/transitSearch.ts';
-	import { AppFrame, AnnouncementBanner, Surface, type SurfaceRailContext } from '@yesid/ui/layout';
+	import { AppFrame, AnnouncementBanner, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
-	import { formatDateKey } from '#lib/utils/time.ts';
 	import { frameClock } from '#lib/site/frameState.ts';
 	import type { PublicCity, PublicProvider } from '#lib/v1/schemas/providers.ts';
 	import NavPill from './NavPill.svelte';
@@ -22,8 +21,6 @@
 		recordEndNotice,
 	} from './frameControlsState.ts';
 	import { provideRecordPeriodNotice } from '#lib/site/recordPeriodNoticeContext.ts';
-	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
-	import StateMark from '#lib/features/record/StateMark.svelte';
 	import RecordPatience from '#lib/features/record/RecordPatience.svelte';
 
 	interface AppShellProps {
@@ -35,7 +32,6 @@
 		url: URL;
 		providerId?: string;
 		provider: PublicCity | null;
-		screenTitle: string;
 		providers?: PublicProvider[];
 		discoveryError?: boolean;
 		search?: string;
@@ -56,7 +52,6 @@
 		url,
 		providerId,
 		provider,
-		screenTitle,
 		providers,
 		discoveryError,
 		search = $bindable(''),
@@ -172,19 +167,7 @@
 				}
 			: undefined}
 	>
-		{#if frame.waitingForYesterday && (frame.usesFrameRecord || frame.map)}
-			<Surface>
-				<ScreenTitle title={screenTitle} />
-				<div class="flex items-baseline gap-2" data-slot="screen-state">
-					<StateMark state="not_measured" {locale} hiddenLabel />
-					<p data-slot="record-yesterday-pending">
-						{copy.waitingForDay(
-							formatDateKey(frame.waitingForYesterday, locale, false, 'day-first', 'long'),
-						)}
-					</p>
-				</div>
-			</Surface>
-		{:else if fullViewport}
+		{#if fullViewport}
 			{@render main()}
 		{:else}
 			<div class="streaming-main">

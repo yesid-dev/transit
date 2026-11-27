@@ -420,7 +420,6 @@
 		url={currentMirrorUrl(new URL(page.url.href))}
 		providerId={data.providerId}
 		provider={data.provider}
-		screenTitle={headTitle}
 		providers={data.providers}
 		discoveryError={data.discoveryError}
 		bind:search={topSearch}

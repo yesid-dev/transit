@@ -153,7 +153,7 @@ export function unpublishedRecordDates(
 		: null;
 }
 
-export function unpublishedYesterday(period: FrameState['period'], { recordThrough }: FrameClock) {
+function unpublishedYesterday(period: FrameState['period'], { recordThrough }: FrameClock) {
 	return recordThrough &&
 		period?.preset === 'yesterday' &&
 		period.from === period.to &&
@@ -162,8 +162,8 @@ export function unpublishedYesterday(period: FrameState['period'], { recordThrou
 		: null;
 }
 
-/** Daily reports keep Yesterday selected while showing the latest available day. */
-export function dailyReportPeriod(period: FrameState['period'], clock: FrameClock) {
+/** Record readings keep Yesterday selected while showing the latest available day. */
+export function recordAnswerPeriod(period: FrameState['period'], clock: FrameClock) {
 	const through = lastBuiltDay(clock);
 	return period && through && unpublishedYesterday(period, clock)
 		? { ...period, from: through, to: through }
@@ -177,10 +177,9 @@ export function receiptFrameParams(params: URLSearchParams, clock: FrameClock) {
 	return unpublishedRecordDates(legacy, clock) ? legacy : params;
 }
 
-/** Keep the selected dates in the frame, but avoid question work for a pending Yesterday. */
 export function parseAnswerFrameState(params: URLSearchParams, clock: FrameClock): FrameState {
 	const frame = parseFrameState(params, clock);
-	return unpublishedYesterday(frame.period, clock) ? { ...frame, period: null } : frame;
+	return { ...frame, period: recordAnswerPeriod(frame.period, clock) };
 }
 
 /** Keep the frame separate from the date, mode and range filters on existing pages. */

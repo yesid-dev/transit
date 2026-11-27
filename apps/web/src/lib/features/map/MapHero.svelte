@@ -38,7 +38,7 @@
 	import MapHoverPeek from './MapHoverPeek.svelte';
 	import { mapLegend, railLegendName } from './mapLegend';
 	import { peekRepeatsDetail } from './mapHoverPeek';
-	import { frameClock, parseFrameState } from '#lib/site/frameState.ts';
+	import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
 	import { scheduleTerminals, type RecordMapLayer } from './recordMap';
@@ -305,7 +305,7 @@
 		{ key: 'corridors', label: 'Corridors' },
 	];
 	const recordPeriod = $derived(
-		parseFrameState(
+		parseAnswerFrameState(
 			recordUrl.searchParams,
 			frameClock(v1.provider ?? (timeZone ? { timezone: timeZone } : null)),
 		).period,

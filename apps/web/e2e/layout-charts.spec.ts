@@ -13,9 +13,10 @@ for (const provider of ['stm', 'octranspo'])
 					url.pathname = `/__layout/fresh${url.pathname.replace('/octranspo/', '/stm/')}`;
 					await route.fulfill({ response: await route.fetch({ url: url.href }) });
 				});
-				await page.goto(`${localizeHref(path, locale)}?provider=${provider}`, {
-					waitUntil: 'networkidle',
-				});
+				await page.goto(
+					localizeHref(path, locale, provider) + '&recordFrom=2026-11-20&recordTo=2026-11-22',
+					{ waitUntil: 'networkidle' },
+				);
 				for (const frame of await page.locator('[data-slot="chart-frame"]').all()) {
 					if (!(await frame.isVisible())) continue;
 					await frame.scrollIntoViewIfNeeded();

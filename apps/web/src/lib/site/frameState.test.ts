@@ -3,6 +3,7 @@ import {
 	carryFrameState,
 	frameHref,
 	frameClock,
+	parseAnswerFrameState,
 	parseFrameState,
 	periodError,
 	presetPeriod,
@@ -180,4 +181,21 @@ it('waits for the first complete day of this month and caps last month at the re
 		from: '2026-11-01',
 		to: '2026-11-29',
 	});
+});
+
+it('answers unpublished Yesterday with the last built day while preserving the requested dates', () => {
+	const params = url(
+		'/lines?period=yesterday&recordFrom=2026-11-26&recordTo=2026-11-26',
+	).searchParams;
+	const pending = clock('2026-11-27', '2026-11-25');
+	const requested = { preset: 'yesterday', from: '2026-11-26', to: '2026-11-26' };
+	expect(parseFrameState(params, pending).period).toEqual(requested);
+	expect(parseAnswerFrameState(params, pending).period).toEqual({
+		preset: 'yesterday',
+		from: '2026-11-25',
+		to: '2026-11-25',
+	});
+	for (const through of ['2026-11-26', null]) {
+		expect(parseAnswerFrameState(params, clock('2026-11-27', through)).period).toEqual(requested);
+	}
 });

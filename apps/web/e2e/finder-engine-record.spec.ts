@@ -460,7 +460,7 @@ for (const locale of ['en', 'fr'] as const) {
 	}) => {
 		for (const width of [320, 390]) {
 			await page.setViewportSize({ width, height: 900 });
-			await page.goto(`${prefix}/stops?provider=stm`);
+			await page.goto(`${prefix}/stops?${query}`);
 			const rows = page.locator('#stop-results tbody tr');
 			await expect(rows).toHaveCount(20);
 			// Names of one length lay out the same way: the same row height.
