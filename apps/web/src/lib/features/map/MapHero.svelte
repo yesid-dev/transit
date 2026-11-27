@@ -1335,7 +1335,7 @@
 		<MapReadingFields
 			store={filters}
 			routes={session.routesIndex}
-			provider={manifest.provider}
+			provider={page.data.provider}
 			direction={isRecordLayer && recordDirection === '0'
 				? 0
 				: isRecordLayer && recordDirection === '1'

@@ -8,6 +8,7 @@
 	} from '#lib/filters/mapReadings.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
+	import { railLegendName } from './mapLegend';
 
 	let {
 		store,
@@ -19,7 +20,7 @@
 	}: {
 		store: FilterStore;
 		routes: readonly RouteIndexEntry[];
-		provider: string;
+		provider: Parameters<typeof railLegendName>[1];
 		locale: Locale;
 		direction?: 0 | 1;
 		onDirection: (direction: 0 | 1 | undefined) => void;
@@ -39,11 +40,20 @@
 	const timeValue = $derived(band?.id ?? (timeChoice ? 'custom' : ''));
 	const range = $derived(mapReadingHours(timeChoice) ?? ([0, 24] as const));
 	const hourChoices = Array.from({ length: 25 }, (_, hour) => hour);
+	const lightRail = $derived(
+		railLegendName(
+			locale,
+			provider,
+			routes.filter(({ type }) => type === 0),
+		),
+	);
 
 	function typeLabel(type: number): string {
 		switch (type) {
 			case 0:
-				return provider === 'octranspo' ? 'O-Train' : tr('Tram', 'Tramway');
+				return lightRail
+					? lightRail[0].toLocaleUpperCase(locale) + lightRail.slice(1)
+					: tr('Tram', 'Tramway');
 			case 1:
 				return 'Métro';
 			case 2:

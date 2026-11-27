@@ -114,7 +114,9 @@ for (const provider of providers) {
 				});
 				await expect(type).toHaveValue('3');
 				await expect(
-					type.locator('option', { hasText: provider.id === 'stm' ? 'Métro' : 'O-Train' }),
+					type.locator('option', {
+						hasText: provider.id === 'stm' ? 'Métro' : fr ? 'Train léger' : 'Light rail',
+					}),
 				).toHaveCount(1);
 				await expect(time).toHaveValue('custom');
 				await expect(
