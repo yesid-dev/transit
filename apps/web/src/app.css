@@ -203,3 +203,64 @@ body {
 	min-inline-size: 0;
 	margin-inline: auto;
 }
+
+@media print {
+	/* Match the kit's :root:not([data-theme]) specificity in its device-theme rules. */
+	:root:root {
+		color-scheme: only light;
+		--background: #fff;
+		--foreground: #131923;
+		--card: #fff;
+		--muted: #e4e9f3;
+		--skeleton: #dce2ec;
+		--muted-foreground: #545e75;
+		--secondary-foreground: #454f63;
+		--primary: #985000;
+		--accent-text: #815d00;
+		--accent-surface: #faeecc;
+		--border: #b5becd;
+		--border-subtle: #c2cbd8;
+		--shadow-card: none;
+		--dataviz-status-early: #1f6f9c;
+		--dataviz-status-on-time: #131923;
+		--dataviz-status-late: #c62828;
+		--dataviz-status-severe: #c62828;
+		--dataviz-status-unknown: #6b6b6b;
+	}
+
+	[data-slot="app-shell"] :is([data-slot="app-frame-chrome"], [data-slot="surface-rail"], [data-slot="surface-rail-mobile"], [data-slot="record-patience"], [data-slot="page-section-boundary"], [data-slot="footer"], [data-testid="toc-pill"], button:not([aria-controls])),
+	[data-slot="app-shell"] [role="dialog"] {
+		display: none !important;
+	}
+
+	[data-slot="app-shell"]:is(.circuit-grid),
+	[data-slot="app-shell"] :is([data-slot="app-frame"], .app-frame-body, #main-flow, #main) {
+		display: block;
+		min-height: 0;
+		overflow: visible;
+		background-image: none;
+		padding: 0;
+	}
+
+	[data-record-disclosure] button,
+	[data-slot="record-card"] button[aria-controls] {
+		min-height: 0;
+		pointer-events: none;
+	}
+	[data-record-disclosure] button svg,
+	[data-slot="record-card"] button[aria-controls] svg {
+		display: none;
+	}
+	[data-slot="app-shell"] [data-slot="collapsible-content"] {
+		display: grid !important;
+		grid-template-rows: 1fr;
+		content-visibility: visible;
+		opacity: 1;
+	}
+	[data-slot="app-shell"] [data-slot="collapsible-content"] > div {
+		overflow: visible;
+	}
+	[data-slot="route-plate"], [data-slot="punctuality-bar"] {
+		print-color-adjust: exact;
+	}
+}

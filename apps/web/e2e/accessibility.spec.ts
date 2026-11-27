@@ -266,7 +266,11 @@ for (const locale of PUBLISHED_LOCALES) {
 			await page.goto(path.startsWith('/vehicle/') ? localizeHref(path, locale, 'stm') : url, {
 				waitUntil: 'networkidle',
 			});
+			const main = page.getByRole('main');
+			const skip = page.getByRole('link', { name: navPillCopy[locale].skipToContent, exact: true });
 			const announcement = page.locator('[data-slot="announcement-banner"]');
+			const search = path.startsWith('/search?');
+			if (search) await expect(page.locator('body')).toBeFocused();
 			if (await announcement.isVisible()) {
 				await page.keyboard.press('Tab');
 				await expect(announcement.getByRole('link')).toBeFocused();
@@ -274,14 +278,15 @@ for (const locale of PUBLISHED_LOCALES) {
 				await expect(announcement.getByRole('button')).toBeFocused();
 			}
 			await page.keyboard.press('Tab');
-			await expect(page.locator(':focus')).toHaveAttribute('href', '#main');
-			await expect(page.locator(':focus')).toHaveAccessibleName(navPillCopy[locale].skipToContent);
+			await expect(skip).toBeFocused();
+			await expect(skip).toHaveAttribute('href', '#main');
 			await page.keyboard.press('Enter');
-			await expect(page.getByRole('main')).toBeFocused();
+			await expect(main).toBeFocused();
 			await page.keyboard.press('Tab');
-			await expect(page.getByRole('main').locator(':focus')).toHaveCount(1);
+			if (search) await expect(main.getByRole('textbox')).toBeFocused();
+			else await expect(main.locator(':focus')).toHaveCount(1);
 			await expect(page.getByRole('banner')).toHaveCount(1);
-			await expect(page.getByRole('main')).toHaveAttribute('id', 'main');
+			await expect(main).toHaveAttribute('id', 'main');
 			const footer = page.getByRole('contentinfo');
 			if (path === '/map' && page.viewportSize()!.width < 1024) {
 				await expect(page.locator('[data-slot="map-source-footer"]')).toBeHidden();

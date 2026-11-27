@@ -90,7 +90,13 @@
 	import { SiteFooter, SiteRoot } from '@yesid/ui/layout';
 	import { ConstructionProps } from '@yesid/ui/brand';
 	import { desktop } from '@yesid/ui/state';
-	import { NAV_GROUPS, visibleNav, YESID_HOUSE_LINK, mainLandmarkLabel } from '#lib/content/nav.ts';
+	import {
+		NAV_GROUPS,
+		visibleNav,
+		YESID_HOUSE_LINK,
+		SEARCH_LABEL,
+		mainLandmarkLabel,
+	} from '#lib/content/nav.ts';
 	import { legalCopy } from '#lib/features/legal/legal.copy.ts';
 	import { searchQueryState } from '#lib/search/transitSearch.ts';
 	import type { LayoutData } from './$types';
@@ -194,7 +200,13 @@
 	const footerGroups = $derived(
 		[
 			...NAV_GROUPS.map((group) => ({
-				label: group.key === 'reports' ? footerWords.reportsLabel : group.label[locale],
+				label:
+					group.key === 'reports'
+						? footerWords.reportsLabel
+						: group.key === 'about'
+							? footerWords.dataLabel
+							: group.label[locale],
+				key: group.key,
 				links: visibleNav({
 					alerts: data.provider ? providerHasAlerts(data.provider) : null,
 				}).filter((item) => item.group === group.key),
@@ -204,10 +216,16 @@
 			...group,
 			links: [
 				...group.links,
-				...(group.label === NAV_GROUPS[3].label[locale] ? [YESID_HOUSE_LINK] : []),
+				...('key' in group && group.key === 'explore'
+					? [{ href: '/search', label: SEARCH_LABEL }]
+					: []),
+				...('key' in group && group.key === 'about' ? [YESID_HOUSE_LINK] : []),
 			].map((link) => ({
 				href: localizeHref(link.href, locale, data.providerId),
-				label: link.label[locale],
+				label:
+					footerWords.shortLinks[link.href as keyof typeof footerWords.shortLinks] ??
+					link.label[locale],
+				...(link.href === '/rankings?kind=departure' ? { ariaLabel: link.label[locale] } : {}),
 				...(link === YESID_HOUSE_LINK
 					? { external: true, ariaLabel: `${link.label[locale]} ${navPillCopy[locale].newTab}` }
 					: {}),

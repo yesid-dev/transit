@@ -97,7 +97,7 @@ test.describe('Daily report print', () => {
 			await page.emulateMedia({ media: 'print' });
 			await expect(dates).toBeVisible();
 			await expect(preview).toBeHidden();
-			await expect(main.locator('.daily-report')).toHaveCSS('print-color-adjust', 'exact');
+			await expect(main.locator('.daily-report')).toHaveCSS('color', 'rgb(19, 25, 35)');
 			await expect(page.getByRole('banner')).toBeHidden();
 			await expect(actions).toBeHidden();
 			const rankingsBox = (await main.locator('#lines > [data-slot="card"]').boundingBox())!;

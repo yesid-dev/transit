@@ -18,7 +18,11 @@ it.each(['en', 'fr'] as const)(
 		const groups = within(footer).getAllByRole('navigation');
 		const labels = [
 			...NAV_GROUPS.map((group) =>
-				group.key === 'reports' ? (locale === 'en' ? 'Reports' : 'Rapports') : group.label[locale],
+				group.key === 'reports'
+					? footerCopy[locale].reportsLabel
+					: group.key === 'about'
+						? footerCopy[locale].dataLabel
+						: group.label[locale],
 			),
 			footerCopy[locale].infoLabel,
 		];

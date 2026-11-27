@@ -13,7 +13,6 @@
 	import { createResource } from '#lib/v1/resource.svelte.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
-	import StateMark from '#lib/features/record/StateMark.svelte';
 	import SearchResultsList from '#lib/components/shell/SearchResultsList.svelte';
 	import { headerSearchCopy } from '#lib/components/shell/headerSearch.copy.ts';
 	import { mirrorSearchParams } from '#lib/site/urlMirror.ts';
@@ -40,6 +39,7 @@
 	const locale = $derived(getLocale());
 	const localizeHref = getLocalizeHref();
 	const t = $derived(copy[locale]);
+	let field = $state<HTMLDivElement>();
 	const words = $derived(headerSearchCopy[locale]);
 	const labels = $derived(provider?.labels[locale]);
 	const subtitle = $derived(labels && `${labels.operator}, ${labels.city}`);
@@ -65,10 +65,18 @@
 	const text = $derived(query.trim());
 	const queryState = $derived(searchQueryState(text));
 	const index = createResource((signal) => loadSearchIndex(providerId, signal), {
-		enabled: () => queryState === 'ready',
+		enabled: () => providerId !== '',
 		key: () => providerId,
 	});
 	const pages = $derived(sitePages({ alerts: provider ? providerHasAlerts(provider) : null }));
+	const examples = $derived.by(() => {
+		const schedule = index.error ? null : index.data?.schedule;
+		const line = schedule?.routes.find(({ short }) => /^\d+$/.test(short));
+		const stop = schedule?.stops.find(({ code }) => code && /^\d{3,}$/.test(code));
+		return [
+			...new Set([line?.short, stop?.code, t.stopsLabel].filter((word): word is string => !!word)),
+		];
+	});
 	const list = $derived(
 		searchIndexList({ query, rows: scope === 'all' ? PAGE_SIZE : rows }, index, {
 			locale,
@@ -163,10 +171,10 @@
 						aria-label={words.sheetTitle}
 					>
 						<p class="search-lede">{t.lede}</p>
-						<div>
+						<div bind:this={field}>
 							<SearchInput
 								label={t.inputLabel}
-								placeholder={t.inputPlaceholder}
+								placeholder={t.examples(examples.join(', '))}
 								visibleLabel
 								textSize="body"
 								autocomplete="off"
@@ -179,97 +187,125 @@
 								}
 							/>
 						</div>
-						<Card
-							textSize="inherit"
-							interactive={queryState !== 'empty'}
-							class="search-body min-w-0 px-4 sm:px-6"
-							data-search-card=""
-						>
-							{#if queryState === 'empty'}
-								<div class="search-idle" role="note">
-									<StateMark state="unknown" {locale} hiddenLabel />
-									<div>
-										<p class="font-semibold">{words.idleTitle}</p>
-										<p>{words.idleBody}</p>
-									</div>
-								</div>
-							{:else if queryState === 'short'}
-								<SearchResultsList
-									id={`${id}-results`}
-									label={words.results}
-									list={shown}
-									query={text}
-									{locale}
-									{hrefs}
-									page={resultPage}
-								/>
-							{:else}
-								<Tabs
-									value={scope}
-									onValueChange={(next) => {
-										rows = PAGE_SIZE;
-										scope = searchScope(next);
-									}}
-								>
-									<TabsList
-										variant="line"
-										class="flex h-auto w-full flex-wrap justify-start gap-1"
-										aria-label={words.results}
-									>
-										{#each tabs as tab (tab.key)}
-											<TabsTrigger
-												value={tab.key}
-												class="h-auto min-h-11 min-w-11 flex-none px-3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-												>{tab.label}</TabsTrigger
+						{#if queryState === 'empty'}
+							<div class="search-idle p-0">
+								<p class="font-semibold">{t.trySearch}</p>
+								<ul class="flex flex-wrap gap-x-4">
+									{#each examples as example (example)}<li>
+											<a
+												class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
+												href={'?' +
+													new URLSearchParams({
+														...(providerId && { provider: providerId }),
+														q: example,
+													})}
+												onclick={(event) => {
+													if (
+														event.button ||
+														event.metaKey ||
+														event.ctrlKey ||
+														event.shiftKey ||
+														event.altKey
+													)
+														return;
+													event.preventDefault();
+													query = example;
+													rows = PAGE_SIZE;
+													field?.querySelector('input')?.focus();
+												}}>{example}</a
 											>
-										{/each}
-									</TabsList>
-									{#each tabs as tab (tab.key)}
-										<TabsContent
-											value={tab.key}
-											class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+										</li>{/each}
+								</ul>
+								<a
+									class="inline-flex min-h-11 items-center text-primary underline"
+									href={localizeHref('/map', locale)}>{t.nearby}</a
+								>
+							</div>
+						{:else}
+							<Card
+								textSize="inherit"
+								interactive
+								class="search-body min-w-0 px-4 sm:px-6"
+								data-search-card=""
+							>
+								{#if queryState === 'short'}
+									<SearchResultsList
+										id={`${id}-results`}
+										label={words.results}
+										list={shown}
+										query={text}
+										{locale}
+										{hrefs}
+										page={resultPage}
+									/>
+								{:else}
+									<Tabs
+										value={scope}
+										onValueChange={(next) => {
+											rows = PAGE_SIZE;
+											scope = searchScope(next);
+										}}
+									>
+										<TabsList
+											variant="line"
+											class="flex h-auto w-full flex-wrap justify-start gap-1"
+											aria-label={words.results}
 										>
-											{#if scope === tab.key}
-												<SearchResultsList
-													id={`${id}-results`}
-													label={words.results}
-													list={shown}
-													query={text}
-													{locale}
-													{hrefs}
-													page={resultPage}
-												/>
-												{#if address}
-													<div class="search-address">
-														<p class="sr-only" role="status">
-															{address === 'ask' ? '' : addressText}
-														</p>
-														<Button
-															variant="outline"
-															wrap
-															type="button"
-															aria-describedby={address === 'ask'
-																? `${id}-address-notice`
-																: undefined}
-															aria-disabled={address === 'ask' ? undefined : 'true'}
-															onclick={ask}>{addressText}</Button
-														>
-														{#if address === 'ask'}
-															<p
-																id={`${id}-address-notice`}
-																class="text-small text-muted-foreground"
-															>
-																{words.addressNotice}
+											{#each tabs as tab (tab.key)}
+												<TabsTrigger
+													value={tab.key}
+													class="h-auto min-h-11 min-w-11 flex-none px-3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+													>{tab.label}</TabsTrigger
+												>
+											{/each}
+										</TabsList>
+										{#each tabs as tab (tab.key)}
+											<TabsContent
+												value={tab.key}
+												class="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-ring"
+											>
+												{#if scope === tab.key}
+													<SearchResultsList
+														id={`${id}-results`}
+														label={words.results}
+														list={shown}
+														query={text}
+														{locale}
+														{hrefs}
+														page={resultPage}
+													/>
+													{#if address}
+														<div class="search-address">
+															<p class="sr-only" role="status">
+																{address === 'ask' ? '' : addressText}
 															</p>
-														{/if}
-													</div>
+															<Button
+																variant="outline"
+																wrap
+																type="button"
+																aria-describedby={address === 'ask'
+																	? `${id}-address-notice`
+																	: undefined}
+																aria-disabled={address === 'ask' ? undefined : 'true'}
+																onclick={ask}>{addressText}</Button
+															>
+															{#if address === 'ask'}
+																<p
+																	id={`${id}-address-notice`}
+																	class="text-small text-muted-foreground"
+																>
+																	{words.addressNotice}
+																</p>
+															{/if}
+														</div>
+													{/if}
 												{/if}
-											{/if}
-										</TabsContent>
-									{/each}
-								</Tabs>
-							{/if}
-						</Card>
+											</TabsContent>
+										{/each}
+									</Tabs>
+								{/if}
+							</Card>
+						{/if}
 					</section>
 				</div></RecordGroup
 			>
@@ -297,17 +333,8 @@
 		margin-block-end: var(--space-card-gap);
 	}
 	.search-lede {
-		max-inline-size: var(--measure-lede);
 		font-size: var(--text-reading-heading);
 		line-height: 1.4;
-	}
-	.search-idle {
-		display: flex;
-		gap: 0.5rem;
-		color: var(--muted-foreground);
-	}
-	.search-idle p {
-		max-inline-size: var(--measure-notice);
 	}
 	.search-address {
 		display: grid;

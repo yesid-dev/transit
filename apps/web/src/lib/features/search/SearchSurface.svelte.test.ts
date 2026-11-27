@@ -102,6 +102,21 @@ const hubStops = (): StopIndexEntry[] =>
 		lon: -73.59,
 	}));
 
+it('leaves focus alone on load and focuses the field when a reader chooses an example', async () => {
+	vi.stubGlobal('matchMedia', (query: string) => ({
+		matches: query === '(hover: hover) and (pointer: fine)',
+	}));
+	setUrlQuery('');
+	render(SearchSurface);
+	const field = screen.getByRole('textbox');
+	const example = await screen.findByRole('link', { name: /^1$/ });
+	expect(document.body).toHaveFocus();
+
+	await fireEvent.click(example);
+	expect(field).toHaveFocus();
+	expect(field).toHaveValue('1');
+});
+
 it.each(['en', 'fr'] as const)(
 	'pages through ranked stop results and carries focus in %s',
 	async (locale) => {
@@ -146,8 +161,8 @@ it('takes the query, kind and existing row count from a new search URL before wr
 });
 
 it.each([
-	['en', '', 'Nothing typed yet'],
-	['fr', '', 'Rien de saisi'],
+	['en', '', 'Try a search'],
+	['fr', '', 'Essayez une recherche'],
 	['en', 'x', 'Enter a line number or at least two letters.'],
 	['fr', '---', 'Saisissez un numéro de ligne ou au moins deux lettres.'],
 	['en', 'zzzz', 'Nothing found for “zzzz” in lines, stops, vehicles, pages.'],
@@ -240,19 +255,23 @@ it('sends an address only on request and focuses the address result', async () =
 });
 
 it.each([
-	['', 'Nothing typed yet'],
+	['', 'Try a search'],
 	['q=ber', 'Station Berri-UQAM'],
 	['q=zzzz', 'Nothing found for “zzzz”'],
-])('keeps the field and every state in one column, in one card (%s)', (query, text) => {
+])('keeps examples and results in the same column as the field (%s)', (query, text) => {
 	setUrlQuery(query);
 	const view = render(SearchSurface);
 	const column = view.container.querySelector('[data-slot="search-column"]')!;
-	const card = column.querySelector('[data-search-card]')!;
+	const card = column.querySelector('[data-search-card]');
 	expect(column.querySelector('h1')).not.toBeNull();
 	expect(
 		within(column as HTMLElement).getByRole('textbox', { name: 'Line, stop, vehicle or page' }),
 	).toBeInTheDocument();
-	expect(card).toHaveTextContent(text);
-	// Before any typing the card only explains, so it does not react like a card that acts.
-	expect(card.getAttribute('data-interactive')).toBe(query ? 'true' : null);
+	if (query) {
+		expect(card).toHaveTextContent(text);
+		expect(card).toHaveAttribute('data-interactive', 'true');
+	} else {
+		expect(card).toBeNull();
+		expect(column).toHaveTextContent(text);
+	}
 });
