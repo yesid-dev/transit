@@ -132,9 +132,23 @@
 	const headerClass = [
 		'[&_thead_th]:normal-case! [&_thead_th]:tracking-normal!',
 		'[&_thead_th]:align-bottom! [&_thead_tr]:items-end',
-		'max-[1024px]:[&_thead_button]:items-end!',
-		'min-[1024px]:[&_thead_th]:align-middle!',
+		'[&_thead_button]:items-end!',
 	].join(' ');
+	// Measure the card as well as the viewport. Tables with more columns need
+	// more room to keep localized headers on one line.
+	const wideHeaderClass = $derived(
+		allColumns.length < 4
+			? [
+					'min-[1024px]:@min-[33rem]:[&_thead_th:not([data-column=name])]:whitespace-nowrap',
+					'min-[1024px]:@min-[33rem]:[&_thead_th]:align-middle!',
+					'min-[1024px]:@min-[33rem]:[&_thead_button]:items-center!',
+				].join(' ')
+			: [
+					'min-[1024px]:@min-[48rem]:[&_thead_th:not([data-column=name])]:whitespace-nowrap',
+					'min-[1024px]:@min-[48rem]:[&_thead_th]:align-middle!',
+					'min-[1024px]:@min-[48rem]:[&_thead_button]:items-center!',
+				].join(' '),
+	);
 
 	function sortHeaderLabel(header: string) {
 		if (header !== sortedHeader) return `${sortBy} ${header}`;
@@ -200,8 +214,8 @@
 			>{row.leadingCode.text}</span
 		>{/if}<span class="name-label">{row.label}</span>{/snippet}
 {#snippet wideTable()}
-	<!-- In wide tables, the small percentage keeps numeric columns at their intrinsic
-	     width. Keeping readings together gives those columns their content floor. -->
+	<!-- The small percentage keeps numeric columns at their intrinsic width.
+	     Reading notes can wrap within each column. -->
 	<DataTable
 		caption={title}
 		columns={allColumns}
@@ -216,13 +230,14 @@
 		class="@container"
 		tableClass={[
 			headerClass,
+			wideHeaderClass,
 			'[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
-			'min-[1024px]:[&_thead_th:not([data-column=name])]:whitespace-nowrap',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
 			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',
-			'@min-[38rem]:[&_td[data-numeric]]:whitespace-nowrap',
-			'@min-[38rem]:[&_td[data-numeric]_small]:whitespace-normal',
+			'@min-[38rem]:[&_tbody_td]:[overflow-wrap:normal]',
+			'@min-[38rem]:[&_tbody_[data-slot=status-mark]]:[overflow-wrap:normal]!',
+			'[&_tbody_[data-slot=route-plate]]:whitespace-nowrap',
 			'[&_tbody_:is(th,td)]:items-center [&_tbody_[data-row-position]]:self-center!',
 		].join(' ')}
 		responsive={scrollMinWidth

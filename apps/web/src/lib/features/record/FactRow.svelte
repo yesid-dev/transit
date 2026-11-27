@@ -44,7 +44,7 @@
 	/* The label takes the free width; long values wrap before squeezing it. */
 	.fact {
 		display: grid;
-		grid-template-columns: minmax(min(14rem, 45%), 1fr) minmax(0, max-content);
+		grid-template-columns: minmax(min(9rem, 45%), 1fr) minmax(0, max-content);
 		min-block-size: 2.75rem;
 		align-items: baseline;
 		gap: 0.25em 1em;
