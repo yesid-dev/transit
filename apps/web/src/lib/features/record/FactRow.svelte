@@ -22,13 +22,7 @@
 	} = $props();
 </script>
 
-<div
-	{id}
-	class="fact relative"
-	class:has-detail={!!detail}
-	class:has-label-detail={!!labelDetail}
-	data-slot="fact-row"
->
+<div {id} class="fact relative" data-slot="fact-row">
 	<dt class="py-2 print:py-0">
 		<div class="fact-stroke">
 			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
@@ -36,37 +30,28 @@
 		{label}
 		{#if labelDetail}<span class="block text-small text-muted-foreground">{labelDetail}</span>{/if}
 	</dt>
-	<dd class={['tabular-nums', (detail || labelDetail) && 'py-2 print:py-0']} aria-busy={busy}>
+	<dd class="py-2 font-mono tabular-nums print:py-0" aria-busy={busy}>
 		{#if emphasis}
 			<strong class="font-heading text-heading font-extrabold">{@render children()}</strong>
 		{:else}
 			{@render children()}
 		{/if}
-		{#if detail}<span class="block text-small text-muted-foreground">{detail}</span>{/if}
+		{#if detail}<span class="block font-sans text-small text-muted-foreground">{detail}</span>{/if}
 	</dd>
 </div>
 
 <style>
-	/* The label keeps at least 9rem (or 45% of a narrow row): a long value wraps instead of
-	   squeezing the label to one word per line. */
+	/* The label takes the free width; long values wrap before squeezing it. */
 	.fact {
 		display: grid;
-		grid-template-columns: minmax(min(9rem, 45%), 1fr) minmax(0, max-content);
+		grid-template-columns: minmax(min(14rem, 45%), 1fr) minmax(0, max-content);
 		min-block-size: 2.75rem;
-		align-items: center;
+		align-items: baseline;
 		gap: 0.25em 1em;
 		overflow-wrap: break-word;
 	}
 	.fact:first-child .fact-stroke {
 		display: var(--fact-leading, block);
-	}
-	.fact.has-detail {
-		grid-template-columns: minmax(min(9rem, 45%), 1fr) minmax(0, max-content);
-		align-items: start;
-	}
-	/* The label and its line take the free width; the value sits on the label's first line. */
-	.fact.has-label-detail {
-		align-items: start;
 	}
 	dt {
 		min-inline-size: 0;
@@ -77,13 +62,9 @@
 		min-inline-size: 0;
 		text-align: end;
 	}
-	@container (width < 16rem) {
-		.fact,
-		.fact.has-detail {
+	@container fact-list (inline-size < 16rem) {
+		.fact {
 			grid-template-columns: minmax(0, 1fr);
-		}
-		dd {
-			text-align: start;
 		}
 	}
 </style>

@@ -62,7 +62,6 @@
 	 * Optional `pageSize` and `rowHeading` preserve established page sizes and row-heading content.
 	 * Use `pageSize={0}` when the caller fetches additional rows a page at a time.
 	 * `leadingColumn` puts an identifier before the name on wide screens.
-	 * `nameWidth` reserves room for a custom row heading on wide screens.
 	 * When sorting is enabled, the caller reads and writes the URL and supplies the resulting
 	 * order and direction. Headers request a direction change; optional choices select a column.
 	 * `phone` turns each row into the phone row pattern (see RecordPhoneRow) when the table is at
@@ -75,7 +74,6 @@
 		rows,
 		columns = [],
 		leadingColumn,
-		nameWidth,
 		value,
 		sort,
 		scrollMinWidth,
@@ -91,6 +89,7 @@
 		rows: readonly Row[];
 		columns?: readonly Column<Row>[];
 		leadingColumn?: Column<Row>;
+		/** Remove with the Rankings caller in S-fleet. The shared name column owns its width. */
 		nameWidth?: string;
 		value?: string;
 		sort?: RecordTableSort;
@@ -108,10 +107,11 @@
 			header: rowHeader,
 			rowHeader: true,
 			sortable: !!sort,
-			width: nameWidth ?? (sort ? 'max(12ch, calc(100cqi - 75ch))' : undefined),
 			cell: nameCell,
 		},
-		...columns,
+		// Let the kit size numeric columns from their readings and reserve a minimum
+		// for the name through the table's styling hook.
+		...columns.map((column) => (column.numeric ? { ...column, width: undefined } : column)),
 	]);
 	const valueColumn = $derived(columns.find(({ key }) => key === value));
 	const phoneColumns = $derived<Column<Row>[]>([
@@ -153,10 +153,10 @@
 		{@render rowHeading(row)}
 	{:else if page && !row.href}
 		<div class="inline-flex min-h-11 items-center">
-			<RecordTableName {row} {plates} columnCount={allColumns.length} />
+			<RecordTableName {row} {plates} columnCount={allColumns.length} plateOnName={!!phone} />
 		</div>
 	{:else}
-		<RecordTableName {row} {plates} columnCount={allColumns.length} />
+		<RecordTableName {row} {plates} columnCount={allColumns.length} plateOnName={!!phone} />
 	{/if}
 {/snippet}
 {#snippet phoneValue(row: Row)}
@@ -206,6 +206,7 @@
 		pageSize={page}
 		{pageLabels}
 		{rowAlign}
+		tableClass="[&_thead_th]:normal-case! [&_thead_th]:tracking-normal! [&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]"
 		responsive={scrollMinWidth
 			? { mode: 'scroll', minWidth: scrollMinWidth }
 			: stackAt
@@ -346,7 +347,6 @@
 		.phone-row > .phone-value {
 			grid-row: 2;
 			grid-column: 1;
-			text-align: start;
 		}
 		.phone-row.lead > .phone-value {
 			grid-column: 2;
@@ -374,6 +374,7 @@
 		text-align: center;
 	}
 	.phone-value {
+		font-family: var(--font-mono);
 		font-weight: 600;
 		font-variant-numeric: tabular-nums;
 		text-align: end;

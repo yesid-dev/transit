@@ -19,6 +19,6 @@
 
 <style>
 	.facts {
-		container-type: inline-size;
+		container: fact-list / inline-size;
 	}
 </style>
