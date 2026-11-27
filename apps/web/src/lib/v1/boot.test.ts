@@ -150,6 +150,19 @@ describe('boot provider from the public catalog', () => {
 		});
 	});
 
+	it('uses the last checked catalogue labels during failed discovery', async () => {
+		const result = await bootProvider(
+			new URL('https://transit.test/fr/map?provider=octranspo'),
+			unavailable,
+			null,
+			cities,
+		);
+		expect(result).toMatchObject({
+			discoveryError: true,
+			provider: { labels: cities.providers.find(({ id }) => id === 'octranspo')!.labels },
+			redirectHref: null,
+		});
+	});
 	it.each([503, 200])(
 		'preserves an explicit nondefault selection when discovery is unavailable or corrupt (%s)',
 		async (status) => {

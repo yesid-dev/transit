@@ -572,10 +572,13 @@ test("last-good answers are scoped to the catalog cleaning version and answer re
   assert.equal((await f.fetch(MEASURE)).headers.get("x-transit-answer"), "last-good");
   f.cities.answer_revision = NEXT_REVISION;
   t.mock.timers.tick(31_000);
+  assert.equal((await f.fetch(MEASURE)).headers.get("x-transit-answer"), "last-good");
   assert.equal((await f.fetch(MEASURE)).status, 503);
   f.cities.answer_revision = REVISION;
   f.cities.cleaning_version = 7;
   t.mock.timers.tick(31_000);
+  // A foreground catalogue refresh is visible immediately after a mirror copy.
+  await f.fetch("/v2/cities", { "cache-control": "no-cache" });
   assert.equal((await f.fetch(MEASURE)).status, 503);
 });
 
@@ -969,4 +972,36 @@ test("the catalog refresh after a mirror copy keeps each provider's record date"
   assert.equal(f.cityRequests.length, 2);
   assert.equal(JSON.parse(f.saved.get("transit-city-catalog").value).providers[0].record_through,
     "2026-11-24");
+});
+
+test("a settled period reuses a shared answer after edge eviction without spending admission", async (t) => {
+  const f = fixture(t);
+  await f.fetch(MEASURE);
+  f.answers.clear();
+  const shared = await f.fetch(MEASURE);
+  assert.deepEqual(await shared.json(), ANSWER);
+  assert.equal(shared.headers.get("x-transit-answer"), null);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.visitors.length, 1);
+  assert.equal((await f.fetch(MEASURE)).headers.get("cache-status"), "Transit; hit");
+});
+
+test("indexes retain the last response while an updated revision refreshes", async (t) => {
+  let response = 1;
+  const f = fixture(t, () => Response.json({ schedule: { revision: response } }));
+  const url = "/v2/demo/schedule-index";
+  assert.equal((await (await f.fetch(url)).json()).schedule.revision, 1);
+  f.answers.clear();
+  assert.equal((await (await f.fetch(url)).json()).schedule.revision, 1);
+  assert.equal(f.requests.length, 1);
+  f.cities.answer_revision = f.engine.revision = NEXT_REVISION;
+  await f.fetch("/v2/cities", { "cache-control": "no-cache" });
+  response = 2;
+  const stale = await f.fetch(url);
+  assert.equal(stale.headers.get("x-transit-answer"), "last-good");
+  assert.equal((await stale.json()).schedule.revision, 1);
+  const current = await f.fetch(url);
+  assert.equal(current.headers.get("x-transit-answer"), null);
+  assert.equal((await current.json()).schedule.revision, 2);
+  assert.equal(f.requests.length, 2);
 });

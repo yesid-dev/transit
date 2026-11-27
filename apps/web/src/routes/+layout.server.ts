@@ -1,15 +1,17 @@
 import type { LayoutServerLoad } from './$types';
+import { waitUntil } from 'cloudflare:workers';
 import { redirect } from '@sveltejs/kit';
 import { DEFAULT_LOCALE, type Locale } from '#lib/i18n/index.ts';
 import { bootProvider } from '#lib/v1/boot.ts';
 import { captureContext } from '#lib/live/captureContext.ts';
-import { getCityCatalog, getRecordDataHealth, getScheduleEdition } from '#lib/server/engine.ts';
+import { getRecordDataHealth } from '#lib/server/engine.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { lineFrameView } from '#lib/site/lineFrame.ts';
 import { stopFrameView } from '#lib/site/stopFrame.ts';
 import { networkRecordView } from '#lib/site/networkFrame.ts';
 import { departureFromKey } from '#lib/features/record/departureIdentity.ts';
 import type { ScheduleEdition } from '#lib/search/searchIndex.ts';
+import { readTimetable } from '#lib/server/timetable.ts';
 import { linePatterns } from '#lib/site/linePatterns.ts';
 
 const localRoute = '/[[lang=locale]]';
@@ -154,17 +156,22 @@ export const load: LayoutServerLoad = async (event) => {
 	);
 	const loadSnapshots = usesLiveSnapshots(route, event.url);
 	const visitorIp = event.request.headers.get('cf-connecting-ip');
+	const timetable = readTimetable({
+		url: event.url,
+		location: locals.approximateLocation,
+		visitorIp,
+		needsSchedule,
+		waitUntil,
+	});
 	const selection = await bootProvider(
 		event.url,
-		() => getCityCatalog(visitorIp),
+		timetable.loadCatalog,
 		locals.approximateLocation,
+		timetable.lastCatalog,
 	);
 	if (selection.redirectHref) redirect(307, selection.redirectHref);
 	if (selection.discoveryError) event.setHeaders({ 'cache-control': 'no-store' });
-	const schedule =
-		needsSchedule && selection.provider
-			? await getScheduleEdition(selection.providerId, visitorIp)
-			: null;
+	const schedule = selection.provider ? await timetable.loadEdition(selection.providerId) : null;
 	// Overview combines schedule totals with a small set of ranked stop names.
 	// Keep the untrimmed schedule on the server for its page loader.
 	if (route === localRoute && !loadSnapshots) locals.overviewSchedule = schedule;

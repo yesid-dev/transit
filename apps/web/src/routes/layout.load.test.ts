@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('cloudflare:workers', () => ({ waitUntil: vi.fn() }));
+
 const harness = vi.hoisted(() => ({
 	bootProvider: vi.fn(),
 	getScheduleEdition: vi.fn(),
-	getCityCatalog: vi.fn(),
 }));
 
 vi.mock('#lib/v1/boot.ts', () => ({
@@ -11,9 +12,11 @@ vi.mock('#lib/v1/boot.ts', () => ({
 }));
 
 import { load as loadServerLayout } from './+layout.server';
-vi.mock('#lib/server/engine.ts', () => ({
-	getCityCatalog: (...args: unknown[]) => harness.getCityCatalog(...args),
-	getScheduleEdition: (...args: unknown[]) => harness.getScheduleEdition(...args),
+vi.mock('#lib/server/timetable.ts', () => ({
+	readTimetable: ({ visitorIp }: { visitorIp: string | null }) => ({
+		loadCatalog: async () => {},
+		loadEdition: (city: string) => harness.getScheduleEdition(city, visitorIp),
+	}),
 }));
 import { load as loadUniversalLayout } from './+layout';
 
@@ -187,7 +190,12 @@ describe('root server layout boot', () => {
 		const location = { lat: 45.42, lon: -75.7 };
 		Object.assign(request.locals, { approximateLocation: location });
 		const result = await loadServerLayout(request);
-		expect(harness.bootProvider).toHaveBeenCalledWith(request.url, expect.any(Function), location);
+		expect(harness.bootProvider).toHaveBeenCalledWith(
+			request.url,
+			expect.any(Function),
+			location,
+			undefined,
+		);
 		expect(JSON.stringify(result)).not.toContain('45.42');
 	});
 	it('prevents caching a successful fallback boot when catalog discovery failed', async () => {
@@ -214,6 +222,7 @@ describe('root server layout boot', () => {
 				request.url,
 				expect.any(Function),
 				request.locals.approximateLocation,
+				undefined,
 			);
 		},
 	);

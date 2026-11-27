@@ -174,11 +174,25 @@ describe('Stop capture and Record loading', () => {
 		['the engine is unreachable', { kind: 'unreachable' }, true],
 		['the dates hold no observed day', identity(null, []), true],
 		['the timetable is unavailable', identity(null), false],
-	])('returns 503 when %s', async (_, answer, timetable) => {
+	])('keeps the Stop shell when %s', async (_, answer, timetable) => {
 		harness.getRecordAnswer.mockResolvedValueOnce(answer);
-		await expect(load(event({ id: '57135', query: dated, timetable }))).rejects.toMatchObject({
-			status: 503,
-		});
-		expect(harness.getRecordAnswer).toHaveBeenCalledOnce();
+		const data = await load(event({ id: '57135', query: dated, timetable }));
+		expect(data).toMatchObject({ seed: { id: '57135' } });
+		await expect(data?.stopIdentity).resolves.toBe('unconfirmed');
+	});
+
+	it.each([
+		[identity('57135'), 'available'],
+		[identity(null), 'missing'],
+	])('streams a slow identity result as %j', async (answer, state) => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const pending = Promise.withResolvers<unknown>();
+		harness.getRecordAnswer.mockReturnValueOnce(pending.promise);
+		const shell = load(event({ id: '57135', query: dated }));
+		await vi.advanceTimersByTimeAsync(1500);
+		const data = await shell;
+		expect(data).toMatchObject({ seed: { id: '57135' }, stopIdentity: expect.any(Promise) });
+		pending.resolve(answer);
+		await expect(data?.stopIdentity).resolves.toBe(state);
 	});
 });

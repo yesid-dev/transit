@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { Surface } from '@yesid/ui/layout';
+	import { ErrorPage, Surface } from '@yesid/ui/layout';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
@@ -13,6 +13,7 @@
 	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import { providerDisplayNames, publishedNetwork } from '#lib/site/providerDisplay.ts';
 	import { stopViewHref } from '#lib/site/stopFrame.ts';
+	import { errorPageCopy } from '#lib/site/errorPage.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import type { PageData } from './$types';
@@ -61,6 +62,18 @@
 			label: locale === 'fr' ? 'Tous les arrêts' : 'All stops',
 		};
 	});
+	const missingCopy = errorPageCopy[locale].stopNotFound;
+	let confirmed = $state<Promise<'available' | 'missing' | 'unconfirmed'>>();
+	$effect(() => {
+		const identity = data.stopIdentity;
+		let active = true;
+		void identity?.then((result) => {
+			if (active && result === 'available') confirmed = identity;
+		});
+		return () => {
+			active = false;
+		};
+	});
 	const archive = $derived(
 		data.outsideCurrentTimetable && data.record ? stopArchiveAvailability(data.record) : null,
 	);
@@ -79,95 +92,165 @@
 	{/if}
 {/snippet}
 
-<Surface>
-	<RecordScreen>
-		<RecordGroup>
-			<ScreenTitle
-				id="stop-title"
-				title={name ?? stopLabel}
-				stopCode={name ? code : undefined}
-				{subtitle}
-				hideSubtitle={data.frameLive && data.outsideCurrentTimetable}
-				{back}
-				dot={false}
-			/>
-		</RecordGroup>
-		{#if data.frameLive && data.outsideCurrentTimetable}
+<svelte:head>
+	{#if data.stopIdentity && confirmed !== data.stopIdentity}
+		<meta name="robots" content="noindex" />
+	{/if}
+</svelte:head>
+
+{#snippet identityStatus(unconfirmed = false)}
+	<Surface>
+		<RecordScreen>
+			<RecordGroup>
+				<ScreenTitle id="stop-title" title={stopLabel} {back} dot={false} />
+			</RecordGroup>
 			<div data-slot="screen-content">
 				<RecordGroup>
-					<div data-slot="screen-answer" id="stop-detail-departures">
-						<RecordAnswer {locale} value={null} state="no_live_data" sentence={timetableNotice}>
+					{#if unconfirmed}
+						<RecordAnswer
+							{locale}
+							value={null}
+							state="unknown"
+							sentence={locale === 'fr'
+								? 'Le bilan de cet arrêt est temporairement indisponible.'
+								: 'The record for this stop is temporarily unavailable.'}
+						>
 							{#snippet actions()}
 								<a
 									class="inline-flex min-h-11 items-center text-primary underline"
-									href={stopViewHref(url, 'record').href}
+									href={url.href}
+									data-sveltekit-reload
 								>
-									{locale === 'fr' ? 'Voir le bilan' : 'View record'}
+									{locale === 'fr' ? 'Réessayer' : 'Try again'}
 								</a>
 							{/snippet}
 						</RecordAnswer>
-					</div>
+					{:else}
+						<RecordPending {locale} />
+					{/if}
 				</RecordGroup>
 			</div>
-		{:else if data.frameLive}
-			{#key data.capture ?? data.seed.id}
-				<StopLive
-					id={data.seed.id}
-					name={name ?? code}
-					lines={data.stopLines}
-					{operator}
-					{locale}
-					{url}
-					city={data.providerId}
-					timeZone={data.provider?.timezone ?? 'UTC'}
-					directions={data.schedule?.route_directions}
-					patterns={data.linePatterns}
-					capture={data.capture}
-					trips={data.trips}
-					scheduleOnly={data.scheduleOnly}
-					tripUpdatesPublished={data.tripUpdatesPublished}
-					hasAlerts={data.hasAlerts}
+		</RecordScreen>
+	</Surface>
+{/snippet}
+
+{#if data.stopIdentity}
+	{#await data.stopIdentity}
+		{@render identityStatus()}
+	{:then identity}
+		{#if identity === 'missing'}
+			<ErrorPage
+				status={404}
+				heading={missingCopy.heading}
+				body={missingCopy.body}
+				illustration="none"
+				suggestionsLabel={errorPageCopy[locale].suggestionsLabel}
+				suggestions={missingCopy.suggestions.map(({ href, label }) => ({
+					href: localizeHref(href, locale),
+					label,
+				}))}
+			/>
+		{:else if identity === 'unconfirmed'}
+			{@render identityStatus(true)}
+		{:else}
+			{@render stopContent()}
+		{/if}
+	{/await}
+{:else}
+	{@render stopContent()}
+{/if}
+
+{#snippet stopContent()}
+	<Surface>
+		<RecordScreen>
+			<RecordGroup>
+				<ScreenTitle
+					id="stop-title"
+					title={name ?? stopLabel}
+					stopCode={name ? code : undefined}
+					{subtitle}
+					hideSubtitle={data.frameLive && data.outsideCurrentTimetable}
+					{back}
+					dot={false}
 				/>
-			{/key}
-		{:else if archive}
-			{#await archive}
+			</RecordGroup>
+			{#if data.frameLive && data.outsideCurrentTimetable}
 				<div data-slot="screen-content">
 					<RecordGroup>
-						<div id="punctuality" data-slot="screen-answer">
-							<RecordPending {locale} />
-						</div></RecordGroup
-					>
+						<div data-slot="screen-answer" id="stop-detail-departures">
+							<RecordAnswer {locale} value={null} state="no_live_data" sentence={timetableNotice}>
+								{#snippet actions()}
+									<a
+										class="inline-flex min-h-11 items-center text-primary underline"
+										href={stopViewHref(url, 'record').href}
+									>
+										{locale === 'fr' ? 'Voir le bilan' : 'View record'}
+									</a>
+								{/snippet}
+							</RecordAnswer>
+						</div>
+					</RecordGroup>
 				</div>
-			{:then state}
-				{#if state === 'available'}
-					{@render record()}
-				{:else}
+			{:else if data.frameLive}
+				{#key data.capture ?? data.seed.id}
+					<StopLive
+						id={data.seed.id}
+						name={name ?? code}
+						lines={data.stopLines}
+						{operator}
+						{locale}
+						{url}
+						city={data.providerId}
+						timeZone={data.provider?.timezone ?? 'UTC'}
+						directions={data.schedule?.route_directions}
+						patterns={data.linePatterns}
+						capture={data.capture}
+						trips={data.trips}
+						scheduleOnly={data.scheduleOnly}
+						tripUpdatesPublished={data.tripUpdatesPublished}
+						hasAlerts={data.hasAlerts}
+					/>
+				{/key}
+			{:else if archive}
+				{#await archive}
 					<div data-slot="screen-content">
 						<RecordGroup>
 							<div id="punctuality" data-slot="screen-answer">
-								{#if state === 'busy'}
-									<RecordPending {locale} busy />
-								{:else}
-									<RecordAnswer
-										{locale}
-										value={null}
-										state={state === 'empty' ? 'not_measured' : 'unknown'}
-										sentence={state === 'empty'
-											? locale === 'fr'
-												? 'Aucune lecture n’a été publiée pour cet arrêt aux dates choisies.'
-												: 'No readings were published for this stop on the selected dates.'
-											: locale === 'fr'
-												? 'Le bilan de cet arrêt est temporairement indisponible.'
-												: 'The record for this stop is temporarily unavailable.'}
-									/>
-								{/if}
-							</div>
-						</RecordGroup>
+								<RecordPending {locale} />
+							</div></RecordGroup
+						>
 					</div>
-				{/if}
-			{/await}
-		{:else}
-			{@render record()}
-		{/if}
-	</RecordScreen>
-</Surface>
+				{:then state}
+					{#if state === 'available'}
+						{@render record()}
+					{:else}
+						<div data-slot="screen-content">
+							<RecordGroup>
+								<div id="punctuality" data-slot="screen-answer">
+									{#if state === 'busy'}
+										<RecordPending {locale} busy />
+									{:else}
+										<RecordAnswer
+											{locale}
+											value={null}
+											state={state === 'empty' ? 'not_measured' : 'unknown'}
+											sentence={state === 'empty'
+												? locale === 'fr'
+													? 'Aucune lecture n’a été publiée pour cet arrêt aux dates choisies.'
+													: 'No readings were published for this stop on the selected dates.'
+												: locale === 'fr'
+													? 'Le bilan de cet arrêt est temporairement indisponible.'
+													: 'The record for this stop is temporarily unavailable.'}
+										/>
+									{/if}
+								</div>
+							</RecordGroup>
+						</div>
+					{/if}
+				{/await}
+			{:else}
+				{@render record()}
+			{/if}
+		</RecordScreen>
+	</Surface>
+{/snippet}
