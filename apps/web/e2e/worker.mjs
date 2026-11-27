@@ -25,6 +25,24 @@ execFileSync(
 	{ cwd: import.meta.dirname, stdio: 'inherit' },
 );
 
+const application = {
+	modules: true,
+	modulesRoot: bundle,
+	scriptPath: join(bundle, 'fixture-worker.js'),
+	compatibilityDate: config.compatibility_date,
+	compatibilityFlags: config.compatibility_flags,
+	assets: {
+		directory: resolve(import.meta.dirname, config.assets.directory),
+		binding: config.assets.binding,
+		routerConfig: { has_user_worker: true },
+	},
+	bindings: {
+		...config.vars,
+		QUESTION_FIXTURE_ORIGIN: fixture,
+	},
+};
+const recordYesterday = `${config.name}-record-yesterday`;
+
 // Wrangler dev's HTTP proxy decodes and recompresses gzip, losing the Worker flush boundaries.
 const worker = new Miniflare(
 	convertV4MiniflareOptions({
@@ -32,22 +50,11 @@ const worker = new Miniflare(
 		port,
 		workers: [
 			{
+				...application,
 				name: config.name,
-				modules: true,
-				modulesRoot: bundle,
-				scriptPath: join(bundle, 'fixture-worker.js'),
-				compatibilityDate: config.compatibility_date,
-				compatibilityFlags: config.compatibility_flags,
-				assets: {
-					directory: resolve(import.meta.dirname, config.assets.directory),
-					binding: config.assets.binding,
-					routerConfig: { has_user_worker: true },
-				},
-				bindings: {
-					...config.vars,
-					QUESTION_FIXTURE_ORIGIN: fixture,
-				},
+				serviceBindings: { RECORD_YESTERDAY_FIXTURE: recordYesterday },
 			},
+			{ ...application, name: recordYesterday },
 		],
 	}),
 );
