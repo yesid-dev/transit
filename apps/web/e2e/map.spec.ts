@@ -282,6 +282,12 @@ for (const locale of PUBLISHED_LOCALES) {
 		const recovered = page.waitForResponse((response) => captureUrl.test(response.url()));
 		await page.clock.fastForward(20_000);
 		await recovered;
+		if (!compact) {
+			await page
+				.locator('[data-slot="map-details"]')
+				.getByRole('button', { name: locale === 'fr' ? 'Retour' : 'Back', exact: true })
+				.click();
+		}
 		await expect(stamp.locator('time')).toHaveAttribute(
 			'datetime',
 			new Date(capturedAt).toISOString(),
