@@ -15,6 +15,23 @@ from transit_engine.store import Store
 LICENCE_GOLDEN = (
     Path(__file__).resolve().parents[2] / "data-proxy/test/fixtures/download-licences.golden.json"
 )
+DECLARATIONS = Path(__file__).resolve().parents[2] / "db/config/providers"
+
+
+def _declarations_with_private(city: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Copy the real declarations and keep one public city private."""
+    target = tmp_path / "declarations"
+    shutil.copytree(DECLARATIONS, target)
+    declaration = target / f"{city}.yaml"
+    text = declaration.read_text(encoding="utf-8")
+    assert "  is_active: true" in text and "  enabled: true" in text
+    declaration.write_text(
+        text.replace("  is_active: true", "  is_active: false").replace(
+            "  enabled: true", "  enabled: false"
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ENGINE_PROVIDER_DECLARATIONS", str(target))
 
 
 def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
@@ -31,7 +48,7 @@ def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     assert method_headers[b"x-transit-cleaning-version"] == str(app.store.cleaning_version).encode()
     cities = {city["id"]: city for city in catalog["providers"]}
     assert catalog["default_provider"] == "stm"
-    assert "sto" not in cities
+    assert set(cities) == {"stm", "octranspo", "sto"}
     assert all(city["record_through"] is None for city in cities.values())
     assert cities["stm"]["labels"]["fr"]["city"] == "Montréal"
     assert cities["stm"]["inputs"]["i3_alerts"] is True
@@ -68,9 +85,10 @@ def test_city_catalog_supplies_the_approved_download_licences() -> None:
     [("measure", "&measure=on_time"), ("ranking", "&kind=line"), ("data-health", "")],
 )
 def test_catalog_outage_check_rejects_unpublished_cities(
-    tmp_path: Path, route: str, cut: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str, cut: str
 ) -> None:
-    app = Engine(Store(str(tmp_path)), concurrency=1, queue_size=0, queue_wait_ms=10)
+    _declarations_with_private("sto", tmp_path, monkeypatch)
+    app = Engine(Store(str(tmp_path / "clean")), concurrency=1, queue_size=0, queue_wait_ms=10)
     status, headers, body = asyncio.run(
         http(
             app,
@@ -119,9 +137,12 @@ def test_catalog_excludes_nonpublic_cities_and_requires_one_default(
         city_catalog()
 
 
-def test_private_city_remains_hidden_with_a_complete_clean_day(tmp_path: Path) -> None:
+def test_private_city_remains_hidden_with_a_complete_clean_day(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _declarations_with_private("sto", tmp_path, monkeypatch)
     day = date(2026, 11, 25)
-    store = _build_store(tmp_path, cleaning_version=9, trips_by_day={day: ()}, city="sto")
+    store = _build_store(tmp_path / "clean", cleaning_version=9, trips_by_day={day: ()}, city="sto")
     assert data_health(store, "sto", day, day)["days"][0]["status"] == "present"
     app = Engine(store, concurrency=1, queue_size=0, queue_wait_ms=10)
     status, _, body = asyncio.run(http(app, "/cities"))
@@ -202,7 +223,7 @@ def test_record_through_tracks_the_latest_complete_edition_after_a_mirror_copy(
         assert status == 200
         return {row["id"]: row["record_through"] for row in json.loads(body)["providers"]}
 
-    assert anchors() == {"stm": "2026-11-25", "octranspo": None}
+    assert anchors() == {"stm": "2026-11-25", "octranspo": None, "sto": None}
     shutil.copyfile(original / "v9/feed_polls.parquet", city / "2026-11-27/v9/feed_polls.parquet")
     (tmp_path / ".record-v9").touch()
-    assert anchors() == {"stm": "2026-11-27", "octranspo": None}
+    assert anchors() == {"stm": "2026-11-27", "octranspo": None, "sto": None}

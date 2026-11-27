@@ -1,0 +1,88 @@
+{
+  "schema_version": 2,
+  "provider_id": "sto",
+  "rendered_utc": "2026-11-27T05:25:30.492Z",
+  "source": {
+    "pmtiles_url": "/data/v1/sto/static/basemap/gatineau.pmtiles",
+    "sha256": "bbeda7c669e6228d1e23c3e084d135e614e523ff6ddec7b73d72f3bf6ed42ca3",
+    "bytes": 180332270,
+    "bounds": [
+      -77.25,
+      44.7,
+      -74.2,
+      46.4
+    ],
+    "osm_updated_utc": "2026-11-25T04:00:00Z",
+    "attribution": "c OpenStreetMap contributors, c Protomaps",
+    "min_zoom": 0,
+    "max_zoom": 15
+  },
+  "reproduced_with": {
+    "playwright_core_version": "1.62.0",
+    "chromium_version": "151.0.7922.34"
+  },
+  "render_inputs": [
+    {
+      "path": "browser-toolchain.json",
+      "sha256": "e20c01b5a24b2f71e495edd72c931a5914ea7ec2c8d449a753744e6c18ea27b7"
+    },
+    {
+      "path": "scripts/build-map-posters.ts",
+      "sha256": "81e4f217791dfb068560000e076a5fdb8a7c8a87ba2b1d7877e5623b998b10c2"
+    },
+    {
+      "path": "src/lib/components/map/basemap.ts",
+      "sha256": "0399a4fdea1a3c7c87a79d919bb675f1c26bcf445eb6e697dbe3983eecb36908"
+    },
+    {
+      "path": "src/lib/components/map/viewport.ts",
+      "sha256": "cf948070e86200afe15e4c0e19400e5d9d623d239fcdcff0d25812a0487e7f22"
+    },
+    {
+      "path": "src/lib/features/map/mapCameraFraming.ts",
+      "sha256": "069ef437c209c77e4ba160cae893b625d600c53070c8b8b8e64a574536f0a9c7"
+    },
+    {
+      "path": "../db/config/providers/sto.yaml#posters",
+      "sha256": "e43fc62e048b6452f68968ba7ab809e68f59a41a4bfb4abc08308f727fefb9e4"
+    }
+  ],
+  "posters": [
+    {
+      "filename": "basemap-gatineau-dark-mobile-bbeda7c669e6.avif",
+      "theme": "dark",
+      "width": 390,
+      "height": 844,
+      "format": "avif",
+      "bytes": 19507,
+      "sha256": "f101451e18a484ce2c3dda03807b4749cb6b83367618decf39a1432bac17edab"
+    },
+    {
+      "filename": "basemap-gatineau-dark-desktop-bbeda7c669e6.avif",
+      "theme": "dark",
+      "width": 1280,
+      "height": 720,
+      "format": "avif",
+      "bytes": 72356,
+      "sha256": "df9e17ea786dcfd555159a1dca52360bbb6c8a5e5d41b25efd2cfcd3becdf4e6"
+    },
+    {
+      "filename": "basemap-gatineau-light-mobile-bbeda7c669e6.avif",
+      "theme": "light",
+      "width": 390,
+      "height": 844,
+      "format": "avif",
+      "bytes": 21290,
+      "sha256": "e5fdefa0d545d1b78042e054260941fcd454ebae8cea52d82992a1d2446bd5ce"
+    },
+    {
+      "filename": "basemap-gatineau-light-desktop-bbeda7c669e6.avif",
+      "theme": "light",
+      "width": 1280,
+      "height": 720,
+      "format": "avif",
+      "bytes": 79499,
+      "sha256": "3a7e51d43f0e02bcd3801bb3036c1a7177f4e8991e754a79dd4d0d353e76f3be"
+    }
+  ]
+}

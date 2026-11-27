@@ -3,9 +3,9 @@
 #
 # STO's terms permit use, reproduction, modification, dissemination and
 # redistribution of its open data for personal or commercial purposes.
-# Capture is private. Before any public release, verify the screens and the
-# dated source statement. Use no STO logo, implied affiliation or disparaging
-# presentation. One API key per user, with no transfer.
+# Public screens and downloads carry the dated source statement. Use no STO
+# logo, implied affiliation or disparaging presentation. One API key per
+# user, with no transfer.
 #
 # Geometry ships in shapes.txt, with no separate GIS bundle.
 #
@@ -39,10 +39,10 @@ provider:
     max_longitude: -75.35
   attribution_text: "This service incorporates the open data provided by the Société de transport de l'Outaouais (STO)."
   website_url: https://www.sto.ca/
-  is_active: false
+  is_active: true
 
 public:
-  enabled: false
+  enabled: true
   labels:
     en: {city: Gatineau, operator: STO}
     fr: {city: Gatineau, operator: STO}
@@ -63,6 +63,7 @@ public:
     max_longitude: -74.20
     max_latitude: 46.40
   basemap_url: /data/v1/sto/static/basemap/gatineau.pmtiles
+  posters_url: /map/basemap-gatineau-posters.json
   # Clean storage only. The refresh never writes this city to the legacy public bucket.
   basemap_legacy: false
   geocode_context: Gatineau, Québec

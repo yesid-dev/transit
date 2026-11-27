@@ -220,7 +220,7 @@ def test_manifest_loading() -> None:
     gis_url = provider.feeds["gis_static"].resolved_source_url(settings)
 
     assert registry.list_provider_ids() == ["octranspo", "stm", "sto"]
-    assert registry.list_active_provider_ids() == ["octranspo", "stm"]
+    assert registry.list_active_provider_ids() == ["octranspo", "stm", "sto"]
     assert registry.get_public_config("octranspo").model_dump(mode="json")["name_separators"] == {
         "ends": "<>",
         "languages": "~",
@@ -284,7 +284,7 @@ def test_stm_display_name_is_accented() -> None:
     assert provider.provider.display_name == "Société de transport de Montréal"
 
 
-def test_sto_declares_a_bilingual_dated_notice_and_stays_inactive() -> None:
+def test_sto_declares_a_bilingual_dated_notice_and_is_public() -> None:
     settings = Settings(_env_file=None)
     registry = ProviderRegistry.from_project_root(
         project_root=Path(__file__).resolve().parents[1],
@@ -293,8 +293,8 @@ def test_sto_declares_a_bilingual_dated_notice_and_stays_inactive() -> None:
 
     manifest = registry.get_provider("sto")
     licence = manifest.public.download_licence
-    assert manifest.provider.is_active is False
-    assert manifest.public.enabled is False
+    assert manifest.provider.is_active is True
+    assert manifest.public.enabled is True
     assert licence is not None and licence.source_date_required
     assert licence.attribution.en == (
         "This service incorporates the open data provided by the Société de "
@@ -400,7 +400,7 @@ def test_list_providers_command() -> None:
     result = runner.invoke(app, ["list-providers"])
 
     assert result.exit_code == 0
-    assert result.stdout.strip().splitlines() == ["octranspo", "stm"]
+    assert result.stdout.strip().splitlines() == ["octranspo", "stm", "sto"]
 
 
 def test_show_provider_command() -> None:

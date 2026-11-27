@@ -291,6 +291,45 @@
     }
   },
   "sto": {
+    "catalogue_entry": {
+      "alert_links": {
+        "en": "https://www.sto.ca/en/schedules-and-routes/system-overview/",
+        "fr": "https://www.sto.ca/horaires-et-trajets/etat-du-reseau/"
+      },
+      "fit_bounds": [
+        -75.890305,
+        45.381251,
+        -75.390882,
+        45.592916
+      ],
+      "geocode_context": "Gatineau, Québec",
+      "id": "sto",
+      "inputs": {
+        "gis_static": false,
+        "i3_alerts": false,
+        "service_alerts": true,
+        "static_schedule": true,
+        "trip_updates": true,
+        "vehicle_positions": true
+      },
+      "labels": {
+        "en": {
+          "city": "Gatineau",
+          "operator": "STO"
+        },
+        "fr": {
+          "city": "Gatineau",
+          "operator": "STO"
+        }
+      },
+      "max_bounds": [
+        -76.25,
+        45.3,
+        -75.23,
+        45.75
+      ],
+      "posters_url": "/map/basemap-gatineau-posters.json"
+    },
     "feed_endpoint_seeds": [
       {
         "auth_type": "none",
@@ -340,7 +379,7 @@
       "default_currency": "CAD",
       "default_language": "fr",
       "display_name": "Société de transport de l'Outaouais",
-      "is_active": false,
+      "is_active": true,
       "max_latitude": 45.63,
       "max_longitude": -75.35,
       "min_latitude": 45.35,
@@ -359,7 +398,7 @@
           "min_latitude": 45.35,
           "min_longitude": -75.95
         },
-        "is_active": false,
+        "is_active": true,
         "provider_id": "sto",
         "website_url": "https://www.sto.ca/"
       },
@@ -371,7 +410,7 @@
           "min_longitude": -77.25
         },
         "basemap_url": "/data/v1/sto/static/basemap/gatineau.pmtiles",
-        "enabled": false,
+        "enabled": true,
         "fit_bounds": {
           "max_latitude": 45.592916,
           "max_longitude": -75.390882,
@@ -394,7 +433,7 @@
           "min_latitude": 45.3,
           "min_longitude": -76.25
         },
-        "posters_url": null
+        "posters_url": "/map/basemap-gatineau-posters.json"
       }
     }
   }
