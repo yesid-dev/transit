@@ -145,6 +145,10 @@ export default defineConfig({
 								(width === 1280 && colorScheme === 'dark'))
 								? []
 								: [/layout-map-center\.spec\.ts/]),
+							// The Search column spec owns its width matrix; run it once per theme.
+							...(browserName === 'chromium' && width === 1440
+								? []
+								: [/layout-search-column\.spec\.ts/]),
 						],
 						use: {
 							browserName,
