@@ -30,8 +30,8 @@ export async function forwardRoute(
 
 // Inspect text nodes rather than a hand-maintained list of component classes. This
 // includes bars, cards, panels, sheets and overlays, including content below fold.
-export async function textDefects(page: Page) {
-	return page.evaluate(() => {
+export async function textDefects(page: Page, within = 'body') {
+	return page.evaluate((scope) => {
 		const findings: {
 			kind: string;
 			selector: string;
@@ -108,7 +108,9 @@ export async function textDefects(page: Page) {
 			}
 			return false;
 		};
-		const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+		const root = document.querySelector(scope);
+		if (!root) throw new Error(`No text detector scope matches ${scope}`);
+		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 		let node: Node | null;
 		while ((node = walker.nextNode())) {
 			const el = node.parentElement as HTMLElement;
@@ -189,7 +191,7 @@ export async function textDefects(page: Page) {
 			}
 		}
 		return findings;
-	});
+	}, within);
 }
 
 export async function chartOverlaps(page: Page) {

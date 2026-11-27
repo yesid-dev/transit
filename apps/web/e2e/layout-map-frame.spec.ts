@@ -2,6 +2,7 @@ import { expect } from '@playwright/test';
 import { test } from './layout-test';
 import { mapChromeShareBudget, mapOpenLegendViewportHeight } from './design-pass-debt';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import { textDefects } from './layout-helpers';
 import { closeMapControls, openMapControls } from './map-frame-controls';
 import { expectRampLightness } from './measure-ramp-checks';
 
@@ -121,9 +122,8 @@ for (const locale of ['en', 'fr']) {
 		await crowding.getByRole('checkbox', { name: fr ? 'Vide' : 'Empty', exact: true }).click();
 		await closeMapControls(page);
 		if (phone) await page.getByTestId('map-legend-button').click();
-		const legend = page.locator(
-			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
-		);
+		const legendSelector = `[data-map-legend="${phone ? 'phone' : 'desktop'}"]`;
+		const legend = page.locator(legendSelector);
 		const ramp = legend.getByRole('list', { name: fr ? 'Places à bord' : 'Room on board' });
 		await expect(ramp).toBeVisible();
 		await expect(ramp.getByRole('listitem')).toHaveText(
@@ -135,5 +135,18 @@ for (const locale of ['en', 'fr']) {
 			ramp.locator('li > [aria-hidden="true"]'),
 			info.project.use.colorScheme === 'dark' ? 'dark' : 'light',
 		);
+		const viewport = page.viewportSize()!;
+		for (const width of viewport.width === 390 ? [320, 390] : [viewport.width]) {
+			await page.setViewportSize({ width, height: viewport.height });
+			await expect(ramp).toBeVisible();
+			if (fr) await expect(ramp.getByText('Plusieurs places', { exact: true })).toBeVisible();
+			const defects = await textDefects(page, legendSelector);
+			expect(
+				defects.filter(({ kind }) => kind === 'broken-word'),
+				`${width}px legend`,
+			).toEqual([]);
+			const overflow = await ramp.evaluate((list) => list.scrollWidth - list.clientWidth);
+			expect(overflow, `${width}px legend horizontal overflow`).toBeLessThanOrEqual(1);
+		}
 	});
 }

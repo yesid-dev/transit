@@ -2,6 +2,7 @@ import { expect, type Locator } from '@playwright/test';
 import { vectorStyleFromBasemap } from '../src/lib/components/map/basemap';
 import { test } from './layout-test';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
+import { textDefects } from './layout-helpers';
 import { expectRampLightness } from './measure-ramp-checks';
 import {
 	closeMapControls,
@@ -130,9 +131,8 @@ for (const locale of ['en', 'fr'] as const) {
 			).toBeVisible();
 			await closeMapInView(page);
 			const phone = page.viewportSize()!.width < 1024;
-			const legend = page.locator(
-				phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
-			);
+			const legendSelector = `[data-map-legend="${phone ? 'phone' : 'desktop'}"]`;
+			const legend = page.locator(legendSelector);
 			const assertWithinMap = async (control: typeof legend) => {
 				const bounds = (await page.locator('.map-surface').boundingBox())!;
 				const box = (await control.boundingBox())!;
@@ -144,7 +144,16 @@ for (const locale of ['en', 'fr'] as const) {
 			if (phone) await page.getByTestId('map-legend-button').click();
 			await expect(legend).toBeVisible();
 			await assertWithinMap(legend);
-			await expectUnbrokenWords(legend, '100%');
+			for (const width of viewport!.width === 390 ? [320, 390] : [viewport!.width]) {
+				await page.setViewportSize({ width, height: viewport!.height });
+				await expect(legend).toBeVisible();
+				const defects = await textDefects(page, legendSelector);
+				expect(
+					defects.filter(({ kind }) => kind === 'broken-word'),
+					`${width}px legend`,
+				).toEqual([]);
+				await expectUnbrokenWords(legend, `${width}px at 100%`);
+			}
 			const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light';
 			const lightness = await expectRampLightness(
 				legend.locator('ol > li > [aria-hidden="true"]'),

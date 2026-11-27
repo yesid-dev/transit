@@ -225,35 +225,39 @@
 	{collapsible}
 	persistKey={collapsible ? 'transit:map-legend-open' : undefined}
 	data-map-legend={collapsible ? 'desktop' : 'phone'}
-	data-map-record-legend={layer !== 'live' ? '' : undefined}
 />
 
 <style>
-	:global([data-map-record-legend]) {
-		container: record-legend / inline-size;
+	:global([data-map-legend]) {
+		container: map-legend / inline-size;
 	}
 
-	:global([data-map-record-legend][data-map-legend] :is(button, p, li, ol)) {
+	:global([data-map-legend] :is(button, p, li, ol[role='list'])) {
 		overflow-wrap: normal;
 		word-break: normal;
 		hyphens: none;
 	}
 
-	@container record-legend (inline-size < 14rem) {
-		:global([data-map-record-legend] ol[role='list']) {
+	/* Give each swatch and its label room for the longest word in that label. */
+	:global([data-map-legend] ol[role='list']) {
+		grid-template-columns: repeat(var(--legend-steps), minmax(min-content, 1fr));
+	}
+
+	@container map-legend (inline-size < 14rem) {
+		:global([data-map-legend] ol[role='list']) {
 			grid-template-columns: minmax(0, 1fr);
 			gap: 0.25rem;
 			text-align: start;
 		}
 
-		:global([data-map-record-legend] ol[role='list'] > li) {
+		:global([data-map-legend] ol[role='list'] > li) {
 			display: grid;
 			grid-template-columns: 1.5em minmax(0, 1fr);
 			align-items: center;
 			gap: 0.5em;
 		}
 
-		:global([data-map-record-legend] ol[role='list'] > li > [aria-hidden='true']) {
+		:global([data-map-legend] ol[role='list'] > li > [aria-hidden='true']) {
 			margin-block-end: 0;
 			border-radius: var(--radius-sm);
 		}
