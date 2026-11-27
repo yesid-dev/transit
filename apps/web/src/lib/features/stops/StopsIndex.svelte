@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Skeleton } from '@yesid/ui/skeleton';
+	import './stopCards.css';
 	import { getContext, onMount, tick, untrack } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { page } from '$app/state';
@@ -52,7 +54,7 @@
 	import { finderCells, finderCsv, finderRecordUrl, finderShare } from '../record/finderText.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
 	import { recordConnection, tally, timingBasis } from '../record/recordText.ts';
-	import { indexCopy } from './stops.copy.ts';
+	import { indexCopy, stopErrorLink } from './stops.copy.ts';
 	import {
 		stopPageSize,
 		stopReading,
@@ -471,13 +473,11 @@
 		>{/each}{/snippet}
 {#snippet shareCell(row: Row)}
 	{#if row.share !== null}<strong>{recordPercent(row.share, locale)}</strong>
+	{:else if record && !result}
+		<Skeleton class="ms-auto h-4 w-12 max-w-full" />
 	{:else}<RecordTableValue
 			{locale}
-			text={record && !result
-				? t('Calculating…', 'Calcul en cours…')
-				: result && result.kind !== 'answer'
-					? t('Unavailable', 'Indisponible')
-					: null}
+			text={result && result.kind !== 'answer' ? t('Unavailable', 'Indisponible') : null}
 			state={row.state}
 		/>{/if}
 {/snippet}
@@ -550,9 +550,9 @@
 {/snippet}
 
 <RecordScreen class="min-w-0">
-	<RecordGroup><ScreenTitle title={copy.heading} {subtitle} /></RecordGroup>
-	<div class="min-w-0" data-slot="screen-content">
-		<RecordGroup density="compact">
+	<div class="stop-cards min-w-0" data-slot="screen-content">
+		<RecordGroup class="gap-[var(--space-card-gap)]">
+			<div data-screen-intro><ScreenTitle title={copy.heading} {subtitle} /></div>
 			<div data-slot="screen-answer">
 				<RecordAnswer
 					{locale}
@@ -786,6 +786,15 @@
 						text: operator
 							? `${about.feeds(agencyName(operator, provider))} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
 							: null,
+					},
+					{
+						key: 'feedback',
+						label: stopErrorLink[locale].label,
+						text: null,
+						link: {
+							href: localizeHref('/metrics#about-transit', locale, provider?.id),
+							label: stopErrorLink[locale].title,
+						},
 					},
 				]}
 			/>

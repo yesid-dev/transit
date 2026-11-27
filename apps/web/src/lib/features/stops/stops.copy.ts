@@ -42,3 +42,7 @@ export const indexCopy = defineCopy({
 		clearFilters: 'Clear filters',
 	},
 });
+export const stopErrorLink = {
+	en: { label: 'Seen an error?', title: 'About Transit' },
+	fr: { label: 'Vous avez vu une erreur?', title: 'À propos de Transit' },
+} as const;

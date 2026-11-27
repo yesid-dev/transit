@@ -115,6 +115,9 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#delay')).toContainText(fr ? '5,8 min de retard' : '5.8 min late');
 			await expect(main.locator('#alerts')).toContainText(fr ? 'Non suivi' : '3');
 			await expect(main.locator('#accessibility')).toContainText(fr ? 'Non publié' : 'Accessible');
+			await expect(
+				main.getByRole('link', { name: fr ? 'À propos de Transit' : 'About Transit' }),
+			).toHaveAttribute('href', /\/metrics\?.*#about-transit$/u);
 
 			const waiting = main.locator('#waiting');
 			const waitingLine = waiting.getByRole('row').filter({
@@ -205,6 +208,10 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 	const response = await page.goto(path, { waitUntil: 'commit' });
 	expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
 	await expect(page.locator('[data-slot="screen-answer"]')).toContainText('80.0%');
+	await expect(page.locator('main [data-slot="record-card"]')).toHaveCount(8);
+	await expect(page.locator('#byLine [data-waiting-shape="rows"]')).toBeVisible();
+	await expect(page.locator('#hourly [data-waiting-shape="grid"]')).toBeVisible();
+	const pendingHeight = (await page.locator('#hourly [data-slot="card"]').boundingBox())?.height;
 	// The held card waits in place, pulsing, and says it is still calculating after 3 s.
 	await expect(page.locator('#hourly [data-record-pending][aria-busy="true"]')).toHaveCount(1);
 	await expect(page.locator('#hourly')).toContainText('Still calculating…');
@@ -221,4 +228,21 @@ test('the Stop answer streams while the per-line breakdown and hour grid are hel
 	}
 	await expect(page.locator('#byLine')).toContainText('Too few to judge');
 	await expect(page.locator('#hourly [data-slot="hour-grid"]')).toBeVisible();
+	expect((await page.locator('#hourly [data-slot="card"]').boundingBox())?.height).toBe(
+		pendingHeight,
+	);
+});
+
+test('changing the Stop record period keeps the reading position', async ({ page }) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await page.goto('/stop/S1?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
+	await expect(page.locator('#daily [data-slot="chart-line-series"]').first()).toBeVisible();
+	await page.evaluate(() => window.scrollTo(0, 1000));
+	await page.getByRole('radio', { name: '28 days', exact: true }).evaluate((radio) => {
+		// Activate the rail control without moving the viewport to its hit target first.
+		(radio as HTMLElement).click();
+	});
+	await expect(page).toHaveURL(/(?:\?|&)period=28-days(?:&|$)/u);
+	await expect(page.locator('main [data-record-pending]')).toHaveCount(0);
+	expect(await page.evaluate(() => Math.round(window.scrollY))).toBe(1000);
 });

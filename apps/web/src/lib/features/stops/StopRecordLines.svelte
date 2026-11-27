@@ -128,15 +128,17 @@
 {/snippet}
 
 {#snippet waitingValue(row: Row, id: (typeof waitingMeasures)[number][0])}
-	{#if row.coverageGap}
-		{#if id === waitingMeasures[0][0]}<span class="font-sans">{row.coverageGap}</span>{/if}
-	{:else}
-		{@const reading = waitingReadingParts(row.cell, id, locale)}
-		{reading.value}
-		{#if reading.detail}<span class="block font-sans text-small text-muted-foreground"
-				>{reading.detail}</span
-			>{/if}
-	{/if}
+	<div class:waiting-explanation={id === waitingMeasures[0][0]}>
+		{#if row.coverageGap}
+			{#if id === waitingMeasures[0][0]}<span class="font-sans">{row.coverageGap}</span>{/if}
+		{:else}
+			{@const reading = waitingReadingParts(row.cell, id, locale)}
+			{reading.value}
+			{#if reading.detail}
+				<span class="block font-sans text-small text-muted-foreground">{reading.detail}</span>
+			{/if}
+		{/if}
+	</div>
 {/snippet}
 {#snippet excess(row: Row)}{@render waitingValue(row, 'excess_wait_time')}{/snippet}
 {#snippet gaps(row: Row)}{@render waitingValue(row, 'long_gaps')}{/snippet}
@@ -185,3 +187,11 @@
 		</Collapsible.Content>
 	</Collapsible.Root>
 {/if}
+
+<style>
+	@container (inline-size >= 38rem) {
+		.waiting-explanation {
+			min-inline-size: min(16rem, 30cqi);
+		}
+	}
+</style>

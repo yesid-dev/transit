@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+	import './stopCards.css';
 	import { page } from '$app/state';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
@@ -26,8 +28,12 @@
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordPending from '../record/RecordPending.svelte';
+	import StateMark from '../record/StateMark.svelte';
+	import type { RecordWaiting } from '../record/recordWaiting.ts';
 	import { choose, tally } from '../record/recordText.ts';
 	import StopPredictionTable from './StopPredictionTable.svelte';
+	import { stopErrorLink } from './stops.copy.ts';
 	import { riderToward, stopLiveReadings, type StopPrediction } from './stopLiveReadings.ts';
 	import type { LinePattern } from '#lib/site/linePatterns.ts';
 
@@ -47,6 +53,7 @@
 		scheduleOnly,
 		tripUpdatesPublished,
 		hasAlerts,
+		heading,
 	}: {
 		id: string;
 		lines: readonly string[];
@@ -64,16 +71,19 @@
 		scheduleOnly: boolean;
 		tripUpdatesPublished: boolean;
 		hasAlerts: boolean;
+		heading: Snippet;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const title = $derived(t('Next vehicles at this stop', 'Prochains véhicules à cet arrêt'));
 	const link = (path: string) => carryFrameState(localizeHref(path, locale, city), url);
 	const display = transitDisplay();
-	/** The next hour, and at least six rows; the rest stays behind Show more. */
-	function firstRows(rows: readonly StopPrediction[], now: number) {
-		const hour = rows.filter(({ predictedAt }) => predictedAt - now <= 60 * 60_000).length;
-		return Math.max(6, hour);
-	}
+	const predictionPageSize = 6;
+	const predictionsShape = {
+		shape: 'rows',
+		count: predictionPageSize,
+		lines: 2,
+	} satisfies RecordWaiting;
+	const noticeShape = { shape: 'notice', count: 1 } satisfies RecordWaiting;
 	function nextSentence(row: StopPrediction) {
 		return stopNextVehicleSentence(
 			{
@@ -88,17 +98,15 @@
 </script>
 
 {#snippet pending()}
-	<RecordGroup>
-		<!-- Keeps the room of the answer and the first rows, so the footer does not jump. -->
-		<div id="stop-detail-departures" data-slot="screen-answer" class="stop-live-waiting">
-			<p role="status">
-				{t('Checking live predictions…', 'Vérification des prévisions en direct…')}
-			</p>
-		</div>
-	</RecordGroup>
+	{@render content(null, null, 0, true)}
 {/snippet}
 
-{#snippet content(snapshot: CaptureSnapshot | null, report: CaptureTripReport | null, now: number)}
+{#snippet content(
+	snapshot: CaptureSnapshot | null,
+	report: CaptureTripReport | null,
+	now: number,
+	waiting = false,
+)}
 	{@const feed = feedState(report?.feed, now)}
 	{@const readings =
 		report && feed === 'live' ? stopLiveReadings(report, id, now, directions) : null}
@@ -112,9 +120,12 @@
 					label: liveStampAge(age, locale, feed === 'live' ? 'current' : 'behind'),
 					late: feed !== 'live',
 				}}
-	<RecordGroup>
-		<div id="stop-detail-departures" data-slot="screen-answer">
-			{#if readings?.count}
+	<RecordGroup class="gap-[var(--space-card-gap)]">
+		<div data-screen-intro>{@render heading()}</div>
+		<div id="stop-detail-departures" class="stop-live-answer" data-slot="screen-answer">
+			{#if waiting}
+				<RecordPending {locale} shape="reading" />
+			{:else if readings?.count}
 				<RecordAnswer
 					{locale}
 					value={tally(readings.count, locale)}
@@ -171,16 +182,20 @@
 				/>
 			{/if}
 		</div>
-		{#if readings?.rows.length}
-			<div class="min-w-0" data-slot="stop-live-predictions">
-				<RecordCard
-					{title}
-					{stamp}
-					interactive={readings.rows.some(({ line }) => line !== null) || readings.rows.length > 20}
-				>
+		<div class="min-w-0" data-slot="stop-live-predictions">
+			<RecordCard
+				{title}
+				{stamp}
+				reserve={predictionsShape}
+				interactive={!!readings?.rows.some(({ line }) => line !== null) ||
+					(readings?.rows.length ?? 0) > predictionPageSize}
+			>
+				{#if waiting}
+					<RecordPending {locale} shape={predictionsShape} />
+				{:else if readings?.rows.length}
 					<StopPredictionTable
 						rows={readings.rows}
-						pageSize={firstRows(readings.rows, now)}
+						pageSize={predictionPageSize}
 						caption={title}
 						{locale}
 						{city}
@@ -189,8 +204,18 @@
 						{now}
 						{patterns}
 					/>
-					{#snippet evidence()}
-						<p class="text-small text-muted-foreground">
+				{:else}
+					<StateMark
+						{locale}
+						state={feed === 'stale'
+							? 'not_reporting'
+							: !tripUpdatesPublished
+								? 'not_tracked'
+								: 'no_live_data'}
+					/>
+				{/if}
+				{#snippet evidence()}
+					{#if readings?.rows.length}<p class="text-small text-muted-foreground">
 							{t(
 								'A prediction is the agency’s estimate.',
 								'Une prévision est une estimation de la société de transport.',
@@ -207,37 +232,50 @@
 									agencyName(operator, page.data.provider),
 									locale,
 								)}{/if}
-						</p>
-					{/snippet}
-				</RecordCard>
-			</div>
-		{/if}
+						</p>{/if}
+				{/snippet}
+			</RecordCard>
+		</div>
 	</RecordGroup>
-	<RecordGroup>
+	<RecordGroup class="gap-[var(--space-card-gap)]">
 		<div
 			id="stop-detail-notices"
 			data-testid="stop-alerts"
 			class="grid min-w-0 gap-[var(--space-card-gap)]"
 		>
-			<LineLiveNotices
-				{snapshot}
-				{now}
-				{locale}
-				{timeZone}
-				{operator}
-				stopNames={{ [id]: name }}
-				scope={{ kind: 'stop', id, lines }}
-				tracked={hasAlerts}
-				href={link('/alerts?frameMode=live')}
-			/>
+			{#if waiting && hasAlerts}
+				<RecordCard title={t('Notices for this stop', 'Avis pour cet arrêt')}>
+					<RecordPending {locale} shape={noticeShape} />
+				</RecordCard>
+			{:else}
+				<LineLiveNotices
+					{snapshot}
+					{now}
+					{locale}
+					{timeZone}
+					{operator}
+					stopNames={{ [id]: name }}
+					scope={{ kind: 'stop', id, lines }}
+					tracked={hasAlerts}
+					href={link('/alerts?frameMode=live')}
+				/>
+			{/if}
 		</div>
 	</RecordGroup>
-	<RecordGroup>
+	<RecordGroup class="gap-[var(--space-card-gap)]">
 		<div id="stop-detail-facts">
 			<AboutLiveFigures
 				{locale}
 				{operator}
 				healthLink={link('/status?frameMode=live')}
+				additionalFields={[
+					{
+						key: 'feedback',
+						label: stopErrorLink[locale].label,
+						text: null,
+						link: { href: link('/metrics#about-transit'), label: stopErrorLink[locale].title },
+					},
+				]}
 				scope={t(
 					'Agency predictions for this stop. The count includes trips expected here in the next 15 minutes.',
 					'Prévisions de la société de transport pour cet arrêt. Le décompte couvre les trajets attendus ici dans les 15 prochaines minutes.',
@@ -250,18 +288,20 @@
 					'From the predicted delay at this stop: early is more than 1 minute ahead, late is more than 5 minutes behind, and on time is between those limits.',
 					'Selon le retard prévu à cet arrêt : en avance signifie plus d’une minute avant l’heure prévue, en retard signifie plus de 5 minutes après, et à l’heure se situe entre ces seuils.',
 				)}
-				captureText={age === null
-					? t('Trip updates unavailable.', 'Mises à jour des trajets indisponibles.')
-					: t(
-							`Trip updates: ${relativeReportAge(age, locale)}.`,
-							`Mises à jour des trajets : ${relativeReportAge(age, locale)}.`,
-						)}
+				captureText={waiting
+					? ''
+					: age === null
+						? t('Trip updates unavailable.', 'Mises à jour des trajets indisponibles.')
+						: t(
+								`Trip updates: ${relativeReportAge(age, locale)}.`,
+								`Mises à jour des trajets : ${relativeReportAge(age, locale)}.`,
+							)}
 			/>
 		</div>
 	</RecordGroup>
 {/snippet}
 
-<div class="min-w-0" data-slot="screen-content">
+<div class="stop-cards min-w-0" data-slot="screen-content">
 	{#if capture}
 		<LiveCapture {city} {capture} {pending}>
 			{#snippet children(snapshot, now, refreshed)}
@@ -280,9 +320,3 @@
 		{@render content(null, null, Date.now())}
 	{/if}
 </div>
-
-<style>
-	.stop-live-waiting {
-		min-block-size: min(42rem, calc(100dvh - var(--app-frame-header-height, 0px)));
-	}
-</style>
