@@ -31,18 +31,33 @@ for (const locale of ['en', 'fr'] as const) {
 			'ready',
 		);
 		await openMapControls(page);
+		const phone = page.viewportSize()!.width < 1024;
 		const layers = page.getByRole('radiogroup', { name: fr ? 'Couche' : 'Layer' });
 		const views = page.getByRole('radiogroup', { name: fr ? 'Vue' : 'View' });
 		const live = views.getByRole('radio', { name: fr ? 'En direct' : 'Live now' });
 		await expect(live).toBeChecked();
+		if (phone) {
+			const pause = page.getByRole('switch', {
+				name: fr ? 'Suspendre les mises à jour' : 'Pause live updates',
+			});
+			await expect(pause).toHaveAttribute('aria-checked', 'false');
+			await pause.click();
+			await expect(pause).toHaveAttribute('aria-checked', 'true');
+			await pause.click();
+			await expect(pause).toHaveAttribute('aria-checked', 'false');
+		}
 		await live.focus();
 		await live.press('ArrowRight');
+		await expect(page).toHaveURL(/mapLayer=stops/);
+		if (phone) {
+			await expect(page.locator('[data-map-in-view-sheet]')).toBeHidden();
+			await openMapControls(page);
+		}
 		await expect(layers.getByRole('radio', { name: fr ? 'Arrêts' : 'Stops' })).toBeChecked();
 		await closeMapControls(page);
 		const title = fr ? 'Carte du bilan' : 'Record map';
 		await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
 		await expect(page).toHaveTitle(new RegExp(`^${title}\\b`, 'u'));
-		const phone = page.viewportSize()!.width < 1024;
 		const legend = page.locator(
 			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 		);
@@ -128,6 +143,13 @@ for (const locale of ['en', 'fr'] as const) {
 		await openMapInView(page);
 		await expect(segment).toBeVisible();
 		await expect(line).toHaveValue('');
+		if (phone) {
+			await closeMapInView(page);
+			await openMapControls(page);
+			await live.click();
+			await expect(page).toHaveURL(/frameMode=live/);
+			await expect(page.getByTestId('map-live-controls-button')).toBeVisible();
+		}
 	});
 
 	test(`${locale} Line Record opens corridors for the same line, dates and direction`, async ({
