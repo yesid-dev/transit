@@ -123,3 +123,30 @@ it.each([
 	]);
 	expect(days[3].dateLabel).toContain(said);
 });
+
+it.each([
+	['en', 'No report that day'],
+	['fr', 'Aucun signalement ce jour-là'],
+] as const)(
+	'reads an unknown row with no reading on a measured day as no report, in %s',
+	(locale, said) => {
+		// Vehicle 30021, 18 to 24 Nov: Saturday and Sunday come back "unknown" with no value.
+		const silent = {
+			...dailyCell('2026-11-09', 0),
+			state: 'unknown' as const,
+			value: { vehicle_days_in_service: null, vehicle_hours_in_service: null },
+		};
+		const days = vehicleReportDays(
+			{ evidence, coverage_note: null, cells: [dailyCell('2026-11-08', 1), silent] },
+			period,
+			locale,
+		);
+		expect(days.map(({ state }) => state)).toEqual([
+			'in_service',
+			'not_reporting',
+			'not_measured',
+			'not_measured',
+		]);
+		expect(days[1].dateLabel).toContain(said);
+	},
+);

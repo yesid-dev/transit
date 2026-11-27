@@ -173,6 +173,15 @@ export function noticeCountEvidence(
 		: `${noticeCount(grouped, locale)}, from ${total} as ${agency.name} published ${published === 1 ? 'it' : 'them'}, one per line and reissue.`;
 }
 
+/** A few notices out of all of them: "5 of 1,230 notices." */
+export function noticeSampleEvidence(shown: number, total: number, locale: Locale) {
+	if (shown >= total) return `${noticeCount(total, locale)}.`;
+	const count = intl.number(locale).format(shown);
+	return locale === 'fr'
+		? `${count} des ${noticeCount(total, locale)}.`
+		: `${count} of ${noticeCount(total, locale)}.`;
+}
+
 export function alertAnswerSentence(
 	count: number,
 	locale: Locale,
@@ -229,6 +238,62 @@ export function scheduleHours(start: number, end: number, locale: Locale) {
 	const from = readerClock(start, 0, locale);
 	const to = readerClock(end, 0, locale);
 	return locale === 'fr' ? `${from} à ${to}` : `${from} to ${to}`;
+}
+
+/**
+ * A part of the day with at most one trip an hour is said as its trips, not as an interval
+ * spread over hours with no service: "10 trips, the last at 00:38".
+ * `lastTrips` are the day's last departures as service times ("24:38:00").
+ */
+export function sparseService(
+	tripsPerDay: number,
+	part: { start: number; end: number },
+	lastTrips: readonly unknown[],
+	locale: Locale,
+) {
+	const rounded = Math.round(tripsPerDay);
+	const count = intl.number(locale).format(rounded);
+	const trips =
+		locale === 'fr'
+			? `${count} ${rounded < 2 ? 'trajet' : 'trajets'}`
+			: `${count} ${rounded === 1 ? 'trip' : 'trips'}`;
+	const lead =
+		rounded === tripsPerDay ? trips : locale === 'fr' ? `Environ ${trips}` : `About ${trips}`;
+	const last = [
+		...new Set(
+			lastTrips.flatMap((value) => {
+				const parts = serviceClockParts(value);
+				if (!parts) return [];
+				const hour = parts.hours % 24;
+				return hour >= part.start && hour < part.end
+					? [readerClock(hour, parts.minutes, locale)]
+					: [];
+			}),
+		),
+	];
+	if (last.length !== 1) return lead;
+	return locale === 'fr' ? `${lead}, le dernier à ${last[0]}` : `${lead}, the last at ${last[0]}`;
+}
+
+/** A planned rate in a rider's words: "About 4 trips an hour", "Fewer than 1 trip an hour". */
+export function tripsAnHour(tripsPerHour: number, locale: Locale) {
+	const rounded = Math.round(tripsPerHour);
+	if (rounded < 1)
+		return locale === 'fr' ? 'Moins d’un trajet par heure' : 'Fewer than 1 trip an hour';
+	const count = intl.number(locale).format(rounded);
+	const trips =
+		locale === 'fr'
+			? `${count} ${rounded < 2 ? 'trajet' : 'trajets'} par heure`
+			: `${count} ${rounded === 1 ? 'trip' : 'trips'} an hour`;
+	if (rounded === tripsPerHour) return trips;
+	return locale === 'fr' ? `Environ ${trips}` : `About ${trips}`;
+}
+
+/** The trips behind one clock hour's rate: "27 trips over 7 days". */
+export function tripsOverDays(trips: number, days: number, locale: Locale) {
+	const count = countedUnit(trips, 'trip', locale);
+	const span = countedUnit(days, 'day', locale);
+	return locale === 'fr' ? `${count} sur ${span}` : `${count} over ${span}`;
 }
 
 export function plannedInterval(tripsPerHour: number, locale: Locale) {
@@ -619,8 +684,13 @@ export function countedUnit(
 	unit:
 		| 'line'
 		| 'stop'
+		| 'stop-served'
 		| 'event'
 		| 'trip'
+		| 'trip-ran'
+		| 'trip-scheduled'
+		| 'trip-observed'
+		| 'trip-per-vehicle'
 		| 'day'
 		| 'vehicle'
 		| 'reading'
@@ -631,8 +701,29 @@ export function countedUnit(
 	const labels = {
 		line: { en: ['line', 'lines'], fr: ['ligne', 'lignes'] },
 		stop: { en: ['stop', 'stops'], fr: ['arrêt', 'arrêts'] },
+		// Counts are named for what they count, so two screens never show one word for two sums.
+		'stop-served': {
+			en: ['stop served', 'stops served'],
+			fr: ['arrêt desservi', 'arrêts desservis'],
+		},
 		event: { en: ['stop event', 'stop events'], fr: ['passage à un arrêt', 'passages aux arrêts'] },
 		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
+		'trip-ran': {
+			en: ['trip that ran', 'trips that ran'],
+			fr: ['trajet effectué', 'trajets effectués'],
+		},
+		'trip-scheduled': {
+			en: ['scheduled trip', 'scheduled trips'],
+			fr: ['trajet prévu', 'trajets prévus'],
+		},
+		'trip-observed': {
+			en: ['observed trip', 'observed trips'],
+			fr: ['trajet observé', 'trajets observés'],
+		},
+		'trip-per-vehicle': {
+			en: ['trip counted per vehicle', 'trips counted per vehicle'],
+			fr: ['trajet compté par véhicule', 'trajets comptés par véhicule'],
+		},
 		day: { en: ['day', 'days'], fr: ['jour', 'jours'] },
 		'measured-day': { en: ['measured day', 'measured days'], fr: ['jour mesuré', 'jours mesurés'] },
 		vehicle: { en: ['vehicle', 'vehicles'], fr: ['véhicule', 'véhicules'] },
@@ -1212,6 +1303,16 @@ export function tooFewDepartures(most: number, minimum: number | null, locale: L
 	return `Each departure has at most ${count(most)} scheduled ${most === 1 ? 'trip' : 'trips'}${minimum == null ? '' : `; the minimum is ${count(minimum)}`}.`;
 }
 
+/** Trips whose outcome the feed never settled: "9 trips could not be confirmed, run or not." */
+export function unconfirmedTrips(count: number, locale: Locale) {
+	const n = intl.number(locale).format(count);
+	if (locale === 'fr')
+		return count < 2
+			? `${n} trajet n’a pas pu être confirmé, effectué ou non.`
+			: `${n} trajets n’ont pas pu être confirmés, effectués ou non.`;
+	return `${n} ${count === 1 ? 'trip' : 'trips'} could not be confirmed, run or not.`;
+}
+
 export function showAllStops(count: number, locale: Locale) {
 	const number = intl.number(locale).format(count);
 	return locale === 'fr' ? `Afficher les ${number} arrêts` : `Show all ${number} stops`;
@@ -1224,12 +1325,16 @@ export function gridDaysNote(days: number, locale: Locale) {
 		: `The grid shows the last ${count} days. The counts cover the full period.`;
 }
 
-/** One sentence for an hour grid whose every reading is too few to judge. */
-export function tooFewHours(most: number, minimum: number | null, locale: Locale) {
+/**
+ * One sentence for an hour grid with no hour to judge: "Too few stop events per hour to judge:
+ * 358 in 7 days, and an hour needs 30."
+ */
+export function tooFewHours(total: number, days: number, minimum: number | null, locale: Locale) {
 	const count = (value: number) => intl.number(locale).format(value);
+	const span = countedUnit(days, 'day', locale);
 	if (locale === 'fr')
-		return `Chaque heure compte trop peu de passages aux arrêts pour conclure\u00a0: au plus ${count(most)}${minimum == null ? '' : `, sur un minimum de ${count(minimum)}`}.`;
-	return `Every hour has too few stop events to judge: at most ${count(most)}${minimum == null ? '' : `; the minimum is ${count(minimum)}`}.`;
+		return `Trop peu de passages aux arrêts par heure pour conclure\u00a0: ${count(total)} en ${span}${minimum == null ? '' : `, et il en faut ${count(minimum)} par heure`}.`;
+	return `Too few stop events per hour to judge: ${count(total)} in ${span}${minimum == null ? '' : `, and an hour needs ${count(minimum)}`}.`;
 }
 
 /**

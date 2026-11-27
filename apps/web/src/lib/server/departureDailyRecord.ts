@@ -4,6 +4,7 @@ import { captureTripScopeSchema } from '#lib/live/captureSnapshot.ts';
 import type { DepartureIdentity } from '#lib/features/record/departureIdentity.ts';
 import type { Locale } from '#lib/i18n/copy.ts';
 import { sortAgencyMessages } from '#lib/site/agencyMessages.ts';
+import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
 import { dailyQuestions } from './screenQuestions.ts';
 export { dailyQuery, type DailySection } from './screenQuestions.ts';
 
@@ -65,6 +66,8 @@ export function loadDailyRecord(
 							...result.answer,
 							evidence: {
 								...evidence,
+								// The report shows a few notices; it names how many there were in all.
+								notice_total: groupAlertCards(recordAlertCards(evidence.alert_messages)).length,
 								alert_messages: sortAgencyMessages(
 									evidence.alert_messages,
 									locale,

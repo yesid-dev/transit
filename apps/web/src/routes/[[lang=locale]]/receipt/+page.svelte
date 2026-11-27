@@ -57,6 +57,7 @@
 		longDate,
 		methodEvidence,
 		noticeCountEvidence,
+		noticeSampleEvidence,
 		pageCitation,
 		recordStamp,
 		recordPercent,
@@ -160,14 +161,17 @@
 			if (section === 'messages') {
 				const notices =
 					answer.state === 'measured' && !data.messagesLimited ? recordNoticeCards(answer) : null;
-				return notices?.length && counts.alerts != null
+				if (!notices?.length || counts.alerts == null) return null;
+				// The report keeps a few notices; the foot says how many of all of them it shows.
+				const total = answer.evidence.notice_total;
+				return total == null
 					? noticeCountEvidence(
 							notices.length,
 							counts.alerts,
 							agencyName(operator ?? cityName, routeData.provider),
 							lang,
 						)
-					: null;
+					: noticeSampleEvidence(notices.length, total, lang);
 			}
 			return recordCounts(
 				counts.classified,
@@ -711,7 +715,11 @@
 												class="inline-flex min-h-11 items-center text-primary underline"
 												href={link('/alerts')}
 											>
-												{dailyAlertsLink(notices?.length ?? count, lang, notices == null)}
+												{dailyAlertsLink(
+													messages.evidence.notice_total ?? notices?.length ?? count,
+													lang,
+													notices == null,
+												)}
 											</a>
 										{/if}
 									{/await}

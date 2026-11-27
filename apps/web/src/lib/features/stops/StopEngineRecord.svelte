@@ -17,7 +17,7 @@
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
-	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
+	import { chartState, hourGridTooFew } from '#lib/features/record/charts/recordCharts.ts';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import {
 		choose,
@@ -494,7 +494,7 @@
 						{@render evidenceFooter('hourly')}
 					{/snippet}
 					{#snippet toggle()}
-						{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+						{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length && !hourGridTooFew(result.answer)}
 							<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
 						{/if}
 					{/snippet}

@@ -408,16 +408,17 @@
 								{@const entries = days(result.answer)}
 								{@const reported = entries.filter((entry) => entry.state === 'in_service').length}
 								{@const measured = entries.filter((entry) => entry.state !== 'not_measured').length}
-								{@const denominator =
-									measured < entries.length
-										? countedUnit(measured, 'measured-day', locale)
-										: tally(measured, locale)}
+								{@const denominator = countedUnit(
+									measured,
+									measured < entries.length ? 'measured-day' : 'day',
+									locale,
+								)}
 								<RecordEvidenceLine
 									evidence={result.answer.evidence}
 									sample={measured
 										? t(
-												`${countedUnit(reported, 'day', locale)} in service of ${denominator}`,
-												`${countedUnit(reported, 'day', locale)} en service sur ${denominator}`,
+												`${tally(reported, locale)} of ${denominator} in service`,
+												`${tally(reported, locale)} sur ${denominator} en service`,
 											)
 										: null}
 									{locale}

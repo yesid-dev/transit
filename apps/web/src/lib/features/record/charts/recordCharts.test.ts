@@ -4,6 +4,7 @@ import {
 	bandChart,
 	histogramChart,
 	hourChart,
+	hourGridTooFew,
 	rangeChart,
 	stopLadderChart,
 	trendChart,
@@ -312,4 +313,31 @@ describe('record charts', () => {
 			expect(chart.props.stops[1]).toMatchObject({ value: null, state: '□ ' + missing });
 		},
 	);
+});
+
+describe('hour grid with no hour to judge', () => {
+	const few = (hour: number) =>
+		cell(
+			{ weekday: 1, hour },
+			{
+				state: 'too_few_to_judge',
+				value: { late: null },
+				evidence: { counts: { classified: 12 }, days_included: [] },
+			},
+		);
+	const unmeasured = cell(
+		{ weekday: 2, hour: 9 },
+		{ state: 'not_measured', value: { late: null } },
+	);
+
+	it('collapses when some hours are too few and none has a reading', () => {
+		const series = { cells: [few(8), few(9), unmeasured] } as unknown as RecordSeries;
+		expect(hourGridTooFew(series)).toBe(true);
+	});
+
+	it('keeps the grid when one hour has a reading or none is too few', () => {
+		const measured = cell({ weekday: 1, hour: 10 });
+		expect(hourGridTooFew({ cells: [few(8), measured] } as unknown as RecordSeries)).toBe(false);
+		expect(hourGridTooFew({ cells: [unmeasured] } as unknown as RecordSeries)).toBe(false);
+	});
 });

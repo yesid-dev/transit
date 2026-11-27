@@ -210,8 +210,8 @@ for (const locale of ['en', 'fr'] as const) {
 		const answer = page.locator('[data-slot="screen-answer"]');
 		await expect(answer).toContainText(
 			fr
-				? /Ce qui est compté\s*:\s*250\s000 passages aux arrêts, 30\s225 trajets, 7 jours/
-				: 'Counted: 250,000 stop events, 30,225 trips, 7 days',
+				? /Ce qui est compté\s*:\s*250\s000 passages aux arrêts sur 25 lignes, 7 jours/
+				: 'Counted: 250,000 stop events on 25 lines, 7 days',
 		);
 		await expect(answer).not.toContainText(fr ? 'nettoyage' : 'cleaning');
 		const more = page.getByRole('button', {

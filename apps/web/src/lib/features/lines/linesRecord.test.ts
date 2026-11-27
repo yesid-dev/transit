@@ -2,6 +2,8 @@ import type { Locale } from '#lib/i18n/index.ts';
 import { describe, expect, it } from 'vitest';
 import {
 	lineExclusion,
+	lineHold,
+	lineHoldText,
 	lineMatches,
 	lineQuery,
 	lineSort,
@@ -11,6 +13,42 @@ import {
 } from './linesRecord.ts';
 
 describe('Lines Record', () => {
+	const floors = { classified: 100, observed_trips: 20 };
+	const timing = (counts: Record<string, number | null>, low_coverage?: boolean) => ({
+		evidence: { counts, low_coverage },
+	});
+
+	it('holds a line out of the headline as Rankings does: floors first, then low coverage', () => {
+		// OC Transpo line 301, 19 to 25 Nov: 104 stop events but 2 observed trips.
+		const thin = lineHold(timing({ classified: 104, observed_trips: 2 }), floors);
+		expect(thin).toEqual({
+			reason: 'too_few_to_judge',
+			unit: 'trip-observed',
+			count: 2,
+			minimum: 20,
+		});
+		expect(lineHoldText(thin!, 'en')).toBe('Too few to judge: 2 observed trips, the minimum is 20');
+		expect(lineHoldText(thin!, 'fr')).toBe(
+			'Trop peu de données pour conclure\u00a0: 2 trajets observés, sur un minimum de 20',
+		);
+		// STM line 222: 66 stop events.
+		expect(lineHold(timing({ classified: 66, observed_trips: 40 }), floors)).toMatchObject({
+			unit: 'event',
+			count: 66,
+		});
+		// STM line 872: enough events, 33.1% observed.
+		const low = lineHold(timing({ classified: 400, observed_trips: 60 }, true), floors);
+		expect(low).toEqual({ reason: 'low_coverage' });
+		expect(lineHoldText(low!, 'fr')).toBe('Faible couverture');
+		expect(lineHold(timing({ classified: 21_693, observed_trips: 527 }), floors)).toBeNull();
+	});
+
+	it('applies only the floors the answer carries a count for', () => {
+		expect(lineHold(timing({ classified: 104 }), floors)).toBeNull();
+		expect(lineHold(timing({ classified: 104, observed_trips: 2 }), undefined)).toBeNull();
+		expect(lineHold(undefined, floors)).toBeNull();
+	});
+
 	it('finds a line by its number or its name, ignoring accents and case', () => {
 		const lines = [
 			{ number: '24', label: 'Sherbrooke' },

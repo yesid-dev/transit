@@ -23,6 +23,7 @@
 		chartState,
 		histogramChart,
 		hourChart,
+		hourGridTooFew,
 		minimumSample,
 		stopLadderChart,
 		trendChart,
@@ -72,18 +73,15 @@
 								...trendChart(input.answer, title, locale, input.network, input.stop),
 							},
 	);
-	/** An hour grid whose every reading is too few to judge says so once, with no grid. */
+	/** An hour grid with no hour to judge says so once, with its count, and shows no grid. */
 	const fewHours = $derived.by(() => {
-		if (input.kind !== 'hours' || reading.kind !== 'hours') return null;
-		const states = reading.props.rows.flatMap((row) => row.cells.map((cell) => cell.state));
-		if (!states.includes('few') || states.some((state) => state === undefined)) return null;
-		if (states.some((state) => state !== 'few' && state !== 'none')) return null;
-		const most = Math.max(
+		if (input.kind !== 'hours' || !hourGridTooFew(input.answer)) return null;
+		const total = input.answer.cells.reduce(
+			(sum, cell) => sum + (cell.evidence.counts.classified ?? 0),
 			0,
-			...input.answer.cells.map((cell) => cell.evidence.counts.classified ?? 0),
 		);
 		const minimum = minimumSample(input.answer, 'late') ?? null;
-		return tooFewHours(most, minimum, locale);
+		return tooFewHours(total, input.answer.evidence.days_included.length, minimum, locale);
 	});
 	// The count stays in its own column, not under the name.
 	const tableRows = $derived(

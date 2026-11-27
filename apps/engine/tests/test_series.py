@@ -312,11 +312,19 @@ def test_finder_groups_match_individual_line_and_stop_cuts(tmp_path: Path, versi
         assert answer["evidence"]["days_included"] == [str(THURSDAY)]
         assert answer["evidence"]["cleaning_versions"] == [version]
         assert len(answer["cells"]) == (2 if cut == "stop" else 3)
+        observed: dict[str, int | None] = {}
         for cell in answer["cells"]:
             single = query(store, start=THURSDAY, end=FRIDAY, measure=measure, **cell["key"])
             assert cell["state"] == single["state"]
             assert cell["value"] == single["value"]
-            assert cell["evidence"]["counts"] == single["evidence"]["counts"]
+            counts = dict(cell["evidence"]["counts"])
+            # Only the Lines series adds the observed-trip count a line ranking floors on.
+            observed[str(cell["key"].get("line"))] = counts.pop("observed_trips", None)
+            assert counts == single["evidence"]["counts"]
+        if measure == "on_time" and cut == "line" and version >= 9:
+            assert observed == {"A": 32, "B": 1, "N": 0}
+        else:
+            assert set(observed.values()) == {None}
             if cut == "stop":
                 assert "days_included" not in cell["evidence"]
         assert answer["cells"][-1]["state"] == "no_live_data"

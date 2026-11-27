@@ -1,4 +1,4 @@
-import { intl, type Locale } from '#lib/i18n/index.ts';
+import type { Locale } from '#lib/i18n/index.ts';
 import type {
 	DepartureRanking,
 	RecordAnswer,
@@ -22,6 +22,7 @@ import {
 	methodEvidence,
 	scheduleHours,
 	serviceTime,
+	tripsAnHour,
 } from '#lib/site/presenter.ts';
 import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
 
@@ -122,6 +123,39 @@ export function waitingFinding(answer: RecordMeasure, locale: Locale) {
 		: null;
 }
 
+const crowdingPhrases: Record<string, [en: string, fr: string]> = {
+	crowding_empty: ['were empty', 'étaient vides'],
+	crowding_many_seats: ['had many seats free', 'avaient plusieurs places assises libres'],
+	crowding_few_seats: ['had few seats free', 'avaient peu de places assises libres'],
+	crowding_standing: ['had standing room only', 'n’avaient que des places debout'],
+	crowding_crushed: ['had little standing room', 'avaient peu de places debout'],
+	crowding_full: ['were full', 'étaient pleins'],
+};
+
+/** The most frequent occupancy in a rider's words: "Vehicles most often had few seats free: 33.9% of the time." */
+export function crowdingFinding(
+	level: { key: string; share: number; percentage?: number },
+	locale: Locale,
+) {
+	const share = recordPercent(level.share, locale);
+	const phrase =
+		level.key === 'percentage' && level.percentage != null
+			? choose(
+					locale,
+					`were reported ${recordPercent(level.percentage / 100, locale)} full`,
+					`étaient déclarés pleins à ${recordPercent(level.percentage / 100, locale)}`,
+				)
+			: crowdingPhrases[level.key]
+				? choose(locale, ...crowdingPhrases[level.key])
+				: null;
+	if (!phrase) return null;
+	return choose(
+		locale,
+		`Vehicles most often ${phrase}: ${share} of the time.`,
+		`Les véhicules ${phrase.replace(/^(\S+)/u, '$1 le plus souvent')}\u00a0: ${share} du temps.`,
+	);
+}
+
 export function offeredFinding(answer: RecordSeries, locale: Locale) {
 	let peak: { hour: number; rate: number } | undefined;
 	for (const cell of answer.cells) {
@@ -138,12 +172,12 @@ export function offeredFinding(answer: RecordSeries, locale: Locale) {
 			'The timetable scheduled no trips in the available hours.',
 			'L’horaire ne prévoyait aucun trajet dans les heures disponibles.',
 		);
-	const rate = intl.number(locale, { maximumFractionDigits: 2 }).format(peak.rate);
+	const rate = tripsAnHour(peak.rate, locale).toLocaleLowerCase(locale);
 	const hours = scheduleHours(peak.hour, peak.hour + 1, locale);
 	return choose(
 		locale,
-		`Planned service peaked at ${rate} trips per hour from ${hours}.`,
-		`Le service prévu atteignait un maximum de ${rate} trajets par heure de ${hours}.`,
+		`Planned service peaked from ${hours}: ${rate}.`,
+		`Le service prévu culminait de ${hours}\u00a0: ${rate}.`,
 	);
 }
 

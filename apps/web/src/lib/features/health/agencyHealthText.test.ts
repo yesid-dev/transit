@@ -16,6 +16,7 @@ import {
 import {
 	collectionGaps,
 	predictionReadings,
+	predictionsNotMeasured,
 	publishingRows,
 	publishStateText,
 	stopEventCoverage,
@@ -129,8 +130,8 @@ describe('what the agency publishes', () => {
 		expect(readable(rows, 'en')).toEqual([
 			['Service alerts', 'Published', '1,602 notices'],
 			['Effect of each notice', 'Not published', 'None of 1,602 notices states its effect'],
-			['Wheelchair boarding at stops', 'Published', '8,623 of 8,623 stops'],
-			['Wheelchair access on trips', 'Published', '122,410 of 122,410 trips'],
+			['Wheelchair boarding at stops', 'Published', '8,623 of 8,623 stops served'],
+			['Wheelchair access on trips', 'Published', '122,410 of 122,410 scheduled trips'],
 			['How full each vehicle is', 'Published', 'In 99.9% of vehicle reporting time'],
 		]);
 	});
@@ -160,9 +161,13 @@ describe('what the agency publishes', () => {
 				[
 					'Accès en fauteuil roulant aux arrêts',
 					'Non publié',
-					'Aucune information pour les 5\u202f778 arrêts',
+					'Aucune information pour les 5\u202f778 arrêts desservis',
 				],
-				['Accès en fauteuil roulant des trajets', 'Publié', '50\u202f646 sur 50\u202f647 trajets'],
+				[
+					'Accès en fauteuil roulant des trajets',
+					'Publié',
+					'50\u202f646 sur 50\u202f647 trajets prévus',
+				],
 				['Occupation des véhicules', 'Non publié', 'Dans aucun signalement de véhicule'],
 			]),
 		);
@@ -336,6 +341,100 @@ describe('the agency scorecard in plain words', () => {
 				detail: '10,436 of 122,410 trips scheduled',
 			},
 		]);
+	});
+
+	// OC Transpo, 19 to 25 Nov: four days were capture gaps. 4,728 + 18,941 + 27,036 = 50,705
+	// mixes seven days with three. One base: the three days, 18,941 + 2,179 = 21,120.
+	const ottawa = (extra: Record<string, number>) => {
+		const answer = scorecard(
+			'live_trip_coverage',
+			0.99319,
+			{
+				scheduled: 50_705,
+				eligible: 18_941,
+				appeared: 18_812,
+				never_seen: 4_728,
+				never_seen_share: 0.0932,
+				...extra,
+			},
+			{},
+		);
+		answer.evidence.start_date = '2026-11-19';
+		answer.evidence.end_date = '2026-11-25';
+		answer.evidence.days_included = ['2026-11-22', '2026-11-23', '2026-11-24'];
+		return answer;
+	};
+
+	it.each([
+		[
+			'en',
+			[
+				'18,812 of 18,941 trips on lines seen in live data, 3 of the 7 days',
+				'2,179 of 21,120 trips scheduled, 3 of the 7 days',
+			],
+			'21,120 scheduled trips, 3 of the 7 days',
+		],
+		[
+			'fr',
+			[
+				'18 812 sur 18 941 trajets sur les lignes vues en direct, 3 des 7 jours',
+				'2 179 sur 21 120 trajets prévus, 3 des 7 jours',
+			],
+			'21 120 trajets prévus, 3 des 7 jours',
+		],
+	] as const)(
+		'puts both coverage rows and the foot on the measured days (%s)',
+		(locale, details, foot) => {
+			const facts = tripCoverageFacts(
+				ottawa({ scheduled_on_measured_days: 21_120, never_seen_on_measured_days: 2_179 }),
+				locale,
+			);
+			const plain = (text: string | null) => text?.replace(/[\u00a0\u202f]/gu, ' ') ?? null;
+			expect(facts.facts.map(({ detail }) => plain(detail))).toEqual(details);
+			expect(facts.facts.map(({ value }) => plain(value))).toEqual(
+				locale === 'fr' ? ['99,3 %', '10,3 %'] : ['99.3%', '10.3%'],
+			);
+			expect(plain(facts.sample)).toBe(foot);
+		},
+	);
+
+	it('leaves out a row on another base until the engine gives the measured-day counts', () => {
+		const facts = tripCoverageFacts(ottawa({}), 'en');
+		expect(facts.facts.map(({ id }) => id)).toEqual(['with_live_data']);
+		expect(facts.sample).toBe('18,941 scheduled trips, 3 of the 7 days');
+	});
+
+	it('says why no prediction could be checked when the feed never reports a stopped vehicle', () => {
+		const none = scorecard(
+			'prediction_error',
+			{ '1': { within_60_seconds_share: null, sample_count: 0 } },
+			{
+				'1': {
+					by_basis: {
+						vehicle_stopped: 0,
+						vehicle_nearby: 702_854,
+						trip_update_reported: 0,
+						trip_update_passed: 820_398,
+					},
+				},
+			},
+			{ '1': 'too_few_to_judge' },
+			'too_few_to_judge',
+		);
+		const agency = { name: 'OC Transpo', frenchOf: 'd’OC Transpo' };
+		expect(predictionsNotMeasured(none, agency, 'en')).toBe(
+			'OC Transpo’s feed never reports a vehicle stopped at a stop, so no prediction could be checked against an arrival.',
+		);
+		expect(predictionsNotMeasured(none, agency, 'fr')).toBe(
+			'Le flux d’OC Transpo ne signale jamais un véhicule arrêté à un arrêt\u00a0: aucune prévision n’a donc pu être vérifiée par rapport à une arrivée.',
+		);
+		const some = scorecard(
+			'prediction_error',
+			{},
+			{ '1': { by_basis: { vehicle_stopped: 12, vehicle_nearby: 0 } } },
+			{},
+		);
+		expect(predictionsNotMeasured(some, agency, 'en')).toBeNull();
 	});
 
 	it('reads each detail of a vehicle report as a share of reporting time', () => {

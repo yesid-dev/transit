@@ -46,11 +46,10 @@
 	import StateMark from '../record/StateMark.svelte';
 	import { finderCsv, finderRecordUrl, type FinderResult } from '../record/finderText.ts';
 	import { recordState, recordStateFor } from '../record/recordStates.ts';
-	import { lineExclusion } from './linesRecord.ts';
+	import { lineExclusion, lineHold, lineHoldText, type LineHold } from './linesRecord.ts';
 	import {
 		choose,
 		lastGoodNote,
-		lowCoverageText,
 		recordConnection,
 		tally,
 		timingBasis,
@@ -177,16 +176,25 @@
 			};
 		}),
 	);
-	type Row = (typeof all)[number];
+	type Row = (typeof all)[number] & { hold?: LineHold | null };
 
 	const scheduleOnly = $derived(all.filter((row) => row.noLive));
+	// Rankings' floors for a line: the headline uses the lines Rankings would rank.
+	const floors = $derived(
+		punctuality?.kind === 'answer'
+			? punctuality.answer.info?.find(({ id }) => id === 'on_time')?.ranking_floors?.line
+			: undefined,
+	);
 	const measured = $derived(
 		orderedLines(
-			all.filter((row) => !row.noLive && row.onTime !== null),
+			all
+				.filter((row) => !row.noLive && row.onTime !== null)
+				.map((row) => ({ ...row, hold: lineHold(row.timing, floors) })),
 			sort,
 			locale,
 		),
 	);
+	const ranked = $derived(measured.filter(({ hold }) => hold === null));
 	const excluded = $derived(
 		all
 			.filter((row) => !row.noLive && row.onTime === null)
@@ -240,17 +248,23 @@
 		next.searchParams.delete('q');
 		return next.pathname + next.search;
 	});
-	const spread = $derived(lineSpread(measured, locale));
+	const spread = $derived(lineSpread(ranked, locale));
 	const answer = $derived(
-		measured.length === 1
+		ranked.length === 1
 			? t(
-					'is the on-time share for the one line that can be measured on these dates.',
-					'est la part à l’heure de la seule ligne qui peut être mesurée pour ces dates.',
+					'is the on-time share for the one line with enough to judge on these dates.',
+					'est la part à l’heure de la seule ligne avec assez de données pour conclure pour ces dates.',
 				)
 			: t(
-					`is the spread of on-time share across the ${tally(measured.length, locale)} lines that can be measured on these dates.`,
-					`est la plage des parts à l’heure pour les ${tally(measured.length, locale)} lignes qui peuvent être mesurées pour ces dates.`,
+					`is the spread of on-time share across the ${tally(ranked.length, locale)} lines with enough to judge on these dates.`,
+					`est la plage des parts à l’heure pour les ${tally(ranked.length, locale)} lignes avec assez de données pour conclure pour ces dates.`,
 				),
+	);
+	const noneRanked = $derived(
+		t(
+			'No line has enough to judge on these dates. Each one is in the table with its state.',
+			'Aucune ligne n’a assez de données pour conclure pour ces dates. Chacune figure dans le tableau avec son état.',
+		),
 	);
 	const timingAnswer = $derived(punctuality?.kind === 'answer' ? punctuality.answer : null);
 	const timingFailure = $derived(
@@ -374,15 +388,16 @@
 	const stateColumns = $derived<DataTableColumn<Row>[]>([
 		{ key: 'status', header: statusHeader, cell: stateCell },
 	]);
+	// The page's counts are the sum of its three lists, so they match every other screen.
 	const totals = $derived(
-		measured.reduce(
-			(acc, row) => ({
-				events: acc.events + (row.timing?.evidence.counts.classified ?? 0),
-				trips:
-					row.trips === null
-						? acc.trips
-						: (acc.trips ?? 0) + (row.delivery?.evidence.counts.ran ?? 0),
-			}),
+		all.reduce(
+			(acc, row) => {
+				const ran = row.delivery?.evidence.counts.ran;
+				return {
+					events: acc.events + (row.timing?.evidence.counts.classified ?? 0),
+					trips: ran == null ? acc.trips : (acc.trips ?? 0) + ran,
+				};
+			},
 			{ events: 0, trips: null as number | null },
 		),
 	);
@@ -393,6 +408,23 @@
 	);
 	const counts = $derived(
 		measured.length ? recordCounts(totals.events, totals.trips, days, locale) : null,
+	);
+	// The headline counts only the lines it spans.
+	const rankedEvents = $derived(
+		ranked.reduce((total, row) => total + (row.timing?.evidence.counts.classified ?? 0), 0),
+	);
+	const headlineSample = $derived(
+		ranked.length
+			? [
+					t(
+						`${countedUnit(rankedEvents, 'event', locale)} on ${countedUnit(ranked.length, 'line', locale)}`,
+						`${countedUnit(rankedEvents, 'event', locale)} sur ${countedUnit(ranked.length, 'line', locale)}`,
+					),
+					days,
+				]
+					.filter(Boolean)
+					.join(', ')
+			: null,
 	);
 	const observed = $derived(
 		timingBasis(
@@ -409,9 +441,10 @@
 		observedLineReadings(measured.flatMap(({ timing }) => (timing ? [timing.evidence] : []))),
 	);
 
+	// The total is the sum of the three lists below.
 	const subtitle = $derived.by(() => {
-		if (!routes.length) return undefined;
-		const count = countedUnit(routes.length, 'line', locale);
+		if (!all.length) return undefined;
+		const count = countedUnit(all.length, 'line', locale);
 		return operator ? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${count}` : count;
 	});
 </script>
@@ -447,8 +480,8 @@
 	{#if timingPending}{pendingText}
 	{:else}
 		<strong class="font-sans text-base">{recordPercent(row.onTime!, locale)}</strong>
-		{#if row.timing?.evidence.low_coverage}<small class="block font-sans text-muted-foreground"
-				>{lowCoverageText(locale)}</small
+		{#if row.hold}<small class="block font-sans text-muted-foreground"
+				>{lineHoldText(row.hold, locale)}</small
 			>{/if}
 	{/if}
 {/snippet}
@@ -592,7 +625,16 @@
 						time={stamp}
 						value={spread}
 						sentence={answer}
-						evidence={timingEvidence ? { sample: counts ?? '' } : undefined}
+						evidence={timingEvidence ? { sample: headlineSample ?? '' } : undefined}
+						{actions}
+					/>
+				{:else if measured.length}
+					<RecordAnswer
+						{locale}
+						time={stamp}
+						value={null}
+						sentence={noneRanked}
+						state="too_few_to_judge"
 						{actions}
 					/>
 				{:else if punctuality && punctuality.kind !== 'busy'}
@@ -655,8 +697,7 @@
 													counts.scheduled != null &&
 													tripsRan(counts.ran, counts.scheduled, locale),
 												events != null && countedUnit(events, 'event', locale),
-												row.timing?.evidence.low_coverage &&
-													lowCoverageText(locale).toLocaleLowerCase(locale),
+												row.hold && lineHoldText(row.hold, locale).toLocaleLowerCase(locale),
 											],
 											locale,
 										);

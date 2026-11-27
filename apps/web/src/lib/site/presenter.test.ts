@@ -56,7 +56,12 @@ import {
 	serviceTime,
 	tooFewDepartures,
 	tooFewHours,
+	tripsAnHour,
 	tripsInHours,
+	tripsOverDays,
+	noticeSampleEvidence,
+	sparseService,
+	unconfirmedTrips,
 	tripsRan,
 	vehiclePositionsCapture,
 	versionNumber,
@@ -561,12 +566,59 @@ it('says once that every departure or hour is too few to judge, with the count a
 		'Each departure has at most 5 scheduled trips; the minimum is 20.',
 	);
 	expect(tooFewDepartures(1, null, 'fr')).toBe('Chaque départ compte au plus 1 trajet prévu.');
-	expect(tooFewHours(12, 25, 'en')).toBe(
-		'Every hour has too few stop events to judge: at most 12; the minimum is 25.',
+	expect(tooFewHours(358, 7, 30, 'en')).toBe(
+		'Too few stop events per hour to judge: 358 in 7 days, and an hour needs 30.',
 	);
-	expect(tooFewHours(12, 25, 'fr')).toBe(
-		'Chaque heure compte trop peu de passages aux arrêts pour conclure\u00a0: au plus 12, sur un minimum de 25.',
+	expect(tooFewHours(358, 7, 30, 'fr')).toBe(
+		'Trop peu de passages aux arrêts par heure pour conclure\u00a0: 358 en 7 jours, et il en faut 30 par heure.',
 	);
+	expect(unconfirmedTrips(9, 'en')).toBe('9 trips could not be confirmed, run or not.');
+	expect(unconfirmedTrips(1, 'fr')).toBe('1 trajet n’a pas pu être confirmé, effectué ou non.');
+	expect(unconfirmedTrips(9, 'fr')).toBe(
+		'9 trajets n’ont pas pu être confirmés, effectués ou non.',
+	);
+});
+
+it('names each count for what it counts', () => {
+	expect(countedUnit(89_366, 'trip-ran', 'en')).toBe('89,366 trips that ran');
+	expect(plain(countedUnit(89_366, 'trip-ran', 'fr'))).toBe('89 366 trajets effectués');
+	expect(countedUnit(8623, 'stop-served', 'en')).toBe('8,623 stops served');
+	expect(plain(countedUnit(8623, 'stop-served', 'fr'))).toBe('8 623 arrêts desservis');
+	expect(countedUnit(122_410, 'trip-scheduled', 'en')).toBe('122,410 scheduled trips');
+	expect(countedUnit(2, 'trip-observed', 'fr')).toBe('2 trajets observés');
+	expect(countedUnit(108_256, 'trip-per-vehicle', 'en')).toBe('108,256 trips counted per vehicle');
+	expect(plain(countedUnit(108_256, 'trip-per-vehicle', 'fr'))).toBe(
+		'108 256 trajets comptés par véhicule',
+	);
+});
+
+it('says how many notices a short list shows out of all of them', () => {
+	expect(noticeSampleEvidence(5, 1230, 'en')).toBe('5 of 1,230 notices.');
+	expect(plain(noticeSampleEvidence(5, 1230, 'fr'))).toBe('5 des 1 230 avis.');
+	expect(noticeSampleEvidence(3, 3, 'en')).toBe('3 notices.');
+});
+
+it('says a planned rate in trips an hour, in plain words', () => {
+	expect(tripsAnHour(3.86, 'en')).toBe('About 4 trips an hour');
+	expect(tripsAnHour(4, 'fr')).toBe('4 trajets par heure');
+	expect(tripsAnHour(0.71, 'en')).toBe('About 1 trip an hour');
+	expect(tripsAnHour(0.3, 'fr')).toBe('Moins d’un trajet par heure');
+	expect(tripsOverDays(27, 7, 'en')).toBe('27 trips over 7 days');
+	expect(tripsOverDays(27, 7, 'fr')).toBe('27 trajets sur 7 jours');
+});
+
+it('says the trips of a part of the day with at most one trip an hour', () => {
+	const overnight = { start: 0, end: 5 };
+	// Line 1, weekdays 19 to 24 Nov: 40 trips over 4 days, the last at 24:38 each day.
+	expect(sparseService(40 / 4, overnight, ['24:38:00', '24:38:00'], 'en')).toBe(
+		'10 trips, the last at 00:38',
+	);
+	expect(plain(sparseService(28 / 4, overnight, ['25:30:00'], 'fr'))).toBe(
+		'7 trajets, le dernier à 1 h 30',
+	);
+	// The day's last trip outside the part, or two different last trips, are not named.
+	expect(sparseService(4.5, { start: 19, end: 24 }, ['24:38:00'], 'en')).toBe('About 5 trips');
+	expect(sparseService(1, overnight, ['00:20:00', '00:40:00'], 'en')).toBe('1 trip');
 });
 
 it.each([

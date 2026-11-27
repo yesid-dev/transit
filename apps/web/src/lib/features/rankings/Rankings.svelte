@@ -7,7 +7,7 @@
 	import { RangeMark } from '@yesid/ui/chart';
 	import { Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
-	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
+	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type { RankingsRecord } from '#lib/server/engine.ts';
 	import type { loadRankingsRecord, RankingIdentities } from '#lib/server/rankingsRecord.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
@@ -273,9 +273,18 @@
 				count: (groups.get(row.reason)?.count ?? 0) + 1,
 				label: row.reason_text[locale],
 			});
+		// "No live data: 4. Low coverage: 7." One short sentence for each reason.
 		return [...groups.values()]
-			.map(({ count, label }) => `${tally(count, locale)} · ${label}`)
-			.join(' · ');
+			.map(({ count, label }) => `${label}${t(': ', '\u00a0: ')}${tally(count, locale)}.`)
+			.join(' ');
+	}
+	/** Excluded rows in the order riders read numbers: 1, 2, 4, 139, not 1, 139, 2. */
+	function excludedRows(data: RankingsRecord, identities: RankingIdentities) {
+		const compare = intl.collator(locale, { numeric: true, sensitivity: 'base' }).compare;
+		const key = (row: RecordTableRow) => row.plate?.code ?? row.leadingCode?.text ?? row.label;
+		return data.excluded
+			.map((entry): Excluded => ({ ...name(entry, identities), entry }))
+			.sort((a, b) => compare(key(a), key(b)) || compare(a.id, b.id));
 	}
 	function resultState(data: RankingsRecord) {
 		const reasons = [...new Set(data.excluded.map(({ reason }) => reason))];
@@ -443,7 +452,7 @@
 			measure,
 			locale,
 		)}{#if measure === reporting}
-			{t('per 100 h', 'par 100 h')}{/if}{/snippet}
+			{t('an hour', 'par heure')}{/if}{/snippet}
 	{#snippet rank(row: Ranked)}<span class="sr-only">{t('Rank', 'Rang')} </span>{tally(
 			row.entry.rank,
 			locale,
@@ -484,7 +493,7 @@
 	{@const columns = [
 		{
 			key: 'value',
-			header: measure === reporting ? t('per 100 h', 'par 100 h') : measureLabel,
+			header: measure === reporting ? t('Times an hour', 'Par heure') : measureLabel,
 			numeric: true,
 			cell: value,
 		},
@@ -586,7 +595,7 @@
 				{locale}
 				{title}
 				{rowHeader}
-				rows={data.excluded.map((entry): Excluded => ({ ...name(entry, identities), entry }))}
+				rows={excludedRows(data, identities)}
 				columns={[{ key: 'reason', header: t('Reason', 'Motif'), cell: reason }]}
 				phone={{
 					line: (row) =>

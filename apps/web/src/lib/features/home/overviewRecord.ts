@@ -200,7 +200,8 @@ export function recordCounts(
 	if (events == null && trips == null) return null;
 	return [
 		events == null ? null : countedUnit(events, 'event', locale),
-		trips == null ? null : countedUnit(trips, 'trip', locale),
+		// Every caller passes the trips that ran, so the count says so.
+		trips == null ? null : countedUnit(trips, 'trip-ran', locale),
 		days,
 	]
 		.filter(Boolean)

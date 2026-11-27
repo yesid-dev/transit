@@ -333,7 +333,8 @@
 					record.daysInService === null
 						? ''
 						: `${countedUnit(record.daysInService, 'day', locale)} ${t('in service', 'en service')}`,
-					record.trips === null ? '' : countedUnit(record.trips, 'trip', locale),
+					// A trip two vehicles shared counts once for each, so the sum is named for that.
+					record.trips === null ? '' : countedUnit(record.trips, 'trip-per-vehicle', locale),
 					record.evidence.days_included.length
 						? countedUnit(record.evidence.days_included.length, 'day', locale)
 						: '',
