@@ -271,7 +271,7 @@ def test_ranking_peak_uses_weekdays(tmp_path: Path) -> None:
         tmp_path,
         8,
         {
-            THURSDAY: tuple(_trip("A", i, i * 2) for i in range(5)),
+            THURSDAY: tuple(_trip("A", i, i * 10) for i in range(7)),
             SATURDAY: tuple(_trip("A", i, i * 110) for i in range(2)),
         },
     )

@@ -2,8 +2,9 @@
 
 from typing import NamedTuple
 
-# The ranking and period tests use the same turn-up-and-go headway limit.
+# The ranking and period tests use the same headway and service-span limits.
 FREQUENT_HEADWAY_SECONDS = 600
+FREQUENT_SPAN_SECONDS = 3600
 MIN_OBSERVED_HEADWAYS = 20
 BUNCHING_FRACTION = 0.5
 LONG_GAP_MULTIPLE = 2

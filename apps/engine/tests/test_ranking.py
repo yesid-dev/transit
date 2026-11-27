@@ -51,9 +51,9 @@ def network(tmp_path: Path) -> tuple[Store, tuple[Trip, ...]]:
         *_service("A", 24, half),
         *_service("C", 20, half),
         *_service("W", 20, (601,) * 8),
-        *_service("S", 2, (0,) * 8),
-        *_service("X", 2, (None,) * 8, reason="route_without_live_data"),
-        *_service("G", 2, (None,) * 8, reason="capture_gap"),
+        *_service("S", 7, (0,) * 8),
+        *_service("X", 7, (None,) * 8, reason="route_without_live_data"),
+        *_service("G", 7, (None,) * 8, reason="capture_gap"),
         *_service("N", 20, (0,) * 32, start=19 * 60),
         *_service("R", 20, (0,) * 16, route_type=1),
     )
@@ -93,7 +93,7 @@ def test_lines_match_independent_calculation_and_show_every_exclusion(
     samples: dict[str, list[int]] = defaultdict(list)
     observed_trips: Counter[str] = Counter()
     for trip in trips:
-        # Select the bus class with the morning peak start pattern.
+        # Select the line class with the morning peak start pattern.
         if trip.live and trip.line not in {"N", "R"}:
             if any(delay is not None for delay in trip.delays):
                 observed_trips[trip.line] += 1

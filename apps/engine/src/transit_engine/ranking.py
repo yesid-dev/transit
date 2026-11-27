@@ -47,7 +47,7 @@ from transit_engine.measures import (
     evaluate,
     read_window,
 )
-from transit_engine.schedule import FREQUENT_HEADWAY_SECONDS
+from transit_engine.schedule import FREQUENT_HEADWAY_SECONDS, FREQUENT_SPAN_SECONDS
 from transit_engine.series import LOCAL_HOUR as _LOCAL_HOUR
 from transit_engine.store import Store
 
@@ -171,7 +171,7 @@ class LineSchedule:
     route_types: set[int] = field(default_factory=set)
     trips: int = 0
     night: int = 0
-    peak_seconds: int = 0
+    peak_seconds: float = 0
     peak_gaps: int = 0
 
     @property
@@ -198,7 +198,7 @@ def _line_schedules(
 ) -> None:
     route_type = "route_type" if store.cleaning_version >= 6 else "NULL::INTEGER"
     hour = _LOCAL_HOUR.format("scheduled_start_utc")
-    # Restrict headways to consecutive departures on the same date and direction.
+    # Only a sustained peak on one date and in one direction can contribute headways.
     # Collapse coincident trips, which add capacity without shortening the wait.
     rows = conn.execute(
         f"""
@@ -212,14 +212,15 @@ def _line_schedules(
             SELECT DISTINCT service_date, route_id, direction_id, scheduled_start_utc
             FROM trips WHERE local_hour >= {PEAK_START_HOUR} AND local_hour < {PEAK_END_HOUR}
                 AND (isodow(service_date) <= 5 OR ?)
-        ), headways AS (
-            SELECT route_id, epoch(scheduled_start_utc - lag(scheduled_start_utc) OVER (
-                PARTITION BY route_id, service_date, direction_id ORDER BY scheduled_start_utc
-            ))::BIGINT AS gap
-            FROM peak
+        ), peak_periods AS (
+            SELECT route_id,
+                epoch(max(scheduled_start_utc) - min(scheduled_start_utc)) AS span,
+                count(*) - 1 AS gaps
+            FROM peak GROUP BY service_date, route_id, direction_id
+            HAVING span >= {FREQUENT_SPAN_SECONDS}
         ), frequency AS (
-            SELECT route_id, coalesce(sum(gap), 0) AS seconds, count(gap) AS gaps
-            FROM headways GROUP BY route_id
+            SELECT route_id, sum(span) AS seconds, sum(gaps) AS gaps
+            FROM peak_periods GROUP BY route_id
         ), service AS (
             SELECT route_id, list(DISTINCT route_type) FILTER (route_type IS NOT NULL) AS modes,
                 count(*) AS trips,

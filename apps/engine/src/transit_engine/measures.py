@@ -47,6 +47,7 @@ from transit_engine.histogram import percentile as _percentile
 from transit_engine.schedule import (
     BUNCHING_FRACTION,
     FREQUENT_HEADWAY_SECONDS,
+    FREQUENT_SPAN_SECONDS,
     LONG_GAP_MULTIPLE,
     MIN_OBSERVED_HEADWAYS,
     MIN_TRIPS_PER_HOUR,
@@ -1194,9 +1195,10 @@ _PUNCTUALITY = Family(
         "Each scheduled stop on each trip counts once, and each share is out of the "
         "stops with a measured delay. Negative values mean early; positive values mean late. "
         "Long trips and frequent lines carry more weight because each stop counts once, and "
-        "multi-day totals pool stop events so busier weekdays weigh more. Since 22 November "
-        "2026, the archived timetable and trip timing assign the service day, including trips "
-        "that cross midnight. At a trip’s first stop, departure is taken from the last nearby "
+        "multi-day totals pool stop events so busier weekdays weigh more. The whole record "
+        "was recomputed with this method on 22 November 2026. The archived timetable and trip "
+        "timing assign the service day, including trips that cross midnight. "
+        "At a trip’s first stop, departure is taken from the last nearby "
         "stopped report before the vehicle is seen further along. When a feed never reports "
         "vehicles as stopped during the day’s capture window, arrival is estimated when "
         "consecutive GPS fixes at most 160 s apart cross into 50 m of the stop, and first-stop "
@@ -1208,8 +1210,9 @@ _PUNCTUALITY = Family(
         "avance et un nombre positif, un retard. Les trajets longs et les lignes fréquentes "
         "pèsent davantage parce que chaque arrêt compte une fois, et les totaux sur plusieurs "
         "jours regroupent les passages, donc les journées plus achalandées pèsent plus lourd. "
-        "Depuis le 22 novembre 2026, l’horaire archivé et les heures du trajet déterminent le "
-        "jour de service, même après minuit. Au premier arrêt, le départ correspond au dernier "
+        "Tout le bilan a été recalculé avec cette méthode le 22 novembre 2026. L’horaire "
+        "archivé et les heures du trajet déterminent le jour de service, même après minuit. "
+        "Au premier arrêt, le départ correspond au dernier "
         "relevé du véhicule immobilisé à proximité avant qu’il soit vu plus loin. Si un flux "
         "ne signale aucun véhicule à l’arrêt pendant la collecte du jour de service, l’arrivée "
         "est estimée lorsque deux positions GPS espacées d’au plus 160\u00a0s entrent dans un "
@@ -1220,12 +1223,12 @@ _PUNCTUALITY = Family(
     ),
     exclusions=Text(
         "Added trips, cancelled trips and lines without live data are left out of every rate. "
-        "Scheduled stops without a measured delay stay in the scheduled count. Since "
-        "22 November 2026, an unobserved stop is marked as a capture gap when any required "
-        "live feed lacked continuous capture at its scheduled time.",
+        "Scheduled stops without a measured delay stay in the scheduled count. An unobserved "
+        "stop is marked as a capture gap when any required live feed lacked continuous "
+        "capture at its scheduled time.",
         "Les trajets ajoutés, les trajets annulés et les lignes sans données en direct sont "
         "exclus de tous les taux. Les arrêts prévus sans retard mesuré restent dans le total "
-        "prévu. Depuis le 22 novembre 2026, un arrêt non observé est marqué comme touché par "
+        "prévu. Un arrêt non observé est marqué comme touché par "
         "une interruption si la collecte d’un flux requis n’était pas continue à l’heure prévue.",
     ),
     limits=Text(
@@ -2217,11 +2220,14 @@ def _waiting_schedule_summary(
             SELECT {keys}, span_seconds / (scheduled_stops - 1) AS scheduled_mean
             FROM schedule_summary
             WHERE simple AND scheduled_stops > 1 AND direction_id IS NOT NULL
-                AND live_candidates > 0 AND scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+                AND live_candidates > 0 AND span_seconds >= {FREQUENT_SPAN_SECONDS}
+                AND scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
         ), irregular_frequency AS (
-            SELECT {keys}, avg(headway) AS scheduled_mean
-            FROM irregular_pairs WHERE route_has_live_data AND headway > 0
-            GROUP BY ALL HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+            SELECT {keys},
+                avg(headway) FILTER (route_has_live_data AND headway > 0) AS scheduled_mean
+            FROM irregular_pairs GROUP BY {keys}
+            HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+                AND max(event_at) - min(event_at) >= {FREQUENT_SPAN_SECONDS * 1_000_000}
         ), frequent_periods AS (
             SELECT * FROM simple_frequency UNION ALL SELECT * FROM irregular_frequency
         )
@@ -2320,10 +2326,12 @@ def _waiting_rows(
             FROM scheduled_periods
             WINDOW schedule AS (PARTITION BY {keys} ORDER BY event_at, trip_order, stop_sequence)
         ), frequent_periods AS (
-            SELECT {keys}, avg(headway) AS scheduled_mean
+            SELECT {keys},
+                avg(headway) FILTER (route_has_live_data AND headway > 0) AS scheduled_mean
             FROM scheduled_pairs
-            WHERE route_has_live_data AND headway > 0
-            GROUP BY ALL HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+            GROUP BY {keys}
+            HAVING scheduled_mean <= {FREQUENT_HEADWAY_SECONDS}
+                AND max(event_at) - min(event_at) >= {FREQUENT_SPAN_SECONDS * 1_000_000}
         )
     """
     schedule_evidence = f"""
@@ -2406,15 +2414,17 @@ def _waiting_rows(
         observed_periods AS (
             SELECT service_date, trip_order AS trip_id, stop_id, stop_sequence, route_id,
                 direction_id, scheduled_start_utc, epoch_us(observed_at) AS event_at,
+                epoch_us(scheduled_at) AS planned_at,
                 make_timestamp({observed_local}) AS local_at,
                 hour(local_at) AS local_hour,
                 {period} AS period
             FROM events
             WHERE observed_at IS NOT NULL
         ), observed_pairs AS (
-            SELECT p.* EXCLUDE (local_at), f.scheduled_mean,
+            SELECT p.* EXCLUDE (local_at, planned_at), f.scheduled_mean,
                 lag(event_at) OVER arrivals AS previous_at,
                 lag(trip_id) OVER arrivals AS previous_trip,
+                abs(planned_at - lag(planned_at) OVER arrivals) / 1000000 AS planned_gap,
                 ((event_at - previous_at) / 1000000)::BIGINT AS headway
             FROM observed_periods p JOIN frequent_periods f
                 USING (service_date, route_id, direction_id, stop_id, period)
@@ -2457,7 +2467,8 @@ def _waiting_rows(
         ), checked_headways AS (
             SELECT p.service_date, p.route_id, p.direction_id, p.stop_id, p.period,
                 p.entity, p.trip_id, p.previous_trip, p.headway,
-                p.scheduled_mean, p.previous_at, p.event_at, c.covered_from, u.unknown_at,
+                p.scheduled_mean, p.planned_gap, p.previous_at, p.event_at,
+                c.covered_from, u.unknown_at,
                 c.covered_from IS NOT NULL AS covered,
                 covered AND (u.unknown_at IS NULL OR u.unknown_at <= p.previous_at) AS eligible
             FROM observed_in_cut p LEFT JOIN coverage_hours c
@@ -2537,8 +2548,8 @@ def _waiting_rows(
 _WAITING = Family(
     id=_WAITING_ID,
     label=Text("Waiting and gaps", "Attente et intervalles"),
-    method_version="3",
-    since="2026-11-22",
+    method_version="4",
+    since="2026-11-27",
     tables=(STOP_EVENTS, TRIP_DAYS, FEED_POLLS),
     minimum_sample=MIN_OBSERVED_HEADWAYS,
     coverage=(0.25, 0.50),
@@ -2546,9 +2557,10 @@ _WAITING = Family(
     counts=Text(
         "Measures time between successive vehicles at a stop during frequent service "
         f"(scheduled every {FREQUENT_HEADWAY_SECONDS // 60} minutes or less). A period is "
-        "frequent when a line, stop and direction have at least two distinct scheduled times "
-        f"and a mean scheduled gap of at most {FREQUENT_HEADWAY_SECONDS // 60} minutes on that "
-        "service date. Coverage compares observed intervals with scheduled ones in frequent "
+        "frequent when the first and last scheduled passages for a line, stop and direction "
+        f"are at least {FREQUENT_SPAN_SECONDS // 60} minutes apart on that service date, "
+        f"with a mean scheduled gap of at most {FREQUENT_HEADWAY_SECONDS // 60} minutes. "
+        "Coverage compares observed intervals with scheduled ones in frequent "
         "periods, up to 100%. For excess wait, each period’s average wait for riders arriving "
         "without checking the timetable is the sum of squared intervals divided by twice their "
         "sum; scheduled wait uses complete scheduled intervals inside windows of known observed "
@@ -2556,9 +2568,10 @@ _WAITING = Family(
         f"{periods_text('en')}.",
         "Mesure le temps entre deux véhicules successifs à un arrêt en période de service "
         f"fréquent (horaire prévu aux {FREQUENT_HEADWAY_SECONDS // 60} minutes ou moins). "
-        "Une période est fréquente lorsqu’une ligne, un arrêt et une direction comptent au "
-        "moins deux passages prévus distincts et un intervalle prévu moyen d’au plus "
-        f"{FREQUENT_HEADWAY_SECONDS // 60} minutes à cette date de service. La couverture "
+        "Une période est fréquente lorsque, pour une ligne, un arrêt et une direction, "
+        "le premier et le dernier passage prévus sont espacés d’au moins "
+        f"{FREQUENT_SPAN_SECONDS // 60} minutes à cette date de service, avec un intervalle "
+        f"prévu moyen d’au plus {FREQUENT_HEADWAY_SECONDS // 60} minutes. La couverture "
         "compare le nombre d’intervalles observés au nombre prévu en période fréquente, "
         "jusqu’à 100\u00a0%. Pour l’attente excédentaire, l’attente moyenne d’un usager "
         "arrivant sans consulter l’horaire vaut, dans chaque période, la somme des carrés des "
@@ -2626,11 +2639,16 @@ _WAITING = Family(
             "share",
             Text(
                 f"Share of observed intervals shorter than {BUNCHING_FRACTION:.0%} of the "
-                "period’s scheduled average.",
+                "period’s scheduled average, excluding pairs the timetable puts closer "
+                "together than that.",
                 f"Part des intervalles observés inférieurs à {_fr_pct(BUNCHING_FRACTION)} "
-                "de l’intervalle prévu moyen de la période.",
+                "de l’intervalle prévu moyen de la période, sauf si l’horaire prévoit déjà "
+                "un écart inférieur à ce seuil entre les deux trajets.",
             ),
-            band=f"headway < {BUNCHING_FRACTION} * scheduled_mean",
+            band=(
+                f"headway < {BUNCHING_FRACTION} * scheduled_mean "
+                f"AND (planned_gap IS NULL OR planned_gap >= {BUNCHING_FRACTION} * scheduled_mean)"
+            ),
             ratio=("bunching", "observed_headways"),
             worst_first_descending=True,
             ranking_kinds=("line",),
@@ -3604,7 +3622,8 @@ _SCORECARD = Family(
                 "prediction riders saw on a screen. Each horizon requires at least "
                 f"{MIN_PREDICTION_SAMPLES} observed stop events. Percentiles use "
                 f"{DELAY_BIN_SECONDS}-s bins, and the ±1-minute band includes both boundaries. "
-                "Since 22 November 2026, each horizon takes the latest forecast from its lower "
+                "The whole record was recomputed with this method on 22 November 2026. "
+                "Each horizon takes the latest forecast from its lower "
                 "lead bound up to the next horizon (exclusive), with the 30-minute bucket "
                 "ending before 40 minutes ahead. Trip-update capture must cover the lead window "
                 "continuously, and hour uses the observed local hour.",
@@ -3612,8 +3631,9 @@ _SCORECARD = Family(
                 "toutes les prévisions affichées aux usagers. Chaque horizon exige au moins "
                 f"{MIN_PREDICTION_SAMPLES} passages observés aux arrêts. Les centiles "
                 f"utilisent des classes de {DELAY_BIN_SECONDS}\u00a0s, et la bande d’au plus "
-                "une minute inclut ses bornes. Depuis le 22 novembre 2026, chaque horizon "
-                "retient la prévision la plus récente entre son délai minimal et l’horizon "
+                "une minute inclut ses bornes. Tout le bilan a été recalculé avec cette méthode "
+                "le 22 novembre 2026. Chaque horizon retient la prévision la plus récente "
+                "entre son délai minimal et l’horizon "
                 "suivant, exclu; l’horizon de 30 minutes exclut les prévisions faites "
                 "40 minutes ou plus à l’avance. La collecte des mises à jour des trajets doit "
                 "être continue pendant cette période, et l’heure suit l’heure locale observée.",

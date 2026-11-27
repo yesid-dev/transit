@@ -350,7 +350,9 @@ def local_period(event: datetime) -> tuple[date, int]:
 def waiting(trips: list[Row], events: list[Row], coverage: Coverage) -> Sample:
     trips_by_id = {row["trip_id"]: row for row in trips}
     scheduled: dict[tuple[Any, ...], set[datetime]] = defaultdict(set)
-    observed: dict[tuple[Any, ...], list[tuple[datetime, str, int]]] = defaultdict(list)
+    observed: dict[tuple[Any, ...], list[tuple[datetime, str, int, datetime | None]]] = defaultdict(
+        list
+    )
     unknown: dict[tuple[Any, ...], list[datetime]] = defaultdict(list)
     for row in events:
         trip = trips_by_id[row["trip_id"]]
@@ -358,12 +360,15 @@ def waiting(trips: list[Row], events: list[Row], coverage: Coverage) -> Sample:
             continue
         key = (row["stop_id"], trip["direction_id"])
         actual = row["observed_at_utc"]
-        planned = row["scheduled_arrival_utc"] or row["scheduled_departure_utc"]
+        planned = (
+            row["scheduled_arrival_utc"] or row["scheduled_departure_utc"]
+            if trip["state"] != "added" else None
+        )
         if actual:
             observed[(*key, *local_period(actual))].append(
-                (actual, row["trip_id"], row["stop_sequence"])
+                (actual, row["trip_id"], row["stop_sequence"], planned)
             )
-        if planned and trip["state"] != "added":
+        if planned:
             period = (*key, *local_period(planned))
             scheduled[period].add(planned)
             if actual is None and trip["state"] in {"ran", "unconfirmed"}:
@@ -375,20 +380,30 @@ def waiting(trips: list[Row], events: list[Row], coverage: Coverage) -> Sample:
         plan = list(pairwise(sorted(times)))
         if not plan:
             continue
-        reference = seconds(plan[0][0], plan[-1][1]) / len(plan)
-        if reference > 600:
+        span = seconds(plan[0][0], plan[-1][1])
+        reference = span / len(plan)
+        if span < 3600 or reference > 600:
             continue
         frequent += len(plan)
         withheld = sorted(unknown[period])
         intervals = []
         windows: list[tuple[datetime, datetime]] = []
-        for (left, _, _), (right, _, _) in pairwise(sorted(observed[period])):
+        ordered = sorted(observed[period], key=lambda passage: passage[:3])
+        for (left, _, _, scheduled_left), (right, _, _, scheduled_right) in pairwise(ordered):
             unseen_trip_between = left < right and (
                 bisect_right(withheld, left) < bisect_left(withheld, right)
             )
             if unseen_trip_between or not coverage.covers(left, right):
                 continue
-            intervals.append(seconds(left, right))
+            gap = seconds(left, right)
+            intervals.append(gap)
+            scheduled_close = (
+                scheduled_left is not None
+                and scheduled_right is not None
+                and abs(seconds(scheduled_left, scheduled_right)) < reference / 2
+            )
+            if gap < reference / 2 and not scheduled_close:
+                bunched += 1
             if windows and windows[-1][1] == left:
                 windows[-1] = (windows[-1][0], right)
             else:
@@ -396,7 +411,6 @@ def waiting(trips: list[Row], events: list[Row], coverage: Coverage) -> Sample:
         matched = [seconds(a, b) for a, b in plan if any(lo <= a < b <= hi for lo, hi in windows)]
         observed_count += len(intervals)
         observed_sum += sum(intervals)
-        bunched += sum(h < reference / 2 for h in intervals)
         long += sum(h > 2 * reference for h in intervals)
         covered_count += len(matched)
         planned_sum += sum(matched)

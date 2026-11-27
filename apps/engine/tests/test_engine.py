@@ -1159,14 +1159,14 @@ def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyP
     # The fixture spans two query batches, a DST transition, and one missing day.
     # Stop "first" (46.7% observed) is excluded for low coverage, not ranked.
     expected = {
-        "network": "fde3487d0ed9355c77ebe9ec08942978da9fc6cab6f7b50323175598ea5d330c",
-        "line": "593bf1b219641c436bd064dd44b1f540f4cfe05b629ef0bd1ddca5bd2ca3a4db",
-        # The weekday-hour CSV header now labels the service weekday in both languages.
-        "grid": "3bf46d44f0d49519cb6996f26755ff02687b962332719d8cac6d6590fbdc7f08",
+        "network": "6567ffee09dac1d8860d17fe505f456ae7c1e8926996a99dbc0dad355de1731f",
+        "line": "996500e1e9a05eb60a89cc79c40ad1c8ff66218e534e4fecd3400bdf1e94c98b",
+        # The grid includes the service weekday CSV header and the revised method text.
+        "grid": "7afa60b30d9bc02913b857d22a4ccfa6d0b7c83b765a7e69aa101c56126a09df",
         "delivery": "588ca59f1841ed4aec345434dff6759665b514e8958dd2926eb8cbcf8eb99491",
-        "line_rank": "cdd6e4bc96e6a294d6ee1e33ed73df8a845f28914f7405855d73d483a819cd04",
-        "stop_rank": "d326f00dc0e7cea6345e9ce359c58567f4dab8888d4243fb2f3b1f4e4c186049",
-        "departure_rank": "f4cbf1fdfe9a3797b0c75a2385c462ec1ff34c3ee59d15b972fc95e4df553485",
+        "line_rank": "91644d0d1eeb384aee40081d0e67f2b9ce574b9c81dbed31c71e14eca83cb899",
+        "stop_rank": "17daebba061ebe0a821542e90cce9634adb6b623d0cb50684c32d733bd7e0443",
+        "departure_rank": "acc728c21bfcfd01f6ef116988a8d8d7e51658647143c5150255f218b730a86f",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {
