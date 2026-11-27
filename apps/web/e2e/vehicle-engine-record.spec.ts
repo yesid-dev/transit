@@ -329,7 +329,7 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
 				fr ? '4 min de retard' : '4 min late',
 			);
-			await expect(main.locator('[data-slot="still-map"] polyline')).toBeVisible();
+			await expect(main.locator('[data-slot="vehicle-map-preview"]')).toBeVisible();
 
 			await expect(
 				main.getByRole('button', {
@@ -357,9 +357,9 @@ for (const width of [390, 1440]) {
 			}
 			await expect(
 				main.getByRole('link', {
-					name: fr ? 'Ouvrir la carte sur ce véhicule' : 'Open the full map on this vehicle',
+					name: fr ? 'Voir sur la carte' : 'Show on the map',
 				}),
-			).toHaveAttribute('href', /map\?vehicle=40061/);
+			).toHaveAttribute('href', /\/map\?.*\bselectedVehicle=40061\b/);
 			await expect(main.getByText(fr ? 'Peu de places' : 'Few seats')).toBeVisible();
 			await expect(
 				main.getByRole('link', {
