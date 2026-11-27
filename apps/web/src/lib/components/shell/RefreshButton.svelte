@@ -18,17 +18,11 @@
 		locale: Locale;
 		class?: string;
 		fixedTapTarget?: boolean;
+		/** Visible content, such as a live stamp. It names the button, followed by the action. */
 		children?: Snippet;
-		visibleLabel?: string;
 	}
 
-	let {
-		locale,
-		class: className,
-		fixedTapTarget = false,
-		children,
-		visibleLabel,
-	}: Props = $props();
+	let { locale, class: className, fixedTapTarget = false, children }: Props = $props();
 
 	const refreshing = $derived(dataRefresh.refreshing);
 	let result = $state<RefreshResult | null>(null);
@@ -103,14 +97,17 @@
 		size={children ? 'sm' : 'icon-tap'}
 		class={children ? 'min-h-11 max-w-full gap-1 px-0' : undefined}
 		style={fixedTapTarget ? 'width: var(--size-tap-min); height: var(--size-tap-min);' : undefined}
-		aria-label={visibleLabel && !refreshing ? `${visibleLabel}. ${label}` : label}
+		aria-label={children ? undefined : label}
 		title={label}
 		onclick={onClick}
 		disabled={refreshing}
 		data-refreshing={refreshing}
 		data-refresh-failed={dataRefresh.error != null}
 	>
-		{@render children?.()}
+		{#if children}
+			<!-- Name the button from what it shows (a live stamp keeps ticking), then the action. -->
+			{@render children()}<span class="sr-only">. {label}</span>
+		{/if}
 		<svg
 			data-motion={refreshing ? 'refresh-busy' : undefined}
 			class="refresh-icon"

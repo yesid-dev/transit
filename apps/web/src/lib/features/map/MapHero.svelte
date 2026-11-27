@@ -1555,9 +1555,7 @@
 		{#if !wide && !isRecordLayer}
 			<div class="map-live-chip map-head" data-slot="map-live-chip">
 				{#if presentation.stamp.visible || presentation.bannerState !== 'idle'}
-					<RefreshButton {locale} visibleLabel={liveStampLabel}
-						>{@render liveStampContent()}</RefreshButton
-					>
+					<RefreshButton {locale}>{@render liveStampContent()}</RefreshButton>
 				{/if}
 				{#if !inViewOpen && !detailOpen}
 					<MapFeedStallBanner {presentation} inline announcedOnly />

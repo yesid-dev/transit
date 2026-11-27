@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { createRawSnippet } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dataRefresh } from '#lib/stores/refresh.svelte.ts';
 import RefreshButton from './RefreshButton.svelte';
@@ -144,3 +145,14 @@ it.each(['Escape', 'pointerdown'])(
 		expect(screen.getByRole('status')).toBeEmptyDOMElement();
 	},
 );
+
+it('names a button with visible content from that content, then the action', () => {
+	const children = createRawSnippet(() => ({
+		render: () => '<span>Live · updated 2 min ago</span>',
+	}));
+	render(RefreshButton, { locale: 'en', children });
+	const button = screen.getByRole('button');
+	expect(button).not.toHaveAttribute('aria-label');
+	// The visible words stay in the name (WCAG 2.5.3) and the action follows them.
+	expect(button).toHaveAccessibleName(/^Live · updated 2 min ago ?\. Refresh data$/u);
+});
