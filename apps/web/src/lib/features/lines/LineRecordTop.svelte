@@ -299,7 +299,7 @@
 {#if !scheduleOnly && !timetableOnly}
 	<div class="paired-line-readings">
 		<DashboardGrid gutter={false} minTile="20rem" class="items-start">
-			<RecordCard title={bands} {stamp}>
+			<RecordCard title={bands} {stamp} stampRule>
 				<div
 					class="reading-body"
 					style:--slot-wide={chartSlots.bands?.wide}
@@ -393,7 +393,7 @@
 			</RecordCard>
 
 			<div id="daily" class="grid min-w-0">
-				<RecordCard interactive title={title('daily')} {stamp} reserve="trend">
+				<RecordCard interactive title={title('daily')} {stamp} reserve="trend" stampRule>
 					<div
 						class="reading-body"
 						style:--slot-wide={chartSlots.trend?.wide}
@@ -503,15 +503,6 @@
 	@media (width < 40rem) {
 		.reading-body {
 			min-block-size: var(--slot-phone);
-		}
-	}
-	.paired-line-readings :global([data-slot='record-card']) {
-		container-type: inline-size;
-	}
-	@container (inline-size < 32rem) {
-		.paired-line-readings :global([data-slot='record-card'] > header) {
-			align-items: flex-start;
-			flex-direction: column;
 		}
 	}
 	@container (inline-size >= 32rem) {
