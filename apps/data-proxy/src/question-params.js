@@ -1,11 +1,12 @@
 const COMMON_CUTS = [
   "line", "direction", "hour", "day_type", "effect", "cause", "format", "lang", "from_stop", "to_stop", "include_method",
 ];
+const LAYER_CUTS = ["lines", "route_type", "time_band", "hour_from", "hour_to"];
 
 export const QUESTION_PARAMS = {
   measure: {
     required: ["from", "to", "measure"],
-    optional: [...COMMON_CUTS, "stop", "departure", "vehicle", "group", "alert_details", "view", "include_overall"],
+    optional: [...COMMON_CUTS, ...LAYER_CUTS, "stop", "departure", "vehicle", "group", "alert_details", "view", "include_overall"],
   },
   ranking: {
     required: ["from", "to", "measure", "kind"],
@@ -39,8 +40,12 @@ const VALID = {
   include_overall: oneOf("1"),
   include_method: oneOf("0", "1"),
   hour: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
+  hour_from: (value) => /^(?:[01]?[0-9]|2[0-3])$/.test(value),
+  hour_to: (value) => /^(?:[01]?[0-9]|2[0-4])$/.test(value),
+  route_type: (value) => /^[0-9]{1,4}$/.test(value),
+  time_band: oneOf("all", "overnight", "morning", "midday", "afternoon", "evening"),
   day_type: oneOf("weekday", "saturday", "sunday"),
-  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "segment", "vehicle", "effect", "cause"),
+  group: oneOf("day", "hour", "day_type", "weekday_hour", "direction", "stop", "departure", "line", "stop_id", "segment", "line_stop", "vehicle", "effect", "cause"),
   kind: oneOf("line", "stop", "departure", "vehicle", "segment"),
   class: (value) => /^(?:all|(?:[0-9]+|unknown|mixed):(?:night|frequent|regular))$/.test(value),
   limit: (value) => /^[0-9]{1,3}$/.test(value) && Number(value) >= 1 && Number(value) <= 500,
@@ -118,20 +123,40 @@ export function parseQuestion(url) {
     throw new Error("delay_distribution requires an ungrouped punctuality measure");
   }
 
-  for (const name of ["hour", "limit"]) {
+  for (const name of ["hour", "limit", "hour_from", "hour_to", "route_type"]) {
     if (params.has(name)) params.set(name, String(Number(params.get(name))));
   }
   const csv = params.get("format") === "csv";
   if (csv && params.get("include_method") === "0") throw new Error("include_method=0 requires JSON");
   if (params.get("include_method") === "1") params.delete("include_method");
   const map = params.get("view") === "map";
+  const clearRun = params.get("measure") === "clear_run_time_lost";
+  const waits = params.get("measure") === "excess_wait_time" && params.get("group") === "line_stop";
+  const layerMap = map && (waits || (clearRun && params.get("group") === "segment"));
+  if (!layerMap && (clearRun || params.get("group") === "line_stop" ||
+      (route === "measure" && LAYER_CUTS.some((key) => params.has(key))))) {
+    throw new Error("clear runs, waits by line and stop, and layer filters require a map layer");
+  }
+  if (layerMap) {
+    const range = params.has("hour_from") || params.has("hour_to");
+    if (range && (!params.has("hour_from") || !params.has("hour_to") ||
+        Number(params.get("hour_from")) >= Number(params.get("hour_to")))) {
+      throw new Error("provide hour_from < hour_to within 0 to 24");
+    }
+    if ([range, params.has("hour"), params.has("time_band")].filter(Boolean).length > 1 ||
+        (params.has("line") && params.has("lines"))) {
+      throw new Error("choose one time cut and either line or lines");
+    }
+  }
   if (map) {
     const scope = [...params.keys()].filter((key) =>
       !["from", "to", "measure", "group", "view", "format", "lang", "include_method"].includes(key));
     const stops = params.get("measure") === "late" && params.get("group") === "stop_id" && !scope.length;
     const segments = params.get("measure") === "mean_time_lost" && params.get("group") === "segment" &&
       (!scope.length || (params.has("line") && scope.every((key) => key === "line" || key === "direction")));
-    if (csv || !(stops || segments)) throw new Error("invalid map measure");
+    const layer = layerMap && scope.every((key) =>
+      [...LAYER_CUTS, "line", "direction", "hour", "day_type", ...(waits ? ["stop"] : [])].includes(key));
+    if (csv || !(stops || segments || layer)) throw new Error("invalid map measure");
   } else if (params.get("group") === "segment") {
     throw new Error("group=segment requires map view");
   }
@@ -159,6 +184,7 @@ export function parseQuestion(url) {
   if (params.has("lines") && upstream.search.length > 4097) {
     throw new Error("query string is too long");
   }
-  const networkCorridors = map && params.get("group") === "segment" && !params.has("line");
-  return { city, route, end, csv, key, upstream, scope, map, networkCorridors, delayDistribution, cacheOnly };
+  const networkCorridors = map && params.get("measure") === "mean_time_lost" &&
+    params.get("group") === "segment" && !params.has("line");
+  return { city, route, end, csv, key, upstream, scope, map, networkCorridors, delayDistribution, cacheOnly, layerMap };
 }

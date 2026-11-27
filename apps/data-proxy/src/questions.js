@@ -406,7 +406,7 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
       await response.body?.cancel();
       return busy(retryAfter, answerTiming("engine", "miss", timing));
     }
-    if (question.networkCorridors && response.status === 409) {
+    if ((question.networkCorridors || question.layerMap) && response.status === 409) {
       const { reason, message } = await response.json();
       if (["segment_runs_version_required", "segment_runs_missing"].includes(reason)) {
         return Response.json({ reason, message }, { status: 409, headers: PUBLIC_HEADERS });
@@ -414,6 +414,16 @@ async function answerQuestion(request, env, ctx, publicCities, visitorIp, deadli
     }
     if (response.status === 400) {
       const error = await response.json().catch(() => null);
+      if (question.layerMap && [
+        "unknown measure", "unknown parameter",
+        "map view requires network late share or time lost by segment",
+        "provide city, from, measure, to, and use each parameter once",
+      ].includes(error?.message)) {
+        // A proxy deploy can arrive before the engine understands the new map questions.
+        return Response.json({ reason: "map_layer_unsupported" }, {
+          status: 409, headers: PUBLIC_HEADERS,
+        });
+      }
       if (question.networkCorridors && error?.message === "unknown parameter") {
         return Response.json({ reason: "network_corridors_unsupported" }, {
           status: 409, headers: PUBLIC_HEADERS,

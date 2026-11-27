@@ -1,5 +1,6 @@
 import asyncio
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -13,7 +14,8 @@ from test_engine import FRIDAY, SUNDAY, THURSDAY, Poll, StopTiming, Trip, _build
 from test_ranking import _json, _request
 
 from transit_engine.clean_manifest import SEGMENT_RUNS, STOP_EVENTS
-from transit_engine.corridors import SEGMENT_BIN_SECONDS
+from transit_engine.corridors import SEGMENT_BIN_SECONDS, clear_run_times
+from transit_engine.partials import PartialResults
 from transit_engine.server import Engine
 
 STOPS = (
@@ -21,6 +23,11 @@ STOPS = (
     StopTiming("middle", 120, 150),
     StopTiming("to", 240, 270),
 )
+
+
+def test_clear_run_uses_the_decile_boundary_and_exact_median() -> None:
+    assert clear_run_times(dict.fromkeys(range(100, 120), 1), 20) == (101, 109.5)
+    assert clear_run_times({35: 3, 71: 8, 89: 10}, 21) == (35, 71)
 
 
 def _trip(
@@ -210,6 +217,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     # and a static guard that must take precedence over a poll gap.
     trips = (
         *(_trip("A", i, (0, i % 3)) for i in range(30)),
+        _trip("A", 30, (0, -120)),
         _trip("B", 0, (0, 25), 10),
         _trip("B", 1, (0, 481), 10),
         _trip("B", 2, (0, 0), 12),
@@ -231,6 +239,8 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
         ("A", start, start, start + timedelta(seconds=120 + i % 3), 120 + i % 3, None)
         for i in range(30)
     ]
+    # Equal observation times do not establish a clear run between two stops.
+    rows.append(("A", start, start, start, 0, None))
     later = start + timedelta(minutes=10)
     rows.extend([
         ("B", later, later, later + timedelta(seconds=145), 145, None),
@@ -249,6 +259,8 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
         conn.execute("""
             COPY (
                 SELECT 'stm' AS provider, ?::VARCHAR AS cleaning_version, ?::DATE AS service_date,
+                    route_id || '-' || (row_number() OVER (PARTITION BY route_id) - 1)
+                        AS trip_id,
                     0 AS direction_id, 'from' AS from_stop, 'middle' AS to_stop,
                     CASE WHEN observed_run_seconds IS NULL THEN 'not_observed'
                         ELSE 'trip_update_reported' END AS from_basis,
@@ -298,12 +310,38 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     assert network["to_stop"] == ["middle"]
     assert network["lines"] == [["A", "B", "Rail"]]
     # B's final run is covered by both feeds. Its other runs cannot enter the mean.
-    assert network["value"] == [30 / 31]
-    assert network["sample"] == [31]
+    assert network["value"] == [-90 / 32]
+    assert network["sample"] == [32]
     assert network["state"] == [3]
     assert network["evidence"]["source_date"] == "2026-11-19"
 
+    layer_cut = {"measure": "clear_run_time_lost", "group": "segment", "map_view": True}
+    cached = replace(clean, partial_results=PartialResults())
+    layer = query(cached, **layer_cut)
+    assert layer["line"] == ["A", "B", "Rail"]
+    assert layer["direction"] == [0, 0, 0]
+    assert layer["state"] == ["measured", "too_few_to_judge", "no_live_data"]
+    assert layer["minimum_sample"] == 20
+    assert layer["sample"] == layer["trips_counted"] == [30, 1, 0]
+    assert layer["observed_seconds"] == [3630, 120, 0]
+    assert layer["clear_run_seconds"] == [120, None, None]
+    assert layer["median_run_seconds"] == [121, None, None]
+    assert layer["value"] == [1, None, None]
+    filtered = query(cached, **layer_cut, lines=("A",), route_type=3, hour_from=7, hour_to=8)
+    assert filtered["line"] == ["A"] and filtered["value"] == [1]
+    assert not query(cached, **layer_cut, time_band="evening")["line"]
+    assert not query(cached, **layer_cut, route_type=0)["line"]
+    assert stable(layer) == stable(query(cached, **layer_cut))
+
     app = Engine(clean, concurrency=1, queue_size=1, queue_wait_ms=50)
+    scoped_layer = {
+        "city": "stm", "from": THURSDAY, "to": THURSDAY, "view": "map",
+        "measure": "clear_run_time_lost", "group": "segment", "lines": '["A"]',
+        "route_type": 3, "hour_from": 7, "hour_to": 8,
+    }
+    status, _, raw = asyncio.run(http(app, "/measure", urlencode(scoped_layer)))
+    assert status == 200
+    assert stable(json.loads(raw)) == stable(json.loads(json.dumps(filtered)))
     params = {
         "city": "stm", "from": THURSDAY, "to": FRIDAY, "view": "map",
         "measure": "mean_time_lost", "group": "segment",
@@ -356,7 +394,7 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     (directory / STOP_EVENTS).unlink()
     result = query(clean, measure="corridors", line="A")
     assert result["state"] == "measured"
-    assert result["evidence"]["counts"]["observed_runs"] == 30
+    assert result["evidence"]["counts"]["observed_runs"] == 31
     assert result["evidence"]["days_pending"] == [str(THURSDAY)]
 
 

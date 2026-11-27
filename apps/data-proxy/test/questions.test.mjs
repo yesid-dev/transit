@@ -374,6 +374,51 @@ test("dated public routes accept the same query names as the engine HTTP parser"
   }
 });
 
+test("forwards map layer cuts and keeps older engines and the timetable map usable", async (t) => {
+  let old = false;
+  const f = fixture(t, (request) => {
+    const query = new URL(request.url).searchParams;
+    if (old && query.get("measure") === "clear_run_time_lost") {
+      return Response.json({ message: "unknown measure" }, { status: 400 });
+    }
+    if (old && query.get("group") === "line_stop") {
+      return Response.json({
+        message: "provide city, from, measure, to, and use each parameter once",
+      }, { status: 400 });
+    }
+    return Response.json({ state: ["measured"], value: [30] });
+  });
+  const period = "/v2/demo/measure?from=2020-01-01&to=2020-01-02&view=map";
+  const clear = `${period}&measure=clear_run_time_lost&group=segment`;
+  const waits = `${period}&measure=excess_wait_time&group=line_stop`;
+  const lines = encodeURIComponent(JSON.stringify(["B", "A", "A"]));
+  assert.equal((await f.fetch(`${clear}&lines=${lines}&route_type=03&hour_from=06&hour_to=24`)).status, 200);
+  assert.deepEqual(Object.fromEntries(new URL(f.requests.at(-1).url).searchParams), {
+    city: "demo", from: "2020-01-01", to: "2020-01-02", view: "map",
+    measure: "clear_run_time_lost", group: "segment", lines: '["A","B"]',
+    route_type: "3", hour_from: "6", hour_to: "24",
+  });
+  assert.equal((await f.fetch(`${waits}&stop=12&time_band=evening&direction=0`)).status, 200);
+  const forwarded = new URL(f.requests.at(-1).url).searchParams;
+  assert.equal(forwarded.get("group"), "line_stop");
+  assert.equal(forwarded.get("time_band"), "evening");
+  assert.equal(forwarded.get("stop"), "12");
+
+  const requestCount = f.requests.length;
+  assert.equal((await f.fetch(`${clear}&hour_from=6&hour_to=6`)).status, 400);
+  assert.equal((await f.fetch(`${clear}&line=A&lines=${lines}`)).status, 400);
+  assert.equal((await f.fetch(`${waits}&hour=9&time_band=midday`)).status, 400);
+  assert.equal(f.requests.length, requestCount);
+
+  old = true;
+  for (const path of [clear, `${waits}&route_type=3`]) {
+    const response = await f.fetch(path);
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { reason: "map_layer_unsupported" });
+  }
+  assert.equal((await f.fetch(`${period}&measure=mean_time_lost&group=segment`)).status, 200);
+});
+
 test("only the bound entrypoint uses the forwarded visitor IP", async (t) => {
   const f = fixture(t);
   const edge = "192.0.2.1";

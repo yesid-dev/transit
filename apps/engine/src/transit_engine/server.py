@@ -108,6 +108,19 @@ def _date(value: str) -> date:
     return parsed
 
 
+def _line_ids(value: str) -> tuple[str, ...]:
+    ids = json.loads(value)
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 256 or not all(
+        isinstance(line, str)
+        and 1 <= len(line) <= 256
+        and line.isprintable()
+        and line == line.strip()
+        for line in ids
+    ):
+        raise ValueError("provide 1 to 256 valid line IDs")
+    return tuple(sorted(set(ids)))
+
+
 def _question(
     raw: bytes, *, ranking: bool = False
 ) -> tuple[Question | Ranking, Literal["json", "csv"], Language, bool]:
@@ -131,7 +144,8 @@ def _question(
     else:
         required.add("measure")
         optional.update({
-            "stop", "departure", "vehicle", "group", "alert_details", "view", "include_overall"
+            "stop", "departure", "vehicle", "group", "alert_details", "view", "include_overall",
+            "lines", "route_type", "time_band", "hour_from", "hour_to",
         })
     if len(raw) > 4096 or re.search(rb"%(?![a-fA-F0-9]{2})", raw):
         raise ValueError("invalid query string")
@@ -166,6 +180,13 @@ def _question(
     hour = params.get("hour")
     if hour is not None and not re.fullmatch(r"[01]?[0-9]|2[0-3]", hour):
         raise ValueError("hour must be from 0 to 23")
+    for key, pattern in (
+        ("hour_from", r"[01]?[0-9]|2[0-3]"),
+        ("hour_to", r"[01]?[0-9]|2[0-4]"),
+        ("route_type", r"[0-9]{1,4}"),
+    ):
+        if key in params and not re.fullmatch(pattern, params[key]):
+            raise ValueError(f"invalid {key}")
     day_type = params.get("day_type")
     if day_type is not None and day_type not in {"weekday", "saturday", "sunday"}:
         raise ValueError("day_type must be weekday, saturday or sunday")
@@ -214,6 +235,11 @@ def _question(
         alert_details="alert_details" in params,
         map_view=params.get("view") == "map",
         include_overall="include_overall" in params,
+        lines=_line_ids(params["lines"]) if "lines" in params else (),
+        route_type=int(params["route_type"]) if "route_type" in params else None,
+        time_band=params.get("time_band"),
+        hour_from=int(params["hour_from"]) if "hour_from" in params else None,
+        hour_to=int(params["hour_to"]) if "hour_to" in params else None,
     )
     if ranking:
         kind = params["kind"]
@@ -424,16 +450,7 @@ class Engine:
                 if set(fields) - ({"city", "lines"} if scoped_map else {"city"}):
                     raise ValueError("unknown parameter")
                 if "lines" in fields:
-                    ids = json.loads(fields["lines"][0])
-                    if not isinstance(ids, list) or not 1 <= len(ids) <= 256 or not all(
-                        isinstance(line, str)
-                        and 1 <= len(line) <= 256
-                        and line.isprintable()
-                        and line == line.strip()
-                        for line in ids
-                    ):
-                        raise ValueError("provide 1 to 256 valid line IDs")
-                    lines = set(ids)
+                    lines = set(_line_ids(fields["lines"][0]))
                 question, output, language = fields["city"][0], "json", "en"
             else:
                 question, output, language, include_method = _question(

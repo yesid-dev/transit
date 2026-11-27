@@ -94,7 +94,7 @@ SEGMENT_RUNS_SQL = f"""
         )) AS bucket
         FROM continuous_coverage
     ), segments AS (
-        SELECT service_date, route_id, direction_id, from_stop, to_stop,
+        SELECT service_date, {{trip_identity}} route_id, direction_id, from_stop, to_stop,
             scheduled_departure_at AS departure_at, from_basis AS basis,
             observed_departure_at, observed_arrival_at,
             observed_run_seconds AS observed_seconds, scheduled_run_seconds AS scheduled_seconds,
@@ -114,3 +114,20 @@ SEGMENT_RUNS_SQL = f"""
             AND s.observed_departure_at >= c.covered_from AND s.observed_arrival_at <= c.covered_to
     )
 """
+
+
+def clear_run_times(histogram: dict[int, int], runs: int) -> tuple[int, float]:
+    """Return the real run at the first-decile boundary and the exact median."""
+    targets = iter(((runs + 9) // 10, (runs + 1) // 2, (runs + 2) // 2))
+    target = next(targets, None)
+    readings = []
+    count = 0
+    for seconds, frequency in sorted(histogram.items()):
+        count += frequency
+        while target is not None and target <= count:
+            readings.append(seconds)
+            target = next(targets, None)
+        if target is None:
+            break
+    clear_run, lower, upper = readings
+    return clear_run, (lower + upper) / 2
