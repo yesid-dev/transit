@@ -345,16 +345,16 @@
 {/snippet}
 
 {#snippet actions()}
-	<SearchSheet
-		bind:this={searchSheet}
-		bind:query={search}
-		{locale}
-		{providerId}
-		{url}
-		list={searchList}
-		presentation={searchPresentation}
-		label={searchAria}
-	/>
+	{#if currentPath !== '/search'}<SearchSheet
+			bind:this={searchSheet}
+			bind:query={search}
+			{locale}
+			{providerId}
+			{url}
+			list={searchList}
+			presentation={searchPresentation}
+			label={searchAria}
+		/>{/if}
 {/snippet}
 
 <div bind:this={headerFrame} class="frame-nav" data-slot="frame-nav">
@@ -373,7 +373,7 @@
 			names: navCopy.names,
 			reload: true,
 		}}
-		search={searchField}
+		search={currentPath === '/search' ? undefined : searchField}
 		{network}
 		{actions}
 	/>

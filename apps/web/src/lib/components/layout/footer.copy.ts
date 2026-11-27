@@ -14,6 +14,11 @@ export const footerCopy = defineCopy({
 		auditLabel: 'Vérification',
 		reportsLabel: 'Rapports',
 		infoLabel: 'Information',
+		dataLabel: 'Données',
+		shortLinks: {
+			'/download': 'Téléchargements',
+			'/rankings?kind=departure': 'Trajets et véhicules',
+		},
 	},
 	en: {
 		tagline: 'An independent public record of the transit service delivered. Not a trip planner.',
@@ -22,6 +27,8 @@ export const footerCopy = defineCopy({
 		providerFallback: 'the transit agency',
 
 		disclaimer: (agency: AgencyName) => `Unofficial website, not affiliated with ${agency.name}.`,
+		dataLabel: 'Data',
+		shortLinks: { '/download': 'Downloads', '/rankings?kind=departure': 'Trips and vehicles' },
 		auditLabel: 'Audit',
 		reportsLabel: 'Reports',
 		infoLabel: 'Information',

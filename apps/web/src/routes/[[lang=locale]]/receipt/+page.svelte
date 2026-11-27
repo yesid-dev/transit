@@ -986,43 +986,10 @@
 		margin: 8mm;
 	}
 	@media print {
-		:global(
-			body:has(.daily-report)
-				:is(
-					[data-slot='app-frame-chrome'],
-					[data-slot='surface-rail'],
-					[data-slot='surface-rail-mobile'],
-					[data-slot='record-patience'],
-					[data-slot='page-section-boundary'],
-					[data-slot='footer']
-				)
-		) {
-			display: none !important;
-		}
-		:global(
-			body:has(.daily-report)
-				:is([data-slot='app-shell'], [data-slot='app-frame'], .app-frame-body, #main-flow, #main)
-		) {
-			display: block;
-			min-height: 0;
-			overflow: visible;
-		}
 		.daily-report {
-			print-color-adjust: exact;
 			zoom: 0.52;
 			gap: 0.5rem;
 			padding: 0;
-			color-scheme: light;
-			--background: Canvas;
-			--card: Canvas;
-			--foreground: CanvasText;
-			--muted-foreground: CanvasText;
-			--accent-text: CanvasText;
-			--border: GrayText;
-			--shadow-card: none;
-			color: CanvasText;
-			--primary: CanvasText;
-			--secondary-foreground: CanvasText;
 		}
 		/* The sections join the report's two print columns. */
 		.report-sections {

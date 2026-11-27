@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { Button } from '@yesid/ui/button';
 	import * as Collapsible from '@yesid/ui/collapsible';
 	import * as Sheet from '@yesid/ui/sheet';
@@ -42,6 +43,10 @@
 		printNote?: string;
 	} = $props();
 	const fr = $derived(locale === 'fr');
+	const printPage = () => window.print();
+	const printAction = $derived(
+		print ?? (page.url?.searchParams.get('frameMode') === 'record' ? printPage : undefined),
+	);
 	const windowLayout = actionSheetLayout();
 	const closeLabel = $derived(fr ? 'Fermer' : 'Close');
 	const citeLabel = $derived(fr ? 'Citer' : 'Cite');
@@ -233,11 +238,11 @@
 				{@render closeFooter()}
 			</Sheet.Content>
 		</Sheet.Root>
-		{#if print}<Button
+		{#if printAction}<Button
 				variant="outline"
 				size="cta-sm"
 				class="min-h-11"
-				onclick={print}
+				onclick={printAction}
 				disabled={printDisabled}
 				title={printNote}
 				aria-describedby={printNote ? printNoteId : undefined}>{fr ? 'Imprimer' : 'Print'}</Button
