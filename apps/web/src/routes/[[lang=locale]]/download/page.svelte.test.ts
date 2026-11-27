@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import { downloadLayouts, downloadTables } from '#lib/features/record/downloadTables.ts';
+import { tableName } from '#lib/features/record/dataHealthText.ts';
 import Page from './+page.svelte';
 
 const { language } = vi.hoisted(() => ({ language: { value: 'en' as 'en' | 'fr' } }));
@@ -81,8 +82,10 @@ it.each(cases)(
 				},
 			},
 		});
-		const chosen = version === '12' ? downloadLayouts.segment_runs : downloadLayouts.stop_events;
-		const card = await screen.findByRole('article', { name: chosen[locale] });
+		const key = version === '12' ? 'segment_runs' : 'stop_events';
+		const chosen = downloadLayouts[key];
+		// Download names each table as Data health does.
+		const card = await screen.findByRole('article', { name: tableName(key, locale) });
 		const trigger = within(card).getByRole('button', {
 			name: locale === 'en' ? 'See the layout and files' : 'Voir la structure et les fichiers',
 		});
@@ -126,10 +129,14 @@ it.each(cases)(
 		expect(
 			screen.getByText(
 				locale === 'en'
-					? 'Service alerts are not tracked for this city.'
-					: 'Les avis de service ne sont pas suivis pour cette ville.',
+					? 'Notices are not tracked for this city.'
+					: 'Les avis ne sont pas suivis pour cette ville.',
 			),
 		).toBeInTheDocument();
+		// Data health's words for the same things; the file names stay in the files.
+		expect(document.body).not.toHaveTextContent(
+			/\bagence\b|version du nettoyage|tables? nettoyées?|clean tables?|cleaning version|Trip days|Feed polls|Prediction samples|Segment runs/iu,
+		);
 		if (version === '12') {
 			const description = await screen.findByText(downloadTables.segment_runs[locale]);
 			expect(description).toBeVisible();
@@ -141,8 +148,8 @@ it.each(cases)(
 );
 
 it.each([
-	['en', 0, 'files cover these dates: 8 clean tables, one file for each of the 7 days.'],
-	['fr', 0, 'fichiers couvrent ces dates : 8 tables nettoyées, un fichier par jour sur 7 jours.'],
+	['en', 0, 'files cover these dates: 8 tables, one file for each of the 7 days.'],
+	['fr', 0, 'fichiers couvrent ces dates : 8 tables, un fichier par jour sur 7 jours.'],
 	['en', 3, 'files cover these dates; 3 are missing, see the cards.'],
 	['fr', 3, 'fichiers couvrent ces dates ; il en manque 3, consultez les fiches.'],
 ] as const)('describes the %s grid with %i missing files', async (locale, missing, sentence) => {

@@ -8,11 +8,8 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
 	import { downloadCoverage } from '#lib/features/record/downloadCoverage.ts';
-	import {
-		downloadLayouts,
-		downloadTables,
-		missingDayReasons,
-	} from '#lib/features/record/downloadTables.ts';
+	import { downloadLayouts, downloadTables } from '#lib/features/record/downloadTables.ts';
+	import { healthReason, tableName } from '#lib/features/record/dataHealthText.ts';
 	import {
 		compactServiceDay,
 		countedUnit,
@@ -89,8 +86,8 @@
 		const tableCount = tally(tables.length, locale);
 		const tableLabel =
 			tables.length === 1
-				? t(`${tableCount} clean table`, `${tableCount} table nettoyée`)
-				: t(`${tableCount} clean tables`, `${tableCount} tables nettoyées`);
+				? t(`${tableCount} table`, `${tableCount} table`)
+				: t(`${tableCount} tables`, `${tableCount} tables`);
 		if (count !== tables.length * days) {
 			return (
 				coverage +
@@ -297,7 +294,7 @@
 					{#if coverage.tables.length}
 						<div class="download-grid">
 							{#each coverage.tables as { table: key, files: rows, gaps } (key)}
-								<RecordCard interactive title={downloadLayouts[key][locale]} {stamp}>
+								<RecordCard interactive title={tableName(key, locale)} {stamp}>
 									<div class="grid min-w-0 grid-cols-1 gap-2">
 										<p>{downloadTables[key][locale]}</p>
 										{#if rows.length}<p class="text-sm text-muted-foreground">
@@ -377,14 +374,14 @@
 					{#if listings.some((day) => day.alerts_not_tracked)}
 						<p>
 							{t(
-								'Service alerts are not tracked for this city.',
-								'Les avis de service ne sont pas suivis pour cette ville.',
+								'Notices are not tracked for this city.',
+								'Les avis ne sont pas suivis pour cette ville.',
 							)}
 						</p>
 					{/if}
 					{#if !count}
 						{#each [...new Set(listings.flatMap((day) => day.reason ?? []))] as reason (reason)}
-							<p>{missingDayReasons[reason][locale]}</p>
+							<p>{healthReason(reason, locale)}.</p>
 						{/each}
 					{/if}
 				{/await}
@@ -413,8 +410,8 @@
 						<div class="grid gap-2">
 							<p>
 								{t(
-									'The files identify the provider and cleaning version. Service dates follow the agency’s operating day, which may extend past midnight. Columns ending in _utc contain UTC timestamps.',
-									'Les fichiers indiquent le fournisseur et la version du nettoyage. La date de service suit la journée d’exploitation de l’agence, qui peut se prolonger après minuit. Les colonnes qui se terminent par _utc contiennent des horodatages UTC.',
+									'Each file names its city and the version of the method that built it. Service dates follow the agency’s operating day, which may extend past midnight. Columns ending in _utc contain UTC timestamps.',
+									'Chaque fichier indique sa ville et la version de la méthode qui l’a produit. La date de service suit la journée d’exploitation de la société de transport, qui peut se prolonger après minuit. Les colonnes qui se terminent par _utc contiennent des horodatages UTC.',
 								)}
 							</p>
 							<ul class="flex flex-wrap gap-x-4">
