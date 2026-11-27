@@ -78,6 +78,12 @@ it('says how long an interruption of reporting lasts on average', () => {
 	expect(reportingGapsReading(473.5, 83, 'en')).toBe(
 		'times it stopped reporting, about 4.7 an hour',
 	);
+	expect(plain(reportingGapsReading(1.6764, 1, 'en', 0.20002))).toBe(
+		'time it stopped reporting, lasting 12 min',
+	);
+	expect(plain(reportingGapsReading(1.6764, 1, 'fr', 0.20002))).toBe(
+		'interruption des signalements, d’une durée de 12 min',
+	);
 });
 
 const stm = {

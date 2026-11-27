@@ -70,11 +70,10 @@ it('only ranks vehicles on reporting gaps, including visits to old completion li
 it('keeps a measured zero count and shows trips only when reported', () => {
 	expect(
 		rankingCountLines({ ...row, sample: 20.5, counts: { reporting_gaps: 0 } }, reporting, 'en'),
-	).toEqual(['0 times in 21 hours']);
-	// "about 7 times an hour (155 times in 21 hours)": the rate per hour and where it comes from.
+	).toEqual(['0 times in 20.5 hours']);
 	expect(
 		rankingCountLines({ ...row, sample: 21.47, counts: { reporting_gaps: 155 } }, reporting, 'fr'),
-	).toEqual(['155 interruptions en 21 heures']);
+	).toEqual(['155 interruptions en 21,5 heures']);
 	expect(rankingValue(721.9, reporting, 'en')).toBe('7.2');
 	expect(rankingCountLines(row, 'on_time', 'fr')).toEqual(['100 passages observés aux arrêts']);
 	expect(rankingCountLines({ ...row, counts: { observed_trips: 1 } }, 'on_time', 'fr')).toEqual([
@@ -156,7 +155,7 @@ it('shows the observed sample for an entry below the minimum', () => {
 			reporting,
 			'fr',
 		),
-	).toBe('Trop peu pour juger · 2,25 heures en service');
+	).toBe('Trop peu pour juger · 2,3 heures en service');
 });
 
 it('distinguishes no recorded days from an unknown result on recorded days', () => {
@@ -247,11 +246,11 @@ it('says how long a vehicle’s interruptions last beside their count', () => {
 		counts: { reporting_gaps: 83, silent_hours: 1.450030923611111 },
 	};
 	expect(rankingCountLines(vehicle, reporting, 'en').map(plainText)).toEqual([
-		'83 times in 18 hours',
+		'83 times in 17.5 hours',
 		'lasting 63 s on average',
 	]);
 	expect(rankingCountLines(vehicle, reporting, 'fr').map(plainText)).toEqual([
-		'83 interruptions en 18 heures',
+		'83 interruptions en 17,5 heures',
 		'd’une durée moyenne de 63 s',
 	]);
 });

@@ -49,14 +49,16 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(page.getByRole('heading', { name: 'Avis de service', level: 1 })).toBeVisible();
 	const answer = page.locator('#answer');
 	await expect(answer).toContainText('213 avis étaient en vigueur à un moment donné à ces dates.');
-	await expect(answer).toContainText(/213 avis, issus de 1\s707 avis publiés par la STM/);
+	await expect(answer).toContainText(/213 avis, en 1\s707 publications par la STM\./);
 	await expect(answer).not.toContainText('12,5');
 	await expect(page.getByRole('heading', { name: 'Par effet', exact: true })).toHaveCount(0);
 	await expect(
 		page.getByText('La société de transport ne publie pas l’effet de ses avis.'),
 	).toBeVisible();
 	await expect(
-		page.getByText('Chaque avis compte une fois, même si la société de transport l’a republié.'),
+		page.getByText(
+			'Compte les avis distincts en vigueur à ces dates. Le nombre de publications comprend chaque version.',
+		),
 	).toBeVisible();
 	const byLine = page.getByRole('button', { name: 'Par ligne', exact: true });
 	await expect(byLine).toHaveAttribute('aria-expanded', 'false');
@@ -88,7 +90,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(page.getByRole('dialog')).toContainText(
 		/Avis de la société de transport.*#messages/,
 	);
-	await expect(page.getByRole('dialog')).toContainText(/Avis tels que publiés\s*:\s*1\s707/);
+	await expect(page.getByRole('dialog')).toContainText(/Avis\s*:\s*1\s707/);
 	await page.keyboard.press('Escape');
 	await answer.getByRole('button', { name: 'Télécharger' }).click();
 	for (const [name, section] of [
@@ -111,9 +113,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	const duplicate = stmAlertId(14);
 	await page.goto(`/alerts?${period}#alert-${encodeURIComponent(duplicate)}`);
 	await expect(answer).toContainText('213 notices were in effect at some point in these dates.');
-	await expect(answer).toContainText(
-		'213 notices, from 1,707 as STM published them, one per line and reissue.',
-	);
+	await expect(answer).toContainText('213 notices across 1,707 publications by STM.');
 	const grouped = page.locator(`[id="alert-${duplicate}"]`).locator('xpath=ancestor-or-self::li');
 	await expect(grouped.getByRole('heading')).toHaveText('Stop 52997 is closed during roadworks.');
 	for (const number of ['34', '125', '353']) {
@@ -171,7 +171,9 @@ test('Alerts Record shows the engine message limit and OC Transpo has no alert t
 }) => {
 	const long = period.replace('2026-11-14', '2026-11-13');
 	await page.goto(`/alerts?${long}`);
-	await expect(page.locator('#answer')).toContainText('1,707 notices as published.');
+	await expect(page.locator('#answer')).toContainText(
+		'1,707 notices were in effect at some point in these dates.',
+	);
 	await expect(page.locator('#messages')).toContainText(
 		'Agency notices are listed for 7 days or fewer. Pick a shorter period.',
 	);
@@ -198,7 +200,9 @@ test('Alerts Record shows an answer while agency messages are still calculating'
 	await page.goto(`/alerts?provider=stm&frameMode=record&recordFrom=${date}&recordTo=${date}`, {
 		waitUntil: 'commit',
 	});
-	await expect(page.locator('#answer')).toContainText('notices as published.');
+	await expect(page.locator('#answer')).toContainText(
+		'notices were in effect at some point in these dates.',
+	);
 	await expect(page.locator('#messages [data-record-pending][aria-busy="true"]')).toHaveCount(1);
 	await expect(page.locator('#messages')).toContainText('Still calculating…');
 	const patience = page.locator('[data-slot="record-patience"]').getByRole('status');

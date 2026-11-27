@@ -92,6 +92,8 @@ def test_catalog_quebec_french_meaning_terminology_and_typography() -> None:
     assert "prévision moins observation" in pred["definition"]
     assert "30 passages observés aux arrêts" in pred["limits"]
     gaps_rate = by_id["vehicle_reporting_gaps_per_100_hours"]["text"]
+    assert "exceeds 5 minutes and three" in gaps_rate["en"]["definition"]
+    assert "dépasse 5 minutes et trois fois" in gaps_rate["fr"]["definition"]
     assert "2 vehicle-hours" in gaps_rate["en"]["limits"]
     assert "2 heures-véhicules" in gaps_rate["fr"]["limits"]
     assert by_id["crowding_empty"]["family_text"]["fr"] == "Occupation des véhicules"

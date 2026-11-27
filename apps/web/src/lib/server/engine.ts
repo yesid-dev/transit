@@ -328,6 +328,7 @@ const recordCell = recordState.extend({
 					source: z.string(),
 					id: z.string(),
 					version: z.string(),
+					reissue_ids: z.array(z.string()).optional(),
 					routes: z.array(z.string()),
 					stops: z.array(z.string()),
 					effect: z.string().nullable().optional(),

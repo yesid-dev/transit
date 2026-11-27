@@ -12,6 +12,7 @@ import { isGenericAlertHeading } from '#lib/v1/alertDisplay.ts';
 export type AlertCard = AgencyMessage & {
 	key: string;
 	id: string;
+	reissue_ids?: readonly string[];
 	stops: readonly string[];
 	effect: string | null;
 	periods: readonly AgencyMessagePeriod[];
@@ -61,8 +62,9 @@ export function groupAlertCards(
 		const key = JSON.stringify(hasText ? [text, intervals] : [card.key]);
 		if (include(card)) included.add(key);
 		const group = groups.get(key);
+		const ids = [card.id, ...(card.reissue_ids ?? [])];
 		if (group) {
-			group.ids = [...new Set([...group.ids, card.id])];
+			group.ids = [...new Set([...group.ids, ...ids])];
 			group.routes = [...new Set([...group.routes, ...card.routes])];
 			group.stops = [...new Set([...group.stops, ...card.stops])];
 			if (group.effect !== card.effect) group.effect = null;
@@ -70,7 +72,7 @@ export function groupAlertCards(
 		} else {
 			groups.set(key, {
 				...card,
-				ids: [card.id],
+				ids,
 				routes: [...new Set(card.routes)],
 				stops: [...new Set(card.stops)],
 			});

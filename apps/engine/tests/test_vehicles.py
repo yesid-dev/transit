@@ -238,9 +238,9 @@ def vehicle_history(
                         )
                     if day == OUTAGE_DAY or unfinished:
                         spans = (
-                            ((0, 600, 31), (900, 2100, 61))
+                            ((0, 600, 31), (960, 2100, 58))
                             if day == OUTAGE_DAY
-                            else ((0, 600, 31), (680, 1900, 62), (1960, 2100, 8))
+                            else ((0, 600, 31), (920, 1900, 50), (1970, 2100, 7))
                         )
                         intervals.extend(
                             Interval(
@@ -318,7 +318,7 @@ def vehicle_history(
                     # Only the affected endpoint has failed polls on each outage day.
                     failed = (
                         day == FRIDAY and feed == "trip_updates" and 600 <= seconds < 800
-                    ) or (day == OUTAGE_DAY and feed == "vehicle_positions" and 600 < seconds < 900)
+                    ) or (day == OUTAGE_DAY and feed == "vehicle_positions" and 600 < seconds < 960)
                     polls.append(
                         (feed, stamp, stamp, "error" if failed else "ok", None if failed else 3)
                     )
@@ -377,11 +377,11 @@ def test_vehicle_service_and_reporting_match_independent_recomputation(
             start = int((row.start - clock).total_seconds())
             end = int((row.last - clock).total_seconds()) + min(gap, 60)
             covered.update(range(start, end))
-            if following.trip == row.trip and gap > 60:
+            if following.trip == row.trip and gap > 300:
                 expected_gaps.append(gap)
         seconds_in_service += len(covered)
     hours = seconds_in_service / 3600
-    assert expected_gaps == [80, 80]
+    assert expected_gaps == [320, 320]
     assert result["value"]["vehicle_hours_in_service"] == pytest.approx(hours)
     assert result["value"]["vehicle_reporting_gaps"] == len(expected_gaps)
     assert result["value"]["vehicle_silent_hours"] == pytest.approx(sum(expected_gaps) / 3600)
@@ -563,7 +563,7 @@ def test_reporting_outage_is_excluded_from_vehicle_measures_and_ranking(
     assert city["evidence"]["measure_states"][REPORTING_RATE] == "too_few_to_judge"
     assert city["evidence"]["excluded"]["reporting_gaps_capture_gap"] == 2
     assert city["evidence"]["excluded"]["reporting_gaps_capture_gap_hours"] == pytest.approx(
-        2 * 300 / 3600
+        2 * 360 / 3600
     )
 
     ranking = answer(store, "/ranking", THURSDAY, OUTAGE_DAY, kind="vehicle")
@@ -572,7 +572,7 @@ def test_reporting_outage_is_excluded_from_vehicle_measures_and_ranking(
     assert (second["id"], second["value"]) == ("102", 0)
     for row in (first, second):
         assert row["excluded"]["reporting_gaps_capture_gap"] == 1
-        assert row["excluded"]["reporting_gaps_capture_gap_hours"] == pytest.approx(300 / 3600)
+        assert row["excluded"]["reporting_gaps_capture_gap_hours"] == pytest.approx(360 / 3600)
 
 
 @pytest.mark.parametrize("day", (SATURDAY, SUNDAY))
@@ -681,22 +681,22 @@ def _cadence_stats(tmp_path: Path, cadence: int, missed: list[int]) -> dict[str,
     assert result["service_us"] == 1_000_000 * (
         sum(min(s, 3 * cadence) for s in spacings) + cadence
     )
-    assert result["silent_us"] == 1_000_000 * sum(s for s in spacings if s > 3 * cadence)
+    assert result["silent_us"] == 1_000_000 * sum(
+        s for s in spacings if s > 3 * cadence and s > 300
+    )
     return result
 
 
-@pytest.mark.parametrize("cadence", [20, 60])
-def test_reporting_gaps_follow_each_feed_cadence(tmp_path: Path, cadence: int) -> None:
+@pytest.mark.parametrize(
+    "cadence, missed_reports, expected_silences",
+    [(20, [2, 3, 14, 15], [320]), (120, [1, 2, 3, 5], [480, 720])],
+)
+def test_reporting_gaps_need_both_cadence_and_five_minutes(
+    tmp_path: Path, cadence: int, missed_reports: list[int], expected_silences: list[int]
+) -> None:
     on_cadence = _cadence_stats(tmp_path / "steady", cadence, [])
     assert on_cadence["reporting_gaps"] == on_cadence["silent_us"] == 0
-    # One and two missed reports are allowed; three and five are interruptions.
-    missed = _cadence_stats(tmp_path / "missed", cadence, [1, 2, 3, 5])
-    assert missed["reporting_gaps"] == 2
+    missed = _cadence_stats(tmp_path / "missed", cadence, missed_reports)
+    assert missed["reporting_gaps"] == len(expected_silences)
     assert missed["reporting_gaps_capture_gap"] == 0
-    assert missed["silent_us"] == 1_000_000 * cadence * (4 + 6)
-    # Service: 20 on-cadence spacings, the 2, 3, 4 and 6 interval silences capped at 3,
-    # and one final interval. The same missed reports cover three times the service time
-    # at a one-minute cadence, so the rate scales with the cadence.
-    hours = missed["service_us"] / 3_600_000_000
-    assert hours == pytest.approx((20 + 2 + 3 + 3 + 3 + 1) * cadence / 3600)
-    assert 100 * missed["reporting_gaps"] / hours == pytest.approx(100 * 2 / (32 * cadence / 3600))
+    assert missed["silent_us"] == 1_000_000 * sum(expected_silences)

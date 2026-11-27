@@ -14,7 +14,7 @@ export const alertSections = {
 };
 
 export const alertMetrics = {
-	alerts: { en: 'Notices as published', fr: 'Avis tels que publiés' },
+	alerts: { en: 'Notices', fr: 'Avis' },
 	alert_versions: { en: 'Distinct notice versions', fr: 'Versions d’avis distinctes' },
 	alert_hours: { en: 'Hours of notices in effect', fr: 'Heures d’avis en vigueur' },
 };

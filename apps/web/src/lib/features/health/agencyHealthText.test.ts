@@ -333,7 +333,7 @@ describe('the agency scorecard in plain words', () => {
 			{
 				id: 'with_live_data',
 				label: 'Trips with live data',
-				value: '100.0%',
+				value: '99.9%',
 				detail: '111,959 of 111,974 trips on lines seen in live data',
 			},
 			{

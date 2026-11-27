@@ -17,7 +17,7 @@ it('groups the same bilingual roadworks notice across lines and retains its publ
 		periods: [period],
 	};
 	const cards = recordAlertCards([
-		{ ...message, id: 'roadworks-34', routes: ['34'] },
+		{ ...message, id: 'roadworks-34', routes: ['34'], reissue_ids: ['roadworks-34-fr'] },
 		{ ...message, id: 'roadworks-125', routes: ['125'] },
 		{
 			...message,
@@ -45,7 +45,13 @@ it('groups the same bilingual roadworks notice across lines and retains its publ
 	const grouped = groupAlertCards(cards);
 	expect(grouped.map(({ ids, routes }) => ({ ids, routes }))).toEqual([
 		{
-			ids: ['roadworks-34', 'roadworks-125', 'roadworks-125-reissue', 'roadworks-353'],
+			ids: [
+				'roadworks-34',
+				'roadworks-34-fr',
+				'roadworks-125',
+				'roadworks-125-reissue',
+				'roadworks-353',
+			],
 			routes: ['34', '125', '353'],
 		},
 		{ ids: ['roadworks-353-later'], routes: ['353'] },
