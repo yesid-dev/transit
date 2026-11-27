@@ -12,7 +12,8 @@
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import AboutLiveFigures from '#lib/features/record/AboutLiveFigures.svelte';
 	import FleetLiveAnswer from './FleetLiveAnswer.svelte';
-	import VehicleStillMap from './VehicleStillMap.svelte';
+	import VehicleMapPreview from './VehicleMapPreview.svelte';
+	import { vehicleLocationRoute } from './vehicleLocationRoute.ts';
 	import {
 		delayReading,
 		tickingLiveStamp,
@@ -30,7 +31,6 @@
 	import { vehicleDepartureTiming } from './vehicleDeparture.ts';
 	import { liveAbsenceReason } from '#lib/site/absence.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
-	import { bestShapeForPoint, routeShapes } from '#lib/components/map/vehicleShapes.ts';
 	import { notReporting } from '#lib/components/map/vehicleProjection.ts';
 	import { routeFor } from '#lib/nav/index.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
@@ -208,15 +208,20 @@
 		if (stop) return stop;
 		const { next_stop_lat: lat, next_stop_lon: lon } = liveReading;
 		return lat != null && lon != null
-			? { lat, lon, name: nextStop ?? liveReading.next_stop }
+			? { id: liveReading.next_stop, lat, lon, name: nextStop ?? liveReading.next_stop }
 			: undefined;
 	});
 
-	const shape = $derived.by(() => {
-		if (!liveReading?.route) return null;
-		const route = routes.get(liveReading.route);
-		return route ? bestShapeForPoint(routeShapes(route), [liveReading.lon, liveReading.lat]) : null;
-	});
+	const locationRoute = $derived(
+		liveReading
+			? vehicleLocationRoute(
+					currentRoute,
+					currentTrip?.direction_id ?? liveReading.direction_id,
+					directionName(liveReading),
+					liveReading.next_stop,
+				)
+			: null,
+	);
 	const previous = $derived.by(() => {
 		if (!liveReading?.next_stop) return undefined;
 		const trip = liveReading.trip ? live.index.byTripId.get(liveReading.trip) : null;
@@ -277,6 +282,7 @@
 </script>
 
 {#if id}
+	{@const mapHref = href('/map?' + new URLSearchParams({ selectedVehicle: id }))}
 	<div class="min-w-0" data-slot="screen-content">
 		<RecordGroup class="gap-(--space-card-gap)">
 			{@render titleBlock?.(liveReading?.route)}
@@ -306,13 +312,14 @@
 								<Skeleton class="h-64 w-full" />
 							</div>
 							<RecordPending {locale} />
-						{:else if liveReading}{@const running = liveReading}<VehicleStillMap
+						{:else if liveReading}{@const running = liveReading}<VehicleMapPreview
 								vehicle={running}
-								line={running.route ? display.line(running.route) : undefined}
+								{manifest}
+								route={locationRoute}
 								{next}
 								{previous}
-								{shape}
 								{locale}
+								href={mapHref}
 							/>
 							{#if previous && next}
 								<p>
@@ -327,9 +334,9 @@
 					{#snippet links()}
 						{#if liveReading || waitingForReports}<a
 								class="inline-flex min-h-11 w-full items-center text-primary underline"
-								href={href(routeFor({ kind: 'vehicle', id }))}
+								href={mapHref}
 							>
-								{t('Open the full map on this vehicle', 'Ouvrir la carte sur ce véhicule')}
+								{t('Show on the map', 'Voir sur la carte')}
 							</a>{/if}
 					{/snippet}
 				</RecordCard>
@@ -345,7 +352,10 @@
 						{#if waitingForReports}<RecordPending
 								{locale}
 								shape={{ shape: 'facts', count: 6 }}
-							/>{:else if liveReading}{@const running = liveReading}<FactList leading={false}>
+							/>{:else if liveReading}{@const running = liveReading}<FactList
+								leading={false}
+								class="[--fact-row-columns:max-content_minmax(0,1fr)]"
+							>
 								<FactRow label={t('Line', 'Ligne')}>
 									{#if running.route}
 										{@const line = display.lineName(running.route)}

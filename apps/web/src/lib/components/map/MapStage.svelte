@@ -101,6 +101,7 @@
 		maxBounds?: readonly number[];
 		fitPadding?: MapFitPadding;
 		label?: string;
+		interactive?: boolean;
 		onready?: (map: MapLibreMap, reportSetupFailure: () => void) => void;
 		onorientation?: (orientation: { bearing: number; pitch: number }) => void;
 		onrecovering?: () => void;
@@ -127,6 +128,7 @@
 		maxBounds,
 		fitPadding = 40,
 		label = 'Transit map',
+		interactive = true,
 		onready,
 		onorientation,
 		onrecovering,
@@ -582,6 +584,7 @@
 						container: runtimeContainer,
 						style,
 						...viewport,
+						...(interactive ? {} : { interactive: false }),
 						canvasContextAttributes: { desynchronized: true },
 						locale,
 						attributionControl: false,
@@ -786,6 +789,7 @@
 		<div
 			bind:this={container}
 			class={cn('map-stage', className)}
+			class:map-preview={!interactive}
 			role="region"
 			aria-label={label}
 			data-ripple-exempt
@@ -887,5 +891,48 @@
 		.map-stage :global(.maplibregl-ctrl-attrib.maplibregl-compact-show) {
 			max-width: 100%;
 		}
+	}
+
+	/* The preview needs a full-size target on the control itself, even when the credits are closed. */
+	.map-preview :global(.maplibregl-ctrl-attrib.maplibregl-compact) {
+		min-inline-size: 2.75rem;
+		min-block-size: 2.75rem;
+	}
+
+	.map-preview :global(.maplibregl-ctrl-bottom-right) {
+		transition: none;
+	}
+
+	.map-preview :global(.maplibregl-ctrl-bottom-right:has(.maplibregl-ctrl-attrib[open])) {
+		inset-inline: 0;
+		max-inline-size: 100%;
+	}
+
+	.map-preview :global(.maplibregl-ctrl-attrib.maplibregl-compact[open]) {
+		inline-size: 100%;
+		max-inline-size: 100%;
+		padding: 3rem 0.55rem 0.4rem;
+	}
+
+	.map-preview :global(.maplibregl-ctrl-attrib-inner) {
+		overflow-wrap: normal;
+		word-break: normal;
+	}
+
+	.map-preview :global(.maplibregl-ctrl-attrib .maplibregl-ctrl-attrib-button) {
+		inline-size: 2.75rem;
+		block-size: 2.75rem;
+	}
+
+	.map-preview :global(.maplibregl-ctrl-attrib-button:focus-visible) {
+		outline: 2px solid var(--ring);
+		outline-offset: -2px;
+	}
+
+	.map-preview :global(.maplibregl-ctrl-attrib a) {
+		display: inline-flex;
+		align-items: center;
+		min-inline-size: 2.75rem;
+		min-block-size: 2.75rem;
 	}
 </style>
