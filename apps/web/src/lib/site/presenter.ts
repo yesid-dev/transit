@@ -1019,6 +1019,12 @@ export function predictedIn(predictedAt: number, now: number, locale: Locale) {
 	return locale === 'fr' ? `dans ${minutes}` : `in ${minutes}`;
 }
 
+export function tripsRunShareLabel(locale: Locale) {
+	return locale === 'fr'
+		? 'Trajets effectués, parmi ceux à l’état connu'
+		: 'Trips that ran, of those with a known status';
+}
+
 /** Labels for the five columns that add up to the scheduled trips. */
 export function tripOutcomeLabels(locale: Locale) {
 	return locale === 'fr'

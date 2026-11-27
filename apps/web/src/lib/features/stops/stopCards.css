@@ -110,6 +110,11 @@
 	.stop-cards [data-screen-intro] {
 		margin-block-end: calc(var(--space-card-gap) * -2 / 3);
 	}
+
+	/* Beside delivery, the daily chart has a stacked stamp and a wrapped reading. */
+	.stop-record #daily > [data-slot='card'] {
+		min-block-size: 31.125rem;
+	}
 }
 
 .stop-cards [data-slot='record-card'] {

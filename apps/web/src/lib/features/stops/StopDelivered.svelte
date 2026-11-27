@@ -8,10 +8,12 @@
 		sampleWithMinimum,
 		tripOutcomeLabels,
 		tripsRunBase,
+		tripsRunShareLabel,
 		unconfirmedTripsRange,
 	} from '#lib/site/presenter.ts';
-	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 	import { chartState } from '../record/charts/recordCharts.ts';
+	import FactList from '../record/FactList.svelte';
+	import FactRow from '../record/FactRow.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
 	import StateMark from '../record/StateMark.svelte';
@@ -59,25 +61,20 @@
 							locale,
 						)}
 						{@const added = data?.evidence.excluded?.added}
-						<dl class="grid gap-2">
-							<div>
-								<dt>{overviewCopy[locale].delivery}</dt>
-								<dd>
-									<strong class="text-heading tabular-nums">{recordPercent(share, locale)}</strong>
-									<span class="block text-small text-muted-foreground"
-										>{tripsRunBase(outcomes.ran, outcomes.known, locale)}</span
-									>
-								</dd>
-							</div>
+						<FactList leading={false}>
+							<FactRow
+								label={tripsRunShareLabel(locale)}
+								labelDetail={tripsRunBase(outcomes.ran, outcomes.known, locale)}
+								emphasis
+							>
+								{recordPercent(share, locale)}
+							</FactRow>
 							{#each [[labels.cancelled, outcomes.cancelled], [labels.missing, outcomes.missing], [choose(locale, 'Added trips, counted separately', 'Trajets ajoutés, comptés à part'), added]] as const as [label, count] (label)}
 								{#if count != null}
-									<div class="flex flex-wrap justify-between gap-x-3">
-										<dt>{label}</dt>
-										<dd class="ml-auto text-right tabular-nums">{tally(count, locale)}</dd>
-									</div>
+									<FactRow {label}>{tally(count, locale)}</FactRow>
 								{/if}
 							{/each}
-						</dl>
+						</FactList>
 						{#if range}<p class="mt-3 text-small text-muted-foreground">{range}</p>{/if}
 					{:else}
 						{@const message = recordMessage(result, locale)}
@@ -119,11 +116,6 @@
 	@media (width < 40rem) {
 		.reading {
 			min-block-size: var(--delivery-phone);
-		}
-
-		/* At phone width, the French count labels and uncertainty text wrap. */
-		.reading:lang(fr) {
-			min-block-size: calc(var(--delivery-phone) + 4.125rem);
 		}
 	}
 </style>

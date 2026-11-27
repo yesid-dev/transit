@@ -14,6 +14,7 @@
 		pageCitation,
 		recordDenominator,
 		recordPercent,
+		tripsRunShareLabel,
 		recordRatio,
 		recordStamp,
 		unconfirmedTripsRange,
@@ -145,7 +146,7 @@
 	const files = $derived([
 		file('punctuality', t.onTime),
 		file('previous', t.previousFile),
-		file('delivery', t.delivery),
+		file('delivery', tripsRunShareLabel(locale)),
 		file('trend', t.trend),
 		file('lines', t.downloadRankings),
 		file('stops', t.downloadStops),
@@ -292,7 +293,7 @@
 							? unconfirmedTripsRange(ran, eligible, unconfirmed, locale)
 							: null}
 					<FactRow
-						label={t.delivery}
+						label={tripsRunShareLabel(locale)}
 						detail={ran != null && eligible != null
 							? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
 							: undefined}
@@ -307,7 +308,7 @@
 						{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 					</FactRow>
 				{:else}
-					<FactRow label={t.delivery}>{@render gap(delivery)}</FactRow>
+					<FactRow label={tripsRunShareLabel(locale)}>{@render gap(delivery)}</FactRow>
 				{/if}
 			</FactList>
 		{/await}
