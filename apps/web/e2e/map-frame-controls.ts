@@ -1,8 +1,20 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { waitForFrameRailLayout } from './frame-controls';
 
 export function mapControlsPill(page: Page) {
 	return page.locator('[data-slot="surface-rail-mobile"] button').first();
+}
+
+export async function expectAboveMapSource(page: Page, panel: Locator) {
+	const source = page.locator('[data-slot="map-source-footer"]');
+	await expect(source).toBeVisible();
+	await expect(panel).toBeVisible();
+	await expect
+		.poll(async () => {
+			const [box, footer] = await Promise.all([panel.boundingBox(), source.boundingBox()]);
+			return box && footer ? box.y + box.height - footer.y : Number.POSITIVE_INFINITY;
+		})
+		.toBeLessThanOrEqual(0);
 }
 
 export async function openMapControls(page: Page) {

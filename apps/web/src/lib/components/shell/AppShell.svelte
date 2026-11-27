@@ -120,7 +120,7 @@
 	/>
 {/snippet}
 
-{#snippet rail(context: SurfaceRailContext)}
+{#snippet railContents(context: SurfaceRailContext)}
 	<FrameControls {context} {locale} {url} {clock} {frame} extension={controlsExtension} />
 	{#if context.presentation === 'desktop'}
 		{@render controlsExtension?.after?.()}
@@ -128,6 +128,16 @@
 	{#each surfaceControls as controls (controls)}
 		{@render controls(context)}
 	{/each}
+{/snippet}
+
+{#snippet rail(context: SurfaceRailContext)}
+	{#if fullViewport}
+		<div class="map-rail" class:desktop={context.presentation === 'desktop'} data-lenis-prevent>
+			{@render railContents(context)}
+		</div>
+	{:else}
+		{@render railContents(context)}
+	{/if}
 {/snippet}
 
 {#snippet streamingFooter()}
@@ -216,6 +226,21 @@
 		--map-touch-row-bottom: calc(
 			var(--map-source-clearance, 0px) + var(--map-touch-controls-clearance)
 		);
+	}
+	.map-rail {
+		display: grid;
+		gap: 1rem;
+	}
+	.map-rail.desktop {
+		max-block-size: max(
+			0px,
+			calc(
+				100dvh - var(--app-frame-chrome-height, var(--nav-clearance)) -
+					var(--map-source-clearance, 0px) - 2rem
+			)
+		);
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	/* Keep transparent map chrome from blocking the map or its panels. */
 	.app-shell-root[data-full-viewport='true'] :global([data-slot='app-frame-chrome']) {

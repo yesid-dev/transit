@@ -82,7 +82,7 @@ for (const scheme of ['light', 'dark'] as const) {
 			);
 			await page.goto(`/map?provider=stm&mapview=${lon},${lat},${zoom},0,0`);
 			const painted = () => page.evaluate(() => (window as OverlayProbe).vehiclePaints ?? []);
-			const expected = zoom === 11 ? [6, 4.5] : [33.8, 25.35];
+			const expected = zoom === 11 ? [15.6, 11.7] : [33.8, 25.35];
 			const forcedSizes = zoom === 11 ? [20.28, 15.21] : expected;
 			const sizes = async () => (await painted()).map(({ size }) => Number(size.toFixed(2)));
 			await expect.poll(sizes).toEqual(expected);

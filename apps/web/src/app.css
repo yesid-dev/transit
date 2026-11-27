@@ -15,7 +15,7 @@ html {
 
 :root {
 	--text-stat-value: 1.75rem;
-	--map-stop-fill: var(--accent);
+	--map-stop-fill: var(--muted-foreground);
 	--size-detail-panel: 360px;
 	--size-detail-rail: 3.7rem;
 	--shadow-detail-panel:
@@ -111,7 +111,6 @@ body {
 
 [data-theme='light'],
 .theme-light {
-	--map-stop-fill: #E8540E;
 	--shadow-detail-panel:
 		-12px 0 28px -20px rgb(28 24 19 / 0.18), inset 1px 0 0 var(--edge-highlight);
 }

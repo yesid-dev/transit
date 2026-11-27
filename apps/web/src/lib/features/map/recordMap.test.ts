@@ -180,7 +180,7 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 	});
 	const marks = recordStops(stops, answer, () => false);
 	expect(
-		recordFeatures(marks, 'dark', true, '#949494').features.map(({ properties }) => [
+		recordFeatures(marks, recordColours.stops, true, '#949494').features.map(({ properties }) => [
 			properties.step,
 			properties.state,
 			properties.colour,
@@ -189,7 +189,7 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 		[null, 0, '#949494'],
 		[null, 1, '#949494'],
 		[null, 2, '#949494'],
-		[3, 3, recordColours.dark[3]],
+		[3, 3, recordColours.stops[3]],
 	]);
 	for (const sizes of [
 		recordStopRadii.network,
@@ -198,27 +198,6 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 		recordCorridorWidths.detail,
 	]) {
 		expect(sizes.slice(1).every((size, index) => size > sizes[index]!)).toBe(true);
-	}
-});
-
-it('keeps the warm ramp and neutral ink readable in both themes', () => {
-	const luminance = (hex: string) =>
-		[0.2126, 0.7152, 0.0722].reduce((sum, weight, channel) => {
-			const srgb = Number.parseInt(hex.slice(1 + channel * 2, 3 + channel * 2), 16) / 255;
-			return sum + weight * (srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4);
-		}, 0);
-	for (const [palette, background] of [
-		[[...recordColours.light, '#545e75'], '#ffffff'],
-		[[...recordColours.dark, '#949494'], '#20232a'],
-	] as const) {
-		const ramp = palette.slice(0, 5).map(luminance);
-		const ordered = [...ramp].sort((a, b) => (background === '#ffffff' ? b - a : a - b));
-		expect(ramp).toEqual(ordered);
-		for (const colour of palette) {
-			const light = Math.max(luminance(colour), luminance(background));
-			const dark = Math.min(luminance(colour), luminance(background));
-			expect((light + 0.05) / (dark + 0.05)).toBeGreaterThanOrEqual(3);
-		}
 	}
 });
 

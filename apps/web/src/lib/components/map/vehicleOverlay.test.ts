@@ -179,11 +179,17 @@ describe('vehicle moving foreground', () => {
 			return calls.filter((call) => call.kind === 'sprite');
 		};
 		const network = paint(10);
-		expect(network.map((call) => call.id)).toEqual([body('on_time'), body('late'), body('early')]);
-		expect(network.map((call) => call.values?.[2])).toEqual([6, 6, 6]);
+		expect(network.map((call) => call.id)).toEqual([
+			body('on_time'),
+			body('late'),
+			body('early'),
+			HEADING_ICON,
+			HEADING_ICON,
+			HEADING_ICON,
+		]);
+		expect(network[0]?.values?.[2]).toBeCloseTo(15.6);
 		expect(overlay.pick([400, 300])).toBe('early');
-		expect(paint(11.5)[0]?.values?.[2]).toBeGreaterThan(6);
-		expect(paint(12).some(({ id }) => id === HEADING_ICON)).toBe(true);
+		expect(paint(11.5)[0]?.values?.[2]).toBeGreaterThan(15.6);
 		overlay.destroy();
 	});
 	it('draws crowding badges from zoom 13 and centres the not-reporting badge below it', () => {

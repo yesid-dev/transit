@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/svelte';
-import { StatusMark } from '@yesid/ui/brand';
 import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/index.ts';
-import { occupancyVar, statusVar } from '#lib/components/dataviz/index.ts';
+import { statusVar } from '#lib/components/dataviz/index.ts';
 
 import {
 	VEHICLE_FILL_TOKEN,
@@ -311,10 +309,6 @@ const resolvedColors = new Map<string, string>([
 for (const [index, code] of STATUS_CODES.entries()) {
 	resolvedColors.set(statusVar(code), `rgb(${30 + index}, ${70 + index}, ${110 + index})`);
 }
-for (const [index, code] of OCCUPANCY_CODES.entries()) {
-	resolvedColors.set(occupancyVar(code), `rgb(${140 + index}, ${80 + index}, ${190 + index})`);
-}
-
 beforeEach(() => {
 	vi.stubGlobal(
 		'Path2D',
@@ -542,29 +536,23 @@ describe('vehicle state badge baker', () => {
 		expect(visibleDrawSignature(triangleWithEmptySubpath)).toBe(visibleDrawSignature(triangle));
 	});
 
-	it('bakes vehicle bodies with the status mark path and even-odd fill rule', () => {
-		bakeReceipt();
-		const statusGlyphs = renderedImages.slice(0, STATUS_CODES.length);
-		for (const [index, status] of STATUS_CODES.entries()) {
-			const mark = render(StatusMark, { status, label: status });
-			const path = mark.container.querySelector('svg path')?.getAttribute('d');
-			expect(path).toBeTruthy();
-			mark.unmount();
-			const images = [
-				statusGlyphs[index],
-				...OCCUPANCY_CODES.map(
-					(_, occupancy) => renderedImages[(occupancy + 1) * STATUS_CODES.length + index],
-				),
-			];
-			for (const image of images) {
-				expect(image?.commands).toContainEqual(
-					expect.objectContaining({ method: 'fill', args: [{ path }, 'evenodd'] }),
-				);
-			}
+	it('bakes coloured vehicle bodies with an outline, windscreen and two headlights', () => {
+		const { images } = bakeReceipt();
+		const vehicle = images.get(statusBodyIconId('late')) as LoggedImageData;
+		const crowded = images.get(occupancyBodyIconId('late', 'full')) as LoggedImageData;
+		expect(vehicle.commands.find(({ method }) => method === 'fill')?.fillStyle).toBe(
+			resolvedColors.get(statusVar('late')),
+		);
+		for (const image of [vehicle, crowded]) {
+			const fills = image.commands.filter(({ method }) => method === 'fill');
+			const halo = resolvedColors.get(VEHICLE_HALO_TOKEN);
+			expect(fills).toHaveLength(4);
+			expect(fills.slice(1).map(({ fillStyle }) => fillStyle)).toEqual([halo, halo, halo]);
+			expect(image.commands.filter(({ method }) => method === 'arc')).toHaveLength(2);
+			expect(image.commands).toContainEqual(
+				expect.objectContaining({ method: 'stroke', strokeStyle: halo }),
+			);
 		}
-		const { receipt } = bakeReceipt();
-		expect(receipt.sprites[statusBodyIconId('late')]).toBeDefined();
-		expect(receipt.sprites[occupancyBodyIconId('late', 'full')]).toBeDefined();
 	});
 
 	it('exports the immutable frozen marker geometry used by the next map layer and full-size badge baker', () => {

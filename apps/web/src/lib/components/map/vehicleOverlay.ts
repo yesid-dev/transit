@@ -76,7 +76,7 @@ function lerp(value: number, from: number, to: number, first: number, last: numb
 }
 
 function vehicleScale(zoom: number, detailScale: number): number {
-	return lerp(zoom, 11, 12, 6 / BOX, detailScale);
+	return lerp(zoom, 11, 12, 0.6, detailScale);
 }
 
 function delayPriority({ feature }: ProjectedVehicle): number {
@@ -351,7 +351,7 @@ export function createVehicleOverlay(
 				});
 		}
 		for (const { feature, x, y, baseSize } of symbols) {
-			if (zoom < 12 || feature.properties.hasHeading !== 1) continue;
+			if (feature.properties.hasHeading !== 1) continue;
 			const angle = headingAngle(feature, x, y, width, height);
 			ctx.save();
 			ctx.translate(x, y);

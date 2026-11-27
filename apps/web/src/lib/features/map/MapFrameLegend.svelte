@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { createRawSnippet } from 'svelte';
-	import { RoutePlate, statusGlyphSvg } from '@yesid/ui/brand';
+	import { RoutePlate } from '@yesid/ui/brand';
 	import { MapLegend, type MapLegendItem, type MapLegendProps } from '@yesid/ui/map';
-	import { theme } from '@yesid/ui/state';
-	import { OCCUPANCY_GLYPH, occupancyVar, statusVar } from '#lib/components/dataviz/tokens.ts';
+	import { statusVar } from '#lib/components/dataviz/tokens.ts';
+	import { mapOccupancyColour } from '#lib/components/map/vehicleSprites.ts';
+	import { OCCUPANCY_CODES } from '#lib/v1/schemas/types.ts';
+	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 	import { mapLegend, type LegendColourBy, type LegendMark } from './mapLegend';
@@ -54,16 +56,9 @@
 
 	function symbol(mark: LegendMark) {
 		if (mark.kind === 'status') {
-			const glyph = statusGlyphSvg(mark.code, { size: 16, ink: 'currentColor' });
 			return createRawSnippet(() => ({
 				render: () =>
-					`<span class="inline-flex" aria-hidden="true" style="color:${statusVar(mark.code)}">${glyph}</span>`,
-			}));
-		}
-		if (mark.kind === 'occupancy') {
-			return createRawSnippet(() => ({
-				render: () =>
-					`<span style="color:${occupancyVar(mark.code)}" aria-hidden="true">${OCCUPANCY_GLYPH[mark.code]}</span>`,
+					`<svg width="16" height="16" viewBox="0 0 26 26" aria-hidden="true" style="color:${statusVar(mark.code)}"><path fill="currentColor" fill-rule="evenodd" d="M10.5 3.5h5a4 4 0 0 1 4 4v11a4 4 0 0 1-4 4h-5a4 4 0 0 1-4-4v-11a4 4 0 0 1 4-4Zm0.4 2.4a2 2 0 0 0-2 2v1.6a2 2 0 0 0 2 2h4.2a2 2 0 0 0 2-2V7.9a2 2 0 0 0-2-2h-4.2ZM11.25 19.1a1.15 1.15 0 1 0-2.3 0 1.15 1.15 0 0 0 2.3 0Zm5.8 0a1.15 1.15 0 1 0-2.3 0 1.15 1.15 0 0 0 2.3 0Z"/></svg>`,
 			}));
 		}
 		return emptyMark;
@@ -93,9 +88,12 @@
 						]
 					: []),
 				{ label: tr('Selected', 'Sélection'), symbol: selectedMark },
+				{ label: copy[locale].legend.stop, symbol: stopMark },
+				{ label: copy[locale].legend.heading, symbol: headingMark },
 			] satisfies MapLegendItem[],
 		};
 		if (layer !== 'live') return [];
+		if (colourBy === 'occupancy') return [network];
 		const colour = live.groups[0]!;
 		return [
 			{
@@ -119,9 +117,18 @@
 			network,
 		];
 	});
-	const palette = $derived(recordColours[theme.current === 'dark' ? 'dark' : 'light']);
 	const scale = $derived.by((): MapLegendProps['scale'] => {
-		if (layer === 'live') return undefined;
+		if (layer === 'live') {
+			if (colourBy !== 'occupancy') return undefined;
+			return {
+				title: tr('Room on board', 'Places à bord'),
+				steps: OCCUPANCY_CODES.map((code) => ({
+					label: OCCUPANCY_LABELS[locale][code],
+					swatch: mapOccupancyColour(code),
+				})),
+			};
+		}
+		const palette = recordColours[layer];
 		const labels =
 			layer === 'stops'
 				? [
@@ -164,6 +171,17 @@
 {#snippet lineMark()}{@render networkLine('var(--muted-foreground)')}{/snippet}
 {#snippet railMark()}{@render networkLine('var(--muted-foreground)', '4 3')}{/snippet}
 {#snippet selectedMark()}{@render networkLine('var(--accent-text)')}{/snippet}
+{#snippet stopMark()}
+	<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+		<path d="M8 14C7 12 3 9 3 6a5 5 0 1 1 10 0c0 3-4 6-5 8Z" fill="var(--map-stop-fill)" />
+		<circle cx="8" cy="6" r="1.5" fill="var(--card)" />
+	</svg>
+{/snippet}
+{#snippet headingMark()}
+	<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+		<path d="m8 3 5 7-5-2-5 2Z" fill="currentColor" />
+	</svg>
+{/snippet}
 {#snippet numberMark()}<RoutePlate code="51" />{/snippet}
 {#snippet emptyMark()}{/snippet}
 {#snippet unmeasuredMark(state: 0 | 1 | 2)}
@@ -203,10 +221,11 @@
 	title={copy[locale].legend.title}
 	{groups}
 	{scale}
+	scalePlacement={layer === 'live' ? 'before-groups' : 'after-groups'}
 	{collapsible}
 	persistKey={collapsible ? 'transit:map-legend-open' : undefined}
 	data-map-legend={collapsible ? 'desktop' : 'phone'}
-	data-map-record-legend={scale ? '' : undefined}
+	data-map-record-legend={layer !== 'live' ? '' : undefined}
 />
 
 <style>
