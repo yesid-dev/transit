@@ -1186,7 +1186,6 @@ export function sentenceStart(text: string): string {
 	return text.charAt(0).toLocaleUpperCase() + text.slice(1);
 }
 
-/** The muted second line of a phone row: the secondary facts as one sentence, no labels. */
 /**
  * Said once under a live table when the city's feed gives no direction for its vehicles (and,
  * with `nextStop`, no next stop either), instead of "Unknown" on every row.
@@ -1218,6 +1217,7 @@ export function expectedReading(
 		: predictedIn(predictedAt, now, locale);
 }
 
+/** The muted second line of a phone row: the secondary facts as one sentence, no labels. */
 export function rowSentence(parts: readonly (string | null | undefined | false)[], locale: Locale) {
 	const text = parts.filter(Boolean).join(', ');
 	return text ? text.charAt(0).toLocaleUpperCase(locale) + text.slice(1) : null;

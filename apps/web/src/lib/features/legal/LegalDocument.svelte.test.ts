@@ -144,10 +144,18 @@ describe('LegalDocument', () => {
 		},
 	);
 
-	it('keeps the French Privacy policy in French', () => {
-		const text = JSON.stringify(legalDocument('fr', 'privacy').sections);
-		expect(text).not.toMatch(/Workers (?:Issues|Logs)|workflow|service worker|suivi d’un lien/u);
-		expect(text).toContain('le clic sur un lien vers yesid.dev');
+	it('keeps both Privacy policies free of internal service terms', () => {
+		for (const locale of ['en', 'fr'] as const) {
+			const text = JSON.stringify(legalDocument(locale, 'privacy').sections);
+			expect(text).not.toMatch(/Workers (?:Issues|Logs)|workflow|service worker|suivi d’un lien/u);
+		}
+		const en = JSON.stringify(legalDocument('en', 'privacy').sections);
+		expect(en).toContain('Cloudflare’s error reports are turned off');
+		expect(en).toContain('Cloudflare keeps these error logs for at most seven days');
+		expect(en).toContain('a link to the automated check');
+		expect(en).toContain('A browser offline module can keep on your device');
+		const fr = JSON.stringify(legalDocument('fr', 'privacy').sections);
+		expect(fr).toContain('le clic sur un lien vers yesid.dev');
 	});
 
 	it('describes only what this app stores and sends, without the old site', () => {
