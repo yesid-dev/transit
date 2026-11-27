@@ -27,10 +27,14 @@
 
 <div id="schedule" class="min-w-0">
 	{#await frequencyAnswer}
-		{#key frequencyAnswer}<RecordPending {locale} answer={frequencyAnswer} />{/key}
+		{#key frequencyAnswer}<div class="schedule-waiting">
+				<RecordPending {locale} answer={frequencyAnswer} />
+			</div>{/key}
 	{:then frequency}
 		{#await boundariesAnswer}
-			{#key boundariesAnswer}<RecordPending {locale} answer={boundariesAnswer} />{/key}
+			{#key boundariesAnswer}<div class="schedule-waiting">
+					<RecordPending {locale} answer={boundariesAnswer} />
+				</div>{/key}
 		{:then boundaries}
 			{@const retry = [frequency, boundaries].flatMap((result) =>
 				result.kind === 'unreachable' && result.retry ? [result.retry] : [],
@@ -62,3 +66,21 @@
 		{/await}
 	{/await}
 </div>
+
+<style>
+	/* The schedule card keeps about its height while its readings load, so the cards under it do
+	   not jump when it fills (measured on the métro and bus lines). */
+	.schedule-waiting {
+		min-block-size: min(42rem, calc(100dvh - var(--app-frame-header-height, 0px)));
+	}
+	@media (min-width: 40rem) {
+		.schedule-waiting {
+			min-block-size: 36rem;
+		}
+	}
+	@media (min-width: 80rem) {
+		.schedule-waiting {
+			min-block-size: 30rem;
+		}
+	}
+</style>
