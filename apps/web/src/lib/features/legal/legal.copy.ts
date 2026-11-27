@@ -6,7 +6,7 @@ export type LegalPageKind = 'privacy' | 'terms' | 'accessibility';
 export const LEGAL_EFFECTIVE_DATES: Readonly<Record<LegalPageKind, string>> = {
 	privacy: '2026-11-26',
 	terms: '2026-10-29',
-	accessibility: '2026-10-29',
+	accessibility: '2026-11-26',
 };
 
 export interface LegalLinkCopy {
@@ -273,10 +273,12 @@ const documents = {
 					title: 'What works today',
 					paragraphs: [],
 					bullets: [
-						'A skip link to the main content, then the same landmarks on every page: header, main content, footer.',
-						'Keyboard navigation with a visible focus indicator, including in Windows High Contrast.',
+						'A skip link, then the same landmarks on every page.',
+						'A visible focus ring for the keyboard, also in Windows High Contrast.',
 						'Charts come with a data table that screen readers can read.',
-						'Search, the lines and stops lists, and each stop page give a keyboard path to what the map shows.',
+						'Search and the lists give the keyboard what the map shows.',
+						'The Pause live updates switch holds the live figures still while you read.',
+						'The city picker changes nothing until you press Enter.',
 						'Reduced motion is respected.',
 						'The site is available in English and French.',
 					],
@@ -323,8 +325,8 @@ const documents = {
 					title: 'Renseignements traités lors d’une visite',
 					paragraphs: [
 						'Cloudflare livre et protège le site. L’entreprise traite des renseignements ordinaires liés aux requêtes réseau, comme l’adresse IP, le chemin demandé, les en-têtes et les signaux de sécurité, afin d’acheminer les requêtes, de prévenir les abus et d’exploiter le service.',
-						'Transit conserve aussi des journaux d’erreurs serveur chez Cloudflare pour diagnostiquer la fiabilité. Les entrées d’erreur de l’application contiennent le modèle de route, sans texte recherché, paramètres d’URL, en-têtes, adresse IP, message d’erreur ni trace de pile. Les journaux automatiques de requêtes, les traces et Workers Issues sont désactivés, et les paramètres d’URL sont masqués dans les métadonnées des journaux. Cloudflare conserve Workers Logs pendant au plus sept jours. Des vérifications planifiées de pages publiques et de l’accès aux données ouvrent un signalement GitHub après un échec répété; ces rapports contiennent seulement l’URL publique fixe vérifiée, la catégorie d’échec et le lien du workflow, sans données de visiteur.',
-						'Transit compte les visites avec Plausible Analytics Cloud, exploité par Plausible Insights OÜ en Estonie, pour voir quelles pages et quelles sources sont utilisées et améliorer le service. La mesure est toujours active. Au chargement d’une page, votre navigateur envoie le chemin de la page, le site d’origine (son adresse sans le chemin), les balises de campagne du lien et les catégories de navigateur, de système d’exploitation et d’appareil à l’adresse même de Transit, qui les transmet à Plausible; le reste de l’adresse de la page, y compris les recherches et les lieux sélectionnés sur la carte, est retiré dans votre navigateur avant tout envoi. Transit envoie aussi à Plausible le nom de quelques interactions : le choix d’un résultat de recherche, l’utilisation de « Utiliser ma position », le choix d’une adresse suggérée ou d’un arrêt à proximité, le suivi d’un lien vers yesid.dev ou le dépôt GitHub de Transit et l’ouverture d’une page qui n’existe pas. Chaque page vue et chaque événement indiquent aussi la langue de l’interface (anglais ou français) et le réseau affiché; un résultat de recherche ajoute son type (ligne, arrêt, véhicule ou adresse) et un lien ajoute son emplacement dans la page (menu, pied de page ou corps de la page). Rien d’autre n’est joint, jamais le texte recherché, l’adresse, les coordonnées ni l’arrêt. Transit transmet aussi votre adresse IP et votre agent utilisateur avec chaque requête : Plausible déduit de l’adresse IP un pays, une région et une ville approximatifs, combine les deux valeurs à un sel renouvelé chaque jour pour compter les visiteurs de la journée, puis les élimine. Elles ne sont jamais conservées. Les données de visite sont traitées et conservées dans l’Union européenne.',
+						'Transit conserve aussi des journaux d’erreurs serveur chez Cloudflare pour diagnostiquer la fiabilité. Les entrées d’erreur de l’application contiennent le modèle de route, sans texte recherché, paramètres d’URL, en-têtes, adresse IP, message d’erreur ni trace de pile. Les journaux automatiques de requêtes, les traces et les signalements d’erreurs de Cloudflare sont désactivés, et les paramètres d’URL sont masqués dans les métadonnées des journaux. Cloudflare conserve ces journaux d’erreurs pendant au plus sept jours. Des vérifications planifiées de pages publiques et de l’accès aux données ouvrent un signalement GitHub après un échec répété; ces rapports contiennent seulement l’URL publique fixe vérifiée, la catégorie d’échec et le lien vers la vérification automatisée, sans données de visiteur.',
+						'Transit compte les visites avec Plausible Analytics Cloud, exploité par Plausible Insights OÜ en Estonie, pour voir quelles pages et quelles sources sont utilisées et améliorer le service. La mesure est toujours active. Au chargement d’une page, votre navigateur envoie le chemin de la page, le site d’origine (son adresse sans le chemin), les balises de campagne du lien et les catégories de navigateur, de système d’exploitation et d’appareil à l’adresse même de Transit, qui les transmet à Plausible; le reste de l’adresse de la page, y compris les recherches et les lieux sélectionnés sur la carte, est retiré dans votre navigateur avant tout envoi. Transit envoie aussi à Plausible le nom de quelques interactions : le choix d’un résultat de recherche, l’utilisation de « Utiliser ma position », le choix d’une adresse suggérée ou d’un arrêt à proximité, le clic sur un lien vers yesid.dev ou le dépôt GitHub de Transit et l’ouverture d’une page qui n’existe pas. Chaque page vue et chaque événement indiquent aussi la langue de l’interface (anglais ou français) et le réseau affiché; un résultat de recherche ajoute son type (ligne, arrêt, véhicule ou adresse) et un lien ajoute son emplacement dans la page (menu, pied de page ou corps de la page). Rien d’autre n’est joint, jamais le texte recherché, l’adresse, les coordonnées ni l’arrêt. Transit transmet aussi votre adresse IP et votre agent utilisateur avec chaque requête : Plausible déduit de l’adresse IP un pays, une région et une ville approximatifs, combine les deux valeurs à un sel renouvelé chaque jour pour compter les visiteurs de la journée, puis les élimine. Elles ne sont jamais conservées. Les données de visite sont traitées et conservées dans l’Union européenne.',
 						'Plausible n’utilise ni témoins, ni stockage du navigateur, ni identifiant persistant, et ne vous suit pas d’un site, d’un appareil ou d’une application à l’autre. Il ne comporte aucune fonction permettant de vous identifier, de vous localiser ou d’effectuer votre profilage au sens de l’article 8.1 de la Loi sur la protection des renseignements personnels dans le secteur privé; il n’y a donc rien à activer et aucune bannière. Pour les personnes visées par le Règlement général sur la protection des données de l’Union européenne, le fondement est l’intérêt légitime de Transit à comprendre l’utilisation du site (article 6(1)(f)). Plausible conserve des statistiques agrégées tant que le compte est actif et aucun dossier sur les visiteurs individuels. Vous pouvez vous y opposer en écrivant à contact@yesid.dev.',
 						'Transit utilise aussi Cloudflare Web Analytics, une fonction gratuite du service Cloudflare qui livre déjà le site, pour mesurer la vitesse des pages et les visites. Au chargement d’une page et lors du passage d’une page à l’autre, un script Cloudflare dans votre navigateur envoie à Cloudflare l’adresse complète de la page, l’adresse de la page précédente, des renseignements sur le navigateur et l’appareil, ainsi que des mesures de temps comme le temps de chargement et les signaux Web essentiels. Contrairement à Plausible, l’adresse n’est pas raccourcie avant l’envoi; elle peut donc contenir un lieu sélectionné sur la carte et inscrit dans l’adresse, comme décrit ci-dessous. Cloudflare reçoit votre adresse IP avec la requête, peut en déduire un pays approximatif et indique l’éliminer au centre de données qui la reçoit, sans la conserver. Le script ne crée aucun témoin, n’utilise pas le stockage du navigateur et ne conserve aucun identifiant d’une visite à l’autre. Comme Plausible, il ne comporte aucune fonction permettant de vous identifier, de vous localiser ou d’effectuer votre profilage, et le même fondement d’intérêt légitime s’applique. Vous pouvez bloquer static.cloudflareinsights.com dans votre navigateur.',
 					],
@@ -366,7 +368,7 @@ const documents = {
 					paragraphs: [
 						'Transit utilise localStorage pour mémoriser le thème, le réglage des animations de la carte et l’état ouvert ou fermé de sa légende. Sur la page archivée de la méthode, il mémorise aussi votre choix Tout déplier ou Tout replier. Ces préférences restent jusqu’à leur modification ou l’effacement des données du site. Les positions de défilement utilisées pour la navigation sont conservées dans sessionStorage pendant la session du navigateur.',
 						'Lorsque vous fermez une annonce du site, Transit mémorise ce choix dans localStorage à l’aide de l’identifiant de l’annonce.',
-						'Un service worker peut garder dans votre navigateur le code, les polices et les icônes de l’application, pour accélérer le chargement et afficher une page hors ligne, jusqu’à une mise à jour, son retrait ou l’effacement des données du navigateur. Il ne garde jamais de données de transport\u00a0: les positions en direct, le bilan et les résultats de recherche sont chargés à neuf chaque fois.',
+						'Un module hors ligne du navigateur peut garder sur votre appareil le code, les polices et les icônes de l’application, pour accélérer le chargement et afficher une page hors ligne, jusqu’à une mise à jour, son retrait ou l’effacement des données du navigateur. Il ne garde jamais de données de transport\u00a0: les positions en direct, le bilan et les résultats de recherche sont chargés à neuf chaque fois.',
 					],
 				},
 				{
@@ -537,10 +539,12 @@ const documents = {
 					title: 'Ce qui fonctionne aujourd’hui',
 					paragraphs: [],
 					bullets: [
-						'Un lien d’évitement vers le contenu principal, puis les mêmes repères sur chaque page : en-tête, contenu principal, pied de page.',
-						'La navigation au clavier, avec un indicateur de focus visible, y compris en mode Contraste élevé de Windows.',
-						'Les graphiques sont accompagnés d’un tableau de données que les lecteurs d’écran peuvent lire.',
-						'La recherche, les listes de lignes et d’arrêts et chaque page d’arrêt donnent accès au clavier à ce que montre la carte.',
+						'Un lien d’évitement, puis les mêmes repères sur chaque page.',
+						'Un focus visible au clavier, aussi en Contraste élevé de Windows.',
+						'Chaque graphique a un tableau lisible par les lecteurs d’écran.',
+						'Au clavier, la recherche et les listes donnent ce que montre la carte.',
+						'L’interrupteur Suspendre les mises à jour fige les chiffres en direct.',
+						'Le choix de la ville ne change rien avant la touche Entrée.',
 						'Le réglage de réduction des animations est respecté.',
 						'Le site est offert en français et en anglais.',
 					],

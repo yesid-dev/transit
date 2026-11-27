@@ -21,7 +21,7 @@ export const copy = defineCopy({
 		staticKicker: '{city} · STATIC',
 		staticHeading: '{city} transit map',
 		staticBody:
-			'Static, non-live basemap. No vehicles, stops, service alerts, or freshness data are shown.',
+			'Static, non-live basemap. No vehicles, stops, notices or freshness data are shown.',
 		bootHeading: 'Live map · {city}',
 		bootBody:
 			'The live interactive map loads automatically. This static basemap stays visible until it is ready.',
@@ -43,7 +43,7 @@ export const copy = defineCopy({
 		mapRetry: 'Retry map',
 		modeStatus: 'Status',
 		modeOccupancy: 'Crowding',
-		modeAlerts: 'Alerts',
+		modeAlerts: 'Notices',
 		modeRoutes: 'Lines',
 		modeStops: 'Stops',
 		modeVehicles: 'Vehicles',
@@ -98,16 +98,16 @@ export const copy = defineCopy({
 		filterRemove: 'Remove filter:',
 		vehicleLabel: 'Vehicle',
 		tripLabel: 'Trip',
-		alertHas: 'Has alert',
-		alertFilterUnavailable: 'Filter unavailable: no alert feed connected.',
-		alertHasAria: 'Show markers with alerts',
+		alertHas: 'With notices',
+		alertFilterUnavailable: 'Filter unavailable: no notice feed connected.',
+		alertHasAria: 'Show markers with notices',
 		latestReport: 'Latest report',
 		liveUnavailable: 'Live vehicle positions unavailable right now. The map and stops still work.',
 		liveNoVehicles: 'No vehicles to show right now.',
 		familyVehicles: 'vehicle positions',
 		familyTrips: 'trip details',
 		familyDepartures: 'departures',
-		familyAlerts: 'service alerts',
+		familyAlerts: 'notices',
 		selectedFamilyFailure: (family: string, retained: boolean) =>
 			retained
 				? `Live data for ${family} is unavailable. Showing the last successful update.`
@@ -164,9 +164,9 @@ export const copy = defineCopy({
 		mapErrorTitle: 'Carte indisponible',
 		mapErrorBody: 'La carte n’a pas pu démarrer. Réessayez.',
 		mapRetry: 'Réessayer la carte',
-		modeStatus: 'Statut',
+		modeStatus: 'État',
 		modeOccupancy: 'Places à bord',
-		modeAlerts: 'Alertes',
+		modeAlerts: 'Avis',
 		modeRoutes: 'Lignes',
 		modeStops: 'Arrêts',
 		modeVehicles: 'Véhicules',
@@ -220,9 +220,9 @@ export const copy = defineCopy({
 		filterRemove: 'Retirer le filtre :',
 		vehicleLabel: 'Véhicule',
 		tripLabel: 'Trajet',
-		alertHas: 'Avec alerte',
-		alertFilterUnavailable: 'Filtre indisponible : aucune source d’alertes connectée.',
-		alertHasAria: 'Afficher les marqueurs avec alertes',
+		alertHas: 'Avec avis',
+		alertFilterUnavailable: 'Filtre indisponible : aucune source d’avis connectée.',
+		alertHasAria: 'Afficher les marqueurs avec avis',
 		latestReport: 'Dernier rapport',
 		liveUnavailable:
 			'Positions des véhicules en direct indisponibles pour l’instant. La carte et les arrêts fonctionnent toujours.',
@@ -230,7 +230,7 @@ export const copy = defineCopy({
 		familyVehicles: 'les positions des véhicules',
 		familyTrips: 'les détails des trajets',
 		familyDepartures: 'les départs',
-		familyAlerts: 'les alertes de service',
+		familyAlerts: 'les avis',
 		selectedFamilyFailure: (family: string, retained: boolean) =>
 			retained
 				? `Les données en direct pour ${family} sont indisponibles. La dernière mise à jour réussie reste affichée.`

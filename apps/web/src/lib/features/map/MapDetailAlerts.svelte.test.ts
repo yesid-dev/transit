@@ -16,7 +16,7 @@ const frenchMessage = AlertMessageProvenanceSchema.parse({
 
 describe('MapDetailAlerts', () => {
 	it.each([
-		['en', 'Live alerts · updated 5 minutes ago'],
+		['en', 'Live notices · updated 5 minutes ago'],
 		['fr', 'Avis en direct · mis à jour il y a 5 minutes'],
 	] as const)('shows the alerts live stamp in %s', (locale, note) => {
 		render(MapDetailAlerts, {
@@ -60,9 +60,7 @@ describe('MapDetailAlerts', () => {
 				t: MAP_SELECTION_DETAIL_COPY[locale],
 			},
 		});
-		expect(
-			screen.getAllByText(locale === 'en' ? 'Service alert' : 'Alerte de service').length,
-		).toBeGreaterThan(0);
+		expect(screen.getAllByText(locale === 'en' ? 'Notice' : 'Avis').length).toBeGreaterThan(0);
 		expect(container.textContent).not.toMatch(/Votre ligne|Votre arrêt|Your stop|None|null/);
 	});
 
@@ -101,7 +99,7 @@ describe('MapDetailAlerts', () => {
 			props: { alerts: [], locale: 'en', t: MAP_SELECTION_DETAIL_COPY.en },
 		});
 
-		const notice = screen.getByText('No alerts attached').closest('[data-slot="state-notice"]');
+		const notice = screen.getByText('No notices attached').closest('[data-slot="state-notice"]');
 		expect(notice).toHaveAttribute('data-presentation', 'silo');
 		expect(notice).toHaveAttribute('data-tone', 'positive');
 		expect(notice).not.toHaveAttribute('role', 'status');
@@ -113,12 +111,12 @@ describe('MapDetailAlerts', () => {
 			props: { alerts: null, locale: 'en', t: MAP_SELECTION_DETAIL_COPY.en },
 		});
 
-		const notice = screen.getByText('Alert data unavailable').closest('[data-slot="state-notice"]');
+		const notice = screen.getByText('Notices unavailable').closest('[data-slot="state-notice"]');
 		expect(notice).toHaveAttribute('data-presentation', 'silo');
 		expect(notice).toHaveAttribute('data-tone', 'neutral');
 		expect(notice).not.toHaveAttribute('role', 'status');
 		expect(notice).not.toHaveAttribute('aria-live');
-		expect(screen.queryByText('No alerts attached')).not.toBeInTheDocument();
+		expect(screen.queryByText('No notices attached')).not.toBeInTheDocument();
 	});
 
 	it('labels the action in UI language while language-tagging foreign provider text and its link', () => {
@@ -139,11 +137,11 @@ describe('MapDetailAlerts', () => {
 		expect(providerText).toHaveAttribute('lang', 'fr');
 		expect(screen.getAllByText('(French only)').length).toBeGreaterThan(0);
 		const button = screen.getByRole('button', {
-			name: 'Select alert Détour français (French only)',
+			name: 'Select notice Détour français (French only)',
 		});
 		expect(button).toHaveAttribute('aria-labelledby');
 		expect(button).not.toHaveAttribute('aria-label');
-		const link = screen.getByRole('link', { name: 'Open alert details on example.test (new tab)' });
+		const link = screen.getByRole('link', { name: 'Open the notice on example.test (new tab)' });
 		expect(link).toHaveAttribute('hreflang', 'fr');
 		expect(link).toHaveAttribute('href', 'https://example.test/fr/avis');
 	});
@@ -158,7 +156,7 @@ describe('MapDetailAlerts', () => {
 		});
 		expect(screen.getAllByText('Réduction de service')[0]).toHaveAttribute('lang', '');
 		expect(screen.getByRole('button')).toHaveAccessibleName(
-			'Select alert Réduction de service (Source language unspecified)',
+			'Select notice Réduction de service (Source language unspecified)',
 		);
 		expect(screen.queryByText('(French only)')).not.toBeInTheDocument();
 	});
@@ -180,10 +178,10 @@ describe('MapDetailAlerts', () => {
 		});
 
 		const englishButton = within(english.container).getByRole('button', {
-			name: 'Select alert Détour français (French only)',
+			name: 'Select notice Détour français (French only)',
 		});
 		const frenchButton = within(french.container).getByRole('button', {
-			name: 'Sélectionner l’alerte Détour français',
+			name: 'Sélectionner l’avis Détour français',
 		});
 		const englishLabelId = englishButton.getAttribute('aria-labelledby');
 		const frenchLabelId = frenchButton.getAttribute('aria-labelledby');

@@ -45,13 +45,17 @@
 		};
 		const events = values('classified');
 		const trips = values('eligible');
-		return [
+		const readings = values('occupancy_readings');
+		const counted = [
 			events != null ? countedUnit(events, 'event', locale) : null,
 			trips != null ? countedUnit(trips, 'trip', locale) : null,
-			countedUnit(result.evidence.days_included.length, 'day', locale),
-		]
-			.filter(Boolean)
-			.join(', ');
+			readings != null ? countedUnit(readings, 'reading', locale) : null,
+		].filter(Boolean);
+		// A foot says what was counted over the days; the days alone say nothing.
+		if (!counted.length) return null;
+		return [...counted, countedUnit(result.evidence.days_included.length, 'day', locale)].join(
+			', ',
+		);
 	}
 </script>
 

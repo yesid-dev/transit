@@ -7,7 +7,7 @@ export const copy = defineCopy({
 		copied: 'Link copied.',
 		loading: 'Loading vehicle reports…',
 		unavailableSource: 'Live vehicle reports are unavailable right now.',
-		unavailableAlerts: 'The alert filter is unavailable right now.',
+		unavailableAlerts: 'The notice filter is unavailable right now.',
 		timeZone: 'Time zone',
 	},
 	fr: {
@@ -16,7 +16,7 @@ export const copy = defineCopy({
 		copied: 'Lien copié.',
 		loading: 'Chargement des relevés de véhicules…',
 		unavailableSource: 'Les relevés de véhicules en direct sont indisponibles pour l’instant.',
-		unavailableAlerts: 'Le filtre d’alertes est indisponible pour l’instant.',
+		unavailableAlerts: 'Le filtre d’avis est indisponible pour l’instant.',
 		timeZone: 'Fuseau horaire',
 	},
 });

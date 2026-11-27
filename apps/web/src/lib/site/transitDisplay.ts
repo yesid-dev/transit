@@ -67,9 +67,30 @@ const abbreviations = new Set([
 	'AD.',
 	'TD',
 	'OC',
+	'POB',
 ]);
 const particles = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'au', 'aux', 'sur']);
+const capital = (word: string) => word.charAt(0).toLocaleUpperCase() + word.slice(1);
 
+/**
+ * One word of a name in capitals, in title case. "Mc" keeps the capital after it (McArthur). After
+ * an apostrophe the name starts again: O' keeps its capital (O'Connor), and the French elisions
+ * l' and d' read as particles (de l'Église, D'Iberville at the start). "Mac" is left alone: the
+ * same prefix is written both ways (Macdonald-Cartier, MacLaren), so no rule can choose.
+ */
+function titleWord(lower: string, leading: boolean): string {
+	const elided = /^(\p{L}{1,2})(['’])(\p{L}.*)$/u.exec(lower);
+	if (elided) {
+		const [, prefix, mark, rest] = elided;
+		const head = prefix === 'o' || leading ? capital(prefix) : prefix;
+		return head + mark + titleWord(rest, true);
+	}
+	if (particles.has(lower) && !leading) return lower;
+	if (/^mc\p{L}{2}/u.test(lower)) return 'Mc' + capital(lower.slice(2));
+	return capital(lower);
+}
+
+/** A name the agency writes in capitals, in title case; any other name stays as published. */
 export function stopDisplayName(name: string): string {
 	const withOrdinals = name.replace(
 		/\b(\d+)(ST|ND|RD|TH)\b/g,
@@ -84,12 +105,8 @@ export function stopDisplayName(name: string): string {
 				.split('-')
 				.map((part, index) => {
 					if (abbreviations.has(part)) return part;
-					const lower = part.toLocaleLowerCase();
 					// A particle stays lowercase except as the first word of the name.
-					const leading = offset === 0 && index === 0;
-					return particles.has(lower) && !leading
-						? lower
-						: lower[0]!.toLocaleUpperCase() + lower.slice(1);
+					return titleWord(part.toLocaleLowerCase(), offset === 0 && index === 0);
 				})
 				.join('-');
 		},

@@ -116,7 +116,7 @@ describe('MapProgressive automatic live boot', () => {
 			'en',
 			'Basemap preview unavailable for Ottawa. The live map loads automatically.',
 			'Basemap preview unavailable for Ottawa.',
-			'Static, non-live basemap. No vehicles, stops, service alerts, or freshness data are shown.',
+			'Static, non-live basemap. No vehicles, stops, notices or freshness data are shown.',
 		],
 		[
 			'fr',

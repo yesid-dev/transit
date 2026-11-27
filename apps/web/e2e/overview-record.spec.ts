@@ -403,7 +403,7 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 	for (const status of ['Early', 'On time', 'Late', 'Delay unknown']) {
 		await expect(live.getByRole('term').filter({ hasText: status })).toBeVisible();
 	}
-	for (const fact of ['Scheduled trips with no vehicle reporting', 'Alerts in effect']) {
+	for (const fact of ['Scheduled trips with no vehicle reporting', 'Notices in effect']) {
 		await expect(
 			live.locator('[data-slot="fact-row"]').filter({ hasText: fact }).locator('.hand-drawn-line'),
 		).toHaveCount(1);
@@ -477,11 +477,11 @@ test('the header carries the Live view and dates through city and language chang
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
 	).toContainText('Not measured');
 	// A city whose alerts Transit does not collect says so, and blames no one else.
-	const alerts = live.getByText('Alerts in effect', { exact: true }).locator('..');
+	const alerts = live.getByText('Notices in effect', { exact: true }).locator('..');
 	await expect(alerts).toContainText('Not tracked');
-	await expect(alerts).toContainText('Transit does not collect OC Transpo’s alerts yet.');
-	await expect(live.getByRole('link', { name: 'Read the alerts' })).toHaveCount(0);
-	await expect(live.getByRole('link', { name: 'Check official service alerts' })).toHaveAttribute(
+	await expect(alerts).toContainText('Transit does not collect OC Transpo’s notices yet.');
+	await expect(live.getByRole('link', { name: 'Read the notices' })).toHaveCount(0);
+	await expect(live.getByRole('link', { name: 'Check the official notices' })).toHaveAttribute(
 		'href',
 		'https://www.octranspo.com/en/alerts/',
 	);

@@ -103,8 +103,8 @@ export const SHARE_COPY = {
 	},
 	'/alerts': {
 		en: {
-			support: 'Past transit service alerts and affected services',
-			cta: 'Browse alerts',
+			support: 'Past notices from the transit agency and the service they affect',
+			cta: 'Browse notices',
 		},
 		fr: {
 			support: 'Avis de service passés et services touchés',

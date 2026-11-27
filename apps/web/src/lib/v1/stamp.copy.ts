@@ -3,7 +3,7 @@ export type LiveState = 'current' | 'behind' | 'not-responding' | 'unknown';
 export const stampCopy = {
 	en: {
 		live: (subject: 'data' | 'alerts', state: LiveState, age: string | null, paused = false) =>
-			(paused ? 'Paused' : subject === 'alerts' ? 'Live alerts' : 'Live') +
+			(paused ? 'Paused' : subject === 'alerts' ? 'Live notices' : 'Live') +
 			' · ' +
 			(state === 'not-responding'
 				? 'not responding'

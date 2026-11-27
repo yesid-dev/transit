@@ -19,6 +19,12 @@ export interface ErrorPageLocaleCopy {
 		body: string;
 		suggestions: readonly { label: string; href: string }[];
 	};
+	tripEnded: {
+		heading: string;
+		body: string;
+		line: string;
+		suggestions: readonly { label: string; href: string }[];
+	};
 }
 
 export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
@@ -50,6 +56,15 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 				{ label: 'Lignes', href: '/lines' },
 			],
 		},
+		tripEnded: {
+			heading: 'Ce trajet ne circule plus',
+			body: 'Un trajet quitte la vue en direct quand il se termine. Sa ligne montre ce qui circule maintenant.',
+			line: 'Voir sa ligne',
+			suggestions: [
+				{ label: 'Lignes', href: '/lines' },
+				{ label: 'Aperçu', href: '/' },
+			],
+		},
 	},
 	en: {
 		suggestionsLabel: 'Suggested destinations',
@@ -79,6 +94,15 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 				{ label: 'Lines', href: '/lines' },
 			],
 		},
+		tripEnded: {
+			heading: 'This trip is no longer running',
+			body: 'A trip leaves the live view when it ends. Its line shows what runs now.',
+			line: 'See its line',
+			suggestions: [
+				{ label: 'Lines', href: '/lines' },
+				{ label: 'Overview', href: '/' },
+			],
+		},
 	},
 };
 
@@ -91,6 +115,11 @@ export function errorDocumentHead(
 	description: string;
 } {
 	const copy = errorPageCopy[locale];
+	if (status === 404 && code === 'TRIP_ENDED')
+		return {
+			title: `${status} · ${copy.tripEnded.heading}`,
+			description: copy.tripEnded.body,
+		};
 	if (status === 404 && code === 'STOP_NOT_FOUND')
 		return {
 			title: `${status} · ${copy.stopNotFound.heading}`,

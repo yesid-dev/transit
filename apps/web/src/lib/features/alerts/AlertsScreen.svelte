@@ -145,7 +145,7 @@
 		),
 	);
 	const unavailable = $derived(t('Unavailable', 'Indisponible'));
-	const noAlerts = $derived(t('No alerts in effect.', 'Aucun avis en vigueur.'));
+	const noAlerts = $derived(t('No notices in effect.', 'Aucun avis en vigueur.'));
 	const linePageSize = 6;
 	const paging = $derived(alertPaging(locale));
 
@@ -259,7 +259,9 @@
 					{ key: 'line', header: t('Line', 'Ligne'), rowHeader: true, cell: lineCell },
 					{
 						key: 'count',
-						header: live ? t('Notices', 'Avis') : t('Alerts as published', 'Avis tels que publiés'),
+						header: live
+							? t('Notices', 'Avis')
+							: t('Notices as published', 'Avis tels que publiés'),
 						numeric: true,
 						cell: cutValue,
 					},
@@ -276,7 +278,7 @@
 			{group === 'effect'
 				? noAlerts
 				: t(
-						'No line-specific alerts in this view.',
+						'No line-specific notices in this view.',
 						'Aucun avis propre à une ligne dans cette vue.',
 					)}
 		</p>
@@ -467,8 +469,8 @@
 					label: t('Source', 'Source'),
 					text: data.operator
 						? t(
-								`Service alerts published by ${data.operator}.`,
-								`Avis de service publiés par ${frenchAgency(operator).subject}.`,
+								`Notices published by ${data.operator}.`,
+								`Avis publiés par ${frenchAgency(operator).subject}.`,
 							)
 						: null,
 				},
@@ -531,7 +533,7 @@
 					{#snippet pending()}
 						<RecordGroup waiting="answer">
 							<div data-slot="screen-state">
-								<p role="status">{t('Loading live alerts…', 'Chargement des avis en direct…')}</p>
+								<p role="status">{t('Loading live notices…', 'Chargement des avis en direct…')}</p>
 							</div>
 						</RecordGroup>
 					{/snippet}
@@ -621,12 +623,12 @@
 									: data.operator}
 								healthLink={localizeHref('/status', locale, data.city)}
 								scope={t(
-									'Alerts in effect at this moment, in the latest feed capture.',
+									'Notices in effect at this moment, in the latest feed capture.',
 									'Les avis en vigueur en ce moment, dans le dernier relevé du flux.',
 								)}
-								statusLabel={t('How an alert counts', 'Quand un avis compte')}
+								statusLabel={t('How a notice counts', 'Quand un avis compte')}
 								definition={t(
-									'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
+									'A notice counts when this moment falls inside one of its published periods, or when the agency gives no period.',
 									'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand la société de transport ne publie aucune période.',
 								)}
 								additionalFields={missingEffect
@@ -639,7 +641,7 @@
 										]
 									: []}
 								captureText={t(
-									`Alerts: ${age ?? 'unavailable'}.`,
+									`Notices: ${age ?? 'unavailable'}.`,
 									`Avis\u00a0: ${age ?? 'indisponibles'}.`,
 								)}
 							/>

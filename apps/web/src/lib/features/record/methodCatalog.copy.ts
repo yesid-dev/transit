@@ -30,7 +30,7 @@ export const methodCopy = {
 		calculation: 'How it is calculated',
 		ordering: 'How rows are ordered',
 		caveat: 'Caveat',
-		archive: 'Methodology for the archived record',
+		archive: 'The method of the first Transit site, until November 2026',
 		range: {
 			title: 'The range on a ranking row',
 			summary: 'The range shows uncertainty around a ranked value.',
@@ -93,7 +93,7 @@ export const methodCopy = {
 		calculation: 'Calcul',
 		ordering: 'Ordre du classement',
 		caveat: 'Mise en garde',
-		archive: 'Méthode du bilan archivé',
+		archive: 'La méthode du premier site Transit, jusqu’en novembre 2026',
 		range: {
 			title: 'L’intervalle dans un classement',
 			summary: 'L’intervalle montre l’incertitude autour d’une valeur du classement.',

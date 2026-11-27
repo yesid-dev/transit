@@ -93,7 +93,7 @@ test('Data health reads late feed details, expected cadence, sizes and the sched
 	await refresh();
 	const main = page.getByRole('main');
 	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
-		'feeds are fresh. Late: Service alerts.',
+		'live feeds are fresh. Late: Service alerts.',
 	);
 	await expect(main.getByRole('cell', { name: 'Late: last received 2 min ago' })).toBeVisible();
 	const capture = main.getByRole('table', { name: 'Each feed, at its last capture' });

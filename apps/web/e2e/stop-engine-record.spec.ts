@@ -144,9 +144,8 @@ for (const width of [390, 1440]) {
 			await expect(main.locator('#daily footer span').first()).toHaveText(
 				fr ? '614 passages aux arrêts, 7 jours' : '614 stop events, 7 days',
 			);
-			const alertsFooter = main.locator('#alerts footer');
-			if (fr) await expect(alertsFooter).toBeHidden();
-			else await expect(alertsFooter.locator('span')).toHaveText(['4 days']);
+			// The notices card counts its notices in the card; a foot holding only the days says nothing.
+			await expect(main.locator('#alerts footer span')).toHaveCount(0);
 			await expect(waitingLine).toContainText(
 				fr ? '24 intervalles entre deux véhicules observés' : '24 gaps between vehicles seen',
 			);

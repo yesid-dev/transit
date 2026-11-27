@@ -635,7 +635,7 @@
 							/>
 						{:else if count != null}
 							<FactList leading={false}>
-								<FactRow label={t('Distinct alerts', 'Avis distincts')}
+								<FactRow label={t('Distinct notices', 'Avis distincts')}
 									>{tally(count, locale)}</FactRow
 								>
 							</FactList>

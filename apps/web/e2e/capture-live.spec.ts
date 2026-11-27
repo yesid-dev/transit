@@ -158,20 +158,20 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 		await expect(about).toContainText(
 			fr
 				? 'Les avis en vigueur en ce moment, dans le dernier relevé du flux.'
-				: 'Alerts in effect at this moment, in the latest feed capture.',
+				: 'Notices in effect at this moment, in the latest feed capture.',
 		);
-		await expect(about).toContainText(fr ? 'Quand un avis compte' : 'How an alert counts');
+		await expect(about).toContainText(fr ? 'Quand un avis compte' : 'How a notice counts');
 		await expect(about).toContainText(
 			fr
 				? 'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand la société de transport ne publie aucune période.'
-				: 'An alert counts when this moment falls inside one of its published periods, or when the agency gives no period.',
+				: 'A notice counts when this moment falls inside one of its published periods, or when the agency gives no period.',
 		);
 		await expect(about).toContainText(
-			fr ? /Avis\s*:\s*il y a [2-5]\d\s+s\./u : /Alerts: [2-5]\d\s+s ago\./u,
+			fr ? /Avis\s*:\s*il y a [2-5]\d\s+s\./u : /Notices: [2-5]\d\s+s ago\./u,
 		);
 		hasCapture = false;
 		await refreshAlertsCapture(page);
-		await expect(about).toContainText(fr ? 'Avis : indisponibles.' : 'Alerts: unavailable.');
+		await expect(about).toContainText(fr ? 'Avis : indisponibles.' : 'Notices: unavailable.');
 		await expect(filter).toHaveCount(0);
 		await page.goto(`${href}?provider=octranspo&frameMode=live`);
 		await expect(
@@ -204,7 +204,7 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await expect(list.getByRole('status')).toHaveText('Showing 12 of 12 notices');
 	await expect(page.locator('#alerts-window')).toContainText('12 notices are in effect now.');
 	await expect(page.locator('#alerts-window')).toContainText(
-		'12 notices, from 13 alerts as STM published them',
+		'12 notices, from 13 as STM published them',
 	);
 	await expect(page.locator('#alerts-breakdown')).toContainText('Not stated');
 	await expect(page.locator('#alerts-breakdown')).toContainText(

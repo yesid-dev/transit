@@ -135,7 +135,7 @@ it.each([
 	[
 		'names alerts as the subject',
 		{ ageSeconds: 720, subject: 'alerts' },
-		'Live alerts · updated 12 minutes ago',
+		'Live notices · updated 12 minutes ago',
 		'Avis en direct · mis à jour il y a 12 minutes',
 	],
 	[

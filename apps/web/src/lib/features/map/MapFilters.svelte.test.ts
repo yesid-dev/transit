@@ -73,8 +73,8 @@ describe('MapFilters', () => {
 		expect(
 			view.getByText(
 				locale === 'en'
-					? 'Filter unavailable: no alert feed connected.'
-					: 'Filtre indisponible : aucune source d’alertes connectée.',
+					? 'Filter unavailable: no notice feed connected.'
+					: 'Filtre indisponible : aucune source d’avis connectée.',
 			),
 		).toBeVisible();
 		expect(store.alerts).toEqual([]);
@@ -93,9 +93,9 @@ describe('MapFilters', () => {
 		expect(getByText('Status')).toBeTruthy();
 		expect(getByText('Crowding')).toBeTruthy();
 		expect(getByText('Markers')).toBeTruthy();
-		expect(getAllByText('Alerts').length).toBeGreaterThan(0);
+		expect(getAllByText('Notices').length).toBeGreaterThan(0);
 		expect(
-			getByRole('checkbox', { name: 'Has alert Show markers with alerts' }),
+			getByRole('checkbox', { name: 'With notices Show markers with notices' }),
 		).not.toBeDisabled();
 		expect(container.querySelectorAll('.mf-group-badge[data-icon]').length).toBeGreaterThanOrEqual(
 			4,
@@ -107,7 +107,7 @@ describe('MapFilters', () => {
 				group.getAttribute('data-filter-group'),
 			),
 		).toEqual(['markers', 'alerts', 'active', 'status', 'crowding']);
-		for (const name of ['Markers', 'Alerts', 'Status', 'Crowding']) {
+		for (const name of ['Markers', 'Notices', 'Status', 'Crowding']) {
 			expect(getByRole('button', { name })).toHaveAttribute('aria-expanded', 'true');
 		}
 		expect(getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-expanded', 'false');

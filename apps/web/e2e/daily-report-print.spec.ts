@@ -51,7 +51,7 @@ test.describe('Daily report print', () => {
 			await expect(messages.locator('footer')).toContainText(
 				fr
 					? new RegExp(`${count} avis, issus de 1\\s690 avis publiés par la STM`, 'u')
-					: `${count} notices, from 1,690 alerts as STM published them`,
+					: `${count} notices, from 1,690 as STM published them`,
 			);
 			expect((await messages.innerText()).match(/1[\s,]690\b/gu) ?? []).toHaveLength(1);
 			await expect(main.locator('#punctuality')).toContainText(fr ? /78,9\s%/u : '78.9%');
@@ -153,7 +153,7 @@ if (process.env.TRANSIT_E2E_DAILY_ARTWORK === '1') {
 					content.locator('#messages [data-record-state="alerts_not_tracked"]'),
 				).toBeVisible();
 				await expect(content.locator('#messages')).toContainText(
-					'Not tracked: Transit does not collect OC Transpo’s alerts yet.',
+					'Not tracked: Transit does not collect OC Transpo’s notices yet.',
 				);
 			}
 			if (name === 'range-1440') {

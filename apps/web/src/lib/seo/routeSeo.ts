@@ -88,6 +88,12 @@ const SURFACES: Record<string, BilingualSeo> = {
 	'/metrics': {
 		title: { en: 'How we measure', fr: 'Comment on mesure' },
 	},
+	'/metrics/archive': {
+		title: {
+			en: 'The method of the first Transit site',
+			fr: 'La méthode du premier site Transit',
+		},
+	},
 	'/status': {
 		title: { en: 'Data health', fr: 'Santé des données' },
 	},

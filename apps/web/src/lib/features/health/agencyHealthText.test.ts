@@ -127,8 +127,8 @@ describe('what the agency publishes', () => {
 			'en',
 		);
 		expect(readable(rows, 'en')).toEqual([
-			['Service alerts', 'Published', '1,602 alerts'],
-			['Effect of each alert', 'Not published', 'None of 1,602 alerts states its effect'],
+			['Service alerts', 'Published', '1,602 notices'],
+			['Effect of each notice', 'Not published', 'None of 1,602 notices states its effect'],
 			['Wheelchair boarding at stops', 'Published', '8,623 of 8,623 stops'],
 			['Wheelchair access on trips', 'Published', '122,410 of 122,410 trips'],
 			['How full each vehicle is', 'Published', 'In 99.9% of vehicle reporting time'],
@@ -191,7 +191,7 @@ describe('the alerts sentence', () => {
 		gatineau: { name: 'STO', frenchOf: 'de la STO' },
 	};
 	it.each([
-		['en', declared.ottawa, 'Not tracked: Transit does not collect OC Transpo’s alerts yet.'],
+		['en', declared.ottawa, 'Not tracked: Transit does not collect OC Transpo’s notices yet.'],
 		[
 			'fr',
 			declared.ottawa,
@@ -369,7 +369,7 @@ describe('gaps in collection', () => {
 });
 
 it.each([
-	['en', 'Not tracked: Transit did not collect STM’s alerts on these dates.'],
+	['en', 'Not tracked: Transit did not collect STM’s notices on these dates.'],
 	['fr', 'Non suivi\u00a0: Transit n’a pas collecté les avis de la STM à ces dates.'],
 ] as const)('separates dates without alerts from a city never collected in %s', (locale, line) => {
 	expect(alertsNotTrackedOnDates({ name: 'STM', frenchOf: 'de la STM' }, locale)).toBe(line);

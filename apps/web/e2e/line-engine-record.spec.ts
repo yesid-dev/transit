@@ -67,7 +67,9 @@ for (const width of [390, 1440]) {
 			).toBeVisible();
 			await expect(main.locator('#late')).toContainText(fr ? 'se classe premier' : 'ranked first');
 			await expect(main.locator('#crowding')).toContainText(fr ? 'Non suivi' : '25.0%');
-			await expect(main.locator('#alerts')).toContainText(fr ? /3 avis/ : /3 (?:distinct )?alerts/);
+			await expect(main.locator('#alerts')).toContainText(
+				fr ? /3 avis/ : /3 (?:distinct )?notices/,
+			);
 
 			await main
 				.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all', exact: true })

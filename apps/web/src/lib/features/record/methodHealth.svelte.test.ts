@@ -326,10 +326,14 @@ it.each([
 			catalog: pending,
 		});
 		expect(screen.getByText('Calculating…')).toBeVisible();
-		expect(screen.queryByRole('link', { name: 'Methodology for the archived record' })).toBeNull();
+		expect(
+			screen.queryByRole('link', {
+				name: 'The method of the first Transit site, until November 2026',
+			}),
+		).toBeNull();
 		finish(settled);
 		const archive = await screen.findByRole('link', {
-			name: 'Methodology for the archived record',
+			name: 'The method of the first Transit site, until November 2026',
 		});
 		expect(archive).toHaveAttribute('href', '/metrics/archive?provider=octranspo');
 		const section = archive.closest('[data-slot="page-section"]');
@@ -420,8 +424,8 @@ it.each([
 		'65.1%',
 		'of scheduled stop events have a reading.',
 		'What OC Transpo publishes',
-		'Transit does not collect OC Transpo’s alerts yet.',
-		'Check official service alerts',
+		'Transit does not collect OC Transpo’s notices yet.',
+		'Check the official notices',
 	],
 	[
 		'fr',

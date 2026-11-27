@@ -38,7 +38,7 @@ for (const locale of ['en', 'fr'] as const)
 						message.getByText(
 							locale === 'fr'
 								? 'Non suivi\u00a0: Transit n’a pas collecté les avis de la STM à ces dates.'
-								: 'Not tracked: Transit did not collect STM’s alerts on these dates.',
+								: 'Not tracked: Transit did not collect STM’s notices on these dates.',
 						),
 					).toHaveCount(0);
 					const before = await frame();
@@ -56,7 +56,7 @@ for (const locale of ['en', 'fr'] as const)
 						message.getByText(
 							locale === 'fr'
 								? 'Non suivi\u00a0: Transit n’a pas collecté les avis de la STM à ces dates.'
-								: 'Not tracked: Transit did not collect STM’s alerts on these dates.',
+								: 'Not tracked: Transit did not collect STM’s notices on these dates.',
 						),
 					).toBeVisible();
 					await waitForFrameClearance(page);

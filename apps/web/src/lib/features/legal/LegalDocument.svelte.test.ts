@@ -122,12 +122,32 @@ describe('LegalDocument', () => {
 		expect(LEGAL_EFFECTIVE_DATES).toEqual({
 			privacy: '2026-11-26',
 			terms: '2026-10-29',
-			accessibility: '2026-10-29',
+			accessibility: '2026-11-26',
 		});
 		expect(legalDocument('en', 'privacy').effectiveDate).toBe('26 November 2026');
 		expect(legalDocument('en', 'terms').effectiveDate).toBe('29 October 2026');
 		expect(legalDocument('fr', 'privacy').effectiveDate).toBe('26 novembre 2026');
 		expect(legalDocument('fr', 'terms').effectiveDate).toBe('29 octobre 2026');
+	});
+
+	it.each([
+		['en', 'Pause live updates', 'until you press Enter', '26 November 2026'],
+		['fr', 'Suspendre les mises à jour', 'avant la touche Entrée', '26 novembre 2026'],
+	] as const)(
+		'names the live pause and the city picker on the %s Accessibility page',
+		(locale, pause, picker, date) => {
+			const page = legalDocument(locale, 'accessibility');
+			const text = JSON.stringify(page.sections);
+			expect(text).toContain(pause);
+			expect(text).toContain(picker);
+			expect(page.effectiveDate).toBe(date);
+		},
+	);
+
+	it('keeps the French Privacy policy in French', () => {
+		const text = JSON.stringify(legalDocument('fr', 'privacy').sections);
+		expect(text).not.toMatch(/Workers (?:Issues|Logs)|workflow|service worker|suivi d’un lien/u);
+		expect(text).toContain('le clic sur un lien vers yesid.dev');
 	});
 
 	it('describes only what this app stores and sends, without the old site', () => {

@@ -218,7 +218,7 @@ const SUPPLEMENTAL_METRIC_TIPS: Readonly<Record<SupplementalMetricKey, Supplemen
 		anchor: 'metrics-provenance',
 		oneLiner: {
 			fr: 'Lignes et arrêts distincts ayant au moins une prévision attribuée de retard supérieur à 5 minutes et d’au plus 60 minutes ce jour-là. Les versions d’avis comptent les contenus distincts enregistrés, pas les incidents ni les usagers. Une source absente laisse le décompte de lignes ou d’arrêts inconnu.',
-			en: 'Distinct lines and stops with at least one attributed delay prediction greater than 5 and at most 60 minutes that day. Alert versions count distinct recorded message content, not incidents or riders. Missing route or stop data leaves that count unknown.',
+			en: 'Distinct lines and stops with at least one attributed delay prediction greater than 5 and at most 60 minutes that day. Notice versions count distinct recorded message content, not incidents or riders. Missing route or stop data leaves that count unknown.',
 		},
 	},
 	silentTrip: {
@@ -239,35 +239,35 @@ const SUPPLEMENTAL_METRIC_TIPS: Readonly<Record<SupplementalMetricKey, Supplemen
 		anchor: 'metrics-provenance',
 		oneLiner: {
 			fr: 'La cause déclarée d’un avis (p. ex. travaux, météo, panne), reprise telle quelle du flux GTFS-RT, pas une enquête ni une vérification indépendante.',
-			en: 'The declared cause of an alert (e.g. construction, weather, breakdown), taken as-is from the GTFS-RT feed, not an investigation or independent check.',
+			en: 'The declared cause of a notice (e.g. construction, weather, breakdown), taken as-is from the GTFS-RT feed, not an investigation or independent check.',
 		},
 	},
 	alertEffect: {
 		anchor: 'metrics-provenance',
 		oneLiner: {
 			fr: 'L’effet déclaré d’un avis sur le service (p. ex. détour, retards, arrêt déplacé), repris tel quel du flux, pas un impact mesuré.',
-			en: 'The declared effect of an alert on service (e.g. detour, delays, stop moved), taken as-is from the feed, not a measured impact.',
+			en: 'The declared effect of a notice on service (e.g. detour, delays, stop moved), taken as-is from the feed, not a measured impact.',
 		},
 	},
 	alertSeverity: {
 		anchor: 'metrics-provenance',
 		oneLiner: {
 			fr: 'Le niveau de gravité que la société de transport a associé à l’avis dans le flux, son propre classement et non un score calculé par Transit.',
-			en: 'The severity level the agency attached to the alert in the feed, its own labelling, not a score we computed.',
+			en: 'The severity level the agency attached to the notice in the feed, its own labelling, not a score we computed.',
 		},
 	},
 	alertDuration: {
 		anchor: 'metrics-provenance',
 		oneLiner: {
 			fr: 'La durée annoncée d’un avis d’après ses périodes actives dans le flux, absente quand la période est ouverte ou incohérente, jamais un 0 inventé.',
-			en: 'An alert’s announced duration from its active periods in the feed, absent when the period is open-ended or inconsistent, never a fabricated 0.',
+			en: 'A notice’s announced duration from its active periods in the feed, absent when the period is open-ended or inconsistent, never a fabricated 0.',
 		},
 	},
 	alertReach: {
 		anchor: 'metrics-provenance',
 		oneLiner: {
 			fr: 'Le nombre de lignes et d’arrêts qu’un avis déclare toucher d’après le flux, un décompte d’entités nommées, pas une estimation d’usagers touchés.',
-			en: 'How many routes and stops an alert declares it affects per the feed, a count of named entities, not an estimate of affected riders.',
+			en: 'How many lines and stops a notice declares it affects per the feed, a count of named entities, not an estimate of affected riders.',
 		},
 	},
 };

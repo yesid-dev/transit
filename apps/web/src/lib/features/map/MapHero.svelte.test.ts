@@ -863,7 +863,7 @@ describe('MapHero stage lifecycle', () => {
 			await waitFor(() =>
 				expect(harness.goto).toHaveBeenCalledWith('/map?provider=octranspo', expect.anything()),
 			);
-			expect(screen.queryByRole('button', { name: /Has alert/i })).toBeNull();
+			expect(screen.queryByRole('button', { name: /With notices/i })).toBeNull();
 			await waitFor(() =>
 				expect(container.querySelector('.map-hero')).toHaveAttribute(
 					'data-motion-vehicle-count',

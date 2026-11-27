@@ -715,7 +715,7 @@ test('unknown alert-filter evidence does not turn valid vehicle reports into a r
 	const panel = await openReports(page);
 	await expect(panel.getByText('No vehicles in view.')).toHaveCount(0);
 	await expect(panel.getByRole('button', { name: downloadAction })).toHaveCount(0);
-	await expect(panel.getByRole('status')).toContainText(/alert/i);
+	await expect(panel.getByRole('status')).toContainText(/notice/i);
 });
 
 test('retained alert matches keep their own source identity and recover to a known empty filter', async ({

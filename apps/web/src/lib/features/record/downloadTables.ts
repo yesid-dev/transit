@@ -16,12 +16,12 @@ export const downloadTables = {
 		fr: 'Une ligne par relevé de véhicule, avec le trajet, la position et l’occupation.',
 	},
 	alerts: {
-		en: 'One row per alert version and source, with its text, affected lines and stops.',
+		en: 'One row per notice version and source, with its text, affected lines and stops.',
 		fr: 'Une ligne par version et source d’avis, avec le texte, les lignes et les arrêts touchés.',
 	},
 	feed_polls: {
-		en: 'One row per feed retrieval, with the capture time, result and size.',
-		fr: 'Une ligne par collecte de flux, avec l’heure, le résultat et la taille.',
+		en: 'One row per feed check, with the capture time, result and size.',
+		fr: 'Une ligne par vérification de flux, avec l’heure, le résultat et la taille.',
 	},
 	prediction_samples: {
 		en: 'One sample per observed trip stop and prediction horizon, with lead time and error.',
@@ -33,30 +33,9 @@ export const downloadTables = {
 	},
 };
 
-export const missingDayReasons = {
-	no_manifest: {
-		en: 'There is no published manifest for this date and cleaning version.',
-		fr: 'Aucun manifeste n’a été publié pour cette date et cette version du nettoyage.',
-	},
-	no_raw_captures: {
-		en: 'No raw feed captures were available for this day.',
-		fr: 'Aucune capture brute des flux n’était disponible pour cette journée.',
-	},
-	no_schedule_edition: {
-		en: 'No schedule edition was available for this day.',
-		fr: 'Aucune édition des horaires n’était disponible pour cette journée.',
-	},
-	schedule_archive_unreadable: {
-		en: 'The schedule archive for this day could not be read.',
-		fr: 'L’archive des horaires de cette journée était illisible.',
-	},
-};
-
-// Parquet fields follow the published clean-day writer, including raw units.
+// Card titles use Data health’s table names (tableName). Parquet fields follow the published clean-day writer, including raw units.
 export const downloadLayouts = {
 	scheduled_stop_times: {
-		en: 'Scheduled stop times',
-		fr: 'Horaires aux arrêts',
 		columns: [
 			'provider',
 			'service_date',
@@ -75,8 +54,6 @@ export const downloadLayouts = {
 		],
 	},
 	trip_days: {
-		en: 'Trip days',
-		fr: 'Trajets par jour',
 		columns: [
 			'provider',
 			'service_date',
@@ -99,8 +76,6 @@ export const downloadLayouts = {
 		],
 	},
 	stop_events: {
-		en: 'Stop events',
-		fr: 'Passages aux arrêts',
 		columns: [
 			'provider',
 			'service_date',
@@ -125,8 +100,6 @@ export const downloadLayouts = {
 		],
 	},
 	vehicle_positions: {
-		en: 'Vehicle positions',
-		fr: 'Positions des véhicules',
 		columns: [
 			'provider',
 			'cleaning_version',
@@ -149,8 +122,6 @@ export const downloadLayouts = {
 		],
 	},
 	alerts: {
-		en: 'Alerts',
-		fr: 'Avis de service',
 		columns: [
 			'provider',
 			'service_date',
@@ -172,8 +143,6 @@ export const downloadLayouts = {
 		],
 	},
 	feed_polls: {
-		en: 'Feed polls',
-		fr: 'Collecte des flux',
 		columns: [
 			'provider',
 			'service_date',
@@ -188,8 +157,6 @@ export const downloadLayouts = {
 		],
 	},
 	prediction_samples: {
-		en: 'Prediction samples',
-		fr: 'Échantillons de prévisions',
 		columns: [
 			'provider',
 			'service_date',
@@ -209,8 +176,6 @@ export const downloadLayouts = {
 		],
 	},
 	segment_runs: {
-		en: 'Segment runs',
-		fr: 'Parcours entre arrêts',
 		columns: [
 			'provider',
 			'service_date',
@@ -232,4 +197,4 @@ export const downloadLayouts = {
 			'exclusion',
 		],
 	},
-} satisfies Record<keyof typeof downloadTables, { en: string; fr: string; columns: string[] }>;
+} satisfies Record<keyof typeof downloadTables, { columns: string[] }>;

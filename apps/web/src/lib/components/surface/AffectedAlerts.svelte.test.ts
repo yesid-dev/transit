@@ -14,7 +14,7 @@ const EN_COPY: AffectedAlertsCopy = {
 	more: (n) => `+${n} more`,
 	showLess: 'Show less',
 	link: 'Details',
-	linkAria: (host) => `Open alert details on ${host} (new tab)`,
+	linkAria: (host) => `Open the notice on ${host} (new tab)`,
 };
 
 const FR_COPY: AffectedAlertsCopy = {
@@ -77,9 +77,7 @@ describe('AffectedAlerts — rendering', () => {
 				copy: locale === 'en' ? EN_COPY : FR_COPY,
 			},
 		});
-		expect(
-			screen.getByText(locale === 'en' ? 'Service alert' : 'Alerte de service'),
-		).toBeInTheDocument();
+		expect(screen.getByText(locale === 'en' ? 'Notice' : 'Avis')).toBeInTheDocument();
 		expect(container.textContent).not.toMatch(/Votre ligne|Votre arrêt|Your stop|None|null/);
 	});
 
@@ -173,7 +171,7 @@ describe('AffectedAlerts — rendering', () => {
 		});
 		expect(screen.getByText('Texte français seulement')).toHaveAttribute('lang', 'fr');
 		expect(screen.getAllByText('(French only)')).toHaveLength(2);
-		const link = screen.getByRole('link', { name: 'Open alert details on example.test (new tab)' });
+		const link = screen.getByRole('link', { name: 'Open the notice on example.test (new tab)' });
 		expect(link).toHaveAttribute('href', 'https://example.test/fr/avis');
 		expect(link).toHaveAttribute('hreflang', 'fr');
 		expect(link).toHaveAttribute('target', '_blank');

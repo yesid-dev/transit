@@ -84,7 +84,7 @@ it.each([
 		locale === 'fr' ? '12 sur 426 avis' : 'Showing 12 of 426 notices',
 	);
 	expect(alertAnswerSentence(426, locale, false, true)).toBe(
-		locale === 'fr' ? 'avis tels que publiés.' : 'alerts as published.',
+		locale === 'fr' ? 'avis tels que publiés.' : 'notices as published.',
 	);
 });
 
@@ -93,12 +93,12 @@ const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
 it('explains the grouped and published units only when their counts differ', () => {
 	const agency = { name: 'STM', frenchOf: 'de la STM' };
 	expect(noticeCountEvidence(213, 1707, agency, 'en')).toBe(
-		'213 notices, from 1,707 alerts as STM published them, one per line and reissue.',
+		'213 notices, from 1,707 as STM published them, one per line and reissue.',
 	);
 	expect(normalize(noticeCountEvidence(213, 1707, agency, 'fr'))).toBe(
 		'213 avis, issus de 1 707 avis publiés par la STM, un par ligne et par mise à jour.',
 	);
-	expect(publishedAlertCount(1707, 'en')).toBe('1,707 alerts as published');
+	expect(publishedAlertCount(1707, 'en')).toBe('1,707 notices as published');
 	expect(normalize(publishedAlertCount(1707, 'fr'))).toBe('1 707 avis tels que publiés');
 });
 
@@ -167,7 +167,7 @@ it.each([
 );
 
 it.each([
-	['en', '1 distinct alert', '2 distinct alerts', 'See 1 notice in Service alerts'],
+	['en', '1 distinct notice', '2 distinct notices', 'See 1 notice in Service alerts'],
 	['fr', '1 avis distinct', '2 avis distincts', 'Voir 1 avis dans les avis de service'],
 ] as const)('presents the Daily alert count and link in %s', (locale, one, two, link) => {
 	expect(countedUnit(1, 'distinct-alert', locale)).toBe(one);
@@ -609,6 +609,16 @@ it.each([
 	];
 	expect(lineSubtitle(3, ends, locale)).toBe(bus);
 	expect(lineSubtitle(3, ['Angrignon', 'Honoré-Beaugrand'], locale)).toBe(vowel);
+});
+
+it.each([
+	['en', 'Maple Lane / Springfield to Greenboro C', 'Toward the stop de l’Église'],
+	['fr', 'De Maple Lane / Springfield à Greenboro C', 'Vers l’arrêt de l’Église'],
+] as const)('reads termini written in capitals in title case in %s', (locale, line, toward) => {
+	expect(lineSubtitle(3, ['MAPLE LANE / SPRINGFIELD', 'GREENBORO C'], locale)).toBe(line);
+	expect(towardReading('DE L’ÉGLISE', locale)).toBe(toward);
+	// A street that starts like a particle is not one.
+	expect(lineSubtitle(3, ['DUFFERIN', 'DESJARDINS'], locale)).not.toMatch(/stop|arrêt/);
 });
 
 it('gives each agency its French article from the city’s declared form', () => {

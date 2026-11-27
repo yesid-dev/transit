@@ -1,7 +1,7 @@
 import { lineName, lineSubtitle, riderHeadsign } from '#lib/site/presenter.ts';
 import type { LinePattern } from './linePatterns.ts';
 import type { Locale } from '#lib/i18n/copy.ts';
-import { formatTransitName } from './transitDisplay.ts';
+import { formatTransitName, stopDisplayName } from './transitDisplay.ts';
 import type { NameSeparators } from '#lib/v1/schemas/providers.ts';
 import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 
@@ -51,7 +51,8 @@ export function createLineDirectory(
 			const name = publishedName?.trim() || route?.long;
 			return lineName(
 				route?.short,
-				name && formatTransitName(name, copy.locale ?? 'en', copy.nameSeparators),
+				// A name the agency writes in capitals reads in title case, as stop names do.
+				name && stopDisplayName(formatTransitName(name, copy.locale ?? 'en', copy.nameSeparators)),
 				() => copy.line(id),
 				spoken,
 			);

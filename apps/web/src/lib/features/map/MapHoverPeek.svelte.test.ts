@@ -114,7 +114,7 @@ describe('MapHoverPeek', () => {
 		// Trip and crowding stay in the panel; the glance does not repeat them.
 		expect(container).not.toHaveTextContent('trip-secret');
 		expect(container).not.toHaveTextContent('Standing');
-		expect(container.querySelector('section[aria-label="Alerts"]')).toHaveTextContent(
+		expect(container.querySelector('section[aria-label="Notices"]')).toHaveTextContent(
 			'Route 24 is diverted.',
 		);
 		expectInert(container);
@@ -167,9 +167,9 @@ describe('MapHoverPeek', () => {
 			const { container, unmount } = render(MapHoverPeek, {
 				props: { peek: { ...vehicleFresh, alerts }, locale: 'en' },
 			});
-			expect(container).not.toHaveTextContent('Alerts');
-			expect(container).not.toHaveTextContent('Alert data unavailable');
-			expect(container).not.toHaveTextContent('No alerts attached');
+			expect(container).not.toHaveTextContent('Notices');
+			expect(container).not.toHaveTextContent('Notices unavailable');
+			expect(container).not.toHaveTextContent('No notices attached');
 			expect(container.querySelector('.map-alerts')).toBeNull();
 			unmount();
 		}
@@ -193,9 +193,7 @@ describe('MapHoverPeek', () => {
 			props: { peek: freshMetro, locale },
 		});
 
-		expect(definitionValue(container, locale === 'en' ? 'Status' : 'Statut')).toHaveTextContent(
-			why,
-		);
+		expect(definitionValue(container, locale === 'en' ? 'Status' : 'État')).toHaveTextContent(why);
 		expect(container).not.toHaveTextContent('Not reported');
 	});
 
@@ -318,7 +316,7 @@ describe.each(['en', 'fr'] as const)('MapHoverPeek published status in %s', (loc
 		const { container } = render(MapHoverPeek, {
 			props: { peek: { ...vehicleFresh, status, delayMin }, locale },
 		});
-		const fact = definitionValue(container, locale === 'fr' ? 'Statut' : 'Status');
+		const fact = definitionValue(container, locale === 'fr' ? 'État' : 'Status');
 		expect(fact).toHaveTextContent(STATUS_LABELS[locale][status]);
 		const mark = fact.querySelector('.peek-status');
 		if (measurement || status !== 'unknown') expect(mark).toHaveAttribute('data-status', status);
@@ -346,7 +344,7 @@ it.each(['en', 'fr'] as const)(
 	'labels an untripped vehicle without punctuality in %s',
 	(locale) => {
 		const view = render(MapHoverPeek, { peek: { ...vehicleFresh, tripId: null }, locale });
-		const status = definitionValue(view.container, locale === 'en' ? 'Status' : 'Statut');
+		const status = definitionValue(view.container, locale === 'en' ? 'Status' : 'État');
 		expect(status).toHaveTextContent(locale === 'en' ? 'Out of service' : 'Hors service');
 		expect(status).not.toHaveTextContent(STATUS_LABELS[locale].late);
 		expect(status.querySelector('.map-peek-delay')).toBeNull();
