@@ -267,14 +267,15 @@ it.each(['en', 'fr'] as const)(
 		expect(within(about).getByText(t.means)).toBeVisible();
 		expect(within(about).getByText(t.definition)).toBeVisible();
 		expect(about.querySelectorAll('[data-record-pending]')).toHaveLength(2);
-		const report = within(about).getByRole('link', { name: t.errorLink });
+		// "Seen an error?" is the Method row's second link, to How we measure's About Transit card.
+		const report = within(about).getByRole('link', { name: t.errorRow });
 		expect(report.getAttribute('href')).toMatch(/\/metrics\?.*#about-transit$/u);
-		expect(within(about).getByText(t.errorRow)).toBeVisible();
+		expect(within(about).getByRole('link', { name: t.method })).toBeVisible();
 		expect(container).not.toHaveTextContent(/Calculating|Calcul en cours/u);
 	},
 );
 
-it('keeps the error line in About these figures once the record arrives', async () => {
+it('keeps the error link in About these figures once the record arrives', async () => {
 	render(Overview, {
 		props: {
 			city: 'Montréal',
@@ -301,6 +302,6 @@ it('keeps the error line in About these figures once the record arrives', async 
 		).toBeNull(),
 	);
 	const about = screen.getByRole('article', { name: overviewCopy.fr.about });
-	expect(within(about).getByText('Vous avez vu une erreur?')).toBeVisible();
-	expect(within(about).getByRole('link', { name: 'Comment la signaler' })).toBeVisible();
+	const report = within(about).getByRole('link', { name: 'Vous avez vu une erreur?' });
+	expect(report.getAttribute('href')).toMatch(/#about-transit$/u);
 });

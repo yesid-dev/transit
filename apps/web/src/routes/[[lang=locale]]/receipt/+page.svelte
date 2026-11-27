@@ -509,7 +509,11 @@
 			key: 'method',
 			label: copy.methodRow,
 			text: null,
-			link: { href: link('/metrics'), label: copy.method },
+			// "Seen an error?" opens How we measure on its About Transit card, as on every screen.
+			links: [
+				{ href: link('/metrics'), label: copy.method },
+				{ href: `${link('/metrics')}#about-transit`, label: copy.errorRow },
+			],
 		},
 		{
 			key: 'source',
@@ -518,12 +522,6 @@
 				copy.feeds(agencyName(operator ?? cityName, routeData.provider)),
 				copy.recordStart(longDate(recordStart(page.data.provider), lang)),
 			].join(' '),
-		},
-		{
-			key: 'error',
-			label: copy.errorRow,
-			text: null,
-			link: { href: `${link('/metrics')}#about-transit`, label: copy.errorLink },
 		},
 	]}
 	<div>

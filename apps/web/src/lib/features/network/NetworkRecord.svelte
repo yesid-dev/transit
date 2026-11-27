@@ -260,18 +260,16 @@
 			key: 'method',
 			label: term.methodRow,
 			text: null,
-			link: { href: method, label: term.method },
+			// "Seen an error?" opens How we measure on its About Transit card, as on every screen.
+			links: [
+				{ href: method, label: term.method },
+				{ href: `${method}#about-transit`, label: term.errorRow },
+			],
 		},
 		{
 			key: 'source',
 			label: term.source,
 			text: term.feeds(agencyName(operator, page.data.provider)),
-		},
-		{
-			key: 'error',
-			label: term.errorRow,
-			text: null,
-			link: { href: `${method}#about-transit`, label: term.errorLink },
 		},
 	]}
 	{#if waiting}<AboutFiguresWaiting title={term.about} {fields} />

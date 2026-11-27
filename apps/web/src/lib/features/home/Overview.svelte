@@ -413,18 +413,16 @@
 			key: 'method',
 			label: t.methodRow,
 			text: null,
-			link: { href: link('/metrics'), label: t.method },
+			// "Seen an error?" opens How we measure on its About Transit card, as on every screen.
+			links: [
+				{ href: link('/metrics'), label: t.method },
+				{ href: `${link('/metrics')}#about-transit`, label: t.errorRow },
+			],
 		},
 		{
 			key: 'source',
 			label: t.source,
 			text: `${t.feeds(agencyName(operator, page.data.provider))} ${t.recordStart(locale === 'fr' ? longDate(cityStart, locale) : dateRange({ from: cityStart, to: cityStart }, locale))}`,
-		},
-		{
-			key: 'error',
-			label: t.errorRow,
-			text: null,
-			link: { href: `${link('/metrics')}#about-transit`, label: t.errorLink },
 		},
 	]}
 	{#if waiting}<AboutFiguresWaiting title={t.about} {fields} />
