@@ -168,15 +168,24 @@ for (const width of [390, 1440]) {
 				main.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toHaveCount(1);
 			await answer.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
-			let sheet = page.getByRole('dialog');
-			await expect(sheet.getByText(/v3.*#punctuality/)).toBeVisible();
-			await expect(sheet.getByText(/#accessibility/)).toBeVisible();
-			await sheet.getByRole('button', { name: fr ? 'Fermer' : 'Close' }).click();
+			const citation = page.getByRole('dialog', {
+				name: fr ? 'Citer ce bilan' : 'Cite this record',
+				exact: true,
+			});
+			await expect(citation.getByText(/v3.*#punctuality/)).toBeVisible();
+			await expect(citation.getByText(/#accessibility/)).toBeVisible();
+			await citation
+				.locator('[data-slot="sheet-footer"]')
+				.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true })
+				.click();
 
 			await answer
 				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
 				.click();
-			sheet = page.getByRole('dialog');
+			const sheet = page.getByRole('dialog', {
+				name: fr ? 'Télécharger les fichiers CSV' : 'Download the CSV files',
+				exact: true,
+			});
 			await expect(sheet.getByRole('link')).toHaveCount(8);
 			const accessCsv = await sheet
 				.getByRole('link', {

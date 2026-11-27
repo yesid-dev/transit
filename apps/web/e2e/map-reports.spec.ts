@@ -518,9 +518,10 @@ for (const locale of PUBLISHED_LOCALES) {
 
 		const citeLabel = locale === 'fr' ? 'Citer' : 'Cite';
 		await panel.getByRole('button', { name: citeLabel, exact: true }).click();
-		const citation = page
-			.getByRole('dialog')
-			.filter({ has: page.getByRole('heading', { name: citeLabel, exact: true }) });
+		const citation = page.getByRole('dialog', {
+			name: locale === 'fr' ? 'Citer ce bilan' : 'Cite this record',
+			exact: true,
+		});
 		// One citation block that carries the copied live link and its own Copy button.
 		const block = citation.locator('[data-slot="cite-block"]');
 		await expect(block).toHaveCount(1);
@@ -528,7 +529,10 @@ for (const locale of PUBLISHED_LOCALES) {
 		await expect(
 			block.getByRole('button', { name: locale === 'fr' ? 'Copier' : 'Copy', exact: true }),
 		).toBeVisible();
-		await citation.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close' }).click();
+		await citation
+			.locator('[data-slot="sheet-footer"]')
+			.getByRole('button', { name: locale === 'fr' ? 'Fermer' : 'Close', exact: true })
+			.click();
 
 		// Selecting a report opens detail only: no implicit filter and no camera change.
 		const gotoBefore = page.url();

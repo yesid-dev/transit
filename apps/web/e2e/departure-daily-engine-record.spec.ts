@@ -15,6 +15,8 @@ for (const width of [390, 1440]) {
 	for (const lang of ['en', 'fr'] as const) {
 		const fr = lang === 'fr';
 		const path = fr ? '/fr' : '';
+		const downloadTitle = fr ? 'Télécharger les fichiers CSV' : 'Download the CSV files';
+		const close = { name: fr ? 'Fermer' : 'Close', exact: true };
 		test(`${lang} at ${width}px shows a scheduled departure and changes the stop date`, async ({
 			page,
 			request,
@@ -50,16 +52,20 @@ for (const width of [390, 1440]) {
 			const stops = main.getByRole('article', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' });
 			await expect(stops).toContainText(fr ? '5,3 min de retard' : '5.3 min late');
 			await main.getByRole('button', { name: fr ? 'Citer' : 'Cite', exact: true }).click();
-			await expect(page.getByRole('dialog')).toContainText(/v1[\s\S]*day=2026-11-20[^ ]*#stops/);
-			await page.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true }).click();
+			const citation = page.getByRole('dialog', {
+				name: fr ? 'Citer ce bilan' : 'Cite this record',
+				exact: true,
+			});
+			await expect(citation).toContainText(/v1[\s\S]*day=2026-11-20[^ ]*#stops/);
+			await citation.locator('[data-slot="sheet-footer"]').getByRole('button', close).click();
 			await expect(main.locator('input[type=date]')).toHaveCount(0);
 			await stops.getByRole('link', { name: fr ? '18 novembre 2026' : '18 November 2026' }).click();
 			await expect(stops).toContainText(fr ? '1 min d’avance' : '1 min early');
 			await main
 				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
 				.click();
-			const csv = await page
-				.getByRole('dialog')
+			const downloads = page.getByRole('dialog', { name: downloadTitle, exact: true });
+			const csv = await downloads
 				.getByRole('link', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' })
 				.getAttribute('href');
 			const csvResponse = await request.get(csv!);
@@ -70,7 +76,7 @@ for (const width of [390, 1440]) {
 			await expect(main).not.toContainText(
 				/\b(?:\d+ s (?:late|early)|seconds|secondes|\d+\s+(?:second|seconde))\b|\b\d{2}:\d{2}:\d{2} ·|\bDirection [01]\b/i,
 			);
-			await page.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true }).click();
+			await downloads.locator('[data-slot="sheet-footer"]').getByRole('button', close).click();
 			await stops.getByRole('link', { name: fr ? '19 novembre 2026' : '19 November 2026' }).click();
 			await expect(
 				stops.getByRole('list', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' }),
@@ -112,8 +118,8 @@ for (const width of [390, 1440]) {
 			await main
 				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
 				.click();
-			const csv = await page
-				.getByRole('dialog')
+			const downloads = page.getByRole('dialog', { name: downloadTitle, exact: true });
+			const csv = await downloads
 				.getByRole('link', {
 					name: fr ? 'Avis de la société de transport' : 'Agency notices',
 					exact: true,
@@ -122,7 +128,7 @@ for (const width of [390, 1440]) {
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
 			expect(await csvResponse.text()).toMatch(fr ? /^Mesure,Du,Au/ : /^Measure,From,To/);
-			await page.getByRole('button', { name: fr ? 'Fermer' : 'Close', exact: true }).click();
+			await downloads.locator('[data-slot="sheet-footer"]').getByRole('button', close).click();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);
 
 			await page.emulateMedia({ media: 'print' });
