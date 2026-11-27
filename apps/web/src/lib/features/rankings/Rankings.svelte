@@ -189,7 +189,7 @@
 	}
 
 	type Entry = RankingsRecord['rows'][number] | RankingsRecord['excluded'][number];
-	type Ranked = RecordTableRow & { entry: RankingsRecord['rows'][number]; facts: string[] };
+	type Ranked = RecordTableRow & { entry: RankingsRecord['rows'][number] };
 	type Excluded = RecordTableRow & { entry: RankingsRecord['excluded'][number] };
 	function name(row: Entry, identities: RankingIdentities): RecordTableRow {
 		const id = row.id;
@@ -464,7 +464,7 @@
 			rankingWay(entry, measure, locale),
 			coverageText(entry, locale),
 		].filter((fact): fact is string => !!fact);
-		return { ...row, entry, facts, detail: facts.join(' · ') || undefined };
+		return { ...row, entry, detail: facts.join(' · ') || undefined };
 	})}
 	{@const plates = rows.some((row) => row.plate || row.leadingCode)}
 	{@const bounded = rows.filter(
@@ -478,22 +478,23 @@
 	{#snippet value(row: Ranked)}<strong class="font-sans"
 			>{rankingValue(row.entry.value, measure, locale)}</strong
 		>{/snippet}
-	{#snippet phoneValue(row: Ranked)}{rankingValue(
-			row.entry.value,
-			measure,
-			locale,
-		)}{#if measure === reporting}
-			{t('an hour', 'par heure')}{/if}{/snippet}
+	{#snippet phoneValue(row: Ranked)}<span class="whitespace-nowrap"
+			>{rankingValue(
+				row.entry.value,
+				measure,
+				locale,
+			)}{#if measure === reporting}&nbsp;/&nbsp;h{/if}</span
+		>{/snippet}
 	{#snippet rank(row: Ranked)}<span class="sr-only">{t('Rank', 'Rang')} </span>{tally(
 			row.entry.rank,
 			locale,
 		)}{/snippet}
 	{#snippet counted(row: Ranked)}
 		{#each rankingCountLines(row.entry, measure, locale) as reading (reading)}<span
-				class="block font-sans text-small text-right">{reading}</span
+				class="block font-sans text-small text-right @min-[48rem]:whitespace-nowrap">{reading}</span
 			>{/each}
 	{/snippet}
-	{#snippet range(row: Ranked)}
+	{#snippet range(row: Ranked, showVerdict = true)}
 		{@const { lower, upper } = row.entry.range}
 		{#if lower != null && upper != null}
 			{@const caption = rankingRange(row.entry, measure, locale)}
@@ -517,10 +518,13 @@
 					label={`${t('Range:', 'Intervalle\u00a0:')} ${caption}`}
 					{caption}
 				/>
-				{#if verdict}<span class="text-small text-muted-foreground">{verdict}</span>{/if}
+				{#if verdict}<span class={showVerdict ? 'text-small text-muted-foreground' : 'sr-only'}
+						>{verdict}</span
+					>{/if}
 			</div>
 		{:else}<span class="sr-only">{t('Range unavailable', 'Plage indisponible')}</span>{/if}
 	{/snippet}
+	{#snippet phoneRange(row: Ranked)}{@render range(row, false)}{/snippet}
 	{@const columns = [
 		{
 			key: 'value',
@@ -528,7 +532,13 @@
 			numeric: true,
 			cell: value,
 		},
-		{ key: 'counted', header: t('Counted', 'Ce qui est compté'), align: 'end', cell: counted },
+		{
+			key: 'counted',
+			header: t('Counted', 'Ce qui est compté'),
+			align: 'end',
+			width: '1%',
+			cell: counted,
+		},
 		...(bounded.length
 			? [
 					{
@@ -576,9 +586,12 @@
 					includeRailTier: true,
 					before: rank,
 					value: phoneValue,
-					line: (row) =>
-						rowSentence([...row.facts, ...rankingCountLines(row.entry, measure, locale)], locale),
-					below: range,
+					line: (row) => {
+						const way = rankingWay(row.entry, measure, locale);
+						const counts = rankingCountLines(row.entry, measure, locale);
+						return rowSentence(way ? [way, counts[1] ?? counts[0]] : counts, locale);
+					},
+					below: phoneRange,
 				}}
 			/>
 			{#if !bounded.length}<p class="text-small text-muted-foreground">

@@ -90,16 +90,22 @@ for (const provider of ['stm', 'octranspo'] as const) {
 							);
 						}
 						if (kind === 'line') {
-							await expect(table.getByRole('rowheader')).toContainText(
-								fr ? 'East B9 à West B9' : 'East B9 to West B9',
-							);
-							await expect(table.getByRole('rowheader')).toContainText(
-								fr ? 'Faible couverture' : 'Low coverage',
-							);
+							if (width === 1440) {
+								await expect(table.getByRole('rowheader')).toContainText(
+									fr ? 'East B9 à West B9' : 'East B9 to West B9',
+								);
+								await expect(table.getByRole('rowheader')).toContainText(
+									fr ? 'Faible couverture' : 'Low coverage',
+								);
+							} else {
+								await expect(table.getByRole('rowheader')).not.toContainText(
+									fr ? 'Faible couverture' : 'Low coverage',
+								);
+							}
 							// The on-time list says which way each line misses: 4 early, 48 late of 100.
 							const way = fr
-								? /en avance 4,0\s?%, en retard 48,0\s?%/u
-								: /early 4\.0%, late 48\.0%/u;
+								? /en avance 4,0\s?%, en retard 48,0\s?%/iu
+								: /early 4\.0%, late 48\.0%/iu;
 							await expect(table.getByRole('rowheader')).toContainText(way);
 							// The headline keeps a space between the name and the parenthesis.
 							await expect(lead).toContainText(
@@ -136,7 +142,8 @@ for (const provider of ['stm', 'octranspo'] as const) {
 								table.getByRole('columnheader', { name: fr ? /^Plage/u : /^Range/u }),
 							).toHaveCount(0);
 							// Read per hour, not per 100 hours, in the header or the phone row.
-							await expect(table).toContainText(fr ? /par heure/iu : /an hour/u);
+							const perHour = width === 390 ? /\/\s*h/u : fr ? /par heure/iu : /an hour/u;
+							await expect(table).toContainText(perHour);
 							await expect(table).not.toContainText(fr ? 'par 100 h' : 'per 100 h');
 						} else {
 							await expect(
@@ -275,6 +282,7 @@ test('uses the desktop rail to select a line class and explains it', async ({ pa
 
 for (const [width, height] of [
 	[1440, 900],
+	[1366, 768],
 	[1280, 720],
 ] as const) {
 	test(
@@ -291,7 +299,20 @@ for (const [width, height] of [
 			}
 
 			await openRankings();
+			const dimensions = await rail.evaluate(({ clientHeight, scrollHeight }) => ({
+				clientHeight,
+				scrollHeight,
+			}));
 			const beforeKeyboard = await scrollTop();
+			if (width === 1366) {
+				for (const label of ['Rank', 'By', 'Compare lines']) {
+					await expect(rail.getByRole('combobox', { name: label, exact: true })).toBeInViewport({
+						ratio: 0.95,
+					});
+				}
+				const art = process.env.TRANSIT_RANKINGS_ARTWORK;
+				if (art) await page.screenshot({ path: join(art, 'rankings-rail-1366x768.png') });
+			}
 			await rail.getByRole('combobox', { name: 'By', exact: true }).focus();
 			for (
 				let step = 0;
@@ -319,6 +340,7 @@ for (const [width, height] of [
 				body: JSON.stringify({
 					width,
 					height,
+					...dimensions,
 					beforeKeyboard,
 					afterKeyboard,
 					beforePointer,

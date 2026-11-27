@@ -123,11 +123,15 @@
 	const { clock } = getV1Runtime();
 	const health = $derived(live?.familyStates.vehicles.health);
 	const cutoff = manifest ? liveTimingFor(manifest).staleCutoffS : undefined;
+	// Hold the reporting fleet as it was at capture time while the feed is late.
+	const membershipTime = $derived(
+		health?.isStale && live?.vehicles ? Date.parse(live.vehicles.generated_utc) : clock.serverNow,
+	);
 	const reporting = $derived(
-		health?.isStale || cutoff === undefined
+		cutoff === undefined
 			? []
 			: (live?.vehicles?.vehicles ?? []).filter(
-					(vehicle) => !notReporting(vehicle, clock.serverNow, cutoff),
+					(vehicle) => !notReporting(vehicle, membershipTime, cutoff),
 				),
 	);
 	const reportStamp = $derived(
@@ -374,8 +378,13 @@
 			header: headings ? t('Line and direction', 'Ligne et direction') : t('Line', 'Ligne'),
 			cell: lineCell,
 		},
-		{ key: 'status', header: t('Status', 'État'), cell: statusCell },
-		{ key: 'report', header: t('Last report', 'Dernier signalement'), cell: reportCell },
+		{ key: 'status', header: t('Status', 'État'), cell: statusCell, width: '1%' },
+		{
+			key: 'report',
+			header: t('Last report', 'Dernier signalement'),
+			cell: reportCell,
+			width: '1%',
+		},
 	]);
 	const archiveLinks = $derived(recordSectionLinks(pinned, 'fleet'));
 	// Before the first reading (also while the page is served) the list is loading, not unavailable.
@@ -446,11 +455,13 @@
 {#snippet lineCell({ vehicle }: LiveRow)}
 	{#if vehicle.route}
 		{@const toward = headings ? direction(vehicle) : null}
-		<span class="inline-flex flex-wrap items-center gap-2"
-			><RoutePlate
-				code={display.lineName(vehicle.route).number ?? vehicle.route}
-			/>{#if toward}{toward}{:else if headings}<StateMark state="unknown" {locale} />{/if}</span
-		>
+		<span class="inline-flex min-w-0 items-baseline gap-2">
+			<span class="shrink-0"
+				><RoutePlate code={display.lineName(vehicle.route).number ?? vehicle.route} /></span
+			>
+			{#if toward}<span class="min-w-0 [overflow-wrap:normal]">{toward}</span
+				>{:else if headings}<StateMark state="unknown" {locale} />{/if}
+		</span>
 	{:else}<StateMark state="unknown" {locale} />{/if}
 {/snippet}
 {#snippet statusCell({ vehicle }: LiveRow)}
@@ -466,6 +477,7 @@
 				vehicle.delay_min * 60,
 				locale,
 			)}
+			class="@min-[48rem]:flex-nowrap! @min-[48rem]:whitespace-nowrap"
 			style="overflow-wrap: normal; word-break: normal"
 		/>{/if}
 {/snippet}
@@ -480,7 +492,9 @@
 		>{/if}{/snippet}
 {#snippet reportCell({ vehicle }: LiveRow)}
 	{@const report = vehicle.reported_utc || vehicle.updated_utc}
-	{#if report && Number.isFinite(Date.parse(report))}<time datetime={report}
+	{#if report && Number.isFinite(Date.parse(report))}<time
+			datetime={report}
+			class="@min-[38rem]:whitespace-nowrap"
 			>{relativeReportAge((clock.serverNow - Date.parse(report)) / 1000, locale)}</time
 		>
 	{:else}<StateMark state="unknown" {locale} />{/if}
@@ -526,11 +540,21 @@
 						<RecordAnswer
 							{locale}
 							time={stamp}
-							value={live?.vehicles && !health?.isStale ? tally(reporting.length, locale) : null}
-							sentence={live?.vehicles && !health?.isStale
-								? singularCount(reporting.length, locale)
-									? about.reportingOne
-									: about.reporting
+							value={live?.vehicles ? tally(reporting.length, locale) : null}
+							sentence={live?.vehicles
+								? health?.isStale
+									? singularCount(reporting.length, locale)
+										? t(
+												'vehicle in the last capture. Live reports are late.',
+												'véhicule dans le dernier relevé. Les signalements en direct sont en retard.',
+											)
+										: t(
+												'vehicles in the last capture. Live reports are late.',
+												'véhicules dans le dernier relevé. Les signalements en direct sont en retard.',
+											)
+									: singularCount(reporting.length, locale)
+										? about.reportingOne
+										: about.reporting
 								: t(
 										'Current vehicle activity is unavailable.',
 										'L’activité actuelle des véhicules est indisponible.',
@@ -692,7 +716,7 @@
 											shape={rowShape}
 											busy={!liveMode && result?.kind === 'busy'}
 										/>{/key}
-								{:else if liveMode && (!live?.vehicles || health?.isStale)}
+								{:else if liveMode && !live?.vehicles}
 									<p role="status">
 										{t(
 											'Live reports are temporarily unavailable.',
@@ -722,6 +746,7 @@
 										{locale}
 										{title}
 										rowHeader={t('Vehicle', 'Véhicule')}
+										compactName
 										columns={liveColumns}
 										rows={liveRows.slice(0, liveShown)}
 										value="status"
@@ -764,6 +789,7 @@
 										{locale}
 										title={sectionTitles.fleet[locale === 'fr' ? 1 : 0]}
 										rowHeader={t('Vehicle', 'Véhicule')}
+										compactName
 										columns={recordColumns}
 										rows={recordRows}
 										value="days"

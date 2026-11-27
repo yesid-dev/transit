@@ -1,5 +1,6 @@
 import { csvText } from '../src/tests/csv';
 import { expect, test } from '@playwright/test';
+import { join } from 'node:path';
 import { textDefects } from './layout-helpers';
 import {
 	captureFixture,
@@ -16,6 +17,77 @@ test.beforeEach(({ browserName }, info) => {
 });
 
 const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
+
+test('fleet and vehicle keep a published capture past one minute and retain late reports', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1366, height: 900 });
+	const query = 'provider=stm&frameMode=live';
+	let age = 67_000;
+	await page.route(captureUrl, (route) => {
+		const capturedAt = Date.now() - age;
+		const capture = captureFixture(capturedAt, {
+			vehicle_positions: [captureVehicle(capturedAt, { bearing: 80 })],
+		});
+		const tripCapturedAt = new Date(Date.now() - 30_000).toISOString();
+		return route.fulfill({
+			json: {
+				...capture,
+				published_at: new Date(capturedAt + 45_000).toISOString(),
+				feeds: {
+					...capture.feeds,
+					vehicle_positions: {
+						...capture.feeds.vehicle_positions,
+						expected_every_seconds: 20,
+					},
+					trip_updates: {
+						...capture.feeds.trip_updates,
+						captured_at: tripCapturedAt,
+						source_at: tripCapturedAt,
+					},
+				},
+			},
+		});
+	});
+
+	const main = page.getByRole('main');
+	const answer = main.locator('[data-slot="screen-answer"]');
+	const position = main.locator('[data-slot="last-vehicle-position"]');
+	const preview = main.locator('[data-slot="vehicle-map-preview"]');
+	const art = process.env.TRANSIT_A2_FLEET_ARTWORK;
+	for (const phase of ['current', 'late'] as const) {
+		if (phase === 'late') age = 160_000;
+		const fleetCapture = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await page.goto('/vehicles?' + query);
+		expect((await fleetCapture).ok()).toBe(true);
+		await expect(main.getByRole('link', { name: '40061', exact: true })).toBeVisible();
+		const table = main.getByRole('table');
+		const id = await table
+			.getByRole('columnheader', { name: 'Vehicle', exact: true })
+			.boundingBox();
+		expect(id?.width).toBeLessThan(140);
+		const status = await table.getByText('On time', { exact: true }).boundingBox();
+		const offset = await table.getByText('(4 min behind)', { exact: true }).boundingBox();
+		expect(Math.abs(status!.y - offset!.y)).toBeLessThan(4);
+		if (phase === 'late') await expect(answer).toContainText('in the last capture');
+		else await expect(answer).not.toContainText('in the last capture');
+		if (art) await page.screenshot({ path: join(art, `fleet-${phase}-1366.png`) });
+
+		const vehicleCapture = page.waitForResponse((response) => captureUrl.test(response.url()));
+		await page.goto('/vehicle/40061?' + query);
+		expect((await vehicleCapture).ok()).toBe(true);
+		await expect(answer).toContainText('On time');
+		await expect(preview).toBeVisible();
+		if (phase === 'late') {
+			await expect(position).toContainText('this is the last position received');
+		} else {
+			await expect(position).toHaveCount(0);
+		}
+		if (art && phase === 'late') {
+			await page.screenshot({ path: join(art, 'vehicle-late-1366.png') });
+		}
+	}
+});
 
 for (const locale of ['en', 'fr'] as const) {
 	test(`Vehicle service starts with a short line list in ${locale}`, async ({ page }) => {
@@ -327,8 +399,12 @@ for (const width of [390, 1440]) {
 			await main.getByRole('searchbox', { name: search }).fill('0061');
 			await expect(main.getByRole('row', { name: /40061.*Parc/ })).toBeVisible();
 			await main.getByRole('link', { name: '40061' }).click();
-			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
-				fr ? '4 min de retard' : '4 min late',
+			const answer = main.locator('[data-slot="screen-answer"]');
+			await expect(answer).toContainText(fr ? 'À l’heure' : 'On time');
+			await expect(answer).toContainText(
+				fr
+					? '4 min après l’horaire, sur la ligne 80 vers Parc'
+					: '4 min behind the timetable, on line 80 toward Parc',
 			);
 			await expect(main.locator('[data-slot="vehicle-map-preview"]')).toBeVisible();
 

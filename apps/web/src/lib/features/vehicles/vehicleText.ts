@@ -3,7 +3,13 @@ import type { Locale } from '#lib/i18n/index.ts';
 import { intl } from '#lib/i18n/index.ts';
 import { choose, tally } from '#lib/features/record/recordText.ts';
 import type { RecordMeasure, RecordSeries } from '#lib/server/engine.ts';
-import { hoursReading, longDate, recordRatio, serviceWeekday } from '#lib/site/presenter.ts';
+import {
+	hoursReading,
+	liveStatusWords,
+	longDate,
+	recordRatio,
+	serviceWeekday,
+} from '#lib/site/presenter.ts';
 import { addIsoDays } from '#lib/v1/history/selection.ts';
 import { recordState } from '#lib/features/record/recordStates.ts';
 import type { Vehicle } from '#lib/v1/schemas/index.ts';
@@ -35,19 +41,26 @@ export function vehicleStatus(vehicle: Pick<Vehicle, 'status'>, locale: Locale) 
 }
 
 export function vehicleHeadline(vehicle: Pick<Vehicle, 'status' | 'delay_min'>, locale: Locale) {
-	const status = vehicleStatus(vehicle, locale);
 	const delay = vehicle.delay_min;
-	if (delay == null || delay === 0) return status;
+	if (vehicle.status === 'unknown' || delay == null)
+		return { value: choose(locale, 'Delay unknown', 'Retard inconnu'), timing: null };
+	const { label: value } = liveStatusWords(
+		vehicle.status,
+		vehicleStatus(vehicle, locale),
+		delay * 60,
+		locale,
+	);
+	if (vehicle.status !== 'on_time')
+		return { value, timing: choose(locale, 'against the timetable', 'par rapport à l’horaire') };
+	if (delay === 0) return { value, timing: choose(locale, 'on the timetable', 'à l’heure prévue') };
 	const minutes = tally(Math.abs(delay), locale);
-	const detail =
-		delay > 0
-			? choose(locale, `${minutes} min behind the timetable`, `${minutes} min après l’heure prévue`)
-			: choose(
-					locale,
-					`${minutes} min ahead of the timetable`,
-					`${minutes} min avant l’heure prévue`,
-				);
-	return `${status}, ${detail}`;
+	return {
+		value,
+		timing:
+			delay > 0
+				? choose(locale, `${minutes} min behind the timetable`, `${minutes} min après l’horaire`)
+				: choose(locale, `${minutes} min ahead of the timetable`, `${minutes} min avant l’horaire`),
+	};
 }
 
 export function vehicleReading(answer: RecordMeasure, measure: string, locale: Locale): string {

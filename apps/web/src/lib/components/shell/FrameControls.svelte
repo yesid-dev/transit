@@ -68,13 +68,11 @@
 		{
 			key: 'live' as const,
 			label: copy.live,
-			disabled: frame.recordOnly,
-			describedById: frame.recordOnly ? uid : undefined,
 		},
 		{
 			key: 'record' as const,
 			label: copy.record,
-			disabled: frame.recordOnly || frame.liveOnly,
+			disabled: frame.liveOnly,
 			describedById: frame.liveOnly ? uid : undefined,
 		},
 	]);
@@ -151,14 +149,12 @@
 		onSelect={selectMode}
 		variant="fit-row"
 	/>
-	{#if frame.recordOnly}
-		<p id={uid} class="text-sm text-muted-foreground">{copy.recordOnly}</p>
-	{:else if frame.liveOnly}
+	{#if frame.liveOnly}
 		<p id={uid} class="text-sm text-muted-foreground">{copy.liveOnly}</p>
 	{:else if frame.showViewHint}
 		<p class="text-sm text-muted-foreground">{copy.viewHint[frame.mode]}</p>
 	{/if}
-	{#if frame.mode === 'live' && !frame.recordOnly}
+	{#if frame.mode === 'live'}
 		<LivePauseSwitch {locale} />
 	{/if}
 {/snippet}
@@ -283,9 +279,11 @@
 			{@render extension.extra?.(context)}
 		</ControlsRail>
 	{:else}
-		<ControlsRail label={copy.view}>
-			{@render viewContent()}
-		</ControlsRail>
+		{#if !frame.recordOnly}
+			<ControlsRail label={copy.view}>
+				{@render viewContent()}
+			</ControlsRail>
+		{/if}
 		{#if frame.mode !== 'live'}
 			<ControlsRail label={copy.period}>
 				{@render periodContent()}

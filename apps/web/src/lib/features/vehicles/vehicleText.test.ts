@@ -12,9 +12,34 @@ import {
 
 it('leads with the published status even when the numerical offset is behind schedule', () => {
 	const vehicle = { status: 'on_time', delay_min: 4 } as const;
-	expect(vehicleHeadline(vehicle, 'en')).toBe('On time, 4 min behind the timetable');
-	expect(vehicleHeadline(vehicle, 'fr')).toBe('À l’heure, 4 min après l’heure prévue');
-	expect(vehicleHeadline({ status: 'late', delay_min: null }, 'en')).toBe('Late');
+	expect(vehicleHeadline(vehicle, 'en')).toEqual({
+		value: 'On time',
+		timing: '4 min behind the timetable',
+	});
+	expect(vehicleHeadline(vehicle, 'fr')).toEqual({
+		value: 'À l’heure',
+		timing: '4 min après l’horaire',
+	});
+	expect(vehicleHeadline({ status: 'on_time', delay_min: -1 }, 'en')).toEqual({
+		value: 'On time',
+		timing: '1 min ahead of the timetable',
+	});
+	expect(vehicleHeadline({ status: 'on_time', delay_min: 0 }, 'fr')).toEqual({
+		value: 'À l’heure',
+		timing: 'à l’heure prévue',
+	});
+	expect(vehicleHeadline({ status: 'late', delay_min: 8 }, 'en')).toEqual({
+		value: '8 min late',
+		timing: 'against the timetable',
+	});
+	expect(vehicleHeadline({ status: 'early', delay_min: -2 }, 'fr')).toEqual({
+		value: '2 min d’avance',
+		timing: 'par rapport à l’horaire',
+	});
+	expect(vehicleHeadline({ status: 'late', delay_min: null }, 'en')).toEqual({
+		value: 'Delay unknown',
+		timing: null,
+	});
 });
 
 it.each([

@@ -74,6 +74,7 @@ export function captureVehicles(snapshot: CaptureSnapshot, now: number) {
 	return {
 		...payload,
 		captureFeed: feed,
+		capturePublishedAt: snapshot.published_at,
 		captureRevision: JSON.stringify([snapshot.published_at, feed, usableDelay]),
 	};
 }
@@ -307,6 +308,7 @@ export function captureNetwork(snapshot: CaptureSnapshot, now: number) {
 	return {
 		...payload,
 		captureFeed: positions.captureFeed,
+		capturePublishedAt: positions.capturePublishedAt,
 		captureRevision: JSON.stringify([positions.captureRevision, measured]),
 	};
 }
