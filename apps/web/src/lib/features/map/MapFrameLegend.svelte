@@ -160,7 +160,9 @@
 						tr('25% and over', '25 % et plus'),
 					]
 				: [
-						tr('No time lost', 'Aucun temps perdu'),
+						layer === 'waits'
+							? tr('No extra wait', 'Aucune attente en plus')
+							: tr('No time lost', 'Aucun temps perdu'),
 						tr('Under 30\u00a0s', 'Moins de 30\u00a0s'),
 						tr('30 to under 60\u00a0s', '30 à moins de 60\u00a0s'),
 						tr('1 to under 2\u00a0min', '1 à moins de 2\u00a0min'),
@@ -173,13 +175,17 @@
 							'Share of observed stop events that were late',
 							'Part des passages observés en retard',
 						)
-					: tr('Time lost between two stops', 'Temps perdu entre deux arrêts'),
+					: layer === 'waits'
+						? tr('Extra wait at each stop', 'Attente en plus à chaque arrêt')
+						: layer === 'clear-run'
+							? tr('Time lost against the clear run', 'Temps perdu par rapport au parcours fluide')
+							: tr('Time lost between two stops', 'Temps perdu entre deux arrêts'),
 			steps: labels.map((label, index) => ({ label, swatch: recordColours[index]! })),
 			states: [
 				{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
 				{ label: tr('Not measured', 'Non mesuré'), symbol: noSampleMark },
 				{ label: tr('No live data', 'Aucune donnée en direct'), symbol: scheduleMark },
-				...(layer === 'corridors' && approximate
+				...((layer === 'corridors' || layer === 'clear-run') && approximate
 					? [
 							{
 								label: tr('Straight between stops', 'Tracé direct entre les arrêts'),
@@ -215,7 +221,7 @@
 {#snippet emptyMark()}{/snippet}
 {#snippet unmeasuredMark(state: 0 | 1 | 2)}
 	<svg class="record-state-mark text-muted-foreground" viewBox="0 0 32 12" aria-hidden="true">
-		{#if layer === 'stops'}
+		{#if layer === 'stops' || layer === 'waits'}
 			<circle
 				cx="16"
 				cy="6"
@@ -277,6 +283,14 @@
 		data-record-legend={layer !== 'live' ? '' : undefined}
 	/>
 </ChartDetails>
+{#if open && layer === 'waits'}
+	<p class="text-sm text-muted-foreground">
+		{tr(
+			'The map shows the longest wait at each stop. The list breaks it down by line and direction.',
+			'La carte montre la plus longue attente à chaque arrêt. La liste la détaille par ligne et direction.',
+		)}
+	</p>
+{/if}
 
 <style>
 	:global([data-map-legend]) {

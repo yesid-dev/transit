@@ -419,6 +419,9 @@ test("forwards map layer cuts and keeps older engines and the timetable map usab
   assert.equal(forwarded.get("group"), "line_stop");
   assert.equal(forwarded.get("time_band"), "evening");
   assert.equal(forwarded.get("stop"), "12");
+  assert.equal((await f.fetch(`${clear}&hour_from=22&hour_to=7`)).status, 200);
+  assert.equal((await f.fetch(`${waits}&hour_from=22&hour_to=7`)).status, 200);
+  assert.equal(new URL(f.requests.at(-1).url).searchParams.get("hour_from"), "22");
 
   const requestCount = f.requests.length;
   assert.equal((await f.fetch(`${clear}&hour_from=6&hour_to=6`)).status, 400);

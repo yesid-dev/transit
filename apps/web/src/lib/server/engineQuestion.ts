@@ -95,21 +95,25 @@ export function mapRecordQuestion(
 	period: EnginePeriod,
 	line?: string,
 	direction?: string,
-	layer?: 'corridors',
+	layer?: 'corridors' | 'clear-run' | 'waits',
 	cuts?: { lines?: readonly string[]; vehicleType?: number; hours?: readonly [number, number] },
 ) {
 	return periodQuestion(period, '/measure', {
 		view: 'map',
-		...(line || layer === 'corridors'
-			? {
-					measure: 'mean_time_lost',
-					group: 'segment',
-					...(line ? { line } : {}),
-				}
-			: { measure: 'late', group: 'stop_id' }),
+		...(layer === 'clear-run'
+			? { measure: 'clear_run_time_lost', group: 'segment' }
+			: layer === 'waits'
+				? { measure: 'excess_wait_time', group: 'line_stop' }
+				: line || layer === 'corridors'
+					? { measure: 'mean_time_lost', group: 'segment' }
+					: { measure: 'late', group: 'stop_id' }),
+		...(line ? { line } : cuts?.lines ? { lines: JSON.stringify(cuts.lines) } : {}),
 		...(direction ? { direction } : {}),
-		...(cuts?.lines ? { lines: JSON.stringify(cuts.lines) } : {}),
 		...(cuts?.vehicleType !== undefined ? { route_type: String(cuts.vehicleType) } : {}),
-		...(cuts?.hours ? { hour_from: String(cuts.hours[0]), hour_to: String(cuts.hours[1]) } : {}),
+		...(cuts?.hours
+			? { hour_from: String(cuts.hours[0]), hour_to: String(cuts.hours[1]) }
+			: layer === 'clear-run'
+				? { time_band: 'all' }
+				: {}),
 	});
 }

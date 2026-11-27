@@ -50,7 +50,7 @@
 	import { mapLegend, railLegendName } from './mapLegend';
 	import { peekRepeatsDetail } from './mapHoverPeek';
 	import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
-	import { mapLayerFor } from '#lib/site/mapFrame.ts';
+	import { isReadingsLayer, mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
 	import type { RecordMapLayer } from './recordMap';
 	import { MAP_RECORD } from '#lib/seo/routeSeo.ts';
@@ -508,6 +508,8 @@
 	const recordOptions: { key: Exclude<RecordMapLayer, 'live'>; label: string }[] = [
 		{ key: 'stops', label: locale === 'fr' ? 'Arrêts' : 'Stops' },
 		{ key: 'corridors', label: 'Corridors' },
+		{ key: 'clear-run', label: locale === 'fr' ? 'Parcours fluide' : 'Clear run' },
+		{ key: 'waits', label: locale === 'fr' ? 'Attentes' : 'Waits' },
 	];
 	const recordPeriod = $derived(
 		parseAnswerFrameState(
@@ -847,7 +849,11 @@
 	const title = $derived(
 		isRecordLayer ? MAP_RECORD.title[locale] : tr('Live map', 'Carte en direct'),
 	);
-	const viewLabel = tr('What is in view', 'Ce qui est en vue');
+	const viewLabel = $derived(
+		isReadingsLayer(recordLayer)
+			? tr('Record results', 'Résultats du bilan')
+			: tr('What is in view', 'Ce qui est en vue'),
+	);
 	// The map region is named for what it draws: vehicles live, the record of stops otherwise.
 	const regionLabel = $derived(isRecordLayer ? t.recordMapLabel : t.mapLabel);
 	const providerName = $derived(
@@ -893,14 +899,20 @@
 		isRecordLayer ? recordCount : reportView.kind === 'ready' ? reportView.model.inViewCount : null,
 	);
 	const listTabLabel = $derived(
-		recordLayer === 'corridors'
-			? tr('Corridors', 'Corridors')
-			: isRecordLayer || nearMeController.open || nearMeController.origin
-				? tr('Stops', 'Arrêts')
-				: tr('Vehicles', 'Véhicules'),
+		isReadingsLayer(recordLayer)
+			? tr('Results', 'Résultats')
+			: recordLayer === 'corridors'
+				? tr('Corridors', 'Corridors')
+				: isRecordLayer || nearMeController.open || nearMeController.origin
+					? tr('Stops', 'Arrêts')
+					: tr('Vehicles', 'Véhicules'),
 	);
 	function peekReading(recordHeadline: string | null, compact = false): string {
 		const mode = isRecordLayer ? frameCopy[locale].record : tr('Live', 'En direct');
+		if (isReadingsLayer(recordLayer)) {
+			const label = recordOptions.find(({ key }) => key === recordLayer)?.label ?? listTabLabel;
+			return mode + ' · ' + label;
+		}
 		let reading: string;
 		if (isRecordLayer && recordHeadline !== null) {
 			reading =
@@ -1533,7 +1545,8 @@
 			value={recordLayer}
 			label={tr('Layer', 'Couche')}
 			onSelect={changeRecordLayer}
-			variant="fit-row"
+			variant="joined-grid"
+			style="grid-template-columns: minmax(max-content, 1fr) minmax(max-content, 1fr)"
 		/>
 		{#if recordLayer === 'corridors'}
 			<SwitchRow
@@ -2000,6 +2013,7 @@
 		{locale}
 		stops={stopList}
 		routes={session.routesIndex}
+		routeDirections={mapDirections}
 		onlinefilters={showLineFilters}
 		children={mapContent}
 	/>

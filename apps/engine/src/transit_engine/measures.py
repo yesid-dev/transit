@@ -407,12 +407,6 @@ class Question:
                 or self.hour_from == self.hour_to
             ):
                 raise ValueError("provide different start and end hours")
-            if (
-                self.layer_map and self.measure not in STRETCH_MEASURES
-                and self.hour_from is not None and self.hour_to is not None
-                and self.hour_from > self.hour_to
-            ):
-                raise ValueError("clear runs and waits require hours in the same day")
             if sum((has_range, self.hour is not None, self.time_band is not None)) > 1:
                 raise ValueError("choose hour, time_band, or a custom hour range")
         elif self.cuts().keys() & layer_cuts:

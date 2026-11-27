@@ -75,6 +75,8 @@ def test_waiting_at_a_stop_groups_lines_without_mixing_their_intervals(tmp_path:
         assert layer["value"][index] == expected
     scoped = query(cached, **layer_cut, lines=("A",), route_type=3, time_band="morning")
     assert scoped["line"] == ["A"] and scoped["value"] == [layer["value"][0]]
+    overnight = query(cached, **layer_cut, lines=("A",), hour_from=22, hour_to=12)
+    assert overnight["line"] == ["A"] and overnight["value"] == scoped["value"]
     assert not query(cached, **layer_cut, hour_from=19, hour_to=20)["line"]
     unsupported = query(cached, **layer_cut, route_type=0)
     assert unsupported["stop"] == []

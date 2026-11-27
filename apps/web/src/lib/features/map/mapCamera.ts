@@ -55,6 +55,13 @@ export function attachMapRenderReceipt(root: HTMLElement, instance: MapLibreMap)
 					.filter((feature) => feature.properties.upcoming)
 					.map((feature) => feature.properties.id)
 			: [],
+		recordMarks: instance.getSource('record-map')
+			? instance
+					.queryRenderedFeatures({
+						layers: ['record-map-measured', 'record-map-stops'],
+					})
+					.map(({ properties }) => properties)
+			: [],
 	});
 	Object.defineProperty(root, key, { configurable: true, value: inspect });
 	return () => {
