@@ -40,6 +40,7 @@ test('dark Daily report and How we measure print with readable ink and no site c
 	page,
 }) => {
 	await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
+	await page.emulateMedia({ media: 'screen', colorScheme: 'dark' });
 	for (const path of ['/receipt', '/metrics']) {
 		await page.goto(`${path}?provider=stm&${dates}`);
 		const main = page.getByRole('main');
@@ -52,6 +53,52 @@ test('dark Daily report and How we measure print with readable ink and no site c
 		await expect(main.getByRole('heading', { level: 1 })).toBeVisible();
 		const ink = await main.evaluate((node) => getComputedStyle(node).color);
 		expect(ink).toBe('rgb(19, 25, 35)');
+		const card = await page
+			.locator('html')
+			.evaluate((node) => getComputedStyle(node).getPropertyValue('--card').trim());
+		expect(card).toBe('#fff');
+		const contrast = await main.evaluate((scope) => {
+			function luminance(color: string) {
+				const channels = color
+					.match(/[\d.]+/g)!
+					.slice(0, 3)
+					.map(Number);
+				const [red, green, blue] = channels.map((channel) => {
+					const value = channel / 255;
+					return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+				});
+				return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+			}
+
+			function background(element: Element) {
+				for (let ancestor: Element | null = element; ancestor; ancestor = ancestor.parentElement) {
+					const color = getComputedStyle(ancestor).backgroundColor;
+					if (color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') return color;
+				}
+				return 'rgb(255, 255, 255)';
+			}
+
+			let texts = 0;
+			const lowContrast: string[] = [];
+			for (const element of scope.querySelectorAll('p, td, th, dt, dd, h1, h2, h3, span, a, li')) {
+				if (
+					![...element.childNodes].some((node) => node.nodeType === 3 && node.textContent?.trim())
+				)
+					continue;
+				const { width, height } = element.getBoundingClientRect();
+				const style = getComputedStyle(element);
+				if (width < 2 || height < 2 || style.display === 'none' || style.visibility === 'hidden')
+					continue;
+				texts++;
+				const ink = luminance(style.color);
+				const paper = luminance(background(element));
+				const ratio = (Math.max(ink, paper) + 0.05) / (Math.min(ink, paper) + 0.05);
+				if (ratio < 3) lowContrast.push(element.textContent!.trim() + ' ' + ratio.toFixed(1));
+			}
+			return { texts, lowContrast };
+		});
+		expect(contrast.texts).toBeGreaterThan(0);
+		expect(contrast.lowContrast).toEqual([]);
 		await page.emulateMedia({ media: 'screen' });
 	}
 });

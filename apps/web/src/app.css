@@ -205,16 +205,19 @@ body {
 }
 
 @media print {
-	:root {
+	/* Match the kit's :root:not([data-theme]) specificity in its device-theme rules. */
+	:root:root {
 		color-scheme: only light;
 		--background: #fff;
 		--foreground: #131923;
 		--card: #fff;
 		--muted: #e4e9f3;
+		--skeleton: #dce2ec;
 		--muted-foreground: #545e75;
 		--secondary-foreground: #454f63;
 		--primary: #985000;
 		--accent-text: #815d00;
+		--accent-surface: #faeecc;
 		--border: #b5becd;
 		--border-subtle: #c2cbd8;
 		--shadow-card: none;
