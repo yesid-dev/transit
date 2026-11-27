@@ -1020,9 +1020,22 @@ def _punctuality_query(
     )"""
     ranking_join = ""
     ranking_projection = ""
-    if group in {"line", "departure"}:
-        sample_key = "observed_trips" if group == "line" else "observed_service_dates"
-        distinct = "(service_date, trip_id)" if group == "line" else "service_date"
+    # The Lines list applies the ranking floors itself, so the network-wide line series
+    # carries the same observed-trip count a line ranking reads.
+    line_series = (
+        group is None
+        and question.group == "line"
+        and question.stop is None
+        and question.line is None
+        and clean_events
+        and by_delay_bin
+        and not for_vehicles
+    )
+    if group in {"line", "departure"} or line_series:
+        sample_key = (
+            "observed_trips" if group == "line" or line_series else "observed_service_dates"
+        )
+        distinct = "service_date" if group == "departure" else "(service_date, trip_id)"
         counters[sample_key] = ""
         ctes += f""", ranking_samples AS (
             SELECT {entity} AS sample_entity, count(DISTINCT {distinct}) AS ranking_sample
@@ -1031,7 +1044,12 @@ def _punctuality_query(
             GROUP BY sample_entity
         )"""
         parameters.extend(filters)
-        ranking_join = f"LEFT JOIN ranking_samples ON ({entity}) = sample_entity"
+        # The series rolls its bins up by the entity column, not the route column.
+        ranking_join = (
+            "LEFT JOIN ranking_samples ON entity = sample_entity"
+            if line_series
+            else f"LEFT JOIN ranking_samples ON ({entity}) = sample_entity"
+        )
         ranking_projection = ", coalesce(max(ranking_sample), 0)"
     if by_delay_bin:
         # Delay bins are multiples of 15. Reserve 1–6 for unclassified stops, and

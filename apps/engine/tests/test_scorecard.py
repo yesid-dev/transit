@@ -436,6 +436,16 @@ def test_scorecard_matches_plain_python(
         + coverage["never_seen"]
         + (excluded["live_trip_coverage"]["capture_gap"])
     )
+    # The same two readings over the days without a capture gap share one base.
+    assert (
+        coverage["scheduled_on_measured_days"]
+        == coverage["eligible"] + coverage["never_seen_on_measured_days"]
+    )
+    assert coverage["never_seen_on_measured_days"] <= coverage["never_seen"]
+    assert coverage["scheduled_on_measured_days"] == (
+        coverage["scheduled"] - excluded["live_trip_coverage"]["capture_gap"]
+        - (coverage["never_seen"] - coverage["never_seen_on_measured_days"])
+    )
     assert evidence["measure_days"]["live_trip_coverage"]["days_not_measured"] == [str(SATURDAY)]
     assert evidence["measure_days"]["prediction_error"]["days_not_measured"] == [str(FRIDAY)]
     assert evidence["cleaning_versions"] == [6, 11]

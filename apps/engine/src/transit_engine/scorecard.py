@@ -453,6 +453,11 @@ def coverage_counts(
     never_seen = sum(n for route, n in scheduled_by_route.items() if route not in covered_routes)
     eligible = sum(eligible_by_route[route] for route in covered_routes)
     appeared = sum(appeared_by_route[route] for route in covered_routes)
+    # The same split over the days without a capture gap, so a reader can state both
+    # readings on the one base the coverage share uses.
+    never_seen_measured = sum(
+        n for route, n in eligible_by_route.items() if route not in covered_routes
+    )
     covered_gap = scheduled - never_seen - eligible
     state = (
         "measured"
@@ -474,6 +479,8 @@ def coverage_counts(
             "appeared": appeared,
             "never_seen": never_seen,
             "never_seen_share": never_seen / scheduled if scheduled else None,
+            "scheduled_on_measured_days": eligible + never_seen_measured,
+            "never_seen_on_measured_days": never_seen_measured,
         },
         {"added": added, "capture_gap": covered_gap},
         gap_days=sorted(gap_days),
