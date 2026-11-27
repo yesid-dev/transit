@@ -71,6 +71,27 @@ export const SHARE_COPY = {
 			cta: 'Voir comment on mesure',
 		},
 	},
+	'/metrics/archive': {
+		en: {
+			support: 'Definitions and sources from the first Transit site through November 2026',
+			cta: 'Read the archive',
+		},
+		fr: {
+			support: 'Définitions et sources du premier site Transit, jusqu’en novembre 2026',
+			cta: 'Lire les archives',
+		},
+	},
+	'/download': {
+		en: {
+			support: 'Daily source files behind the figures, under the transit agency’s licence',
+			cta: 'Download the data',
+		},
+		fr: {
+			support:
+				'Les fichiers quotidiens à la source des chiffres, sous la licence de la société de transport',
+			cta: 'Télécharger les données',
+		},
+	},
 	'/status': {
 		en: {
 			support: 'Feed age, sources and known data gaps',

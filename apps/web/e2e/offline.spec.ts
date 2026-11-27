@@ -23,7 +23,7 @@ test('offline, a page shows the offline notice and its link retries once online'
 	await context.setOffline(true);
 	const response = await page.goto(path);
 	expect(response?.fromServiceWorker()).toBe(true);
-	const notice = page.getByRole('alert');
+	const notice = page.getByRole('main');
 	await expect(notice.getByRole('heading', { level: 1 })).toBeVisible();
 
 	await context.setOffline(false);

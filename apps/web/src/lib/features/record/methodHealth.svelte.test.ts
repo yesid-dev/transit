@@ -273,7 +273,7 @@ it.each([
 	},
 );
 
-it('describes closed families with all of their measures', async () => {
+it('describes closed families in plain words and keeps their measures', async () => {
 	const entries = ['early', 'late', 'vehicle_early', 'vehicle_late'].map((id) => ({
 		...fixtureDelay,
 		id,
@@ -291,7 +291,7 @@ it('describes closed families with all of their measures', async () => {
 	const more = family.closest('[aria-labelledby="more-methods"]');
 	expect(more?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
 	const trigger = within(family).getByRole('button', {
-		name: /Early share by vehicle and Late share by vehicle\.$/u,
+		name: /The on-time, early, late and delay measures, counted for one vehicle\.$/u,
 	});
 	expect(family).toHaveAttribute('data-open', 'false');
 	expect(trigger).toHaveAttribute('aria-expanded', 'false');
@@ -314,35 +314,30 @@ it('renders an honest empty catalog', async () => {
 it.each([
 	['answer', { kind: 'answer', answer: catalog } as EngineResult<MethodEntry[]>],
 	['unreachable', { kind: 'unreachable' } as EngineResult<MethodEntry[]>],
-] as const)(
-	'waits to mount the archive section until the catalog resolves (%s)',
-	async (_label, settled) => {
-		let finish!: (result: EngineResult<MethodEntry[]>) => void;
-		const pending = new Promise<EngineResult<MethodEntry[]>>((resolve) => {
-			finish = resolve;
-		});
-		render(MethodCatalog, {
-			locale: 'en',
-			url: new URL('https://transit1.yesid.dev/metrics?provider=octranspo'),
-			city: 'octranspo',
-			period,
-			catalog: pending,
-		});
-		expect(document.querySelector('[data-record-pending][aria-busy="true"]')).not.toBeNull();
-		expect(
-			screen.queryByRole('link', {
-				name: 'The method of the first Transit site, until November 2026',
-			}),
-		).toBeNull();
-		finish(settled);
-		const archive = await screen.findByRole('link', {
-			name: 'The method of the first Transit site, until November 2026',
-		});
-		expect(archive).toHaveAttribute('href', '/metrics/archive?provider=octranspo');
-		const section = archive.closest('[data-slot="page-section"]');
-		expect(section?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
-	},
-);
+] as const)('keeps the archive link while the catalog loads (%s)', async (_label, settled) => {
+	let finish!: (result: EngineResult<MethodEntry[]>) => void;
+	const pending = new Promise<EngineResult<MethodEntry[]>>((resolve) => {
+		finish = resolve;
+	});
+	render(MethodCatalog, {
+		locale: 'en',
+		url: new URL('https://transit1.yesid.dev/metrics?provider=octranspo'),
+		city: 'octranspo',
+		period,
+		catalog: pending,
+	});
+	expect(document.querySelector('[data-record-pending][aria-busy="true"]')).not.toBeNull();
+	expect(
+		screen.getByRole('link', { name: 'The method of the first Transit site, until November 2026' }),
+	).toBeVisible();
+	finish(settled);
+	const archive = await screen.findByRole('link', {
+		name: 'The method of the first Transit site, until November 2026',
+	});
+	expect(archive).toHaveAttribute('href', '/metrics/archive?provider=octranspo');
+	const section = archive.closest('[data-slot="page-section"]');
+	expect(section?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
+});
 
 it('renders absent readings and both not-measured reasons while methods can fail independently', async () => {
 	const url = new URL('https://transit1.yesid.dev/status');

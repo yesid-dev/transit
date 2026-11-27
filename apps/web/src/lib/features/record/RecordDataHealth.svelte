@@ -62,7 +62,6 @@
 	import RecordEvidenceLine from './RecordEvidenceLine.svelte';
 	import PhoneSwitch from './PhoneSwitch.svelte';
 	import RecordPending from './RecordPending.svelte';
-	import RecordSkeleton from './RecordSkeleton.svelte';
 	import ScreenTitle from './ScreenTitle.svelte';
 	import StateMark from './StateMark.svelte';
 	import { recordSectionLinks } from './recordLinks.ts';
@@ -224,6 +223,8 @@
 		const minimum = minimumSample(answer, measure);
 		return minimum == null ? sample : sampleWithMinimum(sample, minimum, locale);
 	}
+	const publishingShape = { shape: 'rows', count: 5, lines: 2, lead: 'none' } as const;
+	const daysShape = { shape: 'table', rows: 7 } as const;
 </script>
 
 {#snippet unavailable(result: { kind: string })}
@@ -250,6 +251,7 @@
 <!-- One card for each scorecard answer: the waiting, failing and one-state cases are shared. -->
 {#snippet scorecardCard(
 	id: AgencyScorecardMeasure,
+	shape: import('./recordWaiting.ts').RecordWaiting,
 	cardTitle: string,
 	result: Result<ScorecardAnswer>,
 	body: Snippet<[ScorecardAnswer]>,
@@ -257,9 +259,9 @@
 	notMeasured?: (answer: ScorecardAnswer) => string | null,
 )}
 	<section {id} class="min-w-0">
-		<RecordCard title={cardTitle} {stamp}>
+		<RecordCard title={cardTitle} {stamp} stampRule reserve={shape}>
 			{#await result}
-				{#key result}<RecordPending {locale} answer={result} shape="table" />{/key}
+				{#key result}<RecordPending {locale} answer={result} {shape} />{/key}
 			{:then settled}
 				{#if settled.kind === 'answer'}
 					{@const answer = settled.answer}
@@ -401,9 +403,9 @@
 {/snippet}
 
 <RecordScreen class="min-w-0">
-	<RecordGroup><ScreenTitle {title} subtitle={subject} /></RecordGroup>
 	<div data-slot="screen-content">
 		<RecordGroup>
+			<ScreenTitle {title} subtitle={subject} />
 			<div id="stop-events" data-slot="screen-answer">
 				{#if record}
 					{#await record.coverage}
@@ -478,9 +480,11 @@
 						interactive={!alerts.tracked && !!alerts.officialUrl}
 						title={titles.publishes}
 						{stamp}
+						stampRule
+						reserve={publishingShape}
 					>
 						{#await publishing}
-							<RecordSkeleton shape="table" />
+							<RecordPending {locale} shape={publishingShape} />
 						{:then [accessibility, alertEffects, completeness]}
 							{@const rows = publishingRows(
 								{ accessibility, alertEffects, completeness },
@@ -520,9 +524,10 @@
 					</RecordCard>
 				</section>
 
-				<DashboardGrid gutter={false} minTile="24rem">
+				<DashboardGrid gutter={false} minTile="24rem" class="items-start">
 					{@render scorecardCard(
 						'live_trip_coverage',
+						{ shape: 'facts', count: 2 },
 						titles.coverage,
 						record.scorecard.live_trip_coverage,
 						coverageBody,
@@ -530,6 +535,7 @@
 					)}
 					{@render scorecardCard(
 						'vehicle_field_completeness',
+						{ shape: 'table', rows: 6 },
 						titles.reports,
 						record.scorecard.vehicle_field_completeness,
 						reportsBody,
@@ -539,6 +545,7 @@
 				<DashboardGrid gutter={false} minTile="24rem">
 					{@render scorecardCard(
 						'prediction_error',
+						{ shape: 'table', rows: 3 },
 						titles.predictions,
 						record.scorecard.prediction_error,
 						predictionsBody,
@@ -547,6 +554,7 @@
 					)}
 					{@render scorecardCard(
 						'poll_success',
+						{ shape: 'table', rows: 4 },
 						titles.feeds,
 						record.scorecard.poll_success,
 						feedsBody,
@@ -554,14 +562,12 @@
 					)}
 				</DashboardGrid>
 			{/if}
-		</RecordGroup>
 
-		{#if record}
-			<RecordGroup>
+			{#if record}
 				<section id="days-in-record" class="min-w-0">
-					<RecordCard interactive title={titles.days} {stamp}>
+					<RecordCard interactive title={titles.days} {stamp} stampRule reserve={daysShape}>
 						{#await record.health}
-							<RecordSkeleton shape="table" />
+							<RecordPending {locale} shape={daysShape} answer={record.health} />
 						{:then result}
 							{#if result.kind === 'answer'}
 								{@const display = grid(result.answer, 14)}
@@ -670,12 +676,13 @@
 						{:else}<StateMark state="not_measured" {locale} />{/if}
 					{/await}
 				</RecordCard>
-			</RecordGroup>
-		{/if}
+			{/if}
+		</RecordGroup>
 		{#if record && stamp}
 			<RecordGroup>
 				<AboutFigures
 					title={term.about}
+					compact
 					fields={[
 						{ key: 'period', label: term.period, text: dateRange(record.period, locale) },
 						{
@@ -690,7 +697,13 @@
 							key: 'method',
 							label: term.methodRow,
 							text: null,
-							link: { href: methodHref, label: term.method },
+							links: [
+								{ href: methodHref, label: term.method },
+								{
+									href: methodHref + '#about-transit',
+									label: t('Seen an error?', 'Vous avez vu une erreur?'),
+								},
+							],
 						},
 						{
 							key: 'source',

@@ -18,6 +18,8 @@
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
+	import RecordPending from '../record/RecordPending.svelte';
+	import { localizeHref } from '#lib/i18n/index.ts';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import StateMark from '../record/StateMark.svelte';
@@ -90,6 +92,7 @@
 		{ key: 'size', header: t('Size', 'Taille'), numeric: true, cell: sizeCell },
 		{ key: 'state', header: t('State', 'État'), cell: stateCell },
 	]);
+	const feedShape = { shape: 'table', rows: 4 } as const;
 </script>
 
 {#snippet ageCell(row: FeedRow)}{row.age}{/snippet}
@@ -97,18 +100,37 @@
 {#snippet sizeCell(row: FeedRow)}{row.size}{/snippet}
 {#snippet stateCell(row: FeedRow)}{row.state}{/snippet}
 
+{#snippet about(text: string | null)}
+	<AboutLiveFigures
+		{locale}
+		{operator}
+		scope={t(
+			'The state of each feed at its last capture.',
+			'L’état de chaque flux à son dernier relevé.',
+		)}
+		statusLabel={t('How a feed gets its state', 'Comment est déterminé l’état d’un flux')}
+		definition={t(
+			'A feed is fresh while its latest capture is within its freshness window.',
+			'Un flux reste à jour tant que son dernier relevé respecte le délai de fraîcheur.',
+		)}
+		errorLink={localizeHref('/metrics', locale, city ?? undefined) + '#about-transit'}
+		captureText={text ?? labels.no_live_data}
+	/>
+{/snippet}
+
 <RecordScreen class="min-w-0">
-	<RecordGroup
-		><ScreenTitle title={t('Data health', 'Santé des données')} subtitle={subject} /></RecordGroup
-	>
 	<div data-slot="screen-content">
 		<LiveCapture {capture} {city}>
 			{#snippet pending()}
-				<RecordGroup waiting="facts"
-					><div data-slot="screen-answer">
-						<p role="status">{t('Checking live feeds…', 'Vérification des flux en direct…')}</p>
-					</div></RecordGroup
-				>{/snippet}
+				<RecordGroup
+					><ScreenTitle title={t('Data health', 'Santé des données')} subtitle={subject} />
+					<div data-slot="screen-answer"><RecordPending {locale} shape="answer" /></div>
+					<RecordCard title={table} stampPending stampRule reserve={feedShape}
+						><RecordPending {locale} shape={feedShape} /></RecordCard
+					></RecordGroup
+				>
+				<RecordGroup>{@render about(null)}</RecordGroup>
+			{/snippet}
 			{#snippet children(snapshot, now)}
 				{@const feeds = reading(snapshot, now)}
 				{@const schedule = snapshot?.schedule}
@@ -131,6 +153,7 @@
 						}
 					: undefined}
 				<RecordGroup>
+					<ScreenTitle title={t('Data health', 'Santé des données')} subtitle={subject} />
 					<div data-slot="screen-answer">
 						<RecordAnswer
 							{locale}
@@ -153,7 +176,7 @@
 						/>
 					</div>
 					<div class="grid min-w-0 gap-4">
-						<RecordCard title={table} {stamp}>
+						<RecordCard title={table} {stamp} stampRule reserve={feedShape}>
 							{#if feeds.length || schedule}
 								<RecordDataTable
 									{locale}
@@ -210,20 +233,7 @@
 					</div>
 				</RecordGroup>
 				<RecordGroup>
-					<AboutLiveFigures
-						{locale}
-						{operator}
-						scope={t(
-							'The state of each feed at its last capture.',
-							'L’état de chaque flux à son dernier relevé.',
-						)}
-						statusLabel={t('How a feed gets its state', 'Comment est déterminé l’état d’un flux')}
-						definition={t(
-							'A feed is fresh while its latest capture is within its freshness window.',
-							'Un flux reste à jour tant que son dernier relevé respecte le délai de fraîcheur.',
-						)}
-						captureText={captureAge(lastCapture ?? null, now, locale) ?? labels.no_live_data}
-					/>
+					{@render about(captureAge(lastCapture ?? null, now, locale))}
 				</RecordGroup>
 			{/snippet}
 		</LiveCapture>

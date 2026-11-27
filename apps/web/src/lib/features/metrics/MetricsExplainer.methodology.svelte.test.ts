@@ -55,13 +55,12 @@ afterEach(() => {
 	provState.settled = true;
 });
 
-describe('MetricsExplainer — responsive stat rail icons', () => {
-	it('retains the ToC, Coverage and complete definitions in actual unseeded SSR', () => {
+describe('MetricsExplainer archive navigation', () => {
+	it('retains the contents and complete definitions in actual unseeded SSR', () => {
 		const html = inject('methodologySsr');
 		const document = window.document.createElement('div');
 		document.innerHTML = html;
-		expect(document.querySelector('.toc-nav')).not.toBeNull();
-		expect(document.querySelector('[data-slot="stat-coverage"]')?.textContent).toContain('14');
+		expect(document.querySelector('[data-testid="archive-contents"]')).not.toBeNull();
 		expect(document.querySelector('[data-slot="stat-provenance"]')).toBeNull();
 		expect(document.querySelector('[data-slot="stat-freshness"]')).toBeNull();
 		expect(document.querySelectorAll('[data-kind="definition"]')).toHaveLength(14);

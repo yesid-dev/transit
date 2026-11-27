@@ -1,20 +1,11 @@
 <script lang="ts">
-	import ArticleHeader from '#lib/components/layout/TransitArticleHeader.svelte';
-	import { Badge } from '@yesid/ui/badge';
 	import { useAvailableSectionJump } from '#lib/site/availableSectionJump.svelte.ts';
 	import { getLocale, getLocalizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { ArticleSectionStack } from '#lib/components/layout/index.ts';
-	import { DetailFrame } from '@yesid/ui/layout';
-	import {
-		SectionLabel,
-		SectionHeading,
-		CollapsibleSection,
-		SectionIcon,
-		TocNav,
-		type TocEntry,
-	} from '@yesid/ui/brand';
+	import { DetailFrame, ReadingFrame } from '@yesid/ui/layout';
+	import { CollapsibleSection, type TocEntry } from '@yesid/ui/brand';
 	import SectionsToggle from '#lib/components/shared/SectionsToggle.svelte';
-	import { METRICS, METRIC_CLUSTER_ORDER, type MetricEntry } from './metrics.content';
+	import { METRICS, METRIC_CLUSTER_ORDER } from './metrics.content';
 	import { metricsCopy } from './metrics.copy';
 	import MetricBody, { type MetricSqlHtml } from './MetricBody.svelte';
 	import { historyDepthCopy } from './historyDepth.copy';
@@ -40,16 +31,6 @@
 
 	const orderedMetrics = $derived(groups.flatMap((g) => g.entries));
 
-	const articleMeta = $derived(
-		[
-			`${orderedMetrics.length} ${t.statRail.coverage.metrics}`,
-			`${groups.length} ${t.statRail.coverage.families}`,
-		].filter((x) => x != null),
-	);
-	const confidenceMeaning = $derived(
-		(entry: MetricEntry) => t.confidence.levels[entry.confidence].chip,
-	);
-
 	const PROVENANCE_ANCHOR = 'metrics-provenance';
 	const HISTORY_ANCHOR = 'history-depth';
 	const CONFIDENCE_INTERVALS_ANCHOR = 'confidence-intervals';
@@ -59,114 +40,76 @@
 			id: PROVENANCE_ANCHOR,
 			title: t.provenance.label,
 			level: 2,
-			badge: { kind: 'icon' as const, name: 'layers' },
 			children: [],
 		},
 		{ id: HISTORY_ANCHOR, title: historyDepthCopy[locale].title, level: 2, children: [] },
-		...orderedMetrics.map((entry, i) => ({
+		...orderedMetrics.map((entry) => ({
 			id: entry.anchor,
 			title: entry.name[locale],
 			level: 2,
-			badge: { kind: 'number' as const, value: i + 1 },
 			children: [],
 		})),
 		{
 			id: LIVE_POSITIONS_ANCHOR,
 			title: t.livePositions.title,
 			level: 2,
-			badge: { kind: 'icon' as const, name: 'chart' },
 			children: [],
 		},
 		{
 			id: LACUNES_ANCHOR,
 			title: t.lacunes.title,
 			level: 2,
-			badge: { kind: 'icon' as const, name: 'eye' },
 			children: [],
 		},
 	]);
 
-	const { navigation, navigate } = useAvailableSectionJump(
+	const { navigate } = useAvailableSectionJump(
 		() => tocEntries,
 		(id) => id === CONFIDENCE_INTERVALS_ANCHOR,
 	);
 </script>
 
-{#snippet statCards()}
-	<div class="metrics-stat-rail">
-		<CollapsibleSection title={t.statRail.coverage.title} headerVariant="article-summary">
-			{#snippet icon()}
-				<SectionIcon name="chart" class="h-4 w-4 shrink-0 text-primary" />
-			{/snippet}
-			<div class="metrics-stat__body" data-slot="stat-coverage">
-				<p class="metrics-stat__count">
-					<span class="metrics-stat__big">{orderedMetrics.length}</span>
-					<span class="metrics-stat__unit">{t.statRail.coverage.metrics}</span>
-				</p>
-				<p class="metrics-stat__sub">
-					{groups.length}
-					{t.statRail.coverage.families}
-				</p>
-				<ul class="metrics-stat__chips">
-					{#each Object.entries(t.confidence.levels) as [level, info] (level)}
-						<li><Badge variant="tag">{info.chip}</Badge></li>
-					{/each}
-				</ul>
-			</div>
-		</CollapsibleSection>
-	</div>
-{/snippet}
-
-<DetailFrame
-	class="metrics-detail"
-	railScroll
-	toc={{
-		entries: tocEntries,
-		navigation,
-		landFragments: true,
-		onNavigate: (id) => {
-			void navigate(id);
-		},
-		openAria: t.tocPill.open,
-		closeAria: t.tocPill.close,
-	}}
->
+<DetailFrame class="metrics-detail">
 	{#snippet header()}
-		<ArticleHeader
-			watermark={t.article.watermark}
-			category={t.kicker}
+		<ReadingFrame
 			title={t.heading}
-			highlight={t.article.tags[0]}
-			backHref={localizeHref('/', locale)}
-			backLabel={t.article.back}
-			meta={articleMeta}
 			titleId="metrics-title"
+			style="--reading-measure: var(--transit-measure-listing); padding-block: 0"
 		>
-			{#snippet controls()}
-				<SectionsToggle />
+			{#snippet summary()}
+				<a
+					class="inline-flex min-h-11 items-center text-primary underline"
+					href={localizeHref('/metrics', locale)}
+					>{locale === 'fr' ? '← Comment on mesure' : '← How we measure'}</a
+				>
+				<p>
+					{locale === 'fr'
+						? 'Ces définitions s’appliquaient au premier site Transit, jusqu’en novembre 2026. Les chiffres de ce site suivent la méthode actuelle.'
+						: 'These definitions applied to the first Transit site through November 2026. The figures on this site follow the current method.'}
+				</p>
 			{/snippet}
-		</ArticleHeader>
+			<SectionsToggle />
+		</ReadingFrame>
 	{/snippet}
 
-	{#snippet left()}
-		<div class="metrics-toc-rail">
-			<TocNav
-				entries={tocEntries}
-				{navigation}
-				onNavigate={(id) => {
-					void navigate(id);
-				}}
-				heading={t.tocLabel}
-				counterPrefix={t.tocCounterPrefix}
-			/>
-
-			<aside class="metrics-stat-aside" aria-label={t.statRail.label}>
-				{@render statCards()}
-			</aside>
-		</div>
-	{/snippet}
-
-	<ArticleSectionStack data-testid="metrics-sections">
+	<ArticleSectionStack class="reading-column" data-testid="metrics-sections">
+		<nav aria-label={t.tocLabel} data-testid="archive-contents">
+			<details open>
+				<summary class="min-h-11 content-center">{t.tocLabel}</summary>
+				<ul class="grid gap-1">
+					{#each tocEntries as entry (entry.id)}<li>
+							<a
+								class="inline-flex min-h-11 items-center text-primary underline"
+								href={'#' + entry.id}
+								onclick={(event) => {
+									event.preventDefault();
+									void navigate(entry.id);
+								}}>{entry.title}</a
+							>
+						</li>{/each}
+				</ul>
+			</details>
+		</nav>
 		<div class="section-block" id={PROVENANCE_ANCHOR}>
 			<CollapsibleSection
 				title={t.provenance.label}
@@ -175,15 +118,12 @@
 				anchor={PROVENANCE_ANCHOR}
 				open={true}
 			>
-				{#snippet icon()}
-					<SectionIcon name="layers" class="h-4 w-4 shrink-0 text-primary" />
-				{/snippet}
 				<div class="metrics-article-prose">
 					<p class="metrics-lede">{t.lede}</p>
 					<p class="metrics-preamble">{t.provenance.body}</p>
 
 					<div class="metrics-measure">
-						<SectionLabel text={t.provenance.howWeMeasure.label} variant="metric" />
+						<h3 class="metrics-measure__heading">{t.provenance.howWeMeasure.label}</h3>
 						<div class="metrics-measure__item">
 							<h3 class="metrics-measure__heading">
 								{t.provenance.howWeMeasure.serviceDay.heading}
@@ -210,11 +150,11 @@
 					</div>
 
 					<div class="metrics-legend">
-						<SectionLabel text={t.confidence.label} variant="metric" />
+						<h3 class="metrics-measure__heading">{t.confidence.label}</h3>
 						<ul class="metrics-legend__list">
 							{#each Object.entries(t.confidence.levels) as [level, info] (level)}
 								<li class="metrics-legend__item">
-									<Badge variant="tag">{info.chip}</Badge>
+									<strong>{info.chip}</strong>
 									<span class="metrics-legend__meaning">{info.meaning}</span>
 								</li>
 							{/each}
@@ -245,30 +185,21 @@
 
 		{#each groups as group (group.cluster)}
 			<div class="metrics-cluster">
-				<SectionHeading level={2} overline={group.label} class="metrics-cluster__overline" />
+				<h2 class="text-heading font-semibold">{group.label}</h2>
 				<ArticleSectionStack class="metrics-cluster__cards" data-slot-variant="metric-cluster">
 					{#each group.entries as entry (entry.key)}
-						{@const metricIndex = orderedMetrics.findIndex((m) => m.key === entry.key)}
 						<div class="section-block" id={entry.anchor}>
 							<CollapsibleSection
 								title={entry.name[locale]}
 								subtitle={entry.oneLiner[locale]}
 								headerVariant="article-summary"
 								anchor={entry.anchor}
-								index={metricIndex}
 								open={true}
 							>
 								<div class="metric__body">
-									<p class="metric__meta">
-										<code class="metric__sci">{entry.sciName}</code>
-										<Badge variant="tag">{confidenceMeaning(entry)}</Badge>
-									</p>
-
 									<div class="metric__information-stack">
 										<MetricBody {entry} {locale} sqlHtml={sqlHtml?.[entry.key]} />
 									</div>
-
-									<a class="metric__top" href="#metrics-provenance">{t.backToTop}</a>
 								</div>
 							</CollapsibleSection>
 						</div>
@@ -285,9 +216,6 @@
 				anchor={LIVE_POSITIONS_ANCHOR}
 				open={true}
 			>
-				{#snippet icon()}
-					<SectionIcon name="chart" class="h-4 w-4 shrink-0 text-primary" />
-				{/snippet}
 				<div class="metric__body">
 					<p class="metric__prose metrics-live__lede">{t.livePositions.lede}</p>
 					<ul class="metrics-live__list">
@@ -298,7 +226,6 @@
 							</li>
 						{/each}
 					</ul>
-					<a class="metric__top" href="#metrics-provenance">{t.backToTop}</a>
 				</div>
 			</CollapsibleSection>
 		</div>
@@ -311,9 +238,6 @@
 				anchor={LACUNES_ANCHOR}
 				open={true}
 			>
-				{#snippet icon()}
-					<SectionIcon name="eye" class="h-4 w-4 shrink-0 text-primary" />
-				{/snippet}
 				<div class="metric__body">
 					<p class="metric__prose metrics-lacunes__lede">{t.lacunes.lede}</p>
 					<ul class="metrics-lacunes__list">
@@ -324,10 +248,10 @@
 							</li>
 						{/each}
 					</ul>
-					<a class="metric__top" href="#metrics-provenance">{t.backToTop}</a>
 				</div>
 			</CollapsibleSection>
 		</div>
+		<a class="metric__top" href="#metrics-title">{t.backToTop}</a>
 	</ArticleSectionStack>
 </DetailFrame>
 
@@ -335,60 +259,6 @@
 	.metrics-lede {
 		margin: 0;
 		color: var(--secondary-foreground);
-	}
-
-	.metrics-toc-rail {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-card-gap);
-		min-width: 0;
-	}
-
-	.metrics-stat-aside {
-		min-width: 0;
-	}
-	.metrics-stat-rail {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-card-gap);
-	}
-	.metrics-stat__body {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		min-width: 0;
-	}
-	.metrics-stat__count {
-		display: flex;
-		align-items: baseline;
-		gap: 0.375rem;
-		margin: 0;
-	}
-	.metrics-stat__big {
-		font-family: var(--font-heading);
-		font-size: var(--text-stat-value);
-		font-weight: 800;
-		line-height: 1;
-		color: var(--foreground);
-		font-variant-numeric: tabular-nums;
-	}
-	.metrics-stat__unit {
-		font-size: var(--text-caption);
-		color: var(--muted-foreground);
-	}
-	.metrics-stat__sub {
-		margin: 0;
-		font-size: var(--text-small);
-		line-height: 1.45;
-		color: var(--muted-foreground);
-	}
-	.metrics-stat__chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-		margin: 0;
-		padding: 0;
-		list-style: none;
 	}
 
 	.metrics-article-prose {
@@ -456,18 +326,6 @@
 		flex-direction: column;
 		gap: 1.25rem;
 	}
-	.metric__meta {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 0.75rem;
-		margin: 0;
-	}
-	.metric__sci {
-		font-family: var(--font-mono);
-		font-size: var(--text-caption);
-		color: var(--muted-foreground);
-	}
 	.metric__information-stack {
 		display: flex;
 		flex-direction: column;
@@ -515,7 +373,6 @@
 		align-self: flex-start;
 		font-family: var(--font-mono);
 		font-size: var(--text-caption);
-		text-transform: uppercase;
 		letter-spacing: var(--tracking-eyebrow);
 		color: var(--primary);
 		text-decoration: none;

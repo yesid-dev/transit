@@ -64,7 +64,6 @@
 		groupAlertCards,
 		type AlertCard,
 		liveAlertCards,
-		publishedAlertEffect,
 		liveAlertCut,
 		recordAlertCards,
 		recordNoticeCards,
@@ -147,6 +146,9 @@
 	const unavailable = $derived(t('Unavailable', 'Indisponible'));
 	const noAlerts = $derived(t('No notices in effect.', 'Aucun avis en vigueur.'));
 	const linePageSize = 6;
+	const lineShape = { shape: 'rows', count: linePageSize, lines: 1 } as const;
+	const noticesShape = { shape: 'notice', count: 5 } as const;
+	const effectShape = { shape: 'facts', count: 2 } as const;
 	const paging = $derived(alertPaging(locale));
 
 	function formatCitation(key: keyof typeof alertSections, result: EngineAnswer, lastGood?: true) {
@@ -283,24 +285,21 @@
 	{/if}
 {/snippet}
 
-{#snippet recordEffects(result: EngineResult<EngineAnswer>)}
-	{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.state === 'measured'}
-		{@const rows = recordAlertCut(result.answer, 'effect')}
-		{#if rows.some(({ key, value }) => key !== unstatedEffect && value != null)}
-			<div id="effect" class="scroll-mt-24">
-				<RecordCard title={alertSections.effect[locale]} {stamp}>
-					{@render cutRows(rows, 'effect')}
-					{#snippet evidence()}{@render evidenceFooter(result.answer.evidence)}{/snippet}
-				</RecordCard>
-			</div>
-		{/if}
-	{:else}
-		<div id="effect" class="scroll-mt-24">
-			<RecordCard title={alertSections.effect[locale]} {stamp}>
-				{@render resultState(result)}
-			</RecordCard>
-		</div>
-	{/if}
+{#snippet recordEffects(promise: Promise<EngineResult<EngineAnswer>>)}
+	<div id="effect" class="scroll-mt-24">
+		<RecordCard title={alertSections.effect[locale]} {stamp} stampRule reserve={effectShape}>
+			{#await promise}<RecordPending {locale} answer={promise} shape={effectShape} />
+			{:then result}
+				{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.state === 'measured'}
+					{@const rows = recordAlertCut(result.answer, 'effect')}
+					{#if rows.some(({ key, value }) => key !== unstatedEffect && value != null)}{@render cutRows(
+							rows,
+							'effect',
+						)}{:else}<p>{effectNotPublished}</p>{/if}
+				{:else}{@render resultState(result, effectShape)}{/if}
+			{/await}
+		</RecordCard>
+	</div>
 {/snippet}
 
 {#snippet cutValue(row: AlertCut)}
@@ -308,9 +307,12 @@
 	{:else}{tally(row.value, locale)}{/if}
 {/snippet}
 
-{#snippet resultState(result: EngineResult<EngineAnswer>)}
+{#snippet resultState(
+	result: EngineResult<EngineAnswer>,
+	shape?: import('../record/recordWaiting.ts').RecordWaiting,
+)}
 	{#if result.kind === 'busy'}
-		<RecordPending {locale} busy />
+		<RecordPending {locale} {shape} busy />
 	{:else if result.kind === 'answer'}
 		<StateMark
 			state={recordStateFor('state' in result.answer ? result.answer.state : undefined)}
@@ -332,17 +334,18 @@
 				: null}
 		{@const rows = reading ? recordAlertCut(reading, 'line') : []}
 		<RecordCard
+			interactive
 			title={alertSections.line[locale]}
 			{stamp}
-			expandable={rows.length > 0}
-			open={false}
+			stampRule
+			reserve={lineShape}
 		>
 			{#if reading}
 				{@render cutRows(rows, 'line')}
 			{:else if result}
-				{@render resultState(result)}
+				{@render resultState(result, lineShape)}
 			{:else if promise}
-				{#key promise}<RecordPending {locale} answer={promise} />{/key}
+				{#key promise}<RecordPending {locale} answer={promise} shape={lineShape} />{/key}
 			{/if}
 			{#snippet evidence()}
 				{#if reading}
@@ -360,15 +363,22 @@
 	</div>
 {/snippet}
 
-{#snippet logHeading(label: string, stamp?: StampProps)}
+{#snippet logHeading(label: string, time?: StampProps)}
 	<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
 		<h2 class="text-subheading font-semibold">{label}</h2>
-		{#if stamp}<Stamp {...stamp} />{/if}
+		{#if time}<Stamp {...time} />{/if}
 	</header>
 {/snippet}
 
 {#snippet messageList(cards: AlertCard[], live: boolean)}
-	<AlertList {cards} {locale} city={data.city} timeZone={data.timeZone} {live} />
+	<AlertList
+		{cards}
+		{locale}
+		city={data.city}
+		timeZone={data.timeZone}
+		{live}
+		pageSize={noticesShape.count}
+	/>
 {/snippet}
 
 {#snippet archive(result?: EngineResult<EngineAnswer>)}
@@ -399,26 +409,25 @@
 			result?.kind === 'answer' && result.lastGood ? lastGoodNote[locale] : undefined,
 		)}
 	{:else if result}
-		{@render resultState(result)}
+		{@render resultState(result, noticesShape)}
 	{:else if messages}
-		{#key messages}<RecordPending shape="listing" {locale} answer={messages} />{/key}
+		{#key messages}<RecordPending shape={noticesShape} {locale} answer={messages} />{/key}
 	{:else}
 		<p>{alertDetailsLimit[locale]}</p>
 	{/if}
 {/snippet}
 
-{#snippet recordAbout(result: RecordMeasure, missingEffect: boolean)}
-	{@const evidence = result.evidence}
-	{@const missing = evidence.days_not_measured.map(
+{#snippet recordAbout(reading?: RecordMeasure)}
+	{@const evidence = reading?.evidence}
+	{@const missing = (evidence?.days_not_measured ?? []).map(
 		(day) =>
-			`${dateRange({ from: day, to: day }, locale)} · ${healthReason(evidence.days_not_measured_reasons?.[day], locale)}`,
+			`${dateRange({ from: day, to: day }, locale)} · ${healthReason(evidence?.days_not_measured_reasons?.[day], locale)}`,
 	)}
-	{@const untracked = (evidence.days_not_tracked ?? []).map((day) =>
+	{@const untracked = (evidence?.days_not_tracked ?? []).map((day) =>
 		dateRange({ from: day, to: day }, locale),
 	)}
 	<div>
 		<span id="day"></span><span id="hour"></span><span id="stop"></span><span id="cause"></span>
-		{#if missingEffect}<span id="effect" class="block scroll-mt-24"></span>{/if}
 		<AboutFigures
 			title={t('About these figures', 'À propos de ces chiffres')}
 			compact
@@ -426,7 +435,7 @@
 				{
 					key: 'period',
 					label: t('Period', 'Période'),
-					text: dateRange({ from: evidence.start_date, to: evidence.end_date }, locale),
+					text: data.period ? dateRange(data.period, locale) : null,
 				},
 				{
 					key: 'counts',
@@ -434,14 +443,9 @@
 					text: countedNotice[locale],
 				},
 				{
-					key: 'effect',
-					label: alertSections.effect[locale],
-					text: missingEffect ? effectNotPublished : null,
-				},
-				{
 					key: 'coverage',
 					label: t('Coverage', 'Couverture'),
-					text: result.coverage_note?.[locale] ?? null,
+					text: reading?.coverage_note?.[locale] ?? null,
 				},
 				{
 					key: 'missing',
@@ -457,10 +461,16 @@
 					key: 'method',
 					label: t('Method', 'Méthode'),
 					text: null,
-					link: {
-						href: localizeHref('/metrics', locale, data.city),
-						label: t('How we measure', 'Comment on mesure'),
-					},
+					links: [
+						{
+							href: localizeHref('/metrics', locale, data.city),
+							label: t('How we measure', 'Comment on mesure'),
+						},
+						{
+							href: localizeHref('/metrics', locale, data.city) + '#about-transit',
+							label: t('Seen an error?', 'Vous avez vu une erreur?'),
+						},
+					],
 				},
 				{
 					key: 'source',
@@ -489,16 +499,36 @@
 			lastGood: result.kind === 'answer' && result.lastGood,
 		}}
 		actions={recordActions}
+		fullWidthContext
 	>
 		{#snippet meta()}<p>{scope}</p>{/snippet}
 	</RecordAnswer>
 {/snippet}
 
+{#snippet liveAbout(age: string | null)}
+	<AboutLiveFigures
+		{locale}
+		operator={locale === 'fr' && data.operator ? frenchAgency(operator).subject : data.operator}
+		healthLink={localizeHref('/status', locale, data.city)}
+		errorLink={localizeHref('/metrics', locale, data.city) + '#about-transit'}
+		scope={t(
+			'Notices in effect at this moment, in the latest feed capture.',
+			'Les avis en vigueur en ce moment, dans le dernier relevé du flux.',
+		)}
+		statusLabel={t('How a notice counts', 'Quand un avis compte')}
+		definition={t(
+			'A notice counts when this moment falls inside one of its published periods, or when the agency gives no period.',
+			'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand la société de transport ne publie aucune période.',
+		)}
+		captureText={t(`Notices: ${age ?? 'unavailable'}.`, `Avis\u00a0: ${age ?? 'indisponibles'}.`)}
+	/>
+{/snippet}
+
 <Surface>
 	<RecordScreen>
-		<RecordGroup>
-			<ScreenTitle {title} {subtitle} />
-		</RecordGroup>
+		{#if !data.tracked || (!answer && !data.capture)}<RecordGroup
+				><ScreenTitle {title} {subtitle} /></RecordGroup
+			>{/if}
 		<div class="contents" data-slot="screen-content">
 			{#if !data.tracked}
 				<RecordGroup>
@@ -528,11 +558,27 @@
 			{:else if liveMode && data.capture}
 				<LiveCapture city={data.city} capture={data.capture}>
 					{#snippet pending()}
-						<RecordGroup waiting="answer">
-							<div data-slot="screen-state">
-								<p role="status">{t('Loading live notices…', 'Chargement des avis en direct…')}</p>
-							</div>
-						</RecordGroup>
+						<RecordGroup density="compact"
+							><ScreenTitle {title} {subtitle} />
+							<div data-slot="screen-answer"><RecordPending {locale} shape="answer" /></div>
+							<RecordCard
+								title={alertSections.effect[locale]}
+								stampRule
+								stampPending
+								reserve={effectShape}><RecordPending {locale} shape={effectShape} /></RecordCard
+							><RecordCard
+								title={t('In effect now', 'En vigueur maintenant')}
+								stampRule
+								stampPending
+								reserve={noticesShape}><RecordPending {locale} shape={noticesShape} /></RecordCard
+							><RecordCard
+								title={alertSections.line[locale]}
+								stampRule
+								stampPending
+								reserve={lineShape}><RecordPending {locale} shape={lineShape} /></RecordCard
+							></RecordGroup
+						>
+						<RecordGroup density="compact">{@render liveAbout(null)}</RecordGroup>
 					{/snippet}
 					{#snippet children(snapshot, now)}
 						{@const feeds = Object.values(snapshot?.feeds ?? {})}
@@ -557,6 +603,7 @@
 									liveCards.length,
 								)}{/snippet}
 							<RecordGroup density="compact">
+								<ScreenTitle {title} {subtitle} />
 								<div id="alerts-window" data-slot="screen-answer">
 									<RecordAnswer
 										value={tally(liveNotices.length, locale)}
@@ -579,22 +626,31 @@
 										{/snippet}
 									</RecordAnswer>
 								</div>
-								{#if liveCards.some(({ effect }) => effect)}<div id="alerts-breakdown">
-										<RecordCard title={alertSections.effect[locale]} stamp={liveStamp}>
-											{@render cutRows(liveAlertCut(liveNotices, 'effect'), 'effect')}
-										</RecordCard>
-									</div>{/if}
-							</RecordGroup>
-							<RecordGroup id="alerts-log" class="scroll-mt-24" density="compact">
-								{@render logHeading(t('In effect now', 'En vigueur maintenant'), liveStamp)}
-								{@render messageList(liveCards, true)}
+								<div id="alerts-breakdown">
+									<RecordCard
+										title={alertSections.effect[locale]}
+										stamp={liveStamp}
+										stampRule
+										reserve={effectShape}
+									>
+										{#if missingEffect}<p>{effectNotPublished}</p>{:else}{@render cutRows(
+												liveAlertCut(liveNotices, 'effect'),
+												'effect',
+											)}{/if}
+									</RecordCard>
+								</div>
 							</RecordGroup>
 							<RecordGroup density="compact">
+								<section id="alerts-log" class="grid min-w-0 gap-(--space-card-gap) scroll-mt-24">
+									{@render logHeading(t('In effect now', 'En vigueur maintenant'), liveStamp)}
+									{@render messageList(liveCards, true)}
+								</section>
 								<RecordCard
+									interactive
 									title={alertSections.line[locale]}
 									stamp={liveStamp}
-									expandable={lineCount > 0}
-									open={false}
+									stampRule
+									reserve={lineShape}
 								>
 									{@render cutRows(liveAlertCut(liveNotices, 'line'), 'line')}
 									{#snippet evidence()}
@@ -608,48 +664,24 @@
 							</RecordGroup>
 						{:else}
 							<RecordGroup>
+								<ScreenTitle {title} {subtitle} />
 								<div data-slot="screen-state"><StateMark state="no_live_data" {locale} /></div>
 							</RecordGroup>
 						{/if}
 						<RecordGroup density="compact">
-							{#if missingEffect}<span id="alerts-breakdown" class="block scroll-mt-24"></span>{/if}
-							<AboutLiveFigures
-								{locale}
-								operator={locale === 'fr' && data.operator
-									? frenchAgency(operator).subject
-									: data.operator}
-								healthLink={localizeHref('/status', locale, data.city)}
-								scope={t(
-									'Notices in effect at this moment, in the latest feed capture.',
-									'Les avis en vigueur en ce moment, dans le dernier relevé du flux.',
-								)}
-								statusLabel={t('How a notice counts', 'Quand un avis compte')}
-								definition={t(
-									'A notice counts when this moment falls inside one of its published periods, or when the agency gives no period.',
-									'Un avis compte quand ce moment se trouve dans une de ses périodes publiées, ou quand la société de transport ne publie aucune période.',
-								)}
-								additionalFields={missingEffect
-									? [
-											{
-												key: 'effect',
-												label: alertSections.effect[locale],
-												text: effectNotPublished,
-											},
-										]
-									: []}
-								captureText={t(
-									`Notices: ${age ?? 'unavailable'}.`,
-									`Avis\u00a0: ${age ?? 'indisponibles'}.`,
-								)}
-							/>
+							{@render liveAbout(age)}
 						</RecordGroup>
 					{/snippet}
 				</LiveCapture>
 			{:else if answer}
+				{@const effect = section('effect')}
 				<RecordGroup density="compact">
+					<ScreenTitle {title} {subtitle} />
 					<div id="answer" data-slot="screen-answer" class="min-w-0 scroll-mt-24">
 						{#await answer}
-							<div data-slot="screen-state"><RecordPending shape="answer" {locale} {answer} /></div>
+							<div data-slot="screen-state">
+								<RecordPending shape="answer" {locale} {answer} fullWidthContext />
+							</div>
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts != null}
 								{@const count = result.answer.value.alerts}
@@ -674,39 +706,20 @@
 							{/if}
 						{/await}
 					</div>
-					{#await section('effect') then result}
-						{#if result}{@render recordEffects(result)}{/if}
-					{/await}
-				</RecordGroup>
-				<RecordGroup id="messages" class="scroll-mt-24" density="compact">
-					{@render logHeading(t('Archive for these dates', 'Archives pour ces dates'), stamp)}
-					{#await messages}{@render archive()}{:then result}{@render archive(result)}{/await}
+					{#if effect}{@render recordEffects(effect)}{/if}
 				</RecordGroup>
 				<RecordGroup density="compact">
+					<section id="messages" class="grid min-w-0 gap-(--space-card-gap) scroll-mt-24">
+						{@render logHeading(t('Archive for these dates', 'Archives pour ces dates'), stamp)}
+						{#await messages}{@render archive()}{:then result}{@render archive(result)}{/await}
+					</section>
 					{@render recordLines()}
 				</RecordGroup>
-				{#await answer then result}
-					{#if result.kind === 'answer' && 'value' in result.answer}
-						{@const reading = result.answer}
-						<RecordGroup density="compact">
-							{#await section('effect')}
-								{@render recordAbout(reading, false)}
-							{:then effects}
-								{@render recordAbout(
-									reading,
-									effects?.kind === 'answer' &&
-										'cells' in effects.answer &&
-										effects.answer.cells.length > 0 &&
-										effects.answer.cells.every(
-											(cell) =>
-												cell.state === 'measured' &&
-												!publishedAlertEffect(String(cell.key.effect ?? '')),
-										),
-								)}
-							{/await}
-						</RecordGroup>
-					{/if}
-				{/await}
+				<RecordGroup density="compact"
+					>{#await answer}{@render recordAbout()}{:then result}{@render recordAbout(
+							result.kind === 'answer' && 'value' in result.answer ? result.answer : undefined,
+						)}{/await}</RecordGroup
+				>
 			{:else}
 				<RecordGroup>
 					<p data-slot="screen-state">

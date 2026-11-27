@@ -63,28 +63,26 @@ describe('MetricsExplainer', () => {
 			expect(cardTrigger(container, entry.anchor)).toHaveAttribute('aria-expanded', 'true');
 	});
 
-	it('renders the shared article header with metrics keywords, back link, and body lede', () => {
+	it('renders a reading heading, the current method link and a provenance introduction', () => {
 		const { container } = render(MetricsExplainer);
-		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
+		const header = container.querySelector('[data-slot="reading-frame"]') as HTMLElement;
 
 		expect(header).not.toBeNull();
 		expect(within(header).getByRole('heading', { level: 1, name: en.heading })).toBeInTheDocument();
-		expect(within(header).getByRole('link', { name: en.article.back })).toHaveAttribute(
+		expect(within(header).getByRole('link', { name: /How we measure/ })).toHaveAttribute(
 			'href',
-			'/',
+			'/metrics',
 		);
-		expect(header.querySelector('.header__circuit-grid')).not.toBeNull();
+		expect(header.querySelector('.header__circuit-grid')).toBeNull();
 
 		const center = container.querySelector('[data-slot="detail-shell-center"]') as HTMLElement;
 		expect(within(center).getByText(en.lede)).toBeInTheDocument();
-		expect(container.querySelector('[data-slot="detail-shell-header"]')).toBeNull();
 		expect(container.textContent).not.toMatch(/blueprint/i);
-		expect(container.querySelector('[data-slot="detail-shell"]')?.parentElement).toBe(container);
 	});
 
 	it('renders one page action and no metrics-only extra control', async () => {
 		const { container } = render(MetricsExplainer);
-		const header = container.querySelector('[data-slot="article-header"]') as HTMLElement;
+		const header = container.querySelector('[data-slot="reading-frame"]') as HTMLElement;
 		expect(within(header).getByRole('button', { name: 'Collapse all' })).toBeInTheDocument();
 		expect(screen.getByTestId('sections-controls').querySelectorAll('button')).toHaveLength(1);
 		expect(within(header).queryByTestId('metrics-expand-all')).toBeNull();
@@ -109,30 +107,7 @@ describe('MetricsExplainer', () => {
 		expect(container.textContent).toContain(en.confidence.levels.medium.meaning);
 	});
 
-	it('uses one wide left rail for navigation then At a glance, plus one center column', () => {
-		provState.data = {
-			generated_utc: '2026-07-11T04:00:00Z',
-			conformance: { status: 'conformant', extra_row_count: 0, unknown_members: [] },
-			methodology: {},
-		};
-		const { container } = render(MetricsExplainer);
-
-		const grid = container.querySelector('.detail-shell-grid') as HTMLElement;
-		const left = grid.querySelector('[data-slot="detail-shell-left"]') as HTMLElement;
-		const toc = left.querySelector('.toc-nav') as HTMLElement;
-		const summary = left.querySelector('.metrics-stat-aside') as HTMLElement;
-
-		expect(grid).toHaveClass('detail-shell-grid--two');
-		expect(grid.querySelectorAll('[data-slot="detail-shell-left"]')).toHaveLength(1);
-		expect(grid.querySelectorAll('[data-slot="detail-shell-center"]')).toHaveLength(1);
-		expect(grid.querySelector('[data-slot="detail-shell-right"]')).toBeNull();
-		expect(container.querySelector('[data-slot="detail-shell-mobile-summary"]')).toBeNull();
-		expect(container.querySelectorAll('.metrics-stat-rail')).toHaveLength(1);
-		expect(summary).toHaveAttribute('aria-label', en.statRail.label);
-		expect(toc.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-	});
-
-	it('opts every Metrics section and stat card into article-summary headers', () => {
+	it('keeps descriptive archive disclosure headings', () => {
 		provState.data = {
 			generated_utc: '2026-07-11T04:00:00Z',
 			conformance: { status: 'conformant', extra_row_count: 0, unknown_members: [] },
@@ -144,18 +119,10 @@ describe('MetricsExplainer', () => {
 				'[data-testid="metrics-sections"] .section-block > [data-slot="card"]',
 			),
 		);
-		const railCards = Array.from(
-			container.querySelectorAll<HTMLElement>('.metrics-stat-rail > [data-slot="card"]'),
-		);
-
 		expect(sectionCards).toHaveLength(METRICS.length + 4);
-		expect(railCards).toHaveLength(1);
-		for (const card of [...sectionCards, ...railCards]) {
+		for (const card of sectionCards) {
 			expect(card).toHaveAttribute('data-header-variant', 'article-summary');
 		}
-		expect(
-			container.querySelector('.metrics-toc-rail .toc-nav [data-header-variant="article-summary"]'),
-		).toBeNull();
 	});
 
 	it('keeps a metric one-liner linked to its article-summary trigger across collapse', async () => {
@@ -181,18 +148,6 @@ describe('MetricsExplainer', () => {
 
 		expect(subtitle).toHaveAttribute('data-state', 'closed');
 		expect(subtitle.textContent?.trim()).toBe(first.oneLiner.en);
-	});
-
-	it('renders the desktop TOC rail with one numbered jump button per metric', () => {
-		const { container } = render(MetricsExplainer);
-
-		const rail = container.querySelector('.metrics-toc-rail');
-		expect(rail).not.toBeNull();
-		for (const entry of METRICS) {
-			expect(
-				within(rail as HTMLElement).getByRole('button', { name: entry.name.en }),
-			).toBeInTheDocument();
-		}
 	});
 
 	it('renders every anchored metric with the exact typed-card anatomy and terminal SQL', () => {
@@ -240,44 +195,6 @@ describe('MetricsExplainer', () => {
 		expect(text).toContain(en.sections.caveats);
 	});
 
-	it('exposes a mobile floating pill that opens the same jump-nav as a drawer', async () => {
-		const { container } = render(MetricsExplainer);
-
-		const pillContainer = container.querySelector('[data-testid="toc-pill"]');
-		expect(pillContainer).not.toBeNull();
-		const pill = within(pillContainer as HTMLElement).getByRole('button', { expanded: false });
-
-		expect(
-			within(pillContainer as HTMLElement).queryByRole('button', { name: METRICS[0].name.en }),
-		).not.toBeInTheDocument();
-
-		await fireEvent.click(pill);
-		expect(pill).toHaveAttribute('aria-expanded', 'true');
-		for (const entry of METRICS) {
-			expect(
-				within(pillContainer as HTMLElement).getByRole('button', { name: entry.name.en }),
-			).toBeInTheDocument();
-		}
-
-		await fireEvent.keyDown(window, { key: 'Escape' });
-		expect(pill).toHaveAttribute('aria-expanded', 'false');
-	});
-
-	it('mobile pill navigation OPENS the target card through a folded page (review F1)', async () => {
-		const { container } = render(MetricsExplainer);
-		await fireEvent.click(screen.getByTestId('sections-toggle'));
-		const target = METRICS[0];
-		const card = container
-			.querySelector(`#${CSS.escape(target.anchor)}`)
-			?.querySelector('[data-state]');
-		expect(card).toHaveAttribute('data-state', 'closed');
-
-		const pillContainer = container.querySelector('[data-testid="toc-pill"]') as HTMLElement;
-		await fireEvent.click(within(pillContainer).getByRole('button', { expanded: false }));
-		await fireEvent.click(within(pillContainer).getByRole('button', { name: target.name.en }));
-		expect(card).toHaveAttribute('data-state', 'open');
-	});
-
 	it('a malformed hash fragment never throws during mount (review F2)', async () => {
 		window.location.hash = '#%';
 		expect(() => render(MetricsExplainer)).not.toThrow();
@@ -290,10 +207,10 @@ describe('MetricsExplainer', () => {
 	it('keeps the TOC entries and the section cards in lock-step (same anchors)', () => {
 		const { container } = render(MetricsExplainer);
 
-		const rail = container.querySelector('.metrics-toc-rail') as HTMLElement;
+		const rail = container.querySelector('[data-testid="archive-contents"]') as HTMLElement;
 		for (const entry of METRICS) {
 			expect(container.querySelectorAll(`#${CSS.escape(entry.anchor)}`)).toHaveLength(1);
-			expect(within(rail).getByRole('button', { name: entry.name.en })).toBeInTheDocument();
+			expect(within(rail).getByRole('link', { name: entry.name.en })).toBeInTheDocument();
 		}
 	});
 
@@ -318,11 +235,11 @@ describe('MetricsExplainer', () => {
 		expect(block?.querySelectorAll('.metrics-lacunes__heading')).toHaveLength(3);
 	});
 
-	it('registers the structural-gaps section in the desktop TOC rail (after the metrics)', () => {
+	it('registers the structural-gaps section in the archive contents list (after the metrics)', () => {
 		const { container } = render(MetricsExplainer);
-		const rail = container.querySelector('.metrics-toc-rail') as HTMLElement;
+		const rail = container.querySelector('[data-testid="archive-contents"]') as HTMLElement;
 
-		expect(within(rail).getByRole('button', { name: en.lacunes.title })).toBeInTheDocument();
+		expect(within(rail).getByRole('link', { name: en.lacunes.title })).toBeInTheDocument();
 	});
 
 	it('renders the live-positions ("almost real-time, not real-time") explainer card with every named point', () => {
@@ -349,8 +266,8 @@ describe('MetricsExplainer', () => {
 
 	it('registers the live-positions section in the desktop TOC rail', () => {
 		const { container } = render(MetricsExplainer);
-		const rail = container.querySelector('.metrics-toc-rail') as HTMLElement;
-		expect(within(rail).getByRole('button', { name: en.livePositions.title })).toBeInTheDocument();
+		const rail = container.querySelector('[data-testid="archive-contents"]') as HTMLElement;
+		expect(within(rail).getByRole('link', { name: en.livePositions.title })).toBeInTheDocument();
 	});
 
 	it('keeps the live-positions explainer honest (names estimate vs measured, no fabricated certainty)', () => {
@@ -372,8 +289,8 @@ describe('MetricsExplainer', () => {
 	}
 
 	function tocTrigger(container: HTMLElement): HTMLElement | null {
-		const rail = container.querySelector('.metrics-toc-rail') as HTMLElement;
-		return rail?.querySelector('[data-slot="collapsible-trigger"]') ?? null;
+		const rail = container.querySelector('[data-testid="archive-contents"]') as HTMLElement;
+		return rail?.querySelector('details') ?? null;
 	}
 
 	function cardTrigger(container: HTMLElement, anchor: string): HTMLElement | null {
@@ -395,7 +312,7 @@ describe('MetricsExplainer', () => {
 		);
 		expect(firstBody).toHaveAttribute('data-state', 'closed');
 
-		expect(tocTrigger(container)).toHaveAttribute('aria-expanded', 'true');
+		expect(tocTrigger(container)).toHaveAttribute('open');
 	});
 
 	it('opens the hash-named card from a closed state during mount', async () => {
@@ -526,53 +443,22 @@ describe('MetricsExplainer', () => {
 	it('ToC navigation opens the target card through a folded page (siblings unaffected)', async () => {
 		const { container } = render(MetricsExplainer);
 		await fireEvent.click(screen.getByTestId('sections-toggle'));
-		const rail = container.querySelector('.metrics-toc-rail') as HTMLElement;
+		const rail = container.querySelector('[data-testid="archive-contents"]') as HTMLElement;
 
 		const target = METRICS[3];
 		expect(cardTrigger(container, target.anchor)).toHaveAttribute('aria-expanded', 'false');
 		const toc = tocTrigger(container);
-		expect(toc).toHaveAttribute('aria-expanded', 'true');
-		await fireEvent.click(within(rail).getByRole('button', { name: target.name.en }));
+		expect(toc).toHaveAttribute('open');
+		await fireEvent.click(within(rail).getByRole('link', { name: target.name.en }));
 
 		expect(cardTrigger(container, target.anchor)).toHaveAttribute('aria-expanded', 'true');
 		expect(cardTrigger(container, METRICS[0].anchor)).toHaveAttribute('aria-expanded', 'false');
-	});
-
-	it('keeps the single-rail Coverage action scoped to Coverage', async () => {
-		provState.data = {
-			generated_utc: '2026-07-10T12:00:00Z',
-			conformance: { status: 'conformant', extra_row_count: 0, unknown_members: [] },
-			methodology: {},
-		};
-		const { container } = render(MetricsExplainer);
-		const coverage = screen.getAllByRole('button', { name: en.statRail.coverage.title });
-		expect(coverage).toHaveLength(1);
-		const coverageTrigger = coverage[0];
-		const otherRailTriggers = Array.from(
-			container.querySelectorAll<HTMLButtonElement>('.metrics-stat-rail button.section-header'),
-		).filter((trigger) => !coverage.includes(trigger));
-		const otherRailStates = otherRailTriggers.map((trigger) =>
-			trigger.getAttribute('aria-expanded'),
-		);
-
-		await fireEvent.click(coverageTrigger);
-
-		const coverageBody = coverageTrigger
-			.closest('[data-slot="card"]')
-			?.querySelector('[data-slot="collapsible-content"]');
-		expect(coverageBody).toHaveAttribute('data-state', 'closed');
-		for (const trigger of coverage) {
-			expect(trigger).toHaveAttribute('aria-expanded', 'false');
-		}
-		expect(otherRailTriggers.map((trigger) => trigger.getAttribute('aria-expanded'))).toEqual(
-			otherRailStates,
-		);
 	});
 });
 
 it('links archived methodology readers to current coverage without adding a publication date', () => {
 	const { container } = render(MetricsExplainer);
-	expect(container.querySelector('[data-slot="article-header"] time')).toBeNull();
+	expect(container.querySelector('[data-slot="reading-frame"] time')).toBeNull();
 	const depth = container.querySelector<HTMLElement>('#history-depth')!;
 	expect(within(depth).getByRole('link')).toHaveAttribute('href', '/status');
 });

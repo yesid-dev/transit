@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import { getLocale } from '#lib/i18n/index.ts';
 	import MethodCatalog from '#lib/features/record/MethodCatalog.svelte';
 	import { METRIC_SUMMARIES } from '#lib/metrics.ts';
@@ -8,6 +9,11 @@
 
 	let { data }: { data: PageData } = $props();
 	const locale = getLocale();
+	const readings = recoverReadings(
+		() => data,
+		({ period, providerId }) =>
+			period ? { ...period, screen: 'metrics', city: providerId } : null,
+	);
 	const url = $derived(new URL(page.url.href));
 
 	const archivedAnchors = new Set([
@@ -24,4 +30,10 @@
 	});
 </script>
 
-<MethodCatalog {locale} {url} city={data.providerId} period={data.period} catalog={data.catalog} />
+<MethodCatalog
+	{locale}
+	{url}
+	city={data.providerId}
+	period={data.period}
+	catalog={readings()?.catalog ?? data.catalog}
+/>

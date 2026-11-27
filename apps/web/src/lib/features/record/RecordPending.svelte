@@ -10,6 +10,7 @@
 		locale,
 		heading,
 		liveAnswer = false,
+		fullWidthContext = false,
 		busy = false,
 		answer,
 		shape,
@@ -19,6 +20,7 @@
 		heading?: Snippet;
 		/** Live answers show a stamp and two actions without a Record evidence row. */
 		liveAnswer?: boolean;
+		fullWidthContext?: boolean;
 		busy?: boolean;
 		answer?: Promise<{ kind: string }>;
 		/** The final shape of the card body. Without one, one pulsing text line. */
@@ -86,6 +88,7 @@
 		<RecordSkeleton
 			{shape}
 			{liveAnswer}
+			{fullWidthContext}
 			heading={answerHeading}
 			answerStatus={answerHeading ? pendingWords : undefined}
 		/>

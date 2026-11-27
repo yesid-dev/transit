@@ -18,6 +18,8 @@ export const recoveryScreens = [
 	'status',
 	'receipt',
 	'departure',
+	'metrics',
+	'download',
 ] as const;
 
 export type RecoveryScreen = (typeof recoveryScreens)[number];

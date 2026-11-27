@@ -14,6 +14,8 @@ html {
 }
 
 :root {
+	/* Keep this fallback until the design tokens provide the listing measure. */
+	--transit-measure-listing: var(--measure-listing, 46rem);
 	--text-stat-value: 1.75rem;
 	--map-stop-fill: var(--muted-foreground);
 	--map-late-share-anchor: var(--dataviz-severity-critical);
@@ -193,4 +195,11 @@ body {
 .transit-article-header [data-slot='article-header'] h1 {
 	line-height: 1.1;
 	padding-block: 0.08em;
+}
+
+.reading-column {
+	inline-size: 100%;
+	max-inline-size: var(--transit-measure-listing);
+	min-inline-size: 0;
+	margin-inline: auto;
 }

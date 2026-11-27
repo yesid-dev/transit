@@ -45,6 +45,7 @@
 		errorPage?: boolean;
 		main: Snippet;
 		footer?: Snippet;
+		desktopControlsFallback?: Snippet;
 	}
 
 	let {
@@ -64,6 +65,7 @@
 		errorPage = false,
 		main,
 		footer,
+		desktopControlsFallback,
 	}: AppShellProps = $props();
 
 	const contextLocale = getLocale();
@@ -89,11 +91,14 @@
 		() =>
 			recordStartNotice(frame.beforeRecord, locale) ?? recordEndNotice(frame.afterRecord, locale),
 	);
-	let surfaceControls = $state.raw<Snippet<[SurfaceRailContext]>[]>([]);
-	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail) => {
-		surfaceControls = [...surfaceControls, rail];
+	let surfaceControls = $state.raw<
+		{ rail: Snippet<[SurfaceRailContext]>; desktopPlacement?: 'before-frame' }[]
+	>([]);
+	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail, desktopPlacement) => {
+		const entry = { rail, desktopPlacement };
+		surfaceControls = [...surfaceControls, entry];
 		return () => {
-			surfaceControls = surfaceControls.filter((entry) => entry !== rail);
+			surfaceControls = surfaceControls.filter((control) => control !== entry);
 		};
 	};
 	setContext(frameSurfaceRailContext, registerSurfaceControls);
@@ -134,12 +139,23 @@
 {/snippet}
 
 {#snippet railContents(context: SurfaceRailContext)}
+	{@const desktop = context.presentation === 'desktop'}
+	{#if desktopControlsFallback && !surfaceControls.some(({ desktopPlacement }) => desktopPlacement === 'before-frame')}
+		<div class="desktop-controls-fallback">
+			{@render desktopControlsFallback()}
+		</div>
+	{/if}
+	{#if desktop}
+		{#each surfaceControls as { rail, desktopPlacement } (rail)}
+			{#if desktopPlacement === 'before-frame'}{@render rail(context)}{/if}
+		{/each}
+	{/if}
 	<FrameControls {context} {locale} {url} {clock} {frame} extension={controlsExtension} />
-	{#if context.presentation === 'desktop'}
+	{#if desktop}
 		{@render controlsExtension?.after?.()}
 	{/if}
-	{#each surfaceControls as controls (controls)}
-		{@render controls(context)}
+	{#each surfaceControls as { rail, desktopPlacement } (rail)}
+		{#if !desktop || desktopPlacement !== 'before-frame'}{@render rail(context)}{/if}
 	{/each}
 {/snippet}
 
@@ -211,6 +227,14 @@
 </div>
 
 <style>
+	.desktop-controls-fallback {
+		/* AppFrame's CSS chooses the rail layout before its client measurement. */
+		display: var(--app-frame-rail-display, none);
+		flex-direction: column;
+	}
+	.desktop-controls-fallback:empty {
+		display: none;
+	}
 	/* The content slot inherits AppFrame's measured header height (including its SSR fallback). */
 	.streaming-main:has(:global([data-record-pending])) {
 		min-block-size: calc(100dvh - var(--app-frame-header-height) + var(--space-card-gap));

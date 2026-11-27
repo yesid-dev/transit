@@ -23,9 +23,8 @@ export const methodCopy = {
 		sharedAcross: 'Shared across these measures',
 		minimum: 'Minimum sample',
 		rankingMinimum: 'Minimum sample for rankings',
-		files: 'The columns for measure CSV files are listed under Download.',
+		files: 'The columns of each CSV file and the daily source files are listed on',
 		downloadPage: 'Download the data',
-		cleanTables: 'lists the daily source files.',
 		dataUsers: 'For data users',
 		calculation: 'How it is calculated',
 		ordering: 'How rows are ordered',
@@ -53,13 +52,13 @@ export const methodCopy = {
 		statesNote: 'A gap is shown as a gap. An absent value is never a reassuring zero.',
 		states: {
 			no_live_data:
-				'The agency publishes no realtime feed for this line, such as the métro. It is shown with its schedule and left out of every rate.',
+				'The agency publishes no real-time feed for this line, such as the métro. It is shown with its schedule and left out of every rate.',
 			not_measured:
-				'The line or the measure exists, and the data on these dates cannot support it. It is never shown as zero.',
+				'The line or the measure exists, but the data on these dates cannot support it. It is never shown as zero.',
 			too_few_to_judge:
-				'There are readings, and too few of them to say anything fair. The count and the minimum are shown.',
+				'There are readings, but too few of them to say anything fair. The count and the minimum are shown.',
 			delay_unknown:
-				'A vehicle or a trip is there and its delay is not known, for example a scheduled vehicle with no vehicle reporting.',
+				'A vehicle or a trip is there, but its delay is not known, for example a scheduled trip with no vehicle reporting.',
 			not_reporting:
 				'A vehicle sent no position in the last 90 seconds, or on a given day. It is not the same as out of service: the vehicle may be in the garage, or on the road with a transmitter that sends nothing.',
 			not_tracked:
@@ -68,7 +67,7 @@ export const methodCopy = {
 		limitsTitle: 'What this record is not',
 		recordLimits: [
 			'Not a trip planner: it does not tell you which line to take.',
-			'Not a measure of lines without live data, such as the métro or the O-Train: their agencies publish no realtime data for them.',
+			'Not a measure of lines without live data, such as the métro or the O-Train: their agencies publish no real-time data for them.',
 			'Not a count of riders, and not a cause of delay: neither is in the feeds.',
 			'Observed times are the agency’s own predictions and positions, checked against each other, not a stopwatch at the stop.',
 			'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not directly comparable. Each screen says how its times were observed.',
@@ -110,9 +109,8 @@ export const methodCopy = {
 		sharedAcross: 'Commun à ces mesures',
 		minimum: 'Échantillon minimal',
 		rankingMinimum: 'Échantillon minimal pour les classements',
-		files: 'Les colonnes des fichiers CSV des mesures figurent sous Télécharger. La page',
+		files: 'Les colonnes de chaque fichier CSV et les fichiers sources quotidiens figurent dans',
 		downloadPage: 'Télécharger les données',
-		cleanTables: 'répertorie les fichiers sources quotidiens.',
 		dataUsers: 'Pour les utilisateurs de données',
 		calculation: 'Calcul',
 		ordering: 'Ordre du classement',

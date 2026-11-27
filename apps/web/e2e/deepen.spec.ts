@@ -78,8 +78,8 @@ test('TOC opens only its collapsed content target at the quarter-viewport line',
 	await expect(toggle).toHaveText('Expand all');
 	const content = page.locator('[data-testid="metrics-sections"] [data-section-trigger]');
 	await page
-		.locator('.metrics-toc-rail')
-		.getByRole('button', { name: 'On-time %', exact: true })
+		.getByTestId('archive-contents')
+		.getByRole('link', { name: 'On-time %', exact: true })
 		.click();
 	await expect(page.locator('#otp [data-section-trigger]')).toHaveAttribute(
 		'aria-expanded',
@@ -106,7 +106,7 @@ test('TOC opens only its collapsed content target at the quarter-viewport line',
 		.toBeLessThan(3);
 });
 
-test('mobile Metrics keeps its landing and active item when the TOC reopens during settlement', async ({
+test('mobile archive keeps its jump when the contents reopen during settlement', async ({
 	page,
 }, testInfo) => {
 	test.skip(testInfo.project.name !== 'phone', 'one real mobile Metrics settlement case');
@@ -128,13 +128,14 @@ test('mobile Metrics keeps its landing and active item when the TOC reopens duri
 			return original.call(this, options);
 		};
 	});
-	const toc = page.getByTestId('toc-pill');
-	const pill = toc.locator('button.toc-pill');
-	await pill.click({ force: true });
-	await toc.getByRole('button', { name: 'On-time %', exact: true }).click({ force: true });
-	await expect(pill).toHaveAttribute('aria-expanded', 'false');
-	await pill.click({ force: true });
-	await expect(pill).toHaveAttribute('aria-expanded', 'true');
+	const toc = page.getByTestId('archive-contents');
+	const contents = toc.locator('details');
+	const summary = toc.locator('summary');
+	await toc.getByRole('link', { name: 'On-time %', exact: true }).click({ force: true });
+	await summary.click({ force: true });
+	await expect(contents).not.toHaveAttribute('open');
+	await summary.click({ force: true });
+	await expect(contents).toHaveAttribute('open');
 	// The clock holds the settlement frames, proving the reopen happens before landing.
 	expect(
 		await page.evaluate(() => (window as unknown as { metricLandings: string[] }).metricLandings),
@@ -148,7 +149,7 @@ test('mobile Metrics keeps its landing and active item when the TOC reopens duri
 		'aria-expanded',
 		'false',
 	);
-	await expect(pill).toHaveAttribute('aria-label', /^On-time % 3\/18/);
+	await expect(contents).toHaveAttribute('open');
 	await expect
 		.poll(() =>
 			page

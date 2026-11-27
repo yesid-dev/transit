@@ -173,9 +173,7 @@ test.describe('accessibility', { tag: '@theme' }, () => {
 				if (path === '/metrics/archive') {
 					// The former inner scroller clipped these badges out of the initial axe scan.
 					for (const kind of ['not-really', 'caveat']) {
-						const badge = page
-							.locator(`[data-kind="${kind}"] [data-slot="typed-information-badge"]`)
-							.first();
+						const badge = page.locator(`[data-kind="${kind}"] h3`).first();
 						await badge.scrollIntoViewIfNeeded();
 						await badge.evaluate((element) => element.setAttribute('data-axe-badge', ''));
 						await expectAccessible(page, { include: '[data-axe-badge]' });

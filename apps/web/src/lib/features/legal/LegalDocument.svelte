@@ -35,7 +35,7 @@
 	<ReadingFrame
 		title={document.title}
 		titleId="legal-title"
-		style="--reading-gutter: 0; padding-block-end: 0"
+		style="--reading-gutter: 0; --reading-measure: var(--transit-measure-listing); padding-block-end: 0"
 		aria-labelledby="legal-title"
 		data-testid="legal-document"
 		updated={{

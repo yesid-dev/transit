@@ -18,6 +18,7 @@ export const PATHS = [
 	'/network',
 	'/search',
 	'/metrics',
+	'/download',
 	'/status',
 	...rankingKinds.map(rankingPathForKind),
 	'/receipt',

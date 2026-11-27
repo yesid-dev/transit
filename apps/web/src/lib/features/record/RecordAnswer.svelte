@@ -19,6 +19,7 @@
 		actions,
 		meta,
 		evidence,
+		fullWidthContext = false,
 		size = 'lg',
 	}: {
 		heading?: Snippet;
@@ -32,6 +33,7 @@
 		actions?: Snippet;
 		meta?: Snippet;
 		evidence?: { sample: string; lastGood?: boolean };
+		fullWidthContext?: boolean;
 		size?: 'md' | 'lg';
 	} = $props();
 	const context = $derived(Boolean(time || comparison || evidence || meta));
@@ -58,7 +60,7 @@
 		class:aside
 		class:one-row={!secondRow}
 		class:bare={!context}
-		class:short-context={!comparison && value !== null}
+		class:short-context={!comparison && !fullWidthContext && value !== null}
 	>
 		{#if heading}<div class="answer-heading" data-record-heading-row>{@render heading()}</div>{/if}
 		<div class="answer-statement">

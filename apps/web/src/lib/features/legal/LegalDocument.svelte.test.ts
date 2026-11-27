@@ -120,14 +120,14 @@ describe('LegalDocument', () => {
 
 	it('binds both localized documents to the actual publication date, written as the app writes dates', () => {
 		expect(LEGAL_EFFECTIVE_DATES).toEqual({
-			privacy: '2026-11-26',
-			terms: '2026-10-29',
+			privacy: '2026-11-27',
+			terms: '2026-11-27',
 			accessibility: '2026-11-26',
 		});
-		expect(legalDocument('en', 'privacy').effectiveDate).toBe('26 November 2026');
-		expect(legalDocument('en', 'terms').effectiveDate).toBe('29 October 2026');
-		expect(legalDocument('fr', 'privacy').effectiveDate).toBe('26 novembre 2026');
-		expect(legalDocument('fr', 'terms').effectiveDate).toBe('29 octobre 2026');
+		expect(legalDocument('en', 'privacy').effectiveDate).toBe('27 November 2026');
+		expect(legalDocument('en', 'terms').effectiveDate).toBe('27 November 2026');
+		expect(legalDocument('fr', 'privacy').effectiveDate).toBe('27 novembre 2026');
+		expect(legalDocument('fr', 'terms').effectiveDate).toBe('27 novembre 2026');
 	});
 
 	it.each([

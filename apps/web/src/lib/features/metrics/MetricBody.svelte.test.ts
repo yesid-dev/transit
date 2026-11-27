@@ -140,6 +140,6 @@ describe('server-rendered methodology bodies', () => {
 		await fireEvent.click(trigger);
 		expect(body).not.toHaveAttribute('inert');
 		expectContent(staticBody, METRICS[0], 'en');
-		expect(block.querySelector('a.metric__top')).toHaveAttribute('href', '#metrics-provenance');
+		expect(view.container.querySelector('a[href="#metrics-title"]')).toBeInTheDocument();
 	});
 });
