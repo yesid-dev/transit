@@ -1,13 +1,14 @@
 import { expect, type Page } from '@playwright/test';
+import { waitForFrameRailLayout } from './frame-controls';
 
 export function mapControlsPill(page: Page) {
 	return page.locator('[data-slot="surface-rail-mobile"] button').first();
 }
 
 export async function openMapControls(page: Page) {
-	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	const layout = await waitForFrameRailLayout(page);
 	const pill = mapControlsPill(page);
-	if (await pill.isVisible()) {
+	if (layout === 'compact' && (await pill.isVisible())) {
 		if ((await pill.getAttribute('aria-expanded')) !== 'true') await pill.click();
 		await expect(pill).toHaveAttribute('aria-expanded', 'true');
 	}
