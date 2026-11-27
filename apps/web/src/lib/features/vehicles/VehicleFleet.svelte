@@ -178,7 +178,7 @@
 				.catch(() => {});
 		}
 	});
-	// A feed that gives no vehicle a direction (OC Transpo) gets one sentence under the table,
+	// A feed that gives no vehicle a direction gets one sentence under the table,
 	// not "Unknown direction" on every row.
 	const headings = $derived(reporting.some((vehicle) => vehicle.direction_id != null));
 	function direction(vehicle: Vehicle) {

@@ -143,7 +143,7 @@
 {/snippet}
 
 {#snippet schedule()}
-	{#if record}<LineScheduleCard {record} {locale} {url} {headsigns} />{/if}
+	{#if record}<LineScheduleCard {record} {locale} {url} {headsigns} reserve={scheduleOnly} />{/if}
 {/snippet}
 
 {#snippet body(

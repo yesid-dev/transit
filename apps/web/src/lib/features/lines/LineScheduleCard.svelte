@@ -10,11 +10,18 @@
 		locale,
 		url,
 		headsigns,
+		reserve = false,
 	}: {
 		record: ReturnType<typeof loadLineRecord>;
 		locale: Locale;
 		url: URL;
 		headsigns: Record<number, string>;
+		/**
+		 * Keep the card's room while it loads. Only where it is the first reading under the answer
+		 * (a timetable-only line): further down, content above it streams in and a tall waiting
+		 * card would only move more of the screen.
+		 */
+		reserve?: boolean;
 	} = $props();
 	const frequencyAnswer = $derived(
 		record.sections.find(({ section }) => section === 'frequency')!.answer,
@@ -27,12 +34,12 @@
 
 <div id="schedule" class="min-w-0">
 	{#await frequencyAnswer}
-		{#key frequencyAnswer}<div class="schedule-waiting">
+		{#key frequencyAnswer}<div class={{ 'schedule-waiting': reserve }}>
 				<RecordPending {locale} answer={frequencyAnswer} />
 			</div>{/key}
 	{:then frequency}
 		{#await boundariesAnswer}
-			{#key boundariesAnswer}<div class="schedule-waiting">
+			{#key boundariesAnswer}<div class={{ 'schedule-waiting': reserve }}>
 					<RecordPending {locale} answer={boundariesAnswer} />
 				</div>{/key}
 		{:then boundaries}

@@ -61,7 +61,6 @@ const captureRefresh = new Set<Screen>([
 	'data-health-live',
 	'alerts-live',
 	'vehicle-live',
-	'vehicles-live',
 	'stop-live',
 ]);
 const recordAnswers = new Set<Screen>([

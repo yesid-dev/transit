@@ -36,7 +36,7 @@
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 
-	// A feed that gives no vehicle a next stop (OC Transpo) loses the column, not each row.
+	// A feed that gives no vehicle a next stop loses the column, not each row.
 	const stops = $derived(rows.some(({ stop }) => stop !== null));
 	const tableRows = $derived(
 		rows.map((row) => ({
