@@ -77,7 +77,7 @@ def vehicle_hour_weight_sql(
 # Clean positions only contain identified readings. Confirmed trips provide a
 # second check for feeds where the cleaner could not assign a stable ID at all.
 TRACKED_VEHICLES_SQL = f"""
-        WITH positions AS (
+        WITH positions AS NOT MATERIALIZED (
             SELECT vehicle_id, readings, service_date, trip_id
             FROM read_parquet(?, hive_partitioning = false)
             WHERE provider = ? AND cleaning_version = ?
@@ -89,15 +89,21 @@ TRACKED_VEHICLES_SQL = f"""
             SELECT *, coalesce(trim(vehicle_id) <> '', false)
                 AND n >= {MIN_STABLE_ID_READINGS} AS stable
             FROM readings
-        ), identified_trips AS (
-            SELECT DISTINCT service_date, trip_id
-            FROM positions JOIN identities USING (vehicle_id) WHERE stable
-        ), confirmed_trips AS (
-            SELECT avg((coalesce(i.stable, false) OR p.trip_id IS NOT NULL)::INTEGER) AS share
+        ), ran_trips AS (
+            SELECT t.service_date, t.trip_id, coalesce(i.stable, false) AS stable
             FROM read_parquet(?, hive_partitioning = false) t
             LEFT JOIN identities i USING (vehicle_id)
-            LEFT JOIN identified_trips p USING (service_date, trip_id)
             WHERE t.provider = ? AND t.cleaning_version = ? AND t.state = 'ran'
+        ), identified_trips AS (
+            -- Positions can corroborate a trip whose recorded vehicle ID is unstable.
+            SELECT DISTINCT service_date, trip_id
+            FROM positions JOIN identities USING (vehicle_id)
+            SEMI JOIN (SELECT service_date, trip_id FROM ran_trips WHERE NOT stable) t
+                USING (service_date, trip_id)
+            WHERE stable
+        ), confirmed_trips AS (
+            SELECT avg((t.stable OR p.trip_id IS NOT NULL)::INTEGER) AS share
+            FROM ran_trips t LEFT JOIN identified_trips p USING (service_date, trip_id)
         )
         SELECT CASE WHEN sum(n) FILTER (stable) / sum(n) >= {MIN_STABLE_READING_SHARE}
             AND coalesce((SELECT share FROM confirmed_trips), 1) >= {MIN_STABLE_READING_SHARE}
@@ -249,29 +255,47 @@ def vehicle_stats_query(
             terminus = """CASE WHEN t.terminus_vehicle_id = v.assigned_vehicle
                 THEN t.terminus_reached_at_utc END"""
         terminus_observed = "t.terminus_reached_at_utc IS NOT NULL" if gps_terminus else "false"
+        # The coverage gate needs every trip's final stop. The other endpoints
+        # only describe selected trips, except origins used to confirm a handoff.
+        candidate_join = ""
+        position_scope = ""
+        candidate = "true"
+        observed_candidate = "observed_at_utc IS NOT NULL"
+        if vehicle is not None and not by_hour:
+            candidate_join = """
+                LEFT JOIN (
+                    SELECT service_date, trip_id, true AS selected_trip FROM selected_trip_keys
+                ) USING (service_date, trip_id)
+            """
+            position_scope = """
+                JOIN selected USING (vehicle_id)
+                SEMI JOIN trip_entities USING (service_date, trip_id)
+            """
+            candidate = "selected_trip"
+            observed_candidate += " AND selected_trip"
         completion_sql = f"""
         , endpoints AS (
-            SELECT service_date, trip_id, max(stop_sequence) AS final_stop,
+            SELECT s.service_date, s.trip_id, max(stop_sequence) AS final_stop,
                 arg_max_null(coalesce(scheduled_arrival_utc, scheduled_departure_utc),
-                    stop_sequence) AS scheduled_end,
-                arg_max(stop_id, stop_sequence) AS final_stop_id,
+                    stop_sequence) FILTER ({candidate}) AS scheduled_end,
+                arg_max(stop_id, stop_sequence) FILTER ({candidate}) AS final_stop_id,
                 max(stop_sequence) FILTER (observed_at_utc IS NOT NULL) AS observed_stop,
-                max(observed_at_utc) AS last_stop_time,
-                arg_max(stop_id, stop_sequence) FILTER (observed_at_utc IS NOT NULL)
+                max(observed_at_utc) FILTER ({candidate}) AS last_stop_time,
+                arg_max(stop_id, stop_sequence) FILTER ({observed_candidate})
                     AS last_observed_stop_id,
-                arg_max(basis, stop_sequence) FILTER (observed_at_utc IS NOT NULL)
+                arg_max(basis, stop_sequence) FILTER ({observed_candidate})
                     AS last_observed_basis,
-                min(vehicle_id) FILTER (observed_at_utc IS NOT NULL) AS first_stop_id,
-                max(vehicle_id) FILTER (observed_at_utc IS NOT NULL) AS last_stop_id,
-                arg_max_null(vehicle_id, stop_sequence) FILTER (observed_at_utc IS NOT NULL)
+                min(vehicle_id) FILTER ({observed_candidate}) AS first_stop_id,
+                max(vehicle_id) FILTER ({observed_candidate}) AS last_stop_id,
+                arg_max_null(vehicle_id, stop_sequence) FILTER ({observed_candidate})
                     AS last_observed_vehicle_id,
                 arg_min(stop_id, stop_sequence) AS origin_id,
                 arg_min_null(vehicle_id, stop_sequence) AS origin_vehicle_id,
                 arg_min_null(observed_at_utc, stop_sequence) AS origin_seen_at,
                 arg_min_null(basis, stop_sequence) AS origin_basis
-            FROM read_parquet(?, hive_partitioning = false)
-            WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
-            GROUP BY service_date, trip_id
+            FROM read_parquet(?, hive_partitioning = false) s {candidate_join}
+            WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
+            GROUP BY s.service_date, s.trip_id
         ), terminus_counts AS (
             SELECT t.service_date, count(*) AS ran_trips,
                 count(*) FILTER (e.observed_stop = e.final_stop OR {terminus_observed})
@@ -291,7 +315,7 @@ def vehicle_stats_query(
             FROM assignments GROUP BY service_date, trip_id
         ), last_position AS (
             SELECT service_date, trip_id, vehicle_id, max(observed_at_utc) AS seen_at
-            FROM positions
+            FROM positions {position_scope}
             WHERE service_date IS NOT NULL AND trip_id IS NOT NULL
             GROUP BY service_date, trip_id, vehicle_id
         ), candidates AS (
