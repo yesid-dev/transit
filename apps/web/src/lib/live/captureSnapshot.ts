@@ -120,6 +120,7 @@ export function captureFamily(snapshot: CaptureSnapshot | null, family: CaptureF
 
 export interface CaptureEvidence {
 	readonly captureFeed?: CaptureFeed;
+	readonly capturePublishedAt?: string | null;
 	readonly captureRevision?: string;
 }
 

@@ -117,6 +117,7 @@ export function createVehicleOverlay(
 	pin: ImageData,
 	onPaint?: (receipt: VehicleOverlayReceipt) => void,
 	onUnavailable?: () => void,
+	options: { minimumBodySize?: number } = {},
 ): VehicleOverlay {
 	const glCanvas = map.getCanvas();
 	const forcedColors = window.matchMedia('(forced-colors: active)');
@@ -285,7 +286,11 @@ export function createVehicleOverlay(
 		const { z11, z15 } = VEHICLE_MARKER_GEOMETRY.bodyIconSize;
 		const detailScale = lerp(zoom, 11, 15, z11, z15);
 		// Keep the larger silhouette and its internal contrast in forced-colors mode.
-		const baseSize = forcedColors.matches ? detailScale : vehicleScale(zoom, detailScale);
+		const minimum = (options.minimumBodySize ?? 0) / BOX;
+		const baseSize = Math.max(
+			minimum,
+			forcedColors.matches ? detailScale : vehicleScale(zoom, detailScale),
+		);
 		const projected: ProjectedVehicle[] = features.features.map((feature, index) => {
 			const [lon, lat] = feature.geometry.coordinates;
 			const point = map.project([lon, lat]);
@@ -295,7 +300,7 @@ export function createVehicleOverlay(
 				x: point.x,
 				y: point.y,
 				baseSize,
-				bodySizeFactor: baseSize * viewportPitchScale(point.y, height),
+				bodySizeFactor: Math.max(minimum, baseSize * viewportPitchScale(point.y, height)),
 			};
 		});
 		const visible = projected.filter(
@@ -317,7 +322,10 @@ export function createVehicleOverlay(
 			const selected = feature.properties.id === selectedId;
 			if (!hovered && !selected) continue;
 			const circleScale = Math.max(0, depthRatio(y, height));
-			const radius = lerp(zoom, 11, 15, hovered ? 15 : 13, hovered ? 22 : 19) * circleScale;
+			const radius = Math.max(
+				lerp(zoom, 11, 15, hovered ? 15 : 13, hovered ? 22 : 19) * circleScale,
+				(options.minimumBodySize ?? 0) / 2,
+			);
 			const strokeWidth =
 				(hovered
 					? VEHICLE_HIGHLIGHT_STYLE.hoverStrokeWidth

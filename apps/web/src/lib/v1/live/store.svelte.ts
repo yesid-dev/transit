@@ -177,7 +177,7 @@ export function createLiveStore(
 			// Overview's network counts and the vehicle list both come from the same capture.
 			const vehicleCapture = feed?.family === 'vehicle_positions';
 			const captureState = vehicleCapture
-				? captureDisplayState(feed, now)
+				? captureDisplayState(feed, now, payload?.capturePublishedAt)
 				: feed && feedState(feed, now, CAPTURE_PROXY_CACHE_S + ttlMs / 1_000);
 			const publicationAge = freshnessAgeSeconds(payload?.generated_utc, now, ttlMs / 1000);
 			const legacyCapture =

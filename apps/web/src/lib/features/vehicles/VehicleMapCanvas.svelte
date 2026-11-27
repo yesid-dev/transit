@@ -63,7 +63,10 @@
 	function paintLayers(instance: MapLibreMap) {
 		const { sprites, pin } = retintMapLayers(instance);
 		if (overlay) overlay.setSprites(sprites, pin);
-		else overlay = createVehicleOverlay(instance, sprites, pin);
+		else
+			overlay = createVehicleOverlay(instance, sprites, pin, undefined, undefined, {
+				minimumBodySize: 56,
+			});
 	}
 
 	function attach(instance: MapLibreMap) {
@@ -85,6 +88,7 @@
 
 	$effect(() => {
 		if (!map) return;
+		overlay?.setScene(false, null, null, vehicle.id);
 		overlay?.draw(toVehicleFeatures([vehicle], filter, undefined, vehicle.id));
 	});
 
@@ -96,24 +100,51 @@
 			stops.map((stop) => ({ ...stop, routes: [] })),
 		);
 		const labels = stops.map((stop) => {
+			const anchor = document.createElement('div');
+			anchor.className = 'vehicle-map-stop-anchor';
 			const element = document.createElement('span');
 			element.className = 'vehicle-map-stop-name';
-			element.textContent = stopDisplayName(stop.name);
+			anchor.append(element);
+			const left = stop.id === previous?.id;
+			const label = left ? (fr ? 'Quitté :' : 'Left:') : fr ? 'Prochain :' : 'Next:';
+			element.textContent = `${label} ${stopDisplayName(stop.name)}`;
 			element.title = element.textContent;
-			return new Marker({ element, anchor: 'bottom', offset: [0, -9] })
+			const north = stop.lat === vehicle.lat ? left : stop.lat > vehicle.lat;
+			const marker = new Marker({
+				element: anchor,
+				anchor: north ? 'bottom' : 'top',
+				offset: [0, north ? -34 : 34],
+			})
 				.setLngLat([stop.lon, stop.lat])
 				.addTo(instance);
+			return { marker, element };
 		});
-		return () => labels.forEach((label) => label.remove());
+		const placeLabels = () => {
+			const width = instance.getContainer().clientWidth;
+			for (const { marker, element } of labels) {
+				const center = instance.project(marker.getLngLat()).x;
+				const inset = element.offsetWidth / 2 + 8;
+				const clamped = Math.min(width - inset, Math.max(inset, center));
+				element.style.translate = `${clamped - center}px`;
+			}
+		};
+		placeLabels();
+		instance.on('move', placeLabels);
+		instance.on('resize', placeLabels);
+		return () => {
+			instance.off('move', placeLabels);
+			instance.off('resize', placeLabels);
+			labels.forEach(({ marker }) => marker.remove());
+		};
 	});
 </script>
 
-<div class="vehicle-map-canvas h-full">
+<div class="vehicle-map-canvas @container h-full">
 	<MapStage
 		interactive={false}
 		{bounds}
 		maxBounds={manifest.bbox}
-		fitPadding={24}
+		fitPadding={{ top: 48, bottom: 48, left: 24, right: 24 }}
 		basemapLoader={({ signal }) => getBasemap({ signal })}
 		theme={theme.current}
 		label={fr ? 'Position du véhicule et arrêts à proximité' : 'Vehicle position and nearby stops'}
@@ -135,9 +166,17 @@
 </div>
 
 <style>
-	.vehicle-map-canvas :global(.vehicle-map-stop-name) {
+	.vehicle-map-canvas :global([data-slot='vehicle-overlay']) {
+		z-index: 1;
+	}
+
+	.vehicle-map-canvas :global(.vehicle-map-stop-anchor) {
 		pointer-events: none;
-		max-inline-size: min(16rem, 65vw);
+	}
+
+	.vehicle-map-canvas :global(.vehicle-map-stop-name) {
+		display: block;
+		max-inline-size: min(16rem, calc(100cqi - 1rem));
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

@@ -14,12 +14,7 @@
 	import FleetLiveAnswer from './FleetLiveAnswer.svelte';
 	import VehicleMapPreview from './VehicleMapPreview.svelte';
 	import { vehicleLocationRoute } from './vehicleLocationRoute.ts';
-	import {
-		delayReading,
-		tickingLiveStamp,
-		liveStatusWords,
-		relativeReportAge,
-	} from '#lib/site/presenter.ts';
+	import { tickingLiveStamp, liveStatusWords, relativeReportAge } from '#lib/site/presenter.ts';
 	import * as Sheet from '@yesid/ui/sheet';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -43,7 +38,7 @@
 	import type { Manifest, RouteFile, Vehicle } from '#lib/v1/schemas/index.ts';
 	import type { SlimStopsIndex } from '#lib/v1/repositories/stopsSlim.ts';
 	import { vehicleHref } from './vehicleLinks.ts';
-	import { vehicleStatus } from './vehicleText.ts';
+	import { vehicleHeadline, vehicleStatus } from './vehicleText.ts';
 
 	let {
 		manifest,
@@ -153,14 +148,8 @@
 		selected ? notReporting(selected, clock.serverNow, cutoff) !== null : false,
 	);
 
-	const liveReading = $derived(selected && !silent && !health.isStale ? selected : null);
-	const liveDelay = $derived(
-		liveReading?.delay_min == null
-			? null
-			: liveReading.delay_min === 0
-				? t('On time', 'À l’heure')
-				: delayReading(liveReading.delay_min * 60, locale),
-	);
+	const liveReading = $derived(selected && (!silent || health.isStale) ? selected : null);
+	const headline = $derived(liveReading ? vehicleHeadline(liveReading, locale) : null);
 	const destination = $derived(
 		liveReading ? display.directory.headsign(liveReading.route, directionName(liveReading)) : null,
 	);
@@ -199,7 +188,7 @@
 	});
 	const liveTime = $derived(
 		report && Number.isFinite(Date.parse(report))
-			? tickingLiveStamp(new Date(report), locale, { late: !liveReading })
+			? tickingLiveStamp(new Date(report), locale, { late: !liveReading || health.isStale })
 			: undefined,
 	);
 	const next = $derived.by(() => {
@@ -247,54 +236,64 @@
 				? 'not_reporting'
 				: 'no_live_data',
 	);
-	const liveSentence = $derived(
-		liveReading
-			? [
-					liveDelay
-						? t('against the timetable', 'par rapport à l’horaire')
-						: t('Delay unknown', 'Retard inconnu'),
-					liveReading.route
-						? t(
-								`on line ${display.line(liveReading.route)}${toward}`,
-								`sur la ligne ${display.line(liveReading.route)}${toward}`,
-							)
-						: null,
-				]
-					.filter(Boolean)
-					.join(', ') + '.'
-			: !live.vehicles
-				? live.familyStates.vehicles.phase === 'failed'
-					? t(
-							'Live reports are temporarily unavailable.',
-							'Les signalements en direct sont temporairement indisponibles.',
-						)
-					: t('Loading live reports…', 'Chargement des signalements en direct…')
-				: health.isStale
-					? t(
-							'The latest feed is delayed. Current vehicle activity is unknown.',
-							'Le flux est en retard. L’activité actuelle des véhicules est inconnue.',
-						)
-					: t(
-							'This vehicle is not reporting now. The feed cannot tell whether it is still in service.',
-							'Ce véhicule ne se signale pas en ce moment. Le flux n’indique pas s’il est toujours en service.',
-						),
-	);
+	const liveSentence = $derived.by(() => {
+		if (liveReading && headline) {
+			const line = liveReading.route ? display.line(liveReading.route) : null;
+			const sentence = [
+				headline.timing,
+				line ? t(`on line ${line}${toward}`, `sur la ligne ${line}${toward}`) : null,
+			]
+				.filter(Boolean)
+				.join(', ');
+			return sentence
+				? sentence + '.'
+				: t(
+						'The last report gave no timetable offset.',
+						'Le dernier signalement ne donnait aucun écart à l’horaire.',
+					);
+		}
+		if (!live.vehicles)
+			return live.familyStates.vehicles.phase === 'failed'
+				? t(
+						'Live reports are temporarily unavailable.',
+						'Les signalements en direct sont temporairement indisponibles.',
+					)
+				: t('Loading live reports…', 'Chargement des signalements en direct…');
+		if (health.isStale)
+			return t(
+				'No report from this vehicle yet. Live reports are late.',
+				'Aucun signalement de ce véhicule pour l’instant. Les signalements en direct sont en retard.',
+			);
+		return t(
+			'This vehicle is not reporting now. The feed cannot tell whether it is still in service.',
+			'Ce véhicule ne se signale pas en ce moment. Le flux n’indique pas s’il est toujours en service.',
+		);
+	});
 </script>
 
 {#if id}
 	{@const mapHref = href('/map?' + new URLSearchParams({ selectedVehicle: id }))}
 	<div class="min-w-0" data-slot="screen-content">
 		<RecordGroup class="gap-(--space-card-gap)">
-			{@render titleBlock?.(liveReading?.route)}
+			{@render titleBlock?.(health.isStale ? null : liveReading?.route)}
 			<FleetLiveAnswer {locale} pending={waitingForReports}>
 				<RecordAnswer
-					value={liveDelay}
+					value={headline?.value ?? null}
 					state={readingState}
 					sentence={liveSentence}
 					{locale}
 					time={liveTime}
 				/>
-				{#if readingState === 'not_reporting' && report}<p>
+				{#if liveReading && health.isStale}<p
+						class="text-small text-muted-foreground"
+						data-slot="last-vehicle-position"
+					>
+						{t('Last report', 'Dernier signalement')}
+						{@render reportedAt()}. {t(
+							'The feed is late; this is the last position received.',
+							'Le flux est en retard; voici la dernière position reçue.',
+						)}
+					</p>{:else if readingState === 'not_reporting' && report}<p>
 						{t('Last report', 'Dernier signalement')} · {@render reportedAt()}
 					</p>{/if}
 			</FleetLiveAnswer>
@@ -302,12 +301,15 @@
 				<RecordCard
 					interactive
 					title={t('Where it is', 'Où il se trouve')}
-					class="lg:min-h-[31.25rem]"
+					class={liveReading || waitingForReports ? 'lg:min-h-[31.25rem]' : undefined}
 					stamp={liveTime}
 					stampRule
 					stampPending={waitingForReports}
 				>
-					<div class="vehicle-location grid content-start gap-3">
+					<div
+						class="vehicle-location grid content-start gap-3"
+						class:reserved={liveReading || waitingForReports}
+					>
 						{#if waitingForReports}<div data-waiting-shape="map">
 								<Skeleton class="h-64 w-full" />
 							</div>
@@ -343,12 +345,12 @@
 				<RecordCard
 					interactive
 					title={t('What it is running', 'Son service en cours')}
-					class="lg:min-h-[37.125rem]"
+					class={liveReading || waitingForReports ? 'lg:min-h-[37.125rem]' : undefined}
 					stamp={liveTime}
 					stampRule
 					stampPending={waitingForReports}
 				>
-					<div class="vehicle-running">
+					<div class="vehicle-running" class:reserved={liveReading || waitingForReports}>
 						{#if waitingForReports}<RecordPending
 								{locale}
 								shape={{ shape: 'facts', count: 6 }}
@@ -495,10 +497,10 @@
 {/snippet}
 
 <style>
-	.vehicle-location {
+	.vehicle-location.reserved {
 		min-block-size: 19rem;
 	}
-	.vehicle-running {
+	.vehicle-running.reserved {
 		min-block-size: 21rem;
 	}
 

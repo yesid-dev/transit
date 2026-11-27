@@ -147,7 +147,18 @@ for (const [width, height, locale, scheme] of [
 		}
 		await expect(preview).toHaveAttribute('data-ready', 'true');
 		await expect(preview.locator('[data-slot="vehicle-overlay"]')).toBeVisible();
-		await expect(preview.locator('.vehicle-map-stop-name')).toHaveCount(2);
+		const stopNames = preview.locator('.vehicle-map-stop-name');
+		await expect(stopNames).toHaveText(
+			locale === 'fr'
+				? ['Quitté : Sherbrooke / Wood', 'Prochain : Sherbrooke / Atwater']
+				: ['Left: Sherbrooke / Wood', 'Next: Sherbrooke / Atwater'],
+		);
+		const stage = await preview.locator('[data-slot="map-stage"]').boundingBox();
+		for (const name of await stopNames.all()) {
+			const box = await name.boundingBox();
+			expect(box!.x).toBeGreaterThanOrEqual(stage!.x);
+			expect(box!.x + box!.width).toBeLessThanOrEqual(stage!.x + stage!.width);
+		}
 		await expect(preview.locator('[data-slot="map-stage"]')).toBeVisible();
 		await expect(page.locator('html')).toHaveAttribute('data-theme', scheme);
 		expect((await shapes).ok()).toBe(true);

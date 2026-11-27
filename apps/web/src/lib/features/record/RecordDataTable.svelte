@@ -82,6 +82,7 @@
 		rowHeading,
 		rowAlign = 'middle',
 		phone,
+		compactName = false,
 	}: {
 		locale: Locale;
 		title: string;
@@ -99,6 +100,7 @@
 		rowHeading?: Snippet<[Row]>;
 		rowAlign?: 'middle';
 		phone?: RecordPhoneRow<Row>;
+		compactName?: boolean;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
 		...(leadingColumn ? [leadingColumn] : []),
@@ -106,6 +108,7 @@
 			key: 'name',
 			header: rowHeader,
 			rowHeader: true,
+			width: compactName ? '1%' : undefined,
 			sortable: !!sort,
 			cell: nameCell,
 		},
@@ -231,7 +234,9 @@
 		tableClass={[
 			headerClass,
 			wideHeaderClass,
-			'[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
+			compactName
+				? '[&_thead_th[data-column=name]]:whitespace-nowrap [&_tbody_th[data-column=name]]:whitespace-nowrap @min-[38rem]:[&_thead_th]:whitespace-nowrap @min-[38rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap'
+				: '[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
 			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',

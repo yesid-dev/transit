@@ -310,11 +310,7 @@ test('desktop controls keep their column and control changes retain focus and sc
 	expect(await page.evaluate(() => window.scrollY)).toBe(0);
 	expect((await main.boundingBox())!.x).toBe(x);
 
-	await expect(rail.getByRole('radio', { name: 'Live now', exact: true })).toBeDisabled();
-	const record = rail.getByRole('radio', { name: 'Record', exact: true });
-	await expect(record).toBeDisabled();
-	await expect(record).toBeChecked();
-	await expect(rail.getByText('This screen is a record. It has no live view.')).toBeVisible();
+	await expect(rail.getByRole('group', { name: 'View', exact: true })).toHaveCount(0);
 	const cards = await rail
 		.locator('[data-slot="controls-rail"]')
 		.evaluateAll((elements) => elements.map((element) => getComputedStyle(element).padding));
@@ -420,7 +416,7 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 	await page.keyboard.press('Enter');
 	const sheet = page.getByRole('dialog', { name: 'Options', exact: true });
 	await expect(sheet).toBeVisible();
-	await expect(sheet.getByRole('radio', { name: 'En direct', exact: true })).toBeDisabled();
+	await expect(sheet.getByRole('group', { name: 'Vue', exact: true })).toHaveCount(0);
 	await expect(
 		sheet.getByRole('radiogroup', { name: 'Période', exact: true }).getByRole('radio'),
 	).toHaveCount(6);
