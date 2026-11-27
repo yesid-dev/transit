@@ -91,6 +91,19 @@ describe('error route', () => {
 		expect(document.title).toBe(`404 · ${heading} · Transit`);
 	});
 
+	it.each([
+		['/network?provider=stm', 'Try again', 'Back to home', '/'],
+		['/fr/network?provider=stm', 'Réessayer', 'Retour à l’accueil', '/fr'],
+	])('reloads the failed page with its query at %s', (path, retry, home, homePath) => {
+		const url = new URL(path, 'https://transit.yesid.dev');
+		pageState.value = { status: 503, error: null, url };
+		render(ErrorPage);
+		const link = screen.getByRole('link', { name: retry });
+		expect(link).toHaveAttribute('href', url.href);
+		expect(link.closest('[data-sveltekit-reload]')).not.toBeNull();
+		expect(screen.getByRole('link', { name: home })).toHaveAttribute('href', homePath);
+	});
+
 	it('preserves the generic error treatment and never presents a 500 as a 404 construction sign', () => {
 		pageState.value = {
 			status: 500,

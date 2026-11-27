@@ -5,6 +5,7 @@ import type { PageServerLoad } from './$types';
 import { canonicalDetailTabLocation } from '#lib/site/detailTabs.ts';
 import { loadStopRecord } from '#lib/server/stopRecord.ts';
 import { getRecordAnswer } from '#lib/server/engine.ts';
+import { withinBootBudget } from '#lib/server/timetable.ts';
 import {
 	frameClock,
 	frameDateLimit,
@@ -17,6 +18,7 @@ import { lineIsScheduleOnly, providerHasAlerts } from '#lib/site/providerCapabil
 import { fetchCaptureSnapshot, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
 
 export const load: PageServerLoad = async (event) => {
+	const started = performance.now();
 	const { url } = event;
 	const canonicalLocation = canonicalDetailTabLocation(url);
 	if (canonicalLocation) redirect(308, canonicalLocation);
@@ -49,6 +51,7 @@ export const load: PageServerLoad = async (event) => {
 	const clock = frameClock(provider);
 	const period = !frameLive ? parseAnswerFrameState(url.searchParams, clock).period : null;
 	const scope = { city: providerId, visitorIp: event.request.headers.get('cf-connecting-ip') };
+	let stopIdentity: Promise<'available' | 'missing' | 'unconfirmed'> | undefined;
 	if (period && !scheduledStop) {
 		// One question over the whole record tells an archived stop, which keeps its Record even
 		// for dates without readings, from an id the network never published.
@@ -57,25 +60,25 @@ export const load: PageServerLoad = async (event) => {
 		const earliest = new Date(Date.parse(to) - (MAX_RECORD_DAYS - 1) * 86_400_000)
 			.toISOString()
 			.slice(0, 10);
-		const history = await getRecordAnswer(
+		const identity = getRecordAnswer(
 			{ path: '/measure', parameters: { measure: 'on_time', group: 'stop_id', stop: id } },
 			{ ...scope, from: earliest > start ? earliest : start, to },
+		).then(
+			(history) => {
+				if (history.kind !== 'answer' || !('cells' in history.answer)) return 'unconfirmed';
+				if (history.answer.cells.some(({ key }) => key.stop === id)) return 'available';
+				return schedule && history.answer.evidence.days_included.length ? 'missing' : 'unconfirmed';
+			},
+			() => 'unconfirmed' as const,
 		);
-		const unavailable = () =>
-			error(
-				503,
-				lang === 'fr'
-					? 'L’identité de cet arrêt est temporairement indisponible.'
-					: 'This stop’s identity is temporarily unavailable.',
-			);
-		if (history.kind !== 'answer' || !('cells' in history.answer)) return unavailable();
-		if (!history.answer.cells.some(({ key }) => key.stop === id)) {
-			if (!schedule || !history.answer.evidence.days_included.length) return unavailable();
+		const fast = await withinBootBudget(identity, started);
+		if (fast === 'missing') {
 			error(404, {
 				code: 'STOP_NOT_FOUND',
 				message: lang === 'fr' ? 'Cet arrêt est introuvable.' : 'This stop could not be found.',
 			});
 		}
+		if (fast !== 'available') stopIdentity = identity;
 	}
 	return {
 		seed: { id, name: name || id },
@@ -90,6 +93,7 @@ export const load: PageServerLoad = async (event) => {
 		tripUpdatesPublished,
 		hasAlerts,
 		...(name ? { seoTitle: stopPageTitle(stopDisplayName(name), scheduledStop?.code, lang) } : {}),
+		stopIdentity,
 		record: period ? loadStopRecord({ ...scope, ...period }, id) : null,
 		capture:
 			live && (hasAlerts || (tripUpdatesPublished && !scheduleOnly))

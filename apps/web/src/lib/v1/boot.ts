@@ -29,6 +29,7 @@ export async function bootProvider(
 	url: URL,
 	loadCatalog: () => Promise<CityCatalog>,
 	location?: ApproximateLocation | null,
+	lastCatalog?: CityCatalog,
 ) {
 	const requested = url.searchParams.getAll('provider');
 	let defaultProviderId = v1Provider();
@@ -38,17 +39,23 @@ export async function bootProvider(
 	let cleaningVersion: number | undefined;
 	let redirectHref: string | null = null;
 	let discoveryError = false;
+	let catalog: CityCatalog | undefined;
 	try {
-		const catalog = await loadCatalog();
+		catalog = await loadCatalog();
+	} catch {
+		discoveryError = true;
+		catalog = lastCatalog;
+	}
+	if (catalog) {
 		const selected = resolveProvider(url, catalog, location);
 		defaultProviderId = catalog.default_provider;
 		provider = selected.provider;
 		providerId = provider.id;
 		providers = catalog.providers;
 		cleaningVersion = catalog.cleaning_version;
-		if (selected.url.href !== url.href) redirectHref = selected.url.pathname + selected.url.search;
-	} catch {
-		discoveryError = true;
+		if (!discoveryError && selected.url.href !== url.href) {
+			redirectHref = selected.url.pathname + selected.url.search;
+		}
 	}
 	return {
 		providerId,

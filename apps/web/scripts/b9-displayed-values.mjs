@@ -30,6 +30,7 @@ const WRANGLER = join(WEB_ROOT, '../../node_modules/wrangler/bin/wrangler.js');
 const EXPECTED_WRANGLER = JSON.parse(readFileSync(join(WEB_ROOT, '../../package.json'), 'utf8'))
 	.devDependencies?.wrangler;
 const REPLAY_PREFIX = '/v1/stm/';
+const CATALOG_PATH = '/v2/cities';
 const CELLS = Object.freeze(runnerCases.cells);
 
 function recordFixture(url, fixtureName) {
@@ -488,7 +489,7 @@ async function verifyNetwork(page, cell, fixture, replay, errors, html) {
 	await value.waitFor();
 	const isLive = cell.surface === 'network-live';
 	const actual = [parseNumber(await value.innerText())];
-	const expectedPaths = ['/v2/cities', '/v2/stm/schedule-index'];
+	const expectedPaths = ['/v2/stm/schedule-index'];
 	if (isLive) {
 		const expected = b9LiveFixture(fixture).expectation;
 		const title = cell.locale === 'fr' ? 'Véhicules par état' : 'Vehicles by status';
@@ -589,8 +590,12 @@ async function verifyNetwork(page, cell, fixture, replay, errors, html) {
 	};
 	invariant(
 		data.every((entry) => entry.lane === 'ssr' && entry.status === 200) &&
-			JSON.stringify(data.map(({ path }) => normalizePath(path)).sort()) ===
-				JSON.stringify(expectedPaths.sort()),
+			JSON.stringify(
+				data
+					.filter(({ path }) => path !== CATALOG_PATH)
+					.map(({ path }) => normalizePath(path))
+					.sort(),
+			) === JSON.stringify(expectedPaths.sort()),
 		`${label} made incomplete or unexpected requests: ${JSON.stringify(data)}`,
 	);
 	invariant(replay.state.outbound.length === 0, `${label} outbound: ${replay.state.outbound}`);
@@ -856,6 +861,27 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 	};
 }
 
+function catalogueKey(fixture) {
+	// Older fixtures have no explicit revision. Compare the full catalogue in that case.
+	const catalog = fixture.files[CATALOG_PATH];
+	return JSON.stringify(
+		catalog.answer_revision ? [catalog.cleaning_version, catalog.answer_revision] : catalog,
+	);
+}
+
+function checkCatalogueReads(ledger, cold, label) {
+	const reads = ledger.filter(({ path }) => path === CATALOG_PATH);
+	invariant(
+		reads.length <= 1 &&
+			(!cold || reads.length === 1) &&
+			reads.every(
+				({ lane, method, status }) => lane === 'ssr' && method === 'GET' && status === 200,
+			),
+		`${label} invalid ${cold ? 'cold' : 'warm'} catalogue reads: ${JSON.stringify(reads)}`,
+	);
+	return reads.length;
+}
+
 async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic = true } = {}) {
 	const selfCheck = runRunnerSelfCheck();
 	const built = await ensureBuild();
@@ -877,13 +903,22 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 			'launched Chromium version mismatch',
 		);
 		for (let run = 0; run < runs; run += 1) {
+			replay.state.active = cells[0].fixture;
+			replay.state.ledger = [];
 			preview = await startPreview(replay);
+			// The /privacy readiness request is the first cold request in this Worker.
+			checkCatalogueReads(replay.state.ledger, true, `run ${run + 1} readiness`);
 			const transcript = [];
+			let previousCatalog = catalogueKey(fixtures[replay.state.active]);
+			let warmCases = 0;
+			let warmReads = 0;
 			for (const cell of cells) {
 				replay.state.active = cell.fixture;
 				replay.state.ledger = [];
 				replay.state.outbound = [];
 				const fixture = fixtures[cell.fixture];
+				const catalogKey = catalogueKey(fixture);
+				const coldCatalog = previousCatalog !== catalogKey;
 				const context = await browser.newContext({
 					bypassCSP: true,
 					locale: cell.locale === 'fr' ? 'fr-CA' : 'en-CA',
@@ -929,11 +964,23 @@ async function runGate({ fixtures = FIXTURES, cells = CELLS, runs = 2, synthetic
 						{ cause: error },
 					);
 				}
+				const discovery = checkCatalogueReads(replay.state.ledger, coldCatalog, record.cell);
+				if (!coldCatalog) {
+					warmCases += 1;
+					warmReads += discovery;
+					// Refreshes on expiry may fall on different cases in the two runs.
+					record.ledger = record.ledger.filter((entry) => entry !== `ssr|${CATALOG_PATH}|200`);
+				}
+				previousCatalog = catalogKey;
 				transcript.push(record);
 				observationCount += record.actual.length;
 				requestCount += replay.state.ledger.length;
 				await context.close();
 			}
+			invariant(
+				warmCases === 0 || warmReads < warmCases,
+				`run ${run + 1} fetched the catalogue on every warm case`,
+			);
 			transcripts.push(transcript);
 			await stopPreview(preview);
 			preview = undefined;

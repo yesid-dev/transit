@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import readyProviders from '../../../e2e/providers.json';
+import { frameControlsState, recordEndNotice } from '#lib/components/shell/frameControlsState.ts';
+import { frameClock } from '#lib/site/frameState.ts';
 
 import { bootProvider, resolveLabel } from './boot';
 import { CityCatalogSchema, PublicCitySchema } from './schemas/providers';
@@ -150,6 +152,28 @@ describe('boot provider from the public catalog', () => {
 		});
 	});
 
+	it('uses the last checked catalogue labels and published date during failed discovery', async () => {
+		const url = new URL(
+			'https://transit.test/fr/lines?provider=octranspo&frameMode=record&period=yesterday&recordFrom=2026-11-26&recordTo=2026-11-26',
+		);
+		const result = await bootProvider(url, unavailable, null, {
+			...cities,
+			providers: cities.providers.map((provider) => ({
+				...provider,
+				record_through: '2026-11-25',
+			})),
+		});
+		expect(result).toMatchObject({
+			discoveryError: true,
+			provider: { labels: cities.providers.find(({ id }) => id === 'octranspo')!.labels },
+			redirectHref: null,
+		});
+		const clock = frameClock(result.provider, new Date('2026-11-27T05:05:00Z'));
+		const frame = frameControlsState(url, clock);
+		expect(recordEndNotice(frame.afterRecord, 'fr')).toBe(
+			'Le 26 novembre ne figure pas encore au bilan. Affichage du 25 novembre.',
+		);
+	});
 	it.each([503, 200])(
 		'preserves an explicit nondefault selection when discovery is unavailable or corrupt (%s)',
 		async (status) => {

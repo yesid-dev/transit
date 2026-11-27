@@ -30,6 +30,10 @@ export default {
 	fetch(request, env, ctx) {
 		const origin = env.QUESTION_FIXTURE_ORIGIN;
 		const scope = request.headers.get(header);
+		// This scenario publishes a different catalogue. Give it a separate Worker cache.
+		if (scope === 'record-yesterday' && env.RECORD_YESTERDAY_FIXTURE) {
+			return env.RECORD_YESTERDAY_FIXTURE.fetch(request);
+		}
 		return context.run(origin && scope && !env.QUESTION_PROXY ? { origin, scope } : null, () =>
 			worker.fetch(request, env, ctx),
 		);

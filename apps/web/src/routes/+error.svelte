@@ -52,7 +52,13 @@
 			heading: copy.generic.heading,
 			body: copy.generic.body,
 			detail: page.error?.message,
-			suggestions: [{ href: localizeHref('/', locale), label: copy.generic.home }],
+			suggestions: [
+				{
+					href: page.url.origin + page.url.pathname + page.url.search,
+					label: locale === 'fr' ? 'Réessayer' : 'Try again',
+				},
+				{ href: localizeHref('/', locale), label: copy.generic.home },
+			],
 		};
 	});
 
@@ -71,4 +77,6 @@
 	<title>{documentHead.title} · Transit</title>
 </svelte:head>
 
-<ErrorPage {status} suggestionsLabel={copy.suggestionsLabel} {...view} />
+<div data-sveltekit-reload={is404 ? undefined : true}>
+	<ErrorPage {status} suggestionsLabel={copy.suggestionsLabel} {...view} />
+</div>

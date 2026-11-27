@@ -12,16 +12,16 @@ export const GET: RequestHandler = async ({ url, request }) => {
 		getSearchIndex(city, visitorIp),
 		getScheduleEdition(city, visitorIp),
 	]);
-	return result.kind === 'answer' && !result.lastGood
+	return result.kind === 'answer'
 		? json(
 				{
 					...result.answer,
 					patterns:
-						edition && edition.date === result.answer.schedule?.date
+						!result.lastGood && edition && edition.date === result.answer.schedule?.date
 							? linePatterns(edition)
 							: undefined,
 				},
-				{ headers: { 'cache-control': 'no-store' } },
+				{ headers: { 'cache-control': 'private, max-age=300' } },
 			)
 		: json({ message: 'Search index unavailable' }, { status: 503 });
 };
