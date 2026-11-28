@@ -28,7 +28,7 @@
 <div {id} class="fact relative" data-slot="fact-row">
 	<dt class="py-2 print:py-0">
 		<div class="fact-stroke">
-			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
+			<Separator decorative class="absolute inset-x-0 top-0 print:hidden" />
 		</div>
 		{label}
 		{#if labelDetail}<span class="block text-small text-muted-foreground">{labelDetail}</span>{/if}

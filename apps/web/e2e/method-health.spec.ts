@@ -459,6 +459,7 @@ test('Download lays out the eight daily file cards in complete rows', async ({ p
 	);
 	const dailyFiles = page.locator('#daily-files');
 	await expect(dailyFiles.getByRole('button', { name: 'See the layout and files' })).toHaveCount(8);
+	const stamp = '[data-slot="stamp"][data-kind="record"]';
 	for (const width of [390, 1280, 1440, 1920]) {
 		await page.setViewportSize({ width, height: 900 });
 		const rows = await dailyFiles
@@ -469,9 +470,9 @@ test('Download lays out the eight daily file cards in complete rows', async ({ p
 				).map((row) => row!.length),
 			);
 		expect(rows, `file cards at ${width}px`).toEqual(width === 390 ? Array(8).fill(1) : [4, 4]);
-		await expect(dailyFiles.locator('[data-slot="stamp"]:visible')).toHaveCount(
-			width === 390 ? 8 : 0,
-		);
+		await expect(dailyFiles.locator(stamp)).toHaveCount(0);
+		await expect(page.getByRole('main').locator(stamp)).toHaveCount(1);
+		await expect(page.locator(`[data-slot="screen-answer"] ${stamp}`)).toBeVisible();
 		if (width >= 1280) {
 			const blocks = await page.locator('.download-content').evaluate((content) => {
 				const selectors = [
@@ -491,7 +492,6 @@ test('Download lays out the eight daily file cards in complete rows', async ({ p
 				.locator('#reading-files > *')
 				.evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
 			expect(helpCards).toEqual([helpCards[0], helpCards[0]]);
-			await expect(page.locator('[data-slot="screen-answer"] [data-slot="stamp"]')).toBeVisible();
 		}
 	}
 	await doubleText(page);

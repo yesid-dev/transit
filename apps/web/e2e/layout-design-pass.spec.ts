@@ -611,8 +611,9 @@ for (const screen of ['daily', 'overview-live'] as const) {
 						const range = document.createRange();
 						range.selectNodeContents(node);
 						const label = range.getBoundingClientRect();
-						const above = term.querySelector('.hand-drawn-line');
-						const below = term.parentElement?.nextElementSibling?.querySelector('.hand-drawn-line');
+						const above = term.querySelector('[data-slot="separator"]');
+						const below =
+							term.parentElement?.nextElementSibling?.querySelector('[data-slot="separator"]');
 						const overlapsAbove =
 							above?.getClientRects().length && label.top < above.getBoundingClientRect().bottom;
 						const overlapsBelow =

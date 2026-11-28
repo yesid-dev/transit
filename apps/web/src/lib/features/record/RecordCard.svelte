@@ -77,7 +77,7 @@
 		<footer
 			class="relative -mx-4 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 pt-3 sm:-mx-6 sm:px-6 print:mx-0 print:px-0 print:pt-0"
 		>
-			<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
+			<Separator decorative class="absolute inset-x-0 top-0 print:hidden" />
 			{#if links}
 				<div
 					class="foot-part flex min-w-0 basis-full flex-wrap gap-x-4 gap-y-2"
@@ -143,7 +143,7 @@
 	>
 		{#if disclosure}
 			{#if disclosure.nested}
-				<Separator variant="hand-drawn" class="absolute inset-x-0 -top-[4px] print:hidden" />
+				<Separator decorative class="absolute inset-x-0 top-0 print:hidden" />
 			{/if}
 			<div id={disclosure.id} class="record-disclosure" data-record-disclosure data-open={expanded}>
 				<Collapsible.Root open={expanded} onOpenChange={(value) => (open = value)}>

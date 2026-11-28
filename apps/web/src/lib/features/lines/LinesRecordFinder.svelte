@@ -118,6 +118,7 @@
 	const tooFew = $derived(t('Too few to judge', 'Trop peu pour juger'));
 	let settledPeriod = $state.raw<LinesRecord['period']>();
 	const shownPeriod = $derived(settledPeriod ?? record.period);
+	// The answer alone stamps the readings retained while a new period loads.
 	const stamp = $derived({ kind: 'record' as const, label: recordStamp(shownPeriod, locale) });
 	const pinned = $derived(finderRecordUrl(url, record.city, shownPeriod));
 	const sortChoices = $derived({
@@ -739,7 +740,7 @@
 				aria-busy={timingPending || tripsPending}
 			>
 				{#if initialTiming}
-					<RecordCard title={measuredTitle} {stamp} interactive>
+					<RecordCard title={measuredTitle} interactive>
 						{#if all.length}{@render lineField()}{/if}
 						<div class="finder-sort-placeholder mb-3"><Skeleton class="h-11 w-36" /></div>
 						{#key record.punctuality}<RecordPending
@@ -751,7 +752,6 @@
 				{:else}
 					<RecordCard
 						title={measuredTitle}
-						{stamp}
 						interactive={all.length > 0}
 						evidence={!timingPending && timingEvidence && measured.length
 							? measuredEvidence
@@ -853,7 +853,6 @@
 
 			<RecordCard
 				title={excludedTitle}
-				{stamp}
 				interactive={!timingFailure && !!timingAnswer && excludedShown.length > 0}
 				evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
 					? excludedEvidence

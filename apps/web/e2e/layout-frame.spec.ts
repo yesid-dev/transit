@@ -319,6 +319,9 @@ test('desktop controls keep their column and control changes retain focus and sc
 	await expect(rail.getByText('Record starts 13 October 2026.')).toBeVisible();
 	const preset = rail.getByRole('radio', { name: '28 days', exact: true });
 	const performance = main.getByRole('article', { name: 'Every measured line', exact: true });
+	const stamp = '[data-slot="stamp"][data-kind="record"]';
+	const answerStamp = main.locator(`[data-slot="screen-answer"] ${stamp}`);
+	const cardStamps = performance.locator(stamp);
 	const firstLine = performance.getByRole('row', { name: /Sherbrooke/ });
 	const position = () =>
 		performance.evaluate((section) => ({
@@ -330,6 +333,9 @@ test('desktop controls keep their column and control changes retain focus and sc
 	const punctuality = firstLine.getByRole('cell', { name: /^80\.0%/ });
 	await expect(trips).toBeVisible();
 	await expect(punctuality).toBeVisible();
+	await expect(answerStamp).toBeVisible();
+	const shownPeriod = await answerStamp.innerText();
+	await expect(cardStamps).toHaveCount(0);
 	await page.evaluate(() => document.fonts.ready);
 	await preset.focus();
 	await page.evaluate(() => window.scrollTo(0, 250));
@@ -366,6 +372,8 @@ test('desktop controls keep their column and control changes retain focus and sc
 			}),
 		).toBe(true);
 		expect(await position(), 'while line readings are pending').toEqual(before);
+		await expect(answerStamp).toHaveText(shownPeriod);
+		await expect(cardStamps).toHaveCount(0);
 	} finally {
 		await request.post(holdUrl('release'));
 		await page.setExtraHTTPHeaders({});
@@ -374,6 +382,8 @@ test('desktop controls keep their column and control changes retain focus and sc
 	await expect(punctuality).toBeVisible();
 	await expect(preset).toBeFocused();
 	expect(await position(), 'after both readings arrive').toEqual(before);
+	await expect(answerStamp).not.toHaveText(shownPeriod);
+	await expect(cardStamps).toHaveCount(0);
 	expect(await firstLine.evaluate((row) => row.getBoundingClientRect().top)).toBe(rowTop);
 	await expect(rail.locator('[data-slot="frame-period-summary"]')).toContainText('28 days');
 });

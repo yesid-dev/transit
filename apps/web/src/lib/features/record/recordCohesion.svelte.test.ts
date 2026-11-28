@@ -4,7 +4,7 @@ import { expect, it } from 'vitest';
 import RecordCard from './RecordCard.svelte';
 import RecordCohesionHarness from './RecordCohesionHarness.svelte';
 
-it('draws only section boundaries, card feet and short fact rows', () => {
+it('reserves hand-drawn strokes for section boundaries and uses hairlines inside cards', () => {
 	const { container } = render(RecordCohesionHarness);
 	const page = container.querySelector('[data-record-screen]')!;
 	expect(page.querySelectorAll('[data-slot="page-section-boundary"]')).toHaveLength(2);
@@ -12,13 +12,14 @@ it('draws only section boundaries, card feet and short fact rows', () => {
 	const link = screen.getByRole('link', { name: 'Network record' });
 	const card = link.closest('[data-slot="card"]')!;
 	expect(card).toHaveAttribute('data-interactive', 'true');
-	expect(card.querySelectorAll('footer .hand-drawn-line')).toHaveLength(1);
+	expect(card.querySelector('.hand-drawn-line')).toBeNull();
+	expect(card.querySelectorAll('footer > [data-slot="separator"]')).toHaveLength(1);
 	expect(
 		[...card.querySelectorAll('footer > [data-slot^="record-foot-"]')].map((slot) =>
 			slot.getAttribute('data-slot'),
 		),
 	).toEqual(['record-foot-links', 'record-foot-evidence', 'record-foot-toggle']);
-	expect(card.querySelectorAll('[data-slot="fact-row"] .hand-drawn-line')).toHaveLength(2);
+	expect(card.querySelectorAll('[data-slot="fact-row"] [data-slot="separator"]')).toHaveLength(2);
 	const about = screen.getByRole('article', { name: 'About these figures' });
 	expect(about.closest('[data-slot="card"]')).not.toHaveAttribute('data-interactive');
 	expect(about.querySelector('.hand-drawn-line')).toBeNull();

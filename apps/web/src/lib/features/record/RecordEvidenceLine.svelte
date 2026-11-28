@@ -21,7 +21,7 @@
 
 {#if sample || note}
 	<div
-		class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1 font-mono text-small text-muted-foreground"
+		class="flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-1 font-body text-small text-muted-foreground tabular-nums"
 		data-method={method || undefined}
 	>
 		{#if sample}<span>{sample}</span>{/if}

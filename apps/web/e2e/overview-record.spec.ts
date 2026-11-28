@@ -445,14 +445,21 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 	await expect(cards.nth(0)).toHaveAccessibleName('Record');
 	await expect(cards.nth(1)).toHaveAccessibleName('Live now');
 	await expect(reading).toBeVisible();
+	const evidence = record.locator('[data-slot="record-foot-evidence"] > div');
+	const bodyFont = await page.locator('html').evaluate((root) => getComputedStyle(root).fontFamily);
+	await expect(evidence).toHaveCSS('font-family', bodyFont);
+	await expect(evidence).toHaveCSS('font-variant-numeric', 'tabular-nums');
 	await expect(live.locator('[data-slot="band-bar"]')).toBeVisible();
 	for (const status of ['Early', 'On time', 'Late', 'Delay unknown']) {
 		await expect(live.getByRole('term').filter({ hasText: status })).toBeVisible();
 	}
 	for (const fact of ['Scheduled trips with no vehicle reporting', 'Notice publications']) {
 		await expect(
-			live.locator('[data-slot="fact-row"]').filter({ hasText: fact }).locator('.hand-drawn-line'),
-		).toHaveCount(1);
+			live
+				.locator('[data-slot="fact-row"]')
+				.filter({ hasText: fact })
+				.locator('[data-slot="separator"]'),
+		).toHaveCSS('height', '1px');
 	}
 	await expect(
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
