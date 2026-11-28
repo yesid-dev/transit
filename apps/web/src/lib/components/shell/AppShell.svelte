@@ -15,6 +15,7 @@
 		mapControlsVisibilityContext,
 		type RegisterMapControlsVisibility,
 	} from './mapControlsVisibility.ts';
+	import ScrollCue from './ScrollCue.svelte';
 	import FrameControls, {
 		FrameControlsContentContext,
 		FrameControlsExtensionContext,
@@ -166,6 +167,7 @@
 	{#each surfaceControls as { rail, desktopPlacement } (rail)}
 		{#if !desktop || desktopPlacement !== 'before-frame'}{@render rail(context)}{/if}
 	{/each}
+	{#if !fullViewport}<ScrollCue />{/if}
 {/snippet}
 
 {#snippet rail(context: SurfaceRailContext)}

@@ -140,11 +140,21 @@ function number(value: number, locale: Locale) {
 export function rankingValue(value: number, measure: RankingMeasure, locale: Locale) {
 	if (measure === 'median_delay' || measure === 'excess_wait_time')
 		return minuteReading(value / 60, locale)!;
-	if (measure === reporting)
-		return intl
-			.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
-			.format(value / 100);
+	if (measure === reporting) {
+		const format = intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+		const perHour = value / 100;
+		// A rate that rounds to 0.0 but is not zero reads as under 0.1, never as none.
+		return perHour > 0 && perHour < 0.05 ? `< ${format.format(0.1)}` : format.format(perHour);
+	}
 	return recordPercent(value, locale);
+}
+
+/** "0.2 times an hour": the per-hour rate with its unit, where a column header does not give it. */
+export function rankingValueWithUnit(value: number, measure: RankingMeasure, locale: Locale) {
+	const reading = rankingValue(value, measure, locale);
+	return measure === reporting
+		? choose(locale, `${reading} times an hour`, `${reading} par heure`)
+		: reading;
 }
 
 export function rankingReference(
@@ -172,7 +182,11 @@ export function rankingReference(
 		ranking.kind === 'vehicle'
 			? choose(locale, 'Fleet', 'Parc de véhicules')
 			: choose(locale, 'Network', 'Réseau');
-	return { value, methodVersion, label: `${title} (${rankingValue(value, measure, locale)})` };
+	return {
+		value,
+		methodVersion,
+		label: `${title} (${rankingValueWithUnit(value, measure, locale)})`,
+	};
 }
 
 export function rankingVerdict(
@@ -282,19 +296,47 @@ export function lineRankingFloor(
 	return null;
 }
 
+/**
+ * The reason a row is left out, in a few words. The two coverage reasons read apart: one was
+ * measured but too thinly to rank, the other too thinly to measure at all.
+ */
+export function exclusionLabel(row: Excluded, locale: Locale) {
+	if (row.reason === 'low_coverage')
+		return choose(
+			locale,
+			'Measured, but too little observed to rank',
+			'Mesuré, mais trop peu observé pour être classé',
+		);
+	if (row.reason === 'not_measured' && row.coverage_reason === 'insufficient_coverage')
+		return choose(locale, 'Too little observed to measure', 'Trop peu observé pour être mesuré');
+	return row.reason_text[locale];
+}
+
 export function exclusionText(row: Excluded, measure: RankingMeasure, locale: Locale) {
 	if (row.reason === 'low_coverage') return lowCoverageReason(row, locale);
-	const reason = row.reason_text[locale];
+	const reason = exclusionLabel(row, locale);
 	return row.reason === 'too_few_to_judge' && row.sample != null
 		? `${reason} · ${sampleText(row.sample, measure, locale)}`
 		: reason;
 }
 
-/** The on-time window in the words every other screen uses. */
+/**
+ * The on-time window in the words every other screen uses. Vehicle reporting reads per hour, as
+ * its table does; the engine's rate per 100 hours stays on How we measure, and the rest of its
+ * definition (what counts as a gap) is kept as written.
+ */
 export function measureMeaning(measure: RankingMeasure, definition: string, locale: Locale) {
-	return measure === 'on_time'
-		? overviewCopy[locale].definition
-		: registryUnitText(definition, locale);
+	if (measure === 'on_time') return overviewCopy[locale].definition;
+	if (measure === reporting) {
+		const perHour = choose(
+			locale,
+			'Average number of reporting interruptions per observed vehicle-hour in service.',
+			'Nombre moyen d’interruptions de signalement par heure-véhicule observée en service.',
+		);
+		const rule = definition.replace(/^[^.]*\.\s*/u, '');
+		return rule ? `${perHour} ${rule}` : perHour;
+	}
+	return registryUnitText(definition, locale);
 }
 
 /** "regular lines" (or "regular line") for a chosen class, for the ranked count; null otherwise. */

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isSettled, type Ready } from '#lib/site/ready.ts';
+	import { isSettled, whenAll, type Awaitable, type Ready } from '#lib/site/ready.ts';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { getContext, untrack } from 'svelte';
@@ -47,6 +47,7 @@
 	import { recordSectionLinks } from '../record/recordLinks.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
 	import {
+		cautiousOrder,
 		cautiousRanking,
 		choose,
 		coverageText,
@@ -66,6 +67,7 @@
 	} from './rankingSelection.ts';
 	import {
 		classText,
+		exclusionLabel,
 		exclusionText,
 		lineRankingFloor,
 		measureMeaning,
@@ -168,6 +170,22 @@
 			active = false;
 		};
 	});
+
+	/** A reference that fails reads as none, as it does in About these figures. */
+	function quietly<T>(value: Awaitable<T>): Awaitable<T | null> {
+		return isSettled(value) ? value : value.catch(() => null);
+	}
+	// The table is drawn once its ranking and its network reference are both in, so the verdict
+	// under each range never pushes the rows down after they appear (closing audit G3-M6). Answers
+	// drawn on the server stay drawn there.
+	const tableReady = $derived(
+		record.answer
+			? whenAll(
+					[record.answer, record.reference ? quietly(record.reference) : null] as const,
+					([answer, reference]) => ({ answer, reference }),
+				)
+			: null,
+	);
 
 	function select(selection: RankingSelection) {
 		if (
@@ -274,11 +292,13 @@
 	}
 	function exclusions(data: RankingsRecord) {
 		const groups = new SvelteMap<string, { count: number; label: string }>();
-		for (const row of data.excluded.filter(showExclusion))
-			groups.set(row.reason, {
-				count: (groups.get(row.reason)?.count ?? 0) + 1,
-				label: row.reason_text[locale],
+		for (const row of data.excluded.filter(showExclusion)) {
+			const key = `${row.reason}:${row.coverage_reason ?? ''}`;
+			groups.set(key, {
+				count: (groups.get(key)?.count ?? 0) + 1,
+				label: exclusionLabel(row, locale),
 			});
+		}
 		// "No live data: 4. Low coverage: 7." One short sentence for each reason.
 		return [...groups.values()]
 			.map(({ count, label }) => `${label}${t(': ', '\u00a0: ')}${tally(count, locale)}.`)
@@ -315,14 +335,27 @@
 	}
 </script>
 
+<!-- The rail fits a 1280x720 laptop with every choice in view (closing audit G3-M5): the card's own
+     label names the first choice, "By" sits beside its box, and only "Compare lines" keeps a label
+     line above its box, its French label being too long to share a row. -->
 {#snippet choice(
 	label: string,
 	options: readonly { key: string; label: string }[],
 	value: string,
 	selectValue: (key: string) => void,
+	layout: 'named' | 'inline' | 'stacked' = 'stacked',
 )}
-	<div class="grid min-w-0 gap-1">
-		<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+	<div
+		class={layout === 'inline'
+			? 'grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2'
+			: 'grid min-w-0 gap-0.5'}
+	>
+		{#if layout !== 'named'}<p
+				aria-hidden="true"
+				class="text-small leading-tight text-muted-foreground"
+			>
+				{label}
+			</p>{/if}
 		<Combobox
 			searchable={false}
 			{label}
@@ -336,13 +369,21 @@
 {/snippet}
 
 {#snippet controls()}
-	<ControlsRail label={t('Ranking choices', 'Choix de classement')}>
-		<div class="grid w-full min-w-0 gap-3">
-			{@render choice(t('Rank', 'Classer'), kindOptions, kind, (key) =>
-				selectKind(key as RankingKind),
+	<ControlsRail label={t('Rank', 'Classer')}>
+		<div class="grid w-full min-w-0 gap-2">
+			{@render choice(
+				t('Rank', 'Classer'),
+				kindOptions,
+				kind,
+				(key) => selectKind(key as RankingKind),
+				'named',
 			)}
-			{@render choice(t('By', 'Par'), byOptions, measure, (key) =>
-				selectMeasure(key as RankingMeasure),
+			{@render choice(
+				t('By', 'Par'),
+				byOptions,
+				measure,
+				(key) => selectMeasure(key as RankingMeasure),
+				'inline',
 			)}
 			{#if kind === 'line'}
 				{#await record.answer then result}
@@ -440,12 +481,13 @@
 			{#snippet statement()}
 				<p class="ranking-reading">
 					<span
-						class="font-heading text-title leading-none font-extrabold text-accent-text tabular-nums"
+						class="font-heading text-title leading-none font-extrabold text-foreground tabular-nums"
 						>{rankingValue(first.value, measure, locale)}</span
 					>
 					<span>
 						{rankingLead(data, first, measure, rankedCount(data), locale)}
-						{#if entry.href}<a class="text-primary underline" href={entry.href}>{leader(entry)}</a
+						{#if entry.href}<a class="py-1 text-primary underline" href={entry.href}
+								>{leader(entry)}</a
 							>{:else}{leader(entry)}{/if}{rankingHeadlineEnd(way)}
 					</span>
 				</p>
@@ -466,34 +508,43 @@
 	{/if}
 {/snippet}
 
-{#snippet tableCard(data: RankingsRecord, identities: RankingIdentities)}
-	{@const rows = data.rows.map((entry): Ranked => {
-		const row = name(entry, identities);
-		const facts = [
-			row.detail,
-			rankingWay(entry, measure, locale),
-			coverageText(entry, locale),
-		].filter((fact): fact is string => !!fact);
-		return { ...row, entry, detail: facts.join(' · ') || undefined };
-	})}
+{#snippet tableCard(
+	data: RankingsRecord,
+	identities: RankingIdentities,
+	reference: Awaited<typeof record.reference> | null,
+)}
+	{@const failing = measure === 'cancelled_trips' || measure === 'missing_trips'}
+	{@const none = failing ? data.rows.filter((entry) => entry.value === 0).length : 0}
+	{@const rows = data.rows
+		// A row with no cancelled or missing trip did not fail: it is counted, not listed.
+		.filter((entry) => !failing || entry.value !== 0)
+		.map((entry): Ranked => {
+			const row = name(entry, identities);
+			const facts = [
+				row.detail,
+				rankingWay(entry, measure, locale),
+				coverageText(entry, locale),
+			].filter((fact): fact is string => !!fact);
+			return { ...row, entry, detail: facts.join(' · ') || undefined };
+		})}
 	{@const plates = rows.some((row) => row.plate || row.leadingCode)}
 	{@const bounded = rows.filter(
 		({ entry }) => entry.range.lower != null && entry.range.upper != null,
 	)}
-	{@const ref = bounded.length
-		? rankingReference(settledReference ?? null, data, measure, locale)
-		: null}
+	{@const ref = bounded.length ? rankingReference(reference ?? null, data, measure, locale) : null}
+	{@const against = kind === 'vehicle' ? t('Fleet', 'Parc de véhicules') : t('Network', 'Réseau')}
 	{@const worse = t('Worse than the network', 'Moins bien que le réseau')}
-	{@const allWorse =
-		rows.length > 1 &&
-		rows.every(
+	{@const shown = rows.slice(0, 20)}
+	{@const firstPageWorse =
+		shown.length > 1 &&
+		shown.every(
 			({ entry }) =>
 				rankingVerdict(entry, ref, data.evidence.method_version, measure, locale) === worse,
 		)}
+	{@const quietVerdict = new Set(firstPageWorse ? shown.map(({ id }) => id) : [])}
 	{@const wilson = bounded.some(({ entry }) => entry.range.method.endsWith('wilson_95'))}
 	{@const scale = domain(data)}
-	{#snippet value(row: Ranked)}<strong class="font-sans"
-			>{rankingValue(row.entry.value, measure, locale)}</strong
+	{#snippet value(row: Ranked)}<strong>{rankingValue(row.entry.value, measure, locale)}</strong
 		>{/snippet}
 	{#snippet phoneValue(row: Ranked)}<span class="whitespace-nowrap"
 			>{rankingValue(
@@ -536,17 +587,12 @@
 								{ label: measureLabel, value: rankingValue(row.entry.value, measure, locale) },
 								{ label: t('Range', 'Intervalle'), value: caption },
 								...(ref
-									? [
-											{
-												label: t('Network', 'Réseau'),
-												value: rankingValue(ref.value, measure, locale),
-											},
-										]
+									? [{ label: against, value: rankingValue(ref.value, measure, locale) }]
 									: []),
-								...rankingCountLines(row.entry, measure, locale).map((value) => ({
-									label: '',
-									value,
-								})),
+								{
+									label: t('Counted', 'Ce qui est compté'),
+									value: rankingCountLines(row.entry, measure, locale).join(', '),
+								},
 							],
 						},
 					]}
@@ -561,7 +607,7 @@
 						{caption}
 					/>
 				</ChartDetails>
-				{#if verdict && !allWorse}<span
+				{#if verdict && !quietVerdict.has(row.id)}<span
 						class={showVerdict ? 'text-small text-muted-foreground' : 'sr-only'}>{verdict}</span
 					>{/if}
 			</div>
@@ -587,10 +633,15 @@
 					{
 						key: 'range',
 						header: ref
-							? t(
-									`Range, against the network (${rankingValue(ref.value, measure, locale)})`,
-									`Plage, réseau (${rankingValue(ref.value, measure, locale)})`,
-								)
+							? kind === 'vehicle'
+								? t(
+										`Range, against the fleet (${rankingValue(ref.value, measure, locale)})`,
+										`Plage, parc de véhicules (${rankingValue(ref.value, measure, locale)})`,
+									)
+								: t(
+										`Range, against the network (${rankingValue(ref.value, measure, locale)})`,
+										`Plage, réseau (${rankingValue(ref.value, measure, locale)})`,
+									)
 							: t('Range', 'Plage'),
 						cell: range,
 					},
@@ -610,12 +661,26 @@
 		data-sparse-ranking={rows.length > 0 && rows.length < 20 ? '' : undefined}
 	>
 		{#if rows.length}
-			{@const first = rows.slice(0, 20)}
-			{#if allWorse}<p class="text-small">
+			{@const first = shown}
+			{#if firstPageWorse}<p class="text-small">
+					{rows.length > shown.length
+						? t(
+								`The first ${shown.length} did worse than the network as a whole.`,
+								`Les ${shown.length} premiers ont fait moins bien que le réseau dans son ensemble.`,
+							)
+						: t(
+								'Every entry in this list did worse than the network as a whole.',
+								'Chaque entrée de cette liste a fait moins bien que le réseau dans son ensemble.',
+							)}
+				</p>{/if}
+			{#if data.ranked_count > data.rows.length}<p class="text-small">
 					{t(
-						'Every entry in this list did worse than the network as a whole.',
-						'Chaque entrée de cette liste a fait moins bien que le réseau dans son ensemble.',
+						`Showing ${tally(shown.length, locale)} of the ${tally(data.rows.length, locale)} worst (out of ${tally(data.ranked_count, locale)} with enough to judge).`,
+						`${tally(shown.length, locale)} sur les ${tally(data.rows.length, locale)} pires (parmi ${tally(data.ranked_count, locale)} avec assez de données pour conclure).`,
 					)}
+				</p>{/if}
+			{#if data.rows.some((row) => row.ranking_bound != null)}<p class="text-small">
+					{cautiousOrder[locale]}
 				</p>{/if}
 			{#if kind === 'stop' && measure === 'on_time' && first.filter(({ entry }) => (entry.counts?.early ?? 0) > (entry.counts?.late ?? 0)).length * 2 > first.length}
 				<p class="text-small">
@@ -674,7 +739,26 @@
 							'Une plage vide signifie qu’aucune n’est disponible pour ce rang.',
 						)}{/if}
 				</p>{/if}
-		{:else}<StateMark state={resultState(data)} {locale} />{/if}
+		{:else if !none}<StateMark state={resultState(data)} {locale} />{/if}
+		{#if none}<p class="text-small text-muted-foreground">
+				{measure === 'cancelled_trips'
+					? t(
+							`Not listed: ${tally(none, locale)} with no cancelled trips.`,
+							`Non listés\u00a0: ${tally(none, locale)} sans trajet annulé.`,
+						)
+					: t(
+							`Not listed: ${tally(none, locale)} with no missing trips.`,
+							`Non listés\u00a0: ${tally(none, locale)} sans trajet manquant.`,
+						)}
+			</p>{/if}
+		{#if failing && rows.length < 5 && Date.parse(data.evidence.end_date) - Date.parse(data.evidence.start_date) < 27 * 86_400_000}<p
+				class="text-small"
+			>
+				{t(
+					'Few entries reach the minimum on these dates. Choose 28 days or more.',
+					'Peu d’entrées atteignent le minimum à ces dates. Choisissez 28 jours ou plus.',
+				)}
+			</p>{/if}
 		{#if data.coverage_note}<p class="text-muted-foreground">{data.coverage_note[locale]}</p>{/if}
 	</div>
 {/snippet}
@@ -683,14 +767,17 @@
 	{@const title = excludedTitle}
 	{@const shown = excludedRows(data, identities)}
 	{#if data.excluded.length}
-		{#snippet reason(row: Excluded)}{exclusionText(row.entry, measure, locale)}{/snippet}
-		<RecordCard {title} disclosure={{ id: 'excluded', description: exclusions(data) }}>
+		{#snippet reason(row: Excluded)}<span class="font-sans"
+				>{exclusionText(row.entry, measure, locale)}</span
+			>{/snippet}
+		{@const without = t(
+			'Departures on lines without live data are excluded.',
+			'Les départs des lignes sans données en direct sont exclus.',
+		)}
+		<RecordCard {title} disclosure={{ id: 'excluded', description: exclusions(data) || without }}>
 			{#if shown.length !== data.excluded.length}
 				<p class="mb-3">
-					{t(
-						'Departures on lines without live data are excluded.',
-						'Les départs des lignes sans données en direct sont exclus.',
-					)}
+					{without}
 					<a
 						class="text-primary underline"
 						href={carryFrameState(
@@ -797,10 +884,10 @@
 	/>
 {/snippet}
 
-<div class="@container">
+<div class="ranking-screen @container">
 	<Surface class="@max-[13rem]:[--space-page-x:var(--space-card-gap)]">
 		<RecordScreen>
-			<div data-slot="screen-content" class="min-w-0">
+			<div data-slot="screen-content" class="ranking-content min-w-0">
 				<RecordGroup class="gap-(--space-card-gap)">
 					<ScreenTitle
 						{title}
@@ -845,18 +932,19 @@
 						{/if}
 					</div>
 					{#if !record.notTracked}
-						<RecordCard title={cardTitle} {stamp} stampRule interactive>
+						<RecordCard title={cardTitle} {stamp} stampRule interactive class="ranking-card">
 							<div
 								id="ranking"
 								class="ranking-list"
 								style:--ranking-rows-wide={rowHeight?.wide}
 								style:--ranking-rows-phone={rowHeight?.phone}
 							>
-								{#await record.answer}
+								{#await tableReady}
 									<RecordPending {locale} shape={rowShape} answer={record.answer ?? undefined} />
-								{:then result}
+								{:then ready}
+									{@const result = ready?.answer ?? null}
 									{#if result?.kind === 'answer' && result.answer.state !== 'not_tracked'}
-										{@render tableCard(result.answer, result.identities)}
+										{@render tableCard(result.answer, result.identities, ready?.reference ?? null)}
 									{:else}
 										{@render missing(result, rowShape)}
 									{/if}
@@ -877,7 +965,7 @@
 					{/if}
 				</RecordGroup>
 				{#if !record.notTracked}
-					<RecordGroup class="gap-(--space-card-gap)">
+					<RecordGroup class="ranking-below gap-(--space-card-gap)">
 						{#await record.answer}
 							<RecordCard title={excludedTitle} reserve="line"
 								><RecordPending {locale} shape="line" /></RecordCard
@@ -890,7 +978,7 @@
 							{/if}
 						{/await}
 					</RecordGroup>
-					<RecordGroup class="gap-(--space-card-gap)">
+					<RecordGroup class="ranking-below gap-(--space-card-gap)">
 						{#await record.answer}
 							<RecordCard title={aboutTitle}
 								><RecordPending {locale} shape={{ shape: 'facts', count: 4 }} /></RecordCard
@@ -901,7 +989,6 @@
 							{:else}
 								<AboutFigures
 									title={aboutTitle}
-									class="lg:min-h-[27rem]"
 									fields={[
 										{
 											key: 'method',
@@ -934,14 +1021,22 @@
 	.ranking-answer {
 		min-block-size: 6.75rem;
 	}
-	.ranking-list:not(:has([data-sparse-ranking])) {
+	/* The rows are held only while they load: a short, failed or empty answer takes its own height. */
+	.ranking-list:has(:global([data-record-pending])) {
 		min-block-size: var(--ranking-rows-wide);
+	}
+	/* While the table loads, what is under it (its card's foot, the dividers and the cards below)
+	   waits unseen, as the page footer does: a short answer then pulls it up before it is ever
+	   shown (closing audit G3-M6). */
+	.ranking-screen:has(.ranking-list :global([data-record-pending]))
+		:is(.ranking-content > :global(:not(:first-child)), :global(.ranking-card footer)) {
+		visibility: hidden;
 	}
 	@media (width < 40rem) {
 		.ranking-answer {
 			min-block-size: 13.25rem;
 		}
-		.ranking-list {
+		.ranking-list:has(:global([data-record-pending])) {
 			min-block-size: var(--ranking-rows-phone);
 		}
 	}

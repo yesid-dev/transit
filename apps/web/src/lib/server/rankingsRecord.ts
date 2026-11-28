@@ -22,11 +22,26 @@ export type RankingIdentities = {
 	headsigns: Record<string, Record<number, string>>;
 };
 
+const compassWord = /^(est|ouest|nord|sud|east|west|north|south)\b/iu;
+
+/**
+ * A ranked departure names its destination only when its direction has one. When a direction's
+ * trips carry several destinations ("Est", "Est destination Station Snowdon"), the compass word
+ * they all share still tells the way ("toward the east"); with nothing shared, none is named.
+ */
 export function rankingHeadsigns(directions: RouteFile['directions'] | undefined) {
 	const published = directionHeadsigns(directions);
+	const signs = new Map<number, Set<string>>();
 	for (const { dir, headsign } of directions ?? []) {
 		const sign = headsign?.trim();
-		if (dir != null && sign && published[dir] !== sign) delete published[dir];
+		if (dir != null && sign) signs.set(dir, (signs.get(dir) ?? new Set()).add(sign));
+	}
+	for (const [dir, all] of signs) {
+		if (all.size < 2) continue;
+		const words = new Set([...all].map((sign) => compassWord.exec(sign)?.[1]));
+		const [word] = words;
+		if (words.size === 1 && word) published[dir] = word;
+		else delete published[dir];
 	}
 	return published;
 }
