@@ -300,6 +300,9 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 	}
+	.map-rail.desktop:has(:global([data-record-legend])) {
+		gap: 0.75rem;
+	}
 	.app-shell-root[data-full-viewport='true'] :global([data-slot='surface-rail-mobile']) {
 		--surface-rail-stack-offset: var(--map-source-clearance);
 	}

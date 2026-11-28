@@ -7,12 +7,19 @@ const stops = [
 	{ id: 'MR4', name: 'Beaubien', lat: 45.541, lon: -73.608, routes: ['24'] },
 	{ id: 'MR5', name: 'Jean-Talon', lat: 45.547, lon: -73.621, routes: ['24'] },
 ];
+const ottawaStops = [
+	{ id: 'MR1', name: 'RIDEAU', lat: 45.425, lon: -75.69, routes: ['24'] },
+	{ id: 'MR2', name: 'WALLER', lat: 45.426, lon: -75.685, routes: ['24'] },
+	{ id: 'MR3', name: 'LAURIER', lat: 45.422, lon: -75.683, routes: ['24'] },
+	{ id: 'MR4', name: 'SOMERSET', lat: 45.417, lon: -75.688, routes: ['24'] },
+	{ id: 'MR5', name: 'GLADSTONE', lat: 45.412, lon: -75.691, routes: ['24'] },
+];
 
 export async function recordMapFixture(
 	page: Page,
 	networkAvailable = true,
 	provider = 'stm',
-	locations = stops,
+	locations = provider === 'octranspo' ? ottawaStops : stops,
 ) {
 	const received: URLSearchParams[] = [];
 	await page.clock.setFixedTime(new Date('2026-11-23T16:00:00Z'));

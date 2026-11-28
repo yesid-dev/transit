@@ -5,7 +5,6 @@ import type {
 	MapMouseEvent,
 } from 'maplibre-gl';
 import {
-	OTHER_STOPS_MIN_ZOOM,
 	recordCorridorWidths,
 	recordStopRadii,
 	recordUnmeasuredLine,
@@ -33,9 +32,12 @@ const allIds = [
 	RECORD_EXTRUSION_CAP_ID,
 	pointDetailId,
 	pointsId,
-	`${pointDetailId}-other`,
-	`${pointsId}-other`,
 	...segmentIds,
+];
+const recordOrder: ExpressionSpecification = [
+	'+',
+	['*', ['get', 'state'], 5],
+	['coalesce', ['get', 'step'], 0],
 ];
 
 function rampSize(
@@ -90,10 +92,12 @@ export function attachRecordMap(
 				type: 'line',
 				source: sourceId,
 				filter: ['all', ['==', ['geometry-type'], 'LineString'], ['==', ['get', 'state'], state]],
-				layout: { 'line-cap': 'round', 'line-join': 'round' },
+				layout: { 'line-cap': 'round', 'line-join': 'round', 'line-sort-key': recordOrder },
 				paint: {
 					'line-color': ['get', 'colour'],
-					'line-width': dash ? recordUnmeasuredLine.width : corridorWidth(network),
+					'line-width': dash
+						? ['interpolate', ['linear'], ['zoom'], 10, 2.5, 16, recordUnmeasuredLine.width]
+						: corridorWidth(network),
 					'line-offset': network
 						? ['interpolate', ['linear'], ['zoom'], 12, 0, 15, 3, 16, 5]
 						: ['get', 'offset'],
@@ -123,45 +127,38 @@ export function attachRecordMap(
 				'line-dasharray': [1, 3],
 			},
 		});
-		for (const main of [true, false]) {
-			const minzoom = main ? 0 : OTHER_STOPS_MIN_ZOOM;
-			map.addLayer({
-				id: main ? pointsId : `${pointsId}-other`,
-				minzoom,
-				type: 'circle',
-				source: sourceId,
-				filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'main'], main]],
-				layout: { 'circle-sort-key': ['get', 'state'] },
-				paint: {
-					'circle-radius': [
-						'interpolate',
-						['linear'],
-						['zoom'],
-						9,
-						['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.network), 3],
-						15,
-						['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.detail), 5],
-					],
-					'circle-color': ['get', 'colour'],
-					'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
-					'circle-stroke-color': ['match', ['get', 'state'], 3, outline, ['get', 'colour']],
-					'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 3, 1, 1.5],
-				},
-			});
-			map.addLayer({
-				id: main ? pointDetailId : `${pointDetailId}-other`,
-				minzoom,
-				type: 'circle',
-				source: sourceId,
-				filter: [
-					'all',
-					['==', ['geometry-type'], 'Point'],
-					['==', ['get', 'main'], main],
-					['==', ['get', 'state'], 2],
+		map.addLayer({
+			id: pointsId,
+			type: 'circle',
+			source: sourceId,
+			filter: ['==', ['geometry-type'], 'Point'],
+			layout: { 'circle-sort-key': recordOrder },
+			paint: {
+				'circle-radius': [
+					'interpolate',
+					['linear'],
+					['zoom'],
+					9,
+					['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.network), 3.75],
+					15,
+					['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.detail), 5],
 				],
-				paint: { 'circle-color': ['get', 'colour'], 'circle-radius': 1.25 },
-			});
-		}
+				'circle-color': ['get', 'colour'],
+				'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
+				'circle-stroke-color': ['match', ['get', 'state'], 3, outline, ['get', 'colour']],
+				'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 3, 1, 1.5],
+			},
+		});
+		map.addLayer({
+			id: pointDetailId,
+			type: 'circle',
+			source: sourceId,
+			filter: ['all', ['==', ['geometry-type'], 'Point'], ['==', ['get', 'state'], 2]],
+			paint: {
+				'circle-color': ['get', 'colour'],
+				'circle-radius': ['interpolate', ['linear'], ['zoom'], 9, 1.5, 15, 2.25],
+			},
+		});
 		if (extrusions?.features.length) {
 			map.addSource(RECORD_EXTRUSION_ID, { type: 'geojson', data: extrusions });
 			map.addLayer({

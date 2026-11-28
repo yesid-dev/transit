@@ -1796,11 +1796,16 @@ def test_range_builds_skips_and_continues(
     map_key = f"maps/v1/{version_key('stm', DAY)}.json"
     schedule_map = json.loads((dest / map_key).read_bytes())
     assert schedule_map == {"date": str(DAY), "route_shapes": {}}
+    corridor_key = f"corridors/v1/{version_key('stm', DAY)}.json"
+    corridors = json.loads((dest / corridor_key).read_bytes())
+    assert corridors == {"date": str(DAY), "paths": []}
     if remote:
         assert fake.writes.count(f"out/{search_key}") == 1
         fake.writes.remove(f"out/{search_key}")
         assert fake.writes.count(f"out/{map_key}") == 1
         fake.writes.remove(f"out/{map_key}")
+        assert fake.writes.count(f"out/{corridor_key}") == 1
+        fake.writes.remove(f"out/{corridor_key}")
         earlier_key = f"out/{earlier_marker}"
         assert fake.writes.count(earlier_key) == 1
         fake.writes.remove(earlier_key)
@@ -1889,6 +1894,14 @@ def test_range_builds_skips_and_continues(
     latest = json.loads((dest / version_key("stm", third) / "manifest.json").read_bytes())
     assert latest["schedule_sha256"] == entry["sha256"]
     assert latest["row_counts_by_state"]["unconfirmed"] == 1
+    third_corridor_key = f"corridors/v1/{version_key('stm', third)}.json"
+    assert json.loads((dest / third_corridor_key).read_bytes()) == {
+        "date": str(third),
+        "paths": [],
+    }
+    if remote:
+        assert f"out/{corridor_key}" not in fake.writes
+        assert fake.writes.count(f"out/{third_corridor_key}") == 1
     with duckdb.connect() as db:
         third_polls = _rows(db, dest / version_key("stm", third) / "feed_polls.parquet")
     assert [row["result"] for row in third_polls if row["feed"] == "trip_updates"] == ["ok"]

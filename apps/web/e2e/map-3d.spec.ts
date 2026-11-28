@@ -9,14 +9,6 @@ import {
 } from './map-frame-controls';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
 
-const ottawa = [
-	{ id: 'MR1', name: 'Rideau', lat: 45.425, lon: -75.69, routes: ['24'] },
-	{ id: 'MR2', name: 'Waller', lat: 45.426, lon: -75.685, routes: ['24'] },
-	{ id: 'MR3', name: 'Laurier', lat: 45.422, lon: -75.683, routes: ['24'] },
-	{ id: 'MR4', name: 'Somerset', lat: 45.417, lon: -75.688, routes: ['24'] },
-	{ id: 'MR5', name: 'Gladstone', lat: 45.412, lon: -75.691, routes: ['24'] },
-];
-
 interface RecordRender {
 	pitch: number;
 	raisedCorridors: { height: number }[];
@@ -36,7 +28,7 @@ for (const provider of ['stm', 'octranspo']) {
 		}, info) => {
 			const fr = locale === 'fr';
 			await page.emulateMedia({ reducedMotion: 'reduce' });
-			await recordMapFixture(page, true, provider, provider === 'octranspo' ? ottawa : undefined);
+			await recordMapFixture(page, true, provider);
 			const params = new URLSearchParams(recordMapPeriod);
 			params.set('provider', provider);
 			params.set('mapLayer', 'corridors');
@@ -82,11 +74,50 @@ for (const provider of ['stm', 'octranspo']) {
 					await closeMapInView(page);
 					await openMapLegend(page);
 				}
-				await expect(page.locator('[data-map-legend]:visible')).toContainText(
+				const legend = page.locator('[data-map-legend]:visible');
+				await expect(legend).toContainText(
 					fr ? 'Au-dessus de l’échelle : hauteur limitée' : 'Taller than the scale: capped',
 				);
 				if (phone) await closeMapInView(page);
 				else {
+					const cap = await legend.evaluate((element) => {
+						const cap = element.querySelector('[data-corridor-cap-swatch]')!;
+						const steps = [...element.querySelectorAll('ol > li > [aria-hidden="true"]')];
+						const canvas = document.createElement('canvas');
+						const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+						function luminance(swatch: Element) {
+							ctx.fillStyle = getComputedStyle(swatch).backgroundColor;
+							ctx.fillRect(0, 0, 1, 1);
+							return [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)].reduce(
+								(sum, channel, index) => {
+									const value = channel / 255;
+									const linear =
+										value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+									return sum + linear * [0.2126, 0.7152, 0.0722][index]!;
+								},
+								0,
+							);
+						}
+						const capLight = luminance(cap);
+						return {
+							followsScale: Boolean(
+								steps.at(-1)!.compareDocumentPosition(cap) & Node.DOCUMENT_POSITION_FOLLOWING,
+							),
+							ratios: steps.map((swatch) => {
+								const light = luminance(swatch);
+								return (Math.max(light, capLight) + 0.05) / (Math.min(light, capLight) + 0.05);
+							}),
+						};
+					});
+					expect(cap.followsScale).toBe(true);
+					expect(Math.min(...cap.ratios)).toBeGreaterThanOrEqual(3);
+					const [legendBounds, railBounds] = await Promise.all([
+						legend.boundingBox(),
+						page.locator('.map-rail.desktop').boundingBox(),
+					]);
+					expect(legendBounds!.y + legendBounds!.height).toBeLessThanOrEqual(
+						railBounds!.y + railBounds!.height + 1,
+					);
 					await toggle.press('Enter');
 					await expect(toggle).toHaveAttribute('aria-checked', 'false');
 					await expect.poll(async () => (await readRecordRender(page))?.pitch).toBe(0);

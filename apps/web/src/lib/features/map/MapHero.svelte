@@ -52,7 +52,7 @@
 	import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
-	import { scheduleTerminals, type RecordMapLayer } from './recordMap';
+	import type { RecordMapLayer } from './recordMap';
 	import { MAP_RECORD } from '#lib/seo/routeSeo.ts';
 	import { goto } from '$app/navigation';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -703,7 +703,6 @@
 			wide,
 		);
 	});
-	const terminals = $derived(scheduleTerminals(mapDirections));
 	const readingDirections = $derived.by(() => {
 		if (readingLineIds.length !== 1) return [];
 		const id = readingLineIds[0]!;
@@ -1543,17 +1542,6 @@
 				{tr('3D view', 'Vue 3D')}
 			</SwitchRow>
 		{/if}
-		<p class="w-full text-sm text-muted-foreground">
-			{recordLayer === 'stops'
-				? tr(
-						'Stops, by their share of observed stop events that were late.',
-						'Arrêts, selon leur part de passages observés en retard.',
-					)
-				: tr(
-						'Stretches between stops, by the time lost.',
-						'Tronçons entre arrêts, selon le temps perdu.',
-					)}
-		</p>
 	{/if}
 {/snippet}
 
@@ -1997,7 +1985,6 @@
 		url={recordUrl}
 		{locale}
 		stops={stopList}
-		{terminals}
 		routes={session.routesIndex}
 		onlinefilters={showLineFilters}
 		children={mapContent}

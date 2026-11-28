@@ -2,6 +2,7 @@
 	import { mapRecordReading, searchCount } from '#lib/site/presenter.ts';
 	import { resolveColor } from '#lib/components/map/vehicleSprites.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack, type Snippet } from 'svelte';
 	import { Separator } from '@yesid/ui/separator';
@@ -32,14 +33,12 @@
 	import { recordExtrusions, recordHeightScale } from './recordExtrusions';
 	import {
 		ALL_CORRIDORS_MIN_ZOOM,
-		OTHER_STOPS_MIN_ZOOM,
 		overviewCorridors,
 		recordColours,
 		recordCorridors,
 		recordFeatures,
 		recordMapSampleText,
 		recordStops,
-		recordStopIsVisible,
 		type RecordMapLayer,
 		type RecordMark,
 	} from './recordMap';
@@ -56,7 +55,6 @@
 		url: URL;
 		locale: Locale;
 		stops: readonly StopIndexEntry[];
-		terminals: ReadonlySet<string>;
 		routes: readonly RouteIndexEntry[];
 		onlinefilters: () => void;
 		onsourcedate: (date: string | null) => void;
@@ -80,7 +78,6 @@
 		url,
 		locale,
 		stops,
-		terminals,
 		routes,
 		onlinefilters,
 		onsourcedate,
@@ -225,15 +222,11 @@
 				scheduleOnly,
 				network ? corridorResult?.paths : undefined,
 			);
-		return recordStops(
-			stops,
-			answer,
-			(stop) =>
-				Boolean(
-					stop.routes?.length &&
-					stop.routes.every((id) => lineIsScheduleOnly(provider, id, routeTypes.get(id) ?? null)),
-				),
-			terminals,
+		return recordStops(stops, answer, (stop) =>
+			Boolean(
+				stop.routes?.length &&
+				stop.routes.every((id) => lineIsScheduleOnly(provider, id, routeTypes.get(id) ?? null)),
+			),
 		);
 	});
 	const markById = $derived(new Map(marks.map((mark) => [mark.id, mark])));
@@ -241,23 +234,13 @@
 	const corridorOverview = $derived(network ? overviewCorridors(marks) : marks);
 	const atCorridorOverview = $derived((reportCamera?.zoom ?? 0) < ALL_CORRIDORS_MIN_ZOOM);
 	const drawn = $derived(atCorridorOverview ? corridorOverview : marks);
-	const showStopScope = $derived(
-		stopLayer &&
-			reportCamera &&
-			reportCamera.zoom < OTHER_STOPS_MIN_ZOOM &&
-			marks.some((mark) => !mark.main),
-	);
-	const overviewIncludesOtherStops = $derived(
-		stopLayer && marks.some((mark) => mark.main && !terminals.has(mark.id)),
-	);
 	const visible = $derived.by(() => {
 		const camera = reportCamera;
 		if (!camera) return [];
 		return drawn
 			.filter((mark) =>
 				mark.geometry.type === 'Point'
-					? recordStopIsVisible(mark, camera.zoom) &&
-						isCoordinateInCapturedView(camera, mark.geometry.coordinates)
+					? isCoordinateInCapturedView(camera, mark.geometry.coordinates)
 					: isLineInCapturedView(camera, mark.geometry.coordinates),
 			)
 			.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
@@ -278,13 +261,12 @@
 		limit = 12;
 	});
 	$effect(() => oncount?.(answer && reportCamera ? visible.length : null));
+	const searchQuery = $derived(stopDisplayName(search.trim()).toLocaleLowerCase(locale));
 	const matching = $derived(
-		search.trim()
+		searchQuery
 			? marks
 					.filter(({ name, stop }) =>
-						`${name} ${stop ?? ''}`
-							.toLocaleLowerCase(locale)
-							.includes(search.trim().toLocaleLowerCase(locale)),
+						`${name} ${stop ?? ''}`.toLocaleLowerCase(locale).includes(searchQuery),
 					)
 					.slice(0, 12)
 			: [],
@@ -300,7 +282,7 @@
 		const canvas = document.createElement('canvas');
 		canvas.width = canvas.height = 1;
 		const context = canvas.getContext('2d', { willReadFrequently: true });
-		const resolvedRamp = recordColours[stopLayer ? 'stops' : 'corridors'].map((colour) => {
+		const resolvedRamp = recordColours.map((colour) => {
 			if (!context) return mutedInk;
 			context.fillStyle = resolveColor(colour, mutedInk);
 			context.fillRect(0, 0, 1, 1);
@@ -318,7 +300,7 @@
 			heightScale
 				? recordExtrusions(features, (id) => valuesInView?.get(id), heightScale)
 				: undefined,
-			resolveColor('var(--accent-text)', mutedInk),
+			resolveColor('var(--map-corridor-cap)', mutedInk),
 		);
 	});
 	$effect(() => {
@@ -461,19 +443,7 @@
 							</h2>
 							<span class="tabular-nums text-muted-foreground">{shownCount(visible.length)}</span>
 						</div>
-						{#if showStopScope}
-							<p class="text-muted-foreground">
-								{overviewIncludesOtherStops
-									? tr(
-											'Showing stops served by more than one line, métro and rail stations, and the first and last stops on routes. Zoom in for all stops.',
-											'Seuls les arrêts desservis par plusieurs lignes, les stations de métro et de train et les terminus sont affichés. Zoomez pour voir tous les arrêts.',
-										)
-									: tr(
-											'Showing the first and last stops on routes. Zoom in for all stops.',
-											'Seuls les terminus sont affichés. Zoomez pour voir tous les arrêts.',
-										)}
-							</p>
-						{:else if drawn !== marks}
+						{#if drawn !== marks}
 							<p class="text-muted-foreground">
 								{tr(
 									`Showing the ${shownCount(drawn.length)} stretches that lose the most time. Zoom in for all.`,

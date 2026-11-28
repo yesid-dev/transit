@@ -9,9 +9,7 @@ import {
 	recordMapSampleText,
 	recordRampStep,
 	recordStopRadii,
-	recordStopIsVisible,
 	recordStops,
-	scheduleTerminals,
 	type RecordMark,
 } from './recordMap';
 
@@ -181,7 +179,7 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 	});
 	const marks = recordStops(stops, answer, () => false);
 	expect(
-		recordFeatures(marks, recordColours.stops, true, '#949494').features.map(({ properties }) => [
+		recordFeatures(marks, recordColours, true, '#949494').features.map(({ properties }) => [
 			properties.step,
 			properties.state,
 			properties.colour,
@@ -190,7 +188,7 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 		[null, 0, '#949494'],
 		[null, 1, '#949494'],
 		[null, 2, '#949494'],
-		[3, 3, recordColours.stops[3]],
+		[3, 3, recordColours[3]],
 	]);
 	for (const sizes of [
 		recordStopRadii.network,
@@ -202,33 +200,28 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 	}
 });
 
-it('keeps terminal, transfer and rail stops at network zoom and adds other stops on zoom in', () => {
-	const terminalIds = scheduleTerminals({
-		line: [
-			{
-				stops: [
-					{ id: 'A', seq: 1 },
-					{ id: 'B', seq: 2 },
-					{ id: 'C', seq: 3 },
-				],
-			},
-		],
-	});
-	const marks = recordStops(
-		[
-			...stops,
-			{ id: 'E', name: 'Transfer', lat: 45.5, lon: -73.56, routes: ['1', '2'] },
-			{ id: 'F', name: 'Rail', lat: 45.5, lon: -73.55, mode: 'rail' },
-		],
-		null,
-		() => false,
-		terminalIds,
-	);
-	expect(marks.filter((mark) => recordStopIsVisible(mark, 12.99)).map(({ id }) => id)).toEqual([
-		'A',
-		'C',
-		'E',
-		'F',
+it('uses Stops display names in both stop and corridor readings', () => {
+	const locations = [
+		{ ...stops[0]!, name: "PLACE D'ORLÉANS B" },
+		{ ...stops[1]!, name: 'TRIM 1A' },
+	];
+	expect(recordStops(locations, null, () => false).map(({ name }) => name)).toEqual([
+		'Place d’Orléans B',
+		'Trim 1A',
 	]);
-	expect(marks.filter((mark) => recordStopIsVisible(mark, 13))).toEqual(marks);
+	const answer = mapRecordAnswer.parse({
+		measure: 'mean_time_lost',
+		from_stop: ['A'],
+		to_stop: ['B'],
+		state: [3],
+		sample: [40],
+		value: [42],
+		evidence,
+	});
+	expect(recordCorridors(locations, [], answer, '', false)[0]).toMatchObject({
+		fromName: 'Place d’Orléans B',
+		toName: 'Trim 1A',
+		name: 'Place d’Orléans B → Trim 1A',
+		value: 42,
+	});
 });
