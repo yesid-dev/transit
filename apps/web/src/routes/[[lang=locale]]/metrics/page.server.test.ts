@@ -26,3 +26,15 @@ it('streams the global catalog without passing the selected city, dates or langu
 	finish(Response.json({ invalid: 'Expected a registry array' }));
 	await expect(data?.catalog).resolves.toEqual({ kind: 'unreachable' });
 });
+
+it('draws a catalogue that answers before the first byte on the server', async () => {
+	fetcher.mockResolvedValueOnce(Response.json([]));
+	const url = new URL('https://transit1.yesid.dev/metrics?provider=stm');
+	const data = await load({
+		url,
+		request: new Request(url),
+		parent: async () => ({ provider: { timezone: 'America/Toronto' } }),
+	} as Parameters<typeof load>[0]);
+	// A plain value, not a promise: the measures are in the server's HTML.
+	expect(data?.catalog).toEqual({ kind: 'answer', answer: [] });
+});

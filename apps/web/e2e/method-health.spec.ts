@@ -96,6 +96,9 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
+		// The measures are drawn on the server, and hydration puts their drawn text back: replace
+		// the title only once the page's scripts have taken over.
+		await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 		const card = page.locator('[data-method-disclosure="fixture_delay"]');
 		const title = card.locator('.method-disclosure-trigger > span').first();
 		await title.evaluate(
@@ -192,6 +195,8 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(
 			main.getByRole('button', { name: fr ? 'Imprimer' : 'Print', exact: true }),
 		).toBeVisible();
+		// A drawn button answers once the page's scripts have taken over.
+		await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 		await main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }).click();
 		await page.emulateMedia({ media: 'print' });
 		await expect(desktopToc.getByRole('navigation')).toBeHidden();
@@ -282,6 +287,10 @@ for (const width of [390, 1024, 1440]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${path}/metrics?${dates}#fixture_delay`);
 			const main = page.getByRole('main');
+			// The measures are drawn on the server; opening the fragment's measure and the clicks
+			// below need the page's scripts, which a busy runner can take more than 5 s to start.
+			await expect(main.locator('[data-method-disclosure="fixture_delay"]')).toBeAttached();
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
 			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
