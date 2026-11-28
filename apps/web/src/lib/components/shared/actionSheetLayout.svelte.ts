@@ -29,7 +29,13 @@ export function actionSheetLayout() {
 			event.preventDefault();
 			requestAnimationFrame(() =>
 				requestAnimationFrame(() => {
-					if (title.isConnected) title.focus({ preventScroll: true });
+					// A window closed within these frames has already given focus back to its button and
+					// stays in the page while it fades out; focusing its title would drop focus to the
+					// page once it leaves.
+					const dialog = title.closest('[role="dialog"]');
+					if (!title.isConnected || dialog?.getAttribute('data-state') !== 'open') return;
+					if (dialog.contains(document.activeElement)) return;
+					title.focus({ preventScroll: true });
 				}),
 			);
 		},
