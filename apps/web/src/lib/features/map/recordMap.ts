@@ -10,6 +10,8 @@ import type { RecordMapLayer } from '#lib/site/mapFrame.ts';
 export type { RecordMapLayer } from '#lib/site/mapFrame.ts';
 export const RECORD_DETAIL_MIN_ZOOM = 13;
 export const RECORD_OVERVIEW_LIMIT = 300;
+/** The neutral rest of a capped overview costs seconds to draw at network zoom: closer only. */
+export const RECORD_UNDERLAY_MIN_ZOOM = 11;
 type Coordinate = [number, number];
 type Geometry =
 	| { type: 'Point'; coordinates: Coordinate }

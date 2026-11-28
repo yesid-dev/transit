@@ -172,7 +172,7 @@ for (const locale of ['en', 'fr'] as const) {
 		});
 		const oncap = vi.fn();
 		const oncount = vi.fn();
-		const { container, getByTestId } = render(MapRecordPanelHarness, {
+		const { container, getByTestId, rerender } = render(MapRecordPanelHarness, {
 			props: { ...panelProps, layer: 'waits', locale, stops, oncap, oncount } as never,
 		});
 		const fr = locale === 'fr';
@@ -193,7 +193,12 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		const draw = vi.mocked(attachRecordMap).mock.lastCall!;
 		expect(draw[1].features).toHaveLength(300);
-		expect(draw[3].underlay?.features).toHaveLength(1);
+		// The neutral rest of the layer costs seconds at network zoom; it waits for zoom 11.
+		expect(draw[3].underlay).toBeUndefined();
+		await rerender({ reportCamera: { ...camera, zoom: 11.5 } });
+		await waitFor(() =>
+			expect(vi.mocked(attachRecordMap).mock.lastCall![3].underlay?.features).toHaveLength(1),
+		);
 		// The method follows the answer and the list, never before the figure.
 		const method = container.querySelector('[data-record-method]')!;
 		const list = container.querySelector('[data-slot="map-in-view"]')!;

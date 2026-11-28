@@ -38,6 +38,7 @@
 	import {
 		RECORD_DETAIL_MIN_ZOOM,
 		RECORD_OVERVIEW_LIMIT,
+		RECORD_UNDERLAY_MIN_ZOOM,
 		highestWaitsByStop,
 		overviewCorridors,
 		overviewWaits,
@@ -272,6 +273,7 @@
 	// Some marks wait for a closer zoom: the 300 limit, or readings that are not measured.
 	const limited = $derived(atOverview && drawn.length < mapped.length);
 	const capped = $derived(limited && drawn.length === RECORD_OVERVIEW_LIMIT);
+	const underlaid = $derived(limited && (reportCamera?.zoom ?? 0) >= RECORD_UNDERLAY_MIN_ZOOM);
 	$effect(() => oncap?.(capped ? drawn.length : null));
 	$effect(() => onapproximate?.(drawn.some(({ approximate }) => approximate === true)));
 	const byValue = (a: RecordMark, b: RecordMark) => (b.value ?? -Infinity) - (a.value ?? -Infinity);
@@ -341,7 +343,7 @@
 		return attachRecordMap(map, features, (id) => (selectedId = id), {
 			network,
 			waits: waitLayer,
-			underlay: limited ? recordUnderlay(mapped, drawn) : undefined,
+			underlay: underlaid ? recordUnderlay(mapped, drawn) : undefined,
 			underlayColour: mutedInk,
 			outline: resolveColor('var(--foreground)', mutedInk),
 			extrusions: heightScale
