@@ -1,10 +1,10 @@
-import {
-	AlertsFileSchema,
-	LiveNetworkFileSchema,
-	LiveStopDeparturesFileSchema,
-	LiveTripsFileSchema,
-	LiveVehiclesFileSchema,
-} from '#lib/v1/schemas/index.ts';
+// The defining modules, not the schema index: a value import through the index builds every
+// published file schema before the live map can start.
+import { AlertsFileSchema } from '#lib/v1/schemas/alerts.ts';
+import { LiveNetworkFileSchema } from '#lib/v1/schemas/network.ts';
+import { LiveStopDeparturesFileSchema } from '#lib/v1/schemas/stop_departures.ts';
+import { LiveTripsFileSchema } from '#lib/v1/schemas/trips.ts';
+import { LiveVehiclesFileSchema } from '#lib/v1/schemas/vehicles.ts';
 import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/types.ts';
 import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 import {

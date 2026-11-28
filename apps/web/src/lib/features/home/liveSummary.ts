@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { captureAlerts, captureNetwork, captureVehicles } from '#lib/live/captureProjection.ts';
 import { captureFeedSchema, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
-import { AlertsFileSchema, LiveNetworkFileSchema } from '#lib/v1/schemas/index.ts';
+import { AlertsFileSchema } from '#lib/v1/schemas/alerts.ts';
+import { LiveNetworkFileSchema } from '#lib/v1/schemas/network.ts';
 import { liveNoticeCount } from '../alerts/alertCards.ts';
 import { lateLines } from './overviewRecord.ts';
 

@@ -52,13 +52,31 @@ export function mapOccupancyColour(code: OccupancyCode) {
 	return measureRamps.crowding[OCCUPANCY_CODES.indexOf(code)]!;
 }
 
+let colorProbe: HTMLSpanElement | null = null;
+
+/**
+ * One hidden probe serves every colour. Inserting and removing a node per colour made each read
+ * rebuild the page's style and layout tree; a new inline colour restyles only the probe.
+ */
+function colorProbeElement(): HTMLSpanElement {
+	if (colorProbe?.isConnected && colorProbe.ownerDocument === document) return colorProbe;
+	const probe = document.createElement('span');
+	probe.setAttribute('aria-hidden', 'true');
+	probe.dataset.colorProbe = '';
+	probe.style.display = 'none';
+	document.body.appendChild(probe);
+	colorProbe = probe;
+	return probe;
+}
+
 export function resolveColor(varExpr: string, fallback: string): string {
 	if (typeof document === 'undefined') return fallback;
-	const probe = document.createElement('span');
-	probe.style.cssText = `position:absolute;visibility:hidden;color:${varExpr}`;
-	document.body.appendChild(probe);
-	const c = getComputedStyle(probe).color;
-	probe.remove();
+	const probe = colorProbeElement();
+	probe.style.color = '';
+	probe.style.color = varExpr;
+	// An expression the browser rejects leaves no inline colour: answer the fallback, never the
+	// inherited text colour.
+	const c = probe.style.color ? getComputedStyle(probe).color : '';
 	return c || fallback;
 }
 
