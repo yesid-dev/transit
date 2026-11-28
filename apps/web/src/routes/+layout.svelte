@@ -88,7 +88,7 @@
 	import { EdgeState } from '#lib/components/edge/index.ts';
 	import { Separator } from '@yesid/ui/separator';
 	import { SiteFooter, SiteRoot } from '@yesid/ui/layout';
-	import { ConstructionProps } from '@yesid/ui/brand';
+	import HomeConstructionGround from '#lib/components/layout/HomeConstructionGround.svelte';
 	import { desktop } from '@yesid/ui/state';
 	import {
 		NAV_GROUPS,
@@ -143,7 +143,6 @@
 		);
 		return mode === 'record' && period !== null && alertDetailsAllowed(period);
 	});
-	let constructionEdge = $state<HTMLElement>();
 
 	const noIndex = $derived(!siteConfig.indexing || isEphemeralPath(page.url.pathname));
 
@@ -547,10 +546,7 @@
 			{:else}
 				{#if seoPath === '/'}
 					{#key page.url.pathname}
-						<div bind:this={constructionEdge} class="construction-anchor" aria-hidden="true"></div>
-						<div class="home-construction-floor">
-							<ConstructionProps layout="spread" floodlight revealAt={constructionEdge} />
-						</div>
+						<HomeConstructionGround />
 					{/key}
 				{/if}
 				{#snippet legalStatus()}
@@ -637,25 +633,6 @@
 			--space-page-x: var(--space-card-gap);
 			--detail-column-gap: var(--space-card-gap);
 			--layout-control-rail-width: min(16rem, 25%);
-		}
-	}
-	/* The ground keeps its full height from the first paint: the props rise inside it (the kit moves
-	   them with transform alone), so revealing them never moves the footer or anything below. */
-	.home-construction-floor {
-		position: relative;
-		height: 240px;
-		flex-shrink: 0;
-		overflow: clip;
-	}
-	.construction-anchor {
-		height: 0;
-		width: 1px;
-		flex-shrink: 0;
-		pointer-events: none;
-	}
-	@media (--tablet-max) {
-		.home-construction-floor {
-			height: 100px;
 		}
 	}
 	.footer-disclaimer {
