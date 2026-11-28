@@ -106,6 +106,21 @@ jobs:
         working-directory: apps/web
         run: bun run build
 
+      # Same carry as web.yml: the scripts of the builds of the last 7 days stay deployable.
+      - name: Restore recent builds' immutable files
+        if: inputs.target == 'web' || inputs.target == 'both'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/transit-web-immutable
+          key: transit-web-immutable-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: transit-web-immutable-
+
+      - name: Keep recent builds' immutable files in this deployment
+        if: inputs.target == 'web' || inputs.target == 'both'
+        run: |
+          node .github/scripts/web-immutable-carry.mjs next apps/web/.svelte-kit/cloudflare "$RUNNER_TEMP/transit-web-immutable" "$RUNNER_TEMP/transit-web-immutable-next"
+          node .github/scripts/web-immutable-carry.mjs merge "$RUNNER_TEMP/transit-web-immutable" apps/web/.svelte-kit/cloudflare
+
       - name: Apply public snapshot CORS
         if: inputs.target == 'data-proxy' || inputs.target == 'both'
         working-directory: apps/data-proxy
@@ -124,6 +139,17 @@ jobs:
           node "$RUNNER_TEMP/transit-deploy-control/node_modules/wrangler/bin/wrangler.js" deploy --name transit1-web
           --var "TRANSIT_COMMIT_SHA:$TRANSIT_COMMIT_SHA"
           --var "TRANSIT_BRANCH:$TRANSIT_BRANCH"
+
+      - name: Stage immutable files for the next deployment
+        if: inputs.target == 'web' || inputs.target == 'both'
+        run: rm -rf "$RUNNER_TEMP/transit-web-immutable" && mv "$RUNNER_TEMP/transit-web-immutable-next" "$RUNNER_TEMP/transit-web-immutable"
+
+      - name: Save immutable files for the next deployment
+        if: inputs.target == 'web' || inputs.target == 'both'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/transit-web-immutable
+          key: transit-web-immutable-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Record web deployment
         if: inputs.target == 'web' || inputs.target == 'both'

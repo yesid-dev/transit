@@ -23,7 +23,23 @@
 		notice.hidden = false;
 	};
 
+	// A script that fails to load during a deploy belongs to the page's version; a fresh load gets a
+	// consistent one. Reload once by itself; within a minute on the same address, offer the button.
+	const reloadOnce = () => {
+		const key = 'transit:load-failed-reload';
+		try {
+			const last = JSON.parse(sessionStorage.getItem(key) ?? 'null');
+			if (last?.url === location.href && Date.now() - last.at < 60_000) return false;
+			sessionStorage.setItem(key, JSON.stringify({ url: location.href, at: Date.now() }));
+		} catch {
+			return false;
+		}
+		location.reload();
+		return true;
+	};
+
 	const loadFailed = async () => {
+		if (reloadOnce()) return;
 		show(false);
 		if (checked || newer) return;
 		checked = true;

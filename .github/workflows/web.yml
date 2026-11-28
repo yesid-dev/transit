@@ -360,7 +360,7 @@ jobs:
 
       - name: Deployment scope contract
         working-directory: ${{ github.workspace }}
-        run: node --test .github/scripts/web-queue-gate.test.mjs .github/scripts/web-queue-gate-workflow.test.mjs .github/scripts/deploy-scope.test.mjs .github/scripts/deploy-now.test.mjs .github/scripts/web-artifact-promotion.test.mjs .github/scripts/worker-rollback.test.mjs .github/scripts/post-deploy-layout.test.mjs .github/scripts/layout-setup-result.test.mjs .github/scripts/ship-and-verify.test.mjs .github/scripts/deployment-order.test.mjs
+        run: node --test .github/scripts/web-queue-gate.test.mjs .github/scripts/web-queue-gate-workflow.test.mjs .github/scripts/deploy-scope.test.mjs .github/scripts/deploy-now.test.mjs .github/scripts/web-artifact-promotion.test.mjs .github/scripts/worker-rollback.test.mjs .github/scripts/post-deploy-layout.test.mjs .github/scripts/layout-setup-result.test.mjs .github/scripts/ship-and-verify.test.mjs .github/scripts/deployment-order.test.mjs .github/scripts/web-immutable-carry.test.mjs
 
       - name: Public site probe contract
         working-directory: ${{ github.workspace }}
@@ -1021,6 +1021,23 @@ jobs:
           TRANSIT_PRODUCER_RUN_ID: ${{ needs.ci.outputs.producer_run_id }}
         run: node .github/scripts/web-build-artifact.mjs restore "$RUNNER_TEMP/transit-web-build"
 
+      # A page rendered by the old version can ask the new one for its scripts while the deploy
+      # rolls out. Each deploy keeps the content-named scripts of the builds of the last 7 days.
+      - name: Restore recent builds' immutable files
+        if: steps.locked_scope.outputs.deploy_web == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/transit-web-immutable
+          key: transit-web-immutable-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: transit-web-immutable-
+
+      - name: Keep recent builds' immutable files in this deployment
+        if: steps.locked_scope.outputs.deploy_web == 'true'
+        working-directory: ${{ github.workspace }}
+        run: |
+          node .github/scripts/web-immutable-carry.mjs next apps/web/.svelte-kit/cloudflare "$RUNNER_TEMP/transit-web-immutable" "$RUNNER_TEMP/transit-web-immutable-next"
+          node .github/scripts/web-immutable-carry.mjs merge "$RUNNER_TEMP/transit-web-immutable" apps/web/.svelte-kit/cloudflare
+
       - name: Capture rollback version before deployment
         id: previous
         if: steps.locked_scope.outputs.deploy_web == 'true' && steps.locked_scope.outputs.bootstrap == 'false'
@@ -1043,6 +1060,17 @@ jobs:
           --var "TRANSIT_COMMIT_SHA:$TRANSIT_COMMIT_SHA"
           --var "TRANSIT_BRANCH:$TRANSIT_BRANCH"
           && printf 'deployed=true\n' >> "$GITHUB_OUTPUT"
+
+      - name: Stage immutable files for the next deployment
+        if: steps.deploy.outputs.deployed == 'true'
+        run: rm -rf "$RUNNER_TEMP/transit-web-immutable" && mv "$RUNNER_TEMP/transit-web-immutable-next" "$RUNNER_TEMP/transit-web-immutable"
+
+      - name: Save immutable files for the next deployment
+        if: steps.deploy.outputs.deployed == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/transit-web-immutable
+          key: transit-web-immutable-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Verify deployed source identity
         id: identity
