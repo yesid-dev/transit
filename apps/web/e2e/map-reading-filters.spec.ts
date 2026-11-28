@@ -208,6 +208,8 @@ for (const provider of providers) {
 				});
 				await expect(tag(first.short)).toBeVisible();
 				await expect(tag(second.short)).toBeVisible();
+				await expect(tag(first.short)).toContainText(first.long);
+				await expect(tag(second.short)).toContainText(second.long);
 				expect((await tags.last().boundingBox())!.y).toBeLessThan((await picker.boundingBox())!.y);
 
 				const evidence = process.env.TRANSIT_K2_PICTURES;
@@ -223,6 +225,9 @@ for (const provider of providers) {
 				await tag(rail.short).click();
 				await expect(tags).toHaveCount(1);
 				await expect(direction).toBeEnabled();
+				await expect(
+					panel.locator('[data-map-direction-filter] [data-slot="combobox"]'),
+				).toHaveAttribute('data-clearable', 'false');
 				await direction.click();
 				await page.getByRole('option', { name: provider.destinations[0] }).click();
 				await expect(direction).toContainText(provider.destinations[0], { ignoreCase: true });

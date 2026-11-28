@@ -165,6 +165,7 @@
 		<span>{tr('Direction', 'Sens')}</span>
 		<Combobox
 			searchable={false}
+			clearable={false}
 			disabled={!directions.length}
 			label={tr('Direction', 'Sens')}
 			placeholder={directionPrompt}

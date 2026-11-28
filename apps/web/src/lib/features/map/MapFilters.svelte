@@ -4,6 +4,7 @@
 	import FilterChip from '#lib/components/shared/FilterChip.svelte';
 	import { Separator } from '@yesid/ui/separator';
 	import { Button } from '@yesid/ui/button';
+	import { RoutePlate } from '@yesid/ui/brand';
 	import { officialAlertsLabel } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
@@ -133,10 +134,6 @@
 		return { id, short: line(id), type: 3 };
 	}
 
-	function routeDisplay(route: RouteIndexEntry): string {
-		return route.long ? `${route.short} ${readName(route.long, locale)}` : route.short;
-	}
-
 	function fallbackStop(id: string): StopIndexEntry {
 		return { id, name: id, lat: 0, lon: 0, code: id };
 	}
@@ -248,14 +245,20 @@
 										type="button"
 										variant="outline"
 										size="sm"
-										class="min-h-11 min-w-11 gap-2 px-2 font-mono"
+										class="min-h-11 min-w-11 max-w-full gap-2 px-2 text-start"
+										wrap
 										aria-label={locale === 'fr'
 											? `Retirer la ligne ${route.short}`
 											: `Remove line ${route.short}`}
-										title={routeDisplay(route)}
 										onclick={() => void removeRoute(route)}
 									>
-										<span>{route.short}</span><span aria-hidden="true">×</span>
+										<RoutePlate code={route.short} />
+										{#if route.long && route.long !== route.short}
+											<span class="min-w-0 [overflow-wrap:anywhere]"
+												>{readName(route.long, locale)}</span
+											>
+										{/if}
+										<span class="shrink-0" aria-hidden="true">×</span>
 									</Button>
 								{/each}
 							</div>
