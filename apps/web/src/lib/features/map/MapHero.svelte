@@ -1549,7 +1549,7 @@
 			variant="joined-grid"
 			style="grid-template-columns: minmax(max-content, 1fr) minmax(max-content, 1fr)"
 		/>
-		<p class="text-sm text-muted-foreground" data-record-layer-title>
+		<p class="record-layer-title text-sm text-muted-foreground" data-record-layer-title>
 			{recordLayerTitle(recordLayer, locale)}
 		</p>
 		{#if recordLayer === 'corridors'}
@@ -2035,6 +2035,10 @@
 </div>
 
 <style>
+	/* The desktop rail shows the legend, titled with the same words, right under the choice. */
+	:global([data-frame-controls='desktop']) .record-layer-title {
+		display: none;
+	}
 	.map-missing-vehicle {
 		position: absolute;
 		z-index: var(--z-map-detail);

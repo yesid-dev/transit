@@ -27,12 +27,9 @@
 	import type { MapRecordAnswer } from './recordMapAnswer';
 	import { corridorMapAnswer, indexCorridorPaths, type CorridorIndex } from './corridorMap';
 	import type { RecordLayerAnswer } from './recordLayerAnswer';
-	import {
-		isCoordinateInCapturedView,
-		isLineInCapturedView,
-		type MapReportCamera,
-	} from './mapReportCamera';
+	import type { MapReportCamera } from './mapReportCamera';
 	import { measureMapFocusInset } from './mapFocusInset';
+	import { isMarkInCapturedView } from './recordMarkInView';
 	import { attachRecordMap } from './recordMapLayers';
 	import { recordExtrusions, recordHeightScale } from './recordExtrusions';
 	import {
@@ -277,14 +274,8 @@
 	$effect(() => oncap?.(capped ? drawn.length : null));
 	$effect(() => onapproximate?.(drawn.some(({ approximate }) => approximate === true)));
 	const byValue = (a: RecordMark, b: RecordMark) => (b.value ?? -Infinity) - (a.value ?? -Infinity);
-	function inView(camera: MapReportCamera, { geometry }: RecordMark) {
-		if (geometry.type === 'Point') return isCoordinateInCapturedView(camera, geometry.coordinates);
-		const [first] = geometry.coordinates;
-		return (
-			(first !== undefined && isCoordinateInCapturedView(camera, first)) ||
-			isLineInCapturedView(camera, geometry.coordinates)
-		);
-	}
+	const inView = (camera: MapReportCamera, { geometry }: RecordMark) =>
+		isMarkInCapturedView(camera, geometry);
 	// Every reading in view, coloured on the map or not: the list, its count and the answer.
 	const listed = $derived.by(() => {
 		const camera = reportCamera;
