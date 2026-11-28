@@ -263,7 +263,7 @@ it.each([
 		expect(crowding).not.toHaveTextContent(
 			locale === 'fr' ? 'Ce que la mesure exclut' : 'What it leaves out',
 		);
-		expect(crowding.querySelectorAll('[data-toc="family-crowding-notes"]')).toHaveLength(1);
+		expect(crowding.querySelectorAll('#family-crowding-notes')).toHaveLength(1);
 
 		const topCards = container.querySelectorAll<HTMLElement>('[data-slot="card"]');
 		for (const card of topCards) {

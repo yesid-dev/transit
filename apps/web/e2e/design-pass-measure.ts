@@ -209,7 +209,14 @@ async function keyboardMetrics(page: Page, countShadowRings: boolean) {
 						node.checkVisibility(),
 					);
 					const main = el.closest('main');
-					const groupSelector = '[data-slot="record-card"], [data-slot="record-ranking"]';
+					// Reading rails and their centre are separate columns in the focus order.
+					const groupSelector = [
+						'[data-slot="record-card"]',
+						'[data-slot="record-ranking"]',
+						'[data-slot="detail-shell-left"]',
+						'[data-slot="detail-shell-center"]',
+						'[data-slot="detail-shell-right"]',
+					].join(', ');
 					const groups = [...(main?.querySelectorAll(groupSelector) ?? [])];
 					const group = el.closest(groupSelector);
 					const parent = group?.parentElement?.closest(groupSelector);

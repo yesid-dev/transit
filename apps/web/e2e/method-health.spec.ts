@@ -17,15 +17,13 @@ for (const locale of ['en', 'fr'] as const) {
 		// The cards are drawn on the server; their saved open state applies on hydration.
 		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const main = page.getByRole('main');
-		const cards = main.locator('[data-section-bulk]');
-		const open = main.locator(
-			'[data-section-bulk]:has(> [data-slot="collapsible"][data-state="open"])',
-		);
+		const cards = main.locator('[data-method-bulk]');
+		const open = main.locator('[data-method-bulk][data-state="open"]');
 		const collapse = main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' });
 		const expand = main.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all' });
 		await expect(main).not.toContainText(fr ? 'méthode v' : 'method v');
 		await expect(open).toHaveCount(1);
-		await expect(open).toHaveAttribute('data-toc', 'on_time');
+		await expect(open).toHaveAttribute('id', 'on_time');
 		await expect(
 			main
 				.locator('.method-heading-row')
@@ -59,14 +57,16 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
 		const card = page.locator('#fixture_delay');
-		const title = card.locator('.section-title').first();
+		const title = card.locator('.method-disclosure-trigger > span').first();
 		await title.evaluate(
 			(node, text) => {
 				node.textContent = text;
 			},
-			fr ? 'Trajets effectués, annulés et manquants' : 'Trips that ran, cancelled and missing',
+			fr
+				? 'Trajets effectués, annulés et manquants à chaque arrêt prévu'
+				: 'Trips that ran, were cancelled or went missing at each scheduled stop',
 		);
-		const chevron = card.locator('.section-header__chevron').first();
+		const chevron = card.locator('.method-disclosure-trigger svg').first();
 		const titleBox = await title.boundingBox();
 		const chevronBox = await chevron.boundingBox();
 		expect(titleBox).not.toBeNull();
@@ -106,10 +106,10 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(
 					desktopToc.getByRole('link', { name: /jusqu’en novembre 2026|until November 2026/u }),
 				).toBeVisible();
-				await desktopToc.getByRole('button', { name: contents }).focus();
+				const contentsNav = desktopToc.getByRole('navigation', { name: contents });
+				await contentsNav.getByRole('link').first().focus();
 				await page.keyboard.press('Tab');
-				await page.keyboard.press('Tab');
-				const entry = desktopToc.getByRole('button', { name: states, exact: true });
+				const entry = contentsNav.getByRole('link', { name: states, exact: true });
 				await expect(entry).toBeFocused();
 				await page.keyboard.press('Enter');
 				await expect(entry).toHaveAttribute('aria-current', 'location');
@@ -242,7 +242,7 @@ for (const width of [390, 1440]) {
 				fr ? 'L’intervalle dans un classement' : 'The range on a ranking row',
 			);
 			await expect(ranking.locator('[data-slot="section-summary"]')).toHaveCount(0);
-			const disclosures = main.locator('[data-section-bulk]');
+			const disclosures = main.locator('[data-method-bulk]');
 			for (const card of await disclosures.all()) {
 				const trigger = card.getByRole('button').first();
 				if (await trigger.isVisible()) {
@@ -254,9 +254,7 @@ for (const width of [390, 1440]) {
 				}
 			}
 			await main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }).click();
-			await expect(
-				main.locator('[data-section-bulk]:has(> [data-slot="collapsible"][data-state="open"])'),
-			).toHaveCount(0);
+			await expect(main.locator('[data-method-bulk][data-state="open"]')).toHaveCount(0);
 			await expect(
 				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
 			).toHaveCount(1);

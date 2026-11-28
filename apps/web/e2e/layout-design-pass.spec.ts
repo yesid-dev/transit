@@ -351,7 +351,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 			await expect(page.locator('[data-slot="stop-live-predictions"]')).toBeVisible();
 		}
 		if (screen === 'how-we-measure') {
-			await expect(page.locator('[data-section-bulk]').first()).toBeVisible();
+			await expect(page.locator('[data-method-bulk]').first()).toBeVisible();
 		}
 		if (screen.startsWith('overview')) {
 			await expect(page.locator('[data-slot="record-ranking"] tbody tr')).toHaveCount(6);
@@ -436,12 +436,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 				await expect(main.locator('[data-record-state="not_tracked"]')).toBeVisible();
 			else await expect(main.locator('#ranking table')).toBeVisible();
 		}
-		if (
-			screen === 'roadmap' ||
-			screen === 'how-we-measure' ||
-			screen.startsWith('search') ||
-			reading
-		) {
+		if (screen === 'roadmap' || screen.startsWith('search') || reading) {
 			await expect(
 				page.locator('[data-slot="surface-rail"], [data-slot="surface-rail-mobile"]'),
 			).toHaveCount(0);
@@ -490,7 +485,6 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 						alerts ||
 						screen.startsWith('overview') ||
 						screen === 'stop-record' ||
-						screen === 'how-we-measure' ||
 						screen === 'download' ||
 						screen === 'roadmap' ||
 						reading ||

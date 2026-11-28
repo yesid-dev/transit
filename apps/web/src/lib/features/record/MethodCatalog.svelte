@@ -1,14 +1,11 @@
 <script lang="ts">
 	import type { Awaitable } from '#lib/site/ready.ts';
-	import type { Snippet } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
-	import {
-		CollapsibleSection,
-		SectionsToggle,
-		TocNav,
-		useSectionJump,
-		type TocEntry,
-	} from '@yesid/ui/brand';
+	import { ChevronToggle, useSectionJump, type TocEntry } from '@yesid/ui/brand';
+	import { Button } from '@yesid/ui/button';
+	import * as Collapsible from '@yesid/ui/collapsible';
+	import { sections } from '@yesid/ui/state';
 	import RecordScreen from './RecordScreen.svelte';
 	import RecordGroup from './RecordGroup.svelte';
 	import { ArticleHeader, DetailFrame } from '@yesid/ui/layout';
@@ -21,7 +18,6 @@
 	import RecordActionGroup from './RecordActionGroup.svelte';
 	import CiteBlock from './CiteBlock.svelte';
 	import RecordAnswer from './RecordAnswer.svelte';
-	import RecordCard from './RecordCard.svelte';
 	import RecordPending from './RecordPending.svelte';
 	import StateMark from './StateMark.svelte';
 	import { methodCopy, methodReferenceStates } from './methodCatalog.copy.ts';
@@ -67,8 +63,43 @@
 	const navigation = useSectionJump(afterNavigate);
 	let activeId = $state('method-heading');
 	let methodList = $state<HTMLElement>();
+	let reading = $state<HTMLElement>();
+	let openCards = $state<Record<string, boolean>>({});
+	let bulkOpen = $state<boolean>();
+	let ready = $state(false);
+	const referenceSections = ['ranking-range', 'about-transit'];
+	const isOpen = (id: string, independent = false) =>
+		openCards[id] ?? (!independent && (bulkOpen ?? id === 'on_time'));
+
+	onMount(() => {
+		const { sectionsSaved, sectionsChoice } = document.documentElement.dataset;
+		if (sectionsSaved !== undefined) bulkOpen = sectionsChoice === 'expanded';
+		ready = true;
+	});
+
+	function revealMethod(id: string) {
+		let disclosure = document.getElementById(id)?.closest<HTMLElement>('.method-disclosure');
+		while (disclosure && reading?.contains(disclosure)) {
+			openCards[disclosure.id] = true;
+			disclosure = disclosure.parentElement?.closest<HTMLElement>('.method-disclosure');
+		}
+	}
+
+	function setAll(next: boolean) {
+		bulkOpen = next;
+		openCards = Object.fromEntries(
+			Object.entries(openCards).filter(([id]) => id.endsWith('-notes')),
+		);
+		if (next) sections.expandAll();
+		else sections.collapseAll();
+	}
+
 	$effect(() => {
-		if (methodList && url.hash) void navigation.jump(url.hash.slice(1), { behavior: 'auto' });
+		const id = url.hash.slice(1);
+		if (reading && id && (methodList || document.getElementById(id))) {
+			// Follow the fragment on navigation and when the catalogue arrives.
+			void untrack(() => navigation.jump(id, { beforeReveal: revealMethod, behavior: 'auto' }));
+		}
 	});
 	const summaryKey = (text: string) =>
 		text
@@ -90,33 +121,51 @@
 	details: Snippet,
 	description?: string,
 	independent = false,
+	level: 2 | 3 | 4 = 3,
 )}
-	{#snippet summary()}
-		<p>{description}</p>
-	{/snippet}
-	<div {id} class="method-anchor">
-		<CollapsibleSection
-			title={name}
-			anchor={id}
-			open={id === 'on_time'}
-			firstVisitClosed={id !== 'on_time'}
-			{independent}
-			headerVariant="article-summary"
-			textSize="inherit"
-			edge="neutral"
-			edgeWeight="thin"
-			summary={description && summaryKey(description) !== summaryKey(name) ? summary : undefined}
-		>
-			{@render details()}
-		</CollapsibleSection>
-	</div>
+	{@const expanded = isOpen(id, independent)}
+	{@const summary =
+		description && summaryKey(description) !== summaryKey(name) ? description : null}
+	<Collapsible.Root
+		{id}
+		class="method-anchor method-disclosure"
+		data-method-bulk={independent ? undefined : ''}
+		open={expanded}
+		onOpenChange={(value) => (openCards[id] = value)}
+	>
+		<svelte:element this={`h${level}`} class="method-disclosure-heading">
+			<Collapsible.Trigger
+				aria-describedby={summary ? id + '-summary' : undefined}
+				class="method-disclosure-trigger inline-flex min-h-11 max-w-full items-start gap-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+			>
+				<span class="min-w-0">{name}</span>
+				<ChevronToggle open={expanded} direction="right" class="shrink-0 print:hidden" />
+			</Collapsible.Trigger>
+		</svelte:element>
+		{#if summary}<p id={id + '-summary'} data-slot="section-summary">{summary}</p>{/if}
+		<Collapsible.Content>
+			<div class="min-w-0 pt-2">
+				{@render details()}
+			</div>
+		</Collapsible.Content>
+	</Collapsible.Root>
 {/snippet}
 
-{#snippet measuresHeading()}
+{#snippet measuresHeading(ids: readonly string[] = referenceSections)}
+	{@const expanded = ids.some((id) => isOpen(id))}
+	{@const toggleCopy = sectionsToggleCopy[locale]}
 	<div class="method-heading-row flex min-w-0 flex-wrap items-center justify-between gap-3">
-		<h2 id="method-heading" tabindex="-1">{copy.heading}</h2>
+		<h2 id="method-heading">{copy.heading}</h2>
 		<div class="min-h-11 print:hidden">
-			<SectionsToggle copy={sectionsToggleCopy[locale]} activeEffect="none" />
+			<Button
+				variant="outline"
+				size="cta-sm"
+				wrap
+				class="min-h-11"
+				title={expanded ? toggleCopy.collapseTitle : toggleCopy.expandTitle}
+				onclick={() => setAll(!expanded)}
+				>{expanded ? toggleCopy.collapse : toggleCopy.expand}</Button
+			>
 		</div>
 	</div>
 {/snippet}
@@ -193,7 +242,7 @@
 					{/each}
 				</dl>
 			{/snippet}
-			{@render methodSection(id + '-notes', copy.dataUsers, notesBody, undefined, true)}
+			{@render methodSection(id + '-notes', copy.dataUsers, notesBody, undefined, true, 4)}
 		</div>
 	{/if}
 {/snippet}
@@ -223,7 +272,7 @@
 				<div class="grid min-w-0 gap-4">
 					{#each view.measures as item (item.entry.id)}
 						<section id={item.entry.id} class="measure-item grid min-w-0 gap-2">
-							<h3>{methodName(item.entry, locale)}</h3>
+							<h4>{methodName(item.entry, locale)}</h4>
 							<p>{item.summary}</p>
 							{@render fieldList(
 								item.parts,
@@ -338,6 +387,7 @@
 		toc={{
 			entries,
 			navigation,
+			onNavigate: (id) => void navigation.jump(id, { beforeReveal: revealMethod }),
 			openAria: contentsLabel,
 			closeAria: choose(locale, 'Close', 'Fermer'),
 			counter: false,
@@ -356,7 +406,20 @@
 
 		{#snippet left()}
 			<div class="grid gap-(--space-card-gap) print:hidden">
-				<TocNav {entries} {activeId} {navigation} heading={contentsLabel} counter={false} />
+				<nav aria-label={contentsLabel}>
+					<h2>{contentsLabel}</h2>
+					<ul class="mt-2 grid gap-1">
+						{#each entries as entry (entry.id)}
+							<li>
+								<a
+									class="method-link inline-flex min-h-11 items-center aria-[current=location]:font-bold"
+									href={'#' + entry.id}
+									aria-current={activeId === entry.id ? 'location' : undefined}>{entry.title}</a
+								>
+							</li>
+						{/each}
+					</ul>
+				</nav>
 				{@render archiveLink()}
 			</div>
 		{/snippet}
@@ -364,7 +427,11 @@
 		<!-- Reserve the opposite track so the reading column stays centred. -->
 		{#snippet right()}{/snippet}
 
-		<div class="method-content reading-column min-w-0">
+		<div
+			class="method-content reading-column min-w-0"
+			bind:this={reading}
+			data-method-ready={ready ? '' : undefined}
+		>
 			{#await catalog}
 				<RecordGroup aria-labelledby="method-heading"
 					>{@render measuresHeading()}
@@ -392,6 +459,12 @@
 					{@const allViews = buildMethodViews([...groups, ...extra], locale)}
 					{@const primaryViews = allViews.slice(0, groups.length)}
 					{@const extraViews = allViews.slice(groups.length)}
+					{@const ids = [
+						...allViews.map(({ measures, group }) =>
+							measures.length === 1 ? measures[0].entry.id : group.id,
+						),
+						...referenceSections,
+					]}
 					{@const ordered = [...groups, ...extra].flatMap(({ entries }) => entries)}
 					{@const byId = new Map(ordered.map((entry) => [entry.id, entry]))}
 					<RecordGroup>
@@ -415,7 +488,7 @@
 						{/if}
 					</RecordGroup>
 					<RecordGroup aria-labelledby="method-heading">
-						{@render measuresHeading()}
+						{@render measuresHeading(ids)}
 						<div class="contents" bind:this={methodList}>
 							{#each primaryViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 						</div>
@@ -429,28 +502,46 @@
 				{/if}
 			{/await}
 			<RecordGroup>
-				{@render methodSection('ranking-range', copy.range.title, rankingRange)}
-				<div id="reading-states" class="method-anchor">
-					<RecordCard title={copy.statesTitle}>
-						<dl class="method-parts">
-							{#each methodReferenceStates as state (state)}
-								<div>
-									<dt><StateMark {state} {locale} /></dt>
-									<dd>{copy.states[state]}</dd>
-								</div>
-							{/each}
-						</dl>
-						<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
-					</RecordCard>
-				</div>
-				<RecordCard title={copy.limitsTitle}>
+				{@render methodSection(
+					'ranking-range',
+					copy.range.title,
+					rankingRange,
+					undefined,
+					false,
+					2,
+				)}
+				<article
+					id="reading-states"
+					class="method-anchor grid gap-4"
+					aria-labelledby="reading-states-heading"
+				>
+					<h2 id="reading-states-heading">{copy.statesTitle}</h2>
+					<dl class="method-parts">
+						{#each methodReferenceStates as state (state)}
+							<div>
+								<dt><StateMark {state} {locale} /></dt>
+								<dd>{copy.states[state]}</dd>
+							</div>
+						{/each}
+					</dl>
+					<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
+				</article>
+				<article class="grid gap-4" aria-labelledby="record-limits-heading">
+					<h2 id="record-limits-heading">{copy.limitsTitle}</h2>
 					<div class="@container">
 						<ul class="method-limits list-outside list-disc ps-5 @max-[10rem]:ps-3">
 							{#each copy.recordLimits as line (line)}<li>{line}</li>{/each}
 						</ul>
 					</div>
-				</RecordCard>
-				{@render methodSection('about-transit', copy.about.title, aboutTransit, copy.about.summary)}
+				</article>
+				{@render methodSection(
+					'about-transit',
+					copy.about.title,
+					aboutTransit,
+					copy.about.summary,
+					false,
+					2,
+				)}
 				<div class="lg:hidden print:block">{@render archiveLink()}</div>
 			</RecordGroup>
 		</div>
@@ -487,10 +578,26 @@
 		font-size: var(--text-heading);
 		font-weight: 700;
 	}
-	h3 {
+	h3,
+	h4 {
 		margin: 0;
 		font-size: inherit;
 		font-weight: 600;
+	}
+	/* The kit's pre-paint choice also applies to the editorial disclosures before hydration. */
+	:global(html[data-sections-saved][data-sections-choice='expanded'])
+		.method-content:not([data-method-ready])
+		:global([data-method-bulk] > [data-slot='collapsible-content']) {
+		grid-template-rows: 1fr;
+		opacity: 1;
+		transition: none;
+	}
+	:global(html[data-sections-saved][data-sections-choice='collapsed'])
+		.method-content:not([data-method-ready])
+		:global([data-method-bulk] > [data-slot='collapsible-content']) {
+		grid-template-rows: 0fr;
+		opacity: 0;
+		transition: none;
 	}
 	.method-link {
 		color: var(--primary);
@@ -515,9 +622,6 @@
 		:global(.method-detail .detail-shell-grid) {
 			display: block;
 			padding: 0;
-		}
-		:global(.method-detail .section-header__chevron) {
-			display: none;
 		}
 	}
 	@container (min-width: 36rem) {
