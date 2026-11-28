@@ -201,10 +201,17 @@ def reconcile_delays(
         usable = []
         raw_stops = row.get("stops", [])
         headsign = None
+        start: int | None = None
+        origin: str | None = None
         # Reject duplicate updates for the same dated trip, not the whole feed.
         if key is not None and occurrences[key] == 1:
             day, trip = key
-            headsign = days[day].trips[trip].headsign
+            span = days[day].trips[trip]
+            headsign = span.headsign
+            # The timetable's first departure, which feeds without a trip start time lack.
+            start = anchors[day] + span.first
+            first_call = min(calls[day][trip], default=None)
+            origin = None if first_call is None else first_call[1]
             delay_is_eligible = update_window and row["relationship"] == 0
             stops, usable = _with_scheduled_calls(
                 raw_stops,
@@ -241,6 +248,8 @@ def reconcile_delays(
                 "stops": stops,
                 "delay": delay,
                 "trip_headsign": headsign,
+                "scheduled_start": start,
+                "scheduled_origin": origin,
             }
         )
 

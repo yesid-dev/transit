@@ -252,7 +252,8 @@ dated trip regardless of feed direction, and delay expires when the last
 predicted arrival or departure is more than the feed's freshness window in
 the past, allowing the vehicle to use its next usable upcoming call.
 Live trip updates include `trip_headsign` from the matched schedule edition's
-`trips.txt`. Each matched stop includes `scheduled_arrival` and
+`trips.txt`, plus `scheduled_start` (the trip's first timetabled departure, Unix
+epoch seconds) and `scheduled_origin` (its first stop ID). Each matched stop includes `scheduled_arrival` and
 `scheduled_departure` as Unix epoch seconds from the dated service-day
 schedule. Skipped and no-data stops keep their scheduled times, even when
 delays are unavailable. Missing timetable values and unmatched or duplicate

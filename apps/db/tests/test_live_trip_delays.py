@@ -245,6 +245,15 @@ def test_stale_trip_feed_clears_vehicle_and_stop_delay(tmp_path):
     assert trips[0]["stops"][0]["arrival_delay"] is None
     assert trips[0]["stops"][0]["scheduled_arrival"] == EXPECTED
     assert trips[0]["trip_headsign"] == "Terminus Est"
+    # The trip's first timetabled departure and stop, for feeds with no start time.
+    assert trips[0]["scheduled_start"] == EXPECTED - 300
+    assert trips[0]["scheduled_origin"] == "previous"
+
+
+def test_unmatched_trip_has_no_timetable_start(tmp_path):
+    update = report(call(arrival=EXPECTED), trip="unknown")
+    _, [trip] = reconcile_delays(None, [update], schedule(tmp_path), ZONE, NOW, update_window=90)
+    assert (trip["scheduled_start"], trip["scheduled_origin"]) == (None, None)
 
 
 @pytest.mark.parametrize("difference", [-61, -60, 0, 300, 301])
