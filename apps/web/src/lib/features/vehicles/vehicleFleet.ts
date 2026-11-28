@@ -62,9 +62,16 @@ export function projectVehicleFleet(answer: RecordSeries, view: FleetView, local
 					: true),
 	);
 	matches.sort((a, b) => compare(a.id, b.id));
+	const reported = matches.filter(({ days }) => (days ?? 0) > 0).length;
+	const didNotReport = matches.filter(({ state }) => state === 'not_reporting').length;
 	return {
 		rows: matches.slice(0, view.shown),
 		total: matches.length,
+		reportingCounts: {
+			reported,
+			didNotReport,
+			unmeasured: matches.length - reported - didNotReport,
+		},
 		fleet: all.length,
 		active: all.filter(({ days }) => (days ?? 0) > 0).length,
 		canFilter:

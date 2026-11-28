@@ -326,6 +326,29 @@ for (const locale of ['en', 'fr'] as const) {
 			expect(overhangingNames, `${width}px row names stay inside their column`).toEqual([]);
 		}
 
+		const lateHeader = table.locator('thead [data-column="late"]');
+		const lateHeaderButton = lateHeader.getByRole('button');
+		await lateHeaderButton.focus();
+		await page.keyboard.press('Enter');
+		await expect(page).toHaveURL(/sort=late&direction=desc$/);
+		await expect(lateHeader).toHaveAttribute('aria-sort', 'descending');
+		const lateChoice = page.getByRole('radio', { name: fr ? 'Part en retard' : 'Late share' });
+		await expect(lateChoice).toHaveAttribute('aria-checked', 'true');
+
+		await lateHeaderButton.press('Space');
+		await expect(page).toHaveURL(/sort=late&direction=asc$/);
+		await expect(lateHeader).toHaveAttribute('aria-sort', 'ascending');
+		await expect(lateChoice).toHaveAttribute('aria-checked', 'true');
+
+		await lateChoice.focus();
+		await page.keyboard.press('ArrowLeft');
+		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
+		await expect(table.locator('thead [data-column="onTime"]')).toHaveAttribute(
+			'aria-sort',
+			'ascending',
+		);
+		await expect(lateHeader).not.toHaveAttribute('aria-sort', /.+/);
+
 		const excluded = page.getByRole('table', {
 			name: fr
 				? 'Lignes impossibles à évaluer pour ces dates'

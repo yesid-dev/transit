@@ -625,7 +625,7 @@
 	{#if timingEvidence}<RecordEvidenceLine {locale} evidence={timingEvidence} />{/if}
 {/snippet}
 
-{#snippet lead(heading: Snippet)}
+{#snippet lead(heading: Snippet | undefined)}
 	{#if initialTiming}
 		<RecordPending {heading} {locale} shape="answer" answer={record.punctuality} />
 	{:else if spread !== null}
@@ -925,7 +925,8 @@
 	{locale}
 	head={{ title, subtitle }}
 	answer={lead}
-	answerClass={[
+	headingInAnswer
+	introClass={[
 		'min-[1280px]:-mb-4',
 		!firstTiming && 'line-listing-await',
 		timingPending && !initialTiming && 'opacity-65',

@@ -569,9 +569,8 @@
 	</div>
 {/snippet}
 
-{#snippet lead(heading: Snippet)}
+{#snippet lead()}
 	<RecordAnswer
-		{heading}
 		{locale}
 		value={null}
 		{sentence}
@@ -790,7 +789,8 @@
 	{locale}
 	head={{ title: copy.heading, subtitle }}
 	answer={lead}
-	answerClass={awaitingFirstReading ? 'stop-listing-await' : undefined}
+	edgeBeforeResults
+	introClass={awaitingFirstReading ? 'stop-listing-await' : undefined}
 	filters={hasLines ? filterRail : undefined}
 	{title}
 	titleAside={stamp}

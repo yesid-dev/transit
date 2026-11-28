@@ -8,6 +8,7 @@
 	import { Combobox, type ComboboxOption } from '@yesid/ui/combobox';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { ControlsRail, type SurfaceRailContext } from '@yesid/ui/layout';
+	import { Skeleton } from '@yesid/ui/skeleton';
 	import { ShowMore, type DataTableColumn } from '@yesid/ui/table';
 	import type { PageData } from '../../../routes/[[lang=locale]]/vehicles/$types';
 	import { getLocale, intl } from '#lib/i18n/index.ts';
@@ -307,12 +308,45 @@
 	});
 	const rowHeight = $derived(pendingBlockSize(rowShape));
 	const count = $derived(liveMode ? liveRows.length : (record?.total ?? 0));
+	const hasListing = $derived(liveMode ? Boolean(live?.vehicles) : Boolean(record));
+	const summaryDetail = $derived.by(() => {
+		if (liveMode) {
+			const known = liveMatches.filter(
+				(vehicle) => vehicle.status !== 'unknown' && vehicle.delay_min != null,
+			).length;
+			const unknown = liveMatches.length - known;
+			return t(
+				`: delay known for ${tally(known, locale)}, unknown for ${tally(unknown, locale)}.`,
+				`\u00a0: retard connu pour ${tally(known, locale)}, inconnu pour ${tally(unknown, locale)}.`,
+			);
+		}
+		if (!record?.reportingCounts) return '.';
+		const { reported, didNotReport, unmeasured } = record.reportingCounts;
+		const parts = [
+			t(
+				`${tally(reported, locale)} reported on a trip`,
+				`${tally(reported, locale)} avec signalement en trajet`,
+			),
+			t(
+				`${tally(didNotReport, locale)} did not report`,
+				`${tally(didNotReport, locale)} sans signalement`,
+			),
+		];
+		if (unmeasured > 0)
+			parts.push(
+				t(
+					`${tally(unmeasured, locale)} without a reading`,
+					`${tally(unmeasured, locale)} sans mesure`,
+				),
+			);
+		return `${t(': ', '\u00a0: ')}${parts.join(', ')}.`;
+	});
 	const countLabels = $derived(
 		countTemplates(
 			count,
 			{
-				singular: t('{count} vehicle', '{count} véhicule'),
-				plural: t('{count} vehicles', '{count} véhicules'),
+				singular: t('{count} vehicle listed', '{count} véhicule dans la liste') + summaryDetail,
+				plural: t('{count} vehicles listed', '{count} véhicules dans la liste') + summaryDetail,
 			},
 			locale,
 		),
@@ -519,9 +553,8 @@
 			)}
 		/>{/if}{/snippet}
 
-{#snippet lead(heading: Snippet)}
+{#snippet lead()}
 	{#if liveMode && !untracked}
-		{@render heading()}
 		<FleetLiveAnswer {locale} pending={liveLoading} withAction embedded>
 			<RecordAnswer
 				{locale}
@@ -551,19 +584,12 @@
 	{:else}
 		<div class="fleet-answer">
 			{#if untracked}
-				<RecordAnswer
-					{heading}
-					{locale}
-					value={null}
-					state="not_tracked"
-					sentence={notTracked[locale]}
-				/>
+				<RecordAnswer {locale} value={null} state="not_tracked" sentence={notTracked[locale]} />
 			{:else if !result || result.kind === 'busy'}
 				<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
-				<RecordPending {heading} {locale} shape="answer" busy={result?.kind === 'busy'} />
+				<RecordPending {locale} shape="reading" busy={result?.kind === 'busy'} />
 			{:else}
 				<RecordAnswer
-					{heading}
 					{locale}
 					time={stamp}
 					value={record?.fleet ? tally(record.active, locale) : null}
@@ -592,20 +618,29 @@
 {/snippet}
 
 {#snippet summary()}
-	{#if !waitingForRows && (view.query || selectedFilter)}<FilterSummary
-			{count}
-			countLabel={countLabels}
-			{locale}
-			clearLabel={t('Clear filters', 'Effacer les filtres')}
-			onClear={() => {
-				query = '';
-				void navigate('', null, false);
-			}}
-		/>
-		<noscript
-			><a href={clearUrl.pathname + clearUrl.search}>{t('Clear filters', 'Effacer les filtres')}</a
-			></noscript
-		>
+	{#if waitingForRows || hasListing}
+		<div class="fleet-summary" data-slot="fleet-summary">
+			{#if waitingForRows}
+				<Skeleton class="h-3 w-64 max-w-full" />
+			{:else}
+				<FilterSummary
+					{count}
+					countLabel={countLabels}
+					{locale}
+					clearLabel={t('Clear filters', 'Effacer les filtres')}
+					canClear={Boolean(view.query || selectedFilter)}
+					onClear={() => {
+						query = '';
+						void navigate('', null, false);
+					}}
+				/>
+				{#if view.query || selectedFilter}<noscript
+						><a href={clearUrl.pathname + clearUrl.search}
+							>{t('Clear filters', 'Effacer les filtres')}</a
+						></noscript
+					>{/if}
+			{/if}
+		</div>
 	{/if}
 {/snippet}
 
@@ -814,7 +849,6 @@
 	{locale}
 	head={{ title: data.seoTitle, subtitle }}
 	answer={lead}
-	answerClass={liveMode && !untracked ? 'grid gap-(--space-card-gap)' : undefined}
 	filters={canFilter ? filters : undefined}
 	title={untracked
 		? t('What changes without vehicle numbers', 'Ce qui change sans numéro de véhicule')
@@ -834,7 +868,7 @@
 			}}
 	bind:searchInput
 	{summary}
-	resultCountText={waitingForRows ? '' : filterCountText(count, countLabels, locale)}
+	resultCountText={waitingForRows || !hasListing ? '' : filterCountText(count, countLabels, locale)}
 	children={fleetRows}
 	{more}
 	about={untracked ? undefined : methodology}
@@ -854,6 +888,11 @@
 />
 
 <style>
+	.fleet-summary {
+		font-size: var(--text-small);
+		min-block-size: 1lh;
+	}
+
 	.fleet-results[data-reserved] {
 		min-block-size: var(--fleet-rows-wide);
 	}
@@ -861,6 +900,10 @@
 		min-block-size: 11.25rem;
 	}
 	@media (width < 40rem) {
+		.fleet-summary {
+			min-block-size: 2lh;
+		}
+
 		.record-fleet-results {
 			/* Phone rows include the secondary vehicle facts and their touch target. */
 			--record-waiting-row-height: 5.25rem;
