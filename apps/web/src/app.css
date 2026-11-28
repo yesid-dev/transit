@@ -32,8 +32,15 @@ html {
 	--layout-support-rail-width: clamp(16rem, 18vw, 20rem);
 	--layout-article-main-min: 40rem;
 	--layout-article-top-space: var(--space-card-gap);
+	--segmented-choice-font: var(--font-body);
+	--page-boundary-color: color-mix(in srgb, var(--muted-foreground) 60%, var(--background));
 	--transit-scrollbar: color-mix(in srgb, var(--muted-foreground) 75%, var(--background));
 	--transit-selection: color-mix(in srgb, var(--foreground) 14%, var(--background));
+}
+
+/* The continuous curve crosses the seam that the segmented stroke clips to. */
+.page-section-boundary[data-stroke-segments='1'] > svg.hand-drawn-line-art {
+	clip-path: none;
 }
 
 :where([data-slot='card'], [data-slot='controls-rail']) {

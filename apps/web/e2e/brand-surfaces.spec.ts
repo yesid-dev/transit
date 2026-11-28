@@ -100,7 +100,9 @@ test('Record listings keep the title, answer and results before the page edge', 
 		await expect(heading).toBeVisible();
 		const edge = screen.locator('[data-slot="page-section-boundary"]').first();
 		await expect(edge).toHaveAttribute('data-variant', 'hand-drawn');
+		await expect(edge).toHaveAttribute('data-stroke-segments', '1');
 		await expect(edge.locator('svg')).toBeVisible();
+		await expect(edge.locator('svg')).toHaveCSS('clip-path', 'none');
 		const order = await screen.evaluate((element) => {
 			const title = element.querySelector('h1')!;
 			const boundary = element.querySelector('[data-slot="page-section-boundary"]')!;

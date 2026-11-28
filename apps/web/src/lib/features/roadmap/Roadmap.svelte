@@ -47,7 +47,7 @@
 						<ol class="entries" role="list">
 							{#each ROADMAP_ENTRIES.filter((entry) => entry.state === state) as entry, index (entry.id)}
 								<li id={entry.id}>
-									{#if index > 0}<Separator variant="hand-drawn" />{/if}
+									{#if index > 0}<Separator decorative />{/if}
 									<h3>{entry.title[locale]}</h3>
 									<p>{entry.description[locale]}</p>
 									{#if entry.screens}
