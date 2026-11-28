@@ -665,6 +665,10 @@
 	const detailOpen = $derived(session.detailOpen && !isRecordLayer && !showingLookup);
 	let inViewOpen = $state(false);
 	let mobilePanel = $state('list');
+	let mobileControlsScroll = $state<HTMLDivElement>();
+	$effect(() => {
+		if (mobilePanel !== 'list' && mobileControlsScroll) mobileControlsScroll.scrollTop = 0;
+	});
 	let peekHeight = $state(48);
 	let pendingMobileLookup = $state(false);
 	let inViewDetent = $state('half');
@@ -1932,19 +1936,26 @@
 					<TabsContent value="list" class="grid min-h-0 grid-rows-[minmax(0,1fr)]">
 						{@render phoneList()}
 					</TabsContent>
-					<TabsContent value="legend" class="min-h-0 overflow-y-auto">
-						{@render phoneLegend()}
-					</TabsContent>
-					<TabsContent value="controls" class="min-h-0 overflow-y-auto">
-						{#if frameControls}
-							{@render frameControls({
-								presentation: 'mobile',
-								closeSheet: () => (inViewOpen = false),
-							})}
-						{:else}
-							{@render mapControls()}
-						{/if}
-					</TabsContent>
+					<div
+						bind:this={mobileControlsScroll}
+						class="min-h-0 min-w-0 overflow-y-auto scroll-py-2"
+						data-slot="map-left-sheet-scroll"
+						hidden={detailOpen || mobilePanel === 'list'}
+					>
+						<TabsContent value="legend" class="min-w-0">
+							{@render phoneLegend()}
+						</TabsContent>
+						<TabsContent value="controls" class="min-w-0">
+							{#if frameControls}
+								{@render frameControls({
+									presentation: 'mobile',
+									closeSheet: () => (inViewOpen = false),
+								})}
+							{:else}
+								{@render mapControls()}
+							{/if}
+						</TabsContent>
+					</div>
 				</Tabs>
 			</SheetContent>
 		</Sheet>
