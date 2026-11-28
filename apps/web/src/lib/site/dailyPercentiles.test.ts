@@ -27,7 +27,7 @@ describe('daily percentile spread', () => {
 		expect(dailyPercentileCaption(day, 'en')).toBe(
 			'p90 − median spread: 0.9 min. 2026-06-17 · 40 eligible delay predictions.',
 		);
-		expect(dailyPercentileCaption(day, 'fr')).toContain('Écart p90 − médiane : 0,9 min.');
+		expect(dailyPercentileCaption(day, 'fr')).toContain('Écart p90 − médiane\u00a0: 0,9 min.');
 	});
 
 	it.each([

@@ -216,7 +216,10 @@ export function timingBasis(counts: Counts | undefined, locale: Locale) {
 				)
 			: '';
 	return (
-		choose(locale, 'Observed times: ', 'Heures observées : ') + parts.join(', ') + '.' + caution
+		choose(locale, 'Observed times: ', 'Heures observées\u00a0: ') +
+		parts.join(', ') +
+		'.' +
+		caution
 	);
 }
 

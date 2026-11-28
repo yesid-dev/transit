@@ -143,7 +143,7 @@
 			'Missing: not in the record for that day',
 			'Manquant\u00a0: absent du bilan pour ce jour',
 		),
-		not_measured: t('Not measured: its source was missing', 'Non mesuré : la source manquait'),
+		not_measured: t('Not measured: its source was missing', 'Non mesuré\u00a0: la source manquait'),
 		incomplete: t('Incomplete', 'Incomplet'),
 		not_tracked: t('Transit did not track this', 'Transit n’a pas suivi cette donnée'),
 		not_published: t('Not published', 'Non publié'),

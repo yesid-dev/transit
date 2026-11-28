@@ -6,7 +6,7 @@ const COPY = defineCopy({
 	fr: {
 		scope: (date: string, n: string, partial: boolean) =>
 			`${date} · ${n} prévisions de retard admissibles${partial ? ' · couverture partielle' : ''}.`,
-		spread: (spread: string, scope: string) => `Écart p90 − médiane : ${spread}. ${scope}`,
+		spread: (spread: string, scope: string) => `Écart p90 − médiane\u00a0: ${spread}. ${scope}`,
 	},
 	en: {
 		scope: (date: string, n: string, partial: boolean) =>

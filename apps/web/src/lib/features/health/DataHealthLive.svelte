@@ -200,7 +200,10 @@
 											cadence: cadence ?? labels.not_measured,
 											state:
 												state === 'stale' && age
-													? t(`Late: last received ${age}`, `En retard : dernière réception ${age}`)
+													? t(
+															`Late: last received ${age}`,
+															`En retard\u00a0: dernière réception ${age}`,
+														)
 													: labels[state],
 											facts: captureFacts(state === 'stale' ? null : age, cadence, null, locale),
 										})),

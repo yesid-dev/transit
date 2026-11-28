@@ -24,7 +24,7 @@ export const indexCopy = defineCopy({
 			'Le filtre de fiabilité classe les lignes par numéro, pour ne pas mélanger les semaines.',
 		comparisonNotice: 'L’ordre de comparaison a remis le filtre de fiabilité à « Toutes ».',
 		comparisonContext: (dates: string) =>
-			`Semaine comparée : ${dates} · Part des relevés à l’heure`,
+			`Semaine comparée\u00a0: ${dates} · Part des relevés à l’heure`,
 		measure: (pct: string) => `${pct} des relevés à l’heure`,
 		measureLabel: 'Part des relevés à l’heure',
 		basis: (readings: string) => `Selon ${readings} relevés`,
@@ -52,7 +52,7 @@ export const indexCopy = defineCopy({
 			const parts = [`${problems} sur ${matching} vérifiées`];
 			if (pending !== '0') parts.push(`${pending} en cours de vérification`);
 			if (failed !== '0') parts.push(`${failed} non vérifiables`);
-			return `Inégales ou peu fiables : ${parts.join(' ; ')}.`;
+			return `Inégales ou peu fiables\u00a0: ${parts.join(' ; ')}.`;
 		},
 		problemNone: 'Aucune ligne inégale ou peu fiable dans les bilans de cette semaine.',
 		downloadDisplayed: 'Télécharger les lignes affichées (CSV)',
@@ -74,10 +74,10 @@ export const indexCopy = defineCopy({
 		map: 'Carte',
 		copyRecord: 'Copier le lien du bilan',
 		copyRecordDone: 'Lien copié',
-		copyFallback: 'Copiez ce lien :',
+		copyFallback: 'Copiez ce lien\u00a0:',
 		cite: 'Citer ce bilan',
 		citeDone: 'Citation copiée',
-		citeFallback: 'Copiez ce texte :',
+		citeFallback: 'Copiez ce texte\u00a0:',
 		period: (dates: string, days: string) => `${dates}, ${days}`,
 		completeDays: (n: string) => (n === '1' ? '1 jour complet' : `${n} jours complets`),
 		publishedLabel: 'Publié',

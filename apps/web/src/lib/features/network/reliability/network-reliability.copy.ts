@@ -229,7 +229,7 @@ export const networkReliabilityCopy = defineCopy({
 		reporting: {
 			heading: 'Signalement et couverture',
 			caveat:
-				'La couverture est la part de la flotte dont le statut en direct est connu. « Trajets silencieux » compte les trajets planifiés qui circulent actuellement sans véhicule en direct : un décompte de trajets silencieux par ligne, pas des véhicules identifiables. Les positions individuelles peuvent être plus anciennes que la mise à jour du flux. {excluded}',
+				'La couverture est la part de la flotte dont le statut en direct est connu. « Trajets silencieux » compte les trajets planifiés qui circulent actuellement sans véhicule en direct\u00a0: un décompte de trajets silencieux par ligne, pas des véhicules identifiables. Les positions individuelles peuvent être plus anciennes que la mise à jour du flux. {excluded}',
 		},
 		statusBarLabel: 'Répartition des statuts du réseau',
 		occupancyBarLabel: 'Répartition de l’occupation du réseau',
@@ -273,7 +273,7 @@ export const networkReliabilityCopy = defineCopy({
 			summary:
 				'Répartition des retards moyens par trajet à l’échelle du réseau, du plus tôt au plus tard.',
 			caption:
-				'La répartition actuelle des retards moyens par trajet, en minutes signées. Même base que le retard médian et les 10\u00a0% les plus lents ci-dessus : négatif signifie en avance, positif signifie en retard.',
+				'La répartition actuelle des retards moyens par trajet, en minutes signées. Même base que le retard médian et les 10\u00a0% les plus lents ci-dessus\u00a0: négatif signifie en avance, positif signifie en retard.',
 			xLabel: 'Retard (min)',
 			yLabel: 'Trajets',
 		},
@@ -281,7 +281,7 @@ export const networkReliabilityCopy = defineCopy({
 			summary:
 				'Lignes dont des trajets planifiés circulent sans véhicule en direct, les plus nombreuses d’abord.',
 			caption:
-				'Trajets planifiés qui circulent actuellement sans véhicule en direct, par ligne. Un trajet silencieux n’a aucun véhicule à suivre : on compte donc les trajets par ligne, pas les véhicules. {excluded}',
+				'Trajets planifiés qui circulent actuellement sans véhicule en direct, par ligne. Un trajet silencieux n’a aucun véhicule à suivre\u00a0: on compte donc les trajets par ligne, pas les véhicules. {excluded}',
 			rowLabel: 'Ligne',
 			tripsUnit: (count: number) => (count <= 1 ? 'trajet' : 'trajets'),
 		},
@@ -305,8 +305,8 @@ export const networkReliabilityCopy = defineCopy({
 					anyEnd: 'Au plus tard',
 				},
 			}),
-			coverage: (from: string, to: string) => `Couverture conservée : du ${from} au ${to}`,
-			selection: (from: string, to: string) => `Plage choisie : du ${from} au ${to}`,
+			coverage: (from: string, to: string) => `Couverture conservée\u00a0: du ${from} au ${to}`,
+			selection: (from: string, to: string) => `Plage choisie\u00a0: du ${from} au ${to}`,
 			correction: {
 				malformed: 'La plage de dates invalide a été remplacée par l’instantané actuel.',
 				'outside-coverage':
@@ -326,7 +326,7 @@ export const networkReliabilityCopy = defineCopy({
 		verdictDelta: {
 			label: 'Verdict du réseau',
 			chip: (signedPts: string, singular: boolean) =>
-				`Variation quotidienne de la ponctualité : ${signedPts} ${singular ? 'point' : 'points'} de pourcentage`,
+				`Variation quotidienne de la ponctualité\u00a0: ${signedPts} ${singular ? 'point' : 'points'} de pourcentage`,
 			versus: 'contre',
 		},
 	},

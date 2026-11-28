@@ -501,7 +501,7 @@
 							cells={cells.slice(0, shownDays)}
 							reportedLabel={t(
 								'In service: its hours with reports that day',
-								'En service : heures avec signalements ce jour-là',
+								'En service\u00a0: heures avec signalements ce jour-là',
 							)}
 							missingLabel={recordState('not_measured')[locale]}
 						/>
