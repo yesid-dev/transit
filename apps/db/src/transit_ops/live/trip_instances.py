@@ -25,6 +25,7 @@ def position_publication(row: Mapping[str, Any], captured: datetime) -> datetime
 class LiveTripInstances:
     def __init__(self, days: Mapping[date, Mapping[str, TripSpan]], zone: ZoneInfo):
         self.days = days
+        self.zone = zone
         self.anchors = {day: service_day_start(day, zone) for day in days}
         self._candidates: dict[str, tuple[TripInstance, ...]] = {}
 
@@ -81,4 +82,5 @@ class LiveTripInstances:
             advance_notice=update,
             removed=update and row["relationship"] in REMOVED_TRIPS,
             next_prediction=prediction,
+            timezone=self.zone,
         )

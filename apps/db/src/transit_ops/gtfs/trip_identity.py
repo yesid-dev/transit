@@ -1,7 +1,8 @@
 """Resolve scheduled trip identities from GTFS-Realtime descriptor evidence."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
+from zoneinfo import ZoneInfo
 
 from transit_ops.gold.vehicle_instance_rule import (
     EARLY_START_MAX_LEAD_SECONDS,
@@ -21,6 +22,34 @@ def reported_service_date(value: str) -> date | None:
         return None
 
 
+def feed_start_seconds(instance: TripInstance, timezone: ZoneInfo | None) -> frozenset[int]:
+    """The start_time values a feed may give for this instance's first departure.
+
+    GTFS counts service time from local noon minus twelve hours. Some feeds (OC Transpo)
+    count trip start_time from local midnight instead. The two agree except on the two
+    clock-change days, when they differ by the hour gained or lost, so on those days
+    the midnight-based value is accepted too.
+    """
+    first = instance.first_departure_seconds
+    if timezone is None:
+        return frozenset((first,))
+    anchor = instance.start_utc - timedelta(seconds=first)
+    midnight = datetime.combine(instance.service_date, time(0), timezone)
+    return frozenset((first, first + int((anchor - midnight).total_seconds())))
+
+
+def start_time_candidates(
+    candidates: tuple[TripInstance, ...], seconds: int, timezone: ZoneInfo | None
+) -> tuple[TripInstance, ...]:
+    """The candidates whose first departure the feed's start_time names.
+
+    An exact GTFS match wins. The midnight-based value is a fallback for when no
+    candidate matches exactly, so it can never make an exact match ambiguous.
+    """
+    exact = tuple(c for c in candidates if c.first_departure_seconds == seconds)
+    return exact or tuple(c for c in candidates if seconds in feed_start_seconds(c, timezone))
+
+
 def resolve_trip_instance(
     published: datetime,
     candidates: tuple[TripInstance, ...],
@@ -29,8 +58,13 @@ def resolve_trip_instance(
     advance_notice: bool,
     removed: bool = False,
     next_prediction: datetime | None = None,
+    timezone: ZoneInfo | None = None,
 ) -> tuple[TripInstance | None, bool]:
-    """Select an instance and report whether an in-window tie prevented acceptance."""
+    """Select an instance and report whether an in-window tie prevented acceptance.
+
+    With the schedule's timezone, a start_time counted from local midnight also matches
+    on the clock-change days when nothing matches exactly (see start_time_candidates).
+    """
     if evidence.start_time:
         try:
             seconds = parse_gtfs_service_time(
@@ -38,7 +72,7 @@ def resolve_trip_instance(
             ).total_seconds
         except ValueError:
             return None, False
-        candidates = tuple(c for c in candidates if c.first_departure_seconds == seconds)
+        candidates = start_time_candidates(candidates, seconds, timezone)
     resolved = resolve_vehicle_capture(published, candidates, evidence)
     if resolved or not advance_notice:
         accepted = accepted_instance(resolved)
