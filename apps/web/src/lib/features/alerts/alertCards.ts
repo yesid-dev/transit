@@ -104,10 +104,19 @@ export function recordAlertCards(
 	}));
 }
 
+/**
+ * The engine's count of distinct notices: one wording over the same periods, however many
+ * lines or stops the agency repeated it for. Every screen reads this one number. An engine
+ * from before it gives only its count of alert IDs.
+ */
+export function noticeTotal(value: Readonly<Record<string, number | null>>) {
+	return value.notices ?? value.alerts ?? null;
+}
+
 export function recordNoticeCards(answer: RecordMeasure) {
 	const messages = answer.evidence.alert_messages;
 	if (messages?.length) return groupAlertCards(recordAlertCards(messages));
-	return answer.value.alerts === 0 ? [] : null;
+	return noticeTotal(answer.value) === 0 ? [] : null;
 }
 
 type LiveAlert = NonNullable<CaptureSnapshot['alerts']>[number];
@@ -207,7 +216,7 @@ export function recordAlertCut(answer: RecordSeries, group: 'effect' | 'line'): 
 				? (publishedAlertEffect(typeof cell.key.effect === 'string' ? cell.key.effect : null) ??
 					unstatedEffect)
 				: String(cell.key.line ?? ''),
-		value: cell.state === 'measured' ? (cell.value.alerts ?? null) : null,
+		value: cell.state === 'measured' ? noticeTotal(cell.value) : null,
 		state: cell.state === 'measured' ? undefined : cell.state,
 	}));
 }
