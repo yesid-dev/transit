@@ -12,12 +12,12 @@
 /* Grid borders let their fills cover a wider range than map fills.
    Higher levels have more contrast against the card in either theme. */
 .good-to-bad-grid {
-	--transit-good-to-bad-0: light-dark(#d0f4ff, #1b426d);
-	--transit-good-to-bad-1: light-dark(#79c7f6, #276c9e);
-	--transit-good-to-bad-2: light-dark(#979797, #8d8d8d);
-	--transit-good-to-bad-3: light-dark(#c03c39, #eca5a0);
-	--transit-good-to-bad-4: light-dark(#a00008, #ffdfd9);
-	--transit-good-to-bad-ink: #000;
+	--transit-good-to-bad-0: light-dark(#d0f4ff, #133557);
+	--transit-good-to-bad-1: light-dark(#79c7f6, #285881);
+	--transit-good-to-bad-2: light-dark(#979797, #727272);
+	--transit-good-to-bad-3: light-dark(#c03c39, #e96763);
+	--transit-good-to-bad-4: light-dark(#a00008, #ff9b91);
+	--transit-good-to-bad-ink: light-dark(#000, #fff);
 	--transit-good-to-bad-ink-0: light-dark(#000, #fff);
 	--transit-good-to-bad-ink-1: light-dark(#000, #fff);
 	--transit-good-to-bad-ink-3: light-dark(#fff, #000);
