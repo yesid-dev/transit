@@ -107,10 +107,7 @@ it('reads when a live vehicle was last in service and its busiest line that day'
 	expect(page.sections).toEqual([]);
 	await expect(page.lastSeen).resolves.toEqual({ kind: 'seen', day: '2026-11-13', line: '102' });
 	expect(getRecordAnswer.mock.calls.map(([query, period]) => [query.parameters, period])).toEqual([
-		[
-			{ measure: 'vehicles', vehicle: '40061', group: 'day' },
-			expect.objectContaining(scope),
-		],
+		[{ measure: 'vehicles', vehicle: '40061', group: 'day' }, expect.objectContaining(scope)],
 		[
 			{ measure: 'vehicle_trips_run', group: 'line', vehicle: '40061' },
 			expect.objectContaining({ from: '2026-11-13', to: '2026-11-13' }),
