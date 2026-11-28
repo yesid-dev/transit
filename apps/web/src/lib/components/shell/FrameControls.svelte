@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+	import { railCardStyle } from './railCard.ts';
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -172,7 +173,6 @@
 	{/if}
 	{#if summary}
 		<p class="w-full text-sm" data-slot="frame-period-summary">
-			{#if summary.title}<strong class="block">{summary.title}</strong>{/if}
 			<span>{summary.dates} · {summary.duration}</span>
 		</p>
 	{/if}
@@ -274,12 +274,12 @@
 		</ControlsRail>
 	{:else}
 		{#if !frame.recordOnly}
-			<ControlsRail label={copy.view}>
+			<ControlsRail label={copy.view} style={railCardStyle}>
 				{@render viewContent()}
 			</ControlsRail>
 		{/if}
 		{#if frame.mode !== 'live'}
-			<ControlsRail label={copy.period}>
+			<ControlsRail label={copy.period} style={railCardStyle}>
 				{@render periodContent()}
 			</ControlsRail>
 		{/if}

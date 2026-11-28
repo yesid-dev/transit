@@ -140,9 +140,9 @@ export function framePeriodSummary(
 	if (!period) return null;
 	const copy = frameCopy[locale];
 	const days = (Date.parse(period.to) - Date.parse(period.from)) / 86_400_000 + 1;
+	// The selected preset is already highlighted above the summary, so it names no title: the rail
+	// then fits a 1280x720 laptop.
 	return {
-		title:
-			period.preset === '7-days' ? copy.title7 : period.preset ? copy.presets[period.preset] : null,
 		dates: dateRange(period, locale),
 		duration: copy.dayCount(days),
 	};

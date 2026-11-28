@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { railCardStyle, railChoiceRow } from '#lib/components/shell/railCard.ts';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
@@ -437,8 +438,8 @@
 
 {#snippet filterRail(context: SurfaceRailContext)}
 	{@const label = t('Line', 'Ligne')}
-	<ControlsRail label={t('Filter', 'Filtrer')}>
-		<div class="grid w-full min-w-0 gap-1">
+	<ControlsRail label={t('Filter', 'Filtrer')} style={railCardStyle}>
+		<div class="w-full {railChoiceRow}">
 			<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
 			<Combobox
 				options={lineOptions}
