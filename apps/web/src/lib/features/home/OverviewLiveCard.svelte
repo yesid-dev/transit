@@ -26,7 +26,7 @@
 	import StateMark from '../record/StateMark.svelte';
 	import { recordState } from '../record/recordStates';
 	import { overviewCopy } from './overviewRecord.copy';
-	import { lateLines, tally } from './overviewRecord';
+	import { lateLines, OVERVIEW_LATE_LINE_LIMIT, tally } from './overviewRecord';
 	import { selectLivePulse } from './homePulse';
 
 	let {
@@ -139,96 +139,95 @@
 	{:else}<StateMark state={entry.state} {locale} />{/if}
 {/snippet}
 
-<RecordCard
-	interactive
-	title={t.live}
-	stamp={reporting.kind === 'pending' ? undefined : stamp}
-	stampRule
->
-	{#if reporting.kind === 'pending'}
-		<!-- The card as it fills: the count and its sentence, the status bar and the two facts. The
-		     late lines below them exist only while vehicles are late, so they are not reserved. -->
-		<div class="grid min-w-0 gap-3" aria-busy="true" data-record-pending>
-			<div class="grid min-h-16 content-start gap-2">
-				<Skeleton class="h-12 w-28 max-w-full" />
-				<Skeleton class="h-5 w-64 max-w-full" />
+<RecordCard interactive title={t.live} class="overview-live" {stamp} stampRule>
+	<div class="live-readings" class:no-agency-alerts={!alertsAvailable}>
+		{#if reporting.kind === 'pending'}
+			<div class="grid min-w-0 gap-3" aria-busy="true" data-record-pending>
+				<div class="grid min-h-16 content-start gap-2">
+					<Skeleton class="h-12 w-28 max-w-full" />
+					<Skeleton class="h-5 w-64 max-w-full" />
+				</div>
+				<RecordSkeleton shape="bands" />
+				<RecordSkeleton shape={{ shape: 'facts', count: 2 }} />
+				<div class="late-lines-waiting grid gap-3">
+					<Skeleton class="h-6 w-48 max-w-full" />
+					<RecordSkeleton shape={{ shape: 'table', rows: OVERVIEW_LATE_LINE_LIMIT }} />
+				</div>
 			</div>
-			<RecordSkeleton shape="bands" />
-			<RecordSkeleton shape={{ shape: 'facts', count: 2 }} />
-		</div>
-	{:else}
-		<div class="min-h-16">
-			<RecordAnswer
-				{locale}
-				state={reporting.kind === 'absent' ? reporting.state : undefined}
-				value={reporting.kind === 'value' ? tally(reporting.value, locale) : null}
-				sentence={reporting.kind === 'failed'
-					? t.liveUnavailable
-					: reporting.kind === 'absent'
-						? recordState(reporting.state)[locale]
-						: singularCount(reporting.value, locale)
-							? t.reportingOne
-							: t.reporting}
-			/>
-		</div>
-		{#if bands.length}
-			<div class="mt-3">
-				<RecordBandBar
-					label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
-					{bands}
+		{:else}
+			<div class="min-h-16">
+				<RecordAnswer
+					{locale}
+					state={reporting.kind === 'absent' ? reporting.state : undefined}
+					value={reporting.kind === 'value' ? tally(reporting.value, locale) : null}
+					sentence={reporting.kind === 'failed'
+						? t.liveUnavailable
+						: reporting.kind === 'absent'
+							? recordState(reporting.state)[locale]
+							: singularCount(reporting.value, locale)
+								? t.reportingOne
+								: t.reporting}
 				/>
 			</div>
+			{#if bands.length}
+				<div class="mt-3">
+					<RecordBandBar
+						label={bands.map(({ label, valueLabel }) => `${label}, ${valueLabel}`).join('. ')}
+						{bands}
+					/>
+				</div>
+			{/if}
+			<FactList class="mt-3">
+				<FactRow
+					label={t.silent}
+					busy={silent.kind === 'pending'}
+					detail={silent.kind === 'value' ? pulse?.silentReading?.detail : undefined}
+				>
+					{#if silent.kind === 'value' && pulse?.silentReading}
+						<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
+					{:else}
+						{@render readingValue(silent)}
+					{/if}
+				</FactRow>
+				<FactRow
+					label={t.alerts}
+					busy={alerts.kind === 'pending'}
+					detail={!alertsAvailable
+						? alertsNotCollected({ name: operator, frenchOf: operatorOf }, locale)
+						: stale(alertHealth)
+							? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
+							: undefined}
+				>
+					{@render readingValue(alerts)}
+				</FactRow>
+			</FactList>
+			{#if lines.length}
+				<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
+				{#snippet late(row: RecordTableRow & { late: string })}<strong class="font-sans"
+						>{row.late}</strong
+					>{/snippet}
+				<RecordDataTable
+					{locale}
+					title={t.lateLines}
+					rowHeader={locale === 'fr' ? 'Ligne' : 'Line'}
+					rows={lines.map((row) => {
+						const line = display.lineName(row.id);
+						return {
+							id: row.id,
+							label: line.name ?? line.label,
+							plate: { code: line.number ?? row.id },
+							href: link('/lines/' + encodeURIComponent(row.id), true),
+							late: recordRatio(row.late, tally(row.total, locale), locale),
+						};
+					})}
+					columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}
+					value="late"
+					rowAlign="middle"
+					phone={{}}
+				/>
+			{/if}
 		{/if}
-		<FactList class="mt-3">
-			<FactRow
-				label={t.silent}
-				busy={silent.kind === 'pending'}
-				detail={silent.kind === 'value' ? pulse?.silentReading?.detail : undefined}
-			>
-				{#if silent.kind === 'value' && pulse?.silentReading}
-					<span class="font-semibold tabular-nums">{pulse.silentReading.value}</span>
-				{:else}
-					{@render readingValue(silent)}
-				{/if}
-			</FactRow>
-			<FactRow
-				label={t.alerts}
-				busy={alerts.kind === 'pending'}
-				detail={!alertsAvailable
-					? alertsNotCollected({ name: operator, frenchOf: operatorOf }, locale)
-					: stale(alertHealth)
-						? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
-						: undefined}
-			>
-				{@render readingValue(alerts)}
-			</FactRow>
-		</FactList>
-		{#if lines.length}
-			<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
-			{#snippet late(row: RecordTableRow & { late: string })}<strong class="font-sans"
-					>{row.late}</strong
-				>{/snippet}
-			<RecordDataTable
-				{locale}
-				title={t.lateLines}
-				rowHeader={locale === 'fr' ? 'Ligne' : 'Line'}
-				rows={lines.map((row) => {
-					const line = display.lineName(row.id);
-					return {
-						id: row.id,
-						label: line.name ?? line.label,
-						plate: { code: line.number ?? row.id },
-						href: link('/lines/' + encodeURIComponent(row.id), true),
-						late: recordRatio(row.late, tally(row.total, locale), locale),
-					};
-				})}
-				columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}
-				value="late"
-				rowAlign="middle"
-				phone={{}}
-			/>
-		{/if}
-	{/if}
+	</div>
 	{#snippet links()}
 		<a class="inline-flex min-h-11 items-center text-primary underline" href={link('/map', true)}
 			>{t.openMap}</a
@@ -242,3 +241,31 @@
 			>{/if}
 	{/snippet}
 </RecordCard>
+
+<style>
+	/* Keep the timestamp's place in the header until the first capture supplies its age. */
+	:global(.overview-live:has([data-record-pending]) header [data-slot='stamp']) {
+		visibility: hidden;
+	}
+	.late-lines-waiting {
+		display: none;
+	}
+	@media (width >= 64rem) {
+		/* Count, status bar, two facts, and up to three late lines. */
+		.live-readings {
+			min-block-size: 38.5rem;
+		}
+		.late-lines-waiting {
+			display: grid;
+		}
+		/* Ottawa's notice fact explains where to find the agency's notices. */
+		.no-agency-alerts {
+			min-block-size: 41rem;
+		}
+		@container (inline-size >= 32rem) {
+			.no-agency-alerts {
+				min-block-size: 40rem;
+			}
+		}
+	}
+</style>
