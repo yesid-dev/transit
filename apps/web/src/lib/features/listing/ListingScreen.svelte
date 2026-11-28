@@ -33,7 +33,6 @@
 		answer,
 		introClass,
 		answerBusy,
-		edgeBeforeResults = false,
 		filters,
 		title,
 		titleAside,
@@ -56,7 +55,6 @@
 		answer: Snippet;
 		introClass?: string;
 		answerBusy?: boolean;
-		edgeBeforeResults?: boolean;
 		filters?: Snippet<[SurfaceRailContext]>;
 		title: string;
 		titleAside?: StampProps;
@@ -181,17 +179,12 @@
 <Surface>
 	<RecordScreen class="min-w-0">
 		<div class="listing-screen min-w-0" data-slot="screen-content">
-			{#if edgeBeforeResults}
-				<RecordGroup class="listing-group">{@render intro()}</RecordGroup>
-				<RecordGroup>{@render results()}</RecordGroup>
-			{:else}
-				<RecordGroup class="listing-group">
-					{@render intro()}
-					<div class="listing-results min-w-0">
-						{@render results()}
-					</div>
-				</RecordGroup>
-			{/if}
+			<RecordGroup class="listing-group">
+				{@render intro()}
+				<div class="listing-results min-w-0">
+					{@render results()}
+				</div>
+			</RecordGroup>
 			{#if about}<RecordGroup>{@render about()}</RecordGroup>{/if}
 		</div>
 	</RecordScreen>

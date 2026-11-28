@@ -85,7 +85,9 @@ test('the Stop Record header clears the frame and gives its back link a full tar
 	expect(back.height).toBeGreaterThanOrEqual(44);
 });
 
-test('Record listing headers show a title and a page edge without artwork', async ({ page }) => {
+test('Record listings keep the title, answer and results before the page edge', async ({
+	page,
+}) => {
 	for (const [path, title] of [
 		['/lines', 'Lines'],
 		['/stops', 'Stops'],
@@ -99,30 +101,23 @@ test('Record listing headers show a title and a page edge without artwork', asyn
 		const edge = screen.locator('[data-slot="page-section-boundary"]').first();
 		await expect(edge).toHaveAttribute('data-variant', 'hand-drawn');
 		await expect(edge.locator('svg')).toBeVisible();
-		const order = await screen.evaluate((element, path) => {
+		const order = await screen.evaluate((element) => {
 			const title = element.querySelector('h1')!;
 			const boundary = element.querySelector('[data-slot="page-section-boundary"]')!;
 			const answer = element.querySelector('[data-slot="screen-answer"]')!;
 			const precedes = (first: Element, second: Element) =>
 				Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
-			if (path === '/lines') {
-				const section = title.closest('[data-page-section-edges]')!;
-				return section.contains(answer) && precedes(section, boundary);
-			}
 			const listing = element.querySelector('[data-slot="record-card"]')!;
-			if (path === '/vehicles') {
-				const section = title.closest('[data-page-section-edges]');
-				return (
-					!!section &&
-					section.contains(answer) &&
-					section.contains(listing) &&
-					precedes(title, answer) &&
-					precedes(answer, listing) &&
-					precedes(listing, boundary)
-				);
-			}
-			return precedes(title, answer) && precedes(title, boundary) && precedes(boundary, listing);
-		}, path);
+			const section = title.closest('[data-page-section-edges]');
+			return (
+				!!section &&
+				section.contains(answer) &&
+				section.contains(listing) &&
+				precedes(title, answer) &&
+				precedes(answer, listing) &&
+				precedes(listing, boundary)
+			);
+		});
 		expect(order).toBe(true);
 		await expect(screen.locator('[data-slot="blueprint-listing-art"]')).toHaveCount(0);
 	}

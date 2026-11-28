@@ -790,7 +790,6 @@
 	{locale}
 	head={{ title: copy.heading, subtitle }}
 	answer={lead}
-	edgeBeforeResults
 	introClass={awaitingFirstReading ? 'stop-listing-await' : undefined}
 	filters={hasLines ? filterRail : undefined}
 	{title}
