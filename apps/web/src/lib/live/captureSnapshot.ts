@@ -69,7 +69,7 @@ const alert = z.object({
 });
 
 const family = z.enum(['vehicle_positions', 'trip_updates', 'alerts']);
-const feed = z.object({
+export const captureFeedSchema = z.object({
 	family,
 	captured_at: sourceStamp,
 	source_at: sourceStamp,
@@ -85,7 +85,7 @@ export const captureSnapshotSchema = z.object({
 	city: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
 	published_at: stamp,
 	stable_vehicle_ids: z.boolean().nullable(),
-	feeds: z.record(z.string(), feed),
+	feeds: z.record(z.string(), captureFeedSchema),
 	vehicle_positions: z.array(vehicle).nullable(),
 	alerts: z.array(alert).nullable(),
 	scheduled_now: optionalCount,
@@ -102,7 +102,7 @@ export const captureSnapshotSchema = z.object({
 export const captureTripScopeSchema = z.object({
 	version: z.literal(2),
 	city: z.string(),
-	feed,
+	feed: captureFeedSchema,
 	trip_updates: z.array(tripUpdate),
 });
 
@@ -112,7 +112,7 @@ export type CaptureTripReport = z.infer<typeof captureTripScopeSchema>;
 
 export type CaptureSnapshot = z.infer<typeof captureSnapshotSchema>;
 export type CaptureFamily = z.infer<typeof family>;
-export type CaptureFeed = z.infer<typeof feed>;
+export type CaptureFeed = z.infer<typeof captureFeedSchema>;
 
 export function captureFamily(snapshot: CaptureSnapshot | null, family: CaptureFamily) {
 	return Object.values(snapshot?.feeds ?? {}).find((feed) => feed.family === family);

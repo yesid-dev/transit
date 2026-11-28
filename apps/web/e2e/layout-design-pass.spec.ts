@@ -8,6 +8,7 @@ import {
 	captureUrl,
 	captureVehicle,
 	installStopCapture,
+	overviewReadsCapture,
 	refreshAlertsCapture,
 } from './capture-fixture';
 import { designPassCases, readingScreens, type Screen } from './design-pass-cases';
@@ -314,6 +315,7 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		)
 			await page.clock.setFixedTime(time);
 		await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
+		await overviewReadsCapture(page);
 		await page.route(captureUrl, (route) => {
 			const city = new URL(route.request().url()).searchParams.get('city')!;
 			return route.fulfill({
@@ -764,6 +766,7 @@ test('Overview Live late lines keep the plate, linked name and value together @l
 }) => {
 	const fixture = designPassCases.find(({ key }) => key === 'overview-live/stm/en')!;
 	await page.clock.setFixedTime(time);
+	await overviewReadsCapture(page);
 	await page.route(captureUrl, (route) =>
 		route.fulfill({
 			json: captureFixture(time, {

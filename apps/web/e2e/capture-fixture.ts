@@ -10,6 +10,18 @@ import type {
 
 export const captureUrl = /\/api\/live\?city=[a-z0-9_-]+$/;
 export const liveTripsUrl = /\/api\/live-trips\?city=[a-z0-9_-]+&/;
+// The Overview's Live now card reads a summary the Worker works out from the capture.
+export const liveSummaryUrl = /\/api\/live-summary\?city=[a-z0-9_-]+$/;
+
+/**
+ * A test that routes its own capture makes the summary unavailable, so the Live now card falls
+ * back to reading that capture in full, as it does when the summary is missing.
+ */
+export function overviewReadsCapture(page: Page) {
+	return page.route(liveSummaryUrl, (route) =>
+		route.fulfill({ status: 503, json: { state: 'unavailable' } }),
+	);
+}
 
 export async function refreshAlertsCapture(page: Page) {
 	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });

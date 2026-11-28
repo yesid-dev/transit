@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/svelte';
 import { expect, it, vi } from 'vitest';
 import { ManifestSchema } from '#lib/v1/schemas/index.ts';
 import { overviewCopy } from './overviewRecord.copy';
+import { lateLines } from './overviewRecord';
 import OverviewLiveCard from './OverviewLiveCard.svelte';
 
 const { createLiveStore } = vi.hoisted(() => ({ createLiveStore: vi.fn() }));
@@ -39,15 +40,13 @@ function renderLive(
 			vehicles_in_service: 5,
 			status_dist: { early: 1, on_time: 1, late: 3, unknown: 0 },
 			...counts,
-		},
-		vehicles: {
-			vehicles: [
+			late_lines: lateLines([
 				{ route: '51', status: 'late' },
 				{ route: '24', status: 'late' },
 				{ route: '51', status: 'on_time' },
 				{ route: '51', status: 'late' },
 				{ route: '90', status: 'early' },
-			],
+			]),
 		},
 	});
 	render(OverviewLiveCard, {
