@@ -854,6 +854,7 @@ def _build_clean_day(
                 VehicleDescriptor(reported, desc.start_time),
                 advance_notice=is_update,
                 removed=desc.schedule_relationship in _REMOVED,
+                timezone=schedule.timezone,
             )
             return None if accepted is None else accepted.service_date
         # Unknown IDs cannot override a dated schedule instance. Some feeds mark

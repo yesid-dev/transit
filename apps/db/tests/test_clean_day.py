@@ -1510,6 +1510,60 @@ def test_ottawa_service_day(
     ]
 
 
+@pytest.mark.parametrize(
+    ("day", "start_time", "dated"),
+    [
+        # OC Transpo counts start_time from local midnight, an hour off GTFS service
+        # time on the clock-change days. 10:00 service time is 15:00 UTC on the
+        # fall-back day (11 h after midnight) and 14:00 UTC on the spring-forward day
+        # (9 h after midnight).
+        (date(2026, 11, 1), "11:00:00", True),
+        (date(2027, 3, 14), "09:00:00", True),
+        (date(2026, 11, 1), "10:00:00", True),
+        # On an ordinary day an hour-off start_time still names no trip.
+        (date(2026, 11, 8), "11:00:00", False),
+    ],
+)
+def test_ottawa_positions_get_their_day_across_clock_changes(
+    tmp_path: Path, day: date, start_time: str, dated: bool
+) -> None:
+    edition = _edition(
+        tmp_path / "ottawa.zip",
+        {"morning": ("r", ["10:00:00", "10:05:00", "10:10:00"])},
+        day,
+        route_type=0,
+        coords="45.4,-75.7",
+    )
+    (tmp_path / "editions.json").write_text(
+        json.dumps({"provider": "octranspo", "editions": [edition]}), encoding="utf-8"
+    )
+    manifest = clean_day_inputs.declaration_for("octranspo")
+    schedules = clean_day_inputs.schedule_contexts(manifest, day, tmp_path / "editions.json")
+    departure = datetime.combine(day, time(12), ZoneInfo("America/Toronto")).astimezone(UTC)
+    departure -= timedelta(hours=2)  # noon minus twelve hours, plus 10:00 of service time
+    captured = departure + timedelta(minutes=4)
+    positions = _feed(captured)
+    vehicle = positions.entity.add(id="bus").vehicle
+    vehicle.trip.trip_id = "morning"
+    vehicle.trip.start_time = start_time  # no start_date, as OC Transpo sends
+    vehicle.vehicle.id = "bus-1"
+    vehicle.timestamp = int(captured.timestamp())
+    vehicle.position.latitude, vehicle.position.longitude = 45.4, -75.7
+    captures = [
+        DayCapture(family, family, captured, family, payload)
+        for family, payload in (
+            ("vehicle_positions", positions.SerializeToString()),
+            ("trip_updates", _feed(captured).SerializeToString()),
+        )
+    ]
+    cleaned = clean_day_inputs.clean_from_inputs(manifest, day, schedules, captures)
+    output = write_clean_day(cleaned, tmp_path / "out")
+    with duckdb.connect() as db:
+        (row,) = _rows(db, output / "vehicle_positions.parquet")
+    assert row["trip_id"] == "morning"
+    assert row["service_date"] == (day if dated else None)
+
+
 def _archive_capture(root: Path, stamp: datetime, alert_body: bytes | None = None) -> None:
     endpoint = "trip_updates" if alert_body is None else "i3_alerts"
     index_family = "realtime_snapshot" if alert_body is None else "alert_snapshot"
