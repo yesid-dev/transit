@@ -12,7 +12,6 @@
 		onselect,
 		value,
 		vehicleId,
-		wrap = false,
 	}: {
 		code?: string;
 		routePlate?: boolean;
@@ -23,7 +22,6 @@
 		onselect?: () => void;
 		value: Snippet;
 		vehicleId?: string;
-		wrap?: boolean;
 	} = $props();
 
 	function follow(event: MouseEvent) {
@@ -38,7 +36,6 @@
 	data-map-panel-row
 	data-report-row={vehicleId ? '' : undefined}
 	data-report-id={vehicleId}
-	class:wrap
 >
 	<span class="code" data-map-row-code>
 		{#if code}
@@ -126,14 +123,12 @@
 		position: absolute;
 		inset: 0;
 	}
-	.panel-row:not([data-report-row], .wrap) .name,
-	.panel-row:not([data-report-row], .wrap) small {
+	/* One line per field; the full name stays in the link's accessible name and title. */
+	.panel-row:not([data-report-row]) .name,
+	.panel-row:not([data-report-row]) small {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.panel-row.wrap {
-		overflow-wrap: anywhere;
 	}
 	.value {
 		grid-area: value;

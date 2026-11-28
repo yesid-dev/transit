@@ -4,6 +4,7 @@ import { transitTerms } from '#lib/i18n/transitTerms.copy.ts';
 import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 import { OCCUPANCY_CODES, STATUS_CODES } from '#lib/v1/schemas/types.ts';
 import type { OccupancyCode, StatusCode } from '#lib/v1/schemas/index.ts';
+import type { RecordMapLayer } from '#lib/site/mapFrame.ts';
 import { copy, type MapCopy } from './map.copy';
 import { mapStatusLabel } from './mapStatusLabels';
 
@@ -137,4 +138,35 @@ export function railLegendName(
 		default:
 			return undefined;
 	}
+}
+
+/**
+ * What each Record layer colours, in one line: the legend's title and the line under the layer
+ * choice, so Corridors and Clear run say how they differ where the rider picks one.
+ */
+export function recordLayerTitle(layer: Exclude<RecordMapLayer, 'live'>, locale: Locale): string {
+	const fr = locale === 'fr';
+	switch (layer) {
+		case 'stops':
+			return fr
+				? 'Part des passages enregistrés en retard'
+				: 'Share of recorded stop arrivals that were late';
+		case 'waits':
+			return fr ? 'Attente en plus à chaque arrêt' : 'Extra wait at each stop';
+		case 'clear-run':
+			return fr
+				? 'Temps perdu entre deux arrêts, par rapport aux trajets les plus rapides'
+				: 'Time lost between two stops, against the fastest trips';
+		case 'corridors':
+			return fr
+				? 'Temps perdu entre deux arrêts, par rapport à l’horaire'
+				: 'Time lost between two stops, against the timetable';
+	}
+}
+
+/** The legend note for a capped overview; the count is what the map actually colours. */
+export function recordCapNote(count: string, locale: Locale): string {
+	return locale === 'fr'
+		? `Seuls les ${count} pires sont en couleur à ce zoom. Zoomez pour les voir tous, bons et mauvais.`
+		: `Only the ${count} worst are coloured at this zoom. Zoom in to see all of them, good and bad.`;
 }

@@ -48,12 +48,12 @@
 	import { trackEvent } from '#lib/site/analytics.ts';
 	import MapNorthControl from './MapNorthControl.svelte';
 	import MapHoverPeek from './MapHoverPeek.svelte';
-	import { mapLegend, railLegendName } from './mapLegend';
+	import { mapLegend, railLegendName, recordLayerTitle } from './mapLegend';
 	import { peekRepeatsDetail } from './mapHoverPeek';
 	import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 	import { isReadingsLayer, mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
-	import type { RecordMapLayer } from './recordMap';
+	import { recordPeekReading, type RecordMapLayer } from './recordMap';
 	import { MAP_RECORD } from '#lib/seo/routeSeo.ts';
 	import { goto } from '$app/navigation';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -844,6 +844,7 @@
 	let recordCount = $state<number | null>(null);
 	let recordHeightLimit = $state<number | null>(null);
 	let recordApproximate = $state(false);
+	let recordCap = $state<number | null>(null);
 	const colourBy = $derived(colourDimension(filters.state));
 	const legendDetails = $derived(
 		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
@@ -911,17 +912,15 @@
 	);
 	function peekReading(recordHeadline: string | null, compact = false): string {
 		const mode = isRecordLayer ? frameCopy[locale].record : tr('Live', 'En direct');
+		if (recordLayer !== 'live' && recordHeadline !== null) {
+			return mode + ' · ' + recordPeekReading(recordLayer, recordHeadline, locale, compact);
+		}
 		if (isReadingsLayer(recordLayer)) {
 			const label = recordOptions.find(({ key }) => key === recordLayer)?.label ?? listTabLabel;
 			return mode + ' · ' + label;
 		}
 		let reading: string;
-		if (isRecordLayer && recordHeadline !== null) {
-			reading =
-				recordLayer === 'stops'
-					? tr(`Up to ${recordHeadline} late`, `Jusqu’à ${recordHeadline} en retard`)
-					: tr(`Up to ${recordHeadline} lost`, `Jusqu’à ${recordHeadline} de temps perdu`);
-		} else if (!isRecordLayer && (nearMeController.open || nearMeController.origin)) {
+		if (!isRecordLayer && (nearMeController.open || nearMeController.origin)) {
 			reading = tr('Nearby stops', 'Arrêts à proximité');
 		} else if (inViewCount === null) {
 			reading = listTabLabel;
@@ -1550,6 +1549,9 @@
 			variant="joined-grid"
 			style="grid-template-columns: minmax(max-content, 1fr) minmax(max-content, 1fr)"
 		/>
+		<p class="text-sm text-muted-foreground" data-record-layer-title>
+			{recordLayerTitle(recordLayer, locale)}
+		</p>
 		{#if recordLayer === 'corridors'}
 			<SwitchRow
 				type="button"
@@ -1571,6 +1573,7 @@
 		threeD={recordThreeD}
 		heightLimit={recordHeightLimit}
 		approximate={recordApproximate}
+		capped={recordCap}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1586,6 +1589,7 @@
 		threeD={recordThreeD}
 		heightLimit={recordHeightLimit}
 		approximate={recordApproximate}
+		capped={recordCap}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -2010,6 +2014,7 @@
 		oncount={(count) => (recordCount = count)}
 		onheightlimit={(seconds) => (recordHeightLimit = seconds)}
 		onapproximate={(shown) => (recordApproximate = shown)}
+		oncap={(count) => (recordCap = count)}
 		{reportCamera}
 		{map}
 		layer={recordLayer}

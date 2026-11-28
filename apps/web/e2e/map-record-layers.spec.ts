@@ -88,7 +88,7 @@ test('applies the shared Record filters when switching readings with the keyboar
 	assertScope(clearResponse.url());
 	await openMapControls(page);
 	await expect(
-		page.getByRole('region', { name: 'Time lost by stretch' }).getByRole('listitem'),
+		page.getByRole('region', { name: 'Stretches in view' }).getByRole('listitem'),
 	).toHaveCount(3);
 	const wait = readingResponse('waits');
 	await page.getByRole('radio', { name: 'Clear run' }).press('ArrowRight');
@@ -99,7 +99,7 @@ test('applies the shared Record filters when switching readings with the keyboar
 	expect(waitResponse.ok()).toBe(true);
 	assertScope(waitResponse.url());
 	await expect(
-		page.getByRole('region', { name: 'Waits by stop and line' }).getByRole('listitem'),
+		page.getByRole('region', { name: 'Waits in view, by stop and line' }).getByRole('listitem'),
 	).toHaveCount(4);
 });
 
@@ -144,10 +144,8 @@ test('limits Waits marks at network zoom and keeps the full list across zoom cha
 	await page.goto(`/map?provider=stm&${period}&mapLayer=waits&mapview=-73.59,45.53,12,0,0`);
 	await openMapControls(page);
 
-	const list = page.getByRole('region', { name: 'Waits by stop and line' });
-	const note = list.getByText(
-		'Showing the 300 stops with the longest extra wait. Zoom in for all.',
-	);
+	const list = page.getByRole('region', { name: 'Waits in view, by stop and line' });
+	const note = list.getByText('The map colours the 300 worst at this zoom.');
 	const markIds = async () => new Set((await recordMarks(page)).map(({ id }) => id));
 	const expectOverview = async () => {
 		await expect(note).toBeVisible();
@@ -179,18 +177,18 @@ for (const provider of providers) {
 				const waits = layer === 'waits';
 				const listName = waits
 					? fr
-						? 'Attentes par arrêt et par ligne'
-						: 'Waits by stop and line'
+						? 'Attentes en vue, par arrêt et par ligne'
+						: 'Waits in view, by stop and line'
 					: fr
-						? 'Temps perdu par tronçon'
-						: 'Time lost by stretch';
+						? 'Tronçons en vue'
+						: 'Stretches in view';
 				const legendName = waits
 					? fr
 						? 'Attente en plus à chaque arrêt'
 						: 'Extra wait at each stop'
 					: fr
-						? 'Temps perdu par rapport au parcours fluide'
-						: 'Time lost against the clear run';
+						? 'Temps perdu entre deux arrêts, par rapport aux trajets les plus rapides'
+						: 'Time lost between two stops, against the fastest trips';
 				await setup(page, provider);
 
 				for (const width of waits ? [390, 1024, 1440] : [390, 1440]) {

@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test';
 import { vectorStyleFromBasemap } from '../src/lib/components/map/basemap';
 import { test } from './layout-test';
+import { recordStopRadii } from '../src/lib/features/map/recordMarkSizes';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
 import { textDefects } from './layout-helpers';
 import {
@@ -15,7 +16,7 @@ import {
 interface OpeningMarks {
 	zoom: number;
 	aboveRoads: boolean;
-	marks: { id: string; state: number; size: number }[];
+	marks: { id: string; state: number; step: number | null; size: number }[];
 }
 
 async function readOpeningMarks(
@@ -51,9 +52,18 @@ for (const provider of ['stm', 'octranspo']) {
 			expect(opening.zoom).toBeLessThan(13);
 			expect(opening.aboveRoads).toBe(true);
 			if (layer === 'stops') expect(opening.marks.some(({ id }) => id === 'MR2')).toBe(true);
+			// Under zoom 11 the whole network shares the screen: stops are small dots, worst largest
+			// (S2); from zoom 12 they are full circles.
+			const stopFloor =
+				opening.zoom < 11 ? recordStopRadii.overview[0] : recordStopRadii.network[0];
 			for (const mark of opening.marks.filter(({ state }) => state === 3)) {
-				expect(mark.size).toBeGreaterThanOrEqual(layer === 'stops' ? 3.75 : 3.5);
+				expect(mark.size).toBeGreaterThanOrEqual(layer === 'stops' ? stopFloor : 3.5);
 			}
+			const sizes = opening.marks
+				.filter(({ state }) => state === 3)
+				.sort((a, b) => (a.step ?? 0) - (b.step ?? 0))
+				.map(({ size }) => size);
+			expect(sizes).toEqual([...sizes].sort((a, b) => a - b));
 			await info.attach(`${layer}-opening-paint`, {
 				body: JSON.stringify(opening),
 				contentType: 'application/json',
@@ -263,7 +273,9 @@ for (const locale of ['en', 'fr'] as const) {
 				);
 			}
 			if (layer === 'network' && viewport?.width === 390) {
-				const title = fr ? 'Temps perdu entre deux arrêts' : 'Time lost between two stops';
+				const title = fr
+					? 'Temps perdu entre deux arrêts, par rapport à l’horaire'
+					: 'Time lost between two stops, against the timetable';
 				const states = legend.getByRole('list', { name: title, exact: true }).filter({
 					hasText: fr ? 'Trop peu pour juger' : 'Too few to judge',
 				});

@@ -14,7 +14,9 @@ import {
 	recordMapSampleText,
 	recordRampStep,
 	recordStopRadii,
+	recordPeekReading,
 	recordStops,
+	recordUnderlay,
 	type RecordMark,
 } from './recordMap';
 
@@ -312,4 +314,43 @@ it('uses Stops display names in both stop and corridor readings', () => {
 		name: 'Place d’Orléans B → Trim 1A',
 		value: 42,
 	});
+});
+
+it('says the worst reading in view in the foot bar for every Record layer', () => {
+	expect(recordPeekReading('stops', '57.1%', 'en')).toBe('Worst stop in view: 57.1% late');
+	expect(recordPeekReading('stops', '57,1 %', 'fr')).toBe('Pire arrêt en vue : 57,1 % en retard');
+	expect(recordPeekReading('clear-run', '4.6 min', 'en')).toBe('Worst in view: 4.6 min lost');
+	expect(recordPeekReading('corridors', '4,6 min', 'fr')).toBe('Pire en vue : 4,6 min perdues');
+	expect(recordPeekReading('waits', '5.6 min', 'en')).toBe('Longest extra wait in view: 5.6 min');
+	expect(recordPeekReading('waits', '5,6 min', 'fr')).toBe('Plus longue attente en plus : 5,6 min');
+	expect(recordPeekReading('clear-run', '4.6 min', 'en', true)).toBe('Worst: 4.6 min lost');
+	expect(recordPeekReading('waits', '5,6 min', 'fr', true)).toBe('Attente en plus : 5,6 min');
+});
+
+it('keeps the marks a capped overview leaves out as neutral geometry under the worst', () => {
+	const marks = ['a', 'b', 'c'].map(
+		(id): RecordMark => ({
+			id,
+			name: id,
+			value: 1,
+			sample: 1,
+			state: 3,
+			geometry: { type: 'Point', coordinates: [-73.6, 45.5] },
+		}),
+	);
+	expect(recordUnderlay(marks, [marks[1]!])).toEqual({
+		type: 'FeatureCollection',
+		features: [marks[0]!, marks[2]!].map(({ geometry }) => ({
+			type: 'Feature',
+			geometry,
+			properties: {},
+		})),
+	});
+});
+
+it('draws small stops without a ring under zoom 11 and full circles from zoom 12', () => {
+	expect(recordStopRadii.overview.every((radius, i) => radius < recordStopRadii.network[i]!)).toBe(
+		true,
+	);
+	expect(Math.max(...recordStopRadii.overview)).toBeLessThanOrEqual(3);
 });

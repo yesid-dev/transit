@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STATUS_CODES } from '#lib/v1/schemas/types.ts';
-import { mapLegend, railLegendName } from './mapLegend';
+import { mapLegend, railLegendName, recordCapNote, recordLayerTitle } from './mapLegend';
 
 const NB = ' ';
 
@@ -116,5 +116,31 @@ describe('rail legend name', () => {
 		expect(railLegendName('en', provider, [{ id: 'schedule-only', type: 99 }])).toBeUndefined();
 		expect(railLegendName('en', provider, [{ id: 'schedule-only' }])).toBeUndefined();
 		expect(railLegendName('en', provider, [{ id: 'live', type: 1 }])).toBeUndefined();
+	});
+});
+
+describe('Record layer titles', () => {
+	it('says how Corridors and Clear run differ, in both languages', () => {
+		expect(recordLayerTitle('corridors', 'en')).toBe(
+			'Time lost between two stops, against the timetable',
+		);
+		expect(recordLayerTitle('clear-run', 'en')).toBe(
+			'Time lost between two stops, against the fastest trips',
+		);
+		expect(recordLayerTitle('corridors', 'fr')).toBe(
+			'Temps perdu entre deux arrêts, par rapport à l’horaire',
+		);
+		expect(recordLayerTitle('clear-run', 'fr')).toBe(
+			'Temps perdu entre deux arrêts, par rapport aux trajets les plus rapides',
+		);
+	});
+
+	it('says that a capped overview colours only the worst', () => {
+		expect(recordCapNote('300', 'en')).toBe(
+			'Only the 300 worst are coloured at this zoom. Zoom in to see all of them, good and bad.',
+		);
+		expect(recordCapNote('300', 'fr')).toBe(
+			'Seuls les 300 pires sont en couleur à ce zoom. Zoomez pour les voir tous, bons et mauvais.',
+		);
 	});
 });
