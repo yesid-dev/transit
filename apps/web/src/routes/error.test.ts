@@ -119,7 +119,9 @@ describe('error route', () => {
 		expect(screen.queryByText('Database unavailable')).not.toBeInTheDocument();
 		expect(screen.getByRole('alert')).toHaveTextContent('500');
 		expect(screen.getByRole('link', { name: 'Back to the overview' })).toHaveAttribute('href', '/');
-		expect(screen.getByTestId('construction-scene')).not.toHaveTextContent('500');
+		// The sign carries the real status: a server error reads 500, never 404.
+		expect(screen.getByTestId('construction-scene')).toHaveTextContent('500');
+		expect(screen.getByTestId('construction-scene')).not.toHaveTextContent('404');
 		expect(screen.queryByTestId('terminal-line')).not.toBeInTheDocument();
 	});
 });
