@@ -129,9 +129,8 @@ describe('MapFilters', () => {
 		expect(getByRole('button', { name: 'Clear' })).toBeInTheDocument();
 
 		store.addRoute('161');
-		await waitFor(() =>
-			expect(getByRole('button', { name: /^Active/ })).toHaveAttribute('aria-expanded', 'true'),
-		);
+		await waitFor(() => expect(getByRole('button', { name: 'Remove line 161' })).toBeVisible());
+		expect(queryByRole('button', { name: /^Active/ })).not.toBeInTheDocument();
 	});
 
 	it.each(['en', 'fr'] as const)(
@@ -144,7 +143,7 @@ describe('MapFilters', () => {
 		},
 	);
 
-	it('renders active route, stop, and bus picks as removable filter sections', async () => {
+	it('renders line tags and active stop and vehicle picks as removable filters', async () => {
 		let pushed = '';
 		const store = createFilterStore(emptyFilterState(), (search) => {
 			pushed = search;
@@ -159,7 +158,7 @@ describe('MapFilters', () => {
 
 		expect(queryByRole('searchbox', { name: 'Search routes' })).not.toBeInTheDocument();
 		expect(queryByText('Drilldown')).not.toBeInTheDocument();
-		expect(getByRole('button', { name: 'Remove filter: 161 Van Horne' })).toBeVisible();
+		expect(getByRole('button', { name: 'Remove line 161' })).toBeVisible();
 		expect(
 			getByRole('button', { name: 'Remove filter: Van Horne / Rockland · 53355' }),
 		).toHaveTextContent('Van Horne / Rockland');
@@ -167,11 +166,11 @@ describe('MapFilters', () => {
 			'Vehicle 40061',
 		);
 
-		await fireEvent.click(getByRole('button', { name: 'Remove filter: 161 Van Horne' }));
+		await fireEvent.click(getByRole('button', { name: 'Remove line 161' }));
 
 		expect(pushed).toBe('stop=53355&vehicle=40061');
 		expect([...store.routes]).toEqual([]);
-		expect(queryByRole('button', { name: 'Remove filter: 161 Van Horne' })).not.toBeInTheDocument();
+		expect(queryByRole('button', { name: 'Remove line 161' })).not.toBeInTheDocument();
 
 		await fireEvent.click(getByRole('button', { name: 'Clear' }));
 
@@ -179,9 +178,10 @@ describe('MapFilters', () => {
 		expect(store.isEmpty).toBe(true);
 	});
 
-	it('counts every active filter in the header while Active counts selected IDs only', () => {
+	it('counts line tags and other filters in the header while Active counts other selected IDs', () => {
 		const store = createFilterStore(emptyFilterState());
 		store.addRoute('161');
+		store.addStop('53355');
 		store.toggleEntity('stop');
 		store.toggleStatus('late');
 
@@ -194,7 +194,7 @@ describe('MapFilters', () => {
 			},
 		});
 
-		expect(container.querySelector('.mf-head-count')).toHaveTextContent('3');
+		expect(container.querySelector('.mf-head-count')).toHaveTextContent('4');
 		expect(getByRole('button', { name: /^Active/ })).toHaveTextContent('1');
 	});
 
@@ -233,10 +233,10 @@ describe('MapFilters', () => {
 			props: { store, locale: 'en', routes: routeFixtures },
 		});
 
-		expect(getByRole('button', { name: 'Remove filter: 161 Van Horne' })).toBeVisible();
-		expect(getByRole('button', { name: 'Remove filter: 24 Sherbrooke' })).toBeVisible();
+		expect(getByRole('button', { name: 'Remove line 161' })).toBeVisible();
+		expect(getByRole('button', { name: 'Remove line 24' })).toBeVisible();
 
-		await fireEvent.click(getByRole('button', { name: 'Remove filter: 161 Van Horne' }));
+		await fireEvent.click(getByRole('button', { name: 'Remove line 161' }));
 
 		expect(pushed).toBe('route=24');
 		expect([...store.routes]).toEqual(['24']);

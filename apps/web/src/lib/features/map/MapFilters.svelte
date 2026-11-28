@@ -239,16 +239,19 @@
 							<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
 							<div class="mf-chips">
 								{#each selectedRoutes as route (route.id)}
-									<FilterChip
+									<Button
 										type="button"
-										class="mf-chip"
-										data-on="true"
-										aria-label="{t.filterRemove} {routeDisplay(route)}"
-										style="--chip:var(--accent-text)"
+										variant="outline"
+										size="sm"
+										class="min-h-11 min-w-11 gap-2 px-2 font-mono"
+										aria-label={locale === 'fr'
+											? `Retirer la ligne ${route.short}`
+											: `Remove line ${route.short}`}
+										title={routeDisplay(route)}
 										onclick={() => void removeRoute(route)}
 									>
-										<span class="mf-chip-text">{route.short}</span><span aria-hidden="true">×</span>
-									</FilterChip>
+										<span>{route.short}</span><span aria-hidden="true">×</span>
+									</Button>
 								{/each}
 							</div>
 						</div>

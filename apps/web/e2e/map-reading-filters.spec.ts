@@ -187,6 +187,19 @@ for (const provider of providers) {
 				expect(overflow.clippedSelects).toBe(0);
 				const tags = panel.locator('[data-map-selected-lines] button[aria-label]');
 				await expect(tags).toHaveCount(3);
+				await expect(
+					panel.getByRole('button', {
+						name: fr ? `Retirer la ligne ${first.short}` : `Remove line ${first.short}`,
+						exact: true,
+					}),
+				).toBeVisible();
+				const tapTargets = await tags.evaluateAll((buttons) =>
+					buttons.map((button) => {
+						const { width, height } = button.getBoundingClientRect();
+						return Math.min(width, height);
+					}),
+				);
+				expect(Math.min(...tapTargets)).toBeGreaterThanOrEqual(44);
 				const tag = (number: string) =>
 					tags.filter({ has: page.getByText(number, { exact: true }) });
 				const picker = panel.getByRole('button', {
