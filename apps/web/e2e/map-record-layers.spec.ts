@@ -112,6 +112,63 @@ function recordMarks(page: Page): Promise<{ id: string; step: number }[]> {
 
 const period = 'frameMode=record&recordFrom=2026-11-18&recordTo=2026-11-21';
 
+test('limits Waits marks at network zoom and keeps the full list across zoom changes', async ({
+	page,
+}) => {
+	await page.setViewportSize({ width: 1440, height: 900 });
+	const stops = Array.from({ length: 303 }, (_, index) => ({
+		id: `wait-${index}`,
+		name: `Stop ${index}`,
+		lat: 45.53 + (Math.floor(index / 20) - 8) * 0.001,
+		lon: -73.59 + ((index % 20) - 10) * 0.001,
+	}));
+	await page.route('**/api/stops/slim?provider=stm', (route) =>
+		route.fulfill({ json: { generated_utc: '2026-11-21T00:00:00Z', stops } }),
+	);
+	await page.route('**/api/map-record?*', (route) =>
+		route.fulfill({
+			json: {
+				measure: 'excess_wait_time',
+				minimum_sample: 20,
+				line: stops.map(() => '24'),
+				direction: stops.map(() => 0),
+				stop: stops.map(({ id }) => id),
+				value: stops.map((_, i) => (i === 302 ? null : i)),
+				sample: stops.map((_, i) => (i === 302 ? 3 : 40)),
+				state: stops.map((_, i) => (i === 302 ? 'too_few_to_judge' : 'measured')),
+				low_coverage: stops.map(() => false),
+				evidence: { days_not_measured: [] },
+			},
+		}),
+	);
+	await page.goto(`/map?provider=stm&${period}&mapLayer=waits&mapview=-73.59,45.53,12,0,0`);
+	await openMapControls(page);
+
+	const list = page.getByRole('region', { name: 'Waits by stop and line' });
+	const note = list.getByText(
+		'Showing the 300 stops with the longest extra wait. Zoom in for all.',
+	);
+	const markIds = async () => new Set((await recordMarks(page)).map(({ id }) => id));
+	const expectOverview = async () => {
+		await expect(note).toBeVisible();
+		await expect.poll(async () => (await markIds()).size).toBe(300);
+		expect(await markIds()).toContain('["24",0,"wait-301"]');
+		expect(await markIds()).not.toContain('["24",0,"wait-1"]');
+		expect(await markIds()).not.toContain('["24",0,"wait-302"]');
+		await expect(list.getByText('303', { exact: true })).toBeVisible();
+	};
+	await expectOverview();
+
+	await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
+	await expect(note).toBeHidden();
+	await expect.poll(async () => (await markIds()).size).toBe(303);
+	expect(await markIds()).toContain('["24",0,"wait-302"]');
+	await expect(list.getByText('303', { exact: true })).toBeVisible();
+
+	await page.getByRole('button', { name: 'Zoom out', exact: true }).click();
+	await expectOverview();
+});
+
 for (const provider of providers) {
 	for (const locale of ['en', 'fr']) {
 		for (const layer of ['clear-run', 'waits']) {

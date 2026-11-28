@@ -77,10 +77,19 @@ export function attachRecordMap(
 	map: MapLibreMap,
 	features: RecordFeatures,
 	onpick: (id: string) => void,
-	network: boolean,
-	outline: string,
-	extrusions?: RecordExtrusions,
-	capColour = outline,
+	{
+		network,
+		waits,
+		outline,
+		extrusions,
+		capColour,
+	}: {
+		network: boolean;
+		waits: boolean;
+		outline: string;
+		extrusions?: RecordExtrusions;
+		capColour: string;
+	},
 ) {
 	function draw() {
 		if (map.getSource(sourceId)) return;
@@ -139,14 +148,19 @@ export function attachRecordMap(
 					['linear'],
 					['zoom'],
 					9,
-					['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.network), 3.75],
+					[
+						'case',
+						['==', ['get', 'state'], 3],
+						rampSize(waits ? recordStopRadii.waitsNetwork : recordStopRadii.network),
+						3.75,
+					],
 					15,
 					['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.detail), 5],
 				],
 				'circle-color': ['get', 'colour'],
 				'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
 				'circle-stroke-color': ['match', ['get', 'state'], 3, outline, ['get', 'colour']],
-				'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 3, 1, 1.5],
+				'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 3, waits ? 0.65 : 1, 1.5],
 			},
 		});
 		map.addLayer({

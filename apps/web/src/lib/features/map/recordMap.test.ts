@@ -5,6 +5,7 @@ import { indexCorridorPaths } from './corridorMap';
 import {
 	highestWaitsByStop,
 	overviewCorridors,
+	overviewWaits,
 	recordColours,
 	recordCorridorWidths,
 	recordCorridors,
@@ -46,10 +47,31 @@ it('keeps separate waits for each line and direction and draws the longest wait 
 		['["50",1,"B"]', null],
 	]);
 	expect(highestWaitsByStop(marks).map(({ value }) => value)).toEqual([46, null]);
+	expect(overviewWaits(highestWaitsByStop(marks)).map(({ value }) => value)).toEqual([46]);
 	expect(marks[2]?.lowCoverage).toBe(true);
 	expect(marks[3]?.readingState).toBe('no_frequent_periods');
 	expect(recordLayerAnswer.safeParse({ ...raw, direction: [0] }).success).toBe(false);
 	expect(recordLayerAnswer.safeParse({ ...raw, value: [0, -3, 46, 0] }).success).toBe(false);
+});
+
+it('ranks measured Waits locations before taking the 300 largest readings', () => {
+	const marks = Array.from(
+		{ length: 303 },
+		(_, index): RecordMark => ({
+			id: String(index),
+			stop: String(index),
+			name: 'Stop ' + index,
+			value: index < 302 ? index - 3 : null,
+			sample: index < 302 ? 30 : 3,
+			state: index < 302 ? 3 : 1,
+			geometry: { type: 'Point', coordinates: [-73.6, 45.5] },
+		}),
+	);
+	const byStop = highestWaitsByStop([...marks, { ...marks[301]!, id: 'other-line', value: 60 }]);
+	expect(overviewWaits(byStop).map(({ id }) => id)).toEqual(
+		Array.from({ length: 300 }, (_, index) => String(301 - index)),
+	);
+	expect(byStop).toHaveLength(303);
 });
 
 it('keeps the clear-run reference and the median for each line on a shared stretch', () => {
@@ -257,6 +279,7 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 	]);
 	for (const sizes of [
 		recordStopRadii.network,
+		recordStopRadii.waitsNetwork,
 		recordStopRadii.detail,
 		recordCorridorWidths.network,
 		recordCorridorWidths.detail,

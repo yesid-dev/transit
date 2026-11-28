@@ -36,9 +36,10 @@
 	import { attachRecordMap } from './recordMapLayers';
 	import { recordExtrusions, recordHeightScale } from './recordExtrusions';
 	import {
-		ALL_CORRIDORS_MIN_ZOOM,
+		RECORD_DETAIL_MIN_ZOOM,
 		highestWaitsByStop,
 		overviewCorridors,
+		overviewWaits,
 		recordColours,
 		recordCorridors,
 		recordFeatures,
@@ -255,10 +256,13 @@
 	const markById = $derived(new Map(marks.map((mark) => [mark.id, mark])));
 	const selected = $derived(selectedId === null ? null : (markById.get(selectedId) ?? null));
 	const corridorOverview = $derived(network ? overviewCorridors(marks) : marks);
-	const atCorridorOverview = $derived((reportCamera?.zoom ?? 0) < ALL_CORRIDORS_MIN_ZOOM);
+	const waitsByStop = $derived(waitLayer ? highestWaitsByStop(marks) : []);
+	const waitOverview = $derived(overviewWaits(waitsByStop));
+	const atOverview = $derived((reportCamera?.zoom ?? 0) < RECORD_DETAIL_MIN_ZOOM);
 	const drawn = $derived(
-		waitLayer ? highestWaitsByStop(marks) : atCorridorOverview ? corridorOverview : marks,
+		atOverview ? (waitLayer ? waitOverview : corridorOverview) : waitLayer ? waitsByStop : marks,
 	);
+	const waitsLimited = $derived(waitLayer && atOverview && drawn.length < waitsByStop.length);
 	$effect(() => onapproximate?.(drawn.some(({ approximate }) => approximate === true)));
 	const visible = $derived.by(() => {
 		const camera = reportCamera;
@@ -322,17 +326,15 @@
 		});
 		const features = recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk);
 		const valuesInView = heightScale ? new Map(visible.map(({ id, value }) => [id, value])) : null;
-		return attachRecordMap(
-			map,
-			features,
-			(id) => (selectedId = id),
+		return attachRecordMap(map, features, (id) => (selectedId = id), {
 			network,
-			resolveColor('var(--foreground)', mutedInk),
-			heightScale
+			waits: waitLayer,
+			outline: resolveColor('var(--foreground)', mutedInk),
+			extrusions: heightScale
 				? recordExtrusions(features, (id) => valuesInView?.get(id), heightScale)
 				: undefined,
-			resolveColor('var(--map-corridor-cap)', mutedInk),
-		);
+			capColour: resolveColor('var(--map-corridor-cap)', mutedInk),
+		});
 	});
 	$effect(() => {
 		const instance = map;
@@ -550,6 +552,19 @@
 									`Showing the ${shownCount(drawn.length)} stretches that lose the most time. Zoom in for all.`,
 									`Affichage des ${shownCount(drawn.length)} tronçons où le temps perdu est le plus élevé. Zoomez pour les voir tous.`,
 								)}
+							</p>
+						{/if}
+						{#if waitsLimited}
+							<p class="text-muted-foreground">
+								{drawn.length
+									? tr(
+											`Showing the ${shownCount(drawn.length)} stops with the longest extra wait. Zoom in for all.`,
+											`Affichage des ${shownCount(drawn.length)} arrêts où l’attente en plus est la plus longue. Zoomez pour les voir tous.`,
+										)
+									: tr(
+											'Zoom in to see stops without a reading.',
+											'Zoomez pour voir les arrêts sans mesure.',
+										)}
 							</p>
 						{/if}
 						<ul>

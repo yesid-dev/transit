@@ -8,8 +8,8 @@ import { corridorPath, type CorridorIndex } from './corridorMap';
 import type { RecordLayerAnswer, RecordLayerState } from './recordLayerAnswer';
 
 export type { RecordMapLayer } from '#lib/site/mapFrame.ts';
-export const ALL_CORRIDORS_MIN_ZOOM = 13;
-const NETWORK_CORRIDOR_LIMIT = 300;
+export const RECORD_DETAIL_MIN_ZOOM = 13;
+export const RECORD_OVERVIEW_LIMIT = 300;
 type Coordinate = [number, number];
 type Geometry =
 	| { type: 'Point'; coordinates: Coordinate }
@@ -57,6 +57,7 @@ export const recordColours = GOOD_TO_BAD_LEVELS.map((level) => goodToBadStep(lev
 export const recordStopRadii = {
 	network: [3.75, 4.5, 5.25, 6.25, 7.25],
 	detail: [4.5, 5.5, 6.5, 7.75, 9],
+	waitsNetwork: [1.5, 1.75, 2, 2.25, 2.75],
 } as const;
 
 export const recordCorridorWidths = {
@@ -86,10 +87,10 @@ export function recordRampStep(state: MapRecordState, value: number | null, stop
 
 /** Keep the most time lost legible when neighbouring corridors overlap. */
 export function overviewCorridors(marks: readonly RecordMark[]): readonly RecordMark[] {
-	if (marks.length <= NETWORK_CORRIDOR_LIMIT) return marks;
+	if (marks.length <= RECORD_OVERVIEW_LIMIT) return marks;
 	const measured = marks.filter((mark) => mark.state === 3 && mark.value !== null);
 	if (!measured.length) return marks;
-	return measured.sort((a, b) => b.value! - a.value!).slice(0, NETWORK_CORRIDOR_LIMIT);
+	return measured.sort((a, b) => b.value! - a.value!).slice(0, RECORD_OVERVIEW_LIMIT);
 }
 
 export function recordMapSampleText(
@@ -204,6 +205,14 @@ export function highestWaitsByStop(marks: readonly RecordMark[]) {
 			byStop.set(mark.stop, mark);
 	}
 	return [...byStop.values()];
+}
+
+/** Rank the measured stop-line readings that represent each location on the map. */
+export function overviewWaits(waitsByStop: readonly RecordMark[]) {
+	return waitsByStop
+		.filter((mark) => mark.state === 3 && mark.value !== null)
+		.sort((a, b) => b.value! - a.value!)
+		.slice(0, RECORD_OVERVIEW_LIMIT);
 }
 
 function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordinate[] | undefined {
