@@ -9,6 +9,8 @@
 	import { DashboardGrid, Surface } from '@yesid/ui/layout';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { localizeHref } from '#lib/i18n/index.ts';
+	import NoticeMessage from '#lib/features/alerts/NoticeMessage.svelte';
+	import NoticeSection from '#lib/features/alerts/NoticeSection.svelte';
 	import { alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
 	import { recordNoticeCards } from '#lib/features/alerts/alertCards.ts';
 	import RecordRanking from '#lib/features/home/RecordRanking.svelte';
@@ -43,11 +45,6 @@
 		tally,
 		timingBasis,
 	} from '#lib/features/record/recordText.ts';
-	import {
-		agencyMessage,
-		agencyMessagePeriods,
-		agencyMessagePreview,
-	} from '#lib/site/agencyMessages.ts';
 	import {
 		countedUnit,
 		dailyAlertsLink,
@@ -767,124 +764,106 @@
 								</RecordCard>
 							</div>
 
-							<div id="messages">
-								<RecordCard
-									interactive
-									compactPrint
-									title={t(...dailyTitles.messages)}
-									{stamp}
-									stampRule
-								>
-									{#if !data.tracked}
-										{@render messagesNotTracked()}
-										{#if routeData.provider?.alert_links[lang]}
-											<a
-												class="inline-flex min-h-11 items-center text-primary underline"
-												href={routeData.provider.alert_links[lang]}>{officialAlertsLabel(lang)}</a
-											>
-										{/if}
-									{:else}
-										{#await messagesAnswer}
-											{#key messagesAnswer}<RecordPending
-													locale={lang}
-													answer={messagesAnswer}
-													shape={waiting.messages}
-												/>{/key}
-										{:then result}
-											{@const messages = measure(result)}
-											{@const count = messages?.evidence.counts.alerts}
-											{@const notices =
-												messages?.state === 'measured' && !data.messagesLimited
-													? recordNoticeCards(messages)
-													: null}
-											{#if !messages}{@render failure(result, waiting.messages)}
-											{:else if messages.state === 'not_tracked'}
-												{@render messagesNotTracked(true)}
-											{:else if messages.state !== 'measured'}{@render missingMeasure(messages)}
-											{:else if count === 0}
-												<p>
-													{t(
-														'No notices in the tracked record for these dates.',
-														'Aucun avis enregistré dans le bilan à ces dates.',
-													)}
-												</p>
-											{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
-											{:else if notices?.length}
-												<ul class="message-rows">
-													{#each notices as message (message.key)}
-														{@const { title, body } = agencyMessage(message, lang, message.stops)}
-														{@const dates = agencyMessagePeriods(
-															message.periods,
-															lang,
-															data.timeZone,
-															false,
-														)}
-														<li class="message-row grid min-w-0 gap-x-4 py-2 print:py-0.5">
-															<div class="flex flex-wrap items-start gap-x-2">
-																{#each message.routes as id (id)}
-																	{@const line = display.lineName(id)}
-																	<a
-																		class="inline-flex min-h-11 min-w-11 items-center"
-																		href={link('/lines/' + encodeURIComponent(id))}
-																		aria-label={line.spoken}
-																		><RoutePlate code={line.number ?? id} /></a
-																	>
-																{/each}
-															</div>
-															<div class="min-w-0">
-																<h3 class="font-semibold" lang={title.lang}>
-																	{title.text}
-																</h3>
+							<NoticeSection
+								id="messages"
+								title={t(...dailyTitles.messages)}
+								{stamp}
+								presentation="excerpt"
+							>
+								{#if !data.tracked}
+									{@render messagesNotTracked()}
+									{#if routeData.provider?.alert_links[lang]}
+										<a
+											class="inline-flex min-h-11 items-center text-primary underline"
+											href={routeData.provider.alert_links[lang]}>{officialAlertsLabel(lang)}</a
+										>
+									{/if}
+								{:else}
+									{#await messagesAnswer}
+										{#key messagesAnswer}<RecordPending
+												locale={lang}
+												answer={messagesAnswer}
+												shape={waiting.messages}
+											/>{/key}
+									{:then result}
+										{@const messages = measure(result)}
+										{@const count = messages?.evidence.counts.alerts}
+										{@const notices =
+											messages?.state === 'measured' && !data.messagesLimited
+												? recordNoticeCards(messages)
+												: null}
+										{#if !messages}{@render failure(result, waiting.messages)}
+										{:else if messages.state === 'not_tracked'}
+											{@render messagesNotTracked(true)}
+										{:else if messages.state !== 'measured'}{@render missingMeasure(messages)}
+										{:else if count === 0}
+											<p>
+												{t(
+													'No notices in the tracked record for these dates.',
+													'Aucun avis enregistré dans le bilan à ces dates.',
+												)}
+											</p>
+										{:else if data.messagesLimited}<p>{alertDetailsLimit[lang]}</p>
+										{:else if notices?.length}
+											<ul class="message-rows">
+												{#each notices as message (message.key)}
+													<li class="message-row grid min-w-0 gap-x-4 py-2 print:py-0.5">
+														<NoticeMessage
+															notice={message}
+															locale={lang}
+															timeZone={data.timeZone}
+															excerpt
+														>
+															{#snippet routes()}
+																<div class="flex flex-wrap items-start gap-x-2">
+																	{#each message.routes as id (id)}
+																		{@const line = display.lineName(id)}
+																		<a
+																			class="inline-flex min-h-11 min-w-11 items-center"
+																			href={link('/lines/' + encodeURIComponent(id))}
+																			aria-label={line.spoken}
+																			><RoutePlate code={line.number ?? id} /></a
+																		>
+																	{/each}
+																</div>
+															{/snippet}
+															{#snippet stops()}
 																{#if message.stops.length > 1}
 																	<p class="text-muted-foreground">
 																		{t('Stops:', 'Arrêts\u00a0:')}
 																		{message.stops.join(' · ')}
 																	</p>
 																{/if}
-																{#if dates.length}<p
-																		class="text-muted-foreground"
-																		data-slot="agency-message-dates"
-																	>
-																		{dates.join(' · ')}
-																	</p>
-																{/if}
-																{#if body}<p
-																		class="text-muted-foreground print:hidden"
-																		lang={body.lang}
-																	>
-																		{agencyMessagePreview(body)}
-																	</p>
-																{/if}
-															</div>
-														</li>
-													{/each}
-												</ul>
-											{:else}<p>
-													{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}
-												</p>
-											{/if}
-											{#if messages?.state === 'measured' && count != null && count > 0}
-												<a
-													class="inline-flex min-h-11 items-center text-primary underline"
-													href={link('/alerts')}
-												>
-													{dailyAlertsLink(
-														messages.evidence.notice_total ?? notices?.length ?? count,
-														lang,
-													)}
-												</a>
-											{/if}
-										{/await}
-									{/if}
-									{#snippet evidence()}
-										{#await messagesAnswer}<WaitingFoot
-											/>{:then result}{#if result}{@render footerEvidence(
-													result,
-													'messages',
-												)}{/if}{/await}
-									{/snippet}
-								</RecordCard>
-							</div>
+															{/snippet}
+														</NoticeMessage>
+													</li>
+												{/each}
+											</ul>
+										{:else}<p>
+												{t('Message text is unavailable.', 'Le texte des avis est indisponible.')}
+											</p>
+										{/if}
+										{#if messages?.state === 'measured' && count != null && count > 0}
+											<a
+												class="inline-flex min-h-11 items-center text-primary underline"
+												href={link('/alerts')}
+											>
+												{dailyAlertsLink(
+													messages.evidence.notice_total ?? notices?.length ?? count,
+													lang,
+												)}
+											</a>
+										{/if}
+									{/await}
+								{/if}
+								{#snippet evidence()}
+									{#await messagesAnswer}<WaitingFoot
+										/>{:then result}{#if result}{@render footerEvidence(
+												result,
+												'messages',
+											)}{/if}{/await}
+								{/snippet}
+							</NoticeSection>
 
 							<div id="lines">
 								<RecordCard
