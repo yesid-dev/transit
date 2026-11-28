@@ -134,6 +134,8 @@
 		})),
 	);
 	const service = $derived(records.find(({ section }) => section === 'service'));
+	// A reading that streamed in after the first paint keeps its room when it is a short state.
+	const streamedService = $derived(service ? !isSettled(service.answer) : false);
 	const lines = $derived(records.find(({ section }) => section === 'lines'));
 	const timing = $derived(records.find(({ section }) => section === 'punctuality'));
 	const dailyAnswer = $derived(data.days);
@@ -277,7 +279,7 @@
 					<RecordPending shape="answer" {locale} busy />
 				</div>
 			{:else if result.kind === 'unreachable' && result.retry}
-				<div class="vehicle-answer held" data-slot="screen-answer">
+				<div class="vehicle-answer" class:held={streamedService} data-slot="screen-answer">
 					<RecordUnavailable {locale} retry={result.retry} />
 				</div>
 			{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
@@ -334,7 +336,7 @@
 					reading.value.vehicle_days_in_service === 0}
 				{@const state = noReports ? 'not_reporting' : recordStateFor(reading?.state)}
 				<!-- A short state keeps the waiting room, so the first screen does not move. -->
-				<div class="vehicle-answer held" data-slot="screen-answer">
+				<div class="vehicle-answer" class:held={streamedService} data-slot="screen-answer">
 					<RecordAnswer
 						value={null}
 						{state}
@@ -462,7 +464,7 @@
 									</section>
 								{/if}
 							</DashboardGrid>
-						{:else}<div class="service-state">
+						{:else}<div class="service-state" class:held={streamedService}>
 								{@render absent(result, serviceFacts)}
 							</div>{/if}{/await}
 				</div>
@@ -497,7 +499,7 @@
 								cells={cells.slice(0, shownDays)}
 								reportedLabel={t(
 									'In service: its hours with reports that day',
-									'En service : heures avec signalements ce jour-là',
+									'En service\u00a0: heures avec signalements ce jour-là',
 								)}
 								missingLabel={recordState('not_measured')[locale]}
 							/>
@@ -784,19 +786,23 @@
 {/snippet}
 
 <style>
-	/* The answer and the first card keep their waiting room while they wait, and when they settle
-	   to a short state, which would otherwise pull the first screen up. A reading releases it. */
+	/* The answer and the first card keep their waiting room while they wait. A short state gives
+	   it back only when it was drawn with the page; one that streams in keeps it, so the first
+	   screen does not move under the reader. A reading releases it. */
 	.vehicle-answer:is(.held, :has(:global([data-record-pending], [data-record-busy]))) {
 		min-block-size: 13.25rem;
 	}
-	.service-card-body:has(:global([data-record-pending], [data-record-busy]), .service-state) {
+	.service-card-body:has(:global([data-record-pending], [data-record-busy]), .service-state.held) {
 		min-block-size: 16rem;
 	}
 	@media (width < 40rem) {
 		.vehicle-answer:is(.held, :has(:global([data-record-pending], [data-record-busy]))) {
 			min-block-size: 14.5rem;
 		}
-		.service-card-body:has(:global([data-record-pending], [data-record-busy]), .service-state) {
+		.service-card-body:has(
+			:global([data-record-pending], [data-record-busy]),
+			.service-state.held
+		) {
 			min-block-size: 28rem;
 		}
 	}

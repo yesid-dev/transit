@@ -561,7 +561,12 @@
 
 <!-- The waiting statement has the state mark's line, empty, so the answer keeps its height. -->
 {#snippet waitingStatement()}
-	<AnswerLead value={null} sentence={t('Loading…', 'Chargement…')} absent={waitingMark} />
+	<AnswerLead
+		value={null}
+		sentence={t('Loading…', 'Chargement…')}
+		absent={waitingMark}
+		layout="fit"
+	/>
 {/snippet}
 {#snippet waitingMark()}<span
 		class="inline-flex min-w-0 items-baseline gap-2 font-semibold"
