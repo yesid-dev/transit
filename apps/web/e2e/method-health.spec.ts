@@ -281,9 +281,13 @@ for (const width of [390, 1024, 1440]) {
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
 			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
-			const intro = await main
-				.locator('[data-slot="article-header"] .header__subtitle')
-				.boundingBox();
+			const lede = main.locator('[data-slot="article-header"] .header__subtitle');
+			const body = main.locator('.method-content p').filter({ hasText: methodCopy[locale].files });
+			await expect(lede).toHaveCSS(
+				'font-size',
+				await body.evaluate((node) => getComputedStyle(node).fontSize),
+			);
+			const intro = await lede.boundingBox();
 			expect(intro!.x).toBeCloseTo(heading!.x);
 			const boundary = await main.locator('[data-slot="article-header-boundary"]').boundingBox();
 			const column = await main.locator('.method-content').boundingBox();

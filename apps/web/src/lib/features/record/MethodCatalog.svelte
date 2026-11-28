@@ -438,13 +438,15 @@
 		}}
 	>
 		{#snippet summary()}
-			<ArticleHeader
-				{title}
-				subtitle={copy.intro}
-				presentation="reading"
-				backHref={localizeHref('/', locale, city)}
-				backLabel={choose(locale, 'Overview', 'Aperçu')}
-			/>
+			<div class="method-header">
+				<ArticleHeader
+					{title}
+					subtitle={copy.intro}
+					presentation="reading"
+					backHref={localizeHref('/', locale, city)}
+					backLabel={choose(locale, 'Overview', 'Aperçu')}
+				/>
+			</div>
 		{/snippet}
 
 		{#snippet left()}
@@ -625,6 +627,9 @@
 </RecordScreen>
 
 <style>
+	.method-header {
+		--text-reading-support: var(--reading-prose-size);
+	}
 	.method-content {
 		container-type: inline-size;
 		word-break: normal;
@@ -644,9 +649,9 @@
 		display: grid;
 		gap: var(--space-card-gap);
 	}
-	.method-parts,
-	.method-notes {
+	.method-content :is(.method-parts, .method-notes) {
 		row-gap: calc(var(--space-card-gap) / 2);
+		line-height: 1.5;
 	}
 	.method-anchor {
 		scroll-margin-block-start: var(--space-page-x);
