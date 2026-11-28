@@ -430,3 +430,14 @@ def test_a_slow_stretch_question_says_busy_then_answers_the_retry(
     direct = query(store, **LAYER)
     for column in ("from_stop", "passes", "clear_run_seconds", "value", "state"):
         assert answer[column] == direct[column], column
+
+
+def test_the_vm_release_installs_the_r2_reader_its_unit_turns_on() -> None:
+    # The unit points stretch questions at R2. Without the locked httpfs wheel every
+    # stretch question fails on the VM; the image already syncs with the extra.
+    ops = Path(__file__).parents[1] / "ops" / "linux"
+    unit = (ops / "transit-engine.service").read_text(encoding="utf-8")
+    assert "ENGINE_STRETCH_R2_ROOT=s3://" in unit
+    script = (ops / "update-engine.sh").read_text(encoding="utf-8")
+    sync = script[script.index('"$root/bin/uv" sync') :].split("\n", 2)
+    assert "--extra r2" in " ".join(sync[:2])
