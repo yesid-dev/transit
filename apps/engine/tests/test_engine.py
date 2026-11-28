@@ -1491,7 +1491,8 @@ def test_cheap_question_never_waits_behind_heavy_scans(
     store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def exercise() -> None:
-        app = Engine(store, concurrency=2, queue_size=4, queue_wait_ms=2000)
+        # One slot per lane, as in production.
+        app = Engine(store, concurrency=1, queue_size=4, queue_wait_ms=2000)
         loop = asyncio.get_running_loop()
         running = asyncio.Semaphore(0)
         finish = Event()
@@ -1509,8 +1510,8 @@ def test_cheap_question_never_waits_behind_heavy_scans(
             first = asyncio.create_task(http(app, "/measure", heavy))
             second = asyncio.create_task(http(app, "/measure", heavy))
             await running.acquire()
-            # The second scan waits for the first: one record slot stays free.
-            while app.record.waiting != 1:
+            # The second scan waits for the first in the heavy lane; the record lane stays free.
+            while app.heavy.waiting != 1:
                 await asyncio.sleep(0)
             status, headers, _ = await http(app, "/measure", query + "&measure=punctuality")
             assert status == 200
@@ -1520,6 +1521,36 @@ def test_cheap_question_never_waits_behind_heavy_scans(
             for scan in (first, second):
                 status, _, _ = await scan
                 assert status == 200
+
+    asyncio.run(exercise())
+
+
+def test_a_scan_waiting_too_long_says_busy_and_when_to_ask_again(
+    store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exercise() -> None:
+        app = Engine(store, concurrency=1, queue_size=4, queue_wait_ms=50)
+        loop = asyncio.get_running_loop()
+        running = asyncio.Event()
+        finish = Event()
+
+        def heavy_scan(source: Store, question: Question) -> dict[str, Any]:
+            if question.measure == "crowding":
+                loop.call_soon_threadsafe(running.set)
+                assert finish.wait(5)
+            return ask(source, question)
+
+        monkeypatch.setattr("transit_engine.server.ask", heavy_scan)
+        query = f"city=stm&from={THURSDAY}&to={THURSDAY}"
+        async with asyncio.timeout(5):
+            first = asyncio.create_task(http(app, "/measure", query + "&measure=crowding"))
+            await running.wait()
+            # The web reads a 503 with Retry-After as busy and asks again.
+            status, headers, _ = await http(app, "/measure", query + "&measure=waiting_and_gaps")
+            assert status == 503 and headers[b"retry-after"] == b"1"
+            finish.set()
+            status, _, _ = await first
+            assert status == 200
 
     asyncio.run(exercise())
 
