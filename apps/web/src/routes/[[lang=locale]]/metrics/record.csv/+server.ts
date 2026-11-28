@@ -10,6 +10,6 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 		url,
 		request,
 		lang,
-		`${measure}.csv`,
+		`measure-${measure}.csv`,
 	);
 };

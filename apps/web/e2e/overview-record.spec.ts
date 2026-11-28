@@ -342,8 +342,8 @@ for (const width of [390, 1440]) {
 				const of = provider === 'stm' ? 'de la STM' : 'd’OC Transpo';
 				expect(csvText(await csv.body())).toBe(
 					fr
-						? `measure,from,to,Source des données et licence\npunctuality,2026-11-08,2026-11-14,"Données ouvertes ${of}, calculs de Transit"\n`
-						: `measure,from,to,Data source and licence\npunctuality,2026-11-08,2026-11-14,"${agency} open data, computed by Transit"\n`,
+						? `measure,from,to,Source des données et licence,Adresse de la licence\r\npunctuality,2026-11-08,2026-11-14,"Données ouvertes ${of}, calculs de Transit",\r\n`
+						: `measure,from,to,Data source and licence,Licence URL\r\npunctuality,2026-11-08,2026-11-14,"${agency} open data, computed by Transit",\r\n`,
 				);
 				await page.keyboard.press('Escape');
 				await expect(download).toBeFocused();

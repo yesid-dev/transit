@@ -32,6 +32,7 @@
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
+	import { spreadsheetColumns } from '#lib/site/csvColumns.ts';
 	import type { PageData } from './$types';
 
 	let {
@@ -528,9 +529,13 @@
 												<div>
 													<dt class="font-semibold">{entry.text[locale].definition}</dt>
 													<dd>
-														{entry.csv_columns[locale]
-															.map((column) => registryUnitText(column, locale))
-															.join(', ')}
+														<!-- The columns of the file people get, with the ones the site adds. -->
+														{spreadsheetColumns(
+															entry.csv_columns[locale].map((column) =>
+																registryUnitText(column, locale),
+															),
+															locale,
+														).join(', ')}
 													</dd>
 												</div>
 											{/each}

@@ -204,10 +204,10 @@ it('forwards the same cuts and locale to the engine CSV and streams its rows wit
 		lang: 'fr',
 	});
 	expect(response.headers.get('content-disposition')).toBe(
-		'attachment; filename="rankings-line.csv"',
+		'attachment; filename="agency-rankings-line-median_delay-all-2026-10-15-to-2026-11-21-fr.csv"',
 	);
 	expect(csvText(new Uint8Array(await response.arrayBuffer()))).toBe(
-		'Rang,Type,Source des données et licence\n1,line,"Données ouvertes d’Agency, calculs de Transit"\n',
+		'Rang,Type,Source des données et licence,Adresse de la licence\r\n1,line,"Données ouvertes d’Agency, calculs de Transit",\r\n',
 	);
 });
 

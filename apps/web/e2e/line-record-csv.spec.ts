@@ -42,15 +42,18 @@ for (const provider of ['stm', 'octranspo'])
 					const pending = page.waitForEvent('download');
 					await csv.press('Enter');
 					const download = await pending;
-					expect(download.suggestedFilename()).toBe('line-punctuality.csv');
+					expect(download.suggestedFilename()).toBe(
+						`${provider}-line-24-punctuality-2026-11-08-to-2026-11-14-${locale}.csv`,
+					);
 					// Every row ends with the source and licence; the fixture city declares no licence name.
 					const source = fr
 						? `Données ouvertes ${provider === 'stm' ? 'de la STM' : 'd’OC Transpo'}, calculs de Transit`
 						: `${provider === 'stm' ? 'STM' : 'OC Transpo'} open data, computed by Transit`;
 					expect(csvText(readFileSync((await download.path())!))).toBe(
 						(fr
-							? 'Mesure,Valeur,Source des données et licence'
-							: 'Measure,Value,Data source and licence') + `\npunctuality,0.8,"${source}"\n`,
+							? 'Identifiant de la mesure,Mesure,Valeur,Source des données et licence,Adresse de la licence'
+							: 'Measure ID,Measure,Value,Data source and licence,Licence URL') +
+							`\r\npunctuality,${fr ? '"En avance, à l’heure et en retard"' : '"Early, on time and late"'},0.8,"${source}",\r\n`,
 					);
 					expect(new URL(page.url()).pathname).toBe((fr ? '/fr' : '') + '/lines/24');
 					expect(snapshotRequests).toEqual([]);

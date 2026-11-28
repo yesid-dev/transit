@@ -21,7 +21,7 @@ export const GET: RequestHandler = async ({ params, url, request }) => {
 		url,
 		request,
 		lang,
-		`line-${section}.csv`,
+		`line-${params.id}-${section}.csv`,
 		{
 			identity: {
 				code: 'LINE_NOT_FOUND',

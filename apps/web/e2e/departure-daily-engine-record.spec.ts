@@ -151,7 +151,7 @@ for (const width of [390, 1440]) {
 			const csvResponse = await request.get(csv!);
 			expect(csvResponse.ok()).toBeTruthy();
 			expect(csvText(await csvResponse.body())).toMatch(
-				fr ? /^Mesure,Du,Au/u : /^Measure,From,To/u,
+				fr ? /^Identifiant de la mesure,Mesure,Du,Au/u : /^Measure ID,Measure,From,To/u,
 			);
 			await downloads.locator('[data-slot="sheet-footer"]').getByRole('button', close).click();
 			expect(await main.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(width);

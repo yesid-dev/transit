@@ -17,7 +17,7 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 		url,
 		request,
 		lang,
-		`stop-${section}.csv`,
+		`stop-${params.id}-${section}.csv`,
 		{
 			identity: {
 				code: 'STOP_NOT_FOUND',
