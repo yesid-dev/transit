@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import date
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import BinaryIO
 
@@ -11,6 +12,8 @@ from transit_engine.sync_clean import R2, REMOTE, sync, sync_stretches
 DAY = "stm/2026-11-21/v3"
 MANIFEST = f"{DAY}/manifest.json"
 SEARCH = "search/v1/stm/2026-11-21/v3.json"
+MAP = "maps/v1/stm/2026-11-21/v3.json"
+CORRIDORS = "corridors/v1/stm/2026-11-21/v3.json"
 
 
 class CleanBucket(R2):
@@ -39,20 +42,27 @@ class CleanBucket(R2):
             **{f"{DAY}/{name}": data for name, data in tables.items()},
             MANIFEST: json.dumps(receipt).encode(),
             SEARCH: b"{}",
+            MAP: b"{}",
             "stm/2026-11-22/v3/stop_events.parquet": b"unpublished",
         }
 
-    def inventory(self, version: int) -> dict[str, int]:
-        assert version == 3
-        return {key: len(value) for key, value in self.objects.items()}
-
     def run(self, *args: str, output: BinaryIO | int = -1) -> bytes:
+        if args[:2] == ("lsjson", REMOTE):
+            includes = [args[index + 1] for index, arg in enumerate(args) if arg == "--include"]
+            return json.dumps(
+                [
+                    {"Path": key, "Size": len(data)}
+                    for key, data in self.objects.items()
+                    if any(fnmatchcase(f"/{key}", pattern) for pattern in includes)
+                ]
+            ).encode()
         assert args == ("cat", f"{REMOTE}/{MANIFEST}")
         self.reads.append(MANIFEST)
         return self.objects[MANIFEST]
 
     def download(self, key: str, stream: BinaryIO) -> None:
-        assert not (self.root / MANIFEST).exists()
+        if key.startswith(f"{DAY}/"):
+            assert not (self.root / MANIFEST).exists()
         self.reads.append(key)
         stream.write(self.objects[key])
 
@@ -81,6 +91,7 @@ def test_sync_publishes_only_verified_days_and_skips_them_on_next_run(tmp_path: 
     assert (tmp_path / MANIFEST).read_bytes() == remote.objects[MANIFEST]
     assert (tmp_path / key).read_bytes() == original
     assert (tmp_path / SEARCH).read_bytes() == b"{}"
+    assert (tmp_path / MAP).read_bytes() == b"{}"
     assert not (tmp_path / "stm/2026-11-22").exists()
 
     stamp = (tmp_path / ".record-v3").stat().st_mtime_ns
@@ -88,6 +99,24 @@ def test_sync_publishes_only_verified_days_and_skips_them_on_next_run(tmp_path: 
     sync(remote, tmp_path, 3, 0)
     assert remote.reads == []
     assert (tmp_path / ".record-v3").stat().st_mtime_ns == stamp
+
+
+def test_sync_copies_corridors_published_after_the_day(tmp_path: Path) -> None:
+    remote = CleanBucket(tmp_path)
+    sync(remote, tmp_path, 3, 0)
+    remote.objects[CORRIDORS] = b'{"date":"2026-11-21","paths":[]}'
+    remote.reads.clear()
+
+    sync(remote, tmp_path, 3, 0, check=True)
+    assert remote.reads == [] and not (tmp_path / CORRIDORS).exists()
+
+    sync(remote, tmp_path, 3, 0)
+    assert remote.reads == [CORRIDORS]
+    assert (tmp_path / CORRIDORS).read_bytes() == remote.objects[CORRIDORS]
+
+    remote.reads.clear()
+    sync(remote, tmp_path, 3, 0)
+    assert remote.reads == []
 
 
 TODAY = date(2026, 11, 28)
