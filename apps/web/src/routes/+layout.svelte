@@ -542,7 +542,7 @@
 					</p>
 				{/snippet}
 				<SiteFooter
-					edge="hazard"
+					edge={seoPath === '/' ? 'hazard' : 'none'}
 					tagline={footerWords.tagline}
 					groups={footerGroups}
 					statusStart={legalRoute ? legalStatus : undefined}

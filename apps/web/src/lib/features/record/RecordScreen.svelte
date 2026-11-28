@@ -6,11 +6,11 @@
 	const locale = getLocale();
 	const address = $derived(page.url?.href);
 	const daily = $derived(/\/receipt\/?$/.test(page.url?.pathname ?? ''));
-	let { children, ...rest }: Omit<PageSectionsProps, 'divider'> = $props();
+	let { children, ...rest }: Omit<PageSectionsProps, 'divider' | 'stroke'> = $props();
 </script>
 
 <!-- Place once inside Surface. RecordGroup owns each logical section of the screen. -->
-<PageSections {...rest} divider="hand-drawn" data-record-screen>
+<PageSections {...rest} divider="hand-drawn" stroke="continuous" data-record-screen>
 	{@render children()}
 </PageSections>
 {#if address && !daily}

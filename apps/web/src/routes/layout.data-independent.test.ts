@@ -35,11 +35,17 @@ it.each(['en', 'fr'] as const)(
 				name: locale === 'en' ? 'Rankings and reports' : 'Classements et rapports',
 			}),
 		).toBeInTheDocument();
-		// DEV-43: the footer's top edge is the kit hazard strip, as on yesid.dev.
-		expect(footer.querySelector('[data-slot="footer-hazard-edge"]')).not.toBeNull();
+		expect(footer.querySelector('[data-slot="footer-hazard-edge"]')).toBeNull();
 		expect(footer.querySelector('[data-slot="footer-street-edge"]')).toBeNull();
 	},
 );
+
+it.each(['/', '/fr'] as const)('keeps the footer ground on %s', (path) => {
+	const view = renderWithoutV1(path, path === '/' ? 'en' : 'fr');
+	expect(
+		view.getByTestId('footer').querySelectorAll('[data-slot="footer-hazard-edge"]'),
+	).toHaveLength(1);
+});
 
 const harness = vi.hoisted(() => {
 	const beforeNavigateCallbacks: Array<(navigation: unknown) => unknown> = [];

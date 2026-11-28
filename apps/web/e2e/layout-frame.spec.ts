@@ -281,6 +281,11 @@ test('desktop controls keep their column and control changes retain focus and sc
 	);
 	const rail = page.getByRole('complementary', { name: 'Controls', exact: true });
 	expect((await rail.boundingBox())!.width).toBe(272);
+	const bodyFont = await page.locator('body').evaluate((node) => getComputedStyle(node).fontFamily);
+	await expect(rail.getByRole('radio', { name: '7 days', exact: true })).toHaveCSS(
+		'font-family',
+		bodyFont,
+	);
 	const main = page.getByRole('main');
 	const x = (await main.boundingBox())!.x;
 	if (browserName === 'chromium') {

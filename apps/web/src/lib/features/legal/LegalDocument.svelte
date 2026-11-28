@@ -49,7 +49,11 @@
 		{/snippet}
 
 		{#each document.sections as section, index (section.id)}
-			{#if index > 0}<Separator variant="hand-drawn" class="my-6 @max-[12rem]:my-4" />{/if}
+			{#if index > 0}<Separator
+					variant="hand-drawn"
+					class="my-6 @max-[12rem]:my-4"
+					style="color: var(--page-boundary-color)"
+				/>{/if}
 			<section class="legal-section grid gap-3" aria-labelledby={`legal-${section.id}`}>
 				<h2 id={`legal-${section.id}`}>{section.title}</h2>
 				{#each section.paragraphs as paragraph (paragraph)}
