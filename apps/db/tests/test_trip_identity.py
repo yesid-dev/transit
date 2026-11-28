@@ -6,7 +6,11 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from transit_ops.gold.vehicle_instance_rule import TripInstance, VehicleDescriptor
-from transit_ops.gtfs.trip_identity import feed_start_seconds, resolve_trip_instance
+from transit_ops.gtfs.trip_identity import (
+    feed_start_seconds,
+    resolve_trip_instance,
+    start_time_candidates,
+)
 from transit_ops.providers.schedule import service_day_start
 
 OTTAWA = ZoneInfo("America/Toronto")
@@ -80,3 +84,17 @@ def test_early_morning_trips_on_the_fall_back_day_match_too() -> None:
     trip = _instance(FALL_BACK, 30 * 60, minutes=50)
     assert _resolve(trip, "01:30:00") == trip
     assert _resolve(trip, "00:30:00") == trip
+
+
+def test_an_exact_match_wins_over_a_midnight_counted_one() -> None:
+    # Two dated instances of one trip: Saturday's at 25:00 GTFS time, and the fall-back
+    # Sunday's at 24:00, which counted from midnight is also 25:00. Asked for 25:00,
+    # only the exact instance remains, so the offset can never cause a tie.
+    exact = _instance(date(2026, 10, 31), 25 * 3600)
+    offset = _instance(FALL_BACK, 24 * 3600)
+    assert 25 * 3600 in feed_start_seconds(offset, OTTAWA)
+    assert start_time_candidates((exact, offset), 25 * 3600, OTTAWA) == (exact,)
+    assert start_time_candidates((offset, exact), 25 * 3600, OTTAWA) == (exact,)
+    # Without an exact instance, the midnight-counted one is the fallback.
+    assert start_time_candidates((offset,), 25 * 3600, OTTAWA) == (offset,)
+    assert start_time_candidates((exact, offset), 26 * 3600, OTTAWA) == ()
