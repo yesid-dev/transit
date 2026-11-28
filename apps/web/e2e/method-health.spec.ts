@@ -11,6 +11,43 @@ test.beforeEach(({ browserName }, info) => {
 
 for (const locale of ['en', 'fr'] as const) {
 	const fr = locale === 'fr';
+	test(`How we measure contents stays in place while the catalogue loads in ${locale}`, async ({
+		page,
+		request,
+	}) => {
+		await page.setViewportSize({ width: 1440, height: 900 });
+		const host = `http://127.0.0.1:${process.env.TRANSIT_E2E_DATA_PORT ?? '4318'}/__overview`;
+		const fixture = `method-catalogue-${locale}`;
+		const hold = (action: 'hold' | 'release') =>
+			request.post(`${host}/${action}?fixture=${fixture}`);
+		expect((await hold('hold')).ok()).toBe(true);
+		try {
+			await page.setExtraHTTPHeaders({ 'x-transit-fixture-hold': fixture });
+			await page.goto(fr ? '/fr/metrics?provider=octranspo' : '/metrics?provider=stm', {
+				waitUntil: 'commit',
+			});
+			const rail = page.locator('[data-slot="detail-shell-left"]');
+			const more = rail.getByRole('link', { name: methodCopy[locale].more });
+			const ranking = rail.getByRole('link', { name: methodCopy[locale].range.title });
+			const archive = rail.getByRole('link', { name: methodCopy[locale].archive });
+			const positions = async () => {
+				const top = (await rail.boundingBox())!.y;
+				return [(await ranking.boundingBox())!.y - top, (await archive.boundingBox())!.y - top];
+			};
+			await expect(ranking).toBeVisible();
+			await page.evaluate(() => document.fonts.ready);
+			await expect(more).toHaveCount(0);
+			const before = await positions();
+			expect((await hold('release')).ok()).toBe(true);
+			await expect(more).toBeVisible();
+			const after = await positions();
+			expect(after[0]).toBeCloseTo(before[0], 0);
+			expect(after[1]).toBeCloseTo(before[1], 0);
+		} finally {
+			await hold('release');
+		}
+	});
+
 	test(`How we measure disclosure defaults in ${locale}`, async ({ page }) => {
 		await page.addInitScript(() => localStorage.removeItem('sections-choice'));
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
@@ -24,13 +61,15 @@ for (const locale of ['en', 'fr'] as const) {
 		const expand = main.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all' });
 		await expect(main).not.toContainText(fr ? 'méthode v' : 'method v');
 		await expect(open).toHaveCount(1);
-		await expect(open).toHaveAttribute('id', 'on_time');
+		await expect(open).toHaveAttribute('data-method-disclosure', 'on_time');
 		await expect(
 			main
 				.locator('.method-heading-row')
 				.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }),
 		).toBeVisible();
-		await expect(main.locator('#fixture_delay [data-slot="section-summary"]')).toHaveCount(0);
+		await expect(
+			main.locator('[data-method-disclosure="fixture_delay"] [data-slot="section-summary"]'),
+		).toHaveCount(0);
 		await open.getByRole('button').first().press('Enter');
 		await expect(expand).toBeVisible();
 		const more = main.locator('[data-slot="page-section"]:has(#more-methods)');
@@ -57,7 +96,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.setViewportSize({ width: 390, height: 844 });
 		await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
-		const card = page.locator('#fixture_delay');
+		const card = page.locator('[data-method-disclosure="fixture_delay"]');
 		const title = card.locator('.method-disclosure-trigger > span').first();
 		await title.evaluate(
 			(node, text) => {
@@ -90,8 +129,12 @@ for (const locale of ['en', 'fr'] as const) {
 			await page.goto(`${path}?provider=stm&frameMode=record`);
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			await expect(main.locator('#on_time')).toBeVisible();
-			const headings = (await main.locator('.method-content h2').allTextContents()).map((text) =>
-				text.trim(),
+			const headings = await main.locator('.method-content h2').evaluateAll((nodes) =>
+				nodes.map((node) => {
+					const heading = node.cloneNode(true) as HTMLElement;
+					heading.querySelector('[data-slot="heading-permalink"]')?.remove();
+					return heading.textContent.trim();
+				}),
 			);
 			if (width === 390) {
 				await expect(desktopToc).toBeHidden();
@@ -128,7 +171,16 @@ for (const locale of ['en', 'fr'] as const) {
 				await page.keyboard.press('Enter');
 				await expect(entry).toHaveAttribute('aria-current', 'location');
 			}
-			await expect(main.locator('#reading-states')).toBeInViewport();
+			const statesHeading = main.locator('#reading-states');
+			await expect(statesHeading).toBeInViewport();
+			const permalink = statesHeading.getByRole('link');
+			await expect(permalink).toHaveAccessibleName(
+				(fr ? 'Lien vers cette section: ' : 'Link to this section: ') + states,
+			);
+			await expect(permalink).toHaveAttribute('href', '#reading-states');
+			await permalink.focus();
+			await expect(permalink).toHaveCSS('opacity', '1');
+			await permalink.blur();
 			await doubleText(page);
 			expect(await textDefects(page, '.method-content'), `200% text at ${width}px`).toEqual([]);
 		}
@@ -143,7 +195,9 @@ for (const locale of ['en', 'fr'] as const) {
 		await main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }).click();
 		await page.emulateMedia({ media: 'print' });
 		await expect(desktopToc.getByRole('navigation')).toBeHidden();
-		await expect(main.locator('#on_time [data-slot="collapsible-content"]').first()).toBeVisible();
+		await expect(
+			main.locator('[data-method-disclosure="on_time"] [data-slot="collapsible-content"]').first(),
+		).toBeVisible();
 		await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
 	});
 	test(`Download keeps the CSV column names findable in ${locale}`, async ({ page }) => {
@@ -227,15 +281,19 @@ for (const width of [390, 1024, 1440]) {
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
 			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
-			const intro = await main
-				.locator('[data-slot="article-header"] .header__subtitle')
-				.boundingBox();
+			const lede = main.locator('[data-slot="article-header"] .header__subtitle');
+			const body = main.locator('.method-content p').filter({ hasText: methodCopy[locale].files });
+			await expect(lede).toHaveCSS(
+				'font-size',
+				await body.evaluate((node) => getComputedStyle(node).fontSize),
+			);
+			const intro = await lede.boundingBox();
 			expect(intro!.x).toBeCloseTo(heading!.x);
 			const boundary = await main.locator('[data-slot="article-header-boundary"]').boundingBox();
 			const column = await main.locator('.method-content').boundingBox();
 			expect(boundary!.x).toBeCloseTo(column!.x, 0);
 			expect(boundary!.width).toBeCloseTo(column!.width, 0);
-			const statesGroup = main.locator('[data-slot="page-section"]:has(> #reading-states)');
+			const statesGroup = main.locator('[data-slot="page-section"]:has(#reading-states)');
 			await expect(statesGroup.locator('xpath=preceding-sibling::*[1]')).toHaveAttribute(
 				'data-slot',
 				'page-section-boundary',
@@ -249,7 +307,7 @@ for (const width of [390, 1024, 1440]) {
 					}),
 				);
 			expect(new Set(disclosureStyles.map((style) => style.join(' '))).size).toBe(1);
-			const measure = main.locator('#fixture_delay');
+			const measure = main.locator('[data-method-disclosure="fixture_delay"]');
 			await expect(measure.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
 			await expect(measure).not.toContainText(/\bv2\b/u);
@@ -267,7 +325,7 @@ for (const width of [390, 1024, 1440]) {
 			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'false');
 			await notesTrigger.click();
 			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'true');
-			const ranking = main.locator('#ranking-range');
+			const ranking = main.locator('[data-method-disclosure="ranking-range"]');
 			await expect(ranking.getByRole('button').first()).toHaveAccessibleName(
 				fr ? 'L’intervalle dans un classement' : 'The range on a ranking row',
 			);

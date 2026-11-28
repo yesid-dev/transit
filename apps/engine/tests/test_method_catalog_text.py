@@ -90,7 +90,7 @@ def test_catalog_quebec_french_meaning_terminology_and_typography() -> None:
     pred = by_id["prediction_error"]["text"]["fr"]
     assert "faites 40 minutes ou plus à l’avance" in pred["limits"]
     assert "prévision moins observation" in pred["definition"]
-    assert "30 passages observés aux arrêts" in pred["limits"]
+    assert "30 passages enregistrés" in pred["limits"]
     gaps_rate = by_id["vehicle_reporting_gaps_per_100_hours"]["text"]
     assert "exceeds 5 minutes and three" in gaps_rate["en"]["definition"]
     assert "dépasse 5 minutes et trois fois" in gaps_rate["fr"]["definition"]
@@ -103,6 +103,18 @@ def test_catalog_quebec_french_meaning_terminology_and_typography() -> None:
     assert "95\u00a0%" in ranking._RANGE_NOTES["wilson_95"].fr
     assert "historique des avis" in ranking._RANGE_NOTES["recorded_alert_hours"].fr
     assert schedule.periods_text("fr").startswith("nuit (0\u00a0h à 5\u00a0h)")
+
+
+def test_catalog_names_recorded_arrivals_live_coverage_and_waits() -> None:
+    by_id = {entry["id"]: entry for entry in measures.methods()}
+    for lang, arrivals, live, wait in (
+        ("en", "recorded stop arrivals", "live feed", "How much longer riders wait"),
+        ("fr", "passages enregistrés", "données en direct", "Combien de temps de plus on attend"),
+    ):
+        assert arrivals in by_id["prediction_error"]["text"][lang]["counts"]
+        assert arrivals in by_id["delay_distribution"]["text"][lang]["definition"]
+        assert live in by_id["live_trip_coverage"]["text"][lang]["definition"]
+        assert by_id["excess_wait_time"]["text"][lang]["definition"].startswith(wait)
 
     banned_fr = (
         re.compile(r"\b(?:alerte|alertes)\b", re.IGNORECASE),

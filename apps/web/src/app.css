@@ -2,6 +2,7 @@
 
 @import 'tailwindcss';
 @import '@yesid/ui/base.css';
+@import '@yesid/ui/article-body.css';
 @import '@yesid/ui/station-tabs.css';
 @import './lib/components/dataviz/goodToBadScale.css';
 @source '../node_modules/@yesid/ui/src';
@@ -259,7 +260,28 @@ body {
 	margin-inline: auto;
 }
 
+.method-content :is(h2, h3, h4):has(> [data-slot='heading-permalink']) {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.reading-detail .method-content :is(h2, h3, h4) > [data-slot='heading-permalink'] {
+	position: static;
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	min-inline-size: var(--size-tap-min);
+	min-block-size: var(--size-tap-min);
+	margin-inline: 0;
+	transform: none;
+}
+
 @media print {
+	.reading-detail .method-content :is(h2, h3, h4) > [data-slot='heading-permalink'] {
+		display: none;
+	}
 	/* Match the kit's :root:not([data-theme]) specificity in its device-theme rules. */
 	:root:root {
 		color-scheme: only light;

@@ -48,10 +48,11 @@ export const methodCopy = {
 			},
 		},
 		statesTitle: 'What the status labels mean',
+		unknown: 'Unknown. Transit has no reading for this figure.',
 		statesNote: 'A missing value is shown as missing, never as zero.',
 		states: {
 			no_live_data:
-				'The agency publishes no real-time feed for this line, such as the métro. It is shown with its schedule and left out of every rate.',
+				'The agency publishes no live data for this line, such as the métro. It is shown with its schedule and left out of every rate.',
 			not_measured:
 				'The line or the measure exists, but the data on these dates cannot support it. It is never shown as zero.',
 			too_few_to_judge:
@@ -66,7 +67,7 @@ export const methodCopy = {
 		limitsTitle: 'What this record is not',
 		recordLimits: [
 			'Not a trip planner: it does not tell you which line to take.',
-			'Not a measure of lines without live data, such as the métro or the O-Train: their agencies publish no real-time data for them.',
+			'Not a measure of lines without live data, such as the métro or the O-Train.',
 			'Not a count of riders, and not a cause of delay: neither is in the feeds.',
 			'Observed times are the agency’s own predictions and positions, checked against each other, not a stopwatch at the stop.',
 			'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not directly comparable. Each screen says how its times were observed.',
@@ -133,10 +134,11 @@ export const methodCopy = {
 			},
 		},
 		statesTitle: 'Signification des états',
+		unknown: 'Inconnu. Transit n’a pas de relevé pour ce chiffre.',
 		statesNote: 'Une valeur manquante est indiquée comme manquante, jamais comme zéro.',
 		states: {
 			no_live_data:
-				'La société de transport ne publie aucun flux en temps réel pour cette ligne, comme le métro. Son horaire est affiché et elle est exclue de tous les taux.',
+				'La société de transport ne publie aucune donnée en direct pour cette ligne, comme le métro. Son horaire est affiché et elle est exclue de tous les taux.',
 			not_measured:
 				'La ligne ou la mesure existe, mais les données de ces dates ne permettent pas de la calculer. Elle n’est jamais affichée comme zéro.',
 			too_few_to_judge:
@@ -151,7 +153,7 @@ export const methodCopy = {
 		limitsTitle: 'Ce que ce bilan n’est pas',
 		recordLimits: [
 			'Pas un planificateur de trajets\u00a0: il n’indique pas quelle ligne prendre.',
-			'Pas une mesure des lignes sans données en direct, comme le métro ou l’O-Train\u00a0: leurs sociétés de transport ne publient aucune donnée en temps réel pour ces lignes.',
+			'Pas une mesure des lignes sans données en direct, comme le métro ou l’O-Train.',
 			'Pas un décompte des usagers, ni une cause du retard\u00a0: ces données ne figurent pas dans les flux.',
 			'Les heures observées proviennent des prévisions et des positions de la société de transport, comparées entre elles, sans chronométrage à l’arrêt.',
 			'Pas une comparaison entre villes\u00a0: le flux de chaque société de transport donne ses heures à sa manière, donc les chiffres de deux villes ne sont pas directement comparables. Chaque écran indique comment ses heures ont été observées.',

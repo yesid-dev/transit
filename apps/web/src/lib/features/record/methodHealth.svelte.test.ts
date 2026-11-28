@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { expect, it } from 'vitest';
 import type {
 	DataHealthAnswer,
@@ -71,7 +71,9 @@ it('renders localized registry content and marks a last-good catalog', async () 
 	const trigger = await screen.findByRole('button', {
 		name: /^Retard typique aux arrêts observés/u,
 	});
-	const entry = document.getElementById(fixtureDelay.id)!;
+	const entry = document
+		.getElementById(fixtureDelay.id)!
+		.closest<HTMLElement>('.method-disclosure')!;
 	expect(entry).toContainElement(trigger);
 	expect(trigger).toHaveAttribute('aria-expanded', 'false');
 	expect(entry).toHaveTextContent(fixtureDelay.text.fr.exclusions);
@@ -99,6 +101,11 @@ it.each(['en', 'fr'] as const)('uses the shared state marks in %s', async (local
 		'not_reporting',
 		'not_tracked',
 	] as const;
+	expect(card).toHaveTextContent(
+		locale === 'fr'
+			? 'Inconnu. Transit n’a pas de relevé pour ce chiffre.'
+			: 'Unknown. Transit has no reading for this figure.',
+	);
 	const marks = card.querySelectorAll('[data-record-state]');
 	expect(marks).toHaveLength(states.length);
 	states.forEach((state, index) => {
@@ -122,9 +129,12 @@ it('puts shared family prose in one reading and links to it from its siblings', 
 		}),
 	});
 	expect(await screen.findAllByText(/Each stop with a reading counts once\./)).toHaveLength(1);
-	const early = document.getElementById('early')!;
+	const early = document.getElementById('early')!.closest<HTMLElement>('.method-disclosure')!;
+	await fireEvent.click(within(early).getByRole('button', { name: 'Early share' }));
 	expect(early).toHaveTextContent('The same as the on-time share.');
-	expect(early.querySelector('a[href="#on_time"]')).toHaveTextContent('the on-time share');
+	for (const link of within(early).getAllByRole('link', { name: 'the on-time share' })) {
+		expect(link).toHaveAttribute('href', '#on_time');
+	}
 });
 
 it.each([
@@ -222,15 +232,19 @@ it.each([
 		expect(await screen.findAllByText(notesTitle, { selector: 'button *' })).not.toHaveLength(0);
 		expect(document.body.textContent).not.toContain(placeholder);
 
-		const percentiles = document.getElementById('delay-percentiles')!;
+		const percentiles = document
+			.getElementById('delay-percentiles')!
+			.closest<HTMLElement>('.method-disclosure')!;
 		expect(percentiles).toHaveTextContent(
 			locale === 'fr' ? 'Comme pour la part à l’heure.' : 'The same as the on-time share.',
 		);
-		const percentilesNotes = document.getElementById('delay-percentiles-notes')!;
+		const percentilesNotes = document
+			.getElementById('delay-percentiles-notes')!
+			.closest<HTMLElement>('.method-disclosure')!;
 		expect(percentilesNotes).toHaveTextContent(locale === 'fr' ? 'tranches de 15' : '15-s steps');
 		expect(percentilesNotes).toHaveTextContent(locale === 'fr' ? 'Calcul' : 'How it is calculated');
 
-		const onTime = document.getElementById('on_time')!;
+		const onTime = document.getElementById('on_time')!.closest<HTMLElement>('.method-disclosure')!;
 		for (const [label, value] of [
 			[locale === 'fr' ? 'Échantillon minimal' : 'Minimum sample', '30'],
 			[
@@ -247,7 +261,9 @@ it.each([
 			);
 		}
 
-		const rankingNotes = document.getElementById('ranking-range-notes')!;
+		const rankingNotes = document
+			.getElementById('ranking-range-notes')!
+			.closest<HTMLElement>('.method-disclosure')!;
 		expect(rankingNotes).toHaveTextContent(
 			locale === 'fr' ? 'Ordre du classement' : 'How rows are ordered',
 		);
@@ -259,7 +275,9 @@ it.each([
 			expect(rankingNotes).not.toHaveTextContent(riderLabel);
 		}
 
-		const crowding = document.getElementById('family-crowding')!;
+		const crowding = document
+			.getElementById('family-crowding')!
+			.closest<HTMLElement>('.method-disclosure')!;
 		expect(crowding).not.toHaveTextContent(
 			locale === 'fr' ? 'Ce que la mesure exclut' : 'What it leaves out',
 		);
@@ -286,7 +304,9 @@ it('describes closed families in plain words and keeps their measures', async ()
 		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: entries }),
 	});
 	await screen.findByText(/Early is more than 1 minute ahead.*Late is more than 5 minutes/);
-	const family = document.getElementById('family-vehicles')!;
+	const family = document
+		.getElementById('family-vehicles')!
+		.closest<HTMLElement>('.method-disclosure')!;
 	const more = family.closest('[aria-labelledby="more-methods"]');
 	expect(more?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
 	const trigger = within(family).getByRole('button', {
