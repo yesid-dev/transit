@@ -157,6 +157,12 @@
 		if (map) updateAttribution?.(customAttribution);
 	});
 
+	/** The inputs without a DOM read: enough to know whether the published bounds frame a camera. */
+	function cameraValues() {
+		void container;
+		return { center, zoom, bounds, maxBounds, fitPadding };
+	}
+
 	function cameraInputs() {
 		if (!container) return { center, zoom, bounds, maxBounds, fitPadding };
 		const inset = measureMapFocusInset({ getContainer: () => container! });
@@ -528,7 +534,7 @@
 	async function startAttempt(generation: number, recoveryView?: RecoveryView): Promise<void> {
 		if (!mounted || !container || activeAttempt?.initializing) return;
 		// Without published bounds there is no camera: import, tiles and constructor all stay idle.
-		if (!camera.initial(cameraInputs())) return reportFailure(generation, 'bounds');
+		if (!camera.initial(cameraValues())) return reportFailure(generation, 'bounds');
 		const attempt: BootAttempt = {
 			generation,
 			container,
@@ -583,7 +589,10 @@
 			);
 
 			failureKind = 'bounds';
-			const viewport = camera.initial(cameraInputs());
+			// One measurement frames the constructor and the camera attach: the map's own nodes go
+			// inside the container and do not move the chrome around it.
+			const initialInputs = cameraInputs();
+			const viewport = camera.initial(initialInputs);
 			if (!viewport) throw new Error('Published map bounds are unavailable');
 			failureKind = 'construct';
 			preflightWebgl();
@@ -618,7 +627,7 @@
 			if (dev || import.meta.env.MODE === 'e2e') {
 				attempt.disposers.push(exposeCameraProbe(instance));
 			}
-			camera.attach(instance, cameraInputs(), recoveryView);
+			camera.attach(instance, initialInputs, recoveryView);
 			const reportOrientation = () => {
 				if (isCurrentAttempt(attempt))
 					onorientation?.({ bearing: instance.getBearing(), pitch: instance.getPitch() });
@@ -736,15 +745,20 @@
 	});
 
 	// Bounds that become invalid release the map; bounds that become valid start one in place.
+	// A map the boot just attached was framed from a fresh measurement, and its resize observer
+	// reports the first size: re-measuring the page here only forced another layout.
+	let cameraFollowsInputs: MapLibreMap | null = null;
 	$effect(() => {
-		const inputs = cameraInputs();
-		const framed = camera.initial(inputs) !== null;
+		const values = cameraValues();
+		const framed = camera.initial(values) !== null;
 		const instance = map;
 		untrack(() => {
 			if (!framed) {
 				if (activeAttempt && !activeAttempt.initializing) failAttempt(activeAttempt, 'bounds');
-			} else if (instance) camera.update(instance, inputs);
-			else if (activeFailure?.kind === 'bounds')
+			} else if (instance) {
+				if (cameraFollowsInputs === instance) camera.update(instance, cameraInputs());
+				cameraFollowsInputs = instance;
+			} else if (activeFailure?.kind === 'bounds')
 				void retry(activeFailure.generation, 'bounds', false);
 		});
 	});

@@ -36,6 +36,25 @@ export default ts.config(
 		},
 	},
 	{
+		// The v1 index re-exports every published file schema. A value read through it makes the
+		// browser build all of them before the live map can start (about 300 ms of a 4x-throttled
+		// phone's first visit); a type costs nothing. Import a schema from the module that defines it.
+		files: ['src/**/*.ts', 'src/**/*.svelte'],
+		ignores: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'src/tests/**'],
+		rules: {
+			'@typescript-eslint/no-restricted-imports': [
+				'error',
+				...['#lib/v1/schemas/index.ts', '#lib/v1/schemas', '#lib/v1/index.ts', '#lib/v1'].map(
+					(name) => ({
+						name,
+						allowTypeImports: true,
+						message: 'Import values from the module that defines them; this index is for types.',
+					}),
+				),
+			],
+		},
+	},
+	{
 		ignores: [
 			'.svelte-kit/',
 			'.vitest/',

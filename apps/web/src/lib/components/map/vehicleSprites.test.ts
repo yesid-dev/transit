@@ -20,6 +20,7 @@ import {
 	statusBodyIconId,
 	occupancyBodyIconId,
 	VEHICLE_MARKER_GEOMETRY,
+	resolveColor,
 } from './vehicleSprites';
 
 type DrawCommand = {
@@ -349,6 +350,23 @@ beforeEach(() => {
 afterEach(() => {
 	vi.restoreAllMocks();
 	vi.unstubAllGlobals();
+});
+
+describe('colour resolution', () => {
+	it('reads every colour from one hidden probe instead of adding a node per colour', () => {
+		const before = document.body.childElementCount;
+		expect(resolveColor('var(--background)', '#000')).toBe('rgb(20, 20, 20)');
+		expect(resolveColor('var(--primary)', '#000')).toBe('rgb(224, 120, 0)');
+		bakeReceipt();
+		const probes = document.body.querySelectorAll('[data-color-probe]');
+		expect(probes).toHaveLength(1);
+		expect(document.body.childElementCount).toBeLessThanOrEqual(before + 1);
+		expect(probes[0]!.getAttribute('aria-hidden')).toBe('true');
+	});
+
+	it('answers the fallback for an expression the browser rejects', () => {
+		expect(resolveColor('not a colour', 'rgb(1, 2, 3)')).toBe('rgb(1, 2, 3)');
+	});
 });
 
 describe('vehicle sprite palette contract', () => {
