@@ -20,12 +20,16 @@ speed is the speed at the same boundary from the fast end, in whole km/h.
 import json
 import os
 import re
+import zlib
+from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from importlib.metadata import distribution
 from pathlib import Path
 from stat import S_ISREG
+from threading import Lock
+from typing import Any
 
 import duckdb
 
@@ -127,10 +131,10 @@ def stretch_day(
 MONTH_TABLES = ("stretches", "stretch_summary")
 
 
-def month_directory(store: Store, city: str, month: str) -> str:
-    if not CITY.fullmatch(city) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}", month):
-        raise ValueError("Invalid city or month")
-    return f"{store.root.rstrip('/')}/stretch/v{STRETCH_VERSION}/{city}/months/{month}"
+def months_directory(store: Store, city: str) -> str:
+    if not CITY.fullmatch(city):
+        raise ValueError("Invalid city")
+    return f"{store.root.rstrip('/')}/stretch/v{STRETCH_VERSION}/{city}/months"
 
 
 def month_receipt(
@@ -180,33 +184,107 @@ def month_receipt(
     return named, listed
 
 
-def month_rollup(
-    store: Store, city: str, month: str
-) -> tuple[dict[str, str], tuple[date, ...]] | None:
-    """A local month rollup's paths and days, when its receipt and file sizes check out."""
-    check_query()
+def _size(conn: duckdb.DuckDBPyConnection, store: Store, path: str) -> int | None:
     if store.s3_endpoint:
-        return None  # Only the engine host's mirror builds month rollups.
-    directory = month_directory(store, city, month)
+        row = conn.execute("SELECT size FROM read_blob(?)", [path]).fetchone()
+        return None if row is None else int(row[0])
     try:
-        payload = Path(f"{directory}/manifest.json").read_bytes()
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+        info = Path(path).stat()
+    except (FileNotFoundError, NotADirectoryError):
         return None
-    parsed = month_receipt(payload, city, month)
-    if parsed is None:
-        return None
-    named, days = parsed
-    paths = {}
-    for table, (name, size) in named.items():
-        path = Path(f"{directory}/{name}")
+    return info.st_size if S_ISREG(info.st_mode) else None
+
+
+def month_rollup(
+    conn: duckdb.DuckDBPyConnection, store: Store, city: str, month: str
+) -> tuple[dict[str, str], tuple[date, ...]] | None:
+    """The month's rollup that adds up the most days, if its receipt and sizes check out.
+
+    The nightly cleaning publishes a new rollup next to the old one when a month
+    gains or changes a day, under ``months/<YYYY-MM>-<key>/``.
+    """
+    check_query()
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}", month):
+        raise ValueError("Invalid month")
+    pattern = f"{months_directory(store, city)}/{month}-*/manifest.json"
+    if store.s3_endpoint:
+        markers = [row[0] for row in conn.execute("SELECT file FROM glob(?)", [pattern]).fetchall()]
+    else:
+        base = Path(months_directory(store, city))
+        markers = [path.as_posix() for path in base.glob(f"{month}-*/manifest.json")]
+    best: tuple[int, str, dict[str, str], tuple[date, ...]] | None = None
+    for marker in markers:
+        if store.s3_endpoint:
+            row = conn.execute("SELECT content FROM read_blob(?)", [marker]).fetchone()
+            payload = None if row is None else bytes(row[0])
+        else:
+            try:
+                payload = Path(marker).read_bytes()
+            except (FileNotFoundError, IsADirectoryError):
+                payload = None
+        parsed = None if payload is None else month_receipt(payload, city, month)
+        if parsed is None:
+            continue
+        named, days = parsed
+        directory = marker.rsplit("/", 1)[0]
+        paths = {table: f"{directory}/{name}" for table, (name, _) in named.items()}
+        if any(_size(conn, store, paths[table]) != size for table, (_, size) in named.items()):
+            continue
+        candidate = (len(days), marker, paths, days)
+        if best is None or candidate[:2] > best[:2]:
+            best = candidate
+    return None if best is None else (best[2], best[3])
+
+
+def stretch_stamp(store: Store, city: str) -> tuple[str, str, str]:
+    """What a cached stretch answer depends on: the day, and the local stretch and v12 copies."""
+
+    def changed(path: Path) -> str:
         try:
-            info = path.stat()
+            return str(path.stat().st_mtime_ns)
         except (FileNotFoundError, NotADirectoryError):
+            return "-"
+
+    today = datetime.now(UTC).date().isoformat()
+    if store.s3_endpoint:
+        return today, "-", "-"
+    return (
+        today,
+        changed(Path(stretch_directory(store, city, date.min).rsplit("/", 1)[0])),
+        (changed(store.mirror_stamp())),
+    )
+
+
+class AnswerCache:
+    """A small, bounded, per-process cache of finished stretch answers, kept compressed."""
+
+    def __init__(self, max_bytes: int = 64 * 1024 * 1024, max_entries: int = 32) -> None:
+        self._max_bytes = max_bytes
+        self._max_entries = max_entries
+        self._data: OrderedDict[tuple[str, ...], bytes] = OrderedDict()
+        self._bytes = 0
+        self._lock = Lock()
+
+    def get(self, key: tuple[str, ...]) -> dict[str, Any] | None:
+        with self._lock:
+            payload = self._data.get(key)
+            if payload is not None:
+                self._data.move_to_end(key)
+        if payload is None:
             return None
-        if not S_ISREG(info.st_mode) or info.st_size != size:
-            return None
-        paths[table] = path.as_posix()
-    return paths, days
+        answer: dict[str, Any] = json.loads(zlib.decompress(payload))
+        return answer
+
+    def put(self, key: tuple[str, ...], answer: dict[str, Any]) -> None:
+        payload = zlib.compress(json.dumps(answer).encode(), level=1)
+        if len(payload) > self._max_bytes:
+            return
+        with self._lock:
+            self._bytes += len(payload) - len(self._data.pop(key, b""))
+            self._data[key] = payload
+            while self._bytes > self._max_bytes or len(self._data) > self._max_entries:
+                _, oldest = self._data.popitem(last=False)
+                self._bytes -= len(oldest)
 
 
 def remote_stretches(conn: duckdb.DuckDBPyConnection) -> Store | None:

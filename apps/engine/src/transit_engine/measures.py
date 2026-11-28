@@ -3607,7 +3607,7 @@ def _stretch_answer(
         rolled: set[str] = set()
         if not cut.by_line:
             for month in sorted({day_key[:7] for day_key in window.included}):
-                rollup = month_rollup(store, question.city, month)
+                rollup = month_rollup(conn, remote or store, question.city, month)
                 if rollup is None:
                     continue
                 month_paths, rollup_days = rollup

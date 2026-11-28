@@ -1,4 +1,6 @@
 import asyncio
+import contextvars
+import copy
 import json
 import logging
 import os
@@ -29,6 +31,7 @@ from transit_engine.measures import (
     _ALERT_COUNTS_ID,
     _SELECTIONS,
     CORRIDOR_RANKING_DEFAULT,
+    STRETCH_MEASURES,
     VEHICLE_RANKING_DEFAULT,
     EntityKind,
     Language,
@@ -43,8 +46,13 @@ from transit_engine.ranking import DEFAULT_LIMIT, Ranking, rank, ranking_csv
 from transit_engine.search import schedule_index, search_index
 from transit_engine.series import SeriesGroup
 from transit_engine.store import Store, env_int
+from transit_engine.stretches import AnswerCache, stretch_stamp
 
 BUSY_MESSAGE = "busy, try again"
+# The origin deadline is 25 s. A stretch question still running after this says busy and
+# keeps going; the reader retries after STRETCH_RETRY_AFTER_S and gets the finished answer.
+STRETCH_SOFT_DEADLINE_S = env_int("ENGINE_STRETCH_SOFT_DEADLINE_S", 20)
+STRETCH_RETRY_AFTER_S = 15
 SCHEDULE_ROUTES = {"/search-index", "/schedule-index", "/schedule-map"}
 LOGGER = logging.getLogger("uvicorn.error")
 
@@ -78,6 +86,7 @@ async def respond(
     timing: QueryTiming | None = None,
     cleaning_version: int | None = None,
     days_pending: int | None = None,
+    retry_after: int = 1,
 ) -> None:
     csv_response = isinstance(payload, str)
     headers = [
@@ -87,7 +96,7 @@ async def respond(
         (b"x-transit-answer-revision", ANSWER_REVISION.encode("ascii")),
     ]
     if status == 503:
-        headers.append((b"retry-after", b"1"))
+        headers.append((b"retry-after", str(retry_after).encode("ascii")))
     if status == 401:
         headers.append((b"www-authenticate", b"Bearer"))
     if cleaning_version is not None:
@@ -343,6 +352,8 @@ class Engine:
         self._cities: dict[str, Any] | None = None
         self._cities_refresh_at = 0.0
         self._mirror_stamp: int | None = None
+        self.stretch_answers = AnswerCache()
+        self.stretch_pending: dict[tuple[str, ...], asyncio.Task[dict[str, Any]]] = {}
 
     def _load_cities(self) -> dict[str, Any]:
         stamp = None
@@ -466,6 +477,9 @@ class Engine:
             await respond(send, 400, {"message": str(error)})
             return
 
+        if isinstance(question, Question) and question.measure in STRETCH_MEASURES:
+            await self._stretch(question, output, language, include_method, send)
+            return
         lane = self.record
         if isinstance(question, str):
             lane = self.catalogue
@@ -536,6 +550,67 @@ class Engine:
                 cleaning_version=self.store.cleaning_version,
                 days_pending=days_pending,
             )
+
+    async def _stretch(
+        self,
+        question: Question,
+        output: str,
+        language: Language,
+        include_method: bool,
+        send: ASGISendCallable,
+    ) -> None:
+        """Answer within the soft deadline, or say busy and keep going for the retry.
+
+        A long network question can take longer than the proxy waits. Its query runs
+        detached from the request, keeps its record slot until DuckDB finishes, and
+        leaves its answer for the reader's retry.
+        """
+        key = (repr(question), *stretch_stamp(self.store, question.city))
+        timing = QueryTiming(False, 0, monotonic())
+        answer = self.stretch_answers.get(key)
+        if answer is None:
+            task = self.stretch_pending.get(key)
+            if task is None:
+                admitted = await self.record.admit(send)
+                if admitted is None:
+                    return
+                timing = admitted
+                # A fresh context: a disconnected caller does not interrupt this query.
+                task = asyncio.create_task(
+                    asyncio.to_thread(contextvars.Context().run, ask, self.store, question)
+                )
+                task.add_done_callback(self.record.release_when_done)
+                self.stretch_pending[key] = task
+
+                def settle(done: asyncio.Task[dict[str, Any]], key: tuple[str, ...] = key) -> None:
+                    self.stretch_pending.pop(key, None)
+                    if not done.cancelled() and done.exception() is None:
+                        self.stretch_answers.put(key, done.result())
+
+                task.add_done_callback(settle)
+            try:
+                answer = await asyncio.wait_for(asyncio.shield(task), STRETCH_SOFT_DEADLINE_S)
+            except TimeoutError:
+                await respond(
+                    send, 503, {"message": BUSY_MESSAGE}, timing=timing,
+                    retry_after=STRETCH_RETRY_AFTER_S,
+                )  # fmt: skip
+                return
+            except UnknownCity as error:
+                await respond(send, 400, {"message": str(error)}, timing=timing)
+                return
+            except Exception as error:
+                LOGGER.error("engine query failed (%s)", type(error).__name__)
+                await respond(send, 500, {"message": "query failed"}, timing=timing)
+                return
+        answer = copy.deepcopy(answer)
+        if not include_method:
+            omit_method_text(answer)
+        payload = answer_csv(answer, language) if output == "csv" else answer
+        await respond(
+            send, 200, payload, timing=timing, cleaning_version=self.store.cleaning_version,
+            days_pending=len(answer["evidence"]["days_pending"]),
+        )  # fmt: skip
 
     async def _data_health(self, raw: bytes, send: ASGISendCallable) -> None:
         try:

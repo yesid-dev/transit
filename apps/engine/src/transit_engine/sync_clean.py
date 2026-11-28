@@ -1,20 +1,16 @@
 """Mirror completed, immutable clean days from R2 on a Linux engine host."""
 
 import argparse
-import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from datetime import UTC, date, datetime, timedelta
 from hashlib import file_digest
 from pathlib import Path
 from typing import BinaryIO
-
-import duckdb
 
 from transit_engine.clean_manifest import file_identities
 from transit_engine.store import CITY, Store, env_int
@@ -224,7 +220,6 @@ def sync_stretches(
     today: date,
     *,
     keep_days: int = STRETCH_LOCAL_DAYS,
-    rollups: bool = True,
     check: bool = False,
 ) -> None:
     """Copy the latest stretch timing days, and drop older local copies R2 still holds."""
@@ -304,131 +299,6 @@ def sync_stretches(
         f"{keep_days} days, kept {kept} not yet verified in R2",
         flush=True,
     )
-    if not rollups:
-        return
-    months = build_month_rollups(remote, root, reserve, today, inventory, published)
-    print(f"Built {months} stretch month rollups", flush=True)
-
-
-def _checked_copy(remote: R2, root: Path, key: str, size: int, digest: str, spare: Path,
-                  reserve: int) -> Path:  # fmt: skip
-    """The local copy of ``key`` when it matches its digest, else a checked download."""
-    local = root / key
-    if local.is_file() and local.stat().st_size == size:
-        with local.open("rb") as stream:
-            if file_digest(stream, "sha256").hexdigest() == digest:
-                return local
-    copy_object(remote, key, spare, size, reserve, digest)
-    return spare / key
-
-
-def build_month_rollups(
-    remote: R2,
-    root: Path,
-    reserve: int,
-    today: date,
-    inventory: dict[str, int],
-    published: dict[str, tuple[str, date]],
-) -> int:
-    """Add up each past month's daily stretch summaries, so long questions read 12 files a year.
-
-    A month is rebuilt when the set of day receipts in R2 changes. Rollups are local
-    and derived; R2 keeps the days. Returns the number of months built.
-    """
-    current = today.strftime("%Y-%m")
-    months: dict[tuple[str, str], list[tuple[date, str]]] = {}
-    for key, (city, day) in published.items():
-        if (month := day.strftime("%Y-%m")) < current:
-            months.setdefault((city, month), []).append((day, key))
-    built = 0
-    for (city, month), entries in sorted(months.items()):
-        receipts = {}
-        for day, key in sorted(entries):
-            local = root / key
-            receipts[day] = (
-                local.read_bytes() if local.is_file() else remote.run("cat", f"{REMOTE}/{key}")
-            )
-        days = {
-            day.isoformat(): hashlib.sha256(payload).hexdigest()
-            for day, payload in receipts.items()
-        }
-        folder = root / STRETCH_PREFIX / city / "months" / month
-        marker = folder / "manifest.json"
-        if marker.is_file():
-            try:
-                if json.loads(marker.read_bytes()).get("days") == days:
-                    continue
-            except ValueError:
-                pass
-        with tempfile.TemporaryDirectory(prefix=".rollup-", dir=root) as temporary:
-            spare = Path(temporary)
-            inputs: dict[str, list[str]] = {"stretch_summary": [], "stretches": []}
-            for day, payload in receipts.items():
-                tables = receipt_tables(payload, city, day)
-                if tables is None:
-                    raise RuntimeError(f"Invalid stretch receipt for {city} {day}")
-                digests = _digests(payload)
-                for table in inputs:
-                    name, size = tables[table]
-                    key = f"{STRETCH_PREFIX}/{city}/{day.isoformat()}/{name}"
-                    if inventory.get(key) != size:
-                        raise RuntimeError(f"Stretch file missing from inventory: {key}")
-                    path = _checked_copy(remote, root, key, size, digests[name], spare, reserve)
-                    inputs[table].append(path.as_posix())
-            staged = spare / "rollup"
-            staged.mkdir()
-            spill = spare / "spill"
-            spill.mkdir()
-            with duckdb.connect(config={
-                "threads": 1, "memory_limit": "192MB", "temp_directory": spill.as_posix(),
-            }) as conn:  # fmt: skip
-                conn.execute(
-                    """COPY (
-                        SELECT provider, ? AS month, cleaning_version, stretch_key, route_type,
-                            CASE isodow(service_date) WHEN 6 THEN 'saturday'
-                                WHEN 7 THEN 'sunday' ELSE 'weekday' END AS day_type,
-                            hour, pass_seconds, speed_kmh, sum(passes)::BIGINT AS passes,
-                            sum(stopped_at_stop_seconds)::BIGINT AS stopped_at_stop_seconds,
-                            sum(stopped_between_stops_seconds)::BIGINT
-                                AS stopped_between_stops_seconds
-                        FROM read_parquet(?, hive_partitioning = false)
-                        GROUP BY ALL
-                        ORDER BY stretch_key, route_type, day_type, hour, pass_seconds, speed_kmh
-                    ) TO ? (FORMAT parquet, COMPRESSION zstd)""",
-                    [month, inputs["stretch_summary"], (staged / "stretch_summary").as_posix()],
-                )
-                conn.execute(
-                    """COPY (
-                        SELECT * EXCLUDE (rank) FROM (
-                            SELECT *, row_number() OVER (
-                                PARTITION BY stretch_key ORDER BY service_date DESC) AS rank
-                            FROM read_parquet(?, hive_partitioning = false)
-                        ) WHERE rank = 1 ORDER BY stretch_key
-                    ) TO ? (FORMAT parquet, COMPRESSION zstd)""",
-                    [inputs["stretches"], (staged / "stretches").as_posix()],
-                )
-            files: dict[str, dict[str, object]] = {}
-            names: dict[str, str] = {}
-            folder.mkdir(parents=True, exist_ok=True)
-            for table in inputs:
-                data = (staged / table).read_bytes()
-                digest = hashlib.sha256(data).hexdigest()
-                name = f"{table}-{digest[:16]}.parquet"
-                require_space(root, reserve, len(data))
-                (staged / table).replace(folder / name)
-                files[name] = {"sha256": digest, "byte_size": len(data)}
-                names[table] = name
-            receipt = {
-                "provider": city, "month": month, "cleaning_version": STRETCH_VERSION,
-                "days": days, "tables": names, "files": files,
-            }  # fmt: skip
-            payload = json.dumps(receipt, sort_keys=True).encode()
-            _write_receipt(root, marker.relative_to(root).as_posix(), payload, reserve)
-            for stale in folder.iterdir():
-                if stale.name != "manifest.json" and stale.name not in files:
-                    stale.unlink()
-        built += 1
-    return built
 
 
 def main() -> None:

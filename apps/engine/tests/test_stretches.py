@@ -12,11 +12,11 @@ import duckdb
 import pytest
 from test_engine import FRIDAY, THURSDAY, Trip, _build_store, http, query
 
+from transit_engine import server
 from transit_engine.clean_manifest import SEGMENT_RUNS
 from transit_engine.server import Engine
 from transit_engine.store import Store
 from transit_engine.stretches import receipt_tables, stretch_directory
-from transit_engine.sync_clean import build_month_rollups
 
 ZONE = ZoneInfo("America/Toronto")
 NOON = datetime(2026, 11, 19, 17, tzinfo=UTC)  # 12:00 in Montréal
@@ -312,27 +312,55 @@ def test_the_engine_answers_stretch_layers_over_http(tmp_path: Path) -> None:
     assert _row(answer, ("a", "b", 2, 1))["state"] == "measured"
 
 
-class _NoRemote:
-    """Every input is local in these tests, so the mirror never needs R2."""
-
-    def run(self, *args: str, **_: object) -> bytes:
-        raise AssertionError(f"unexpected R2 call {args}")
-
-
-def _roll_up(store: Store, today: date = date(2026, 12, 5)) -> int:
+def _roll_up(
+    store: Store, month: str, days: tuple[date, ...], key: str = "0123456789abcdef"
+) -> Path:
+    """A month rollup laid out as the nightly cleaning publishes it, from the day files."""
     root = Path(store.root)
-    prefix = root / "stretch" / "v13"
-    inventory = {
-        path.relative_to(root).as_posix(): path.stat().st_size
-        for path in prefix.rglob("*")
-        if path.is_file() and "months" not in path.parts
-    }
-    published = {
-        key: ("stm", date.fromisoformat(key.split("/")[3]))
-        for key in inventory
-        if key.endswith("/manifest.json")
-    }
-    return build_month_rollups(_NoRemote(), root, 0, today, inventory, published)  # type: ignore[arg-type]
+    folder = root / "stretch" / "v13" / "stm" / "months" / f"{month}-{key}"
+    folder.mkdir(parents=True)
+    summaries, stretches, receipts = [], [], {}
+    for day in days:
+        day_folder = root / "stretch" / "v13" / "stm" / day.isoformat()
+        receipt = (day_folder / "manifest.json").read_bytes()
+        tables = json.loads(receipt)["tables"]
+        summaries.append((day_folder / tables["stretch_summary"]).as_posix())
+        stretches.append((day_folder / tables["stretches"]).as_posix())
+        receipts[day.isoformat()] = sha256(receipt).hexdigest()
+    files, names = {}, {}
+    with duckdb.connect() as conn:
+        for table, sql, sources in (
+            (
+                "stretch_summary",
+                """SELECT provider, ? AS month, cleaning_version, stretch_key, route_type,
+                    CASE isodow(service_date) WHEN 6 THEN 'saturday' WHEN 7 THEN 'sunday'
+                        ELSE 'weekday' END AS day_type, hour, pass_seconds, speed_kmh,
+                    sum(passes)::BIGINT AS passes, sum(stopped_at_stop_seconds)::BIGINT AS a,
+                    sum(stopped_between_stops_seconds)::BIGINT AS b
+                FROM read_parquet(?) GROUP BY ALL""",
+                [month, summaries],
+            ),
+            (
+                "stretches",
+                """SELECT * EXCLUDE (rank) FROM (SELECT *, row_number() OVER (
+                    PARTITION BY stretch_key ORDER BY service_date DESC) AS rank
+                    FROM read_parquet(?)) WHERE rank = 1""",
+                [stretches],
+            ),
+        ):
+            staged = folder / table
+            conn.execute(f"COPY ({sql}) TO '{staged.as_posix()}' (FORMAT parquet)", sources)
+            digest = sha256(staged.read_bytes()).hexdigest()
+            name = f"{table}-{digest[:16]}.parquet"
+            staged.rename(folder / name)
+            files[name] = {"sha256": digest, "byte_size": (folder / name).stat().st_size}
+            names[table] = name
+    receipt = {
+        "provider": "stm", "month": month, "cleaning_version": "13",
+        "days": receipts, "tables": names, "files": files,
+    }  # fmt: skip
+    (folder / "manifest.json").write_text(json.dumps(receipt), encoding="utf-8")
+    return folder
 
 
 def test_a_month_rollup_answers_exactly_like_its_days(tmp_path: Path) -> None:
@@ -341,11 +369,9 @@ def test_a_month_rollup_answers_exactly_like_its_days(tmp_path: Path) -> None:
     month = {"start": date(2026, 11, 1), "end": date(2026, 11, 30)}
     by_day = query(store, **LAYER, **month)
     weekday = query(store, **LAYER, **month, day_type="weekday", route_type=3)
-    assert _roll_up(store) == 1
-    assert _roll_up(store) == 0  # nothing changed, nothing rebuilt
-    folder = Path(store.root) / "stretch" / "v13" / "stm" / "months" / "2026-11"
-    receipt = json.loads((folder / "manifest.json").read_bytes())
-    assert sorted(receipt["days"]) == [str(THURSDAY), str(FRIDAY)]
+    # An older rollup of one day sits next to the one that adds up both days.
+    _roll_up(store, "2026-11", (THURSDAY,), key="aaaaaaaaaaaaaaaa")
+    folder = _roll_up(store, "2026-11", (THURSDAY, FRIDAY))
     rolled = query(store, **LAYER, **month)
     for column in ("from_stop", "passes", "clear_run_seconds", "median_seconds",
                    "total_time_lost_seconds", "clear_run_speed_kmh", "value", "state"):  # fmt: skip
@@ -369,5 +395,33 @@ def test_a_month_rollup_answers_exactly_like_its_days(tmp_path: Path) -> None:
     summary = next(folder.glob("stretch_summary-*.parquet"))
     summary.write_bytes(summary.read_bytes() + b"x")
     assert query(store, **LAYER, **month)["passes"] == by_day["passes"]
-    # The current month is never rolled up: its days are still arriving.
-    assert _roll_up(store, today=date(2026, 11, 28)) == 0
+
+
+def test_a_slow_stretch_question_says_busy_then_answers_the_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path, _passes())
+    monkeypatch.setattr(server, "STRETCH_SOFT_DEADLINE_S", 0)
+    app = Engine(store, concurrency=1, queue_size=1, queue_wait_ms=50)
+    params = urlencode({
+        "city": "stm", "from": THURSDAY, "to": THURSDAY, "view": "map",
+        "measure": "stretch_time_lost", "group": "stretch",
+    })  # fmt: skip
+
+    async def run() -> tuple[Any, ...]:
+        first = await http(app, "/measure", params)
+        # The query keeps going after the busy answer, holding its record slot.
+        assert app.record.slots.locked()
+        await asyncio.gather(*app.stretch_pending.values())
+        assert not app.record.slots.locked()
+        second = await http(app, "/measure", params)
+        return first, second
+
+    (status, headers, _), (again, _, raw) = asyncio.run(run())
+    assert status == 503
+    assert headers[b"retry-after"] == b"15"
+    assert again == 200
+    answer = json.loads(raw)
+    direct = query(store, **LAYER)
+    for column in ("from_stop", "passes", "clear_run_seconds", "value", "state"):
+        assert answer[column] == direct[column], column
