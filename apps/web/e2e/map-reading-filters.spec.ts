@@ -135,9 +135,10 @@ for (const provider of providers) {
 					name: fr ? 'Moment de la journée' : 'Time of day',
 					exact: true,
 				});
-				const direction = panel.locator(
-					'[data-map-direction-filter] [data-slot="combobox-trigger"]',
-				);
+				const direction = panel.getByRole('combobox', {
+					name: fr ? 'Sens' : 'Direction',
+					exact: true,
+				});
 				await expect(type).toHaveValue('3');
 				await expect(
 					type.locator('option', {
@@ -152,14 +153,19 @@ for (const provider of providers) {
 					panel.getByRole('combobox', { name: fr ? 'Jusqu’à' : 'Until', exact: true }),
 				).toHaveValue(String(hour + 1));
 				await expect(direction).toBeDisabled();
-				await expect(direction).toContainText(
-					fr ? 'Choisir un sens' : 'Choose one line to pick a direction.',
-				);
-				await expectLabelToFit(direction);
-				if (fr) {
-					const hint = panel.getByText('Choisissez d’abord une ligne.', { exact: true });
-					await expect(hint).toBeVisible();
-					await expectLabelToFit(hint);
+				await expect(direction).toContainText(fr ? 'Choisir un sens' : 'Choose a direction');
+				const hintText = fr ? 'Choisissez d’abord une ligne.' : 'Pick one line first.';
+				const hint = panel.getByText(hintText, { exact: true });
+				await expect(hint).toBeVisible();
+				await expect(direction).toHaveAccessibleDescription(hintText);
+				await expectLabelToFit(hint);
+				if (fr && width >= 1024) {
+					const lineCount = await hint.evaluate((element) => {
+						const text = document.createRange();
+						text.selectNodeContents(element);
+						return new Set([...text.getClientRects()].map(({ top }) => top)).size;
+					});
+					expect(lineCount).toBe(1);
 				}
 				const fromHour = panel.getByRole('combobox', { name: fr ? 'De' : 'From', exact: true });
 				await expect(fromHour.locator('option[value="17"]')).toHaveText(fr ? '17 h' : '17:00');
@@ -242,6 +248,7 @@ for (const provider of providers) {
 				await tag(rail.short).click();
 				await expect(tags).toHaveCount(1);
 				await expect(direction).toBeEnabled();
+				await expect(hint).toBeHidden();
 				await expect(
 					panel.locator('[data-map-direction-filter] [data-slot="combobox"]'),
 				).toHaveAttribute('data-clearable', 'false');
@@ -309,7 +316,7 @@ test('Record sends the chosen period and reading filters for Stops and Corridors
 	await expect(panel.getByRole('combobox', { name: 'Time of day', exact: true })).toHaveValue(
 		'custom',
 	);
-	const direction = panel.locator('[data-map-direction-filter] [data-slot="combobox-trigger"]');
+	const direction = panel.getByRole('combobox', { name: 'Direction', exact: true });
 	await expect(direction).toBeDisabled();
 	await panel.locator('[data-map-selected-lines] button').filter({ hasText: '51' }).click();
 	await expect(direction).toBeEnabled();
