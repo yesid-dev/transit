@@ -4553,9 +4553,11 @@ def _partial_scope(question: Question, family: Family) -> bool:
             or (question.vehicle is not None and cuts.keys() == {"vehicle"}
                 and question.group in {None, "day"})
         )
+    if family.id in {_CROWDING_ID, _WAITING_ID}:
+        # The network, or one line (in one direction), as the line page asks it.
+        return question.group is None and cuts.keys() <= {"line", "direction"}
     return not cuts and question.group is None and (
-        family.id in {_CROWDING_ID, _WAITING_ID}
-        or question.measure in {"vehicle_field_completeness", "vehicles_without_trip"}
+        question.measure in {"vehicle_field_completeness", "vehicles_without_trip"}
     )
 
 
@@ -4575,8 +4577,10 @@ def _daily_partial[T](
         family.method_version, measure, question.group, question.vehicle, question.stop,
         window.partial_receipts[day],
     )
-    if question.layer_map:
-        key += (json.dumps(question.cuts(), sort_keys=True),)
+    cuts = question.cuts()
+    # A line or direction cut, or a map layer's cuts, changes what the day holds.
+    if question.layer_map or cuts:
+        key += (json.dumps(cuts, sort_keys=True),)
     return store.partial_results.read_or_compute(key, compute)
 
 
