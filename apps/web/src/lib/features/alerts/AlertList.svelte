@@ -19,12 +19,7 @@
 	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { alertPaging, noticeCount, noticeLineName } from '#lib/site/presenter.ts';
-	import {
-		agencyMessage,
-		agencyMessageLink,
-		agencyMessagePeriods,
-		sortAgencyMessages,
-	} from '#lib/site/agencyMessages.ts';
+	import { agencyMessageLink, sortAgencyMessages } from '#lib/site/agencyMessages.ts';
 	import {
 		alertEffect,
 		alertTarget,
@@ -33,6 +28,7 @@
 		type AlertCard,
 		type NoticeCard,
 	} from './alertCards.ts';
+	import NoticeMessage from './NoticeMessage.svelte';
 
 	let {
 		cards,
@@ -259,9 +255,7 @@
 {/snippet}
 
 {#snippet item(card: NoticeCard, ids: string[])}
-	{@const { title, body } = agencyMessage(card, locale, card.stops)}
 	{@const source = agencyMessageLink(card, locale)}
-	{@const periods = agencyMessagePeriods(card.periods, locale, timeZone, live)}
 	<li id={ids[0] ? anchor(ids[0]) : undefined} tabindex="-1" class="min-w-0 scroll-mt-24">
 		{#each ids.slice(1) as id (id)}<span id={anchor(id)} class="block scroll-mt-24"></span>{/each}
 		<Card
@@ -269,11 +263,8 @@
 			interactive={Boolean(card.routes.length || card.stops.length || source)}
 			class="min-w-0 px-4 sm:px-6"
 		>
-			<div class="min-w-0">
-				<div
-					class="flex flex-wrap items-center gap-x-3"
-					class:single-plate={card.routes.length === 1}
-				>
+			<NoticeMessage notice={card} {locale} {timeZone} {live}>
+				{#snippet routes()}
 					{#if card.routes.length}
 						<div class="flex min-w-0 flex-wrap items-center gap-x-1">
 							{#each [...new Set(card.routes)] as route (route)}
@@ -289,39 +280,25 @@
 							{/each}
 						</div>
 					{/if}
-					<div class="min-w-0">
-						<h3 class="wrap-break-word font-semibold" lang={title.lang}>
-							{title.text}
-						</h3>
-						{#if card.effect || periods.length}
-							<p class="wrap-break-word text-small text-muted-foreground">
-								{#if card.effect}{alertEffect(card.effect, locale)}.
-								{/if}
-								{periods.join(live ? ' ' : ' · ')}
-							</p>
-						{/if}
-					</div>
-				</div>
-				{#if card.stops.length}
-					<div class="flex min-w-0 flex-wrap items-center gap-x-1 text-small text-muted-foreground">
-						<span>{t('Stops', 'Arrêts')}</span>
-						{#each [...new Set(card.stops)] as stop (stop)}
-							<a
-								class="inline-flex min-h-11 min-w-11 items-center justify-center text-primary underline"
-								href={localizeHref(`/stop/${encodeURIComponent(stop)}`, locale, city)}
-							>
-								<span class="rounded-sm border border-current px-1 font-mono">{stop}</span>
-							</a>
-						{/each}
-					</div>
-				{/if}
-				{#if body}<p
-						class="mt-1 max-w-[var(--measure-body)] wrap-break-word whitespace-pre-line"
-						lang={body.lang}
-					>
-						{body.text}
-					</p>{/if}
-			</div>
+				{/snippet}
+				{#snippet stops()}
+					{#if card.stops.length}
+						<div
+							class="flex min-w-0 flex-wrap items-center gap-x-1 text-small text-muted-foreground"
+						>
+							<span>{t('Stops', 'Arrêts')}</span>
+							{#each [...new Set(card.stops)] as stop (stop)}
+								<a
+									class="inline-flex min-h-11 min-w-11 items-center justify-center text-primary underline"
+									href={localizeHref(`/stop/${encodeURIComponent(stop)}`, locale, city)}
+								>
+									<span class="rounded-sm border border-current px-1 font-mono">{stop}</span>
+								</a>
+							{/each}
+						</div>
+					{/if}
+				{/snippet}
+			</NoticeMessage>
 			{#if source}
 				<a
 					class="inline-flex min-h-11 items-center text-primary underline"
@@ -363,12 +340,5 @@
 <style>
 	.alert-list {
 		container-type: inline-size;
-	}
-
-	@container (inline-size >= 12rem) {
-		.single-plate {
-			display: grid;
-			grid-template-columns: auto minmax(0, 1fr);
-		}
 	}
 </style>

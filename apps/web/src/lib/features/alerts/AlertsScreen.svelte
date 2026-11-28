@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Awaitable, Ready } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
-	import { RoutePlate, Stamp, type StampProps } from '@yesid/ui/brand';
+	import { RoutePlate, type StampProps } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Surface } from '@yesid/ui/layout';
 	import { DataTable, type DataTableColumn } from '@yesid/ui/table';
@@ -75,6 +75,7 @@
 		type AlertCut,
 	} from './alertCards.ts';
 	import AlertList from './AlertList.svelte';
+	import NoticeSection from './NoticeSection.svelte';
 
 	let {
 		data,
@@ -383,13 +384,6 @@
 	</div>
 {/snippet}
 
-{#snippet logHeading(label: string, time?: StampProps)}
-	<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
-		<h2 class="text-subheading font-semibold">{label}</h2>
-		{#if time}<Stamp {...time} />{/if}
-	</header>
-{/snippet}
-
 {#snippet messageList(cards: AlertCard[], live: boolean)}
 	<AlertList
 		{cards}
@@ -665,10 +659,13 @@
 								</div>
 							</RecordGroup>
 							<RecordGroup density="compact">
-								<section id="alerts-log" class="grid min-w-0 gap-(--space-card-gap) scroll-mt-24">
-									{@render logHeading(t('In effect now', 'En vigueur maintenant'), liveStamp)}
+								<NoticeSection
+									id="alerts-log"
+									title={t('In effect now', 'En vigueur maintenant')}
+									stamp={liveStamp}
+								>
 									{@render messageList(liveCards, true)}
-								</section>
+								</NoticeSection>
 								<RecordCard
 									interactive
 									title={alertSections.line[locale]}
@@ -741,10 +738,12 @@
 					{#if effect}{@render recordEffects(effect)}{/if}
 				</RecordGroup>
 				<RecordGroup density="compact">
-					<section id="messages" class="grid min-w-0 gap-(--space-card-gap) scroll-mt-24">
-						{@render logHeading(t('Archive for these dates', 'Archives pour ces dates'))}
+					<NoticeSection
+						id="messages"
+						title={t('Archive for these dates', 'Archives pour ces dates')}
+					>
 						{#await messages}{@render archive()}{:then result}{@render archive(result)}{/await}
-					</section>
+					</NoticeSection>
 					{@render recordLines()}
 				</RecordGroup>
 				<RecordGroup density="compact"
