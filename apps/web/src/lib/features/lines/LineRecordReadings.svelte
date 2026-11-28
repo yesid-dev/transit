@@ -13,6 +13,7 @@
 	import {
 		crowdingFinding,
 		deliveryFinding,
+		deliveryPartialNote,
 		departureFinding,
 		offeredFinding,
 		waitingFinding,
@@ -213,6 +214,7 @@
 		<LineReadingTable
 			{title}
 			{locale}
+			fitReadings
 			headers={[t('Room on board', 'Places à bord'), t('Share', 'Part')]}
 			rows={occupancy.map(({ label, share, seconds }) => ({
 				label,
@@ -332,15 +334,18 @@
 			)}</a
 		>
 	{:else if section === 'delivery'}
-		{@const finding = deliveryFinding(answer, locale)}
+		{@const finding = deliveryFinding(answer, locale, agencyName(operator, provider))}
+		{@const measuredRows = answer.cells.some((cell) => cell.state === 'measured')}
 		{@const thin =
 			answer.cells.some((cell) => cell.state === 'too_few_to_judge') &&
 			answer.cells.every(
 				(cell) => cell.state === 'too_few_to_judge' || cell.state === 'not_measured',
 			)}
 		<!-- No departure has enough trips: the state and its reason, once, in one line. -->
-		{#if finding || !thin}{@render opening(finding)}{/if}
-		{#if answer.cells.some((cell) => cell.state === 'measured')}
+		{#if finding}{@render opening(finding)}
+		{:else if measuredRows}<p class="mb-3">{deliveryPartialNote(answer, locale)}</p>
+		{:else if !thin}{@render opening(null)}{/if}
+		{#if measuredRows}
 			<LineReadingTable
 				{title}
 				{locale}

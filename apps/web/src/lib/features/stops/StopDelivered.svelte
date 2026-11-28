@@ -1,9 +1,11 @@
 <script lang="ts">
-	import type { Awaitable } from '#lib/site/ready.ts';
+	import { isSettled, type Awaitable } from '#lib/site/ready.ts';
 	import type { StampProps } from '@yesid/ui/brand';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
+	import { page } from '$app/state';
 	import {
+		cityAgency,
 		countedUnit,
 		recordPercent,
 		sampleWithMinimum,
@@ -36,12 +38,44 @@
 	const heading = $derived(
 		choose(locale, 'Trips that ran at this stop', 'Trajets effectués à cet arrêt'),
 	);
-	const labels = $derived(tripOutcomeLabels(locale));
+	const labels = $derived(tripOutcomeLabels(locale, cityAgency(page.data.provider)));
+	// The settled result, whether the server drew it or it streamed in after.
+	let streamed = $state<{ from: unknown; result: EngineResult<RecordAnswer> }>();
+	$effect(() => {
+		const current = answer;
+		if (isSettled(current)) return;
+		let live = true;
+		void current.then((result) => {
+			if (live) streamed = { from: current, result };
+		});
+		return () => {
+			live = false;
+		};
+	});
+	const settled = $derived(
+		isSettled(answer) ? answer : streamed?.from === answer ? streamed.result : undefined,
+	);
+	/** Settled on a short state, the card gives back the height it held for the trip facts. */
+	const empty = $derived(
+		settled !== undefined &&
+			settled.kind !== 'busy' &&
+			!(
+				settled.kind === 'answer' &&
+				'value' in settled.answer &&
+				settled.answer.state === 'measured'
+			),
+	);
 </script>
 
-<section id="delivery" class="min-w-0">
-	<RecordCard title={heading} {stamp} reserve={shape}>
-		<div class="reading" style:--delivery-wide={block?.wide} style:--delivery-phone={block?.phone}>
+<section id="delivery" class="grid min-w-0">
+	<RecordCard title={heading} {stamp} reserve={empty ? undefined : shape}>
+		<div
+			class="reading"
+			class:held={!empty}
+			data-settled-empty={empty ? '' : undefined}
+			style:--delivery-wide={block?.wide}
+			style:--delivery-phone={block?.phone}
+		>
 			{#await answer}
 				{#key answer}<RecordPending {locale} {answer} {shape} />{/key}
 			{:then result}
@@ -115,12 +149,12 @@
 </section>
 
 <style>
-	.reading {
+	.held {
 		min-block-size: var(--delivery-wide);
 	}
 
 	@media (width < 40rem) {
-		.reading {
+		.held {
 			min-block-size: var(--delivery-phone);
 		}
 	}

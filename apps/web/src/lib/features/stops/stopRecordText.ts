@@ -263,7 +263,9 @@ export function stopComparison(
 	const stopShare = measuredShare(stop, 'on_time');
 	const networkShare = measuredShare(network.answer, 'on_time');
 	if (stopShare == null || networkShare == null) return undefined;
-	const difference = Math.round(Math.abs(stopShare - networkShare) * 1000) / 10;
+	// From the shares as shown (one decimal), so the reader's own subtraction matches: 64.1% and
+	// 54.9% are 9.2 points apart, never 9.1 from the unrounded shares.
+	const difference = Math.abs(Math.round(stopShare * 1000) - Math.round(networkShare * 1000)) / 10;
 	const points = intl.number(locale, { maximumFractionDigits: 1 }).format(difference);
 	const baseline = recordPercent(networkShare, locale);
 	if (difference === 0)

@@ -109,12 +109,13 @@ it('leaves focus alone on load and focuses the field when a reader chooses an ex
 	setUrlQuery('');
 	render(SearchSurface);
 	const field = screen.getByRole('textbox');
-	const example = await screen.findByRole('link', { name: /^1$/ });
+	// A surface line comes first: a rail line may publish only its timetable.
+	const example = await screen.findByRole('link', { name: /^161$/ });
 	expect(document.body).toHaveFocus();
 
 	await fireEvent.click(example);
 	expect(field).toHaveFocus();
-	expect(field).toHaveValue('1');
+	expect(field).toHaveValue('161');
 });
 
 it.each(['en', 'fr'] as const)(
@@ -153,7 +154,10 @@ it('takes the query, kind and existing row count from a new search URL before wr
 	for (const handler of navigation.after) handler({ type: 'goto', to: { url: new URL(url.href) } });
 	flushSync();
 	expect(view.getByRole('textbox', { name: 'Line, stop, vehicle or page' })).toHaveValue('laurier');
-	expect(view.getByRole('tab', { name: 'Stops (1,160)' })).toHaveAttribute('aria-selected', 'true');
+	expect(view.getByRole('tab', { name: /^Stops\s*1,160$/ })).toHaveAttribute(
+		'aria-selected',
+		'true',
+	);
 	expect(
 		within(view.getByRole('region', { name: 'Stops · 1,160' })).getAllByRole('link'),
 	).toHaveLength(50);

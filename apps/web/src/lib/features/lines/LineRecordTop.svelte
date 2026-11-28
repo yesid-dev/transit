@@ -299,7 +299,7 @@
 
 {#if !scheduleOnly && !timetableOnly}
 	<div class="paired-line-readings">
-		<DashboardGrid gutter={false} minTile="20rem" class="items-start">
+		<DashboardGrid gutter={false} minTile="20rem" class="items-stretch">
 			<RecordCard title={bands} {stamp} stampRule>
 				<div
 					class="reading-body"

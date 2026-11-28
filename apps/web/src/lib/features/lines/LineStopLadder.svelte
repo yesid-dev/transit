@@ -85,6 +85,14 @@
 		const picks = [stops[0], middle, stops.at(-1)].filter((stop) => stop !== undefined);
 		return picks.filter((stop, index) => picks.findIndex(({ id }) => id === stop.id) === index);
 	});
+	/**
+	 * The first stop of the collapsed ladder: the line's start, unless the sentence above names a
+	 * stretch past the cap; then the window that ends at its last stop, so the named stretch is drawn.
+	 */
+	function cappedStart(count: number, named: { from: number; to: number } | null | undefined) {
+		if (!named || named.to < LADDER_CAP) return 0;
+		return Math.max(0, Math.min(named.to - LADDER_CAP + 1, count - LADDER_CAP));
+	}
 	let showAll = $state(false);
 	$effect(() => {
 		void direction;
@@ -108,7 +116,10 @@
 
 {#snippet fullLadder()}
 	{@const capped = !showAll && reading.props.stops.length > LADDER_CAP}
-	{@const shown = capped ? reading.props.stops.slice(0, LADDER_CAP) : reading.props.stops}
+	{@const start = capped ? cappedStart(reading.props.stops.length, stretch) : 0}
+	{@const shown = capped
+		? reading.props.stops.slice(start, start + LADDER_CAP)
+		: reading.props.stops}
 	<RecordStopLadder
 		{...reading.props}
 		stops={shown}

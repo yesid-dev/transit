@@ -143,8 +143,9 @@
 	{/snippet}
 </RecordCard>
 
+<!-- The same alerts feed as the card above, which carries its one Live stamp. -->
 {#each related as group (group.lines.join(','))}
-	<RecordCard title={noticesForLines(group.lines, locale)} {stamp}>
+	<RecordCard title={noticesForLines(group.lines, locale)}>
 		<NoticeRows cards={group.notices.slice(0, 4)} {locale} {timeZone} {stopName} live />
 	</RecordCard>
 {/each}

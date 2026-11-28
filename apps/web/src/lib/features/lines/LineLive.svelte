@@ -280,8 +280,9 @@
 			{/if}
 		</div>
 		{#if !limits}
+			<!-- The answer above carries this feed's Live stamp: one stamp per screen and feed. -->
 			<div id="line-detail-live" class="min-w-0">
-				<RecordCard interactive {title} {stamp}>
+				<RecordCard interactive {title}>
 					{#if waiting}
 						<RecordSkeleton shape="bands" />
 						<RecordPending {locale} shape={{ shape: 'rows', count: 3, lines: 1, lead: 'none' }} />
@@ -322,7 +323,7 @@
 					{/if}
 					{#snippet evidence()}
 						{#if silent !== null}
-							<p>{terms.silent}{t(': ', ' : ')}{tally(silent, locale)}</p>
+							<p>{terms.silent}{t(': ', '\u00a0: ')}{tally(silent, locale)}</p>
 						{/if}
 					{/snippet}
 				</RecordCard>

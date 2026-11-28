@@ -71,7 +71,10 @@
 	const pages = $derived(sitePages({ alerts: provider ? providerHasAlerts(provider) : null }));
 	const examples = $derived.by(() => {
 		const schedule = index.error ? null : index.data?.schedule;
-		const line = schedule?.routes.find(({ short }) => /^\d+$/.test(short));
+		// A surface route first (GTFS type 3): a rail line may publish only its timetable, and the
+		// first example should land on a line with live readings.
+		const numbered = schedule?.routes.filter(({ short }) => /^\d+$/.test(short)) ?? [];
+		const line = numbered.find(({ type }) => type === 3) ?? numbered[0];
 		const stop = schedule?.stops.find(({ code }) => code && /^\d{3,}$/.test(code));
 		return [
 			...new Set([line?.short, stop?.code, t.stopsLabel].filter((word): word is string => !!word)),
@@ -95,9 +98,11 @@
 		untrack(() => mirrorSearchParams(params));
 	});
 
+	// Every kind keeps a count slot from the first frame, so the tabs do not widen or wrap when the
+	// index arrives and the counts fill in (layout shift on /search).
 	const tabs = $derived(
 		KINDS.map((key) => {
-			if (key === 'all') return { key, label: t.scopeAll };
+			if (key === 'all') return { key, label: t.scopeAll, count: undefined };
 			const label = words.kinds[key];
 			const known =
 				!list.unsearched.some((kind) => kind === key) &&
@@ -105,7 +110,8 @@
 			const total = list.groups.find((group) => group.kind === key)?.total ?? 0;
 			return {
 				key,
-				label: known && queryState === 'ready' ? `${label} (${searchCount(total, locale)})` : label,
+				label,
+				count: known && queryState === 'ready' ? searchCount(total, locale) : null,
 			};
 		}),
 	);
@@ -193,7 +199,7 @@
 								<ul class="flex flex-wrap gap-x-4">
 									{#each examples as example (example)}<li>
 											<a
-												class="inline-flex min-h-11 min-w-11 items-center text-primary underline"
+												class="inline-flex min-h-11 min-w-11 items-center justify-center text-primary underline"
 												href={'?' +
 													new URLSearchParams({
 														...(providerId && { provider: providerId }),
@@ -255,7 +261,13 @@
 												<TabsTrigger
 													value={tab.key}
 													class="h-auto min-h-11 min-w-11 flex-none px-3 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
-													>{tab.label}</TabsTrigger
+													>{tab.label}{#if tab.count !== undefined}
+														<span
+															class="tab-count"
+															class:invisible={tab.count === null}
+															aria-hidden={tab.count === null ? 'true' : undefined}
+															>{tab.count ?? ''}</span
+														>{/if}</TabsTrigger
 												>
 											{/each}
 										</TabsList>
@@ -274,7 +286,8 @@
 														{hrefs}
 														page={resultPage}
 													/>
-													{#if address}
+													<!-- After the rows: drawn earlier, it would move down as they arrive. -->
+													{#if address && !list.pending}
 														<div class="search-address">
 															<p class="sr-only" role="status">
 																{address === 'ask' ? '' : addressText}
@@ -335,6 +348,19 @@
 	.search-lede {
 		font-size: var(--text-reading-heading);
 		line-height: 1.4;
+	}
+	/* A count badge of fixed least width: "8,630" and "0" take the same room. */
+	.tab-count {
+		display: inline-block;
+		/* Five digits ("8,630", "8 630") plus the padding: the box is border-box. */
+		min-inline-size: calc(5ch + 0.5rem);
+		margin-inline-start: 0.375rem;
+		padding-inline: 0.25rem;
+		border-radius: var(--radius-sm);
+		background: var(--muted);
+		color: var(--muted-foreground);
+		font-variant-numeric: tabular-nums;
+		text-align: center;
 	}
 	.search-address {
 		display: grid;

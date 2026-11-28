@@ -487,10 +487,31 @@
 			grid-template-areas: 'statement stamp actions' 'evidence evidence evidence';
 			grid-template-columns: minmax(0, 1fr) auto auto;
 		}
+		/* As RecordAnswer: the stamp and the actions wrap under a title they do not fit beside. */
 		.with-heading.with-actions {
-			grid-template-areas: 'heading stamp actions' 'statement statement statement' 'evidence evidence evidence';
-			grid-template-columns: minmax(0, 1fr) max-content max-content;
-			column-gap: 1rem;
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 0.75rem 1rem;
+		}
+		.with-heading.with-actions > .answer-heading {
+			flex: 1 1 auto;
+		}
+		.with-heading.with-actions .answer-stamp {
+			display: flex;
+			flex: 1 0 auto;
+			justify-content: flex-end;
+		}
+		.with-heading.with-actions > .answer-actions {
+			margin-inline-start: auto;
+		}
+		.with-heading.with-actions > .answer-statement {
+			flex: 1 1 100%;
+			order: 1;
+		}
+		.with-heading.with-actions .answer-evidence {
+			flex: 1 1 100%;
+			order: 2;
 		}
 		.live-answer.with-actions {
 			grid-template-areas: 'statement stamp actions';

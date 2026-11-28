@@ -6,6 +6,9 @@ const cases = [
 	{ screen: '/network', city: 'stm', locale: 'fr', width: 1440, theme: 'dark' },
 	{ screen: '/lines', city: 'octranspo', locale: 'en', width: 390, theme: 'light' },
 	{ screen: '/lines/51', city: 'stm', locale: 'fr', width: 390, theme: 'dark' },
+	// A desktop title row is nowrap: the notice must never squeeze the title beside it.
+	{ screen: '/lines/51', city: 'stm', locale: 'en', width: 1440, theme: 'light' },
+	{ screen: '/lines/51', city: 'stm', locale: 'fr', width: 1440, theme: 'dark' },
 ] as const;
 
 test.describe('unpublished Yesterday', () => {
@@ -38,6 +41,15 @@ test.describe('unpublished Yesterday', () => {
 					.getByText(fr ? 'Bilan · 25 nov. 2026' : 'Record · 25 Nov 2026', { exact: true })
 					.first(),
 			).toBeVisible();
+			if (width >= 1280) {
+				// The h1 keeps its width beside a notice, and the notice sits on its own row under it.
+				const title = (await main.locator('h1').first().boundingBox())!;
+				const note = (await notice.boundingBox())!;
+				// Collapsed, it was 0 px wide and 864 px tall: one letter per line.
+				expect(title.width).toBeGreaterThan(80);
+				expect(title.height).toBeLessThan(80);
+				expect(note.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+			}
 			const rail = await openFrameControls(page, locale);
 			await expect(
 				rail.getByRole('radio', { name: fr ? 'Hier' : 'Yesterday', exact: true }),

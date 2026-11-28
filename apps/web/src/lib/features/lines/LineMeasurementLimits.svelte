@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import type { Locale } from '#lib/i18n/index.ts';
+	import { cityAgency, frenchAgency } from '#lib/site/presenter.ts';
 	import RecordCard from '../record/RecordCard.svelte';
 	import { choose } from '../record/recordText.ts';
 
@@ -9,6 +11,7 @@
 		scheduleOnly = true,
 	}: { locale: Locale; methodHref: string; scheduleOnly?: boolean } = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const agency = $derived(cityAgency(page.data.provider));
 </script>
 
 <RecordCard interactive title={t('What cannot be measured', 'Ce qui ne peut pas être mesuré')}>
@@ -27,10 +30,15 @@
 		</li>
 		{#if scheduleOnly}
 			<li>
-				{t(
-					'The agency publishes no vehicle positions for this line.',
-					'La société de transport ne publie aucune position de véhicule pour cette ligne.',
-				)}
+				{agency
+					? t(
+							`${agency.name} publishes no vehicle positions for this line.`,
+							`${frenchAgency(agency).start} ne publie aucune position de véhicule pour cette ligne.`,
+						)
+					: t(
+							'The agency publishes no vehicle positions for this line.',
+							'La société de transport ne publie aucune position de véhicule pour cette ligne.',
+						)}
 			</li>{/if}
 		<li>
 			{t(

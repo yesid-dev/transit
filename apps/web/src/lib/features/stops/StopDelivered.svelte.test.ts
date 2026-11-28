@@ -51,3 +51,23 @@ it.each([
 		expect(card.getByText(range)).toBeVisible();
 	},
 );
+
+it('gives back the held height once it settles on too few to judge', async () => {
+	const tooFew: RecordMeasure = {
+		...reading,
+		state: 'too_few_to_judge',
+		state_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
+		value: { trips_run: null },
+		evidence: { ...reading.evidence, counts: { scheduled: 1, eligible: 1, ran: 1 } },
+	};
+	const { container } = render(StopDelivered, {
+		locale: 'en',
+		stamp: { kind: 'record', label: '19 Nov' },
+		answer: Promise.resolve({ kind: 'answer' as const, answer: tooFew }),
+	});
+	const card = within(screen.getByRole('article', { name: 'Trips that ran at this stop' }));
+	expect(await card.findByText('Too few to judge')).toBeVisible();
+	const body = container.querySelector<HTMLElement>('[data-slot="record-card-body"]');
+	expect(body?.style.minBlockSize).toBe('');
+	expect(container.querySelector('[data-settled-empty]')).not.toBeNull();
+});

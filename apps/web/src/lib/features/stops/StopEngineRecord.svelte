@@ -26,7 +26,7 @@
 		officialAlertsLabel,
 	} from '#lib/site/presenter.ts';
 	import StateMark from '#lib/features/record/StateMark.svelte';
-	import { chartState, hourGridTooFew } from '#lib/features/record/charts/recordCharts.ts';
+	import { chartState, hourGridEmpty } from '#lib/features/record/charts/recordCharts.ts';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import {
 		choose,
@@ -39,6 +39,7 @@
 	} from '#lib/features/record/recordText.ts';
 	import {
 		agencyName,
+		frenchAgency,
 		dateRange,
 		delayReading,
 		methodEvidence,
@@ -93,6 +94,7 @@
 		lineCount: number;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const agencyFr = $derived(frenchAgency(agencyName(operator, page.data.provider)));
 	const term = $derived(overviewCopy[locale]);
 	const provider = $derived(page.data.provider as PublicCity | undefined);
 	const hasAlertFeed = $derived(providerHasAlerts(provider));
@@ -169,6 +171,12 @@
 	let bandsTable = $state(false);
 	let hoursTable = $state(false);
 	let dailyTable = $state(false);
+
+	/** A card settled on a short state gives back the height it held for its reading. */
+	const settledEmpty = (result?: EngineResult<EngineAnswer>) =>
+		result !== undefined &&
+		result.kind !== 'busy' &&
+		!(result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured');
 
 	function counted(answer: RecordMeasure) {
 		return stopEvidenceSample(answer, 'punctuality', locale);
@@ -298,7 +306,7 @@
 			result.answer.state === 'measured'}
 		title={bands}
 		{stamp}
-		reserve="bands"
+		reserve={settledEmpty(result) ? undefined : 'bands'}
 	>
 		{#if result === undefined}
 			{@render pending(answers.punctuality, 'bands')}
@@ -318,15 +326,15 @@
 					)}
 				</p>
 			{:else if stopLowCoverage(result)}
-				<!-- The card keeps its place: the state and its reason, once, with no empty chart. -->
-				<p>
+				<!-- The state and its reason, once, with no empty chart and no held height. -->
+				<p data-settled-empty>
 					<StateMark state="not_measured" {locale} />
 					{t(
 						'Too few stop arrivals were observed here to split them into early, on time and late.',
 						'Trop peu de passages ont été observés ici pour les répartir entre en avance, à l’heure et en retard.',
 					)}
 				</p>
-			{:else}{@render gap(result, 'bands')}{/if}
+			{:else}<div data-settled-empty>{@render gap(result, 'bands')}</div>{/if}
 		{/if}
 		{#snippet evidence()}
 			{@render evidenceFooter('punctuality')}
@@ -404,80 +412,98 @@
 		</div>
 
 		<div
-			class="stop-timing-cards grid items-start gap-[var(--space-card-gap)] [grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))]"
+			class="stop-timing-cards grid items-stretch gap-[var(--space-card-gap)] [grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))]"
 		>
 			{#await answers.punctuality}
 				{@render bandsCard()}
 			{:then result}
 				{@render bandsCard(result)}
 			{/await}
-			<RecordCard title={titleFor('delay')} {stamp} reserve="facts">
-				{#snippet evidence()}
-					{@render evidenceFooter('delay')}
-				{/snippet}
-				<div id="delay" class="grid gap-4">
-					<span id="stop-rel-percentiles" class="absolute" aria-hidden="true"></span>
-					{#snippet delayFacts(measure?: RecordMeasure)}
-						<FactList leading={false}>
-							{#if measure}
-								<FactRow
-									label={t(...delayReadingNotes.median.label)}
-									emphasis
-									detail={t(...delayReadingNotes.median.note)}
-								>
-									{delayReading(measure.value.median_delay, locale)}
-								</FactRow>
-								<FactRow
-									label={t(...delayReadingNotes.latest.label)}
-									emphasis
-									detail={t(...delayReadingNotes.latest.note)}
-								>
-									{delayReading(measure.value.p90_delay, locale)}
-								</FactRow>
-							{/if}
-							{#await answers.accessibility}
-								<FactRow id="accessibility" label={titleFor('accessibility')}>
-									{@render pending(answers.accessibility)}
-								</FactRow>
-							{:then result}
-								{#if result.kind === 'answer' && 'value' in result.answer}
-									{@const notPublished = stopBoardingNotPublished(result.answer)}
+			{#snippet delayCard(result?: EngineResult<EngineAnswer>)}
+				<RecordCard
+					title={titleFor('delay')}
+					{stamp}
+					reserve={settledEmpty(result) ? undefined : 'facts'}
+				>
+					{#snippet evidence()}
+						{@render evidenceFooter('delay')}
+					{/snippet}
+					<div id="delay" class="grid gap-4">
+						<span id="stop-rel-percentiles" class="absolute" aria-hidden="true"></span>
+						{#snippet delayFacts(measure?: RecordMeasure)}
+							<FactList leading={false}>
+								{#if measure}
 									<FactRow
-										id="accessibility"
-										label={titleFor('accessibility')}
-										detail={notPublished
-											? t(
-													'The agency does not declare it for this stop.',
-													'La société de transport ne le déclare pas pour cet arrêt.',
-												)
-											: undefined}
+										label={t(...delayReadingNotes.median.label)}
+										emphasis
+										detail={t(...delayReadingNotes.median.note)}
 									>
-										{#if notPublished}
-											<StateMark state="not_published" {locale} />
-										{:else}
-											{stopAccessibility(result.answer, locale)}
-										{/if}
+										{delayReading(measure.value.median_delay, locale)}
 									</FactRow>
-								{:else}
-									<FactRow id="accessibility" label={titleFor('accessibility')}>
-										{@render gap(result)}
+									<FactRow
+										label={t(...delayReadingNotes.latest.label)}
+										emphasis
+										detail={t(...delayReadingNotes.latest.note)}
+									>
+										{delayReading(measure.value.p90_delay, locale)}
 									</FactRow>
 								{/if}
-							{/await}
-						</FactList>
-					{/snippet}
-					{#await answers.delay}
-						{@render pending(answers.delay, 'facts')}
-					{:then result}
-						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+								{#await answers.accessibility}
+									<FactRow id="accessibility" label={titleFor('accessibility')}>
+										{@render pending(answers.accessibility)}
+									</FactRow>
+								{:then result}
+									{#if result.kind === 'answer' && 'value' in result.answer}
+										{@const notPublished = stopBoardingNotPublished(result.answer)}
+										<FactRow
+											id="accessibility"
+											label={titleFor('accessibility')}
+											detail={notPublished
+												? t(
+														`${operator} does not declare wheelchair boarding for this stop.`,
+														`${agencyFr.start} ne déclare pas l’accessibilité en fauteuil roulant pour cet arrêt.`,
+													)
+												: undefined}
+										>
+											{#if notPublished}
+												<StateMark state="not_published" {locale} />
+											{:else}
+												<span class="font-sans">{stopAccessibility(result.answer, locale)}</span>
+											{/if}
+										</FactRow>
+									{:else}
+										<FactRow id="accessibility" label={titleFor('accessibility')}>
+											{@render gap(result)}
+										</FactRow>
+									{/if}
+								{/await}
+							</FactList>
+						{/snippet}
+						{#if result === undefined}
+							{@render pending(answers.delay, 'facts')}
+						{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 							{@render delayFacts(result.answer)}
 						{:else}
-							{#if !stopLowCoverage(result)}{@render gap(result, 'facts')}{/if}
+							<!-- The card says why it has no delay, once, before the stop's own fact. -->
+							<div data-settled-empty>
+								{#if stopLowCoverage(result)}<p>
+										<StateMark state="not_measured" {locale} />
+										{t(
+											'Too few stop arrivals were observed here to calculate typical delay.',
+											'Trop peu de passages ont été observés ici pour calculer le retard typique.',
+										)}
+									</p>{:else}{@render gap(result, 'facts')}{/if}
+							</div>
 							{@render delayFacts()}
 						{/if}
-					{/await}
-				</div>
-			</RecordCard>
+					</div>
+				</RecordCard>
+			{/snippet}
+			{#await answers.delay}
+				{@render delayCard()}
+			{:then result}
+				{@render delayCard(result)}
+			{/await}
 		</div>
 	</RecordGroup>
 	<RecordGroup class="gap-[var(--space-card-gap)]">
@@ -528,7 +554,7 @@
 					result?.kind === 'answer' &&
 					'cells' in result.answer &&
 					result.answer.cells.length > 0 &&
-					!hourGridTooFew(result.answer)}
+					hourGridEmpty(result.answer) === null}
 				{@const reserveGrid = result === undefined || result.kind === 'busy' || chart}
 				<div data-grid-space={reserveGrid ? '' : undefined}>
 					<RecordCard
@@ -554,7 +580,7 @@
 							{@render evidenceFooter('hourly')}
 						{/snippet}
 						{#snippet toggle()}
-							{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length && !hourGridTooFew(result.answer)}
+							{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length && hourGridEmpty(result.answer) === null}
 								<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
 							{/if}
 						{/snippet}
@@ -605,10 +631,8 @@
 			{/await}
 		</div>
 
-		<div
-			class="grid min-w-0 items-start gap-[var(--space-card-gap)] xl:grid-cols-[minmax(0,6fr)_minmax(0,5fr)]"
-		>
-			<div id="daily" class="min-w-0">
+		<div class="grid min-w-0 items-stretch gap-[var(--space-card-gap)] xl:grid-cols-2">
+			<div id="daily" class="grid min-w-0">
 				<span id="stop-rel-trend" class="absolute" aria-hidden="true"></span>
 				{#snippet dailyCard(result?: EngineResult<EngineAnswer>)}
 					<RecordCard

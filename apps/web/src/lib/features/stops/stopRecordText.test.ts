@@ -175,3 +175,12 @@ it.each(['en', 'fr'] as const)(
 		);
 	},
 );
+
+it('takes the point difference from the shares as shown', () => {
+	// 54.94% and 64.06% show as 54.9% and 64.1%: the reader subtracts 9.2, not 9.1.
+	const stop = { ...answer, value: { on_time: 0.5494 } };
+	const network = { kind: 'answer', answer: { ...answer, value: { on_time: 0.6406 } } } as const;
+	expect(stopComparison(stop, network, 'en')).toBe(
+		'9.2 points below the network, which was at 64.1% over the same dates.',
+	);
+});

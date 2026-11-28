@@ -90,7 +90,7 @@
 </script>
 
 {#snippet toward(row: Row)}
-	<span class="prediction-cell wrap-normal"
+	<span class="prediction-cell font-sans wrap-normal"
 		>{riderToward(display, row, locale, 'cell', patterns) ?? t('Unavailable', 'Indisponible')}</span
 	>
 {/snippet}
