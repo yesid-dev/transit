@@ -60,7 +60,9 @@ for (const provider of ['stm', 'octranspo'] as const) {
 					} else {
 						const table = main.getByRole('table', { name: fr ? frList : enList, exact: true });
 						await expect(
-							main.getByText(fr ? 'Vous avez vu une erreur?' : 'Seen an error?', { exact: true }),
+							main.getByText(fr ? 'Vous avez vu une erreur\u00a0?' : 'Seen an error?', {
+								exact: true,
+							}),
 						).toBeVisible();
 						await expect(
 							main.getByRole('link', {

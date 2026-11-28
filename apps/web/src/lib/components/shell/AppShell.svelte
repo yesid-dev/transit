@@ -3,7 +3,8 @@
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { NavigationLifecycle } from '@yesid/ui/brand';
 	import { setContext, type Snippet } from 'svelte';
-	import { DEFAULT_LOCALE, getLocale, type Locale } from '#lib/i18n/index.ts';
+	import { DEFAULT_LOCALE, delocalizePath, getLocale, type Locale } from '#lib/i18n/index.ts';
+	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import type { SearchList } from '#lib/search/transitSearch.ts';
 	import { AppFrame, AnnouncementBanner, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
@@ -49,7 +50,6 @@
 		errorPage?: boolean;
 		main: Snippet;
 		footer?: Snippet;
-		desktopControlsFallback?: Snippet;
 	}
 
 	let {
@@ -69,7 +69,6 @@
 		errorPage = false,
 		main,
 		footer,
-		desktopControlsFallback,
 	}: AppShellProps = $props();
 
 	const contextLocale = getLocale();
@@ -81,6 +80,12 @@
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
 	const frame = $derived(frameControlsState(url, clock, errorPage));
+	// An agency that publishes no notices has no period or view to choose on Service alerts.
+	const noAlertChoices = $derived(
+		provider != null &&
+			!providerHasAlerts(provider) &&
+			delocalizePath(url.pathname).replace(/\/$/, '') === '/alerts',
+	);
 	provideRecordPageStamp(() =>
 		frame.usesFrameRecord && frame.period ? recordStamp(frame.period, locale) : undefined,
 	);
@@ -98,11 +103,9 @@
 		() =>
 			recordStartNotice(frame.beforeRecord, locale) ?? recordEndNotice(frame.afterRecord, locale),
 	);
-	let surfaceControls = $state.raw<
-		{ rail: Snippet<[SurfaceRailContext]>; desktopPlacement?: 'before-frame' }[]
-	>([]);
-	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail, desktopPlacement) => {
-		const entry = { rail, desktopPlacement };
+	let surfaceControls = $state.raw<{ rail: Snippet<[SurfaceRailContext]> }[]>([]);
+	const registerSurfaceControls: RegisterFrameSurfaceRail = (rail) => {
+		const entry = { rail };
 		surfaceControls = [...surfaceControls, entry];
 		return () => {
 			surfaceControls = surfaceControls.filter((control) => control !== entry);
@@ -149,23 +152,12 @@
 {/snippet}
 
 {#snippet railContents(context: SurfaceRailContext)}
-	{@const desktop = context.presentation === 'desktop'}
-	{#if desktopControlsFallback && !surfaceControls.some(({ desktopPlacement }) => desktopPlacement === 'before-frame')}
-		<div class="desktop-controls-fallback">
-			{@render desktopControlsFallback()}
-		</div>
-	{/if}
-	{#if desktop}
-		{#each surfaceControls as { rail, desktopPlacement } (rail)}
-			{#if desktopPlacement === 'before-frame'}{@render rail(context)}{/if}
-		{/each}
-	{/if}
 	<FrameControls {context} {locale} {url} {clock} {frame} extension={controlsExtension} />
-	{#if desktop}
+	{#if context.presentation === 'desktop'}
 		{@render controlsExtension?.after?.()}
 	{/if}
-	{#each surfaceControls as { rail, desktopPlacement } (rail)}
-		{#if !desktop || desktopPlacement !== 'before-frame'}{@render rail(context)}{/if}
+	{#each surfaceControls as { rail } (rail)}
+		{@render rail(context)}
 	{/each}
 	{#if !fullViewport}<ScrollCue />{/if}
 {/snippet}
@@ -212,7 +204,7 @@
 		footer={footer && !fullViewport ? streamingFooter : footer}
 		{fullViewport}
 		{mainLabel}
-		controlsRail={frame.showRail && !compactMap
+		controlsRail={frame.showRail && !compactMap && !noAlertChoices
 			? {
 					rail,
 					label: copy.controls,
@@ -242,14 +234,6 @@
 </div>
 
 <style>
-	.desktop-controls-fallback {
-		/* AppFrame's CSS chooses the rail layout before its client measurement. */
-		display: var(--app-frame-rail-display, none);
-		flex-direction: column;
-	}
-	.desktop-controls-fallback:empty {
-		display: none;
-	}
 	/* The content slot inherits AppFrame's measured header height (including its SSR fallback). */
 	.streaming-main:has(:global([data-record-pending])) {
 		min-block-size: calc(100dvh - var(--app-frame-header-height) + var(--space-card-gap));

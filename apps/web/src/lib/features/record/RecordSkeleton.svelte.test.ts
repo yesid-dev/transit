@@ -47,7 +47,10 @@ it.each(shapes)('draws the %s shape hidden, pulsing and silent', (_, shape, plac
 	const pending = container.querySelector('[data-record-pending]');
 	const reservation = container.querySelector('[data-waiting-shape]');
 	expect(pending).toHaveAttribute('aria-busy', 'true');
-	expect(reservation).toHaveAttribute('aria-hidden', 'true');
+	// An answer keeps its waiting words on its evidence line, so only that shape is exposed.
+	if (typeof shape === 'object' ? shape.shape === 'answer' : shape === 'answer')
+		expect(reservation).not.toHaveAttribute('aria-hidden');
+	else expect(reservation).toHaveAttribute('aria-hidden', 'true');
 	// The kit pulses a Skeleton under any aria-busy="true" ancestor.
 	expect(reservation).toHaveAttribute('aria-busy', 'true');
 	expect(reservation?.querySelectorAll('[data-slot="skeleton"]')).toHaveLength(placeholders);
@@ -165,4 +168,16 @@ it('shows every shape on the harness', () => {
 	expect(
 		screen.getByText('En attente. Cette carte redemande dans quelques secondes.'),
 	).toBeVisible();
+});
+
+it('says an answer is still calculating on its evidence line, so the answer keeps its height', async () => {
+	vi.useFakeTimers();
+	const { container } = render(RecordPending, { locale: 'en', shape: 'answer' });
+	const status = screen.getByRole('status');
+	// The words take the place of "Counted: …"; no foot line under the answer, said once.
+	expect(status.closest('.answer-evidence')).not.toBeNull();
+	expect(container.querySelector('[data-record-pending]')?.lastElementChild).not.toBe(status);
+	await vi.advanceTimersByTimeAsync(3_000);
+	expect(status).toHaveTextContent('Still calculating…');
+	expect(container.textContent?.match(/Still calculating…/g)).toHaveLength(1);
 });

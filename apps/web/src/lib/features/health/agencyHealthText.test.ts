@@ -251,7 +251,7 @@ describe('what the agency publishes', () => {
 				[
 					'Avis de service',
 					'Non publié',
-					'OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.',
+					'OC Transpo ne publie pas ses avis de service en données ouvertes. Ils sont affichés sur son site Web.',
 				],
 				[
 					'Accès en fauteuil roulant aux arrêts',

@@ -969,8 +969,18 @@ export function vehiclePositionsCapture(seconds: number | null | undefined, loca
 	return locale === 'fr' ? `Positions des véhicules\u00a0: ${age}.` : `Vehicle positions: ${age}.`;
 }
 
-export function captureAge(capturedAt: string | null, now: number, locale: Locale) {
+/** A capture's age: short in table cells, the stamp's own words in a sentence beside a stamp. */
+export function captureAge(
+	capturedAt: string | null,
+	now: number,
+	locale: Locale,
+	{ short = true }: { short?: boolean } = {},
+) {
 	const seconds = capturedAt === null ? NaN : (now - Date.parse(capturedAt)) / 1000;
+	if (!short)
+		return Number.isFinite(seconds) && seconds >= -5
+			? formatRelativeSeconds(Math.max(0, seconds), locale)
+			: null;
 	return Number.isFinite(seconds) && seconds >= -5
 		? formatRelativeSeconds(Math.max(0, seconds), locale).replace(/\bminutes?\b/u, 'min')
 		: null;
@@ -1282,7 +1292,7 @@ export function frenchAgency({ name, frenchOf }: AgencyName) {
 export function alertsNotPublished(agency: AgencyName, locale: Locale, website = false) {
 	if (locale === 'fr') {
 		const sentence = `${frenchAgency(agency).start} ne publie pas ses avis de service en données ouvertes.`;
-		return website ? `${sentence} Elle les affiche sur son site Web.` : sentence;
+		return website ? `${sentence} Ils sont affichés sur son site Web.` : sentence;
 	}
 	const sentence = `${agency.name} does not publish its service alerts as open data.`;
 	return website ? `${sentence} It posts them on its website.` : sentence;

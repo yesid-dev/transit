@@ -194,7 +194,15 @@
 {/snippet}
 
 {#snippet actions()}
-	<RecordActionGroup {locale} href={pinned} {files} {citation} {figures} />
+	<!-- The Record card prints in either view; the page's frame may be Live. -->
+	<RecordActionGroup
+		{locale}
+		href={pinned}
+		{files}
+		{citation}
+		{figures}
+		print={() => window.print()}
+	/>
 {/snippet}
 
 {#snippet lead(current: EngineResult<MeasureAnswer>)}
@@ -508,6 +516,7 @@
 					{locale}
 					kind="stop"
 					ranking={record.stops}
+					outlineStopCode
 					{link}
 					directory={record.directory}
 				/>

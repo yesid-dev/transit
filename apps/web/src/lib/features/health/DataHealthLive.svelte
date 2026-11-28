@@ -98,24 +98,32 @@
 </script>
 
 {#snippet ageCell(row: FeedRow)}{row.age}{/snippet}
-{#snippet cadenceCell(row: FeedRow)}{row.cadence}{/snippet}
-{#snippet stateCell(row: FeedRow)}{row.state}{/snippet}
+<!-- Words in the feed table read in the body face; only the age is a figure. -->
+{#snippet cadenceCell(row: FeedRow)}<span class="font-sans">{row.cadence}</span>{/snippet}
+{#snippet stateCell(row: FeedRow)}<span class="font-sans">{row.state}</span>{/snippet}
+
+<!-- An agency that publishes no notices says so inside the feed card, beside its other feeds. -->
+{#snippet alertsGap()}
+	{#if !alerts.tracked}
+		<div class="mt-3 grid gap-1" data-slot="alerts-not-published">
+			<p class="font-semibold">{t('Service alerts', 'Avis de service')}</p>
+			<p>
+				<StateMark state="not_published" {locale} />{t(':', '\u00a0:')}
+				{alertsNotPublished(
+					{ name: operator, frenchOf: operatorOf },
+					locale,
+					Boolean(alerts.officialUrl),
+				)}
+			</p>
+			{#if alerts.officialUrl}<a
+					class="inline-flex min-h-11 items-center text-primary underline"
+					href={alerts.officialUrl}>{officialAlertsLabel(locale)}</a
+				>{/if}
+		</div>
+	{/if}
+{/snippet}
 
 {#snippet about(text: string | null)}
-	{#if !alerts.tracked}
-		<p class="mb-3">
-			<StateMark state="not_published" {locale} />
-			{alertsNotPublished(
-				{ name: operator, frenchOf: operatorOf },
-				locale,
-				Boolean(alerts.officialUrl),
-			)}
-		</p>
-		{#if alerts.officialUrl}<a
-				class="mb-3 inline-flex min-h-11 items-center text-primary underline"
-				href={alerts.officialUrl}>{officialAlertsLabel(locale)}</a
-			>{/if}
-	{/if}
 	<AboutLiveFigures
 		{locale}
 		{operator}
@@ -140,7 +148,7 @@
 				<RecordGroup
 					><ScreenTitle title={t('Data health', 'Santé des données')} subtitle={subject} />
 					<div data-slot="screen-answer"><RecordPending {locale} shape="answer" /></div>
-					<RecordCard title={table} stampPending stampRule reserve={feedShape}
+					<RecordCard title={table} stampRule reserve={feedShape}
 						><RecordPending {locale} shape={feedShape} /></RecordCard
 					></RecordGroup
 				>
@@ -185,7 +193,12 @@
 						/>
 					</div>
 					<div class="grid min-w-0 gap-4">
-						<RecordCard title={table} {stamp} stampRule reserve={feedShape}>
+						<RecordCard
+							title={table}
+							stampRule
+							reserve={feedShape}
+							interactive={!alerts.tracked && Boolean(alerts.officialUrl)}
+						>
 							{#if feeds.length || schedule}
 								<RecordDataTable
 									{locale}
@@ -239,11 +252,12 @@
 								/>
 								<p class="mt-3 text-small text-muted-foreground">{hold}</p>
 							{:else}<StateMark state="no_live_data" {locale} />{/if}
+							{@render alertsGap()}
 						</RecordCard>
 					</div>
 				</RecordGroup>
 				<RecordGroup>
-					{@render about(captureAge(lastCapture ?? null, now, locale))}
+					{@render about(captureAge(lastCapture ?? null, now, locale, { short: false }))}
 				</RecordGroup>
 			{/snippet}
 		</LiveCapture>

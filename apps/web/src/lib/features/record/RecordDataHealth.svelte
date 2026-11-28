@@ -18,6 +18,7 @@
 		ScorecardAnswer,
 	} from '#lib/server/engine.ts';
 	import type { AgencyScorecardMeasure } from '#lib/server/screenQuestions.ts';
+	import { networkMeasures } from '#lib/features/network/networkMeasures.ts';
 	import { page } from '$app/state';
 	import { carryFrameState, frameHref, recordStart } from '#lib/site/frameState.ts';
 	import {
@@ -133,6 +134,24 @@
 		);
 	});
 	const share = $derived(recordSectionLinks(pinned, 'stop-events').share);
+	// The network record serves each scorecard measure's CSV for the same dates.
+	const files = $derived.by(() => {
+		const network = new URL(
+			pinned.pathname.replace(/\/status\/?$/, '/network') + pinned.search,
+			pinned,
+		);
+		const measures: AgencyScorecardMeasure[] = [
+			'live_trip_coverage',
+			'vehicle_field_completeness',
+			'prediction_error',
+			'poll_success',
+			'feed_age_at_capture',
+		];
+		return measures.map((measure) => ({
+			label: choose(locale, ...networkMeasures[measure].title),
+			href: recordSectionLinks(network, measure).csv,
+		}));
+	});
 	const methodHref = $derived(
 		carryFrameState(localizeHref('/metrics', locale, record?.city), pinned),
 	);
@@ -148,6 +167,13 @@
 		not_tracked: t('Transit did not track this', 'Transit n’a pas suivi cette donnée'),
 		not_published: t('Not published', 'Non publié'),
 		unknown: t('Unknown', 'Inconnu'),
+	});
+	const legendLabels = $derived({
+		...labels,
+		not_published: t(
+			`Not published: ${agencyLabel} does not publish it`,
+			`Non publié\u00a0: ${french.subject} ne le publie pas`,
+		),
 	});
 	const marks = {
 		present: { text: '●', level: 0 },
@@ -174,11 +200,18 @@
 		const gaps = answer.days.filter(({ tables }) =>
 			Object.values(tables).some(({ status }) => status !== 'present' && status !== 'not_tracked'),
 		).length;
+		// A feed the agency never publishes is not a file Transit keeps, so it is named apart.
+		const unpublished = !alerts.tracked && tablesFor(answer).includes('alerts');
 		if (!gaps)
-			return t(
-				'The files tracked here are present for every day in this period.',
-				'Les fichiers suivis ici sont présents pour chaque jour de cette période.',
-			);
+			return unpublished
+				? t(
+						`The files Transit keeps are present for every day in this period. ${agencyLabel} does not publish service alerts.`,
+						`Les fichiers que Transit conserve sont présents pour chaque jour de cette période. ${french.subject} ne publie pas d’avis de service.`,
+					)
+				: t(
+						'The files tracked here are present for every day in this period.',
+						'Les fichiers suivis ici sont présents pour chaque jour de cette période.',
+					);
 		return t(
 			`${tally(gaps, locale)} of ${countedUnit(days, 'day', locale)} ${gaps === 1 ? 'has' : 'have'} a gap.`,
 			`${tally(gaps, locale)} ${singularCount(gaps, locale) ? 'jour' : 'jours'} sur ${tally(days, locale)} ${singularCount(gaps, locale) ? 'a une lacune' : 'ont une lacune'}.`,
@@ -232,7 +265,15 @@
 			from: days[0]?.service_date,
 			to: days.at(-1)?.service_date,
 			states: (
-				['present', 'incomplete', 'missing', 'not_measured', 'not_tracked', 'unknown'] as const
+				[
+					'present',
+					'incomplete',
+					'missing',
+					'not_measured',
+					'not_tracked',
+					'not_published',
+					'unknown',
+				] as const
 			).filter((state) => states.has(state)),
 		};
 	}
@@ -241,7 +282,13 @@
 		const minimum = minimumSample(answer, measure);
 		return minimum == null ? sample : sampleWithMinimum(sample, minimum, locale);
 	}
-	const publishingShape = { shape: 'rows', count: 5, lines: 2, lead: 'none' } as const;
+	// One row per thing riders rely on: the notices row only where the agency publishes notices.
+	const publishingShape = $derived({
+		shape: 'rows',
+		count: alerts.tracked ? 5 : 4,
+		lines: 2,
+		lead: 'none',
+	} as const);
 	const daysShape = { shape: 'table', rows: 7 } as const;
 </script>
 
@@ -263,7 +310,13 @@
 	>{/snippet}
 {#snippet rightCell(row: RecordTableRow & { right: string })}<span class="reading">{row.right}</span
 	>{/snippet}
-{#snippet answeredCell(row: RecordTableRow & { answered: string })}{row.answered}{/snippet}
+<!-- A feed the agency does not publish reads as its state, not as a figure. -->
+{#snippet answeredCell(
+	row: RecordTableRow & { answered: string },
+)}{#if !alerts.tracked && row.answered === labels.not_published}<StateMark
+			state="not_published"
+			{locale}
+		/>{:else}{row.answered}{/if}{/snippet}
 {#snippet checkedCell(row: RecordTableRow & { checked: string })}{row.checked}{/snippet}
 
 <!-- One card for each scorecard answer: the waiting, failing and one-state cases are shared. -->
@@ -276,48 +329,55 @@
 	sample: (answer: ScorecardAnswer) => string | null,
 	notMeasured?: (answer: ScorecardAnswer) => string | null,
 )}
-	<section {id} class="min-w-0">
-		<RecordCard title={cardTitle} {stamp} stampRule reserve={shape}>
-			{#await result}
+	<!-- While it waits the card keeps its reading's shape; a one-state answer keeps no empty space. -->
+	{#snippet card(settled?: Awaited<Result<ScorecardAnswer>>)}
+		{@const answer = settled?.kind === 'answer' ? settled.answer : null}
+		{@const reason = answer ? (notMeasured?.(answer) ?? null) : null}
+		{@const only = answer ? scorecardState(answer, id) : null}
+		<RecordCard
+			title={cardTitle}
+			{stamp}
+			stampRule
+			reserve={!settled || settled.kind === 'busy' || (answer && !reason && !only)
+				? shape
+				: undefined}
+		>
+			{#if !settled}
 				{#key result}<RecordPending {locale} answer={result} {shape} />{/key}
-			{:then settled}
-				{#if settled.kind === 'answer'}
-					{@const answer = settled.answer}
-					{@const reason = notMeasured?.(answer) ?? null}
-					{@const only = scorecardState(answer, id)}
-					{#if reason}
-						<!-- The whole card is one state: the state and its reason, once. -->
-						<p><StateMark state="not_measured" {locale} /></p>
-						<p class="mt-2 text-small text-muted-foreground">{reason}</p>
-					{:else if only}
-						<p><StateMark state={only} {locale} /></p>
-						{#if only === 'too_few_to_judge'}
-							<p class="mt-2 text-small text-muted-foreground">
-								{tooFewNote(answer, id, sample(answer) ?? scorecardDays(answer, locale))}
-							</p>
-						{/if}
-					{:else}
-						{@render body(answer)}
-						{@const note = minimumNote(answer, id, locale)}
-						{#if note}<p class="mt-2 text-small text-muted-foreground">{note}</p>{/if}
+			{:else if answer}
+				{#if reason}
+					<!-- The whole card is one state: the state and its reason, once. -->
+					<p><StateMark state="not_measured" {locale} /></p>
+					<p class="mt-2 text-small text-muted-foreground">{reason}</p>
+				{:else if only}
+					<p><StateMark state={only} {locale} /></p>
+					{#if only === 'too_few_to_judge'}
+						<p class="mt-2 text-small text-muted-foreground">
+							{tooFewNote(answer, id, sample(answer) ?? scorecardDays(answer, locale))}
+						</p>
 					{/if}
-					{#if settled.lastGood}<p class="mt-2">{lastGoodNote[locale]}</p>{/if}
-				{:else}{@render unavailable(settled)}{/if}
-			{/await}
+				{:else}
+					{@render body(answer)}
+					{@const note = minimumNote(answer, id, locale)}
+					{#if note}<p class="mt-2 text-small text-muted-foreground">{note}</p>{/if}
+				{/if}
+				{#if settled.kind === 'answer' && settled.lastGood}<p class="mt-2">
+						{lastGoodNote[locale]}
+					</p>{/if}
+			{:else}{@render unavailable(settled)}{/if}
 			{#snippet evidence()}
-				{#await result then settled}
-					{#if settled.kind === 'answer'}
-						<RecordEvidenceLine
-							{locale}
-							evidence={settled.answer.evidence}
-							sample={notMeasured?.(settled.answer)
-								? scorecardDays(settled.answer, locale)
-								: sample(settled.answer)}
-						/>
-					{/if}
-				{/await}
+				{#if answer}
+					<RecordEvidenceLine
+						{locale}
+						evidence={answer.evidence}
+						sample={notMeasured?.(answer) ? scorecardDays(answer, locale) : sample(answer)}
+					/>
+				{/if}
 			{/snippet}
 		</RecordCard>
+	{/snippet}
+	<section {id} class="min-w-0">
+		{#await result}{@render card()}{:then settled}{@render card(settled)}{/await}
 	</section>
 {/snippet}
 
@@ -458,7 +518,7 @@
 									{#if coverage}<p>{coverage.rest}</p>{/if}
 								{/snippet}
 								{#snippet actions()}
-									<RecordActionGroup {locale} href={share} files={[]}>
+									<RecordActionGroup {locale} href={share} {files}>
 										{#snippet citation()}
 											<CiteBlock
 												{locale}
@@ -599,6 +659,10 @@
 									<div class="good-to-bad-grid">
 										<GoodToBadHourGrid
 											label={titles.days}
+											scrollCue={t(
+												'Scroll sideways to see all days.',
+												'Faites défiler de côté pour voir tous les jours.',
+											)}
 											columns={shown.columns}
 											rows={shown.rows}
 											scale={{ label: '', steps: [] }}
@@ -619,10 +683,10 @@
 											{#each shown.states as state (state)}
 												{@const level = marks[state].level}
 												{@const swatch = level === null ? undefined : goodToBadStep(level)}
-												<li class="flex gap-2">
+												<li class="flex items-start gap-2">
 													<span
 														aria-hidden="true"
-														class="min-w-4 rounded-sm text-center"
+														class="min-w-4 shrink-0 rounded-sm text-center"
 														class:border={swatch !== undefined}
 														style:border-color={swatch
 															? 'var(--transit-good-to-bad-grid-edge)'
@@ -630,7 +694,7 @@
 														style:background-color={swatch?.fill}
 														style:color={swatch?.ink}>{marks[state].text}</span
 													>
-													{labels[state]}
+													{legendLabels[state]}
 												</li>
 											{/each}
 										</ul>
@@ -752,7 +816,7 @@
 								{ href: methodHref, label: term.method },
 								{
 									href: methodHref + '#about-transit',
-									label: t('Seen an error?', 'Vous avez vu une erreur?'),
+									label: t('Seen an error?', 'Vous avez vu une erreur\u00a0?'),
 								},
 							],
 						},

@@ -208,9 +208,7 @@
 			</FactList>
 			{#if lines.length}
 				<h3 class="mt-4 font-semibold">{t.lateLines}</h3>
-				{#snippet late(row: RecordTableRow & { late: string })}<strong class="font-sans"
-						>{row.late}</strong
-					>{/snippet}
+				{#snippet late(row: RecordTableRow & { late: string })}<strong>{row.late}</strong>{/snippet}
 				<RecordDataTable
 					{locale}
 					title={t.lateLines}
@@ -252,16 +250,10 @@
 	:global(.overview-live:has([data-record-pending]) header [data-slot='stamp']) {
 		visibility: hidden;
 	}
-	.late-lines-waiting {
-		display: none;
-	}
 	@media (width >= 64rem) {
 		/* Count, status bar, two facts, and up to three late lines. */
 		.live-readings {
 			min-block-size: 38.5rem;
-		}
-		.late-lines-waiting {
-			display: grid;
 		}
 		/* Allow one more line for the explanation of Ottawa's published notice sources. */
 		.no-agency-alerts {

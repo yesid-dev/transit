@@ -92,7 +92,9 @@ for (const [width, locale, theme] of [
 		await measured.hover();
 		await expect(tip).toContainText(fr ? /\d{1,2}\u00a0h\b/u : /\d{2}:\d{2}/u);
 		await expect(tip).toContainText(fr ? 'Part en retard' : 'Late share');
-		await expect(tip).toContainText(fr ? 'passages aux arrêts' : 'stop arrivals');
+		// The row names the unit once; its value is the plain count.
+		await expect(tip).toContainText(fr ? 'Passages aux arrêts' : 'Stop arrivals');
+		await expect(tip).not.toContainText(fr ? 'passages aux arrêts' : 'stop arrivals');
 		if (output)
 			await page.screenshot({ path: join(output, `hour-grid-${width}-${locale}-${theme}.png`) });
 	});

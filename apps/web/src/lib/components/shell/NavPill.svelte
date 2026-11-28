@@ -427,6 +427,14 @@
 	.network-choice {
 		display: contents;
 	}
+	/* On a wide desktop the city control keeps one width, so switching city never moves the links. */
+	@media (min-width: 80rem) {
+		.network-choice {
+			display: inline-flex;
+			justify-content: center;
+			min-inline-size: 12.5rem;
+		}
+	}
 	.nav-provider {
 		--size-provider-select: 12.5rem;
 		position: relative;

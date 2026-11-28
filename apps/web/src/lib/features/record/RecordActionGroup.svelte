@@ -9,6 +9,7 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { carryFrameState } from '#lib/site/frameState.ts';
+	import { readRecordPageStamp, recordPrints } from '#lib/site/recordPageStampContext.ts';
 	import CopyAction from '#lib/features/hotspots/sections/CopyAction.svelte';
 
 	let {
@@ -48,8 +49,10 @@
 	} = $props();
 	const fr = $derived(locale === 'fr');
 	const printPage = () => window.print();
+	// A report's Record view prints, also when its address does not name the Record frame.
+	const pageStamp = readRecordPageStamp();
 	const printAction = $derived(
-		print ?? (page.url?.searchParams.get('frameMode') === 'record' ? printPage : undefined),
+		print ?? (recordPrints(page.url, pageStamp()) ? printPage : undefined),
 	);
 	const windowLayout = actionSheetLayout();
 	const closeLabel = $derived(fr ? 'Fermer' : 'Close');

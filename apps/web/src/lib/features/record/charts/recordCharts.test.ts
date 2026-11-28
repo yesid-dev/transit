@@ -85,6 +85,10 @@ describe('record charts', () => {
 		expect(bandChart(cell({}), 'Bands', 'fr').props.bands[2]?.detail).toBe(
 			'10 passages aux arrêts',
 		);
+		// The table's column names the unit, so its cells do not repeat it.
+		const table = bandChart(cell({}), 'Bands', 'en').table;
+		expect(table.columns.detail).toBe('Stop arrivals');
+		expect(table.rows[2]?.detail).toBe('10');
 	});
 
 	it('names measured, few and no-service cells and withholds numeric levels for states', () => {
@@ -134,6 +138,9 @@ describe('record charts', () => {
 			text: '17',
 			name: 'Monday, 06:00: 16.6% late, 58 stop arrivals',
 		});
+		expect(
+			hourChart(data, 'Hours', 'en').table.rows.find(({ id }) => id === 'Monday, 06:00'),
+		).toMatchObject({ value: '16.6%', detail: '58' });
 		expect(grid.rows[0]?.cells[2]).toMatchObject({ text: 'few', level: null, state: 'few' });
 		expect(grid.rows[0]?.cells[3]).toMatchObject({
 			text: 'none',

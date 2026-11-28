@@ -78,9 +78,6 @@
 	import { viewTransition } from '@yesid/motion/utils/viewTransition';
 	import { getLenis } from '@yesid/motion/utils/lenis';
 	import { AppShell } from '#lib/components/shell/index.ts';
-	import AlertFiltersWaiting from '#lib/features/alerts/AlertFiltersWaiting.svelte';
-	import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
-	import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 	import BrandCluster from '#lib/components/brand/BrandCluster.svelte';
 	import { footerCopy } from '#lib/components/layout/footer.copy.ts';
 	import { EdgeState } from '#lib/components/edge/index.ts';
@@ -98,7 +95,6 @@
 	import { legalCopy } from '#lib/features/legal/legal.copy.ts';
 	import { searchQueryState } from '#lib/search/transitSearch.ts';
 	import type { LayoutData } from './$types';
-	import type { PageData as AlertsPageData } from './[[lang=locale]]/alerts/$types';
 
 	const navigation = createNavigationLifecycle({
 		beforeNavigate,
@@ -125,22 +121,6 @@
 
 	const siteConfig = readPublicSiteConfig();
 	const seoPath = $derived(delocalizePath(page.url.pathname));
-	const alertRecord = $derived<AlertsPageData['alertRecord'] | undefined>(
-		seoPath === '/alerts' ? page.data.alertRecord : undefined,
-	);
-	const alertMessages = $derived(
-		alertRecord?.sections.find(({ section }) => section === 'messages')?.answer,
-	);
-	const reserveAlertFilters = $derived.by(() => {
-		if (alertRecord) return Boolean(alertMessages);
-		if (seoPath !== '/alerts' || !providerHasAlerts(data.provider)) return false;
-		// The server-rendered rail needs the slot before the page's readings reach this layout.
-		const { mode, period } = parseAnswerFrameState(
-			new URLSearchParams(page.url.search),
-			frameClock(data.provider),
-		);
-		return mode === 'record' && period !== null && alertDetailsAllowed(period);
-	});
 
 	const noIndex = $derived(!siteConfig.indexing || isEphemeralPath(page.url.pathname));
 
@@ -149,7 +129,11 @@
 
 	const v1 = $derived(data.v1);
 	setV1Context(() => v1 ?? undefined);
-	const legalRoute = $derived(FOOTER_INFO_NAV.some((item) => item.href === seoPath));
+	// The Roadmap sits with the legal pages in the footer but is a product page: it keeps the
+	// agency's source credit.
+	const legalRoute = $derived(
+		seoPath !== '/roadmap' && FOOTER_INFO_NAV.some((item) => item.href === seoPath),
+	);
 	const recordMap = $derived(
 		isFullBleed && mapLayerFor(currentMirrorUrl().searchParams) !== 'live',
 	);
@@ -446,10 +430,6 @@
 	{/if}
 </svelte:head>
 
-{#snippet waitingAlertFilters()}
-	<AlertFiltersWaiting messages={alertMessages} {locale} />
-{/snippet}
-
 <SiteRoot lang={locale}>
 	<SeoHead {...head} />
 
@@ -467,7 +447,6 @@
 		{searchList}
 		mainLabel={mainLabel?.[locale]}
 		errorPage={isErrorStatus}
-		desktopControlsFallback={reserveAlertFilters ? waitingAlertFilters : undefined}
 	>
 		{#snippet main()}
 			<div

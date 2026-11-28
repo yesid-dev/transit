@@ -79,12 +79,12 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 		id: 'right-now',
 		state: 'done',
 		title: {
-			en: 'The network right now.',
-			fr: 'Le réseau en ce moment.',
+			en: 'The network right now',
+			fr: 'Le réseau en ce moment',
 		},
 		description: {
 			en: 'Where each vehicle is, how late it runs and the agency’s notices, as its live feed reports them.',
-			fr: 'Où se trouve chaque véhicule, son retard et les avis de service de la société de transport, tels que son flux en temps réel les donne.',
+			fr: 'Où se trouve chaque véhicule, son retard et les avis de service de la société de transport, tels que son flux en direct les donne.',
 		},
 		screens: ['overview', 'map', 'network', 'alerts'],
 	},
@@ -92,12 +92,12 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 		id: 'record',
 		state: 'done',
 		title: {
-			en: 'Every line, stop and vehicle, on the dates you choose.',
-			fr: 'Chaque ligne, chaque arrêt et chaque véhicule, aux dates de votre choix.',
+			en: 'Every line, stop and vehicle, on the dates you choose',
+			fr: 'Chaque ligne, chaque arrêt et chaque véhicule, aux dates de votre choix',
 		},
 		description: {
-			en: 'How each one ran over one day or up to a full year of the record, and what it is doing now. The record grows every day.',
-			fr: 'Comment chacun a roulé, d’une journée à une année complète du bilan, et ce qu’il fait maintenant. Le bilan s’allonge chaque jour.',
+			en: 'How each one performed over one day or up to a full year of the record, and what is happening there now. The record grows every day.',
+			fr: 'Ce que chacun a donné sur une journée ou jusqu’à une année complète du bilan, et ce qui s’y passe maintenant. Le bilan s’allonge chaque jour.',
 		},
 		screens: ['lines', 'stops', 'vehicles', 'search'],
 	},
@@ -105,8 +105,8 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 		id: 'rankings',
 		state: 'done',
 		title: {
-			en: 'Rankings and a daily report.',
-			fr: 'Des classements et un rapport quotidien.',
+			en: 'Rankings and a daily report',
+			fr: 'Des classements et un rapport quotidien',
 		},
 		description: {
 			en: 'The lines, stops, trips and vehicles that do worst over the dates you choose, each with the count it rests on, and a report you can print or cite.',
@@ -118,8 +118,8 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 		id: 'open-data',
 		state: 'done',
 		title: {
-			en: 'Open about its own numbers.',
-			fr: 'Transparent sur ses propres chiffres.',
+			en: 'Open about its own numbers',
+			fr: 'Transparent sur ses propres chiffres',
 		},
 		description: {
 			en: 'One definition for every number, how complete the agency’s data is each day, and the cleaned files themselves under the agency’s licence.',
@@ -131,8 +131,8 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 		id: 'gatineau',
 		state: 'in-progress',
 		title: {
-			en: 'Gatineau.',
-			fr: 'Gatineau.',
+			en: 'Gatineau',
+			fr: 'Gatineau',
 		},
 		description: {
 			en: 'Transit already collects the STO’s data. Gatineau opens here once its record has been checked.',
@@ -143,12 +143,12 @@ export const ROADMAP_ENTRIES: readonly RoadmapEntry[] = [
 		id: 'new-cities',
 		state: 'next',
 		title: {
-			en: 'More cities.',
-			fr: 'D’autres villes.',
+			en: 'More cities',
+			fr: 'D’autres villes',
 		},
 		description: {
 			en: 'Any transit agency that publishes its timetable and live data in the standard open formats (GTFS and GTFS-Realtime) can be added.',
-			fr: 'Toute société de transport qui publie ses horaires et ses données en temps réel dans les formats ouverts standards (GTFS et GTFS-Realtime) pourra être ajoutée.',
+			fr: 'Toute société de transport qui publie ses horaires et ses données en direct dans les formats ouverts standards (GTFS et GTFS-Realtime) pourra être ajoutée.',
 		},
 	},
 ];

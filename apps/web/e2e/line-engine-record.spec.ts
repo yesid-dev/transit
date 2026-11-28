@@ -20,7 +20,7 @@ async function expectLineNotices(
 	}
 	await expect(alerts).toContainText(
 		fr
-			? 'Non publié : OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.'
+			? 'Non publié : OC Transpo ne publie pas ses avis de service en données ouvertes. Ils sont affichés sur son site Web.'
 			: 'Not published: OC Transpo does not publish its service alerts as open data. It posts them on its website.',
 	);
 	await expect(

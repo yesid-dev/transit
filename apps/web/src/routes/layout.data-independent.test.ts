@@ -349,8 +349,6 @@ describe('root layout data-independent legal routes', () => {
 	it.each([
 		['/privacy', 'en', 'Open-source and third-party rights are identified'],
 		['/fr/terms', 'fr', 'Les droits liés au code ouvert et au contenu tiers sont indiqués'],
-		['/roadmap', 'en', 'Open-source and third-party rights are identified'],
-		['/fr/roadmap', 'fr', 'Les droits liés au code ouvert et au contenu tiers sont indiqués'],
 	] as const)(
 		'renders %s with v1=null and a static legal footer attribution',
 		(pathname, lang, attribution) => {
@@ -359,6 +357,20 @@ describe('root layout data-independent legal routes', () => {
 			expect(getByTestId('legal-child')).toBeInTheDocument();
 			expect(queryByTestId('root-layout-edge-state')).not.toBeInTheDocument();
 			expect(getByTestId('footer')).toHaveTextContent(attribution);
+		},
+	);
+
+	it.each([
+		['/roadmap', 'en'],
+		['/fr/roadmap', 'fr'],
+	] as const)(
+		'renders %s with v1=null and the product footer, not the legal one',
+		(pathname, lang) => {
+			const { getByTestId, queryByTestId, container } = renderWithoutV1(pathname, lang);
+			expect(getByTestId('legal-child')).toBeInTheDocument();
+			expect(queryByTestId('root-layout-edge-state')).not.toBeInTheDocument();
+			// The Roadmap is a product page: no legal status bar under the footer.
+			expect(container.querySelector('[data-slot="legal-footer-status"]')).toBeNull();
 		},
 	);
 

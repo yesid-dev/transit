@@ -6,7 +6,6 @@ import {
 	captureVehicle,
 	refreshAlertsCapture,
 } from './capture-fixture';
-import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 
 test('the Transit1 live vehicle reads the capture snapshot in English and French', async ({
 	page,
@@ -143,10 +142,10 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 				? 'La STM ne publie pas l’effet de ses avis.'
 				: 'STM does not publish the effect of its notices.',
 		);
-		const controls = await openFrameControls(page, locale);
-		const filter = controls.getByRole('group', { name: fr ? 'Filtrer' : 'Filter', exact: true });
+		const filter = page
+			.locator('#alerts-log')
+			.getByRole('group', { name: fr ? 'Filtrer' : 'Filter', exact: true });
 		await expect(filter.getByRole('combobox')).toHaveCount(2);
-		await closeCompactFrameControls(page, locale);
 		await expect(page.locator('#alerts-log').getByText(/(?:Until|Jusqu’au) /)).toBeVisible();
 		const about = page.getByRole('article', {
 			name: fr ? 'À propos des chiffres en direct' : 'About live figures',
@@ -211,9 +210,8 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	const byLine = page.getByRole('article', { name: 'By line', exact: true });
 	await expect(byLine.getByRole('table')).toBeVisible();
 	await expect(byLine.locator('[data-slot="record-foot-evidence"]')).toHaveText('12 notices');
-	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
-	const controls = await openFrameControls(page);
-	const filter = controls.getByRole('group', { name: 'Filter', exact: true });
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
+	const filter = list.getByRole('group', { name: 'Filter', exact: true });
 	const line = filter.getByRole('combobox', { name: 'Line' });
 	await line.fill('Sherbrooke');
 	await line.press('ArrowDown');
@@ -222,14 +220,11 @@ test('Live alerts share effect and line filters and exclude future notices from 
 	await effect.fill('Detour');
 	await effect.press('ArrowDown');
 	await page.getByRole('option', { name: 'Detour', exact: true }).click();
-	await closeCompactFrameControls(page);
 	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1 notice');
 	await expect(page).toHaveURL(/route=24.*effect=DETOUR/);
 	await page.reload();
 	await refreshAlertsCapture(page);
 	await expect(list.getByRole('status')).toHaveText('Showing 1 of 1 notice');
-	await page.locator('#alerts-window').scrollIntoViewIfNeeded();
-	await openFrameControls(page);
 	await expect(effect).toHaveValue('Detour');
 
 	await page.goto('/fr/alerts?provider=stm&frameMode=live');

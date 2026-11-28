@@ -153,7 +153,13 @@
 		<RecordStopLadder {...reading.props} />
 	{:else if reading.kind === 'hours'}
 		{#if reading.props.columns.length}
-			<GoodToBadHourGrid {...reading.props} readings={details} />
+			<GoodToBadHourGrid
+				{...reading.props}
+				readings={details}
+				scrollCue={locale === 'fr'
+					? 'Faites défiler de côté pour voir toutes les heures.'
+					: 'Scroll sideways to see all hours.'}
+			/>
 			{#if input.kind === 'hours'}
 				<p class="text-small text-muted-foreground">{hourGridNote(input.answer, locale)}</p>
 			{/if}
@@ -288,9 +294,14 @@
 </div>
 
 <style>
+	/* A halo in the card colour keeps a gridline or the line itself from striking through it. */
 	.trend-end {
 		fill: var(--foreground);
 		font-family: var(--font-mono);
 		font-size: var(--text-caption);
+		paint-order: stroke;
+		stroke: var(--card);
+		stroke-width: 4px;
+		stroke-linejoin: round;
 	}
 </style>

@@ -1,3 +1,8 @@
+<script module lang="ts">
+	// One chart tooltip is open on a page at a time: opening one closes the one before.
+	let closeOpenTooltip: (() => void) | null = null;
+</script>
+
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import ChartTooltip from '../ChartTooltip.svelte';
@@ -29,9 +34,23 @@
 	let xPct = $state(50);
 	let yPct = $state(50);
 	const reading = $derived(readings[active]);
+	// A tooltip that has just opened keeps through the scroll that brought its mark into view (a
+	// keyboard step or a pointer that scrolled the chart in); a later scroll by the reader closes it.
+	let ownScroll = false;
 
 	function hide() {
 		active = -1;
+		if (closeOpenTooltip === hide) closeOpenTooltip = null;
+	}
+
+	function claim() {
+		if (closeOpenTooltip !== hide) closeOpenTooltip?.();
+		closeOpenTooltip = hide;
+	}
+
+	function scrolled() {
+		if (active < 0 || ownScroll) return;
+		hide();
 	}
 
 	function indexOf(root: HTMLElement, target: EventTarget | null, point?: MouseEvent) {
@@ -68,7 +87,11 @@
 			return;
 		}
 		const mark = anchor(root, index);
+		claim();
+		ownScroll = true;
 		if (scroll) mark.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+		// Scroll events from that move arrive before the second frame.
+		requestAnimationFrame(() => requestAnimationFrame(() => (ownScroll = false)));
 		const box = root.getBoundingClientRect();
 		const datum = mark.getBoundingClientRect();
 		xPct = ((datum.left + datum.width / 2 - box.left) / Math.max(1, box.width)) * 100;
@@ -167,3 +190,4 @@
 		if (event.key === 'Escape') hide();
 	}}
 />
+<svelte:document onscrollcapture={scrolled} />

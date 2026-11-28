@@ -180,7 +180,10 @@
 {/snippet}
 {#snippet departure(row: SilentTrip)}{row.departure}{/snippet}
 {#snippet toward(row: SilentTrip)}
-	{#if row.toward}{row.toward}{:else}<StateMark state="unknown" {locale} />{/if}
+	{#if row.toward}<span class="font-sans">{row.toward}</span>{:else}<StateMark
+			state="unknown"
+			{locale}
+		/>{/if}
 {/snippet}
 {#snippet silent(row: SilentTrip)}{row.silentFor}{/snippet}
 
@@ -223,7 +226,7 @@
 					</p>
 				{/if}
 			</div>
-			<RecordCard title={statusTitle} {stamp} stampRule waiting={view ? undefined : 'bands'}>
+			<RecordCard title={statusTitle} stampRule waiting={view ? undefined : 'bands'}>
 				{#if view?.bands.length}
 					<div class="status-reading">
 						<div class="min-w-0">
@@ -263,12 +266,7 @@
 					<StateMark state="no_live_data" {locale} />
 				{/if}
 			</RecordCard>
-			<RecordCard
-				interactive={Boolean(view?.silentTrips?.length)}
-				title={silentTitle}
-				{stamp}
-				stampRule
-			>
+			<RecordCard interactive={Boolean(view?.silentTrips?.length)} title={silentTitle} stampRule>
 				<p class="mb-3">
 					{t(
 						'Trips that should be running and have no vehicle reporting. Trips the agency cancelled are not counted.',

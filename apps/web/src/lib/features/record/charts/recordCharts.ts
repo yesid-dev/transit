@@ -94,11 +94,12 @@ export function bandChart(
 				value: choose(locale, 'Share', 'Part'),
 				detail: choose(locale, 'Stop arrivals', 'Passages aux arrêts'),
 			},
-			rows: bands.map(({ id, label, valueLabel, detail }) => ({
+			// The column already names the unit, so each cell is a plain count.
+			rows: bands.map(({ id, label, valueLabel }) => ({
 				id,
 				label,
 				value: valueLabel,
-				detail,
+				detail: tally(cell.evidence.counts[id] ?? 0, locale),
 			})),
 		},
 	};
@@ -309,11 +310,13 @@ export function hourChart(
 					const context = `${day}, ${readerClock(Number(hour), 0, locale)}`;
 					const count = counts?.classified;
 					const detail = count == null ? undefined : countedUnit(count, 'event', locale);
+					// The table's column names the unit; its cells and the tooltip rows give the count alone.
+					const tableDetail = count == null ? undefined : tally(count, locale);
 					const separator = choose(locale, ': ', '\u00a0: ');
 					if (value !== null) {
 						const share = recordPercent(value, locale);
 						const status = choose(locale, `${share} late`, `${share} en retard`);
-						tableRows.push({ id: context, label: context, value: share, detail });
+						tableRows.push({ id: context, label: context, value: share, detail: tableDetail });
 						return {
 							text: tally(value * 100, locale),
 							level: hourLevels.filter((floor) => value >= floor).length as NonNullable<
@@ -343,7 +346,7 @@ export function hourChart(
 						id: context,
 						label: context,
 						value: status,
-						detail: tooFew ? detail : undefined,
+						detail: tooFew ? tableDetail : undefined,
 					});
 					return {
 						text,

@@ -5,15 +5,10 @@
 	import { Button } from '@yesid/ui/button';
 	import { Card } from '@yesid/ui/card';
 	import { Combobox } from '@yesid/ui/combobox';
-	import { ControlsRail, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { ShowMore } from '@yesid/ui/table';
-	import { getContext, tick, untrack } from 'svelte';
+	import { tick } from 'svelte';
 	import { SvelteURL } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import {
-		frameSurfaceRailContext,
-		type RegisterFrameSurfaceRail,
-	} from '#lib/components/shell/frameSurfaceRail.ts';
 	import { choose } from '#lib/features/record/recordText.ts';
 	import { localizeHref } from '#lib/i18n/routing.ts';
 	import { foldSearchText } from '#lib/search/normalize.ts';
@@ -28,6 +23,7 @@
 		type AlertCard,
 		type NoticeCard,
 	} from './alertCards.ts';
+	import { alertFilterLayout } from './alertFilterLayout.ts';
 	import NoticeMessage from './NoticeMessage.svelte';
 
 	let {
@@ -46,9 +42,6 @@
 		pageSize?: number;
 	} = $props();
 
-	const registerControls = getContext<RegisterFrameSurfaceRail | undefined>(
-		frameSurfaceRailContext,
-	);
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const location = $derived(page.shallow?.url ?? page.url);
@@ -136,12 +129,6 @@
 	const resultCount = $derived(noticeCount(ordered.length, locale));
 
 	$effect(() => {
-		if (hasControls) {
-			return untrack(() => registerControls?.(controls, 'before-frame'));
-		}
-	});
-
-	$effect(() => {
 		if (!target) lastJump = null;
 		if (target && target !== lastJump && cards.some(({ id }) => id === target)) {
 			lastJump = target;
@@ -176,82 +163,87 @@
 	}
 </script>
 
-{#snippet controls(context: SurfaceRailContext)}
-	<ControlsRail label={t('Filter', 'Filtrer')}>
-		<div class="grid w-full min-w-0 gap-3">
-			{#if lineOptions.length}
-				{@const label = t('Line', 'Ligne')}
-				<div class="grid min-w-0 gap-1">
-					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
-					<Combobox
-						options={lineOptions}
-						value={line || null}
-						onValueChange={(value) => applyFilter('route', value)}
-						{label}
-						placeholder={t('All', 'Toutes')}
-						clearLabel={t('Clear line', 'Effacer la ligne')}
-						emptyLabel={t('No matching lines', 'Aucune ligne correspondante')}
-						fold={foldSearchText}
-					/>
-				</div>
-			{/if}
-			{#if stopOptions.length}
-				{@const label = t('Stop', 'Arrêt')}
-				<div class="grid min-w-0 gap-1">
-					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
-					<Combobox
-						options={stopOptions}
-						value={stop || null}
-						onValueChange={(value) => applyFilter('stop', value)}
-						{label}
-						placeholder={t('All', 'Tous')}
-						clearLabel={t('Clear stop', 'Effacer l’arrêt')}
-						emptyLabel={t('No matching stops', 'Aucun arrêt correspondant')}
-						fold={foldSearchText}
-					/>
-				</div>
-			{/if}
-			{#if hasEffects}
-				{@const label = t('Effect', 'Effet')}
-				{@const allEffects = t('All', 'Tous')}
-				<div class="grid min-w-0 gap-1">
-					<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
-					{#if effectOptions.length < 5}
-						<SegmentedChoice
-							{label}
-							value={selectedEffect}
-							options={[
-								{ key: '', label: allEffects },
-								...effectOptions.map(({ value: key, label }) => ({ key, label })),
-							]}
-							variant="joined-grid"
-							onSelect={(value) => applyFilter('effect', value)}
-						/>
-					{:else}
-						<Combobox
-							options={effectOptions}
-							value={selectedEffect || null}
-							onValueChange={(value) => applyFilter('effect', value)}
-							{label}
-							placeholder={allEffects}
-							clearLabel={t('Clear effect', 'Effacer l’effet')}
-							emptyLabel={t('No matching effects', 'Aucun effet correspondant')}
-							fold={foldSearchText}
-						/>
-					{/if}
-				</div>
-			{/if}
-			<div class="flex min-w-0 flex-wrap items-center justify-between gap-x-2 text-small">
-				<p role={context.presentation === 'mobile' ? 'status' : undefined}>{resultCount}</p>
-				<Button
-					variant="outline"
-					class="min-h-11"
-					aria-disabled={!activeFilters}
-					onclick={() => activeFilters && applyFilter()}>{t('Clear', 'Effacer')}</Button
-				>
+<!-- The filters sit above the notices they narrow, so the period rail never grows, moves or clips. -->
+{#snippet controls()}
+	<div
+		role="group"
+		aria-label={t('Filter', 'Filtrer')}
+		class={alertFilterLayout.bar}
+		data-slot="alert-filters"
+	>
+		{#if lineOptions.length}
+			{@const label = t('Line', 'Ligne')}
+			<div class={alertFilterLayout.field}>
+				<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+				<Combobox
+					options={lineOptions}
+					value={line || null}
+					onValueChange={(value) => applyFilter('route', value)}
+					{label}
+					placeholder={t('All', 'Toutes')}
+					clearLabel={t('Clear line', 'Effacer la ligne')}
+					emptyLabel={t('No matching lines', 'Aucune ligne correspondante')}
+					fold={foldSearchText}
+				/>
 			</div>
+		{/if}
+		{#if stopOptions.length}
+			{@const label = t('Stop', 'Arrêt')}
+			<div class={alertFilterLayout.field}>
+				<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+				<Combobox
+					options={stopOptions}
+					value={stop || null}
+					onValueChange={(value) => applyFilter('stop', value)}
+					{label}
+					placeholder={t('All', 'Tous')}
+					clearLabel={t('Clear stop', 'Effacer l’arrêt')}
+					emptyLabel={t('No matching stops', 'Aucun arrêt correspondant')}
+					fold={foldSearchText}
+				/>
+			</div>
+		{/if}
+		{#if hasEffects}
+			{@const label = t('Effect', 'Effet')}
+			{@const allEffects = t('All', 'Tous')}
+			<div class={effectOptions.length < 5 ? alertFilterLayout.wideField : alertFilterLayout.field}>
+				<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
+				{#if effectOptions.length < 5}
+					<SegmentedChoice
+						{label}
+						value={selectedEffect}
+						options={[
+							{ key: '', label: allEffects },
+							...effectOptions.map(({ value: key, label }) => ({ key, label })),
+						]}
+						variant="joined-grid"
+						onSelect={(value) => applyFilter('effect', value)}
+					/>
+				{:else}
+					<Combobox
+						options={effectOptions}
+						value={selectedEffect || null}
+						onValueChange={(value) => applyFilter('effect', value)}
+						{label}
+						placeholder={allEffects}
+						clearLabel={t('Clear effect', 'Effacer l’effet')}
+						emptyLabel={t('No matching effects', 'Aucun effet correspondant')}
+						fold={foldSearchText}
+					/>
+				{/if}
+			</div>
+		{/if}
+		<div class={alertFilterLayout.summary}>
+			<!-- The list's "Showing … of …" line announces each change; this count is read in place. -->
+			<p>{resultCount}</p>
+			<Button
+				variant="outline"
+				class="min-h-11"
+				aria-disabled={!activeFilters}
+				onclick={() => activeFilters && applyFilter()}>{t('Clear', 'Effacer')}</Button
+			>
 		</div>
-	</ControlsRail>
+	</div>
 {/snippet}
 
 {#snippet item(card: NoticeCard, ids: string[])}
@@ -312,6 +304,7 @@
 	</li>
 {/snippet}
 
+{#if hasControls}{@render controls()}{/if}
 {#if cards.length}
 	{#if selectedOutsideFilters}
 		<ul class="alert-list">

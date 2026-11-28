@@ -104,7 +104,7 @@ export const overviewCopy = {
 			'Entre 1 minute d’avance et 5 minutes de retard, à chaque arrêt prévu de chaque trajet.',
 		methodRow: 'Méthode',
 		method: 'Comment on mesure',
-		errorRow: 'Vous avez vu une erreur?',
+		errorRow: 'Vous avez vu une erreur\u00a0?',
 		source: 'Source',
 		feeds: (agency: AgencyName) => `Flux GTFS et GTFS-Realtime publiés ${frenchAgency(agency).by}.`,
 		recordStart: (date: string) => `Le bilan commence le ${date}.`,
@@ -130,12 +130,12 @@ export const overviewCopy = {
 		contribute: {
 			title: 'Aidez à garder le bilan honnête',
 			lead: 'Transit s’améliore quand plus de gens le vérifient, et nul besoin de savoir programmer pour aider.',
-			error: 'Un chiffre vous semble faux? Dites-nous sur quelle page et à quelle date.',
+			error: 'Un chiffre vous semble faux\u00a0? Dites-nous sur quelle page et à quelle date.',
 			cite: 'Utilisez les chiffres dans vos articles, vos recherches ou vos questions à la société de transport, et citez-les.',
 			citeLink: 'Télécharger les données',
 			code: 'Le code est ouvert. Consultez-le, signalez un problème ou améliorez-le sur GitHub.',
 			codeLink: 'Transit sur GitHub',
-			city: 'Vous voulez votre ville ici? Toute société de transport qui publie ouvertement ses horaires et la position de ses véhicules en temps réel peut être ajoutée.',
+			city: 'Vous voulez votre ville ici\u00a0? Toute société de transport qui publie ouvertement ses horaires et la position de ses véhicules en direct peut être ajoutée.',
 			cityLink: 'Proposer une ville',
 			thanks:
 				'Chaque regard attentif rend le bilan plus utile pour la prochaine personne qui l’utilise. Merci.',

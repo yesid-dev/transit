@@ -86,6 +86,7 @@
 		rowAlign = 'middle',
 		phone,
 		compactName = false,
+		shortNames = false,
 	}: {
 		locale: Locale;
 		title: string;
@@ -106,6 +107,8 @@
 		rowAlign?: 'middle';
 		phone?: RecordPhoneRow<Row>;
 		compactName?: boolean;
+		/** Names as short as a date: the name column hugs them and every reading keeps the rest. */
+		shortNames?: boolean;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
 		...(leadingColumn ? [leadingColumn] : []),
@@ -113,7 +116,7 @@
 			key: 'name',
 			header: rowHeader,
 			rowHeader: true,
-			width: compactName ? '1%' : undefined,
+			width: compactName || shortNames ? '1%' : undefined,
 			sortable: !!sort,
 			cell: nameCell,
 		},
@@ -257,7 +260,9 @@
 			reservedColumns && 'table-fixed reserved-reading-columns',
 			compactName
 				? '[&_thead_th[data-column=name]]:whitespace-nowrap [&_tbody_th[data-column=name]]:whitespace-nowrap @min-[38rem]:[&_thead_th]:whitespace-nowrap'
-				: '[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
+				: shortNames
+					? '[&_tbody_th[data-column=name]]:whitespace-nowrap'
+					: '[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
 			readingNoWrap,
 			// A state is said in words ("Trop peu de données pour conclure"): it may wrap in a card too

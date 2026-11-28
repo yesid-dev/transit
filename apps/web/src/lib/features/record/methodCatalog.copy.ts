@@ -175,7 +175,7 @@ export const methodCopy = {
 					text: 'Utilisez Citer sur n’importe quel écran. La citation donne les dates et un lien qui garde ces dates.',
 				},
 				{
-					label: 'Vous avez vu une erreur?',
+					label: 'Vous avez vu une erreur\u00a0?',
 					text: 'Écrivez à contact@yesid.dev avec l’adresse de la page et le chiffre qui semble faux.',
 					link: { href: 'mailto:contact@yesid.dev', label: 'Écrire à contact@yesid.dev' },
 				},
