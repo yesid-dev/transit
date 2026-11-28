@@ -133,7 +133,9 @@ describe('MapFilters', () => {
 		expect(getByRole('button', { name: 'Clear' })).toBeInTheDocument();
 
 		store.addRoute('161');
-		await waitFor(() => expect(getByRole('button', { name: 'Remove line 161' })).toBeVisible());
+		await waitFor(() =>
+			expect(getByRole('button', { name: 'Remove line 161, Van Horne' })).toBeVisible(),
+		);
 		expect(queryByRole('button', { name: /^Active/ })).not.toBeInTheDocument();
 	});
 
@@ -162,7 +164,7 @@ describe('MapFilters', () => {
 
 		expect(queryByRole('searchbox', { name: 'Search routes' })).not.toBeInTheDocument();
 		expect(queryByText('Drilldown')).not.toBeInTheDocument();
-		expect(getByRole('button', { name: 'Remove line 161' })).toBeVisible();
+		expect(getByRole('button', { name: 'Remove line 161, Van Horne' })).toBeVisible();
 		expect(
 			getByRole('button', { name: 'Remove filter: Van Horne / Rockland · 53355' }),
 		).toHaveTextContent('Van Horne / Rockland');
@@ -170,11 +172,11 @@ describe('MapFilters', () => {
 			'Vehicle 40061',
 		);
 
-		await fireEvent.click(getByRole('button', { name: 'Remove line 161' }));
+		await fireEvent.click(getByRole('button', { name: 'Remove line 161, Van Horne' }));
 
 		expect(pushed).toBe('stop=53355&vehicle=40061');
 		expect([...store.routes]).toEqual([]);
-		expect(queryByRole('button', { name: 'Remove line 161' })).not.toBeInTheDocument();
+		expect(queryByRole('button', { name: 'Remove line 161, Van Horne' })).not.toBeInTheDocument();
 
 		await fireEvent.click(getByRole('button', { name: 'Clear' }));
 
@@ -225,26 +227,34 @@ describe('MapFilters', () => {
 		expect(getByRole('button', { name: 'Markers' })).toHaveFocus();
 	});
 
-	it('keeps selected route pills removable when multiple routes are active', async () => {
-		let pushed = '';
-		const store = createFilterStore(emptyFilterState(), (search) => {
-			pushed = search;
-		});
-		store.addRoute('161');
-		store.addRoute('24');
+	it.each(['en', 'fr'] as const)(
+		'names removable line tags in %s when multiple routes are active',
+		async (locale) => {
+			let pushed = '';
+			const store = createFilterStore(emptyFilterState(), (search) => {
+				pushed = search;
+			});
+			store.addRoute('161');
+			store.addRoute('24');
 
-		const { getByRole } = render(MapFilters, {
-			props: { store, locale: 'en', routes: routeFixtures },
-		});
+			const { getByRole } = render(MapFilters, {
+				props: { store, locale, routes: routeFixtures },
+			});
 
-		expect(getByRole('button', { name: 'Remove line 161' })).toBeVisible();
-		expect(getByRole('button', { name: 'Remove line 24' })).toBeVisible();
+			const prefix = locale === 'fr' ? 'Retirer la ligne' : 'Remove line';
+			const first = getByRole('button', { name: `${prefix} 161, Van Horne` });
+			expect(first).toBeVisible();
+			expect(first).toHaveAccessibleName(`${prefix} 161, Van Horne`);
+			expect(getByRole('button', { name: `${prefix} 24, Sherbrooke` })).toHaveAccessibleName(
+				`${prefix} 24, Sherbrooke`,
+			);
 
-		await fireEvent.click(getByRole('button', { name: 'Remove line 161' }));
+			await fireEvent.click(first);
 
-		expect(pushed).toBe('route=24');
-		expect([...store.routes]).toEqual(['24']);
-	});
+			expect(pushed).toBe('route=24');
+			expect([...store.routes]).toEqual(['24']);
+		},
+	);
 
 	it('renders the filter title above the motion header', () => {
 		const store = createFilterStore(emptyFilterState(), () => {});

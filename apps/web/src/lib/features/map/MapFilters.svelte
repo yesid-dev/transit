@@ -241,22 +241,24 @@
 							<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
 							<div class="mf-chips">
 								{#each selectedRoutes as route (route.id)}
+									{@const name =
+										route.long && route.long !== route.short ? readName(route.long, locale) : ''}
+									{@const remove =
+										locale === 'fr'
+											? `Retirer la ligne ${route.short}`
+											: `Remove line ${route.short}`}
 									<Button
 										type="button"
 										variant="outline"
 										size="sm"
 										class="min-h-11 min-w-11 max-w-full gap-2 px-2 text-start"
 										wrap
-										aria-label={locale === 'fr'
-											? `Retirer la ligne ${route.short}`
-											: `Remove line ${route.short}`}
+										aria-label={name ? `${remove}, ${name}` : remove}
 										onclick={() => void removeRoute(route)}
 									>
 										<RoutePlate code={route.short} />
-										{#if route.long && route.long !== route.short}
-											<span class="min-w-0 [overflow-wrap:anywhere]"
-												>{readName(route.long, locale)}</span
-											>
+										{#if name}
+											<span class="min-w-0 [overflow-wrap:anywhere]">{name}</span>
 										{/if}
 										<span class="shrink-0" aria-hidden="true">×</span>
 									</Button>

@@ -43,10 +43,7 @@
 	const directionPrompt = $derived(
 		hasOneLine
 			? tr('Direction unavailable', 'Sens indisponible')
-			: tr(
-					'Choose one line to pick a direction.',
-					'Choisissez une seule ligne pour choisir un sens.',
-				),
+			: tr('Choose one line to pick a direction.', 'Choisir un sens'),
 	);
 	const typeChoices = $derived(
 		[...new Set(routes.map((route) => route.type))]
@@ -177,5 +174,8 @@
 				: null}
 			onValueChange={(value) => onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined)}
 		/>
+		{#if locale === 'fr' && !hasOneLine}
+			<p class="text-sm text-muted-foreground">Choisissez d’abord une ligne.</p>
+		{/if}
 	</div>
 </div>

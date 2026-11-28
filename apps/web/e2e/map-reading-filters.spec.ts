@@ -115,8 +115,8 @@ for (const provider of providers) {
 				timeOfDay: `${hour}-${hour + 1}`,
 				mapDirection: '0',
 			});
-			for (const width of [390, 1440]) {
-				await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+			for (const width of [320, 390, 1024, 1440]) {
+				await page.setViewportSize({ width, height: width < 1024 ? 844 : 900 });
 				await page.goto(`${fr ? '/fr' : ''}/map?${params}`);
 				await openMapInView(page);
 				const rows = page.locator('[data-report-row]:visible');
@@ -153,11 +153,14 @@ for (const provider of providers) {
 				).toHaveValue(String(hour + 1));
 				await expect(direction).toBeDisabled();
 				await expect(direction).toContainText(
-					fr
-						? 'Choisissez une seule ligne pour choisir un sens.'
-						: 'Choose one line to pick a direction.',
+					fr ? 'Choisir un sens' : 'Choose one line to pick a direction.',
 				);
 				await expectLabelToFit(direction);
+				if (fr) {
+					const hint = panel.getByText('Choisissez d’abord une ligne.', { exact: true });
+					await expect(hint).toBeVisible();
+					await expectLabelToFit(hint);
+				}
 				const fromHour = panel.getByRole('combobox', { name: fr ? 'De' : 'From', exact: true });
 				await expect(fromHour.locator('option[value="17"]')).toHaveText(fr ? '17 h' : '17:00');
 				await expect(page.locator('[data-map-reading-line-picker]:visible')).toHaveCount(1);
@@ -177,6 +180,17 @@ for (const provider of providers) {
 							const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
 							return text.measureText(label).width > select.clientWidth - padding;
 						}).length,
+						clippedLineInputs: [
+							...root.querySelectorAll<HTMLInputElement>('[data-map-reading-line-picker] input'),
+						].filter((input) => {
+							const style = getComputedStyle(input);
+							text.font = style.font;
+							const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+							return (
+								text.measureText(input.value || input.placeholder).width >
+								input.clientWidth - padding
+							);
+						}).length,
 						fields: [...controls].filter(
 							(control) => control.getBoundingClientRect().right > right + 0.5,
 						).length,
@@ -185,14 +199,17 @@ for (const provider of providers) {
 				expect(overflow.panel).toBe(0);
 				expect(overflow.fields).toBe(0);
 				expect(overflow.clippedSelects).toBe(0);
+				expect(overflow.clippedLineInputs).toBe(0);
 				const tags = panel.locator('[data-map-selected-lines] button[aria-label]');
 				await expect(tags).toHaveCount(3);
-				await expect(
-					panel.getByRole('button', {
-						name: fr ? `Retirer la ligne ${first.short}` : `Remove line ${first.short}`,
-						exact: true,
-					}),
-				).toBeVisible();
+				for (const { short, long } of provider.lines) {
+					await expect(
+						panel.getByRole('button', {
+							name: fr ? `Retirer la ligne ${short}, ${long}` : `Remove line ${short}, ${long}`,
+							exact: true,
+						}),
+					).toBeVisible();
+				}
 				const tapTargets = await tags.evaluateAll((buttons) =>
 					buttons.map((button) => {
 						const { width, height } = button.getBoundingClientRect();
