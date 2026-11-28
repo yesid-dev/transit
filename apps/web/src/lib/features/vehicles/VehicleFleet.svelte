@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { railCardStyle, railChoiceRow } from '#lib/components/shell/railCard.ts';
 	import { isSettled } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import { goto, replaceState } from '$app/navigation';
@@ -430,8 +431,8 @@
 
 {#snippet filters(context: SurfaceRailContext)}
 	{@const label = liveMode ? t('Line', 'Ligne') : t('Reporting', 'Signalement')}
-	<ControlsRail label={t('Filter', 'Filtrer')}>
-		<div class="grid w-full min-w-0 gap-1">
+	<ControlsRail label={t('Filter', 'Filtrer')} style={railCardStyle}>
+		<div class="w-full {railChoiceRow}">
 			<p aria-hidden="true" class="text-small text-muted-foreground">{label}</p>
 			<Combobox
 				options={liveMode ? lineOptions : reportingOptions}

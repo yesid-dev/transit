@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { railCardStyle } from '#lib/components/shell/railCard.ts';
 	import { isSettled, whenAll, type Awaitable, type Ready } from '#lib/site/ready.ts';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -369,7 +370,7 @@
 {/snippet}
 
 {#snippet controls()}
-	<ControlsRail label={t('Rank', 'Classer')}>
+	<ControlsRail label={t('Rank', 'Classer')} style={railCardStyle}>
 		<div class="grid w-full min-w-0 gap-2">
 			{@render choice(
 				t('Rank', 'Classer'),

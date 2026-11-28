@@ -122,12 +122,10 @@ describe('frame control state', () => {
 	it('describes pinned dates and their inclusive duration in either language', () => {
 		const { period } = state('/?period=7-days&recordFrom=2026-11-01&recordTo=2026-11-07');
 		expect(framePeriodSummary(period, 'en')).toEqual({
-			title: 'Last 7 complete days',
 			dates: '1 to 7 Nov 2026',
 			duration: '7 days',
 		});
 		expect(framePeriodSummary(period, 'fr')).toEqual({
-			title: '7 derniers jours complets',
 			dates: 'du 1 au 7 nov. 2026',
 			duration: '7 jours',
 		});

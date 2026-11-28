@@ -411,7 +411,7 @@ test('phone controls open a sheet and return focus to the pill', async ({ page }
 		sheet.getByRole('radiogroup', { name: 'Période', exact: true }).getByRole('radio'),
 	).toHaveCount(6);
 	await expect(sheet.getByRole('radio', { name: '12 mois', exact: true })).toBeVisible();
-	await expect(sheet.getByText('Le bilan commence le 13 octobre 2026.')).toBeVisible();
+	await expect(sheet.getByText('Bilan depuis le 13 octobre 2026.')).toBeVisible();
 	await expect(sheet.locator('[data-slot="frame-period-summary"]')).toContainText(
 		'du 8 au 14 nov. 2026',
 	);
