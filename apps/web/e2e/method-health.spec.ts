@@ -398,6 +398,30 @@ test('Download lays out the eight daily file cards in complete rows', async ({ p
 				).map((row) => row!.length),
 			);
 		expect(rows, `file cards at ${width}px`).toEqual(width === 390 ? Array(8).fill(1) : [4, 4]);
+		await expect(dailyFiles.locator('[data-slot="stamp"]:visible')).toHaveCount(
+			width === 390 ? 8 : 0,
+		);
+		if (width >= 1280) {
+			const blocks = await page.locator('.download-content').evaluate((content) => {
+				const selectors = [
+					'[data-screen-intro]',
+					'[data-slot="screen-answer"]',
+					'.download-licence',
+					'#daily-files',
+					'#reading-files',
+				];
+				return selectors.map((selector) => {
+					const { left, right } = content.querySelector(selector)!.getBoundingClientRect();
+					return [Math.round(left), Math.round(right)];
+				});
+			});
+			expect(blocks, `content edges at ${width}px`).toEqual(Array(5).fill(blocks[3]));
+			const helpCards = await page
+				.locator('#reading-files > *')
+				.evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
+			expect(helpCards).toEqual([helpCards[0], helpCards[0]]);
+			await expect(page.locator('[data-slot="screen-answer"] [data-slot="stamp"]')).toBeVisible();
+		}
 	}
 	await doubleText(page);
 	for (const width of [390, 1280]) {
