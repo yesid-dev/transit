@@ -73,7 +73,6 @@ it('renders localized registry content and marks a last-good catalog', async () 
 	});
 	const entry = document.getElementById(fixtureDelay.id)!;
 	expect(entry).toContainElement(trigger);
-	expect(entry).toHaveAttribute('data-open', 'false');
 	expect(trigger).toHaveAttribute('aria-expanded', 'false');
 	expect(entry).toHaveTextContent(fixtureDelay.text.fr.exclusions);
 	expect(entry).toHaveTextContent(fixtureDelay.text.fr.limits);
@@ -264,7 +263,7 @@ it.each([
 		expect(crowding).not.toHaveTextContent(
 			locale === 'fr' ? 'Ce que la mesure exclut' : 'What it leaves out',
 		);
-		expect(crowding.querySelectorAll('[data-record-disclosure]')).toHaveLength(1);
+		expect(crowding.querySelectorAll('[data-toc="family-crowding-notes"]')).toHaveLength(1);
 
 		const topCards = container.querySelectorAll<HTMLElement>('[data-slot="card"]');
 		for (const card of topCards) {
@@ -291,9 +290,8 @@ it('describes closed families in plain words and keeps their measures', async ()
 	const more = family.closest('[aria-labelledby="more-methods"]');
 	expect(more?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
 	const trigger = within(family).getByRole('button', {
-		name: /The on-time, early, late and delay measures, counted for one vehicle\.$/u,
+		description: 'The on-time, early, late and delay measures, counted for one vehicle.',
 	});
-	expect(family).toHaveAttribute('data-open', 'false');
 	expect(trigger).toHaveAttribute('aria-expanded', 'false');
 	const content = document.getElementById(trigger.getAttribute('aria-controls')!);
 	expect(content).toContainElement(document.getElementById('vehicle_early'));
@@ -328,15 +326,21 @@ it.each([
 	});
 	expect(document.querySelector('[data-record-pending][aria-busy="true"]')).not.toBeNull();
 	expect(
-		screen.getByRole('link', { name: 'The method of the first Transit site, until November 2026' }),
+		screen
+			.getAllByRole('link', { name: 'The method of the first Transit site, until November 2026' })
+			.at(-1),
 	).toBeVisible();
 	finish(settled);
-	const archive = await screen.findByRole('link', {
+	const links = await screen.findAllByRole('link', {
 		name: 'The method of the first Transit site, until November 2026',
 	});
+	const archive = links.at(-1);
 	expect(archive).toHaveAttribute('href', '/metrics/archive?provider=octranspo');
-	const section = archive.closest('[data-slot="page-section"]');
-	expect(section?.previousElementSibling).toHaveAttribute('data-slot', 'page-section-boundary');
+	expect(
+		document.querySelector(
+			'[data-slot="detail-shell-center"] a[href="/metrics/archive?provider=octranspo"]',
+		),
+	).toHaveTextContent('The method of the first Transit site, until November 2026');
 });
 
 it('renders absent readings and both not-measured reasons while methods can fail independently', async () => {
