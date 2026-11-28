@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { csvText } from '../src/tests/csv';
-import { textDefects } from './layout-helpers';
+import { doubleText, textDefects } from './layout-helpers';
 import { installHealthCapture } from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
@@ -380,4 +380,28 @@ test('Download offers every listed Parquet address in one file', async ({ page }
 	expect(download.suggestedFilename()).toBe('transit-file-addresses.txt');
 	const addresses = (await readFile((await download.path())!, 'utf8')).trim().split('\n');
 	expect(addresses).toEqual(expected);
+});
+
+test('Download lays out the eight daily file cards in complete rows', async ({ page }) => {
+	await page.goto(
+		'/download?provider=stm&frameMode=record&recordFrom=2026-11-14&recordTo=2026-11-20',
+	);
+	const dailyFiles = page.locator('#daily-files');
+	await expect(dailyFiles.getByRole('button', { name: 'See the layout and files' })).toHaveCount(8);
+	for (const width of [390, 1280, 1440, 1920]) {
+		await page.setViewportSize({ width, height: 900 });
+		const rows = await dailyFiles
+			.locator(':scope > *')
+			.evaluateAll((cards) =>
+				Object.values(
+					Object.groupBy(cards, (card) => Math.round(card.getBoundingClientRect().top)),
+				).map((row) => row!.length),
+			);
+		expect(rows, `file cards at ${width}px`).toEqual(width === 390 ? Array(8).fill(1) : [4, 4]);
+	}
+	await doubleText(page);
+	for (const width of [390, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		expect(await textDefects(page, '#daily-files'), `200% text at ${width}px`).toEqual([]);
+	}
 });

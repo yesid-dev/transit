@@ -168,7 +168,7 @@
 <Surface>
 	<RecordScreen>
 		<div data-slot="screen-content">
-			<RecordGroup
+			<RecordGroup class="@container/daily-files"
 				><div class="reading-column" data-screen-intro>
 					<ScreenTitle {title} {subtitle} compact />
 				</div>
@@ -541,6 +541,13 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 		gap: var(--space-card-gap);
+	}
+	@media screen and (min-width: 80rem) {
+		@container daily-files (min-width: 54rem) {
+			#daily-files {
+				grid-template-columns: repeat(4, minmax(0, 1fr));
+			}
+		}
 	}
 	.download-columns {
 		container-type: inline-size;
