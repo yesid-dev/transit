@@ -350,6 +350,12 @@ class Cut:
     def by_line(self) -> bool:
         return bool(self.lines) or self.direction is not None
 
+    @property
+    def hour_sql(self) -> str:
+        # A start after the end runs across midnight, as the other map readings do.
+        start, end = self.hours
+        return f"(hour >= ? {'AND' if start < end else 'OR'} hour < ?)"
+
 
 def _listed(files: Sequence[str]) -> str:
     return "[" + ", ".join(["?"] * len(files)) + "]"
@@ -379,7 +385,7 @@ def _cells_sql(
             parts.append(f"""
                 SELECT stretch_key, pass_seconds, speed_kmh, passes
                 FROM read_parquet({_listed(files)}, hive_partitioning = false)
-                WHERE hour >= ? AND hour < ? {type_cut} {"AND day_type = ?" if kind else ""}
+                WHERE {cut.hour_sql} {type_cut} {"AND day_type = ?" if kind else ""}
             """)
             summary += [*files, *typed, *([kind] if kind else [])]
         union = " UNION ALL ".join(parts)
@@ -394,7 +400,7 @@ def _cells_sql(
         join = f"""JOIN (SELECT DISTINCT service_date, trip_id FROM read_parquet({trips},
             hive_partitioning = false) WHERE route_type = ?) t USING (service_date, trip_id)"""
         parameters += [*trip_days, cut.route_type]
-    filters = ["p.gap_seconds <= ?", "p.moving_speed_kmh IS NOT NULL", "hour >= ?", "hour < ?"]
+    filters = ["p.gap_seconds <= ?", "p.moving_speed_kmh IS NOT NULL", cut.hour_sql]
     parameters += [MAX_GAP_SECONDS, *cut.hours]
     if cut.lines:
         filters.append("p.route_id = ANY(?)")

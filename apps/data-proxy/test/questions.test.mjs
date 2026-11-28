@@ -439,12 +439,14 @@ test("forwards stretch timing layers and falls back for engines without them", a
     direction: "1", time_band: "evening",
   });
   assert.equal((await f.fetch(`${speed}&route_type=3&hour_from=7&hour_to=9`)).status, 200);
+  assert.equal((await f.fetch(`${lost}&hour_from=22&hour_to=6`)).status, 200);
 
   const requestCount = f.requests.length;
   for (const path of [
     `${lost}&stop=12`,
     `${lost}&line=A&lines=${lines}`,
     `${speed}&hour=8&time_band=midday`,
+    `${lost}&hour_from=6&hour_to=6`,
     lost.replace("&view=map", ""),
     `${period}&measure=stretch_time_lost&group=segment`,
     `${period}&measure=mean_time_lost&group=stretch`,

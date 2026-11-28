@@ -246,6 +246,10 @@ def test_hours_and_vehicle_types_cut_the_counts(tmp_path: Path) -> None:
     assert noon["passes"] == _expected(shared, (12, 13))["passes"] == 45
     rail = _row(query(store, **LAYER, route_type=0), ("a", "b", 2, 1))
     assert rail["passes"] == 20 and rail["clear_run_seconds"] == 43  # 2nd fastest of 20
+    # A start after the end runs across midnight: 13:00 to 07:00 keeps 06:00, not noon.
+    for cut in ({}, {"lines": ("A",)}):
+        night = _row(query(store, **LAYER, **cut, hour_from=13, hour_to=7), ("a", "b", 2, 1))
+        assert night["passes"] == 1, cut
 
 
 def test_a_day_without_stretch_timing_is_not_measured(tmp_path: Path) -> None:
@@ -288,6 +292,7 @@ def test_a_receipt_must_name_files_of_the_right_size(tmp_path: Path) -> None:
         {**LAYER, "stop": "a"},
         {**LAYER, "line": "A", "lines": ("A",)},
         {**LAYER, "hour": 7, "time_band": "midday"},
+        {**LAYER, "hour_from": 6, "hour_to": 6},
     ],
 )
 def test_stretch_questions_are_map_layers_only(tmp_path: Path, cut: dict[str, Any]) -> None:
