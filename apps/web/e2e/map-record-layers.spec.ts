@@ -193,7 +193,7 @@ for (const provider of providers) {
 						: 'Time lost against the clear run';
 				await setup(page, provider);
 
-				for (const width of [390, 1440]) {
+				for (const width of waits ? [390, 1024, 1440] : [390, 1440]) {
 					const phone = width === 390;
 					await page.setViewportSize({ width, height: phone ? 844 : 900 });
 					const readingResponse = page.waitForResponse(
@@ -299,6 +299,27 @@ for (const provider of providers) {
 							page.locator('.map-surface').boundingBox(),
 						]);
 						expect(box!.y + box!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height + 1);
+						if (waits) {
+							const rail = page.locator('.app-frame-controls-rail:not(.surface-rail--mobile)');
+							await expect(rail).toBeVisible();
+							const outside = await rail.evaluate((node) => {
+								const panel = node.getBoundingClientRect();
+								return [...node.children].flatMap((child) =>
+									[...child.getClientRects()]
+										.filter(
+											(box) =>
+												box.width > 0 &&
+												box.height > 0 &&
+												(box.left < panel.left - 1 ||
+													box.right > panel.right + 1 ||
+													box.top < panel.top - 1 ||
+													box.bottom > panel.bottom + 1),
+										)
+										.map(() => child.getAttribute('data-slot') ?? child.tagName),
+								);
+							});
+							expect(outside, `left panel children at ${width}px`).toEqual([]);
+						}
 					}
 					if (phone) await closeMapInView(page);
 					await openMapControls(page);
