@@ -4,6 +4,7 @@ import io
 import json
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -16,6 +17,7 @@ from test_engine import FRIDAY, SATURDAY, THURSDAY, Poll, Trip, _build_store, ht
 
 from transit_engine import measures
 from transit_engine.clean_manifest import ALERTS, VEHICLE_POSITIONS
+from transit_engine.partials import PartialResults
 from transit_engine.server import Engine
 from transit_engine.store import Store
 
@@ -715,3 +717,36 @@ def test_declared_city_time_controls_alert_days_hours_and_departure_anchor(
     assert not wrong_hour["evidence"]["counts"]["classified"]
     hourly_trips = _get(store, "/measure", "on_time", **trip_scope, group="hour")["cells"]
     assert hourly_trips[local_hour]["evidence"]["counts"]["classified"] == 30
+
+
+def test_line_crowding_reuses_each_day_for_its_own_line_and_direction(
+    history: tuple[Store, list[Reading], dict[date, tuple[Notice, ...]]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = history[0]
+    cache = PartialResults()
+    cached = replace(store, partial_results=cache)
+    read_or_compute = cache.read_or_compute
+    misses = 0
+
+    def counted(key: tuple[str | None, ...], compute: Any) -> Any:
+        def miss() -> Any:
+            nonlocal misses
+            misses += 1
+            return compute()
+
+        return read_or_compute(key, miss)
+
+    monkeypatch.setattr(cache, "read_or_compute", counted)
+    cuts: list[dict[str, object]] = [{"line": "A", "direction": 0}, {"line": "A"}, {"line": "B"}]
+    for cut in cuts:
+        reference = _get(store, "/measure", "crowding", **cut)
+        reference["evidence"].pop("query_ms")
+        for answer in (
+            _get(cached, "/measure", "crowding", **cut),
+            _get(cached, "/measure", "crowding", **cut),
+        ):
+            answer["evidence"].pop("query_ms")
+            assert answer == reference
+    # Thursday and Saturday are measured; each cut computes each once.
+    assert misses == 2 * len(cuts)

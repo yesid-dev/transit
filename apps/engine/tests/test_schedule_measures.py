@@ -4,6 +4,7 @@ import json
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import duckdb
 import pytest
@@ -532,3 +533,41 @@ def test_service_offered_matches_schedule_only_recomputation(
     )
     assert status == 200
     assert json.loads(body)["value"] == answer["value"]
+
+
+def test_line_waiting_reuses_each_day_for_its_own_line_and_direction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trips = (
+        *(_trip("A", i, i * 5, 120 if i % 3 else 0) for i in range(25)),
+        *(_trip("B", i, 1 + i * 5, 60 if i % 4 else 0) for i in range(25)),
+    )
+    days = {THURSDAY: trips, FRIDAY: trips}
+    store = _build_store(tmp_path, 9, days, {day: _polls(-600, 9000) for day in days})
+    cache = PartialResults()
+    cached = replace(store, partial_results=cache)
+    read_or_compute = cache.read_or_compute
+    misses = 0
+
+    def counted(key: tuple[str | None, ...], compute: Any) -> Any:
+        def miss() -> Any:
+            nonlocal misses
+            misses += 1
+            return compute()
+
+        return read_or_compute(key, miss)
+
+    monkeypatch.setattr(cache, "read_or_compute", counted)
+    cuts: list[dict[str, Any]] = [{"line": "A"}, {"line": "A", "direction": 0}, {"line": "B"}, {}]
+    for cut in cuts:
+        reference = query(store, measure="waiting_and_gaps", end=FRIDAY, **cut)
+        reference["evidence"].pop("query_ms")
+        assert reference["state"] == "measured"
+        for answer in (
+            query(cached, measure="waiting_and_gaps", end=FRIDAY, **cut),
+            query(cached, measure="waiting_and_gaps", end=FRIDAY, **cut),
+        ):
+            answer["evidence"].pop("query_ms")
+            assert answer == reference
+    # Each cut computes each of its two days once; the second ask reuses them.
+    assert misses == 2 * len(cuts)
