@@ -2,6 +2,7 @@
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { RecordEvidence, RecordMeasure } from '#lib/server/engine.ts';
 	import { countedUnit } from '#lib/site/presenter.ts';
+	import { countedRecordDays } from '../record/recordText.ts';
 
 	type Evidence = RecordEvidence & Partial<Pick<RecordMeasure['evidence'], 'counts' | 'trip_ids'>>;
 	export function lineEvidenceSample(evidence: Evidence, locale: Locale) {
@@ -11,9 +12,7 @@
 				? null
 				: countedUnit(evidence.counts.classified, 'event', locale),
 			trips == null ? null : countedUnit(trips, 'trip', locale),
-			evidence.days_included.length
-				? countedUnit(evidence.days_included.length, 'day', locale)
-				: null,
+			countedRecordDays(evidence, locale),
 		]
 			.filter(Boolean)
 			.join(', ');

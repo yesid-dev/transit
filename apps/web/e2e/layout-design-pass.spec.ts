@@ -18,6 +18,109 @@ import { openFrameControls } from './frame-controls';
 import { textDefects } from './layout-helpers';
 
 const time = Date.parse('2026-11-23T16:00:00Z');
+
+const actionScreens = new Set<Screen>([
+	'lines',
+	'rankings-lines',
+	'network-health',
+	'overview',
+	'line-record',
+	'stops',
+	'stop-record',
+	'vehicles',
+	'vehicle-record',
+	'departure',
+	'alerts',
+	'data-health',
+	'daily',
+]);
+
+for (const { screen, locale, href } of designPassCases.filter(
+	({ screen, provider }) => provider === 'stm' && actionScreens.has(screen),
+)) {
+	test(`Record actions fit the desktop answer on ${screen} ${locale} @layout`, async ({
+		page,
+	}, info) => {
+		if (screen === 'alerts')
+			await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
+		const record = new URL(href, 'http://fixture');
+		record.searchParams.set('frameMode', 'record');
+		await page.goto(record.pathname + record.search);
+		const group = page
+			.getByRole('group', {
+				name: locale === 'fr' ? 'Actions du bilan' : 'Record actions',
+				exact: true,
+			})
+			.first();
+		await expect(group).toBeVisible();
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+		await page.evaluate(() => document.fonts.ready);
+		const order =
+			locale === 'fr'
+				? ['Copier le lien', 'Télécharger', 'Citer', 'Imprimer']
+				: ['Copy link', 'Download', 'Cite', 'Print'];
+		const layouts = [];
+		for (const width of [1024, 1280, 1440, 1920]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.evaluate(
+				() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+			);
+			const result = await group.evaluate((node) => {
+				function unwrappedWidth(element: Element) {
+					const copy = element.cloneNode(true) as HTMLElement;
+					Object.assign(copy.style, {
+						position: 'absolute',
+						visibility: 'hidden',
+						inlineSize: 'max-content',
+						maxInlineSize: 'none',
+					});
+					element.after(copy);
+					const width = copy.getBoundingClientRect().width;
+					copy.remove();
+					return width;
+				}
+				const answer = node.closest('[data-slot="record-answer"], [data-slot="screen-answer"]');
+				const width = (answer ?? node.parentElement!).getBoundingClientRect().width;
+				const buttons = [...node.querySelectorAll('button')].filter(
+					(button) => button.getClientRects().length,
+				);
+				const bounds = buttons.map((button) => button.getBoundingClientRect());
+				const counted = answer?.querySelector('[data-slot="answer-evidence"] p');
+				const range = document.createRange();
+				if (counted) range.selectNodeContents(counted);
+				return {
+					actionsFit: Math.ceil(unwrappedWidth(node)) <= width,
+					rows: new Set(bounds.map(({ top }) => Math.round(top))).size,
+					labels: buttons.map((button) => button.textContent?.trim()),
+					shortestTarget: Math.min(...bounds.map(({ width, height }) => Math.min(width, height))),
+					countedFits: counted && Math.ceil(unwrappedWidth(counted)) <= width,
+					countedLines: new Set([...range.getClientRects()].map(({ top }) => Math.round(top))).size,
+				};
+			});
+			layouts.push({ width, ...result });
+			const directory = process.env.TRANSIT_RECORD_ACTION_EVIDENCE;
+			if (directory && (width === 1440 || screen === 'lines')) {
+				await page.screenshot({
+					path: join(directory, `${screen}-${locale}-${width}.png`),
+					animations: 'disabled',
+				});
+			}
+			if (result.actionsFit) expect.soft(result.rows, `${width}px action rows`).toBe(1);
+			expect
+				.soft(result.labels, `${width}px action order`)
+				.toEqual(order.filter((label) => result.labels.includes(label)));
+			expect
+				.soft(result.shortestTarget, `${width}px minimum button target`)
+				.toBeGreaterThanOrEqual(44);
+			if (result.countedFits) expect.soft(result.countedLines, `${width}px counted lines`).toBe(1);
+		}
+		await info.attach('record-action-layout', {
+			body: JSON.stringify(layouts),
+			contentType: 'application/json',
+		});
+	});
+}
+
 const unobstructedCapture = '[data-slot="app-frame-chrome"] { visibility: hidden !important; }';
 const cohesionScreens = new Set<Screen>([
 	'alerts',

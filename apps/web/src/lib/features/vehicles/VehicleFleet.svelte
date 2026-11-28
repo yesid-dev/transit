@@ -54,7 +54,7 @@
 	import { getV1Runtime } from '#lib/v1/runtime.ts';
 	import type { RouteFile, Vehicle } from '#lib/v1/schemas/index.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
-	import { recordConnection, tally } from '../record/recordText.ts';
+	import { countedRecordDays, recordConnection, tally } from '../record/recordText.ts';
 	import { recordSectionLinks } from '../record/recordLinks.ts';
 	import AboutFigures from '../record/AboutFigures.svelte';
 	import AboutLiveFigures from '../record/AboutLiveFigures.svelte';
@@ -356,9 +356,7 @@
 						: `${countedUnit(record.daysInService, 'day', locale)} ${t('in service', 'en service')}`,
 					// A trip two vehicles shared counts once for each, so the sum is named for that.
 					record.trips === null ? '' : countedUnit(record.trips, 'trip-per-vehicle', locale),
-					record.evidence.days_included.length
-						? countedUnit(record.evidence.days_included.length, 'day', locale)
-						: '',
+					countedRecordDays(record.evidence, locale),
 				]
 					.filter(Boolean)
 					.join(', ')

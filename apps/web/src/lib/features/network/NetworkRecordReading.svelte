@@ -16,7 +16,7 @@
 	import WaitingFoot from '../home/WaitingFoot.svelte';
 	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import { skeletonBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
-	import { lastGoodNote, recordConnection } from '../record/recordText.ts';
+	import { countedRecordDays, lastGoodNote, recordConnection } from '../record/recordText.ts';
 
 	let {
 		answer,
@@ -65,9 +65,7 @@
 		].filter(Boolean);
 		// A foot says what was counted over the days; the days alone say nothing.
 		if (!counted.length) return null;
-		return [...counted, countedUnit(result.evidence.days_included.length, 'day', locale)].join(
-			', ',
-		);
+		return [...counted, countedRecordDays(result.evidence, locale)].filter(Boolean).join(', ');
 	}
 </script>
 

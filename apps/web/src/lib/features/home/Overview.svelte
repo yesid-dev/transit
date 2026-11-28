@@ -50,6 +50,7 @@
 	import { recordSectionLinks } from '../record/recordLinks.ts';
 	import { unsettledTrips } from '../record/tripOutcomes.ts';
 	import {
+		countedRecordDays,
 		lastGoodNote,
 		recordConnection,
 		timingBasis,
@@ -231,7 +232,13 @@
 				delivery.kind === 'answer' && delivery.answer.state === 'measured'
 					? delivery.answer.evidence.counts.ran
 					: null}
-			{@const counted = recordCounts(events, trips, days, locale)}
+			{@const sample = current.kind === 'answer' ? current.answer.evidence : undefined}
+			{@const counted = recordCounts(
+				events,
+				trips,
+				sample ? countedRecordDays(sample, locale) : '',
+				locale,
+			)}
 			{#if counted}
 				<RecordEvidenceLine
 					{locale}
@@ -405,7 +412,12 @@
 			key: 'counted',
 			label: t.counted,
 			waiting,
-			text: recordCounts(events, trips, days, locale),
+			text: recordCounts(
+				events,
+				trips,
+				current ? countedRecordDays(current.evidence, locale) : '',
+				locale,
+			),
 		},
 		{
 			key: 'observed',

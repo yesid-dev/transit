@@ -36,6 +36,7 @@
 	import { recordState, recordStateFor } from '#lib/features/record/recordStates.ts';
 	import {
 		choose,
+		countedRecordDays,
 		lastGoodNote,
 		lowCoverageText,
 		measuredShare,
@@ -450,9 +451,7 @@
 		value != null && trips != null
 			? [punctualityText, t(', and ', ', et '), deliveryText, '.'].join('')
 			: [punctualityText + '.', delivery ? deliveryText + '.' : ''].filter(Boolean).join(' ')}
-	<div
-		class="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_fit-content(48%)] xl:gap-6 print:block"
-	>
+	<div class="grid min-w-0 gap-2 print:block">
 		<RecordAnswer
 			locale={lang}
 			value={value == null ? null : recordPercent(value, lang)}
@@ -463,11 +462,10 @@
 			{#snippet meta()}
 				{@const currentSample = punctuality?.evidence.counts.classified}
 				{@const ran = service?.evidence.counts.ran}
-				{@const days = punctuality?.evidence.days_included.length}
 				{@const sample = recordCounts(
 					currentSample,
 					ran,
-					days ? countedUnit(days, 'day', lang) : '',
+					punctuality ? countedRecordDays(punctuality.evidence, lang) : '',
 					lang,
 				)}
 				{#if bounds}<p>{bounds}</p>{/if}
@@ -500,7 +498,6 @@
 
 {#snippet about(current: RecordMeasure | undefined, waiting = false)}
 	{@const counts = current?.evidence.counts}
-	{@const days = current?.evidence.days_included.length}
 	{@const observed = current?.evidence.share_observed}
 	{@const fields = [
 		{ key: 'period', label: copy.period, text: period ? dateRange(period, lang) : null },
@@ -511,7 +508,7 @@
 			text: recordCounts(
 				counts?.classified,
 				null,
-				days ? countedUnit(days, 'day', lang) : '',
+				current ? countedRecordDays(current.evidence, lang) : '',
 				lang,
 			),
 		},

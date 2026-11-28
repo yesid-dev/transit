@@ -56,7 +56,6 @@
 		class="answer-grid"
 		class:with-heading={Boolean(heading)}
 		class:has-actions={Boolean(actions)}
-		class:wide-details={Boolean(meta) && !comparison && !evidence}
 		class:has-statement={Boolean(statement)}
 		class:aside
 		class:one-row={!secondRow}
@@ -145,26 +144,28 @@
 	/* From a tablet's reading width the actions sit at the right of the stamp and what was counted.
 	   A comparison line keeps the full width, with the actions under it; so does an answer with no
 	   figure, which keeps the height its figure-sized placeholder reserved. */
-	@container (min-width: 36rem) {
-		.has-actions:where(.short-context) {
-			grid-template-areas: 'statement statement' 'context actions';
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-		.with-heading.has-actions:where(.short-context) {
-			grid-template-areas: 'heading heading' 'statement statement' 'context actions';
-		}
-		.with-heading.has-actions:where(.short-context) .answer-heading {
-			grid-area: heading;
-		}
-		.has-actions:where(.short-context) .answer-statement {
-			grid-area: statement;
-		}
-		.has-actions:where(.short-context) .answer-context {
-			grid-area: context;
-		}
-		.has-actions:where(.short-context) .answer-actions {
-			grid-area: actions;
-			justify-content: end;
+	@media (width < 64rem) {
+		@container (min-width: 36rem) {
+			.has-actions:where(.short-context) {
+				grid-template-areas: 'statement statement' 'context actions';
+				grid-template-columns: minmax(0, 1fr) auto;
+			}
+			.with-heading.has-actions:where(.short-context) {
+				grid-template-areas: 'heading heading' 'statement statement' 'context actions';
+			}
+			.with-heading.has-actions:where(.short-context) .answer-heading {
+				grid-area: heading;
+			}
+			.has-actions:where(.short-context) .answer-statement {
+				grid-area: statement;
+			}
+			.has-actions:where(.short-context) .answer-context {
+				grid-area: context;
+			}
+			.has-actions:where(.short-context) .answer-actions {
+				grid-area: actions;
+				justify-content: end;
+			}
 		}
 	}
 	/* On a desktop they move up beside the figure, and the context line takes the full width. */
@@ -216,27 +217,10 @@
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
 		.with-heading.aside.has-actions {
-			--answer-actions-track: 20rem;
-			grid-template-areas: 'heading stamp actions' 'statement statement details';
-			grid-template-columns: minmax(0, 1fr) max-content var(--answer-actions-track);
+			grid-template-areas: 'heading stamp actions' 'statement statement statement' 'details details details';
+			grid-template-columns: minmax(0, 1fr) max-content max-content;
 			column-gap: 1rem;
 			align-items: start;
-		}
-		.with-heading.aside.has-actions:lang(fr) {
-			--answer-actions-track: 23rem;
-		}
-		/* Let a long evidence line start below the stamp without narrowing the title above it. */
-		.with-heading.aside.has-actions.wide-details {
-			--details-extension: max(0rem, calc(46% - var(--answer-actions-track)));
-			grid-template-areas: 'heading stamp stamp actions' 'statement statement details details';
-			grid-template-columns: minmax(0, 1fr) max-content var(--details-extension) var(
-					--answer-actions-track
-				);
-			column-gap: 0;
-		}
-		.with-heading.aside.has-actions.wide-details > :is(.answer-heading, .answer-statement),
-		.with-heading.aside.has-actions.wide-details .answer-stamp {
-			margin-inline-end: 1rem;
 		}
 		.with-heading.aside.has-actions.one-row {
 			grid-template-areas: 'heading stamp actions' 'statement statement statement';

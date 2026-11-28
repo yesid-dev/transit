@@ -5,6 +5,7 @@
 </script>
 
 <script lang="ts">
+	import { page } from '$app/state';
 	import { Card } from '@yesid/ui/card';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Snippet } from 'svelte';
@@ -121,7 +122,7 @@
 			</div>
 			{#if s.shape === 'answer'}
 				<div class="answer-actions flex flex-wrap gap-2">
-					{#each range(liveAnswer ? 2 : 3) as action (action)}
+					{#each range(liveAnswer ? 2 : page.url?.searchParams.get('frameMode') === 'record' ? 4 : 3) as action (action)}
 						<div class="answer-action-placeholder"><Skeleton class="h-11 w-full" /></div>
 					{/each}
 				</div>
@@ -369,6 +370,37 @@
 		inline-size: 6rem;
 		max-inline-size: 100%;
 	}
+	@media (width < 64rem) {
+		.answer-action-placeholder:nth-child(4) {
+			display: none;
+		}
+	}
+	@media (width >= 64rem) {
+		.answer-action-placeholder:nth-child(1) {
+			inline-size: 6.875rem;
+		}
+		.answer-action-placeholder:nth-child(2) {
+			inline-size: 7.1875rem;
+		}
+		.answer-action-placeholder:nth-child(3) {
+			inline-size: 4.4375rem;
+		}
+		.answer-action-placeholder:nth-child(4) {
+			inline-size: 5rem;
+		}
+		:lang(fr) .answer-action-placeholder:nth-child(1) {
+			inline-size: 8.5625rem;
+		}
+		:lang(fr) .answer-action-placeholder:nth-child(2) {
+			inline-size: 8.0625rem;
+		}
+		:lang(fr) .answer-action-placeholder:nth-child(3) {
+			inline-size: 4.8125rem;
+		}
+		:lang(fr) .answer-action-placeholder:nth-child(4) {
+			inline-size: 6.5rem;
+		}
+	}
 	@container (inline-size < 36rem) {
 		/* Match the space taken by Copy link, Download and Cite in their reading order. */
 		.with-heading:not(.short-context, .live-answer) .answer-action-placeholder:nth-child(1) {
@@ -405,26 +437,28 @@
 		min-inline-size: 0;
 	}
 	/* As RecordAnswer: beside a short context from 36rem; under a comparison line until 52rem. */
-	@container (min-width: 36rem) {
-		.with-actions.short-context {
-			grid-template-areas: 'statement statement' 'context actions';
-			grid-template-columns: minmax(0, 1fr) auto;
-		}
-		.with-heading.with-actions:where(.short-context) {
-			grid-template-areas: 'heading heading' 'statement statement' 'context actions';
-		}
-		.with-heading.with-actions:where(.short-context) > .answer-heading {
-			grid-area: heading;
-		}
-		.with-actions.short-context > .answer-statement {
-			grid-area: statement;
-		}
-		.with-actions.short-context > .answer-context {
-			grid-area: context;
-		}
-		.with-actions.short-context > .answer-actions {
-			grid-area: actions;
-			align-self: center;
+	@media (width < 64rem) {
+		@container (min-width: 36rem) {
+			.with-actions.short-context {
+				grid-template-areas: 'statement statement' 'context actions';
+				grid-template-columns: minmax(0, 1fr) auto;
+			}
+			.with-heading.with-actions:where(.short-context) {
+				grid-template-areas: 'heading heading' 'statement statement' 'context actions';
+			}
+			.with-heading.with-actions:where(.short-context) > .answer-heading {
+				grid-area: heading;
+			}
+			.with-actions.short-context > .answer-statement {
+				grid-area: statement;
+			}
+			.with-actions.short-context > .answer-context {
+				grid-area: context;
+			}
+			.with-actions.short-context > .answer-actions {
+				grid-area: actions;
+				align-self: center;
+			}
 		}
 	}
 	@container (min-width: 52rem) {
@@ -454,12 +488,9 @@
 			grid-template-columns: minmax(0, 1fr) auto auto;
 		}
 		.with-heading.with-actions {
-			grid-template-areas: 'heading stamp actions' 'statement statement evidence';
-			grid-template-columns: minmax(0, 1fr) 14rem 20rem;
+			grid-template-areas: 'heading stamp actions' 'statement statement statement' 'evidence evidence evidence';
+			grid-template-columns: minmax(0, 1fr) max-content max-content;
 			column-gap: 1rem;
-		}
-		.with-heading.with-actions:lang(fr) {
-			grid-template-columns: minmax(0, 1fr) 15rem 23rem;
 		}
 		.live-answer.with-actions {
 			grid-template-areas: 'statement stamp actions';

@@ -1,5 +1,5 @@
 import { intl, type Locale } from '#lib/i18n/index.ts';
-import { recordPercent } from '#lib/site/presenter.ts';
+import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
 import type {
 	EngineResult,
 	RankingsRecord,
@@ -123,14 +123,28 @@ export function coverageText(evidence: RateEvidence, locale: Locale) {
 	return [coverage, low_coverage ? lowCoverageLabel[locale] : ''].filter(Boolean).join(' · ');
 }
 
-export function periodCoverage(
-	evidence: Pick<RecordEvidence, 'start_date' | 'end_date' | 'days_included'>,
-	locale: Locale,
-) {
-	const days = tally(
-		(Date.parse(evidence.end_date) - Date.parse(evidence.start_date)) / 86_400_000 + 1,
-		locale,
-	);
+type EvidenceDays = Pick<RecordEvidence, 'start_date' | 'end_date' | 'days_included'>;
+
+function selectedDays(evidence: EvidenceDays) {
+	return (Date.parse(evidence.end_date) - Date.parse(evidence.start_date)) / 86_400_000 + 1;
+}
+
+export function countedRecordDays(evidence: EvidenceDays, locale: Locale) {
+	const included = evidence.days_included.length;
+	if (!included) return '';
+	const days = selectedDays(evidence);
+	if (included < days) {
+		return choose(
+			locale,
+			`${tally(included, locale)} of the ${tally(days, locale)} days`,
+			`${tally(included, locale)} des ${tally(days, locale)} jours`,
+		);
+	}
+	return countedUnit(included, 'day', locale);
+}
+
+export function periodCoverage(evidence: EvidenceDays, locale: Locale) {
+	const days = tally(selectedDays(evidence), locale);
 	const included = tally(evidence.days_included.length, locale);
 	return choose(
 		locale,

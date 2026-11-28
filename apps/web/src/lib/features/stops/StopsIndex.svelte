@@ -54,7 +54,7 @@
 	import ScreenTitle from '../record/ScreenTitle.svelte';
 	import { finderCells, finderCsv, finderRecordUrl, finderShare } from '../record/finderText.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
-	import { recordConnection, tally, timingBasis } from '../record/recordText.ts';
+	import { countedRecordDays, recordConnection, tally, timingBasis } from '../record/recordText.ts';
 	import { indexCopy, stopErrorLink } from './stops.copy.ts';
 	import {
 		stopPageSize,
@@ -156,9 +156,7 @@
 		recordCounts(
 			counts?.classified,
 			counts?.ran,
-			evidence?.days_included.length
-				? countedUnit(evidence.days_included.length, 'day', locale)
-				: '',
+			evidence ? countedRecordDays(evidence, locale) : '',
 			locale,
 		),
 	);
