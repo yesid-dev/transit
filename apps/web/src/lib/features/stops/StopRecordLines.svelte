@@ -128,7 +128,7 @@
 {/snippet}
 
 {#snippet waitingValue(row: Row, id: (typeof waitingMeasures)[number][0])}
-	<div class:waiting-explanation={id === waitingMeasures[0][0]}>
+	<div class="waiting-cell" class:waiting-explanation={id === waitingMeasures[0][0]}>
 		{#if row.coverageGap}
 			{#if id === waitingMeasures[0][0]}<span class="font-sans">{row.coverageGap}</span>{/if}
 		{:else}
@@ -191,6 +191,13 @@
 {/if}
 
 <style>
+	/* On a phone the kit joins a row's cells with a middle dot: an inline cell keeps the dot beside
+	   its reading instead of alone on a line above it. */
+	@container (inline-size < 38rem) {
+		.waiting-cell {
+			display: inline;
+		}
+	}
 	@container (inline-size >= 38rem) {
 		.waiting-explanation {
 			min-inline-size: min(16rem, 30cqi);

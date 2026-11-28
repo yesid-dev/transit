@@ -13,7 +13,8 @@ export const refreshCopy = {
 		recordUnchanged: (time: string, date: string) =>
 			`${sentence(`Données en direct mises à jour à ${time}`)} ${sentence(`Le bilan n’a pas changé depuis le ${date}`)}`,
 		recordNew: (date: string) =>
-			sentence(`Mise à jour terminée. Un nouveau bilan est publié : données jusqu’au ${date}`),
-		failed: (time: string) => sentence(`Actualisation impossible. Données affichées : ${time}`),
+			sentence(`Mise à jour terminée. Un nouveau bilan est publié\u00a0: données jusqu’au ${date}`),
+		failed: (time: string) =>
+			sentence(`Actualisation impossible. Données affichées\u00a0: ${time}`),
 	},
 };

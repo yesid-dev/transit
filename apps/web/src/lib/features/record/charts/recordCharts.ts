@@ -22,6 +22,7 @@ import {
 	recordDate,
 	recordPercent,
 	stopTrendGap,
+	stopTrendNone,
 } from '#lib/site/presenter.ts';
 import { choose, measuredShare, tally } from '../recordText.ts';
 import { recordState, type RecordState } from '../recordStates.ts';
@@ -219,11 +220,34 @@ export function hourGridNote(series: RecordSeries, locale: Locale) {
 	)}`;
 }
 
-/** A grid with no hour to judge: some hours too few, none with a reading. */
-export function hourGridTooFew(series: RecordSeries) {
-	return (
-		series.cells.some(({ state }) => state === 'too_few_to_judge') &&
-		!series.cells.some((cell) => measuredShare(cell, 'late') !== null)
+/**
+ * A grid with no hour to judge says its state once instead of drawing empty cells: too few when
+ * some hour had stop arrivals under the minimum, not measured when no hour had a reading at all.
+ */
+export function hourGridEmpty(series: RecordSeries): 'too_few_to_judge' | 'not_measured' | null {
+	if (!series.cells.length || series.cells.some((cell) => measuredShare(cell, 'late') !== null))
+		return null;
+	return series.cells.some(({ state }) => state === 'too_few_to_judge')
+		? 'too_few_to_judge'
+		: 'not_measured';
+}
+
+/**
+ * The ISO weekdays (Monday 1) a period covers. A week or more covers all seven; a shorter period
+ * (Yesterday) only its own days, so the grid draws no row for a weekday outside the dates.
+ */
+export function periodWeekdays(start: string, end: string): Set<number> {
+	const first = Date.parse(`${start}T00:00:00Z`);
+	const last = Date.parse(`${end}T00:00:00Z`);
+	const all = new Set([1, 2, 3, 4, 5, 6, 7]);
+	if (!Number.isFinite(first) || !Number.isFinite(last) || last < first) return all;
+	const days = Math.round((last - first) / 86_400_000) + 1;
+	if (days >= 7) return all;
+	return new Set(
+		Array.from(
+			{ length: days },
+			(_, i) => ((new Date(first + i * 86_400_000).getUTCDay() + 6) % 7) + 1,
+		),
 	);
 }
 
@@ -237,7 +261,7 @@ export function hourChart(
 	const none = choose(locale, 'No service at that hour', 'Aucun service à cette heure');
 	const stateLabels = {
 		few:
-			choose(locale, 'few: too few to judge', 'peu : trop peu de données pour conclure') +
+			choose(locale, 'few: too few to judge', 'peu\u00a0: trop peu de données pour conclure') +
 			(minimum == null
 				? ''
 				: choose(
@@ -245,7 +269,11 @@ export function hourChart(
 						`, under ${countedUnit(minimum, 'event', locale)}`,
 						`, moins de ${countedUnit(minimum, 'event', locale)}`,
 					)),
-		none: choose(locale, 'none: no service at that hour', 'aucun : aucun service à cette heure'),
+		none: choose(
+			locale,
+			'none: no service at that hour',
+			'aucun\u00a0: aucun service à cette heure',
+		),
 		unmeasured: recordState('not_measured')[locale],
 	};
 	const cells = new Map(series.cells.map((cell) => [`${cell.key.weekday}/${cell.key.hour}`, cell]));
@@ -254,71 +282,82 @@ export function hourChart(
 		label: choose(locale, String(hour).padStart(2, '0'), `${hour} h`),
 	}));
 	const tableRows: ChartTable['rows'] = [];
-	const rows = Array.from({ length: 7 }, (_, index) => {
-		const id = String(index + 1);
-		const monday = new Date(Date.UTC(2024, 0, index + 1));
-		const weekday = (width: 'short' | 'long') =>
-			intl.dateTime(locale, { weekday: width, timeZone: 'UTC' }).format(monday);
-		const day = weekday('long');
-		return {
-			id,
-			label: weekday('short'),
-			cells: columns.map(({ id: hour }): HourGridCell => {
-				const reading = cells.get(`${id}/${hour}`);
-				const counts = reading?.evidence.counts;
-				const value = measuredShare(reading, 'late');
-				const context = `${day}, ${readerClock(Number(hour), 0, locale)}`;
-				const count = counts?.classified;
-				const detail = count == null ? undefined : countedUnit(count, 'event', locale);
-				const separator = choose(locale, ': ', '\u00a0: ');
-				if (value !== null) {
-					const share = recordPercent(value, locale);
-					const status = choose(locale, `${share} late`, `${share} en retard`);
-					tableRows.push({ id: context, label: context, value: share, detail });
+	// A weekday outside a short period (Yesterday) is an empty row: drop it. A weekday that holds
+	// a reading always keeps its row, and a week or more keeps all seven.
+	const weekdays = periodWeekdays(series.evidence.start_date, series.evidence.end_date);
+	const read = new Set(
+		series.cells.flatMap((cell) =>
+			measuredShare(cell, 'late') === null ? [] : [Number(cell.key.weekday)],
+		),
+	);
+	const rows = Array.from({ length: 7 }, (_, index) => index + 1)
+		.filter((isoDay) => weekdays.has(isoDay) || read.has(isoDay))
+		.map((isoDay) => {
+			const index = isoDay - 1;
+			const id = String(isoDay);
+			const monday = new Date(Date.UTC(2024, 0, index + 1));
+			const weekday = (width: 'short' | 'long') =>
+				intl.dateTime(locale, { weekday: width, timeZone: 'UTC' }).format(monday);
+			const day = weekday('long');
+			return {
+				id,
+				label: weekday('short'),
+				cells: columns.map(({ id: hour }): HourGridCell => {
+					const reading = cells.get(`${id}/${hour}`);
+					const counts = reading?.evidence.counts;
+					const value = measuredShare(reading, 'late');
+					const context = `${day}, ${readerClock(Number(hour), 0, locale)}`;
+					const count = counts?.classified;
+					const detail = count == null ? undefined : countedUnit(count, 'event', locale);
+					const separator = choose(locale, ': ', '\u00a0: ');
+					if (value !== null) {
+						const share = recordPercent(value, locale);
+						const status = choose(locale, `${share} late`, `${share} en retard`);
+						tableRows.push({ id: context, label: context, value: share, detail });
+						return {
+							text: tally(value * 100, locale),
+							level: hourLevels.filter((floor) => value >= floor).length as NonNullable<
+								HourGridCell['level']
+							>,
+							name: [context + separator + status, detail].filter(Boolean).join(', '),
+						};
+					}
+					const tooFew = reading?.state === 'too_few_to_judge';
+					const noService =
+						reading?.state === 'unknown' &&
+						counts?.scheduled === 0 &&
+						!reading.evidence.excluded?.route_without_live_data;
+					const state = tooFew ? 'few' : noService ? 'none' : 'unmeasured';
+					const status =
+						state === 'unmeasured'
+							? recordState(chartState(reading?.state))[locale]
+							: tooFew
+								? few
+								: none;
+					const text = tooFew
+						? choose(locale, 'few', 'peu')
+						: noService
+							? choose(locale, 'none', 'aucun')
+							: '□';
+					tableRows.push({
+						id: context,
+						label: context,
+						value: status,
+						detail: tooFew ? detail : undefined,
+					});
 					return {
-						text: tally(value * 100, locale),
-						level: hourLevels.filter((floor) => value >= floor).length as NonNullable<
-							HourGridCell['level']
-						>,
-						name: [context + separator + status, detail].filter(Boolean).join(', '),
+						text,
+						level: null,
+						state,
+						name:
+							context +
+							separator +
+							status.toLocaleLowerCase(locale) +
+							(tooFew && detail ? ` (${detail})` : ''),
 					};
-				}
-				const tooFew = reading?.state === 'too_few_to_judge';
-				const noService =
-					reading?.state === 'unknown' &&
-					counts?.scheduled === 0 &&
-					!reading.evidence.excluded?.route_without_live_data;
-				const state = tooFew ? 'few' : noService ? 'none' : 'unmeasured';
-				const status =
-					state === 'unmeasured'
-						? recordState(chartState(reading?.state))[locale]
-						: tooFew
-							? few
-							: none;
-				const text = tooFew
-					? choose(locale, 'few', 'peu')
-					: noService
-						? choose(locale, 'none', 'aucun')
-						: '□';
-				tableRows.push({
-					id: context,
-					label: context,
-					value: status,
-					detail: tooFew ? detail : undefined,
-				});
-				return {
-					text,
-					level: null,
-					state,
-					name:
-						context +
-						separator +
-						status.toLocaleLowerCase(locale) +
-						(tooFew && detail ? ` (${detail})` : ''),
-				};
-			}),
-		};
-	});
+				}),
+			};
+		});
 	const shownStates = new Set(rows.flatMap(({ cells }) => cells.map(({ state }) => state)));
 	return {
 		props: {
@@ -331,7 +370,7 @@ export function hourChart(
 				unmeasured: shownStates.has('unmeasured') ? stateLabels.unmeasured : '',
 			},
 			scale: {
-				label: choose(locale, 'Late share, in percent:', 'Part en retard, en pourcentage :'),
+				label: choose(locale, 'Late share, in percent:', 'Part en retard, en pourcentage\u00a0:'),
 				steps:
 					locale === 'fr'
 						? ['moins de 10', '10 à 15', '15 à 20', '20 à 25', '25 et plus']
@@ -411,7 +450,9 @@ export function trendChart(
 					series.cells.every(({ state }) => state === 'too_few_to_judge'),
 					locale,
 				)
-			: undefined;
+			: stop && !points.some(({ y }) => y !== null)
+				? stopTrendNone(Boolean(network), locale)
+				: undefined;
 	const networkLabel = network ? choose(locale, 'Network', 'Réseau') : undefined;
 	return {
 		props: {

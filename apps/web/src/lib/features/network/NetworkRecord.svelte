@@ -336,7 +336,7 @@
 							>
 								{#snippet meta()}
 									{#if answer.evidence.counts.classified != null}
-										<p>{term.counted}{t(':', ' :')} {sample(answer)}</p>
+										<p>{term.counted}{t(':', '\u00a0:')} {sample(answer)}</p>
 									{/if}
 								{/snippet}
 								{#snippet actions()}

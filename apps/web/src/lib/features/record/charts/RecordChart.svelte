@@ -14,7 +14,7 @@
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { type Locale } from '#lib/i18n/index.ts';
 	import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/engine.ts';
-	import { countedUnit, tooFewHours } from '#lib/site/presenter.ts';
+	import { countedUnit, noHourObserved, tooFewHours } from '#lib/site/presenter.ts';
 	import GoodToBadHourGrid from '#lib/components/dataviz/GoodToBadHourGrid.svelte';
 	import RecordDataTable from '../RecordDataTable.svelte';
 	import { tally } from '../recordText.ts';
@@ -27,7 +27,7 @@
 		histogramChart,
 		hourChart,
 		hourGridNote,
-		hourGridTooFew,
+		hourGridEmpty,
 		minimumSample,
 		stopLadderChart,
 		trendChart,
@@ -91,14 +91,19 @@
 		})),
 	);
 	/** An hour grid with no hour to judge says so once, with its count, and shows no grid. */
-	const fewHours = $derived.by(() => {
-		if (input.kind !== 'hours' || !hourGridTooFew(input.answer)) return null;
+	const emptyHours = $derived.by(() => {
+		const state = input.kind === 'hours' ? hourGridEmpty(input.answer) : null;
+		if (input.kind !== 'hours' || state === null) return null;
+		if (state === 'not_measured') return { state, text: noHourObserved(locale) };
 		const total = input.answer.cells.reduce(
 			(sum, cell) => sum + (cell.evidence.counts.classified ?? 0),
 			0,
 		);
 		const minimum = minimumSample(input.answer, 'late') ?? null;
-		return tooFewHours(total, input.answer.evidence.days_included.length, minimum, locale);
+		return {
+			state,
+			text: tooFewHours(total, input.answer.evidence.days_included.length, minimum, locale),
+		};
 	});
 	// The count stays in its own column, not under the name.
 	const tableRows = $derived(
@@ -124,8 +129,8 @@
 {#snippet detail(row: Row)}{row.count ?? ''}{/snippet}
 
 <div {id} class="grid min-w-0 gap-2" class:grow={fill}>
-	{#if fewHours}
-		<p><StateMark state="too_few_to_judge" {locale} /> {fewHours}</p>
+	{#if emptyHours}
+		<p><StateMark state={emptyHours.state} {locale} /> {emptyHours.text}</p>
 	{:else if table && reading.table.rows.length}
 		<RecordDataTable
 			{locale}

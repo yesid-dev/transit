@@ -4,9 +4,12 @@
 	import { BandBar, type BandBarBand } from '@yesid/ui/chart';
 	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import type { Snippet } from 'svelte';
+	import { getLocale } from '#lib/i18n/index.ts';
 
 	let { label, bands, absent }: { label: string; bands: readonly BandBarBand[]; absent?: Snippet } =
 		$props();
+	// The tooltip's heading names the band; its row says what the figure is, never the name again.
+	const share = getLocale() === 'fr' ? 'Part' : 'Share';
 	const readings = $derived(
 		bands
 			.filter(({ share }) => Number.isFinite(share) && share > 0)
@@ -14,7 +17,7 @@
 				key: band.id,
 				heading: band.label,
 				rows: [
-					{ label: band.label, value: band.valueLabel },
+					{ label: share, value: band.valueLabel },
 					...(band.detail ? [{ label: '', value: band.detail }] : []),
 				],
 			})),

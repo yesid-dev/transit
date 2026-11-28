@@ -37,9 +37,9 @@ export const verdictCopy = defineCopy({
 		tentative: ({ window, otp, n, lo, hi }) =>
 			`Fiabilité incertaine ${window}\u00a0: ${otp}\u00a0% de ${n} relevés de retard dans la plage de ponctualité (IC 95\u00a0%\u00a0: ${lo}–${hi}\u00a0%).`,
 		unknownCount: () =>
-			'Relevés insuffisants pour juger la fiabilité : nombre d’observations inconnu.',
+			'Relevés insuffisants pour juger la fiabilité\u00a0: nombre d’observations inconnu.',
 		unavailableInterval: (window, n) =>
-			`Fiabilité incertaine ${window} : ${n} relevés de retard, mais aucune plage d’incertitude exploitable.`,
+			`Fiabilité incertaine ${window}\u00a0: ${n} relevés de retard, mais aucune plage d’incertitude exploitable.`,
 		tooFew: (window: string, n: number) =>
 			`Relevés insuffisants ${window} (${n}) pour juger la fiabilité.`,
 		absent: 'Aucun relevé de retard disponible pour juger la fiabilité.',

@@ -5,7 +5,7 @@ import {
 	histogramChart,
 	hourChart,
 	hourGridNote,
-	hourGridTooFew,
+	hourGridEmpty,
 	rangeChart,
 	stopLadderChart,
 	trendChart,
@@ -391,12 +391,77 @@ describe('hour grid with no hour to judge', () => {
 
 	it('collapses when some hours are too few and none has a reading', () => {
 		const series = { cells: [few(8), few(9), unmeasured] } as unknown as RecordSeries;
-		expect(hourGridTooFew(series)).toBe(true);
+		expect(hourGridEmpty(series)).toBe('too_few_to_judge');
 	});
 
-	it('keeps the grid when one hour has a reading or none is too few', () => {
-		const measured = cell({ weekday: 1, hour: 10 });
-		expect(hourGridTooFew({ cells: [few(8), measured] } as unknown as RecordSeries)).toBe(false);
-		expect(hourGridTooFew({ cells: [unmeasured] } as unknown as RecordSeries)).toBe(false);
+	it('collapses to not measured when no hour was observed at all', () => {
+		// A stop with 0 observed of 1 scheduled arrival: one unmeasured hour, never a 1-column grid.
+		expect(hourGridEmpty({ cells: [unmeasured] } as unknown as RecordSeries)).toBe('not_measured');
 	});
+
+	it('keeps the grid when one hour has a reading', () => {
+		const measured = cell({ weekday: 1, hour: 10 });
+		expect(hourGridEmpty({ cells: [few(8), measured] } as unknown as RecordSeries)).toBeNull();
+		expect(hourGridEmpty({ cells: [unmeasured, measured] } as unknown as RecordSeries)).toBeNull();
+		expect(hourGridEmpty({ cells: [] } as unknown as RecordSeries)).toBeNull();
+	});
+});
+
+describe('record grid and trend for a thin period', () => {
+	it('draws only the weekdays a period shorter than a week covers', () => {
+		const yesterday = {
+			cells: [cell({ weekday: 4, hour: 8 })],
+			evidence: { start_date: '2026-11-26', end_date: '2026-11-26', days_not_measured: [] },
+		} as unknown as RecordSeries;
+		// 26 November 2026 is a Thursday: one row, never six empty ones.
+		expect(hourChart(yesterday, 'By hour', 'en').props.rows.map(({ id }) => id)).toEqual(['4']);
+		const week = {
+			...yesterday,
+			evidence: { start_date: '2026-11-20', end_date: '2026-11-26', days_not_measured: [] },
+		} as unknown as RecordSeries;
+		expect(hourChart(week, 'By hour', 'en').props.rows).toHaveLength(7);
+	});
+
+	it('keeps every weekday that holds a reading, inside the period or not', () => {
+		// A short period whose answer still carries readings on other weekdays keeps their rows,
+		// and their states, legend included.
+		const weekend = {
+			cells: [
+				cell({ weekday: 1, hour: 5 }, { state: 'not_measured', value: { late: null } }),
+				cell({ weekday: 1, hour: 6 }),
+				cell({ weekday: 5, hour: 6 }),
+			],
+			evidence: { start_date: '2026-11-20', end_date: '2026-11-22', days_not_measured: [] },
+		} as unknown as RecordSeries;
+		const { props } = hourChart(weekend, 'By hour', 'en');
+		expect(props.rows.map(({ id }) => id)).toEqual(['1', '5', '6', '7']);
+		expect(props.stateLabels.unmeasured).toBe('Not measured');
+	});
+
+	it.each([
+		['en', 'No stop arrival was observed here on these dates, so only the network line is shown.'],
+		[
+			'fr',
+			'Aucun passage n’a été observé ici à ces dates ; seule la courbe du réseau est affichée.',
+		],
+	] as const)(
+		'says why a stop with no reading shows only the network line in %s',
+		(locale, note) => {
+			const dates = ['2026-11-20', '2026-11-21'];
+			const stop = series(
+				...dates.map((day) =>
+					cell(
+						{ day },
+						{
+							state: 'not_measured',
+							value: { on_time: null },
+							evidence: { counts: {}, days_included: [] },
+						},
+					),
+				),
+			);
+			const network = series(...dates.map((day) => cell({ day }, { value: { on_time: 0.8 } })));
+			expect(trendChart(stop, 'Daily', locale, network, true).props.gapNote).toBe(note);
+		},
+	);
 });

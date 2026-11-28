@@ -290,6 +290,14 @@
 					: excludedTitle
 			: null,
 	);
+	/** The card below that holds a lone match outside the measured list, to jump to. */
+	const singleMatchTarget = $derived(
+		matchCount === 1 && !measuredShown.length
+			? scheduleShown.length
+				? 'lines-without-live-data'
+				: 'lines-cannot-be-judged'
+			: null,
+	);
 	const countLabels = $derived(
 		countTemplates(
 			matchCount,
@@ -543,7 +551,8 @@
 	{:else if belowRankingFloor(row.hold)}
 		<span class="font-sans text-muted-foreground @min-[48rem]:whitespace-nowrap">{tooFew}</span>
 	{:else}
-		<strong class="font-sans text-base">{recordPercent(row.onTime!, locale)}</strong>
+		<!-- Mono like every other figure in this table and on /stops. -->
+		<strong class="text-base">{recordPercent(row.onTime!, locale)}</strong>
 		{#if row.hold}<small class="block font-sans text-muted-foreground"
 				>{lineHoldText(row.hold, locale)}</small
 			>{/if}
@@ -712,7 +721,17 @@
 			/>
 			{#if singleMatchList}
 				<p class="mt-2 text-small text-muted-foreground">
-					{t(`Match in “${singleMatchList}”.`, `Résultat sous «\u00a0${singleMatchList}\u00a0».`)}
+					{#if singleMatchTarget}<a
+							class="inline-flex min-h-11 items-center text-primary underline"
+							href={`#${singleMatchTarget}`}
+							>{t(
+								`Match in “${singleMatchList}”, below.`,
+								`Résultat sous «\u00a0${singleMatchList}\u00a0», plus bas.`,
+							)}</a
+						>{:else}{t(
+							`Match in “${singleMatchList}”.`,
+							`Résultat sous «\u00a0${singleMatchList}\u00a0».`,
+						)}{/if}
 				</p>
 			{/if}
 			<noscript><a href={clearHref}>{t('Clear filters', 'Effacer les filtres')}</a></noscript>
@@ -841,55 +860,57 @@
 		</RecordCard>
 	</div>
 
-	<RecordCard
-		title={excludedTitle}
-		interactive={!timingFailure && !!timingAnswer && excludedShown.length > 0}
-		evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
-			? excludedEvidence
-			: undefined}
-	>
-		{#if initialTiming}
-			<RecordPending
-				{locale}
-				answer={record.punctuality}
-				shape={{
-					shape: 'rows',
-					count: Math.min(20, excludedShown.length),
-					lines: 1,
-					lead: 'plate',
-				}}
-			/>
-		{:else if timingFailure}
-			<p>{recordConnection.unreachable[locale]}</p>
-		{:else if timingAnswer}
-			{#if excludedShown.length}
-				{#if noneScheduled}
-					<p class="mb-2">
+	<div id="lines-cannot-be-judged">
+		<RecordCard
+			title={excludedTitle}
+			interactive={!timingFailure && !!timingAnswer && excludedShown.length > 0}
+			evidence={!timingPending && timingEvidence && excluded.some(({ timing }) => timing)
+				? excludedEvidence
+				: undefined}
+		>
+			{#if initialTiming}
+				<RecordPending
+					{locale}
+					answer={record.punctuality}
+					shape={{
+						shape: 'rows',
+						count: Math.min(20, excludedShown.length),
+						lines: 1,
+						lead: 'plate',
+					}}
+				/>
+			{:else if timingFailure}
+				<p>{recordConnection.unreachable[locale]}</p>
+			{:else if timingAnswer}
+				{#if excludedShown.length}
+					{#if noneScheduled}
+						<p class="mb-2">
+							{t(
+								`No trip was scheduled on these dates for ${countedUnit(excludedShown.length, 'line', locale)}.`,
+								`Aucun trajet n’était prévu à ces dates pour ${countedUnit(excludedShown.length, 'line', locale)}.`,
+							)}
+						</p>
+					{/if}
+					<RecordDataTable
+						{locale}
+						title={excludedTitle}
+						rowHeader={lineHeader}
+						rows={excludedShown}
+						columns={noneScheduled ? [] : stateColumns}
+					/>
+				{:else if appliedQuery && excluded.length}
+					<p>{noMatch}</p>
+				{:else}
+					<p>
 						{t(
-							`No trip was scheduled on these dates for ${countedUnit(excludedShown.length, 'line', locale)}.`,
-							`Aucun trajet n’était prévu à ces dates pour ${countedUnit(excludedShown.length, 'line', locale)}.`,
+							'No lines were left out for these dates.',
+							'Aucune ligne n’a été écartée pour ces dates.',
 						)}
 					</p>
 				{/if}
-				<RecordDataTable
-					{locale}
-					title={excludedTitle}
-					rowHeader={lineHeader}
-					rows={excludedShown}
-					columns={noneScheduled ? [] : stateColumns}
-				/>
-			{:else if appliedQuery && excluded.length}
-				<p>{noMatch}</p>
-			{:else}
-				<p>
-					{t(
-						'No lines were left out for these dates.',
-						'Aucune ligne n’a été écartée pour ces dates.',
-					)}
-				</p>
 			{/if}
-		{/if}
-	</RecordCard>
+		</RecordCard>
+	</div>
 {/snippet}
 
 {#snippet methodology()}
@@ -994,7 +1015,12 @@
 	bind:cardElement={performanceCard}
 	card={{
 		id: 'line-performance',
-		class: 'min-[1280px]:min-h-[clamp(0px,calc(100svh_-_16rem),40rem)]',
+		// The card keeps its height while rows arrive, so nothing under it moves. Only a settled
+		// filter with no match in this card gives it back, so the list holding the match is in view.
+		class:
+			!timingPending && appliedQuery && !measuredShown.length
+				? undefined
+				: 'min-[1280px]:min-h-[clamp(0px,calc(100svh_-_16rem),40rem)]',
 		busy: timingPending || tripsPending,
 		retained: timingPending && !initialTiming,
 		interactive: initialTiming || all.length > 0,

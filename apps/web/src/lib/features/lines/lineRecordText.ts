@@ -16,8 +16,11 @@ import {
 } from '#lib/features/record/recordText.ts';
 import { waitingReadingParts } from '#lib/features/record/waitingText.ts';
 import {
+	countedUnit,
+	frenchAgency,
 	recordPercent,
 	citeDates,
+	type AgencyName,
 	dateRange,
 	methodEvidence,
 	scheduleHours,
@@ -52,7 +55,7 @@ export function lineTimetableOnly(answer: RecordMeasure | null) {
 	);
 }
 
-export function deliveryFinding(answer: RecordSeries, locale: Locale) {
+export function deliveryFinding(answer: RecordSeries, locale: Locale, agency?: AgencyName | null) {
 	if (!answer.cells.length || answer.evidence.days_not_measured.length) return null;
 	let scheduled = 0;
 	let cancelled = 0;
@@ -77,8 +80,21 @@ export function deliveryFinding(answer: RecordSeries, locale: Locale) {
 	const m = tally(missing, locale);
 	return choose(
 		locale,
-		`${failures} of ${total} scheduled trips did not run: ${a} cancelled by the agency and ${m} missing, with no vehicle and no notice.`,
-		`${failures} des ${total} trajets prévus n’ont pas été effectués\u00a0: ${a} annulés par la société de transport et ${m} manquants, sans véhicule ni avis.`,
+		`${failures} of ${total} scheduled trips did not run: ${a} cancelled by ${agency?.name ?? 'the agency'} and ${m} missing, with no vehicle and no notice.`,
+		`${failures} des ${total} trajets prévus n’ont pas été effectués\u00a0: ${a} annulés ${agency ? frenchAgency(agency).by : 'par la société de transport'} et ${m} manquants, sans véhicule ni avis.`,
+	);
+}
+
+/**
+ * Some departures are measured but the whole period has no total (a day was not measured): say
+ * what the table shows instead of a "Not measured" mark above measured rows.
+ */
+export function deliveryPartialNote(answer: RecordSeries, locale: Locale) {
+	const days = answer.evidence.days_measured.length;
+	return choose(
+		locale,
+		`Showing departures with enough scheduled trips to judge, over ${countedUnit(days, 'day', locale)} measured.`,
+		`Départs comptant assez de trajets prévus pour conclure, sur ${countedUnit(days, 'day', locale)} ${days === 1 ? 'mesuré' : 'mesurés'}.`,
 	);
 }
 

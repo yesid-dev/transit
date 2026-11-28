@@ -191,7 +191,26 @@
 	const anyOpen = $derived(failures.some((section) => section !== 'delivery' && opened(section)));
 	let stopsTable = $state(false);
 
+	const sectionAnswer = (section: LineSection) =>
+		record.sections.find((item) => item.section === section)?.answer;
+	/**
+	 * A disclosure drawn with a short state (no reading, not tracked, unavailable). One that streams
+	 * in after the first screen keeps its held height, so the screen does not move under the reader.
+	 */
+	function settledShort(section: (typeof failures)[number]) {
+		const answer = sectionAnswer(section);
+		if (answer === undefined || !isSettled(answer)) return false;
+		const result = answer;
+		if (result.kind === 'busy') return false;
+		if (result.kind !== 'answer') return true;
+		const { answer: reading } = result;
+		if ('cells' in reading) return !reading.cells.some(({ state }) => state === 'measured');
+		return 'state' in reading && reading.state !== 'measured';
+	}
+
 	function disclosureBlockSize(section: (typeof failures)[number]) {
+		// The height is held for the reading only: a one-line state gives it back once settled.
+		if (settledShort(section)) return undefined;
 		const body = pendingBlockSize(shapes[section])?.wide;
 		const chart = skeletonBlockSize('trend');
 		return section === 'offered' && body && chart ? `calc(${chart} + 1rem + ${body})` : body;
@@ -400,10 +419,13 @@
 	bind:this={screen}
 	aria-busy={replacing || undefined}
 >
-	{#if replacing}
-		<div data-screen-intro class="sr-only"><RecordPending {locale} /></div>
-	{/if}
 	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
+		<!-- Inside the group: before it, the status would cost the group its first-child top
+		     spacing and move the whole screen down by a card gap while the new period loads. As an
+		     absolutely positioned grid child it takes no track and no gap. -->
+		{#if replacing}
+			<div class="sr-only"><RecordPending {locale} /></div>
+		{/if}
 		{#if outsideTimetable}
 			<div data-screen-intro class="min-[1280px]:-mb-4">{@render heading()}</div>
 		{/if}

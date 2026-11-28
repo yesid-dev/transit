@@ -66,4 +66,8 @@ it('shows all timing sources and warns only when most times are predictions', ()
 	).toBe(
 		'Heures observées : 20,0 % véhicule signalé à l’arrêt, 20,0 % heure signalée par la société de transport, 60,0 % dernière prévision avant le passage du véhicule. La plupart de ces heures proviennent de prévisions.',
 	);
+	// The colon never opens a line on its own.
+	expect(timingBasis({ punctuality_vehicle_stopped: 1 }, 'fr')).toMatch(
+		/^Heures observées\u00a0: /,
+	);
 });

@@ -1,9 +1,11 @@
 <script lang="ts">
-	import type { Awaitable } from '#lib/site/ready.ts';
+	import { isSettled, type Awaitable } from '#lib/site/ready.ts';
 	import type { StampProps } from '@yesid/ui/brand';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
+	import { page } from '$app/state';
 	import {
+		cityAgency,
 		countedUnit,
 		recordPercent,
 		sampleWithMinimum,
@@ -36,12 +38,31 @@
 	const heading = $derived(
 		choose(locale, 'Trips that ran at this stop', 'Trajets effectués à cet arrêt'),
 	);
-	const labels = $derived(tripOutcomeLabels(locale));
+	const labels = $derived(tripOutcomeLabels(locale, cityAgency(page.data.provider)));
+	// Only a result drawn with the page: one that streams in after keeps the held height, so the
+	// screen does not move under the reader.
+	const settled = $derived(isSettled(answer) ? answer : undefined);
+	/** Drawn on a short state, the card gives back the height it holds for the trip facts. */
+	const empty = $derived(
+		settled !== undefined &&
+			settled.kind !== 'busy' &&
+			!(
+				settled.kind === 'answer' &&
+				'value' in settled.answer &&
+				settled.answer.state === 'measured'
+			),
+	);
 </script>
 
-<section id="delivery" class="min-w-0">
-	<RecordCard title={heading} {stamp} reserve={shape}>
-		<div class="reading" style:--delivery-wide={block?.wide} style:--delivery-phone={block?.phone}>
+<section id="delivery" class="grid min-w-0">
+	<RecordCard title={heading} {stamp} reserve={empty ? undefined : shape}>
+		<div
+			class="reading"
+			class:held={!empty}
+			data-settled-empty={empty ? '' : undefined}
+			style:--delivery-wide={block?.wide}
+			style:--delivery-phone={block?.phone}
+		>
 			{#await answer}
 				{#key answer}<RecordPending {locale} {answer} {shape} />{/key}
 			{:then result}
@@ -115,12 +136,12 @@
 </section>
 
 <style>
-	.reading {
+	.held {
 		min-block-size: var(--delivery-wide);
 	}
 
 	@media (width < 40rem) {
-		.reading {
+		.held {
 			min-block-size: var(--delivery-phone);
 		}
 	}

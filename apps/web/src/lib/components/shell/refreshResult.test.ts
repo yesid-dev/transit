@@ -54,7 +54,7 @@ it.each(['publishedOn', 'dataThrough'] as const)(
 			'Updated. A new record is published: data through Nov 17.',
 		);
 		expect(refreshMessage(result, 'fr', zone)).toBe(
-			'Mise à jour terminée. Un nouveau bilan est publié : données jusqu’au 17 nov.',
+			'Mise à jour terminée. Un nouveau bilan est publié\u00a0: données jusqu’au 17 nov.',
 		);
 	},
 );
@@ -62,7 +62,7 @@ it('says it could not refresh and names the time of the data still shown', () =>
 	const result = refreshResult({ ok: false, atMs, shownAtMs, record: null });
 	expect(refreshMessage(result, 'en', zone)).toBe('Could not refresh. Showing data from 19:09.');
 	expect(refreshMessage(result, 'fr', zone)).toBe(
-		'Actualisation impossible. Données affichées : 19\u00a0h\u00a009.',
+		'Actualisation impossible. Données affichées\u00a0: 19\u00a0h\u00a009.',
 	);
 });
 it('falls back to the live sentence when a new record has no data-through date', () => {

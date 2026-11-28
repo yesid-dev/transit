@@ -52,6 +52,7 @@
 	stamp and the actions at the right; then the comparison and what was counted on one line.
 	Narrower: the stamp, the comparison and what was counted share one wrapping line. The kit's
 	AnswerLead keeps the statement; the reading order stays statement, stamp, context, actions.
+	An answer with no figure keeps its state mark beside the sentence, at every width (kit fit layout).
 -->
 <div class="record-answer" class:listing-answer={listing} data-slot="record-answer">
 	<div
@@ -71,6 +72,7 @@
 					{sentence}
 					absent={state ? absent : undefined}
 					{size}
+					layout={value === null ? 'fit' : undefined}
 				/>{/if}
 		</div>
 		{#if context}
@@ -218,20 +220,36 @@
 			grid-template-areas: 'statement stamp';
 			grid-template-columns: minmax(0, 1fr) auto;
 		}
-		.with-heading.aside.has-actions {
-			grid-template-areas: 'heading stamp actions' 'statement statement statement' 'details details details';
-			grid-template-columns: minmax(0, 1fr) max-content max-content;
-			column-gap: 1rem;
-			align-items: start;
-		}
-		.with-heading.aside.has-actions.one-row {
-			grid-template-areas: 'heading stamp actions' 'statement statement statement';
-		}
-		.with-heading.aside:not(.has-actions) {
-			grid-template-areas: 'heading stamp' 'statement statement';
+		/* The title keeps the width it needs on one line. The stamp and the actions sit beside it when
+		   they fit, and wrap under it at the right when they do not (a French line title beside four
+		   French buttons), so the title is never squeezed into a narrow column. The figure and the
+		   context line keep the full width under them. */
+		.with-heading.aside {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 0.75rem 1rem;
 		}
 		.with-heading.aside .answer-heading {
-			grid-area: heading;
+			flex: 1 1 auto;
+		}
+		/* The stamp takes the free space and sits at its end, so the stamp and the actions pack at
+		   the right on whichever line they land; actions alone on a line keep to the right too. */
+		.with-heading.aside .answer-stamp {
+			display: flex;
+			flex: 1 0 auto;
+			justify-content: flex-end;
+		}
+		.with-heading.aside .answer-actions {
+			margin-inline-start: auto;
+		}
+		.with-heading.aside .answer-statement {
+			flex: 1 1 100%;
+			order: 1;
+		}
+		.with-heading.aside .answer-details {
+			flex: 1 1 100%;
+			order: 2;
 		}
 		.aside .answer-statement {
 			grid-area: statement;

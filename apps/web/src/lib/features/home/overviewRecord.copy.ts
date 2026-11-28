@@ -39,7 +39,9 @@ export const overviewCopy = {
 		feeds: (agency: AgencyName) => `GTFS and GTFS-Realtime feeds published by ${agency.name}.`,
 		recordStart: (date: string) => `The record starts ${date}.`,
 		observedShare: (share: string, scheduled?: string) =>
-			`${share} of ${scheduled ? scheduled + ' ' : ''}scheduled stop arrivals have a reading. The rest are left out, never counted as on time.`,
+			scheduled === '1'
+				? `${share} of the 1 scheduled stop arrival has a reading.`
+				: `${share} of ${scheduled ? scheduled + ' ' : ''}scheduled stop arrivals have a reading. The rest are left out, never counted as on time.`,
 		reporting: 'vehicles are reporting now.',
 		reportingOne: 'vehicle is reporting now.',
 		silent: 'Scheduled trips with no vehicle reporting',
@@ -90,7 +92,7 @@ export const overviewCopy = {
 		liveScope: 'Les véhicules ayant transmis leur position dans le dernier relevé du flux.',
 		liveStatus: 'Comment est déterminé l’état d’un véhicule',
 		liveDefinition:
-			'Au dernier relevé : le véhicule est en avance de plus d’une minute, en retard de plus de 5 minutes ou à l’heure entre les deux.',
+			'Au dernier relevé\u00a0: le véhicule est en avance de plus d’une minute, en retard de plus de 5 minutes ou à l’heure entre les deux.',
 		liveFeeds: (agency: AgencyName) => `Flux GTFS-Realtime publiés ${frenchAgency(agency).by}.`,
 		dataHealth: 'Santé des données',
 		liveUnavailable: 'Chiffres en direct indisponibles',
@@ -107,7 +109,9 @@ export const overviewCopy = {
 		feeds: (agency: AgencyName) => `Flux GTFS et GTFS-Realtime publiés ${frenchAgency(agency).by}.`,
 		recordStart: (date: string) => `Le bilan commence le ${date}.`,
 		observedShare: (share: string, scheduled?: string) =>
-			`${share} des ${scheduled ? scheduled + ' ' : ''}passages prévus aux arrêts ont un relevé. Les autres sont exclus et ne sont jamais comptés comme étant à l’heure.`,
+			scheduled === '1'
+				? `${share} du seul passage prévu a un relevé.`
+				: `${share} des ${scheduled ? scheduled + ' ' : ''}passages prévus aux arrêts ont un relevé. Les autres sont exclus et ne sont jamais comptés comme étant à l’heure.`,
 		reporting: 'véhicules transmettent leur position.',
 		reportingOne: 'véhicule transmet sa position.',
 		silent: 'Trajets prévus sans véhicule signalé',
@@ -121,8 +125,8 @@ export const overviewCopy = {
 		previousFile: 'Période précédente',
 		comparisonUnavailable: 'Comparaison indisponible',
 		previousWeekday: 'Même jour de la semaine précédente',
-		downloadRankings: 'Lignes et arrêts les moins ponctuels : lignes',
-		downloadStops: 'Lignes et arrêts les moins ponctuels : arrêts',
+		downloadRankings: 'Lignes et arrêts les moins ponctuels\u00a0: lignes',
+		downloadStops: 'Lignes et arrêts les moins ponctuels\u00a0: arrêts',
 		contribute: {
 			title: 'Aidez à garder le bilan honnête',
 			lead: 'Transit s’améliore quand plus de gens le vérifient, et nul besoin de savoir programmer pour aider.',

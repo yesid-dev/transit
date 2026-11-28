@@ -477,6 +477,17 @@ export function stopTrendGap(minimum: number, allDays: boolean, locale: Locale) 
 		: `Too few stop arrivals per day to draw this stop’s line on some days (minimum ${count} per day).`;
 }
 
+/** A stop's daily chart with no reading on any day says why its own line is absent. */
+export function stopTrendNone(network: boolean, locale: Locale) {
+	if (locale === 'fr')
+		return network
+			? 'Aucun passage n’a été observé ici à ces dates\u00a0; seule la courbe du réseau est affichée.'
+			: 'Aucun passage n’a été observé ici à ces dates.';
+	return network
+		? 'No stop arrival was observed here on these dates, so only the network line is shown.'
+		: 'No stop arrival was observed here on these dates.';
+}
+
 export function longDate(date: string, locale: Locale): string {
 	return formatDateKey(date, locale, true, 'day-first', 'long');
 }
@@ -955,7 +966,7 @@ export function vehiclePositionsCapture(seconds: number | null | undefined, loca
 					? 'à l’instant'
 					: 'now'
 				: relativeReportAge(seconds, locale);
-	return locale === 'fr' ? `Positions des véhicules : ${age}.` : `Vehicle positions: ${age}.`;
+	return locale === 'fr' ? `Positions des véhicules\u00a0: ${age}.` : `Vehicle positions: ${age}.`;
 }
 
 export function captureAge(capturedAt: string | null, now: number, locale: Locale) {
@@ -1084,7 +1095,20 @@ export function tripsRunShareLabel(locale: Locale) {
 }
 
 /** Labels for the five columns that add up to the scheduled trips. */
-export function tripOutcomeLabels(locale: Locale) {
+export function tripOutcomeLabels(locale: Locale, agency?: AgencyName | null) {
+	const labels = tripOutcomeWords(locale);
+	// A cancellation is the agency's own notice: name it when the screen knows the city.
+	if (!agency) return labels;
+	return {
+		...labels,
+		cancelled:
+			locale === 'fr'
+				? `Annulés, avec avis ${frenchAgency(agency).of}`
+				: `Cancelled, announced by ${agency.name}`,
+	};
+}
+
+function tripOutcomeWords(locale: Locale) {
 	return locale === 'fr'
 		? {
 				scheduled: 'Trajets prévus',
@@ -1195,6 +1219,24 @@ export function lowCoverageReason(
  * keeps its bare name.
  */
 export type AgencyName = { name: string; frenchOf?: string | null };
+
+/** An English possessive of a proper name: "Example Transit’s". */
+export function possessive(name: string) {
+	return `${name}’s`;
+}
+
+/** The agency of the city a page shows, or null before the city is known. */
+export function cityAgency(
+	provider:
+		| {
+				labels: { en: { operator: string } };
+				download_licence?: { source?: { fr: string } } | null;
+		  }
+		| null
+		| undefined,
+): AgencyName | null {
+	return provider ? agencyName(provider.labels.en.operator, provider) : null;
+}
 
 export function agencyName(
 	name: string,
@@ -1545,6 +1587,12 @@ export function gridDaysNote(days: number, locale: Locale) {
  * One sentence for an hour grid with no hour to judge, after its "Too few to judge" mark:
  * "358 stop arrivals in 7 days, and an hour needs 30."
  */
+export function noHourObserved(locale: Locale) {
+	return locale === 'fr'
+		? 'Aucun passage n’a été observé, à aucune heure, à ces dates.'
+		: 'No stop arrival was observed in any hour on these dates.';
+}
+
 export function tooFewHours(total: number, days: number, minimum: number | null, locale: Locale) {
 	const count = (value: number) => intl.number(locale).format(value);
 	const span = countedUnit(days, 'day', locale);

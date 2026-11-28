@@ -15,6 +15,8 @@
 	import { carryFrameState } from '#lib/site/frameState.ts';
 	import {
 		agencyName,
+		frenchAgency,
+		possessive,
 		noHeadingNote,
 		singularCount,
 		clockTime,
@@ -76,6 +78,7 @@
 		heading: Snippet;
 	} = $props();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const agency = $derived(agencyName(operator, page.data.provider));
 	const title = $derived(t('Next vehicles at this stop', 'Prochains véhicules à cet arrêt'));
 	const link = (path: string) => carryFrameState(localizeHref(path, locale, city), url);
 	const display = transitDisplay();
@@ -188,10 +191,11 @@
 			{/if}
 		</div>
 		<div class="min-w-0" data-slot="stop-live-predictions">
+			<!-- The answer above carries this feed's Live stamp. The card holds the table's height
+			     only while it waits, never around a short settled list. -->
 			<RecordCard
 				{title}
-				{stamp}
-				reserve={waiting || readings?.rows.length ? predictionsShape : undefined}
+				reserve={waiting ? predictionsShape : undefined}
 				interactive={!!readings?.rows.some(({ line }) => line !== null) ||
 					(readings?.rows.length ?? 0) > predictionPageSize}
 			>
@@ -222,8 +226,8 @@
 				{#snippet evidence()}
 					{#if readings?.rows.length}<p class="text-small text-muted-foreground">
 							{t(
-								'A prediction is the agency’s estimate.',
-								'Une prévision est une estimation de la société de transport.',
+								`A prediction is ${possessive(agency.name)} estimate.`,
+								`Une prévision est une estimation ${frenchAgency(agency).of}.`,
 							)}
 							{#if readings.rows.some(({ delay }) => delay === null)}{t(
 									'“Delay unknown” means the feed does not give a usable delay for this stop.',
@@ -291,7 +295,7 @@
 				)}
 				definition={t(
 					'From the predicted delay at this stop: early is more than 1 minute ahead, late is more than 5 minutes behind, and on time is between those limits.',
-					'Selon le retard prévu à cet arrêt : en avance signifie plus d’une minute avant l’heure prévue, en retard signifie plus de 5 minutes après, et à l’heure se situe entre ces seuils.',
+					'Selon le retard prévu à cet arrêt\u00a0: en avance signifie plus d’une minute avant l’heure prévue, en retard signifie plus de 5 minutes après, et à l’heure se situe entre ces seuils.',
 				)}
 				captureText={waiting
 					? ''
@@ -299,7 +303,7 @@
 						? t('Trip updates unavailable.', 'Mises à jour des trajets indisponibles.')
 						: t(
 								`Trip updates: ${relativeReportAge(age, locale)}.`,
-								`Mises à jour des trajets : ${relativeReportAge(age, locale)}.`,
+								`Mises à jour des trajets\u00a0: ${relativeReportAge(age, locale)}.`,
 							)}
 			/>
 		</div>

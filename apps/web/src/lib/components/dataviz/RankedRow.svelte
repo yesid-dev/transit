@@ -67,7 +67,7 @@
 	const activeLocale = $derived(locale ?? 'en');
 	const COPY = defineCopy({
 		fr: {
-			rank: (rank: number, title: string) => `Rang ${rank} : ${title}`,
+			rank: (rank: number, title: string) => `Rang ${rank}\u00a0: ${title}`,
 			noChange: 'aucune donnée de variation',
 			change: 'variation',
 		},

@@ -220,7 +220,7 @@ export const copy = defineCopy({
 		filterTitle: 'Filtrer',
 		activeTitle: 'Actifs',
 		filterClear: 'Effacer',
-		filterRemove: 'Retirer le filtre :',
+		filterRemove: 'Retirer le filtre\u00a0:',
 		vehicleLabel: 'Véhicule',
 		tripLabel: 'Trajet',
 		alertHas: 'Avec avis',

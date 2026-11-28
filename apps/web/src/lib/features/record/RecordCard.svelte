@@ -121,8 +121,9 @@
 	<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
 		<svelte:element this={titleLevel === 2 ? 'h2' : 'h3'} {id} class:expandable-title={expandable}>
 			{#if expandable}
-				<Collapsible.Trigger class="flex min-h-11 min-w-11 flex-wrap items-center gap-2 text-left">
-					<ChevronToggle open={expanded} size="sm" />
+				<!-- No wrap: a long title wraps beside its chevron, never under it on a phone. -->
+				<Collapsible.Trigger class="flex min-h-11 min-w-11 items-center gap-2 text-left">
+					<ChevronToggle open={expanded} size="sm" class="shrink-0" />
 					<span class="[overflow-wrap:normal]">{title}</span>
 				</Collapsible.Trigger>
 			{:else}{title}{/if}

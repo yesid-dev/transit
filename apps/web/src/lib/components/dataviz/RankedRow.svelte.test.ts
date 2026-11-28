@@ -58,7 +58,7 @@ describe('RankedRow — the dataviz-row template contract', () => {
 
 		expect(container.querySelector('[role="progressbar"]')).toHaveAttribute(
 			'aria-label',
-			'Rang 1 : Route 165, Élevé',
+			'Rang 1\u00a0: Route 165, Élevé',
 		);
 		expect(deltaEl(container)).toHaveAttribute('aria-label', 'aucune donnée de variation');
 

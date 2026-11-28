@@ -45,6 +45,9 @@ const glossary: [RegExp, string, exceptIn?: RegExp][] = [
 	],
 	// Typography: a no-break space before "%" and ":", and the typographic apostrophe.
 	[/\d%|\d %/, 'no no-break space before %'],
+	// A breaking space before ":" lets the colon open the next line at narrow widths.
+	// The legal pages keep their reviewed wording, checked by fingerprint (legalDate.test.ts).
+	[/ :(?!\/)|^:/, 'breaking space before :', /^features\/legal\//],
 	[/\p{L}'\p{L}/u, 'straight apostrophe'],
 	// The spoken "alors" reads as a chat; prose says "donc".
 	[/, alors les\b/, 'spoken alors'],
@@ -197,7 +200,7 @@ describe('the glossary patterns', () => {
 			'Annulés, avec avis de l’exploitant',
 			'L’historique commence en octobre 2026.',
 			'Jour après jour',
-			'Décompte : ',
+			'Décompte\u00a0: ',
 			'Ordre des lignes',
 			'ROUTE INTROUVABLE',
 			'Commandes',
@@ -205,6 +208,7 @@ describe('the glossary patterns', () => {
 			'inférieurs à 50% de',
 			"L’arrêt d’à côté n'a rien",
 			'Les flux ne le montrent pas, alors les trajets non terminés',
+			'Heures observées : 20,0\u00a0% véhicule signalé',
 		])
 			expect(flags(wrong), wrong).toHaveLength(1);
 	});
@@ -226,6 +230,8 @@ describe('the glossary patterns', () => {
 			'De Gare Montréal-Ouest à Station Laurier',
 			'inférieurs à 50\u00a0% de',
 			'L’arrêt d’à côté',
+			'Heures observées\u00a0: 20,0\u00a0% véhicule signalé',
+			'https://transit1.yesid.dev',
 		])
 			expect(flags(right), right).toEqual([]);
 	});

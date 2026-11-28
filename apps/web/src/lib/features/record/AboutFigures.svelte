@@ -45,9 +45,10 @@
 	{edge}
 	interactive={interactive || fields.some(({ link, links }) => link || links?.length)}
 >
+	<!-- At most three columns: six fields read as two even rows, never five and an orphan. -->
 	<DashboardGrid
 		gutter={false}
-		minTile="17rem"
+		minTile="max(17rem, 30%)"
 		style={compact ? 'row-gap: calc(var(--space-card-gap) / 3)' : undefined}
 	>
 		{#each fields.filter(({ text, link, links, waitingLines }) => text || link || links?.length || waitingLines) as field (field.key)}

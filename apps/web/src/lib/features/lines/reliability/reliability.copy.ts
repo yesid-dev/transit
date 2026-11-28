@@ -36,7 +36,7 @@ export const reliabilityCopy = defineCopy({
 	fr: {
 		csv: {
 			displayed: 'CSV des lignes affichées',
-			context: (label: string) => `CSV des lignes affichées : ${label}`,
+			context: (label: string) => `CSV des lignes affichées\u00a0: ${label}`,
 		},
 		clusters: {
 			punctuality: 'Ponctualité',
@@ -66,14 +66,14 @@ export const reliabilityCopy = defineCopy({
 			delayDistLabel: 'Retard, de tôt à tard (min)',
 			delayDistCount: 'Relevés',
 			delayDistCaption:
-				'L’aire de chaque barre représente le nombre de relevés dans cet intervalle de retard. Les intervalles ont des largeurs différentes : la hauteur indique la densité. Les traits marquent la médiane et le 90e percentile. Vue de -5 à +30 min.',
+				'L’aire de chaque barre représente le nombre de relevés dans cet intervalle de retard. Les intervalles ont des largeurs différentes\u00a0: la hauteur indique la densité. Les traits marquent la médiane et le 90e percentile. Vue de -5 à +30 min.',
 			percentileNudge:
 				'Les estimations du retard médian et du 90e percentile sont indisponibles ici. Consultez une vue par semaine ou par mois.',
 			severePct: 'Part des retards graves',
 			severeCaption: 'Part des relevés à retard connu classés en retard grave',
 			skippedStopCaption: 'Arrêts non desservis',
 			wilsonBandCaption:
-				'Bande ombrée : intervalle de Wilson à 95 %. Plus il est large, moins l’estimation est précise. Les relevés répétés d’un même trajet peuvent le rendre trop étroit. Pointillés : cible de 80 %.',
+				'Bande ombrée\u00a0: intervalle de Wilson à 95 %. Plus il est large, moins l’estimation est précise. Les relevés répétés d’un même trajet peuvent le rendre trop étroit. Pointillés\u00a0: cible de 80 %.',
 			regularity: {
 				regular: 'Apparitions régulières',
 				irregular: 'Apparitions irrégulières',
@@ -96,7 +96,7 @@ export const reliabilityCopy = defineCopy({
 			weekend: 'Fin de semaine',
 			strip: {
 				ariaLabel: 'Retards graves par période',
-				mean: (value: string) => `Moyenne approx. des périodes affichées : ${value}`,
+				mean: (value: string) => `Moyenne approx. des périodes affichées\u00a0: ${value}`,
 			},
 		},
 		byDow: {
@@ -135,8 +135,8 @@ export const reliabilityCopy = defineCopy({
 			lastTrip: 'Premier relevé le plus tard',
 			span: (len: string) => `Écart arrondi ${len}`,
 			trips: (n: string) => `${n} identifiants de trajet observés`,
-			firstDelay: 'Premier trajet : retard du premier relevé',
-			lastDelay: 'Dernier trajet : retard du dernier relevé',
+			firstDelay: 'Premier trajet\u00a0: retard du premier relevé',
+			lastDelay: 'Dernier trajet\u00a0: retard du dernier relevé',
 			caption:
 				'Les extrémités marquent des premières captures. Les dates locales et décalages UTC accompagnent un axe en heures écoulées; l’écart affiché s’arrondit à la minute. Les retards viennent du premier relevé du premier trajet et du dernier relevé du dernier trajet, qui peut être postérieur à l’extrémité droite.',
 		},
@@ -156,15 +156,15 @@ export const reliabilityCopy = defineCopy({
 				unavailable: 'Fenêtre complète non publiée',
 				day: (date: string | null) =>
 					date
-						? `Bilan des retards : jour local de capture ${date}. Les comptes et les plages de service suivent les jours de service GTFS.`
+						? `Bilan des retards\u00a0: jour local de capture ${date}. Les comptes et les plages de service suivent les jours de service GTFS.`
 						: 'Jour de capture des retards indisponible. Les autres mesures conservent leurs propres fenêtres.',
-				week: 'Fenêtre : cette semaine (semaine la plus récente)',
-				month: 'Fenêtre : ce mois-ci (mois le plus récent)',
-				singleDay: (date: string) => `Fenêtre : ${date}`,
+				week: 'Fenêtre\u00a0: cette semaine (semaine la plus récente)',
+				month: 'Fenêtre\u00a0: ce mois-ci (mois le plus récent)',
+				singleDay: (date: string) => `Fenêtre\u00a0: ${date}`,
 				range: (n: number, start: string, end: string) =>
 					`Moyenne sur ${n} ${n < 2 ? 'jour' : 'jours'}, du ${start} au ${end}`,
-				rangeSelection: (start: string, end: string) => `Fenêtre : du ${start} au ${end}`,
-				rangePrompt: 'Fenêtre : choisissez une date de début et de fin',
+				rangeSelection: (start: string, end: string) => `Fenêtre\u00a0: du ${start} au ${end}`,
+				rangePrompt: 'Fenêtre\u00a0: choisissez une date de début et de fin',
 			},
 			toc: 'Aller à une section',
 			filterPillOpen: 'Ouvrir les options de vue',
@@ -184,7 +184,8 @@ export const reliabilityCopy = defineCopy({
 			}),
 			coverage: (from: string, to: string) =>
 				`Historique disponible du ${from} au ${endOnDate(to)}`,
-			selection: (from: string, to: string) => `Plage choisie : du ${from} au ${endOnDate(to)}`,
+			selection: (from: string, to: string) =>
+				`Plage choisie\u00a0: du ${from} au ${endOnDate(to)}`,
 			correction: {
 				malformed: 'La plage invalide a été remplacée par le portrait actuel.',
 				'outside-coverage': 'La plage non disponible a été remplacée par le portrait actuel.',
@@ -215,16 +216,16 @@ export const reliabilityCopy = defineCopy({
 			detailHide: 'Masquer le détail',
 		},
 		evidence: {
-			scope: (dates: string) => `Période de ces données : ${dates}.`,
+			scope: (dates: string) => `Période de ces données\u00a0: ${dates}.`,
 			history: 'tout l’historique disponible',
 			notPublished: 'Non publié pour cette période',
 			summaryAbsent: 'Non publié pour cette période.',
 			readings: (shown: string, count: number) => `${shown} ${count < 2 ? 'relevé' : 'relevés'}`,
 			timeOfDay: {
 				summary: (low: string, high: string, lowest: string) =>
-					`Entre ${low} et ${high} selon la période de la journée. Le plus bas : ${lowest}.`,
+					`Entre ${low} et ${high} selon la période de la journée. Le plus bas\u00a0: ${lowest}.`,
 				summaryOne: (period: string, share: string) =>
-					`${period} : ${share} des relevés à l’heure.`,
+					`${period}\u00a0: ${share} des relevés à l’heure.`,
 				absentRange:
 					'Les retards selon l’heure ne sont pas encore publiés pour une période choisie.',
 				caption: 'Relevés à l’heure selon la période de la journée',
@@ -246,7 +247,7 @@ export const reliabilityCopy = defineCopy({
 			},
 			stops: {
 				summary: (stop: string, share: string) =>
-					`${stop} a la part la plus élevée : ${share} de ses relevés avaient plus de 5 minutes de retard.`,
+					`${stop} a la part la plus élevée\u00a0: ${share} de ses relevés avaient plus de 5 minutes de retard.`,
 				lead: 'Part des relevés en retard de plus de 5 minutes, par arrêt.',
 				order:
 					'Le classement publié a retenu ces arrêts en tenant compte de l’incertitude. Ils sont listés ici selon leur part.',

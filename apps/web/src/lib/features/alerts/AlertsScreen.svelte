@@ -137,7 +137,7 @@
 		return Object.entries(alertSections)
 			.filter(([key]) => key !== 'messages' || alertDetailsAllowed(data.downloadPeriod!))
 			.map(([key, label]) => ({
-				label: liveMode ? t(`Record: ${label.en}`, `Bilan : ${label.fr}`) : label[locale],
+				label: liveMode ? t(`Record: ${label.en}`, `Bilan\u00a0: ${label.fr}`) : label[locale],
 				href: recordSectionLinks(target, key).csv,
 			}));
 	});

@@ -79,8 +79,9 @@
 					{subtitle}
 				</p>{/if}
 		</hgroup>
-		{#if notice}<p class="screen-notice" data-slot="record-start-notice">{notice}</p>{/if}
 	</div>
+	<!-- A row of its own under the title: a nowrap title row never squeezes the title to fit it. -->
+	{#if notice}<p class="screen-notice" data-slot="record-start-notice">{notice}</p>{/if}
 </header>
 
 <style>
@@ -105,8 +106,7 @@
 		margin: 0;
 	}
 	.screen-notice {
-		flex-basis: 100%;
-		margin: 0;
+		margin: 0.25rem 0 0;
 	}
 	.stop-code {
 		padding: 0.2em 0.45em;
@@ -161,10 +161,6 @@
 			}
 			.title-row:is(.has-back, .has-code) > .screen-heading-group {
 				grid-area: main;
-			}
-			/* The notice takes a row of its own only when there is one. */
-			.title-row:is(.has-back, .has-code) > .screen-notice {
-				grid-column: 1 / -1;
 			}
 			.crumb {
 				grid-area: crumb;
@@ -227,6 +223,23 @@
 		}
 		:global([data-record-heading-row]) .screen-heading-group {
 			min-inline-size: 0;
+		}
+	}
+	/* On a wide answer the title's one-line width decides whether the stamp and the actions fit
+	   beside it (RecordAnswer wraps them under it otherwise). Size containment would report no width
+	   at all, so the header is no container there, and the subtitle and the notice take the width the
+	   title row leaves instead of widening it. The query reads the answer, the nearest container. */
+	@container (min-width: 64rem) {
+		:global([data-record-heading-row]) .screen-title {
+			container-type: normal;
+		}
+		:global([data-record-heading-row]) .screen-heading-group {
+			display: block;
+		}
+		:global([data-record-heading-row]) .screen-subtitle,
+		:global([data-record-heading-row]) .screen-notice {
+			inline-size: 0;
+			min-inline-size: 100%;
 		}
 	}
 </style>

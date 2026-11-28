@@ -23,7 +23,7 @@
 		min-block-size: 13.75rem;
 	}
 
-	.stop-timing-cards:lang(fr) {
+	.stop-timing-cards:lang(fr):not(:has([data-settled-empty])) {
 		min-block-size: 27.125rem;
 	}
 }
@@ -44,23 +44,24 @@
 			min-block-size: 16.75rem;
 		}
 
-		.stop-timing-cards {
+		.stop-timing-cards:not(:has([data-settled-empty])) {
 			min-block-size: 35.375rem;
 		}
 
-		.stop-timing-cards:lang(fr) {
+		.stop-timing-cards:lang(fr):not(:has([data-settled-empty])) {
 			min-block-size: 38.125rem;
 		}
 	}
 }
 
 /* The shared body shapes exclude the card header, evidence and chart controls.
-   Leave room for those here, including the wrapped legend and notes on a phone. */
-.stop-timing-cards > [data-slot='card']:first-child {
+   Leave room for those here, including the wrapped legend and notes on a phone. A card that
+   settles on a short state (nothing measured here) gives that room back. */
+.stop-timing-cards > [data-slot='card']:first-child:not(:has([data-settled-empty])) {
 	min-block-size: 23.5rem;
 }
 
-.stop-timing-cards > [data-slot='card']:last-child {
+.stop-timing-cards > [data-slot='card']:last-child:not(:has([data-settled-empty])) {
 	min-block-size: 24rem;
 }
 
@@ -73,19 +74,19 @@
 }
 
 @media (width < 40rem) {
-	.stop-timing-cards > [data-slot='card']:first-child {
+	.stop-timing-cards > [data-slot='card']:first-child:not(:has([data-settled-empty])) {
 		min-block-size: 27.25rem;
 	}
 
-	.stop-timing-cards > [data-slot='card']:last-child {
+	.stop-timing-cards > [data-slot='card']:last-child:not(:has([data-settled-empty])) {
 		min-block-size: 28.75rem;
 	}
 
-	.stop-timing-cards > [data-slot='card']:first-child:lang(fr) {
+	.stop-timing-cards > [data-slot='card']:first-child:lang(fr):not(:has([data-settled-empty])) {
 		min-block-size: 31.75rem;
 	}
 
-	.stop-timing-cards > [data-slot='card']:last-child:lang(fr) {
+	.stop-timing-cards > [data-slot='card']:last-child:lang(fr):not(:has([data-settled-empty])) {
 		min-block-size: 32.5rem;
 	}
 

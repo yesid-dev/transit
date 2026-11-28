@@ -16,6 +16,8 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	import { classifyDelay } from '#lib/v1/live/statusBands.ts';
 	import { nextStopPredictions, type LineMainStop } from './lineLiveReadings.ts';
+	import { page } from '$app/state';
+	import { cityAgency, frenchAgency, possessive } from '#lib/site/presenter.ts';
 	import { choose } from '../record/recordText.ts';
 	import RecordPending from '../record/RecordPending.svelte';
 	import RecordCard from '../record/RecordCard.svelte';
@@ -45,6 +47,7 @@
 	} = $props();
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);
+	const agency = $derived(cityAgency(page.data.provider));
 	function stamp(report: CaptureTripReport | null): StampProps | undefined {
 		const at = report?.feed.captured_at;
 		return at && feedState(report?.feed, now) === 'live'
@@ -127,10 +130,15 @@
 		{/if}
 		{#snippet evidence()}
 			<p>
-				{t(
-					'These are the agency’s predictions, not observed arrivals.',
-					'Ce sont les prévisions de la société de transport, pas des arrivées observées.',
-				)}
+				{agency
+					? t(
+							`These are ${possessive(agency.name)} predictions, not observed arrivals.`,
+							`Ce sont les prévisions ${frenchAgency(agency).of}, pas des arrivées observées.`,
+						)
+					: t(
+							'These are the agency’s predictions, not observed arrivals.',
+							'Ce sont les prévisions de la société de transport, pas des arrivées observées.',
+						)}
 			</p>
 		{/snippet}
 	</RecordCard>
