@@ -369,7 +369,6 @@
 		fitted = { map: instance, line: id, direction: dir };
 	});
 
-	const heads = $derived(directionHeadsigns(route?.directions));
 	const stateLabels = $derived([
 		notMeasuredLabel[locale],
 		tr('Too few to judge', 'Trop peu pour juger'),
@@ -378,6 +377,7 @@
 	]);
 	const routeNames = $derived(new Map(routes.map((route) => [route.id, route.long])));
 	const stopCodes = $derived(new Map(stops.map((stop) => [stop.id, stop.code ?? stop.id])));
+	const stopNames = $derived(new Map(stops.map(({ id, name }) => [id, name])));
 	const shownCount = (value: number) => searchCount(value, locale);
 	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop events', 'passages');
 	const listLabel = $derived(
@@ -402,12 +402,15 @@
 	}
 	function readingDirection(mark: RecordMark) {
 		if (!mark.line) return '';
-		if (mark.direction == null) return tr('Direction unknown', 'Direction inconnue');
-		const signs =
-			mark.line === line && route ? heads : directionHeadsigns(routeDirections?.[mark.line]);
-		return signs[mark.direction]
-			? display.directionLabel(mark.direction, signs, locale, mark.line)
-			: `Direction ${mark.direction + 1}`;
+		const scheduled = routeDirections?.[mark.line] ?? [];
+		const directions =
+			mark.line === line ? [...(route?.directions ?? []), ...scheduled] : scheduled;
+		return display.directionLabel(
+			mark.direction,
+			directionHeadsigns(directions, stopNames),
+			locale,
+			mark.line,
+		);
 	}
 	function rowDetail(mark: RecordMark) {
 		if (stopLayer && mark.sample !== null) return sampleLabel(mark.sample);

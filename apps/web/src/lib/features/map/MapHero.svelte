@@ -712,7 +712,8 @@
 	const readingDirections = $derived.by(() => {
 		if (readingLineIds.length !== 1) return [];
 		const id = readingLineIds[0]!;
-		const signs = directionHeadsigns(mapDirections?.[id]);
+		const stopNames = new Map(stopList.map(({ id, name }) => [id, name]));
+		const signs = directionHeadsigns(mapDirections?.[id], stopNames);
 		return ([0, 1] as const).flatMap((value) =>
 			signs[value] ? [{ value, label: display.directionLabel(value, signs, locale, id) }] : [],
 		);
