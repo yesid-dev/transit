@@ -23,14 +23,14 @@ const next = (locale: Locale) =>
 	PUBLISHED_LOCALES[(PUBLISHED_LOCALES.indexOf(locale) + 1) % PUBLISHED_LOCALES.length];
 const samePath = (href: string) => (url: URL) => url.pathname === new URL(href, url).pathname;
 
-// SSR shows the toggle before hydration wires it; retry the click until the menu opens.
+// Before hydration the toggle opens the header's native popover copy of the menu. These specs
+// drive the hydrated dialog, so the click waits for hydration.
 async function openMenu(page: Page, locale: Locale) {
+	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+	await page.getByRole('button', { name: navPillCopy[locale].openMenu }).click();
+	await expect(page.getByRole('dialog')).toBeVisible();
 	const menu = page.getByRole('navigation', { name: navPillCopy[locale].menu });
-	await expect(async () => {
-		if (!(await menu.isVisible()))
-			await page.getByRole('button', { name: navPillCopy[locale].openMenu }).click();
-		await expect(menu).toBeVisible({ timeout: 1000 });
-	}).toPass();
+	await expect(menu).toBeVisible();
 	return menu;
 }
 
