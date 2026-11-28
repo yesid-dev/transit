@@ -83,6 +83,9 @@ class Store:
                 "threads": self.threads,
                 "memory_limit": f"{self.memory_mib} MiB",
                 "max_temp_directory_size": "0 bytes",
+                # No spill folder either: DuckDB otherwise creates ".tmp" in the working
+                # directory, which the sandboxed service cannot write.
+                "temp_directory": "",
                 "autoload_known_extensions": False,
                 "autoinstall_known_extensions": False,
             },
