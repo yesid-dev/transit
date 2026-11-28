@@ -185,9 +185,14 @@
 			title: recordLayerTitle(layer, locale),
 			steps: labels.map((label, index) => ({ label, swatch: recordColours[index]! })),
 			states: [
-				{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
-				{ label: tr('Not measured', 'Non mesuré'), symbol: noSampleMark },
-				{ label: tr('No live data', 'Aucune donnée en direct'), symbol: scheduleMark },
+				// A capped overview draws only the worst readings: no unmeasured mark to explain.
+				...(capped === null
+					? [
+							{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
+							{ label: tr('Not measured', 'Non mesuré'), symbol: noSampleMark },
+							{ label: tr('No live data', 'Aucune donnée en direct'), symbol: scheduleMark },
+						]
+					: []),
 				...((layer === 'corridors' || layer === 'clear-run') && approximate
 					? [
 							{

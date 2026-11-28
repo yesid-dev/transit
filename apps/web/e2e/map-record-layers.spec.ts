@@ -99,7 +99,7 @@ test('applies the shared Record filters when switching readings with the keyboar
 	expect(waitResponse.ok()).toBe(true);
 	assertScope(waitResponse.url());
 	await expect(
-		page.getByRole('region', { name: 'Waits in view, by stop and line' }).getByRole('listitem'),
+		page.getByRole('region', { name: 'Waits in view' }).getByRole('listitem'),
 	).toHaveCount(4);
 });
 
@@ -144,7 +144,7 @@ test('limits Waits marks at network zoom and keeps the full list across zoom cha
 	await page.goto(`/map?provider=stm&${period}&mapLayer=waits&mapview=-73.59,45.53,12,0,0`);
 	await openMapControls(page);
 
-	const list = page.getByRole('region', { name: 'Waits in view, by stop and line' });
+	const list = page.getByRole('region', { name: 'Waits in view' });
 	const note = list.getByText('The map colours the 300 worst at this zoom.');
 	const markIds = async () => new Set((await recordMarks(page)).map(({ id }) => id));
 	const expectOverview = async () => {
@@ -177,8 +177,8 @@ for (const provider of providers) {
 				const waits = layer === 'waits';
 				const listName = waits
 					? fr
-						? 'Attentes en vue, par arrêt et par ligne'
-						: 'Waits in view, by stop and line'
+						? 'Attentes en vue'
+						: 'Waits in view'
 					: fr
 						? 'Tronçons en vue'
 						: 'Stretches in view';

@@ -391,7 +391,7 @@
 	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop arrivals', 'passages');
 	const listLabel = $derived(
 		waitLayer
-			? tr('Waits in view, by stop and line', 'Attentes en vue, par arrêt et par ligne')
+			? tr('Waits in view', 'Attentes en vue')
 			: layer === 'clear-run'
 				? tr('Stretches in view', 'Tronçons en vue')
 				: stopLayer
@@ -571,7 +571,9 @@
 					<section aria-label={listLabel} data-slot="map-in-view">
 						<div class="flex items-baseline justify-between gap-2">
 							<h2 class="map-record-list-title">{listLabel}</h2>
-							<span class="tabular-nums text-muted-foreground">{shownCount(listed.length)}</span>
+							<span class="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground"
+								>{shownCount(listed.length)}</span
+							>
 						</div>
 						{#if limited}
 							<p class="text-muted-foreground" data-record-cap-note>
