@@ -489,8 +489,7 @@ def run_clean_days(
                     months_built.append(month)
             except Exception as error:
                 months_failed[month] = _failure_reason(error)
-    typer.echo(f"Stretch timing built {len(stretch_built)}, failed {len(stretch_failed)}")
-    if stretch_tables:
+        typer.echo(f"Stretch timing built {len(stretch_built)}, failed {len(stretch_failed)}")
         typer.echo(f"Stretch months built {len(months_built)}, failed {len(months_failed)}")
     if summary is not None:
         print(f"## Clean service days for {provider}\n", file=summary)
@@ -501,14 +500,12 @@ def run_clean_days(
             "Still incomplete": incomplete,
             "Recorded as not measured": unmeasured,
             "Failed": failed,
-            "Stretch timing built": stretch_built,
-            "Stretch timing failed": stretch_failed,
-            **(
-                {"Stretch months built": months_built, "Stretch months failed": months_failed}
-                if stretch_tables
-                else {}
-            ),
         }
+        if stretch_tables:
+            groups["Stretch timing built"] = stretch_built
+            groups["Stretch timing failed"] = stretch_failed
+            groups["Stretch months built"] = months_built
+            groups["Stretch months failed"] = months_failed
         for label, days in groups.items():
             print(f"- {label}: {', '.join(map(str, days)) or 'none'}", file=summary)
     for month, reason in months_failed.items():

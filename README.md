@@ -217,7 +217,8 @@ the v12 receipt, and the schedule ZIP that receipt pins. On the VM,
 `transit-stretch-days.service` builds it after `transit-clean-days.service`
 succeeds and the engine has copied the new v12 days, so it never delays them.
 A failure is reported without failing the run, and the next run tries again.
-An explicit `clean-days --from --to` range builds both kinds of day. To build
+That unit is the only stretch builder: `transit-ops clean-days`, which the
+GitHub workflow runs, builds v12 days only. To build
 one day from local copies, use `transit-ops stretch-passes --provider --date
 --clean-day --schedule --out`.
 

@@ -241,6 +241,9 @@ def clean_days_command(
     """Build clean Parquet tables for an inclusive range of provider service days."""
     from transit_ops.clean_days import run_clean_days
 
+    # Stretch timing is built on the VM by transit-stretch-days.service only, so it never
+    # delays a v12 day here and a private city's failure stays diagnosable there.
+
     selection: tuple[str, str] | datetime
     if scheduled_at is not None:
         if first is not None or last is not None:
@@ -256,10 +259,12 @@ def clean_days_command(
     else:
         selection = (first, last)
     if summary is None:
-        run_clean_days(provider, source, dest, selection=selection)
+        run_clean_days(provider, source, dest, selection=selection, stretch_tables=False)
         return
     with summary.open("a", encoding="utf-8") as output:
-        run_clean_days(provider, source, dest, selection=selection, summary=output)
+        run_clean_days(
+            provider, source, dest, selection=selection, summary=output, stretch_tables=False
+        )
 
 
 class DailyJob(StrEnum):
