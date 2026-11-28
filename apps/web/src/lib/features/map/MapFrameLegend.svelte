@@ -24,6 +24,7 @@
 		scheduleOnlyLines = true,
 		threeD = false,
 		heightLimit = null,
+		approximate = false,
 	}: {
 		locale: Locale;
 		layer: RecordMapLayer;
@@ -35,6 +36,7 @@
 		scheduleOnlyLines?: boolean;
 		threeD?: boolean;
 		heightLimit?: number | null;
+		approximate?: boolean;
 	} = $props();
 
 	let open = $state(true);
@@ -79,10 +81,7 @@
 					title: `${tr('Top of height scale', 'Sommet de l’échelle')} · ${mapRecordReading(heightLimit, false, locale)}`,
 					items: [
 						{
-							label: tr(
-								'Taller than the scale: capped',
-								'Au-dessus de l’échelle : hauteur limitée',
-							),
+							label: tr('Taller than the scale: capped', 'Au-delà\u00a0: hauteur plafonnée'),
 							symbol: cappedHeightMark,
 						},
 					],
@@ -180,7 +179,7 @@
 				{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
 				{ label: tr('Not measured', 'Non mesuré'), symbol: noSampleMark },
 				{ label: tr('No live data', 'Aucune donnée en direct'), symbol: scheduleMark },
-				...(layer === 'corridors'
+				...(layer === 'corridors' && approximate
 					? [
 							{
 								label: tr('Straight between stops', 'Tracé direct entre les arrêts'),

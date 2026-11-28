@@ -64,6 +64,7 @@
 		threeD?: boolean;
 		oncount?: (count: number | null) => void;
 		onheightlimit?: (seconds: number | null) => void;
+		onapproximate?: (shown: boolean) => void;
 		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
 	}
 	let {
@@ -87,6 +88,7 @@
 		threeD = false,
 		oncount,
 		onheightlimit,
+		onapproximate,
 		children,
 	}: Props = $props();
 	const { provider } = getV1Context();
@@ -234,6 +236,7 @@
 	const corridorOverview = $derived(network ? overviewCorridors(marks) : marks);
 	const atCorridorOverview = $derived((reportCamera?.zoom ?? 0) < ALL_CORRIDORS_MIN_ZOOM);
 	const drawn = $derived(atCorridorOverview ? corridorOverview : marks);
+	$effect(() => onapproximate?.(drawn.some(({ approximate }) => approximate === true)));
 	const visible = $derived.by(() => {
 		const camera = reportCamera;
 		if (!camera) return [];

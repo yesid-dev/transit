@@ -835,6 +835,7 @@
 	let ingestedViewHint = false;
 	let recordCount = $state<number | null>(null);
 	let recordHeightLimit = $state<number | null>(null);
+	let recordApproximate = $state(false);
 	const colourBy = $derived(colourDimension(filters.state));
 	const legendDetails = $derived(
 		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
@@ -1523,7 +1524,6 @@
 
 {#snippet layerChoice()}
 	{#if recordLayer !== 'live'}
-		<p class="w-full text-sm font-medium text-muted-foreground">{tr('Layer', 'Couche')}</p>
 		<SegmentedChoice
 			options={recordOptions}
 			value={recordLayer}
@@ -1551,6 +1551,7 @@
 		layer={recordLayer}
 		threeD={recordThreeD}
 		heightLimit={recordHeightLimit}
+		approximate={recordApproximate}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1565,6 +1566,7 @@
 		layer={recordLayer}
 		threeD={recordThreeD}
 		heightLimit={recordHeightLimit}
+		approximate={recordApproximate}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1973,6 +1975,7 @@
 		ondata={(settled) => (recordDataSettled = settled)}
 		oncount={(count) => (recordCount = count)}
 		onheightlimit={(seconds) => (recordHeightLimit = seconds)}
+		onapproximate={(shown) => (recordApproximate = shown)}
 		{reportCamera}
 		{map}
 		layer={recordLayer}

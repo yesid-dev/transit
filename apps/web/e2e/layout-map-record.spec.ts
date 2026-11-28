@@ -32,7 +32,7 @@ for (const provider of ['stm', 'octranspo']) {
 	test(`${provider} stops and corridors remain readable at opening zoom @layout`, async ({
 		page,
 	}, info) => {
-		await recordMapFixture(page, true, provider);
+		await recordMapFixture(page, true, provider, 'complete');
 		const query = new URLSearchParams(recordMapPeriod);
 		query.set('provider', provider);
 		for (const layer of ['stops', 'corridors'] as const) {
@@ -59,6 +59,10 @@ for (const provider of ['stm', 'octranspo']) {
 				contentType: 'application/json',
 			});
 		}
+		if (page.viewportSize()!.width < 1024) await openMapLegend(page);
+		const legend = page.locator('[data-map-legend]:visible');
+		await expect(legend).toBeVisible();
+		await expect(legend.getByText('Straight between stops', { exact: true })).toHaveCount(0);
 	});
 }
 
@@ -184,6 +188,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const legendSelector = `[data-map-legend="${phone ? 'phone' : 'desktop'}"]`;
 			const legend = page.locator(legendSelector);
 			const assertWithinMap = async (control: typeof legend) => {
+				await expect(control).toBeVisible();
 				const bounds = (await page.locator('.map-surface').boundingBox())!;
 				const box = (await control.boundingBox())!;
 				expect(box.x).toBeGreaterThanOrEqual(bounds.x - 1);
@@ -312,8 +317,13 @@ for (const locale of ['en', 'fr'] as const) {
 				});
 			}
 			if (!phone) {
+				const rail = page.locator('.app-frame-controls-rail:not(.surface-rail--mobile)');
+				await expect(rail).toHaveCSS('overflow-y', 'auto');
+				await expect(rail.locator('.map-rail')).toHaveCSS('overflow-y', 'visible');
 				for (const width of [1280, 1024]) {
 					await page.setViewportSize({ width, height: viewport?.height ?? 900 });
+					await assertWithinMap(legend);
+					await expectAboveMapSource(page, rail);
 					await expectAboveMapSource(page, page.locator('[data-slot="map-details"]'));
 					await expectAboveMapSource(
 						page,

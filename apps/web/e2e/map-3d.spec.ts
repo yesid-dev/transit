@@ -76,7 +76,7 @@ for (const provider of ['stm', 'octranspo']) {
 				}
 				const legend = page.locator('[data-map-legend]:visible');
 				await expect(legend).toContainText(
-					fr ? 'Au-dessus de l’échelle : hauteur limitée' : 'Taller than the scale: capped',
+					fr ? 'Au-delà : hauteur plafonnée' : 'Taller than the scale: capped',
 				);
 				if (phone) await closeMapInView(page);
 				else {
@@ -113,7 +113,7 @@ for (const provider of ['stm', 'octranspo']) {
 					expect(Math.min(...cap.ratios)).toBeGreaterThanOrEqual(3);
 					const [legendBounds, railBounds] = await Promise.all([
 						legend.boundingBox(),
-						page.locator('.map-rail.desktop').boundingBox(),
+						page.locator('.app-frame-controls-rail:not(.surface-rail--mobile)').boundingBox(),
 					]);
 					expect(legendBounds!.y + legendBounds!.height).toBeLessThanOrEqual(
 						railBounds!.y + railBounds!.height + 1,

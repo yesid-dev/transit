@@ -19,32 +19,34 @@ export async function recordMapFixture(
 	page: Page,
 	networkAvailable = true,
 	provider = 'stm',
-	locations = provider === 'octranspo' ? ottawaStops : stops,
+	coverage: 'partial' | 'complete' = 'partial',
 ) {
+	const locations = provider === 'octranspo' ? ottawaStops : stops;
 	const received: URLSearchParams[] = [];
 	await page.clock.setFixedTime(new Date('2026-11-23T16:00:00Z'));
 	await page.route(`**/api/stops/slim?provider=${provider}`, (route) =>
 		route.fulfill({ json: { generated_utc: '2026-11-21T00:00:00Z', stops: locations } }),
 	);
 	await page.route(`**/api/corridor-map?city=${provider}`, (route) => {
-		const [first, second] = locations;
+		const destinations = coverage === 'complete' ? locations.slice(1) : locations.slice(1, 2);
 		return route.fulfill({
 			json: {
 				schedule: {
 					date: '2026-11-21',
-					paths: [
-						[
+					paths: destinations.map((second, index) => {
+						const first = locations[index]!;
+						return [
 							'24',
 							0,
-							first!.id,
-							second!.id,
+							first.id,
+							second.id,
 							[
-								[first!.lon, first!.lat],
-								[second!.lon, first!.lat],
-								[second!.lon, second!.lat],
+								[first.lon, first.lat],
+								[second.lon, first.lat],
+								[second.lon, second.lat],
 							],
-						],
-					],
+						];
+					}),
 				},
 			},
 		});
