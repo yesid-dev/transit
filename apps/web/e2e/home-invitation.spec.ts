@@ -19,7 +19,7 @@ async function open(page: Page, locale: 'en' | 'fr') {
 const props = (page: Page) => page.locator('[data-slot="construction-props"]');
 const floorHeight = (page: Page) =>
 	page
-		.locator('.home-construction-floor')
+		.locator('[data-slot="construction-ground-floor"]')
 		.evaluate((floor) => floor.getBoundingClientRect().height);
 /** The footer's place in the page, which the reveal must never move. */
 const footerTop = (page: Page) =>
@@ -37,7 +37,7 @@ const progress = (page: Page) =>
 /** Scroll so the ground's marker sits at `share` of the viewport height. */
 async function placeMarker(page: Page, share: number) {
 	await page.evaluate((share) => {
-		const marker = document.querySelector('.construction-anchor')!;
+		const marker = document.querySelector('[data-slot="construction-ground-anchor"]')!;
 		const top = marker.getBoundingClientRect().top + window.scrollY;
 		window.scrollTo(0, top - innerHeight * share);
 	}, share);
@@ -82,7 +82,7 @@ for (const locale of ['en', 'fr'] as const) {
 		const order = await page.evaluate(() => {
 			const cards = [...document.querySelectorAll('main [data-slot="record-card"]')];
 			const last = cards.at(-1)!;
-			const floor = document.querySelector('.home-construction-floor')!;
+			const floor = document.querySelector('[data-slot="construction-ground-floor"]')!;
 			const footer = document.querySelector('[data-testid="footer"]')!;
 			return {
 				lastIsInvitation: !!last.querySelector('[data-slot="overview-contribute"]'),
@@ -302,7 +302,10 @@ test('the End key opens the ground before it jumps, so the page ends where it la
 	await open(page, 'en');
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
 	await page.keyboard.press('End');
-	await expect(page.locator('.home-construction-floor')).toHaveAttribute('data-opened', 'true');
+	await expect(page.locator('[data-slot="construction-ground-floor"]')).toHaveAttribute(
+		'data-opened',
+		'true',
+	);
 	await expect
 		.poll(() =>
 			page.evaluate(() => document.documentElement.scrollHeight - window.scrollY - innerHeight),
