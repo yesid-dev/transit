@@ -8,7 +8,10 @@ test('the late-share hour grid has five contrasting, ordered swatches @layout', 
 		'/network?provider=stm&frameMode=record&recordFrom=2026-11-20&recordTo=2026-11-22',
 	);
 	const grid = page.locator('#hours [data-slot="hour-grid"]');
-	await expect(grid.locator('tbody [data-level]').first()).toBeVisible();
+	const measuredCell = grid.locator('tbody [data-level]').first();
+	await expect(measuredCell).toBeVisible();
+	await expect(measuredCell).toHaveCSS('border-top-width', '1px');
+	await expect(measuredCell).toHaveCSS('border-top-style', 'solid');
 	await expect(grid.locator('[data-state][data-level]')).toHaveCount(0);
 	const swatches = grid.locator('ul[role="list"] [data-level]');
 	await expect(swatches).toHaveCount(5);
@@ -35,14 +38,17 @@ test('the late-share hour grid has five contrasting, ordered swatches @layout', 
 		const steps = nodes.map((node) => ({
 			fill: color(getComputedStyle(node).backgroundColor),
 			ink: color(getComputedStyle(node).color).luminance,
+			edge: color(getComputedStyle(node).borderTopColor).luminance,
+			border: getComputedStyle(node).borderTop,
 			height: node.getBoundingClientRect().height,
 		}));
 		return { card, steps };
 	});
 	const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-	for (const [index, { fill, ink, height }] of steps.entries()) {
+	for (const [index, { fill, ink, edge, border, height }] of steps.entries()) {
 		expect(height).toBeGreaterThanOrEqual(16);
-		expect(contrast(fill.luminance, card)).toBeGreaterThanOrEqual(3);
+		expect(border).toMatch(/^1px solid /u);
+		expect(contrast(edge, card)).toBeGreaterThanOrEqual(3);
 		expect(contrast(fill.luminance, ink)).toBeGreaterThanOrEqual(4.5);
 		if (index > 0) expect(fill.luminance).toBeLessThan(steps[index - 1].fill.luminance);
 	}

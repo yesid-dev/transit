@@ -40,6 +40,9 @@
 	{@const level = d.tier === null ? undefined : HEATMAP_COLOUR_LEVELS[d.tier]}
 	<rect
 		fill={level === undefined ? 'var(--dataviz-heatmap-nodata)' : goodToBadStep(level).fill}
+		style:stroke={level === undefined ? undefined : 'var(--transit-good-to-bad-grid-edge)'}
+		style:stroke-width={level === undefined || d.tier === worstTier ? undefined : '1px'}
+		vector-effect="non-scaling-stroke"
 		data-chart-datum={index}
 		x={px(d.c)}
 		y={py(d.r)}

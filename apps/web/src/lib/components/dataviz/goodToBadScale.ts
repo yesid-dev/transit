@@ -6,6 +6,6 @@ export type GoodToBadLevel = (typeof GOOD_TO_BAD_LEVELS)[number];
 export function goodToBadStep(level: GoodToBadLevel) {
 	return {
 		fill: `var(--transit-good-to-bad-${level})`,
-		ink: level === 0 ? 'var(--transit-good-to-bad-ink-0)' : 'var(--transit-good-to-bad-ink)',
+		ink: `var(--transit-good-to-bad-ink-${level}, var(--transit-good-to-bad-ink))`,
 	};
 }

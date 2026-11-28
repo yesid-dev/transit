@@ -14,7 +14,7 @@
 	}).join(';');
 </script>
 
-<div class="min-w-0 [&_ul[role=list]_[data-level]]:min-h-[16px]" style={palette}>
+<div class="good-to-bad-grid min-w-0 [&_ul[role=list]_[data-level]]:min-h-[16px]" style={palette}>
 	<ChartDetails label={props.label} {readings} targets="tbody td">
 		<HourGrid {...props} />
 	</ChartDetails>

@@ -582,7 +582,7 @@
 								{@const display = grid(result.answer, 14)}
 								{#snippet dayGrid(count: number)}
 									{@const shown = grid(result.answer, count)}
-									<div>
+									<div class="good-to-bad-grid">
 										<GoodToBadHourGrid
 											label={titles.days}
 											columns={shown.columns}
@@ -609,6 +609,10 @@
 													<span
 														aria-hidden="true"
 														class="min-w-4 rounded-sm text-center"
+														class:border={swatch !== undefined}
+														style:border-color={swatch
+															? 'var(--transit-good-to-bad-grid-edge)'
+															: undefined}
 														style:background-color={swatch?.fill}
 														style:color={swatch?.ink}>{marks[state].text}</span
 													>

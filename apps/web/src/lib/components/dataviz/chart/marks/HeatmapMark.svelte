@@ -107,7 +107,7 @@
 </script>
 
 <figure
-	class={cn('dv-heatmap-mark m-0', className)}
+	class={cn('good-to-bad-grid dv-heatmap-mark m-0', className)}
 	aria-label={spec.title}
 	data-slot="heatmap-mark"
 >
@@ -182,7 +182,8 @@
 				{#if tierLabels[tier]}
 					<li class="flex items-center gap-2">
 						<span
-							class="size-4 rounded-sm"
+							class="size-4 rounded-sm border"
+							style:border-color="var(--transit-good-to-bad-grid-edge)"
 							style:background-color={goodToBadStep(level).fill}
 							aria-hidden="true"
 						></span>

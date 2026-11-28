@@ -9,14 +9,35 @@
 	--transit-good-to-bad-ink: light-dark(#fff, #000);
 }
 
+/* Grid borders let their fills cover a wider lightness range than map fills. */
+.good-to-bad-grid {
+	--transit-good-to-bad-0: #d0f4ff;
+	--transit-good-to-bad-1: #79c7f6;
+	--transit-good-to-bad-2: #979797;
+	--transit-good-to-bad-3: #c03c39;
+	--transit-good-to-bad-4: #a00008;
+	--transit-good-to-bad-ink: #000;
+	--transit-good-to-bad-ink-3: #fff;
+	--transit-good-to-bad-ink-4: #fff;
+	--transit-good-to-bad-grid-edge: light-dark(#818181, #757575);
+}
+
+.good-to-bad-grid [data-slot='hour-grid'] [data-level] {
+	border-color: var(--transit-good-to-bad-grid-edge);
+}
+
 @media (forced-colors: active) {
-	:root {
+	:root,
+	.good-to-bad-grid {
 		--transit-good-to-bad-0: CanvasText;
 		--transit-good-to-bad-1: CanvasText;
 		--transit-good-to-bad-2: CanvasText;
 		--transit-good-to-bad-3: CanvasText;
 		--transit-good-to-bad-4: CanvasText;
 		--transit-good-to-bad-ink-0: Canvas;
+		--transit-good-to-bad-ink-3: Canvas;
+		--transit-good-to-bad-ink-4: Canvas;
 		--transit-good-to-bad-ink: Canvas;
+		--transit-good-to-bad-grid-edge: CanvasText;
 	}
 }
