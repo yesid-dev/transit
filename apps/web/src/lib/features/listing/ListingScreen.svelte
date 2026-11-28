@@ -31,7 +31,6 @@
 		locale,
 		head,
 		answer,
-		headingInAnswer = false,
 		introClass,
 		answerBusy,
 		edgeBeforeResults = false,
@@ -54,8 +53,7 @@
 	}: {
 		locale: Locale;
 		head: { title: string; subtitle?: string | null };
-		answer: Snippet<[Snippet | undefined]>;
-		headingInAnswer?: boolean;
+		answer: Snippet;
 		introClass?: string;
 		answerBusy?: boolean;
 		edgeBeforeResults?: boolean;
@@ -95,16 +93,16 @@
 	});
 </script>
 
-{#snippet heading()}
-	<ScreenTitle title={head.title} subtitle={head.subtitle ?? undefined} />
-{/snippet}
-
 {#snippet intro()}
-	<div class={['grid min-w-0 content-start gap-(--space-card-gap)', introClass]}>
-		{#if !headingInAnswer}{@render heading()}{/if}
-		<div class="min-w-0" data-slot="screen-answer" aria-busy={answerBusy}>
-			{@render answer(headingInAnswer ? heading : undefined)}
-		</div>
+	<div class="listing-heading min-w-0" data-screen-intro>
+		<ScreenTitle title={head.title} subtitle={head.subtitle ?? undefined} />
+	</div>
+	<div
+		class={['listing-reading min-w-0', introClass]}
+		data-slot="screen-answer"
+		aria-busy={answerBusy}
+	>
+		{@render answer()}
 	</div>
 {/snippet}
 
@@ -167,7 +165,11 @@
 				{/if}
 				{@render searchActions?.()}
 				{#if search}<p class="sr-only" role="status">{resultCountText}</p>{/if}
-				{@render summary?.()}
+				{#if summary}
+					<div class="listing-summary text-small text-muted-foreground" data-slot="listing-summary">
+						{@render summary()}
+					</div>
+				{/if}
 				{@render sort?.()}
 				{@render children(more)}
 			</div>
@@ -178,17 +180,99 @@
 
 <Surface>
 	<RecordScreen class="min-w-0">
-		<div class="min-w-0" data-slot="screen-content">
+		<div class="listing-screen min-w-0" data-slot="screen-content">
 			{#if edgeBeforeResults}
-				<RecordGroup>{@render intro()}</RecordGroup>
+				<RecordGroup class="listing-group">{@render intro()}</RecordGroup>
 				<RecordGroup>{@render results()}</RecordGroup>
 			{:else}
-				<RecordGroup>
+				<RecordGroup class="listing-group">
 					{@render intro()}
-					{@render results()}
+					<div class="listing-results min-w-0">
+						{@render results()}
+					</div>
 				</RecordGroup>
 			{/if}
 			{#if about}<RecordGroup>{@render about()}</RecordGroup>{/if}
 		</div>
 	</RecordScreen>
 </Surface>
+
+<style>
+	.listing-screen {
+		container: listing-screen / inline-size;
+	}
+
+	:global(.listing-group) {
+		row-gap: 0.75rem;
+	}
+
+	.listing-reading {
+		--listing-heading-reserve: 4.6875rem;
+	}
+
+	.listing-results {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: var(--space-card-gap);
+		margin-block-start: calc(var(--space-card-gap) - 0.75rem);
+	}
+
+	@media (width >= 80rem) {
+		.listing-results {
+			margin-block-start: calc(var(--space-card-gap) - 1.75rem);
+		}
+	}
+
+	@container listing-screen (min-width: 44rem) {
+		.listing-reading {
+			--listing-heading-reserve: 3.5rem;
+		}
+	}
+
+	/* The answer follows the title in the DOM. Subgrid lets the stamp and actions share the title row. */
+	@container listing-screen (min-width: 64rem) {
+		:global(.listing-group) {
+			grid-template-columns: minmax(0, 1fr) max-content max-content;
+			grid-template-rows: auto auto auto;
+			column-gap: 1rem;
+		}
+
+		.listing-heading {
+			grid-column: 1;
+			grid-row: 1;
+			z-index: 1;
+		}
+
+		.listing-reading {
+			--listing-heading-reserve: 0rem;
+			display: grid;
+			grid-column: 1 / -1;
+			grid-row: 1 / span 3;
+			grid-template-columns: subgrid;
+			grid-template-rows: subgrid;
+		}
+
+		.listing-reading > :global(:not([data-slot='record-answer'])) {
+			grid-column: 1 / -1;
+			grid-row: 2 / -1;
+		}
+
+		.listing-results {
+			grid-column: 1 / -1;
+		}
+	}
+
+	.listing-summary:not(:has(> *)) {
+		display: none;
+	}
+
+	.listing-summary :global([data-slot='filter-summary']) {
+		margin-block-end: 0;
+	}
+
+	.listing-summary :global([data-slot='filter-summary-count']) {
+		font-size: inherit;
+		line-height: inherit;
+		color: inherit;
+	}
+</style>

@@ -557,9 +557,11 @@
 	{#if liveMode && !untracked}
 		<FleetLiveAnswer {locale} pending={liveLoading} withAction embedded>
 			<RecordAnswer
+				listing
 				{locale}
 				time={stamp}
 				value={live?.vehicles ? tally(reporting.length, locale) : null}
+				size="md"
 				sentence={live?.vehicles
 					? health?.isStale
 						? singularCount(reporting.length, locale)
@@ -581,39 +583,36 @@
 				{actions}
 			/>
 		</FleetLiveAnswer>
+	{:else if untracked}
+		<RecordAnswer listing {locale} value={null} state="not_tracked" sentence={notTracked[locale]} />
+	{:else if !result || result.kind === 'busy'}
+		<RecordPending {locale} shape="answer" busy={result?.kind === 'busy'} />
 	{:else}
-		<div class="fleet-answer">
-			{#if untracked}
-				<RecordAnswer {locale} value={null} state="not_tracked" sentence={notTracked[locale]} />
-			{:else if !result || result.kind === 'busy'}
-				<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
-				<RecordPending {locale} shape="reading" busy={result?.kind === 'busy'} />
-			{:else}
-				<RecordAnswer
-					{locale}
-					time={stamp}
-					value={record?.fleet ? tally(record.active, locale) : null}
-					sentence={record?.fleet
-						? singularCount(record.active, locale)
-							? t(
-									'vehicle reported on a trip on these dates.',
-									'véhicule a signalé une position pendant un trajet à ces dates.',
-								)
-							: t(
-									'vehicles reported on a trip on these dates.',
-									'véhicules ont signalé une position pendant un trajet à ces dates.',
-								)
-						: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
-					evidence={record
-						? {
-								sample,
-								lastGood: result?.kind === 'answer' && result.lastGood,
-							}
-						: undefined}
-					actions={record ? actions : undefined}
-				/>
-			{/if}
-		</div>
+		<RecordAnswer
+			listing
+			{locale}
+			time={stamp}
+			value={record?.fleet ? tally(record.active, locale) : null}
+			size="md"
+			sentence={record?.fleet
+				? singularCount(record.active, locale)
+					? t(
+							'vehicle reported on a trip on these dates.',
+							'véhicule a signalé une position pendant un trajet à ces dates.',
+						)
+					: t(
+							'vehicles reported on a trip on these dates.',
+							'véhicules ont signalé une position pendant un trajet à ces dates.',
+						)
+				: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
+			evidence={record
+				? {
+						sample,
+						lastGood: result?.kind === 'answer' && result.lastGood,
+					}
+				: undefined}
+			actions={record ? actions : undefined}
+		/>
 	{/if}
 {/snippet}
 
@@ -889,15 +888,11 @@
 
 <style>
 	.fleet-summary {
-		font-size: var(--text-small);
 		min-block-size: 1lh;
 	}
 
 	.fleet-results[data-reserved] {
 		min-block-size: var(--fleet-rows-wide);
-	}
-	.fleet-answer {
-		min-block-size: 11.25rem;
 	}
 	@media (width < 40rem) {
 		.fleet-summary {
@@ -911,9 +906,6 @@
 
 		.fleet-results[data-reserved] {
 			min-block-size: var(--fleet-rows-phone);
-		}
-		.fleet-answer {
-			min-block-size: 19.8125rem;
 		}
 	}
 </style>

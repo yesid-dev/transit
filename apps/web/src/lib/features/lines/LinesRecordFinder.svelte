@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick, untrack, type Snippet } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { FilterSummary, filterCountText } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import { Skeleton } from '@yesid/ui/skeleton';
@@ -625,12 +625,46 @@
 	{#if timingEvidence}<RecordEvidenceLine {locale} evidence={timingEvidence} />{/if}
 {/snippet}
 
-{#snippet lead(heading: Snippet | undefined)}
-	{#if initialTiming}
-		<RecordPending {heading} {locale} shape="answer" answer={record.punctuality} />
+{#snippet waitingStatement()}
+	<RecordPending
+		{locale}
+		shape="line"
+		answer={initialTiming ? record.punctuality : undefined}
+		busy={!initialTiming}
+	/>
+{/snippet}
+
+{#snippet waitingActions()}
+	<div
+		class="flex h-11 w-[28rem] max-w-full gap-2"
+		class:waiting-actions-fr={locale === 'fr'}
+		aria-hidden="true"
+	>
+		{#each [0, 1, 2, 3] as action (action)}
+			<Skeleton class="min-w-0 flex-1" />
+		{/each}
+	</div>
+{/snippet}
+
+{#snippet waitingEvidence()}
+	<Skeleton class="h-4 w-64 max-w-full" />
+{/snippet}
+
+{#snippet lead()}
+	{#if !punctuality || punctuality.kind === 'busy'}
+		<RecordAnswer
+			listing
+			{locale}
+			time={stamp}
+			value={null}
+			sentence=""
+			statement={waitingStatement}
+			actions={waitingActions}
+			meta={waitingEvidence}
+		/>
 	{:else if spread !== null}
 		<RecordAnswer
-			{heading}
+			listing
 			{locale}
 			time={stamp}
 			value={spread}
@@ -641,7 +675,7 @@
 		/>
 	{:else if measured.length}
 		<RecordAnswer
-			{heading}
+			listing
 			{locale}
 			time={stamp}
 			value={null}
@@ -649,9 +683,9 @@
 			state="too_few_to_judge"
 			{actions}
 		/>
-	{:else if punctuality && punctuality.kind !== 'busy'}
+	{:else}
 		<RecordAnswer
-			{heading}
+			listing
 			{locale}
 			time={stamp}
 			value={null}
@@ -659,14 +693,12 @@
 			state={timingFailure ? undefined : 'not_measured'}
 			{actions}
 		/>
-	{:else}
-		<RecordPending {heading} {locale} shape="answer" busy />
 	{/if}
 {/snippet}
 
 {#snippet summary()}
 	{#if appliedQuery && !typing}
-		<div class="mb-3">
+		<div>
 			<FilterSummary
 				count={matchCount}
 				countLabel={countLabels}
@@ -686,7 +718,7 @@
 		</div>
 	{/if}
 	{#if timingAnswer && !appliedQuery}
-		<p class="mb-2 text-small text-muted-foreground">
+		<p>
 			{t(
 				`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'is' : 'are'} listed here: ${tally(measured.length, locale)} measured, ${tally(scheduleOnly.length, locale)} without live data, ${tally(excluded.length, locale)} that cannot be judged on these dates.`,
 				`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'figure' : 'figurent'} ici\u00a0: ${tally(measured.length, locale)} avec des mesures, ${tally(scheduleOnly.length, locale)} sans données en direct, ${tally(excluded.length, locale)} qu’on ne peut pas juger à ces dates.`,
@@ -925,9 +957,7 @@
 	{locale}
 	head={{ title, subtitle }}
 	answer={lead}
-	headingInAnswer
 	introClass={[
-		'min-[1280px]:-mb-4',
 		!firstTiming && 'line-listing-await',
 		timingPending && !initialTiming && 'opacity-65',
 	]
@@ -967,24 +997,35 @@
 <style>
 	/* A streamed answer keeps room for its longest statement and the actions below it. */
 	:global(.line-listing-await) {
-		min-block-size: 26.25rem;
+		min-block-size: calc(26.25rem - var(--listing-heading-reserve));
 	}
 
 	@media (width < 24rem) {
 		:global(.line-listing-await) {
-			min-block-size: 32rem;
+			min-block-size: calc(32rem - var(--listing-heading-reserve));
 		}
 	}
 
 	@media (width >= 40rem) {
 		:global(.line-listing-await) {
-			min-block-size: 17.5rem;
+			min-block-size: calc(17.5rem - var(--listing-heading-reserve));
 		}
 	}
 
 	@media (width >= 80rem) {
 		:global(.line-listing-await) {
-			min-block-size: 10.5rem;
+			min-block-size: calc(10.5rem - var(--listing-heading-reserve));
+		}
+	}
+
+	.waiting-actions-fr {
+		inline-size: 30rem;
+	}
+
+	@container listing-screen (min-width: 64rem) {
+		/* The shared wide rows stay in place while the first reading and its actions arrive. */
+		:global(.listing-group:has(> .line-listing-await)) {
+			grid-template-rows: auto minmax(3.5rem, auto) minmax(1.5rem, auto);
 		}
 	}
 </style>

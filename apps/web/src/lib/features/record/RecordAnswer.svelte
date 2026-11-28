@@ -10,6 +10,7 @@
 
 	let {
 		heading,
+		listing = false,
 		value,
 		sentence,
 		state,
@@ -24,6 +25,7 @@
 		size = 'lg',
 	}: {
 		heading?: Snippet;
+		listing?: boolean;
 		value: string | null;
 		sentence: string;
 		state?: RecordState;
@@ -51,7 +53,7 @@
 	Narrower: the stamp, the comparison and what was counted share one wrapping line. The kit's
 	AnswerLead keeps the statement; the reading order stays statement, stamp, context, actions.
 -->
-<div class="record-answer" data-slot="record-answer">
+<div class="record-answer" class:listing-answer={listing} data-slot="record-answer">
 	<div
 		class="answer-grid"
 		class:with-heading={Boolean(heading)}
@@ -249,6 +251,47 @@
 		.aside .answer-details {
 			grid-area: details;
 			display: flex;
+			flex-wrap: wrap;
+			align-items: baseline;
+			gap: 0.375rem 1rem;
+			min-inline-size: 0;
+		}
+	}
+
+	/* ListingScreen owns the title. Its reading spans the title, statement and evidence rows. */
+	@container listing-screen (min-width: 64rem) {
+		.listing-answer {
+			display: grid;
+			grid-column: 1 / -1;
+			grid-row: 1 / -1;
+			grid-template-columns: subgrid;
+			grid-template-rows: subgrid;
+			container-type: normal;
+		}
+		.listing-answer .answer-grid,
+		.listing-answer .answer-context {
+			display: contents;
+		}
+		.listing-answer .answer-statement {
+			grid-column: 1 / -1;
+			grid-row: 2;
+		}
+		.listing-answer .answer-stamp {
+			grid-column: 2;
+			grid-row: 1;
+			align-self: center;
+			white-space: nowrap;
+		}
+		.listing-answer .answer-actions {
+			grid-column: 3;
+			grid-row: 1;
+			align-self: center;
+			justify-content: end;
+		}
+		.listing-answer .answer-details {
+			display: flex;
+			grid-column: 1 / -1;
+			grid-row: 3;
 			flex-wrap: wrap;
 			align-items: baseline;
 			gap: 0.375rem 1rem;

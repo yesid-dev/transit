@@ -571,6 +571,7 @@
 
 {#snippet lead()}
 	<RecordAnswer
+		listing
 		{locale}
 		value={null}
 		{sentence}
@@ -823,7 +824,7 @@
 <style>
 	/* The stop names remain usable while their readings come in. */
 	:global(.stop-listing-await) {
-		min-block-size: 22.5rem;
+		min-block-size: calc(22.5rem - var(--listing-heading-reserve));
 	}
 
 	.stop-listing-evidence {
@@ -832,7 +833,7 @@
 
 	@media (width < 24rem) {
 		:global(.stop-listing-await) {
-			min-block-size: 26rem;
+			min-block-size: calc(26rem - var(--listing-heading-reserve));
 		}
 
 		:global(.stop-listing-await [data-slot='answer-evidence']) {
@@ -857,7 +858,7 @@
 
 	@media (width >= 40rem) {
 		:global(.stop-listing-await) {
-			min-block-size: 14rem;
+			min-block-size: calc(14rem - var(--listing-heading-reserve));
 		}
 
 		:global(.stop-listing-await [data-slot='answer-context']) {
@@ -867,7 +868,7 @@
 
 	@media (width >= 80rem) {
 		:global(.stop-listing-await) {
-			min-block-size: 10rem;
+			min-block-size: calc(10rem - var(--listing-heading-reserve));
 		}
 	}
 </style>

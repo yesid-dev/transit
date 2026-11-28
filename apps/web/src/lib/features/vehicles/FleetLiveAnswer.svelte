@@ -22,6 +22,7 @@
 <div
 	class="live-answer"
 	class:with-action={withAction}
+	class:embedded-ready={embedded && !pending}
 	data-slot={embedded ? undefined : 'screen-answer'}
 >
 	{#if pending}
@@ -41,6 +42,12 @@
 </div>
 
 <style>
+	@container listing-screen (min-width: 64rem) {
+		.embedded-ready {
+			display: contents;
+		}
+	}
+
 	.live-answer {
 		/* Title and summary, with the live stamp on its own line on a phone. */
 		--answer-height: 8.3125rem;
