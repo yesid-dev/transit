@@ -36,7 +36,11 @@ it.each(['en', 'fr'] as const)(
 		expect(first.total).toBe(25);
 		expect(first.active).toBe(24);
 		expect(first.reportingCounts).toEqual({ reported: 24, didNotReport: 1, unmeasured: 0 });
-		expect(first.rows[0]).toEqual({
+		// A vehicle that did not report is listed after every vehicle with a reading.
+		expect(first.rows.map(({ id }) => id)).not.toContain('49-1');
+		expect(first.rows[0]).toMatchObject({ id: '49-2', days: 1, hours: 3, lines: 2, trips: 4 });
+		const all = projectVehicleFleet(source, fleetView(new URLSearchParams('shown=40')), locale);
+		expect(all.rows.at(-1)).toEqual({
 			id: '49-1',
 			state: 'not_reporting',
 			days: null,
@@ -44,7 +48,6 @@ it.each(['en', 'fr'] as const)(
 			lines: null,
 			trips: null,
 		});
-		expect(first.rows[1]).toMatchObject({ id: '49-2', days: 1, hours: 3, lines: 2, trips: 4 });
 		const silent = projectVehicleFleet(
 			source,
 			fleetView(new URLSearchParams('reporting=silent')),

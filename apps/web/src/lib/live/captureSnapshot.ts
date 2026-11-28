@@ -33,6 +33,9 @@ const vehicle = z.object({
 const tripUpdate = z.object({
 	trip_id: z.string(),
 	trip_headsign: text.optional(),
+	// The timetable's first departure (epoch seconds) and stop; older publications omit them.
+	scheduled_start: ordinal.optional(),
+	scheduled_origin: text.optional(),
 	route_id: text,
 	direction_id: ordinal,
 	start_date: text,

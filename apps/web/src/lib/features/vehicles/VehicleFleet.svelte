@@ -175,6 +175,9 @@
 			href: href(`/vehicle/${encodeURIComponent(row.id)}`),
 		})),
 	);
+	const reportedRows = $derived(recordRows.filter(({ state }) => state !== 'not_reporting'));
+	const silentRows = $derived(recordRows.filter(({ state }) => state === 'not_reporting'));
+	const silentCount = $derived(record?.reportingCounts?.didNotReport ?? silentRows.length);
 	type LiveRow = (typeof liveRows)[number];
 	type RecordRow = (typeof recordRows)[number];
 	const routes = new SvelteMap<string, RouteFile | null>();
@@ -336,11 +339,14 @@
 				`${tally(reported, locale)} reported on a trip`,
 				`${tally(reported, locale)} avec signalement en trajet`,
 			),
-			t(
-				`${tally(didNotReport, locale)} did not report`,
-				`${tally(didNotReport, locale)} sans signalement`,
-			),
 		];
+		if (didNotReport > 0)
+			parts.push(
+				t(
+					`${tally(didNotReport, locale)} did not report`,
+					`${tally(didNotReport, locale)} sans signalement`,
+				),
+			);
 		if (unmeasured > 0)
 			parts.push(
 				t(
@@ -369,9 +375,10 @@
 		more: (count: number) =>
 			t(`Show ${tally(count, locale)} more`, `Afficher ${tally(count, locale)} de plus`),
 	});
+	// The Live answer gives the count, so the Live subtitle is drawn whole in the server render.
 	const subtitle = $derived(
-		operator && (liveMode ? reporting.length > 0 : Boolean(record))
-			? `${operator}${t(': ', '\u00a0: ')}${countedUnit(liveMode ? reporting.length : record!.fleet, 'vehicle', locale)}`
+		operator && !liveMode && record
+			? `${operator}${t(': ', '\u00a0: ')}${countedUnit(record.fleet, 'vehicle', locale)}`
 			: operator,
 	);
 	const sample = $derived(
@@ -453,10 +460,10 @@
 
 {#snippet daysCell(row: RecordRow)}
 	{#if row.state === 'not_reporting'}
-		<span class="inline-flex min-w-0 items-baseline gap-2 font-semibold"
+		<span class="inline-flex min-w-0 items-baseline gap-2 font-sans font-semibold"
 			><StateMark state="not_reporting" {locale} hiddenLabel />{t(
 				'Did not report',
-				'Aucun signal',
+				'Sans signalement',
 			)}</span
 		>
 	{:else}<RecordTableValue
@@ -491,27 +498,49 @@
 			<span class="shrink-0"
 				><RoutePlate code={display.lineName(vehicle.route).number ?? vehicle.route} /></span
 			>
-			{#if toward}<span class="min-w-0 [overflow-wrap:normal]">{toward}</span
-				>{:else if headings}<StateMark state="unknown" {locale} />{/if}
+			{#if toward}<span class="min-w-0 font-sans [overflow-wrap:normal]">{toward}</span
+				>{:else if headings}<span class="font-sans"><StateMark state="unknown" {locale} /></span
+				>{/if}
 		</span>
-	{:else}<StateMark state="unknown" {locale} />{/if}
+	{:else}<span class="font-sans"><StateMark state="unknown" {locale} /></span>{/if}
 {/snippet}
 {#snippet statusCell({ vehicle }: LiveRow)}
-	{#if vehicle.status === 'unknown' || vehicle.delay_min == null}<StateMark
-			state="delay_unknown"
-			{locale}
-		/>
-	{:else}<StatusMark
-			status={vehicle.status}
-			{...liveStatusWords(
-				vehicle.status,
-				liveDelayLabels(locale)[vehicle.status],
-				vehicle.delay_min * 60,
-				locale,
-			)}
-			class="@min-[48rem]:flex-nowrap! @min-[48rem]:whitespace-nowrap"
-			style="overflow-wrap: normal; word-break: normal"
-		/>{/if}
+	<span class="font-sans">
+		{#if vehicle.status === 'unknown' || vehicle.delay_min == null}<StateMark
+				state="delay_unknown"
+				{locale}
+			/>
+		{:else}<StatusMark
+				status={vehicle.status}
+				{...liveStatusWords(
+					vehicle.status,
+					liveDelayLabels(locale)[vehicle.status],
+					vehicle.delay_min * 60,
+					locale,
+				)}
+				class="@min-[48rem]:flex-nowrap! @min-[48rem]:whitespace-nowrap"
+				style="overflow-wrap: normal; word-break: normal"
+			/>{/if}
+	</span>
+{/snippet}
+<!-- S9: on a phone the status keeps one line beside the number and plate. -->
+{#snippet phoneStatus({ vehicle }: LiveRow)}
+	<span class="phone-status font-sans font-normal whitespace-nowrap">
+		{#if vehicle.status === 'unknown' || vehicle.delay_min == null}<StateMark
+				state="delay_unknown"
+				{locale}
+			/>
+		{:else}<StatusMark
+				status={vehicle.status}
+				{...liveStatusWords(
+					vehicle.status,
+					liveDelayLabels(locale)[vehicle.status],
+					vehicle.delay_min * 60,
+					locale,
+				)}
+				class="flex-nowrap! whitespace-nowrap"
+			/>{/if}
+	</span>
 {/snippet}
 {#snippet phoneDays(row: RecordRow)}<RecordTableValue
 		{locale}
@@ -736,6 +765,7 @@
 					pageSize={0}
 					phone={{
 						after: phonePlate,
+						value: phoneStatus,
 						line: ({ vehicle }) => {
 							const toward = vehicle.route && headings ? direction(vehicle) : null;
 							const report = vehicle.reported_utc || vehicle.updated_utc;
@@ -759,38 +789,51 @@
 						{noHeadingNote(agencyName(operator, page.data.provider), locale)}
 					</p>{/if}
 			{:else}
-				<RecordDataTable
-					{locale}
-					title={sectionTitles.fleet[locale === 'fr' ? 1 : 0]}
-					rowHeader={t('Vehicle', 'Véhicule')}
-					compactName
-					columns={recordColumns}
-					rows={recordRows}
-					value="days"
-					pageSize={0}
-					phone={{
-						value: phoneDays,
-						empty: (row) => row.state === 'not_reporting',
-						line: (row) =>
-							row.state === 'not_reporting'
-								? didNotReport(locale)
-								: rowSentence(
-										[
-											row.hours != null && hoursInService(row.hours, locale),
-											row.lines != null && countedUnit(row.lines, 'line', locale),
-											row.trips != null && countedUnit(row.trips, 'trip', locale),
-										],
-										locale,
-									),
-					}}
-				/>
+				{#if reportedRows.length}<RecordDataTable
+						{locale}
+						title={sectionTitles.fleet[locale === 'fr' ? 1 : 0]}
+						rowHeader={t('Vehicle', 'Véhicule')}
+						compactName
+						columns={recordColumns}
+						rows={reportedRows}
+						value="days"
+						pageSize={0}
+						phone={{
+							value: phoneDays,
+							line: (row) =>
+								rowSentence(
+									[
+										row.hours != null && hoursInService(row.hours, locale),
+										row.lines != null && countedUnit(row.lines, 'line', locale),
+										row.trips != null && countedUnit(row.trips, 'trip', locale),
+									],
+									locale,
+								),
+						}}
+					/>{/if}
+				{#if silentRows.length}
+					<p class="fleet-silent-line" data-slot="fleet-silent-line">
+						{singularCount(silentCount, locale)
+							? t(
+									`${tally(silentCount, locale)} vehicle known to the feed did not report on these dates. That is not the same as out of service.`,
+									`${tally(silentCount, locale)} véhicule connu du flux n’a rien transmis à ces dates. Cela ne veut pas dire qu’il était hors service.`,
+								)
+							: t(
+									`${tally(silentCount, locale)} vehicles known to the feed did not report on these dates. That is not the same as out of service.`,
+									`${tally(silentCount, locale)} véhicules connus du flux n’ont rien transmis à ces dates. Cela ne veut pas dire qu’ils étaient hors service.`,
+								)}
+					</p>
+					<RecordDataTable
+						{locale}
+						title={t('Did not report on these dates', 'Sans signalement à ces dates')}
+						rowHeader={t('Vehicle', 'Véhicule')}
+						compactName
+						rows={silentRows}
+						pageSize={0}
+						phone={{ empty: () => true, line: () => didNotReport(locale) }}
+					/>
+				{/if}
 				{@render moreAction?.()}
-				{#if recordRows.some(({ state }) => state === 'not_reporting')}<p>
-						{t(
-							'Did not report on these dates. That is not the same as out of service.',
-							'Aucun signalement pour ces dates. Cela ne veut pas dire que le véhicule était hors service.',
-						)}
-					</p>{/if}
 			{/if}
 		</section>
 	{/if}
@@ -861,7 +904,7 @@
 	title={untracked
 		? t('What changes without vehicle numbers', 'Ce qui change sans numéro de véhicule')
 		: title}
-	titleAside={untracked ? undefined : stamp}
+	titleAside={untracked || liveMode ? undefined : stamp}
 	search={untracked
 		? undefined
 		: {
@@ -890,7 +933,7 @@
 				? 'max-sm:min-h-[126.625rem] lg:min-h-[100.125rem]'
 				: undefined,
 		stampRule: !untracked,
-		stampPending: !untracked && liveMode && liveLoading,
+		stampPending: false,
 		evidence: !untracked && !liveMode ? evidenceFoot : undefined,
 	}}
 />
@@ -898,6 +941,10 @@
 <style>
 	.fleet-summary {
 		min-block-size: 1lh;
+	}
+
+	.fleet-silent-line {
+		margin-block-start: var(--space-card-gap);
 	}
 
 	.fleet-results[data-reserved] {

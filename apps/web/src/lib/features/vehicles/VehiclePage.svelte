@@ -107,6 +107,7 @@
 							city={data.city}
 							{operator}
 							{recordHref}
+							lastSeen={data.lastSeen}
 							titleBlock={liveTitle}
 						/>
 					{/key}

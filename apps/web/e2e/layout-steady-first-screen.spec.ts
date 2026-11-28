@@ -4,9 +4,12 @@ import { join } from 'node:path';
 import { streamingLayoutTest as test } from './layout-test';
 import {
 	captureFixture,
+	captureTrip,
+	captureTripReport,
 	captureUrl,
 	captureVehicle,
 	liveSummaryUrl,
+	liveTripsUrl,
 	overviewReadsCapture,
 } from './capture-fixture';
 import { designPassCases, type Screen } from './design-pass-cases';
@@ -558,6 +561,89 @@ for (const { screen, href } of designPassCases.filter(
 				});
 			}
 }
+
+// A vehicle's Live page waits as the not-reporting shape and decides reporting or not before it
+// draws its cards; the Vehicles Live head keeps its second line (closing audit G2 M3, S20).
+const liveLoads = [
+	['en', 390],
+	['fr', 768],
+	['fr', 1024],
+	['en', 1440],
+] as const;
+for (const city of ['stm', 'octranspo'] as const)
+	for (const screen of ['vehicle-reporting', 'vehicle-not-reporting', 'vehicles'] as const)
+		for (const [locale, width] of liveLoads)
+			test(`${screen} Live ${city} ${locale} ${width}px loads without shifting @layout`, async ({
+				page,
+			}, info) => {
+				await page.setViewportSize({ width, height: 900 });
+				await observeShifts(page);
+				const { promise: held, resolve: release } = Promise.withResolvers<void>();
+				const ottawa = city === 'octranspo' ? { direction_id: null, stop_id: null } : {};
+				await page.route(captureUrl, async (route) => {
+					await held;
+					const at = await page.evaluate(() => Date.now());
+					const fleet =
+						screen === 'vehicles'
+							? Array.from({ length: 30 }, (_, index) =>
+									captureVehicle(at, {
+										id: `report-${index}`,
+										vehicle_id: String(40100 + index),
+										...ottawa,
+									}),
+								)
+							: [
+									captureVehicle(at, {
+										...(screen === 'vehicle-reporting'
+											? {}
+											: { id: 'report-40099', vehicle_id: '40099' }),
+										...ottawa,
+									}),
+								];
+					await route.fulfill({ json: captureFixture(at, { city, vehicle_positions: fleet }) });
+				});
+				// The trip's predictions and timetable come after the position, as on the live site.
+				await page.route(liveTripsUrl, async (route) => {
+					await held;
+					await new Promise((done) => setTimeout(done, 400));
+					const at = await page.evaluate(() => Date.now());
+					await route.fulfill({
+						json: captureTripReport(city, new Date(at).toISOString(), [
+							{
+								...captureTrip('T1', '24', [
+									{ stop: 'S1', eta_utc: new Date(at + 60_000).toISOString() },
+								]),
+								direction_id: city === 'stm' ? 1 : null,
+							},
+						]),
+					});
+				});
+				const path =
+					screen === 'vehicles'
+						? '/vehicles?frameMode=live'
+						: '/vehicle/40061?frameMode=live&recordFrom=2026-11-08&recordTo=2026-11-14';
+				const response = await page.goto(localizeHref(path, locale, city), {
+					waitUntil: 'commit',
+				});
+				expect(response?.ok()).toBe(true);
+				await expect(page.locator('html[data-hydrated]')).toBeAttached();
+				await page.evaluate(() => document.fonts.ready);
+				await settled(page);
+				const waiting = await page.evaluate(() => (window as ShiftWindow).steadyShifts.length);
+				release();
+				await expect(page.locator('main [data-record-pending]')).toHaveCount(0);
+				if (screen === 'vehicle-reporting')
+					await expect(page.locator('[data-slot^="departure-time"]')).toBeVisible();
+				await page.waitForTimeout(800);
+				await settled(page);
+				const shifts = await page.evaluate(() => (window as ShiftWindow).steadyShifts);
+				const score = shifts.reduce((sum, { value }) => sum + value, 0);
+				await info.attach(`${screen}-live-shifts`, {
+					body: JSON.stringify({ score, waiting, shifts }),
+					contentType: 'application/json',
+				});
+				expect(score, JSON.stringify(shifts)).toBeLessThanOrEqual(0.01);
+			});
 
 test('steady footer is keyboard reachable after ten seconds while the engine is still held @layout', async ({
 	page,

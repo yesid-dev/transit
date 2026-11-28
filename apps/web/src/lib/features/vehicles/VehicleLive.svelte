@@ -4,22 +4,27 @@
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import { DashboardGrid } from '@yesid/ui/layout';
-	import { RoutePlate, StatusMark } from '@yesid/ui/brand';
+	import { AnswerLead, RoutePlate, StatusMark } from '@yesid/ui/brand';
 	import RecordAnswer from '#lib/features/record/RecordAnswer.svelte';
 	import { Skeleton } from '@yesid/ui/skeleton';
-	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import AboutLiveFigures from '#lib/features/record/AboutLiveFigures.svelte';
-	import FleetLiveAnswer from './FleetLiveAnswer.svelte';
 	import VehicleMapPreview from './VehicleMapPreview.svelte';
 	import { vehicleLocationRoute } from './vehicleLocationRoute.ts';
-	import { tickingLiveStamp, liveStatusWords, relativeReportAge } from '#lib/site/presenter.ts';
+	import {
+		tickingLiveStamp,
+		liveStatusWords,
+		recordDate,
+		relativeReportAge,
+	} from '#lib/site/presenter.ts';
 	import * as Sheet from '@yesid/ui/sheet';
 	import { onMount, untrack, type Snippet } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { choose } from '#lib/features/record/recordText.ts';
+	import type { Awaitable } from '#lib/site/ready.ts';
+	import type { VehicleLastSeen } from '#lib/server/vehicleRecord.ts';
+	import { choose, recordConnection } from '#lib/features/record/recordText.ts';
 	import { tripDirection } from '#lib/features/trips/tripDirection.ts';
 	import LiveTripPredictions from '#lib/features/trips/LiveTripPredictions.svelte';
 	import { departureByTripHref, departureHref } from '#lib/features/record/departureIdentity.ts';
@@ -49,6 +54,7 @@
 		city,
 		operator,
 		recordHref,
+		lastSeen = null,
 		titleBlock,
 	}: {
 		manifest: Manifest;
@@ -59,6 +65,8 @@
 		city: string;
 		operator?: string;
 		recordHref?: string;
+		/** When the record last saw this vehicle in service, for the not-reporting state. */
+		lastSeen?: Awaitable<VehicleLastSeen> | null;
 		titleBlock?: Snippet<[string | null | undefined]>;
 	} = $props();
 	const display = transitDisplay();
@@ -78,17 +86,19 @@
 	const { clock } = getV1Runtime();
 	const cutoff = $derived(liveTimingFor(manifest).staleCutoffS);
 	const health = $derived(live.familyStates.vehicles.health);
-	const waitingForReports = $derived(
-		!live.vehicles && live.familyStates.vehicles.phase !== 'failed',
+	const reportsSettled = $derived(
+		Boolean(live.vehicles) || live.familyStates.vehicles.phase === 'failed',
 	);
 	let stops = $state<SlimStopsIndex | null>(null);
+	let stopsSettled = $state(false);
 	onMount(() => {
 		live.start();
 		const controller = new AbortController();
 		if (id) {
 			void getStopsIndexSlim({ manifest, signal: controller.signal })
 				.then((result) => (stops = result))
-				.catch(() => {});
+				.catch(() => {})
+				.finally(() => (stopsSettled = true));
 		}
 		return () => {
 			controller.abort();
@@ -101,21 +111,24 @@
 		Object.fromEntries((stops?.stops ?? []).map((stop) => [stop.id, stopDisplayName(stop.name)])),
 	);
 	const routes = new SvelteMap<string, RouteFile | null>();
+	const settledRoutes = new SvelteSet<string>();
 	$effect(() => {
 		const want = selected?.route ? [selected.route] : [];
 		for (const route of want) {
 			if (routes.has(route)) continue;
 			routes.set(route, null);
 			void getRoute(route, { manifest })
-				.then(async (file) => {
+				.then((file) => {
 					routes.set(route, file);
+					// The map's shapes follow; the cards need only the route's directions.
+					settledRoutes.add(route);
 					if (id && file)
-						routes.set(
-							route,
-							withScheduleShapes(file, await getScheduleShapes([route], { manifest })),
-						);
+						void getScheduleShapes([route], { manifest })
+							.then((shapes) => routes.set(route, withScheduleShapes(file, shapes)))
+							.catch(() => {});
 				})
-				.catch(() => {});
+				.catch(() => {})
+				.finally(() => settledRoutes.add(route));
 		}
 	});
 
@@ -149,6 +162,28 @@
 	);
 
 	const liveReading = $derived(selected && (!silent || health.isStale) ? selected : null);
+	// A reporting vehicle is drawn once, with its direction, stop names and departure in hand,
+	// or after a short wait without them; until then the page keeps the not-reporting shape.
+	let detailsDue = $state(false);
+	$effect(() => {
+		if (!reportsSettled || detailsDue) return;
+		const timer = setTimeout(() => (detailsDue = true), 2500);
+		return () => clearTimeout(timer);
+	});
+	// The trip family can answer before it holds this vehicle's trip; wait for the trip itself.
+	const tripsSettled = $derived(
+		Boolean(liveReading?.trip && live.index.byTripId.has(liveReading.trip)) ||
+			live.familyStates.trips.phase === 'failed',
+	);
+	const detailsReady = $derived(
+		detailsDue ||
+			(stopsSettled &&
+				(!liveReading?.route || settledRoutes.has(liveReading.route)) &&
+				(!liveReading?.trip || tripsSettled)),
+	);
+	const view = $derived(
+		!reportsSettled ? 'waiting' : liveReading ? (detailsReady ? 'reporting' : 'waiting') : 'silent',
+	);
 	const headline = $derived(liveReading ? vehicleHeadline(liveReading, locale) : null);
 	const destination = $derived(
 		liveReading ? display.directory.headsign(liveReading.route, directionName(liveReading)) : null,
@@ -191,6 +226,16 @@
 			? tickingLiveStamp(new Date(report), locale, { late: !liveReading || health.isStale })
 			: undefined,
 	);
+	// One stamp per screen: the vehicle's report, or the feed's capture when it is not in it.
+	const feedTime = $derived(
+		live.vehicles?.generated_utc
+			? tickingLiveStamp(new Date(live.vehicles.generated_utc), locale, { late: health.isStale })
+			: undefined,
+	);
+	const waitingTime = $derived({
+		kind: 'live' as const,
+		label: t('Live · loading…', 'En direct · chargement…'),
+	});
 	const next = $derived.by(() => {
 		if (!liveReading?.next_stop) return undefined;
 		const stop = stops?.stops.find(({ id }) => id === liveReading?.next_stop);
@@ -264,57 +309,53 @@
 				'No report from this vehicle yet. Live reports are late.',
 				'Aucun signalement de ce véhicule pour l’instant. Les signalements en direct sont en retard.',
 			);
-		return t(
-			'This vehicle is not reporting now. The feed cannot tell whether it is still in service.',
-			'Ce véhicule ne se signale pas en ce moment. Le flux n’indique pas s’il est toujours en service.',
-		);
+		return t('Not reporting now.', 'Ne se signale pas en ce moment.');
 	});
+	function lastSeenSentence(seen: VehicleLastSeen) {
+		if (seen.kind === 'unavailable') return recordConnection.unreachable[locale];
+		if (seen.kind === 'absent')
+			return t('No trip in the record on these dates.', 'Aucun trajet au bilan à ces dates.');
+		const day = recordDate(seen.day, locale);
+		const line = seen.line ? display.line(seen.line) : null;
+		return line
+			? t(
+					`Last seen in the record on ${day}, on line ${line}.`,
+					`Vu pour la dernière fois au bilan le ${day}, sur la ligne ${line}.`,
+				)
+			: t(`Last seen in the record on ${day}.`, `Vu pour la dernière fois au bilan le ${day}.`);
+	}
 </script>
 
 {#if id}
 	{@const mapHref = href('/map?' + new URLSearchParams({ selectedVehicle: id }))}
 	<div class="min-w-0" data-slot="screen-content">
 		<RecordGroup class="gap-(--space-card-gap)">
-			{@render titleBlock?.(health.isStale ? null : liveReading?.route)}
-			<FleetLiveAnswer {locale} pending={waitingForReports}>
-				<RecordAnswer
-					value={headline?.value ?? null}
-					state={readingState}
-					sentence={liveSentence}
-					{locale}
-					time={liveTime}
-				/>
-				{#if liveReading && health.isStale}<p
-						class="text-small text-muted-foreground"
-						data-slot="last-vehicle-position"
-					>
-						{t('Last report', 'Dernier signalement')}
-						{@render reportedAt()}. {t(
-							'The feed is late; this is the last position received.',
-							'Le flux est en retard; voici la dernière position reçue.',
-						)}
-					</p>{:else if readingState === 'not_reporting' && report}<p>
-						{t('Last report', 'Dernier signalement')} · {@render reportedAt()}
-					</p>{/if}
-			</FleetLiveAnswer>
-			<DashboardGrid gutter={false} minTile="20rem" class="items-start">
-				<RecordCard
-					interactive
-					title={t('Where it is', 'Où il se trouve')}
-					class={liveReading || waitingForReports ? 'lg:min-h-[31.25rem]' : undefined}
-					stamp={liveTime}
-					stampRule
-					stampPending={waitingForReports}
-				>
-					<div
-						class="vehicle-location grid content-start gap-3"
-						class:reserved={liveReading || waitingForReports}
-					>
-						{#if waitingForReports}<div data-waiting-shape="map">
-								<Skeleton class="h-64 w-full" />
-							</div>
-							<RecordPending {locale} />
-						{:else if liveReading}{@const running = liveReading}<VehicleMapPreview
+			{@render titleBlock?.(view !== 'reporting' || health.isStale ? null : liveReading?.route)}
+			{#if view === 'reporting' && liveReading}
+				{@const running = liveReading}
+				<div data-slot="screen-answer">
+					<RecordAnswer
+						value={headline?.value ?? null}
+						state={readingState}
+						sentence={liveSentence}
+						{locale}
+						time={liveTime ?? feedTime}
+					/>
+					{#if health.isStale}<p
+							class="text-small text-muted-foreground"
+							data-slot="last-vehicle-position"
+						>
+							{t('Last report', 'Dernier signalement')}
+							{@render reportedAt()}. {t(
+								'The feed is late; this is the last position received.',
+								'Le flux est en retard; voici la dernière position reçue.',
+							)}
+						</p>{/if}
+				</div>
+				<DashboardGrid gutter={false} minTile="20rem" class="items-start">
+					<RecordCard interactive title={t('Where it is', 'Où il se trouve')}>
+						<div class="grid content-start gap-3">
+							<VehicleMapPreview
 								vehicle={running}
 								{manifest}
 								route={locationRoute}
@@ -331,92 +372,81 @@
 									)}
 								</p>
 							{/if}
-						{:else}<StateMark state={readingState} {locale} />{/if}
-					</div>
-					{#snippet links()}
-						{#if liveReading || waitingForReports}<a
+						</div>
+						{#snippet links()}
+							<a
 								class="inline-flex min-h-11 w-full items-center text-primary underline"
 								href={mapHref}
 							>
 								{t('Show on the map', 'Voir sur la carte')}
-							</a>{/if}
-					{/snippet}
-				</RecordCard>
-				<RecordCard
-					interactive
-					title={t('What it is running', 'Son service en cours')}
-					class={liveReading || waitingForReports ? 'lg:min-h-[37.125rem]' : undefined}
-					stamp={liveTime}
-					stampRule
-					stampPending={waitingForReports}
-				>
-					<div class="vehicle-running" class:reserved={liveReading || waitingForReports}>
-						{#if waitingForReports}<RecordPending
-								{locale}
-								shape={{ shape: 'facts', count: 6 }}
-							/>{:else if liveReading}{@const running = liveReading}<FactList
-								leading={false}
-								class="[--fact-row-columns:max-content_minmax(0,1fr)]"
-							>
+							</a>
+						{/snippet}
+					</RecordCard>
+					<RecordCard interactive title={t('What it is running', 'Son service en cours')}>
+						<div class="vehicle-running">
+							<FactList leading={false} class="[--fact-row-columns:max-content_minmax(0,1fr)]">
 								<FactRow label={t('Line', 'Ligne')}>
 									{#if running.route}
 										{@const line = display.lineName(running.route)}
 										<span class="service-line flex min-w-0 items-center justify-end gap-x-2">
 											<RoutePlate code={line.number ?? running.route} />
 											<a
-												class="inline-flex min-h-11 min-w-min items-center text-primary underline [overflow-wrap:normal] [word-break:normal]"
+												class="inline-flex min-h-11 min-w-min items-center font-sans text-primary underline [overflow-wrap:normal] [word-break:normal]"
 												href={href(routeFor({ kind: 'line', id: running.route }))}
 												>{line.name ?? line.label}</a
 											>
 										</span>
-									{:else}{unknown}{/if}
+									{:else}<span class="font-sans">{unknown}</span>{/if}
 								</FactRow>
-								<FactRow
-									label={t('Scheduled departure', 'Départ prévu')}
-									detail={departureOrigin
-										? t(`from ${departureOrigin}`, `depuis ${departureOrigin}`)
-										: undefined}
-								>
-									{#if departure.time && departureLink}<a
-											class="inline-flex min-h-11 items-center text-primary underline [overflow-wrap:normal] [word-break:normal]"
-											href={departureLink}>{departure.time + toward}</a
-										>
-									{:else if departure.time}{departure.time + toward}
-									{:else}
-										<!-- A missing time is a state, not a link; the departure keeps its own link. -->
-										<span
-											class="[overflow-wrap:normal] [word-break:normal]"
-											data-slot="departure-time-missing">{t('Time unknown', 'Heure inconnue')}</span
-										>
+								<FactRow label={t('Scheduled departure', 'Départ prévu')}>
+									{#if departure.time}
+										{@const from = departureOrigin
+											? t(` from ${departureOrigin}`, ` depuis ${departureOrigin}`)
+											: ''}
 										{#if departureLink}<a
-												class="inline-flex min-h-11 items-center text-primary underline"
-												href={departureLink}>{t('This departure', 'Ce départ')}</a
+												class="inline-flex min-h-11 items-center text-primary underline [overflow-wrap:normal] [word-break:normal]"
+												href={departureLink}
+												data-slot="departure-time"
+												><span>{departure.time}<span class="font-sans">{from}</span></span></a
+											>{:else}<span data-slot="departure-time"
+												>{departure.time}<span class="font-sans">{from}</span></span
 											>{/if}
+									{:else}
+										<!-- A missing time is a state, not a link. -->
+										<span class="font-sans" data-slot="departure-time-missing"
+											>{tripsSettled
+												? t('Not in the timetable', 'Absent de l’horaire')
+												: t('Time unknown', 'Heure inconnue')}</span
+										>
 									{/if}
 								</FactRow>
 								<FactRow label={t('Status', 'État')}>
-									{#if running.status === 'unknown'}<StateMark state="delay_unknown" {locale} />
-									{:else}<StatusMark
-											status={running.status}
-											{...liveStatusWords(
-												running.status,
-												vehicleStatus(running, locale),
-												running.delay_min == null ? null : running.delay_min * 60,
-												locale,
-											)}
-										/>{/if}
+									<span class="font-sans">
+										{#if running.status === 'unknown'}<StateMark state="delay_unknown" {locale} />
+										{:else}<StatusMark
+												status={running.status}
+												{...liveStatusWords(
+													running.status,
+													vehicleStatus(running, locale),
+													running.delay_min == null ? null : running.delay_min * 60,
+													locale,
+												)}
+											/>{/if}
+									</span>
 								</FactRow>
 								<FactRow label={t('Next stop', 'Prochain arrêt')}>
 									{#if running.next_stop}<a
-											class="inline-flex min-h-11 items-center text-primary underline"
+											class="inline-flex min-h-11 items-center font-sans text-primary underline"
 											href={href(routeFor({ kind: 'stop', id: running.next_stop }))}>{nextStop}</a
 										>
-									{:else}{unknown}{/if}
+									{:else}<span class="font-sans">{unknown}</span>{/if}
 								</FactRow>
 								<FactRow label={t('Room on board', 'Places à bord')}
-									>{running.occupancy
-										? OCCUPANCY_LABELS[locale][running.occupancy]
-										: unknown}</FactRow
+									><span class="font-sans"
+										>{running.occupancy
+											? OCCUPANCY_LABELS[locale][running.occupancy]
+											: unknown}</span
+									></FactRow
 								>
 								<FactRow label={t('Last report', 'Dernier signalement')}
 									>{@render reportedAt()}</FactRow
@@ -460,24 +490,88 @@
 									</Sheet.Content>
 								</Sheet.Root>
 							{/if}
-						{:else}<StateMark state={readingState} {locale} />{/if}
-					</div>
-					{#snippet links()}
-						{@render viewRecord()}
-					{/snippet}
-				</RecordCard>
-			</DashboardGrid>
+						</div>
+						{#snippet links()}
+							{@render viewRecord()}
+						{/snippet}
+					</RecordCard>
+				</DashboardGrid>
+			{:else}
+				<!-- Waiting keeps the not-reporting shape: one answer line with its stamp, one short card.
+				     A reporting vehicle replaces both at once, so nothing already drawn moves. -->
+				<div
+					class="vehicle-silent-answer"
+					data-slot="screen-answer"
+					data-record-pending={view === 'waiting' ? '' : undefined}
+					aria-busy={view === 'waiting' ? 'true' : undefined}
+				>
+					<RecordAnswer
+						value={null}
+						state={view === 'waiting' ? undefined : readingState}
+						statement={view === 'waiting' ? waitingStatement : undefined}
+						sentence={view === 'waiting' ? t('Loading…', 'Chargement…') : liveSentence}
+						{locale}
+						time={view === 'waiting' ? waitingTime : (liveTime ?? feedTime ?? waitingTime)}
+					/>
+				</div>
+				<DashboardGrid gutter={false} minTile="20rem" class="items-start">
+					<RecordCard interactive title={t('In the record', 'Au bilan')}>
+						<div class="vehicle-last-seen" data-slot="vehicle-last-seen">
+							{#if view === 'waiting'}<div class="grid gap-2" aria-hidden="true">
+									<Skeleton class="h-4 w-full max-w-72" />
+									<Skeleton class="h-4 w-48 max-w-full" />
+								</div>
+							{:else}
+								<p>
+									{#if lastSeen}{#await lastSeen}<span class="sr-only"
+												>{t('Loading…', 'Chargement…')}</span
+											>{:then seen}{lastSeenSentence(seen)}{:catch}{recordConnection.unreachable[
+												locale
+											]}{/await}{/if}
+									{#if readingState === 'not_reporting'}{t(
+											'The feed cannot tell whether it is still in service.',
+											'Le flux n’indique pas s’il est toujours en service.',
+										)}{/if}
+								</p>
+								{#if report}<p class="text-small text-muted-foreground">
+										{t('Last report', 'Dernier signalement')} · {@render reportedAt()}
+									</p>{/if}
+							{/if}
+						</div>
+						{#snippet links()}
+							{#if recordHref}<a
+									class="inline-flex min-h-11 items-center text-primary underline"
+									href={recordHref}>{t('This vehicle’s record', 'Le bilan de ce véhicule')}</a
+								>{/if}
+						{/snippet}
+					</RecordCard>
+				</DashboardGrid>
+			{/if}
 		</RecordGroup>
-		<RecordGroup>
-			<AboutLiveFigures
-				{locale}
-				{operator}
-				healthLink={href('/status')}
-				captureAge={health.ageSeconds}
-			/>
-		</RecordGroup>
+		{#if view !== 'waiting'}<RecordGroup>
+				<AboutLiveFigures
+					{locale}
+					{operator}
+					healthLink={href('/status')}
+					captureAge={health.ageSeconds}
+				/>
+			</RecordGroup>{/if}
 	</div>
 {/if}
+
+<!-- The waiting statement has the state mark's line, empty, so the answer keeps its height. -->
+{#snippet waitingStatement()}
+	<AnswerLead
+		value={null}
+		sentence={t('Loading…', 'Chargement…')}
+		absent={waitingMark}
+		layout="fit"
+	/>
+{/snippet}
+{#snippet waitingMark()}<span
+		class="inline-flex min-w-0 items-baseline gap-2 font-semibold"
+		aria-hidden="true"><span class="font-mono">&nbsp;</span></span
+	>{/snippet}
 
 {#snippet viewRecord()}
 	{#if recordHref}<a
@@ -501,11 +595,18 @@
 {/snippet}
 
 <style>
-	.vehicle-location.reserved {
-		min-block-size: 19rem;
+	/* The not-reporting state and its waiting shape keep one height: the record sentence takes up
+	   to two lines on a wide card and four on a phone. */
+	.vehicle-last-seen {
+		display: grid;
+		align-content: start;
+		gap: 0.5rem;
+		min-block-size: 2lh;
 	}
-	.vehicle-running.reserved {
-		min-block-size: 21rem;
+	@media (width < 40rem) {
+		.vehicle-last-seen {
+			min-block-size: 4lh;
+		}
 	}
 
 	@container (width >= 16rem) {

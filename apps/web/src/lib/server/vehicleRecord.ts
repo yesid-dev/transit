@@ -26,8 +26,10 @@ function recordQuery(section: VehicleSection, id?: string): RecordQuery {
 }
 
 export function readVehicleSections(scope: EnginePeriod, id?: string, only?: ReadonlySet<string>) {
+	// Unfinished trips are not tracked for any vehicle: the page says so once, under About these
+	// figures, and its CSV section stays available by address.
 	const sections: VehicleSection[] = id
-		? ['service', 'lines', 'reporting', 'completion', 'punctuality']
+		? ['service', 'lines', 'reporting', 'punctuality']
 		: ['fleet'];
 	const include = (section: string) => !only || only.has(section);
 	const bundled =
@@ -54,6 +56,43 @@ export function readVehicleSections(scope: EnginePeriod, id?: string, only?: Rea
 	};
 }
 
+/** When a vehicle was last in service on the chosen dates, and its busiest line that day. */
+export type VehicleLastSeen =
+	| { kind: 'seen'; day: string; line: string | null }
+	| { kind: 'absent'; from: string; to: string }
+	| { kind: 'unavailable' };
+
+export async function readVehicleLastSeen(
+	scope: EnginePeriod,
+	id: string,
+): Promise<VehicleLastSeen> {
+	const days = await getRecordAnswer(
+		{ path: '/measure', parameters: { measure: 'vehicles', vehicle: id, group: 'day' } },
+		scope,
+	);
+	if (days.kind !== 'answer' || !('cells' in days.answer)) return { kind: 'unavailable' };
+	const measured = days.answer.cells.filter(({ state }) => state === 'measured');
+	const day = measured
+		.flatMap(({ key, value }) =>
+			typeof key.day === 'string' && (value.vehicle_days_in_service ?? 0) > 0 ? [key.day] : [],
+		)
+		.sort()
+		.at(-1);
+	if (!day)
+		return measured.length || days.answer.evidence.days_measured?.length
+			? { kind: 'absent', from: scope.from, to: scope.to }
+			: { kind: 'unavailable' };
+	const lines = await getRecordAnswer(recordQuery('lines', id), { ...scope, from: day, to: day });
+	let line: string | null = null;
+	let most = 0;
+	if (lines.kind === 'answer' && 'cells' in lines.answer)
+		for (const { key, state, value } of lines.answer.cells) {
+			const trips = state === 'measured' ? (value.vehicle_trips_run ?? 0) : 0;
+			if (typeof key.line === 'string' && trips > most) [line, most] = [key.line, trips];
+		}
+	return { kind: 'seen', day, line };
+}
+
 export function loadVehiclePage(
 	url: URL,
 	request: Request,
@@ -73,6 +112,7 @@ export function loadVehiclePage(
 		city,
 		id,
 		...(mode === 'record' && scope ? readVehicleSections(scope, id) : { sections: [], days: null }),
+		lastSeen: mode === 'live' && scope && id ? readVehicleLastSeen(scope, id) : null,
 	};
 }
 

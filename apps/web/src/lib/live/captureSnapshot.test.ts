@@ -106,6 +106,18 @@ describe('capture-backed Live projection', () => {
 		expect(captureTripScopeSchema.parse(scoped)).toEqual(scoped);
 	});
 
+	it('carries the timetable first departure to the trip, and none from an older publication', () => {
+		const [trip] = scoped.trip_updates;
+		const start = now / 1000 - 600;
+		const update = { ...trip, scheduled_start: start, scheduled_origin: 'stop-0' };
+		const parsed = captureTripScopeSchema.parse({ ...scoped, trip_updates: [update] });
+		expect(captureTrips(parsed, now).trips[trip.trip_id].first_departure).toEqual({
+			stop: 'stop-0',
+			departure: start,
+		});
+		expect(captureTrips(scoped, now).trips[trip.trip_id].first_departure).toBeUndefined();
+	});
+
 	it('projects optional silent rows and evidence while the prior reader drops added facts', () => {
 		const current = {
 			...snapshot,

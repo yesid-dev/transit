@@ -31,6 +31,10 @@ const LiveTripSchema = PublishedTripSchema.extend({
 			}),
 		)
 		.optional(),
+	/** The timetable's first departure, for feeds that send no trip start time. */
+	first_departure: z
+		.object({ stop: z.string().nullable(), departure: z.number().int().nonnegative() })
+		.optional(),
 });
 export type Trip = z.infer<typeof LiveTripSchema>;
 export const LiveTripsFileSchema = PublishedTripsFileSchema.extend({

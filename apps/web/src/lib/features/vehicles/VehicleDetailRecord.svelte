@@ -134,6 +134,8 @@
 		})),
 	);
 	const service = $derived(records.find(({ section }) => section === 'service'));
+	// A reading that streamed in after the first paint keeps its room when it is a short state.
+	const streamedService = $derived(service ? !isSettled(service.answer) : false);
 	const lines = $derived(records.find(({ section }) => section === 'lines'));
 	const timing = $derived(records.find(({ section }) => section === 'punctuality'));
 	const dailyAnswer = $derived(data.days);
@@ -277,7 +279,7 @@
 					<RecordPending shape="answer" {locale} busy />
 				</div>
 			{:else if result.kind === 'unreachable' && result.retry}
-				<div class="vehicle-answer" data-slot="screen-answer">
+				<div class="vehicle-answer" class:held={streamedService} data-slot="screen-answer">
 					<RecordUnavailable {locale} retry={result.retry} />
 				</div>
 			{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
@@ -333,7 +335,8 @@
 					reading.evidence.days_included.length > 0 &&
 					reading.value.vehicle_days_in_service === 0}
 				{@const state = noReports ? 'not_reporting' : recordStateFor(reading?.state)}
-				<div class="vehicle-answer" data-slot="screen-answer">
+				<!-- A short state keeps the waiting room, so the first screen does not move. -->
+				<div class="vehicle-answer" class:held={streamedService} data-slot="screen-answer">
 					<RecordAnswer
 						value={null}
 						{state}
@@ -361,7 +364,6 @@
 			<RecordCard
 				interactive
 				title={service.title}
-				class="lg:min-h-[24.5rem]"
 				stamp={time}
 				stampRule
 				evidence={serviceEvidence}
@@ -462,50 +464,72 @@
 									</section>
 								{/if}
 							</DashboardGrid>
-						{:else}{@render absent(result, serviceFacts)}{/if}{/await}
+						{:else}<div class="service-state" class:held={streamedService}>
+								{@render absent(result, serviceFacts)}
+							</div>{/if}{/await}
 				</div>
 			</RecordCard>
 		</div>
-		<RecordCard
-			interactive
-			title={t('Day by day', 'Jour par jour')}
-			class="lg:min-h-[27.625rem]"
-			stamp={time}
-			stampRule
-			reserve={dayShape}
-		>
+		<RecordCard interactive title={t('Day by day', 'Jour par jour')} stamp={time} stampRule>
 			{#await dailyAnswer}
 				{#if dailyAnswer}<RecordPending {locale} shape={dayShape} answer={dailyAnswer} />{/if}
 			{:then result}
 				{#if result?.kind === 'answer' && 'cells' in result.answer}
 					{@const cells = days(result.answer)}
-					<ChartDetails
-						label={t('Days in service', 'Jours en service')}
-						targets="[data-slot='day-strip-cell']"
-						readings={cells.slice(0, shownDays).map((day) => ({
-							key: day.id,
-							heading: recordDate(day.id, locale),
-							rows: [
-								{
-									label: t('Hours in service', 'Heures en service'),
-									value:
-										day.state === 'not_reporting'
-											? recordState('not_reporting')[locale]
-											: (day.report?.value ?? recordState('not_measured')[locale]),
-								},
-							],
-						}))}
-					>
-						<DayStrip
+					<div class="day-strip-wide">
+						<ChartDetails
 							label={t('Days in service', 'Jours en service')}
-							cells={cells.slice(0, shownDays)}
-							reportedLabel={t(
-								'In service: its hours with reports that day',
-								'En service\u00a0: heures avec signalements ce jour-là',
-							)}
-							missingLabel={recordState('not_measured')[locale]}
-						/>
-					</ChartDetails>
+							targets="[data-slot='day-strip-cell']"
+							readings={cells.slice(0, shownDays).map((day) => ({
+								key: day.id,
+								heading: recordDate(day.id, locale),
+								rows: [
+									{
+										label: t('Hours in service', 'Heures en service'),
+										value:
+											day.state === 'not_reporting'
+												? recordState('not_reporting')[locale]
+												: (day.report?.value ?? recordState('not_measured')[locale]),
+									},
+								],
+							}))}
+						>
+							<DayStrip
+								label={t('Days in service', 'Jours en service')}
+								cells={cells.slice(0, shownDays)}
+								reportedLabel={t(
+									'In service: its hours with reports that day',
+									'En service\u00a0: heures avec signalements ce jour-là',
+								)}
+								missingLabel={recordState('not_measured')[locale]}
+							/>
+						</ChartDetails>
+					</div>
+					<ol
+						class="day-rows"
+						aria-label={t('Hours in service by day', 'Heures en service par jour')}
+						data-slot="vehicle-day-rows"
+					>
+						{#each cells.slice(0, shownDays) as day (day.id)}
+							<li>
+								<span class="day-rows-day">{day.label}</span>
+								{#if day.state === 'in_service' && day.report}<span
+										class="day-rows-track"
+										aria-hidden="true"
+										><span class="day-rows-bar" style:inline-size={`${day.report.fraction * 100}%`}
+										></span></span
+									><span class="day-rows-value">{day.report.value}</span>
+								{:else}{@const mark = recordState(
+										day.state === 'not_reporting' ? 'not_reporting' : 'not_measured',
+									)}<span class="day-rows-state" data-record-state={day.state}
+										><span class="font-mono text-muted-foreground" aria-hidden="true"
+											>{mark.glyph}</span
+										>
+										{mark[locale]}</span
+									>{/if}
+							</li>
+						{/each}
+					</ol>
 					{#if cells.some((entry) => entry.state === 'not_reporting')}
 						<p class="mt-2 flex items-baseline gap-2 text-small text-muted-foreground">
 							<StateMark state="not_reporting" {locale} hiddenLabel />
@@ -548,35 +572,16 @@
 		</RecordCard>
 
 		<DashboardGrid gutter={false} minTile="19rem" class="items-start">
-			{#each records.filter(({ section }) => section === 'reporting' || section === 'completion') as { section, title: heading, answer } (section)}
+			{#each records.filter(({ section }) => section === 'reporting') as { section, title: heading, answer } (section)}
 				<div id={section} class="grid min-w-0">
-					<RecordCard
-						title={heading}
-						class="lg:min-h-[18.75rem]"
-						stamp={time}
-						stampRule
-						reserve={serviceFacts}
-					>
+					<RecordCard title={heading} stamp={time} stampRule>
 						{#await answer}<RecordPending {locale} {answer} shape={serviceFacts} />
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer}
 								{@const reading = result.answer}
 								{@const counts = reading.evidence.counts}
 								{#if result.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
-								{#if section === 'completion' && reading.state === 'not_tracked'}
-									<p class="flex flex-wrap items-baseline gap-x-2 font-semibold">
-										<StateMark state="not_tracked" {locale} hiddenLabel />{t(
-											'Not tracked',
-											'Non suivi',
-										)}
-									</p>
-									<p>
-										{t(
-											'The live feeds do not show reliably when a trip ends early, so trips not finished are not tracked.',
-											'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt, donc les trajets non terminés ne sont pas suivis.',
-										)}
-									</p>
-								{:else if section === 'reporting' && reading.state === 'measured'}
+								{#if reading.state === 'measured'}
 									{#if counts.reporting_gaps != null}<strong class="block text-title tabular-nums"
 											>{tally(counts.reporting_gaps, locale)}</strong
 										>{/if}
@@ -597,14 +602,12 @@
 									{@const hours = result.answer.evidence.counts.hours_in_service}
 									<RecordEvidenceLine
 										evidence={result.answer.evidence}
-										sample={section === 'reporting' && hours != null
+										sample={hours != null
 											? t(
 													`${hoursReading(hours, locale)} in service`,
 													`${hoursReading(hours, locale)} en service`,
 												)
-											: section === 'completion' && settledService?.value.vehicle_trips_run != null
-												? countedUnit(settledService.value.vehicle_trips_run, 'trip', locale)
-												: null}
+											: null}
 										{locale}
 									/>
 								{/if}
@@ -616,7 +619,7 @@
 		</DashboardGrid>
 		{#if timing}
 			<div id="punctuality">
-				<RecordCard title={timing.title} class="lg:min-h-80" stamp={time} stampRule reserve="bands">
+				<RecordCard title={timing.title} stamp={time} stampRule>
 					<DashboardGrid gutter={false} minTile="18rem">
 						<p class="font-semibold">{assignmentCaution[locale]}</p>
 						<div class="grid min-w-0 gap-2">
@@ -705,7 +708,6 @@
 {#snippet aboutFigures(serviceSample: string, evidence: RecordMeasure['evidence'] | null)}
 	<AboutFigures
 		title={t('About these figures', 'À propos de ces chiffres')}
-		class="lg:min-h-[24.5rem]"
 		fields={[
 			{
 				key: 'period',
@@ -731,6 +733,14 @@
 				text: t(
 					'A long pause between two position reports on the same trip. The feed cannot tell whether the vehicle kept running.',
 					'Une longue interruption entre deux signalements de position sur le même trajet. Le flux n’indique pas si le véhicule a continué de rouler.',
+				),
+			},
+			{
+				key: 'unfinished',
+				label: t('Trips cut short', 'Trajets écourtés'),
+				text: t(
+					'Not tracked: the live feeds do not show reliably when a trip ends early.',
+					'Non suivis\u00a0: les flux en direct n’indiquent pas de façon fiable qu’un trajet se termine plus tôt.',
 				),
 			},
 			{
@@ -776,18 +786,88 @@
 {/snippet}
 
 <style>
-	.vehicle-answer {
+	/* The answer and the first card keep their waiting room while they wait. A short state gives
+	   it back only when it was drawn with the page; one that streams in keeps it, so the first
+	   screen does not move under the reader. A reading releases it. */
+	.vehicle-answer:is(.held, :has(:global([data-record-pending], [data-record-busy]))) {
 		min-block-size: 13.25rem;
 	}
-	.service-card-body {
+	.service-card-body:has(:global([data-record-pending], [data-record-busy]), .service-state.held) {
 		min-block-size: 16rem;
 	}
 	@media (width < 40rem) {
-		.vehicle-answer {
+		.vehicle-answer:is(.held, :has(:global([data-record-pending], [data-record-busy]))) {
 			min-block-size: 14.5rem;
 		}
-		.service-card-body {
+		.service-card-body:has(
+			:global([data-record-pending], [data-record-busy]),
+			.service-state.held
+		) {
 			min-block-size: 28rem;
+		}
+	}
+
+	/* A phone reads the week as one row per day: the day, its bar on one scale, its hours. */
+	.day-rows {
+		display: none;
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+	@container (width < 28rem) {
+		.day-strip-wide {
+			display: none;
+		}
+		.day-rows {
+			display: grid;
+			gap: 0.5rem;
+		}
+	}
+	/* The day and the hours keep fixed widths, so every bar shares one scale; with large text a
+	   state that cannot fit beside its day moves under it. */
+	.day-rows > li {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.25rem 0.75rem;
+	}
+	.day-rows-day {
+		flex: 0 0 4.5em;
+		font-size: var(--text-small);
+		color: var(--muted-foreground);
+	}
+	.day-rows-track {
+		flex: 1 1 4rem;
+		display: block;
+		block-size: 0.75rem;
+		border-radius: var(--radius-sm);
+		background: var(--muted);
+	}
+	.day-rows-bar {
+		display: block;
+		block-size: 100%;
+		border-radius: var(--radius-sm);
+		background: var(--foreground);
+	}
+	.day-rows-value {
+		font-family: var(--font-mono);
+		font-size: var(--text-small);
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+		flex: 0 0 4.5em;
+		text-align: end;
+	}
+	/* The state wraps between words, never inside one, at large text. */
+	.day-rows-state {
+		flex: 1 1 8em;
+		font-size: var(--text-small);
+		font-weight: 600;
+		overflow-wrap: normal;
+		word-break: normal;
+	}
+	@media (forced-colors: active) {
+		.day-rows-bar {
+			background: CanvasText;
 		}
 	}
 </style>

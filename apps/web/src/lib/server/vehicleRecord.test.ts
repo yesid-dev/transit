@@ -51,7 +51,6 @@ it('starts all detail sections without awaiting the slow line breakdown', async 
 		'service',
 		'lines',
 		'reporting',
-		'completion',
 		'punctuality',
 	]);
 	await expect(detail.sections[0].answer).resolves.toEqual({ kind: 'answer' });
@@ -64,17 +63,68 @@ it('starts all detail sections without awaiting the slow line breakdown', async 
 	expect(getRecordAnswer.mock.calls.map(([query]) => query.parameters)).toEqual([
 		{ vehicle: '40061', measure: 'vehicle_trips_run', group: 'line' },
 		{ vehicle: '40061', measure: 'vehicle_reporting_gaps_per_100_hours' },
-		{ vehicle: '40061', measure: 'vehicle_unfinished_trips' },
 		{ vehicle: '40061', measure: 'vehicle_on_time' },
 	]);
 	for (const [, period] of getRecordAnswer.mock.calls) expect(period).toMatchObject(scope);
 });
 
-it.each([undefined, '40061'])('skips the engine for live mode (%s)', (id) => {
-	expect(load(`/vehicles?frameMode=live&${dates}`, id)).toMatchObject({
+it('skips the engine for the live fleet', () => {
+	expect(load(`/vehicles?frameMode=live&${dates}`)).toMatchObject({
 		mode: 'live',
 		sections: [],
+		lastSeen: null,
 	});
 	expect(getRecordAnswer).not.toHaveBeenCalled();
 	expect(getVehicleDayAnswers).not.toHaveBeenCalled();
+});
+
+const measured = (key: Record<string, string>, value: Record<string, number>) => ({
+	key,
+	state: 'measured',
+	value,
+});
+const series = (cells: unknown[]) => ({
+	kind: 'answer',
+	answer: { cells, evidence: { days_measured: ['2026-11-08'] } },
+});
+
+it('reads when a live vehicle was last in service and its busiest line that day', async () => {
+	getRecordAnswer
+		.mockResolvedValueOnce(
+			series([
+				measured({ day: '2026-11-11' }, { vehicle_days_in_service: 1 }),
+				measured({ day: '2026-11-13' }, { vehicle_days_in_service: 1 }),
+				measured({ day: '2026-11-14' }, { vehicle_days_in_service: 0 }),
+			]),
+		)
+		.mockResolvedValueOnce(
+			series([
+				measured({ line: '24' }, { vehicle_trips_run: 3 }),
+				measured({ line: '102' }, { vehicle_trips_run: 7 }),
+			]),
+		);
+	const page = load(`/vehicle/40061?frameMode=live&${dates}`, '40061');
+	expect(page.sections).toEqual([]);
+	await expect(page.lastSeen).resolves.toEqual({ kind: 'seen', day: '2026-11-13', line: '102' });
+	expect(getRecordAnswer.mock.calls.map(([query, period]) => [query.parameters, period])).toEqual([
+		[{ measure: 'vehicles', vehicle: '40061', group: 'day' }, expect.objectContaining(scope)],
+		[
+			{ measure: 'vehicle_trips_run', group: 'line', vehicle: '40061' },
+			expect.objectContaining({ from: '2026-11-13', to: '2026-11-13' }),
+		],
+	]);
+});
+
+it('says a live vehicle had no trip on the dates, or that the record is unavailable', async () => {
+	getRecordAnswer.mockResolvedValueOnce(
+		series([measured({ day: '2026-11-14' }, { vehicle_days_in_service: 0 })]),
+	);
+	await expect(load(`/vehicle/7?frameMode=live&${dates}`, '7').lastSeen).resolves.toEqual({
+		kind: 'absent',
+		from: '2026-11-08',
+		to: '2026-11-14',
+	});
+	await expect(load(`/vehicle/7?frameMode=live&${dates}`, '7').lastSeen).resolves.toEqual({
+		kind: 'unavailable',
+	});
 });

@@ -212,7 +212,8 @@
 
 	@media (width >= 80rem) {
 		.listing-results {
-			margin-block-start: calc(var(--space-card-gap) - 1.75rem);
+			/* The same at 100% text; with large text the actions row keeps clear of the card. */
+			margin-block-start: max(-0.25rem, calc(var(--space-card-gap) - 1.75rem));
 		}
 	}
 
