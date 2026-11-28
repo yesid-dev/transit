@@ -1244,18 +1244,18 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # These digests reflect query_ms removed from evidence_fields and both CSV header lists.
+    # These digests include the public evidence labels and both CSV header lists.
     # The fixture spans two query batches, a DST transition, and one missing day.
     # Stop "first" (46.7% observed) is excluded for low coverage, not ranked.
     expected = {
-        "network": "4b5c8c0a1bf0cd5960cf82ea224a5d1e411798510a118e85372b38709ef38209",
-        "line": "38892bdd8ae0fe24082a4e66dfbb4c910ec07a940c10593c7a1709afffce7fb8",
+        "network": "632ea6347df8ff099e59b0d453be1ec36308af0d870abf2e8f757d5e13a45489",
+        "line": "1b5c8c7d01ff04861e95678648b6db2998071b08b4ac09d56cecae75a8ea0712",
         # The grid includes the service weekday CSV header and the revised method text.
-        "grid": "d6489f87ebae50b950ce0587248f77293a9d53837704b1c3411aa49e51b2487e",
+        "grid": "21f60b2b4ee9db4e4b511c79b089db665c2f0e006dc6168b23846765b81a0938",
         "delivery": "9f1d3a3bb5a6f2cdad4043b15e26dccf8784ac624c200a079b3cac04ca328f1d",
-        "line_rank": "b7e95497aca016dcc3b0372f3a4886f46ae9fa56cc2346e97d72b18631d7ea50",
-        "stop_rank": "841383aecc27d7efed407814f23d47c731055bd2e1f9a2aa734efdd1d3de50e2",
-        "departure_rank": "b7743de0e723fa55973f847870cab24a7cb7a5dcd32416415df436ef3ac4c950",
+        "line_rank": "7a79897502fd731a782b3fff72a9e0c44129b79ce492e228d981ec19cb34f866",
+        "stop_rank": "18b06c0e84a6549f31c4b6af0d8ba3462a1defc579d1d45aa7558b0fc042622b",
+        "departure_rank": "abb2042675178c6763ea5327c08ab725b7389c05b93aa5602fd9c0b0a56a298c",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {

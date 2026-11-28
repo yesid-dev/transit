@@ -308,9 +308,9 @@ def test_scorecard_sample_floor_and_prediction_wording(tmp_path: Path) -> None:
     assert answer["state"] == "too_few_to_judge"
 
 
-def test_prediction_method_describes_observed_stop_events() -> None:
+def test_prediction_method_describes_recorded_stop_arrivals() -> None:
     (method,) = [item for item in measures.methods() if item["id"] == "prediction_error"]
-    assert "30 observed stop events" in method["text"]["en"]["limits"]
+    assert "30 recorded stop arrivals" in method["text"]["en"]["limits"]
 
 
 def test_cancellation_notice_display_floor(tmp_path: Path) -> None:

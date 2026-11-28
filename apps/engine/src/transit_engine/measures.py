@@ -637,7 +637,7 @@ _UNIT_LABELS = {
 
 
 _RANKING_FLOOR_LABELS = {
-    "classified": Text("observed stop events", "passages observés aux arrêts"),
+    "classified": Text("recorded stop arrivals", "passages enregistrés"),
     "observed_trips": Text("observed trips", "trajets observés"),
     "observed_service_dates": Text("observed service dates", "dates de service observées"),
     "observed_trip_pairs": Text("distinct trip pairs", "paires de trajets distinctes"),
@@ -2864,13 +2864,13 @@ _WAITING = Family(
             "excess_wait_time",
             "seconds",
             Text(
-                "Extra time riders wait on average beyond what the timetable promises during "
-                "frequent service. Within each period, average wait is the sum of squared "
+                "How much longer riders wait compared with the schedule on frequent routes. "
+                "Within each period, average wait is the sum of squared "
                 "intervals divided by twice their sum, comparing observed intervals with "
                 "complete scheduled intervals inside the same observed windows and weighting "
                 "each period by its covered scheduled time.",
-                "Temps d’attente moyen supplémentaire au-delà de ce que promet l’horaire en "
-                "période fréquente. Dans chaque période, l’attente moyenne est la somme des "
+                "Combien de temps de plus on attend par rapport à l’horaire quand les passages "
+                "sont fréquents. Dans chaque période, l’attente moyenne est la somme des "
                 "carrés des intervalles divisée par deux fois leur somme, en comparant les "
                 "intervalles observés aux intervalles prévus entièrement compris dans les "
                 "mêmes plages observées, avec une pondération selon la durée prévue couverte.",
@@ -3999,23 +3999,23 @@ _SCORECARD = Family(
             "share",
             Text(
                 "Share of scheduled trips on live-tracked lines that appeared at least once in "
-                "the realtime feed.",
+                "the live feed.",
                 "Part des trajets prévus sur les lignes suivies en direct qui sont apparus au "
-                "moins une fois dans le flux en temps réel.",
+                "moins une fois dans le flux de données en direct.",
             ),
             counts=Text(
-                "Compares trips seen in realtime with scheduled trips on lines seen on any "
+                "Compares trips seen in live data with scheduled trips on lines seen on any "
                 "measured day. Evidence also reports the count and share of scheduled trips on "
                 "lines never seen in the selection.",
-                "Compare les trajets vus en temps réel aux trajets prévus sur les lignes vues "
-                "au moins un jour mesuré. Les données indiquent aussi le nombre et la part des "
-                "trajets sur des lignes jamais vues dans la sélection.",
+                "Compare les trajets vus dans les données en direct aux trajets prévus sur les "
+                "lignes vues au moins un jour mesuré. Les données indiquent aussi le nombre et "
+                "la part des trajets sur des lignes jamais vues dans la sélection.",
             ),
             exclusions=Text(
-                "Added trips, days with capture gaps and lines never seen in realtime are left "
+                "Added trips, days with capture gaps and lines never seen in live data are left "
                 "out of the coverage rate.",
                 "Les trajets ajoutés, les jours touchés par une interruption de collecte et "
-                "les lignes jamais vues en temps réel sont exclus du taux.",
+                "les lignes jamais vues dans les données en direct sont exclus du taux.",
             ),
             limits=Text(
                 "A line only has to appear once in the selected dates to enter the live-tracked "
@@ -4067,9 +4067,9 @@ _SCORECARD = Family(
                 "90e centile de l’erreur absolue et la part à au plus une minute près.",
             ),
             counts=Text(
-                "Counts observed stop events by observation type and how many predictions "
+                "Counts recorded stop arrivals by observation type and how many predictions "
                 "landed within 1 minute of actual arrival.",
-                "Compte les passages observés aux arrêts par type d’observation et le nombre "
+                "Compte les passages enregistrés par type d’observation et le nombre "
                 "de prévisions tombant à au plus une minute de l’arrivée réelle.",
             ),
             exclusions=Text(
@@ -4084,7 +4084,7 @@ _SCORECARD = Family(
             limits=Text(
                 "It checks only stops where a vehicle was observed stopped, not every "
                 "prediction riders saw on a screen. Each horizon requires at least "
-                f"{MIN_PREDICTION_SAMPLES} observed stop events. Percentiles use "
+                f"{MIN_PREDICTION_SAMPLES} recorded stop arrivals. Percentiles use "
                 f"{DELAY_BIN_SECONDS}-s bins, and the ±1-minute band includes both boundaries. "
                 "The whole record was recomputed with this method on 22 November 2026. "
                 "Each horizon takes the latest forecast from its lower "
@@ -4093,7 +4093,7 @@ _SCORECARD = Family(
                 "continuously, and hour uses the observed local hour.",
                 "Elle ne vérifie que les arrêts où un véhicule a été observé à l’arrêt, et non "
                 "toutes les prévisions affichées aux usagers. Chaque horizon exige au moins "
-                f"{MIN_PREDICTION_SAMPLES} passages observés aux arrêts. Les centiles "
+                f"{MIN_PREDICTION_SAMPLES} passages enregistrés. Les centiles "
                 f"utilisent des classes de {DELAY_BIN_SECONDS}\u00a0s, et la bande d’au plus "
                 "une minute inclut ses bornes. Tout le bilan a été recalculé avec cette méthode "
                 "le 22 novembre 2026. Chaque horizon retient la prévision la plus récente "
@@ -4282,10 +4282,10 @@ _DELAY_DISTRIBUTION = Measure(
     id=_DELAY_DISTRIBUTION_ID,
     unit="share",
     definition=Text(
-        "Share of observed stop events falling in each one-minute delay band against the "
+        "Share of recorded stop arrivals falling in each one-minute delay band against the "
         "timetable. Outer bands count more than 5 minutes early and 15 minutes late or more. "
         "Exactly 1 minute early and exactly 5 minutes late both count as on time.",
-        "Part des passages observés aux arrêts dans chaque tranche d’une minute par rapport à "
+        "Part des passages enregistrés dans chaque tranche d’une minute par rapport à "
         "l’horaire. Les tranches extrêmes comptent plus de 5 minutes d’avance et 15 minutes de "
         "retard ou plus. Un passage avec exactement 1 minute d’avance ou 5 minutes de retard "
         "est à l’heure.",
