@@ -1817,13 +1817,21 @@ def test_range_builds_skips_and_continues(
         ]
         # Stretch timing follows the measured day: content-named tables, receipt last.
         stretch = f"out/{stretch_key_prefix('stm', DAY)}/"
-        assert [key.removeprefix(stretch).split("-")[0] for key in fake.writes[9:]] == [
+        assert [key.removeprefix(stretch).split("-")[0] for key in fake.writes[9:13]] == [
             "stretches",
             "stretch_passes",
             "stretch_summary",
             "manifest.json",
         ]
-        assert all(key.startswith(stretch) for key in fake.writes[9:])
+        assert all(key.startswith(stretch) for key in fake.writes[9:13])
+        # The day's month has closed, so its rollup follows: two tables, receipt last.
+        month = f"out/stretch/v13/stm/months/{DAY:%Y-%m}-"
+        assert [key.rsplit("/", 1)[-1].split("-")[0] for key in fake.writes[13:]] == [
+            "stretch_summary",
+            "stretches",
+            "manifest.json",
+        ]
+        assert all(key.startswith(month) for key in fake.writes[13:])
     with duckdb.connect() as db:
         polls = _rows(db, (dest / marker).with_name("feed_polls.parquet"))
         alerts = _rows(db, (dest / marker).with_name("alerts.parquet"))

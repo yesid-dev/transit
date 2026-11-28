@@ -5,6 +5,9 @@ After=local-fs.target
 [Service]
 DynamicUser=yes
 EnvironmentFile=/etc/transit-engine/engine.env
+# Stretch days older than the local 30 are read from R2 with the read-only key.
+EnvironmentFile=-/etc/transit-engine/r2.env
+Environment=ENGINE_STRETCH_R2_ROOT=s3://transit-clean
 LoadCredential=engine-token:/etc/transit-engine/engine-token
 Environment=ENGINE_ACCESS_TOKEN_FILE=%d/engine-token
 Environment=ENGINE_PROVIDER_DECLARATIONS=/opt/transit-engine/current/apps/db/config/providers

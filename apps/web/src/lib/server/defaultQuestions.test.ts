@@ -9,7 +9,11 @@ import { load as daily } from '../../routes/[[lang=locale]]/receipt/+page.server
 import { load as health } from '../../routes/[[lang=locale]]/status/+page.server.ts';
 import { load as stops } from '../../routes/[[lang=locale]]/stops/+page.server.ts';
 import { load as vehicles } from '../../routes/[[lang=locale]]/vehicles/+page.server.ts';
-import { warmQuestions } from '../../../scripts/warm-default-views.ts';
+import {
+	stretchQuestions,
+	warmQuestions,
+	warmUntilAnswered,
+} from '../../../scripts/warm-default-views.ts';
 import { defaultCityQuestions, defaultPeriod, sharedDefaultQuestion } from './defaultQuestions.ts';
 import { frameClock, frameHref, presetPeriod } from '#lib/site/frameState.ts';
 import { getScheduleEdition } from './engine.ts';
@@ -242,4 +246,63 @@ it('stays under 30 starts per rolling minute and waits for slow responses', asyn
 		'deferred',
 	]);
 	expect(requests).toHaveLength(urls.length);
+});
+
+it('warms network stretch timing for the long presets and waits out busy answers', async () => {
+	const city = {
+		id: 'fixture',
+		timezone: 'America/Toronto',
+		inputs: { i3_alerts: true },
+		record_through: '2026-11-26',
+	};
+	const urls = stretchQuestions(city, frameClock(city, new Date('2026-11-27T12:00:00Z')));
+	expect(urls.map((url) => Object.fromEntries(new URL(url).searchParams))).toEqual([
+		{
+			from: '2026-11-20',
+			to: '2026-11-26',
+			measure: 'stretch_timing',
+			group: 'stretch',
+			view: 'map',
+		},
+		{
+			from: '2026-10-30',
+			to: '2026-11-26',
+			measure: 'stretch_timing',
+			group: 'stretch',
+			view: 'map',
+		},
+		{
+			from: '2026-10-13', // last month also starts at the record's first day
+			to: '2026-10-31',
+			measure: 'stretch_timing',
+			group: 'stretch',
+			view: 'map',
+		},
+		{
+			from: '2026-10-13', // the record's first day bounds the 12 months
+			to: '2026-11-26',
+			measure: 'stretch_timing',
+			group: 'stretch',
+			view: 'map',
+		},
+	]);
+
+	let clock = 0;
+	const calls: number[] = [];
+	const requests = await warmUntilAnswered(urls.slice(0, 2), {
+		now: () => clock,
+		wait: async (ms) => void (clock += ms ?? 0),
+		limitMs: 120_000,
+		fetcher: async (url) => {
+			calls.push(clock);
+			// The first question is busy twice, then answers; the second never answers.
+			if (String(url) === urls[0] && calls.length < 3)
+				return new Response(null, { status: 503, headers: { 'Retry-After': '15' } });
+			if (String(url) === urls[0]) return Response.json({});
+			return new Response(null, { status: 503, headers: { 'Retry-After': '30' } });
+		},
+	});
+	expect(requests[0]).toMatchObject({ outcome: 'answered', attempts: 3, elapsedMs: 30_000 });
+	expect(requests[1]).toMatchObject({ outcome: 'busy', attempts: 4 });
+	expect(calls.slice(0, 3)).toEqual([0, 15_000, 30_000]);
 });

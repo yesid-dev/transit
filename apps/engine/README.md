@@ -153,6 +153,48 @@ full family answer require the scheduled stop times file available from v4 onwar
 departure evidence gives the GTFS time and underlying trip counts for each included
 date with service.
 
+### Stretch timing
+
+`view=map&group=stretch` with `measure=stretch_time_lost` (seconds),
+`measure=stretch_clear_run_speed` (whole km/h) or `measure=stretch_timing` (both)
+answers one row per stretch of about 100 m between two stops. A row is keyed by
+`from_stop`, `to_stop`, `pieces` and `piece`, and carries:
+
+- `length_m` and the stretch ends (`from_lat`, `from_lon`, `to_lat`, `to_lon`);
+- `passes` and `clear_run_seconds`, the pass time at the fastest tenth's
+  boundary, the `ceil(n/10)`-th fastest pass;
+- `median_seconds` (exact) and `time_lost_seconds` (the median minus the clear run);
+- `total_time_lost_seconds`, summed over every pass slower than the clear run, by
+  how much slower it was;
+- `clear_run_speed_kmh`, the moving speed at the same boundary from the fast end.
+
+A stretch needs 20 passes to be measured. The map-layer cuts apply: `line` or
+`lines`, `direction`, `route_type`, `day_type`, and one of `hour`, `time_band` or
+`hour_from`/`hour_to`. The default is 06:00 up to midnight, by the local hour a
+pass starts.
+
+The answer reads the stretch days the cleaner publishes under
+`stretch/v13/<city>/<date>/`. Only the files a valid receipt names count, at the
+size the receipt states. A v12 day without its stretch day is not measured, with
+the reason `stretch_timing_missing`. Without a line or direction cut the answer
+reads the daily summary. With one it reads the passes. Both count passes timed
+from readings at most 90 seconds apart, with a measured speed.
+
+The engine host keeps the last 30 days of stretch days. With `ENGINE_STRETCH_R2_ROOT`
+and the R2 read key, a day it no longer keeps is read from R2 with the same receipt
+checks, so older days stay measured. Once a month closes, the nightly cleaning adds
+up its daily summaries into one rollup in R2 (by day type, hour, pass time and speed)
+under `stretch/v13/<city>/months/<YYYY-MM>-<key>/`. A question without a line or
+direction cut reads the rollup that adds up the most days, when the window holds every
+one of them; other days are read one by one.
+
+A whole-network question can take longer than the 25-second origin deadline. After
+20 seconds (`ENGINE_STRETCH_SOFT_DEADLINE_S`) the engine answers busy with
+`Retry-After: 15` and keeps the query running, detached from the request and holding
+its record slot. It keeps the finished answer for that day, so the retry gets it.
+The warm-up asks the long presets every night (7 and 28 days, last month and 12
+months) and waits out busy answers, so readers usually find them cached.
+
 ## Open-data scorecard
 
 Use `measure=open_data_scorecard` for all seven measures or select one measure ID
@@ -422,6 +464,12 @@ copies new `search/v1` schedule indexes. The timer runs after each scheduled cle
 17:30, 19:45, 22:15, 01:40 and 05:10 UTC, with the first copy 73 minutes after the day's
 first cleaner start. Watch the filesystem when changing versions. The mirror keeps
 existing versions and refuses writes that would take free space below 32 GiB.
+
+The same run copies the last 30 days of stretch timing (`stretch/v13/`), checking each
+table against its receipt's SHA-256 digest and writing the receipt last. R2 keeps every
+day. A local stretch day older than 30 days is removed only when R2 holds the same
+receipt byte for byte, R2 lists each table at the receipt's size, and the local
+files still match their digests. Otherwise the day stays and the run reports it.
 
 Install the Bun version in the repository's `.bun-version` at `/opt/transit-engine/bin/bun`
 for the warmer and install `transit-engine-warm.service` along with the updated sync unit.

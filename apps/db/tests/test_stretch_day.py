@@ -307,3 +307,45 @@ def test_a_day_settled_without_tables_has_no_stretch_timing(tmp_path: Path) -> N
     folder.mkdir()
     with pytest.raises(CleanDayNotMeasured):
         fetch_clean_day(storage, "", "stm", DAY, folder)
+
+
+def test_a_closed_month_is_added_up_once_in_the_clean_store(raw: Path, tmp_path: Path) -> None:
+    dest = tmp_path / "clean"
+    report = _clean(raw, dest)  # June 2026 closed long before this run
+    assert "- Stretch months built: 2026-06\n" in report
+    months = sorted((dest / "stretch/v13/stm/months").iterdir())
+    assert len(months) == 1 and months[0].name.startswith("2026-06-")
+    receipt = json.loads((months[0] / "manifest.json").read_text("utf-8"))
+    day_receipt = (dest / stretch_key_prefix("stm", DAY) / "manifest.json").read_bytes()
+    assert receipt["days"] == {DAY.isoformat(): sha256(day_receipt).hexdigest()}
+    assert set(receipt["tables"]) == {"stretch_summary", "stretches"}
+    for name, entry in receipt["files"].items():
+        data = (months[0] / name).read_bytes()
+        assert (sha256(data).hexdigest(), len(data)) == (entry["sha256"], entry["byte_size"])
+    day_summary = json.loads(day_receipt)["tables"]["stretch_summary"]
+    with duckdb.connect() as connection:
+        daily = connection.execute(
+            "SELECT sum(passes), count(DISTINCT stretch_key) FROM read_parquet(?)",
+            [str(dest / stretch_key_prefix("stm", DAY) / day_summary)],
+        ).fetchone()
+        rolled = connection.execute(
+            "SELECT sum(passes), count(DISTINCT stretch_key), min(day_type) FROM read_parquet(?)",
+            [str(months[0] / receipt["tables"]["stretch_summary"])],
+        ).fetchone()
+    assert rolled == (*daily, "weekday")  # 2026-06-01 is a Monday
+    # The same days are not added up again.
+    assert "- Stretch months built: none\n" in _clean(raw, dest)
+
+
+def test_a_month_is_not_built_from_a_file_that_differs_from_its_receipt(
+    raw: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dest = tmp_path / "clean"
+    with monkeypatch.context() as patch:
+        patch.setattr(clean_days, "publish_month_rollup", lambda *_: None)
+        _clean(raw, dest)
+    summary = next((dest / stretch_key_prefix("stm", DAY)).glob("stretch_summary-*"))
+    summary.write_bytes(summary.read_bytes() + b"x")
+    report = _clean(raw, dest)
+    assert "- Stretch months failed: 2026-06\n" in report
+    assert not (dest / "stretch/v13/stm/months").exists()

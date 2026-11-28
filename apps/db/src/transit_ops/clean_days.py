@@ -56,6 +56,7 @@ from transit_ops.stretch_day import (
     publish_stretch_day,
     stretch_key_prefix,
 )
+from transit_ops.stretch_month import closed_months, day_receipts, publish_month_rollup
 
 _S3_URL = re.compile(r"s3://([a-z0-9][a-z0-9.-]*)(?:/([a-zA-Z0-9._/-]*))?")
 _ORIGINAL = re.compile(r"([0-9]{4}-[0-9]{2}-[0-9]{2})/([0-9]{8}T[0-9]{12}Z)__([0-9a-f]{12})__[^/]+")
@@ -469,10 +470,31 @@ def run_clean_days(
         typer.echo(f"Unreadable schedule archive {unreadable}")
     if busy:
         typer.echo(f"Deferred {len(busy)} locked service days: {', '.join(map(str, busy))}")
+    months_built: list[str] = []
+    months_failed: dict[str, str] = {}
+    if stretch_tables:
+        # Once a month has closed, its days are added up into one rollup in R2.
+        local_today = (
+            (scheduled_at or datetime.now(UTC))
+            .astimezone(ZoneInfo(declaration.provider.timezone))
+            .date()
+        )
+        window = (
+            date.fromordinal(o) for o in range(start_day.toordinal(), end_day.toordinal() + 1)
+        )
+        for month in closed_months(window, local_today):
+            try:
+                receipts = day_receipts(clean, clean_prefix, provider, month)
+                if publish_month_rollup(clean, clean_prefix, provider, month, receipts):
+                    months_built.append(month)
+            except Exception as error:
+                months_failed[month] = _failure_reason(error)
     typer.echo(f"Stretch timing built {len(stretch_built)}, failed {len(stretch_failed)}")
+    if stretch_tables:
+        typer.echo(f"Stretch months built {len(months_built)}, failed {len(months_failed)}")
     if summary is not None:
         print(f"## Clean service days for {provider}\n", file=summary)
-        groups: dict[str, Iterable[date]] = {
+        groups: dict[str, Iterable[object]] = {
             "Built": built,
             "Skipped as already built": skipped,
             "Deferred while locked": busy,
@@ -481,9 +503,16 @@ def run_clean_days(
             "Failed": failed,
             "Stretch timing built": stretch_built,
             "Stretch timing failed": stretch_failed,
+            **(
+                {"Stretch months built": months_built, "Stretch months failed": months_failed}
+                if stretch_tables
+                else {}
+            ),
         }
         for label, days in groups.items():
             print(f"- {label}: {', '.join(map(str, days)) or 'none'}", file=summary)
+    for month, reason in months_failed.items():
+        typer.echo(f"{month}: stretch month: {reason}", err=True)
     for day, reason in stretch_failed.items():
         typer.echo(f"{day}: stretch timing: {reason}", err=True)
     for day, reason in failed.items():

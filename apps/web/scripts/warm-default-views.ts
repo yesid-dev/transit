@@ -7,13 +7,82 @@ import {
 	sharedDefaultQuestion,
 	type WarmCity,
 } from '../src/lib/server/defaultQuestions.ts';
-import { frameClock, presetPeriod } from '../src/lib/site/frameState.ts';
-import { citiesQuestion, questionUrl } from '../src/lib/server/engineQuestion.ts';
+import { frameClock, presetPeriod, type FrameClock } from '../src/lib/site/frameState.ts';
+import { citiesQuestion, periodQuestion, questionUrl } from '../src/lib/server/engineQuestion.ts';
 
 // Leave the engine slot available for rider traffic between background requests,
 // including after slow responses. The public limit is 30 misses per minute.
 const REQUEST_GAP_MS = 2_200;
 const REQUEST_TIMEOUT_MS = 30_000;
+
+// Whole-network stretch timing over long periods can take minutes. The engine says
+// busy and keeps going; the warm-up waits as asked and tries again until it answers.
+const STRETCH_PRESETS = ['7-days', '28-days', 'last-month', '12-months'] as const;
+const STRETCH_WAIT_LIMIT_MS = 20 * 60_000;
+
+export function stretchQuestions(city: WarmCity, clock: FrameClock): string[] {
+	const urls = new Set<string>();
+	for (const preset of STRETCH_PRESETS) {
+		const period = presetPeriod(preset, clock);
+		if (!period) continue;
+		const question = periodQuestion(
+			{ city: city.id, from: period.from, to: period.to },
+			'/measure',
+			{
+				measure: 'stretch_timing',
+				group: 'stretch',
+				view: 'map',
+			},
+		);
+		urls.add(questionUrl(question).toString());
+	}
+	return [...urls];
+}
+
+export async function warmUntilAnswered(
+	urls: string[],
+	{
+		fetcher = fetch,
+		now = () => performance.now(),
+		wait = delay,
+		limitMs = STRETCH_WAIT_LIMIT_MS,
+	}: {
+		fetcher?: typeof fetch;
+		now?: () => number;
+		wait?: (ms: number) => Promise<void>;
+		limitMs?: number;
+	} = {},
+) {
+	const requests = [];
+	for (const url of urls) {
+		if (requests.length) await wait(REQUEST_GAP_MS);
+		const sent = now();
+		let attempts = 0;
+		let outcome: 'answered' | 'busy' | 'failed' = 'failed';
+		while (now() - sent < limitMs) {
+			attempts++;
+			let retryMs: number | null = null;
+			try {
+				const response = await fetcher(url, requestOptions());
+				await response.arrayBuffer();
+				if (response.ok && response.headers.get('x-transit-answer') !== 'last-good') {
+					outcome = 'answered';
+				} else if (response.status === 503 && response.headers.has('retry-after')) {
+					outcome = 'busy';
+					retryMs = Math.max(5, Number(response.headers.get('retry-after')) || 5) * 1000;
+				}
+			} catch {
+				// A timed-out request is retried like a busy answer: the engine keeps going.
+				outcome = 'busy';
+				retryMs = 15_000;
+			}
+			if (outcome === 'answered' || retryMs === null) break;
+			await wait(retryMs);
+		}
+		requests.push({ url, outcome, attempts, elapsedMs: Math.round(now() - sent) });
+	}
+	return requests;
+}
 
 function requestOptions() {
 	return { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), redirect: 'error' } as const;
@@ -111,6 +180,7 @@ async function main(args: string[]) {
 	const missing: string[] = [];
 	const defaults = [];
 	const followUps = [];
+	const stretches: { city: string; urls: string[] }[] = [];
 	for (const city of cities) {
 		const clock = frameClock(city, now);
 		const period = defaultPeriod(clock);
@@ -137,6 +207,7 @@ async function main(args: string[]) {
 		}
 		const extraUrls = [...uniqueUrls].slice(defaultUrls.length);
 		if (extraUrls.length) followUps.push({ city: city.id, pass: 'follow-up', urls: extraUrls });
+		stretches.push({ city: city.id, urls: stretchQuestions(city, clock) });
 	}
 	const batches = [
 		...defaults,
@@ -144,7 +215,7 @@ async function main(args: string[]) {
 		...followUps,
 	];
 	if (dryRun) {
-		console.log(batches.flatMap(({ urls }) => urls).join('\n'));
+		console.log([...batches, ...stretches].flatMap(({ urls }) => urls).join('\n'));
 		return;
 	}
 
@@ -169,6 +240,17 @@ async function main(args: string[]) {
 		busy += outcomes.busy;
 		deferred += outcomes.deferred;
 		failed += outcomes.failed;
+	}
+	// Long stretch questions come last, so rider-facing views are warm first.
+	for (const { city, urls } of stretches) {
+		await delay(REQUEST_GAP_MS);
+		for (const request of await warmUntilAnswered(urls)) {
+			console.log(JSON.stringify({ city, pass: 'stretch', ...request }));
+			sent++;
+			if (request.outcome === 'answered') answered++;
+			else if (request.outcome === 'busy') busy++;
+			else failed++;
+		}
 	}
 	let probesPassed = true;
 	if (verifyCache) {

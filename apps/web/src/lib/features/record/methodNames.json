@@ -55,6 +55,11 @@
 		"Time lost against the clear run",
 		"Temps perdu par rapport au parcours fluide"
 	],
+	"stretch_time_lost": ["Time lost per stretch", "Temps perdu par tronçon"],
+	"stretch_clear_run_speed": [
+		"Clear-run speed per stretch",
+		"Vitesse en parcours fluide par tronçon"
+	],
 	"total_vehicle_minutes_lost": [
 		"Total vehicle-minutes lost",
 		"Total des minutes-véhicules perdues"
