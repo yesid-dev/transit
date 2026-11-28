@@ -192,9 +192,12 @@ test('vehicle live links its scheduled departure and keeps predictions in their 
 		'Room on board',
 		'Last report',
 	]);
-	await expect(
-		service.getByRole('link', { name: '07:38 toward Station Laurier', exact: true }),
-	).toHaveAttribute('href', /\/departure\/[^?]+\?.*trip=T1/);
+	// One line: the time, then the first stop in the body font.
+	await expect(service.locator('[data-slot="departure-time"]')).toHaveText(/^07:38( from .+)?$/);
+	await expect(service.getByRole('link', { name: /^07:38/ })).toHaveAttribute(
+		'href',
+		/\/departure\/[^?]+\?.*trip=T1/,
+	);
 	await expect(service.locator('table')).toHaveCount(0);
 	await service.getByRole('button', { name: 'Predictions at its next stops' }).click();
 	await expect(page.getByRole('dialog').locator('table tbody tr')).toHaveCount(4);
@@ -202,12 +205,12 @@ test('vehicle live links its scheduled departure and keeps predictions in their 
 	hasTime = false;
 	await page.goto(path);
 	await expect(page.locator('html[data-hydrated]')).toBeAttached();
-	// A missing time is a state, not a link; the departure keeps its own link.
-	await expect(service.getByRole('link', { name: 'Time unknown' })).toHaveCount(0);
-	await expect(service.locator('[data-slot="departure-time-missing"]')).toHaveText('Time unknown');
-	const fallback = service.getByRole('link', { name: 'This departure', exact: true });
-	await expect(fallback).toHaveAttribute('href', /\/departure\/trip\?.*trip=T1/);
-	await fallback.click();
+	// A missing time is a state, not a link.
+	await expect(service.locator('[data-slot="departure-time-missing"]')).toHaveText(
+		'Not in the timetable',
+	);
+	await expect(service.getByRole('link', { name: 'Not in the timetable' })).toHaveCount(0);
+	await page.goto('/departure/trip?provider=stm&frameMode=live&trip=T1');
 	await expect(page.getByRole('heading', { level: 1, name: 'Departure' })).toBeVisible();
 	await expect(page.getByRole('main').locator('table tbody tr')).toHaveCount(4);
 });
@@ -236,20 +239,22 @@ test('the vehicle fleet sends only the first page and marks an absent report', a
 		'The number painted on the vehicle.',
 	);
 	await expect(rows).toHaveCount(20);
-	const first = rows.first();
-	await expect(
-		first.locator('[data-column="days"] [data-record-state="not_reporting"]'),
-	).toBeVisible();
-	await expect(first.getByText('0', { exact: true })).toHaveCount(0);
-	await expect(first.locator('[data-column="days"]')).toContainText('Did not report');
-	for (const column of ['hours', 'lines', 'trips']) {
-		await expect(first.locator(`[data-column="${column}"] .data-table-cell-content`)).toBeEmpty();
-	}
-	await expect(rows.nth(1).locator('[data-column="days"]')).toContainText('2 of 7');
+	// Vehicles with a reading come first; the one that did not report is listed last.
+	await expect(rows.first().locator('[data-column="days"]')).toContainText('2 of 7');
+	await expect(page.locator('[data-slot="fleet-silent-line"]')).toHaveCount(0);
 	await page.getByRole('button', { name: 'Show 20 more', exact: true }).click();
 	await expect(rows).toHaveCount(40);
 	await expect(summary).toHaveText('47 vehicles listed: 46 reported on a trip, 1 did not report.');
 	await expect(rows.nth(20).getByRole('link')).toBeFocused();
+	await page.getByRole('button', { name: 'Show 7 more', exact: true }).click();
+	await expect(rows).toHaveCount(47);
+	await expect(page.locator('[data-slot="fleet-silent-line"]')).toHaveText(
+		'1 vehicle known to the feed did not report on these dates. That is not the same as out of service.',
+	);
+	const silent = page.getByRole('table', { name: 'Did not report on these dates' });
+	await expect(silent.getByRole('link', { name: '49-300', exact: true })).toBeVisible();
+	await expect(silent.locator('[data-column="days"]')).toHaveCount(0);
+	await expect(silent.getByText('0', { exact: true })).toHaveCount(0);
 });
 
 test('the live fleet pages the reporting vehicles and names delay unknown', async ({ page }) => {
@@ -307,8 +312,8 @@ for (const width of [390, 1440]) {
 				main.locator('[data-slot="fleet-summary"] [data-slot="filter-summary-count"]'),
 			).toHaveText(
 				fr
-					? '1 véhicule dans la liste : 1 avec signalement en trajet, 0 sans signalement.'
-					: '1 vehicle listed: 1 reported on a trip, 0 did not report.',
+					? '1 véhicule dans la liste : 1 avec signalement en trajet.'
+					: '1 vehicle listed: 1 reported on a trip.',
 			);
 			const first = table
 				.getByRole('row')
@@ -345,16 +350,15 @@ for (const width of [390, 1440]) {
 					? 'interruptions des signalements, environ 0,2 par heure'
 					: 'times it stopped reporting, about 0.2 an hour',
 			);
-			const completion = main.getByRole('article', {
-				name: fr ? 'Trajets non terminés' : 'Unfinished trips',
-			});
-			await expect(completion).toContainText(fr ? 'Non suivi' : 'Not tracked');
-			await expect(completion).toContainText(
+			// The same for every vehicle, so it is said once under About these figures.
+			await expect(
+				main.getByRole('article', { name: fr ? 'Trajets non terminés' : 'Unfinished trips' }),
+			).toHaveCount(0);
+			await expect(main).toContainText(
 				fr
-					? 'Les flux en direct ne montrent pas de façon fiable quand un trajet se termine tôt'
-					: 'The live feeds do not show reliably when a trip ends early',
+					? 'les flux en direct n’indiquent pas de façon fiable qu’un trajet se termine plus tôt'
+					: 'Not tracked: the live feeds do not show reliably when a trip ends early.',
 			);
-			await expect(completion).not.toContainText(fr ? 'sur 20 trajets' : 'of 20 trips');
 			const timing = main.getByRole('article', {
 				name: fr ? 'Bilan de ponctualité' : 'On-time record',
 			});
@@ -364,14 +368,24 @@ for (const width of [390, 1440]) {
 			await expect(timing).toContainText(
 				fr ? 'Trop peu de données pour conclure' : 'Too few to judge',
 			);
-			await expect(
-				main.getByRole('list', { name: fr ? 'Jours en service' : 'Days in service' }),
-			).toContainText(fr ? '2,5' : '2.5');
-			await expect(
-				main.locator(
-					'[data-slot="day-strip-cell"][data-reported="true"] [style*="block-size: 100%"]',
-				),
-			).toHaveCount(5);
+			if (width === 390) {
+				// A phone reads the week as one row per day, the bars on one scale.
+				const week = main.getByRole('list', {
+					name: fr ? 'Heures en service par jour' : 'Hours in service by day',
+				});
+				await expect(week).toContainText(fr ? '2,5' : '2.5');
+				await expect(week.getByRole('listitem')).toHaveCount(7);
+				await expect(week.locator('[style*="inline-size: 100%"]')).toHaveCount(5);
+			} else {
+				await expect(
+					main.getByRole('list', { name: fr ? 'Jours en service' : 'Days in service' }),
+				).toContainText(fr ? '2,5' : '2.5');
+				await expect(
+					main.locator(
+						'[data-slot="day-strip-cell"][data-reported="true"] [style*="block-size: 100%"]',
+					),
+				).toHaveCount(5);
+			}
 			await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
 				fr ? '22 trajets, 5 jours en service' : '22 trips, 5 days in service',
 			);
@@ -513,8 +527,21 @@ for (const width of [390, 1440]) {
 			await page.goto(`${prefix}/vehicle/40062?provider=stm&frameMode=live&${dates}`);
 			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			await expect(
-				main.getByText(fr ? /Ce véhicule ne se signale pas/ : /This vehicle is not reporting now/),
+				main.getByText(fr ? 'Ne se signale pas en ce moment.' : 'Not reporting now.'),
 			).toBeVisible();
+			// One card says when the record last saw it, and on which line.
+			const lastSeen = main.getByRole('article', { name: fr ? 'Au bilan' : 'In the record' });
+			await expect(lastSeen).toContainText(
+				fr
+					? /Vu pour la dernière fois au bilan le 12 nov\.? 2026, sur la ligne 80\./u
+					: /Last seen in the record on 12 Nov 2026, on line 80\./u,
+			);
+			await expect(
+				lastSeen.getByRole('link', {
+					name: fr ? 'Le bilan de ce véhicule' : 'This vehicle’s record',
+				}),
+			).toHaveAttribute('href', /frameMode=record/);
+			await expect(main.getByRole('article')).toHaveCount(2);
 		});
 	}
 }
@@ -543,7 +570,10 @@ test('the fleet names untracked data and vehicle sections stream independently',
 	await expect(lines).toContainText('12');
 });
 
-test('vehicle Record renders six cards before any reading completes', async ({ page, request }) => {
+test('vehicle Record renders five cards before any reading completes', async ({
+	page,
+	request,
+}) => {
 	const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
 	const fixture = 'steady:stm:2026-11-06:2026-11-12';
 	const endpoint = (action: string) =>
@@ -556,7 +586,7 @@ test('vehicle Record renders six cards before any reading completes', async ({ p
 			waitUntil: 'commit',
 		});
 		const main = page.getByRole('main');
-		await expect(main.locator('[data-slot="record-card"]')).toHaveCount(6);
+		await expect(main.locator('[data-slot="record-card"]')).toHaveCount(5);
 		await expect(
 			main.getByRole('article', { name: 'On-time record' }).locator('[data-waiting-shape="bands"]'),
 		).toBeVisible();
@@ -611,7 +641,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(days.locator('[data-slot="day-strip-cell"][data-reported="false"]')).toContainText(
 			fr ? 'Non mesuré' : 'Not measured',
 		);
-		await expect(days.getByText('◇', { exact: true })).toHaveCount(2);
+		await expect(days.getByText('◇', { exact: true }).filter({ visible: true })).toHaveCount(2);
 		await page.goto(`${prefix}/vehicle/40067?provider=stm&frameMode=record&${dates}`);
 		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await expect(answer).toContainText(

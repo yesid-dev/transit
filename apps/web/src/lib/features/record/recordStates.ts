@@ -5,7 +5,7 @@ const states = {
 	too_few_to_judge: { glyph: '△', en: 'Too few to judge', fr: 'Trop peu de données pour conclure' },
 	unknown: { glyph: '○', en: 'Unknown', fr: 'Inconnu' },
 	delay_unknown: { glyph: '○', en: 'Delay unknown', fr: 'Retard inconnu' },
-	not_reporting: { glyph: '◇', en: 'Not reporting', fr: 'Aucun signal' },
+	not_reporting: { glyph: '◇', en: 'Not reporting', fr: 'Sans signalement' },
 	alerts_not_tracked: { glyph: '⊠', en: 'Not tracked', fr: 'Non suivi' },
 	not_tracked: {
 		glyph: '⊠',

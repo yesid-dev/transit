@@ -51,6 +51,10 @@
 	const printAction = $derived(
 		print ?? (page.url?.searchParams.get('frameMode') === 'record' ? printPage : undefined),
 	);
+	// Four actions on a phone read as two even rows, not three and one alone.
+	const fourActions = $derived(
+		Boolean(printAction) && Boolean(createDownload || files.length || reserveDownload),
+	);
 	const windowLayout = actionSheetLayout();
 	const closeLabel = $derived(fr ? 'Fermer' : 'Close');
 	const citeLabel = $derived(fr ? 'Citer' : 'Cite');
@@ -114,7 +118,10 @@
 
 {#key href}
 	<div
-		class="flex min-w-0 flex-wrap items-start gap-2 lg:w-max lg:max-w-full"
+		class={[
+			'flex min-w-0 flex-wrap items-start gap-2 lg:w-max lg:max-w-full',
+			fourActions && 'max-sm:grid max-sm:grid-cols-2',
+		]}
 		role="group"
 		aria-label={groupLabel ?? (fr ? 'Actions du bilan' : 'Record actions')}
 	>

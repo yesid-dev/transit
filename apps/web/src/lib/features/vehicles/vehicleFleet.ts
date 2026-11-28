@@ -61,7 +61,9 @@ export function projectVehicleFleet(answer: RecordSeries, view: FleetView, local
 					? row.state === 'not_reporting'
 					: true),
 	);
-	matches.sort((a, b) => compare(a.id, b.id));
+	// Vehicles that did not report come last, after every vehicle with a reading.
+	const silent = (row: VehicleRecordRow) => (row.state === 'not_reporting' ? 1 : 0);
+	matches.sort((a, b) => silent(a) - silent(b) || compare(a.id, b.id));
 	const reported = matches.filter(({ days }) => (days ?? 0) > 0).length;
 	const didNotReport = matches.filter(({ state }) => state === 'not_reporting').length;
 	return {
