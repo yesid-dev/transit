@@ -6,10 +6,12 @@ import { GOOD_TO_BAD_LEVELS, goodToBadStep } from '#lib/components/dataviz/goodT
 import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 import { corridorPath, type CorridorIndex } from './corridorMap';
 import type { RecordLayerAnswer, RecordLayerState } from './recordLayerAnswer';
-
+import type { RecordMapLayer } from '#lib/site/mapFrame.ts';
 export type { RecordMapLayer } from '#lib/site/mapFrame.ts';
 export const RECORD_DETAIL_MIN_ZOOM = 13;
 export const RECORD_OVERVIEW_LIMIT = 300;
+/** The neutral rest of a capped overview costs seconds to draw at network zoom: closer only. */
+export const RECORD_UNDERLAY_MIN_ZOOM = 11;
 type Coordinate = [number, number];
 type Geometry =
 	| { type: 'Point'; coordinates: Coordinate }
@@ -54,25 +56,7 @@ export type RecordFeatures = {
 
 export const recordColours = GOOD_TO_BAD_LEVELS.map((level) => goodToBadStep(level).fill);
 
-export const recordStopRadii = {
-	network: [3.75, 4.5, 5.25, 6.25, 7.25],
-	detail: [4.5, 5.5, 6.5, 7.75, 9],
-	waitsNetwork: [1.5, 1.75, 2, 2.25, 2.75],
-} as const;
-
-export const recordCorridorWidths = {
-	network: [2.5, 3, 3.75, 4.5, 5.5],
-	detail: [2, 3, 4, 5.5, 7],
-} as const;
-
-export const recordUnmeasuredLine = {
-	width: 2,
-	dashes: [
-		[1, 1.8],
-		[3, 1.5],
-		[5, 3],
-	],
-} as const;
+export { recordCorridorWidths, recordStopRadii, recordUnmeasuredLine } from './recordMarkSizes';
 
 const stopLateShareCuts = [100, 150, 200, 250];
 const corridorLossCuts = [30, 60, 120];
@@ -194,6 +178,28 @@ export function recordLayerMarks(
 	}
 	return marks;
 }
+
+/**
+ * The marks left out of a capped overview, as plain geometry: the map draws them thin and
+ * neutral under the coloured worst, so the worst read against the rest of the network.
+ */
+export function recordUnderlay(
+	marks: readonly RecordMark[],
+	drawn: readonly RecordMark[],
+): RecordUnderlay {
+	const shown = new Set(drawn.map(({ id }) => id));
+	return {
+		type: 'FeatureCollection',
+		features: marks
+			.filter(({ id }) => !shown.has(id))
+			.map(({ geometry }) => ({ type: 'Feature', geometry, properties: {} })),
+	};
+}
+
+export type RecordUnderlay = {
+	type: 'FeatureCollection';
+	features: { type: 'Feature'; geometry: Geometry; properties: Record<string, never> }[];
+};
 
 /** Each stop gets one mark. The list keeps all the individual line and direction readings. */
 export function highestWaitsByStop(marks: readonly RecordMark[]) {
@@ -366,4 +372,33 @@ export function recordFeatures(
 			};
 		}),
 	};
+}
+
+/**
+ * The phone and tablet foot bar's answer: the worst reading in view, for every Record layer.
+ * `compact` is the narrowest bar, which drops "in view".
+ */
+export function recordPeekReading(
+	layer: Exclude<RecordMapLayer, 'live'>,
+	reading: string,
+	locale: Locale,
+	compact = false,
+): string {
+	const fr = locale === 'fr';
+	const colon = fr ? ' : ' : ': ';
+	const inView = compact ? '' : fr ? ' en vue' : ' in view';
+	switch (layer) {
+		case 'stops':
+			return fr
+				? `Pire arrêt${inView}${colon}${reading} en retard`
+				: `Worst stop${inView}${colon}${reading} late`;
+		case 'waits':
+			return fr
+				? `${compact ? 'Attente en plus' : 'Plus longue attente en plus'}${colon}${reading}`
+				: `Longest extra wait${inView}${colon}${reading}`;
+		default:
+			return fr
+				? `Pire${inView}${colon}${reading} perdues`
+				: `Worst${inView}${colon}${reading} lost`;
+	}
 }

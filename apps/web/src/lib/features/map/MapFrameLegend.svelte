@@ -9,9 +9,15 @@
 	import { OCCUPANCY_CODES } from '#lib/v1/schemas/types.ts';
 	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { mapRecordReading } from '#lib/site/presenter.ts';
+	import { mapRecordReading, searchCount } from '#lib/site/presenter.ts';
 	import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
-	import { mapLegend, type LegendColourBy, type LegendMark } from './mapLegend';
+	import {
+		mapLegend,
+		recordCapNote,
+		recordLayerTitle,
+		type LegendColourBy,
+		type LegendMark,
+	} from './mapLegend';
 	import { copy } from './map.copy';
 	import { recordColours, recordUnmeasuredLine, type RecordMapLayer } from './recordMap';
 
@@ -26,6 +32,7 @@
 		threeD = false,
 		heightLimit = null,
 		approximate = false,
+		capped = null,
 	}: {
 		locale: Locale;
 		layer: RecordMapLayer;
@@ -38,6 +45,8 @@
 		threeD?: boolean;
 		heightLimit?: number | null;
 		approximate?: boolean;
+		/** How many marks a capped overview colours; null when every mark is drawn. */
+		capped?: number | null;
 	} = $props();
 
 	let open = $state(true);
@@ -157,11 +166,11 @@
 		const labels =
 			layer === 'stops'
 				? [
-						tr('Under 10%', 'Moins de 10 %'),
-						tr('10 to under 15%', '10 à moins de 15 %'),
-						tr('15 to under 20%', '15 à moins de 20 %'),
-						tr('20 to under 25%', '20 à moins de 25 %'),
-						tr('25% and over', '25 % et plus'),
+						tr('Under 10%', 'Moins de 10\u00a0%'),
+						tr('10 to under 15%', '10 à moins de 15\u00a0%'),
+						tr('15 to under 20%', '15 à moins de 20\u00a0%'),
+						tr('20 to under 25%', '20 à moins de 25\u00a0%'),
+						tr('25% and over', '25\u00a0% et plus'),
 					]
 				: [
 						layer === 'waits'
@@ -173,22 +182,17 @@
 						tr('2\u00a0min and over', '2\u00a0min et plus'),
 					];
 		return {
-			title:
-				layer === 'stops'
-					? tr(
-							'Share of recorded stop arrivals that were late',
-							'Part des passages enregistrés en retard',
-						)
-					: layer === 'waits'
-						? tr('Extra wait at each stop', 'Attente en plus à chaque arrêt')
-						: layer === 'clear-run'
-							? tr('Time lost against the clear run', 'Temps perdu par rapport au parcours fluide')
-							: tr('Time lost between two stops', 'Temps perdu entre deux arrêts'),
+			title: recordLayerTitle(layer, locale),
 			steps: labels.map((label, index) => ({ label, swatch: recordColours[index]! })),
 			states: [
-				{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
-				{ label: tr('Not measured', 'Non mesuré'), symbol: noSampleMark },
-				{ label: tr('No live data', 'Aucune donnée en direct'), symbol: scheduleMark },
+				// A capped overview draws only the worst readings: no unmeasured mark to explain.
+				...(capped === null
+					? [
+							{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
+							{ label: tr('Not measured', 'Non mesuré'), symbol: noSampleMark },
+							{ label: tr('No live data', 'Aucune donnée en direct'), symbol: scheduleMark },
+						]
+					: []),
 				...((layer === 'corridors' || layer === 'clear-run') && approximate
 					? [
 							{
@@ -290,6 +294,11 @@
 			{collapsible}
 			persistKey={collapsible ? 'transit:map-legend-open' : undefined}
 		/>
+		{#if open && layer !== 'live' && capped !== null}
+			<p class="mt-2 text-muted-foreground" data-record-cap-legend-note>
+				{recordCapNote(searchCount(capped, locale), locale)}
+			</p>
+		{/if}
 		{#if open && layer === 'waits'}
 			<p class="mt-2 text-muted-foreground" data-waits-legend-note>
 				{tr(

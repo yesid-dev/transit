@@ -9,6 +9,7 @@ import {
 	recordStopRadii,
 	recordUnmeasuredLine,
 	type RecordFeatures,
+	type RecordUnderlay,
 } from './recordMap';
 import {
 	RECORD_EXTRUSION_CAP_ID,
@@ -17,6 +18,9 @@ import {
 } from './recordExtrusions';
 
 const sourceId = 'record-map';
+const underlaySourceId = 'record-map-underlay';
+const underlayLineId = 'record-map-underlay-lines';
+const underlayPointId = 'record-map-underlay-points';
 const pointsId = 'record-map-stops';
 const pointDetailId = 'record-map-stop-centres';
 const outlineId = 'record-map-corridor-outline';
@@ -39,6 +43,8 @@ const recordOrder: ExpressionSpecification = [
 	['*', ['get', 'state'], 5],
 	['coalesce', ['get', 'step'], 0],
 ];
+
+const measured: ExpressionSpecification = ['==', ['get', 'state'], 3];
 
 function rampSize(
 	[first, second, third, fourth, fifth]: readonly [number, number, number, number, number],
@@ -83,16 +89,39 @@ export function attachRecordMap(
 		outline,
 		extrusions,
 		capColour,
+		underlay,
+		underlayColour,
 	}: {
 		network: boolean;
 		waits: boolean;
 		outline: string;
 		extrusions?: RecordExtrusions;
 		capColour: string;
+		/** The rest of a capped overview, drawn thin and neutral under the coloured worst. */
+		underlay?: RecordUnderlay;
+		underlayColour?: string;
 	},
 ) {
 	function draw() {
 		if (map.getSource(sourceId)) return;
+		if (underlay?.features.length && underlayColour && !map.getSource(underlaySourceId)) {
+			map.addSource(underlaySourceId, { type: 'geojson', data: underlay });
+			map.addLayer({
+				id: underlayLineId,
+				type: 'line',
+				source: underlaySourceId,
+				filter: ['==', ['geometry-type'], 'LineString'],
+				layout: { 'line-cap': 'round', 'line-join': 'round' },
+				paint: { 'line-color': underlayColour, 'line-width': 0.75, 'line-opacity': 0.55 },
+			});
+			map.addLayer({
+				id: underlayPointId,
+				type: 'circle',
+				source: underlaySourceId,
+				filter: ['==', ['geometry-type'], 'Point'],
+				paint: { 'circle-color': underlayColour, 'circle-radius': 1.25, 'circle-opacity': 0.55 },
+			});
+		}
 		map.addSource(sourceId, { type: 'geojson', data: features });
 		for (const [state, id] of segmentIds.entries()) {
 			const dash = recordUnmeasuredLine.dashes[state];
@@ -143,24 +172,40 @@ export function attachRecordMap(
 			filter: ['==', ['geometry-type'], 'Point'],
 			layout: { 'circle-sort-key': recordOrder },
 			paint: {
-				'circle-radius': [
-					'interpolate',
-					['linear'],
-					['zoom'],
-					9,
-					[
-						'case',
-						['==', ['get', 'state'], 3],
-						rampSize(waits ? recordStopRadii.waitsNetwork : recordStopRadii.network),
-						3.75,
-					],
-					15,
-					['case', ['==', ['get', 'state'], 3], rampSize(recordStopRadii.detail), 5],
-				],
+				'circle-radius': waits
+					? [
+							'interpolate',
+							['linear'],
+							['zoom'],
+							9,
+							['case', measured, rampSize(recordStopRadii.waitsNetwork), 3.75],
+							15,
+							['case', measured, rampSize(recordStopRadii.detail), 5],
+						]
+					: [
+							'interpolate',
+							['linear'],
+							['zoom'],
+							// Under zoom 11 thousands of stops share the screen: small dots, no ring.
+							10,
+							['case', measured, rampSize(recordStopRadii.overview), 1.5],
+							12,
+							['case', measured, rampSize(recordStopRadii.network), 3.75],
+							15,
+							['case', measured, rampSize(recordStopRadii.detail), 5],
+						],
 				'circle-color': ['get', 'colour'],
 				'circle-opacity': ['match', ['get', 'state'], 0, 0, 2, 0, 1],
 				'circle-stroke-color': ['match', ['get', 'state'], 3, outline, ['get', 'colour']],
-				'circle-stroke-width': ['match', ['get', 'state'], 1, 0, 3, waits ? 0.65 : 1, 1.5],
+				'circle-stroke-width': [
+					'interpolate',
+					['linear'],
+					['zoom'],
+					10,
+					['match', ['get', 'state'], 1, 0, 3, 0, 0.75],
+					12,
+					['match', ['get', 'state'], 1, 0, 3, waits ? 0.65 : 1, 1.5],
+				],
 			},
 		});
 		map.addLayer({
@@ -229,5 +274,7 @@ export function attachRecordMap(
 		if (map.getLayer(approximateId)) map.removeLayer(approximateId);
 		if (map.getSource(RECORD_EXTRUSION_ID)) map.removeSource(RECORD_EXTRUSION_ID);
 		if (map.getSource(sourceId)) map.removeSource(sourceId);
+		for (const id of [underlayLineId, underlayPointId]) if (map.getLayer(id)) map.removeLayer(id);
+		if (map.getSource(underlaySourceId)) map.removeSource(underlaySourceId);
 	};
 }

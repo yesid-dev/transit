@@ -27,16 +27,15 @@
 	import type { MapRecordAnswer } from './recordMapAnswer';
 	import { corridorMapAnswer, indexCorridorPaths, type CorridorIndex } from './corridorMap';
 	import type { RecordLayerAnswer } from './recordLayerAnswer';
-	import {
-		isCoordinateInCapturedView,
-		isLineInCapturedView,
-		type MapReportCamera,
-	} from './mapReportCamera';
+	import type { MapReportCamera } from './mapReportCamera';
 	import { measureMapFocusInset } from './mapFocusInset';
+	import { isMarkInCapturedView } from './recordMarkInView';
 	import { attachRecordMap } from './recordMapLayers';
 	import { recordExtrusions, recordHeightScale } from './recordExtrusions';
 	import {
 		RECORD_DETAIL_MIN_ZOOM,
+		RECORD_OVERVIEW_LIMIT,
+		RECORD_UNDERLAY_MIN_ZOOM,
 		highestWaitsByStop,
 		overviewCorridors,
 		overviewWaits,
@@ -46,6 +45,7 @@
 		recordLayerMarks,
 		recordMapSampleText,
 		recordStops,
+		recordUnderlay,
 		type RecordMapLayer,
 		type RecordMark,
 	} from './recordMap';
@@ -73,6 +73,8 @@
 		oncount?: (count: number | null) => void;
 		onheightlimit?: (seconds: number | null) => void;
 		onapproximate?: (shown: boolean) => void;
+		/** How many marks a capped overview colours; null when every mark is drawn. */
+		oncap?: (count: number | null) => void;
 		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
 	}
 	let {
@@ -98,6 +100,7 @@
 		oncount,
 		onheightlimit,
 		onapproximate,
+		oncap,
 		children,
 	}: Props = $props();
 	const { provider } = getV1Context();
@@ -262,31 +265,33 @@
 	const drawn = $derived(
 		atOverview ? (waitLayer ? waitOverview : corridorOverview) : waitLayer ? waitsByStop : marks,
 	);
-	const waitsLimited = $derived(waitLayer && atOverview && drawn.length < waitsByStop.length);
+	// The overview colours only the worst; the rest of the layer is drawn thin and neutral.
+	const mapped = $derived(waitLayer ? waitsByStop : marks);
+	// Some marks wait for a closer zoom: the 300 limit, or readings that are not measured.
+	const limited = $derived(atOverview && drawn.length < mapped.length);
+	const capped = $derived(limited && drawn.length === RECORD_OVERVIEW_LIMIT);
+	const underlaid = $derived(limited && (reportCamera?.zoom ?? 0) >= RECORD_UNDERLAY_MIN_ZOOM);
+	$effect(() => oncap?.(capped ? drawn.length : null));
 	$effect(() => onapproximate?.(drawn.some(({ approximate }) => approximate === true)));
-	const visible = $derived.by(() => {
+	const byValue = (a: RecordMark, b: RecordMark) => (b.value ?? -Infinity) - (a.value ?? -Infinity);
+	const inView = (camera: MapReportCamera, { geometry }: RecordMark) =>
+		isMarkInCapturedView(camera, geometry);
+	// Every reading in view, coloured on the map or not: the list, its count and the answer.
+	const listed = $derived.by(() => {
 		const camera = reportCamera;
-		if (additionalReading || !camera) return [];
-		return drawn
-			.filter((mark) =>
-				mark.geometry.type === 'Point'
-					? isCoordinateInCapturedView(camera, mark.geometry.coordinates)
-					: isLineInCapturedView(camera, mark.geometry.coordinates),
-			)
-			.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
+		if (!camera) return additionalReading ? [...marks].sort(byValue) : [];
+		return marks.filter((mark) => inView(camera, mark)).sort(byValue);
 	});
-	const leader = $derived(visible.find((mark) => mark.state === 3 && mark.value !== null));
-	const heightScale = $derived(
-		threeD && layer === 'corridors' && reportCamera
-			? recordHeightScale(visible, reportCamera)
-			: null,
-	);
+	const leader = $derived(listed.find((mark) => mark.state === 3 && mark.value !== null));
+	const heightScale = $derived.by(() => {
+		const camera = reportCamera;
+		if (!threeD || layer !== 'corridors' || !camera) return null;
+		return recordHeightScale(
+			drawn.filter((mark) => inView(camera, mark)),
+			camera,
+		);
+	});
 	$effect(() => onheightlimit?.(heightScale?.seconds ?? null));
-	const listed = $derived(
-		additionalReading
-			? [...marks].sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
-			: visible,
-	);
 	const leaderStop = $derived(
 		leader?.stop ? (stops.find((stop) => stop.id === leader.stop)?.code ?? leader.stop) : null,
 	);
@@ -325,10 +330,12 @@
 			return `rgb(${red}, ${green}, ${blue})`;
 		});
 		const features = recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk);
-		const valuesInView = heightScale ? new Map(visible.map(({ id, value }) => [id, value])) : null;
+		const valuesInView = heightScale ? new Map(listed.map(({ id, value }) => [id, value])) : null;
 		return attachRecordMap(map, features, (id) => (selectedId = id), {
 			network,
 			waits: waitLayer,
+			underlay: underlaid ? recordUnderlay(mapped, drawn) : undefined,
+			underlayColour: mutedInk,
 			outline: resolveColor('var(--foreground)', mutedInk),
 			extrusions: heightScale
 				? recordExtrusions(features, (id) => valuesInView?.get(id), heightScale)
@@ -384,9 +391,9 @@
 	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop arrivals', 'passages');
 	const listLabel = $derived(
 		waitLayer
-			? tr('Waits by stop and line', 'Attentes par arrêt et par ligne')
+			? tr('Waits in view', 'Attentes en vue')
 			: layer === 'clear-run'
-				? tr('Time lost by stretch', 'Temps perdu par tronçon')
+				? tr('Stretches in view', 'Tronçons en vue')
 				: stopLayer
 					? tr('Stops in view', 'Arrêts en vue')
 					: tr('Corridors in view', 'Corridors en vue'),
@@ -416,9 +423,16 @@
 	}
 	function rowDetail(mark: RecordMark) {
 		if (stopLayer && mark.sample !== null) return sampleLabel(mark.sample);
-		const destination = mark.toName ? tr('to', 'à') + ' ' + mark.toName : '';
+		const towards = readingDirection(mark);
+		// One phrase for a stretch: where it ends, then the way the line runs.
+		const place = [
+			mark.toName ? tr('to', 'à') + ' ' + mark.toName : '',
+			towards && mark.toName ? towards[0]!.toLocaleLowerCase(locale) + towards.slice(1) : towards,
+		]
+			.filter(Boolean)
+			.join(', ');
 		const missingSample = mark.readingState === 'too_few_to_judge' ? requiredSample(mark) : '';
-		return [destination, readingDirection(mark), missingSample].filter(Boolean).join(' · ');
+		return [place, missingSample].filter(Boolean).join(' · ');
 	}
 	function readingName(mark: RecordMark) {
 		if (!mark.line) return undefined;
@@ -441,7 +455,7 @@
 	}
 	function corridorReading(mark: RecordMark) {
 		const id = measuredLine(mark);
-		const names = tr(`${mark.fromName} to ${mark.toName}`, `${mark.fromName} à ${mark.toName}`);
+		const names = tr(`${mark.fromName} to ${mark.toName}`, `de ${mark.fromName} à ${mark.toName}`);
 		return id
 			? tr(
 					`line ${display.lineName(id).number ?? id}, ${names}`,
@@ -449,13 +463,21 @@
 				)
 			: names;
 	}
-	function recordLink(id: string, dir?: number | null) {
-		const target = new URL(
-			localizeHref(`/${pointLayer ? 'stop' : 'lines'}/${encodeURIComponent(id)}`, locale, city),
-			url,
-		);
-		if (!pointLayer && dir != null) target.searchParams.set('direction', String(dir));
+	function recordLink(
+		id: string,
+		dir?: number | null,
+		page: 'stop' | 'lines' = pointLayer ? 'stop' : 'lines',
+	) {
+		const target = new URL(localizeHref(`/${page}/${encodeURIComponent(id)}`, locale, city), url);
+		if (page === 'lines' && dir != null) target.searchParams.set('direction', String(dir));
 		return frameHref(target, { mode: 'record', period });
+	}
+	/** A stretch shared by several lines links to the stop where it starts, like its neighbours. */
+	function rowLink(mark: RecordMark) {
+		const lineId = measuredLine(mark);
+		if (pointLayer) return mark.stop ? recordLink(mark.stop) : undefined;
+		if (lineId) return recordLink(lineId, mark.direction);
+		return mark.fromStop ? recordLink(mark.fromStop, null, 'stop') : undefined;
 	}
 	const recordHref = $derived(
 		pointLayer
@@ -478,37 +500,42 @@
 			: mapRecordReading(value, stopLayer, locale);
 	}
 	const headline = $derived(leader?.value == null ? null : valueText(leader.value));
+	const answerSentence = $derived.by(() => {
+		if (!leader) return '';
+		if (stopLayer)
+			return tr(
+				`is the highest late share of recorded stop arrivals in view, at stop ${leaderStop}, ${leader.name}.`,
+				`est la part de passages enregistrés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
+			);
+		if (waitLayer) {
+			const id = leader.line ? (display.lineName(leader.line).number ?? leader.line) : null;
+			return id
+				? tr(
+						`is the longest extra wait in view: line ${id} at ${leader.name}.`,
+						`est la plus longue attente en plus en vue\u00a0: ligne ${id} à ${leader.name}.`,
+					)
+				: tr(
+						`is the longest extra wait in view: at ${leader.name}.`,
+						`est la plus longue attente en plus en vue\u00a0: à ${leader.name}.`,
+					);
+		}
+		return layer === 'clear-run'
+			? tr(
+					`is the most time lost against a clear run in view: ${corridorReading(leader)}.`,
+					`est le plus grand temps perdu par rapport à un parcours fluide en vue\u00a0: ${corridorReading(leader)}.`,
+				)
+			: tr(
+					`is the most time lost between two stops in view: ${corridorReading(leader)}.`,
+					`est le plus grand temps perdu entre deux arrêts en vue\u00a0: ${corridorReading(leader)}.`,
+				);
+	});
 </script>
 
 {#snippet recordBody(stamp: Snippet | undefined)}
-	{#if !additionalReading && leader?.value != null}
-		<MapPanelAnswer
-			value={headline ?? ''}
-			sentence={stopLayer
-				? tr(
-						`is the highest late share of recorded stop arrivals in view, at stop ${leaderStop}, ${leader.name}.`,
-						`est la part de passages enregistrés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
-					)
-				: tr(
-						`is the most time lost between two stops in view: ${corridorReading(leader)}.`,
-						`est le plus grand temps perdu entre deux arrêts en vue\u00a0: ${corridorReading(leader)}.`,
-					)}
-		/>
+	{#if leader?.value != null}
+		<MapPanelAnswer value={headline ?? ''} sentence={answerSentence} />
 	{/if}
 	{@render stamp?.()}
-	{#if additionalReading}
-		<p>
-			{waitLayer
-				? tr(
-						'How much longer riders wait than scheduled during frequent service. A negative reading means a shorter wait.',
-						'Attente en plus par rapport à l’horaire en service fréquent. Une valeur négative indique une attente plus courte.',
-					)
-				: tr(
-						'The median trip time is compared with the fastest 10% of observed trips. The comparison needs at least 20 trips on the same line and in the same direction.',
-						'On compare la durée médiane aux 10 % de trajets observés les plus rapides. Il faut au moins 20 trajets sur la même ligne et dans le même sens.',
-					)}
-		</p>
-	{/if}
 	{#if chooseLine}
 		<p>
 			{tr(
@@ -544,43 +571,41 @@
 					<section aria-label={listLabel} data-slot="map-in-view">
 						<div class="flex items-baseline justify-between gap-2">
 							<h2 class="map-record-list-title">{listLabel}</h2>
-							<span class="tabular-nums text-muted-foreground">{shownCount(listed.length)}</span>
+							<span class="shrink-0 whitespace-nowrap tabular-nums text-muted-foreground"
+								>{shownCount(listed.length)}</span
+							>
 						</div>
-						{#if corridorLayer && drawn !== marks}
-							<p class="text-muted-foreground">
-								{tr(
-									`Showing the ${shownCount(drawn.length)} stretches that lose the most time. Zoom in for all.`,
-									`Affichage des ${shownCount(drawn.length)} tronçons où le temps perdu est le plus élevé. Zoomez pour les voir tous.`,
-								)}
-							</p>
-						{/if}
-						{#if waitsLimited}
-							<p class="text-muted-foreground">
-								{drawn.length
+						{#if limited}
+							<p class="text-muted-foreground" data-record-cap-note>
+								{capped
 									? tr(
-											`Showing the ${shownCount(drawn.length)} stops with the longest extra wait. Zoom in for all.`,
-											`Affichage des ${shownCount(drawn.length)} arrêts où l’attente en plus est la plus longue. Zoomez pour les voir tous.`,
+											`The map colours the ${shownCount(drawn.length)} worst at this zoom.`,
+											`La carte colore les ${shownCount(drawn.length)} pires à ce zoom.`,
 										)
-									: tr(
-											'Zoom in to see stops without a reading.',
-											'Zoomez pour voir les arrêts sans mesure.',
-										)}
+									: pointLayer
+										? tr(
+												'Zoom in to see the stops without a reading.',
+												'Zoomez pour voir les arrêts sans mesure.',
+											)
+										: tr(
+												'Zoom in to see the stretches without a reading.',
+												'Zoomez pour voir les tronçons sans mesure.',
+											)}
 							</p>
 						{/if}
 						<ul>
 							{#each listed.slice(0, limit) as mark (mark.id)}
 								{@const lineId = measuredLine(mark)}
-								{@const stopCode = stopCodes.get(mark.stop ?? mark.fromStop ?? '')}
-								{@const target = mark.stop ?? lineId}
 								<MapPanelRow
-									wrap={additionalReading}
 									code={lineId
 										? (display.lineName(lineId, routeNames.get(lineId)).number ?? lineId)
-										: stopCode}
+										: stopLayer
+											? stopCodes.get(mark.stop ?? '')
+											: undefined}
 									routePlate={Boolean(lineId)}
 									name={pointLayer ? mark.name : (mark.fromName ?? mark.name)}
 									accessibleName={readingName(mark)}
-									href={target ? recordLink(target, mark.direction) : undefined}
+									href={rowLink(mark)}
 									onselect={() => (selectedId = mark.id)}
 									detail={rowDetail(mark)}
 								>
@@ -596,6 +621,19 @@
 							>
 						{/if}
 					</section>
+				{/if}
+				{#if additionalReading}
+					<p class="text-muted-foreground" data-record-method>
+						{waitLayer
+							? tr(
+									'How much longer riders wait than scheduled during frequent service. A negative reading means a shorter wait.',
+									'Attente en plus par rapport à l’horaire en service fréquent. Une valeur négative indique une attente plus courte.',
+								)
+							: tr(
+									'The median trip time is compared with the fastest 10% of observed trips. The comparison needs at least 20 trips on the same line and in the same direction.',
+									'On compare la durée médiane aux 10\u00a0% de trajets observés les plus rapides. Il faut au moins 20 trajets sur la même ligne et dans le même sens.',
+								)}
+					</p>
 				{/if}
 				<label class="find">
 					{pointLayer

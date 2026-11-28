@@ -119,7 +119,7 @@ function choosesFrench(condition: ts.Expression, ast: ts.SourceFile) {
 	);
 }
 
-/** Every French string in a file: `fr:` copy, the French branch of a choice, and t(en, fr). */
+/** Every French string in a file: `fr:` copy, the French branch of a choice, t(en, fr) and tr(en, fr). */
 function frenchStrings(file: string): { path: string; text: string }[] {
 	const raw = readFileSync(file, 'utf8');
 	const sources = file.endsWith('.svelte')
@@ -139,9 +139,9 @@ function frenchStrings(file: string): { path: string; text: string }[] {
 			if (
 				ts.isCallExpression(node) &&
 				ts.isIdentifier(node.expression) &&
-				['t', 'choose'].includes(node.expression.text)
+				['t', 'tr', 'choose'].includes(node.expression.text)
 			) {
-				const frIndex = node.expression.text === 't' ? 1 : 2;
+				const frIndex = node.expression.text === 'choose' ? 2 : 1;
 				node.arguments.forEach((argument, index) => visit(argument, french || index === frIndex));
 				return;
 			}
@@ -169,6 +169,8 @@ describe('French copy', () => {
 		expect(where).toContain('site/presenter.copy.ts');
 		expect(strings.some(({ text }) => text === 'avant le prochain véhicule')).toBe(true);
 		expect(where).toContain('features/stops/StopPredictionTable.svelte');
+		// A local tr(en, fr) alias counts too: the Record legend's scale steps.
+		expect(strings.some(({ text }) => text === 'Moins de 10 %')).toBe(true);
 	});
 
 	it('keeps known English labels and voyage out of French copy', () => {

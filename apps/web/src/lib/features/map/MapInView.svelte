@@ -14,6 +14,7 @@
 	import { mapReportsCopy } from './mapReports.copy';
 	import { mapReportsCsv } from './mapReportsCsv';
 	import { mapStatusLabel } from './mapStatusLabels';
+	import { inViewSentence } from './mapInViewSentence';
 	import type { MapReportRow, MapReportView } from './mapReports';
 
 	let {
@@ -63,11 +64,8 @@
 			{ early: 0, on_time: 0, late: 0, unknown: 0 },
 		),
 	);
-	const oneVehicle = $derived(model?.inViewCount === 1);
 	const sentence = $derived(
-		french
-			? `${oneVehicle ? 'véhicule' : 'véhicules'} en vue ${lastAvailable ? 'au dernier signalement' : 'en ce moment'}\u00a0: ${count(statuses.early)} en avance, ${count(statuses.on_time)} à l’heure, ${count(statuses.late)} en retard, ${count(statuses.unknown)} au retard inconnu.`
-			: `${oneVehicle ? 'vehicle' : 'vehicles'} in view ${lastAvailable ? 'at the last report' : 'now'}: ${count(statuses.early)} early, ${count(statuses.on_time)} on time, ${count(statuses.late)} late, ${count(statuses.unknown)} with unknown delay.`,
+		model ? inViewSentence(statuses, model.inViewCount, locale, Boolean(lastAvailable)) : '',
 	);
 	const uid = $props.id();
 </script>

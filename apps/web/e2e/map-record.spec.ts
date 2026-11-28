@@ -64,7 +64,7 @@ for (const locale of ['en', 'fr'] as const) {
 		if (phone)
 			await expect(page.getByTestId('map-list-button')).toHaveAttribute(
 				'aria-label',
-				fr ? /Jusqu’à .+ en retard/u : /Up to .+ late/u,
+				fr ? /Pire arrêt en vue\u00a0: .+ en retard/u : /Worst stop in view: .+ late/u,
 			);
 		const legend = page.locator(
 			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
