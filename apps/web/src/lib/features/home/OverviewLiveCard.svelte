@@ -193,7 +193,11 @@
 					label={t.alerts}
 					busy={alerts.kind === 'pending'}
 					detail={!alertsAvailable
-						? alertsNotPublished({ name: operator, frenchOf: operatorOf }, locale, Boolean(officialAlertsUrl))
+						? alertsNotPublished(
+								{ name: operator, frenchOf: operatorOf },
+								locale,
+								Boolean(officialAlertsUrl),
+							)
 						: stale(alertHealth)
 							? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
 							: undefined}
@@ -258,13 +262,13 @@
 		.late-lines-waiting {
 			display: grid;
 		}
-		/* Ottawa's notice fact explains where to find the agency's notices. */
+		/* Allow one more line for the explanation of Ottawa's published notice sources. */
 		.no-agency-alerts {
-			min-block-size: 41rem;
+			min-block-size: 42rem;
 		}
 		@container (inline-size >= 32rem) {
 			.no-agency-alerts {
-				min-block-size: 40rem;
+				min-block-size: 41rem;
 			}
 		}
 	}

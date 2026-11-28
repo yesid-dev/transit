@@ -285,7 +285,8 @@
 						{#if share == null}
 							{@render gap(previous)}
 						{:else}
-							<strong class="font-sans">{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong
+							<strong class="font-sans"
+								>{comparisonText(current, previous, locale) ?? t.comparisonUnavailable}</strong
 							>
 						{/if}
 						{#if previous.kind === 'answer' && previous.lastGood}<p>
