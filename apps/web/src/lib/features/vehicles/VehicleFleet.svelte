@@ -65,7 +65,16 @@
 	import { vehicleHref } from './vehicleLinks.ts';
 	import { notTracked, sectionTitles } from './vehicleText.ts';
 
-	let { data }: { data: PageData } = $props();
+	let { data: incomingData }: { data: PageData } = $props();
+	const incoming = $derived({ data: incomingData, location: page.shallow?.url ?? page.url });
+	let lastFleet = $state.raw(untrack(() => incoming));
+	$effect.pre(() => {
+		if (incoming.data.view) lastFleet = incoming;
+	});
+	// The outgoing listing can still render as navigation hands over the detail data.
+	const fleet = $derived(incoming.data.view ? incoming : lastFleet);
+	const data = $derived(fleet.data);
+	const location = $derived(fleet.location);
 	const locale = getLocale();
 	const t = (en: string, fr: string) => (locale === 'fr' ? fr : en);
 	const display = transitDisplay();
@@ -86,7 +95,6 @@
 			result?.kind === 'not_tracked',
 	);
 	const title = $derived(t('Find a vehicle', 'Trouver un véhicule'));
-	const location = $derived(page.shallow?.url ?? page.url);
 	const url = $derived(new URL(location.href));
 	const pinned = $derived(new URL(frameHref(url, { mode: data.mode, period: data.period }), url));
 	const view = $derived(liveMode ? fleetView(location.searchParams) : data.view);
