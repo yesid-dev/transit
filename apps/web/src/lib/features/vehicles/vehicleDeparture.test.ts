@@ -73,3 +73,24 @@ it('requires a confirmed first stop when the route pattern is unavailable', () =
 	expect(timing(0)).toEqual({ time: '07:38', origin: 'origin' });
 	expect(timing(1)).toEqual({ time: null, origin: undefined });
 });
+
+it('reads the timetable first departure by trip when the feed sends no start time', () => {
+	const trip = {
+		...base,
+		first_departure: { stop: 'angrignon', departure: instant + 1800 },
+		scheduled_stops: [{ stop: 'destination', sequence: 20, departure: instant }],
+	};
+	expect(vehicleDepartureTiming(trip, route, 1, 'en', 'America/Toronto')).toEqual({
+		time: '08:08',
+		origin: 'angrignon',
+	});
+	expect(vehicleDepartureTiming(trip, route, 1, 'fr', 'America/Toronto').time).toMatch(
+		/^8\sh\s08$/u,
+	);
+	// An older publication without the field keeps the earlier reading.
+	const { first_departure: _, ...older } = trip;
+	expect(vehicleDepartureTiming(older, route, 1, 'en', 'America/Toronto')).toEqual({
+		time: null,
+		origin: 'origin',
+	});
+});

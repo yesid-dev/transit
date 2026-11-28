@@ -115,6 +115,14 @@ export function captureTrips(report: CaptureTripReport, now: number) {
 					route: update.route_id,
 					...(update.start_time ? { start_time: update.start_time } : {}),
 					...(update.trip_headsign ? { headsign: update.trip_headsign } : {}),
+					...(update.scheduled_start != null
+						? {
+								first_departure: {
+									stop: update.scheduled_origin ?? null,
+									departure: update.scheduled_start,
+								},
+							}
+						: {}),
 					...(update.direction_id === null ? {} : { direction_id: update.direction_id }),
 					...(update.stops.length
 						? {
