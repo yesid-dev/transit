@@ -3,6 +3,7 @@
 @import 'tailwindcss';
 @import '@yesid/ui/base.css';
 @import '@yesid/ui/station-tabs.css';
+@import './lib/components/dataviz/goodToBadScale.css';
 @source '../node_modules/@yesid/ui/src';
 
 html {

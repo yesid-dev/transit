@@ -7,7 +7,8 @@
 	import ChartFrame from '../ChartFrame.svelte';
 	import ScrollFrame from '../ScrollFrame.svelte';
 	import HeatmapCells from './HeatmapCells.svelte';
-	import { heatmapTier, HEATMAP_WORST_TIER } from '../heatmapTiers';
+	import { heatmapTier, HEATMAP_COLOUR_LEVELS, HEATMAP_WORST_TIER } from '../heatmapTiers';
+	import { goodToBadStep } from '../../goodToBadScale';
 	import type { HeatmapSpec } from '../ChartSpec';
 	import { absenceShort } from '#lib/site/absence.ts';
 
@@ -106,7 +107,7 @@
 </script>
 
 <figure
-	class={cn('dv-heatmap-mark m-0', className)}
+	class={cn('good-to-bad-grid dv-heatmap-mark m-0', className)}
 	aria-label={spec.title}
 	data-slot="heatmap-mark"
 >
@@ -171,6 +172,36 @@
 		{/snippet}
 	</ScrollFrame>
 
+	{#if tierLabels.length}
+		<ul
+			class="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-small"
+			role="list"
+			aria-label={spec.valueLabel ?? spec.title}
+		>
+			{#each HEATMAP_COLOUR_LEVELS as level, tier (level)}
+				{#if tierLabels[tier]}
+					<li class="flex items-center gap-2">
+						<span
+							class="size-4 rounded-sm border"
+							style:border-color="var(--transit-good-to-bad-grid-edge)"
+							style:background-color={goodToBadStep(level).fill}
+							aria-hidden="true"
+						></span>
+						{tierLabels[tier]}
+					</li>
+				{/if}
+			{/each}
+			<li class="flex items-center gap-2">
+				<span
+					class="size-4 rounded-sm"
+					style:background-color="var(--dataviz-heatmap-nodata)"
+					aria-hidden="true"
+				></span>
+				{noDataLabel}
+			</li>
+		</ul>
+	{/if}
+
 	<table class="sr-only">
 		<caption>{spec.title}</caption>
 		<thead>
@@ -210,27 +241,11 @@
 		stroke: var(--card);
 		stroke-width: 0.5;
 	}
-	:global(rect.dv-hm-tier-0) {
-		fill: var(--dataviz-heatmap-tier-0);
-	}
-	:global(rect.dv-hm-tier-1) {
-		fill: var(--dataviz-heatmap-tier-1);
-	}
-	:global(rect.dv-hm-tier-2) {
-		fill: var(--dataviz-heatmap-tier-2);
-	}
-	:global(rect.dv-hm-tier-3) {
-		fill: var(--dataviz-heatmap-tier-3);
-	}
-	:global(rect.dv-hm-nodata) {
-		fill: var(--dataviz-heatmap-nodata);
-	}
 	:global(rect.dv-heatmap-worst) {
 		stroke: var(--foreground);
 		stroke-width: 1.25;
 	}
 	.dv-heatmap-glyph {
-		fill: var(--background);
 		pointer-events: none;
 		font-family: var(--font-mono);
 	}

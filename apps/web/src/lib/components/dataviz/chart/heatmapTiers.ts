@@ -1,4 +1,8 @@
-export const HEATMAP_TIER_COUNT = 4;
+import type { GoodToBadLevel } from '../goodToBadScale';
+
+// Keep the habits' four existing value bins and use colours from the shared five-step scale.
+export const HEATMAP_COLOUR_LEVELS = [0, 2, 3, 4] as const satisfies readonly GoodToBadLevel[];
+export const HEATMAP_TIER_COUNT = HEATMAP_COLOUR_LEVELS.length;
 
 export const HEATMAP_WORST_TIER = HEATMAP_TIER_COUNT - 1;
 

@@ -3,8 +3,9 @@
 	import type { Snippet } from 'svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
-	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
-	import { HourGrid, type HourGridCell } from '@yesid/ui/chart';
+	import GoodToBadHourGrid from '#lib/components/dataviz/GoodToBadHourGrid.svelte';
+	import { goodToBadStep } from '#lib/components/dataviz/goodToBadScale.ts';
+	import type { HourGridCell } from '@yesid/ui/chart';
 	import { DashboardGrid } from '@yesid/ui/layout';
 	import { intl, localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import type {
@@ -148,10 +149,10 @@
 	});
 	const marks = {
 		present: { text: '●', level: 0 },
-		not_tracked: { text: '⊠', level: 1 },
-		unknown: { text: '?', level: 2 },
-		incomplete: { text: '◐', level: null, state: 'few' },
-		missing: { text: '×', level: null, state: 'none' },
+		not_tracked: { text: '⊠', level: null, state: 'unmeasured' },
+		unknown: { text: '?', level: null, state: 'unmeasured' },
+		incomplete: { text: '◐', level: 2 },
+		missing: { text: '×', level: 4 },
 		not_measured: { text: '○', level: null, state: 'unmeasured' },
 	} as const satisfies Record<string, Omit<HourGridCell, 'name'>>;
 	const familiesFor = (entries: MethodEntry[]) => [
@@ -218,7 +219,9 @@
 			})),
 			from: days[0]?.service_date,
 			to: days.at(-1)?.service_date,
-			states,
+			states: (
+				['present', 'incomplete', 'missing', 'not_measured', 'not_tracked', 'unknown'] as const
+			).filter((state) => states.has(state)),
 		};
 	}
 
@@ -579,10 +582,13 @@
 								{@const display = grid(result.answer, 14)}
 								{#snippet dayGrid(count: number)}
 									{@const shown = grid(result.answer, count)}
-									<div>
-										<ChartDetails
+									<div class="good-to-bad-grid">
+										<GoodToBadHourGrid
 											label={titles.days}
-											targets="tbody td"
+											columns={shown.columns}
+											rows={shown.rows}
+											scale={{ label: '', steps: [] }}
+											stateLabels={{ few: '', none: '', unmeasured: '' }}
 											readings={shown.rows.flatMap((row) =>
 												shown.columns.map(({ id }, index) => ({
 													key: row.id + '/' + id,
@@ -590,24 +596,25 @@
 													rows: [{ label: row.label, value: row.cells[index].name }],
 												})),
 											)}
-										>
-											<HourGrid
-												label={titles.days}
-												columns={shown.columns}
-												rows={shown.rows}
-												scale={{ label: '', steps: [] }}
-												stateLabels={{ few: '', none: '', unmeasured: '' }}
-											/>
-										</ChartDetails>
+										/>
 										<ul
 											class="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-small text-muted-foreground"
 											role="list"
 											aria-label={t('Day states', 'États des jours')}
 										>
-											{#each [...shown.states] as state (state)}
+											{#each shown.states as state (state)}
+												{@const level = marks[state].level}
+												{@const swatch = level === null ? undefined : goodToBadStep(level)}
 												<li class="flex gap-2">
-													<span aria-hidden="true" class="min-w-4 text-center"
-														>{marks[state].text}</span
+													<span
+														aria-hidden="true"
+														class="min-w-4 rounded-sm text-center"
+														class:border={swatch !== undefined}
+														style:border-color={swatch
+															? 'var(--transit-good-to-bad-grid-edge)'
+															: undefined}
+														style:background-color={swatch?.fill}
+														style:color={swatch?.ink}>{marks[state].text}</span
 													>
 													{labels[state]}
 												</li>
