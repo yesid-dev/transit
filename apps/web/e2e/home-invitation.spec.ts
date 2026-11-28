@@ -186,10 +186,14 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
 		await page.emulateMedia({ reducedMotion });
 		await page.setViewportSize({ width: 1280, height: 900 });
 		await open(page, 'en');
-		await page.keyboard.press('Home');
+		// The footer stays hidden while a card's reading is still on its way (AppShell's streaming
+		// footer), and a hidden link cannot take focus: wait for every card, as a reader does.
+		await expect(page.getByRole('main').locator('[data-record-pending]')).toHaveCount(0);
 		const house = page
 			.getByTestId('footer-brand')
 			.locator('[data-slot="product-brand"] a[data-slot="wordmark"]');
+		await expect(house).toBeVisible();
+		await page.keyboard.press('Home');
 		await house.focus();
 		await expect(house).toBeFocused();
 		await expect(props(page)).toHaveAttribute('data-state', 'visible');
