@@ -161,6 +161,14 @@
 				].join(' '),
 	);
 
+	// A reading is short: keep it on one line once the card has room for every reading (`2 of 8`,
+	// `2 minutes ago`). A table with more readings needs a wider card before none of them wraps.
+	const readingNoWrap = $derived(
+		columns.filter(({ numeric }) => numeric).length <= 2
+			? '@min-[38rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap'
+			: '@min-[60rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap',
+	);
+
 	const reverseOrder = $derived(locale === 'fr' ? 'Inverser l’ordre' : 'Reverse the order');
 	function sortHeaderLabel(header: string) {
 		if (header !== sortedHeader) return `${sortBy} ${header}`;
@@ -250,8 +258,7 @@
 				? '[&_thead_th[data-column=name]]:whitespace-nowrap [&_tbody_th[data-column=name]]:whitespace-nowrap @min-[38rem]:[&_thead_th]:whitespace-nowrap'
 				: '[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
-			// A reading is short: keep it on one line once the card has room (`2 of 8`, `2 minutes ago`).
-			'@min-[38rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap',
+			readingNoWrap,
 			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
 			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',
 			'@min-[38rem]:[&_tbody_td]:[overflow-wrap:normal]',
