@@ -74,8 +74,9 @@
 	.note {
 		text-align: start;
 	}
+	.note,
 	dd :global(p) {
-		font-family: var(--font-sans);
+		font-family: var(--font-body);
 	}
 	@container fact-list (inline-size < 24rem) {
 		dd :global(p) {

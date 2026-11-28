@@ -26,7 +26,6 @@
 	import { navPillCopy } from '#lib/i18n/messages.ts';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
 	import '@yesid/tokens/fonts.css';
-	import '@yesid/motion/ripple.css';
 	import '../app.css';
 
 	import { onMount } from 'svelte';
@@ -77,7 +76,6 @@
 	import * as env from '$app/env/public';
 
 	import { viewTransition } from '@yesid/motion/utils/viewTransition';
-	import { initGlobalRipple } from '@yesid/motion/utils/globalRipple';
 	import { getLenis } from '@yesid/motion/utils/lenis';
 	import { AppShell } from '#lib/components/shell/index.ts';
 	import AlertFiltersWaiting from '#lib/features/alerts/AlertFiltersWaiting.svelte';
@@ -385,33 +383,12 @@
 			providers: data.providers.map((provider) => provider.id),
 			context: () => ({ locale, provider: data.providerId }),
 		});
-		const disposeRipple = initGlobalRipple({
-			exclude: [
-				'[data-slot="card"]',
-				'[data-slot="record-card"]',
-				'[data-slot="chart-legend"]',
-				'[data-slot="hour-grid"]',
-				'[data-slot="day-strip"]',
-				'[data-slot="band-bar"]',
-				'[data-slot="range-mark"]',
-				'[data-slot="stop-ladder"]',
-				'[data-slot="severity-bar"]',
-				'[data-slot="still-map"]',
-				'[data-full-viewport="true"] [data-slot="surface-rail"]',
-				// The map's kit comboboxes portal their listboxes outside the map shell.
-				'body:has([data-map-progressive-state]) [data-slot="combobox-content"]',
-				'[data-slot="sheet-overlay"]:has(+ [data-map-in-view-sheet])',
-			].join(', '),
-		});
 
 		const disposeVitals =
 			env.PUBLIC_VITALS_ENABLED === 'true'
 				? startVitals({ endpoint: '/api/vitals', load: () => import('web-vitals') })
 				: () => {};
-		return () => {
-			disposeRipple();
-			disposeVitals();
-		};
+		return disposeVitals;
 	});
 
 	onNavigate(viewTransition);

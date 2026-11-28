@@ -5,6 +5,7 @@
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import { Separator } from '@yesid/ui/separator';
 	import type { Snippet } from 'svelte';
+	import { readRecordPageStamp } from '#lib/site/recordPageStampContext.ts';
 	import RecordSkeleton from './RecordSkeleton.svelte';
 	import { skeletonBlockSize, type RecordWaiting } from './recordWaiting.ts';
 
@@ -14,6 +15,7 @@
 		disclosure,
 		stamp,
 		stampPending = false,
+		showsPageStamp = false,
 		links,
 		evidence,
 		toggle,
@@ -39,6 +41,8 @@
 		};
 		stamp?: StampProps;
 		stampPending?: boolean;
+		/** Marks the card that carries the page's own Record stamp. */
+		showsPageStamp?: boolean;
 		links?: Snippet;
 		evidence?: Snippet;
 		toggle?: Snippet;
@@ -60,6 +64,10 @@
 		stampRule?: boolean;
 	} = $props();
 	const reservedSize = $derived(reserve ? skeletonBlockSize(reserve) : null);
+	const pageStamp = readRecordPageStamp();
+	const repeatedStamp = $derived(
+		!showsPageStamp && stamp?.kind === 'record' && stamp.label === pageStamp(),
+	);
 	const id = $props.id();
 	const expanded = $derived(open ?? (disclosure ? !!disclosure.initiallyOpen : true));
 </script>
@@ -117,9 +125,9 @@
 				</Collapsible.Trigger>
 			{:else}{title}{/if}
 		</h2>
-		{#if stamp}<Stamp {...stamp} />{:else if stampPending}<Skeleton
-				class="h-7 w-36 max-w-full"
-			/>{/if}
+		{#if stamp && !repeatedStamp}<Stamp
+				{...stamp}
+			/>{:else if stampPending && !repeatedStamp}<Skeleton class="h-7 w-36 max-w-full" />{/if}
 	</header>
 {/snippet}
 

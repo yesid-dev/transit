@@ -69,7 +69,7 @@
 	);
 </script>
 
-<DetailFrame class="metrics-detail">
+<DetailFrame class="metrics-detail" style="--detail-center-max: 100%">
 	{#snippet header()}
 		<ReadingFrame
 			title={t.heading}
@@ -92,7 +92,11 @@
 		</ReadingFrame>
 	{/snippet}
 
-	<ArticleSectionStack class="reading-column" data-testid="metrics-sections">
+	<ArticleSectionStack
+		class="reading-column"
+		style="margin-inline: auto"
+		data-testid="metrics-sections"
+	>
 		<nav aria-label={t.tocLabel} data-testid="archive-contents">
 			<details open>
 				<summary class="min-h-11 content-center">{t.tocLabel}</summary>

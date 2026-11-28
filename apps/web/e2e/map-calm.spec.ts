@@ -118,7 +118,7 @@ async function expectQuietClick(page: Page, target: Locator) {
 	await expect(page.locator('.global-ripple')).toHaveCount(0);
 }
 
-test('cards, charts and map surfaces suppress the global ripple', async ({ page }) => {
+test('the header, cards, charts and map do not start a click ripple', async ({ page }) => {
 	const phone = page.viewportSize()!.width < 1024;
 	await page.setViewportSize(phone ? { width: 390, height: 844 } : { width: 1440, height: 900 });
 	await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -126,7 +126,7 @@ test('cards, charts and map surfaces suppress the global ripple', async ({ page 
 	const menu = page.getByRole('button', { name: 'Open menu', exact: true });
 	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await menu.click();
-	await expect(page.locator('.global-ripple')).toHaveCount(1);
+	await expect(page.locator('.global-ripple')).toHaveCount(0);
 	await page.keyboard.press('Escape');
 	await expect(page.locator('.global-ripple')).toHaveCount(0);
 

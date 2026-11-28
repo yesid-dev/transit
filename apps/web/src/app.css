@@ -31,6 +31,35 @@ html {
 	--layout-support-rail-width: clamp(16rem, 18vw, 20rem);
 	--layout-article-main-min: 40rem;
 	--layout-article-top-space: var(--space-card-gap);
+	--transit-scrollbar: color-mix(in srgb, var(--muted-foreground) 75%, var(--background));
+	--transit-selection: color-mix(in srgb, var(--foreground) 14%, var(--background));
+}
+
+:where([data-slot='card'], [data-slot='controls-rail']) {
+	--border-brand: var(--border);
+	--shadow-card: none;
+}
+
+[data-slot='answer-lead'] .answer-value {
+	--accent-text: var(--foreground);
+}
+
+::selection {
+	color: var(--foreground);
+	background-color: var(--transit-selection);
+}
+
+:root,
+:root * {
+	scrollbar-color: var(--transit-scrollbar) transparent;
+}
+
+:root *::-webkit-scrollbar-thumb {
+	background-color: var(--transit-scrollbar);
+}
+
+:root *::-webkit-scrollbar-thumb:hover {
+	background-color: var(--muted-foreground);
 }
 
 :root:root {

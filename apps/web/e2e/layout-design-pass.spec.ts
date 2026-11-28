@@ -348,6 +348,12 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		if (liveAlerts) await refreshAlertsCapture(page);
 		await expect(page.getByRole('main')).toBeVisible();
+		if (screen === 'archive') {
+			const main = page.getByRole('main');
+			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
+			const contents = await main.getByTestId('archive-contents').boundingBox();
+			expect(contents?.x).toBeCloseTo(heading?.x ?? NaN, 0);
+		}
 		if (refreshStop) {
 			await refreshStop();
 			await expect(page.locator('[data-slot="stop-live-predictions"]')).toBeVisible();

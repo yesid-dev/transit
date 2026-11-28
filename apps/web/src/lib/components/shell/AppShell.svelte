@@ -27,6 +27,8 @@
 		recordEndNotice,
 	} from './frameControlsState.ts';
 	import { provideRecordPeriodNotice } from '#lib/site/recordPeriodNoticeContext.ts';
+	import { provideRecordPageStamp } from '#lib/site/recordPageStampContext.ts';
+	import { recordStamp } from '#lib/site/presenter.ts';
 	import RecordPatience from '#lib/features/record/RecordPatience.svelte';
 
 	interface AppShellProps {
@@ -78,6 +80,9 @@
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
 	const frame = $derived(frameControlsState(url, clock, errorPage));
+	provideRecordPageStamp(() =>
+		frame.usesFrameRecord && frame.period ? recordStamp(frame.period, locale) : undefined,
+	);
 	const compactMap = $derived(fullViewport && remWidth > 0 && shellWidth < 64 * remWidth);
 	let mapControlsVisibility = $state.raw<() => boolean>();
 	const registerMapControlsVisibility: RegisterMapControlsVisibility = (visible) => {

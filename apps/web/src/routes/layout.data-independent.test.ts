@@ -179,7 +179,6 @@ vi.mock('@yesid/analytics/vitals', () => ({ startVitals: () => vi.fn() }));
 vi.mock('@yesid/motion/utils/viewTransition', () => ({
 	viewTransition: harness.runViewTransition,
 }));
-vi.mock('@yesid/motion/utils/globalRipple', () => ({ initGlobalRipple: () => vi.fn() }));
 vi.mock('@yesid/ui/state', async (importOriginal) => ({
 	...(await importOriginal<typeof import('@yesid/ui/state')>()),
 	clock: {
