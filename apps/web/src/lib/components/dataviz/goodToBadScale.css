@@ -1,0 +1,22 @@
+:root {
+	/* Transit severity candidates for yesid.design. Lightness descends from good to bad. */
+	--transit-good-to-bad-0: light-dark(#527ca0, #aeddfb);
+	--transit-good-to-bad-1: light-dark(#3f739f, #89c9f1);
+	--transit-good-to-bad-2: light-dark(#606060, #aaaaaa);
+	--transit-good-to-bad-3: light-dark(#883440, #f0746b);
+	--transit-good-to-bad-4: light-dark(#69152b, #e26457);
+	--transit-good-to-bad-ink-0: #000;
+	--transit-good-to-bad-ink: light-dark(#fff, #000);
+}
+
+@media (forced-colors: active) {
+	:root {
+		--transit-good-to-bad-0: CanvasText;
+		--transit-good-to-bad-1: CanvasText;
+		--transit-good-to-bad-2: CanvasText;
+		--transit-good-to-bad-3: CanvasText;
+		--transit-good-to-bad-4: CanvasText;
+		--transit-good-to-bad-ink-0: Canvas;
+		--transit-good-to-bad-ink: Canvas;
+	}
+}

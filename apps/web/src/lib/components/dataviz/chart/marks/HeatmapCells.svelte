@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getChartContext } from 'layerchart';
 	import { cn } from '#lib/utils/index.ts';
-	import { heatmapTierClass } from '../heatmapTiers';
+	import { HEATMAP_COLOUR_LEVELS, heatmapTierClass } from '../heatmapTiers';
+	import { goodToBadStep } from '../../goodToBadScale';
 
 	export interface HeatmapCellDatum {
 		key: string;
@@ -36,7 +37,9 @@
 </script>
 
 {#each cells as d, index (d.key)}
+	{@const level = d.tier === null ? undefined : HEATMAP_COLOUR_LEVELS[d.tier]}
 	<rect
+		fill={level === undefined ? 'var(--dataviz-heatmap-nodata)' : goodToBadStep(level).fill}
 		data-chart-datum={index}
 		x={px(d.c)}
 		y={py(d.r)}
@@ -55,6 +58,7 @@
 		{#if d.tier === worstTier}
 			<text
 				class="dv-heatmap-glyph"
+				fill={goodToBadStep(HEATMAP_COLOUR_LEVELS[worstTier] ?? 4).ink}
 				x={px(d.c) + bw / 2}
 				y={py(d.r) + bh / 2}
 				font-size={glyphSize}
