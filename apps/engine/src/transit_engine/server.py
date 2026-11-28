@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from hmac import compare_digest
@@ -289,17 +290,60 @@ def _health(raw: bytes) -> tuple[str, date, date]:
     return params["city"], _date(params["from"]), _date(params["to"])
 
 
+# Questions that scan every reading of the period: seconds of engine time for each week asked.
+_HEAVY_MEASURES = frozenset((
+    "crowding",
+    "vehicle_days_in_service",
+    "vehicle_field_completeness",
+    "vehicle_reporting_gaps_per_100_hours",
+    "vehicle_unfinished_trips",
+    "waiting_and_gaps",
+    *STRETCH_MEASURES,
+))
+
+
+def is_heavy(question: Question | Ranking) -> bool:
+    """A period scan, which may hold every record slot but one."""
+    if isinstance(question, Ranking):
+        return question.kind == "vehicle" or is_heavy(question.question)
+    return question.measure in _HEAVY_MEASURES or (
+        question.measure == "vehicles" and question.vehicle is not None
+    )
+
+
 class QueryLane:
-    def __init__(self, concurrency: int, queue_size: int, queue_timeout: float):
+    """Slots with a bounded queue. Heavy questions hold at most `heavy_limit` of them."""
+
+    def __init__(
+        self,
+        concurrency: int,
+        queue_size: int,
+        queue_timeout: float,
+        heavy_limit: int | None = None,
+    ):
         self.slots = asyncio.BoundedSemaphore(concurrency)
+        self.heavy_slots = asyncio.BoundedSemaphore(heavy_limit or concurrency)
         self.queue_size = queue_size
         self.queue_timeout = queue_timeout
         self.waiting = 0
 
-    async def admit(self, send: ASGISendCallable) -> QueryTiming | None:
-        arrived = monotonic()
-        if not self.slots.locked():
+    def _free(self, heavy: bool) -> bool:
+        return not self.slots.locked() and not (heavy and self.heavy_slots.locked())
+
+    async def _acquire(self, heavy: bool) -> None:
+        if heavy:
+            await self.heavy_slots.acquire()
+        try:
             await self.slots.acquire()
+        except BaseException:
+            if heavy:
+                self.heavy_slots.release()
+            raise
+
+    async def admit(self, send: ASGISendCallable, heavy: bool = False) -> QueryTiming | None:
+        arrived = monotonic()
+        if self._free(heavy):
+            await self._acquire(heavy)
             return QueryTiming(False, 0, monotonic())
         if self.waiting >= self.queue_size:
             await respond(send, 503, {"message": BUSY_MESSAGE}, timing=QueryTiming(False, 0))
@@ -307,7 +351,7 @@ class QueryLane:
         self.waiting += 1
         try:
             async with asyncio.timeout(self.queue_timeout):
-                await self.slots.acquire()
+                await self._acquire(heavy)
         except TimeoutError:
             await respond(
                 send, 503, {"message": BUSY_MESSAGE},
@@ -319,10 +363,15 @@ class QueryLane:
         started = monotonic()
         return QueryTiming(True, (started - arrived) * 1000, started)
 
-    def release_when_done(self, task: asyncio.Task[Any]) -> None:
-        self.slots.release()
-        if not task.cancelled():
-            task.exception()
+    def releaser(self, heavy: bool = False) -> Callable[[asyncio.Task[Any]], None]:
+        def release_when_done(task: asyncio.Task[Any]) -> None:
+            self.slots.release()
+            if heavy:
+                self.heavy_slots.release()
+            if not task.cancelled():
+                task.exception()
+
+        return release_when_done
 
 
 async def disconnected(receive: ASGIReceiveCallable) -> None:
@@ -341,7 +390,10 @@ class Engine:
         access_token: bytes | None = None,
     ):
         self.store = store
-        self.record = QueryLane(concurrency, queue_size, queue_wait_ms / 1000)
+        # A cheap question never waits behind period scans: they leave one record slot free.
+        self.record = QueryLane(
+            concurrency, queue_size, queue_wait_ms / 1000, heavy_limit=max(1, concurrency - 1)
+        )
         self.catalogue = QueryLane(1, min(queue_size, 4), queue_wait_ms / 1000)
         self.quick = QueryLane(1, min(queue_size, 4), queue_wait_ms / 1000)
         self.small_store = replace(store, threads=1, memory_mib=min(store.memory_mib, 256))
@@ -492,7 +544,8 @@ class Engine:
             # Alert questions read the compact advisory history. Long exports
             # and rankings can read additional data and stay on the record lane.
             lane = self.quick
-        timing = await lane.admit(send)
+        heavy = not isinstance(question, str) and lane is self.record and is_heavy(question)
+        timing = await lane.admit(send, heavy)
         if timing is None:
             return
 
@@ -534,7 +587,7 @@ class Engine:
 
         query = asyncio.create_task(asyncio.to_thread(run_query))
 
-        query.add_done_callback(lane.release_when_done)
+        query.add_done_callback(lane.releaser(heavy))
         try:
             payload, days_pending = await asyncio.shield(query)
         except UnknownCity as error:
@@ -575,7 +628,7 @@ class Engine:
         if answer is None:
             task = self.stretch_pending.get(key)
             if task is None:
-                admitted = await self.record.admit(send)
+                admitted = await self.record.admit(send, heavy=True)
                 if admitted is None:
                     return
                 timing = admitted
@@ -583,7 +636,7 @@ class Engine:
                 task = asyncio.create_task(
                     asyncio.to_thread(contextvars.Context().run, ask, self.store, question)
                 )
-                task.add_done_callback(self.record.release_when_done)
+                task.add_done_callback(self.record.releaser(heavy=True))
                 self.stretch_pending[key] = task
 
                 def settle(done: asyncio.Task[dict[str, Any]], key: tuple[str, ...] = key) -> None:
@@ -634,7 +687,7 @@ class Engine:
             return
 
         work = asyncio.create_task(asyncio.to_thread(data_health, self.store, city, start, end))
-        work.add_done_callback(self.record.release_when_done)
+        work.add_done_callback(self.record.releaser())
         try:
             answer = await asyncio.shield(work)
         except ValueError as error:
