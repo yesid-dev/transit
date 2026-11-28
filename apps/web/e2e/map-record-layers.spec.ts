@@ -262,6 +262,37 @@ for (const provider of providers) {
 						phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 					);
 					await expect(legend.getByText(legendName, { exact: true })).toBeVisible();
+					if (waits) {
+						await expect(
+							legend.getByText(
+								fr
+									? /^La carte montre la plus longue attente/u
+									: /^The map shows the longest wait/u,
+							),
+						).toBeVisible();
+						expect(
+							await legend.evaluate(async (node) => {
+								await document.fonts.ready;
+								const box = node.getBoundingClientRect();
+								const range = document.createRange();
+								const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+								while (walker.nextNode()) {
+									range.selectNodeContents(walker.currentNode);
+									for (const text of range.getClientRects()) {
+										if (
+											text.width > 0 &&
+											(text.left < box.left - 1 ||
+												text.right > box.right + 1 ||
+												text.top < box.top - 1 ||
+												text.bottom > box.bottom + 1)
+										)
+											return false;
+									}
+								}
+								return true;
+							}),
+						).toBe(true);
+					}
 					if (!phone) {
 						const [box, bounds] = await Promise.all([
 							legend.boundingBox(),

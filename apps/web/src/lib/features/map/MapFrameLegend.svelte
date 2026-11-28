@@ -2,6 +2,7 @@
 	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import { createRawSnippet } from 'svelte';
 	import { RoutePlate } from '@yesid/ui/brand';
+	import { Card } from '@yesid/ui/card';
 	import { MapLegend, type MapLegendItem, type MapLegendProps } from '@yesid/ui/map';
 	import { statusVar } from '#lib/components/dataviz/tokens.ts';
 	import { mapOccupancyColour } from '#lib/components/map/vehicleSprites.ts';
@@ -41,6 +42,9 @@
 
 	let open = $state(true);
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+	const legendPlacement = $derived(collapsible ? 'desktop' : 'phone');
+	const legendClass =
+		'gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)] [&_ol>li>span]:min-h-[16px]';
 	const live = $derived(mapLegend(locale, { colourBy, staleCutoffS }));
 	const early = -ON_TIME_LIMITS_S.from / 60;
 	const late = ON_TIME_LIMITS_S.through / 60;
@@ -270,27 +274,32 @@
 			}))
 		: []}
 >
-	<MapLegend
-		bind:open
-		class="gap-0 p-2 text-sm leading-tight [--text-small:var(--text-caption)] [&_ol>li>span]:min-h-[16px]"
-		title={copy[locale].legend.title}
-		{groups}
-		{scale}
-		scalePlacement="before-groups"
-		{collapsible}
-		persistKey={collapsible ? 'transit:map-legend-open' : undefined}
-		data-map-legend={collapsible ? 'desktop' : 'phone'}
+	<Card
+		edge="neutral"
+		class={legendClass}
+		data-map-legend={legendPlacement}
 		data-record-legend={layer !== 'live' ? '' : undefined}
-	/>
+	>
+		<MapLegend
+			bind:open
+			class="contents"
+			title={copy[locale].legend.title}
+			{groups}
+			{scale}
+			scalePlacement="before-groups"
+			{collapsible}
+			persistKey={collapsible ? 'transit:map-legend-open' : undefined}
+		/>
+		{#if open && layer === 'waits'}
+			<p class="mt-2 text-muted-foreground" data-waits-legend-note>
+				{tr(
+					'The map shows the longest wait at each stop. The list breaks it down by line and direction.',
+					'La carte montre la plus longue attente à chaque arrêt. La liste la détaille par ligne et direction.',
+				)}
+			</p>
+		{/if}
+	</Card>
 </ChartDetails>
-{#if open && layer === 'waits'}
-	<p class="text-sm text-muted-foreground">
-		{tr(
-			'The map shows the longest wait at each stop. The list breaks it down by line and direction.',
-			'La carte montre la plus longue attente à chaque arrêt. La liste la détaille par ligne et direction.',
-		)}
-	</p>
-{/if}
 
 <style>
 	:global([data-map-legend]) {

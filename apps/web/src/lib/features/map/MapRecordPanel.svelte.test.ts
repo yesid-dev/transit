@@ -96,11 +96,13 @@ it('draws a line answer before shapes arrive and uses straight segments for unav
 	const draw = vi.mocked(attachRecordMap);
 	const drawn = () => draw.mock.lastCall?.[1].features.find((f) => f.properties.state === 3);
 	await waitFor(() => expect(drawn()?.geometry.coordinates).toEqual(straight));
-	expect(draw.mock.lastCall?.[3]).toBe(true);
+	expect(draw.mock.lastCall?.[3]).toMatchObject({ network: true, waits: false });
 	expect(loadShapes).not.toHaveBeenCalled();
 
 	await rerender({ line: 'L1' });
-	await waitFor(() => expect(draw.mock.lastCall?.[3]).toBe(false));
+	await waitFor(() =>
+		expect(draw.mock.lastCall?.[3]).toMatchObject({ network: false, waits: false }),
+	);
 	expect(loadShapes).toHaveBeenCalledExactlyOnceWith(
 		['L1'],
 		expect.objectContaining({ providerId: 'demo' }),
