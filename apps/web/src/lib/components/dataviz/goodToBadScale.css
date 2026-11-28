@@ -1,12 +1,13 @@
 :root {
 	/* Map fills, blue (good) to red (bad). In both themes each step stands out more from the
 	   card and the map land than the one before, so the worst reads first from a distance, and
-	   neighbours differ by a colour distance (CIEDE2000) of at least 10. */
-	--transit-good-to-bad-0: light-dark(#6ea3d6, #34618f);
-	--transit-good-to-bad-1: light-dark(#3a78b8, #4a83ba);
-	--transit-good-to-bad-2: light-dark(#6b6b6b, #8a8a8a);
-	--transit-good-to-bad-3: light-dark(#b52a2a, #ff6f66);
-	--transit-good-to-bad-4: light-dark(#6a0012, #ffaa9e);
+	   neighbours differ by a colour distance (CIEDE2000) of at least 10. Every fill keeps 3:1 with
+	   the 3D capped-height colour (--map-corridor-cap). */
+	--transit-good-to-bad-0: light-dark(#3d82ad, #4176aa);
+	--transit-good-to-bad-1: light-dark(#4a63ad, #5a94cf);
+	--transit-good-to-bad-2: light-dark(#5f5f5f, #999999);
+	--transit-good-to-bad-3: light-dark(#9c1c24, #ff7066);
+	--transit-good-to-bad-4: light-dark(#560010, #ffb0a5);
 	--transit-good-to-bad-ink-0: light-dark(#000, #fff);
 	--transit-good-to-bad-ink: light-dark(#fff, #000);
 }

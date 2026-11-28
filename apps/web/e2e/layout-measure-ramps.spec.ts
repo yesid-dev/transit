@@ -103,15 +103,21 @@ test('the map’s five fills separate and stand out more toward the worst @layou
 	const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light';
 	const land = minimalDarkStyle(theme).layers.find(({ id }) => id === 'background');
 	const landColour = String((land?.paint as Record<string, unknown>)['background-color']);
-	const [card, map, ...fills] = await resolveColours(page, [
+	const [card, map, cap, ...fills] = await resolveColours(page, [
 		'var(--card)',
 		landColour,
+		'var(--map-corridor-cap)',
 		...[0, 1, 2, 3, 4].map((level) => `var(--transit-good-to-bad-${level})`),
 	]);
 	// The map fills, not the hour grid's: outside .good-to-bad-grid.
 	const grid = await resolveColours(page, ['var(--transit-good-to-bad-0)'], 'good-to-bad-grid');
 	expect(grid[0]!.rgb).not.toEqual(fills[0]!.rgb);
 	for (const [index, fill] of fills.entries()) {
+		// A corridor taller than the 3D scale wears the cap colour on top of its fill.
+		expect(
+			contrast(fill.luminance, cap!.luminance),
+			`step ${index} under the cap`,
+		).toBeGreaterThanOrEqual(3);
 		if (index === 0) continue;
 		const previous = fills[index - 1]!;
 		expect(
