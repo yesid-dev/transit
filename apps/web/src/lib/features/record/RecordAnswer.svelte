@@ -52,6 +52,7 @@
 	stamp and the actions at the right; then the comparison and what was counted on one line.
 	Narrower: the stamp, the comparison and what was counted share one wrapping line. The kit's
 	AnswerLead keeps the statement; the reading order stays statement, stamp, context, actions.
+	An answer with no figure keeps its state mark beside the sentence, at every width (kit fit layout).
 -->
 <div class="record-answer" class:listing-answer={listing} data-slot="record-answer">
 	<div
@@ -71,6 +72,7 @@
 					{sentence}
 					absent={state ? absent : undefined}
 					{size}
+					layout={value === null ? 'fit' : undefined}
 				/>{/if}
 		</div>
 		{#if context}

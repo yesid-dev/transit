@@ -193,36 +193,15 @@
 
 	const sectionAnswer = (section: LineSection) =>
 		record.sections.find((item) => item.section === section)?.answer;
-	// Each disclosure's settled result, whether the server drew it or it streamed in after.
-	let streamed = $state<
-		Partial<
-			Record<(typeof failures)[number], { from: unknown; result: EngineResult<RecordAnswer> }>
-		>
-	>({});
-	$effect(() => {
-		let active = true;
-		for (const section of failures) {
-			// A timetable-only line has none of these sections.
-			const answer = sectionAnswer(section);
-			if (answer === undefined || isSettled(answer)) continue;
-			void answer.then((result) => {
-				if (active) streamed[section] = { from: answer, result };
-			});
-		}
-		return () => {
-			active = false;
-		};
-	});
-	/** A disclosure settled on a short state (no reading, not tracked, unavailable). */
+	/**
+	 * A disclosure drawn with a short state (no reading, not tracked, unavailable). One that streams
+	 * in after the first screen keeps its held height, so the screen does not move under the reader.
+	 */
 	function settledShort(section: (typeof failures)[number]) {
 		const answer = sectionAnswer(section);
-		if (answer === undefined) return false;
-		const result = isSettled(answer)
-			? answer
-			: streamed[section]?.from === answer
-				? streamed[section].result
-				: undefined;
-		if (result === undefined || result.kind === 'busy') return false;
+		if (answer === undefined || !isSettled(answer)) return false;
+		const result = answer;
+		if (result.kind === 'busy') return false;
 		if (result.kind !== 'answer') return true;
 		const { answer: reading } = result;
 		if ('cells' in reading) return !reading.cells.some(({ state }) => state === 'measured');

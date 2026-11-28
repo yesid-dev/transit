@@ -130,7 +130,7 @@
 
 <div {id} class="grid min-w-0 gap-2" class:grow={fill}>
 	{#if emptyHours}
-		<p data-settled-empty><StateMark state={emptyHours.state} {locale} /> {emptyHours.text}</p>
+		<p><StateMark state={emptyHours.state} {locale} /> {emptyHours.text}</p>
 	{:else if table && reading.table.rows.length}
 		<RecordDataTable
 			{locale}

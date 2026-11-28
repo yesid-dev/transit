@@ -282,9 +282,16 @@ export function hourChart(
 		label: choose(locale, String(hour).padStart(2, '0'), `${hour} h`),
 	}));
 	const tableRows: ChartTable['rows'] = [];
+	// A weekday outside a short period (Yesterday) is an empty row: drop it. A weekday that holds
+	// a reading always keeps its row, and a week or more keeps all seven.
 	const weekdays = periodWeekdays(series.evidence.start_date, series.evidence.end_date);
+	const read = new Set(
+		series.cells.flatMap((cell) =>
+			measuredShare(cell, 'late') === null ? [] : [Number(cell.key.weekday)],
+		),
+	);
 	const rows = Array.from({ length: 7 }, (_, index) => index + 1)
-		.filter((isoDay) => weekdays.has(isoDay))
+		.filter((isoDay) => weekdays.has(isoDay) || read.has(isoDay))
 		.map((isoDay) => {
 			const index = isoDay - 1;
 			const id = String(isoDay);

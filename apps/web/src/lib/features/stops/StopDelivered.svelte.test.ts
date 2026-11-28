@@ -52,7 +52,7 @@ it.each([
 	},
 );
 
-it('gives back the held height once it settles on too few to judge', async () => {
+it('gives back the held height when it is drawn on a short state, never after it streams', async () => {
 	const tooFew: RecordMeasure = {
 		...reading,
 		state: 'too_few_to_judge',
@@ -60,14 +60,18 @@ it('gives back the held height once it settles on too few to judge', async () =>
 		value: { trips_run: null },
 		evidence: { ...reading.evidence, counts: { scheduled: 1, eligible: 1, ran: 1 } },
 	};
-	const { container } = render(StopDelivered, {
-		locale: 'en',
-		stamp: { kind: 'record', label: '19 Nov' },
-		answer: Promise.resolve({ kind: 'answer' as const, answer: tooFew }),
-	});
+	const result = { kind: 'answer' as const, answer: tooFew };
+	const stamp = { kind: 'record', label: '19 Nov' } as const;
+	const drawn = render(StopDelivered, { locale: 'en', stamp, answer: result });
+	const body = (container: HTMLElement) =>
+		container.querySelector<HTMLElement>('[data-slot="record-card-body"]')!;
+	expect(body(drawn.container).style.minBlockSize).toBe('');
+	expect(drawn.container.querySelector('[data-settled-empty]')).not.toBeNull();
+	drawn.unmount();
+	// Streamed in after the first screen, shrinking would move the screen: the card keeps its room.
+	const streamed = render(StopDelivered, { locale: 'en', stamp, answer: Promise.resolve(result) });
 	const card = within(screen.getByRole('article', { name: 'Trips that ran at this stop' }));
 	expect(await card.findByText('Too few to judge')).toBeVisible();
-	const body = container.querySelector<HTMLElement>('[data-slot="record-card-body"]');
-	expect(body?.style.minBlockSize).toBe('');
-	expect(container.querySelector('[data-settled-empty]')).not.toBeNull();
+	expect(body(streamed.container).style.minBlockSize).not.toBe('');
+	expect(streamed.container.querySelector('[data-settled-empty]')).toBeNull();
 });

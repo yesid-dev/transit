@@ -39,23 +39,10 @@
 		choose(locale, 'Trips that ran at this stop', 'Trajets effectués à cet arrêt'),
 	);
 	const labels = $derived(tripOutcomeLabels(locale, cityAgency(page.data.provider)));
-	// The settled result, whether the server drew it or it streamed in after.
-	let streamed = $state<{ from: unknown; result: EngineResult<RecordAnswer> }>();
-	$effect(() => {
-		const current = answer;
-		if (isSettled(current)) return;
-		let live = true;
-		void current.then((result) => {
-			if (live) streamed = { from: current, result };
-		});
-		return () => {
-			live = false;
-		};
-	});
-	const settled = $derived(
-		isSettled(answer) ? answer : streamed?.from === answer ? streamed.result : undefined,
-	);
-	/** Settled on a short state, the card gives back the height it held for the trip facts. */
+	// Only a result drawn with the page: one that streams in after keeps the held height, so the
+	// screen does not move under the reader.
+	const settled = $derived(isSettled(answer) ? answer : undefined);
+	/** Drawn on a short state, the card gives back the height it holds for the trip facts. */
 	const empty = $derived(
 		settled !== undefined &&
 			settled.kind !== 'busy' &&

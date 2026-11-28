@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Awaitable, Ready } from '#lib/site/ready.ts';
+	import { isSettled, type Awaitable, type Ready } from '#lib/site/ready.ts';
 	import { untrack, type Snippet } from 'svelte';
 	import './stopCards.css';
 	import { page } from '$app/state';
@@ -172,8 +172,16 @@
 	let hoursTable = $state(false);
 	let dailyTable = $state(false);
 
-	/** A card settled on a short state gives back the height it held for its reading. */
-	const settledEmpty = (result?: EngineResult<EngineAnswer>) =>
+	/**
+	 * A card drawn with a short state gives back the height it holds for its reading. An answer that
+	 * streams in after the first screen keeps it: shrinking then would move the screen under the
+	 * reader.
+	 */
+	const drawnEmpty = (
+		answer: Awaitable<EngineResult<EngineAnswer>>,
+		result?: EngineResult<EngineAnswer>,
+	) =>
+		isSettled(answer) &&
 		result !== undefined &&
 		result.kind !== 'busy' &&
 		!(result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured');
@@ -306,7 +314,7 @@
 			result.answer.state === 'measured'}
 		title={bands}
 		{stamp}
-		reserve={settledEmpty(result) ? undefined : 'bands'}
+		reserve={drawnEmpty(answers.punctuality, result) ? undefined : 'bands'}
 	>
 		{#if result === undefined}
 			{@render pending(answers.punctuality, 'bands')}
@@ -327,14 +335,16 @@
 				</p>
 			{:else if stopLowCoverage(result)}
 				<!-- The state and its reason, once, with no empty chart and no held height. -->
-				<p data-settled-empty>
+				<p data-settled-empty={drawnEmpty(answers.punctuality, result) ? '' : undefined}>
 					<StateMark state="not_measured" {locale} />
 					{t(
 						'Too few stop arrivals were observed here to split them into early, on time and late.',
 						'Trop peu de passages ont été observés ici pour les répartir entre en avance, à l’heure et en retard.',
 					)}
 				</p>
-			{:else}<div data-settled-empty>{@render gap(result, 'bands')}</div>{/if}
+			{:else}<div data-settled-empty={drawnEmpty(answers.punctuality, result) ? '' : undefined}>
+					{@render gap(result, 'bands')}
+				</div>{/if}
 		{/if}
 		{#snippet evidence()}
 			{@render evidenceFooter('punctuality')}
@@ -423,7 +433,7 @@
 				<RecordCard
 					title={titleFor('delay')}
 					{stamp}
-					reserve={settledEmpty(result) ? undefined : 'facts'}
+					reserve={drawnEmpty(answers.delay, result) ? undefined : 'facts'}
 				>
 					{#snippet evidence()}
 						{@render evidenceFooter('delay')}
@@ -485,7 +495,7 @@
 							{@render delayFacts(result.answer)}
 						{:else}
 							<!-- The card says why it has no delay, once, before the stop's own fact. -->
-							<div data-settled-empty>
+							<div data-settled-empty={drawnEmpty(answers.delay, result) ? '' : undefined}>
 								{#if stopLowCoverage(result)}<p>
 										<StateMark state="not_measured" {locale} />
 										{t(
@@ -555,7 +565,15 @@
 					'cells' in result.answer &&
 					result.answer.cells.length > 0 &&
 					hourGridEmpty(result.answer) === null}
-				{@const reserveGrid = result === undefined || result.kind === 'busy' || chart}
+				<!-- A grid with no hour observed that streams in keeps its room, as a busy one does. -->
+				{@const reserveGrid =
+					result === undefined ||
+					result.kind === 'busy' ||
+					chart ||
+					(!isSettled(record.grid) &&
+						result.kind === 'answer' &&
+						'cells' in result.answer &&
+						hourGridEmpty(result.answer) === 'not_measured')}
 				<div data-grid-space={reserveGrid ? '' : undefined}>
 					<RecordCard
 						interactive={chart}

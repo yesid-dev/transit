@@ -1220,7 +1220,7 @@ export function lowCoverageReason(
  */
 export type AgencyName = { name: string; frenchOf?: string | null };
 
-/** An English possessive of a proper name: "STM’s", "OC Transpo’s". */
+/** An English possessive of a proper name: "Example Transit’s". */
 export function possessive(name: string) {
 	return `${name}’s`;
 }

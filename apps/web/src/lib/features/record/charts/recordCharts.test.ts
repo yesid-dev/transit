@@ -422,6 +422,22 @@ describe('record grid and trend for a thin period', () => {
 		expect(hourChart(week, 'By hour', 'en').props.rows).toHaveLength(7);
 	});
 
+	it('keeps every weekday that holds a reading, inside the period or not', () => {
+		// A short period whose answer still carries readings on other weekdays keeps their rows,
+		// and their states, legend included.
+		const weekend = {
+			cells: [
+				cell({ weekday: 1, hour: 5 }, { state: 'not_measured', value: { late: null } }),
+				cell({ weekday: 1, hour: 6 }),
+				cell({ weekday: 5, hour: 6 }),
+			],
+			evidence: { start_date: '2026-11-20', end_date: '2026-11-22', days_not_measured: [] },
+		} as unknown as RecordSeries;
+		const { props } = hourChart(weekend, 'By hour', 'en');
+		expect(props.rows.map(({ id }) => id)).toEqual(['1', '5', '6', '7']);
+		expect(props.stateLabels.unmeasured).toBe('Not measured');
+	});
+
 	it.each([
 		['en', 'No stop arrival was observed here on these dates, so only the network line is shown.'],
 		[

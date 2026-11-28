@@ -73,4 +73,27 @@ describe('RecordAnswer', () => {
 		expect(view.container.querySelector('.answer-grid')!.classList).not.toContain('aside');
 		expect(view.getByText('Counted: 2 of 4 scheduled stop arrivals, 7 days')).toBeTruthy();
 	});
+
+	it('keeps the state mark of an answer with no figure beside its sentence', () => {
+		const view = render(RecordAnswer, {
+			props: {
+				locale: 'en',
+				value: null,
+				state: 'not_measured',
+				sentence: 'No stop arrival was observed here on these dates.',
+				time,
+			},
+		});
+		// The kit's fit layout keeps the figure, or the mark standing in for it, on the sentence's
+		// first line whenever both fit; never alone on a line above it.
+		const lead = view.container.querySelector('[data-slot="answer-lead"]')!;
+		expect(lead.getAttribute('data-layout')).toBe('fit');
+		expect(lead.querySelector('[data-record-state="not_measured"]')).not.toBeNull();
+		const measured = render(RecordAnswer, {
+			props: { locale: 'en', value: '72.6%', sentence: 'were on time.', time },
+		});
+		expect(
+			measured.container.querySelector('[data-slot="answer-lead"]')!.hasAttribute('data-layout'),
+		).toBe(false);
+	});
 });

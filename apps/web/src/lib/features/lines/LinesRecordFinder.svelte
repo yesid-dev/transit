@@ -1015,9 +1015,12 @@
 	bind:cardElement={performanceCard}
 	card={{
 		id: 'line-performance',
-		// Room for the rows only while they are on their way: a settled filter with no match in
-		// this card must not push the list that holds the match off the screen.
-		class: timingPending ? 'min-[1280px]:min-h-[clamp(0px,calc(100svh_-_16rem),40rem)]' : undefined,
+		// The card keeps its height while rows arrive, so nothing under it moves. Only a settled
+		// filter with no match in this card gives it back, so the list holding the match is in view.
+		class:
+			!timingPending && appliedQuery && !measuredShown.length
+				? undefined
+				: 'min-[1280px]:min-h-[clamp(0px,calc(100svh_-_16rem),40rem)]',
 		busy: timingPending || tripsPending,
 		retained: timingPending && !initialTiming,
 		interactive: initialTiming || all.length > 0,
