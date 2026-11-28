@@ -259,8 +259,9 @@
 				: '[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
 			readingNoWrap,
-			// A state is said in words ("Trop peu de données pour conclure") and may wrap.
-			'[&_tbody_td[data-numeric]_[data-record-state]]:whitespace-normal',
+			// A state is said in words ("Trop peu de données pour conclure"): it may wrap in a card too
+			// narrow to give it one line.
+			'@max-[60rem]:[&_tbody_td[data-numeric]_[data-record-state]]:whitespace-normal',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
 			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',
 			'@min-[38rem]:[&_tbody_td]:[overflow-wrap:normal]',
