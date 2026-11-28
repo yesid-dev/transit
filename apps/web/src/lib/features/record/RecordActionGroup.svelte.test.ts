@@ -1,6 +1,7 @@
 import { fireEvent, render, within } from '@testing-library/svelte';
 import { createRawSnippet } from 'svelte';
 import { afterEach, expect, it, vi } from 'vitest';
+import { recordPageStampContext } from '#lib/site/recordPageStampContext.ts';
 import RecordActionGroup from './RecordActionGroup.svelte';
 
 afterEach(() => vi.restoreAllMocks());
@@ -111,3 +112,19 @@ it.each([
 		expect(await view.findByRole('dialog')).toBeVisible();
 	},
 );
+
+it.each([
+	['a Record page reached by a bare link', 'Record · 20 to 26 Nov 2026', true],
+	['a Live page', undefined, false],
+] as const)('offers Print on %s', (_, stamp, printable) => {
+	const view = render(RecordActionGroup, {
+		props: {
+			locale: 'en',
+			href: 'https://transit.example/network?provider=stm',
+			files: [],
+			citation: createRawSnippet(() => ({ render: () => '<p>Citation</p>' })),
+		},
+		context: recordPageStampContext(stamp),
+	});
+	expect(view.queryAllByRole('button', { name: 'Print' })).toHaveLength(printable ? 1 : 0);
+});

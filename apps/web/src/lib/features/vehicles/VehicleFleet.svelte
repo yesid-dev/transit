@@ -877,7 +877,7 @@
 				},
 				{
 					key: 'error',
-					label: t('Seen an error?', 'Vous avez vu une erreur?'),
+					label: t('Seen an error?', 'Vous avez vu une erreur\u00a0?'),
 					text: null,
 					link: {
 						href: href('/metrics') + '#about-transit',

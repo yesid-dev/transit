@@ -75,6 +75,7 @@
 		unstatedEffect,
 		type AlertCut,
 	} from './alertCards.ts';
+	import AlertFiltersWaiting from './AlertFiltersWaiting.svelte';
 	import AlertList from './AlertList.svelte';
 	import NoticeSection from './NoticeSection.svelte';
 
@@ -154,6 +155,8 @@
 	const lineShape = { shape: 'rows', count: linePageSize, lines: 1 } as const;
 	const noticesShape = { shape: 'notice', count: 5 } as const;
 	const effectShape = { shape: 'facts', count: 2 } as const;
+	// The answer says what was counted and what the agency writes: two lines under the figure.
+	const answerWaiting = { shape: 'answer', comparison: true } as const;
 	const paging = $derived(alertPaging(locale));
 
 	function formatCitation(key: keyof typeof alertSections, result: EngineAnswer, lastGood?: true) {
@@ -276,6 +279,7 @@
 				responsive={{ mode: 'rows', primary: 'line', value: 'count', labels: false }}
 				pageSize={rows.length > linePageSize ? linePageSize : undefined}
 				pageLabels={paging}
+				rowAlign="middle"
 			/>
 		{/if}
 	{:else}
@@ -304,12 +308,13 @@
 		title={alertSections.effect[locale]}
 		{stamp}
 		stampRule
-		reserve={result === undefined || result.kind === 'busy' || stated ? effectShape : undefined}
+		reserve={stated ? effectShape : undefined}
 	>
-		{#if result === undefined}<RecordPending {locale} answer={promise} shape={effectShape} />
+		<!-- An agency that publishes no effects: the card waits as one line, the height of the sentence that says so. -->
+		{#if result === undefined}<RecordPending {locale} answer={promise} />
 		{:else if rows}
 			{#if stated}{@render cutRows(rows, 'effect')}{:else}<p>{effectNotPublished}</p>{/if}
-		{:else}{@render resultState(result, effectShape)}{/if}
+		{:else}{@render resultState(result)}{/if}
 	</RecordCard>
 {/snippet}
 
@@ -426,6 +431,7 @@
 	{:else if result}
 		{@render resultState(result, noticesShape)}
 	{:else if messages}
+		<AlertFiltersWaiting {locale} />
 		{#key messages}<RecordPending shape={noticesShape} {locale} answer={messages} />{/key}
 	{:else}
 		<p>{alertDetailsLimit[locale]}</p>
@@ -486,7 +492,7 @@
 						},
 						{
 							href: localizeHref('/metrics', locale, data.city) + '#about-transit',
-							label: t('Seen an error?', 'Vous avez vu une erreur?'),
+							label: t('Seen an error?', 'Vous avez vu une erreur\u00a0?'),
 						},
 					],
 				},
@@ -544,13 +550,14 @@
 
 <Surface>
 	<RecordScreen>
-		{#if !data.tracked || (!answer && !data.capture)}<RecordGroup
+		{#if data.tracked && !answer && !data.capture}<RecordGroup
 				><ScreenTitle {title} {subtitle} /></RecordGroup
 			>{/if}
 		<div class="contents" data-slot="screen-content">
 			{#if !data.tracked}
 				<RecordGroup>
-					<div data-slot="screen-state">
+					<ScreenTitle {title} {subtitle} />
+					<div data-slot="screen-state" class="max-w-[42rem]">
 						<StateNotice
 							title={t('Not published', 'Non publié')}
 							glyph="□"
@@ -579,30 +586,31 @@
 					{#snippet pending()}
 						<RecordGroup density="compact"
 							><ScreenTitle {title} {subtitle} />
-							<div data-slot="screen-answer"><RecordPending {locale} shape="answer" /></div>
-							<RecordCard
-								title={alertSections.effect[locale]}
-								stampRule
-								stampPending
-								reserve={effectShape}><RecordPending {locale} shape={effectShape} /></RecordCard
-							><RecordCard
-								title={t('In effect now', 'En vigueur maintenant')}
-								stampRule
-								stampPending
-								reserve={noticesShape}><RecordPending {locale} shape={noticesShape} /></RecordCard
-							><RecordCard
-								title={alertSections.line[locale]}
-								stampRule
-								stampPending
-								reserve={lineShape}><RecordPending {locale} shape={lineShape} /></RecordCard
+							<div data-slot="screen-answer">
+								<RecordPending {locale} shape={answerWaiting} />
+							</div>
+							<RecordCard title={alertSections.effect[locale]} stampRule
+								><RecordPending {locale} /></RecordCard
 							></RecordGroup
 						>
+						<RecordGroup density="compact">
+							<NoticeSection
+								id="alerts-log-waiting"
+								title={t('In effect now', 'En vigueur maintenant')}
+							>
+								<AlertFiltersWaiting {locale} />
+								<RecordPending {locale} shape={noticesShape} />
+							</NoticeSection>
+							<RecordCard title={alertSections.line[locale]} stampRule reserve={lineShape}
+								><RecordPending {locale} shape={lineShape} /></RecordCard
+							>
+						</RecordGroup>
 						<RecordGroup density="compact">{@render liveAbout(null)}</RecordGroup>
 					{/snippet}
 					{#snippet children(snapshot, now)}
 						{@const feeds = Object.values(snapshot?.feeds ?? {})}
 						{@const alertFeed = feeds.find(({ family }) => family === 'alerts')}
-						{@const age = captureAge(alertFeed?.captured_at ?? null, now, locale)}
+						{@const age = captureAge(alertFeed?.captured_at ?? null, now, locale, { short: false })}
 						{@const alertReady = !!(
 							snapshot?.alerts &&
 							alertFeed?.captured_at &&
@@ -648,9 +656,8 @@
 								<div id="alerts-breakdown">
 									<RecordCard
 										title={alertSections.effect[locale]}
-										stamp={liveStamp}
 										stampRule
-										reserve={effectShape}
+										reserve={missingEffect ? undefined : effectShape}
 									>
 										{#if missingEffect}<p>{effectNotPublished}</p>{:else}{@render cutRows(
 												liveAlertCut(liveNotices, 'effect'),
@@ -660,17 +667,12 @@
 								</div>
 							</RecordGroup>
 							<RecordGroup density="compact">
-								<NoticeSection
-									id="alerts-log"
-									title={t('In effect now', 'En vigueur maintenant')}
-									stamp={liveStamp}
-								>
+								<NoticeSection id="alerts-log" title={t('In effect now', 'En vigueur maintenant')}>
 									{@render messageList(liveCards, true)}
 								</NoticeSection>
 								<RecordCard
 									interactive
 									title={alertSections.line[locale]}
-									stamp={liveStamp}
 									stampRule
 									reserve={lineShape}
 								>
@@ -710,7 +712,7 @@
 					<div id="answer" data-slot="screen-answer" class="min-w-0 scroll-mt-24">
 						{#await answer}
 							<div data-slot="screen-state">
-								<RecordPending shape="answer" {locale} {answer} fullWidthContext />
+								<RecordPending shape={answerWaiting} {locale} {answer} fullWidthContext />
 							</div>
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && noticeTotal(result.answer.value) != null}

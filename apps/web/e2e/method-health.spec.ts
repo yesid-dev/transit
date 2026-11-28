@@ -414,7 +414,7 @@ for (const width of [390, 1024, 1440]) {
 			await expect(stops.getByText(fr ? 'État' : 'State', { exact: true })).toBeHidden();
 			if (fr) {
 				await expect(publishes).toContainText(
-					'OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.',
+					'OC Transpo ne publie pas ses avis de service en données ouvertes. Ils sont affichés sur son site Web.',
 				);
 				await expect(
 					publishes.getByRole('link', { name: 'Consulter les avis officiels' }),
@@ -483,9 +483,33 @@ for (const width of [390, 1024, 1440]) {
 				await expect(table.getByRole('cell', { name: state, exact: true }).first()).toBeAttached();
 			}
 			await expect(main.getByRole('link', { name: /CSV/ })).toHaveCount(0);
-			await expect(
-				main.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true }),
-			).toHaveCount(0);
+			// Download offers the scorecard's five measure CSVs for the same dates.
+			await main
+				.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true })
+				.click();
+			const files = page.getByRole('dialog').locator('[data-slot="download-file"] a');
+			await expect(files).toHaveText(
+				fr
+					? [
+							'Couverture des trajets en direct',
+							'Données des véhicules',
+							'Précision des prévisions d’arrivée',
+							'Vérifications réussies des flux',
+							'Âge des flux à la collecte',
+						]
+					: [
+							'Live trip coverage',
+							'Details in vehicle reports',
+							'Arrival prediction accuracy',
+							'Feed check success',
+							'Feed age at capture',
+						],
+			);
+			for (const href of await files.evaluateAll((links) =>
+				links.map((link) => link.getAttribute('href')),
+			))
+				expect(href).toMatch(/\/network\/record\.csv\?.*recordFrom=2026-11-11.*section=/);
+			await page.keyboard.press('Escape');
 			await expect(
 				main.getByRole('button', { name: fr ? 'Copier le lien' : 'Copy link' }),
 			).toBeVisible();

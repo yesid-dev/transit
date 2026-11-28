@@ -100,11 +100,16 @@
 
 		let left = anchorX;
 		const top = anchorY;
+		// Keep the tip inside its card when the card is wide enough, else inside the viewport.
+		const card = wrap.closest('[data-slot="card"]')?.getBoundingClientRect();
+		const fitsCard = card && card.width - 2 * EDGE >= tb.width;
+		const start = Math.max(0, fitsCard ? card.left : 0);
+		const end = Math.min(vw, fitsCard ? card.right : vw);
 
 		if (next === 'top' || next === 'bottom') {
 			const half = tb.width / 2;
-			const minLeft = EDGE + half;
-			const maxLeft = vw - EDGE - half;
+			const minLeft = start + EDGE + half;
+			const maxLeft = end - EDGE - half;
 			left = maxLeft >= minLeft ? Math.min(Math.max(left, minLeft), maxLeft) : vw / 2;
 		} else {
 			const minLeft = next === 'right' ? EDGE - GAP : EDGE + tb.width + GAP;

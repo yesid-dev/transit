@@ -457,7 +457,7 @@ it.each([
 		/^65,1\s%$/u,
 		'des passages prévus aux arrêts ont un relevé.',
 		'Ce que publie OC Transpo',
-		'OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.',
+		'OC Transpo ne publie pas ses avis de service en données ouvertes. Ils sont affichés sur son site Web.',
 		'Consulter les avis officiels',
 	],
 ] as const)(

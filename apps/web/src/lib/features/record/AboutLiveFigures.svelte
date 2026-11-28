@@ -54,7 +54,7 @@
 					? [
 							{
 								href: errorLink,
-								label: locale === 'fr' ? 'Vous avez vu une erreur?' : 'Seen an error?',
+								label: locale === 'fr' ? 'Vous avez vu une erreur\u00a0?' : 'Seen an error?',
 							},
 						]
 					: []),

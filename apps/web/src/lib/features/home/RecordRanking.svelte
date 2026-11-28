@@ -72,7 +72,7 @@
 	}
 </script>
 
-{#snippet share(row: Row)}<strong class="font-sans">{row.share}</strong>{/snippet}
+{#snippet share(row: Row)}<strong>{row.share}</strong>{/snippet}
 {#snippet rows(answer: RankingAnswer, stops: ScheduleEdition['stops'] = [])}
 	<RecordDataTable
 		{locale}

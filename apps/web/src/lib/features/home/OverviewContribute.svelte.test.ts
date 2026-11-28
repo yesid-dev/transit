@@ -20,7 +20,7 @@ const words = {
 		intro:
 			'Transit dresse un bilan public et indépendant du service réellement offert, à partir des données ouvertes des sociétés de transport. Il couvre Montréal et Ottawa aujourd’hui, et d’autres villes suivront. Ce n’est pas un planificateur de trajets.',
 		links: [
-			'Vous avez vu une erreur?',
+			'Vous avez vu une erreur\u00a0?',
 			'Télécharger les données',
 			'Transit sur GitHub',
 			'Proposer une ville',

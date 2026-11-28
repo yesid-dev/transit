@@ -48,6 +48,8 @@ const glossary: [RegExp, string, exceptIn?: RegExp][] = [
 	// A breaking space before ":" lets the colon open the next line at narrow widths.
 	// The legal pages keep their reviewed wording, checked by fingerprint (legalDate.test.ts).
 	[/ :(?!\/)|^:/, 'breaking space before :', /^features\/legal\//],
+	// "?" and "!" take a no-break space before them, like ":".
+	[/\p{L}[?!](?=\s|$)/u, 'no no-break space before ? or !'],
 	[/\p{L}'\p{L}/u, 'straight apostrophe'],
 	// The spoken "alors" reads as a chat; prose says "donc".
 	[/, alors les\b/, 'spoken alors'],
@@ -209,6 +211,7 @@ describe('the glossary patterns', () => {
 			"L’arrêt d’à côté n'a rien",
 			'Les flux ne le montrent pas, alors les trajets non terminés',
 			'Heures observées : 20,0\u00a0% véhicule signalé',
+			'Vous avez vu une erreur?',
 		])
 			expect(flags(wrong), wrong).toHaveLength(1);
 	});
@@ -232,6 +235,8 @@ describe('the glossary patterns', () => {
 			'L’arrêt d’à côté',
 			'Heures observées\u00a0: 20,0\u00a0% véhicule signalé',
 			'https://transit1.yesid.dev',
+			'Vous avez vu une erreur ?',
+			'/fr/alerts?provider=stm',
 		])
 			expect(flags(right), right).toEqual([]);
 	});

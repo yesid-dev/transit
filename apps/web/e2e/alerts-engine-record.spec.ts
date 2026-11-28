@@ -2,7 +2,6 @@ import { csvText } from '../src/tests/csv';
 import { expect, test } from '@playwright/test';
 import { stmAlertId } from './alert-fixture.mjs';
 import { captureUrl, refreshAlertsCapture } from './capture-fixture';
-import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 
 test.use({ extraHTTPHeaders: { 'x-transit-fixture-scope': 'alerts' } });
 
@@ -115,11 +114,9 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	for (const number of ['34', '125', '353']) {
 		await expect(grouped.getByRole('link', { name: new RegExp(`\\b${number}\\b`) })).toHaveCount(1);
 	}
-	// The compact rail steps aside when the footer is in view.
+	// The filters sit above the notices they narrow, in the notice section.
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-	await answer.scrollIntoViewIfNeeded();
-	const controls = await openFrameControls(page);
-	const filter = controls.getByRole('group', { name: 'Filter', exact: true });
+	const filter = messages.getByRole('group', { name: 'Filter', exact: true });
 	await expect(filter.getByRole('combobox', { name: 'Effect' })).toHaveCount(0);
 	await expect(filter.getByRole('radiogroup', { name: 'Effect' })).toHaveCount(0);
 	const line = filter.getByRole('combobox', { name: 'Line' });
@@ -132,9 +129,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	const stop = filter.getByRole('combobox', { name: 'Stop' });
 	await stop.fill('51234');
 	await stop.press('ArrowDown');
-	// Pick with the keyboard once the option is the active one. The kit listbox is placed in
-	// document coordinates beside a fixed rail, so a pointer click's scroll-into-view moves it
-	// for a frame and the click can land on the rail instead.
+	// Pick with the keyboard once the option is the active one.
 	const stopOption = page.getByRole('option', { name: 'Stop 51234' });
 	await expect(stopOption).toBeVisible();
 	await expect(stop).toHaveAttribute(
@@ -144,16 +139,10 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await stop.press('Enter');
 	await expect(page).toHaveURL(/route=24.*stop=51234/);
 	await expect(filter.getByText(/^\d+ notices?$/)).not.toHaveText('213 notices');
-	await closeCompactFrameControls(page);
 	await expect(messages.getByRole('status')).toHaveText(/Showing [1-9]\d* of [1-9]\d* notices?/);
-	await expect(messages.getByRole('combobox')).toHaveCount(0);
 
 	await page.reload();
-	// SvelteKit restores the pre-reload scroll when it hydrates; scroll only after that,
-	// or the page can return to the footer, where the compact rail steps aside.
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
-	await answer.scrollIntoViewIfNeeded();
-	await openFrameControls(page);
 	await expect(stop).toHaveValue('Stop 51234');
 	await expect(line).toHaveValue(/24.*Sherbrooke/);
 	await filter.getByRole('button', { name: 'Clear', exact: true }).click();
@@ -165,18 +154,23 @@ for (const [width, height] of [
 	[1280, 720],
 	[1366, 768],
 ] as const) {
-	test(`Alerts Record shows the line and stop filters at ${width} by ${height}`, async ({
+	test(`Alerts Record keeps its period rail whole, filters by the notices, at ${width} by ${height}`, async ({
 		page,
 	}) => {
 		await page.setViewportSize({ width, height });
 		await page.goto(`/alerts?${period}`);
-		const filters = page.getByRole('group', { name: 'Filter', exact: true });
-		await expect(filters.getByRole('combobox', { name: 'Line', exact: true })).toBeInViewport({
+		const rail = page.locator('[data-slot="surface-rail"]');
+		// Nothing in the rail is cut off: every period and the custom dates stay in reach.
+		await expect(rail.getByRole('button', { name: 'Choose other dates' })).toBeInViewport({
 			ratio: 1,
 		});
-		await expect(filters.getByRole('combobox', { name: 'Stop', exact: true })).toBeInViewport({
-			ratio: 1,
-		});
+		expect(
+			await rail.evaluate((node) => node.scrollHeight - node.clientHeight),
+		).toBeLessThanOrEqual(1);
+		await expect(rail.getByRole('group', { name: 'Filter', exact: true })).toHaveCount(0);
+		const filters = page.locator('#messages').getByRole('group', { name: 'Filter', exact: true });
+		await expect(filters.getByRole('combobox', { name: 'Line', exact: true })).toBeVisible();
+		await expect(filters.getByRole('combobox', { name: 'Stop', exact: true })).toBeVisible();
 	});
 }
 

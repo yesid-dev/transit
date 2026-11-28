@@ -9,6 +9,7 @@
 	import { Card } from '@yesid/ui/card';
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Snippet } from 'svelte';
+	import { readRecordPageStamp, recordPrints } from '#lib/site/recordPageStampContext.ts';
 	import { LADDER_CAP, resolveWaiting, skeletonBlockSize, skeletonRem } from './recordWaiting.ts';
 
 	let {
@@ -33,6 +34,9 @@
 			: undefined,
 	);
 	const range = (length: number) => Array.from({ length }, (_, index) => index);
+	// The placeholder draws Print exactly where RecordActionGroup offers it.
+	const pageStamp = readRecordPageStamp();
+	const printable = $derived(recordPrints(page.url, pageStamp()));
 </script>
 
 {#snippet comparisonFacts()}
@@ -80,12 +84,13 @@
 {/snippet}
 
 <!-- aria-busy here starts the kit's pulse wherever the shape is drawn; the kit stops it under
-     reduced motion. The blocks stay hidden from assistive tech: the screen's one live region speaks. -->
+     reduced motion. The blocks stay hidden from assistive tech: the screen's one live region speaks.
+     An answer's waiting words sit on its evidence line, so that shape stays exposed for them. -->
 <div
 	class="waiting-shape"
 	data-waiting-shape={s.shape}
 	data-waiting-count={s.shape === 'table' ? s.rows : s.count}
-	aria-hidden={heading ? undefined : true}
+	aria-hidden={heading || answerStatus ? undefined : true}
 	aria-busy="true"
 	style:block-size={blockSize}
 	style:min-block-size={minRowBlockSize}
@@ -104,25 +109,32 @@
 					{@render heading()}
 				</div>{/if}
 			<div class="answer-statement">
-				<Skeleton class="h-12 w-32 max-w-full" />
+				<Skeleton class="answer-figure-waiting w-32 max-w-full" />
 				<Skeleton class="h-5 w-96 max-w-full" />
 			</div>
 			<div class="answer-context">
 				<div class="answer-stamp"><Skeleton class="h-7 w-56 max-w-full" /></div>
 				<!-- An answer carries one evidence line ("Counted: …"); versions are never on screen. -->
 				{#if !liveAnswer}
-					<div class="answer-evidence grid gap-2">
-						{#if answerStatus}{@render answerStatus()}{:else}<Skeleton
-								class="h-4 w-72 max-w-full"
-							/>{/if}
-						{#if s.shape === 'reading'}<Skeleton class="h-4 w-60 max-w-full" />{/if}
-						{#if s.comparison}<Skeleton class="mt-3 h-4 w-80 max-w-full" />{/if}
+					<!-- Each line is one line of small text, as RecordAnswer sets its evidence. -->
+					<div class="answer-evidence">
+						<div class="evidence-line">
+							{#if answerStatus}{@render answerStatus()}{:else}<Skeleton
+									class="h-4 w-72 max-w-full"
+								/>{/if}
+						</div>
+						{#if s.shape === 'reading'}<div class="evidence-line">
+								<Skeleton class="h-4 w-60 max-w-full" />
+							</div>{/if}
+						{#if s.comparison}<div class="evidence-line">
+								<Skeleton class="h-4 w-80 max-w-full" />
+							</div>{/if}
 					</div>
 				{/if}
 			</div>
 			{#if s.shape === 'answer'}
 				<div class="answer-actions flex flex-wrap gap-2">
-					{#each range(liveAnswer ? 2 : page.url?.searchParams.get('frameMode') === 'record' ? 4 : 3) as action (action)}
+					{#each range(liveAnswer ? 2 : printable ? 4 : 3) as action (action)}
 						<div class="answer-action-placeholder"><Skeleton class="h-11 w-full" /></div>
 					{/each}
 				</div>
@@ -361,6 +373,20 @@
 				gap: 1rem;
 			}
 		}
+	}
+	/* The kit's large answer figure: its display size at a line height of 1.5. */
+	.answer-statement :global(.answer-figure-waiting) {
+		block-size: calc(clamp(2.25rem, var(--text-display), 2.875rem) * 1.5);
+	}
+	.answer-layout .answer-evidence {
+		display: grid;
+		gap: 0.25rem;
+		font-size: var(--text-small);
+	}
+	.evidence-line {
+		display: flex;
+		align-items: center;
+		min-block-size: 1lh;
 	}
 	.answer-layout {
 		gap: 0.75rem 1.5rem;

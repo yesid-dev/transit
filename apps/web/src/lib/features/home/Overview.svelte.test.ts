@@ -310,6 +310,6 @@ it('keeps the error link in About these figures once the record arrives', async 
 		).toBeNull(),
 	);
 	const about = screen.getByRole('article', { name: overviewCopy.fr.about });
-	const report = within(about).getByRole('link', { name: 'Vous avez vu une erreur?' });
+	const report = within(about).getByRole('link', { name: 'Vous avez vu une erreur\u00a0?' });
 	expect(report.getAttribute('href')).toMatch(/#about-transit$/u);
 });

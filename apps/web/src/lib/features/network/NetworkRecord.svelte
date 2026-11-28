@@ -602,6 +602,7 @@
 										{locale}
 										title={copy.delivery}
 										rowHeader={t('Service date', 'Date de service')}
+										shortNames
 										columns={deliveryColumns}
 										{rows}
 										pageSize={rows.length > 7 ? 7 : undefined}

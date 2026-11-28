@@ -331,7 +331,7 @@ test('stops French filter placeholder fits the rail and sheet @layout', async ({
 	}
 });
 
-test('alerts French filter placeholders fit the rail and sheet @layout', async ({ page }) => {
+test('alerts French filter placeholders fit the notice filters @layout', async ({ page }) => {
 	await page.setExtraHTTPHeaders({ 'x-transit-fixture-scope': 'alerts' });
 	await page.emulateMedia({ colorScheme: 'dark' });
 	await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
@@ -357,12 +357,7 @@ test('alerts French filter placeholders fit the rail and sheet @layout', async (
 
 	for (const width of [1440, 1024, 390]) {
 		await setWidth(page, width);
-		const rail = await openFrameControls(page, 'fr');
-		const filter = rail.getByRole('group', { name: 'Filtrer', exact: true });
-		if (width === 390)
-			await expect(
-				page.getByRole('dialog', { name: 'Options' }).locator('input').first(),
-			).toBeVisible();
+		const filter = page.locator('#alerts-log').getByRole('group', { name: 'Filtrer', exact: true });
 		await page.evaluate(() => document.fonts.ready);
 		for (const [label, placeholder] of [
 			['Ligne', 'Toutes'],

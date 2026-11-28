@@ -29,11 +29,13 @@
 		/** A caller can supply a skeleton for a layout with no shared shape. */
 		skeleton?: Snippet;
 	} = $props();
-	const answerHeading = $derived(
-		!skeleton && (typeof shape === 'string' ? shape : shape?.shape) === 'answer'
-			? heading
-			: undefined,
+	// An answer says its waiting words on its own evidence line, where "Counted: …" will be, so
+	// the settled answer is exactly as tall as its placeholder.
+	const answerShape = $derived(
+		!skeleton && (typeof shape === 'string' ? shape : shape?.shape) === 'answer',
 	);
+	// A Live answer has no evidence line, so its words keep the foot line.
+	const inlineWords = $derived(answerShape && !liveAnswer);
 	const register = getRecordPatience();
 	let late = $state(false);
 	onMount(() => {
@@ -75,11 +77,11 @@
 >
 	{#snippet pendingWords()}
 		<div
-			class="pending-words"
+			class={inlineWords ? 'pending-evidence' : 'pending-words'}
 			role={register ? undefined : 'status'}
 			data-slot="record-pending-words"
 		>
-			{#if words}{words}{:else if (!shape && !skeleton) || answerHeading}<Skeleton
+			{#if words}{words}{:else if (!shape && !skeleton) || inlineWords}<Skeleton
 					class="h-4 w-48 max-w-full"
 				/>{/if}
 		</div>
@@ -91,11 +93,11 @@
 			{shape}
 			{liveAnswer}
 			{fullWidthContext}
-			heading={answerHeading}
-			answerStatus={answerHeading ? pendingWords : undefined}
+			heading={answerShape ? heading : undefined}
+			answerStatus={inlineWords ? pendingWords : undefined}
 		/>
 	{/if}
-	{#if !answerHeading}{@render pendingWords()}{/if}
+	{#if !inlineWords}{@render pendingWords()}{/if}
 </div>
 
 <style>
@@ -116,6 +118,11 @@
 		margin: 0;
 		font-size: var(--text-small);
 		line-height: 1.375rem;
+		color: var(--muted-foreground);
+	}
+	/* On the answer's evidence line the words read like "Counted: …" and take its height. */
+	.pending-evidence {
+		font-size: var(--text-small);
 		color: var(--muted-foreground);
 	}
 	/* pendingFootRem.phone: the busy sentence takes two lines on a phone. */

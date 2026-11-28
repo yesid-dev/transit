@@ -25,7 +25,7 @@ it.each([
 		'fr',
 		'À propos de Transit',
 		'Qui le publie',
-		'Vous avez vu une erreur?',
+		'Vous avez vu une erreur\u00a0?',
 		'Écrire à contact@yesid.dev',
 	],
 ] as const)(
