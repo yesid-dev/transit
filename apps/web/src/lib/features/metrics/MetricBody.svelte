@@ -9,7 +9,6 @@
 	import { TypedInformationCard } from '#lib/components/shared/index.ts';
 	import type { MetricEntry } from './metrics.content';
 	import { metricsCopy } from './metrics.copy';
-	import EasterProse from './EasterProse.svelte';
 
 	let {
 		entry,
@@ -25,7 +24,7 @@
 
 <div class="metric__static-information" data-slot="metric-static-information">
 	<TypedInformationCard plain kind="definition" label={t.sections.definition}>
-		<EasterProse text={entry.definition[locale]} class="metric__prose" />
+		<p class="metric__prose">{entry.definition[locale]}</p>
 	</TypedInformationCard>
 
 	<TypedInformationCard plain kind="math" label={t.sections.math}>
@@ -42,7 +41,7 @@
 
 	<div class="metric__paired-information">
 		<TypedInformationCard plain kind="not-really" label={t.sections.notReally}>
-			<EasterProse text={entry.notReally[locale]} class="metric__prose" />
+			<p class="metric__prose">{entry.notReally[locale]}</p>
 		</TypedInformationCard>
 
 		<TypedInformationCard plain kind="caveat" label={t.sections.caveats}>

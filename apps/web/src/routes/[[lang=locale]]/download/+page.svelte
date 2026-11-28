@@ -191,8 +191,6 @@
 					<div id="daily-files" class="download-grid scroll-mt-8">
 						{#each Object.keys(downloadLayouts) as key (key)}<RecordCard
 								title={tableName(key, locale)}
-								{stamp}
-								stampRule
 								><RecordPending
 									shape={{ shape: 'tiles', count: 1, size: 'file' }}
 									{locale}
@@ -371,7 +369,7 @@
 					{#if coverage.tables.length}
 						<div id="daily-files" class="download-grid scroll-mt-8">
 							{#each coverage.tables as { table: key, files: rows, gaps } (key)}
-								<RecordCard interactive title={tableName(key, locale)} {stamp} stampRule>
+								<RecordCard interactive title={tableName(key, locale)}>
 									<div class="grid min-w-0 grid-cols-1 gap-2">
 										<p>{downloadTables[key][locale]}</p>
 										{#if rows.length}<p class="text-sm text-muted-foreground">
@@ -565,9 +563,6 @@
 	@media screen and (min-width: 80rem) {
 		.download-content :global(.reading-column) {
 			max-inline-size: none;
-		}
-		#daily-files :global([data-slot='stamp']) {
-			display: none;
 		}
 		@container daily-files (min-width: 54rem) {
 			#daily-files {

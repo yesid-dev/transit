@@ -255,7 +255,7 @@
 {#snippet recordCard()}
 	{@const previousLabel =
 		record.period.from === record.period.to ? t.previousWeekday : t.previous(days)}
-	<RecordCard interactive title={t.record} {stamp} stampRule>
+	<RecordCard interactive title={t.record} {stamp} stampRule showsPageStamp>
 		<div class="overview-record-readings">
 			{#await overviewReadings}
 				<RecordPending shape="reading" {locale} answer={overviewReadings} />

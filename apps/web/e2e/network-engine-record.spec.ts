@@ -29,7 +29,9 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(card.locator(`button[aria-controls="${controls}"]`)).toHaveCount(1);
 				const tableToggle = footer.getByRole('button', { name: tableLabel, exact: true });
 				await expect(tableToggle).toHaveAttribute('aria-controls', controls);
-				await expect(footer.locator('.hand-drawn-line')).toBeVisible();
+				const divider = footer.locator(':scope > [data-slot="separator"]');
+				await expect(divider).toBeVisible();
+				await expect(divider).toHaveCSS('height', '1px');
 				await expect(tableToggle).toHaveAttribute('aria-pressed', 'false');
 				await tableToggle.click();
 				await expect(tableToggle).toHaveAttribute('aria-pressed', 'true');

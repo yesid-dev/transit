@@ -71,13 +71,13 @@ function expectContent(element: HTMLElement, entry: MetricEntry, locale: Locale)
 	expect(
 		Array.from(element.querySelectorAll('[data-kind]'), (card) => card.getAttribute('data-kind')),
 	).toEqual(['definition', 'math', 'sql', 'not-really', 'caveat']);
-	expect(
-		element.querySelector('[data-kind="definition"] [data-slot="easter-prose"]')?.textContent,
-	).toBe(entry.definition[locale]);
+	expect(element.querySelector('[data-kind="definition"] p')?.textContent).toBe(
+		entry.definition[locale],
+	);
 	expect(element.querySelector('[data-kind="math"] p')?.textContent).toBe(entry.math[locale]);
-	expect(
-		element.querySelector('[data-kind="not-really"] [data-slot="easter-prose"]')?.textContent,
-	).toBe(entry.notReally[locale]);
+	expect(element.querySelector('[data-kind="not-really"] p')?.textContent).toBe(
+		entry.notReally[locale],
+	);
 	expect(
 		Array.from(element.querySelectorAll('[data-kind="caveat"] li'), (item) => item.textContent),
 	).toEqual(entry.caveats[locale]);

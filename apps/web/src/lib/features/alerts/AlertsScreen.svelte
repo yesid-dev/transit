@@ -726,7 +726,7 @@
 				</RecordGroup>
 				<RecordGroup density="compact">
 					<section id="messages" class="grid min-w-0 gap-(--space-card-gap) scroll-mt-24">
-						{@render logHeading(t('Archive for these dates', 'Archives pour ces dates'), stamp)}
+						{@render logHeading(t('Archive for these dates', 'Archives pour ces dates'))}
 						{#await messages}{@render archive()}{:then result}{@render archive(result)}{/await}
 					</section>
 					{@render recordLines()}

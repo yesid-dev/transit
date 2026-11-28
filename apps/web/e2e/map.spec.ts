@@ -201,7 +201,6 @@ for (const locale of PUBLISHED_LOCALES) {
 		const detail = page.locator('[data-slot="map-detail-overlay"]');
 		await expect(detail).toBeVisible();
 		// Reduced motion (the suite's default): nothing on the surface animated in. The click
-		// ripple stays on by design (@yesid/motion globalRipple) and is not part of the surface.
 		expect(
 			await detail.evaluate((surface) =>
 				(window as unknown as { started: Element[] }).started

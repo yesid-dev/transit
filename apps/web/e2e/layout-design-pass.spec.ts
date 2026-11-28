@@ -348,6 +348,12 @@ for (const { screen, provider, locale, key, href } of designPassCases) {
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		if (liveAlerts) await refreshAlertsCapture(page);
 		await expect(page.getByRole('main')).toBeVisible();
+		if (screen === 'archive') {
+			const main = page.getByRole('main');
+			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
+			const contents = await main.getByTestId('archive-contents').boundingBox();
+			expect(contents?.x).toBeCloseTo(heading?.x ?? NaN, 0);
+		}
 		if (refreshStop) {
 			await refreshStop();
 			await expect(page.locator('[data-slot="stop-live-predictions"]')).toBeVisible();
@@ -605,8 +611,9 @@ for (const screen of ['daily', 'overview-live'] as const) {
 						const range = document.createRange();
 						range.selectNodeContents(node);
 						const label = range.getBoundingClientRect();
-						const above = term.querySelector('.hand-drawn-line');
-						const below = term.parentElement?.nextElementSibling?.querySelector('.hand-drawn-line');
+						const above = term.querySelector('[data-slot="separator"]');
+						const below =
+							term.parentElement?.nextElementSibling?.querySelector('[data-slot="separator"]');
 						const overlapsAbove =
 							above?.getClientRects().length && label.top < above.getBoundingClientRect().bottom;
 						const overlapsBelow =
