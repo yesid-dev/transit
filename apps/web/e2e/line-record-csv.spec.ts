@@ -53,7 +53,7 @@ for (const provider of ['stm', 'octranspo'])
 						(fr
 							? 'Identifiant de la mesure,Mesure,Valeur,Source des données et licence,Adresse de la licence'
 							: 'Measure ID,Measure,Value,Data source and licence,Licence URL') +
-							`\r\npunctuality,punctuality,0.8,"${source}",\r\n`,
+							`\r\npunctuality,${fr ? '"En avance, à l’heure et en retard"' : '"Early, on time and late"'},0.8,"${source}",\r\n`,
 					);
 					expect(new URL(page.url()).pathname).toBe((fr ? '/fr' : '') + '/lines/24');
 					expect(snapshotRequests).toEqual([]);

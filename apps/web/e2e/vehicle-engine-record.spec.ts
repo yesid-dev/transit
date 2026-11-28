@@ -395,7 +395,9 @@ for (const width of [390, 1440]) {
 
 			const csv = await request.get(href!);
 			expect(csv.ok()).toBeTruthy();
-			expect(csvText(await csv.body())).toMatch(fr ? /^Mesure,Valeur/u : /^Measure,Value/u);
+			expect(csvText(await csv.body())).toMatch(
+				fr ? /^Identifiant de la mesure,Mesure,Valeur/u : /^Measure ID,Measure,Value/u,
+			);
 			expect(await main.evaluate((node) => node.scrollWidth)).toBeLessThanOrEqual(width);
 		});
 		test(`${locale} at ${width}px keeps the live status and handles a missing report`, async ({

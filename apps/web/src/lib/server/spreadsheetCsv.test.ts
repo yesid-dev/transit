@@ -82,7 +82,7 @@ it('reads records across chunk boundaries, even inside a CRLF or a quote', async
 
 it('ends the last row without a final line break, and writes nothing more for an empty file', async () => {
 	expect(await text(['Measure\npunctuality'])).toBe(
-		`Measure ID,Measure,Data source and licence,Licence URL\r\npunctuality,punctuality,${tail}\r\n`,
+		`Measure ID,Measure,Data source and licence,Licence URL\r\npunctuality,"Early, on time and late",${tail}\r\n`,
 	);
 	expect(await text([])).toBe('');
 });

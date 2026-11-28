@@ -85,5 +85,7 @@ for (const locale of ['en', 'fr'] as const)
 				expect(row).toHaveLength(header!.length);
 				// One value per cell: no JSON object or list for a spreadsheet to choke on.
 				for (const cell of row) expect(cell).not.toMatch(/^\s*[[{]/u);
+				// A measure is named in the reader's language, never only by its ID.
+				if (measure >= 0) expect(row[measure], row[measure - 1]).not.toBe(row[measure - 1]);
 			}
 		});

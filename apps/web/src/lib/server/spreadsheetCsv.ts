@@ -1,27 +1,10 @@
-import methodNames from '#lib/features/record/methodNames.json';
+import {
+	engineColumns as columns,
+	measureLabel,
+	spreadsheetColumns,
+} from '#lib/site/csvColumns.ts';
 
 type Lang = 'en' | 'fr';
-
-const headers = {
-	measureId: { en: 'Measure ID', fr: 'Identifiant de la mesure' },
-	source: { en: 'Data source and licence', fr: 'Source des données et licence' },
-	licenceUrl: { en: 'Licence URL', fr: 'Adresse de la licence' },
-};
-
-// The engine names its columns in the language asked for.
-const columns = {
-	measure: ['Measure', 'Mesure'],
-	value: ['Value', 'Valeur'],
-	unit: ['Unit', 'Unité'],
-	state: ['State', 'État'],
-} as const;
-
-const names: Record<string, readonly string[] | undefined> = methodNames;
-
-/** A measure's name in the reader's language; its ID when the registry has no name for it. */
-export function measureLabel(id: string, lang: Lang) {
-	return names[id]?.[lang === 'fr' ? 1 : 0] ?? id;
-}
 
 function parseJson(text: string): unknown {
 	if (!/^[[{]/u.test(text.trim())) return undefined;
@@ -76,9 +59,7 @@ export function spreadsheetRows(
 				unit: find(columns.unit),
 				state: find(columns.state),
 			};
-			const out = [...record];
-			if (at.measure >= 0) out.splice(at.measure, 0, headers.measureId[lang]);
-			return [[...out, headers.source[lang], headers.licenceUrl[lang]]];
+			return [spreadsheetColumns(record, lang)];
 		}
 		const finish = (cells: string[], id: string | null) => {
 			const out = cells.map(scalarCell);

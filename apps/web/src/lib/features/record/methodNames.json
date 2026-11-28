@@ -78,5 +78,17 @@
 	"vehicles_without_trip": ["Vehicles without a trip", "Véhicules sans trajet associé"],
 	"prediction_error": ["Prediction error", "Erreur de prévision"],
 	"accessible_trips": ["Accessible trips", "Trajets accessibles"],
-	"accessible_stops": ["Accessible stops", "Arrêts accessibles"]
+	"accessible_stops": ["Accessible stops", "Arrêts accessibles"],
+	"punctuality": ["Early, on time and late", "En avance, à l’heure et en retard"],
+	"service_delivered": ["Service delivered", "Service effectué"],
+	"crowding": ["How full vehicles are", "Occupation des véhicules"],
+	"alert_counts": ["Service alerts", "Avis de service"],
+	"waiting_and_gaps": ["Waiting and gaps", "Attente et intervalles"],
+	"service_offered": ["Service offered", "Service offert"],
+	"vehicles": ["Vehicles", "Véhicules"],
+	"clear_run": ["Clear-run time", "Temps de parcours fluide"],
+	"stretch_timing": ["Time by stretch", "Temps par tronçon"],
+	"corridors": ["Corridors", "Corridors"],
+	"open_data_scorecard": ["Open data scorecard", "Bilan des données ouvertes"],
+	"accessibility": ["Accessibility", "Accessibilité"]
 }

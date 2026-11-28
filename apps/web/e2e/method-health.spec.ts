@@ -210,7 +210,9 @@ for (const locale of ['en', 'fr'] as const) {
 		const content = disclosure.locator('[data-slot="collapsible-content"]');
 		await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 		await expect(content).toHaveAttribute('hidden', 'until-found');
-		await expect(content).toContainText(fr ? 'Mesure, Valeur' : 'Measure, Value');
+		await expect(content).toContainText(
+			fr ? 'Identifiant de la mesure, Mesure, Valeur' : 'Measure ID, Measure, Value',
+		);
 		await trigger.press('Enter');
 		await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 		await expect(content).toBeVisible();
