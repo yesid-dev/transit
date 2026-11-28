@@ -142,6 +142,19 @@ for (const provider of providers) {
 				const fromHour = panel.getByRole('combobox', { name: fr ? 'De' : 'From', exact: true });
 				await expect(fromHour.locator('option[value="17"]')).toHaveText(fr ? '17 h' : '17:00');
 				await expect(page.locator('[data-map-reading-line-picker]:visible')).toHaveCount(1);
+				const overflow = await panel.evaluate(async (root) => {
+					await document.fonts.ready;
+					const right = root.getBoundingClientRect().right;
+					const controls = root.querySelectorAll('select, [data-map-reading-line-picker]');
+					return {
+						panel: root.scrollWidth - root.clientWidth,
+						fields: [...controls].filter(
+							(control) => control.getBoundingClientRect().right > right + 0.5,
+						).length,
+					};
+				});
+				expect(overflow.panel).toBe(0);
+				expect(overflow.fields).toBe(0);
 				const active = panel.locator(
 					'[data-filter-group="active"] .mf-active-set button[aria-label]',
 				);

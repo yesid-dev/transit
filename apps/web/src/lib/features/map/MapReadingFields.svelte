@@ -93,8 +93,8 @@
 		'min-h-11 w-full min-w-0 rounded-md border border-border bg-card px-2 text-sm text-foreground';
 </script>
 
-<div class="grid min-w-0 gap-2">
-	<label class="grid min-w-0 gap-1 text-sm">
+<div class="grid min-w-0 grid-cols-1 gap-2">
+	<label class="grid min-w-0 grid-cols-1 gap-1 text-sm">
 		<span>{tr('Vehicle type', 'Type de véhicule')}</span>
 		<select
 			class={selectClass}
@@ -111,7 +111,7 @@
 			{/each}
 		</select>
 	</label>
-	<label class="grid min-w-0 gap-1 text-sm">
+	<label class="grid min-w-0 grid-cols-1 gap-1 text-sm">
 		<span>{tr('Time of day', 'Moment de la journée')}</span>
 		<select
 			class={selectClass}
@@ -127,7 +127,7 @@
 	</label>
 	{#if timeValue === 'custom'}
 		<div class="grid min-w-0 grid-cols-2 gap-2">
-			<label class="grid min-w-0 gap-1 text-sm">
+			<label class="grid min-w-0 grid-cols-1 gap-1 text-sm">
 				<span>{tr('From', 'De')}</span>
 				<select
 					class={selectClass}
@@ -140,7 +140,7 @@
 					{/each}
 				</select>
 			</label>
-			<label class="grid min-w-0 gap-1 text-sm">
+			<label class="grid min-w-0 grid-cols-1 gap-1 text-sm">
 				<span>{tr('Until', 'Jusqu’à')}</span>
 				<select
 					class={selectClass}
@@ -156,11 +156,12 @@
 		</div>
 	{/if}
 	{#if directionChoices.length}
-		<label class="grid min-w-0 gap-1 text-sm">
+		<label class="grid min-w-0 grid-cols-1 gap-1 text-sm">
 			<span>{tr('Direction', 'Sens')}</span>
 			<select
 				class={selectClass}
 				value={directionValue === undefined ? '' : String(directionValue)}
+				title={directionChoices.find((choice) => choice.value === directionValue)?.label}
 				onchange={(event) => {
 					const value = event.currentTarget.value;
 					onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined);

@@ -1374,7 +1374,7 @@
 {/snippet}
 
 {#snippet readingFilterHeader()}
-	<div class="grid min-w-0 gap-2">
+	<div class="grid min-w-0 grid-cols-1 gap-2">
 		<MapReadingFields
 			store={filters}
 			routes={session.routesIndex}
@@ -1407,7 +1407,7 @@
 				)}
 				{locale}
 				label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
-				placeholder={tr('Add a line', 'Ajouter une ligne')}
+				placeholder={tr('Add a line', 'Ligne')}
 				additive
 				onchange={(value) => {
 					if (value) addReadingLine(value);

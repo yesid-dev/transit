@@ -721,6 +721,7 @@
 	}
 
 	:global(.map-filters[data-presentation='drawer'] .mf-body) {
+		margin-inline-end: 0;
 		overflow: visible;
 		padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
 		scrollbar-gutter: auto;
