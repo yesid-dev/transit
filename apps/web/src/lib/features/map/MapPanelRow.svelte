@@ -86,16 +86,17 @@
 		min-inline-size: 0;
 	}
 	.panel-row[data-report-row] {
-		/* The status sizes its own column, so "Delay unknown" keeps its mark on one line. */
-		grid-template-columns: 3.25rem minmax(0, 1fr) max-content;
+		/* The status sizes its column up to 9rem, room for its mark and word ("○ Retard inconnu")
+		   on one line; a detail such as "(4 min après l’horaire)" wraps below, and the vehicle name
+		   keeps the rest of the row. */
+		grid-template-columns: 3.25rem minmax(0, 1fr) fit-content(9rem);
 		overflow-wrap: anywhere;
 	}
 	.panel-row[data-report-row] .value {
-		white-space: nowrap;
 		overflow-wrap: normal;
 	}
-	.panel-row[data-report-row] .value :global([data-slot='status-mark']) {
-		flex-wrap: nowrap;
+	.panel-row[data-report-row] .value :global(.status-word) {
+		white-space: nowrap;
 	}
 	.code {
 		grid-area: code;
