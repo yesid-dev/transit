@@ -189,11 +189,19 @@ async function expectFilterPlaceholder(
 	await expect(filter.getByText(label, { exact: true })).toBeVisible();
 	const input = filter.getByRole('combobox', { name: label, exact: true });
 	await expect(input).toHaveAttribute('placeholder', placeholder);
+	await expectPlaceholderFits(input, label, width);
+}
+
+async function expectPlaceholderFits(input: Locator, label: string, width: number) {
 	const { required, available } = await input.evaluate((element: HTMLInputElement) => {
 		const style = getComputedStyle(element);
+		const placeholderStyle = getComputedStyle(element, '::placeholder');
 		const context = document.createElement('canvas').getContext('2d')!;
-		context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-		context.letterSpacing = style.letterSpacing === 'normal' ? '0px' : style.letterSpacing;
+		context.font =
+			placeholderStyle.font ||
+			`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+		context.letterSpacing =
+			placeholderStyle.letterSpacing === 'normal' ? '0px' : placeholderStyle.letterSpacing;
 		return {
 			required: context.measureText(element.placeholder).width,
 			available:
@@ -201,6 +209,111 @@ async function expectFilterPlaceholder(
 		};
 	});
 	expect(required, `${label} placeholder at ${width}px`).toBeLessThanOrEqual(available);
+}
+
+for (const { width, locale, theme } of [
+	{ width: 1440, locale: 'en', theme: 'dark' },
+	{ width: 390, locale: 'fr', theme: 'light' },
+] as const) {
+	test(`listing headers share their rows at ${width}px in ${locale} @layout`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 900 });
+		await page.addInitScript((value) => localStorage.setItem('theme', value), theme);
+		const prefix = locale === 'fr' ? '/fr' : '';
+		const layouts = [];
+		for (const listing of ['lines', 'stops', 'vehicles']) {
+			await page.goto(
+				`${prefix}/${listing}?provider=stm&frameMode=record&recordFrom=2026-11-04&recordTo=2026-11-10`,
+			);
+			const hero = page.locator('main [data-slot="record-answer"]').first();
+			await expect(
+				hero.getByRole('group', { name: locale === 'fr' ? 'Actions du bilan' : 'Record actions' }),
+			).toBeVisible();
+			await page.evaluate(() => document.fonts.ready);
+			const layout = await hero.evaluate((element) => {
+				const rect = (selector: string) => element.querySelector(selector)!.getBoundingClientRect();
+				const main = element.closest('main')!;
+				const heading = main.querySelector('[data-slot="screen-title"]')!.getBoundingClientRect();
+				const statement = rect('[data-slot="answer-lead"]');
+				const stamp = rect('[data-slot="stamp"]');
+				const actions = rect('.answer-actions');
+				const card = main.querySelector('[data-slot="record-card"]')!;
+				return {
+					heading: { top: heading.top, bottom: heading.bottom },
+					statement: { top: statement.top, bottom: statement.bottom },
+					stamp: { top: stamp.top, bottom: stamp.bottom },
+					actions: { top: actions.top, bottom: actions.bottom },
+					gap: card.getBoundingClientRect().top - element.getBoundingClientRect().bottom,
+				};
+			});
+			if (width === 1440) {
+				expect(layout.stamp.top, listing).toBeLessThan(layout.heading.bottom);
+				expect(layout.actions.top, listing).toBeLessThan(layout.heading.bottom);
+				expect(layout.statement.top, listing).toBeGreaterThanOrEqual(layout.actions.bottom);
+			} else {
+				expect(layout.statement.top, listing).toBeGreaterThanOrEqual(layout.heading.bottom);
+				expect(layout.stamp.top, listing).toBeGreaterThanOrEqual(layout.statement.bottom);
+				expect(layout.actions.top, listing).toBeGreaterThanOrEqual(layout.stamp.bottom);
+			}
+			const summary = page.locator(
+				listing === 'vehicles'
+					? '[data-slot="listing-summary"] [data-slot="filter-summary-count"]'
+					: '[data-slot="listing-summary"] > p',
+			);
+			const textStyle =
+				listing === 'stops'
+					? null
+					: await summary.evaluate((element) => {
+							const { color, fontSize, lineHeight } = getComputedStyle(element);
+							return { color, fontSize, lineHeight };
+						});
+			layouts.push({ listing, gap: layout.gap, textStyle });
+		}
+		const [lines, , vehicles] = layouts;
+		expect(vehicles.textStyle).toEqual(lines.textStyle);
+		expect(Math.abs(vehicles.gap - lines.gap)).toBeLessThanOrEqual(1);
+	});
+}
+
+for (const locale of ['en', 'fr'] as const) {
+	for (const listing of ['lines', 'stops', 'vehicles', 'vehicles-live'] as const) {
+		test(`${listing} ${locale} listing search and sort stay readable @layout`, async ({ page }) => {
+			const live = listing === 'vehicles-live';
+			const route = live ? 'vehicles' : listing;
+			const prefix = locale === 'fr' ? '/fr' : '';
+			await page.goto(
+				`${prefix}/${route}?provider=stm&frameMode=${live ? 'live' : 'record'}&recordFrom=2026-11-04&recordTo=2026-11-10`,
+			);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
+			const body = page.locator('[data-slot="listing-body"]');
+			await expect(body.locator('tbody a').first()).toBeVisible();
+			const search = body.getByRole('searchbox');
+			await expect(search).toHaveAttribute('placeholder', /\S/u);
+			for (const width of [320, 390, 1024, 1280, 1440]) {
+				await setWidth(page, width);
+				await page.evaluate(() => document.fonts.ready);
+				await expectPlaceholderFits(search, `${listing} ${locale}`, width);
+				expect(await textDefects(page, '[data-slot="listing-body"]'), `${width}px`).toEqual([]);
+				await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
+
+				if (listing === 'lines') {
+					const sort = body.locator('[data-slot="listing-sort"]');
+					if (width >= 1024) await expect(sort.getByRole('radio')).toHaveCount(4);
+					else await expect(sort.getByRole('combobox')).toBeVisible();
+					const sameRow = await sort
+						.locator('button:visible, select:visible')
+						.evaluateAll((controls) => {
+							const rects = controls.map((control) => control.getBoundingClientRect());
+							return (
+								rects.length > 1 &&
+								Math.max(...rects.map(({ top }) => top)) <
+									Math.min(...rects.map(({ bottom }) => bottom))
+							);
+						});
+					expect(sameRow, `${width}px sort choices and direction share a row`).toBe(true);
+				}
+			}
+		});
+	}
 }
 
 test('stops French filter placeholder fits the rail and sheet @layout', async ({ page }) => {

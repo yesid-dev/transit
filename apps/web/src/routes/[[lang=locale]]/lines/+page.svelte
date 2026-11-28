@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Surface } from '@yesid/ui/layout';
 	import { getLocale } from '#lib/i18n/index.ts';
 	import LinesRecordFinder from '#lib/features/lines/LinesRecordFinder.svelte';
 	import {
@@ -47,16 +46,14 @@
 </script>
 
 {#if record}
-	<Surface>
-		<LinesRecordFinder
-			{locale}
-			{url}
-			{sort}
-			{setSort}
-			{setQuery}
-			{record}
-			routes={data.schedule?.routes ?? []}
-			provider={data.provider}
-		/>
-	</Surface>
+	<LinesRecordFinder
+		{locale}
+		{url}
+		{sort}
+		{setSort}
+		{setQuery}
+		{record}
+		routes={data.schedule?.routes ?? []}
+		provider={data.provider}
+	/>
 {/if}

@@ -258,7 +258,8 @@ for (const locale of ['en', 'fr'] as const) {
 			table.getByRole('row').filter({ has: page.locator('a[href*="/lines/304?"]') }),
 		).toBeFocused();
 
-		await page.getByRole('radio', { name: fr ? 'Numéro de ligne' : 'Line number' }).click();
+		const choices = page.getByRole('combobox', { name: fr ? 'Trier par' : 'Sort by' });
+		await choices.selectOption('name');
 		await expect(page).toHaveURL(/sort=line&direction=asc$/);
 		await expect(table.getByRole('link')).toHaveCount(20);
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
@@ -270,8 +271,9 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await page.goBack();
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/324\?/);
-		// Phone rows carry no column headers: one button after the sort choices reverses the order.
-		await page.getByRole('radio', { name: fr ? 'Part à l’heure' : 'On-time share' }).focus();
+		// Phone rows carry no column headers. The direction button follows the compact choice.
+		await expect(choices).toHaveValue('onTime');
+		await choices.focus();
 		await page.keyboard.press('Tab');
 		const reverse = page.getByRole('button', {
 			name: fr ? 'Inverser l’ordre' : 'Reverse the order',
@@ -280,13 +282,12 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.keyboard.press('Enter');
 		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
-		const choices = page.getByRole('radiogroup', { name: fr ? 'Trier par' : 'Sort by' });
-		await expect(
-			choices.getByRole('radio', { name: fr ? 'Trajets effectués' : 'Trips that ran' }),
-		).toBeVisible();
-		await expect(
-			choices.getByRole('radio', { name: fr ? 'Numéro de ligne' : 'Line number' }),
-		).toBeVisible();
+		await expect(choices.locator('option[value="trips"]')).toHaveText(
+			fr ? 'Trajets effectués' : 'Trips that ran',
+		);
+		await expect(choices.locator('option[value="name"]')).toHaveText(
+			fr ? 'Numéro de ligne' : 'Line number',
+		);
 		await expect(table.getByRole('columnheader')).toHaveCount(1);
 
 		for (const width of [1024, 1440]) {
@@ -324,6 +325,29 @@ for (const locale of ['en', 'fr'] as const) {
 				);
 			expect(overhangingNames, `${width}px row names stay inside their column`).toEqual([]);
 		}
+
+		const lateHeader = table.locator('thead [data-column="late"]');
+		const lateHeaderButton = lateHeader.getByRole('button');
+		await lateHeaderButton.focus();
+		await page.keyboard.press('Enter');
+		await expect(page).toHaveURL(/sort=late&direction=desc$/);
+		await expect(lateHeader).toHaveAttribute('aria-sort', 'descending');
+		const lateChoice = page.getByRole('radio', { name: fr ? 'Part en retard' : 'Late share' });
+		await expect(lateChoice).toHaveAttribute('aria-checked', 'true');
+
+		await lateHeaderButton.press('Space');
+		await expect(page).toHaveURL(/sort=late&direction=asc$/);
+		await expect(lateHeader).toHaveAttribute('aria-sort', 'ascending');
+		await expect(lateChoice).toHaveAttribute('aria-checked', 'true');
+
+		await lateChoice.focus();
+		await page.keyboard.press('ArrowLeft');
+		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
+		await expect(table.locator('thead [data-column="onTime"]')).toHaveAttribute(
+			'aria-sort',
+			'ascending',
+		);
+		await expect(lateHeader).not.toHaveAttribute('aria-sort', /.+/);
 
 		const excluded = page.getByRole('table', {
 			name: fr

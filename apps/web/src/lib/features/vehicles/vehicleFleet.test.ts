@@ -35,6 +35,7 @@ it.each(['en', 'fr'] as const)(
 		expect(first.rows).toHaveLength(20);
 		expect(first.total).toBe(25);
 		expect(first.active).toBe(24);
+		expect(first.reportingCounts).toEqual({ reported: 24, didNotReport: 1, unmeasured: 0 });
 		expect(first.rows[0]).toEqual({
 			id: '49-1',
 			state: 'not_reporting',
@@ -51,5 +52,18 @@ it.each(['en', 'fr'] as const)(
 		);
 		expect(silent.rows.map(({ id }) => id)).toEqual(['49-1']);
 		expect(silent.fleet).toBe(25);
+		expect(silent.reportingCounts).toEqual({ reported: 0, didNotReport: 1, unmeasured: 0 });
 	},
 );
+
+it('keeps an unmeasured vehicle apart from one known not to have reported', () => {
+	const answer: RecordSeries = {
+		...source,
+		cells: [
+			...source.cells,
+			{ ...source.cells[0]!, key: { vehicle: '49-26' }, state: 'not_measured' },
+		],
+	};
+	const reading = projectVehicleFleet(answer, fleetView(new URLSearchParams('q=49-26')), 'en');
+	expect(reading.reportingCounts).toEqual({ reported: 0, didNotReport: 0, unmeasured: 1 });
+});

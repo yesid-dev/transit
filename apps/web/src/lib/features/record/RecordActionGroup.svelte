@@ -15,6 +15,7 @@
 		locale,
 		href,
 		files,
+		reserveDownload = false,
 		groupLabel,
 		createDownload,
 		citation,
@@ -33,6 +34,7 @@
 			/** The file's size, written for people, when it is known before the download. */
 			size?: string | null;
 		}[];
+		reserveDownload?: boolean;
 		groupLabel?: string;
 		createDownload?: () => { href: string; filename: string } | null;
 		/** The page's citation, one CiteBlock, shown first. */
@@ -210,6 +212,10 @@
 					</Sheet.Content>
 				</Sheet.Root>
 			</form>
+		{:else if reserveDownload}
+			<Button variant="outline" size="cta-sm" class="invisible min-h-11" aria-hidden="true" disabled
+				>{fr ? 'Télécharger' : 'Download'}</Button
+			>
 		{/if}
 		<Sheet.Root>
 			<Sheet.Trigger {...windowLayout.trigger}>

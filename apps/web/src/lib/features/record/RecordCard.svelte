@@ -11,6 +11,7 @@
 
 	let {
 		title,
+		titleLevel = 2,
 		class: className,
 		disclosure,
 		stamp,
@@ -31,6 +32,7 @@
 		stampRule = false,
 	}: {
 		title: string;
+		titleLevel?: 2 | 3;
 		class?: string;
 		disclosure?: {
 			id: string;
@@ -117,14 +119,14 @@
 
 {#snippet header()}
 	<header class="flex min-w-0 flex-wrap items-center justify-between gap-2">
-		<h2 {id} class:expandable-title={expandable}>
+		<svelte:element this={titleLevel === 2 ? 'h2' : 'h3'} {id} class:expandable-title={expandable}>
 			{#if expandable}
 				<Collapsible.Trigger class="flex min-h-11 min-w-11 flex-wrap items-center gap-2 text-left">
 					<ChevronToggle open={expanded} size="sm" />
 					<span class="[overflow-wrap:normal]">{title}</span>
 				</Collapsible.Trigger>
 			{:else}{title}{/if}
-		</h2>
+		</svelte:element>
 		{#if stamp && !repeatedStamp}<Stamp
 				{...stamp}
 			/>{:else if stampPending && !repeatedStamp}<Skeleton class="h-7 w-36 max-w-full" />{/if}

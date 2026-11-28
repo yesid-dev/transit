@@ -188,6 +188,11 @@ test('the vehicle fleet sends only the first page and marks an absent report', a
 		/46\s+vehicles reported on a trip on these dates\./,
 	);
 	const rows = page.locator('#fleet tbody tr');
+	const summary = page.locator('[data-slot="fleet-summary"] [data-slot="filter-summary-count"]');
+	await expect(summary).toHaveText('47 vehicles listed: 46 reported on a trip, 1 did not report.');
+	await expect(page.getByRole('searchbox', { name: 'Vehicle number' })).toHaveAccessibleDescription(
+		'The number painted on the vehicle.',
+	);
 	await expect(rows).toHaveCount(20);
 	const first = rows.first();
 	await expect(
@@ -201,6 +206,7 @@ test('the vehicle fleet sends only the first page and marks an absent report', a
 	await expect(rows.nth(1).locator('[data-column="days"]')).toContainText('2 of 7');
 	await page.getByRole('button', { name: 'Show 20 more', exact: true }).click();
 	await expect(rows).toHaveCount(40);
+	await expect(summary).toHaveText('47 vehicles listed: 46 reported on a trip, 1 did not report.');
 	await expect(rows.nth(20).getByRole('link')).toBeFocused();
 });
 
@@ -225,10 +231,13 @@ test('the live fleet pages the reporting vehicles and names delay unknown', asyn
 		/25\s*vehicles are reporting now/,
 	);
 	const rows = page.locator('#vehicles-live tbody tr');
+	const summary = page.locator('[data-slot="fleet-summary"] [data-slot="filter-summary-count"]');
+	await expect(summary).toHaveText('25 vehicles listed: delay known for 24, unknown for 1.');
 	await expect(rows).toHaveCount(20);
 	await expect(rows.first().locator('[data-column="status"]')).toContainText('Delay unknown');
 	await page.getByRole('button', { name: 'Show 5 more', exact: true }).click();
 	await expect(rows).toHaveCount(25);
+	await expect(summary).toHaveText('25 vehicles listed: delay known for 24, unknown for 1.');
 });
 for (const width of [390, 1440]) {
 	for (const locale of ['en', 'fr']) {
@@ -252,6 +261,13 @@ for (const width of [390, 1440]) {
 			);
 			await main.getByRole('searchbox', { name: search }).fill('0061');
 			await expect(table.getByRole('rowheader')).toHaveCount(1);
+			await expect(
+				main.locator('[data-slot="fleet-summary"] [data-slot="filter-summary-count"]'),
+			).toHaveText(
+				fr
+					? '1 véhicule dans la liste : 1 avec signalement en trajet, 0 sans signalement.'
+					: '1 vehicle listed: 1 reported on a trip, 0 did not report.',
+			);
 			const first = table
 				.getByRole('row')
 				.filter({ has: page.getByRole('link', { name: '40061', exact: true }) });

@@ -38,6 +38,7 @@
 		after?: Snippet<[Row]>;
 		code?: (row: Row) => string | null | undefined;
 		empty?: (row: Row) => boolean;
+		reserveLine?: boolean;
 	};
 
 	type Column<Row> = DataTableColumn<Row>;
@@ -76,6 +77,8 @@
 		leadingColumn,
 		value,
 		sort,
+		showSortChoices = true,
+		reservedColumns,
 		scrollMinWidth,
 		stackAt,
 		pageSize,
@@ -94,6 +97,8 @@
 		nameWidth?: string;
 		value?: string;
 		sort?: RecordTableSort;
+		showSortChoices?: boolean;
+		reservedColumns?: Readonly<Record<string, string>>;
 		scrollMinWidth?: string;
 		stackAt?: 'compact' | 'tablet';
 		pageSize?: number;
@@ -113,7 +118,10 @@
 			cell: nameCell,
 		},
 		// Ignore caller-supplied widths so readings set the numeric columns' size.
-		...columns.map((column) => (column.numeric ? { ...column, width: undefined } : column)),
+		...columns.map((column) => {
+			const width = reservedColumns?.[column.key] ?? (column.numeric ? undefined : column.width);
+			return { ...column, width };
+		}),
 	]);
 	const valueColumn = $derived(columns.find(({ key }) => key === value));
 	const phoneColumns = $derived<Column<Row>[]>([
@@ -195,7 +203,7 @@
 	{@const lead = !!(phone?.before || code)}
 	<!-- A hanging indent, as in the wireframe: the rank or code box, then the text column where the
 	name wraps with its plates and the row's sentence under it, then the value. -->
-	<div class="phone-row" class:lead>
+	<div class="phone-row" class:lead class:reserved-reading={phone?.reserveLine}>
 		{#if lead}<span class="phone-lead"
 				>{#if phone?.before}<span class="phone-before">{@render phone.before(row)}</span
 					>{/if}{#if code}<span class="phone-code">{code}</span>{/if}</span
@@ -208,7 +216,9 @@
 				<span class="phone-line">{line}</span>{/if}
 		</div>
 		{#if valued}<span class="phone-value">{@render phoneValue(row)}</span>{/if}
-		{#if line && !empty}<p class="phone-line phone-under">{line}</p>{/if}
+		{#if !empty && (line || phone?.reserveLine)}
+			<p class="phone-line phone-under" class:reserve-line={phone?.reserveLine}>{line}</p>
+		{/if}
 		{#if phone?.below}<div class="phone-under">{@render phone.below(row)}</div>{/if}
 	</div>
 {/snippet}
@@ -235,6 +245,7 @@
 		tableClass={[
 			headerClass,
 			wideHeaderClass,
+			reservedColumns && 'table-fixed reserved-reading-columns',
 			compactName
 				? '[&_thead_th[data-column=name]]:whitespace-nowrap [&_tbody_th[data-column=name]]:whitespace-nowrap @min-[38rem]:[&_thead_th]:whitespace-nowrap @min-[38rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap'
 				: '[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
@@ -258,7 +269,7 @@
 					}}
 	/>
 {/snippet}
-{#if sort?.choices}
+{#if showSortChoices && sort?.choices}
 	{@const options = sort.choices.options.map((choice) =>
 		choice.key === sort.key
 			? { ...choice, compactLabel: choice.label + (sort.direction === 'asc' ? ' ↑' : ' ↓') }
@@ -348,7 +359,7 @@
 	.phone-row {
 		display: grid;
 		/* The value keeps at most 30% of the row, so the name's column stays wide enough to read. */
-		grid-template-columns: minmax(0, 1fr) fit-content(30%);
+		grid-template-columns: minmax(0, 1fr) var(--phone-value-track, fit-content(30%));
 		align-items: center;
 		column-gap: 0.5rem;
 		row-gap: 0.125rem;
@@ -356,7 +367,21 @@
 		line-height: 1.5;
 	}
 	.phone-row.lead {
-		grid-template-columns: auto minmax(0, 1fr) fit-content(30%);
+		grid-template-columns: auto minmax(0, 1fr) var(--phone-value-track, fit-content(30%));
+	}
+
+	.reserved-reading {
+		--phone-value-track: min(40%, 7rem);
+	}
+
+	.reserved-reading > .phone-value {
+		inline-size: 100%;
+		min-block-size: 1.5lh;
+		text-align: end;
+	}
+
+	:global(.reserved-reading-columns td[data-numeric] > .data-table-cell-content) {
+		min-block-size: 1.5lh;
 	}
 	.phone-lead {
 		display: inline-flex;
@@ -372,6 +397,9 @@
 	/* The sentence and the range bar sit under the name, never under the code box. */
 	.phone-under {
 		grid-column: 1 / -1;
+	}
+	.reserve-line {
+		min-block-size: 2lh;
 	}
 	.lead > .phone-under {
 		grid-column: 2 / -1;

@@ -8,16 +8,23 @@
 		locale,
 		pending,
 		withAction = false,
+		embedded = false,
 		children,
 	}: {
 		locale: Locale;
 		pending: boolean;
 		withAction?: boolean;
+		embedded?: boolean;
 		children: Snippet;
 	} = $props();
 </script>
 
-<div class="live-answer" class:with-action={withAction} data-slot="screen-answer">
+<div
+	class="live-answer"
+	class:with-action={withAction}
+	class:embedded-ready={embedded && !pending}
+	data-slot={embedded ? undefined : 'screen-answer'}
+>
 	{#if pending}
 		<RecordPending {locale}>
 			{#snippet skeleton()}
@@ -35,6 +42,12 @@
 </div>
 
 <style>
+	@container listing-screen (min-width: 64rem) {
+		.embedded-ready {
+			display: contents;
+		}
+	}
+
 	.live-answer {
 		/* Title and summary, with the live stamp on its own line on a phone. */
 		--answer-height: 8.3125rem;
