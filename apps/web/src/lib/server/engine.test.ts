@@ -415,7 +415,7 @@ it('preserves the proxy request and leaves the loopback transport unadorned', as
 it('records each answer for the page that asked, for its Server-Timing', async () => {
 	const { documentServerTiming } = await import('./questionTiming.ts');
 	const page = { request: new Request('https://transit.test/lines/51') };
-	vi.mocked(getRequestEvent).mockReturnValue(page as ReturnType<typeof getRequestEvent>);
+	vi.mocked(getRequestEvent).mockReturnValue({ ...page } as ReturnType<typeof getRequestEvent>);
 	try {
 		fetcher.mockResolvedValue(
 			Response.json(measure(), {
@@ -426,7 +426,7 @@ it('records each answer for the page that asked, for its Server-Timing', async (
 			(await getRecordAnswer({ path: '/measure', parameters: { measure: 'punctuality' } }, dates))
 				.kind,
 		).toBe('answer');
-		expect(documentServerTiming(page)).toMatch(
+		expect(documentServerTiming(page.request)).toMatch(
 			/^questions;desc="answered 1 \(engine 1\), waiting 0", engine;dur=250\.0, slowest;desc="punctuality";dur=/,
 		);
 	} finally {
