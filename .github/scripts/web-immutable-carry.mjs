@@ -5,9 +5,9 @@
 // requests answer 404 and the page never hydrates. SvelteKit names immutable files by their
 // content, so an old file can never collide with a new one, and carrying them is safe.
 //
-//   node web-immutable-carry.mjs next <assets dir> <old stash> <new stash> [days]
-//     Writes the stash the next deploy will carry: this build's immutable files, plus the old
-//     stash's files deployed within the last <days> days (7 by default).
+//   node web-immutable-carry.mjs next <assets dir> <old stash> <new stash>
+//     Writes the stash the next deploy will carry: this build's immutable files, plus whole earlier
+//     builds, newest first, within CARRY_LIMITS (7 days, 10 builds, 2,000 files).
 //   node web-immutable-carry.mjs merge <old stash> <assets dir>
 //     Copies the old stash's files that this build lacks into its assets before it deploys.
 import {
@@ -24,6 +24,8 @@ import { pathToFileURL } from "node:url";
 const IMMUTABLE = "_app/immutable";
 const LEDGER = "ledger.json";
 const DAY_MS = 86_400_000;
+// Workers Free allows 20,000 static asset files per Worker version (Paid: 100,000).
+export const MAX_DEPLOYED_FILES = 20_000;
 
 function filesUnder(root) {
   if (!existsSync(root)) return [];
@@ -53,26 +55,64 @@ function sameBytes(a, b) {
   return readFileSync(a).equals(readFileSync(b));
 }
 
-/** The stash for the next deploy: this build's files now, older ones while they are recent. */
+/**
+ * Bounds on what a deploy carries. Workers Static Assets allow 20,000 files per Worker version on
+ * Workers Free and 100,000 on Paid; one build is about 715 files, 137 of them immutable. The carry
+ * stays far below the smaller limit whatever the week's deploy count.
+ */
+export const CARRY_LIMITS = { days: 7, builds: 10, files: 2_000 };
+
+/**
+ * The stash for the next deploy: this build's files, then earlier builds newest first while they
+ * were deployed within `days`, number at most `builds` and add at most `files` files. A build is
+ * kept or dropped whole, since an old page needs every one of its scripts.
+ */
 export function nextStash(
   assets,
   oldStash,
   newStash,
-  { now = Date.now(), days = 7 } = {},
+  { now = Date.now(), ...limits } = {},
 ) {
+  const { days, builds, files: maxFiles } = { ...CARRY_LIMITS, ...limits };
   const deployed = new Date(now).toISOString();
   const oldest = now - days * DAY_MS;
-  const files = {};
-  for (const [name, at] of Object.entries(readLedger(oldStash))) {
-    if (Date.parse(at) >= oldest && existsSync(join(oldStash, "files", name)))
-      files[name] = at;
-  }
   const current = filesUnder(join(assets, IMMUTABLE)).map(
     (name) => `${IMMUTABLE}/${name}`,
   );
+  const inBuild = new Set(current);
+  // Each earlier build: the files whose last deploy it was (a file shared with a newer build
+  // belongs to that newer one).
+  const earlier = new Map();
+  for (const [name, at] of Object.entries(readLedger(oldStash))) {
+    if (inBuild.has(name) || !existsSync(join(oldStash, "files", name)))
+      continue;
+    earlier.set(at, [...(earlier.get(at) ?? []), name]);
+  }
+  const files = {};
+  let keptBuilds = 0;
+  let kept = 0;
+  let droppedBuilds = 0;
+  let droppedFiles = 0;
+  for (const [at, names] of [...earlier].sort(
+    ([a], [b]) => Date.parse(b) - Date.parse(a),
+  )) {
+    const fits =
+      droppedBuilds === 0 &&
+      Date.parse(at) >= oldest &&
+      keptBuilds < builds &&
+      kept + names.length <= maxFiles;
+    if (!fits) {
+      droppedBuilds += 1;
+      droppedFiles += names.length;
+      continue;
+    }
+    for (const name of names) files[name] = at;
+    keptBuilds += 1;
+    kept += names.length;
+  }
   for (const name of current) files[name] = deployed;
   for (const name of Object.keys(files)) {
-    const source = current.includes(name)
+    const source = inBuild.has(name)
       ? join(assets, name)
       : join(oldStash, "files", name);
     const target = join(newStash, "files", name);
@@ -86,7 +126,10 @@ export function nextStash(
   );
   return {
     current: current.length,
-    kept: Object.keys(files).length - current.length,
+    kept,
+    keptBuilds,
+    droppedBuilds,
+    droppedFiles,
   };
 }
 
@@ -110,25 +153,32 @@ export function mergeStash(oldStash, assets) {
     copyFileSync(source, target);
     carried += 1;
   }
-  return { carried };
+  const total = filesUnder(assets).length;
+  if (total > MAX_DEPLOYED_FILES)
+    throw new Error(
+      `the deployment would hold ${total} files, more than the ${MAX_DEPLOYED_FILES} Workers Static Assets allow`,
+    );
+  return { carried, total };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const [command, ...args] = process.argv.slice(2);
-  if (command === "next" && args.length >= 3) {
-    const days = args[3] === undefined ? 7 : Number(args[3]);
-    if (!Number.isInteger(days) || days < 1)
-      throw new Error("days must be a whole number");
-    const { current, kept } = nextStash(args[0], args[1], args[2], { days });
+  if (command === "next" && args.length === 3) {
+    const { current, kept, keptBuilds, droppedBuilds, droppedFiles } =
+      nextStash(...args);
     console.log(
-      `next stash: ${current} files of this build, ${kept} from recent builds`,
+      `next stash: ${current} files of this build, ${kept} from ${keptBuilds} earlier builds; ` +
+        `dropped ${droppedFiles} files of ${droppedBuilds} older builds ` +
+        `(limits: ${CARRY_LIMITS.days} days, ${CARRY_LIMITS.builds} builds, ${CARRY_LIMITS.files} files)`,
     );
   } else if (command === "merge" && args.length === 2) {
-    const { carried } = mergeStash(args[0], args[1]);
-    console.log(`carried ${carried} immutable files from recent builds`);
+    const { carried, total } = mergeStash(args[0], args[1]);
+    console.log(
+      `carried ${carried} immutable files from recent builds; the deployment holds ${total} files (limit ${MAX_DEPLOYED_FILES})`,
+    );
   } else {
     console.error(
-      "usage: web-immutable-carry.mjs next <assets> <old stash> <new stash> [days]",
+      "usage: web-immutable-carry.mjs next <assets> <old stash> <new stash>",
     );
     console.error("       web-immutable-carry.mjs merge <old stash> <assets>");
     process.exit(2);
