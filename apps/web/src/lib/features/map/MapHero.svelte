@@ -1,3 +1,12 @@
+<script module lang="ts">
+	type MapPanels = typeof import('./mapPanels');
+	let loadedPanels: MapPanels | null = null;
+
+	export async function preloadMapPanels() {
+		return (loadedPanels ??= await import('./mapPanels'));
+	}
+</script>
+
 <script lang="ts">
 	import { datedProviderAttribution, providerAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
@@ -40,8 +49,6 @@
 		type RegisterFrameControlsExtension,
 	} from '#lib/components/shell/FrameControls.svelte';
 	import { colourDimension } from '#lib/components/map/vehicleLayer.ts';
-	import MapFrameLegend from './MapFrameLegend.svelte';
-	import MapInView from './MapInView.svelte';
 	import MapFeedStallBanner from './MapFeedStallBanner.svelte';
 	import MapNearMeControl from './MapNearMeControl.svelte';
 	import MapNearbyStops from './MapNearbyStops.svelte';
@@ -88,15 +95,11 @@
 	import { getMapRoutes } from '#lib/v1/repositories/scheduleShapes.ts';
 	import { motionMode } from '#lib/stores/index.ts';
 	import { prefersReducedMotion } from '@yesid/motion/stores/reducedMotion';
-	import MapFilters from './MapFilters.svelte';
-	import MapReadingFields from './MapReadingFields.svelte';
 	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
-	import MapLinePicker from './MapLinePicker.svelte';
 	import MapMotionControl from './MapMotionControl.svelte';
 	import SwitchRow from '#lib/components/shared/SwitchRow.svelte';
 	import { detailStopName } from './mapSelectionDetail.logic';
 	import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
-	import MapSelectionSummary from './MapSelectionSummary.svelte';
 	import MapSurfaceCanvasLayer from './MapSurfaceCanvasLayer.svelte';
 	import { zoomForNearMePrecision } from './mapGeo';
 	import {
@@ -164,6 +167,33 @@
 	const frameControls = getContext<Snippet<[SurfaceRailContext]> | undefined>(
 		FrameControlsContentContext,
 	);
+	let panels = $state.raw<MapPanels | null>(untrack(() => (controlsVisible ? loadedPanels : null)));
+	let panelLoad: Promise<void> | null = null;
+	let panelFailure: MapStageFailure | null = null;
+	let firstFrame = $state(false);
+	let recordPanel = $state.raw<{
+		content: Snippet<[Snippet | undefined]> | undefined;
+		headline: string | null;
+	}>();
+
+	function loadPanels(): Promise<void> {
+		return (panelLoad ??= preloadMapPanels()
+			.then((components) => {
+				panels = components;
+				if (panelFailure && mapFailure === panelFailure) onMapFailure(null);
+				panelFailure = null;
+			})
+			.catch(() => {
+				if (mapFailure && mapFailure !== panelFailure) return;
+				panelFailure = { kind: 'importer', retry: loadPanels };
+				onMapFailure(panelFailure);
+			})
+			.finally(() => (panelLoad = null)));
+	}
+
+	$effect(() => {
+		if ((firstFrame || controlsVisible) && !panels && !mapFailure) void loadPanels();
+	});
 
 	const alertsAvailable = providerHasAlerts(v1.provider);
 	function readMapFilters(params: URLSearchParams) {
@@ -497,7 +527,10 @@
 		const { phase, lastGoodAt, error } = live.familyStates.vehicles;
 		const liveReadingSettled =
 			phase === 'ready' || phase === 'failed' || lastGoodAt !== null || Boolean(error);
-		oninitialdata?.(isRecordLayer ? session.stopsSettled && recordDataSettled : liveReadingSettled);
+		oninitialdata?.(
+			panels !== null &&
+				(isRecordLayer ? session.stopsSettled && recordDataSettled : liveReadingSettled),
+		);
 	});
 	const publishRecordSourceDate = getContext<((date: string | null) => void) | undefined>(
 		mapRecordSourceDateContext,
@@ -1153,6 +1186,7 @@
 			nearMeController.refocus();
 		}
 		onready?.();
+		firstFrame = true;
 	}
 
 	function onMapRecovering(): void {
@@ -1252,6 +1286,7 @@
 		const target = fitFraming;
 		void detailOpen;
 		void wide;
+		void panels;
 		if (!instance) return;
 		let disposed = false;
 		const update = () => {
@@ -1302,12 +1337,14 @@
 		FrameControlsExtensionContext,
 	);
 	$effect(() =>
-		registerControls?.({
-			between: layerChoice,
-			extra: mapControls,
-			after: desktopLegend,
-			hideSummary: () => !wide && remWidth >= 24,
-		}),
+		panels
+			? registerControls?.({
+					between: layerChoice,
+					extra: mapControls,
+					after: desktopLegend,
+					hideSummary: () => !wide && remWidth >= 24,
+				})
+			: undefined,
 	);
 </script>
 
@@ -1383,8 +1420,8 @@
 				{tr('Clear', 'Effacer')}
 			</Button>
 		</div>
-		{#if selectedDetail}
-			<MapSelectionSummary
+		{#if selectedDetail && panels}
+			<panels.MapSelectionSummary
 				detail={selectedDetail}
 				{locale}
 				{timeZone}
@@ -1434,43 +1471,43 @@
 {/snippet}
 
 {#snippet readingFilterHeader()}
-	<div class="grid min-w-0 grid-cols-1 gap-2">
-		<div data-map-reading-line-picker>
-			<MapLinePicker
-				routes={session.routesIndex.filter(
-					(route) =>
-						!filters.routes.has(route.id) &&
-						route.id !== (isRecordLayer ? recordLine : chosenLine?.id),
-				)}
+	{#if panels}<div class="grid min-w-0 grid-cols-1 gap-2">
+			<div data-map-reading-line-picker>
+				<panels.MapLinePicker
+					routes={session.routesIndex.filter(
+						(route) =>
+							!filters.routes.has(route.id) &&
+							route.id !== (isRecordLayer ? recordLine : chosenLine?.id),
+					)}
+					{locale}
+					label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
+					placeholder={tr('Add a line', 'Ligne')}
+					additive
+					onchange={(value) => {
+						if (value) addReadingLine(value);
+					}}
+				/>
+			</div>
+			<panels.MapReadingFields
+				store={filters}
+				routes={session.routesIndex}
+				provider={page.data.provider}
+				direction={isRecordLayer && recordDirection === '0'
+					? 0
+					: isRecordLayer && recordDirection === '1'
+						? 1
+						: undefined}
+				directions={readingDirections}
+				hasOneLine={readingLineIds.length === 1}
+				onDirection={changeReadingDirection}
 				{locale}
-				label={tr('Add a line filter', 'Ajouter une ligne au filtre')}
-				placeholder={tr('Add a line', 'Ligne')}
-				additive
-				onchange={(value) => {
-					if (value) addReadingLine(value);
-				}}
 			/>
-		</div>
-		<MapReadingFields
-			store={filters}
-			routes={session.routesIndex}
-			provider={page.data.provider}
-			direction={isRecordLayer && recordDirection === '0'
-				? 0
-				: isRecordLayer && recordDirection === '1'
-					? 1
-					: undefined}
-			directions={readingDirections}
-			hasOneLine={readingLineIds.length === 1}
-			onDirection={changeReadingDirection}
-			{locale}
-		/>
-		{#if !isRecordLayer}<MapMotionControl {locale} copy={t} />{/if}
-	</div>
+			{#if !isRecordLayer}<MapMotionControl {locale} copy={t} />{/if}
+		</div>{/if}
 {/snippet}
 
 {#snippet mapControls()}
-	{#if !mapFailure}
+	{#if panels && !mapFailure}
 		<div class="contents" data-map-controls data-ripple-exempt>
 			{#if !isRecordLayer}
 				<div class="grid w-full grid-cols-2 gap-2">
@@ -1507,7 +1544,7 @@
 					{/snippet}
 				</Collapsible.Trigger>
 				<Collapsible.Content>
-					<MapFilters
+					<panels.MapFilters
 						{occupancyAvailable}
 						store={filters}
 						{alertsAvailable}
@@ -1565,32 +1602,32 @@
 {/snippet}
 
 {#snippet desktopLegend()}
-	<MapFrameLegend
-		{locale}
-		layer={recordLayer}
-		threeD={recordThreeD}
-		heightLimit={recordHeightLimit}
-		approximate={recordApproximate}
-		{colourBy}
-		{railName}
-		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
-		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
-		collapsible
-	/>
+	{#if panels}<panels.MapFrameLegend
+			{locale}
+			layer={recordLayer}
+			threeD={recordThreeD}
+			heightLimit={recordHeightLimit}
+			approximate={recordApproximate}
+			{colourBy}
+			{railName}
+			scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
+			staleCutoffS={liveTimingFor(manifest).staleCutoffS}
+			collapsible
+		/>{/if}
 {/snippet}
 
 {#snippet phoneLegend()}
-	<MapFrameLegend
-		{locale}
-		layer={recordLayer}
-		threeD={recordThreeD}
-		heightLimit={recordHeightLimit}
-		approximate={recordApproximate}
-		{colourBy}
-		{railName}
-		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
-		staleCutoffS={liveTimingFor(manifest).staleCutoffS}
-	/>
+	{#if panels}<panels.MapFrameLegend
+			{locale}
+			layer={recordLayer}
+			threeD={recordThreeD}
+			heightLimit={recordHeightLimit}
+			approximate={recordApproximate}
+			{colourBy}
+			{railName}
+			scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
+			staleCutoffS={liveTimingFor(manifest).staleCutoffS}
+		/>{/if}
 {/snippet}
 
 {#snippet liveStampContent()}
@@ -1685,9 +1722,9 @@
 					showingLookup = false;
 				}}
 			/>
-		{:else}
+		{:else if panels}
 			{#if !wide}<MapFeedStallBanner {presentation} inline />{/if}
-			<MapInView
+			<panels.MapInView
 				view={reportView}
 				{locale}
 				line={(id) => lineLabel(id, session.routesIndex)}
@@ -1780,7 +1817,7 @@
 		label={regionLabel}
 		class="map-hero-frame absolute inset-x-0"
 		style="top: var(--map-frame-top); bottom: var(--map-frame-bottom)"
-		details={wide ? { label: viewLabel, content: desktopPanel } : undefined}
+		details={wide && panels ? { label: viewLabel, content: desktopPanel } : undefined}
 	>
 		{@render stage()}
 		{#if !wide && !isRecordLayer}
@@ -1895,7 +1932,7 @@
 			</Button>
 		</div>
 	{/if}
-	{#if !wide && controlsVisible}
+	{#if !wide && controlsVisible && panels}
 		<Sheet
 			open={inViewOpen || detailOpen}
 			onOpenChange={(open) => {
@@ -2002,6 +2039,7 @@
 		aria-hidden="true"
 		{@attach observedSize('clientWidth', (value) => (remWidth = value))}
 	></span>
+	{@render mapContent(recordPanel?.content, recordPanel?.headline ?? null)}
 	<MapRecordPanel
 		{scheduleCache}
 		threeD={recordThreeD}
@@ -2025,7 +2063,7 @@
 		routes={session.routesIndex}
 		routeDirections={mapDirections}
 		onlinefilters={showLineFilters}
-		children={mapContent}
+		onpanel={(content, headline) => (recordPanel = { content, headline })}
 	/>
 </div>
 

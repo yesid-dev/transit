@@ -1,9 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { settled, tick } from 'svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toStopFeatures } from '#lib/components/map/stopsLayer.ts';
 import { RouteFileSchema, type RouteFile } from '#lib/v1/schemas/route.ts';
 import MapHero from './__fixtures__/MapHeroRailHarness.svelte';
+import { preloadMapPanels } from './MapHero.svelte';
 import MapHeroNavigationHarness from '../../../routes/__fixtures__/MapHeroNavigationHarness.svelte';
 import { mapHeroReceiptSignals } from './__fixtures__/MapHeroReceiptSignals.svelte';
 import type { PublicProvider } from '#lib/v1/providers.ts';
@@ -11,6 +12,10 @@ import type { Chip } from '#lib/filters/index.ts';
 import { parseMapViewHint } from './mapViewHint';
 
 const providerContext = vi.hoisted(() => ({ value: undefined as PublicProvider | undefined }));
+
+beforeAll(async () => {
+	await preloadMapPanels();
+});
 
 const harness = vi.hoisted(() => {
 	const identityReceivers: unknown[] = [];

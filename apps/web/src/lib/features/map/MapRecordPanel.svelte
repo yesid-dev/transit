@@ -73,7 +73,7 @@
 		oncount?: (count: number | null) => void;
 		onheightlimit?: (seconds: number | null) => void;
 		onapproximate?: (shown: boolean) => void;
-		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
+		onpanel: (content: Snippet<[Snippet | undefined]> | undefined, headline: string | null) => void;
 	}
 	let {
 		map,
@@ -98,7 +98,7 @@
 		oncount,
 		onheightlimit,
 		onapproximate,
-		children,
+		onpanel,
 	}: Props = $props();
 	const { provider } = getV1Context();
 	const display = transitDisplay();
@@ -132,6 +132,7 @@
 			});
 		return () => controller.abort();
 	});
+	$effect(() => onpanel(layer === 'live' ? undefined : recordContent, headline));
 	const hours = $derived(mapReadingHours(readings?.timeOfDay));
 	const scopedDirection = $derived(
 		readings?.direction !== undefined
@@ -682,8 +683,6 @@
 		{@render recordBody(stamp)}
 	</div>
 {/snippet}
-
-{@render children(layer === 'live' ? undefined : recordContent, headline)}
 
 <style>
 	.record-panel {

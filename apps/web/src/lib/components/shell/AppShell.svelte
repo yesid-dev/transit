@@ -179,7 +179,9 @@
 			aria-hidden={mapControlsVisible ? undefined : true}
 			inert={!mapControlsVisible}
 		>
-			{@render railContents(context)}
+			{#if controlsExtension || mapControlsVisible}
+				{@render railContents(context)}
+			{/if}
 		</div>
 	{:else}
 		{@render railContents(context)}

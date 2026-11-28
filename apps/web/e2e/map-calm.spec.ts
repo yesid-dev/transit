@@ -21,6 +21,21 @@ function holdResponse(page: Page, url: string | RegExp) {
 	};
 }
 
+test('only the map document preloads the two rendered map entry modules', async ({ request }) => {
+	const manifest = await request.get('/map/startup-modules.json');
+	expect(manifest.ok()).toBe(true);
+	const files: string[] = await manifest.json();
+	expect(files).toHaveLength(2);
+	const map = await request.get('/fr/map?provider=stm');
+	const mapHead = (await map.text()).split('</head>')[0];
+	const home = await request.get('/?provider=stm');
+	const homeHead = (await home.text()).split('</head>')[0];
+	for (const file of files) {
+		expect(mapHead).toContain(`rel="modulepreload" href="/${file}"`);
+		expect(homeHead).not.toContain(`href="/${file}"`);
+	}
+});
+
 for (const record of [false, true]) {
 	test(`${record ? 'Record' : 'Live'} controls wait for the map and first reading`, async ({
 		page,
@@ -36,6 +51,23 @@ for (const record of [false, true]) {
 			(theme) => localStorage.setItem('theme', theme),
 			dark ? 'dark' : 'light',
 		);
+		await page.addInitScript(() => {
+			window.addEventListener(
+				'transit:map-ready',
+				() => {
+					Reflect.set(
+						window,
+						'__panelsAtFirstFrame',
+						Boolean(
+							document.querySelector(
+								'[data-map-filter-trigger], [data-map-legend], [data-map-in-view-title]',
+							),
+						),
+					);
+				},
+				{ once: true },
+			);
+		});
 		if (record) await recordMapFixture(page);
 		const reading = holdResponse(page, record ? '**/api/map-record?**' : captureUrl);
 		await reading.route;
@@ -50,6 +82,7 @@ for (const record of [false, true]) {
 		try {
 			await page.goto(record ? `/fr/map?${recordMapPeriod}` : `/map?provider=${provider}`);
 			await expect(progressive).toHaveAttribute('data-map-idle-time', /\d/);
+			expect(await page.evaluate(() => Reflect.get(window, '__panelsAtFirstFrame'))).toBe(false);
 			await expect(progressive).toHaveAttribute('data-map-progressive-state', 'booting');
 			await expect(poster).toBeVisible();
 			await expect(controls).toBeHidden();

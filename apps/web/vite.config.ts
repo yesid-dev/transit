@@ -6,7 +6,7 @@ import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { svelteTesting } from '@testing-library/svelte/vite';
-import type { UserConfig } from 'vite';
+import type { Plugin, UserConfig } from 'vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 
 const designTokensCss = fileURLToPath(import.meta.resolve('@yesid/tokens/tokens.css'));
@@ -27,6 +27,31 @@ function isMapRuntimeModule(id: string): boolean {
 	return (
 		!id.endsWith('.css') && id.includes('/node_modules/') && /\/(maplibre-gl|pmtiles)\//.test(id)
 	);
+}
+
+function mapStartupManifest(): Plugin {
+	return {
+		name: 'transit-map-startup-manifest',
+		apply: 'build',
+		generateBundle(_options, bundle) {
+			if (this.environment.name !== 'client') return;
+			const chunks = Object.values(bundle).filter((output) => output.type === 'chunk');
+			const hero = chunks.find((chunk) =>
+				chunk.facadeModuleId?.replaceAll('\\', '/').endsWith('/features/map/MapHero.svelte'),
+			);
+			const renderer = chunks.find((chunk) =>
+				chunk.moduleIds.some((id) =>
+					/\/maplibre-gl\/dist\/maplibre-gl\.m?js$/u.test(id.replaceAll('\\', '/')),
+				),
+			);
+			if (!hero || !renderer) this.error('The map startup module entries are missing');
+			this.emitFile({
+				type: 'asset',
+				fileName: 'map/startup-modules.json',
+				source: JSON.stringify([hero.fileName, renderer.fileName]),
+			});
+		},
+	};
 }
 
 // svelteTesting() only activates under VITEST, so it is safe to include always.
@@ -100,6 +125,7 @@ export default defineConfig(
 
 		plugins: [
 			tailwindcss(),
+			mapStartupManifest(),
 			// Component SSR tests use Node; worker integration is covered by the real build and Wrangler.
 			sveltekit(process.env.VITEST ? { ...kitConfig, adapter: undefined } : kitConfig),
 			svelteTesting(),

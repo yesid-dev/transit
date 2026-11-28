@@ -39,4 +39,10 @@
 	);
 </script>
 
+<svelte:head>
+	{#each data?.startupModules ?? [] as module (module)}
+		<link rel="modulepreload" href={`/${module}`} />
+	{/each}
+</svelte:head>
+
 <MapProgressive {record} {importHero} />
