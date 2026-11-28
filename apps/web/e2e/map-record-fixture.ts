@@ -19,6 +19,29 @@ export async function recordMapFixture(
 	await page.route(`**/api/stops/slim?provider=${provider}`, (route) =>
 		route.fulfill({ json: { generated_utc: '2026-11-21T00:00:00Z', stops: locations } }),
 	);
+	await page.route(`**/api/corridor-map?city=${provider}`, (route) => {
+		const [first, second] = locations;
+		return route.fulfill({
+			json: {
+				schedule: {
+					date: '2026-11-21',
+					paths: [
+						[
+							'24',
+							0,
+							first!.id,
+							second!.id,
+							[
+								[first!.lon, first!.lat],
+								[second!.lon, first!.lat],
+								[second!.lon, second!.lat],
+							],
+						],
+					],
+				},
+			},
+		});
+	});
 	await page.route(`**/api/schedule-edition?city=${provider}`, (route) =>
 		route.fulfill({
 			json: {

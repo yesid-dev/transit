@@ -65,7 +65,7 @@ for (const provider of ['stm', 'octranspo']) {
 				await expect.poll(async () => (await readRecordRender(page))?.pitch).toBe(50);
 				await expect
 					.poll(async () =>
-						(await readRecordRender(page))?.raisedCorridors.some(({ height }) => height === 168),
+						(await readRecordRender(page))?.raisedCorridors.some(({ height }) => height > 0),
 					)
 					.toBe(true);
 				if (phone) await closeMapControls(page);
@@ -82,10 +82,8 @@ for (const provider of ['stm', 'octranspo']) {
 					await closeMapInView(page);
 					await openMapLegend(page);
 				}
-				await expect(page.locator('[data-slot="record-3d-legend"]:visible')).toContainText(
-					fr
-						? 'Un trait plus haut indique plus de temps perdu.'
-						: 'Taller lines show more time lost.',
+				await expect(page.locator('[data-map-legend]:visible')).toContainText(
+					fr ? 'Au-dessus de l’échelle : hauteur limitée' : 'Taller than the scale: capped',
 				);
 				if (phone) await closeMapInView(page);
 				else {

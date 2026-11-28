@@ -835,6 +835,7 @@
 	let pendingViewHint: MapViewHint | null = null;
 	let ingestedViewHint = false;
 	let recordCount = $state<number | null>(null);
+	let recordHeightLimit = $state<number | null>(null);
 	const colourBy = $derived(colourDimension(filters.state));
 	const legendDetails = $derived(
 		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
@@ -1561,6 +1562,7 @@
 		{locale}
 		layer={recordLayer}
 		threeD={recordThreeD}
+		heightLimit={recordHeightLimit}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1574,6 +1576,7 @@
 		{locale}
 		layer={recordLayer}
 		threeD={recordThreeD}
+		heightLimit={recordHeightLimit}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1981,6 +1984,7 @@
 		onsourcedate={(date) => (recordSourceDate = date)}
 		ondata={(settled) => (recordDataSettled = settled)}
 		oncount={(count) => (recordCount = count)}
+		onheightlimit={(seconds) => (recordHeightLimit = seconds)}
 		{reportCamera}
 		{map}
 		layer={recordLayer}

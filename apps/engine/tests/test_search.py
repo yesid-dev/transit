@@ -85,6 +85,16 @@ def test_search_reads_latest_edition_for_a_declared_public_city(
         query = urlencode({"city": "demo", "lines": json.dumps(invalid_lines)})
         assert asyncio.run(http(app, "/schedule-map", query))[0] == 400
 
+    paths = [["L2", 1, "before", "after", [[-73.6, 45.5], [-73.59, 45.51]]]]
+    directory = tmp_path / "corridors" / "v1" / "demo" / str(latest)
+    directory.mkdir(parents=True)
+    (directory / f"v{store.cleaning_version}.json").write_text(
+        json.dumps({"date": str(latest), "paths": paths}), encoding="utf8"
+    )
+    status, _, body = asyncio.run(http(app, "/corridor-map", "city=demo"))
+    assert status == 200
+    assert json.loads(body) == {"schedule": {"date": str(latest), "paths": paths}}
+
 
 def test_search_keeps_only_stable_ids_with_in_service_evidence_in_the_window(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

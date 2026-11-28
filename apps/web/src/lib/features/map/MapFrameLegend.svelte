@@ -8,6 +8,7 @@
 	import { OCCUPANCY_CODES } from '#lib/v1/schemas/types.ts';
 	import { OCCUPANCY_LABELS } from '#lib/v1/enumLabels.ts';
 	import type { Locale } from '#lib/i18n/index.ts';
+	import { mapRecordReading } from '#lib/site/presenter.ts';
 	import { ON_TIME_LIMITS_S } from '#lib/v1/live/statusBands.ts';
 	import { mapLegend, type LegendColourBy, type LegendMark } from './mapLegend';
 	import { copy } from './map.copy';
@@ -22,6 +23,7 @@
 		railName,
 		scheduleOnlyLines = true,
 		threeD = false,
+		heightLimit = null,
 	}: {
 		locale: Locale;
 		layer: RecordMapLayer;
@@ -32,6 +34,7 @@
 		/** False hides the rail key for a city that declares no line without live data. */
 		scheduleOnlyLines?: boolean;
 		threeD?: boolean;
+		heightLimit?: number | null;
 	} = $props();
 
 	let open = $state(true);
@@ -69,6 +72,23 @@
 	}
 
 	const groups = $derived.by(() => {
+		if (layer !== 'live') {
+			if (layer !== 'corridors' || !threeD || heightLimit === null) return [];
+			return [
+				{
+					title: `${tr('Top of height scale', 'Sommet de l’échelle')} · ${mapRecordReading(heightLimit, false, locale)}`,
+					items: [
+						{
+							label: tr(
+								'Taller than the scale: capped',
+								'Au-dessus de l’échelle : hauteur limitée',
+							),
+							symbol: cappedHeightMark,
+						},
+					],
+				},
+			];
+		}
 		const network = {
 			title: tr('The network', 'Le réseau'),
 			items: [
@@ -96,7 +116,6 @@
 				{ label: copy[locale].legend.heading, symbol: headingMark },
 			] satisfies MapLegendItem[],
 		};
-		if (layer !== 'live') return [];
 		if (colourBy === 'occupancy') return [network];
 		const colour = live.groups[0]!;
 		return [
@@ -162,6 +181,14 @@
 				{ label: tr('Too few to judge', 'Trop peu pour juger'), symbol: lowSampleMark },
 				{ label: tr('Not measured', 'Non mesuré'), symbol: noSampleMark },
 				{ label: tr('No live data', 'Aucune donnée en direct'), symbol: scheduleMark },
+				...(layer === 'corridors'
+					? [
+							{
+								label: tr('Straight between stops', 'Tracé direct entre les arrêts'),
+								symbol: approximateMark,
+							},
+						]
+					: []),
 			],
 		};
 	});
@@ -219,6 +246,10 @@
 {#snippet lowSampleMark()}{@render unmeasuredMark(1)}{/snippet}
 {#snippet noSampleMark()}{@render unmeasuredMark(0)}{/snippet}
 {#snippet scheduleMark()}{@render unmeasuredMark(2)}{/snippet}
+{#snippet approximateMark()}{@render networkLine('var(--foreground)', '1 3')}{/snippet}
+{#snippet cappedHeightMark()}
+	<span class="size-3 shrink-0 rounded-sm bg-[var(--accent-text)]" aria-hidden="true"></span>
+{/snippet}
 
 <ChartDetails
 	label={scale?.title ?? copy[locale].legend.title}
@@ -242,11 +273,6 @@
 		persistKey={collapsible ? 'transit:map-legend-open' : undefined}
 		data-map-legend={collapsible ? 'desktop' : 'phone'}
 	/>
-	{#if threeD && layer === 'corridors' && open}
-		<p class="px-2 pb-2 text-sm text-muted-foreground" data-slot="record-3d-legend">
-			{tr('Taller lines show more time lost.', 'Un trait plus haut indique plus de temps perdu.')}
-		</p>
-	{/if}
 </ChartDetails>
 
 <style>

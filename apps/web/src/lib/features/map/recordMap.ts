@@ -3,6 +3,7 @@ import type { RouteDirection, StopIndexEntry } from '#lib/v1/schemas/index.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import { choose, lowCoverageLabel, tally } from '#lib/features/record/recordText.ts';
 import { measureRamps } from '#lib/components/dataviz/measureRamps.ts';
+import { corridorPath, type CorridorIndex } from './corridorMap';
 
 export type RecordMapLayer = 'live' | 'stops' | 'corridors';
 export const OTHER_STOPS_MIN_ZOOM = 13;
@@ -25,6 +26,7 @@ export interface RecordMark {
 	value: number | null;
 	sample: number | null;
 	state: MapRecordState;
+	approximate?: boolean;
 	geometry: Geometry;
 }
 
@@ -40,6 +42,7 @@ export type RecordFeatures = {
 			step: number | null;
 			offset: number;
 			main: boolean;
+			approximate?: boolean;
 		};
 	}[];
 };
@@ -127,13 +130,13 @@ export function recordMapSampleText(
 const pairId = (dir: number | null, from: string, to: string) => JSON.stringify([dir, from, to]);
 const location = (stop: StopIndexEntry): Coordinate => [stop.lon, stop.lat];
 
-function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordinate[] {
-	if (!Array.isArray(path)) return [from, to];
+function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordinate[] | undefined {
+	if (!Array.isArray(path)) return undefined;
 	const points = path.filter(
 		(point): point is Coordinate =>
 			Array.isArray(point) && point.length === 2 && point.every(Number.isFinite),
 	);
-	if (points.length < 2) return [from, to];
+	if (points.length < 2) return undefined;
 	function nearest(point: Coordinate) {
 		let result = { index: 0, offset: 0, point, distance: Infinity };
 		for (let i = 0; i < points.length - 1; i++) {
@@ -158,7 +161,7 @@ function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordina
 	const first = nearest(from);
 	const last = nearest(to);
 	// GTFS shapes travel in trip order. A mismatched or looped shape can fall back to a chord.
-	if (first.index + first.offset >= last.index + last.offset) return [from, to];
+	if (first.index + first.offset >= last.index + last.offset) return undefined;
 	return [from, first.point, ...points.slice(first.index + 1, last.index + 1), last.point, to];
 }
 
@@ -210,6 +213,7 @@ export function recordCorridors(
 	answer: MapRecordAnswer | null,
 	direction: string,
 	scheduleOnly: boolean,
+	paths?: CorridorIndex | null,
 ): RecordMark[] {
 	const rows = readings(answer);
 	const byId = new Map(stops.map((stop) => [stop.id, stop]));
@@ -222,6 +226,11 @@ export function recordCorridors(
 		const from = byId.get(fromId);
 		const to = byId.get(toId);
 		if (!from || !to || fromId === toId || pairs.has(id)) return;
+		const reading = rows.get(id);
+		const section =
+			dir === null
+				? corridorPath(paths, fromId, toId, reading?.lines, direction)
+				: shapeSection(variant?.shape?.coordinates, location(from), location(to));
 		pairs.set(id, {
 			id,
 			name: `${from.name} → ${to.name}`,
@@ -229,11 +238,12 @@ export function recordCorridors(
 			fromStop: from.id,
 			toName: to.name,
 			direction: dir,
+			...(!section ? { approximate: true } : {}),
 			geometry: {
 				type: 'LineString',
-				coordinates: shapeSection(variant?.shape?.coordinates, location(from), location(to)),
+				coordinates: section ?? [location(from), location(to)],
 			},
-			...(rows.get(id) ?? { ...absent, state: scheduleOnly ? 2 : 0 }),
+			...(reading ?? { ...absent, state: scheduleOnly ? 2 : 0 }),
 		});
 	}
 	for (const variant of [...directions].sort(
@@ -259,7 +269,7 @@ export function recordFeatures(
 ): RecordFeatures {
 	return {
 		type: 'FeatureCollection',
-		features: marks.map(({ id, geometry, state, value, direction, main }) => {
+		features: marks.map(({ id, geometry, state, value, direction, main, approximate }) => {
 			const step = recordRampStep(state, value, stops);
 			return {
 				type: 'Feature',
@@ -268,6 +278,7 @@ export function recordFeatures(
 					id,
 					state,
 					main: main === true,
+					...(approximate ? { approximate: true } : {}),
 					step,
 					colour: step === null ? mutedInk : colours[step]!,
 					offset: direction == null ? 0 : 3,

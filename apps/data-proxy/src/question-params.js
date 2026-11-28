@@ -16,6 +16,7 @@ export const QUESTION_PARAMS = {
   "search-index": { required: [], optional: ["cache"] },
   "schedule-index": { required: [], optional: [] },
   "schedule-map": { required: [], optional: ["lines"] },
+  "corridor-map": { required: [], optional: [] },
   live: { required: [], optional: [] },
   "live-trips": { required: [], optional: ["line", "stop", "trip"] },
   cities: { required: [], optional: [] },
@@ -64,11 +65,11 @@ export function serviceDate(value) {
 
 export function parseQuestion(url) {
   const catalog = ["/v2/how-we-measure", "/v2/cities"].includes(url.pathname);
-  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index|schedule-index|schedule-map|live|live-trips)$/.exec(url.pathname);
+  const match = /^\/v2\/([^/]+)\/(measure|ranking|data-health|search-index|schedule-index|schedule-map|corridor-map|live|live-trips)$/.exec(url.pathname);
   if (!catalog && !match) return null;
 
   const [, city, route] = match ?? [null, null, url.pathname.slice("/v2/".length)];
-  if (["search-index", "schedule-index", "schedule-map", "live", "live-trips"].includes(route) && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
+  if (["search-index", "schedule-index", "schedule-map", "corridor-map", "live", "live-trips"].includes(route) && !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city)) {
     throw new Error("invalid city");
   }
   const { required, optional } = QUESTION_PARAMS[route];

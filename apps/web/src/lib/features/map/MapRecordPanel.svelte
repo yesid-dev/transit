@@ -21,6 +21,7 @@
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { mapReadingHours, type MapReadingFilters } from '#lib/filters/mapReadings.ts';
 	import type { MapRecordAnswer } from './recordMapAnswer';
+	import { corridorMapAnswer, indexCorridorPaths, type CorridorIndex } from './corridorMap';
 	import {
 		isCoordinateInCapturedView,
 		isLineInCapturedView,
@@ -28,7 +29,7 @@
 	} from './mapReportCamera';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { attachRecordMap } from './recordMapLayers';
-	import { recordExtrusions } from './recordExtrusions';
+	import { recordExtrusions, recordHeightScale } from './recordExtrusions';
 	import {
 		ALL_CORRIDORS_MIN_ZOOM,
 		OTHER_STOPS_MIN_ZOOM,
@@ -64,6 +65,7 @@
 		reportCamera?: MapReportCamera | null;
 		threeD?: boolean;
 		oncount?: (count: number | null) => void;
+		onheightlimit?: (seconds: number | null) => void;
 		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
 	}
 	let {
@@ -87,6 +89,7 @@
 		reportCamera,
 		threeD = false,
 		oncount,
+		onheightlimit,
 		children,
 	}: Props = $props();
 	const { provider } = getV1Context();
@@ -94,6 +97,29 @@
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
 	const stopLayer = $derived(layer === 'stops');
 	const network = $derived(layer === 'corridors' && !line);
+	let corridorResult = $state.raw<{ city: string; paths: CorridorIndex | null } | null>(null);
+	const corridorPending = $derived(network && corridorResult?.city !== city);
+	$effect(() => {
+		const provider = city;
+		if (!network || untrack(() => corridorResult?.city === provider && corridorResult.paths))
+			return;
+		const controller = new AbortController();
+		void fetch(`/api/corridor-map?${new URLSearchParams({ city: provider })}`, {
+			signal: controller.signal,
+		})
+			.then(async (response) => {
+				if (!response.ok) return null;
+				const parsed = corridorMapAnswer.safeParse(await response.json());
+				return parsed.success && parsed.data.schedule
+					? indexCorridorPaths(parsed.data.schedule)
+					: null;
+			})
+			.catch(() => null)
+			.then((paths) => {
+				if (!controller.signal.aborted) corridorResult = { city: provider, paths };
+			});
+		return () => controller.abort();
+	});
 	const hours = $derived(mapReadingHours(readings?.timeOfDay));
 	const scopedDirection = $derived(
 		readings?.direction !== undefined
@@ -134,7 +160,11 @@
 	let routeResult = $state.raw<{ id: string; route: RouteFile | null } | null>(null);
 	const route = $derived(routeResult?.id === line ? routeResult.route : null);
 	$effect(() => {
-		ondata?.(!pending && (layer !== 'corridors' || !line || routeResult?.id === line));
+		ondata?.(
+			!pending &&
+				(!answer || !corridorPending) &&
+				(layer !== 'corridors' || !line || routeResult?.id === line),
+		);
 	});
 	let selectedId = $state<string | null>(null);
 	let search = $state('');
@@ -185,9 +215,16 @@
 	});
 
 	const marks = $derived.by(() => {
-		if (!answer) return [];
+		if (!answer || corridorPending) return [];
 		if (!stopLayer)
-			return recordCorridors(stops, route?.directions ?? [], answer, direction, scheduleOnly);
+			return recordCorridors(
+				stops,
+				route?.directions ?? [],
+				answer,
+				scopedDirection,
+				scheduleOnly,
+				network ? corridorResult?.paths : undefined,
+			);
 		return recordStops(
 			stops,
 			answer,
@@ -226,6 +263,12 @@
 			.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
 	});
 	const leader = $derived(visible.find((mark) => mark.state === 3 && mark.value !== null));
+	const heightScale = $derived(
+		threeD && layer === 'corridors' && reportCamera
+			? recordHeightScale(visible, reportCamera)
+			: null,
+	);
+	$effect(() => onheightlimit?.(heightScale?.seconds ?? null));
 	const leaderStop = $derived(
 		leader?.stop ? (stops.find((stop) => stop.id === leader.stop)?.code ?? leader.stop) : null,
 	);
@@ -265,15 +308,17 @@
 			return `rgb(${red}, ${green}, ${blue})`;
 		});
 		const features = recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk);
+		const valuesInView = heightScale ? new Map(visible.map(({ id, value }) => [id, value])) : null;
 		return attachRecordMap(
 			map,
 			features,
 			(id) => (selectedId = id),
 			network,
 			resolveColor('var(--foreground)', mutedInk),
-			threeD && layer === 'corridors'
-				? recordExtrusions(features, (id) => markById.get(id)?.value)
+			heightScale
+				? recordExtrusions(features, (id) => valuesInView?.get(id), heightScale)
 				: undefined,
+			resolveColor('var(--accent-text)', mutedInk),
 		);
 	});
 	$effect(() => {
@@ -512,6 +557,9 @@
 				</p>
 				{#if sampleText}
 					<p>{sampleText}</p>
+				{/if}
+				{#if selected.approximate}
+					<p>{tr('Shown straight between stops', 'Tracé direct entre les arrêts')}</p>
 				{/if}
 			{/if}
 		</div>

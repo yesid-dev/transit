@@ -11,12 +11,17 @@ import {
 	recordUnmeasuredLine,
 	type RecordFeatures,
 } from './recordMap';
-import { RECORD_EXTRUSION_ID, type RecordExtrusions } from './recordExtrusions';
+import {
+	RECORD_EXTRUSION_CAP_ID,
+	RECORD_EXTRUSION_ID,
+	type RecordExtrusions,
+} from './recordExtrusions';
 
 const sourceId = 'record-map';
 const pointsId = 'record-map-stops';
 const pointDetailId = 'record-map-stop-centres';
 const outlineId = 'record-map-corridor-outline';
+const approximateId = 'record-map-approximate-path';
 const segmentIds = [
 	'record-map-no-data',
 	'record-map-too-few',
@@ -25,6 +30,7 @@ const segmentIds = [
 ];
 const allIds = [
 	RECORD_EXTRUSION_ID,
+	RECORD_EXTRUSION_CAP_ID,
 	pointDetailId,
 	pointsId,
 	`${pointDetailId}-other`,
@@ -72,6 +78,7 @@ export function attachRecordMap(
 	network: boolean,
 	outline: string,
 	extrusions?: RecordExtrusions,
+	capColour = outline,
 ) {
 	function draw() {
 		if (map.getSource(sourceId)) return;
@@ -102,6 +109,20 @@ export function attachRecordMap(
 			}
 			map.addLayer(layer);
 		}
+		map.addLayer({
+			id: approximateId,
+			type: 'line',
+			source: sourceId,
+			filter: ['==', ['get', 'approximate'], true],
+			paint: {
+				'line-color': outline,
+				'line-width': 1.5,
+				'line-offset': network
+					? ['interpolate', ['linear'], ['zoom'], 12, 5, 15, 8, 16, 10]
+					: ['+', ['get', 'offset'], 5],
+				'line-dasharray': [1, 3],
+			},
+		});
 		for (const main of [true, false]) {
 			const minzoom = main ? 0 : OTHER_STOPS_MIN_ZOOM;
 			map.addLayer({
@@ -149,6 +170,18 @@ export function attachRecordMap(
 				source: RECORD_EXTRUSION_ID,
 				paint: {
 					'fill-extrusion-color': ['get', 'colour'],
+					'fill-extrusion-height': ['get', 'bodyHeight'],
+					'fill-extrusion-vertical-gradient': false,
+				},
+			});
+			map.addLayer({
+				id: RECORD_EXTRUSION_CAP_ID,
+				type: 'fill-extrusion',
+				source: RECORD_EXTRUSION_ID,
+				filter: ['==', ['get', 'capped'], true],
+				paint: {
+					'fill-extrusion-color': capColour,
+					'fill-extrusion-base': ['get', 'bodyHeight'],
 					'fill-extrusion-height': ['get', 'height'],
 					'fill-extrusion-vertical-gradient': false,
 				},
@@ -182,6 +215,7 @@ export function attachRecordMap(
 		map.off('click', pick);
 		for (const id of allIds) if (map.getLayer(id)) map.removeLayer(id);
 		if (map.getLayer(outlineId)) map.removeLayer(outlineId);
+		if (map.getLayer(approximateId)) map.removeLayer(approximateId);
 		if (map.getSource(RECORD_EXTRUSION_ID)) map.removeSource(RECORD_EXTRUSION_ID);
 		if (map.getSource(sourceId)) map.removeSource(sourceId);
 	};
