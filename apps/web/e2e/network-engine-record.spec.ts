@@ -153,6 +153,10 @@ for (const locale of ['en', 'fr'] as const) {
 	}) => {
 		// This week's fixture has all 24 hours and every named state.
 		const fullDayPeriod = 'recordFrom=2026-10-19&recordTo=2026-10-25';
+		const expectedHeaders = Array.from({ length: 24 }, (_, offset) => {
+			const hour = (offset + 4) % 24;
+			return fr ? `${hour} h` : String(hour).padStart(2, '0');
+		});
 		for (const width of [1440, 390]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${root}/network?provider=stm&frameMode=record&${fullDayPeriod}`);
@@ -160,10 +164,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const grid = page.locator('#hours [data-slot="hour-grid"]');
 			await expect(grid.locator('tbody td')).toHaveCount(7 * 24);
 			await page.evaluate(() => document.fonts.ready);
-			const headers = grid.locator('thead th');
-			await expect(headers).toHaveCount(24);
-			await expect(headers.first()).toHaveText(fr ? '4 h' : '04h');
-			await expect(headers.last()).toHaveText(fr ? '3 h' : '03h');
+			await expect(grid.locator('thead th')).toHaveText(expectedHeaders);
 			await expect(page.locator('#hours')).toContainText(
 				fr ? 'Un jour par case. Choisissez 28 jours' : 'One day per cell. Choose 28 days',
 			);
@@ -226,10 +227,12 @@ for (const locale of ['en', 'fr'] as const) {
 				expect(key.text, `${locale} legend key`).not.toBe('');
 				expect(key.drawn, `${locale} legend swatch for "${key.text}"`).toBe(true);
 			}
-			expect(metrics.visibleAfterScroll, `${locale} ${width}px 23h reachable`).toBe(true);
+			expect(metrics.visibleAfterScroll, `${locale} ${width}px last service hour reachable`).toBe(
+				true,
+			);
 			if (width === 1440) {
 				expect(metrics.scrolls, `${locale} 1440px grid fits its card`).toBe(false);
-				expect(metrics.visibleInitially, `${locale} 1440px 23h in view`).toBe(true);
+				expect(metrics.visibleInitially, `${locale} 1440px last service hour in view`).toBe(true);
 			} else {
 				expect(metrics.scrolls, `${locale} 390px grid scrolls in its own region`).toBe(true);
 			}
