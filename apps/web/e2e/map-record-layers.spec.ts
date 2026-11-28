@@ -29,17 +29,29 @@ const providers = [
 ] as const;
 
 async function setup(page: Page, provider: (typeof providers)[number]) {
+	const stops = provider.stops.map(([name, lat, lon], index) => ({
+		id: `K1-${'ABCD'[index]}`,
+		name,
+		lat,
+		lon,
+		routes: ['24', '51'],
+	}));
 	await page.route(`**/api/stops/slim?provider=${provider.id}`, (route) =>
 		route.fulfill({
+			json: { generated_utc: '2026-11-21T00:00:00Z', stops },
+		}),
+	);
+	await page.route(`**/api/schedule-edition?city=${provider.id}`, (route) =>
+		route.fulfill({
 			json: {
-				generated_utc: '2026-11-21T00:00:00Z',
-				stops: provider.stops.map(([name, lat, lon], index) => ({
-					id: `K1-${'ABCD'[index]}`,
-					name,
-					lat,
-					lon,
-					routes: ['24', '51'],
-				})),
+				schedule: {
+					date: '2026-11-21',
+					routes: ['24', '51'].map((id) => ({ id, short: id, long: id, type: 3 })),
+					stops,
+					route_directions: {
+						51: [{ dir: 0, stops: stops.map(({ id }, seq) => ({ id, seq })) }],
+					},
+				},
 			},
 		}),
 	);
@@ -142,6 +154,11 @@ for (const provider of providers) {
 					const rows = list.getByRole('listitem');
 					await expect(rows).toHaveCount(waits ? 5 : 4);
 					await expect(rows.first()).toContainText(waits ? /1[.,]5\s+min/u : /1[.,]6\s+min/u);
+					await expect(
+						rows.getByRole('link', { name: fr ? /ligne 51\b/u : /line 51\b/u }).first(),
+					).toHaveAccessibleName(
+						new RegExp(`${fr ? 'Vers' : 'Toward'} ${provider.stops[3][0]}`, 'u'),
+					);
 					const id = waits ? '["51",0,"K1-A"]' : '["51",0,"K1-B","K1-C"]';
 					await expect
 						.poll(() => recordMarks(page))
@@ -188,6 +205,13 @@ for (const provider of providers) {
 						phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 					);
 					await expect(legend.getByText(legendName, { exact: true })).toBeVisible();
+					if (!phone) {
+						const [box, bounds] = await Promise.all([
+							legend.boundingBox(),
+							page.locator('.map-surface').boundingBox(),
+						]);
+						expect(box!.y + box!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height + 1);
+					}
 					if (phone) await closeMapInView(page);
 					await openMapControls(page);
 					const clearRun = page.getByRole('radio', { name: fr ? 'Parcours fluide' : 'Clear run' });

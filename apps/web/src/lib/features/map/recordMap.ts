@@ -129,7 +129,9 @@ export function recordLayerMarks(
 	shapes?: { line: string; directions: readonly RouteDirection[] },
 	paths?: CorridorIndex | null,
 ): RecordMark[] {
-	const byStop = new Map(stops.map((stop) => [stop.id, { ...stop, name: stopDisplayName(stop.name) }]));
+	const byStop = new Map(
+		stops.map((stop) => [stop.id, { ...stop, name: stopDisplayName(stop.name) }]),
+	);
 	const shapeBySection = new Map<string, unknown>();
 	for (const variant of shapes?.directions ?? []) {
 		if (!variant.shape) continue;

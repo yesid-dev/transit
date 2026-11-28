@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { mapRecordAnswer } from './recordMapAnswer';
 import { recordLayerAnswer } from './recordLayerAnswer';
+import { indexCorridorPaths } from './corridorMap';
 import {
 	highestWaitsByStop,
 	overviewCorridors,
@@ -67,17 +68,22 @@ it('keeps the clear-run reference and the median for each line on a shared stret
 		median_run_seconds: [73, 84],
 		evidence,
 	});
-	expect(
-		recordLayerMarks(stops, answer).map(({ id, value, reference, median }) => [
-			id,
-			value,
-			reference,
-			median,
-		]),
-	).toEqual([
+	const coordinates: [number, number][] = [
+		[-73.6, 45.5],
+		[-73.595, 45.501],
+		[-73.59, 45.5],
+	];
+	const paths = indexCorridorPaths({
+		date: '2026-11-21',
+		paths: [['24', 0, 'A', 'B', coordinates]],
+	});
+	const marks = recordLayerMarks(stops, answer, undefined, paths);
+	expect(marks.map(({ id, value, reference, median }) => [id, value, reference, median])).toEqual([
 		['["24",0,"A","B"]', 32, 41, 73],
 		['["50",0,"A","B"]', 48, 36, 84],
 	]);
+	expect(marks[0]?.geometry.coordinates).toEqual(coordinates);
+	expect(marks[1]?.approximate).toBe(true);
 });
 
 it('keeps the 300 measured corridors with the most time lost in a dense overview', () => {
