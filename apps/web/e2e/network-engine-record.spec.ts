@@ -53,6 +53,18 @@ for (const locale of ['en', 'fr'] as const) {
 			await expect(
 				main.getByRole('heading', { name: locale === 'fr' ? 'Places à bord' : 'Room on board' }),
 			).toBeVisible();
+			if (city === 'octranspo') {
+				// The agency's gap, named once, with no count of readings it never published.
+				const crowding = main.locator('#crowding');
+				await expect(crowding).toContainText(
+					locale === 'fr'
+						? 'OC Transpo ne publie pas la place à bord.'
+						: 'OC Transpo does not publish room on board.',
+				);
+				await expect(crowding).toContainText(locale === 'fr' ? 'Non publié' : 'Not published');
+				await expect(crowding).not.toContainText(locale === 'fr' ? 'relevé' : 'reading');
+				await expect(crowding).not.toContainText(locale === 'fr' ? 'indisponibles' : 'unavailable');
+			}
 			await expect(
 				main.getByRole('heading', {
 					name: locale === 'fr' ? 'Par heure et jour de la semaine' : 'By hour and weekday',

@@ -652,6 +652,7 @@
 					answer={record.crowding}
 					waiting={{ shape: 'table', rows: 6 }}
 					compactWhenSettled
+					foot={page.data.provider?.inputs.occupancy !== false}
 				>
 					{#snippet reading(result)}
 						{#if !('cells' in result) && result.state === 'measured'}
@@ -667,6 +668,10 @@
 							/>
 						{:else if result.state === 'not_tracked'}
 							<p>
+								{#if page.data.provider?.inputs.occupancy === false}<StateMark
+										state="not_published"
+										{locale}
+									/>{/if}
 								{roomOnBoardUnavailable(
 									agencyName(operator, page.data.provider),
 									locale,

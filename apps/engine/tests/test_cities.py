@@ -38,6 +38,8 @@ def test_public_cities_shape_both_declaration_formats(tmp_path: Path) -> None:
     assert cities["stm"]["inputs"]["occupancy"] is True
     assert cities["stm"]["lines_without_live_data"] == [{"route_types": [1], "route_ids": []}]
     assert cities["octranspo"]["inputs"]["service_alerts"] is False
+    # Declared, so every screen says OC Transpo does not publish room on board.
+    assert cities["octranspo"]["inputs"]["occupancy"] is False
     assert cities["octranspo"]["fit_bounds"] == [-75.95, 45.2, -75.43, 45.55]
     assert cities["octranspo"]["timezone"] == "America/Toronto"
     assert cities["octranspo"]["name_separators"] == {

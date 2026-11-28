@@ -106,7 +106,7 @@ for (const width of [390, 1440]) {
 			).toBeVisible();
 			await expect(main.locator('#late')).toContainText(fr ? 'se classe premier' : 'ranked first');
 			await expect(main.locator('#crowding')).toContainText(
-				fr ? 'Les données sur la place à bord sont indisponibles à ces dates.' : '25.0%',
+				fr ? 'OC Transpo ne publie pas la place à bord.' : '25.0%',
 			);
 			await expectLineNotices(main.locator('#alerts'), provider, locale);
 

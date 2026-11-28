@@ -109,6 +109,9 @@ def city_catalog() -> dict[str, Any]:
         realtime = declaration.get("realtime", {}) if legacy else declaration
         name_separators = (public if legacy else declaration).get("name_separators")
         inputs = _inputs(declaration.get("feeds", {}))
+        # A vehicle field the feed declares unpublished is a gap of the agency, not of Transit.
+        if "occupancy" in (realtime.get("unpublished_vehicle_fields") or []):
+            inputs["occupancy"] = False
         for capability in ("stable_vehicle_ids", "occupancy"):
             if isinstance(public.get(capability), bool):
                 inputs[capability] = public[capability]
