@@ -675,6 +675,7 @@
 								<ScreenTitle {title} {subtitle} />
 								<div data-slot="screen-state">
 									<p>
+										<StateMark state="no_live_data" {locale} hiddenLabel />
 										{t(
 											'Transit could not get current service alerts.',
 											'Transit n’a pas pu obtenir les avis de service en vigueur.',

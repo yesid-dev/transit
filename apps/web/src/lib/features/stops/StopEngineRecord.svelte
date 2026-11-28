@@ -94,6 +94,8 @@
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const term = $derived(overviewCopy[locale]);
 	const provider = $derived(page.data.provider as PublicCity | undefined);
+	const hasAlertFeed = $derived(providerHasAlerts(provider));
+	const officialAlertsUrl = $derived(hasAlertFeed ? undefined : provider?.alert_links[locale]);
 	const stopCode = $derived(code || stop.id);
 	const stopLabel = $derived(t(`Stop ${stopCode}`, `Arrêt ${stopCode}`));
 	const name = $derived(stop.name === stop.id ? null : stopDisplayName(stop.name));
@@ -673,16 +675,16 @@
 		</div>
 
 		<div id="alerts">
-			<RecordCard title={titleFor('alerts')} {stamp}>
+			<RecordCard title={titleFor('alerts')} {stamp} interactive={!!officialAlertsUrl}>
 				{#snippet evidence()}
 					{@render evidenceFooter('alerts')}
 				{/snippet}
-				{#if !providerHasAlerts(provider)}
+				{#if !hasAlertFeed}
 					<p>
 						{alertsNotPublishedLine(
 							agencyName(operator, provider),
 							locale,
-							Boolean(provider?.alert_links[locale]),
+							Boolean(officialAlertsUrl),
 						)}
 					</p>
 				{:else}
@@ -728,10 +730,10 @@
 					{/await}
 				{/if}
 				{#snippet links()}
-					{#if !providerHasAlerts(provider) && provider?.alert_links[locale]}
+					{#if officialAlertsUrl}
 						<a
 							class="inline-flex min-h-11 items-center text-primary underline"
-							href={provider.alert_links[locale]}>{officialAlertsLabel(locale)}</a
+							href={officialAlertsUrl}>{officialAlertsLabel(locale)}</a
 						>
 					{/if}
 				{/snippet}

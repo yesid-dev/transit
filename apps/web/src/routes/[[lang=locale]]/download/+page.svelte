@@ -458,8 +458,9 @@
 									Boolean(official),
 								)}
 							</p>
-							{#if official}<a class="text-primary underline" href={official}
-									>{officialAlertsLabel(locale)}</a
+							{#if official}<a
+									class="inline-flex min-h-11 items-center text-primary underline"
+									href={official}>{officialAlertsLabel(locale)}</a
 								>{/if}
 						{:else}
 							<p>
