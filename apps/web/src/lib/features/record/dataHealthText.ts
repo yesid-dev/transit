@@ -3,7 +3,7 @@ import type { TableHealth } from '#lib/server/engine.ts';
 import { choose } from './recordText.ts';
 
 const tables: Record<string, [string, string]> = {
-	stop_events: ['Stop events', 'Passages aux arrêts'],
+	stop_events: ['Stop arrivals', 'Passages aux arrêts'],
 	trip_days: ['Trips run each day', 'Trajets effectués par jour'],
 	scheduled_stop_times: ['Timetable', 'Horaire'],
 	vehicle_positions: ['Vehicle positions', 'Positions des véhicules'],

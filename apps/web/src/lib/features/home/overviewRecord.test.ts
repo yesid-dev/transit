@@ -26,10 +26,10 @@ const gaps = [
 describe('Overview record text', () => {
 	it('formats the answer and both counts in English and Québec French', () => {
 		expect(measureText(answer(measure()), period, 'en')).toBe(
-			'8 to 14 Nov 2026, 81.2% of observed stop events were on time (412,355 of 507,800) · 60.0% of 846,333 scheduled stops observed.',
+			'8 to 14 Nov 2026, 81.2% of recorded stop arrivals were on time (412,355 of 507,800) · 60.0% of 846,333 scheduled stops observed.',
 		);
 		expect(measureText(answer(measure()), period, 'fr').replace(/\s/g, ' ')).toBe(
-			'du 8 au 14 nov. 2026, 81,2 % des passages observés aux arrêts étaient à l’heure (412 355 sur 507 800) · 60,0 % des 846 333 passages prévus observés.',
+			'du 8 au 14 nov. 2026, 81,2 % des passages enregistrés aux arrêts étaient à l’heure (412 355 sur 507 800) · 60,0 % des 846 333 passages prévus observés.',
 		);
 	});
 
@@ -101,7 +101,7 @@ describe('Overview record text', () => {
 		value.evidence.counts.on_time = 0;
 		expect(overviewValue(answer(value), 'on_time')).toBe(0);
 		expect(measureText(answer(value), period, 'en')).toContain(
-			'0.0% of observed stop events were on time (0 of 507,800) · 60.0% of 846,333 scheduled stops observed.',
+			'0.0% of recorded stop arrivals were on time (0 of 507,800) · 60.0% of 846,333 scheduled stops observed.',
 		);
 	});
 });

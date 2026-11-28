@@ -112,7 +112,7 @@
 	const lineHeader = $derived(terms.line);
 	const lateHeader = $derived(terms.band.late);
 	const tripsHeader = $derived(t('Trips that ran', 'Trajets effectués'));
-	const eventsHeader = $derived(t('Stop events', 'Passages aux arrêts'));
+	const eventsHeader = $derived(t('Stop arrivals', 'Passages aux arrêts'));
 	const statusHeader = $derived(t('Status', 'État'));
 	const tooFew = $derived(t('Too few to judge', 'Trop peu pour juger'));
 	let settledPeriod = $state.raw<LinesRecord['period']>();
@@ -301,18 +301,18 @@
 	const answer = $derived(
 		ranked.length === 1
 			? t(
-					'is the on-time share for the one line with enough to judge on these dates.',
-					'est la part à l’heure de la seule ligne avec assez de données pour conclure pour ces dates.',
+					'is the on-time share for the one line with enough data to rank on these dates.',
+					'est la part à l’heure de la seule ligne ayant assez de données pour être classée à ces dates.',
 				)
 			: t(
-					`is the spread of on-time share across the ${tally(ranked.length, locale)} lines with enough to judge on these dates.`,
-					`est la plage des parts à l’heure pour les ${tally(ranked.length, locale)} lignes avec assez de données pour conclure pour ces dates.`,
+					`is the spread of on-time share across the ${tally(ranked.length, locale)} lines with enough data to rank on these dates.`,
+					`est la plage des parts à l’heure pour les ${tally(ranked.length, locale)} lignes ayant assez de données pour être classées à ces dates.`,
 				),
 	);
 	const noneRanked = $derived(
 		t(
-			'No line has enough to judge on these dates. Each one is in the table with its state.',
-			'Aucune ligne n’a assez de données pour conclure pour ces dates. Chacune figure dans le tableau avec son état.',
+			'No line has enough data to rank on these dates. Each one is in the table with its state.',
+			'Aucune ligne n’a assez de données pour être classée à ces dates. Chacune figure dans le tableau avec son état.',
 		),
 	);
 	const timingAnswer = $derived(punctuality?.kind === 'answer' ? punctuality.answer : null);
@@ -483,8 +483,9 @@
 	);
 
 	const subtitle = $derived.by(() => {
-		if (!routes.length) return undefined;
-		const count = countedUnit(routes.length, 'line', locale);
+		const total = all.length || routes.length;
+		if (!total) return undefined;
+		const count = countedUnit(total, 'line', locale);
 		return operator ? `${operator}${locale === 'fr' ? '\u00a0' : ''}: ${count}` : count;
 	});
 </script>
@@ -746,18 +747,32 @@
 							? measuredEvidence
 							: undefined}
 					>
-						{#if all.length}{@render lineField()}{/if}
 						{#if timingAnswer && !appliedQuery}
-							<p class="mb-2 text-small text-muted-foreground">
+							{@const timetableNote =
+								routes.length > 0 && all.length > routes.length
+									? t(
+											` (${tally(routes.length, locale)} in the current timetable)`,
+											` (${tally(routes.length, locale)} dans l’horaire actuel)`,
+										)
+									: ''}
+							{@const rankedNote =
+								ranked.length < measured.length
+									? t(
+											` (${tally(ranked.length, locale)} ranked)`,
+											` (${tally(ranked.length, locale)} classées)`,
+										)
+									: ''}
+							<p class="mb-3 text-small text-muted-foreground">
 								{t(
-									`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'is' : 'are'} listed here: ${tally(measured.length, locale)} measured, ${tally(scheduleOnly.length, locale)} without live data, ${tally(excluded.length, locale)} that cannot be judged on these dates.`,
-									`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'figure' : 'figurent'} ici\u00a0: ${tally(measured.length, locale)} avec des mesures, ${tally(scheduleOnly.length, locale)} sans données en direct, ${tally(excluded.length, locale)} qu’on ne peut pas juger à ces dates.`,
+									`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'is' : 'are'} listed here${timetableNote}: ${tally(measured.length, locale)} measured${rankedNote}, ${tally(scheduleOnly.length, locale)} without live data, ${tally(excluded.length, locale)} that cannot be judged on these dates.`,
+									`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'figure' : 'figurent'} ici${timetableNote}\u00a0: ${tally(measured.length, locale)} avec des mesures${rankedNote}, ${tally(scheduleOnly.length, locale)} sans données en direct, ${tally(excluded.length, locale)} qu’on ne peut pas juger à ces dates.`,
 								)}
 							</p>
 						{/if}
 						{#if timingFailure || tripsFailure}
-							<p>{recordConnection.unreachable[locale]}</p>
+							<p class="mb-3">{recordConnection.unreachable[locale]}</p>
 						{/if}
+						{#if all.length}{@render lineField()}{/if}
 						{#if measuredShown.length}
 							<RecordDataTable
 								{locale}
@@ -982,7 +997,7 @@
 			.finder-performance :global([data-slot='record-card-body']) {
 				display: grid;
 				grid-template-columns: minmax(12rem, 1fr) minmax(22rem, 1.5fr);
-				align-items: end;
+				align-items: start;
 				column-gap: var(--space-card-gap);
 			}
 			.finder-performance
@@ -995,9 +1010,18 @@
 			.finder-field {
 				grid-column: 1;
 			}
+			.finder-field form {
+				margin-bottom: 0.5rem;
+			}
 			.finder-sort-placeholder,
 			.finder-performance :global(.sort-choice-frame) {
 				grid-column: 2;
+			}
+			.finder-sort-placeholder {
+				justify-self: end;
+			}
+			.finder-performance :global(.sort-choice-frame .sort-choices) {
+				justify-content: flex-end;
 			}
 		}
 	}

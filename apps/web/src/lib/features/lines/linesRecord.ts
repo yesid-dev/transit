@@ -211,7 +211,7 @@ export function lineExclusion(
 		return {
 			state,
 			text: {
-				en: 'No stop event of this line had a reading on these dates.',
+				en: 'No stop arrival on this line had a reading on these dates.',
 				fr: 'Aucun passage de cette ligne n’a de relevé à ces dates.',
 			},
 		};

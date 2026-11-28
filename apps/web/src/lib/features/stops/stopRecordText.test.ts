@@ -58,20 +58,20 @@ it('explains low coverage once and retains the sample and threshold in both lang
 		evidence: { ...answer.evidence, coverage_reason: 'insufficient_coverage', low_coverage: true },
 	};
 	expect(stopCoverageGap(gap, 'en', false, 0.6)).toBe(
-		'100 of 200 scheduled stop events were observed here on these dates. At least 60.0% of scheduled stop events must be observed.',
+		'100 of 200 scheduled stop arrivals were recorded here on these dates. At least 60.0% of scheduled stop arrivals must be recorded.',
 	);
 	expect(stopCoverageGap(gap, 'fr', false, 0.6)).toMatch(
-		/^100 des 200 passages prévus ont été observés ici à ces dates\. Il faut observer au moins 60,0\s% des passages prévus\.$/,
+		/^100 des 200 passages prévus ont été enregistrés ici à ces dates\. Il faut enregistrer au moins 60,0\s% des passages prévus\.$/,
 	);
 	const none: RecordMeasure = {
 		...gap,
 		evidence: { ...gap.evidence, counts: { ...gap.evidence.counts, classified: 0, scheduled: 1 } },
 	};
 	expect(stopCoverageGap(none, 'en', false, 0.25)).toBe(
-		'No stop event was observed here on these dates: 1 was scheduled. At least 25.0% of scheduled stop events must be observed.',
+		'No stop arrival was recorded here on these dates: 1 was scheduled. At least 25.0% of scheduled stop arrivals must be recorded.',
 	);
 	expect(stopCoverageGap(none, 'fr', false, 0.25)).toMatch(
-		/^Aucun passage n’a été observé ici à ces dates\u00a0: 1 était prévu\. Il faut observer au moins 25,0\s% des passages prévus\.$/,
+		/^Aucun passage n’a été enregistré ici à ces dates\u00a0: 1 était prévu\. Il faut enregistrer au moins 25,0\s% des passages prévus\.$/,
 	);
 	expect(stopCoverageGap(answer, 'en')).toBeNull();
 });
@@ -171,7 +171,7 @@ it.each(['en', 'fr'] as const)(
 		const days = { ...answer.evidence, days_included: ['2026-11-18', '2026-11-19'] };
 		expect(stopEvidenceSample({ ...answer, evidence: days }, 'alerts', locale)).toBe('');
 		expect(stopEvidenceSample({ ...answer, evidence: days }, 'accessibility', locale)).toBe(
-			locale === 'en' ? '100 stop events, 2 days' : '100 passages aux arrêts, 2 jours',
+			locale === 'en' ? '100 stop arrivals, 2 days' : '100 passages aux arrêts, 2 jours',
 		);
 	},
 );

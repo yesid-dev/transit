@@ -124,7 +124,7 @@
 
 <div {id} class="grid min-w-0 gap-2" class:grow={fill}>
 	{#if fewHours}
-		<p><StateMark state="too_few_to_judge" {locale} /> {fewHours}</p>
+		<p><StateMark state="too_few_to_judge" {locale} hiddenLabel /> {fewHours}</p>
 	{:else if table && reading.table.rows.length}
 		<RecordDataTable
 			{locale}

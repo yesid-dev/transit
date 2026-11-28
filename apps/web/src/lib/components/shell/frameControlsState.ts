@@ -30,7 +30,12 @@ const readingPaths = [
 	'/search',
 ];
 
-export function frameControlsState(url: URL, clock: FrameClock, errorPage = false) {
+export function frameControlsState(
+	url: URL,
+	clock: FrameClock,
+	errorPage = false,
+	options?: { alertsTracked?: boolean },
+) {
 	const path = delocalizePath(url.pathname).replace(/\/$/, '') || '/';
 	const recordOnly =
 		isRankingPath(path) || ['/lines', '/stops', '/receipt', '/download'].includes(path);
@@ -38,7 +43,8 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 	const stop = /^\/stop\/[^/]+$/.test(path);
 	const map = path === '/map';
 	const liveOnly = path.startsWith('/trip/');
-	const showRail = !errorPage && !readingPaths.includes(path);
+	const untrackedAlerts = path === '/alerts' && options?.alertsTracked === false;
+	const showRail = !errorPage && !readingPaths.includes(path) && !untrackedAlerts;
 	const params =
 		path === '/receipt' ? receiptFrameParams(url.searchParams, clock) : url.searchParams;
 	const parsed = parseFrameState(params, clock);
@@ -73,9 +79,8 @@ export function frameControlsState(url: URL, clock: FrameClock, errorPage = fals
 		period,
 		mode,
 		showRail,
-		// The map explains each mode itself: Record names what its layer draws. A second line
-		// would push the legend down.
-		showViewHint: showRail && !recordOnly && !liveOnly && !map,
+		// The map explains each mode itself, and the Period card below already explains Record.
+		showViewHint: showRail && !recordOnly && !liveOnly && !map && mode === 'live',
 		recordOnly,
 		liveOnly,
 		detail: line || stop,

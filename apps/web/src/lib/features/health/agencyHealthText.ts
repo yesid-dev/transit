@@ -16,7 +16,12 @@ import {
 	recordPercent,
 	recordRatio,
 } from '#lib/site/presenter.ts';
-import { publishedAlertEffect, unstatedEffect } from '../alerts/alertCards.ts';
+import {
+	groupAlertCards,
+	publishedAlertEffect,
+	recordAlertCards,
+	unstatedEffect,
+} from '../alerts/alertCards.ts';
 import { feedLabels, networkRows } from '../network/networkRecordText.ts';
 import { healthReason } from '../record/dataHealthText.ts';
 import { recordState, recordStateFor, type RecordState } from '../record/recordStates.ts';
@@ -49,14 +54,14 @@ export function stopEventCoverage(answer: MeasureAnswer, locale: Locale) {
 		value: recordPercent(share, locale),
 		sentence: choose(
 			locale,
-			'of scheduled stop events have a reading.',
+			'of scheduled stop arrivals have a reading.',
 			'des passages prévus aux arrêts ont un relevé.',
 		),
 		counted:
 			scheduled != null && observed != null
 				? choose(
 						locale,
-						`${tally(observed, locale)} of ${tally(scheduled, locale)} scheduled stop events, ${days}`,
+						`${tally(observed, locale)} of ${tally(scheduled, locale)} scheduled stop arrivals, ${days}`,
 						`${tally(observed, locale)} passages prévus aux arrêts sur ${tally(scheduled, locale)}, ${days}`,
 					)
 				: days,
@@ -119,6 +124,7 @@ function accessibilityRow(
 
 function alertRows(
 	effects: EngineResult<RecordSeries> | null,
+	messages: EngineResult<RecordMeasure> | null | undefined,
 	agency: AgencyName,
 	locale: Locale,
 ): HealthRow[] {
@@ -128,25 +134,47 @@ function alertRows(
 	// One row says it once: the effects of alerts Transit does not collect are not tracked either.
 	if (!effects)
 		return [{ ...alerts, state: 'alerts_not_tracked', note: alertsNotCollected(agency, locale) }];
+	const detailAnswer = answerOf(messages ?? null);
 	const answer = answerOf(effects);
-	if (!answer)
+	if (!answer && !detailAnswer)
 		return [
 			{ ...alerts, state: 'unavailable', note: null },
 			{ ...effect, state: 'unavailable', note: null },
 		];
-	if (answer.state === 'not_measured')
+	if ((detailAnswer ?? answer)?.state === 'not_measured')
 		return [
 			{ ...alerts, state: 'not_measured', note: null },
 			{ ...effect, state: 'not_measured', note: null },
 		];
 	let total = 0;
 	let stated = 0;
-	for (const cell of answer.cells) {
-		const count = cell.value.alerts ?? 0;
-		total += count;
-		const key = typeof cell.key.effect === 'string' ? cell.key.effect : null;
-		const published = publishedAlertEffect(key);
-		if (published && published !== unstatedEffect) stated += count;
+	// Match Service alerts and Daily report: group identical wording and active periods across lines
+	// when the window carries alert messages (<= 7 days), and fall back to the per-effect series on
+	// longer windows where neither screen loads message bodies.
+	if (detailAnswer?.state === 'measured' && detailAnswer.evidence.alert_messages?.length) {
+		const raw = recordAlertCards(detailAnswer.evidence.alert_messages);
+		const grouped = groupAlertCards(raw);
+		const statedIds = new Set(
+			raw.filter((card) => card.effect && card.effect !== unstatedEffect).map((card) => card.id),
+		);
+		total = grouped.length;
+		stated = grouped.filter((card) => card.ids.some((id) => statedIds.has(id))).length;
+	} else if (detailAnswer?.state === 'measured' && detailAnswer.value.alerts === 0) {
+		total = 0;
+		stated = 0;
+	} else if (answer) {
+		for (const cell of answer.cells) {
+			const count = cell.value.alerts ?? 0;
+			total += count;
+			const key = typeof cell.key.effect === 'string' ? cell.key.effect : null;
+			const published = publishedAlertEffect(key);
+			if (published && published !== unstatedEffect) stated += count;
+		}
+	} else {
+		return [
+			{ ...alerts, state: 'unavailable', note: null },
+			{ ...effect, state: 'unavailable', note: null },
+		];
 	}
 	const alertCount = (value: number) =>
 		t(
@@ -217,17 +245,19 @@ export function publishingRows(
 	{
 		accessibility,
 		alertEffects,
+		alertMessages,
 		completeness,
 	}: {
 		accessibility: EngineResult<RecordMeasure>;
 		alertEffects: EngineResult<RecordSeries> | null;
+		alertMessages?: EngineResult<RecordMeasure> | null;
 		completeness: EngineResult<ScorecardAnswer>;
 	},
 	agency: AgencyName,
 	locale: Locale,
 ): HealthRow[] {
 	return [
-		...alertRows(alertEffects, agency, locale),
+		...alertRows(alertEffects, alertMessages, agency, locale),
 		accessibilityRow('stops', accessibility, locale),
 		accessibilityRow('trips', accessibility, locale),
 		occupancyRow(completeness, locale),

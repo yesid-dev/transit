@@ -211,8 +211,8 @@
 		sentence={share === null
 			? rateStateText(answer, locale)
 			: t(
-					'of observed stop events on this line were on time.',
-					'des passages observés aux arrêts de cette ligne étaient à l’heure.',
+					'of recorded stop arrivals on this line were on time.',
+					'des passages enregistrés aux arrêts de cette ligne étaient à l’heure.',
 				)}
 		state={chartState(answer.state)}
 		time={stamp}
@@ -394,7 +394,7 @@
 			</RecordCard>
 
 			<div id="daily" class="grid min-w-0">
-				<RecordCard interactive title={title('daily')} {stamp} reserve="trend" stampRule>
+				<RecordCard interactive title={title('daily')} {stamp} stampRule>
 					<div
 						class="reading-body"
 						style:--slot-wide={chartSlots.trend?.wide}
@@ -454,7 +454,7 @@
 	</div>
 
 	<div id="hourly" data-slot="line-hour-grid" class="min-w-0">
-		<RecordCard interactive title={title('hourly')} {stamp} reserve="grid">
+		<RecordCard interactive title={title('hourly')} {stamp}>
 			{@render directionControl()}
 			<div
 				class="reading-body"
@@ -498,11 +498,11 @@
 {/if}
 
 <style>
-	.reading-body {
+	.reading-body:has(:global([data-record-pending])) {
 		min-block-size: var(--slot-wide);
 	}
 	@media (width < 40rem) {
-		.reading-body {
+		.reading-body:has(:global([data-record-pending])) {
 			min-block-size: var(--slot-phone);
 		}
 	}

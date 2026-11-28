@@ -97,7 +97,7 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const lines = page.getByRole('region', {
-			name: fr ? 'Lignes et trajets effectués' : 'Lines and trips it ran',
+			name: fr ? 'Lignes desservies' : 'Lines served',
 		});
 		const links = lines.getByRole('link');
 		await expect(links).toHaveCount(3);
@@ -277,7 +277,7 @@ for (const width of [390, 1440]) {
 			).toContainText(fr ? '12,5' : '12.5');
 			await expect(
 				main.getByRole('region', {
-					name: fr ? 'Lignes et trajets effectués' : 'Lines and trips it ran',
+					name: fr ? 'Lignes desservies' : 'Lines served',
 				}),
 			).toContainText('12');
 			await expect(
@@ -290,7 +290,7 @@ for (const width of [390, 1440]) {
 					: 'times it stopped reporting, about 0.2 an hour',
 			);
 			const completion = main.getByRole('article', {
-				name: fr ? 'Trajets non terminés' : 'Trips it did not finish',
+				name: fr ? 'Trajets non terminés' : 'Unfinished trips',
 			});
 			await expect(completion).toContainText(fr ? 'Non suivi' : 'Not tracked');
 			await expect(completion).toContainText(
@@ -300,7 +300,7 @@ for (const width of [390, 1440]) {
 			);
 			await expect(completion).not.toContainText(fr ? 'sur 20 trajets' : 'of 20 trips');
 			const timing = main.getByRole('article', {
-				name: fr ? 'Son bilan de ponctualité' : 'Its on-time record',
+				name: fr ? 'Bilan de ponctualité' : 'On-time record',
 			});
 			await expect(timing).toContainText(
 				fr ? 'les lignes et les heures qu’on lui confie' : 'the lines and hours it is assigned to',
@@ -334,7 +334,7 @@ for (const width of [390, 1440]) {
 				.click();
 			const href = await page
 				.getByRole('dialog')
-				.getByRole('link', { name: fr ? 'Son bilan de ponctualité' : 'Its on-time record' })
+				.getByRole('link', { name: fr ? 'Bilan de ponctualité' : 'On-time record' })
 				.getAttribute('href');
 
 			const csv = await request.get(href!);
@@ -474,7 +474,7 @@ test('the fleet names untracked data and vehicle sections stream independently',
 	await expect(page.getByRole('article', { name: 'Days and hours in service' })).toContainText(
 		'12.5',
 	);
-	const lines = page.getByRole('region', { name: 'Lines and trips it ran' });
+	const lines = page.getByRole('region', { name: 'Lines served' });
 	await expect(page.locator('[data-slot="record-patience"]')).toContainText(
 		'Still calculating the record',
 	);
@@ -498,9 +498,7 @@ test('vehicle Record renders six cards before any reading completes', async ({ p
 		const main = page.getByRole('main');
 		await expect(main.locator('[data-slot="record-card"]')).toHaveCount(6);
 		await expect(
-			main
-				.getByRole('article', { name: 'Its on-time record' })
-				.locator('[data-waiting-shape="bands"]'),
+			main.getByRole('article', { name: 'On-time record' }).locator('[data-waiting-shape="bands"]'),
 		).toBeVisible();
 	} finally {
 		await request.post(endpoint('release'));

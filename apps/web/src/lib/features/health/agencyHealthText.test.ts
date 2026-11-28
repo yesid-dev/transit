@@ -188,6 +188,65 @@ describe('what the agency publishes', () => {
 		expect(rows.every(({ state }) => state === 'unavailable')).toBe(true);
 		expect(publishStateText('unavailable', 'fr')).toBe('Indisponible');
 	});
+
+	it('groups identical multi-line notices from alert messages to match Service alerts', () => {
+		const period = { start: '2026-11-24T17:00:00Z', end: '2026-11-28T04:59:00Z' };
+		const shared = {
+			source: 'stm',
+			version: '1',
+			stops: ['52997'],
+			effect: null,
+			header: { en: 'Your stop', fr: 'Votre arrêt' },
+			description: { en: 'Stop closed due to roadworks.', fr: 'Arrêt fermé en raison de travaux.' },
+			periods: [period],
+		};
+		const alertMessages = answer({
+			state: 'measured',
+			state_text: { en: '', fr: '' },
+			value: { alerts: 3, alert_versions: 4 },
+			coverage_note: null,
+			evidence: {
+				...evidence,
+				alert_messages: [
+					{ ...shared, id: 'a-34', routes: ['34'] },
+					{ ...shared, id: 'a-125', routes: ['125'] },
+					{
+						...shared,
+						id: 'a-80',
+						routes: ['80'],
+						effect: 'DETOUR',
+						description: { en: 'Detour on Parc.', fr: 'Détour sur du Parc.' },
+					},
+				],
+			},
+		} as unknown as RecordMeasure);
+		const rows = publishingRows(
+			{
+				accessibility: accessibility({
+					trips_accessible: 10,
+					trips_not_accessible: 0,
+					trips_no_information: 0,
+					trips_not_published: 0,
+					stops_accessible: 5,
+					stops_not_accessible: 0,
+					stops_no_information: 0,
+					stops_not_published: 0,
+				}),
+				alertEffects: effects([
+					[null, 2],
+					['DETOUR', 1],
+				]),
+				alertMessages,
+				completeness: completeness(0.99),
+			},
+			{ name: 'STM', frenchOf: 'de la STM' },
+			'en',
+		);
+		expect(readable(rows, 'en').slice(0, 2)).toEqual([
+			['Service alerts', 'Published', '2 notices'],
+			['Effect of each notice', 'Published', '1 of 2 notices'],
+		]);
+	});
 });
 
 describe('the alerts sentence', () => {
@@ -261,8 +320,8 @@ describe('stop events with a reading', () => {
 		[
 			'en',
 			'65.1%',
-			'of scheduled stop events have a reading.',
-			'2,619,857 of 4,025,675 scheduled stop events, 7 days',
+			'of scheduled stop arrivals have a reading.',
+			'2,619,857 of 4,025,675 scheduled stop arrivals, 7 days',
 		],
 		[
 			'fr',

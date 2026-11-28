@@ -157,7 +157,7 @@ describe('lines that cannot be judged', () => {
 	it('never leaves a bare Unknown without its reason', () => {
 		const unknown = lineExclusion({ state: 'unknown', evidence: { counts: { classified: 0 } } });
 		expect(unknown.state).toBe('unknown');
-		expect(unknown.text?.en).toBe('No stop event of this line had a reading on these dates.');
+		expect(unknown.text?.en).toBe('No stop arrival on this line had a reading on these dates.');
 		expect(
 			lineExclusion({ state: 'too_few_to_judge', evidence: { counts: { classified: 40 } } }),
 		).toEqual({ state: 'too_few_to_judge', text: null });

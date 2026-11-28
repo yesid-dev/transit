@@ -75,9 +75,9 @@ it('keeps a measured zero count and shows trips only when reported', () => {
 		rankingCountLines({ ...row, sample: 21.47, counts: { reporting_gaps: 155 } }, reporting, 'fr'),
 	).toEqual(['155 interruptions en 21,5 heures']);
 	expect(rankingValue(721.9, reporting, 'en')).toBe('7.2');
-	expect(rankingCountLines(row, 'on_time', 'fr')).toEqual(['100 passages observés aux arrêts']);
+	expect(rankingCountLines(row, 'on_time', 'fr')).toEqual(['100 passages enregistrés aux arrêts']);
 	expect(rankingCountLines({ ...row, counts: { observed_trips: 1 } }, 'on_time', 'fr')).toEqual([
-		'100 passages observés aux arrêts',
+		'100 passages enregistrés aux arrêts',
 		'1 trajet',
 	]);
 });
@@ -185,10 +185,10 @@ it('names a low-coverage exclusion with its observed share, as the engine report
 		reason_text: { en: 'Low coverage', fr: 'Faible couverture' },
 	};
 	expect(exclusionText(excluded, 'on_time', 'en')).toBe(
-		'Low coverage: 33.1% of scheduled stop events observed',
+		'Low coverage: 33.1% of scheduled stop arrivals recorded',
 	);
 	expect(exclusionText(excluded, 'on_time', 'fr').replace(/\s/g, ' ')).toBe(
-		'Faible couverture : 33,1 % des passages prévus observés',
+		'Faible couverture : 33,1 % des passages prévus enregistrés',
 	);
 	const trips = { ...excluded, share_observed: undefined, share_eligible: 0.72 };
 	expect(exclusionText(trips, 'cancelled_trips', 'en')).toBe(

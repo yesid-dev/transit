@@ -10,7 +10,7 @@ export const alertSections = {
 	stop: { en: 'By stop', fr: 'Par arrêt' },
 	effect: { en: 'By effect', fr: 'Par effet' },
 	cause: { en: 'By cause', fr: 'Par cause' },
-	messages: { en: 'Agency notices', fr: 'Avis de la société de transport' },
+	messages: { en: 'Service alerts', fr: 'Avis de service' },
 };
 
 export const alertMetrics = {
@@ -21,8 +21,8 @@ export const alertMetrics = {
 const metricKeys = Object.keys(alertMetrics) as (keyof typeof alertMetrics)[];
 
 export const alertDetailsLimit = {
-	en: 'Agency notices are listed for 7 days or fewer. Pick a shorter period.',
-	fr: 'Les avis de la société de transport sont affichés pour 7 jours ou moins. Choisissez une période plus courte.',
+	en: 'Service alerts are listed for 7 days or fewer. Pick a shorter period.',
+	fr: 'Les avis de service sont affichés pour 7 jours ou moins. Choisissez une période plus courte.',
 };
 
 export { alertDetailsAllowed } from './alertDetailsAllowed.ts';

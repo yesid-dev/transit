@@ -223,6 +223,7 @@
 					columns={[{ key: 'late', header: t.late, numeric: true, cell: late }]}
 					value="late"
 					rowAlign="middle"
+					noWrapNumeric
 					phone={{}}
 				/>
 			{/if}

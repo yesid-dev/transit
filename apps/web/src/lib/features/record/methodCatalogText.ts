@@ -81,8 +81,8 @@ const featured = [
 		id: 'delay-percentiles',
 		name: ['Median delay and the latest 1 in 10', 'Retard médian et dixième le plus en retard'],
 		summary: [
-			'About half of observed stop events were at or below the median delay. The latest 1 in 10 is the delay that about nine in ten stayed at or below.',
-			'Environ la moitié des passages observés avaient un retard inférieur ou égal à la médiane. Le dixième le plus en retard est le retard que neuf passages sur dix environ n’ont pas dépassé.',
+			'About half of recorded stop arrivals were at or below the median delay. The latest 1 in 10 is the delay that about nine in ten stayed at or below.',
+			'Environ la moitié des passages enregistrés avaient un retard inférieur ou égal à la médiane. Le dixième le plus en retard est le retard que neuf passages sur dix environ n’ont pas dépassé.',
 		],
 		has: (id: string) => id === 'median_delay' || id === 'p90_delay',
 	},

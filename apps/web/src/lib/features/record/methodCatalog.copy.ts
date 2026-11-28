@@ -45,11 +45,11 @@ export const methodCopy = {
 				ordering:
 					'Worst-first share rankings sort by the cautious end of the 95% Wilson interval (the upper end for on-time and delivered shares, the lower end for early, late, cancelled, missing, bunched and full shares), while displaying the exact observed share on the row. Ties break by larger sample size, then entity ID. Excess wait, reporting-gap rates and total vehicle-minutes lost show no uncertainty range.',
 				caveat:
-					'Stop events on the same trip, intervals from the same vehicle and trips on the same vehicle can be correlated; treat the 95% Wilson interval as a guide rather than an exact probability guarantee.',
+					'Stop arrivals on the same trip, intervals from the same vehicle and trips on the same vehicle can be correlated; treat the 95% Wilson interval as a guide rather than an exact probability guarantee.',
 			},
 		},
-		statesTitle: 'Six states, each said in words',
-		statesNote: 'A gap is shown as a gap. An absent value is never a reassuring zero.',
+		statesTitle: 'What the status labels mean',
+		statesNote: 'Missing data is labelled as missing, never shown as zero.',
 		states: {
 			no_live_data:
 				'The agency publishes no real-time feed for this line, such as the métro. It is shown with its schedule and left out of every rate.',
@@ -64,13 +64,13 @@ export const methodCopy = {
 			not_tracked:
 				'The feed gives its vehicles no stable number, so a vehicle cannot be followed from one day to the next.',
 		},
-		limitsTitle: 'What this record is not',
+		limitsTitle: 'Scope and limits',
 		recordLimits: [
-			'Not a trip planner: it does not tell you which line to take.',
-			'Not a measure of lines without live data, such as the métro or the O-Train: their agencies publish no real-time data for them.',
-			'Not a count of riders, and not a cause of delay: neither is in the feeds.',
-			'Observed times are the agency’s own predictions and positions, checked against each other, not a stopwatch at the stop.',
-			'Not a comparison between cities: each agency’s feed gives its times in its own way, so the figures of two cities are not directly comparable. Each screen says how its times were observed.',
+			'This site tracks past and current service; it does not plan trips or recommend routes.',
+			'Lines without live feeds, such as the métro or the O-Train, are left out of every rate because their agencies publish no real-time data for them.',
+			'Public feeds do not include passenger counts or causes of delay, so neither appears here.',
+			'Recorded times come from the agency’s own predictions and vehicle positions checked against each other, not from timing at the stop.',
+			'Figures from two cities cannot be compared directly because each agency formats and updates its feed differently. Each screen states how its times were measured.',
 		],
 		about: {
 			title: 'About Transit',
@@ -134,9 +134,8 @@ export const methodCopy = {
 					'Les passages aux arrêts d’un même trajet, les intervalles d’un même véhicule et les trajets d’un même véhicule peuvent être dépendants; cet intervalle à 95\u00a0% sert de guide plutôt que de garantie exacte.',
 			},
 		},
-		statesTitle: 'Six états, chacun nommé',
-		statesNote:
-			'Une lacune reste visible. Une valeur absente n’est jamais remplacée par un zéro rassurant.',
+		statesTitle: 'Signification des états',
+		statesNote: 'Les données manquantes sont indiquées comme telles, jamais remplacées par zéro.',
 		states: {
 			no_live_data:
 				'La société de transport ne publie aucun flux en temps réel pour cette ligne, comme le métro. Son horaire est affiché et elle est exclue de tous les taux.',
@@ -151,13 +150,13 @@ export const methodCopy = {
 			not_tracked:
 				'Le flux ne fournit aucun identifiant stable pour suivre un véhicule d’un jour à l’autre.',
 		},
-		limitsTitle: 'Ce que ce bilan n’est pas',
+		limitsTitle: 'Portée et limites',
 		recordLimits: [
-			'Pas un planificateur de trajets\u00a0: il n’indique pas quelle ligne prendre.',
-			'Pas une mesure des lignes sans données en direct, comme le métro ou l’O-Train\u00a0: leurs sociétés de transport ne publient aucune donnée en temps réel pour ces lignes.',
-			'Pas un décompte des usagers, ni une cause du retard\u00a0: ces données ne figurent pas dans les flux.',
-			'Les heures observées proviennent des prévisions et des positions de la société de transport, comparées entre elles, sans chronométrage à l’arrêt.',
-			'Pas une comparaison entre villes\u00a0: le flux de chaque société de transport donne ses heures à sa manière, donc les chiffres de deux villes ne sont pas directement comparables. Chaque écran indique comment ses heures ont été observées.',
+			'Ce site suit le service passé et en direct; il ne planifie pas d’itinéraires et ne recommande pas de lignes.',
+			'Les lignes sans flux en temps réel, comme le métro ou l’O-Train, sont exclues de tous les taux parce que leur société de transport ne publie aucune donnée en direct pour elles.',
+			'Les flux publics ne contiennent ni le nombre d’usagers ni la cause des retards; ces renseignements ne figurent donc pas ici.',
+			'Les heures enregistrées proviennent des prévisions et des positions de la société de transport, comparées entre elles, sans chronométrage à l’arrêt.',
+			'Les chiffres de deux villes ne se comparent pas directement, car chaque société de transport publie et met à jour ses flux à sa manière. Chaque écran précise comment les heures sont mesurées.',
 		],
 		about: {
 			title: 'À propos de Transit',

@@ -103,7 +103,7 @@
 					label: name.name ?? name.label,
 					plate: { code: name.number ?? line },
 					href: vehicleHref(`/lines/${encodeURIComponent(line)}`, url, locale, data.city),
-					detail: share ? t(`${share} of its trips`, `${share} de ses trajets`) : undefined,
+					detail: share ? t(`${share} of trips`, `${share} des trajets`) : undefined,
 					count: count != null ? tally(count, locale) : null,
 					state: recordStateFor(cell.state),
 				},
@@ -124,12 +124,7 @@
 		data.sections.map(({ section, answer }) => ({
 			section,
 			answer,
-			title:
-				section === 'lines'
-					? t('Lines and trips it ran', 'Lignes et trajets effectués')
-					: section === 'completion'
-						? t('Trips it did not finish', 'Trajets non terminés')
-						: sectionTitles[section][locale === 'fr' ? 1 : 0],
+			title: sectionTitles[section][locale === 'fr' ? 1 : 0],
 			citeTitle: sectionTitles[section][locale === 'fr' ? 1 : 0],
 			links: recordSectionLinks(url, section),
 		})),
@@ -551,13 +546,7 @@
 		<DashboardGrid gutter={false} minTile="19rem" class="items-start">
 			{#each records.filter(({ section }) => section === 'reporting' || section === 'completion') as { section, title: heading, answer } (section)}
 				<div id={section} class="grid min-w-0">
-					<RecordCard
-						title={heading}
-						class="lg:min-h-[18.75rem]"
-						stamp={time}
-						stampRule
-						reserve={serviceFacts}
-					>
+					<RecordCard title={heading} stamp={time} stampRule>
 						{#await answer}<RecordPending {locale} {answer} shape={serviceFacts} />
 						{:then result}
 							{#if result.kind === 'answer' && 'value' in result.answer}
@@ -617,7 +606,7 @@
 		</DashboardGrid>
 		{#if timing}
 			<div id="punctuality">
-				<RecordCard title={timing.title} class="lg:min-h-80" stamp={time} stampRule reserve="bands">
+				<RecordCard title={timing.title} stamp={time} stampRule>
 					<DashboardGrid gutter={false} minTile="18rem">
 						<p class="font-semibold">{assignmentCaution[locale]}</p>
 						<div class="grid min-w-0 gap-2">
@@ -636,8 +625,8 @@
 												>{recordPercent(reading.value.vehicle_on_time, locale)}</strong
 											>
 											{t(
-												'of observed stop events were on time.',
-												'des passages observés étaient à l’heure.',
+												'of recorded stop arrivals were on time.',
+												'des passages enregistrés étaient à l’heure.',
 											)}
 										</p>
 										{@const chart = punctualityBands(reading)}

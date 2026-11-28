@@ -63,8 +63,8 @@ function renderLive(
 }
 
 it.each([
-	['en', 'Notice publications'],
-	['fr', 'Publications d’avis'],
+	['en', 'Service alerts'],
+	['fr', 'Avis de service'],
 ] as const)('labels the source publication count in %s', (locale, label) => {
 	renderLive(locale, { non_responding: null }, ['original', 'reissue', 'future']);
 	const row = within(screen.getByText(label).parentElement!);

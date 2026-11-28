@@ -32,7 +32,7 @@ describe('record charts', () => {
 			'+5:01 to +5:59',
 			'15 min late or more',
 			'24.0%',
-			'Stop events',
+			'Stop arrivals',
 		],
 		[
 			'fr',
@@ -80,7 +80,7 @@ describe('record charts', () => {
 		expect(bandChart(cell({}), 'Bands', 'en').props.bands[2]).toMatchObject({
 			share: 0.166,
 			valueLabel: '16.6%',
-			detail: '10 stop events',
+			detail: '10 stop arrivals',
 		});
 		expect(bandChart(cell({}), 'Bands', 'fr').props.bands[2]?.detail).toBe(
 			'10 passages aux arrêts',
@@ -129,10 +129,10 @@ describe('record charts', () => {
 			'23h',
 			'00h',
 		]);
-		expect(grid.stateLabels.few).toBe('few: too few to judge, under 30 stop events');
+		expect(grid.stateLabels.few).toBe('few: too few to judge, under 30 stop arrivals');
 		expect(grid.rows[0]?.cells[1]).toMatchObject({
 			text: '17',
-			name: 'Monday, 06:00: 16.6% late, 58 stop events',
+			name: 'Monday, 06:00: 16.6% late, 58 stop arrivals',
 		});
 		expect(grid.rows[0]?.cells[2]).toMatchObject({ text: 'few', level: null, state: 'few' });
 		expect(grid.rows[0]?.cells[3]).toMatchObject({
@@ -226,7 +226,7 @@ describe('record charts', () => {
 	it.each([
 		[
 			'en',
-			'Too few stop events per day to draw this stop’s line on some days (minimum 30 per day).',
+			'Too few stop arrivals per day to draw this stop’s line on some days (minimum 30 per day).',
 		],
 		[
 			'fr',

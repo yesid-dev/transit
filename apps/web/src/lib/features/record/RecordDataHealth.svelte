@@ -91,6 +91,7 @@
 			coverage: Result<MeasureAnswer>;
 			accessibility: Result<RecordMeasure>;
 			alertEffects: Result<RecordSeries> | null;
+			alertMessages?: Result<RecordMeasure> | null;
 			deliveryDays: Result<RecordSeries>;
 			scorecard: Record<AgencyScorecardMeasure, Result<ScorecardAnswer>>;
 			health: Result<DataHealthAnswer>;
@@ -264,48 +265,53 @@
 	sample: (answer: ScorecardAnswer) => string | null,
 	notMeasured?: (answer: ScorecardAnswer) => string | null,
 )}
-	<section {id} class="min-w-0">
-		<RecordCard title={cardTitle} {stamp} stampRule reserve={shape}>
-			{#await result}
+	{#snippet card(settled?: EngineResult<ScorecardAnswer>)}
+		<RecordCard title={cardTitle} {stamp} stampRule reserve={settled ? undefined : shape}>
+			{#if !settled}
 				{#key result}<RecordPending {locale} answer={result} {shape} />{/key}
-			{:then settled}
-				{#if settled.kind === 'answer'}
-					{@const answer = settled.answer}
-					{@const reason = notMeasured?.(answer) ?? null}
-					{@const only = scorecardState(answer, id)}
-					{#if reason}
-						<!-- The whole card is one state: the state and its reason, once. -->
-						<p><StateMark state="not_measured" {locale} /></p>
-						<p class="mt-2 text-small text-muted-foreground">{reason}</p>
-					{:else if only}
-						<p><StateMark state={only} {locale} /></p>
-						{#if only === 'too_few_to_judge'}
-							<p class="mt-2 text-small text-muted-foreground">
-								{tooFewNote(answer, id, sample(answer) ?? scorecardDays(answer, locale))}
-							</p>
-						{/if}
-					{:else}
-						{@render body(answer)}
-						{@const note = minimumNote(answer, id, locale)}
-						{#if note}<p class="mt-2 text-small text-muted-foreground">{note}</p>{/if}
+			{:else if settled.kind === 'answer'}
+				{@const answer = settled.answer}
+				{@const reason = notMeasured?.(answer) ?? null}
+				{@const only = scorecardState(answer, id)}
+				{#if reason}
+					<!-- The whole card is one state: the state and its reason, once. -->
+					<p><StateMark state="not_measured" {locale} /></p>
+					<p class="mt-2 text-small text-muted-foreground">{reason}</p>
+				{:else if only}
+					<p><StateMark state={only} {locale} /></p>
+					{#if only === 'too_few_to_judge'}
+						<p class="mt-2 text-small text-muted-foreground">
+							{tooFewNote(answer, id, sample(answer) ?? scorecardDays(answer, locale))}
+						</p>
 					{/if}
-					{#if settled.lastGood}<p class="mt-2">{lastGoodNote[locale]}</p>{/if}
-				{:else}{@render unavailable(settled)}{/if}
-			{/await}
+				{:else}
+					{@render body(answer)}
+					{@const note = minimumNote(answer, id, locale)}
+					{#if note}<p class="mt-2 text-small text-muted-foreground">{note}</p>{/if}
+				{/if}
+				{#if settled.lastGood}<p class="mt-2">{lastGoodNote[locale]}</p>{/if}
+			{:else}{@render unavailable(settled)}{/if}
 			{#snippet evidence()}
-				{#await result then settled}
-					{#if settled.kind === 'answer'}
+				{#await result then resolved}
+					{#if resolved.kind === 'answer'}
 						<RecordEvidenceLine
 							{locale}
-							evidence={settled.answer.evidence}
-							sample={notMeasured?.(settled.answer)
-								? scorecardDays(settled.answer, locale)
-								: sample(settled.answer)}
+							evidence={resolved.answer.evidence}
+							sample={notMeasured?.(resolved.answer)
+								? scorecardDays(resolved.answer, locale)
+								: sample(resolved.answer)}
 						/>
 					{/if}
 				{/await}
 			{/snippet}
 		</RecordCard>
+	{/snippet}
+	<section {id} class="min-w-0">
+		{#await result}
+			{@render card()}
+		{:then settled}
+			{@render card(settled)}
+		{/await}
 	</section>
 {/snippet}
 
@@ -480,6 +486,7 @@
 					[
 						record.accessibility,
 						record.alertEffects ?? null,
+						record.alertMessages ?? null,
 						record.scorecard.vehicle_field_completeness,
 					],
 					(readings) => readings,
@@ -494,9 +501,9 @@
 					>
 						{#await publishing}
 							<RecordPending {locale} shape={publishingShape} />
-						{:then [accessibility, alertEffects, completeness]}
+						{:then [accessibility, alertEffects, alertMessages, completeness]}
 							{@const rows = publishingRows(
-								{ accessibility, alertEffects, completeness },
+								{ accessibility, alertEffects, alertMessages, completeness },
 								agency,
 								locale,
 							)}
@@ -551,7 +558,7 @@
 						(answer) => vehicleReportRows(answer, locale).sample,
 					)}
 				</DashboardGrid>
-				<DashboardGrid gutter={false} minTile="24rem">
+				<DashboardGrid gutter={false} minTile="24rem" class="items-start">
 					{@render scorecardCard(
 						'prediction_error',
 						{ shape: 'table', rows: 3 },
@@ -714,7 +721,7 @@
 							key: 'counted',
 							label: term.counted,
 							text: t(
-								`Every stop event in ${agencyLabel}’s timetable for these dates, and its live feeds.`,
+								`Every stop arrival in ${agencyLabel}’s timetable for these dates, and its live feeds.`,
 								`Chaque passage prévu à l’horaire ${french.of} à ces dates, et ses flux en direct.`,
 							),
 						},

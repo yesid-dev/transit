@@ -28,10 +28,10 @@ export const assignmentCaution = {
 export const sectionTitles = {
 	fleet: ['Days in service by vehicle', 'Jours en service par véhicule'],
 	service: ['Days and hours in service', 'Jours et heures en service'],
-	lines: ['Lines and trips it ran', 'Lignes et trajets effectués'],
+	lines: ['Lines served', 'Lignes desservies'],
 	reporting: ['Stopped reporting', 'Interruptions de signalement'],
-	completion: ['Trips it did not finish', 'Trajets non terminés'],
-	punctuality: ['Its on-time record', 'Son bilan de ponctualité'],
+	completion: ['Unfinished trips', 'Trajets non terminés'],
+	punctuality: ['On-time record', 'Bilan de ponctualité'],
 } as const;
 
 export function vehicleStatus(vehicle: Pick<Vehicle, 'status'>, locale: Locale) {

@@ -153,8 +153,8 @@
 	const hourly = $derived(t('By hour and weekday', 'Par heure et jour de la semaine'));
 	const sentence = $derived(
 		t(
-			'of observed stop events here were on time.',
-			'des passages observés à cet arrêt étaient à l’heure.',
+			'of recorded stop arrivals here were on time.',
+			'des passages enregistrés à cet arrêt étaient à l’heure.',
 		),
 	);
 	let bandsTable = $state(false);
@@ -289,7 +289,7 @@
 			result.answer.state === 'measured'}
 		title={bands}
 		{stamp}
-		reserve="bands"
+		reserve={result ? undefined : 'bands'}
 	>
 		{#if result === undefined}
 			{@render pending(answers.punctuality, 'bands')}
@@ -313,8 +313,8 @@
 				<p>
 					<StateMark state="not_measured" {locale} />
 					{t(
-						'Too few stop events were observed here to split them into early, on time and late.',
-						'Trop peu de passages ont été observés ici pour les répartir entre en avance, à l’heure et en retard.',
+						'Too few stop arrivals were recorded here to split them into early, on time and late.',
+						'Trop peu de passages ont été enregistrés ici pour les répartir entre en avance, à l’heure et en retard.',
 					)}
 				</p>
 			{:else}{@render gap(result, 'bands')}{/if}
@@ -402,7 +402,7 @@
 			{:then result}
 				{@render bandsCard(result)}
 			{/await}
-			<RecordCard title={titleFor('delay')} {stamp} reserve="facts">
+			<RecordCard title={titleFor('delay')} {stamp}>
 				{#snippet evidence()}
 					{@render evidenceFooter('delay')}
 				{/snippet}
@@ -489,7 +489,7 @@
 						)}
 					title={titleFor('byLine')}
 					{stamp}
-					reserve={byLineShape}
+					reserve={result ? undefined : byLineShape}
 				>
 					{#snippet evidence()}
 						{@render evidenceFooter('byLine')}
@@ -521,13 +521,20 @@
 			<span id="stop-rel-weekday" class="absolute" aria-hidden="true"></span>
 			<span id="stop-rel-time" class="absolute" aria-hidden="true"></span>
 			{#snippet hourlyCard(result?: EngineResult<EngineAnswer>)}
+				{@const hasGrid =
+					!result ||
+					(result.kind === 'answer' &&
+						'cells' in result.answer &&
+						result.answer.cells.length > 0 &&
+						!hourGridTooFew(result.answer))}
 				<RecordCard
+					class={hasGrid ? undefined : 'stop-card-empty'}
 					interactive={result?.kind === 'answer' &&
 						'cells' in result.answer &&
 						result.answer.cells.length > 0}
 					title={hourly}
 					{stamp}
-					reserve="grid"
+					reserve={hasGrid ? 'grid' : undefined}
 				>
 					{#if result === undefined}
 						{@render pending(record.grid, 'grid')}
@@ -568,7 +575,7 @@
 						result.answer.cells.length > 0}
 					title={titleFor('waiting')}
 					{stamp}
-					reserve={waitingShape}
+					reserve={result ? undefined : waitingShape}
 				>
 					{#snippet evidence()}
 						{@render evidenceFooter('waiting')}
@@ -602,13 +609,17 @@
 			<div id="daily" class="min-w-0">
 				<span id="stop-rel-trend" class="absolute" aria-hidden="true"></span>
 				{#snippet dailyCard(result?: EngineResult<EngineAnswer>)}
+					{@const hasDaily =
+						!result ||
+						(result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length > 0)}
 					<RecordCard
+						class={hasDaily ? undefined : 'stop-card-empty'}
 						interactive={result?.kind === 'answer' &&
 							'cells' in result.answer &&
 							result.answer.cells.length > 0}
 						title={titleFor('daily')}
 						{stamp}
-						reserve="trend"
+						reserve={result ? undefined : 'trend'}
 					>
 						{#if result === undefined}
 							{@render pending(answers.daily, 'trend')}
@@ -661,20 +672,28 @@
 		</div>
 
 		<div id="alerts">
-			<RecordCard title={titleFor('alerts')} {stamp} reserve={noticeShape}>
-				{#snippet evidence()}
-					{@render evidenceFooter('alerts')}
-				{/snippet}
-				{#await answers.alerts}
-					{@render pending(answers.alerts, noticeShape)}
-				{:then result}
-					{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+			{#snippet alertsCard(result?: EngineResult<EngineAnswer>)}
+				{@const notices =
+					result?.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'
+						? groupAlertCards(
+								recordAlertCards(result.answer.evidence.alert_messages).filter((notice) =>
+									notice.stops.includes(stop.id),
+								),
+							)
+						: []}
+				{@const hasNoticeList = !result || result.kind === 'busy' || notices.length > 0}
+				<RecordCard
+					class={hasNoticeList ? undefined : 'stop-card-empty'}
+					title={titleFor('alerts')}
+					{stamp}
+				>
+					{#snippet evidence()}
+						{@render evidenceFooter('alerts')}
+					{/snippet}
+					{#if result === undefined}
+						{@render pending(answers.alerts, noticeShape)}
+					{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
 						{@const count = result.answer.value.alerts}
-						{@const notices = groupAlertCards(
-							recordAlertCards(result.answer.evidence.alert_messages).filter((notice) =>
-								notice.stops.includes(stop.id),
-							),
-						)}
 						{#if count === 0}
 							<p>
 								{noPublishedNotices(
@@ -702,8 +721,13 @@
 							<StateMark state="unknown" {locale} />
 						{/if}
 					{:else}{@render gap(result, noticeShape)}{/if}
-				{/await}
-			</RecordCard>
+				</RecordCard>
+			{/snippet}
+			{#await answers.alerts}
+				{@render alertsCard()}
+			{:then result}
+				{@render alertsCard(result)}
+			{/await}
 		</div>
 	</RecordGroup>
 	<RecordGroup class="gap-[var(--space-card-gap)]">

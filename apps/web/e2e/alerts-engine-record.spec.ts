@@ -83,14 +83,12 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 
 	await answer.getByRole('button', { name: 'Citer', exact: true }).click();
 	await expect(page.getByRole('dialog')).toContainText(/v1.*recordFrom=2026-11-14.*#answer/);
-	await expect(page.getByRole('dialog')).toContainText(
-		/Avis de la société de transport.*#messages/,
-	);
+	await expect(page.getByRole('dialog')).toContainText(/Avis de service.*#messages/);
 	await expect(page.getByRole('dialog')).toContainText(/Avis\s*:\s*1\s707/);
 	await page.keyboard.press('Escape');
 	await answer.getByRole('button', { name: 'Télécharger' }).click();
 	for (const [name, section] of [
-		['Avis de la société de transport', 'messages'],
+		['Avis de service', 'messages'],
 		['Par heure', 'hour'],
 		['Jour par jour', 'day'],
 	]) {
@@ -190,7 +188,7 @@ test('Alerts Record shows the engine message limit and OC Transpo has no alert t
 		'1,707 notices were in effect at some point in these dates.',
 	);
 	await expect(page.locator('#messages')).toContainText(
-		'Agency notices are listed for 7 days or fewer. Pick a shorter period.',
+		'Service alerts are listed for 7 days or fewer. Pick a shorter period.',
 	);
 	expect((await request.get(`/alerts/record.csv?${long}&section=messages`)).status()).toBe(400);
 	await page.goto(`/alerts?${period.replace('provider=stm', 'provider=octranspo')}`);

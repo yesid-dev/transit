@@ -76,7 +76,9 @@ for (const locale of PUBLISHED_LOCALES) {
 			calls.nth(0).locator('[data-column="expected"]').getByRole('link'),
 		).toHaveAttribute('href', /\/departure\//);
 		await expect(
-			content.getByRole('heading', { name: fr ? 'Avis pour cet arrêt' : 'Notices for this stop' }),
+			content.getByRole('heading', {
+				name: fr ? 'Avis de service pour cet arrêt' : 'Service alerts for this stop',
+			}),
 		).toBeVisible();
 		const header = page.locator('header').filter({ has: page.locator('#stop-title') });
 		const originalTitle = await header.innerText();
@@ -270,7 +272,7 @@ test('Record shows the low coverage explanation once', async ({ page }) => {
 	await page.goto('/stop/S1?provider=stm&recordFrom=2026-10-24&recordTo=2026-10-24');
 	// One sentence, with the sample it was judged on.
 	await expect(
-		page.getByText(/^5 of 100 scheduled stop events were observed here on these dates\./u),
+		page.getByText(/^5 of 100 scheduled stop arrivals were recorded here on these dates\./u),
 	).toHaveCount(1);
 	await expect(page.getByRole('main')).not.toContainText('Not measured: too little observed');
 	await expect(page.getByRole('main')).not.toContainText('Low coverage');

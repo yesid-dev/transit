@@ -104,6 +104,7 @@
 	{columns}
 	rows={tableRows}
 	value="status"
+	noWrapNumeric
 	phone={{
 		line: (row) => {
 			const age = report(row);

@@ -33,14 +33,14 @@ export const lineSectionTitles = {
 	daily: ['Day by day', 'Jour par jour'],
 	hourly: ['By hour and weekday', 'Par heure et jour de la semaine'],
 	directions: ['Each direction', 'Par direction'],
-	stops: ['Delay along its stops', 'Retard le long de ses arrêts'],
+	stops: ['Delay along the route', 'Retard le long de la ligne'],
 	delivery: [
 		'Cancelled and missing trips, by departure',
 		'Trajets annulés et manquants, par départ',
 	],
 	late: ['Departures late most often', 'Départs le plus souvent en retard'],
 	crowding: ['Room on board', 'Places à bord'],
-	alerts: ['Agency notices on these dates', 'Avis de la société de transport à ces dates'],
+	alerts: ['Service alerts on these dates', 'Avis de service à ces dates'],
 	frequency: ['Planned frequency', 'Fréquence prévue'],
 	boundaries: ['First and last trips', 'Premiers et derniers trajets'],
 } satisfies Record<LineSection, [string, string]>;
@@ -93,8 +93,8 @@ export function departureFinding(
 	const value = recordPercent(top.value, locale);
 	return choose(
 		locale,
-		`The ${time} departure${end ? ` ${end}` : ''} ranked first, with ${value} of its observed stop events late.`,
-		`Le départ de ${time}${end ? ` ${end}` : ''} se classe premier, avec ${value} de ses passages observés aux arrêts en retard.`,
+		`The ${time} departure${end ? ` ${end}` : ''} ranked first, with ${value} of recorded stop arrivals late.`,
+		`Le départ de ${time}${end ? ` ${end}` : ''} se classe premier, avec ${value} des passages enregistrés aux arrêts en retard.`,
 	);
 }
 
@@ -230,8 +230,8 @@ export function lineAnswer(
 	const total = tally(classified, locale);
 	const reading = choose(
 		locale,
-		`${value} of observed stop events were on time (${n} of ${total})`,
-		`${value} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`,
+		`${value} of recorded stop arrivals were on time (${n} of ${total})`,
+		`${value} des passages enregistrés aux arrêts étaient à l’heure (${n} sur ${total})`,
 	);
 	const dated = withDates ? `${dates}, ${reading}` : reading;
 	return `${withCoverage(dated, cell.evidence, locale)}.`;

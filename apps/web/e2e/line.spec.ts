@@ -187,7 +187,7 @@ for (const locale of PUBLISHED_LOCALES) {
 		}
 		await refreshLive();
 		const notices = page.getByRole('article', {
-			name: fr ? 'Avis de la société de transport' : 'Agency notices',
+			name: fr ? 'Avis de service' : 'Service alerts',
 		});
 		await expect(
 			notices.getByRole('heading', { name: 'Détour près du terminus.' }),

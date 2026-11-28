@@ -7,6 +7,7 @@
 	import { AppFrame, AnnouncementBanner, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { announcement } from '#lib/site/announcement.ts';
 	import { clockOnFocus, frameClock } from '#lib/site/frameState.ts';
+	import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
 	import type { PublicCity, PublicProvider } from '#lib/v1/schemas/providers.ts';
 	import NavPill from './NavPill.svelte';
 	import { frameSurfaceRailContext, type RegisterFrameSurfaceRail } from './frameSurfaceRail.ts';
@@ -76,7 +77,11 @@
 	let remWidth = $state(0);
 	let now = $state(new Date());
 	const clock = $derived(frameClock(provider, now));
-	const frame = $derived(frameControlsState(url, clock, errorPage));
+	const frame = $derived(
+		frameControlsState(url, clock, errorPage, {
+			alertsTracked: provider ? providerHasAlerts(provider) : true,
+		}),
+	);
 	const compactMap = $derived(fullViewport && remWidth > 0 && shellWidth < 64 * remWidth);
 	let mapControlsVisibility = $state.raw<() => boolean>();
 	const registerMapControlsVisibility: RegisterMapControlsVisibility = (visible) => {
@@ -227,6 +232,18 @@
 </div>
 
 <style>
+	/* Align the page h1 top edge with the desktop controls rail (AppFrame uses 1rem when paired). */
+	.app-shell-root
+		:global(
+			[data-slot='app-frame']:not(.full-viewport)
+				> .with-controls-rail
+				> .app-frame-main
+				.surface-shell
+		) {
+		padding-block-start: calc(
+			var(--app-frame-paired) * 1rem + var(--app-frame-compact) * clamp(1.5rem, 4vw, 2.5rem)
+		);
+	}
 	.desktop-controls-fallback {
 		/* AppFrame's CSS chooses the rail layout before its client measurement. */
 		display: var(--app-frame-rail-display, none);

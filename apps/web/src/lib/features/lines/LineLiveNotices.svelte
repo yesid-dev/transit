@@ -103,8 +103,8 @@
 <RecordCard
 	interactive={tracked || !!officialAlertsUrl}
 	title={scope.kind === 'stop'
-		? t('Notices for this stop', 'Avis pour cet arrêt')
-		: t('Agency notices', 'Avis de la société de transport')}
+		? t('Service alerts for this stop', 'Avis de service pour cet arrêt')
+		: t('Service alerts', 'Avis de service')}
 	{stamp}
 >
 	{#if pending}
@@ -114,8 +114,8 @@
 	{:else if !ready}
 		{@render empty(
 			t(
-				'Live agency notices are temporarily unavailable.',
-				'Les avis en direct de la société de transport sont temporairement indisponibles.',
+				'Live service alerts are temporarily unavailable.',
+				'Les avis de service en direct sont temporairement indisponibles.',
 			),
 		)}
 	{:else if notices.length}
@@ -125,8 +125,8 @@
 			scope.kind === 'stop' && operator
 				? noLiveStopNotices(agency, locale)
 				: t(
-						'No agency notices in effect for this line.',
-						'Aucun avis de la société de transport en vigueur pour cette ligne.',
+						'No service alerts in effect for this line.',
+						'Aucun avis de service en vigueur pour cette ligne.',
 					),
 		)}
 	{/if}

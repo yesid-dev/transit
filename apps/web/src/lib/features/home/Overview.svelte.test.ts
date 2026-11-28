@@ -96,8 +96,8 @@ it('shows the sample and any supplied minimum, and keeps mixed ranking reasons u
 			},
 		},
 	});
-	expect(await screen.findByText('12 stop events')).toBeVisible();
-	expect(await screen.findByText('18 stop events (minimum 30)')).toBeVisible();
+	expect(await screen.findByText('12 stop arrivals')).toBeVisible();
+	expect(await screen.findByText('18 stop arrivals (minimum 30)')).toBeVisible();
 	expect(await screen.findAllByText('Unknown')).toHaveLength(2);
 	expect(container.querySelector('[data-record-state="not_measured"]')).toBeNull();
 });
@@ -133,14 +133,15 @@ for (const locale of ['en', 'fr'] as const) {
 		const record = screen.getByRole('article', { name: copy.record });
 		expect(await within(record).findByText(copy.answer)).toBeVisible();
 		expect(record.querySelectorAll('[data-slot="stamp"]')).toHaveLength(1);
-		const total = locale === 'fr' ? /^sur 507.?800 passages aux arrêts$/ : 'of 507,800 stop events';
+		const total =
+			locale === 'fr' ? /^sur 507.?800 passages aux arrêts$/ : 'of 507,800 stop arrivals';
 		expect(within(record).getByText(total)).toBeVisible();
 		expect(within(record).getByText(recordState('too_few_to_judge')[locale])).toBeVisible();
 		const about = await screen.findByRole('article', { name: copy.about });
 		const observed =
 			locale === 'fr'
 				? /60,0\s% des 846.?333 passages prévus aux arrêts/u
-				: /60\.0% of 846,333 scheduled stop events/u;
+				: /60\.0% of 846,333 scheduled stop arrivals/u;
 		expect(within(about).getAllByText(observed)).toHaveLength(1);
 		const coverage =
 			locale === 'fr'

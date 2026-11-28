@@ -87,7 +87,9 @@ for (const locale of ['en', 'fr'] as const) {
 		await find.fill('Rosemont');
 		await page.getByRole('button', { name: 'Rosemont', exact: true }).last().click();
 		await expect(selected).toContainText(fr ? 'Non mesuré' : 'Not measured');
-		await expect(selected).toContainText(fr ? 'Aucun passage classé' : 'No classified stop events');
+		await expect(selected).toContainText(
+			fr ? 'Aucun passage classé' : 'No classified stop arrivals',
+		);
 
 		await closeMapInView(page);
 		await openMapControls(page);

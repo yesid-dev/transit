@@ -287,19 +287,26 @@
 {/snippet}
 
 {#snippet recordEffects(promise: Awaitable<EngineResult<EngineAnswer>>)}
-	<div id="effect" class="scroll-mt-24">
-		<RecordCard title={alertSections.effect[locale]} {stamp} stampRule reserve={effectShape}>
-			{#await promise}<RecordPending {locale} answer={promise} shape={effectShape} />
-			{:then result}
-				{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.state === 'measured'}
-					{@const rows = recordAlertCut(result.answer, 'effect')}
-					{#if rows.some(({ key, value }) => key !== unstatedEffect && value != null)}{@render cutRows(
-							rows,
-							'effect',
-						)}{:else}<p>{effectNotPublished}</p>{/if}
-				{:else}{@render resultState(result, effectShape)}{/if}
-			{/await}
+	{#snippet effectCard(result?: EngineResult<EngineAnswer>)}
+		<RecordCard
+			title={alertSections.effect[locale]}
+			{stamp}
+			stampRule
+			reserve={result ? undefined : effectShape}
+		>
+			{#if !result}
+				<RecordPending {locale} answer={promise} shape={effectShape} />
+			{:else if result.kind === 'answer' && 'cells' in result.answer && result.answer.state === 'measured'}
+				{@const rows = recordAlertCut(result.answer, 'effect')}
+				{#if rows.some(({ key, value }) => key !== unstatedEffect && value != null)}{@render cutRows(
+						rows,
+						'effect',
+					)}{:else}<p>{effectNotPublished}</p>{/if}
+			{:else}{@render resultState(result, effectShape)}{/if}
 		</RecordCard>
+	{/snippet}
+	<div id="effect" class="scroll-mt-24">
+		{#await promise}{@render effectCard()}{:then result}{@render effectCard(result)}{/await}
 	</div>
 {/snippet}
 
@@ -339,7 +346,7 @@
 			title={alertSections.line[locale]}
 			{stamp}
 			stampRule
-			reserve={lineShape}
+			reserve={result ? undefined : lineShape}
 		>
 			{#if reading}
 				{@render cutRows(rows, 'line')}
@@ -628,12 +635,7 @@
 									</RecordAnswer>
 								</div>
 								<div id="alerts-breakdown">
-									<RecordCard
-										title={alertSections.effect[locale]}
-										stamp={liveStamp}
-										stampRule
-										reserve={effectShape}
-									>
+									<RecordCard title={alertSections.effect[locale]} stamp={liveStamp} stampRule>
 										{#if missingEffect}<p>{effectNotPublished}</p>{:else}{@render cutRows(
 												liveAlertCut(liveNotices, 'effect'),
 												'effect',
@@ -651,7 +653,6 @@
 									title={alertSections.line[locale]}
 									stamp={liveStamp}
 									stampRule
-									reserve={lineShape}
 								>
 									{@render cutRows(liveAlertCut(liveNotices, 'line'), 'line')}
 									{#snippet evidence()}

@@ -39,7 +39,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(
 			main
 				.getByRole('article', {
-					name: fr ? 'Ce que ce bilan n’est pas' : 'What this record is not',
+					name: fr ? 'Portée et limites' : 'Scope and limits',
 				})
 				.getByRole('list'),
 		).toHaveCSS('list-style-position', 'outside');

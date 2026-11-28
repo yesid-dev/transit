@@ -86,7 +86,7 @@ test.describe('Daily report print', () => {
 			await expect(rankingsFooter).toContainText(
 				fr
 					? /Lignes : 1\s089 passages aux arrêts · Arrêts : 1\s089 passages aux arrêts, 1 jour/u
-					: 'Lines: 1,089 stop events · Stops: 1,089 stop events, 1 day',
+					: 'Lines: 1,089 stop arrivals · Stops: 1,089 stop arrivals, 1 day',
 			);
 			await expect(rankingsFooter).not.toContainText(fr ? 'méthode v' : 'method v');
 			const about = main.getByRole('article', {

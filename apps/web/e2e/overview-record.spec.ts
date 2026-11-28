@@ -95,7 +95,7 @@ test('the desktop French total stays on one line and plate codes keep names alig
 
 	for (const row of [
 		page
-			.getByRole('article', { name: 'Lignes et arrêts à examiner' })
+			.getByRole('article', { name: 'Lignes et arrêts les moins ponctuels' })
 			.locator('tbody tr')
 			.filter({ has: page.locator('[data-slot="route-plate"]') })
 			.first(),
@@ -265,7 +265,7 @@ for (const width of [390, 1440]) {
 						: 'Most times come from predictions.',
 				);
 				const ranking = main.getByRole('article', {
-					name: fr ? 'Lignes et arrêts à examiner' : 'Lines and stops to investigate',
+					name: fr ? 'Lignes et arrêts les moins ponctuels' : 'Lowest on-time lines and stops',
 				});
 				await expect(ranking.locator('tbody tr')).toHaveCount(6);
 				await expect(ranking.getByRole('link')).toHaveCount(7);
@@ -380,7 +380,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 		waitUntil: 'commit',
 	});
 	const main = page.getByRole('main');
-	await expect(main.getByText('of observed stop events were on time.')).toBeVisible();
+	await expect(main.getByText('of recorded stop arrivals were on time.')).toBeVisible();
 	await expect(main.getByText('Still calculating the record')).toBeVisible();
 	await main.getByRole('button', { name: 'Cite' }).click();
 	await expect(
@@ -396,7 +396,7 @@ test('a slow stop ranking shows patience while the other parts remain usable', a
 	);
 	expect(release.status()).toBe(204);
 	await expect(
-		main.getByRole('article', { name: 'Lines and stops to investigate' }).locator('tbody tr'),
+		main.getByRole('article', { name: 'Lowest on-time lines and stops' }).locator('tbody tr'),
 	).toHaveCount(6);
 	await expect(main.getByText('Still calculating the record')).toHaveCount(0);
 });
@@ -425,7 +425,7 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 	for (const status of ['Early', 'On time', 'Late', 'Delay unknown']) {
 		await expect(live.getByRole('term').filter({ hasText: status })).toBeVisible();
 	}
-	for (const fact of ['Scheduled trips with no vehicle reporting', 'Notice publications']) {
+	for (const fact of ['Scheduled trips with no vehicle reporting', 'Service alerts']) {
 		await expect(
 			live.locator('[data-slot="fact-row"]').filter({ hasText: fact }).locator('.hand-drawn-line'),
 		).toHaveCount(1);
@@ -499,10 +499,10 @@ test('the header carries the Live view and dates through city and language chang
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
 	).toContainText('Not measured');
 	// A city whose alerts Transit does not collect says so, and blames no one else.
-	const alerts = live.getByText('Notice publications', { exact: true }).locator('..');
+	const alerts = live.getByText('Service alerts', { exact: true }).locator('..');
 	await expect(alerts).toContainText('Not tracked');
 	await expect(alerts).toContainText('Transit does not collect OC Transpo’s notices yet.');
-	await expect(live.getByRole('link', { name: 'Read the notices' })).toHaveCount(0);
+	await expect(live.getByRole('link', { name: 'Read service alerts' })).toHaveCount(0);
 	await expect(live.getByRole('link', { name: 'Check the official notices' })).toHaveAttribute(
 		'href',
 		'https://www.octranspo.com/en/alerts/',

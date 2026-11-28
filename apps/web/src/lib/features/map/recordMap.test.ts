@@ -52,7 +52,7 @@ it('keeps the 300 measured corridors with the most time lost in a dense overview
 it.each([
 	['en', false, 'Low coverage · 110 observed runs', 'No comparable runs observed'],
 	['fr', false, 'Faible couverture · 110 parcours observés', 'Aucun parcours comparable observé'],
-	['en', true, 'Low coverage · 110 classified stop events', 'No classified stop events'],
+	['en', true, 'Low coverage · 110 classified stop arrivals', 'No classified stop arrivals'],
 	['fr', true, 'Faible couverture · 110 passages classés', 'Aucun passage classé'],
 ] as const)(
 	'explains unmeasured selections in %s with stops=%s',

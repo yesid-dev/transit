@@ -1533,8 +1533,8 @@
 		<p class="w-full text-sm text-muted-foreground">
 			{recordLayer === 'stops'
 				? tr(
-						'Stops, by their share of observed stop events that were late.',
-						'Arrêts, selon leur part de passages observés en retard.',
+						'Stops, by their share of recorded stop arrivals that were late.',
+						'Arrêts, selon leur part de passages enregistrés en retard.',
 					)
 				: tr(
 						'Stretches between stops, by the time lost.',

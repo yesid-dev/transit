@@ -70,6 +70,7 @@ it.each(['live', 'record'] as const)(
 			await Promise.all([data.record.accessibility, ...Object.values(data.record.scorecard)]);
 			// Alerts are not collected for this fixture, so no alert question is asked.
 			expect(data.record.alertEffects).toBeNull();
+			expect(data.record.alertMessages).toBeNull();
 		}
 		expect(ports.bucket).not.toHaveBeenCalled();
 		expect(ports.legacy).not.toHaveBeenCalled();
@@ -136,6 +137,7 @@ it('reads the same last complete days as every other screen', async () => {
 		data.record.accessibility,
 		data.record.deliveryDays,
 		data.record.alertEffects,
+		data.record.alertMessages,
 		...Object.values(data.record.scorecard),
 	]);
 	expect(data.record.period).toEqual({
@@ -149,6 +151,8 @@ it('reads the same last complete days as every other screen', async () => {
 			'2026-11-18',
 			'2026-11-24',
 		]);
-	// A city whose alerts Transit collects also asks which effects its alerts state.
+	// A city whose alerts Transit collects asks both for alert effects and, within 7 days,
+	// alert messages so notice counts match Service alerts.
 	expect(asked.some((question) => question.searchParams.get('group') === 'effect')).toBe(true);
+	expect(asked.some((question) => question.searchParams.get('alert_details') === '1')).toBe(true);
 });

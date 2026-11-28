@@ -320,7 +320,7 @@
 	const routeNames = $derived(new Map(routes.map((route) => [route.id, route.long])));
 	const stopCodes = $derived(new Map(stops.map((stop) => [stop.id, stop.code ?? stop.id])));
 	const shownCount = (value: number) => searchCount(value, locale);
-	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop events', 'passages');
+	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop arrivals', 'passages');
 	function measuredLine(mark: RecordMark) {
 		return stopLayer ? undefined : line || (mark.lines?.length === 1 ? mark.lines[0] : undefined);
 	}
@@ -360,8 +360,8 @@
 			value={headline ?? ''}
 			sentence={stopLayer
 				? tr(
-						`is the highest late share of observed stop events in view, at stop ${leaderStop}, ${leader.name}.`,
-						`est la part de passages observés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
+						`is the highest late share of recorded stop arrivals in view, at stop ${leaderStop}, ${leader.name}.`,
+						`est la part de passages enregistrés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
 					)
 				: tr(
 						`is the most time lost between two stops in view: ${corridorReading(leader)}.`,

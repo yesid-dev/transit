@@ -124,8 +124,8 @@ export function stopAnswer(answer: RecordMeasure, locale: Locale, withDates = tr
 	const total = tally(classified, locale);
 	const reading = choose(
 		locale,
-		`${value} of observed stop events here were on time (${onTime} of ${total})`,
-		`${value} des passages observés à cet arrêt étaient à l’heure (${onTime} sur ${total})`,
+		`${value} of recorded stop arrivals here were on time (${onTime} of ${total})`,
+		`${value} des passages enregistrés à cet arrêt étaient à l’heure (${onTime} sur ${total})`,
 	);
 	const dated = withDates ? `${dates}, ${reading}` : reading;
 	return `${withCoverage(dated, answer.evidence, locale)}.`;
@@ -170,8 +170,8 @@ export function stopCoverageGap(
 			)
 		: choose(
 				locale,
-				'Too few stop events were observed here on these dates',
-				'Trop peu de passages ont été observés ici à ces dates',
+				'Too few stop arrivals were recorded here on these dates',
+				'Trop peu de passages ont été enregistrés ici à ces dates',
 			);
 	return detail ? `${sentence} (${detail}).` : `${sentence}.`;
 }
@@ -190,20 +190,20 @@ function stopEventGap(
 		observed === 0
 			? choose(
 					locale,
-					`No stop event was observed here on these dates: ${planned} ${one ? 'was' : 'were'} scheduled.`,
-					`Aucun passage n’a été observé ici à ces dates\u00a0: ${planned} ${one ? 'était prévu' : 'étaient prévus'}.`,
+					`No stop arrival was recorded here on these dates: ${planned} ${one ? 'was' : 'were'} scheduled.`,
+					`Aucun passage n’a été enregistré ici à ces dates\u00a0: ${planned} ${one ? 'était prévu' : 'étaient prévus'}.`,
 				)
 			: choose(
 					locale,
-					`${seen} of ${planned} scheduled stop events ${observed === 1 ? 'was' : 'were'} observed here on these dates.`,
-					`${seen} des ${planned} passages prévus ${singularCount(observed, locale) ? 'a été observé' : 'ont été observés'} ici à ces dates.`,
+					`${seen} of ${planned} scheduled stop arrivals ${observed === 1 ? 'was' : 'were'} recorded here on these dates.`,
+					`${seen} des ${planned} passages prévus ${singularCount(observed, locale) ? 'a été enregistré' : 'ont été enregistrés'} ici à ces dates.`,
 				);
 	if (minimum == null) return reading;
 	const share = recordPercent(minimum, locale);
 	return `${reading} ${choose(
 		locale,
-		`At least ${share} of scheduled stop events must be observed.`,
-		`Il faut observer au moins ${share} des passages prévus.`,
+		`At least ${share} of scheduled stop arrivals must be recorded.`,
+		`Il faut enregistrer au moins ${share} des passages prévus.`,
 	)}`;
 }
 

@@ -1,3 +1,4 @@
+import { alertDetailsAllowed } from '#lib/features/alerts/alertDetailsAllowed.ts';
 import {
 	getMeasure,
 	getMethodCatalog,
@@ -30,6 +31,10 @@ export function readHealthRecord(
 		alertEffects:
 			alertsTracked && include('alertEffects')
 				? getRecordSeries(questions.alertEffects, scope)
+				: null,
+		alertMessages:
+			alertsTracked && alertDetailsAllowed(scope) && include('alertMessages')
+				? getRecordMeasure(questions.alertMessages, scope)
 				: null,
 		deliveryDays: include('deliveryDays')
 			? getRecordSeries(networkRecordQuestions.deliveryDays, scope)

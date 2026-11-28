@@ -471,8 +471,8 @@ export function stopTrendGap(minimum: number, allDays: boolean, locale: Locale) 
 			? `Trop peu de passages aux arrêts chaque jour pour tracer la courbe de cet arrêt (minimum de ${count} par jour).`
 			: `Trop peu de passages aux arrêts certains jours pour tracer la courbe de cet arrêt (minimum de ${count} par jour).`;
 	return allDays
-		? `Too few stop events per day to draw this stop’s line (minimum ${count} per day).`
-		: `Too few stop events per day to draw this stop’s line on some days (minimum ${count} per day).`;
+		? `Too few stop arrivals per day to draw this stop’s line (minimum ${count} per day).`
+		: `Too few stop arrivals per day to draw this stop’s line on some days (minimum ${count} per day).`;
 }
 
 export function longDate(date: string, locale: Locale): string {
@@ -734,7 +734,10 @@ export function countedUnit(
 			en: ['stop served', 'stops served'],
 			fr: ['arrêt desservi', 'arrêts desservis'],
 		},
-		event: { en: ['stop event', 'stop events'], fr: ['passage à un arrêt', 'passages aux arrêts'] },
+		event: {
+			en: ['stop arrival', 'stop arrivals'],
+			fr: ['passage à un arrêt', 'passages aux arrêts'],
+		},
 		trip: { en: ['trip', 'trips'], fr: ['trajet', 'trajets'] },
 		'trip-ran': {
 			en: ['trip that ran', 'trips that ran'],
@@ -1159,8 +1162,8 @@ export function lowCoverageReason(
 					? `${rate} des intervalles prévus observés`
 					: `${rate} of scheduled intervals observed`
 				: fr
-					? `${rate} des passages prévus observés`
-					: `${rate} of scheduled stop events observed`;
+					? `${rate} des passages prévus enregistrés`
+					: `${rate} of scheduled stop arrivals recorded`;
 	}
 	return detail ? `${label}${fr ? ' : ' : ': '}${detail}` : label;
 }
@@ -1505,7 +1508,7 @@ export function tooFewHours(total: number, days: number, minimum: number | null,
 	const span = countedUnit(days, 'day', locale);
 	if (locale === 'fr')
 		return `Trop peu de passages aux arrêts par heure pour conclure\u00a0: ${count(total)} en ${span}${minimum == null ? '' : `, et il en faut ${count(minimum)} par heure`}.`;
-	return `Too few stop events per hour to judge: ${count(total)} in ${span}${minimum == null ? '' : `, and an hour needs ${count(minimum)}`}.`;
+	return `Too few stop arrivals per hour to judge: ${count(total)} in ${span}${minimum == null ? '' : `, and an hour needs ${count(minimum)}`}.`;
 }
 
 /**

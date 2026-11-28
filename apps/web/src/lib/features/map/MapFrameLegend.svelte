@@ -153,8 +153,8 @@
 			title:
 				layer === 'stops'
 					? tr(
-							'Share of observed stop events that were late',
-							'Part des passages observés en retard',
+							'Share of recorded stop arrivals that were late',
+							'Part des passages enregistrés en retard',
 						)
 					: tr('Time lost between two stops', 'Temps perdu entre deux arrêts'),
 			steps: labels.map((label, index) => ({ label, swatch: palette[index]! })),

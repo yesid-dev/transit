@@ -420,7 +420,7 @@
 			<LineScheduleCard {record} {locale} {url} {headsigns} />
 			{#if !timetableOnly}
 				<div id="alerts">
-					<RecordCard interactive title={title('alerts')} {stamp} reserve={shapes.alerts}>
+					<RecordCard interactive title={title('alerts')} {stamp}>
 						{@render reading('alerts')}
 						{#snippet evidence()}{@render sectionEvidence('alerts')}{/snippet}
 					</RecordCard>

@@ -262,6 +262,24 @@
 					{@render lead(current)}
 					{#if current.kind === 'answer' && current.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 				{/if}
+				{@const deliveryShare = overviewValue(delivery, 'trips_run')}
+				{@const deliveryCounts =
+					delivery.kind === 'answer' && deliveryShare != null
+						? delivery.answer.evidence.counts
+						: null}
+				{@const unconfirmed =
+					delivery.kind === 'answer' && deliveryShare != null
+						? unsettledTrips(delivery.answer.evidence)
+						: null}
+				{@const bounds =
+					deliveryCounts?.ran != null && deliveryCounts.eligible != null && unconfirmed != null
+						? unconfirmedTripsRange(
+								deliveryCounts.ran,
+								deliveryCounts.eligible,
+								unconfirmed,
+								locale,
+							)
+						: null}
 				<FactList class="mt-4">
 					{#if current.kind === 'answer' && overviewValue(current, 'on_time') != null}
 						{@const { on_time, classified } = current.answer.evidence.counts}
@@ -292,33 +310,34 @@
 								{lastGoodNote[locale]}
 							</p>{/if}
 					</FactRow>
-					{@const deliveryShare = overviewValue(delivery, 'trips_run')}
 					{#if delivery.kind === 'answer' && deliveryShare != null}
-						{@const { ran, eligible } = delivery.answer.evidence.counts}
-						{@const unconfirmed = unsettledTrips(delivery.answer.evidence)}
-						{@const bounds =
-							ran != null && eligible != null && unconfirmed != null
-								? unconfirmedTripsRange(ran, eligible, unconfirmed, locale)
-								: null}
 						<FactRow
 							label={tripsRunShareLabel(locale)}
-							detail={ran != null && eligible != null
-								? recordRatio(ran, countedUnit(eligible, 'trip', locale), locale)
+							detail={deliveryCounts?.ran != null && deliveryCounts.eligible != null
+								? recordRatio(
+										deliveryCounts.ran,
+										countedUnit(deliveryCounts.eligible, 'trip', locale),
+										locale,
+									)
 								: undefined}
 						>
 							<strong>{recordPercent(deliveryShare, locale)}</strong>
-							{#if bounds}<p class="text-muted-foreground">{bounds}</p>{/if}
-							{#if delivery.answer.evidence.low_coverage}
-								<p class="text-muted-foreground">
-									{coverageText(delivery.answer.evidence, locale)}
-								</p>
-							{/if}
-							{#if delivery.lastGood}<p>{lastGoodNote[locale]}</p>{/if}
 						</FactRow>
 					{:else}
 						<FactRow label={tripsRunShareLabel(locale)}>{@render gap(delivery)}</FactRow>
 					{/if}
 				</FactList>
+				{#if bounds}
+					<p class="mt-2 text-small text-muted-foreground">{bounds}</p>
+				{/if}
+				{#if delivery.kind === 'answer' && deliveryShare != null && delivery.answer.evidence.low_coverage}
+					<p class="mt-2 text-small text-muted-foreground">
+						{coverageText(delivery.answer.evidence, locale)}
+					</p>
+				{/if}
+				{#if delivery.kind === 'answer' && deliveryShare != null && delivery.lastGood}
+					<p class="mt-2 text-small text-muted-foreground">{lastGoodNote[locale]}</p>
+				{/if}
 			{/await}
 		</div>
 		{#if record.trend}

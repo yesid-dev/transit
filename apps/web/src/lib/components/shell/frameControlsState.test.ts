@@ -12,12 +12,26 @@ const state = (href: string) => frameControlsState(new URL(href, 'https://transi
 
 describe('frame control state', () => {
 	it.each(['/', '/fr/network', '/lines/24', '/stop/S1', '/vehicles', '/vehicle/1', '/alerts'])(
-		'shows the View hint in both modes on %s',
+		'shows the View hint only in live mode on %s',
 		(path) => {
-			for (const mode of ['live', 'record'])
-				expect(state(`${path}?frameMode=${mode}`)).toMatchObject({ mode, showViewHint: true });
+			expect(state(`${path}?frameMode=live`)).toMatchObject({ mode: 'live', showViewHint: true });
+			expect(state(`${path}?frameMode=record`)).toMatchObject({
+				mode: 'record',
+				showViewHint: false,
+			});
 		},
 	);
+
+	it('hides the controls rail on /alerts when the city does not track alerts', () => {
+		const url = new URL('/alerts?frameMode=record', 'https://transit.test');
+		expect(frameControlsState(url, clock(), false, { alertsTracked: false })).toMatchObject({
+			showRail: false,
+			showViewHint: false,
+		});
+		expect(frameControlsState(url, clock(), false, { alertsTracked: true })).toMatchObject({
+			showRail: true,
+		});
+	});
 
 	it('leaves the map to explain its modes in its Period card and layer line', () => {
 		for (const href of ['/map?frameMode=live', '/fr/map?mapLayer=stops&frameMode=record'])

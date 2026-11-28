@@ -79,8 +79,12 @@
 		min-inline-size: 0;
 	}
 	.panel-row[data-report-row] {
-		grid-template-columns: 3.25rem minmax(0, 1fr) 7rem;
+		grid-template-columns: 3.25rem minmax(0, 1fr) max-content;
 		overflow-wrap: anywhere;
+	}
+	.panel-row[data-report-row] .value :global([data-slot='status-mark']) {
+		flex-wrap: nowrap;
+		white-space: nowrap;
 	}
 	.code {
 		grid-area: code;

@@ -54,7 +54,7 @@ it.each(['en', 'fr'] as const)('renders one selected View hint in %s', async (lo
 	expect(view.getAllByText(copy.viewHint.live, { exact: true })).toHaveLength(1);
 	expect(view.queryByText(copy.viewHint.record, { exact: true })).toBeNull();
 	await rerender({ url: record, frame: frameControlsState(record, clock) });
-	expect(view.getAllByText(copy.viewHint.record, { exact: true })).toHaveLength(1);
+	expect(view.queryByText(copy.viewHint.record, { exact: true })).toBeNull();
 	expect(view.queryByText(copy.viewHint.live, { exact: true })).toBeNull();
 });
 

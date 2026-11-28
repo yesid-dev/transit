@@ -40,20 +40,35 @@
 </script>
 
 <section id="delivery" class="min-w-0">
-	<RecordCard title={heading} {stamp} reserve={shape}>
-		<div class="reading" style:--delivery-wide={block?.wide} style:--delivery-phone={block?.phone}>
-			{#await answer}
+	<RecordCard title={heading} {stamp}>
+		{#await answer}
+			<div
+				class="reading"
+				style:--delivery-wide={block?.wide}
+				style:--delivery-phone={block?.phone}
+			>
 				{#key answer}<RecordPending {locale} {answer} {shape} />{/key}
-			{:then result}
-				{#if result.kind === 'busy'}
+			</div>
+		{:then result}
+			{#if result.kind === 'busy'}
+				<div
+					class="reading"
+					style:--delivery-wide={block?.wide}
+					style:--delivery-phone={block?.phone}
+				>
 					<RecordPending {locale} {shape} busy />
-				{:else}
-					{@const data =
-						result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
-					{@const outcomes = data?.state === 'measured' ? tripOutcomes(data.evidence) : null}
-					{@const share = data?.value.trips_run}
-					{@const info = data?.info?.find(({ id }) => id === 'trips_run')}
-					{@const method = info?.text?.[locale]}
+				</div>
+			{:else}
+				{@const data = result.kind === 'answer' && 'value' in result.answer ? result.answer : null}
+				{@const outcomes = data?.state === 'measured' ? tripOutcomes(data.evidence) : null}
+				{@const share = data?.value.trips_run}
+				{@const info = data?.info?.find(({ id }) => id === 'trips_run')}
+				{@const method = info?.text?.[locale]}
+				<div
+					class:reading={outcomes != null && share != null}
+					style:--delivery-wide={block?.wide}
+					style:--delivery-phone={block?.phone}
+				>
 					{#if outcomes && share != null}
 						{@const range = unconfirmedTripsRange(
 							outcomes.ran,
@@ -108,9 +123,9 @@
 					{#if result.kind === 'answer' && result.lastGood}
 						<p class="mt-3 text-small text-muted-foreground">{lastGoodNote[locale]}</p>
 					{/if}
-				{/if}
-			{/await}
-		</div>
+				</div>
+			{/if}
+		{/await}
 	</RecordCard>
 </section>
 

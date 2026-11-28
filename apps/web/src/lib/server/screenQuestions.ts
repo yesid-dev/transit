@@ -116,6 +116,7 @@ export function agencyHealthQuestions() {
 		// One answer carries the trip and the stop counts.
 		accessibility: { measure: 'accessible_trips' },
 		alertEffects: alertQuery('effect')!.parameters,
+		alertMessages: alertQuery('messages')!.parameters,
 	};
 }
 

@@ -203,7 +203,7 @@ it.each([
 		'en',
 		'Record · 16 to 22 Nov 2026',
 		'1 stop',
-		'1,234 of 2,000 stop events',
+		'1,234 of 2,000 stop arrivals',
 		'Live · updated 20 s ago',
 	],
 	[
@@ -525,7 +525,7 @@ it.each([
 it.each([
 	[
 		'en',
-		'Sud to Nord, late 7.2%, 526 of 578 trips ran, 10,284 stop events',
+		'Sud to Nord, late 7.2%, 526 of 578 trips ran, 10,284 stop arrivals',
 		'7 of 7 days',
 		'3 cancelled, 1 missing',
 		'8,630 stops',
@@ -575,7 +575,7 @@ it('says once that every departure or hour is too few to judge, with the count a
 	);
 	expect(tooFewDepartures(1, null, 'fr')).toBe('Chaque départ compte au plus 1 trajet prévu.');
 	expect(tooFewHours(358, 7, 30, 'en')).toBe(
-		'Too few stop events per hour to judge: 358 in 7 days, and an hour needs 30.',
+		'Too few stop arrivals per hour to judge: 358 in 7 days, and an hour needs 30.',
 	);
 	expect(tooFewHours(358, 7, 30, 'fr')).toBe(
 		'Trop peu de passages aux arrêts par heure pour conclure\u00a0: 358 en 7 jours, et il en faut 30 par heure.',
@@ -703,7 +703,7 @@ it.each([
 	[
 		'en',
 		['0 trips in 7 hours', '1 trip in 1 hour'],
-		'0 stop events',
+		'0 stop arrivals',
 		'every minute',
 		'notices are in effect now.',
 	],

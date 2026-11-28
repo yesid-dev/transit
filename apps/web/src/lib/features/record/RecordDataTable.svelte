@@ -83,6 +83,7 @@
 		rowAlign = 'middle',
 		phone,
 		compactName = false,
+		noWrapNumeric = false,
 	}: {
 		locale: Locale;
 		title: string;
@@ -101,6 +102,7 @@
 		rowAlign?: 'middle';
 		phone?: RecordPhoneRow<Row>;
 		compactName?: boolean;
+		noWrapNumeric?: boolean;
 	} = $props();
 	const allColumns = $derived<Column<Row>[]>([
 		...(leadingColumn ? [leadingColumn] : []),
@@ -238,6 +240,9 @@
 				? '[&_thead_th[data-column=name]]:whitespace-nowrap [&_tbody_th[data-column=name]]:whitespace-nowrap @min-[38rem]:[&_thead_th]:whitespace-nowrap @min-[38rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap'
 				: '[&_thead_th[data-column=name]]:min-w-[min(14rem,50cqi)]',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:w-[1%]',
+			noWrapNumeric
+				? '@min-[38rem]:[&_thead_th[data-numeric]]:whitespace-nowrap @min-[38rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap'
+				: '',
 			'@min-[38rem]:[&_thead_th[data-numeric]]:[overflow-wrap:normal]',
 			'@min-[38rem]:[&_thead_th[data-numeric]_button]:[overflow-wrap:normal]!',
 			'@min-[38rem]:[&_tbody_td]:[overflow-wrap:normal]',

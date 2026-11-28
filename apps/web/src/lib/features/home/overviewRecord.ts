@@ -45,8 +45,8 @@ export function measureText(
 	const total = tally(bottom, locale);
 	const reading = punctuality
 		? locale === 'fr'
-			? `${dates}, ${share} des passages observés aux arrêts étaient à l’heure (${n} sur ${total})`
-			: `${dates}, ${share} of observed stop events were on time (${n} of ${total})`
+			? `${dates}, ${share} des passages enregistrés aux arrêts étaient à l’heure (${n} sur ${total})`
+			: `${dates}, ${share} of recorded stop arrivals were on time (${n} of ${total})`
 		: locale === 'fr'
 			? `${dates}, ${share} des trajets prévus dont le résultat est connu ont été effectués (${n} sur ${total})`
 			: `${dates}, ${share} of scheduled trips with a known outcome ran (${n} of ${total})`;

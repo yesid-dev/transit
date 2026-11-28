@@ -599,6 +599,12 @@
 		data-sparse-ranking={rows.length > 0 && rows.length < 20 ? '' : undefined}
 	>
 		{#if rows.length}
+			{#if wilson}<p class="text-small text-muted-foreground">
+					{t(
+						'Ordered conservatively by sample size; exact rates shown.',
+						'Classé de façon prudente selon la taille de l’échantillon; les taux exacts sont affichés.',
+					)}
+				</p>{/if}
 			{#if bounded.length}<p class="text-small">
 					{t(
 						'Nearby positions may not really differ. When the ranges of two rows overlap, the gap between them can be chance.',

@@ -57,7 +57,7 @@
 	{@const predictions = nextStopPredictions(report, now, headsigns)}
 	<RecordCard
 		interactive
-		title={t('Next vehicles at its main stops', 'Prochains véhicules à ses principaux arrêts')}
+		title={t('Next departures at main stops', 'Prochains départs aux principaux arrêts')}
 		stamp={stamp(report)}
 	>
 		{#if waiting}<RecordPending
