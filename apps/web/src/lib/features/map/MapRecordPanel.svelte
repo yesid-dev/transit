@@ -31,6 +31,7 @@
 	} from './mapReportCamera';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { attachRecordMap } from './recordMapLayers';
+	import { recordExtrusions } from './recordExtrusions';
 	import {
 		ALL_CORRIDORS_MIN_ZOOM,
 		OTHER_STOPS_MIN_ZOOM,
@@ -62,6 +63,7 @@
 		ondata?: (settled: boolean) => void;
 		scheduleCache?: Map<string, unknown>;
 		reportCamera?: MapReportCamera | null;
+		threeD?: boolean;
 		oncount?: (count: number | null) => void;
 		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
 	}
@@ -82,6 +84,7 @@
 		ondata,
 		scheduleCache,
 		reportCamera,
+		threeD = false,
 		oncount,
 		children,
 	}: Props = $props();
@@ -247,12 +250,16 @@
 			const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
 			return `rgb(${red}, ${green}, ${blue})`;
 		});
+		const features = recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk);
 		return attachRecordMap(
 			map,
-			recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk),
+			features,
 			(id) => (selectedId = id),
 			network,
 			resolveColor('var(--foreground)', mutedInk),
+			threeD && layer === 'corridors'
+				? recordExtrusions(features, (id) => markById.get(id)?.value)
+				: undefined,
 		);
 	});
 	$effect(() => {

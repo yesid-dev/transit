@@ -82,6 +82,7 @@
 	import MapFilters from './MapFilters.svelte';
 	import MapLinePicker from './MapLinePicker.svelte';
 	import MapMotionControl from './MapMotionControl.svelte';
+	import SwitchRow from '#lib/components/shared/SwitchRow.svelte';
 	import { detailStopName } from './mapSelectionDetail.logic';
 	import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
 	import MapSelectionSummary from './MapSelectionSummary.svelte';
@@ -93,6 +94,7 @@
 		initialCamera,
 		createMapCamera,
 		resetNorth,
+		setRecordPerspective,
 	} from './mapCamera';
 	import {
 		buildNearTargetSearch,
@@ -209,6 +211,7 @@
 	});
 	let recovering = $state(false);
 	let orientation = $state({ bearing: 0, pitch: 0 });
+	let recordThreeD = $state(false);
 	let northPending = false;
 	let northStatus = $state('');
 	function onMapOrientation(next: { bearing: number; pitch: number }): void {
@@ -221,6 +224,7 @@
 	}
 	function turnNorth(): void {
 		if (!map || recovering) return;
+		recordThreeD = false;
 		northStatus = '';
 		northPending = true;
 		resetNorth(map);
@@ -348,6 +352,18 @@
 	const recordUrl = $derived(new URL(currentMapHref()));
 	const recordLayer = $derived(mapLayerFor(recordUrl.searchParams));
 	const isRecordLayer = $derived(recordLayer !== 'live');
+	function toggleRecordPerspective(): void {
+		if (!map || recovering) return;
+		recordThreeD = !recordThreeD;
+		camera.interact();
+		setRecordPerspective(map, recordThreeD, $prefersReducedMotion);
+	}
+	$effect(() => {
+		if (recordLayer === 'corridors' || !recordThreeD) return;
+		recordThreeD = false;
+		const instance = map;
+		if (instance) untrack(() => setRecordPerspective(instance, false, true));
+	});
 	const liveChoice = $derived(isRecordLayer ? null : readLiveMapChoice(recordUrl.searchParams));
 	const chosenLine = $derived(liveChoice?.kind === 'line' ? liveChoice : null);
 	const chosenTripVehicle = $derived(
@@ -1338,6 +1354,17 @@
 			onSelect={changeRecordLayer}
 			variant="fit-row"
 		/>
+		{#if recordLayer === 'corridors'}
+			<SwitchRow
+				type="button"
+				class="w-full min-h-11 justify-between"
+				checked={recordThreeD}
+				disabled={!map || recovering}
+				onclick={toggleRecordPerspective}
+			>
+				{tr('3D view', 'Vue 3D')}
+			</SwitchRow>
+		{/if}
 		<p class="w-full text-sm text-muted-foreground">
 			{recordLayer === 'stops'
 				? tr(
@@ -1356,6 +1383,7 @@
 	<MapFrameLegend
 		{locale}
 		layer={recordLayer}
+		threeD={recordThreeD}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1368,6 +1396,7 @@
 	<MapFrameLegend
 		{locale}
 		layer={recordLayer}
+		threeD={recordThreeD}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1771,6 +1800,7 @@
 	<span class="map-layout-marker" aria-hidden="true" bind:clientWidth={remWidth}></span>
 	<MapRecordPanel
 		{scheduleCache}
+		threeD={recordThreeD}
 		onsourcedate={(date) => (recordSourceDate = date)}
 		ondata={(settled) => (recordDataSettled = settled)}
 		oncount={(count) => (recordCount = count)}
