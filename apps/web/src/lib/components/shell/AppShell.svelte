@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { observedSize } from '#lib/utils/observedSize.ts';
 	import type { LivePresentation } from '#lib/v1/live/livePresentation.ts';
 	import type { NavigationLifecycle } from '@yesid/ui/brand';
 	import { setContext, type Snippet } from 'svelte';
@@ -120,7 +121,10 @@
 
 {#snippet header()}
 	{#if announcement.enabled}
-		<div data-slot="app-shell-chrome" bind:clientHeight={announcementHeight}>
+		<div
+			data-slot="app-shell-chrome"
+			{@attach observedSize('clientHeight', (value) => (announcementHeight = value))}
+		>
 			<AnnouncementBanner id={announcement.id} {...announcement[locale]} />
 		</div>
 	{/if}
@@ -186,11 +190,15 @@
 	data-full-viewport={fullViewport}
 	style:--map-source-clearance={fullViewport ? `${mapCreditHeight}px` : undefined}
 	data-slot="app-shell"
-	bind:clientWidth={shellWidth}
+	{@attach observedSize('clientWidth', (value) => (shellWidth = value))}
 	onfocusin={() => (now = clockOnFocus(provider, now))}
 >
 	{#if fullViewport}
-		<span aria-hidden="true" class="invisible absolute w-[1rem]" bind:clientWidth={remWidth}></span>
+		<span
+			aria-hidden="true"
+			class="invisible absolute w-[1rem]"
+			{@attach observedSize('clientWidth', (value) => (remWidth = value))}
+		></span>
 	{/if}
 	<AppFrame
 		{header}

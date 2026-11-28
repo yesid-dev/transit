@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { observedSize } from '#lib/utils/observedSize.ts';
 	import ChartDetails from '../ChartDetails.svelte';
 	import LayerChartTargets from '../LayerChartTargets.svelte';
 	import { chartDatumValue } from '#lib/site/presenter.ts';
@@ -113,7 +114,7 @@
 </script>
 
 <figure class={cn('dv-histmark m-0', className)} aria-label={spec.title} data-slot="histogram-mark">
-	<div bind:clientWidth={plotWidth}>
+	<div {@attach observedSize('clientWidth', (value) => (plotWidth = value))}>
 		<ChartDetails label={spec.title} {readings}>
 			<ChartFrame height="14rem" class="dv-histmark-plot">
 				<LcChart
