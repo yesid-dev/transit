@@ -314,6 +314,70 @@ for (const city of ['stm', 'octranspo'] as const)
 			});
 		}
 
+// A preloaded font that misses the first paint must not move the text. With font-display: swap,
+// Inter arriving late moved the header links, the title row and the Live stamp by 2 to 8 px.
+for (const [city, locale, width] of [
+	['stm', 'en', 1440],
+	['stm', 'fr', 1024],
+] as const)
+	test(`a late Inter font leaves the Overview in place at ${width}px in ${city} ${locale} @layout`, async ({
+		page,
+	}, info) => {
+		await page.setViewportSize({ width, height: 900 });
+		await page.clock.setFixedTime(time);
+		await observeShifts(page);
+		const { promise: held, resolve: release } = Promise.withResolvers<void>();
+		await page.route(/\/inter-latin-wght-normal[\w.-]*\.woff2$/, async (route) => {
+			await held;
+			await route.continue();
+		});
+		const moving = page.locator(
+			'[data-slot="site-header"] a, [data-slot="screen-title-row"], [data-slot="stamp"]',
+		);
+		const boxes = () =>
+			moving.evaluateAll((elements) =>
+				elements.map((element) => {
+					const { x, y, width, height } = element.getBoundingClientRect();
+					return [x, y, width, height].map((value) => Math.round(value * 10) / 10);
+				}),
+			);
+		let before: number[][];
+		let released: number;
+		try {
+			const response = await page.goto(
+				localizeHref('/?recordFrom=2026-11-08&recordTo=2026-11-14', locale, city),
+				{ waitUntil: 'commit' },
+			);
+			expect(response?.ok()).toBe(true);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
+			await expect(page.locator('main [data-record-pending]')).toHaveCount(0);
+			// Not settled(): it waits for document.fonts.ready, which waits for the held font.
+			await page.evaluate(
+				() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+			);
+			expect(await page.evaluate(() => document.fonts.check('1em "Inter Variable"', 'a'))).toBe(
+				false,
+			);
+			before = await boxes();
+			released = await page.evaluate(() => performance.now());
+		} finally {
+			release();
+		}
+		await page.evaluate(() => document.fonts.ready);
+		await settled(page);
+		const after = await boxes();
+		const shifts = (await page.evaluate(() => (window as ShiftWindow).steadyShifts.slice())).filter(
+			({ at }) => at >= released,
+		);
+		await info.attach('late-font', {
+			body: JSON.stringify({ before, after, shifts }),
+			contentType: 'application/json',
+		});
+		expect(before.length).toBeGreaterThan(0);
+		expect(after).toEqual(before);
+		expect(shifts).toEqual([]);
+	});
+
 for (const { screen, href } of designPassCases.filter(
 	(item) => item.provider === 'stm' && item.locale === 'en' && targets.has(item.screen),
 )) {
