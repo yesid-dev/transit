@@ -53,9 +53,7 @@ export interface NavItem {
 	readonly activePrefixes: readonly string[];
 	readonly exact?: boolean;
 	readonly requires?: 'alerts';
-	readonly upcoming?: string;
 }
-const UPCOMING = '/upcoming/';
 export const NAV_GROUPS: readonly { readonly key: NavGroupKey; readonly label: BilingualLabel }[] =
 	[
 		{ key: 'now', label: { en: 'Now', fr: 'Maintenant' } },
@@ -167,19 +165,7 @@ export function visibleNav(capabilities: { readonly alerts: boolean | null }): r
 	return NAV_ITEMS.filter((item) => item.requires !== 'alerts' || capabilities.alerts !== false);
 }
 
-export const FRAME_MENU = NAV_ITEMS.map((item) => {
-	const href = item.upcoming ? UPCOMING + item.upcoming : item.href;
-	return {
-		...item,
-		href,
-		activePrefixes: item.upcoming ? [href] : item.activePrefixes,
-	};
-});
-
-export function upcomingPage(path: string) {
-	if (!path.startsWith(UPCOMING)) return undefined;
-	return FRAME_MENU.find((item) => item.href === path);
-}
+export const FRAME_MENU = NAV_ITEMS;
 
 const surfaceDescriptions = {
 	map: { en: 'live network', fr: 'réseau en direct' },
@@ -242,7 +228,6 @@ export const SEARCH_LABEL: BilingualLabel = { en: 'Search', fr: 'Recherche' };
 export function mainLandmarkLabel(currentPath: string): BilingualLabel | null {
 	if (currentPath === '/search') return SEARCH_LABEL;
 	return (
-		upcomingPage(currentPath)?.label ??
 		NAV_ITEMS.find((item) => isSurfaceActive(item, currentPath))?.label ??
 		FOOTER_INFO_NAV.find((item) => item.href === currentPath)?.label ??
 		null

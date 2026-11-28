@@ -38,6 +38,17 @@ describe('error page shared copy', () => {
 		);
 	});
 
+	it('names an unverified trip as unavailable in Live, not ended', () => {
+		expect(errorDocumentHead(404, 'en', 'TRIP_UNAVAILABLE')).toEqual({
+			title: '404 · This trip is unavailable in Live',
+			description: 'Check the trip link or find its line.',
+		});
+		expect(errorDocumentHead(404, 'fr', 'TRIP_UNAVAILABLE')).toEqual({
+			title: '404 · Ce trajet n’est pas accessible dans la vue En direct',
+			description: 'Vérifiez le lien du trajet ou cherchez sa ligne.',
+		});
+	});
+
 	it('uses the generic error heading for non-404 statuses', () => {
 		expect(errorDocumentHead(500, 'en').title).toBe('500 · This page could not load');
 	});

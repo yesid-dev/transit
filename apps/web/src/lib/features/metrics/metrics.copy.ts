@@ -12,7 +12,7 @@ export const metricsCopy = defineCopy({
 		},
 		kicker: 'Méthode · science des mesures',
 		heading: 'Ancienne méthode, jusqu’en novembre 2026',
-		lede: 'Chaque chiffre de cette page est une estimation tirée des prévisions de la société de transport. Il ne s’agit pas d’une arrivée mesurée. Pour chaque mesure\u00a0: sa définition, son calcul, son SQL et ses limites.',
+		lede: 'Les estimations historiques d’arrivée s’appuyaient sur les prévisions de la société de transport. D’autres mesures utilisaient les horaires, les positions des véhicules ou les avis de service. Chaque mesure ci-dessous indique ce qu’elle comptait et quelles sources elle utilisait.',
 		sections: {
 			definition: 'Définition',
 			math: 'Le calcul',
@@ -153,7 +153,7 @@ export const metricsCopy = defineCopy({
 		},
 		kicker: 'Methodology · metric science',
 		heading: 'Previous method, through November 2026',
-		lede: 'Each figure here is an estimate from the agency’s predictions. It represents a predicted arrival. Each measure has a definition, its math, its SQL and its limits.',
+		lede: 'Historical arrival estimates used the agency’s predictions. Other measures used schedules, vehicle positions or service alerts. Each measure below explains what it counted and which sources it used.',
 		sections: {
 			definition: 'Definition',
 			math: 'The math',

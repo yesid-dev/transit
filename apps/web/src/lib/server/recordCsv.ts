@@ -29,7 +29,12 @@ function csvFailure(status: number, message: string, retryAfter?: string | null)
 	return new Response(`${message}\n`, { status, headers });
 }
 
-type DetailCode = keyof typeof detailNotFoundCopy;
+type DetailCode = keyof typeof detailNotFoundCopy | 'STOP_NOT_FOUND';
+// A missing stop names where to find it, as the stop page does.
+const missingStop = {
+	en: 'This stop could not be found. Find it in the list of stops and download again.',
+	fr: 'Cet arrêt est introuvable. Cherchez-le dans la liste des arrêts, puis téléchargez de nouveau le fichier.',
+};
 type CsvOptions = {
 	selectPeriod?: (period: DateWindow) => DateWindow;
 	identity?: {
@@ -40,7 +45,10 @@ type CsvOptions = {
 };
 
 export function missingRecordCsv(lang: 'en' | 'fr', code: DetailCode) {
-	return csvFailure(404, `${detailNotFoundCopy[code][lang].heading}.`);
+	return csvFailure(
+		404,
+		code === 'STOP_NOT_FOUND' ? missingStop[lang] : `${detailNotFoundCopy[code][lang].heading}.`,
+	);
 }
 
 const invalidInput = {

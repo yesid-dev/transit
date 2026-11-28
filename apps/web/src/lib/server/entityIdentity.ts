@@ -63,6 +63,17 @@ export async function lineIdentity(
 	return schedule ? archivedIdentity('line', id, clock, scope) : 'unconfirmed';
 }
 
+/** A stop in the current timetable, or one the Record still holds, as the stop page decides. */
+export async function stopIdentity(
+	id: string,
+	clock: FrameClock,
+	scope: IdentityScope,
+	schedule: Pick<ScheduleEdition, 'stops'> | null | undefined,
+): Promise<EntityIdentity> {
+	if (schedule?.stops.some((row) => row.id === id)) return 'available';
+	return schedule ? archivedIdentity('stop', id, clock, scope) : 'unconfirmed';
+}
+
 async function liveVehicleIdentity(
 	id: string,
 	tracked: boolean | undefined,

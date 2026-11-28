@@ -49,3 +49,23 @@ it.each([
 		await expect(loadTrip()).rejects.toMatchObject({ status });
 	},
 );
+
+it.each([
+	['an ID the live feed never held', [], 'TRIP_UNAVAILABLE'],
+	['a trip the agency cancelled', [{ ...trip, relationship: 3 }], 'TRIP_ENDED'],
+] as const)('says the trip ended only with evidence: %s', async (_, trip_updates, code) => {
+	query.mockResolvedValueOnce({
+		kind: 'answer',
+		answer: {
+			city: 'stm',
+			trip_updates,
+			feed: {
+				family: 'trip_updates',
+				captured_at: now,
+				fresh_for_seconds: 60,
+				source_lag_seconds: 0,
+			},
+		},
+	});
+	await expect(loadTrip()).rejects.toMatchObject({ status: 404, body: { code } });
+});

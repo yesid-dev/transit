@@ -134,7 +134,7 @@ describe('LegalDocument', () => {
 		expect(LEGAL_EFFECTIVE_DATES).toEqual({
 			privacy: '2026-11-27',
 			terms: '2026-11-27',
-			accessibility: '2026-11-26',
+			accessibility: '2026-11-28',
 		});
 		expect(legalDocument('en', 'privacy').effectiveDate).toBe('27 November 2026');
 		expect(legalDocument('en', 'terms').effectiveDate).toBe('27 November 2026');
@@ -143,8 +143,8 @@ describe('LegalDocument', () => {
 	});
 
 	it.each([
-		['en', 'Pause live updates', 'until you press Enter', '26 November 2026'],
-		['fr', 'Suspendre les mises à jour', 'avant la touche Entrée', '26 novembre 2026'],
+		['en', 'Pause live updates', 'until you press Enter', '28 November 2026'],
+		['fr', 'Suspendre les mises à jour', 'avant la touche Entrée', '28 novembre 2026'],
 	] as const)(
 		'names the live pause and the city picker on the %s Accessibility page',
 		(locale, pause, picker, date) => {
@@ -153,6 +153,29 @@ describe('LegalDocument', () => {
 			expect(text).toContain(pause);
 			expect(text).toContain(picker);
 			expect(page.effectiveDate).toBe(date);
+		},
+	);
+
+	it.each([
+		[
+			'en',
+			'Use Search and the line, stop and vehicle lists to find a service without using the map.',
+			'Exact vehicle positions and some map readings are available on the map.',
+		],
+		[
+			'fr',
+			'Utilisez la recherche et les listes de lignes, d’arrêts et de véhicules pour trouver un service sans utiliser la carte.',
+			'Les positions exactes des véhicules et certaines mesures sont offertes sur la carte.',
+		],
+	] as const)(
+		'gives the %s keyboard path without promising the lists show everything the map does',
+		(locale, path, limit) => {
+			const text = JSON.stringify(legalDocument(locale, 'accessibility').sections);
+			expect(text).toContain(path);
+			expect(text).toContain(limit);
+			expect(text).not.toMatch(
+				/what the map shows|same information|ce que montre la carte|même information/u,
+			);
 		},
 	);
 

@@ -12,7 +12,9 @@ export const GET: RequestHandler = ({ params }) => {
 		description: fr
 			? 'Un bilan public et indépendant du service de transport effectué. Pas un planificateur de trajets.'
 			: 'An independent public record of the transit service delivered. Not a trip planner.',
-		start_url: '/',
+		// One app in either language: the same id, each opening on its own home page.
+		id: '/',
+		start_url: fr ? '/fr' : '/',
 		scope: '/',
 		display: 'standalone',
 		orientation: 'any',

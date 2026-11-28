@@ -35,6 +35,7 @@
 		recordMessage,
 		tally,
 		timingBasis,
+		delayReadingNotes,
 	} from '#lib/features/record/recordText.ts';
 	import {
 		agencyName,
@@ -420,22 +421,16 @@
 						<FactList leading={false}>
 							{#if measure}
 								<FactRow
-									label={t('Median delay', 'Retard médian')}
+									label={t(...delayReadingNotes.median.label)}
 									emphasis
-									detail={t(
-										'Half of the vehicles were later than this.',
-										'La moitié des véhicules sont passés plus tard.',
-									)}
+									detail={t(...delayReadingNotes.median.note)}
 								>
 									{delayReading(measure.value.median_delay, locale)}
 								</FactRow>
 								<FactRow
-									label={t('Latest 1 in 10', 'Le dixième le plus en retard')}
+									label={t(...delayReadingNotes.latest.label)}
 									emphasis
-									detail={t(
-										'1 vehicle in 10 was later than this.',
-										'1 véhicule sur 10 est passé plus tard.',
-									)}
+									detail={t(...delayReadingNotes.latest.note)}
 								>
 									{delayReading(measure.value.p90_delay, locale)}
 								</FactRow>

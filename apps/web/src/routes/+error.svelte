@@ -36,6 +36,13 @@
 				],
 			};
 		}
+		if (code === 'TRIP_UNAVAILABLE')
+			return {
+				heading: copy.tripUnavailable.heading,
+				body: copy.tripUnavailable.body,
+				illustration: 'none' as const,
+				suggestions: localized(copy.tripUnavailable.suggestions),
+			};
 		if (code === 'STOP_NOT_FOUND')
 			return {
 				heading: copy.stopNotFound.heading,

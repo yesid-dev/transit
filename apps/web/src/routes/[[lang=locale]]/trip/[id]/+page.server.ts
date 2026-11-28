@@ -91,7 +91,16 @@ export const load: PageServerLoad = async ({ params, parent, url, request, setHe
 			);
 			if (href) redirect(307, href);
 		}
-		if (!trip) ended(lastPosition?.route_id);
+		// A trip seen earlier in the live positions ended; an ID never seen may be a typo.
+		if (!trip && lastPosition) ended(lastPosition.route_id);
+		if (!trip)
+			error(404, {
+				code: 'TRIP_UNAVAILABLE',
+				message:
+					lang === 'fr'
+						? 'Ce trajet n’est pas accessible dans la vue En direct.'
+						: 'This trip is unavailable in Live.',
+			});
 	}
 	error(
 		503,

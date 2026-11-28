@@ -286,6 +286,25 @@
 			var(--app-frame-paired) * 1rem + var(--app-frame-compact) * clamp(1.5rem, 4vw, 2.5rem)
 		);
 	}
+	/* The phone controls pill keeps the chosen period readable: when "Options" and the period do
+	   not fit on one line (enlarged text), the period takes its own line instead of being cut. */
+	.app-shell-root :global([data-slot='surface-rail-mobile'] .surface-rail-pill) {
+		white-space: normal;
+	}
+	.app-shell-root :global([data-slot='surface-rail-mobile'] .surface-rail-pill-copy) {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: 0.5rem;
+	}
+	.app-shell-root :global([data-slot='surface-rail-mobile'] .surface-rail-pill-summary-space) {
+		container-type: normal;
+	}
+	.app-shell-root :global([data-slot='surface-rail-mobile'] .surface-rail-pill-summary-text) {
+		overflow: visible;
+		text-overflow: clip;
+		white-space: nowrap;
+	}
 	.app-shell-root[data-full-viewport='true'] {
 		--map-touch-controls-clearance: max(
 			calc(1.625rem + env(safe-area-inset-bottom, 0px) + var(--size-tap-min)),

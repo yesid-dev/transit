@@ -85,6 +85,12 @@ export interface ErrorPageLocaleCopy {
 		line: string;
 		suggestions: readonly { label: string; href: string }[];
 	};
+	/** A trip ID the live feed does not hold, with no sign it ever ran: it may be a typo. */
+	tripUnavailable: {
+		heading: string;
+		body: string;
+		suggestions: readonly { label: string; href: string }[];
+	};
 }
 
 export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
@@ -114,6 +120,14 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 			suggestions: [
 				{ label: 'Trouver un arrêt', href: '/stops' },
 				{ label: 'Lignes', href: '/lines' },
+			],
+		},
+		tripUnavailable: {
+			heading: 'Ce trajet n’est pas accessible dans la vue En direct',
+			body: 'Vérifiez le lien du trajet ou cherchez sa ligne.',
+			suggestions: [
+				{ label: 'Lignes', href: '/lines' },
+				{ label: 'Recherche', href: '/search' },
 			],
 		},
 		tripEnded: {
@@ -154,6 +168,14 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 				{ label: 'Lines', href: '/lines' },
 			],
 		},
+		tripUnavailable: {
+			heading: 'This trip is unavailable in Live',
+			body: 'Check the trip link or find its line.',
+			suggestions: [
+				{ label: 'Lines', href: '/lines' },
+				{ label: 'Search', href: '/search' },
+			],
+		},
 		tripEnded: {
 			heading: 'This trip is no longer running',
 			body: 'A trip leaves the live view when it ends. Its line shows what runs now.',
@@ -181,6 +203,11 @@ export function errorDocumentHead(
 		return {
 			title: `${status} · ${copy.tripEnded.heading}`,
 			description: copy.tripEnded.body,
+		};
+	if (status === 404 && code === 'TRIP_UNAVAILABLE')
+		return {
+			title: `${status} · ${copy.tripUnavailable.heading}`,
+			description: copy.tripUnavailable.body,
 		};
 	if (status === 404 && code === 'STOP_NOT_FOUND')
 		return {

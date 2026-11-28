@@ -1027,9 +1027,17 @@ const server = createServer((request, response) => {
 			url.searchParams.get('measure') === 'alert_counts'
 				? dailyMessageHold
 				: undefined;
+		// A departure's identity decides whether its page exists, before any answer: a test that
+		// holds the answers still lets the page draw its head and waiting cards.
+		const departureIdentity =
+			url.searchParams.has('departure') &&
+			url.searchParams.get('measure') === 'trips_run' &&
+			url.searchParams.get('group') === 'departure';
 		const heldBy = holdStopSearch
 			? scope
-			: (richMessageHold ?? activeTestHold(request) ?? (hold === true ? 'overview' : hold));
+			: (richMessageHold ??
+				(departureIdentity ? undefined : activeTestHold(request)) ??
+				(hold === true ? 'overview' : hold));
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		sendFixtureResponse(response, heldBy, () => response.end(JSON.stringify(body)));
 		return;

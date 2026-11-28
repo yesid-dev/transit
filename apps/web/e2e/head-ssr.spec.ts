@@ -290,9 +290,14 @@ for (const locale of ['en', 'fr'] as const) {
 		}
 		const missing = await request.get(`${prefix}/trip/retired-trip?${query}`);
 		expect(missing.status()).toBe(404);
-		// An ended trip is not a missing page: it says so and points to the lines.
+		// A trip ID the feed never held may be a typo: no claim that it ended, and a way to its line.
 		const ended = await missing.text();
 		expect(ended).toContain(
+			locale === 'fr'
+				? 'Ce trajet n’est pas accessible dans la vue En direct'
+				: 'This trip is unavailable in Live',
+		);
+		expect(ended).not.toContain(
 			locale === 'fr' ? 'Ce trajet ne circule plus' : 'This trip is no longer running',
 		);
 		expect(ended).not.toContain(

@@ -339,6 +339,41 @@ describe('record charts', () => {
 	);
 });
 
+describe('departure stop ladder', () => {
+	it.each([
+		['en', '5 min late'],
+		['fr', '5 min de retard'],
+	] as const)('names the 5-minute rule and draws no bar on schedule in %s', (locale, rule) => {
+		const chart = stopLadderChart(
+			series(
+				cell(
+					{ stop: 'A' },
+					{
+						evidence: { counts: { classified: 30 }, days_included: [], observed_delay_seconds: 10 },
+					},
+				),
+				cell(
+					{ stop: 'B' },
+					{
+						evidence: {
+							counts: { classified: 30 },
+							days_included: [],
+							observed_delay_seconds: 400,
+						},
+					},
+				),
+			),
+			'Delay',
+			locale,
+			(id) => ({ name: id }),
+			true,
+		);
+		expect(chart.props.threshold).toEqual({ value: 300, label: rule });
+		expect(chart.props.stops[0].value).toBe(0);
+		expect(chart.props.stops[1].value).toBe(400);
+	});
+});
+
 describe('hour grid with no hour to judge', () => {
 	const few = (hour: number) =>
 		cell(
