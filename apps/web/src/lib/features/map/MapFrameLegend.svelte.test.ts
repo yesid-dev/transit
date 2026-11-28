@@ -15,4 +15,5 @@ it.each([
 	if (rail) expect(text).toMatch(rail);
 	else expect(text).not.toMatch(/Rail|horaire seulement/);
 	expect(text).toMatch(locale === 'fr' ? /Sélection/ : /Selected/);
+	expect(text).toContain(locale === 'fr' ? 'En avance (violet)' : 'Early (violet)');
 });

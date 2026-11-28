@@ -155,7 +155,7 @@ export function histogramChart(
 				label: value > 0 ? `+${value}` : String(value),
 			})),
 			yTicks: y.ticks(4).map((value) => ({ value, label: axisPercent(value, locale) })),
-			boundaries: [-1, 5],
+			boundaries: [-1, 5] as const,
 			bands: [
 				{ status: 'early', label: band.early },
 				{ status: 'on_time', label: band.onTime },

@@ -50,7 +50,11 @@ test('the late-share hour grid has five contrasting, ordered swatches @layout', 
 		expect(border).toMatch(/^1px solid /u);
 		expect(contrast(edge, card)).toBeGreaterThanOrEqual(3);
 		expect(contrast(fill.luminance, ink)).toBeGreaterThanOrEqual(4.5);
-		if (index > 0) expect(fill.luminance).toBeLessThan(steps[index - 1].fill.luminance);
+		if (index > 0) {
+			expect(contrast(fill.luminance, card)).toBeGreaterThan(
+				contrast(steps[index - 1].fill.luminance, card),
+			);
+		}
 	}
 	expect(steps[0].fill.rgb[2]).toBeGreaterThan(steps[0].fill.rgb[0]);
 	expect(new Set(steps[2].fill.rgb).size).toBe(1);

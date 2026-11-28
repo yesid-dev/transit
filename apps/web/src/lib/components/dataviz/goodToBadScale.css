@@ -9,16 +9,19 @@
 	--transit-good-to-bad-ink: light-dark(#fff, #000);
 }
 
-/* Grid borders let their fills cover a wider lightness range than map fills. */
+/* Grid borders let their fills cover a wider range than map fills.
+   Higher levels have more contrast against the card in either theme. */
 .good-to-bad-grid {
-	--transit-good-to-bad-0: #d0f4ff;
-	--transit-good-to-bad-1: #79c7f6;
-	--transit-good-to-bad-2: #979797;
-	--transit-good-to-bad-3: #c03c39;
-	--transit-good-to-bad-4: #a00008;
+	--transit-good-to-bad-0: light-dark(#d0f4ff, #1b426d);
+	--transit-good-to-bad-1: light-dark(#79c7f6, #276c9e);
+	--transit-good-to-bad-2: light-dark(#979797, #8d8d8d);
+	--transit-good-to-bad-3: light-dark(#c03c39, #eca5a0);
+	--transit-good-to-bad-4: light-dark(#a00008, #ffdfd9);
 	--transit-good-to-bad-ink: #000;
-	--transit-good-to-bad-ink-3: #fff;
-	--transit-good-to-bad-ink-4: #fff;
+	--transit-good-to-bad-ink-0: light-dark(#000, #fff);
+	--transit-good-to-bad-ink-1: light-dark(#000, #fff);
+	--transit-good-to-bad-ink-3: light-dark(#fff, #000);
+	--transit-good-to-bad-ink-4: light-dark(#fff, #000);
 	--transit-good-to-bad-grid-edge: light-dark(#818181, #757575);
 }
 
@@ -35,6 +38,7 @@
 		--transit-good-to-bad-3: CanvasText;
 		--transit-good-to-bad-4: CanvasText;
 		--transit-good-to-bad-ink-0: Canvas;
+		--transit-good-to-bad-ink-1: Canvas;
 		--transit-good-to-bad-ink-3: Canvas;
 		--transit-good-to-bad-ink-4: Canvas;
 		--transit-good-to-bad-ink: Canvas;
