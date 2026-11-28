@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import cached_property
 from hashlib import sha256
 from io import BytesIO, TextIOWrapper
 from pathlib import PurePosixPath, PureWindowsPath
@@ -16,6 +17,12 @@ from zoneinfo import ZoneInfo
 
 from transit_ops.gtfs.types import parse_gtfs_service_time
 from transit_ops.lake.gtfs_names import GTFS_FILES
+from transit_ops.providers.corridor_paths import (
+    Coordinate,
+    CorridorPath,
+    Pattern,
+    cut_corridor_paths,
+)
 from transit_ops.providers.schedule import (
     InvalidScheduleEdition,
     ScheduleDay,
@@ -48,6 +55,8 @@ class ArchiveScheduleContext:
     search_stops: tuple[dict[str, Any], ...]
     route_directions: Mapping[str, list[dict[str, Any]]]
     route_shapes: Mapping[str, list[dict[str, Any]]]
+    _corridor_patterns: tuple[Pattern, ...]
+    _shape_paths: Mapping[str, list[Coordinate]]
 
     def __init__(
         self,
@@ -125,11 +134,16 @@ class ArchiveScheduleContext:
                 shape = min(candidates, key=lambda name: (-candidates[name], name))
                 branches_with_shape.append((route, branch, shape))
         assert archive_bytes is not None
+        ranked_patterns = sorted(
+            (-count, route, direction, pattern, shape)
+            for (route, direction, _, pattern), candidates in shapes_by_branch.items()
+            for shape, count in candidates.items()
+        )
         shapes = _shape_coordinates(
             archive_bytes,
             provider_id,
             dataset_version_id,
-            {shape for _, _, shape in branches_with_shape},
+            {shape for _, _, _, _, shape in ranked_patterns},
         )
         route_shapes: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for route, branch, shape_id in branches_with_shape:
@@ -142,6 +156,10 @@ class ArchiveScheduleContext:
                 )
         object.__setattr__(self, "route_directions", MappingProxyType(directions))
         object.__setattr__(self, "route_shapes", MappingProxyType(route_shapes))
+        object.__setattr__(
+            self, "_corridor_patterns", tuple(entry[1:] for entry in ranked_patterns)
+        )
+        object.__setattr__(self, "_shape_paths", MappingProxyType(shapes))
         object.__setattr__(self, "context_id", identity)
         object.__setattr__(self, "timezone", timezone)
         object.__setattr__(self, "days", MappingProxyType(days))
@@ -192,6 +210,10 @@ class ArchiveScheduleContext:
                 and row["location_type"] in (0, None)
             ),
         )
+
+    @cached_property
+    def corridor_paths(self) -> tuple[CorridorPath, ...]:
+        return cut_corridor_paths(self._corridor_patterns, self._shape_paths, self._stops)
 
     def search_index(self, day: date) -> dict[str, Any]:
         # Include the full edition so a weekend index still lists weekday-only service.

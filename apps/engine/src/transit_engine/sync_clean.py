@@ -67,6 +67,8 @@ class R2:
             "/search/v1/**",
             "--include",
             "/maps/v1/**",
+            "--include",
+            "/corridors/v1/**",
         )
         return {entry["Path"]: entry["Size"] for entry in json.loads(result)}
 

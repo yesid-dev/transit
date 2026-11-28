@@ -64,12 +64,37 @@ export function attachMapRenderReceipt(root: HTMLElement, instance: MapLibreMap)
 
 /** Called only inside MapStage's development/e2e build gate. */
 export function exposeCameraProbe(instance: MapLibreMap): () => void {
+	function recordMarks(kind: 'stops' | 'corridors') {
+		const id = kind === 'stops' ? 'record-map-stops' : 'record-map-measured';
+		const layer = instance.getLayer(id);
+		if (!layer) return null;
+		const paint = layer.paint as {
+			get: (name: string) => {
+				evaluate: (feature: { properties: unknown }, state: object) => number;
+			};
+		};
+		const size = paint.get(kind === 'stops' ? 'circle-radius' : 'line-width');
+		const layers = instance.getStyle().layers;
+		const layerIndex = layers.findIndex((entry) => entry.id === id);
+		return {
+			zoom: instance.getZoom(),
+			roadLayers: layers.filter((entry) => entry.id.startsWith('roads-')).length,
+			aboveRoads: layers.slice(layerIndex + 1).every((entry) => !entry.id.startsWith('roads-')),
+			marks: instance.queryRenderedFeatures({ layers: [id] }).map((feature) => ({
+				id: feature.properties.id as string,
+				state: feature.properties.state as number,
+				step: feature.properties.step as number | null,
+				size: size.evaluate(feature, {}),
+			})),
+		};
+	}
 	const inspectMap = () => ({
 		project: (coord: [number, number]) => instance.project(coord),
 		moving: instance.isMoving(),
 		loaded: instance.loaded(),
 		bearing: instance.getBearing(),
 		pitch: instance.getPitch(),
+		recordMarks,
 		setOrientation: (bearing: number, pitch: number) => instance.jumpTo({ bearing, pitch }),
 	});
 	Object.defineProperty(window, '__transitMap', { configurable: true, get: inspectMap });

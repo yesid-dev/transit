@@ -2,6 +2,7 @@
 	import { mapRecordReading, searchCount } from '#lib/site/presenter.ts';
 	import { resolveColor } from '#lib/components/map/vehicleSprites.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
+	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack, type Snippet } from 'svelte';
 	import { Separator } from '@yesid/ui/separator';
@@ -21,6 +22,7 @@
 	import { getV1Context } from '#lib/v1/boot.ts';
 	import { mapReadingHours, type MapReadingFilters } from '#lib/filters/mapReadings.ts';
 	import type { MapRecordAnswer } from './recordMapAnswer';
+	import { corridorMapAnswer, indexCorridorPaths, type CorridorIndex } from './corridorMap';
 	import {
 		isCoordinateInCapturedView,
 		isLineInCapturedView,
@@ -28,17 +30,15 @@
 	} from './mapReportCamera';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { attachRecordMap } from './recordMapLayers';
-	import { recordExtrusions } from './recordExtrusions';
+	import { recordExtrusions, recordHeightScale } from './recordExtrusions';
 	import {
 		ALL_CORRIDORS_MIN_ZOOM,
-		OTHER_STOPS_MIN_ZOOM,
 		overviewCorridors,
 		recordColours,
 		recordCorridors,
 		recordFeatures,
 		recordMapSampleText,
 		recordStops,
-		recordStopIsVisible,
 		type RecordMapLayer,
 		type RecordMark,
 	} from './recordMap';
@@ -55,7 +55,6 @@
 		url: URL;
 		locale: Locale;
 		stops: readonly StopIndexEntry[];
-		terminals: ReadonlySet<string>;
 		routes: readonly RouteIndexEntry[];
 		onlinefilters: () => void;
 		onsourcedate: (date: string | null) => void;
@@ -64,6 +63,8 @@
 		reportCamera?: MapReportCamera | null;
 		threeD?: boolean;
 		oncount?: (count: number | null) => void;
+		onheightlimit?: (seconds: number | null) => void;
+		onapproximate?: (shown: boolean) => void;
 		children: Snippet<[Snippet<[Snippet | undefined]> | undefined, string | null]>;
 	}
 	let {
@@ -78,7 +79,6 @@
 		url,
 		locale,
 		stops,
-		terminals,
 		routes,
 		onlinefilters,
 		onsourcedate,
@@ -87,6 +87,8 @@
 		reportCamera,
 		threeD = false,
 		oncount,
+		onheightlimit,
+		onapproximate,
 		children,
 	}: Props = $props();
 	const { provider } = getV1Context();
@@ -94,6 +96,29 @@
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
 	const stopLayer = $derived(layer === 'stops');
 	const network = $derived(layer === 'corridors' && !line);
+	let corridorResult = $state.raw<{ city: string; paths: CorridorIndex | null } | null>(null);
+	const corridorPending = $derived(network && corridorResult?.city !== city);
+	$effect(() => {
+		const provider = city;
+		if (!network || untrack(() => corridorResult?.city === provider && corridorResult.paths))
+			return;
+		const controller = new AbortController();
+		void fetch(`/api/corridor-map?${new URLSearchParams({ city: provider })}`, {
+			signal: controller.signal,
+		})
+			.then(async (response) => {
+				if (!response.ok) return null;
+				const parsed = corridorMapAnswer.safeParse(await response.json());
+				return parsed.success && parsed.data.schedule
+					? indexCorridorPaths(parsed.data.schedule)
+					: null;
+			})
+			.catch(() => null)
+			.then((paths) => {
+				if (!controller.signal.aborted) corridorResult = { city: provider, paths };
+			});
+		return () => controller.abort();
+	});
 	const hours = $derived(mapReadingHours(readings?.timeOfDay));
 	const scopedDirection = $derived(
 		readings?.direction !== undefined
@@ -134,7 +159,11 @@
 	let routeResult = $state.raw<{ id: string; route: RouteFile | null } | null>(null);
 	const route = $derived(routeResult?.id === line ? routeResult.route : null);
 	$effect(() => {
-		ondata?.(!pending && (layer !== 'corridors' || !line || routeResult?.id === line));
+		ondata?.(
+			!pending &&
+				(!answer || !corridorPending) &&
+				(layer !== 'corridors' || !line || routeResult?.id === line),
+		);
 	});
 	let selectedId = $state<string | null>(null);
 	let search = $state('');
@@ -185,18 +214,21 @@
 	});
 
 	const marks = $derived.by(() => {
-		if (!answer) return [];
+		if (!answer || corridorPending) return [];
 		if (!stopLayer)
-			return recordCorridors(stops, route?.directions ?? [], answer, direction, scheduleOnly);
-		return recordStops(
-			stops,
-			answer,
-			(stop) =>
-				Boolean(
-					stop.routes?.length &&
-					stop.routes.every((id) => lineIsScheduleOnly(provider, id, routeTypes.get(id) ?? null)),
-				),
-			terminals,
+			return recordCorridors(
+				stops,
+				route?.directions ?? [],
+				answer,
+				scopedDirection,
+				scheduleOnly,
+				network ? corridorResult?.paths : undefined,
+			);
+		return recordStops(stops, answer, (stop) =>
+			Boolean(
+				stop.routes?.length &&
+				stop.routes.every((id) => lineIsScheduleOnly(provider, id, routeTypes.get(id) ?? null)),
+			),
 		);
 	});
 	const markById = $derived(new Map(marks.map((mark) => [mark.id, mark])));
@@ -204,28 +236,25 @@
 	const corridorOverview = $derived(network ? overviewCorridors(marks) : marks);
 	const atCorridorOverview = $derived((reportCamera?.zoom ?? 0) < ALL_CORRIDORS_MIN_ZOOM);
 	const drawn = $derived(atCorridorOverview ? corridorOverview : marks);
-	const showStopScope = $derived(
-		stopLayer &&
-			reportCamera &&
-			reportCamera.zoom < OTHER_STOPS_MIN_ZOOM &&
-			marks.some((mark) => !mark.main),
-	);
-	const overviewIncludesOtherStops = $derived(
-		stopLayer && marks.some((mark) => mark.main && !terminals.has(mark.id)),
-	);
+	$effect(() => onapproximate?.(drawn.some(({ approximate }) => approximate === true)));
 	const visible = $derived.by(() => {
 		const camera = reportCamera;
 		if (!camera) return [];
 		return drawn
 			.filter((mark) =>
 				mark.geometry.type === 'Point'
-					? recordStopIsVisible(mark, camera.zoom) &&
-						isCoordinateInCapturedView(camera, mark.geometry.coordinates)
+					? isCoordinateInCapturedView(camera, mark.geometry.coordinates)
 					: isLineInCapturedView(camera, mark.geometry.coordinates),
 			)
 			.sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity));
 	});
 	const leader = $derived(visible.find((mark) => mark.state === 3 && mark.value !== null));
+	const heightScale = $derived(
+		threeD && layer === 'corridors' && reportCamera
+			? recordHeightScale(visible, reportCamera)
+			: null,
+	);
+	$effect(() => onheightlimit?.(heightScale?.seconds ?? null));
 	const leaderStop = $derived(
 		leader?.stop ? (stops.find((stop) => stop.id === leader.stop)?.code ?? leader.stop) : null,
 	);
@@ -235,13 +264,12 @@
 		limit = 12;
 	});
 	$effect(() => oncount?.(answer && reportCamera ? visible.length : null));
+	const searchQuery = $derived(stopDisplayName(search.trim()).toLocaleLowerCase(locale));
 	const matching = $derived(
-		search.trim()
+		searchQuery
 			? marks
 					.filter(({ name, stop }) =>
-						`${name} ${stop ?? ''}`
-							.toLocaleLowerCase(locale)
-							.includes(search.trim().toLocaleLowerCase(locale)),
+						`${name} ${stop ?? ''}`.toLocaleLowerCase(locale).includes(searchQuery),
 					)
 					.slice(0, 12)
 			: [],
@@ -257,7 +285,7 @@
 		const canvas = document.createElement('canvas');
 		canvas.width = canvas.height = 1;
 		const context = canvas.getContext('2d', { willReadFrequently: true });
-		const resolvedRamp = recordColours[stopLayer ? 'stops' : 'corridors'].map((colour) => {
+		const resolvedRamp = recordColours.map((colour) => {
 			if (!context) return mutedInk;
 			context.fillStyle = resolveColor(colour, mutedInk);
 			context.fillRect(0, 0, 1, 1);
@@ -265,15 +293,17 @@
 			return `rgb(${red}, ${green}, ${blue})`;
 		});
 		const features = recordFeatures(drawn, resolvedRamp, stopLayer, mutedInk);
+		const valuesInView = heightScale ? new Map(visible.map(({ id, value }) => [id, value])) : null;
 		return attachRecordMap(
 			map,
 			features,
 			(id) => (selectedId = id),
 			network,
 			resolveColor('var(--foreground)', mutedInk),
-			threeD && layer === 'corridors'
-				? recordExtrusions(features, (id) => markById.get(id)?.value)
+			heightScale
+				? recordExtrusions(features, (id) => valuesInView?.get(id), heightScale)
 				: undefined,
+			resolveColor('var(--map-corridor-cap)', mutedInk),
 		);
 	});
 	$effect(() => {
@@ -416,19 +446,7 @@
 							</h2>
 							<span class="tabular-nums text-muted-foreground">{shownCount(visible.length)}</span>
 						</div>
-						{#if showStopScope}
-							<p class="text-muted-foreground">
-								{overviewIncludesOtherStops
-									? tr(
-											'Showing stops served by more than one line, métro and rail stations, and the first and last stops on routes. Zoom in for all stops.',
-											'Seuls les arrêts desservis par plusieurs lignes, les stations de métro et de train et les terminus sont affichés. Zoomez pour voir tous les arrêts.',
-										)
-									: tr(
-											'Showing the first and last stops on routes. Zoom in for all stops.',
-											'Seuls les terminus sont affichés. Zoomez pour voir tous les arrêts.',
-										)}
-							</p>
-						{:else if drawn !== marks}
+						{#if drawn !== marks}
 							<p class="text-muted-foreground">
 								{tr(
 									`Showing the ${shownCount(drawn.length)} stretches that lose the most time. Zoom in for all.`,
@@ -512,6 +530,9 @@
 				</p>
 				{#if sampleText}
 					<p>{sampleText}</p>
+				{/if}
+				{#if selected.approximate}
+					<p>{tr('Shown straight between stops', 'Tracé direct entre les arrêts')}</p>
 				{/if}
 			{/if}
 		</div>

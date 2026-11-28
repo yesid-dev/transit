@@ -2,10 +2,11 @@ import type { MapRecordAnswer, MapRecordState } from './recordMapAnswer';
 import type { RouteDirection, StopIndexEntry } from '#lib/v1/schemas/index.ts';
 import type { Locale } from '#lib/i18n/index.ts';
 import { choose, lowCoverageLabel, tally } from '#lib/features/record/recordText.ts';
-import { measureRamps } from '#lib/components/dataviz/measureRamps.ts';
+import { GOOD_TO_BAD_LEVELS, goodToBadStep } from '#lib/components/dataviz/goodToBadScale.ts';
+import { stopDisplayName } from '#lib/site/transitDisplay.ts';
+import { corridorPath, type CorridorIndex } from './corridorMap';
 
 export type RecordMapLayer = 'live' | 'stops' | 'corridors';
-export const OTHER_STOPS_MIN_ZOOM = 13;
 export const ALL_CORRIDORS_MIN_ZOOM = 13;
 const NETWORK_CORRIDOR_LIMIT = 300;
 type Coordinate = [number, number];
@@ -19,12 +20,12 @@ export interface RecordMark {
 	fromStop?: string;
 	toName?: string;
 	stop?: string;
-	main?: boolean;
 	direction?: number | null;
 	lines?: readonly string[];
 	value: number | null;
 	sample: number | null;
 	state: MapRecordState;
+	approximate?: boolean;
 	geometry: Geometry;
 }
 
@@ -39,23 +40,20 @@ export type RecordFeatures = {
 			colour: string;
 			step: number | null;
 			offset: number;
-			main: boolean;
+			approximate?: boolean;
 		};
 	}[];
 };
 
-export const recordColours = {
-	stops: measureRamps.lateShare,
-	corridors: measureRamps.timeLost,
-};
+export const recordColours = GOOD_TO_BAD_LEVELS.map((level) => goodToBadStep(level).fill);
 
 export const recordStopRadii = {
-	network: [2.5, 3.25, 4, 5, 6],
+	network: [3.75, 4.5, 5.25, 6.25, 7.25],
 	detail: [4.5, 5.5, 6.5, 7.75, 9],
 } as const;
 
 export const recordCorridorWidths = {
-	network: [1, 1.5, 2.125, 3, 4.25],
+	network: [2.5, 3, 3.75, 4.5, 5.5],
 	detail: [2, 3, 4, 5.5, 7],
 } as const;
 
@@ -76,11 +74,7 @@ export function recordRampStep(state: MapRecordState, value: number | null, stop
 	if (!stops && value <= 0) return 0;
 	const cuts = stops ? stopLateShareCuts : corridorLossCuts;
 	const slot = cuts.findIndex((cut) => value < cut);
-	return (slot === -1 ? cuts.length : slot) + (stops ? 0 : 1);
-}
-
-export function recordStopIsVisible(mark: Pick<RecordMark, 'main'>, zoom: number): boolean {
-	return mark.main === true || zoom >= OTHER_STOPS_MIN_ZOOM;
+	return GOOD_TO_BAD_LEVELS[(slot === -1 ? cuts.length : slot) + (stops ? 0 : 1)]!;
 }
 
 /** Keep the most time lost legible when neighbouring corridors overlap. */
@@ -89,20 +83,6 @@ export function overviewCorridors(marks: readonly RecordMark[]): readonly Record
 	const measured = marks.filter((mark) => mark.state === 3 && mark.value !== null);
 	if (!measured.length) return marks;
 	return measured.sort((a, b) => b.value! - a.value!).slice(0, NETWORK_CORRIDOR_LIMIT);
-}
-
-export function scheduleTerminals(
-	directions: Readonly<Record<string, readonly Pick<RouteDirection, 'stops'>[]>> | undefined,
-): ReadonlySet<string> {
-	const terminals = new Set<string>();
-	for (const variants of Object.values(directions ?? {})) {
-		for (const { stops } of variants) {
-			if (!stops?.length) continue;
-			terminals.add(stops[0]!.id);
-			terminals.add(stops[stops.length - 1]!.id);
-		}
-	}
-	return terminals;
 }
 
 export function recordMapSampleText(
@@ -127,13 +107,13 @@ export function recordMapSampleText(
 const pairId = (dir: number | null, from: string, to: string) => JSON.stringify([dir, from, to]);
 const location = (stop: StopIndexEntry): Coordinate => [stop.lon, stop.lat];
 
-function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordinate[] {
-	if (!Array.isArray(path)) return [from, to];
+function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordinate[] | undefined {
+	if (!Array.isArray(path)) return undefined;
 	const points = path.filter(
 		(point): point is Coordinate =>
 			Array.isArray(point) && point.length === 2 && point.every(Number.isFinite),
 	);
-	if (points.length < 2) return [from, to];
+	if (points.length < 2) return undefined;
 	function nearest(point: Coordinate) {
 		let result = { index: 0, offset: 0, point, distance: Infinity };
 		for (let i = 0; i < points.length - 1; i++) {
@@ -158,7 +138,7 @@ function shapeSection(path: unknown, from: Coordinate, to: Coordinate): Coordina
 	const first = nearest(from);
 	const last = nearest(to);
 	// GTFS shapes travel in trip order. A mismatched or looped shape can fall back to a chord.
-	if (first.index + first.offset >= last.index + last.offset) return [from, to];
+	if (first.index + first.offset >= last.index + last.offset) return undefined;
 	return [from, first.point, ...points.slice(first.index + 1, last.index + 1), last.point, to];
 }
 
@@ -187,18 +167,12 @@ export function recordStops(
 	stops: readonly StopIndexEntry[],
 	answer: MapRecordAnswer | null,
 	scheduleOnly: (stop: StopIndexEntry) => boolean,
-	terminals?: ReadonlySet<string>,
 ): RecordMark[] {
 	const rows = readings(answer);
 	return stops.map((stop) => ({
 		id: stop.id,
 		stop: stop.id,
-		main:
-			(stop.routes?.length ?? 0) > 1 ||
-			stop.mode === 'metro' ||
-			stop.mode === 'rail' ||
-			terminals?.has(stop.id) === true,
-		name: stop.name,
+		name: stopDisplayName(stop.name),
 		geometry: { type: 'Point', coordinates: location(stop) },
 		...(rows.get(stop.id) ?? { ...absent, state: scheduleOnly(stop) ? 2 : 0 }),
 	}));
@@ -210,9 +184,12 @@ export function recordCorridors(
 	answer: MapRecordAnswer | null,
 	direction: string,
 	scheduleOnly: boolean,
+	paths?: CorridorIndex | null,
 ): RecordMark[] {
 	const rows = readings(answer);
-	const byId = new Map(stops.map((stop) => [stop.id, stop]));
+	const byId = new Map(
+		stops.map((stop) => [stop.id, { ...stop, name: stopDisplayName(stop.name) }]),
+	);
 	const pairs = new Map<string, RecordMark>();
 	// Network readings already apply the direction cut before pooling the stop pairs.
 	const shapeDirection = answer?.measure === 'mean_time_lost' && !answer.direction ? '' : direction;
@@ -222,6 +199,11 @@ export function recordCorridors(
 		const from = byId.get(fromId);
 		const to = byId.get(toId);
 		if (!from || !to || fromId === toId || pairs.has(id)) return;
+		const reading = rows.get(id);
+		const section =
+			dir === null
+				? corridorPath(paths, fromId, toId, reading?.lines, direction)
+				: shapeSection(variant?.shape?.coordinates, location(from), location(to));
 		pairs.set(id, {
 			id,
 			name: `${from.name} → ${to.name}`,
@@ -229,11 +211,12 @@ export function recordCorridors(
 			fromStop: from.id,
 			toName: to.name,
 			direction: dir,
+			...(!section ? { approximate: true } : {}),
 			geometry: {
 				type: 'LineString',
-				coordinates: shapeSection(variant?.shape?.coordinates, location(from), location(to)),
+				coordinates: section ?? [location(from), location(to)],
 			},
-			...(rows.get(id) ?? { ...absent, state: scheduleOnly ? 2 : 0 }),
+			...(reading ?? { ...absent, state: scheduleOnly ? 2 : 0 }),
 		});
 	}
 	for (const variant of [...directions].sort(
@@ -259,7 +242,7 @@ export function recordFeatures(
 ): RecordFeatures {
 	return {
 		type: 'FeatureCollection',
-		features: marks.map(({ id, geometry, state, value, direction, main }) => {
+		features: marks.map(({ id, geometry, state, value, direction, approximate }) => {
 			const step = recordRampStep(state, value, stops);
 			return {
 				type: 'Feature',
@@ -267,7 +250,7 @@ export function recordFeatures(
 				properties: {
 					id,
 					state,
-					main: main === true,
+					...(approximate ? { approximate: true } : {}),
 					step,
 					colour: step === null ? mutedInk : colours[step]!,
 					offset: direction == null ? 0 : 3,

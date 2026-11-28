@@ -21,9 +21,8 @@ html {
 	--transit-early-dark: #d78cdb;
 	--text-stat-value: 1.75rem;
 	--map-stop-fill: var(--muted-foreground);
-	--map-late-share-anchor: var(--dataviz-severity-critical);
-	/* yesid.design has no blue measure anchor outside the transport status palette. */
-	--map-time-lost-anchor: light-dark(#1f6f9c, #4aa3d4);
+	/* The 3D cap contrasts with every reading in the shared scale. */
+	--map-corridor-cap: light-dark(#f9dc66, #322401);
 	--size-detail-panel: 360px;
 	--size-detail-rail: 3.7rem;
 	--shadow-detail-panel:
@@ -66,8 +65,7 @@ html {
    status. Separators and bands drawn in the card colour take Canvas. */
 @media (forced-colors: active) {
 	:root {
-		--map-late-share-anchor: CanvasText;
-		--map-time-lost-anchor: CanvasText;
+		--map-corridor-cap: Canvas;
 	}
 	svg {
 		--dataviz-status-early: CanvasText;

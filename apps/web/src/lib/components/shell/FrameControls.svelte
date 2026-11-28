@@ -257,14 +257,14 @@
 			{/if}
 		</Sheet.Content>
 	</Sheet.Root>
-	<p class="w-full text-sm text-muted-foreground">{copy.note(startLabel)}</p>
+	{#if !extension}<p class="w-full text-sm text-muted-foreground">{copy.note(startLabel)}</p>{/if}
 {/snippet}
 
 <div class="grid min-w-0 gap-3" data-frame-controls={context.presentation}>
 	{#if extension}
 		<ControlsRail
 			label={copy.view}
-			style="padding: calc(var(--spacing) * 2); gap: calc(var(--spacing) * 2);"
+			style={`padding: calc(var(--spacing) * 2); gap: calc(var(--spacing) * ${frame.mode === 'record' && context.presentation === 'desktop' ? 1 : 2});`}
 		>
 			{@render viewContent()}
 			{@render extension.between?.()}

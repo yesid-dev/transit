@@ -234,6 +234,16 @@ def _publish_search_schedule(
             encoding="utf-8",
         )
         put_create_only(clean, shapes, f"{prefix}maps/v1/{edition_key}.json")
+        corridors = Path(temporary) / "corridors.json"
+        corridors.write_text(
+            json.dumps(
+                {"date": day.isoformat(), "paths": schedule.corridor_paths},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
+        put_create_only(clean, corridors, f"{prefix}corridors/v1/{edition_key}.json")
 
 
 def _build_day(

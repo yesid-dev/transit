@@ -75,6 +75,33 @@ def test_calendar_membership_and_inclusive_bounds():
     assert [only.days[d].trip_ids for d in dates] == [frozenset(), {"t"}, frozenset(), frozenset()]
 
 
+def test_corridor_paths_include_the_less_common_stop_pattern():
+    ctx = context(
+        archive(
+            trips="r,s,t,0,,main,\nr,s,u,0,,main,\nr,s,v,0,,branch,\n",
+            stops="a,A,45.50,-73.60,,\nb,B,45.51,-73.59,,\nc,C,45.52,-73.58,,\n",
+            stop_times=(
+                "t,1,a,08:00:00,08:00:00,,\nt,2,b,08:10:00,08:10:00,,\n"
+                "u,1,a,09:00:00,09:00:00,,\nu,2,b,09:10:00,09:10:00,,\n"
+                "v,1,a,10:00:00,10:00:00,,\nv,2,c,10:10:00,10:10:00,,\n"
+            ),
+            extra=[
+                (
+                    "SHAPES.TXT",
+                    "shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence\n"
+                    "main,45.50,-73.60,1\nmain,45.51,-73.59,2\n"
+                    "branch,45.50,-73.60,1\nbranch,45.52,-73.60,2\nbranch,45.52,-73.58,3\n",
+                )
+            ],
+        )
+    )
+    assert len(ctx.route_shapes["r"]) == 1
+    assert ctx.corridor_paths == (
+        ("r", 0, "a", "b", ((-73.6, 45.5), (-73.59, 45.51))),
+        ("r", 0, "a", "c", ((-73.6, 45.5), (-73.6, 45.52), (-73.58, 45.52))),
+    )
+
+
 @pytest.mark.parametrize(
     "interior,arrival", [("t,7,a,,,,\n", None), ("t,7,a,27:00:00,24:00:00,,\n", 97200)]
 )

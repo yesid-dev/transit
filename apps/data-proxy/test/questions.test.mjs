@@ -67,6 +67,22 @@ test("passes schedule map line sets upstream and caches each cut independently",
   assert.equal(f.requests.length, 3);
 });
 
+test("serves an edition's cut corridor map independently of the schedule shapes", async (t) => {
+  const schedule = {
+    date: "2026-11-26",
+    paths: [["24", 0, "a", "b", [[-73.6, 45.5], [-73.59, 45.51]]]],
+  };
+  const f = fixture(t, (request) => {
+    assert.equal(new URL(request.url).pathname, "/corridor-map");
+    return Response.json({ schedule });
+  });
+  const path = "/v2/demo/corridor-map";
+  assert.deepEqual(await (await f.fetch(path)).json(), { schedule });
+  assert.deepEqual(await (await f.fetch(path)).json(), { schedule });
+  assert.equal(f.requests.length, 1);
+  assert.equal((await f.fetch(path + "?lines=%5B%2224%22%5D")).status, 400);
+});
+
 function stubLiveStorage(t, env, respond) {
   Object.assign(env, {
     TRANSIT1_R2_ENDPOINT: "fixture.r2.cloudflarestorage.com",

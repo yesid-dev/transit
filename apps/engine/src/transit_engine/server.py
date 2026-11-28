@@ -53,7 +53,7 @@ BUSY_MESSAGE = "busy, try again"
 # keeps going; the reader retries after STRETCH_RETRY_AFTER_S and gets the finished answer.
 STRETCH_SOFT_DEADLINE_S = env_int("ENGINE_STRETCH_SOFT_DEADLINE_S", 20)
 STRETCH_RETRY_AFTER_S = 15
-SCHEDULE_ROUTES = {"/search-index", "/schedule-index", "/schedule-map"}
+SCHEDULE_ROUTES = {"/search-index", "/schedule-index", "/schedule-map", "/corridor-map"}
 LOGGER = logging.getLogger("uvicorn.error")
 
 
@@ -500,12 +500,16 @@ class Engine:
         def run_query() -> tuple[dict[str, Any] | str, int]:
             check_query()
             if isinstance(question, str):
-                if route in {"/schedule-index", "/schedule-map"}:
+                if route in {"/schedule-index", "/schedule-map", "/corridor-map"}:
                     _, identity, _ = public_declaration(question)
                     today = datetime.now(UTC).astimezone(service_zone(identity)).date()
                     schedule = schedule_index(
                         self.small_store, question, today - timedelta(days=1),
-                        index="maps" if route == "/schedule-map" else "search",
+                        index=(
+                            "corridors" if route == "/corridor-map"
+                            else "maps" if route == "/schedule-map"
+                            else "search"
+                        ),
                     )
                     if schedule is not None and lines is not None:
                         shapes = schedule["route_shapes"]

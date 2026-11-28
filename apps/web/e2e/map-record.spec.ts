@@ -102,6 +102,11 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(
 			legend.getByText(fr ? 'Non mesuré' : 'Not measured', { exact: true }),
 		).toBeVisible();
+		await expect(
+			legend.getByText(fr ? 'Tracé direct entre les arrêts' : 'Straight between stops', {
+				exact: true,
+			}),
+		).toBeVisible();
 		if (phone) await page.keyboard.press('Escape');
 		await openMapInView(page);
 		const segment = page.getByRole('searchbox', {
@@ -110,11 +115,16 @@ for (const locale of ['en', 'fr'] as const) {
 		await segment.fill('Mont-Royal');
 		await page.getByRole('button', { name: 'Mont-Royal → Laurier' }).last().click();
 		await expect(selected).toContainText('34');
+		const straight = fr ? 'Tracé direct entre les arrêts' : 'Shown straight between stops';
+		await expect(selected.getByText(straight, { exact: true })).toHaveCount(0);
 		await expect(
 			page
 				.getByRole('list', { name: fr ? /Lignes qui desservent/ : /Lines serving/ })
 				.getByRole('link'),
 		).toHaveAttribute('href', /\/lines\/24.*recordTo=2026-11-21/);
+		await segment.fill('Laurier');
+		await page.getByRole('button', { name: 'Laurier → Rosemont' }).last().click();
+		await expect(selected.getByText(straight, { exact: true })).toBeVisible();
 		await openMapControls(page);
 		const filterTrigger = page.locator('[data-map-filter-trigger]');
 		if ((await filterTrigger.getAttribute('aria-expanded')) === 'false')

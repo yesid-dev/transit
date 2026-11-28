@@ -52,7 +52,7 @@
 	import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 	import { mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
-	import { scheduleTerminals, type RecordMapLayer } from './recordMap';
+	import type { RecordMapLayer } from './recordMap';
 	import { MAP_RECORD } from '#lib/seo/routeSeo.ts';
 	import { goto } from '$app/navigation';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
@@ -703,7 +703,6 @@
 			wide,
 		);
 	});
-	const terminals = $derived(scheduleTerminals(mapDirections));
 	const readingDirections = $derived.by(() => {
 		if (readingLineIds.length !== 1) return [];
 		const id = readingLineIds[0]!;
@@ -835,6 +834,8 @@
 	let pendingViewHint: MapViewHint | null = null;
 	let ingestedViewHint = false;
 	let recordCount = $state<number | null>(null);
+	let recordHeightLimit = $state<number | null>(null);
+	let recordApproximate = $state(false);
 	const colourBy = $derived(colourDimension(filters.state));
 	const legendDetails = $derived(
 		mapLegend(locale, { colourBy, staleCutoffS: liveTimingFor(manifest).staleCutoffS }),
@@ -1523,7 +1524,6 @@
 
 {#snippet layerChoice()}
 	{#if recordLayer !== 'live'}
-		<p class="w-full text-sm font-medium text-muted-foreground">{tr('Layer', 'Couche')}</p>
 		<SegmentedChoice
 			options={recordOptions}
 			value={recordLayer}
@@ -1542,17 +1542,6 @@
 				{tr('3D view', 'Vue 3D')}
 			</SwitchRow>
 		{/if}
-		<p class="w-full text-sm text-muted-foreground">
-			{recordLayer === 'stops'
-				? tr(
-						'Stops, by their share of observed stop events that were late.',
-						'Arrêts, selon leur part de passages observés en retard.',
-					)
-				: tr(
-						'Stretches between stops, by the time lost.',
-						'Tronçons entre arrêts, selon le temps perdu.',
-					)}
-		</p>
 	{/if}
 {/snippet}
 
@@ -1561,6 +1550,8 @@
 		{locale}
 		layer={recordLayer}
 		threeD={recordThreeD}
+		heightLimit={recordHeightLimit}
+		approximate={recordApproximate}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1574,6 +1565,8 @@
 		{locale}
 		layer={recordLayer}
 		threeD={recordThreeD}
+		heightLimit={recordHeightLimit}
+		approximate={recordApproximate}
 		{colourBy}
 		{railName}
 		scheduleOnlyLines={hasScheduleOnlyLines(page.data.provider)}
@@ -1981,6 +1974,8 @@
 		onsourcedate={(date) => (recordSourceDate = date)}
 		ondata={(settled) => (recordDataSettled = settled)}
 		oncount={(count) => (recordCount = count)}
+		onheightlimit={(seconds) => (recordHeightLimit = seconds)}
+		onapproximate={(shown) => (recordApproximate = shown)}
 		{reportCamera}
 		{map}
 		layer={recordLayer}
@@ -1993,7 +1988,6 @@
 		url={recordUrl}
 		{locale}
 		stops={stopList}
-		{terminals}
 		routes={session.routesIndex}
 		onlinefilters={showLineFilters}
 		children={mapContent}

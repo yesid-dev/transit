@@ -1,9 +1,8 @@
-import { expect, type Locator } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { vectorStyleFromBasemap } from '../src/lib/components/map/basemap';
 import { test } from './layout-test';
 import { recordMapFixture, recordMapPeriod } from './map-record-fixture';
 import { textDefects } from './layout-helpers';
-import { expectRampLightness } from './measure-ramp-checks';
 import {
 	closeMapControls,
 	closeMapInView,
@@ -12,6 +11,60 @@ import {
 	openMapInView,
 	openMapLegend,
 } from './map-frame-controls';
+
+interface OpeningMarks {
+	zoom: number;
+	aboveRoads: boolean;
+	marks: { id: string; state: number; size: number }[];
+}
+
+async function readOpeningMarks(
+	page: Page,
+	layer: 'stops' | 'corridors',
+): Promise<OpeningMarks | null> {
+	return page.evaluate(
+		(kind) => Reflect.get(window, '__transitMap')?.recordMarks(kind) ?? null,
+		layer,
+	);
+}
+
+for (const provider of ['stm', 'octranspo']) {
+	test(`${provider} stops and corridors remain readable at opening zoom @layout`, async ({
+		page,
+	}, info) => {
+		await recordMapFixture(page, true, provider, 'complete');
+		const query = new URLSearchParams(recordMapPeriod);
+		query.set('provider', provider);
+		for (const layer of ['stops', 'corridors'] as const) {
+			query.set('mapLayer', layer);
+			await page.goto(`/map?${query}`);
+			await expect(page.getByTestId('map-progressive')).toHaveAttribute(
+				'data-map-progressive-state',
+				'ready',
+			);
+			await expect
+				.poll(async () =>
+					(await readOpeningMarks(page, layer))?.marks.some((mark) => mark.state === 3),
+				)
+				.toBe(true);
+			const opening = (await readOpeningMarks(page, layer))!;
+			expect(opening.zoom).toBeLessThan(13);
+			expect(opening.aboveRoads).toBe(true);
+			if (layer === 'stops') expect(opening.marks.some(({ id }) => id === 'MR2')).toBe(true);
+			for (const mark of opening.marks.filter(({ state }) => state === 3)) {
+				expect(mark.size).toBeGreaterThanOrEqual(layer === 'stops' ? 3.75 : 3.5);
+			}
+			await info.attach(`${layer}-opening-paint`, {
+				body: JSON.stringify(opening),
+				contentType: 'application/json',
+			});
+		}
+		if (page.viewportSize()!.width < 1024) await openMapLegend(page);
+		const legend = page.locator('[data-map-legend]:visible');
+		await expect(legend).toBeVisible();
+		await expect(legend.getByText('Straight between stops', { exact: true })).toHaveCount(0);
+	});
+}
 
 async function expectOutlineContrast(legend: Locator, theme: 'light' | 'dark') {
 	const basemap = vectorStyleFromBasemap(
@@ -135,6 +188,7 @@ for (const locale of ['en', 'fr'] as const) {
 			const legendSelector = `[data-map-legend="${phone ? 'phone' : 'desktop'}"]`;
 			const legend = page.locator(legendSelector);
 			const assertWithinMap = async (control: typeof legend) => {
+				await expect(control).toBeVisible();
 				const bounds = (await page.locator('.map-surface').boundingBox())!;
 				const box = (await control.boundingBox())!;
 				expect(box.x).toBeGreaterThanOrEqual(bounds.x - 1);
@@ -157,14 +211,21 @@ for (const locale of ['en', 'fr'] as const) {
 				await expectUnbrokenWords(legend, `${width}px at 100%`);
 			}
 			const theme = info.project.use.colorScheme === 'dark' ? 'dark' : 'light';
-			const lightness = await expectRampLightness(
-				legend.locator('ol > li > [aria-hidden="true"]'),
-				theme,
-			);
-			await info.attach('legend-lightness', {
-				body: JSON.stringify(lightness),
-				contentType: 'application/json',
-			});
+			const swatches = legend.locator('ol > li > [aria-hidden="true"]');
+			await expect(swatches).toHaveCount(5);
+			for (const [level, swatch] of (await swatches.all()).entries()) {
+				await expect(swatch).toHaveCSS(
+					'background-color',
+					await swatch.evaluate((node, step) => {
+						const sample = document.createElement('span');
+						sample.style.backgroundColor = `var(--transit-good-to-bad-${step})`;
+						node.parentElement!.append(sample);
+						const fill = getComputedStyle(sample).backgroundColor;
+						sample.remove();
+						return fill;
+					}, level),
+				);
+			}
 			const minimum = await expectOutlineContrast(legend, theme);
 			await info.attach('basemap-contrast', {
 				body: minimum.toFixed(2),
@@ -213,8 +274,8 @@ for (const locale of ['en', 'fr'] as const) {
 					await expectUnbrokenWords(legend, zoom);
 					await states.scrollIntoViewIfNeeded();
 					const marks = states.locator('svg');
-					await expect(marks).toHaveCount(3);
-					for (const [index, dash] of ['6 3', '2 3.6', '10 6'].entries()) {
+					await expect(marks).toHaveCount(4);
+					for (const [index, dash] of ['6 3', '2 3.6', '10 6', '1 3'].entries()) {
 						const mark = marks.nth(index);
 						await mark.scrollIntoViewIfNeeded();
 						await expect(mark.locator('line')).toHaveAttribute('stroke-dasharray', dash);
@@ -256,8 +317,13 @@ for (const locale of ['en', 'fr'] as const) {
 				});
 			}
 			if (!phone) {
+				const rail = page.locator('.app-frame-controls-rail:not(.surface-rail--mobile)');
+				await expect(rail).toHaveCSS('overflow-y', 'auto');
+				await expect(rail.locator('.map-rail')).toHaveCSS('overflow-y', 'visible');
 				for (const width of [1280, 1024]) {
 					await page.setViewportSize({ width, height: viewport?.height ?? 900 });
+					await assertWithinMap(legend);
+					await expectAboveMapSource(page, rail);
 					await expectAboveMapSource(page, page.locator('[data-slot="map-details"]'));
 					await expectAboveMapSource(
 						page,

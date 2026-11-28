@@ -15,7 +15,7 @@ from transit_engine.vehicles import TRACKED_VEHICLES_SQL
 
 
 def schedule_index(
-    store: Store, city: str, end: date, *, index: Literal["search", "maps"] = "search"
+    store: Store, city: str, end: date, *, index: Literal["search", "maps", "corridors"] = "search"
 ) -> dict[str, Any] | None:
     schedule = None
     with track_connection(store.connect()) as conn:

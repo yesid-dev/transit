@@ -7,18 +7,50 @@ const stops = [
 	{ id: 'MR4', name: 'Beaubien', lat: 45.541, lon: -73.608, routes: ['24'] },
 	{ id: 'MR5', name: 'Jean-Talon', lat: 45.547, lon: -73.621, routes: ['24'] },
 ];
+const ottawaStops = [
+	{ id: 'MR1', name: 'RIDEAU', lat: 45.425, lon: -75.69, routes: ['24'] },
+	{ id: 'MR2', name: 'WALLER', lat: 45.426, lon: -75.685, routes: ['24'] },
+	{ id: 'MR3', name: 'LAURIER', lat: 45.422, lon: -75.683, routes: ['24'] },
+	{ id: 'MR4', name: 'SOMERSET', lat: 45.417, lon: -75.688, routes: ['24'] },
+	{ id: 'MR5', name: 'GLADSTONE', lat: 45.412, lon: -75.691, routes: ['24'] },
+];
 
 export async function recordMapFixture(
 	page: Page,
 	networkAvailable = true,
 	provider = 'stm',
-	locations = stops,
+	coverage: 'partial' | 'complete' = 'partial',
 ) {
+	const locations = provider === 'octranspo' ? ottawaStops : stops;
 	const received: URLSearchParams[] = [];
 	await page.clock.setFixedTime(new Date('2026-11-23T16:00:00Z'));
 	await page.route(`**/api/stops/slim?provider=${provider}`, (route) =>
 		route.fulfill({ json: { generated_utc: '2026-11-21T00:00:00Z', stops: locations } }),
 	);
+	await page.route(`**/api/corridor-map?city=${provider}`, (route) => {
+		const destinations = coverage === 'complete' ? locations.slice(1) : locations.slice(1, 2);
+		return route.fulfill({
+			json: {
+				schedule: {
+					date: '2026-11-21',
+					paths: destinations.map((second, index) => {
+						const first = locations[index]!;
+						return [
+							'24',
+							0,
+							first.id,
+							second.id,
+							[
+								[first.lon, first.lat],
+								[second.lon, first.lat],
+								[second.lon, second.lat],
+							],
+						];
+					}),
+				},
+			},
+		});
+	});
 	await page.route(`**/api/schedule-edition?city=${provider}`, (route) =>
 		route.fulfill({
 			json: {
