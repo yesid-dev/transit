@@ -12,6 +12,7 @@ import { configureTransitUi } from '#lib/ui/configure.ts';
 import { preloadFont } from '@yesid/tokens/fonts';
 import { injectAnnouncementBannerBoot, injectThemeBoot } from '@yesid/ui/head';
 import { announcement } from '#lib/site/announcement.ts';
+import { documentServerTiming } from '#lib/server/questionTiming.ts';
 import { version } from '$app/env';
 import reloadNotice from '#lib/pwa/reloadNotice.js?raw';
 
@@ -230,12 +231,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 	}
 
 	applyDocumentHeaders(response, event.url);
+	// The questions this response asked: those answered before its headers, and those still waiting.
+	const timing = documentServerTiming(event);
+	if (timing) response.headers.append('server-timing', timing);
 
 	if (cache != null) {
 		if (key != null && event.request.method === 'GET' && responseCanEnterHtmlCache(response)) {
 			const stored = response.clone();
 			stored.headers.set('cache-control', HTML_EDGE_CACHE_CONTROL);
 			stored.headers.delete(EDGE_CACHE_STATUS);
+			// A cached copy answers later requests without asking: its timing is not theirs.
+			stored.headers.delete('server-timing');
 			const write = cache.put(key, stored).catch(() => undefined);
 			waitUntil(write);
 			response.headers.set('cache-control', HTML_PUBLIC_CACHE_CONTROL);

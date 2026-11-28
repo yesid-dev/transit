@@ -3,6 +3,8 @@ import { createGunzip, gunzipSync } from 'node:zlib';
 import { Duplex } from 'node:stream';
 import { delocalizePath } from '#lib/i18n/routing.ts';
 import { handle, handleError } from '../hooks.server';
+import { getRequestEvent } from '$app/server';
+import { timeQuestion } from '#lib/server/questionTiming.ts';
 
 const workers = vi.hoisted(() => ({ waitUntil: vi.fn() }));
 vi.mock('cloudflare:workers', () => workers);
@@ -332,6 +334,34 @@ describe('server HTML edge cache', () => {
 		expect(stored.headers.get('content-security-policy')).toBe(KIT_CSP);
 		expect(stored.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=30');
 		expect(stored.headers.get('x-transit-edge-cache')).toBeNull();
+	});
+
+	it('says how the page asked its questions, but not in the copy kept for later requests', async () => {
+		const cache = cacheHarness();
+		const request = event('https://transit.yesid.dev/lines/24?tab=detail', { cache });
+		vi.mocked(getRequestEvent).mockReturnValue(request as ReturnType<typeof getRequestEvent>);
+		try {
+			const resolve = vi.fn(async () => {
+				timeQuestion('punctuality')(
+					new Headers({ 'server-timing': 'src;desc=engine, cache;desc=miss, engine;dur=40' }),
+				);
+				return html('fresh', { headers: { 'content-security-policy': KIT_CSP } });
+			});
+
+			const response = await handle({ event: request, resolve });
+			await Promise.all(cache.writes);
+
+			expect(response.headers.get('server-timing')).toMatch(
+				/^questions;desc="answered 1 \(engine 1\), waiting 0", engine;dur=40\.0, /,
+			);
+			const [, stored] = cache.put.mock.calls[0] as [Request, Response];
+			expect(stored.headers.get('server-timing')).toBeNull();
+		} finally {
+			vi.mocked(getRequestEvent).mockReset();
+			vi.mocked(getRequestEvent).mockImplementation(() => {
+				throw new Error('No page is being served');
+			});
+		}
 	});
 
 	it.each([

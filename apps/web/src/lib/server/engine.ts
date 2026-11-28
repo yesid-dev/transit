@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import type { CaptureScope } from '#lib/live/captureSnapshot.ts';
 import { z } from 'zod';
 import { CityCatalogSchema } from '#lib/v1/schemas/providers.ts';
+import { timeQuestion } from './questionTiming.ts';
 import {
 	scheduleIndexSchema,
 	scheduleMapSchema,
@@ -201,9 +202,12 @@ export async function query<T>(
 	const deadline = AbortSignal.timeout(timeout);
 	const signal = requestSignal ? AbortSignal.any([deadline, requestSignal]) : deadline;
 	const recordDeadline = record ? Date.now() + timeout - 250 : undefined;
+	const settle = timeQuestion(question.parameters.measure ?? question.path.slice(1));
+	let headers: Headers | null = null;
 	try {
 		const response = await engineFetch(question, signal, visitorIp, recordDeadline);
 		if (!response) return { kind: 'unconfigured' };
+		headers = response.headers;
 		if (
 			question.parameters.view === 'map' &&
 			question.parameters.group === 'segment' &&
@@ -233,6 +237,8 @@ export async function query<T>(
 		};
 	} catch {
 		return { kind: signal.aborted ? 'timeout' : 'unreachable' };
+	} finally {
+		settle(headers);
 	}
 }
 
