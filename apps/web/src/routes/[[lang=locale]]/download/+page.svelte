@@ -172,8 +172,8 @@
 
 <Surface>
 	<RecordScreen>
-		<div data-slot="screen-content">
-			<RecordGroup
+		<div class="download-content" data-slot="screen-content">
+			<RecordGroup class="@container/daily-files"
 				><div class="reading-column" data-screen-intro>
 					<ScreenTitle {title} {subtitle} compact />
 				</div>
@@ -184,7 +184,7 @@
 					</div>
 					{@render contents()}
 					<RecordCard
-						class="reading-column"
+						class="reading-column download-licence"
 						title={t('Licence and attribution', 'Licence et attribution')}
 						><RecordPending shape="card" {locale} /></RecordCard
 					>
@@ -287,7 +287,7 @@
 					{#if notices.length}
 						<RecordCard
 							interactive
-							class="reading-column"
+							class="reading-column download-licence"
 							title={t('Licence and attribution', 'Licence et attribution')}
 						>
 							<div class="grid gap-3">
@@ -561,6 +561,19 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
 		gap: var(--space-card-gap);
+	}
+	@media screen and (min-width: 80rem) {
+		.download-content :global(.reading-column) {
+			max-inline-size: none;
+		}
+		#daily-files :global([data-slot='stamp']) {
+			display: none;
+		}
+		@container daily-files (min-width: 54rem) {
+			#daily-files {
+				grid-template-columns: repeat(4, minmax(0, 1fr));
+			}
+		}
 	}
 	.download-columns {
 		container-type: inline-size;

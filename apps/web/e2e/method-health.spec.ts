@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { csvText } from '../src/tests/csv';
-import { textDefects } from './layout-helpers';
+import { doubleText, textDefects } from './layout-helpers';
 import { installHealthCapture } from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
@@ -382,4 +382,52 @@ test('Download offers every listed Parquet address in one file', async ({ page }
 	expect(download.suggestedFilename()).toBe('transit-file-addresses.txt');
 	const addresses = (await readFile((await download.path())!, 'utf8')).trim().split('\n');
 	expect(addresses).toEqual(expected);
+});
+
+test('Download lays out the eight daily file cards in complete rows', async ({ page }) => {
+	await page.goto(
+		'/download?provider=stm&frameMode=record&recordFrom=2026-11-14&recordTo=2026-11-20',
+	);
+	const dailyFiles = page.locator('#daily-files');
+	await expect(dailyFiles.getByRole('button', { name: 'See the layout and files' })).toHaveCount(8);
+	for (const width of [390, 1280, 1440, 1920]) {
+		await page.setViewportSize({ width, height: 900 });
+		const rows = await dailyFiles
+			.locator(':scope > *')
+			.evaluateAll((cards) =>
+				Object.values(
+					Object.groupBy(cards, (card) => Math.round(card.getBoundingClientRect().top)),
+				).map((row) => row!.length),
+			);
+		expect(rows, `file cards at ${width}px`).toEqual(width === 390 ? Array(8).fill(1) : [4, 4]);
+		await expect(dailyFiles.locator('[data-slot="stamp"]:visible')).toHaveCount(
+			width === 390 ? 8 : 0,
+		);
+		if (width >= 1280) {
+			const blocks = await page.locator('.download-content').evaluate((content) => {
+				const selectors = [
+					'[data-screen-intro]',
+					'[data-slot="screen-answer"]',
+					'.download-licence',
+					'#daily-files',
+					'#reading-files',
+				];
+				return selectors.map((selector) => {
+					const { left, right } = content.querySelector(selector)!.getBoundingClientRect();
+					return [Math.round(left), Math.round(right)];
+				});
+			});
+			expect(blocks, `content edges at ${width}px`).toEqual(Array(5).fill(blocks[3]));
+			const helpCards = await page
+				.locator('#reading-files > *')
+				.evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
+			expect(helpCards).toEqual([helpCards[0], helpCards[0]]);
+			await expect(page.locator('[data-slot="screen-answer"] [data-slot="stamp"]')).toBeVisible();
+		}
+	}
+	await doubleText(page);
+	for (const width of [390, 1280]) {
+		await page.setViewportSize({ width, height: 900 });
+		expect(await textDefects(page, '#daily-files'), `200% text at ${width}px`).toEqual([]);
+	}
 });
