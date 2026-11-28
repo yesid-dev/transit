@@ -99,9 +99,14 @@ test('Data health reads late feed details, expected cadence and the schedule', a
 	);
 	await expect(main.getByRole('cell', { name: 'Late: last received 2 min ago' })).toBeVisible();
 	const capture = main.getByRole('table', { name: 'Each feed, at its last capture' });
+	await expect(capture.getByRole('columnheader')).toHaveText([
+		'Feed',
+		'Last capture',
+		'Expected',
+		'State',
+	]);
 	const positions = capture.getByRole('row').filter({ hasText: 'Vehicle positions' });
 	await expect(positions.getByRole('cell', { name: 'every 30 s' })).toBeVisible();
-	await expect(capture.getByRole('columnheader', { name: 'Size' })).toHaveCount(0);
 	const schedule = capture.getByRole('row').filter({ hasText: 'Schedule' });
 	await expect(schedule.getByRole('cell', { name: 'when the agency publishes' })).toBeVisible();
 	await expect(schedule.getByRole('cell', { name: 'In use' })).toBeVisible();
