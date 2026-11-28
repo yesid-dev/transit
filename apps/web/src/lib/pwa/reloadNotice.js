@@ -38,24 +38,80 @@
 		return true;
 	};
 
-	const loadFailed = async () => {
-		if (reloadOnce()) return;
-		show(false);
-		if (checked || newer) return;
-		checked = true;
+	// Leaving the page aborts its pending loads, and some browsers report them as failures. Those
+	// are not a broken page: reloading would cancel the reader's next page.
+	let leaving = false;
+	const leave = () => {
+		leaving = true;
+	};
+	window.addEventListener('pagehide', leave);
+	window.addEventListener('beforeunload', leave);
+	window.addEventListener('pageshow', (event) => {
+		if (event.persisted) leaving = false;
+	});
+
+	/** @param {string | undefined} url The app's own content-named file, or nothing. */
+	const immutable = (url) => {
+		try {
+			const file = new URL(url ?? '', location.href);
+			return file.origin === location.origin && file.pathname.startsWith('/_app/immutable/')
+				? file.href
+				: undefined;
+		} catch {
+			return undefined;
+		}
+	};
+
+	const deployedVersionDiffers = async () => {
 		try {
 			const response = await fetch(versionUrl, { cache: 'no-store' });
-			if (!response.ok) return;
+			if (!response.ok) return false;
 			const { version } = await response.json();
-			if (typeof version === 'string' && version !== decodeURIComponent(pageVersion)) show(true);
+			return typeof version === 'string' && version !== decodeURIComponent(pageVersion);
 		} catch {
-			// Keep the generic reload action when the deployed version cannot be checked.
+			return false;
+		}
+	};
+
+	/** @param {string | undefined} url */
+	const fileIsGone = async (url) => {
+		if (!url) return false;
+		try {
+			return (await fetch(url, { method: 'HEAD', cache: 'no-store' })).status === 404;
+		} catch {
+			return false;
+		}
+	};
+
+	let checking = false;
+	/** @param {string | undefined} url The file that failed, when the browser names it. */
+	const loadFailed = async (url) => {
+		if (leaving || checking) return;
+		if (checked) {
+			show(newer);
+			return;
+		}
+		checking = true;
+		try {
+			// Reload only for a page that is really out of date: a newer deploy, or its file is gone.
+			const newerVersion = await deployedVersionDiffers();
+			const gone = !newerVersion && (await fileIsGone(url));
+			if (leaving) return;
+			checked = true;
+			if ((newerVersion || gone) && reloadOnce()) return;
+			show(newerVersion);
+		} finally {
+			checking = false;
 		}
 	};
 
 	reload.addEventListener('click', () => location.reload());
 	window.addEventListener('transit:new-version', () => show(true));
-	window.addEventListener('vite:preloadError', loadFailed);
+	window.addEventListener('vite:preloadError', (event) =>
+		loadFailed(
+			immutable(/** @type {any} */ (event).payload?.message?.match(/\S+\/_app\/\S+/)?.[0]),
+		),
+	);
 	window.addEventListener('unhandledrejection', (event) => {
 		const detail = event.reason?.message;
 		if (
@@ -64,18 +120,19 @@
 				detail,
 			)
 		)
-			void loadFailed();
+			void loadFailed(immutable(detail.match(/https?:\/\/\S+/)?.[0]));
 	});
 	window.addEventListener(
 		'error',
 		({ target }) => {
-			const url =
+			const url = immutable(
 				target instanceof HTMLScriptElement
 					? target.src
 					: target instanceof HTMLLinkElement && target.rel === 'modulepreload'
 						? target.href
-						: '';
-			if (url.includes('/_app/immutable/')) void loadFailed();
+						: undefined,
+			);
+			if (url) void loadFailed(url);
 		},
 		true,
 	);

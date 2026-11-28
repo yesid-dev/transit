@@ -2,20 +2,30 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import source from './reloadNotice.js?raw';
 
-const failedImport = () =>
+const ORIGIN = 'https://transit.test';
+const CHUNK = `${ORIGIN}/_app/immutable/chunks/Gone.js`;
+
+const failedImport = (message = `Failed to fetch dynamically imported module: ${CHUNK}`) =>
 	window.dispatchEvent(
-		Object.assign(new Event('unhandledrejection'), {
-			reason: new TypeError('Failed to fetch dynamically imported module: /_app/immutable/x.js'),
-		}),
+		Object.assign(new Event('unhandledrejection'), { reason: new TypeError(message) }),
 	);
 
-let reload: ReturnType<typeof vi.fn>;
+/** An element whose load failed, as the browser reports it to a capturing listener. */
+function failedElement(element: HTMLElement) {
+	document.body.append(element);
+	element.dispatchEvent(new Event('error'));
+}
+
 type Listener = {
 	type: string;
 	listener: EventListenerOrEventListenerObject;
 	options?: boolean | AddEventListenerOptions;
 };
 let listeners: Listener[];
+let reload: ReturnType<typeof vi.fn>;
+let deployed: string;
+let chunkStatus: number;
+let requests: string[];
 
 /** Removes the listeners the booted scripts added, as a new page would start without them. */
 function forget() {
@@ -30,18 +40,26 @@ function boot() {
 	return document.getElementById('app-reload-notice')!;
 }
 
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 beforeEach(() => {
 	sessionStorage.clear();
 	reload = vi.fn();
+	deployed = '1';
+	chunkStatus = 404;
+	requests = [];
 	vi.stubGlobal(
 		'fetch',
-		vi.fn(async () => Response.json({ version: '1' })),
+		vi.fn(async (input: string, init?: RequestInit) => {
+			requests.push(`${init?.method ?? 'GET'} ${input}`);
+			if (String(input).includes('version.json')) return Response.json({ version: deployed });
+			return new Response(null, { status: chunkStatus });
+		}),
 	);
 	Object.defineProperty(window, 'location', {
 		configurable: true,
-		value: { href: 'https://transit.test/lines/51?frameMode=live', reload },
+		value: { href: `${ORIGIN}/lines/51?frameMode=live`, origin: ORIGIN, reload },
 	});
-	// Each boot adds window listeners; remove them so one test's script does not answer the next.
 	listeners = [];
 	const add = window.addEventListener.bind(window);
 	vi.spyOn(window, 'addEventListener').mockImplementation(((
@@ -60,34 +78,77 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-it('reloads by itself once when a script of the page fails to load', () => {
+it('reloads once when one of the app’s own scripts is really gone', async () => {
 	const notice = boot();
 	failedImport();
-	expect(reload).toHaveBeenCalledOnce();
+	await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+	expect(requests).toEqual(['GET /_app/version.json', `HEAD ${CHUNK}`]);
 	expect(notice.hidden).toBe(true);
 });
 
-it('offers the button instead of reloading again within a minute', async () => {
+it('reloads once for a newer deploy when the browser names no file', async () => {
+	deployed = '2';
+	boot();
+	failedImport('Importing a module script failed.');
+	await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+});
+
+it('does not reload for a load aborted because the reader is leaving the page', async () => {
+	boot();
+	window.dispatchEvent(new Event('pagehide'));
+	failedImport();
+	const preload = Object.assign(document.createElement('link'), {
+		rel: 'modulepreload',
+		href: CHUNK,
+	});
+	failedElement(preload);
+	await settle();
+	expect(requests).toEqual([]);
+	expect(reload).not.toHaveBeenCalled();
+});
+
+it('does not reload when the reader leaves while the failure is being checked', async () => {
 	boot();
 	failedImport();
-	expect(reload).toHaveBeenCalledOnce();
-	// The reloaded page fails too: it says so and waits for the reader.
-	forget();
+	window.dispatchEvent(new Event('beforeunload'));
+	await settle();
+	await settle();
+	expect(reload).not.toHaveBeenCalled();
+});
+
+it('ignores failures that are not the app’s own content-named files', async () => {
+	const notice = boot();
+	for (const src of ['https://plausible.io/js/script.js', `${ORIGIN}/favicon.svg`])
+		failedElement(Object.assign(document.createElement('script'), { src }));
+	failedElement(Object.assign(document.createElement('img'), { src: `${ORIGIN}/poster.png` }));
+	window.dispatchEvent(
+		Object.assign(new Event('unhandledrejection'), { reason: new Error('Request aborted') }),
+	);
+	await settle();
+	expect(requests).toEqual([]);
+	expect(reload).not.toHaveBeenCalled();
+	expect(notice.hidden).toBe(true);
+});
+
+it('says the page could not load, without reloading, when the file is still there', async () => {
+	chunkStatus = 200;
 	const notice = boot();
 	failedImport();
-	expect(reload).toHaveBeenCalledOnce();
-	expect(notice.hidden).toBe(false);
+	await vi.waitFor(() => expect(notice.hidden).toBe(false));
+	expect(reload).not.toHaveBeenCalled();
 	expect(notice.querySelector('[data-reload-message]')!.textContent).toBe(
 		'This page could not load.',
 	);
 });
 
-it('reloads again for a failure on another page', () => {
+it('offers the button instead of reloading again within a minute', async () => {
 	boot();
 	failedImport();
-	Object.assign(window.location, { href: 'https://transit.test/stop/S1' });
+	await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
+	// The reloaded page fails too: it says so and waits for the reader.
 	forget();
-	boot();
+	const notice = boot();
 	failedImport();
-	expect(reload).toHaveBeenCalledTimes(2);
+	await vi.waitFor(() => expect(notice.hidden).toBe(false));
+	expect(reload).toHaveBeenCalledOnce();
 });
