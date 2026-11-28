@@ -21,6 +21,7 @@ import {
 } from './departure-daily-engine.mjs';
 import { alertsEngine } from './alerts-engine.mjs';
 import { alertLines } from './alert-fixture.mjs';
+import { recordLayerEngine } from './record-layer-engine.mjs';
 
 const read = (file) => readFileSync(new URL(file, import.meta.url));
 const methodCatalog = read('method-catalog.json');
@@ -951,6 +952,13 @@ const server = createServer((request, response) => {
 	if (question) {
 		url.pathname = `/${question[2]}`;
 		url.searchParams.set('city', question[1]);
+		const recordLayer = recordLayerEngine(url);
+		if (recordLayer) {
+			response
+				.writeHead(200, { 'content-type': 'application/json' })
+				.end(JSON.stringify(recordLayer.body));
+			return;
+		}
 		const dailyFixture = ['2026-11-17', '2026-11-18'].includes(url.searchParams.get('from'));
 		const scope = request.headers['x-transit-fixture-scope'];
 		const stopSearch =

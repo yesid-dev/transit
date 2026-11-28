@@ -6,20 +6,24 @@
 		code,
 		routePlate = false,
 		name,
+		accessibleName,
 		detail,
 		href,
 		onselect,
 		value,
 		vehicleId,
+		wrap = false,
 	}: {
 		code?: string;
 		routePlate?: boolean;
 		name: string;
+		accessibleName?: string;
 		detail?: string | null;
 		href?: string;
 		onselect?: () => void;
 		value: Snippet;
 		vehicleId?: string;
+		wrap?: boolean;
 	} = $props();
 
 	function follow(event: MouseEvent) {
@@ -34,6 +38,7 @@
 	data-map-panel-row
 	data-report-row={vehicleId ? '' : undefined}
 	data-report-id={vehicleId}
+	class:wrap
 >
 	<span class="code" data-map-row-code>
 		{#if code}
@@ -45,6 +50,7 @@
 		<a
 			class="name text-primary underline"
 			{href}
+			aria-label={accessibleName}
 			title={name}
 			onclick={follow}
 			data-map-row-name
@@ -54,6 +60,7 @@
 		<button
 			class="name text-primary underline"
 			type="button"
+			aria-label={accessibleName}
 			title={name}
 			onclick={onselect}
 			data-map-row-name>{name}</button
@@ -110,11 +117,14 @@
 		position: absolute;
 		inset: 0;
 	}
-	.panel-row:not([data-report-row]) .name,
-	.panel-row:not([data-report-row]) small {
+	.panel-row:not([data-report-row], .wrap) .name,
+	.panel-row:not([data-report-row], .wrap) small {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.panel-row.wrap {
+		overflow-wrap: anywhere;
 	}
 	.value {
 		grid-area: value;

@@ -337,6 +337,9 @@ def test_clean_segment_runs_match_legacy_corridors(tmp_path: Path, version: int)
     assert layer["value"] == [1, None, None]
     filtered = query(cached, **layer_cut, lines=("A",), route_type=3, hour_from=7, hour_to=8)
     assert filtered["line"] == ["A"] and filtered["value"] == [1]
+    overnight = query(cached, **layer_cut, lines=("A",), hour_from=22, hour_to=8)
+    assert overnight["line"] == ["A"] and overnight["value"] == filtered["value"]
+    assert not query(cached, **layer_cut, lines=("A",), hour_from=22, hour_to=7)["line"]
     assert not query(cached, **layer_cut, time_band="evening")["line"]
     assert not query(cached, **layer_cut, route_type=0)["line"]
     assert stable(layer) == stable(query(cached, **layer_cut))

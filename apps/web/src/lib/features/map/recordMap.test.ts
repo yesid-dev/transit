@@ -1,11 +1,16 @@
 import { expect, it } from 'vitest';
 import { mapRecordAnswer } from './recordMapAnswer';
+import { recordLayerAnswer } from './recordLayerAnswer';
+import { indexCorridorPaths } from './corridorMap';
 import {
+	highestWaitsByStop,
 	overviewCorridors,
+	overviewWaits,
 	recordColours,
 	recordCorridorWidths,
 	recordCorridors,
 	recordFeatures,
+	recordLayerMarks,
 	recordMapSampleText,
 	recordRampStep,
 	recordStopRadii,
@@ -20,6 +25,88 @@ const stops = [
 	{ id: 'D', name: 'Delta', lat: 45.5, lon: -73.57 },
 ];
 const evidence = { days_not_measured: [] };
+
+it('keeps separate waits for each line and direction and draws the longest wait per stop', () => {
+	const raw = {
+		measure: 'excess_wait_time',
+		minimum_sample: 20,
+		line: ['24', '24', '50', '50'],
+		direction: [0, 1, 0, 1],
+		stop: ['A', 'A', 'A', 'B'],
+		value: [0, -3, 46, null],
+		sample: [30, 30, 21, 0],
+		state: ['measured', 'measured', 'measured', 'no_frequent_periods'],
+		low_coverage: [false, false, true, false],
+		evidence,
+	};
+	const marks = recordLayerMarks(stops, recordLayerAnswer.parse(raw));
+	expect(marks.map(({ id, value }) => [id, value])).toEqual([
+		['["24",0,"A"]', 0],
+		['["24",1,"A"]', -3],
+		['["50",0,"A"]', 46],
+		['["50",1,"B"]', null],
+	]);
+	expect(highestWaitsByStop(marks).map(({ value }) => value)).toEqual([46, null]);
+	expect(overviewWaits(highestWaitsByStop(marks)).map(({ value }) => value)).toEqual([46]);
+	expect(marks[2]?.lowCoverage).toBe(true);
+	expect(marks[3]?.readingState).toBe('no_frequent_periods');
+	expect(recordLayerAnswer.safeParse({ ...raw, direction: [0] }).success).toBe(false);
+	expect(recordLayerAnswer.safeParse({ ...raw, value: [0, -3, 46, 0] }).success).toBe(false);
+});
+
+it('ranks measured Waits locations before taking the 300 largest readings', () => {
+	const marks = Array.from(
+		{ length: 303 },
+		(_, index): RecordMark => ({
+			id: String(index),
+			stop: String(index),
+			name: 'Stop ' + index,
+			value: index < 302 ? index - 3 : null,
+			sample: index < 302 ? 30 : 3,
+			state: index < 302 ? 3 : 1,
+			geometry: { type: 'Point', coordinates: [-73.6, 45.5] },
+		}),
+	);
+	const byStop = highestWaitsByStop([...marks, { ...marks[301]!, id: 'other-line', value: 60 }]);
+	expect(overviewWaits(byStop).map(({ id }) => id)).toEqual(
+		Array.from({ length: 300 }, (_, index) => String(301 - index)),
+	);
+	expect(byStop).toHaveLength(303);
+});
+
+it('keeps the clear-run reference and the median for each line on a shared stretch', () => {
+	const answer = recordLayerAnswer.parse({
+		measure: 'clear_run_time_lost',
+		minimum_sample: 20,
+		line: ['24', '50'],
+		direction: [0, 0],
+		from_stop: ['A', 'A'],
+		to_stop: ['B', 'B'],
+		value: [32, 48],
+		sample: [80, 50],
+		state: ['measured', 'measured'],
+		low_coverage: [false, false],
+		clear_run_seconds: [41, 36],
+		median_run_seconds: [73, 84],
+		evidence,
+	});
+	const coordinates: [number, number][] = [
+		[-73.6, 45.5],
+		[-73.595, 45.501],
+		[-73.59, 45.5],
+	];
+	const paths = indexCorridorPaths({
+		date: '2026-11-21',
+		paths: [['24', 0, 'A', 'B', coordinates]],
+	});
+	const marks = recordLayerMarks(stops, answer, undefined, paths);
+	expect(marks.map(({ id, value, reference, median }) => [id, value, reference, median])).toEqual([
+		['["24",0,"A","B"]', 32, 41, 73],
+		['["50",0,"A","B"]', 48, 36, 84],
+	]);
+	expect(marks[0]?.geometry.coordinates).toEqual(coordinates);
+	expect(marks[1]?.approximate).toBe(true);
+});
 
 it('keeps the 300 measured corridors with the most time lost in a dense overview', () => {
 	const marks = Array.from(
@@ -192,6 +279,7 @@ it('uses the same neutral ink for all unmeasured states and increasing sizes for
 	]);
 	for (const sizes of [
 		recordStopRadii.network,
+		recordStopRadii.waitsNetwork,
 		recordStopRadii.detail,
 		recordCorridorWidths.network,
 		recordCorridorWidths.detail,

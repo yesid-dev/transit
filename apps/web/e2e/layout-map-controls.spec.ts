@@ -1,5 +1,5 @@
 import { test } from './layout-test';
-import { expect } from '@playwright/test';
+import { expect, type Locator } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {
 	closeMapControls,
@@ -7,6 +7,79 @@ import {
 	openMapLegend,
 	closeMapInView,
 } from './map-frame-controls';
+
+async function expectSingleRailScroll(target: Locator, slot: string) {
+	const layout = await target.evaluate((element) => {
+		const rail = element.closest('.app-frame-controls-rail, [data-map-in-view-sheet]')!;
+		const scrollOwners: string[] = [];
+		let fitsInline = true;
+		for (let node: Element | null = element; node; node = node.parentElement) {
+			if (/^(auto|scroll)$/.test(getComputedStyle(node).overflowY)) {
+				scrollOwners.push(node.getAttribute('data-slot') ?? 'unlabeled');
+			}
+			fitsInline &&= node.scrollWidth <= node.clientWidth + 1;
+			if (node === rail) break;
+		}
+		return { scrollOwners, fitsInline };
+	});
+	expect(layout).toEqual({ scrollOwners: [slot], fitsInline: true });
+}
+
+for (const locale of ['en', 'fr'] as const) {
+	test(`${locale} map filters and legend share one scrolling rail @layout`, async ({
+		page,
+		viewport,
+	}) => {
+		const phone = viewport!.width < 1024;
+		const slot = phone ? 'map-left-sheet-scroll' : 'surface-rail';
+		const widths = viewport!.width === 1440 ? [1440, 1024] : [viewport!.width];
+		const trigger = page.locator('[data-map-filter-trigger]:visible');
+		const scroller = phone
+			? page.locator(`[data-slot="${slot}"]`)
+			: page.locator('.app-frame-controls-rail:not(.surface-rail--mobile)');
+		for (const width of widths) {
+			await page.setViewportSize({ width, height: viewport!.height });
+			await page.goto(`${locale === 'fr' ? '/fr' : ''}/map?provider=stm`);
+			await openMapControls(page);
+			await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+			await expectSingleRailScroll(trigger, slot);
+			await trigger.press('Enter');
+			await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+			const status = scroller.locator('[data-filter-group="status"]');
+			const group = status.locator('.mf-group-trigger');
+			if ((await group.getAttribute('aria-expanded')) === 'false') await group.press('Enter');
+			const options = status.getByRole('checkbox');
+			await expect(options.last()).toBeVisible();
+			await options.nth(-2).focus();
+			await page.keyboard.press('Tab');
+			const last = options.last();
+			await expect(last).toBeFocused();
+			await expectSingleRailScroll(last, slot);
+			await expect
+				.poll(() =>
+					last.evaluate(
+						(element, selector) => {
+							const scroll = element.closest(selector)!.getBoundingClientRect();
+							const focus = element.getBoundingClientRect();
+							return focus.top >= scroll.top - 1 && focus.bottom <= scroll.bottom + 1;
+						},
+						phone ? `[data-slot="${slot}"]` : '.app-frame-controls-rail',
+					),
+				)
+				.toBe(true);
+
+			if (phone) await openMapLegend(page);
+			const legend = scroller.locator('[data-map-legend]');
+			await expect(legend).toBeVisible();
+			await expectSingleRailScroll(legend, slot);
+			if (phone) await openMapControls(page);
+			await trigger.press('Enter');
+			await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+			await expect(trigger).toBeFocused();
+			await expectSingleRailScroll(trigger, slot);
+		}
+	});
+}
 
 for (const provider of ['stm', 'octranspo'])
 	for (const locale of ['en', 'fr']) {

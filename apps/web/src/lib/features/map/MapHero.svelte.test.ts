@@ -716,6 +716,17 @@ vi.mock('./mapCamera', async (importOriginal) => ({
 	fitRouteBounds: harness.fitRouteBounds,
 }));
 
+vi.mock('#lib/utils/observedSize.ts', () => ({
+	// Happy DOM has no map layout to deliver through ResizeObserver.
+	observedSize:
+		(size: 'clientWidth' | 'clientHeight', set: (value: number) => void) =>
+		(element: HTMLElement) => {
+			queueMicrotask(() => {
+				if (element.isConnected) set(element[size]);
+			});
+		},
+}));
+
 vi.mock('@yesid/motion/stores/reducedMotion', () => ({
 	prefersReducedMotion: harness.prefersReducedMotion,
 	isPrefersReducedMotion: harness.isPrefersReducedMotion,

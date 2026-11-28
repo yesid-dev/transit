@@ -61,8 +61,8 @@ for (const provider of ['stm', 'octranspo'])
 					await page.locator('[data-map-filter-trigger]').click();
 					const panel = page.locator('.map-filters:visible');
 					const removeLine = panel.getByRole('button', {
-						name: locale === 'fr' ? 'Retirer la ligne 24' : 'Remove line 24',
-						exact: true,
+						name:
+							locale === 'fr' ? /^Retirer la ligne 24(?:, .+)?$/u : /^Remove line 24(?:, .+)?$/u,
 					});
 					const sw = panel.getByRole('switch', {
 						name: locale === 'fr' ? 'Positions estimées' : 'Estimated positions',

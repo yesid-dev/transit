@@ -4,6 +4,7 @@
 	import FilterChip from '#lib/components/shared/FilterChip.svelte';
 	import { Separator } from '@yesid/ui/separator';
 	import { Button } from '@yesid/ui/button';
+	import { RoutePlate } from '@yesid/ui/brand';
 	import { officialAlertsLabel } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
@@ -133,10 +134,6 @@
 		return { id, short: line(id), type: 3 };
 	}
 
-	function routeDisplay(route: RouteIndexEntry): string {
-		return route.long ? `${route.short} ${readName(route.long, locale)}` : route.short;
-	}
-
 	function fallbackStop(id: string): StopIndexEntry {
 		return { id, name: id, lat: 0, lon: 0, code: id };
 	}
@@ -244,18 +241,26 @@
 							<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
 							<div class="mf-chips">
 								{#each selectedRoutes as route (route.id)}
+									{@const name =
+										route.long && route.long !== route.short ? readName(route.long, locale) : ''}
+									{@const remove =
+										locale === 'fr'
+											? `Retirer la ligne ${route.short}`
+											: `Remove line ${route.short}`}
 									<Button
 										type="button"
 										variant="outline"
 										size="sm"
-										class="min-h-11 min-w-11 gap-2 px-2 font-mono"
-										aria-label={locale === 'fr'
-											? `Retirer la ligne ${route.short}`
-											: `Remove line ${route.short}`}
-										title={routeDisplay(route)}
+										class="min-h-11 min-w-11 max-w-full gap-2 px-2 text-start"
+										wrap
+										aria-label={name ? `${remove}, ${name}` : remove}
 										onclick={() => void removeRoute(route)}
 									>
-										<span>{route.short}</span><span aria-hidden="true">×</span>
+										<RoutePlate code={route.short} />
+										{#if name}
+											<span class="min-w-0 [overflow-wrap:anywhere]">{name}</span>
+										{/if}
+										<span class="shrink-0" aria-hidden="true">×</span>
 									</Button>
 								{/each}
 							</div>
@@ -575,31 +580,8 @@
 	:global(.mf-body) {
 		display: flex;
 		min-width: 0;
-		min-height: 0;
-		flex: 1 1 auto;
 		flex-direction: column;
 		gap: 0.5rem;
-		overflow-y: auto;
-		/* The scrollbar rides the card edge in the body's own inline padding,
-		   so rows keep the same right edge as the header whether it shows or not. */
-		margin-inline-end: -0.75rem;
-		padding-inline-end: 0.75rem;
-		scrollbar-color: var(--border) transparent;
-		scrollbar-gutter: stable;
-		scrollbar-width: thin;
-	}
-
-	:global(.mf-body:hover) {
-		scrollbar-color: color-mix(in srgb, var(--primary) 45%, var(--border) 55%) transparent;
-	}
-
-	:global(.mf-body::-webkit-scrollbar) {
-		width: 0.375rem;
-	}
-
-	:global(.mf-body::-webkit-scrollbar-thumb) {
-		background: var(--border);
-		border-radius: var(--radius-pill);
 	}
 
 	:global(.mf-chips) {
@@ -745,10 +727,7 @@
 	}
 
 	:global(.map-filters[data-presentation='drawer'] .mf-body) {
-		margin-inline-end: 0;
-		overflow: visible;
 		padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
-		scrollbar-gutter: auto;
 	}
 
 	:global(.map-filters[data-presentation='drawer'] .mf-chip[role='checkbox']) {

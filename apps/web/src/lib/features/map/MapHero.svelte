@@ -2,6 +2,7 @@
 	import { datedProviderAttribution, providerAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
+	import { observedSize } from '#lib/utils/observedSize.ts';
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
@@ -50,7 +51,7 @@
 	import { mapLegend, railLegendName } from './mapLegend';
 	import { peekRepeatsDetail } from './mapHoverPeek';
 	import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
-	import { mapLayerFor } from '#lib/site/mapFrame.ts';
+	import { isReadingsLayer, mapLayerFor } from '#lib/site/mapFrame.ts';
 	import MapRecordPanel from './MapRecordPanel.svelte';
 	import type { RecordMapLayer } from './recordMap';
 	import { MAP_RECORD } from '#lib/seo/routeSeo.ts';
@@ -508,6 +509,8 @@
 	const recordOptions: { key: Exclude<RecordMapLayer, 'live'>; label: string }[] = [
 		{ key: 'stops', label: locale === 'fr' ? 'Arrêts' : 'Stops' },
 		{ key: 'corridors', label: 'Corridors' },
+		{ key: 'clear-run', label: locale === 'fr' ? 'Parcours fluide' : 'Clear run' },
+		{ key: 'waits', label: locale === 'fr' ? 'Attentes' : 'Waits' },
 	];
 	const recordPeriod = $derived(
 		parseAnswerFrameState(
@@ -665,6 +668,10 @@
 	const detailOpen = $derived(session.detailOpen && !isRecordLayer && !showingLookup);
 	let inViewOpen = $state(false);
 	let mobilePanel = $state('list');
+	let mobileControlsScroll = $state<HTMLDivElement>();
+	$effect(() => {
+		if (mobilePanel !== 'list' && mobileControlsScroll) mobileControlsScroll.scrollTop = 0;
+	});
 	let peekHeight = $state(48);
 	let pendingMobileLookup = $state(false);
 	let inViewDetent = $state('half');
@@ -706,7 +713,8 @@
 	const readingDirections = $derived.by(() => {
 		if (readingLineIds.length !== 1) return [];
 		const id = readingLineIds[0]!;
-		const signs = directionHeadsigns(mapDirections?.[id]);
+		const stopNames = new Map(stopList.map(({ id, name }) => [id, name]));
+		const signs = directionHeadsigns(mapDirections?.[id], stopNames);
 		return ([0, 1] as const).flatMap((value) =>
 			signs[value] ? [{ value, label: display.directionLabel(value, signs, locale, id) }] : [],
 		);
@@ -843,7 +851,11 @@
 	const title = $derived(
 		isRecordLayer ? MAP_RECORD.title[locale] : tr('Live map', 'Carte en direct'),
 	);
-	const viewLabel = tr('What is in view', 'Ce qui est en vue');
+	const viewLabel = $derived(
+		isReadingsLayer(recordLayer)
+			? tr('Record results', 'Résultats du bilan')
+			: tr('What is in view', 'Ce qui est en vue'),
+	);
 	// The map region is named for what it draws: vehicles live, the record of stops otherwise.
 	const regionLabel = $derived(isRecordLayer ? t.recordMapLabel : t.mapLabel);
 	const providerName = $derived(
@@ -889,14 +901,20 @@
 		isRecordLayer ? recordCount : reportView.kind === 'ready' ? reportView.model.inViewCount : null,
 	);
 	const listTabLabel = $derived(
-		recordLayer === 'corridors'
-			? tr('Corridors', 'Corridors')
-			: isRecordLayer || nearMeController.open || nearMeController.origin
-				? tr('Stops', 'Arrêts')
-				: tr('Vehicles', 'Véhicules'),
+		isReadingsLayer(recordLayer)
+			? tr('Results', 'Résultats')
+			: recordLayer === 'corridors'
+				? tr('Corridors', 'Corridors')
+				: isRecordLayer || nearMeController.open || nearMeController.origin
+					? tr('Stops', 'Arrêts')
+					: tr('Vehicles', 'Véhicules'),
 	);
 	function peekReading(recordHeadline: string | null, compact = false): string {
 		const mode = isRecordLayer ? frameCopy[locale].record : tr('Live', 'En direct');
+		if (isReadingsLayer(recordLayer)) {
+			const label = recordOptions.find(({ key }) => key === recordLayer)?.label ?? listTabLabel;
+			return mode + ' · ' + label;
+		}
 		let reading: string;
 		if (isRecordLayer && recordHeadline !== null) {
 			reading =
@@ -1529,7 +1547,8 @@
 			value={recordLayer}
 			label={tr('Layer', 'Couche')}
 			onSelect={changeRecordLayer}
-			variant="fit-row"
+			variant="joined-grid"
+			style="grid-template-columns: minmax(max-content, 1fr) minmax(max-content, 1fr)"
 		/>
 		{#if recordLayer === 'corridors'}
 			<SwitchRow
@@ -1838,7 +1857,11 @@
 		</div>
 	</MapFrame>
 	{#if !wide}
-		<div class="map-mobile-peek" data-slot="map-mobile-peek" bind:clientHeight={peekHeight}>
+		<div
+			class="map-mobile-peek"
+			data-slot="map-mobile-peek"
+			{@attach observedSize('clientHeight', (value) => (peekHeight = value))}
+		>
 			<Button
 				class="map-in-view-button min-h-11 min-w-0 flex-1 justify-start px-2 text-left"
 				variant="ghost"
@@ -1932,19 +1955,26 @@
 					<TabsContent value="list" class="grid min-h-0 grid-rows-[minmax(0,1fr)]">
 						{@render phoneList()}
 					</TabsContent>
-					<TabsContent value="legend" class="min-h-0 overflow-y-auto">
-						{@render phoneLegend()}
-					</TabsContent>
-					<TabsContent value="controls" class="min-h-0 overflow-y-auto">
-						{#if frameControls}
-							{@render frameControls({
-								presentation: 'mobile',
-								closeSheet: () => (inViewOpen = false),
-							})}
-						{:else}
-							{@render mapControls()}
-						{/if}
-					</TabsContent>
+					<div
+						bind:this={mobileControlsScroll}
+						class="min-h-0 min-w-0 overflow-y-auto scroll-py-2"
+						data-slot="map-left-sheet-scroll"
+						hidden={detailOpen || mobilePanel === 'list'}
+					>
+						<TabsContent value="legend" class="min-w-0">
+							{@render phoneLegend()}
+						</TabsContent>
+						<TabsContent value="controls" class="min-w-0">
+							{#if frameControls}
+								{@render frameControls({
+									presentation: 'mobile',
+									closeSheet: () => (inViewOpen = false),
+								})}
+							{:else}
+								{@render mapControls()}
+							{/if}
+						</TabsContent>
+					</div>
 				</Tabs>
 			</SheetContent>
 		</Sheet>
@@ -1962,12 +1992,16 @@
 	data-motion-tick-key={runtime.processedMotion?.tickKey}
 	data-motion-vehicle-count={runtime.processedMotion?.vehicleCount}
 	bind:this={heroEl}
-	bind:clientWidth={mapWidthPx}
+	{@attach observedSize('clientWidth', (value) => (mapWidthPx = value))}
 	data-record-layer={recordLayer}
 	data-map-wide={wide}
 	style:--map-peek-height={`${peekHeight}px`}
 >
-	<span class="map-layout-marker" aria-hidden="true" bind:clientWidth={remWidth}></span>
+	<span
+		class="map-layout-marker"
+		aria-hidden="true"
+		{@attach observedSize('clientWidth', (value) => (remWidth = value))}
+	></span>
 	<MapRecordPanel
 		{scheduleCache}
 		threeD={recordThreeD}
@@ -1989,6 +2023,7 @@
 		{locale}
 		stops={stopList}
 		routes={session.routesIndex}
+		routeDirections={mapDirections}
 		onlinefilters={showLineFilters}
 		children={mapContent}
 	/>

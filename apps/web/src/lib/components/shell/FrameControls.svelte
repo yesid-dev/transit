@@ -269,7 +269,6 @@
 			{@render viewContent()}
 			{@render extension.between?.()}
 			{#if frame.mode !== 'live'}
-				<p class="w-full text-sm font-medium text-muted-foreground">{copy.period}</p>
 				{@render periodContent()}
 			{/if}
 			{@render extension.extra?.(context)}

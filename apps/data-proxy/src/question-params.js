@@ -154,9 +154,6 @@ export function parseQuestion(url) {
         start === end)) {
       throw new Error("provide different start and end hours");
     }
-    if (layerMap && !stretch && range && start > end) {
-      throw new Error("clear runs and waits require hours in the same day");
-    }
     if ([range, params.has("hour"), params.has("time_band")].filter(Boolean).length > 1 ||
         (params.has("line") && params.has("lines"))) {
       throw new Error("choose one time cut and either line or lines");

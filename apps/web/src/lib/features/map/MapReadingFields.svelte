@@ -33,6 +33,7 @@
 	} = $props();
 
 	const tr = (en: string, fr: string) => (locale === 'fr' ? fr : en);
+	const directionHintId = $props.id();
 	const readings = $derived(store.state.mapReadings);
 	const vehicleType = $derived(readings?.vehicleType ?? '');
 	const directionValue = $derived(readings?.direction ?? direction);
@@ -40,14 +41,6 @@
 		{ value: 'both', label: tr('Both directions', 'Les deux sens') },
 		...directions.map(({ value, label }) => ({ value: String(value), label })),
 	]);
-	const directionPrompt = $derived(
-		hasOneLine
-			? tr('Direction unavailable', 'Sens indisponible')
-			: tr(
-					'Choose one line to pick a direction.',
-					'Choisissez une seule ligne pour choisir un sens.',
-				),
-	);
 	const typeChoices = $derived(
 		[...new Set(routes.map((route) => route.type))]
 			.filter((type): type is number => type != null)
@@ -163,18 +156,33 @@
 	{/if}
 	<div class="grid min-w-0 grid-cols-1 gap-1 text-sm" data-map-direction-filter>
 		<span>{tr('Direction', 'Sens')}</span>
-		<Combobox
-			searchable={false}
-			disabled={!directions.length}
-			label={tr('Direction', 'Sens')}
-			placeholder={directionPrompt}
-			options={directionChoices}
-			value={directions.length
-				? directionValue === undefined
-					? 'both'
-					: String(directionValue)
-				: null}
-			onValueChange={(value) => onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined)}
-		/>
+		{#if hasOneLine}
+			<Combobox
+				searchable={false}
+				clearable={false}
+				disabled={!directions.length}
+				label={tr('Direction', 'Sens')}
+				placeholder={tr('Direction unavailable', 'Sens indisponible')}
+				options={directionChoices}
+				value={directions.length
+					? directionValue === undefined
+						? 'both'
+						: String(directionValue)
+					: null}
+				onValueChange={(value) => onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined)}
+			/>
+		{:else}
+			<select
+				class={`${selectClass} disabled:text-muted-foreground`}
+				aria-label={tr('Direction', 'Sens')}
+				aria-describedby={directionHintId}
+				disabled
+			>
+				<option>{tr('Choose a direction', 'Choisir un sens')}</option>
+			</select>
+			<p id={directionHintId} class="text-sm text-muted-foreground">
+				{tr('Pick one line first.', 'Choisissez d’abord une ligne.')}
+			</p>
+		{/if}
 	</div>
 </div>
