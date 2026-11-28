@@ -397,6 +397,11 @@
 		font-weight: 700;
 	}
 
+	/* The status line is empty until loading starts: keep its line so the title never moves. */
+	.map-progressive-status {
+		min-block-size: 1lh;
+	}
+
 	.map-progressive-failure p {
 		margin: 0;
 	}

@@ -161,6 +161,10 @@ const LINE_DETAIL: BilingualSeo = {
 // The map's Record view shows the record of stops and corridors, not live vehicles (WCAG 2.4.2).
 export const MAP_RECORD: BilingualSeo = {
 	title: { en: 'Record map', fr: 'Carte du bilan' },
+	description: {
+		en: 'Where service ran late, lost time or kept riders waiting, on the chosen dates.',
+		fr: 'Où le service a été en retard, a perdu du temps ou a fait attendre, aux dates choisies.',
+	},
 };
 
 const STOP_DETAIL: BilingualSeo = {
