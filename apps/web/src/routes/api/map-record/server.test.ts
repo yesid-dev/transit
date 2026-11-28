@@ -21,6 +21,9 @@ it.each([
 	'from=2024-01-01&to=2026-11-02',
 	dates + '&from=2026-11-01',
 	dates + '&layer=invalid',
+	dates + '&hour_from=7',
+	dates + '&hour_from=7&hour_to=7',
+	dates + '&route_type=1703',
 ])('rejects invalid map parameters before querying the engine: %s', async (search) => {
 	const response = await request(search);
 	expect(response.status).toBe(400);
@@ -45,3 +48,22 @@ it.each([
 		expect(await response.json()).toEqual({ state });
 	},
 );
+
+it('passes the complete selected map scope to the engine', async () => {
+	query.mockResolvedValueOnce({ kind: 'busy' });
+	const lines = encodeURIComponent('["51","24","51"]');
+	await request(dates + `&lines=${lines}&route_type=0&direction=1&hour_from=22&hour_to=06`);
+	expect(query).toHaveBeenCalledWith(
+		expect.objectContaining({
+			parameters: expect.objectContaining({
+				lines: '["24","51"]',
+				route_type: '0',
+				direction: '1',
+				hour_from: '22',
+				hour_to: '6',
+			}),
+		}),
+		expect.anything(),
+		null,
+	);
+});

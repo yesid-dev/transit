@@ -90,7 +90,7 @@ it('draws a line answer before shapes arrive and uses straight segments for unav
 			terminals: new Set<string>(),
 			routes: [],
 			children: createRawSnippet(() => ({ render: () => '<div></div>' })),
-			onscope: vi.fn(),
+			onlinefilters: vi.fn(),
 			onsourcedate: vi.fn(),
 		},
 	});

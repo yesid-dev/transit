@@ -3,6 +3,8 @@ import { mapRecordAnswer } from '#lib/features/map/recordMapAnswer.ts';
 import { mapRecordQuestion } from '#lib/server/engineQuestion.ts';
 import { query } from '#lib/server/engine.ts';
 import { frameClock, periodError } from '#lib/site/frameState.ts';
+import { readMapHours, readMapVehicleType } from '#lib/filters/mapReadings.ts';
+import { readScheduleLineIds } from '#lib/server/scheduleLineIds.ts';
 
 export const GET: RequestHandler = async ({ url, request }) => {
 	const city = url.searchParams.get('city') ?? '';
@@ -12,15 +14,31 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	if (
 		!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(city) ||
 		periodError({ from, to }, frameClock({ timezone: 'America/Toronto' }).today) ||
-		['city', 'from', 'to', 'line', 'direction', 'layer'].some(
-			(key) => url.searchParams.getAll(key).length > 1,
-		) ||
+		[
+			'city',
+			'from',
+			'to',
+			'line',
+			'direction',
+			'layer',
+			'lines',
+			'route_type',
+			'hour_from',
+			'hour_to',
+		].some((key) => url.searchParams.getAll(key).length > 1) ||
 		(layer !== null && layer !== 'corridors')
 	) {
 		return json({ state: 'invalid_period' }, { status: 400 });
 	}
 	const line = url.searchParams.get('line') ?? undefined;
 	const direction = url.searchParams.get('direction') ?? undefined;
+	const rawLines = url.searchParams.get('lines');
+	const lines = rawLines !== null ? readScheduleLineIds(rawLines) : undefined;
+	const rawType = url.searchParams.get('route_type');
+	const vehicleType = readMapVehicleType(rawType);
+	const hourFrom = url.searchParams.get('hour_from');
+	const hourTo = url.searchParams.get('hour_to');
+	const hours = readMapHours(hourFrom, hourTo);
 	const corridors = layer === 'corridors';
 	const network = corridors && line === undefined;
 	if (
@@ -29,11 +47,22 @@ export const GET: RequestHandler = async ({ url, request }) => {
 	) {
 		return json({ state: 'invalid_line' }, { status: 400 });
 	}
-	if (direction !== undefined && (!line || !['0', '1'].includes(direction))) {
+	if (
+		(rawLines !== null && (lines === null || line !== undefined || url.search.length > 4096)) ||
+		(rawType !== null && vehicleType === undefined) ||
+		((hourFrom !== null || hourTo !== null) && hours === undefined)
+	) {
+		return json({ state: 'invalid_filters' }, { status: 400 });
+	}
+	if (direction !== undefined && !['0', '1'].includes(direction)) {
 		return json({ state: 'invalid_direction' }, { status: 400 });
 	}
 	const result = await query(
-		mapRecordQuestion({ city, from, to }, line, direction, corridors ? 'corridors' : undefined),
+		mapRecordQuestion({ city, from, to }, line, direction, corridors ? 'corridors' : undefined, {
+			lines: lines ?? undefined,
+			vehicleType,
+			hours,
+		}),
 		mapRecordAnswer,
 		request.headers.get('cf-connecting-ip'),
 	);

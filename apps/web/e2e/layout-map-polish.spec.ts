@@ -60,6 +60,10 @@ for (const provider of ['stm', 'octranspo'])
 					await openMapControls(page);
 					await page.locator('[data-map-filter-trigger]').click();
 					const panel = page.locator('.map-filters:visible');
+					const removeLine = panel.getByRole('button', {
+						name: locale === 'fr' ? 'Retirer la ligne 24' : 'Remove line 24',
+						exact: true,
+					});
 					const sw = panel.getByRole('switch', {
 						name: locale === 'fr' ? 'Positions estimées' : 'Estimated positions',
 						exact: true,
@@ -95,19 +99,11 @@ for (const provider of ['stm', 'octranspo'])
 					}));
 					expect(label.height).toBeLessThanOrEqual(label.line + 1);
 					if (active) {
-						const remove = panel.getByRole('button', {
-							name:
-								locale === 'fr'
-									? 'Retirer le filtre : 24 Sherbrooke'
-									: 'Remove filter: 24 Sherbrooke',
-							exact: true,
-						});
-						await expect(remove).toBeVisible();
-						expect((await remove.boundingBox())!.height).toBeGreaterThanOrEqual(44);
-						expect(
-							(await remove.locator('[data-slot="badge"]').boundingBox())!.height,
-						).toBeLessThanOrEqual(30);
-						await expect(remove).toContainText('×');
+						await expect(removeLine).toBeVisible();
+						const target = (await removeLine.boundingBox())!;
+						expect(target.height).toBeGreaterThanOrEqual(44);
+						expect(target.width).toBeGreaterThanOrEqual(44);
+						await expect(removeLine).toContainText('×');
 					}
 					expect(
 						(
@@ -131,11 +127,7 @@ for (const provider of ['stm', 'octranspo'])
 							animations: 'disabled',
 						});
 						if (active) {
-							await panel
-								.getByRole('button', {
-									name: /^(Remove filter:|Retirer le filtre :) 24 Sherbrooke$/,
-								})
-								.scrollIntoViewIfNeeded();
+							await removeLine.scrollIntoViewIfNeeded();
 							await page.screenshot({
 								path: resolve(
 									dir,
@@ -146,13 +138,7 @@ for (const provider of ['stm', 'octranspo'])
 						}
 					}
 					if (active) {
-						await panel
-							.getByRole('button', {
-								name: new RegExp(
-									`${locale === 'fr' ? 'Retirer le filtre :' : 'Remove filter:'} 24 Sherbrooke`,
-								),
-							})
-							.click();
+						await removeLine.click();
 						await expect(page).not.toHaveURL(/[?&]route=24(?:&|$)/);
 					}
 				}

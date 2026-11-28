@@ -365,13 +365,17 @@ class Question:
         if self.measure == CLEAR_RUN_TIME_LOST or self.group == "line_stop":
             if not self.layer_map:
                 raise ValueError("clear runs and waits by line and stop require their map view")
+        map_readings = self.map_view and (self.measure, self.group) in {
+            ("late", "stop_id"),
+            ("mean_time_lost", "segment"),
+        }
         layer_cuts = {"lines", "route_type", "time_band", "hour_from", "hour_to"}
-        if self.layer_map:
-            allowed = layer_cuts | {"line", "direction", "stop", "hour", "day_type"}
+        if self.layer_map or map_readings:
+            allowed = layer_cuts | {"line", "direction", "hour", "day_type"}
+            if self.group == "line_stop":
+                allowed.add("stop")
             if self.cuts().keys() - allowed:
                 raise ValueError("invalid map layer cut")
-            if self.stop is not None and self.group != "line_stop":
-                raise ValueError("stop applies to the waits map")
             if self.line is not None and self.lines:
                 raise ValueError("choose line or lines")
             if self.route_type is not None and not 0 <= self.route_type <= 9999:
@@ -384,30 +388,27 @@ class Question:
             if has_range and (
                 self.hour_from is None
                 or self.hour_to is None
-                or not 0 <= self.hour_from < self.hour_to <= 24
+                or not (0 <= self.hour_from <= 23 and 0 <= self.hour_to <= 24)
+                or self.hour_from == self.hour_to
             ):
-                raise ValueError("provide hour_from < hour_to within 0 to 24")
+                raise ValueError("provide different start and end hours")
+            if (
+                self.layer_map and self.hour_from is not None and self.hour_to is not None
+                and self.hour_from > self.hour_to
+            ):
+                raise ValueError("clear runs and waits require hours in the same day")
             if sum((has_range, self.hour is not None, self.time_band is not None)) > 1:
                 raise ValueError("choose hour, time_band, or a custom hour range")
         elif self.cuts().keys() & layer_cuts:
-            raise ValueError("layer filters apply to the clear-run and waits maps")
+            raise ValueError("layer filters require a map reading")
         if self.measure == _DELAY_DISTRIBUTION_ID and (ranking or self.group is not None):
             raise ValueError("delay_distribution requires an ungrouped measure")
         if self.include_overall and not (
             self.measure == _VEHICLES_ID and self.group == "day" and self.vehicle is not None
         ):
             raise ValueError("include_overall requires vehicles by day for one vehicle")
-        if self.map_view and not (
-            self.layer_map
-            or (self.measure == "late" and self.group == "stop_id" and not self.cuts())
-            or (
-                self.measure == "mean_time_lost" and self.group == "segment"
-                and (not self.cuts() or (
-                    self.line is not None and self.cuts().keys() <= {"line", "direction"}
-                ))
-            )
-        ):
-            raise ValueError("map view requires network late share or time lost by segment")
+        if self.map_view and not (self.layer_map or map_readings):
+            raise ValueError("map view requires a supported map reading")
         if self.alert_details:
             if self.measure != _ALERT_COUNTS_ID or self.group or ranking:
                 raise ValueError("alert_details requires ungrouped alert_counts")
@@ -821,10 +822,29 @@ def _cuts(
                 parameters.append(hour * 3600 + minute * 60 + second)
             else:
                 parameters.append(value)
-    if question.layer_map and hour_sql is not None and (hours := question.layer_hours()):
-        filters.append(f"({hour_sql}) >= ? AND ({hour_sql}) < ?")
+    if question.map_view and hour_sql is not None and (hours := question.layer_hours()):
+        start, end = hours
+        joiner = "AND" if start < end else "OR"
+        filters.append(f"(({hour_sql}) >= ? {joiner} ({hour_sql}) < ?)")
         parameters.extend(hours)
     return " AND ".join(filters) or "true", parameters
+
+
+def _trip_type_cut(
+    question: Question, version: str, paths: dict[str, list[str]]
+) -> tuple[str, list[object]]:
+    if question.route_type is None:
+        return "", []
+    if int(version) < 6:
+        return "AND false", []
+    return """
+        AND EXISTS (
+            SELECT 1 FROM read_parquet(?, hive_partitioning = false) t
+            WHERE t.provider = s.provider AND t.cleaning_version = s.cleaning_version
+                AND t.service_date = s.service_date AND t.trip_id = s.trip_id
+                AND t.route_type = ?
+        )
+    """, [paths[TRIP_DAYS], question.route_type]
 
 
 def _entity_sql(
@@ -914,9 +934,21 @@ def _punctuality_query(
     cut_sql, filters = _cuts(question, hour, departure_sql=departure_sql)
     scope = [question.city, version, question.start, question.end]
     trip_cut = "AND route_id = ?" if question.line is not None else ""
-    parameters: list[object] = [paths[STOP_EVENTS], *scope, *filters]
+    type_cut, type_parameters = (
+        _trip_type_cut(question, version, paths) if clean_events else ("", [])
+    )
+    parameters: list[object] = [paths[STOP_EVENTS], *scope, *type_parameters, *filters]
     if not clean_events:
-        parameters[:0] = [paths[TRIP_DAYS], *scope, *([question.line] if trip_cut else [])]
+        trip_parameters: list[object] = [
+            paths[TRIP_DAYS], *scope, *([question.line] if trip_cut else [])
+        ]
+        if question.route_type is not None:
+            if int(version) >= 6:
+                trip_cut += " AND route_type = ?"
+                trip_parameters.append(question.route_type)
+            else:
+                trip_cut += " AND false"
+        parameters[:0] = trip_parameters
     counters = {name: sql for name, (sql, _) in _COUNTS.items()}
     counters.update({m.id: f"count(*) FILTER ({m.band})" for m in family.measures if m.band})
     if group:
@@ -977,9 +1009,10 @@ def _punctuality_query(
         and question.hour is None
         and question.stop is None
     )
-    stop_scan = """
+    stop_scan = f"""
         FROM read_parquet(?, hive_partitioning = false) s
         WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
+        {type_cut}
     """
     rank_by_band = not with_histogram and (
         group == "stop" or (clean_events and group in {"line", "departure"})
@@ -3479,9 +3512,12 @@ def _corridor_rows(
     if question.direction is not None:
         trip_filter += " AND t.direction_id = ?"
         trip_parameters.append(question.direction)
+    if question.lines:
+        trip_filter += " AND t.route_id = ANY(?)"
+        trip_parameters.append(list(question.lines))
     clean_events = int(version) >= STOP_ELIGIBILITY_VERSION
     stop_filter = trip_filter.replace("t.", "s.") if clean_events else ""
-    stop_parameters = trip_parameters if clean_events else []
+    stop_parameters = trip_parameters.copy() if clean_events else []
     cut, parameters = _cuts(question, hour)
     _, selected = _SELECTIONS[question.measure]
     edge = (
@@ -3521,9 +3557,18 @@ def _corridor_rows(
     routes = "list(DISTINCT route_id)" if group or question.network_corridors else "NULL"
     window = [question.city, version, question.start, question.end]
     if SEGMENT_RUNS in paths:
-        runs = SEGMENT_RUNS_SQL.format(cut=cut, trip_identity="")
-        args = [paths[FEED_POLLS], *window, paths[SEGMENT_RUNS], *window, *parameters]
+        type_cut, type_parameters = _trip_type_cut(question, version, paths)
+        runs = SEGMENT_RUNS_SQL.format(cut=f"({cut}) {type_cut}", trip_identity="")
+        args = [
+            paths[FEED_POLLS], *window, paths[SEGMENT_RUNS], *window, *parameters, *type_parameters
+        ]
     else:
+        if question.route_type is not None:
+            if int(version) >= 6:
+                trip_filter += " AND t.route_type = ?"
+                trip_parameters.append(question.route_type)
+            else:
+                trip_filter += " AND false"
         runs = CORRIDOR_RUNS_SQL.format(cut=cut, trip_filter=trip_filter, stop_filter=stop_filter)
         args = [
             paths[STOP_EVENTS], *window, *stop_parameters,
@@ -4384,7 +4429,7 @@ def read_window(
         tables += (TRIP_DAYS,)
     if family.id == _CORRIDORS_ID:
         preferred_tables = (SEGMENT_RUNS, FEED_POLLS)
-        if group is not None:
+        if group is not None or question.route_type is not None:
             preferred_tables += (TRIP_DAYS,)
     if question.network_corridors:
         tables = preferred_tables

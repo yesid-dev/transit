@@ -514,10 +514,25 @@ test("validates and forwards map questions while an older engine degrades to una
   const network = await f.fetch(corridor);
   assert.equal(network.status, 409);
   assert.deepEqual(await network.json(), { reason: "network_corridors_unsupported" });
-  assert.equal((await f.fetch(`${corridor}&direction=0`)).status, 400);
+  assert.equal((await f.fetch(`${corridor}&direction=0`)).status, 409);
   assert.equal((await f.fetch(`${corridor}&line=51&direction=0`)).status, 503);
-  assert.deepEqual(f.requests.map(({ url }) => new URL(url).searchParams.get("line")), [null, null, "51"]);
+  assert.deepEqual(f.requests.map(({ url }) => new URL(url).searchParams.get("line")), [null, null, null, "51"]);
   assert.ok(f.requests.every(({ url }) => new URL(url).searchParams.get("view") === "map"));
+});
+
+test("normalizes map viewing filters and keeps them scoped to map questions", async (t) => {
+  const f = fixture(t, () => Response.json({ message: "unknown parameter" }, { status: 400 }));
+  const base = "/v2/demo/measure?from=2026-10-17&to=2026-10-23&measure=late&group=stop_id";
+  const lines = encodeURIComponent('["51","24","51"]');
+  const filters = `&lines=${lines}&route_type=0&direction=1&hour_from=22&hour_to=06`;
+  assert.equal((await f.fetch(`${base}${filters}`)).status, 400);
+  assert.equal((await f.fetch(`${base}&view=map&hour_from=7`)).status, 400);
+  assert.equal((await f.fetch(`${base}&view=map${filters}`)).status, 503);
+  const query = new URL(f.requests[0].url).searchParams;
+  assert.equal(query.get("lines"), '["24","51"]');
+  assert.equal(query.get("route_type"), "0");
+  assert.equal(query.get("direction"), "1");
+  assert.equal(query.get("hour_to"), "6");
 });
 
 test("preserves a network corridor refusal from an engine without complete clean facts", async (t) => {

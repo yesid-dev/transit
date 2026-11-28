@@ -214,8 +214,10 @@ export function recordCorridors(
 	const rows = readings(answer);
 	const byId = new Map(stops.map((stop) => [stop.id, stop]));
 	const pairs = new Map<string, RecordMark>();
+	// Network readings already apply the direction cut before pooling the stop pairs.
+	const shapeDirection = answer?.measure === 'mean_time_lost' && !answer.direction ? '' : direction;
 	function add(dir: number | null, fromId: string, toId: string, variant?: RouteDirection) {
-		if (direction && String(dir) !== direction) return;
+		if (shapeDirection && String(dir) !== shapeDirection) return;
 		const id = pairId(dir, fromId, toId);
 		const from = byId.get(fromId);
 		const to = byId.get(toId);

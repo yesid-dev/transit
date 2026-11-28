@@ -133,15 +133,23 @@ export function parseQuestion(url) {
   const clearRun = params.get("measure") === "clear_run_time_lost";
   const waits = params.get("measure") === "excess_wait_time" && params.get("group") === "line_stop";
   const layerMap = map && (waits || (clearRun && params.get("group") === "segment"));
-  if (!layerMap && (clearRun || params.get("group") === "line_stop" ||
+  const stops = params.get("measure") === "late" && params.get("group") === "stop_id";
+  const segments = params.get("measure") === "mean_time_lost" && params.get("group") === "segment";
+  const mapReading = map && (stops || segments || layerMap);
+  if (!mapReading && (clearRun || params.get("group") === "line_stop" ||
       (route === "measure" && LAYER_CUTS.some((key) => params.has(key))))) {
-    throw new Error("clear runs, waits by line and stop, and layer filters require a map layer");
+    throw new Error("clear runs, waits by line and stop, and layer filters require a map reading");
   }
-  if (layerMap) {
+  if (mapReading) {
     const range = params.has("hour_from") || params.has("hour_to");
+    const start = Number(params.get("hour_from"));
+    const end = Number(params.get("hour_to"));
     if (range && (!params.has("hour_from") || !params.has("hour_to") ||
-        Number(params.get("hour_from")) >= Number(params.get("hour_to")))) {
-      throw new Error("provide hour_from < hour_to within 0 to 24");
+        start === end)) {
+      throw new Error("provide different start and end hours");
+    }
+    if (layerMap && range && start > end) {
+      throw new Error("clear runs and waits require hours in the same day");
     }
     if ([range, params.has("hour"), params.has("time_band")].filter(Boolean).length > 1 ||
         (params.has("line") && params.has("lines"))) {
@@ -151,12 +159,10 @@ export function parseQuestion(url) {
   if (map) {
     const scope = [...params.keys()].filter((key) =>
       !["from", "to", "measure", "group", "view", "format", "lang", "include_method"].includes(key));
-    const stops = params.get("measure") === "late" && params.get("group") === "stop_id" && !scope.length;
-    const segments = params.get("measure") === "mean_time_lost" && params.get("group") === "segment" &&
-      (!scope.length || (params.has("line") && scope.every((key) => key === "line" || key === "direction")));
-    const layer = layerMap && scope.every((key) =>
-      [...LAYER_CUTS, "line", "direction", "hour", "day_type", ...(waits ? ["stop"] : [])].includes(key));
-    if (csv || !(stops || segments || layer)) throw new Error("invalid map measure");
+    const mapCuts = [...LAYER_CUTS, "line", "direction", "hour", "day_type", ...(waits ? ["stop"] : [])];
+    if (csv || !mapReading || scope.some((key) => !mapCuts.includes(key))) {
+      throw new Error("invalid map measure");
+    }
   } else if (params.get("group") === "segment") {
     throw new Error("group=segment requires map view");
   }

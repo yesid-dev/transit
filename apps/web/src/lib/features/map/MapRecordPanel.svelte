@@ -2,13 +2,9 @@
 	import { mapRecordReading, searchCount } from '#lib/site/presenter.ts';
 	import { resolveColor } from '#lib/components/map/vehicleSprites.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import { directionHeadsigns } from '#lib/features/lines/directions.ts';
 	import type { Map as MapLibreMap } from 'maplibre-gl';
 	import { untrack, type Snippet } from 'svelte';
 	import { Separator } from '@yesid/ui/separator';
-	import { Combobox } from '@yesid/ui/combobox';
-	import { foldSearchText } from '#lib/search/normalize.ts';
-	import MapLinePicker from './MapLinePicker.svelte';
 	import { theme } from '@yesid/ui/state';
 	import { localizeHref, type Locale } from '#lib/i18n/index.ts';
 	import { choose, notMeasuredLabel } from '#lib/features/record/recordText.ts';
@@ -23,6 +19,7 @@
 	import type { RouteFile, StopIndexEntry } from '#lib/v1/schemas/index.ts';
 	import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 	import { getV1Context } from '#lib/v1/boot.ts';
+	import { mapReadingHours, type MapReadingFilters } from '#lib/filters/mapReadings.ts';
 	import type { MapRecordAnswer } from './recordMapAnswer';
 	import {
 		isCoordinateInCapturedView,
@@ -50,6 +47,8 @@
 		map: MapLibreMap | null;
 		layer: RecordMapLayer;
 		line: string;
+		lines?: readonly string[];
+		readings?: MapReadingFilters;
 		direction: string;
 		city: string;
 		period: ReturnType<typeof parseFrameState>['period'];
@@ -58,7 +57,7 @@
 		stops: readonly StopIndexEntry[];
 		terminals: ReadonlySet<string>;
 		routes: readonly RouteIndexEntry[];
-		onscope: (line: string, direction: string) => void;
+		onlinefilters: () => void;
 		onsourcedate: (date: string | null) => void;
 		ondata?: (settled: boolean) => void;
 		scheduleCache?: Map<string, unknown>;
@@ -71,6 +70,8 @@
 		map,
 		layer,
 		line,
+		lines = [],
+		readings,
 		direction,
 		city,
 		period,
@@ -79,7 +80,7 @@
 		stops,
 		terminals,
 		routes,
-		onscope,
+		onlinefilters,
 		onsourcedate,
 		ondata,
 		scheduleCache,
@@ -93,6 +94,14 @@
 	const tr = (en: string, fr: string) => choose(locale, en, fr);
 	const stopLayer = $derived(layer === 'stops');
 	const network = $derived(layer === 'corridors' && !line);
+	const hours = $derived(mapReadingHours(readings?.timeOfDay));
+	const scopedDirection = $derived(
+		readings?.direction !== undefined
+			? String(readings.direction)
+			: !stopLayer && line
+				? direction
+				: '',
+	);
 	const scope = $derived(
 		period && layer !== 'live'
 			? new URLSearchParams({
@@ -100,7 +109,12 @@
 					from: period.from,
 					to: period.to,
 					...(network ? { layer: 'corridors' } : {}),
-					...(!stopLayer && line ? { line, ...(direction ? { direction } : {}) } : {}),
+					...(!stopLayer && line ? { line } : lines.length ? { lines: JSON.stringify(lines) } : {}),
+					...(scopedDirection ? { direction: scopedDirection } : {}),
+					...(readings?.vehicleType !== undefined
+						? { route_type: String(readings.vehicleType) }
+						: {}),
+					...(hours ? { hour_from: String(hours[0]), hour_to: String(hours[1]) } : {}),
 				}).toString()
 			: '',
 	);
@@ -297,13 +311,6 @@
 		fitted = { map: instance, line: id, direction: dir };
 	});
 
-	const heads = $derived(directionHeadsigns(route?.directions));
-	const directionOptions = $derived(
-		[0, 1].map((id) => {
-			const label = display.directionLabel(id, heads, locale, line);
-			return { value: String(id), label, search: foldSearchText(label) };
-		}),
-	);
 	const stateLabels = $derived([
 		notMeasuredLabel[locale],
 		tr('Too few to judge', 'Trop peu pour juger'),
@@ -363,38 +370,6 @@
 		/>
 	{/if}
 	{@render stamp?.()}
-	{#if !stopLayer}
-		<div class="scope">
-			<div class="scope-field">
-				<span>{tr('Line', 'Ligne')}</span>
-				<MapLinePicker
-					{routes}
-					{locale}
-					label={tr('Line', 'Ligne')}
-					placeholder={chooseLine
-						? tr('Choose a line', 'Choisir une ligne')
-						: tr('All lines', 'Toutes les lignes')}
-					value={line || null}
-					onchange={(id) => onscope(id ?? '', '')}
-				/>
-			</div>
-			{#if line}
-				<div class="scope-field">
-					<span>{tr('Direction', 'Direction')}</span>
-					<Combobox
-						options={directionOptions}
-						label={tr('Direction', 'Direction')}
-						placeholder={tr('Both directions', 'Les deux directions')}
-						clearLabel={tr('Show both directions', 'Afficher les deux directions')}
-						emptyLabel={tr('No matching directions', 'Aucune direction correspondante')}
-						fold={foldSearchText}
-						value={direction || null}
-						onValueChange={(id) => onscope(line, id ?? '')}
-					/>
-				</div>
-			{/if}
-		</div>
-	{/if}
 	{#if chooseLine}
 		<p>
 			{tr(
@@ -402,6 +377,9 @@
 				'Choisissez une ligne pour voir le temps perdu entre ses arrêts.',
 			)}
 		</p>
+		<Button variant="outline" size="sm" class="min-h-11" onclick={onlinefilters}>
+			{tr('Choose a line', 'Choisir une ligne')}
+		</Button>
 	{:else}
 		{#if pending}
 			{#key scope}<RecordPending {locale} />{/key}
@@ -590,20 +568,11 @@
 		list-style: none;
 		padding: 0;
 	}
-	.scope {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-	}
-	label,
-	.scope-field {
+	label {
 		display: grid;
 		gap: 0.2rem;
 		min-width: 0;
 		font-weight: 600;
-	}
-	.scope-field {
-		flex: 1 1 8rem;
 	}
 	input {
 		width: 100%;

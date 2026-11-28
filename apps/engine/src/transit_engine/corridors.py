@@ -99,8 +99,8 @@ SEGMENT_RUNS_SQL = f"""
             observed_departure_at, observed_arrival_at,
             observed_run_seconds AS observed_seconds, scheduled_run_seconds AS scheduled_seconds,
             exclusion
-        FROM read_parquet(?, hive_partitioning = false)
-        WHERE provider = ? AND cleaning_version = ? AND service_date BETWEEN ? AND ?
+        FROM read_parquet(?, hive_partitioning = false) s
+        WHERE s.provider = ? AND s.cleaning_version = ? AND s.service_date BETWEEN ? AND ?
             AND ({{cut}})
     ), runs AS (
         SELECT s.* EXCLUDE (exclusion), observed_seconds - scheduled_seconds AS lost_seconds,

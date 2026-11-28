@@ -18,7 +18,7 @@ export interface MapUrlCoordinator {
 	readonly currentUrl: () => URL;
 	readonly dispose: () => void;
 	readonly goto: MapUrlNavigate;
-	readonly writeFilters: (search: string) => void;
+	readonly writeFilters: (search: string, edit?: (params: URLSearchParams) => void) => void;
 	readonly settle: (url: URL) => MapUrlSettlement;
 }
 
@@ -92,13 +92,14 @@ export function createMapUrlCoordinator(
 		return navigation;
 	}
 
-	function writeFilters(search: string): void {
+	function writeFilters(search: string, edit?: (params: URLSearchParams) => void): void {
 		const next = new URL(latestIntent.href);
 		for (const key of FILTER_SEARCH_PARAM_KEYS) next.searchParams.delete(key);
 		const filters = new URLSearchParams(search);
 		for (const key of FILTER_SEARCH_PARAM_KEYS) {
 			for (const value of filters.getAll(key)) next.searchParams.append(key, value);
 		}
+		edit?.(next.searchParams);
 		void request(identity(next), MAP_URL_REWRITE);
 	}
 

@@ -1,6 +1,7 @@
 import type { StatusCode, OccupancyCode, SeverityCode, Grain } from '#lib/v1/schemas/types.ts';
 import { STATUS_CODES, OCCUPANCY_CODES, SEVERITY_CODES, GRAINS } from '#lib/v1/schemas/types.ts';
 import type { DateWindow } from '#lib/v1/history/window.ts';
+import type { MapReadingFilters } from './mapReadings';
 
 export type { DateWindow } from '#lib/v1/history/window.ts';
 
@@ -35,6 +36,7 @@ export interface FilterState {
 	/** Visible map markers. Undefined enables both kinds, while an empty list hides both. */
 	entities?: EntityKind[];
 	alerts?: AlertEntityKind[];
+	mapReadings?: MapReadingFilters;
 	grain?: Grain;
 	window?: DateWindow;
 	date?: string;
@@ -184,6 +186,7 @@ export function cloneFilterState(s: FilterState): FilterState {
 		...(s.occupancy ? { occupancy: s.occupancy.slice() } : {}),
 		...(s.entities ? { entities: s.entities.slice() } : {}),
 		...(s.alerts ? { alerts: s.alerts.slice() } : {}),
+		...(s.mapReadings ? { mapReadings: { ...s.mapReadings } } : {}),
 		...(s.showOutOfService ? { showOutOfService: true } : {}),
 		...(s.grain !== undefined ? { grain: s.grain } : {}),
 		...(s.window !== undefined ? { window: { from: s.window.from, to: s.window.to } } : {}),
@@ -207,6 +210,7 @@ export function isEmptyFilterState(s: FilterState): boolean {
 		(s.occupancy === undefined || s.occupancy.length === 0) &&
 		s.entities === undefined &&
 		(s.alerts === undefined || s.alerts.length === 0) &&
+		s.mapReadings === undefined &&
 		s.grain === undefined &&
 		s.window === undefined &&
 		s.date === undefined &&

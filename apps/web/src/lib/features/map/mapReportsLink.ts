@@ -31,6 +31,7 @@ export function buildMapReportLiveViewHref(
 		occupancy: filter.occupancy,
 		entities: filter.entities,
 		alerts: filter.alerts,
+		mapReadings: filter.mapReadings,
 	});
 	for (const [key, value] of live) url.searchParams.append(key, value);
 	url.searchParams.set('provider', providerId);

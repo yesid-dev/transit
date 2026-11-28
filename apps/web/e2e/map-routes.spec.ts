@@ -228,10 +228,10 @@ for (const locale of ['en', 'fr'] as const) {
 		).toBeVisible();
 		await openMapControls(page);
 		await page.getByRole('button', { name: fr ? 'Filtres de la carte' : 'Map filters' }).click();
-		const line = page.getByRole('combobox', {
-			name: fr ? 'Ligne sur la carte' : 'Line on the map',
+		const line = page.getByRole('button', {
+			name: fr ? 'Ajouter une ligne au filtre' : 'Add a line filter',
 		});
-		await line.press('ArrowDown');
+		await line.click();
 		await page.getByRole('option', { name: /^24\b/ }).click();
 		await expect(page).toHaveURL(/[?&]line=24$/);
 		await page.goto(`${path}&route=24`);

@@ -12,6 +12,7 @@ import {
 	visibleEntityKinds,
 } from './state';
 import { toSearchString } from './url';
+import { hasMapReadingFilters, type MapReadingFilters } from './mapReadings';
 
 export type PushUrl = (search: string) => void;
 
@@ -85,6 +86,7 @@ export interface FilterStore {
 	setEntities(kinds: readonly EntityKind[]): void;
 	toggleAlert(kind: AlertEntityKind): void;
 	setAlerts(kinds: readonly AlertEntityKind[]): void;
+	setMapReadings(filters: MapReadingFilters): void;
 
 	setGrain(grain: Grain | undefined): void;
 	setWindow(window: DateWindow | undefined): void;
@@ -307,6 +309,9 @@ export function createFilterStore(init: FilterState, pushUrl: PushUrl = () => {}
 		},
 		toggleOutOfService() {
 			commit({ ...current, showOutOfService: !current.showOutOfService });
+		},
+		setMapReadings(filters) {
+			commit({ ...current, mapReadings: hasMapReadingFilters(filters) ? filters : undefined });
 		},
 		get chips() {
 			const out: Chip[] = [];
