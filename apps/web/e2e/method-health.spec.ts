@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { methodCopy } from '../src/lib/features/record/methodCatalog.copy.ts';
 import { csvText } from '../src/tests/csv';
-import { doubleText, textDefects, waitForFrameClearance } from './layout-helpers';
+import { doubleText, textDefects } from './layout-helpers';
 import { installHealthCapture } from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
@@ -30,14 +30,19 @@ for (const locale of ['en', 'fr'] as const) {
 			const more = rail.getByRole('link', { name: methodCopy[locale].more });
 			const ranking = rail.getByRole('link', { name: methodCopy[locale].range.title });
 			const archive = rail.getByRole('link', { name: methodCopy[locale].archive });
+			const positions = async () => {
+				const top = (await rail.boundingBox())!.y;
+				return [(await ranking.boundingBox())!.y - top, (await archive.boundingBox())!.y - top];
+			};
 			await expect(ranking).toBeVisible();
-			await waitForFrameClearance(page);
+			await page.evaluate(() => document.fonts.ready);
 			await expect(more).toHaveCount(0);
-			const positions = [(await ranking.boundingBox())!.y, (await archive.boundingBox())!.y];
+			const before = await positions();
 			expect((await hold('release')).ok()).toBe(true);
 			await expect(more).toBeVisible();
-			expect((await ranking.boundingBox())!.y).toBeCloseTo(positions[0], 0);
-			expect((await archive.boundingBox())!.y).toBeCloseTo(positions[1], 0);
+			const after = await positions();
+			expect(after[0]).toBeCloseTo(before[0], 0);
+			expect(after[1]).toBeCloseTo(before[1], 0);
 		} finally {
 			await hold('release');
 		}

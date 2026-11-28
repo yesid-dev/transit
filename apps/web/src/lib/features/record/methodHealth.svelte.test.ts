@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { expect, it } from 'vitest';
 import type {
 	DataHealthAnswer,
@@ -129,12 +129,12 @@ it('puts shared family prose in one reading and links to it from its siblings', 
 		}),
 	});
 	expect(await screen.findAllByText(/Each stop with a reading counts once\./)).toHaveLength(1);
-	const early = document.getElementById('early')!.closest<HTMLElement>('section')!;
+	const early = document.getElementById('early')!.closest<HTMLElement>('.method-disclosure')!;
+	await fireEvent.click(within(early).getByRole('button', { name: 'Early share' }));
 	expect(early).toHaveTextContent('The same as the on-time share.');
-	expect(within(early).getByRole('link', { name: 'the on-time share' })).toHaveAttribute(
-		'href',
-		'#on_time',
-	);
+	for (const link of within(early).getAllByRole('link', { name: 'the on-time share' })) {
+		expect(link).toHaveAttribute('href', '#on_time');
+	}
 });
 
 it.each([

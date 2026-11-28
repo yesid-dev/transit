@@ -147,6 +147,7 @@
 	<Collapsible.Root
 		class="method-disclosure"
 		data-method-disclosure={id}
+		data-toc={level === 2 ? id : undefined}
 		data-method-bulk={independent ? undefined : ''}
 		open={expanded}
 		onOpenChange={(value) => (openCards[id] = value)}
@@ -157,7 +158,6 @@
 			aria-labelledby={id + '-title'}
 			class="method-anchor method-disclosure-heading section-title"
 		>
-			<HeadingPermalink target={id} label={permalinkLabel} />
 			<Collapsible.Trigger
 				aria-describedby={summary ? id + '-summary' : undefined}
 				class="method-disclosure-trigger inline-flex min-h-11 max-w-full items-start gap-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
@@ -165,6 +165,7 @@
 				<span id={id + '-title'} class="min-w-0">{name}</span>
 				<ChevronToggle open={expanded} direction="right" class="shrink-0 print:hidden" />
 			</Collapsible.Trigger>
+			<HeadingPermalink target={id} label={permalinkLabel} />
 		</svelte:element>
 		{#if summary}<p id={id + '-summary'} data-slot="section-summary">{summary}</p>{/if}
 		<Collapsible.Content>
@@ -180,8 +181,8 @@
 	{@const toggleCopy = sectionsToggleCopy[locale]}
 	<div class="method-heading-row flex min-w-0 flex-wrap items-center justify-between gap-3">
 		<h2 id="method-heading" aria-labelledby="method-heading-title" class="section-title">
-			<HeadingPermalink target="method-heading" label={permalinkLabel} />
 			<span id="method-heading-title">{copy.heading}</span>
+			<HeadingPermalink target="method-heading" label={permalinkLabel} />
 		</h2>
 		<div class="min-h-11 print:hidden">
 			<Button
@@ -212,7 +213,7 @@
 	since: string | null,
 )}
 	{#if parts.length || minimumSample != null || rankingMinimumSample != null || since}
-		<dl class="method-parts">
+		<dl class="method-parts reading-support">
 			{#each parts as part (part.field)}
 				<div>
 					<dt>{copy[part.field]}</dt>
@@ -254,7 +255,7 @@
 	{#if notes.length}
 		<div class="mt-4">
 			{#snippet notesBody()}
-				<dl class="method-notes">
+				<dl class="method-notes reading-support">
 					{#each notes as note, index (index)}
 						<div>
 							{#if note.label || note.field}
@@ -304,8 +305,8 @@
 								aria-labelledby={item.entry.id + '-title'}
 								class="method-anchor"
 							>
-								<HeadingPermalink target={item.entry.id} label={permalinkLabel} />
 								<span id={item.entry.id + '-title'}>{methodName(item.entry, locale)}</span>
+								<HeadingPermalink target={item.entry.id} label={permalinkLabel} />
 							</h4>
 							<p>{item.summary}</p>
 							{@render fieldList(
@@ -338,7 +339,7 @@
 {/snippet}
 
 {#snippet rankingRange()}
-	<dl class="method-parts">
+	<dl class="method-parts reading-support">
 		{#each rangeFields as field (field)}
 			<div>
 				<dt>{copy[field]}</dt>
@@ -348,7 +349,7 @@
 	</dl>
 	<div class="mt-4">
 		{#snippet rankingNotes()}
-			<dl class="method-notes">
+			<dl class="method-notes reading-support">
 				{#each dataUserFields as field (field)}
 					<div>
 						<dt>{copy[field]}</dt>
@@ -361,19 +362,27 @@
 	</div>
 {/snippet}
 
+{#snippet contactText(text: string, address: string)}
+	{@const [before, after] = text.split(address)}
+	{@const [name, domain] = address.split('@')}
+	{before}{name}@<wbr />{domain}{after}
+{/snippet}
+
 {#snippet aboutTransit()}
-	<!-- An email address is one long word: let it wrap at 200% text on a phone. -->
-	<dl class="method-parts [overflow-wrap:anywhere]">
+	<dl class="method-parts reading-support method-about">
 		{#each copy.about.fields as field (field.label)}
 			<div>
 				<dt>{field.label}</dt>
-				<dd>{field.text}</dd>
 				{#if 'link' in field}
+					{@const address = field.link.href.slice('mailto:'.length)}
+					<dd>{@render contactText(field.text, address)}</dd>
 					<dd>
-						<a class="method-link inline-flex min-h-11 items-center" href={field.link.href}
-							>{field.link.label}</a
-						>
+						<a class="method-link inline-flex min-h-11 items-center" href={field.link.href}>
+							<span class="min-w-0">{@render contactText(field.link.label, address)}</span>
+						</a>
 					</dd>
+				{:else}
+					<dd>{field.text}</dd>
 				{/if}
 			</div>
 		{/each}
@@ -539,8 +548,8 @@
 								class="section-title"
 								bind:this={extraHeading}
 							>
-								<HeadingPermalink target="more-methods" label={permalinkLabel} />
 								<span id="more-methods-title">{copy.more}</span>
+								<HeadingPermalink target="more-methods" label={permalinkLabel} />
 							</h2>
 							{#each extraViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 						</RecordGroup>
@@ -558,16 +567,20 @@
 				)}
 			</RecordGroup>
 			<RecordGroup>
-				<article class="grid gap-4" aria-labelledby="reading-states-title">
+				<article
+					class="grid gap-4"
+					aria-labelledby="reading-states-title"
+					data-toc="reading-states"
+				>
 					<h2
 						id="reading-states"
 						aria-labelledby="reading-states-title"
 						class="method-anchor section-title"
 					>
-						<HeadingPermalink target="reading-states" label={permalinkLabel} />
 						<span id="reading-states-title">{copy.statesTitle}</span>
+						<HeadingPermalink target="reading-states" label={permalinkLabel} />
 					</h2>
-					<dl class="method-parts">
+					<dl class="method-parts reading-support">
 						{#each methodReferenceStates as state (state)}
 							<div>
 								<dt><StateMark {state} {locale} /></dt>
@@ -586,8 +599,8 @@
 						aria-labelledby="record-limits-title"
 						class="section-title"
 					>
-						<HeadingPermalink target="record-limits-heading" label={permalinkLabel} />
 						<span id="record-limits-title">{copy.limitsTitle}</span>
+						<HeadingPermalink target="record-limits-heading" label={permalinkLabel} />
 					</h2>
 					<div class="@container">
 						<ul class="method-limits list-outside list-disc ps-5 @max-[10rem]:ps-3">
@@ -614,12 +627,26 @@
 <style>
 	.method-content {
 		container-type: inline-size;
+		word-break: normal;
+	}
+	.method-content .method-disclosure-heading {
+		font-weight: 700;
+	}
+	.method-limits {
+		overflow-wrap: normal;
+	}
+	.method-content .method-about {
+		overflow-wrap: normal;
 	}
 	.method-parts,
 	.method-notes,
 	.method-limits {
 		display: grid;
 		gap: var(--space-card-gap);
+	}
+	.method-parts,
+	.method-notes {
+		row-gap: calc(var(--space-card-gap) / 2);
 	}
 	.method-anchor {
 		scroll-margin-block-start: var(--space-page-x);
