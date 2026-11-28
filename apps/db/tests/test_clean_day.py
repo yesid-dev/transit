@@ -1779,6 +1779,9 @@ def test_range_builds_skips_and_continues(
     first = runner.invoke(app, [*args[:-2], earlier.isoformat(), "--to", DAY.isoformat()])
     assert first.exit_code == 0, (first.output, first.exception)
     assert "Built 1, skipped 0, no raw captures 0, no schedule edition 1, failed 0" in first.output
+    # clean-days builds v12 days only: the VM stretch unit is the one stretch builder.
+    assert "Stretch timing" not in first.output and "Stretch months" not in first.output
+    assert not (dest / "stretch").exists()
     earlier_receipt = json.loads((dest / earlier_marker).read_bytes())
     assert earlier_receipt["status"] == "no_schedule_edition"
     assert earlier_receipt["provider"] == "stm"
@@ -1815,7 +1818,17 @@ def test_range_builds_skips_and_continues(
                 "manifest.json",
             )
         ]
-        # Stretch timing follows the measured day: content-named tables, receipt last.
+        assert len(fake.writes) == 9
+        # The VM stretch unit (--run-stretch) times the measured day's stretches:
+        # content-named tables, receipt last.
+        clean_days.run_clean_days(
+            "stm",
+            source,
+            destination,
+            selection=(earlier.isoformat(), DAY.isoformat()),
+            clean_tables=False,
+            stretch_tables=True,
+        )
         stretch = f"out/{stretch_key_prefix('stm', DAY)}/"
         assert [key.removeprefix(stretch).split("-")[0] for key in fake.writes[9:13]] == [
             "stretches",
