@@ -210,3 +210,61 @@ it('forwards the same cuts and locale to the engine CSV and streams its rows wit
 		'Rang,Type,Source des données et licence\n1,line,"Données ouvertes d’Agency, calculs de Transit"\n',
 	);
 });
+
+it('reads an excess-wait ranking that leaves out lines with no frequent periods', async () => {
+	const url = new URL(
+		`https://transit1.yesid.dev/rankings?kind=line&measure=excess_wait_time&${dates}`,
+	);
+	const evidence = {
+		start_date: '2026-10-15',
+		end_date: '2026-11-21',
+		days_included: ['2026-11-21'],
+		days_measured: ['2026-11-21'],
+		days_not_measured: [],
+		method_version: '1',
+		cleaning_versions: [12],
+		query_ms: 10,
+	};
+	const reason_text = {
+		en: 'No frequent periods in this selection',
+		fr: 'Aucune période de service fréquent dans ce choix',
+	};
+	fetcher.mockResolvedValue(
+		Response.json({
+			kind: 'line',
+			measure: 'excess_wait_time',
+			class: 'all',
+			available_classes: [],
+			ranked_count: 0,
+			rows: [],
+			excluded: [
+				{
+					id: '140',
+					classes: [],
+					sample: null,
+					counts: {},
+					reason: 'no_frequent_periods',
+					reason_text,
+				},
+			],
+			range_notes: {},
+			coverage_note: null,
+			evidence,
+			info: [
+				{ minimum_sample: 1, text: { en: { definition: 'Wait' }, fr: { definition: 'Attente' } } },
+			],
+		}),
+	);
+	const record = await loadRankingsRecord('/rankings', {
+		url,
+		request: new Request(url),
+		parent: async () => ({ providerId: 'agency' }),
+	});
+	expect(await record.answer).toMatchObject({
+		kind: 'answer',
+		answer: {
+			measure: 'excess_wait_time',
+			excluded: [{ reason: 'no_frequent_periods', reason_text }],
+		},
+	});
+});
