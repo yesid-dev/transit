@@ -277,7 +277,7 @@
 					<RecordPending shape="answer" {locale} busy />
 				</div>
 			{:else if result.kind === 'unreachable' && result.retry}
-				<div class="vehicle-answer" data-slot="screen-answer">
+				<div class="vehicle-answer held" data-slot="screen-answer">
 					<RecordUnavailable {locale} retry={result.retry} />
 				</div>
 			{:else if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && (result.answer.value.vehicle_days_in_service ?? 0) > 0}
@@ -333,7 +333,8 @@
 					reading.evidence.days_included.length > 0 &&
 					reading.value.vehicle_days_in_service === 0}
 				{@const state = noReports ? 'not_reporting' : recordStateFor(reading?.state)}
-				<div class="vehicle-answer" data-slot="screen-answer">
+				<!-- A short state keeps the waiting room, so the first screen does not move. -->
+				<div class="vehicle-answer held" data-slot="screen-answer">
 					<RecordAnswer
 						value={null}
 						{state}
@@ -461,7 +462,9 @@
 									</section>
 								{/if}
 							</DashboardGrid>
-						{:else}{@render absent(result, serviceFacts)}{/if}{/await}
+						{:else}<div class="service-state">
+								{@render absent(result, serviceFacts)}
+							</div>{/if}{/await}
 				</div>
 			</RecordCard>
 		</div>
@@ -471,24 +474,24 @@
 			{:then result}
 				{#if result?.kind === 'answer' && 'cells' in result.answer}
 					{@const cells = days(result.answer)}
-					<ChartDetails
-						label={t('Days in service', 'Jours en service')}
-						targets="[data-slot='day-strip-cell']"
-						readings={cells.slice(0, shownDays).map((day) => ({
-							key: day.id,
-							heading: recordDate(day.id, locale),
-							rows: [
-								{
-									label: t('Hours in service', 'Heures en service'),
-									value:
-										day.state === 'not_reporting'
-											? recordState('not_reporting')[locale]
-											: (day.report?.value ?? recordState('not_measured')[locale]),
-								},
-							],
-						}))}
-					>
-						<div class="day-strip-wide">
+					<div class="day-strip-wide">
+						<ChartDetails
+							label={t('Days in service', 'Jours en service')}
+							targets="[data-slot='day-strip-cell']"
+							readings={cells.slice(0, shownDays).map((day) => ({
+								key: day.id,
+								heading: recordDate(day.id, locale),
+								rows: [
+									{
+										label: t('Hours in service', 'Heures en service'),
+										value:
+											day.state === 'not_reporting'
+												? recordState('not_reporting')[locale]
+												: (day.report?.value ?? recordState('not_measured')[locale]),
+									},
+								],
+							}))}
+						>
 							<DayStrip
 								label={t('Days in service', 'Jours en service')}
 								cells={cells.slice(0, shownDays)}
@@ -498,8 +501,8 @@
 								)}
 								missingLabel={recordState('not_measured')[locale]}
 							/>
-						</div>
-					</ChartDetails>
+						</ChartDetails>
+					</div>
 					<ol
 						class="day-rows"
 						aria-label={t('Hours in service by day', 'Heures en service par jour')}
@@ -514,11 +517,13 @@
 										><span class="day-rows-bar" style:inline-size={`${day.report.fraction * 100}%`}
 										></span></span
 									><span class="day-rows-value">{day.report.value}</span>
-								{:else}<span class="day-rows-state"
-										><StateMark
-											state={day.state === 'not_reporting' ? 'not_reporting' : 'not_measured'}
-											{locale}
-										/></span
+								{:else}{@const mark = recordState(
+										day.state === 'not_reporting' ? 'not_reporting' : 'not_measured',
+									)}<span class="day-rows-state" data-record-state={day.state}
+										><span class="font-mono text-muted-foreground" aria-hidden="true"
+											>{mark.glyph}</span
+										>
+										{mark[locale]}</span
 									>{/if}
 							</li>
 						{/each}
@@ -779,17 +784,19 @@
 {/snippet}
 
 <style>
-	.vehicle-answer:has(:global([data-record-pending], [data-record-busy])) {
+	/* The answer and the first card keep their waiting room while they wait, and when they settle
+	   to a short state, which would otherwise pull the first screen up. A reading releases it. */
+	.vehicle-answer:is(.held, :has(:global([data-record-pending], [data-record-busy]))) {
 		min-block-size: 13.25rem;
 	}
-	.service-card-body:has(:global([data-record-pending], [data-record-busy])) {
+	.service-card-body:has(:global([data-record-pending], [data-record-busy]), .service-state) {
 		min-block-size: 16rem;
 	}
 	@media (width < 40rem) {
-		.vehicle-answer:has(:global([data-record-pending], [data-record-busy])) {
+		.vehicle-answer:is(.held, :has(:global([data-record-pending], [data-record-busy]))) {
 			min-block-size: 14.5rem;
 		}
-		.service-card-body:has(:global([data-record-pending], [data-record-busy])) {
+		.service-card-body:has(:global([data-record-pending], [data-record-busy]), .service-state) {
 			min-block-size: 28rem;
 		}
 	}
@@ -807,19 +814,24 @@
 		}
 		.day-rows {
 			display: grid;
-			grid-template-columns: max-content minmax(0, 1fr) max-content;
-			align-items: center;
-			gap: 0.5rem 0.75rem;
+			gap: 0.5rem;
 		}
 	}
+	/* The day and the hours keep fixed widths, so every bar shares one scale; with large text a
+	   state that cannot fit beside its day moves under it. */
 	.day-rows > li {
-		display: contents;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.25rem 0.75rem;
 	}
 	.day-rows-day {
+		flex: 0 0 4.5em;
 		font-size: var(--text-small);
 		color: var(--muted-foreground);
 	}
 	.day-rows-track {
+		flex: 1 1 4rem;
 		display: block;
 		block-size: 0.75rem;
 		border-radius: var(--radius-sm);
@@ -836,11 +848,16 @@
 		font-size: var(--text-small);
 		font-variant-numeric: tabular-nums;
 		font-weight: 600;
+		flex: 0 0 4.5em;
 		text-align: end;
 	}
+	/* The state wraps between words, never inside one, at large text. */
 	.day-rows-state {
-		grid-column: 2 / -1;
+		flex: 1 1 8em;
 		font-size: var(--text-small);
+		font-weight: 600;
+		overflow-wrap: normal;
+		word-break: normal;
 	}
 	@media (forced-colors: active) {
 		.day-rows-bar {

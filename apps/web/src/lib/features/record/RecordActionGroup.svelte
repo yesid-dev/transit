@@ -118,10 +118,8 @@
 
 {#key href}
 	<div
-		class={[
-			'flex min-w-0 flex-wrap items-start gap-2 lg:w-max lg:max-w-full',
-			fourActions && 'max-sm:grid max-sm:grid-cols-2',
-		]}
+		class="flex min-w-0 flex-wrap items-start gap-2 lg:w-max lg:max-w-full"
+		class:even-actions={fourActions}
 		role="group"
 		aria-label={groupLabel ?? (fr ? 'Actions du bilan' : 'Record actions')}
 	>
@@ -286,3 +284,15 @@
 			>{#if printNote}<span id={printNoteId} class="sr-only">{printNote}</span>{/if}{/if}
 	</div>
 {/key}
+
+<style>
+	/* Four actions on a phone take two even rows when their labels fit side by side; a label that
+	   would break inside a word (large text) takes its own row instead. */
+	@media (width < 40rem) {
+		.even-actions > :global(*),
+		.even-actions > form > :global(*) {
+			flex: 1 1 40%;
+			min-inline-size: min(max-content, 100%);
+		}
+	}
+</style>
