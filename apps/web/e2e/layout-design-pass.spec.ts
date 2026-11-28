@@ -189,11 +189,19 @@ async function expectFilterPlaceholder(
 	await expect(filter.getByText(label, { exact: true })).toBeVisible();
 	const input = filter.getByRole('combobox', { name: label, exact: true });
 	await expect(input).toHaveAttribute('placeholder', placeholder);
+	await expectPlaceholderFits(input, label, width);
+}
+
+async function expectPlaceholderFits(input: Locator, label: string, width: number) {
 	const { required, available } = await input.evaluate((element: HTMLInputElement) => {
 		const style = getComputedStyle(element);
+		const placeholderStyle = getComputedStyle(element, '::placeholder');
 		const context = document.createElement('canvas').getContext('2d')!;
-		context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-		context.letterSpacing = style.letterSpacing === 'normal' ? '0px' : style.letterSpacing;
+		context.font =
+			placeholderStyle.font ||
+			`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+		context.letterSpacing =
+			placeholderStyle.letterSpacing === 'normal' ? '0px' : placeholderStyle.letterSpacing;
 		return {
 			required: context.measureText(element.placeholder).width,
 			available:
@@ -201,6 +209,48 @@ async function expectFilterPlaceholder(
 		};
 	});
 	expect(required, `${label} placeholder at ${width}px`).toBeLessThanOrEqual(available);
+}
+
+for (const locale of ['en', 'fr'] as const) {
+	for (const listing of ['lines', 'stops', 'vehicles', 'vehicles-live'] as const) {
+		test(`${listing} ${locale} listing search and sort stay readable @layout`, async ({ page }) => {
+			const live = listing === 'vehicles-live';
+			const route = live ? 'vehicles' : listing;
+			const prefix = locale === 'fr' ? '/fr' : '';
+			await page.goto(
+				`${prefix}/${route}?provider=stm&frameMode=${live ? 'live' : 'record'}&recordFrom=2026-11-04&recordTo=2026-11-10`,
+			);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
+			const body = page.locator('[data-slot="listing-body"]');
+			await expect(body.locator('tbody a').first()).toBeVisible();
+			const search = body.getByRole('searchbox');
+			await expect(search).toHaveAttribute('placeholder', /\S/u);
+			for (const width of [320, 390, 1024, 1280, 1440]) {
+				await setWidth(page, width);
+				await page.evaluate(() => document.fonts.ready);
+				await expectPlaceholderFits(search, `${listing} ${locale}`, width);
+				expect(await textDefects(page, '[data-slot="listing-body"]'), `${width}px`).toEqual([]);
+				await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
+
+				if (listing === 'lines') {
+					const sort = body.locator('[data-slot="listing-sort"]');
+					if (width >= 1024) await expect(sort.getByRole('radio')).toHaveCount(4);
+					else await expect(sort.getByRole('combobox')).toBeVisible();
+					const sameRow = await sort
+						.locator('button:visible, select:visible')
+						.evaluateAll((controls) => {
+							const rects = controls.map((control) => control.getBoundingClientRect());
+							return (
+								rects.length > 1 &&
+								Math.max(...rects.map(({ top }) => top)) <
+									Math.min(...rects.map(({ bottom }) => bottom))
+							);
+						});
+					expect(sameRow, `${width}px sort choices and direction share a row`).toBe(true);
+				}
+			}
+		});
+	}
 }
 
 test('stops French filter placeholder fits the rail and sheet @layout', async ({ page }) => {

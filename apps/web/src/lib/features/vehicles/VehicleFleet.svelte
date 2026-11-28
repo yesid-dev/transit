@@ -2,18 +2,12 @@
 	import { isSettled } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import { goto, replaceState } from '$app/navigation';
-	import { getContext, onMount, tick, untrack } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
-	import {
-		FilterSummary,
-		RoutePlate,
-		SearchInput,
-		StatusMark,
-		filterCountText,
-	} from '@yesid/ui/brand';
+	import { FilterSummary, RoutePlate, StatusMark, filterCountText } from '@yesid/ui/brand';
 	import { Combobox, type ComboboxOption } from '@yesid/ui/combobox';
-	import { Button } from '@yesid/ui/button';
-	import { ControlsRail, Surface, type SurfaceRailContext } from '@yesid/ui/layout';
+	import { StateNotice } from '@yesid/ui/feedback';
+	import { ControlsRail, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { ShowMore, type DataTableColumn } from '@yesid/ui/table';
 	import type { PageData } from '../../../routes/[[lang=locale]]/vehicles/$types';
 	import { getLocale, intl } from '#lib/i18n/index.ts';
@@ -41,10 +35,6 @@
 		rowSentence,
 	} from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
-	import {
-		frameSurfaceRailContext,
-		type RegisterFrameSurfaceRail,
-	} from '#lib/components/shell/frameSurfaceRail.ts';
 	import { foldSearchText } from '#lib/search/normalize.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { notReporting } from '#lib/components/map/vehicleProjection.ts';
@@ -61,16 +51,13 @@
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
-	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
-	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
-	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordUnavailable from '../record/RecordUnavailable.svelte';
 	import { pendingBlockSize, type RecordWaiting } from '../record/recordWaiting.ts';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
-	import ScreenTitle from '../record/ScreenTitle.svelte';
+	import ListingScreen from '../listing/ListingScreen.svelte';
 	import StateMark from '../record/StateMark.svelte';
 	import { fleetPageSize, fleetView, type VehicleFleetAnswer } from './vehicleFleet.ts';
 	import FleetLiveAnswer from './FleetLiveAnswer.svelte';
@@ -209,7 +196,6 @@
 		return sign ? display.toward(sign, locale) : null;
 	}
 
-	const register = getContext<RegisterFrameSurfaceRail | undefined>(frameSurfaceRailContext);
 	const lineOptions = $derived<ComboboxOption[]>(
 		[...new Set(reporting.flatMap(({ route }) => (route ? [route] : [])))]
 			.map((value) => {
@@ -227,9 +213,6 @@
 		},
 	]);
 	const canFilter = $derived(!untracked && (liveMode ? lineOptions.length > 0 : record?.canFilter));
-	$effect(() => {
-		if (canFilter) return untrack(() => register?.(filters));
-	});
 
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let query = $state(untrack(() => view.query));
@@ -310,7 +293,7 @@
 		pending = value.trim() !== view.query;
 		timer = setTimeout(() => void navigate(value, selectedFilter), 250);
 	}
-	async function more(count: number) {
+	async function moreRows(count: number) {
 		const index = liveMode ? liveShown : recordRows.length;
 		nextRow = index;
 		await navigate(view.query, selectedFilter, false, index + count);
@@ -536,366 +519,339 @@
 			)}
 		/>{/if}{/snippet}
 
-<Surface>
-	<RecordScreen class="min-w-0">
-		<div class="min-w-0" data-slot="screen-content">
-			<RecordGroup class="gap-(--space-card-gap)">
-				<ScreenTitle title={data.seoTitle} {subtitle} />
-				{#if liveMode && !untracked}
-					<FleetLiveAnswer {locale} pending={liveLoading} withAction>
-						<RecordAnswer
-							{locale}
-							time={stamp}
-							value={live?.vehicles ? tally(reporting.length, locale) : null}
-							sentence={live?.vehicles
-								? health?.isStale
-									? singularCount(reporting.length, locale)
-										? t(
-												'vehicle in the last capture. Live reports are late.',
-												'véhicule dans le dernier relevé. Les signalements en direct sont en retard.',
-											)
-										: t(
-												'vehicles in the last capture. Live reports are late.',
-												'véhicules dans le dernier relevé. Les signalements en direct sont en retard.',
-											)
-									: singularCount(reporting.length, locale)
-										? about.reportingOne
-										: about.reporting
-								: t(
-										'Current vehicle activity is unavailable.',
-										'L’activité actuelle des véhicules est indisponible.',
-									)}
-							{actions}
-						/>
-					</FleetLiveAnswer>
-				{:else}
-					<div data-slot="screen-answer" class="fleet-answer">
-						{#if untracked}
-							<RecordAnswer
-								{locale}
-								value={null}
-								state="not_tracked"
-								sentence={notTracked[locale]}
-							/>
-						{:else if !result || result.kind === 'busy'}
-							<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
-							<RecordPending {locale} shape="reading" busy={result?.kind === 'busy'} />
-						{:else}
-							<RecordAnswer
-								{locale}
-								time={stamp}
-								value={record?.fleet ? tally(record.active, locale) : null}
-								sentence={record?.fleet
-									? singularCount(record.active, locale)
-										? t(
-												'vehicle reported on a trip on these dates.',
-												'véhicule a signalé une position pendant un trajet à ces dates.',
-											)
-										: t(
-												'vehicles reported on a trip on these dates.',
-												'véhicules ont signalé une position pendant un trajet à ces dates.',
-											)
-									: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
-								evidence={record
-									? {
-											sample,
-											lastGood: result?.kind === 'answer' && result.lastGood,
-										}
-									: undefined}
-								actions={record ? actions : undefined}
-							/>
-						{/if}
-					</div>
-				{/if}
-				{#if untracked}
-					<RecordCard
-						title={t(
-							'What changes without vehicle numbers',
-							'Ce qui change sans numéro de véhicule',
+{#snippet lead(heading: Snippet)}
+	{#if liveMode && !untracked}
+		{@render heading()}
+		<FleetLiveAnswer {locale} pending={liveLoading} withAction embedded>
+			<RecordAnswer
+				{locale}
+				time={stamp}
+				value={live?.vehicles ? tally(reporting.length, locale) : null}
+				sentence={live?.vehicles
+					? health?.isStale
+						? singularCount(reporting.length, locale)
+							? t(
+									'vehicle in the last capture. Live reports are late.',
+									'véhicule dans le dernier relevé. Les signalements en direct sont en retard.',
+								)
+							: t(
+									'vehicles in the last capture. Live reports are late.',
+									'véhicules dans le dernier relevé. Les signalements en direct sont en retard.',
+								)
+						: singularCount(reporting.length, locale)
+							? about.reportingOne
+							: about.reporting
+					: t(
+							'Current vehicle activity is unavailable.',
+							'L’activité actuelle des véhicules est indisponible.',
 						)}
-						interactive
-					>
-						<div class="grid gap-3">
-							<p>
-								{t(
-									'Individual vehicles cannot be followed across dates or compared in the vehicle rankings.',
-									'Le suivi des véhicules d’une date à l’autre et leur comparaison dans les classements sont indisponibles.',
-								)}
-							</p>
-							<p>
-								{t(
-									'The live map and the records for lines and stops are still available.',
-									'La carte en direct et les bilans des lignes et des arrêts restent disponibles.',
-								)}
-							</p>
-							<a
-								href={href('/map')}
-								class="inline-flex min-h-11 items-center text-primary underline">{about.openMap}</a
-							>
-						</div>
-					</RecordCard>
-				{:else}
-					<RecordCard
-						{title}
-						{stamp}
-						class={!liveMode &&
-						!view.query &&
-						!selectedFilter &&
-						(waitingForRows || count >= fleetPageSize)
-							? 'max-sm:min-h-[126.625rem] lg:min-h-[100.125rem]'
-							: undefined}
-						stampRule
-						stampPending={liveMode && liveLoading}
-						interactive
-						evidence={liveMode ? undefined : evidenceFoot}
-					>
-						<div class="grid min-w-0 grid-cols-1 gap-3">
-							<form
-								method="GET"
-								action={location.pathname}
-								class="max-w-xl"
-								onsubmit={(event) => {
-									event.preventDefault();
-									void navigate(query, selectedFilter, false);
-								}}
-							>
-								{#each [...location.searchParams].filter(([key]) => !['q', 'shown'].includes(key)) as [key, value], i (i)}<input
-										type="hidden"
-										name={key}
-										{value}
-									/>{/each}
-								<SearchInput
-									name="q"
-									type="search"
-									bind:ref={searchInput}
-									visibleLabel
-									textSize="body"
-									label={t('Vehicle number', 'Numéro de véhicule')}
-									placeholder={t('Vehicle number', 'Numéro de véhicule')}
-									description={t(
-										'The number painted on the vehicle.',
-										'Le numéro inscrit sur le véhicule.',
-									)}
-									value={query}
-									oninput={(event) => queueSearch(event.currentTarget.value)}
-								/>
-								<noscript
-									><Button type="submit" variant="outline">{t('Search', 'Rechercher')}</Button
-									></noscript
-								>
-							</form>
-							<p class="sr-only" role="status">
-								{waitingForRows ? '' : filterCountText(count, countLabels, locale)}
-							</p>
-							{#if !waitingForRows && (view.query || selectedFilter)}<FilterSummary
-									{count}
-									countLabel={countLabels}
-									{locale}
-									clearLabel={t('Clear filters', 'Effacer les filtres')}
-									onClear={() => {
-										query = '';
-										void navigate('', null, false);
-									}}
-								/>
-								<noscript
-									><a href={clearUrl.pathname + clearUrl.search}
-										>{t('Clear filters', 'Effacer les filtres')}</a
-									></noscript
-								>
-							{/if}
-							<section
-								id={liveMode ? 'vehicles-live' : 'fleet'}
-								aria-label={title}
-								class="fleet-results min-w-0"
-								class:record-fleet-results={!liveMode}
-								data-reserved={waitingForRows || count === 0 || count >= view.shown
-									? ''
-									: undefined}
-								style:--fleet-rows-wide={rowHeight?.wide}
-								style:--fleet-rows-phone={rowHeight?.phone}
-								bind:this={results}
-							>
-								{#if waitingForRows}
-									{#key data.fleet}<RecordPending
-											{locale}
-											answer={data.fleet}
-											shape={rowShape}
-											busy={!liveMode && result?.kind === 'busy'}
-										/>{/key}
-								{:else if liveMode && !live?.vehicles}
-									<p role="status">
-										{t(
-											'Live reports are temporarily unavailable.',
-											'Les signalements en direct sont temporairement indisponibles.',
-										)}
-									</p>
-								{:else if !liveMode && result?.kind === 'unreachable'}
-									<RecordUnavailable
-										{locale}
-										retry={'retry' in result ? result.retry : undefined}
-									/>
-								{:else if !liveMode && result && result.kind !== 'answer' && result.kind !== 'not_tracked'}
-									<p role="status">{recordConnection[result.kind][locale]}</p>
-								{:else if !count}<p role="status">
-										{view.query
-											? t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')
-											: t('No vehicles in this view.', 'Aucun véhicule dans cette vue.')}
-									</p>
-								{:else if liveMode}
-									<p>
-										{t(
-											'Delay unknown means the last report did not give an offset from the timetable.',
-											'Un retard inconnu signifie que le dernier signalement ne donnait aucun écart à l’horaire.',
-										)}
-									</p>
-									<RecordDataTable
-										{locale}
-										{title}
-										rowHeader={t('Vehicle', 'Véhicule')}
-										compactName
-										columns={liveColumns}
-										rows={liveRows.slice(0, liveShown)}
-										value="status"
-										pageSize={0}
-										phone={{
-											after: phonePlate,
-											line: ({ vehicle }) => {
-												const toward = vehicle.route && headings ? direction(vehicle) : null;
-												const report = vehicle.reported_utc || vehicle.updated_utc;
-												return rowSentence(
-													[
-														toward,
-														report &&
-															Number.isFinite(Date.parse(report)) &&
-															lastReport(
-																relativeReportAge(
-																	(clock.serverNow - Date.parse(report)) / 1000,
-																	locale,
-																),
-																locale,
-															),
-													],
-													locale,
-												);
-											},
-										}}
-									/>
-									<ShowMore
-										shown={liveShown}
-										total={count}
-										pageSize={fleetPageSize}
-										labels={paging}
-										onMore={(n) => void more(n)}
-									/>
-									{#if !headings && operator}<p class="text-small text-muted-foreground">
-											{noHeadingNote(agencyName(operator, page.data.provider), locale)}
-										</p>{/if}
-								{:else}
-									<RecordDataTable
-										{locale}
-										title={sectionTitles.fleet[locale === 'fr' ? 1 : 0]}
-										rowHeader={t('Vehicle', 'Véhicule')}
-										compactName
-										columns={recordColumns}
-										rows={recordRows}
-										value="days"
-										pageSize={0}
-										phone={{
-											value: phoneDays,
-											empty: (row) => row.state === 'not_reporting',
-											line: (row) =>
-												row.state === 'not_reporting'
-													? didNotReport(locale)
-													: rowSentence(
-															[
-																row.hours != null && hoursInService(row.hours, locale),
-																row.lines != null && countedUnit(row.lines, 'line', locale),
-																row.trips != null && countedUnit(row.trips, 'trip', locale),
-															],
-															locale,
-														),
-										}}
-									/>
-									<ShowMore
-										shown={recordRows.length}
-										total={count}
-										pageSize={fleetPageSize}
-										labels={paging}
-										onMore={(n) => void more(n)}
-									/>
-									{#if recordRows.some(({ state }) => state === 'not_reporting')}<p>
-											{t(
-												'Did not report on these dates. That is not the same as out of service.',
-												'Aucun signalement pour ces dates. Cela ne veut pas dire que le véhicule était hors service.',
-											)}
-										</p>{/if}
-								{/if}
-							</section>
-						</div>
-					</RecordCard>
-				{/if}
-			</RecordGroup>
-			{#if !untracked}
-				<RecordGroup>
-					{#if liveMode}<AboutLiveFigures
-							{locale}
-							{operator}
-							healthLink={href('/status')}
-							captureAge={health?.ageSeconds}
-						/>
-					{:else}
-						<AboutFigures
-							title={about.about}
-							compact
-							fields={[
-								{
-									key: 'period',
-									label: about.period,
-									text: data.period ? dateRange(data.period, locale) : null,
-								},
-								{
-									key: 'counted',
-									label: about.counted,
-									text: t(
-										'A day in service requires a position reported on a trip.',
-										'Un jour en service exige une position signalée pendant un trajet.',
-									),
-								},
-								{
-									key: 'observed',
-									label: about.observed,
-									text: record?.coverageNote?.[locale] ?? null,
-								},
-								{
-									key: 'method',
-									label: about.methodRow,
-									text: null,
-									link: { href: href('/metrics'), label: about.method },
-								},
-								{
-									key: 'error',
-									label: t('Seen an error?', 'Vous avez vu une erreur?'),
-									text: null,
-									link: {
-										href: href('/metrics') + '#about-transit',
-										label: t('About Transit', 'À propos de Transit'),
-									},
-								},
-								{
-									key: 'source',
-									label: about.source,
-									text: operator
-										? `${about.feeds(agencyName(operator, page.data.provider))} ${about.recordStart(dateRange({ from: recordStart(page.data.provider), to: recordStart(page.data.provider) }, locale))}`
-										: null,
-								},
-							]}
-						/>
-					{/if}
-				</RecordGroup>
+				{actions}
+			/>
+		</FleetLiveAnswer>
+	{:else}
+		<div class="fleet-answer">
+			{#if untracked}
+				<RecordAnswer
+					{heading}
+					{locale}
+					value={null}
+					state="not_tracked"
+					sentence={notTracked[locale]}
+				/>
+			{:else if !result || result.kind === 'busy'}
+				<!-- The answer's shape while the first reading loads: no "unavailable" before a try. -->
+				<RecordPending {heading} {locale} shape="answer" busy={result?.kind === 'busy'} />
+			{:else}
+				<RecordAnswer
+					{heading}
+					{locale}
+					time={stamp}
+					value={record?.fleet ? tally(record.active, locale) : null}
+					sentence={record?.fleet
+						? singularCount(record.active, locale)
+							? t(
+									'vehicle reported on a trip on these dates.',
+									'véhicule a signalé une position pendant un trajet à ces dates.',
+								)
+							: t(
+									'vehicles reported on a trip on these dates.',
+									'véhicules ont signalé une position pendant un trajet à ces dates.',
+								)
+						: t('Find a vehicle by its number.', 'Trouvez un véhicule par son numéro.')}
+					evidence={record
+						? {
+								sample,
+								lastGood: result?.kind === 'answer' && result.lastGood,
+							}
+						: undefined}
+					actions={record ? actions : undefined}
+				/>
 			{/if}
 		</div>
-	</RecordScreen>
-</Surface>
+	{/if}
+{/snippet}
+
+{#snippet summary()}
+	{#if !waitingForRows && (view.query || selectedFilter)}<FilterSummary
+			{count}
+			countLabel={countLabels}
+			{locale}
+			clearLabel={t('Clear filters', 'Effacer les filtres')}
+			onClear={() => {
+				query = '';
+				void navigate('', null, false);
+			}}
+		/>
+		<noscript
+			><a href={clearUrl.pathname + clearUrl.search}>{t('Clear filters', 'Effacer les filtres')}</a
+			></noscript
+		>
+	{/if}
+{/snippet}
+
+{#snippet more()}
+	<ShowMore
+		shown={liveMode ? liveShown : recordRows.length}
+		total={count}
+		pageSize={fleetPageSize}
+		labels={paging}
+		onMore={(value) => void moreRows(value)}
+	/>
+{/snippet}
+
+{#snippet fleetRows(moreAction: Snippet | undefined)}
+	{#if untracked}
+		<div class="grid gap-3">
+			<p>
+				{t(
+					'Individual vehicles cannot be followed across dates or compared in the vehicle rankings.',
+					'Le suivi des véhicules d’une date à l’autre et leur comparaison dans les classements sont indisponibles.',
+				)}
+			</p>
+			<p>
+				{t(
+					'The live map and the records for lines and stops are still available.',
+					'La carte en direct et les bilans des lignes et des arrêts restent disponibles.',
+				)}
+			</p>
+			<a href={href('/map')} class="inline-flex min-h-11 items-center text-primary underline"
+				>{about.openMap}</a
+			>
+		</div>
+	{:else}
+		<section
+			id={liveMode ? 'vehicles-live' : 'fleet'}
+			aria-label={title}
+			class="fleet-results min-w-0"
+			class:record-fleet-results={!liveMode}
+			data-reserved={waitingForRows || count === 0 || count >= view.shown ? '' : undefined}
+			style:--fleet-rows-wide={rowHeight?.wide}
+			style:--fleet-rows-phone={rowHeight?.phone}
+			bind:this={results}
+		>
+			{#if waitingForRows}
+				{#key data.fleet}<RecordPending
+						{locale}
+						answer={data.fleet}
+						shape={rowShape}
+						busy={!liveMode && result?.kind === 'busy'}
+					/>{/key}
+			{:else if liveMode && !live?.vehicles}
+				<p role="status">
+					{t(
+						'Live reports are temporarily unavailable.',
+						'Les signalements en direct sont temporairement indisponibles.',
+					)}
+				</p>
+			{:else if !liveMode && result?.kind === 'unreachable'}
+				<RecordUnavailable {locale} retry={'retry' in result ? result.retry : undefined} />
+			{:else if !liveMode && result && result.kind !== 'answer' && result.kind !== 'not_tracked'}
+				<p role="status">{recordConnection[result.kind][locale]}</p>
+			{:else if !count}
+				<StateNotice
+					presentation="frameless"
+					role="status"
+					title={view.query
+						? t('No matching vehicle number.', 'Aucun numéro de véhicule correspondant.')
+						: t('No vehicles in this view.', 'Aucun véhicule dans cette vue.')}
+				/>
+			{:else if liveMode}
+				<p>
+					{t(
+						'Delay unknown means the last report did not give an offset from the timetable.',
+						'Un retard inconnu signifie que le dernier signalement ne donnait aucun écart à l’horaire.',
+					)}
+				</p>
+				<RecordDataTable
+					{locale}
+					{title}
+					rowHeader={t('Vehicle', 'Véhicule')}
+					compactName
+					columns={liveColumns}
+					rows={liveRows.slice(0, liveShown)}
+					value="status"
+					pageSize={0}
+					phone={{
+						after: phonePlate,
+						line: ({ vehicle }) => {
+							const toward = vehicle.route && headings ? direction(vehicle) : null;
+							const report = vehicle.reported_utc || vehicle.updated_utc;
+							return rowSentence(
+								[
+									toward,
+									report &&
+										Number.isFinite(Date.parse(report)) &&
+										lastReport(
+											relativeReportAge((clock.serverNow - Date.parse(report)) / 1000, locale),
+											locale,
+										),
+								],
+								locale,
+							);
+						},
+					}}
+				/>
+				{@render moreAction?.()}
+				{#if !headings && operator}<p class="text-small text-muted-foreground">
+						{noHeadingNote(agencyName(operator, page.data.provider), locale)}
+					</p>{/if}
+			{:else}
+				<RecordDataTable
+					{locale}
+					title={sectionTitles.fleet[locale === 'fr' ? 1 : 0]}
+					rowHeader={t('Vehicle', 'Véhicule')}
+					compactName
+					columns={recordColumns}
+					rows={recordRows}
+					value="days"
+					pageSize={0}
+					phone={{
+						value: phoneDays,
+						empty: (row) => row.state === 'not_reporting',
+						line: (row) =>
+							row.state === 'not_reporting'
+								? didNotReport(locale)
+								: rowSentence(
+										[
+											row.hours != null && hoursInService(row.hours, locale),
+											row.lines != null && countedUnit(row.lines, 'line', locale),
+											row.trips != null && countedUnit(row.trips, 'trip', locale),
+										],
+										locale,
+									),
+					}}
+				/>
+				{@render moreAction?.()}
+				{#if recordRows.some(({ state }) => state === 'not_reporting')}<p>
+						{t(
+							'Did not report on these dates. That is not the same as out of service.',
+							'Aucun signalement pour ces dates. Cela ne veut pas dire que le véhicule était hors service.',
+						)}
+					</p>{/if}
+			{/if}
+		</section>
+	{/if}
+{/snippet}
+
+{#snippet methodology()}
+	{#if liveMode}<AboutLiveFigures
+			{locale}
+			{operator}
+			healthLink={href('/status')}
+			captureAge={health?.ageSeconds}
+		/>
+	{:else}
+		<AboutFigures
+			title={about.about}
+			compact
+			fields={[
+				{
+					key: 'period',
+					label: about.period,
+					text: data.period ? dateRange(data.period, locale) : null,
+				},
+				{
+					key: 'counted',
+					label: about.counted,
+					text: t(
+						'A day in service requires a position reported on a trip.',
+						'Un jour en service exige une position signalée pendant un trajet.',
+					),
+				},
+				{
+					key: 'observed',
+					label: about.observed,
+					text: record?.coverageNote?.[locale] ?? null,
+				},
+				{
+					key: 'method',
+					label: about.methodRow,
+					text: null,
+					link: { href: href('/metrics'), label: about.method },
+				},
+				{
+					key: 'error',
+					label: t('Seen an error?', 'Vous avez vu une erreur?'),
+					text: null,
+					link: {
+						href: href('/metrics') + '#about-transit',
+						label: t('About Transit', 'À propos de Transit'),
+					},
+				},
+				{
+					key: 'source',
+					label: about.source,
+					text: operator
+						? `${about.feeds(agencyName(operator, page.data.provider))} ${about.recordStart(dateRange({ from: recordStart(page.data.provider), to: recordStart(page.data.provider) }, locale))}`
+						: null,
+				},
+			]}
+		/>
+	{/if}
+{/snippet}
+
+<ListingScreen
+	{locale}
+	head={{ title: data.seoTitle, subtitle }}
+	answer={lead}
+	answerClass={liveMode && !untracked ? 'grid gap-(--space-card-gap)' : undefined}
+	filters={canFilter ? filters : undefined}
+	title={untracked
+		? t('What changes without vehicle numbers', 'Ce qui change sans numéro de véhicule')
+		: title}
+	titleAside={untracked ? undefined : stamp}
+	search={untracked
+		? undefined
+		: {
+				url: location,
+				exclude: ['shown'],
+				value: query,
+				label: t('Vehicle number', 'Numéro de véhicule'),
+				placeholder: t('Vehicle number', 'Numéro de véhicule'),
+				description: t('The number painted on the vehicle.', 'Le numéro inscrit sur le véhicule.'),
+				onInput: queueSearch,
+				onSubmit: () => void navigate(query, selectedFilter, false),
+			}}
+	bind:searchInput
+	{summary}
+	resultCountText={waitingForRows ? '' : filterCountText(count, countLabels, locale)}
+	children={fleetRows}
+	{more}
+	about={untracked ? undefined : methodology}
+	card={{
+		class:
+			!untracked &&
+			!liveMode &&
+			!view.query &&
+			!selectedFilter &&
+			(waitingForRows || count >= fleetPageSize)
+				? 'max-sm:min-h-[126.625rem] lg:min-h-[100.125rem]'
+				: undefined,
+		stampRule: !untracked,
+		stampPending: !untracked && liveMode && liveLoading,
+		evidence: !untracked && !liveMode ? evidenceFoot : undefined,
+	}}
+/>
 
 <style>
 	.fleet-results[data-reserved] {

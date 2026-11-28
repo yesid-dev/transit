@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { Skeleton } from '@yesid/ui/skeleton';
-	import './stopCards.css';
-	import { getContext, onMount, tick, untrack } from 'svelte';
+	import { onMount, tick, untrack, type Snippet } from 'svelte';
 	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { page } from '$app/state';
 	import { beforeNavigate, goto, invalidateAll, pushState, replaceState } from '$app/navigation';
-	import { FilterSummary, RoutePlate, SearchInput, filterCountText } from '@yesid/ui/brand';
+	import { FilterSummary, RoutePlate, filterCountText } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
+	import { StateNotice } from '@yesid/ui/feedback';
 	import { Combobox, type ComboboxOption } from '@yesid/ui/combobox';
 	import { ControlsRail, type SurfaceRailContext } from '@yesid/ui/layout';
 	import { ShowMore, type DataTableColumn } from '@yesid/ui/table';
@@ -27,10 +27,6 @@
 		countLabels as countTemplates,
 	} from '#lib/site/presenter.ts';
 	import { formatTransitName, stopDisplayName } from '#lib/site/transitDisplay.ts';
-	import {
-		frameSurfaceRailContext,
-		type RegisterFrameSurfaceRail,
-	} from '#lib/components/shell/frameSurfaceRail.ts';
 	import { nearestStops, type LatLon } from '#lib/components/map/nearbyStops.ts';
 	import { isSlimStopsIndex } from '#lib/v1/repositories/stopsSlim.ts';
 	import type { StopsRecord } from '#lib/server/finderRecord.ts';
@@ -43,15 +39,12 @@
 	import RecordActionGroup from '../record/RecordActionGroup.svelte';
 	import CiteBlock from '../record/CiteBlock.svelte';
 	import RecordAnswer from '../record/RecordAnswer.svelte';
-	import RecordCard from '../record/RecordCard.svelte';
 	import RecordDataTable from '../record/RecordDataTable.svelte';
 	import RecordEvidenceLine from '../record/RecordEvidenceLine.svelte';
-	import RecordGroup from '../record/RecordGroup.svelte';
 	import RecordPending from '../record/RecordPending.svelte';
-	import RecordScreen from '../record/RecordScreen.svelte';
 	import RecordTableValue from '../record/RecordTableValue.svelte';
 	import RecordUnavailable from '../record/RecordUnavailable.svelte';
-	import ScreenTitle from '../record/ScreenTitle.svelte';
+	import ListingScreen from '../listing/ListingScreen.svelte';
 	import { finderCells, finderCsv, finderRecordUrl, finderShare } from '../record/finderText.ts';
 	import { recordStateFor } from '../record/recordStates.ts';
 	import { countedRecordDays, recordConnection, tally, timingBasis } from '../record/recordText.ts';
@@ -125,6 +118,12 @@
 	);
 
 	let results = $state<HTMLElement>();
+	const awaitingFirstReading = untrack(
+		() => initialRecord !== null && !isSettled(initialRecord.punctuality),
+	);
+	const reservedColumns = awaitingFirstReading
+		? { lines: '8rem', onTime: '7rem', events: '10rem' }
+		: undefined;
 	// A reading that came drawn on the server is shown at once; a streamed one when it arrives.
 	let streamedResult = $state.raw<{ seed: unknown; answer: StopListingResult } | null>(null);
 	const initialResult = $derived.by(() => {
@@ -256,11 +255,7 @@
 			}))
 			.sort((a, b) => intl.collator(locale, { numeric: true }).compare(a.label, b.label)),
 	);
-	const register = getContext<RegisterFrameSurfaceRail | undefined>(frameSurfaceRailContext);
 	const hasLines = $derived(lineOptions.length > 0);
-	$effect(() => {
-		if (hasLines) return untrack(() => register?.(filterRail));
-	});
 
 	type NearState = 'idle' | 'asking' | 'active' | 'denied' | 'timeout' | 'unavailable' | 'insecure';
 	let nearState = $state<NearState>('idle');
@@ -497,14 +492,20 @@
 	{/if}
 {/snippet}
 {#snippet evidenceFoot()}
-	{#if evidence}<RecordEvidenceLine
-			{locale}
-			{evidence}
-			sample={t(
-				'Each row is counted over the chosen dates',
-				'Chaque rangée est comptée sur les dates choisies',
-			)}
-		/>{/if}
+	<div class:stop-listing-evidence={awaitingFirstReading}>
+		{#if record && !result}
+			{#key record}<RecordPending {locale} answer={record.punctuality} />{/key}
+		{:else if evidence}
+			<RecordEvidenceLine
+				{locale}
+				{evidence}
+				sample={t(
+					'Each row is counted over the chosen dates',
+					'Chaque rangée est comptée sur les dates choisies',
+				)}
+			/>
+		{/if}
+	</div>
 {/snippet}
 {#snippet resultActions()}
 	{#if !result}
@@ -564,259 +565,309 @@
 {/snippet}
 {#snippet pendingEvidence()}
 	<div class="grid min-h-[1lh] content-center" aria-hidden="true">
-		<Skeleton class="h-4 w-60 max-w-full" />
+		{#if !result}<Skeleton class="h-4 w-60 max-w-full" />{/if}
 	</div>
 {/snippet}
 
-<RecordScreen class="min-w-0">
-	<div class="stop-cards min-w-0" data-slot="screen-content">
-		<RecordGroup class="gap-[var(--space-card-gap)]">
-			<div data-screen-intro><ScreenTitle title={copy.heading} {subtitle} /></div>
-			<div data-slot="screen-answer">
-				<RecordAnswer
-					{locale}
-					value={null}
-					{sentence}
-					actions={record && rows.length && !updatingSearch && !searchFailed
-						? resultActions
-						: undefined}
-					time={stamp}
-					meta={record && !result && rows.length ? pendingEvidence : undefined}
-					evidence={evidence
-						? {
-								sample: sample ?? '',
-								lastGood: result?.kind === 'answer' && result.lastGood,
-							}
-						: undefined}
-				/>
-			</div>
-		</RecordGroup>
-		<RecordGroup>
-			<RecordCard {title} {stamp} interactive evidence={evidence ? evidenceFoot : undefined}>
-				<div class="grid min-w-0 grid-cols-1 gap-3">
-					<form
-						method="GET"
-						action={location.pathname}
-						class="max-w-xl"
-						onsubmit={(event) => {
-							event.preventDefault();
-							if (!nearOrigin) void search(query, view.route, false);
-						}}
-					>
-						{#each [...location.searchParams].filter(([key]) => !['q', 'shown', 'stop', 'sort'].includes(key)) as [key, value], i (i)}
-							<input type="hidden" name={key} {value} />
-						{/each}
-						<SearchInput
-							id={searchId}
-							name="q"
-							testId="stops-filter-input"
-							visibleLabel
-							textSize="body"
-							label={t('Name, code or line', 'Nom, code ou ligne')}
-							placeholder={t(
-								'For example Laurier, 52847 or 51…',
-								'Par exemple Laurier, 52847 ou 51…',
-							)}
-							value={query}
-							oninput={(event) => queueSearch(event.currentTarget.value)}
-						/>
-						<noscript
-							><Button type="submit" variant="outline">{t('Search', 'Rechercher')}</Button
-							></noscript
-						>
-					</form>
-					<div class="flex flex-wrap gap-2" data-slot="stops-nearby">
-						<Button
-							variant="outline"
-							size="cta-sm"
-							wrap
-							class="min-h-11"
-							disabled={nearState === 'asking'}
-							onclick={nearOrigin ? stopNear : askNear}
-							>{nearOrigin ? copy.nearClear : copy.nearMe}</Button
-						>
-						<Button variant="outline" size="cta-sm" wrap class="min-h-11" href={address}
-							>{copy.nearAddress}</Button
-						>
-					</div>
-					<p role="status" aria-live="polite" data-slot="stops-near-status" class="empty:hidden">
-						{nearMessage}
-					</p>
-					<p class="sr-only" role="status">
-						{listing && !updatingSearch && !searchFailed
-							? filterCountText(total, countLabel, locale)
-							: ''}
-					</p>
-					{#if listing && !updatingSearch && (view.query || view.route || nearOrigin)}
-						<FilterSummary
-							count={total}
-							{countLabel}
-							{locale}
-							clearLabel={copy.clearFilters}
-							canClear={enhanced}
-							onClear={() => {
-								stopNear();
-								query = '';
-								void search('', null, false);
-							}}
-						/>
-						<noscript
-							><Button href={clearUrl.pathname + clearUrl.search} variant="outline"
-								>{copy.clearFilters}</Button
-							></noscript
-						>
-					{/if}
-					<section id="stop-results" class="min-w-0" aria-label={tableTitle} bind:this={results}>
-						{#if updatingSearch}<p role="status">{t('Finding stops…', 'Recherche d’arrêts…')}</p>
-						{:else if searchFailed}<p role="status">
-								{t(
-									'Stop search is temporarily unavailable.',
-									'La recherche d’arrêts est temporairement indisponible.',
-								)}
-							</p>
-							<Button variant="outline" onclick={() => queueSearch(query)}
-								>{t('Retry', 'Réessayer')}</Button
-							>
-						{:else if !listing}<p role="status">
-								{t(
-									'The stop list is temporarily unavailable.',
-									'La liste des arrêts est temporairement indisponible.',
-								)}
-							</p>
-							<Button variant="outline" onclick={() => void invalidateAll()}
-								>{t('Retry', 'Réessayer')}</Button
-							>
-						{:else if archived}<p>
-								{t(
-									'This stop is outside the current timetable.',
-									'Cet arrêt ne figure plus dans l’horaire actuel.',
-								)}
-								<a
-									class="inline-flex min-h-11 items-center text-primary underline"
-									href={stopHref(archived)}>{t('Open its record', 'Ouvrir son bilan')}</a
-								>
-							</p>
-						{:else if !rows.length}<p>
-								{nearOrigin && !query
-									? copy.nearNone
-									: view.query
-										? copy.noMatch(view.query)
-										: view.route
-											? copy.noLineStops
-											: copy.noMatchFilters}
-							</p>
-						{:else}
-							<RecordDataTable
-								{locale}
-								title={tableTitle}
-								rowHeader={stopHeader}
-								value="onTime"
-								{leadingColumn}
-								{columns}
-								{rows}
-								pageSize={0}
-								phone={{
-									code: (row) => row.code,
-									after: phonePlates,
-									line: (row) =>
-										rowSentence(
-											[
-												row.detail,
-												row.events !== null &&
-													(row.minimum === null
-														? countedUnit(row.events, 'event', locale)
-														: sampleWithMinimum(
-																countedUnit(row.events, 'event', locale),
-																row.minimum,
-																locale,
-															)),
-											],
-											locale,
-										),
-								}}
-							/>
-							<ShowMore
-								shown={rows.length}
-								{total}
-								pageSize={stopPageSize}
-								labels={pageLabels}
-								onMore={(count) => void showMore(count)}
-							/>
-						{/if}
-						{#if record && !result}{#key record}<RecordPending
-									{locale}
-									answer={record.punctuality}
-								/>{/key}
-						{:else if result && result.kind !== 'answer' && !searchFailed && listing && !updatingSearch}
-							{#if result.kind === 'unconfigured'}
-								<p>{recordConnection.unconfigured[locale]}</p>
-							{:else}
-								<RecordUnavailable
-									{locale}
-									retry={() =>
-										void goto(location.href, { invalidateAll: true, reset: false, state: {} })}
-								/>
-							{/if}
-						{/if}
-					</section>
-				</div>
-			</RecordCard>
-		</RecordGroup>
-		<RecordGroup>
-			<AboutFigures
-				title={about.about}
-				compact
-				fields={[
-					{
-						key: 'period',
-						label: about.period,
-						text: record ? dateRange(record.period, locale) : null,
-					},
-					{
-						key: 'counted',
-						label: about.counted,
-						text: evidence && sample ? `${sample}.` : null,
-					},
-					{
-						key: 'observed',
-						label: about.observed,
-						text: evidence
-							? [
-									observed
-										? about.observedShare(
-												recordPercent(observed.share, locale),
-												tally(observed.scheduled, locale),
-											)
-										: '',
-									timingBasis(counts, locale),
-									result?.kind === 'answer' ? result.answer.coverage_note?.[locale] : '',
-								]
-									.filter(Boolean)
-									.join(' ')
-							: null,
-					},
-					{ key: 'means', label: about.means, text: about.definition },
-					{
-						key: 'method',
-						label: about.methodRow,
-						text: null,
-						links: [
-							{ href: localizeHref('/metrics', locale, provider?.id), label: about.method },
-							{
-								href: localizeHref('/metrics#about-transit', locale, provider?.id),
-								label: stopErrorLink[locale].label,
-							},
-						],
-					},
-					{
-						key: 'source',
-						label: about.source,
-						text: operator
-							? `${about.feeds(agencyName(operator, provider))} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
-							: null,
-					},
-				]}
-			/>
-		</RecordGroup>
+{#snippet lead(heading: Snippet)}
+	<RecordAnswer
+		{heading}
+		{locale}
+		value={null}
+		{sentence}
+		actions={record && rows.length && !updatingSearch && !searchFailed ? resultActions : undefined}
+		time={stamp}
+		meta={record && rows.length && (!result || (awaitingFirstReading && !evidence))
+			? pendingEvidence
+			: undefined}
+		evidence={evidence
+			? {
+					sample: sample ?? '',
+					lastGood: result?.kind === 'answer' && result.lastGood,
+				}
+			: undefined}
+	/>
+{/snippet}
+
+{#snippet nearbyActions()}
+	<div class="flex flex-wrap gap-2" data-slot="stops-nearby">
+		<Button
+			variant="outline"
+			size="cta-sm"
+			wrap
+			class="min-h-11"
+			disabled={nearState === 'asking'}
+			onclick={nearOrigin ? stopNear : askNear}>{nearOrigin ? copy.nearClear : copy.nearMe}</Button
+		>
+		<Button variant="outline" size="cta-sm" wrap class="min-h-11" href={address}
+			>{copy.nearAddress}</Button
+		>
 	</div>
-</RecordScreen>
+	<p role="status" aria-live="polite" data-slot="stops-near-status" class="empty:hidden">
+		{nearMessage}
+	</p>
+{/snippet}
+
+{#snippet summary()}
+	{#if listing && !updatingSearch && (view.query || view.route || nearOrigin)}
+		<FilterSummary
+			count={total}
+			{countLabel}
+			{locale}
+			clearLabel={copy.clearFilters}
+			canClear={enhanced}
+			onClear={() => {
+				stopNear();
+				query = '';
+				void search('', null, false);
+			}}
+		/>
+		<noscript
+			><Button href={clearUrl.pathname + clearUrl.search} variant="outline"
+				>{copy.clearFilters}</Button
+			></noscript
+		>
+	{/if}
+{/snippet}
+
+{#snippet more()}
+	<ShowMore
+		shown={rows.length}
+		{total}
+		pageSize={stopPageSize}
+		labels={pageLabels}
+		onMore={(count) => void showMore(count)}
+	/>
+{/snippet}
+
+{#snippet stopRows(moreAction: Snippet | undefined)}
+	<section id="stop-results" class="min-w-0" aria-label={tableTitle} bind:this={results}>
+		{#if updatingSearch}<p role="status">{t('Finding stops…', 'Recherche d’arrêts…')}</p>
+		{:else if searchFailed}<p role="status">
+				{t(
+					'Stop search is temporarily unavailable.',
+					'La recherche d’arrêts est temporairement indisponible.',
+				)}
+			</p>
+			<Button variant="outline" onclick={() => queueSearch(query)}>{t('Retry', 'Réessayer')}</Button
+			>
+		{:else if !listing}<p role="status">
+				{t(
+					'The stop list is temporarily unavailable.',
+					'La liste des arrêts est temporairement indisponible.',
+				)}
+			</p>
+			<Button variant="outline" onclick={() => void invalidateAll()}
+				>{t('Retry', 'Réessayer')}</Button
+			>
+		{:else if archived}<p>
+				{t(
+					'This stop is outside the current timetable.',
+					'Cet arrêt ne figure plus dans l’horaire actuel.',
+				)}
+				<a
+					class="inline-flex min-h-11 items-center text-primary underline"
+					href={stopHref(archived)}>{t('Open its record', 'Ouvrir son bilan')}</a
+				>
+			</p>
+		{:else if !rows.length}
+			<StateNotice
+				presentation="frameless"
+				role="status"
+				title={nearOrigin && !query
+					? copy.nearNone
+					: view.query
+						? copy.noMatch(view.query)
+						: view.route
+							? copy.noLineStops
+							: copy.noMatchFilters}
+			/>
+		{:else}
+			<RecordDataTable
+				{locale}
+				title={tableTitle}
+				rowHeader={stopHeader}
+				value="onTime"
+				{leadingColumn}
+				{reservedColumns}
+				{columns}
+				{rows}
+				pageSize={0}
+				phone={{
+					reserveLine: awaitingFirstReading,
+					code: (row) => row.code,
+					after: phonePlates,
+					line: (row) =>
+						rowSentence(
+							[
+								row.detail,
+								row.events !== null &&
+									(row.minimum === null
+										? countedUnit(row.events, 'event', locale)
+										: sampleWithMinimum(
+												countedUnit(row.events, 'event', locale),
+												row.minimum,
+												locale,
+											)),
+							],
+							locale,
+						),
+				}}
+			/>
+			{@render moreAction?.()}
+		{/if}
+		{#if result && result.kind !== 'answer' && !searchFailed && listing && !updatingSearch}
+			{#if result.kind === 'unconfigured'}
+				<p>{recordConnection.unconfigured[locale]}</p>
+			{:else}
+				<RecordUnavailable
+					{locale}
+					retry={() => void goto(location.href, { invalidateAll: true, reset: false, state: {} })}
+				/>
+			{/if}
+		{/if}
+	</section>
+{/snippet}
+
+{#snippet methodology()}
+	<AboutFigures
+		title={about.about}
+		compact
+		fields={[
+			{
+				key: 'period',
+				label: about.period,
+				text: record ? dateRange(record.period, locale) : null,
+			},
+			{
+				key: 'counted',
+				label: about.counted,
+				text: evidence && sample ? `${sample}.` : null,
+			},
+			{
+				key: 'observed',
+				label: about.observed,
+				text: evidence
+					? [
+							observed
+								? about.observedShare(
+										recordPercent(observed.share, locale),
+										tally(observed.scheduled, locale),
+									)
+								: '',
+							timingBasis(counts, locale),
+							result?.kind === 'answer' ? result.answer.coverage_note?.[locale] : '',
+						]
+							.filter(Boolean)
+							.join(' ')
+					: null,
+			},
+			{ key: 'means', label: about.means, text: about.definition },
+			{
+				key: 'method',
+				label: about.methodRow,
+				text: null,
+				links: [
+					{ href: localizeHref('/metrics', locale, provider?.id), label: about.method },
+					{
+						href: localizeHref('/metrics#about-transit', locale, provider?.id),
+						label: stopErrorLink[locale].label,
+					},
+				],
+			},
+			{
+				key: 'source',
+				label: about.source,
+				text: operator
+					? `${about.feeds(agencyName(operator, provider))} ${about.recordStart(dateRange({ from: recordStart(provider), to: recordStart(provider) }, locale))}`
+					: null,
+			},
+		]}
+	/>
+{/snippet}
+
+<ListingScreen
+	{locale}
+	head={{ title: copy.heading, subtitle }}
+	answer={lead}
+	answerClass={awaitingFirstReading ? 'stop-listing-await' : undefined}
+	filters={hasLines ? filterRail : undefined}
+	{title}
+	titleAside={stamp}
+	search={{
+		url: location,
+		exclude: ['shown', 'stop', 'sort'],
+		value: query,
+		label: t('Name, code or line', 'Nom, code ou ligne'),
+		placeholder: t('Laurier, 52847 or 51', 'Laurier, 52847 ou 51'),
+		id: searchId,
+		testId: 'stops-filter-input',
+		onInput: queueSearch,
+		onSubmit: () => {
+			if (!nearOrigin) void search(query, view.route, false);
+		},
+	}}
+	searchActions={nearbyActions}
+	{summary}
+	resultCountText={listing && !updatingSearch && !searchFailed
+		? filterCountText(total, countLabel, locale)
+		: ''}
+	children={stopRows}
+	{more}
+	about={methodology}
+	card={{
+		evidence: record && (!result || awaitingFirstReading || evidence) ? evidenceFoot : undefined,
+	}}
+/>
+
+<style>
+	/* The stop names remain usable while their readings come in. */
+	:global(.stop-listing-await) {
+		min-block-size: 22.5rem;
+	}
+
+	.stop-listing-evidence {
+		min-block-size: 1.5rem;
+	}
+
+	@media (width < 24rem) {
+		:global(.stop-listing-await) {
+			min-block-size: 26rem;
+		}
+
+		:global(.stop-listing-await [data-slot='answer-evidence']) {
+			--stop-evidence-lines: 3;
+		}
+	}
+
+	@media (width < 40rem) {
+		.stop-listing-evidence {
+			min-block-size: 2.75rem;
+		}
+
+		:global(.stop-listing-await [data-slot='answer-context']) {
+			align-items: start;
+		}
+
+		:global(.stop-listing-await [data-slot='answer-evidence']) {
+			flex-basis: 100%;
+			min-block-size: calc(var(--stop-evidence-lines, 2) * 1lh);
+		}
+	}
+
+	@media (width >= 40rem) {
+		:global(.stop-listing-await) {
+			min-block-size: 14rem;
+		}
+
+		:global(.stop-listing-await [data-slot='answer-context']) {
+			align-items: start;
+		}
+	}
+
+	@media (width >= 80rem) {
+		:global(.stop-listing-await) {
+			min-block-size: 10rem;
+		}
+	}
+</style>

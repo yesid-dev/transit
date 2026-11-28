@@ -1,6 +1,5 @@
 <script lang="ts">
 	import StopsIndex from '#lib/features/stops/StopsIndex.svelte';
-	import { Surface } from '@yesid/ui/layout';
 	import { page } from '$app/state';
 	import { recoverReadings } from '#lib/features/record/recordRecovery.svelte.ts';
 	import type { PageData } from './$types';
@@ -20,12 +19,10 @@
 	);
 </script>
 
-<Surface>
-	<StopsIndex
-		locale={data.lang}
-		record={readings() ?? null}
-		listing={data.listing}
-		view={data.view}
-		provider={data.provider}
-	/>
-</Surface>
+<StopsIndex
+	locale={data.lang}
+	record={readings() ?? null}
+	listing={data.listing}
+	view={data.view}
+	provider={data.provider}
+/>

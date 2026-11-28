@@ -258,7 +258,8 @@ for (const locale of ['en', 'fr'] as const) {
 			table.getByRole('row').filter({ has: page.locator('a[href*="/lines/304?"]') }),
 		).toBeFocused();
 
-		await page.getByRole('radio', { name: fr ? 'Numéro de ligne' : 'Line number' }).click();
+		const choices = page.getByRole('combobox', { name: fr ? 'Trier par' : 'Sort by' });
+		await choices.selectOption('name');
 		await expect(page).toHaveURL(/sort=line&direction=asc$/);
 		await expect(table.getByRole('link')).toHaveCount(20);
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
@@ -270,8 +271,9 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await page.goBack();
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/324\?/);
-		// Phone rows carry no column headers: one button after the sort choices reverses the order.
-		await page.getByRole('radio', { name: fr ? 'Part à l’heure' : 'On-time share' }).focus();
+		// Phone rows carry no column headers. The direction button follows the compact choice.
+		await expect(choices).toHaveValue('onTime');
+		await choices.focus();
 		await page.keyboard.press('Tab');
 		const reverse = page.getByRole('button', {
 			name: fr ? 'Inverser l’ordre' : 'Reverse the order',
@@ -280,13 +282,12 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.keyboard.press('Enter');
 		await expect(page).toHaveURL(/sort=onTime&direction=asc$/);
 		await expect(table.getByRole('link').first()).toHaveAttribute('href', /\/lines\/300\?/);
-		const choices = page.getByRole('radiogroup', { name: fr ? 'Trier par' : 'Sort by' });
-		await expect(
-			choices.getByRole('radio', { name: fr ? 'Trajets effectués' : 'Trips that ran' }),
-		).toBeVisible();
-		await expect(
-			choices.getByRole('radio', { name: fr ? 'Numéro de ligne' : 'Line number' }),
-		).toBeVisible();
+		await expect(choices.locator('option[value="trips"]')).toHaveText(
+			fr ? 'Trajets effectués' : 'Trips that ran',
+		);
+		await expect(choices.locator('option[value="name"]')).toHaveText(
+			fr ? 'Numéro de ligne' : 'Line number',
+		);
 		await expect(table.getByRole('columnheader')).toHaveCount(1);
 
 		for (const width of [1024, 1440]) {

@@ -389,6 +389,8 @@ for (const { screen, href } of designPassCases.filter(
 							await route.fulfill({ json: captureFixture(at, { city, vehicle_positions }) });
 						});
 					if (held) expect((await hold('hold')).ok()).toBe(true);
+					const listing = screen === 'lines' || screen === 'stops' || screen === 'vehicles';
+					let listingStart: number | undefined;
 					try {
 						path.searchParams.delete('provider');
 						const response = await page.goto(
@@ -406,6 +408,11 @@ for (const { screen, href } of designPassCases.filter(
 						}
 						await page.evaluate(() => document.fonts.ready);
 						await settled(page);
+						if (held && listing) {
+							await expect(page.locator('[data-slot="listing-body"]')).toBeVisible();
+							await expect(page.locator('[data-slot="listing-search"]')).toBeVisible();
+							listingStart = await page.evaluate(() => (window as ShiftWindow).steadyShifts.length);
+						}
 						if (held) {
 							const footerTop = await page
 								.getByTestId('footer')
@@ -461,6 +468,15 @@ for (const { screen, href } of designPassCases.filter(
 							body: JSON.stringify({ score, entries }),
 							contentType: 'application/json',
 						});
+						if (phase === 'first-screen' && listingStart !== undefined) {
+							const arrivals = entries.slice(listingStart);
+							expect
+								.soft(
+									arrivals.reduce((sum, entry) => sum + entry.value, 0),
+									`listing shifts when readings arrive: ${JSON.stringify(arrivals)}`,
+								)
+								.toBe(0);
+						}
 						expect
 							.soft(score, `${phase} shifts: ${JSON.stringify(entries)}`)
 							.toBeLessThanOrEqual(0.1);

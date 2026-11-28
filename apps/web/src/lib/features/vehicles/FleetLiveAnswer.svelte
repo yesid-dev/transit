@@ -8,16 +8,22 @@
 		locale,
 		pending,
 		withAction = false,
+		embedded = false,
 		children,
 	}: {
 		locale: Locale;
 		pending: boolean;
 		withAction?: boolean;
+		embedded?: boolean;
 		children: Snippet;
 	} = $props();
 </script>
 
-<div class="live-answer" class:with-action={withAction} data-slot="screen-answer">
+<div
+	class="live-answer"
+	class:with-action={withAction}
+	data-slot={embedded ? undefined : 'screen-answer'}
+>
 	{#if pending}
 		<RecordPending {locale}>
 			{#snippet skeleton()}
