@@ -32,6 +32,15 @@ const EXPECTED_WRANGLER = JSON.parse(readFileSync(join(WEB_ROOT, '../../package.
 const REPLAY_PREFIX = '/v1/stm/';
 const CATALOG_PATH = '/v2/cities';
 const CELLS = Object.freeze(runnerCases.cells);
+const SERVICE_DAY_MS = 86_400_000;
+
+function serviceDates(from, to) {
+	const start = Date.parse(from);
+	const length = (Date.parse(to) - start) / SERVICE_DAY_MS + 1;
+	return Array.from({ length }, (_, index) =>
+		new Date(start + index * SERVICE_DAY_MS).toISOString().slice(0, 10),
+	);
+}
 
 function recordFixture(url, fixtureName) {
 	const match = /^\/v2\/stm\/(measure|ranking)$/.exec(url.pathname);
@@ -51,6 +60,20 @@ function recordFixture(url, fixtureName) {
 				: null)
 		);
 	const answer = (line ? lineEngine : stopEngine)(query);
+	if (
+		fixtureName === 'rich' &&
+		line &&
+		query.searchParams.get('measure') === 'punctuality' &&
+		!query.searchParams.has('group')
+	) {
+		const evidence = answer.body.evidence;
+		const dates = serviceDates(evidence.start_date, evidence.end_date);
+		// The filtered direction has measurements on one day. The full line has them every day.
+		const included = query.searchParams.has('direction') ? evidence.days_included : dates;
+		evidence.days_included = included;
+		evidence.days_measured = included;
+		evidence.days_not_measured = dates.filter((date) => !included.includes(date));
+	}
 	if (fixtureName === 'sparse' && query.searchParams.get('measure') === 'punctuality') {
 		answer.body.state = 'not_measured';
 		answer.body.state_text = { en: 'Not measured', fr: 'Non mesuré' };
@@ -654,7 +677,43 @@ async function verifyLineReadings(page, cell, onTime, label) {
 	);
 	readings.push({ selector: 'observed coverage', actual });
 	await check('#punctuality .answer-value', [[onTime]]);
-	await check('#punctuality [data-slot="answer-evidence"] > p:first-child', [[100, 1]]);
+	const selected = new URL(cell.path, 'http://b9.local').searchParams;
+	const from = selected.get('recordFrom');
+	const to = selected.get('recordTo');
+	const direction = selected.get('direction');
+	const query = new URL('/v2/stm/measure', 'http://b9.local');
+	query.search = new URLSearchParams({
+		from,
+		to,
+		measure: 'punctuality',
+		line: '24',
+		...(direction ? { direction } : {}),
+	});
+	const { evidence } = recordFixture(query, cell.fixture).body;
+	const dates = serviceDates(from, to);
+	const measured = dates.filter((date) => evidence.days_measured.includes(date)).length;
+	const total = dates.length;
+	const partial = measured < total;
+	const counted = page
+		.locator('#punctuality [data-slot="answer-evidence"] > p')
+		.filter({ hasText: fr ? /^Ce qui est compté\s*:/u : /^Counted:/u });
+	const countedNumbers = await displayedRecordNumbers(
+		counted,
+		[[100, measured, ...(partial ? [total] : [])]],
+		`${label} counted stop events and measured days`,
+	);
+	const countedText = (await counted.innerText()).replace(/\s+/gu, ' ').trim();
+	const unit = measured === 1 ? (fr ? 'jour' : 'day') : fr ? 'jours' : 'days';
+	const daysText = partial
+		? fr
+			? `${measured} des ${total} jours`
+			: `${measured} of the ${total} days`
+		: `${measured} ${unit}`;
+	invariant(
+		countedText.endsWith(daysText),
+		`${label} expected the counted line to end in “${daysText}”: ${countedText}`,
+	);
+	readings.push({ selector: 'counted stop events and measured days', actual: countedNumbers });
 	// Method and cleaning versions stay in downloads and citations, never on screen.
 	const meta = await page.locator('#punctuality [data-slot="answer-evidence"]').first().innerText();
 	invariant(!/\bv\d/u.test(meta), `${label} answer shows a version code: ${meta}`);
@@ -703,7 +762,6 @@ async function verifyLineReadings(page, cell, onTime, label) {
 		[75, 1.5],
 	]);
 	await check('#boundaries dd', [[5, 44], [1, 15], [16]]);
-	const direction = new URL(cell.path, 'http://b9.local').searchParams.get('direction');
 	// Québec French writes the hours as "7 h à 9 h"; English keeps "07:00 to 09:00".
 	await check('#frequency tbody td', [fr ? [7, 9] : [7, 0, 9, 0], [direction ? 8 : 12]]);
 	await check('#alerts [data-slot="record-card-body"] > p:first-child', [[3]]);
