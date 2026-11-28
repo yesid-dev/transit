@@ -161,10 +161,10 @@
 				].join(' '),
 	);
 
-	// A reading is short: keep it on one line once the card has room for every reading (`2 of 8`,
-	// `2 minutes ago`). A table with more readings needs a wider card before none of them wraps.
+	// A reading is short: keep it on one line once the card has room for every column (`2 of 8`,
+	// `2 minutes ago`). A table with more than a name and two columns needs a wider card first.
 	const readingNoWrap = $derived(
-		columns.filter(({ numeric }) => numeric).length <= 2
+		allColumns.length <= 3
 			? '@min-[38rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap'
 			: '@min-[60rem]:[&_tbody_td[data-numeric]]:whitespace-nowrap',
 	);
