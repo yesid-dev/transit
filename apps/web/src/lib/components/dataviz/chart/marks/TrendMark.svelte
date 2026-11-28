@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { observedSize } from '#lib/utils/observedSize.ts';
 	import ChartDetails from '../ChartDetails.svelte';
 	import LayerChartTargets from '../LayerChartTargets.svelte';
 	import { chartDatumValue } from '#lib/site/presenter.ts';
@@ -138,7 +139,7 @@
 				>{spec.secondary.label} ({spec.secondary.unit.trim()})</span
 			>{/if}
 	</div>
-	<div bind:clientWidth={plotWidth}>
+	<div {@attach observedSize('clientWidth', (value) => (plotWidth = value))}>
 		<ChartDetails label={spec.title} {readings}>
 			<ChartFrame height="17rem" class="dv-trendmark-plot">
 				{#key spec.xScale}

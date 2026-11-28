@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { observedSize } from '#lib/utils/observedSize.ts';
 	import { StatusMark } from '@yesid/ui/brand';
 	import { BandBar, type BandBarBand } from '@yesid/ui/chart';
 	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
@@ -23,7 +24,11 @@
 </script>
 
 <div class="record-bands" data-ripple-exempt>
-	<div class="measure" aria-hidden="true" bind:clientWidth={narrow}></div>
+	<div
+		class="measure"
+		aria-hidden="true"
+		{@attach observedSize('clientWidth', (value) => (narrow = value))}
+	></div>
 	<ChartDetails {label} {readings} targets="[data-slot='band-bar'] [role='img'] > span">
 		<BandBar {label} {bands} {absent} rows={!narrow} />
 	</ChartDetails>
