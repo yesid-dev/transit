@@ -49,7 +49,12 @@ test('dark Daily report and How we measure print with readable ink and no site c
 		const main = page.getByRole('main');
 		const citation = main.locator('.site-print-citation');
 		await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-		await expect(main.locator('[data-slot="record-card"]').first()).toBeVisible();
+		if (path === '/metrics') {
+			await expect(main.getByRole('heading', { level: 1, name: 'How we measure' })).toBeVisible();
+			await expect(main.getByRole('button', { name: 'On-time share', exact: true })).toBeVisible();
+		} else {
+			await expect(main.locator('[data-slot="record-card"]').first()).toBeVisible();
+		}
 		await expect(citation).toBeHidden();
 		await page.emulateMedia({ media: 'print' });
 		if (path === '/receipt') {

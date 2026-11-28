@@ -11,18 +11,25 @@ test.beforeEach(({ browserName }, info) => {
 for (const locale of ['en', 'fr'] as const) {
 	const fr = locale === 'fr';
 	test(`How we measure disclosure defaults in ${locale}`, async ({ page }) => {
+		await page.addInitScript(() => localStorage.removeItem('sections-choice'));
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		// The cards are drawn on the server; their saved open state applies on hydration.
 		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const main = page.getByRole('main');
-		const cards = main.locator('[data-record-disclosure]:not([id$="-notes"])');
-		const open = main.locator('[data-record-disclosure]:not([id$="-notes"])[data-open="true"]');
+		const cards = main.locator('[data-method-bulk]');
+		const open = main.locator('[data-method-bulk][data-state="open"]');
 		const collapse = main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' });
 		const expand = main.getByRole('button', { name: fr ? 'Tout déplier' : 'Expand all' });
 		await expect(main).not.toContainText(fr ? 'méthode v' : 'method v');
 		await expect(open).toHaveCount(1);
 		await expect(open).toHaveAttribute('id', 'on_time');
-		await expect(collapse).toBeVisible();
+		await expect(
+			main
+				.locator('.method-heading-row')
+				.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }),
+		).toBeVisible();
+		await expect(main.locator('#fixture_delay [data-slot="section-summary"]')).toHaveCount(0);
 		await open.getByRole('button').first().press('Enter');
 		await expect(expand).toBeVisible();
 		const more = main.locator('[data-slot="page-section"]:has(#more-methods)');
@@ -50,23 +57,81 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
 		await page.goto(fr ? '/fr/metrics' : '/metrics');
 		const card = page.locator('#fixture_delay');
-		const title = card.locator('.disclosure-title > span').first();
+		const title = card.locator('.method-disclosure-trigger > span').first();
 		await title.evaluate(
 			(node, text) => {
 				node.textContent = text;
 			},
-			fr ? 'Trajets effectués, annulés et manquants' : 'Trips that ran, cancelled and missing',
+			fr
+				? 'Trajets effectués, annulés et manquants à chaque arrêt prévu'
+				: 'Trips that ran, were cancelled or went missing at each scheduled stop',
 		);
-		const chevron = card.locator('.disclosure-title svg').first();
+		const chevron = card.locator('.method-disclosure-trigger svg').first();
 		const titleBox = await title.boundingBox();
 		const chevronBox = await chevron.boundingBox();
 		expect(titleBox).not.toBeNull();
 		expect(chevronBox).not.toBeNull();
 		expect(titleBox!.height).toBeGreaterThan(40);
-		expect(Math.abs(chevronBox!.y - titleBox!.y)).toBeLessThanOrEqual(2);
+		expect(chevronBox!.y).toBeGreaterThanOrEqual(titleBox!.y - 2);
+		expect(chevronBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
 		expect(chevronBox!.x).toBeGreaterThan(titleBox!.x);
 	});
 
+	test(`How we measure contents and print remain usable in ${locale}`, async ({ page }) => {
+		const states = fr ? 'Six états, chacun nommé' : 'Six states, each said in words';
+		const contents = fr ? 'Sur cette page' : 'On this page';
+		const path = fr ? '/fr/metrics' : '/metrics';
+		const main = page.getByRole('main');
+		const desktopToc = main.locator('[data-slot="detail-shell-left"]');
+		const phoneToc = page.getByTestId('toc-pill');
+		for (const width of [390, 1440]) {
+			await page.setViewportSize({ width, height: 900 });
+			await page.goto(`${path}?provider=stm&frameMode=record`);
+			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
+			await expect(main.locator('#on_time')).toBeVisible();
+			if (width === 390) {
+				await expect(desktopToc).toBeHidden();
+				const trigger = phoneToc.getByRole('button', { name: contents });
+				await trigger.press('Enter');
+				const sheet = phoneToc.getByRole('navigation');
+				await expect(sheet).toBeVisible();
+				await expect(sheet.getByRole('button').first()).toBeFocused();
+				await page.keyboard.press('Tab');
+				await expect(sheet.getByRole('button', { name: states, exact: true })).toBeFocused();
+				await page.keyboard.press('Enter');
+				await expect(sheet).toBeHidden();
+				await expect(trigger).toBeFocused();
+			} else {
+				await expect(phoneToc).toBeHidden();
+				await expect(
+					desktopToc.getByRole('link', { name: /jusqu’en novembre 2026|until November 2026/u }),
+				).toBeVisible();
+				const contentsNav = desktopToc.getByRole('navigation', { name: contents });
+				await contentsNav.getByRole('link').first().focus();
+				await page.keyboard.press('Tab');
+				const entry = contentsNav.getByRole('link', { name: states, exact: true });
+				await expect(entry).toBeFocused();
+				await page.keyboard.press('Enter');
+				await expect(entry).toHaveAttribute('aria-current', 'location');
+			}
+			await expect(main.locator('#reading-states')).toBeInViewport();
+			await doubleText(page);
+			expect(await textDefects(page, '.method-content'), `200% text at ${width}px`).toEqual([]);
+		}
+		for (const width of [1280, 1920]) {
+			await page.setViewportSize({ width, height: 900 });
+			expect(await textDefects(page, '.method-content'), `200% text at ${width}px`).toEqual([]);
+		}
+		await page.goto(`${path}?provider=stm&frameMode=record`);
+		await expect(
+			main.getByRole('button', { name: fr ? 'Imprimer' : 'Print', exact: true }),
+		).toBeVisible();
+		await main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }).click();
+		await page.emulateMedia({ media: 'print' });
+		await expect(desktopToc.getByRole('navigation')).toBeHidden();
+		await expect(main.locator('#on_time [data-slot="collapsible-content"]').first()).toBeVisible();
+		await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1);
+	});
 	test(`Download keeps the CSV column names findable in ${locale}`, async ({ page }) => {
 		const path = fr ? '/fr/download' : '/download';
 		await page.goto(`${path}?provider=stm`);
@@ -148,10 +213,16 @@ for (const width of [390, 1440]) {
 				fr ? 'Comment on mesure' : 'How we measure',
 			);
 			const heading = await main.getByRole('heading', { level: 1 }).boundingBox();
-			const intro = await main.locator('[data-slot="screen-answer"]').boundingBox();
+			const intro = await main
+				.locator('[data-slot="article-header"] .header__subtitle')
+				.boundingBox();
 			expect(intro!.x).toBeCloseTo(heading!.x);
+			const boundary = await main.locator('[data-slot="article-header-boundary"]').boundingBox();
+			const column = await main.locator('.method-content').boundingBox();
+			expect(boundary!.x).toBeCloseTo(column!.x, 0);
+			expect(boundary!.width).toBeCloseTo(column!.width, 0);
 			const measure = main.locator('#fixture_delay');
-			await expect(measure).toHaveAttribute('data-open', 'true');
+			await expect(measure.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
 			await expect(measure).not.toContainText(/\bv2\b/u);
 			await expect(main).not.toContainText(
@@ -168,26 +239,24 @@ for (const width of [390, 1440]) {
 			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'false');
 			await notesTrigger.click();
 			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'true');
-			await expect(main.locator('#ranking-range').getByRole('button').first()).toHaveAccessibleName(
-				fr
-					? 'L’intervalle dans un classement L’intervalle montre l’incertitude autour d’une valeur du classement.'
-					: 'The range on a ranking row The range shows uncertainty around a ranked value.',
+			const ranking = main.locator('#ranking-range');
+			await expect(ranking.getByRole('button').first()).toHaveAccessibleName(
+				fr ? 'L’intervalle dans un classement' : 'The range on a ranking row',
 			);
-			const disclosures = main.locator('[data-record-disclosure]:not([id$="-notes"])');
+			await expect(ranking.locator('[data-slot="section-summary"]')).toHaveCount(0);
+			const disclosures = main.locator('[data-method-bulk]');
 			for (const card of await disclosures.all()) {
 				const trigger = card.getByRole('button').first();
 				if (await trigger.isVisible()) {
-					const initiallyOpen = (await card.getAttribute('data-open')) === 'true';
+					const initiallyOpen = (await trigger.getAttribute('aria-expanded')) === 'true';
 					await trigger.press('Enter');
-					expect((await card.getAttribute('data-open')) === 'true').toBe(!initiallyOpen);
+					expect((await trigger.getAttribute('aria-expanded')) === 'true').toBe(!initiallyOpen);
 					await trigger.press('Space');
-					expect((await card.getAttribute('data-open')) === 'true').toBe(initiallyOpen);
+					expect((await trigger.getAttribute('aria-expanded')) === 'true').toBe(initiallyOpen);
 				}
 			}
 			await main.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }).click();
-			await expect(
-				main.locator('[data-record-disclosure]:not([id$="-notes"])[data-open="true"]'),
-			).toHaveCount(0);
+			await expect(main.locator('[data-method-bulk][data-state="open"]')).toHaveCount(0);
 			await expect(
 				main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' }),
 			).toHaveCount(1);

@@ -52,12 +52,18 @@ const rankings = [
 ] as const;
 
 // Reading and error pages carry no Record answer and no controls rail.
-export const readingScreens = ['privacy', 'terms', 'accessibility', 'archive', 'error'] as const;
+export const readingScreens = [
+	'how-we-measure',
+	'privacy',
+	'terms',
+	'accessibility',
+	'archive',
+	'error',
+] as const;
 
 const ottawa: Screen[] = [
 	'alerts',
 	'alerts-live',
-	'how-we-measure',
 	'download',
 	'departure',
 	'roadmap',
@@ -108,7 +114,6 @@ const french: Screen[] = [
 	'data-health-live',
 	'lines',
 	'stops',
-	'how-we-measure',
 	...readingScreens,
 ];
 
@@ -125,7 +130,6 @@ export const designPassCases = [
 	['line-live', 'octranspo', 'fr'] as const,
 	['stop-record', 'octranspo', 'fr'] as const,
 	['stop-live', 'octranspo', 'fr'] as const,
-	['how-we-measure', 'octranspo', 'fr'] as const,
 	['download', 'octranspo', 'fr'] as const,
 	['departure', 'octranspo', 'fr'] as const,
 	['daily', 'octranspo', 'en'] as const,
