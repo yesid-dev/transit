@@ -32,7 +32,6 @@ export const methodCopy = {
 		archive: 'The method of the first Transit site, until November 2026',
 		range: {
 			title: 'The range on a ranking row',
-			summary: 'The range shows uncertainty around a ranked value.',
 			counts:
 				'For shares, the range shows where the true rate would likely sit across repeated samples; for delay percentiles, it shows the rounding step of the grouped counts.',
 			exclusions:
@@ -118,7 +117,6 @@ export const methodCopy = {
 		archive: 'La méthode du premier site Transit, jusqu’en novembre 2026',
 		range: {
 			title: 'L’intervalle dans un classement',
-			summary: 'L’intervalle montre l’incertitude autour d’une valeur du classement.',
 			counts:
 				'Pour les parts, l’intervalle indique où la vraie valeur se situerait le plus souvent; pour les centiles de retard, il montre la précision des tranches de calcul.',
 			exclusions:

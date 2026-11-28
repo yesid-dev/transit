@@ -70,6 +70,12 @@
 	$effect(() => {
 		if (methodList && url.hash) void navigation.jump(url.hash.slice(1), { behavior: 'auto' });
 	});
+	const summaryKey = (text: string) =>
+		text
+			.normalize('NFC')
+			.trim()
+			.replace(/[.!?]+$/u, '')
+			.toLocaleLowerCase(locale);
 	const contentsLabel = $derived(choose(locale, 'On this page', 'Sur cette page'));
 	const entries: TocEntry[] = $derived([
 		{ id: 'method-heading', title: copy.heading, level: 2, children: [] },
@@ -99,10 +105,19 @@
 			textSize="inherit"
 			edge="neutral"
 			edgeWeight="thin"
-			summary={description ? summary : undefined}
+			summary={description && summaryKey(description) !== summaryKey(name) ? summary : undefined}
 		>
 			{@render details()}
 		</CollapsibleSection>
+	</div>
+{/snippet}
+
+{#snippet measuresHeading()}
+	<div class="method-heading-row flex min-w-0 flex-wrap items-center justify-between gap-3">
+		<h2 id="method-heading" tabindex="-1">{copy.heading}</h2>
+		<div class="min-h-11 print:hidden">
+			<SectionsToggle copy={sectionsToggleCopy[locale]} activeEffect="none" />
+		</div>
 	</div>
 {/snippet}
 
@@ -336,29 +351,23 @@
 				presentation="reading"
 				backHref={localizeHref('/', locale, city)}
 				backLabel={choose(locale, 'Overview', 'Aperçu')}
-			>
-				{#snippet controls()}
-					<div class="min-h-11 print:hidden">
-						<SectionsToggle copy={sectionsToggleCopy[locale]} activeEffect="none" />
-					</div>
-				{/snippet}
-			</ArticleHeader>
+			/>
 		{/snippet}
 
 		{#snippet left()}
-			<div class="print:hidden">
+			<div class="grid gap-(--space-card-gap) print:hidden">
 				<TocNav {entries} {activeId} {navigation} heading={contentsLabel} counter={false} />
+				{@render archiveLink()}
 			</div>
 		{/snippet}
 
-		{#snippet right()}
-			<div class="print:hidden">{@render archiveLink()}</div>
-		{/snippet}
+		<!-- Reserve the opposite track so the reading column stays centred. -->
+		{#snippet right()}{/snippet}
 
 		<div class="method-content reading-column min-w-0">
 			{#await catalog}
 				<RecordGroup aria-labelledby="method-heading"
-					><h2 id="method-heading" tabindex="-1">{copy.heading}</h2>
+					>{@render measuresHeading()}
 					{#key catalog}<RecordPending
 							shape={{ shape: 'tiles', count: 16 }}
 							{locale}
@@ -368,7 +377,7 @@
 			{:then result}
 				{#if result.kind !== 'answer'}
 					<RecordGroup>
-						<h2 id="method-heading" tabindex="-1">{copy.heading}</h2>
+						{@render measuresHeading()}
 						<div data-slot="screen-state">
 							{#if result.kind === 'busy'}<RecordPending {locale} busy />
 							{:else}<RecordAnswer
@@ -406,7 +415,7 @@
 						{/if}
 					</RecordGroup>
 					<RecordGroup aria-labelledby="method-heading">
-						<h2 id="method-heading" tabindex="-1">{copy.heading}</h2>
+						{@render measuresHeading()}
 						<div class="contents" bind:this={methodList}>
 							{#each primaryViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 						</div>
@@ -420,7 +429,7 @@
 				{/if}
 			{/await}
 			<RecordGroup>
-				{@render methodSection('ranking-range', copy.range.title, rankingRange, copy.range.summary)}
+				{@render methodSection('ranking-range', copy.range.title, rankingRange)}
 				<div id="reading-states" class="method-anchor">
 					<RecordCard title={copy.statesTitle}>
 						<dl class="method-parts">
@@ -486,6 +495,16 @@
 	.method-link {
 		color: var(--primary);
 		text-decoration: underline;
+	}
+	:global(.method-detail [data-slot='detail-shell-right']:empty) {
+		display: none;
+	}
+	:global(.method-detail [data-slot='article-header-boundary']) {
+		inline-size: min(
+			var(--detail-center-width, var(--transit-measure-listing)),
+			calc(100% - 2 * var(--space-page-x))
+		);
+		margin-inline: auto;
 	}
 	@media screen and (min-width: 80rem) {
 		:global(.method-detail.detail-shell[data-slot='detail-shell']) {

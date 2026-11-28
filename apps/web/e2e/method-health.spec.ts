@@ -26,7 +26,12 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(main).not.toContainText(fr ? 'méthode v' : 'method v');
 		await expect(open).toHaveCount(1);
 		await expect(open).toHaveAttribute('data-toc', 'on_time');
-		await expect(collapse).toBeVisible();
+		await expect(
+			main
+				.locator('.method-heading-row')
+				.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all' }),
+		).toBeVisible();
+		await expect(main.locator('#fixture_delay [data-slot="section-summary"]')).toHaveCount(0);
 		await open.getByRole('button').first().press('Enter');
 		await expect(expand).toBeVisible();
 		const more = main.locator('[data-slot="page-section"]:has(#more-methods)');
@@ -98,6 +103,9 @@ for (const locale of ['en', 'fr'] as const) {
 				await expect(trigger).toBeFocused();
 			} else {
 				await expect(phoneToc).toBeHidden();
+				await expect(
+					desktopToc.getByRole('link', { name: /jusqu’en novembre 2026|until November 2026/u }),
+				).toBeVisible();
 				await desktopToc.getByRole('button', { name: contents }).focus();
 				await page.keyboard.press('Tab');
 				await page.keyboard.press('Tab');
@@ -207,6 +215,10 @@ for (const width of [390, 1440]) {
 				.locator('[data-slot="article-header"] .header__subtitle')
 				.boundingBox();
 			expect(intro!.x).toBeCloseTo(heading!.x);
+			const boundary = await main.locator('[data-slot="article-header-boundary"]').boundingBox();
+			const column = await main.locator('.method-content').boundingBox();
+			expect(boundary!.x).toBeCloseTo(column!.x, 0);
+			expect(boundary!.width).toBeCloseTo(column!.width, 0);
 			const measure = main.locator('#fixture_delay');
 			await expect(measure.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
@@ -225,13 +237,11 @@ for (const width of [390, 1440]) {
 			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'false');
 			await notesTrigger.click();
 			await expect(notesTrigger).toHaveAttribute('aria-expanded', 'true');
-			await expect(
-				main.locator('#ranking-range').getByRole('button').first(),
-			).toHaveAccessibleDescription(
-				fr
-					? 'L’intervalle montre l’incertitude autour d’une valeur du classement.'
-					: 'The range shows uncertainty around a ranked value.',
+			const ranking = main.locator('#ranking-range');
+			await expect(ranking.getByRole('button').first()).toHaveAccessibleName(
+				fr ? 'L’intervalle dans un classement' : 'The range on a ranking row',
 			);
+			await expect(ranking.locator('[data-slot="section-summary"]')).toHaveCount(0);
 			const disclosures = main.locator('[data-section-bulk]');
 			for (const card of await disclosures.all()) {
 				const trigger = card.getByRole('button').first();
