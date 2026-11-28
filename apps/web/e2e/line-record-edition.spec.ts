@@ -55,6 +55,8 @@ for (const { provider, locale, width } of cases) {
 			await page.setViewportSize({ width, height: 1000 });
 			const path = localizeHref('/lines/24', locale, provider);
 			await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14&direction=1');
+			// Content is drawn on the server; controls answer once the page has hydrated.
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			const section = page.locator('#punctuality');
 			const cite = section.getByText(locale === 'fr' ? 'Citer' : 'Cite', { exact: true });
 			const dialog = page.getByRole('dialog', {
@@ -95,6 +97,7 @@ for (const { provider, locale, width } of cases) {
 				);
 			}
 			await page.goto(copied.href);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			await cite.click();
 			await expect(evidence).toBeVisible();
 			expect(

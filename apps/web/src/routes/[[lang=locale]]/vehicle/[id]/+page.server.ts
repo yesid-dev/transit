@@ -5,6 +5,7 @@ import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 import { detailNotFoundCopy } from '#lib/site/errorPage.ts';
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { readyAnswers } from '#lib/server/readyAnswers.ts';
 
 export const load: PageServerLoad = async ({ parent, url, request, params, fetch }) => {
 	const { id } = params;
@@ -31,8 +32,8 @@ export const load: PageServerLoad = async ({ parent, url, request, params, fetch
 				? 'Ce véhicule est temporairement indisponible.'
 				: 'This vehicle is temporarily unavailable.',
 		);
-	return {
+	return readyAnswers({
 		...loadVehiclePage(url, request, providerId, clock, id),
 		seoTitle: lang === 'fr' ? `Véhicule ${id}` : `Vehicle ${id}`,
-	};
+	});
 };

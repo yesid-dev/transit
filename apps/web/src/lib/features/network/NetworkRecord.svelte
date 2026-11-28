@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Ready } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import {
 		agencyName,
@@ -73,7 +74,7 @@
 		locale,
 		url,
 	}: {
-		record: ReturnType<typeof loadNetworkRecord> | null;
+		record: Ready<ReturnType<typeof loadNetworkRecord>> | null;
 		subject: string;
 		operator: string;
 		locale: Locale;

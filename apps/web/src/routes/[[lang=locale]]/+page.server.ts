@@ -5,6 +5,7 @@ import type { Complete } from '#lib/server/readingFilter.ts';
 import { readOverviewRecord } from '#lib/server/overviewRecord.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import type { PageServerLoad } from './$types';
+import { readyAnswers } from '#lib/server/readyAnswers.ts';
 
 export const load: PageServerLoad = async ({ url, parent, request, locals }) => {
 	const { providerId: city, provider, lang, schedule } = await parent();
@@ -20,12 +21,12 @@ export const load: PageServerLoad = async ({ url, parent, request, locals }) => 
 	const readings = readOverviewRecord({ ...period, city, visitorIp }, edition) as Complete<
 		ReturnType<typeof readOverviewRecord>
 	>;
-	return {
+	return readyAnswers({
 		mode,
 		record: {
 			period,
 			...readings,
 			manifest: provider ? captureContext(provider, lang, schedule).manifest : null,
 		},
-	};
+	});
 };

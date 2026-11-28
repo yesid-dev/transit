@@ -63,14 +63,13 @@ it('reads complete finder groups and streams only the displayed Stops readings',
 		to: '2026-10-18',
 		preset: null,
 	});
+	// Readings that answer within the page's short wait come drawn on the server.
 	for (const section of [lines.finderRecord?.punctuality, lines.finderRecord?.trips]) {
-		expect(section).toBeInstanceOf(Promise);
-		expect(await section).toEqual({ kind: 'answer', answer });
+		expect(section).toEqual({ kind: 'answer', answer });
 	}
 	expect(stops.listing?.total).toBe(21);
 	expect(stops.listing?.rows).toHaveLength(20);
-	expect(stops.finderRecord?.punctuality).toBeInstanceOf(Promise);
-	expect(await stops.finderRecord?.punctuality).toEqual({
+	expect(stops.finderRecord?.punctuality).toEqual({
 		kind: 'answer',
 		answer: { ...answer, cells: [stopCells[0]] },
 		totals: { counts: { classified: 200 }, observed: null },

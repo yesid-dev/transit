@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import type { StampProps } from '@yesid/ui/brand';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
@@ -28,7 +29,7 @@
 	}: {
 		locale: Locale;
 		stamp: StampProps;
-		answer: Promise<EngineResult<RecordAnswer>>;
+		answer: Awaitable<EngineResult<RecordAnswer>>;
 	} = $props();
 	const shape = 'trip-facts';
 	const block = pendingBlockSize(shape);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { whenAll, type Awaitable } from '#lib/site/ready.ts';
 	import type { Snippet } from 'svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
@@ -70,7 +71,7 @@
 	import { choose, lastGoodNote, recordConnection, tally } from './recordText.ts';
 	import { overviewCopy } from '../home/overviewRecord.copy.ts';
 
-	type Result<T> = Promise<EngineResult<T>>;
+	type Result<T> = Awaitable<EngineResult<T>>;
 
 	let {
 		locale,
@@ -472,11 +473,14 @@
 			</div>
 
 			{#if record}
-				{@const publishing = Promise.all([
-					record.accessibility,
-					record.alertEffects ?? Promise.resolve(null),
-					record.scorecard.vehicle_field_completeness,
-				])}
+				{@const publishing = whenAll(
+					[
+						record.accessibility,
+						record.alertEffects ?? null,
+						record.scorecard.vehicle_field_completeness,
+					],
+					(readings) => readings,
+				)}
 				<section id="publishes" class="min-w-0">
 					<RecordCard
 						interactive={!alerts.tracked && !!alerts.officialUrl}

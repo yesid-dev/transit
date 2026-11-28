@@ -1,3 +1,4 @@
+import { WAITING_KINDS } from '#lib/site/ready.ts';
 import { untrack } from 'svelte';
 import { beforeNavigate } from '$app/navigation';
 import { SvelteMap, SvelteSet, SvelteURLSearchParams } from 'svelte/reactivity';
@@ -22,7 +23,7 @@ export type RecoveryQuery = DateWindow & {
 };
 
 type Settled = { kind?: unknown; retryAfterMs?: number } | null | undefined;
-const waitingKinds = new Set(['busy', 'timeout']);
+const waitingKinds = WAITING_KINDS;
 
 /**
  * Asks a screen's readings again when the engine or the visitor limit said "busy": cards that

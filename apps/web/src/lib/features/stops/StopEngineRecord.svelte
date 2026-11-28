@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable, Ready } from '#lib/site/ready.ts';
 	import { untrack, type Snippet } from 'svelte';
 	import './stopCards.css';
 	import { page } from '$app/state';
@@ -80,7 +81,7 @@
 		operator: string;
 		locale: Locale;
 		url: URL;
-		record: ReturnType<typeof loadStopRecord>;
+		record: Ready<ReturnType<typeof loadStopRecord>>;
 		heading: Snippet;
 		lineCount: number;
 	} = $props();
@@ -104,7 +105,7 @@
 	const answers = $derived(
 		Object.fromEntries(record.sections.map(({ section, answer }) => [section, answer])) as Record<
 			StopSection,
-			Promise<EngineResult<EngineAnswer>>
+			Awaitable<EngineResult<EngineAnswer>>
 		>,
 	);
 	let content: HTMLDivElement;
@@ -178,7 +179,7 @@
 	{/if}
 {/snippet}
 
-{#snippet pending(answer: Promise<EngineResult<EngineAnswer>>, shape?: RecordWaiting)}
+{#snippet pending(answer: Awaitable<EngineResult<EngineAnswer>>, shape?: RecordWaiting)}
 	{#key answer}<RecordPending {locale} {answer} {shape} />{/key}
 {/snippet}
 

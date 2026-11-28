@@ -1,4 +1,5 @@
 <script lang="ts" generics="Answer extends Pick<RecordAnswer, 'evidence' | 'coverage_note'>">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import { Card } from '@yesid/ui/card';
 	import { StateNotice } from '@yesid/ui/feedback';
 	import type { Snippet } from 'svelte';
@@ -29,7 +30,7 @@
 		subject: string;
 		locale: Locale;
 		url: URL;
-		answer: Promise<EngineResult<Answer>>;
+		answer: Awaitable<EngineResult<Answer>>;
 		reading: Snippet<[Answer]>;
 		statement?: (answer: Answer) => string;
 		controls?: Snippet;

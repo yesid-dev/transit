@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { READY_WAIT_MS } from '#lib/server/readyAnswers.ts';
 
 const engine = vi.hoisted(() => ({
 	getCityCatalog: vi.fn(async () => ({
@@ -132,7 +133,8 @@ it('returns the page shell before a client navigation has a schedule or engine a
 				}),
 			} as Parameters<typeof load>[0]),
 		),
-		new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
+		// The page waits for its answers at most READY_WAIT_MS, then streams the rest.
+		new Promise<null>((resolve) => setTimeout(() => resolve(null), READY_WAIT_MS + 100)),
 	]);
 	expect(result?.record?.punctuality).toBe(waiting);
 	expect(result?.record?.totals).toBeInstanceOf(Promise);

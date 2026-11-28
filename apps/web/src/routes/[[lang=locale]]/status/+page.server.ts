@@ -4,6 +4,7 @@ import { readHealthRecord } from '#lib/server/healthRecord.ts';
 import type { Complete } from '#lib/server/readingFilter.ts';
 import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
+import { readyAnswers, streamed } from '#lib/server/readyAnswers.ts';
 
 export const load = (async (event) => {
 	const { providerId: city, provider, lang } = await event.parent();
@@ -13,7 +14,7 @@ export const load = (async (event) => {
 	if (mode === 'record') {
 		const alertsTracked = providerHasAlerts(provider);
 		const scope = period && { ...period, city, visitorIp };
-		return {
+		return readyAnswers({
 			view: 'record' as const,
 			alerts: { tracked: alertsTracked, officialUrl: provider?.alert_links[lang] },
 			record: scope && {
@@ -23,12 +24,12 @@ export const load = (async (event) => {
 					ReturnType<typeof readHealthRecord>
 				>),
 			},
-		};
+		});
 	}
-	return {
+	return readyAnswers({
 		view: 'live' as const,
 		capture: provider
-			? fetchCaptureSnapshot(city, event.request.signal, event.fetch).catch(() => null)
+			? streamed(fetchCaptureSnapshot(city, event.request.signal, event.fetch).catch(() => null))
 			: Promise.resolve(null),
-	};
+	});
 }) satisfies PageServerLoad;

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import { ErrorPage, Surface } from '@yesid/ui/layout';
 	import { getLocale, localizeHref } from '#lib/i18n/index.ts';
@@ -69,11 +70,12 @@
 		};
 	});
 	const missingCopy = errorPageCopy[locale].stopNotFound;
-	let confirmed = $state<Promise<'available' | 'missing' | 'unconfirmed'>>();
+	let confirmed = $state<Awaitable<'available' | 'missing' | 'unconfirmed'>>();
 	$effect(() => {
 		const identity = data.stopIdentity;
 		let active = true;
-		void identity?.then((result) => {
+		if (identity === undefined) return;
+		void Promise.resolve(identity).then((result) => {
 			if (active && result === 'available') confirmed = identity;
 		});
 		return () => {

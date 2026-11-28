@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import type { DataTableColumn } from '@yesid/ui/table';
@@ -33,7 +34,7 @@
 		locale,
 	}: {
 		city: string | null;
-		capture: Promise<CaptureSnapshot | null>;
+		capture: Awaitable<CaptureSnapshot | null>;
 		subject: string;
 		operator: string;
 		locale: Locale;

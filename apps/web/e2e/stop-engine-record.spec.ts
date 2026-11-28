@@ -294,6 +294,8 @@ test('changing the Stop record period keeps the reading position', async ({ page
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.goto('/stop/S1?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14');
 	await expect(page.locator('#daily [data-slot="chart-line-series"]').first()).toBeVisible();
+	// The record is drawn on the server; the period controls answer once the page has hydrated.
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await page.evaluate(() => window.scrollTo(0, 1000));
 	await page.getByRole('radio', { name: '28 days', exact: true }).evaluate((radio) => {
 		// Activate the rail control without moving the viewport to its hit target first.

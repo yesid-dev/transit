@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isSettled, type Awaitable, type Ready } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import type { Snippet } from 'svelte';
 	import { agencyName, recordPercent, reportingGapsReading } from '#lib/site/presenter.ts';
@@ -75,7 +76,7 @@
 		operator,
 		titleBlock,
 	}: {
-		data: ReturnType<typeof loadVehiclePage>;
+		data: Ready<ReturnType<typeof loadVehiclePage>>;
 		url: URL;
 		locale: Locale;
 		title: string;
@@ -140,21 +141,29 @@
 	const serviceFacts: RecordWaiting = { shape: 'facts', count: 3 };
 	const lineShape: RecordWaiting = { shape: 'rows', count: 3, lines: 2, lead: 'plate' };
 	const dayShape: RecordWaiting = { shape: 'table', rows: 7, header: false };
-	let settledService = $state.raw<RecordMeasure | null>(null);
-	let settledTiming = $state.raw<RecordMeasure | null>(null);
+	type Reading = Awaitable<EngineResult<Answer>> | undefined;
+	const measureOf = (result: EngineResult<Answer>) =>
+		result.kind === 'answer' && 'value' in result.answer ? result.answer : null;
+	// Readings that came drawn on the server are used at once; streamed ones when they arrive.
+	let streamed = $state.raw<{ seed: Reading; value: RecordMeasure | null }[]>([]);
+	const settledOf = (answer: Reading) =>
+		answer === undefined
+			? null
+			: isSettled(answer)
+				? measureOf(answer)
+				: (streamed.find(({ seed }) => seed === answer)?.value ?? null);
+	const settledService = $derived(settledOf(service?.answer));
+	const settledTiming = $derived(settledOf(timing?.answer));
 	$effect(() => {
-		const answer = service?.answer;
-		const timingAnswer = timing?.answer;
+		const answers = [service?.answer, timing?.answer];
 		let current = true;
-		settledService = settledTiming = null;
-		void answer?.then((result) => {
-			if (current && result.kind === 'answer' && 'value' in result.answer)
-				settledService = result.answer;
-		});
-		void timingAnswer?.then((result) => {
-			if (current && result.kind === 'answer' && 'value' in result.answer)
-				settledTiming = result.answer;
-		});
+		streamed = [];
+		for (const answer of answers) {
+			if (answer === undefined || isSettled(answer)) continue;
+			void answer.then((result) => {
+				if (current) streamed = [...streamed, { seed: answer, value: measureOf(result) }];
+			});
+		}
 		return () => {
 			current = false;
 		};

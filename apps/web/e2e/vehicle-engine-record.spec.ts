@@ -95,6 +95,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.goto(
 			`${fr ? '/fr' : ''}/vehicle/40061?provider=stm&frameMode=record&recordFrom=2026-11-07&recordTo=2026-11-13`,
 		);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const lines = page.getByRole('region', {
 			name: fr ? 'Lignes et trajets effectués' : 'Lines and trips it ran',
 		});
@@ -137,6 +138,8 @@ test('vehicle live links its scheduled departure and keeps predictions in their 
 	);
 	const path = `/vehicle/40061?provider=stm&frameMode=live&${dates}`;
 	await page.goto(path);
+	// Content is drawn on the server; controls answer once the page has hydrated.
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	const service = page.getByRole('article', { name: 'What it is running' });
 	await expect(service.locator('[data-slot="fact-list"]')).toHaveCount(1);
 	await expect(service.locator('dt')).toHaveText([
@@ -156,6 +159,7 @@ test('vehicle live links its scheduled departure and keeps predictions in their 
 
 	hasTime = false;
 	await page.goto(path);
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	// A missing time is a state, not a link; the departure keeps its own link.
 	await expect(service.getByRole('link', { name: 'Not given in the live feed' })).toHaveCount(0);
 	await expect(service.locator('[data-slot="departure-time-missing"]')).toHaveText(
@@ -218,6 +222,7 @@ test('the live fleet pages the reporting vehicles and names delay unknown', asyn
 		}),
 	);
 	await page.goto('/vehicles?provider=stm&frameMode=live');
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await expect(page.locator('[data-slot="screen-answer"]')).toContainText(
 		/25\s*vehicles are reporting now/,
 	);
@@ -238,6 +243,7 @@ for (const width of [390, 1440]) {
 		}) => {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${prefix}/vehicles?provider=stm&frameMode=record&${dates}`);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			const main = page.getByRole('main');
 			const table = main.getByRole('table');
 			await expect(table.getByRole('rowheader')).toHaveCount(2, { timeout: 15_000 });
@@ -395,6 +401,7 @@ for (const width of [390, 1440]) {
 				}),
 			);
 			await page.goto(`${prefix}/vehicles?provider=stm&frameMode=live&${dates}`);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			const main = page.getByRole('main');
 			await main.getByRole('searchbox', { name: search }).fill('0061');
 			await expect(main.getByRole('row', { name: /40061.*Parc/ })).toBeVisible();
@@ -444,6 +451,7 @@ for (const width of [390, 1440]) {
 				}),
 			).toHaveAttribute('href', /frameMode=record.*recordFrom=2026-11-08.*recordTo=2026-11-14/);
 			await page.goto(`${prefix}/vehicle/40062?provider=stm&frameMode=live&${dates}`);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			await expect(
 				main.getByText(fr ? /Ce véhicule ne se signale pas/ : /This vehicle is not reporting now/),
 			).toBeVisible();
@@ -456,6 +464,7 @@ test('the fleet names untracked data and vehicle sections stream independently',
 	request,
 }) => {
 	await page.goto('/vehicles?provider=stm&recordFrom=2026-11-10&recordTo=2026-11-16');
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await expect(page.getByText(/Vehicles are not tracked here/)).toBeVisible();
 	const response = await page.goto(
 		'/vehicle/40061?provider=stm&recordFrom=2026-11-09&recordTo=2026-11-15',
@@ -480,6 +489,8 @@ test('vehicle Record renders six cards before any reading completes', async ({ p
 	const endpoint = (action: string) =>
 		`http://127.0.0.1:${port}/__overview/${action}?fixture=${encodeURIComponent(fixture)}`;
 	await request.post(endpoint('hold'));
+	// The page's Record questions carry this test's hold, so none of them answers yet.
+	await page.setExtraHTTPHeaders({ 'x-transit-fixture-hold': fixture });
 	try {
 		await page.goto('/vehicle/40061?provider=stm&recordFrom=2026-11-06&recordTo=2026-11-12', {
 			waitUntil: 'commit',
@@ -504,6 +515,7 @@ test('a vehicle without reports has a state in both languages', async ({ page })
 		await page.goto(
 			`${lang === 'fr' ? '/fr' : ''}/vehicle/1?provider=octranspo&frameMode=record&${dates}`,
 		);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const answer = page.locator('[data-slot="screen-answer"]');
 		await expect(answer).toContainText(
 			lang === 'fr' ? 'Aucun signalement à ces dates.' : 'Did not report on these dates.',
@@ -520,6 +532,7 @@ for (const locale of ['en', 'fr'] as const) {
 		page,
 	}) => {
 		await page.goto(`${prefix}/vehicle/40064?provider=stm&frameMode=record&${dates}`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const answer = page.locator('[data-slot="screen-answer"]');
 		await expect(answer).toContainText(fr ? '6 sur 6' : '6 of 6');
 		await expect(answer).toContainText(fr ? 'jours mesurés' : 'measured days');
@@ -533,6 +546,7 @@ for (const locale of ['en', 'fr'] as const) {
 			}),
 		).toContainText(fr ? 'environ 1,3 par heure' : 'about 1.3 an hour');
 		await page.goto(`${prefix}/vehicle/40065?provider=stm&frameMode=record&${dates}`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await expect(answer).toContainText(fr ? '5 sur 6' : '5 of 6');
 		await expect(answer).toContainText(fr ? 'Le jour restant' : 'On the other day');
 		const days = page.getByRole('article', { name: fr ? 'Jour par jour' : 'Day by day' });
@@ -541,6 +555,7 @@ for (const locale of ['en', 'fr'] as const) {
 		);
 		await expect(days.getByText('◇', { exact: true })).toHaveCount(2);
 		await page.goto(`${prefix}/vehicle/40067?provider=stm&frameMode=record&${dates}`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await expect(answer).toContainText(
 			fr ? 'Aucun signalement les jours mesurés.' : 'Did not report on the measured days.',
 		);
@@ -548,6 +563,7 @@ for (const locale of ['en', 'fr'] as const) {
 
 	test(`${locale} Vehicle busy answer shows the shared pending line`, async ({ page }) => {
 		await page.goto(`${prefix}/vehicle/40066?provider=stm&frameMode=record&${dates}`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await expect(page.locator('[data-slot="screen-answer"]')).toHaveText(
 			fr
 				? 'En attente. Cette carte redemande dans quelques secondes.'

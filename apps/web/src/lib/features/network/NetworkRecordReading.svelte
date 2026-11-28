@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import type { StampProps } from '@yesid/ui/brand';
 	import type { Snippet } from 'svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
@@ -30,7 +31,7 @@
 		more,
 		after,
 	}: {
-		answer: Promise<EngineResult<RecordAnswer>>;
+		answer: Awaitable<EngineResult<RecordAnswer>>;
 		title: string;
 		locale: Locale;
 		stamp: StampProps;

@@ -20,6 +20,8 @@ for (const provider of ['stm', 'octranspo'])
 						if (/\/v1\//u.test(request.url())) snapshotRequests.push(request.url());
 					});
 					await page.goto(path + '&recordFrom=2026-11-08&recordTo=2026-11-14');
+					// Content is drawn on the server; controls answer once the page has hydrated.
+					await expect(page.locator('html[data-hydrated]')).toBeAttached();
 					const section = page.locator('#punctuality');
 					await expect(section).toContainText(fr ? /80,0\s%/u : '80.0%');
 					await section.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();

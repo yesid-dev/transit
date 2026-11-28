@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import type { Awaitable, Ready } from '#lib/site/ready.ts';
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import RecordBandBar from '../record/charts/RecordBandBar.svelte';
@@ -90,9 +91,9 @@
 		tracksVehicles: boolean;
 		hasAlerts: boolean;
 		mainStops: LineMainStop[];
-		capture: Promise<CaptureSnapshot | null> | null;
-		trips: Promise<CaptureTripReport | null> | null;
-		record: ReturnType<typeof loadLineRecord> | null | undefined;
+		capture: Awaitable<CaptureSnapshot | null> | null;
+		trips: Awaitable<CaptureTripReport | null> | null;
+		record: Ready<ReturnType<typeof loadLineRecord>> | null | undefined;
 		stopNames: Record<string, string>;
 		headsigns: Record<number, string>;
 		predictionHeadsigns: Record<number, string>;

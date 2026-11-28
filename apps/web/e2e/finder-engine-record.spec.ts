@@ -122,6 +122,8 @@ for (const locale of ['en', 'fr'] as const) {
 			),
 		).toBeVisible();
 		await expect(measured.getByRole('link', { name: /Confederation|99/ })).toHaveCount(0);
+		// Before hydration, Download leads to the Download page; the window opens once hydrated.
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await page.getByRole('button', { name: fr ? 'Télécharger' : 'Download', exact: true }).click();
 		const sheet = page.getByRole('dialog', {
 			name: fr ? 'Télécharger les fichiers CSV' : 'Download the CSV files',
@@ -231,6 +233,8 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.setViewportSize({ width: 390, height: 900 });
 		const dates = query.replace('2026-11-08', '2026-11-04').replace('2026-11-14', '2026-11-10');
 		await page.goto(`${prefix}/lines?${dates}&sort=onTime&direction=desc`);
+		// Content is drawn on the server; controls answer once the page has hydrated.
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const table = page.getByRole('table', {
 			name: fr ? 'Toutes les lignes mesurées' : 'Every measured line',
 		});
@@ -338,6 +342,7 @@ for (const locale of ['en', 'fr'] as const) {
 
 	test(`${locale} lines distinguish a failed connection from a busy engine`, async ({ page }) => {
 		await page.goto(`${prefix}/lines?${query.replace('2026-11-08', '2026-11-05')}`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const unavailable = fr
 			? 'Le bilan est temporairement indisponible.'
 			: 'The record is temporarily unavailable.';
@@ -351,6 +356,7 @@ for (const locale of ['en', 'fr'] as const) {
 		expect(csvDataText((await csv.getAttribute('href'))!)).toContain(unavailable);
 
 		await page.goto(`${prefix}/lines?${query.replace('2026-11-08', '2026-11-06')}`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await expect(page.locator('[data-slot="record-patience"]').getByRole('status')).toHaveCount(1);
 		await expect(page.getByRole('main').getByText(unavailable)).toHaveCount(0);
 	});
@@ -361,6 +367,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await page.setViewportSize({ width: 390, height: 900 });
 		const response = await page.goto(`${prefix}/stops?${query}&q=Fixture`);
 		expect(response?.headers()['cache-control']).toBe('no-store, no-transform');
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const main = page.getByRole('main');
 		const results = main.getByRole('region', {
 			name: fr ? 'Résultats de recherche d’arrêts' : 'Stop results',
@@ -436,6 +443,7 @@ for (const locale of ['en', 'fr'] as const) {
 	}) => {
 		const { questions } = stopSearch;
 		await page.goto(`${prefix}/stops?${query.replace('2026-11-08', '2026-11-06')}&q=Fixture`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const results = page.locator('#stop-results');
 		await expect(
 			results.getByText(
@@ -491,6 +499,7 @@ for (const locale of ['en', 'fr'] as const) {
 
 		const missing = await page.goto(`${prefix}/stop/57135?${period}`);
 		expect(missing?.status()).toBe(404);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		await expect(
 			page.getByRole('heading', {
 				level: 1,
@@ -509,6 +518,7 @@ for (const locale of ['en', 'fr'] as const) {
 		for (const width of [320, 390]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${prefix}/stops?${query}`);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			const rows = page.locator('#stop-results tbody tr');
 			await expect(rows).toHaveCount(20);
 			// Names of one length lay out the same way: the same row height.
@@ -570,6 +580,7 @@ for (const locale of ['en', 'fr'] as const) {
 			await page.goto(
 				`${prefix}/stops?provider=octranspo&recordFrom=2026-11-04&recordTo=2026-11-10&q=8th`,
 			);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			const row = page.getByRole('row').filter({ hasText: '8th Line / Byron' });
 			await expect(row.getByRole('link', { name: '8th Line / Byron' })).toBeVisible();
 			// The phone row puts the line plates on the name's line and the sample in its sentence.
@@ -588,6 +599,7 @@ for (const locale of ['en', 'fr'] as const) {
 	test(`${locale} Stop explains each uncovered reading once`, async ({ page }) => {
 		await page.setViewportSize({ width: 390, height: 900 });
 		await page.goto(`${prefix}/stop/S1?provider=stm&recordFrom=2026-11-10&recordTo=2026-11-10`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const answer = page.locator('[data-slot="screen-answer"]');
 		await expect(answer).toContainText(
 			fr
@@ -648,6 +660,7 @@ for (const locale of ['en', 'fr'] as const) {
 
 	test(`${locale} stops marks an unpublished public code`, async ({ page }) => {
 		await page.goto(`${prefix}/stops?${query}&q=T6-NONE`);
+		await expect(page.locator('html[data-hydrated]')).toBeAttached();
 		const row = page.locator('#stop-results tbody tr').filter({ hasText: 'Arrêt temporaire' });
 		await expect(row.locator('[data-column="code"]')).toContainText(
 			fr ? 'Non publié' : 'Not published',

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { isSettled } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import { goto, replaceState } from '$app/navigation';
 	import { getContext, onMount, tick, untrack } from 'svelte';
@@ -83,7 +84,14 @@
 	const about = $derived(overviewCopy[locale]);
 	const operator = $derived(data.provider?.labels[locale].operator);
 	const liveMode = $derived(data.mode === 'live');
-	let result = $state.raw<VehicleFleetAnswer | null>(null);
+	// A list that came drawn on the server is shown at once; a streamed one when it arrives.
+	let streamed = $state.raw<{ seed: unknown; value: VehicleFleetAnswer } | null>(null);
+	const result = $derived.by((): VehicleFleetAnswer | null => {
+		const answer = data.fleet;
+		if (!answer) return null;
+		if (isSettled(answer)) return answer;
+		return streamed && streamed.seed === answer ? streamed.value : null;
+	});
 	const untracked = $derived(
 		data.provider?.inputs.vehicle_positions === false ||
 			data.provider?.inputs.stable_vehicle_ids === false ||
@@ -98,10 +106,10 @@
 
 	$effect(() => {
 		const answer = data.fleet;
+		if (!answer || isSettled(answer)) return;
 		let current = true;
-		result = null;
-		void answer?.then((value) => {
-			if (current) result = value;
+		void answer.then((value) => {
+			if (current) streamed = { seed: answer, value };
 		});
 		return () => {
 			current = false;

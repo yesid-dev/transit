@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import type { Snippet } from 'svelte';
 	import { fetchCaptureSnapshot, type CaptureSnapshot } from './captureSnapshot.ts';
 	import { livePause } from './livePause.ts';
@@ -10,11 +11,12 @@
 		pending,
 	}: {
 		city: string | null;
-		capture: Promise<CaptureSnapshot | null>;
+		capture: Awaitable<CaptureSnapshot | null>;
 		children: Snippet<[CaptureSnapshot | null, number, boolean]>;
 		pending: Snippet;
 	} = $props();
-	let refreshed = $state<{
+	// Raw, so the seed keeps its identity: a capture drawn on the server is a plain object.
+	let refreshed = $state.raw<{
 		seed: typeof capture;
 		snapshot: CaptureSnapshot | null;
 		receivedAt: number;
@@ -40,7 +42,7 @@
 			refreshed = { seed, snapshot, receivedAt: Date.now() };
 			if (!livePause.paused) timer = setTimeout(refresh, 20_000);
 		}
-		void seed.then(() => {
+		void Promise.resolve(seed).then(() => {
 			if (controller.signal.aborted) return;
 			if (resume) void refresh();
 			else timer = setTimeout(refresh, 20_000);

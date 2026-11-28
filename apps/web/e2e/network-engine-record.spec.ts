@@ -12,6 +12,8 @@ for (const locale of ['en', 'fr'] as const) {
 			});
 			const root = locale === 'fr' ? '/fr' : '';
 			await page.goto(`${root}/network?provider=${city}&frameMode=record&${period}`);
+			// Content is drawn on the server; controls answer once the page has hydrated.
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			const main = page.getByRole('main');
 			await expect(main.getByRole('heading', { level: 1 })).toHaveAccessibleName(
 				locale === 'fr' ? 'Santé du réseau' : 'Network health',
@@ -59,6 +61,7 @@ for (const locale of ['en', 'fr'] as const) {
 			).toHaveCount(0);
 
 			await page.goto(`${root}/network?provider=${city}&frameMode=live&${period}`);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			await expect(
 				main.getByRole('heading', {
 					name: locale === 'fr' ? 'Véhicules par état' : 'Vehicles by status',
@@ -82,6 +85,7 @@ test('Network health reads scheduled trips and individual silent trips from the 
 }) => {
 	const refresh = await installHealthCapture(page);
 	await page.goto('/network?provider=stm&frameMode=live');
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await refresh();
 	const main = page.getByRole('main');
 	await expect(main.locator('[data-slot="screen-answer"]')).toContainText(
@@ -128,6 +132,7 @@ test('Network shows the unavailable state when the live capture fails after a su
 		route.fulfill({ status: 503, json: { state: 'unavailable' } }),
 	);
 	await page.goto('/network?provider=stm&frameMode=live');
+	await expect(page.locator('html[data-hydrated]')).toBeAttached();
 	await expect(page.getByText('vehicle is reporting now.')).toBeVisible();
 	await expect(page.locator('html[data-hydrated]')).toHaveCount(1);
 	await page.clock.runFor(21_000);
@@ -151,6 +156,7 @@ for (const locale of ['en', 'fr'] as const) {
 		for (const width of [1440, 390]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(`${root}/network?provider=stm&frameMode=record&${fullDayPeriod}`);
+			await expect(page.locator('html[data-hydrated]')).toBeAttached();
 			const grid = page.locator('#hours [data-slot="hour-grid"]');
 			await expect(grid.locator('tbody td')).toHaveCount(7 * 24);
 			await page.evaluate(() => document.fonts.ready);

@@ -3,13 +3,14 @@ import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { loadAlertRecord } from '#lib/server/alertRecord.ts';
 import { fetchCaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 import type { PageServerLoad } from './$types';
+import { readyAnswers, streamed } from '#lib/server/readyAnswers.ts';
 
 export const load: PageServerLoad = async (event) => {
 	const { providerId, lang, provider } = await event.parent();
 	const clock = frameClock(provider);
 	const { mode, period } = parseAnswerFrameState(event.url.searchParams, clock);
 	const tracked = providerHasAlerts(provider);
-	return {
+	return readyAnswers({
 		alertRecord: {
 			mode,
 			period,
@@ -23,7 +24,9 @@ export const load: PageServerLoad = async (event) => {
 			operatorOf: provider?.download_licence?.source?.fr ?? null,
 			capture:
 				mode === 'live' && tracked
-					? fetchCaptureSnapshot(providerId, event.request.signal, event.fetch).catch(() => null)
+					? streamed(
+							fetchCaptureSnapshot(providerId, event.request.signal, event.fetch).catch(() => null),
+						)
 					: null,
 			sections:
 				mode === 'record' && tracked && period
@@ -34,5 +37,5 @@ export const load: PageServerLoad = async (event) => {
 						})
 					: [],
 		},
-	};
+	});
 };

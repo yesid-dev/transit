@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Ready } from '#lib/site/ready.ts';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import { page } from '$app/state';
@@ -23,7 +24,7 @@
 	let {
 		data,
 	}: {
-		data: ReturnType<typeof loadVehiclePage> & {
+		data: Ready<ReturnType<typeof loadVehiclePage>> & {
 			v1: { manifest: Manifest } | null;
 			provider: PublicCity | null;
 			seoTitle: string;

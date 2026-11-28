@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable, Ready } from '#lib/site/ready.ts';
 	import { page } from '$app/state';
 	import { RoutePlate, Stamp, type StampProps } from '@yesid/ui/brand';
 	import { StateNotice } from '@yesid/ui/feedback';
@@ -90,8 +91,8 @@
 			operator?: string;
 			/** The French form of the agency after "de", as the city declares it. */
 			operatorOf?: string | null;
-			capture: Promise<CaptureSnapshot | null> | null;
-			sections: ReturnType<typeof loadAlertRecord>;
+			capture: Awaitable<CaptureSnapshot | null> | null;
+			sections: Ready<ReturnType<typeof loadAlertRecord>>;
 		};
 		locale: Locale;
 	} = $props();
@@ -285,7 +286,7 @@
 	{/if}
 {/snippet}
 
-{#snippet recordEffects(promise: Promise<EngineResult<EngineAnswer>>)}
+{#snippet recordEffects(promise: Awaitable<EngineResult<EngineAnswer>>)}
 	<div id="effect" class="scroll-mt-24">
 		<RecordCard title={alertSections.effect[locale]} {stamp} stampRule reserve={effectShape}>
 			{#await promise}<RecordPending {locale} answer={promise} shape={effectShape} />

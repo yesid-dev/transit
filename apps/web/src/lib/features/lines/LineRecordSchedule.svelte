@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Awaitable } from '#lib/site/ready.ts';
 	import { SegmentedChoice, type StampProps } from '@yesid/ui/brand';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
@@ -38,10 +39,10 @@
 		stamp: StampProps;
 		day?: string | null;
 		unavailable?: boolean;
-		pending?: { busy?: boolean; answer?: ReturnType<typeof getRecordAnswer> };
+		pending?: { busy?: boolean; answer?: Awaitable<Awaited<ReturnType<typeof getRecordAnswer>>> };
 		retry?: () => void;
 		direction: string | null;
-		directionalFrequency: ReturnType<typeof getRecordAnswer> | null;
+		directionalFrequency: Awaitable<Awaited<ReturnType<typeof getRecordAnswer>>> | null;
 		headsigns: Record<number, string>;
 	} = $props();
 
@@ -165,9 +166,10 @@
 							retry={retry &&
 								(() => {
 									retry?.();
-									void directionalFrequency?.then((result) => {
-										if (result.kind === 'unreachable') result.retry?.();
-									});
+									if (directionalFrequency)
+										void Promise.resolve(directionalFrequency).then((result) => {
+											if (result.kind === 'unreachable') result.retry?.();
+										});
 								})}
 						/>
 					{/if}

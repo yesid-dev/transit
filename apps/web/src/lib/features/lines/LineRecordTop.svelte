@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { Skeleton } from '@yesid/ui/skeleton';
+	import type { Ready } from '#lib/site/ready.ts';
 	import FactList from '#lib/features/record/FactList.svelte';
 	import FactRow from '#lib/features/record/FactRow.svelte';
 	import { goto } from '$app/navigation';
@@ -64,7 +65,7 @@
 		scheduleOnly?: boolean;
 		timetableOnly: boolean;
 		locale: Locale;
-		record: ReturnType<typeof loadLineRecord>;
+		record: Ready<ReturnType<typeof loadLineRecord>>;
 		pinned: URL;
 		headsigns: Record<number, string>;
 		operator: string;

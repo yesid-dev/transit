@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { whenAll, type Awaitable } from '#lib/site/ready.ts';
 	import RecordGroup from '#lib/features/record/RecordGroup.svelte';
 	import RecordEvidenceLine from '#lib/features/record/RecordEvidenceLine.svelte';
 	import RecordScreen from '#lib/features/record/RecordScreen.svelte';
@@ -125,7 +126,7 @@
 		const report = data;
 		let active = true;
 		void Promise.allSettled(report.sections.map(({ answer }) => answer)).then(async (results) => {
-			await report.directory?.catch(() => {});
+			if (report.directory) await Promise.resolve(report.directory).catch(() => {});
 			if (
 				active &&
 				!results.some(
@@ -151,7 +152,7 @@
 	);
 	const lineRanking = $derived(ranked(answers.get('lines')));
 	const stopRanking = $derived(ranked(answers.get('stops')));
-	const rankings = $derived(Promise.all([lineRanking, stopRanking]));
+	const rankings = $derived(whenAll([lineRanking, stopRanking], (pair) => pair));
 	const deliveryAnswer = $derived(answers.get('delivery'));
 	const punctualityAnswer = $derived(answers.get('punctuality'));
 	const periodsAnswer = $derived(answers.get('periods'));
@@ -166,14 +167,15 @@
 		messages: { shape: 'notice', count: 3 },
 	} as const satisfies Record<string, RecordWaiting>;
 
-	async function ranked(
-		answer: Promise<EngineResult<EngineAnswer>> | undefined,
-	): Promise<EngineResult<RankingAnswer>> {
-		const result = await answer;
-		if (!result) return { kind: 'unconfigured' };
-		return result.kind === 'answer' && !('rows' in result.answer)
-			? { kind: 'unreachable' }
-			: (result as EngineResult<RankingAnswer>);
+	function ranked(
+		answer: Awaitable<EngineResult<EngineAnswer>> | undefined,
+	): Awaitable<EngineResult<RankingAnswer>> {
+		return whenAll([answer], ([result]): EngineResult<RankingAnswer> => {
+			if (!result) return { kind: 'unconfigured' };
+			return result.kind === 'answer' && !('rows' in result.answer)
+				? { kind: 'unreachable' }
+				: (result as EngineResult<RankingAnswer>);
+		});
 	}
 	function measure(result: EngineResult<EngineAnswer> | undefined) {
 		return result?.kind === 'answer' && 'value' in result.answer ? result.answer : undefined;
