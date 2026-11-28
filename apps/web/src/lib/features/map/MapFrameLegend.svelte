@@ -112,7 +112,7 @@
 					(row): MapLegendItem => ({
 						label:
 							row.mark.kind === 'status'
-								? `${row.label}${locale === 'fr' ? '\u00a0: ' : ': '}${detail[row.mark.code]}`
+								? `${row.label}${row.mark.code === 'early' ? ' (violet)' : ''}${locale === 'fr' ? '\u00a0: ' : ': '}${detail[row.mark.code]}`
 								: row.label,
 						symbol: symbol(row.mark),
 					}),

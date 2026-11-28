@@ -17,6 +17,8 @@ html {
 :root {
 	/* Keep this fallback until the design tokens provide the listing measure. */
 	--transit-measure-listing: var(--measure-listing, 46rem);
+	--transit-early-light: #7a3f84;
+	--transit-early-dark: #d78cdb;
 	--text-stat-value: 1.75rem;
 	--map-stop-fill: var(--muted-foreground);
 	--map-late-share-anchor: var(--dataviz-severity-critical);
@@ -30,6 +32,31 @@ html {
 	--layout-support-rail-width: clamp(16rem, 18vw, 20rem);
 	--layout-article-main-min: 40rem;
 	--layout-article-top-space: var(--space-card-gap);
+}
+
+:root:root {
+	--dataviz-status-early: light-dark(var(--transit-early-light), var(--transit-early-dark));
+}
+
+/* Light Transit surfaces use warm paper tones alongside the existing orange links. */
+:root[data-theme='light'],
+:root.theme-light {
+	--background: #f7f5f0;
+	--card: #fdfbf7;
+	--popover: var(--card);
+	--muted: #ede8df;
+	--skeleton: #e6e0d6;
+	--muted-foreground: #5e564b;
+	--secondary-foreground: #4c443a;
+	--border: #c9c1b3;
+	--border-subtle: #d8d0c3;
+	--terminal: var(--background);
+}
+
+:is([data-theme='light'], .theme-light) [data-slot='route-plate'] {
+	--signage-bg: #ede4d4;
+	--signage-text: #694517;
+	--border-strong: #887960;
 }
 
 /* Forced colours force HTML colours but not SVG fill and stroke, and Canvas follows the system
@@ -222,7 +249,7 @@ body {
 		--border: #b5becd;
 		--border-subtle: #c2cbd8;
 		--shadow-card: none;
-		--dataviz-status-early: #1f6f9c;
+		--dataviz-status-early: var(--transit-early-light);
 		--dataviz-status-on-time: #131923;
 		--dataviz-status-late: #c62828;
 		--dataviz-status-severe: #c62828;

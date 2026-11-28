@@ -9,6 +9,7 @@
 	} from '@yesid/ui/chart';
 	import ChartDetails from '#lib/components/dataviz/chart/ChartDetails.svelte';
 	import ChartPlotTargets from '#lib/components/dataviz/chart/ChartPlotTargets.svelte';
+	import { statusVar } from '#lib/components/dataviz/tokens.ts';
 	import { StatusMark } from '@yesid/ui/brand';
 	import type { DataTableColumn } from '@yesid/ui/table';
 	import { type Locale } from '#lib/i18n/index.ts';
@@ -179,7 +180,19 @@
 								: reading.props.yTicks}
 						/>
 						<ChartAxis {plot} axis="x" ticks={reading.props.ticks} />
-						<ChartBarSeries {plot} points={reading.props.points} bandWidth={1} />
+						{@const [early, late] = reading.props.boundaries}
+						{#each reading.props.bands as band (band.status)}
+							<g style:--foreground={statusVar(band.status)}>
+								<ChartBarSeries
+									{plot}
+									points={reading.props.points.filter(
+										({ x }) =>
+											(x < early ? 'early' : x > late ? 'late' : 'on_time') === band.status,
+									)}
+									bandWidth={1}
+								/>
+							</g>
+						{/each}
 						{#each reading.props.boundaries as x (x)}
 							<ChartLineSeries
 								{plot}

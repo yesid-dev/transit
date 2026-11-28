@@ -27,6 +27,13 @@ for (const [width, locale, theme] of [
 		const chart = page.locator('#delay [data-chart-details]');
 		const tip = page.getByRole('tooltip');
 		const bars = chart.locator('[data-chart-datum]');
+		const early = page.locator('#delay [data-slot="status-mark"][data-status="early"]');
+		const earlyInk = theme === 'dark' ? 'rgb(215, 140, 219)' : 'rgb(122, 63, 132)';
+		await expect(early).toContainText(fr ? 'En avance' : 'Early');
+		await expect(early.locator('svg')).toHaveCSS('color', earlyInk);
+		await expect(
+			chart.locator('[data-slot="chart-bar-series"]').first().locator('rect').first(),
+		).toHaveCSS('fill', earlyInk);
 		const countLabel = fr ? 'Passages aux arrêts' : 'Stop events';
 		const shareLabel = fr ? 'Part' : 'Share';
 
