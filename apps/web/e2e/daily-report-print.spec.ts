@@ -77,13 +77,22 @@ test.describe('Daily report print', () => {
 			await expect(main.locator('#delivery [data-slot="fact-row"]')).toHaveCount(6);
 			const actions = main.getByRole('group', { name: fr ? 'Actions du bilan' : 'Record actions' });
 			await expect(actions.getByRole('button')).toHaveCount(4);
+			const print = actions.getByRole('button', { name: fr ? 'Imprimer' : 'Print', exact: true });
+			await expect(print).toHaveAccessibleDescription(
+				fr
+					? 'Le rapport d’une journée tient sur une feuille.'
+					: 'A one-day report prints on one sheet.',
+			);
 			const actionTops = await actions
 				.getByRole('button')
 				.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
 			expect(Math.max(...actionTops) - Math.min(...actionTops)).toBeLessThan(1);
-			const rankingsFooter = main.locator('#lines footer');
+			const rankingsCard = main.getByRole('article', {
+				name: fr ? 'Lignes et arrêts à examiner' : 'Lines and stops to investigate',
+			});
+			const rankingsFooter = rankingsCard.locator('footer');
 			await expect(rankingsFooter).toHaveCount(1);
-			const rankings = main.locator('#lines').getByRole('table');
+			const rankings = rankingsCard.getByRole('table');
 			await expect(rankings).toHaveCount(2);
 			for (const table of await rankings.all()) {
 				await expect(table.locator('tbody tr').first()).toContainText(
