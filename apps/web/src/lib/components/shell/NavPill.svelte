@@ -376,6 +376,7 @@
 		{network}
 		{actions}
 	/>
+	<span class="frame-nav-end" hidden></span>
 </div>
 
 <style>
@@ -386,6 +387,10 @@
 	.frame-nav {
 		padding-block-end: var(--chrome-gap);
 		pointer-events: none;
+	}
+	/* The parser can yield in the middle of the pill. Paint it once all its controls are in the DOM. */
+	.frame-nav:not(:has(> .frame-nav-end)) {
+		visibility: hidden;
 	}
 	/* Below 1024px AppFrame measures SiteHeader directly for the transparent vacated network band. */
 	@media (width < 1024px) {

@@ -57,6 +57,19 @@ async function observeShifts(page: Page) {
 
 const time = Date.parse('2026-11-23T16:00:00Z');
 
+async function holdParser(page: Page, path: string) {
+	const { promise, resolve } = Promise.withResolvers<void>();
+	await page.route(`**${path}`, async (route) => {
+		await promise;
+		// Restore the server markup before Svelte hydrates it.
+		await route.fulfill({
+			contentType: 'text/javascript',
+			body: 'document.currentScript.remove()',
+		});
+	});
+	return resolve;
+}
+
 test('Overview reserves the second card column before its HTML is parsed @layout', async ({
 	page,
 }, info) => {
@@ -65,43 +78,52 @@ test('Overview reserves the second card column before its HTML is parsed @layout
 		page.evaluate(
 			() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
 		);
-	let release!: () => void;
-	const parsed = new Promise<void>((resolve) => (release = resolve));
-	await page.route('**/__overview-parser-gate', async (route) => {
-		await parsed;
-		// Restore the original server markup before Svelte's hydration script runs.
-		await route.fulfill({
-			contentType: 'text/javascript',
-			body: 'document.currentScript.remove()',
-		});
-	});
+	const headerGate = '/__header-parser-gate';
+	const overviewGate = '/__overview-parser-gate';
+	const releaseHeader = await holdParser(page, headerGate);
+	const releaseOverview = await holdParser(page, overviewGate);
 	const routePath = '/?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14';
 	await page.route(
 		(url) => url.pathname === '/' && url.searchParams.has('recordFrom'),
 		async (route) => {
 			const response = await route.fetch();
 			const html = await response.text();
+			const trailingControls = /<div class="nav-trailing\b[^"]*">/u;
 			const secondCard = /<div data-slot="card"[^>]*\bclass="[^"]*\boverview-live\b[^"]*"[^>]*>/u;
+			expect(trailingControls.test(html), 'the response contains the trailing nav controls').toBe(
+				true,
+			);
 			expect(secondCard.test(html), 'the response contains the Live now card').toBe(true);
-			// Pause parsing at the boundary so the first card renders on its own.
+			// Pause first in the nav and then between the two Overview cards.
 			await route.fulfill({
 				response,
-				body: html.replace(secondCard, '<script src="/__overview-parser-gate"></script>$&'),
+				body: html
+					.replace(trailingControls, `<script src="${headerGate}"></script>$&`)
+					.replace(secondCard, `<script src="${overviewGate}"></script>$&`),
 			});
 		},
 	);
 	try {
 		await page.goto(routePath, { waitUntil: 'commit' });
+		const nav = page.getByTestId('nav-pill');
+		await expect(nav).toBeAttached();
+		await expect(nav.getByTestId('nav-menu-toggle')).toHaveCount(0);
+		await expect(nav).toHaveCSS('visibility', 'hidden');
+		await page.evaluate(() => document.fonts.ready);
+		await paint();
+		releaseHeader();
 		const grid = page.locator('[data-slot="screen-answer"]');
 		const record = grid.getByRole('article', { name: 'Record', exact: true });
 		const body = record.locator('[data-slot="record-card-body"]');
 		await expect(body).toBeVisible();
 		await expect(grid.getByRole('article')).toHaveCount(1);
+		await expect(nav).toBeVisible();
 		await page.evaluate(() => document.fonts.ready);
 		await paint();
+		const navBefore = await nav.boundingBox();
 		const initialBody = await body.elementHandle();
 		const before = await body.boundingBox();
-		release();
+		releaseOverview();
 		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const live = grid.getByRole('article', { name: 'Live now', exact: true });
 		await expect(live).toBeVisible();
@@ -109,19 +131,22 @@ test('Overview reserves the second card column before its HTML is parsed @layout
 		await paint();
 		expect(await body.evaluate((element, initial) => element === initial, initialBody)).toBe(true);
 		const after = await body.boundingBox();
+		const navAfter = await nav.boundingBox();
 		const shifts = await page.evaluate(() => (window as ShiftWindow).steadyShifts);
 		await info.attach('overview-streamed-columns', {
-			body: JSON.stringify({ before, after, shifts }),
+			body: JSON.stringify({ before, after, navBefore, navAfter, shifts }),
 			contentType: 'application/json',
 		});
 		expect.soft(after).toEqual(before);
+		expect.soft(navAfter).toEqual(navBefore);
 		expect((await live.boundingBox())!.x).toBeGreaterThan(after!.x);
 		expect(
 			shifts.reduce((sum, { value }) => sum + value, 0),
 			JSON.stringify(shifts),
 		).toBe(0);
 	} finally {
-		release();
+		releaseHeader();
+		releaseOverview();
 	}
 });
 const widths = [390, 768, 1024, 1440];
