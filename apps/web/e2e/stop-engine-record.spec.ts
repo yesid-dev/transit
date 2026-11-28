@@ -7,7 +7,7 @@ test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
 });
 
-test('an hourly card with too few stop events settles to its message at both widths', async ({
+test('an hourly card with too few stop arrivals settles to its message at both widths', async ({
 	page,
 }) => {
 	for (const width of [390, 1440]) {
@@ -29,7 +29,7 @@ test('a stop with no eligible days shows the network alone and explains the miss
 	);
 	const daily = page.locator('#daily');
 	await expect(
-		daily.getByText('Too few stop events per day to draw this stop’s line (minimum 30 per day).'),
+		daily.getByText('Too few stop arrivals per day to draw this stop’s line (minimum 30 per day).'),
 	).toBeVisible();
 	await expect(daily.locator('[data-slot="chart-line-series"][data-reference]')).toHaveCount(1);
 	await expect(daily.locator('[data-slot="chart-line-series"]:not([data-reference])')).toHaveCount(
@@ -86,7 +86,7 @@ for (const width of [390, 1440]) {
 			await expect(bands.getByRole('img')).toHaveAccessibleName(
 				fr
 					? /À l’heure: 80,0\s%, 6[ \u00a0\u202f]628 passages aux arrêts/
-					: /On time: 80\.0%, 6,628 stop events/,
+					: /On time: 80\.0%, 6,628 stop arrivals/,
 			);
 			const tableToggle = bands.getByRole('button', {
 				name: fr ? 'Tableau' : 'Table',
@@ -103,7 +103,7 @@ for (const width of [390, 1440]) {
 			await expect(hours.first()).toHaveText(fr ? '5 h' : '05');
 			await expect(hours.last()).toHaveText(fr ? '0 h' : '00');
 			await expect(grid).toContainText(fr ? 'Les heures après minuit' : 'Hours after midnight');
-			await expect(grid).toContainText(fr ? /moins de 30 passages/ : 'under 30 stop events');
+			await expect(grid).toContainText(fr ? /moins de 30 passages/ : 'under 30 stop arrivals');
 			await expect(grid.getByText(fr ? 'Non mesuré' : 'Not measured', { exact: true })).toHaveCount(
 				0,
 			);
@@ -118,12 +118,12 @@ for (const width of [390, 1440]) {
 			await expect(answer).toContainText(
 				fr
 					? /Ce qui est compté\s:\s8[ \u00a0\u202f]285 passages/u
-					: 'Counted: 8,285 stop events, 230 observed trips, 7 days',
+					: 'Counted: 8,285 stop arrivals, 230 observed trips, 7 days',
 			);
 			const sixOClock = grid.getByRole('cell', {
 				name: fr
 					? 'lundi, 6 h : 33,0 % en retard, 106 passages aux arrêts'
-					: 'Monday, 06:00: 33.0% late, 106 stop events',
+					: 'Monday, 06:00: 33.0% late, 106 stop arrivals',
 				exact: true,
 			});
 			await expect(sixOClock).toBeVisible();
@@ -142,7 +142,7 @@ for (const width of [390, 1440]) {
 				fr ? 'Trop peu de données' : 'Too few to judge',
 			);
 			await expect(main.locator('#byLine')).toContainText(
-				fr ? '33 passages aux arrêts, le minimum est de 60' : '33 stop events, the minimum is 60',
+				fr ? '33 passages aux arrêts, le minimum est de 60' : '33 stop arrivals, the minimum is 60',
 			);
 			await expect(
 				main.locator('#daily [data-slot="chart-line-series"][data-reference]'),
@@ -184,13 +184,13 @@ for (const width of [390, 1440]) {
 			await expect(bands.locator('footer')).toContainText(
 				fr
 					? /8\s285 passages aux arrêts, 230 trajets observés, 7 jours/
-					: '8,285 stop events, 230 observed trips, 7 days',
+					: '8,285 stop arrivals, 230 observed trips, 7 days',
 			);
 			await expect(waiting.locator('footer').locator('span')).toHaveText([
 				fr ? '27 intervalles observés, 7 jours' : '27 observed intervals, 7 days',
 			]);
 			await expect(main.locator('#daily footer span').first()).toHaveText(
-				fr ? '614 passages aux arrêts, 7 jours' : '614 stop events, 7 days',
+				fr ? '614 passages aux arrêts, 7 jours' : '614 stop arrivals, 7 days',
 			);
 			// The notices card counts its notices in the card; a foot holding only the days says nothing.
 			await expect(main.locator('#alerts footer span')).toHaveCount(0);

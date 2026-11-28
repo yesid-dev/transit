@@ -98,7 +98,7 @@
 	const operator = $derived(provider?.labels[locale].operator);
 	const title = $derived(t('Find a stop', 'Trouver un arrêt'));
 	const tableTitle = $derived(t('Stop results', 'Résultats de recherche d’arrêts'));
-	const eventsHeader = $derived(t('Stop events', 'Passages aux arrêts'));
+	const eventsHeader = $derived(t('Stop arrivals', 'Passages aux arrêts'));
 	const stopHeader = $derived(t('Stop', 'Arrêt'));
 	const stamp = $derived(
 		record ? { kind: 'record' as const, label: recordStamp(record.period, locale) } : undefined,
@@ -521,7 +521,7 @@
 			'Code',
 			stopHeader,
 			t('On-time share', 'Part à l’heure'),
-			t('Classified stop events', 'Passages classés'),
+			t('Classified stop arrivals', 'Passages classés'),
 			t('On-time events', 'Passages à l’heure'),
 			t('Status', 'État'),
 		]}

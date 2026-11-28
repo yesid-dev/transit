@@ -289,7 +289,12 @@
 	const columns: DataTableColumn<PeriodRow>[] = $derived([
 		{ key: 'hours', header: t('Hours', 'Heures'), cell: hours },
 		{ key: 'late', header: t('Late share', 'Part en retard'), numeric: true, cell: late },
-		{ key: 'events', header: t('Stop events', 'Passages aux arrêts'), numeric: true, cell: events },
+		{
+			key: 'events',
+			header: t('Stop arrivals', 'Passages aux arrêts'),
+			numeric: true,
+			cell: events,
+		},
 	]);
 	const deliveryLabels = $derived(tripOutcomeLabels(lang));
 	// The order reads as a sum: the five rows under Scheduled add up to it.
@@ -434,7 +439,7 @@
 	{@const punctualityText =
 		value == null
 			? t('On-time share', 'Part des passages à l’heure') + ' · ' + readingText(current)
-			: t('of observed stop events were on time', 'des passages observés étaient à l’heure')}
+			: t('of recorded stop arrivals were on time', 'des passages enregistrés étaient à l’heure')}
 	{@const deliveryText =
 		trips == null
 			? t('Share of trips that ran', 'Part des trajets effectués') + ' · ' + readingText(delivery)
@@ -885,7 +890,10 @@
 								<RecordCard
 									interactive
 									compactPrint
-									title={t('Lines and stops to investigate', 'Lignes et arrêts à examiner')}
+									title={t(
+										'Lowest on-time lines and stops',
+										'Lignes et arrêts les moins ponctuels',
+									)}
 									{stamp}
 									stampRule
 								>

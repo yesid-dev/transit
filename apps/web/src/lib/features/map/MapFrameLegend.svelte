@@ -176,8 +176,8 @@
 			title:
 				layer === 'stops'
 					? tr(
-							'Share of observed stop events that were late',
-							'Part des passages observés en retard',
+							'Share of recorded stop arrivals that were late',
+							'Part des passages enregistrés en retard',
 						)
 					: layer === 'waits'
 						? tr('Extra wait at each stop', 'Attente en plus à chaque arrêt')

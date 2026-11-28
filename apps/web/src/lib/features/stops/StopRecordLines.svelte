@@ -101,7 +101,7 @@
 					},
 					{
 						key: 'count',
-						header: t('Stop events here', 'Passages à cet arrêt'),
+						header: t('Stop arrivals here', 'Passages à cet arrêt'),
 						numeric: true,
 						cell: count,
 					},
@@ -116,7 +116,8 @@
 {#snippet count(row: Row)}
 	{@const minimum = minimumSample(series, 'on_time')}
 	{#if row.state === 'too_few_to_judge' && row.sample !== null && minimum != null}
-		<span class="font-sans text-small text-muted-foreground"
+		<!-- A sentence, not a reading: it may wrap. -->
+		<span class="font-sans text-small whitespace-normal text-muted-foreground"
 			>{t(
 				`${countedUnit(row.sample, 'event', locale)}, the minimum is ${tally(minimum, locale)}`,
 				`${countedUnit(row.sample, 'event', locale)}, le minimum est de ${tally(minimum, locale)}`,

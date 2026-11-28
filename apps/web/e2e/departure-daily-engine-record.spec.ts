@@ -127,7 +127,7 @@ for (const width of [390, 1440]) {
 			const periods = section(fr ? 'La journée en cinq périodes' : 'The day in five parts');
 			await expect(periods.getByRole('rowheader')).toHaveCount(5);
 			await expect(periods).toContainText(fr ? 'Trop peu observé' : 'Too little observed');
-			const messages = section(fr ? 'Avis de la société de transport' : 'Agency notices');
+			const messages = section(fr ? 'Avis de service' : 'Service alerts');
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveCount(1);
 			await expect(messages.getByRole('heading', { level: 3 })).toHaveAttribute('lang', lang);
 			await expect(messages).toContainText(fr ? 'Détour sur la ligne 24' : 'Detour on 24');
@@ -144,7 +144,7 @@ for (const width of [390, 1440]) {
 			const downloads = page.getByRole('dialog', { name: downloadTitle, exact: true });
 			const csv = await downloads
 				.getByRole('link', {
-					name: fr ? 'Avis de la société de transport' : 'Agency notices',
+					name: fr ? 'Avis de service' : 'Service alerts',
 					exact: true,
 				})
 				.getAttribute('href');
@@ -173,7 +173,7 @@ test('Daily report streams past a slow agency section and distinguishes untracke
 	const href = '/receipt?provider=stm&frameMode=record&recordFrom=2026-11-17&recordTo=2026-11-17';
 	const hold = dailyMessageHold(request);
 	const other = dailyMessageHold(request);
-	const messages = page.getByRole('article', { name: 'Agency notices' });
+	const messages = page.getByRole('article', { name: 'Service alerts' });
 	const pending = 'Still calculating the record';
 	try {
 		expect((await hold.start()).status()).toBe(204);

@@ -52,9 +52,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await expect(answer).toContainText(/213 avis\. La STM les a publiés 1\s707 fois\./);
 	await expect(answer).not.toContainText('12,5');
 	await expect(page.getByRole('heading', { name: 'Par effet', exact: true })).toBeVisible();
-	await expect(
-		page.getByText('La société de transport ne publie pas l’effet de ses avis.'),
-	).toBeVisible();
+	await expect(page.getByText('La STM ne publie pas l’effet de ses avis.')).toBeVisible();
 	await expect(
 		page.getByText(
 			'Compte les avis distincts en vigueur à ces dates. Le nombre de publications comprend chaque version.',
@@ -83,14 +81,12 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 
 	await answer.getByRole('button', { name: 'Citer', exact: true }).click();
 	await expect(page.getByRole('dialog')).toContainText(/v1.*recordFrom=2026-11-14.*#answer/);
-	await expect(page.getByRole('dialog')).toContainText(
-		/Avis de la société de transport.*#messages/,
-	);
+	await expect(page.getByRole('dialog')).toContainText(/Avis de service.*#messages/);
 	await expect(page.getByRole('dialog')).toContainText(/Avis\s*:\s*1\s707/);
 	await page.keyboard.press('Escape');
 	await answer.getByRole('button', { name: 'Télécharger' }).click();
 	for (const [name, section] of [
-		['Avis de la société de transport', 'messages'],
+		['Avis de service', 'messages'],
 		['Par heure', 'hour'],
 		['Jour par jour', 'day'],
 	]) {

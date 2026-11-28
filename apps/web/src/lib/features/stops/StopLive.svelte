@@ -191,7 +191,7 @@
 			<RecordCard
 				{title}
 				{stamp}
-				reserve={predictionsShape}
+				reserve={waiting || readings?.rows.length ? predictionsShape : undefined}
 				interactive={!!readings?.rows.some(({ line }) => line !== null) ||
 					(readings?.rows.length ?? 0) > predictionPageSize}
 			>

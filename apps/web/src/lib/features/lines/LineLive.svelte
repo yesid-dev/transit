@@ -99,7 +99,9 @@
 		predictionHeadsigns: Record<number, string>;
 	} = $props();
 	const labels = $derived(liveDelayLabels(locale));
-	const title = $derived(choose(locale, 'Its vehicles now', 'Ses véhicules en ce moment'));
+	const title = $derived(
+		choose(locale, 'Vehicles running now', 'Véhicules en service en ce moment'),
+	);
 	const terms = $derived(overviewCopy[locale]);
 	const display = transitDisplay();
 	const t = (en: string, fr: string) => choose(locale, en, fr);

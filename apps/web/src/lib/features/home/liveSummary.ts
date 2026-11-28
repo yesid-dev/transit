@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { captureAlerts, captureNetwork, captureVehicles } from '#lib/live/captureProjection.ts';
 import { captureFeedSchema, type CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
 import { AlertsFileSchema, LiveNetworkFileSchema } from '#lib/v1/schemas/index.ts';
+import { liveNoticeCount } from '../alerts/alertCards.ts';
 import { lateLines } from './overviewRecord.ts';
 
 const evidence = {
@@ -18,7 +19,7 @@ const lateLine = z.object({
 
 /**
  * What the Overview's Live now card reads from a live capture: the network reading with its
- * three late lines, and the count of alerts. The vehicle positions and the alert texts stay on
+ * three late lines, and the count of notices in effect now. The vehicle positions and the alert texts stay on
  * the server. The browser checks the same shapes the full capture's readings have.
  */
 export const liveSummarySchema = z.object({
@@ -42,7 +43,8 @@ export function liveSummary(snapshot: CaptureSnapshot, now: number): LiveSummary
 	let alerts: LiveSummary['alerts'] = null;
 	try {
 		const file = captureAlerts(snapshot, now);
-		alerts = { ...file, alerts: [], alert_count: file.alerts.length };
+		// The notices in effect now, as Service alerts counts them live, not every published copy.
+		alerts = { ...file, alerts: [], alert_count: liveNoticeCount(snapshot.alerts ?? [], now) };
 	} catch {
 		// No live alerts feed in this capture: the card reads it as unavailable, as before.
 	}

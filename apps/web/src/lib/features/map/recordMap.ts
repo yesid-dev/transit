@@ -101,12 +101,12 @@ export function recordMapSampleText(
 	if (sample === null) return null;
 	if (state === 0 && sample === 0) {
 		return stops
-			? choose(locale, 'No classified stop events', 'Aucun passage classé')
+			? choose(locale, 'No classified stop arrivals', 'Aucun passage classé')
 			: choose(locale, 'No comparable runs observed', 'Aucun parcours comparable observé');
 	}
 	const count = tally(sample, locale);
 	const unit = stops
-		? choose(locale, 'classified stop events', 'passages classés')
+		? choose(locale, 'classified stop arrivals', 'passages classés')
 		: choose(locale, 'observed runs', 'parcours observés');
 	const reading = `${count} ${unit}`;
 	return state === 0 ? `${lowCoverageLabel[locale]} · ${reading}` : reading;

@@ -389,7 +389,7 @@
 		{ key: 'hours', header: t('Hours', 'Heures'), numeric: true, cell: hoursCell },
 		{
 			key: 'lines',
-			header: t('Lines it ran', 'Lignes desservies'),
+			header: t('Lines served', 'Lignes desservies'),
 			numeric: true,
 			cell: linesCell,
 		},

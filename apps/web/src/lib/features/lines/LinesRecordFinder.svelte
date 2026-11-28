@@ -51,6 +51,7 @@
 		lineExclusion,
 		lineHold,
 		lineHoldText,
+		linesListedText,
 		type LineHold,
 	} from './linesRecord.ts';
 	import {
@@ -112,7 +113,7 @@
 	const lineHeader = $derived(terms.line);
 	const lateHeader = $derived(terms.band.late);
 	const tripsHeader = $derived(t('Trips that ran', 'Trajets effectués'));
-	const eventsHeader = $derived(t('Stop events', 'Passages aux arrêts'));
+	const eventsHeader = $derived(t('Stop arrivals', 'Passages aux arrêts'));
 	const statusHeader = $derived(t('Status', 'État'));
 	const tooFew = $derived(t('Too few to judge', 'Trop peu pour juger'));
 	let settledPeriod = $state.raw<LinesRecord['period']>();
@@ -361,7 +362,7 @@
 		t('Late share', 'Part en retard'),
 		t('Trips run', 'Trajets effectués'),
 		t('Scheduled trips', 'Trajets prévus'),
-		t('Classified stop events', 'Passages classés'),
+		t('Classified stop arrivals', 'Passages classés'),
 		t('On-time events', 'Passages à l’heure'),
 		t('Late events', 'Passages en retard'),
 		t('Punctuality status', 'État de la ponctualité'),
@@ -719,9 +720,16 @@
 	{/if}
 	{#if timingAnswer && !appliedQuery}
 		<p>
-			{t(
-				`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'is' : 'are'} listed here: ${tally(measured.length, locale)} measured, ${tally(scheduleOnly.length, locale)} without live data, ${tally(excluded.length, locale)} that cannot be judged on these dates.`,
-				`${countedUnit(all.length, 'line', locale)} ${all.length === 1 ? 'figure' : 'figurent'} ici\u00a0: ${tally(measured.length, locale)} avec des mesures, ${tally(scheduleOnly.length, locale)} sans données en direct, ${tally(excluded.length, locale)} qu’on ne peut pas juger à ces dates.`,
+			{linesListedText(
+				{
+					listed: all.length,
+					timetable: routes.length,
+					measured: measured.length,
+					ranked: ranked.length,
+					noLive: scheduleOnly.length,
+					excluded: excluded.length,
+				},
+				locale,
 			)}
 		</p>
 	{/if}

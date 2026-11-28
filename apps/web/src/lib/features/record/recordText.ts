@@ -176,7 +176,7 @@ export function rateStateText(
 }
 
 export const punctualityWeighting = {
-	en: 'Long trips and frequent lines weigh more because we count stop events, open feeds do not report ridership, and lines without live data are outside the rate.',
+	en: 'Long trips and frequent lines weigh more because we count stop arrivals, open feeds do not report ridership, and lines without live data are outside the rate.',
 	fr: 'Les longs trajets et les lignes fréquentes pèsent davantage parce que nous comptons les passages aux arrêts, les flux ouverts ne donnent pas le nombre de passagers et les lignes sans données en direct sont exclues du taux.',
 };
 
@@ -255,8 +255,8 @@ export function departureRankingFloor(
 	const stops = tally(classified, locale);
 	const floor = choose(
 		locale,
-		`Each departure needs at least ${dates} observed service dates and ${stops} observed stop events to rank.`,
-		`Chaque départ doit compter au moins ${dates} dates de service observées et ${stops} passages observés pour être classé.`,
+		`Each departure needs at least ${dates} observed service dates and ${stops} recorded stop arrivals to rank.`,
+		`Chaque départ doit compter au moins ${dates} dates de service observées et ${stops} passages enregistrés pour être classé.`,
 	);
 	return empty
 		? `${choose(locale, 'No departures qualified.', 'Aucun départ ne répond aux critères.')} ${floor}`

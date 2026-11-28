@@ -101,10 +101,11 @@
 	const title = $derived(t('Service alerts', 'Avis de service'));
 	const subtitle = $derived([data.operator, data.cityName].filter(Boolean).join(', '));
 	const operator = $derived({ name: data.operator ?? data.cityName, frenchOf: data.operatorOf });
+	// An agency gap names the agency.
 	const effectNotPublished = $derived(
 		t(
-			'The agency does not publish the effect of its notices.',
-			'La société de transport ne publie pas l’effet de ses avis.',
+			`${operator.name} does not publish the effect of its notices.`,
+			`${frenchAgency(operator).start} ne publie pas l’effet de ses avis.`,
 		),
 	);
 	const liveMode = $derived(data.mode === 'live');
@@ -287,20 +288,35 @@
 	{/if}
 {/snippet}
 
+{#snippet effectCard(
+	promise: Awaitable<EngineResult<EngineAnswer>>,
+	result?: EngineResult<EngineAnswer>,
+)}
+	{@const rows =
+		result?.kind === 'answer' && 'cells' in result.answer && result.answer.state === 'measured'
+			? recordAlertCut(result.answer, 'effect')
+			: null}
+	{@const stated = rows?.some(({ key, value }) => key !== unstatedEffect && value != null)}
+	<!-- The reserve holds the effects while they load; a one-sentence answer keeps no empty space. -->
+	<RecordCard
+		title={alertSections.effect[locale]}
+		{stamp}
+		stampRule
+		reserve={result === undefined || result.kind === 'busy' || stated ? effectShape : undefined}
+	>
+		{#if result === undefined}<RecordPending {locale} answer={promise} shape={effectShape} />
+		{:else if rows}
+			{#if stated}{@render cutRows(rows, 'effect')}{:else}<p>{effectNotPublished}</p>{/if}
+		{:else}{@render resultState(result, effectShape)}{/if}
+	</RecordCard>
+{/snippet}
+
 {#snippet recordEffects(promise: Awaitable<EngineResult<EngineAnswer>>)}
 	<div id="effect" class="scroll-mt-24">
-		<RecordCard title={alertSections.effect[locale]} {stamp} stampRule reserve={effectShape}>
-			{#await promise}<RecordPending {locale} answer={promise} shape={effectShape} />
-			{:then result}
-				{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.state === 'measured'}
-					{@const rows = recordAlertCut(result.answer, 'effect')}
-					{#if rows.some(({ key, value }) => key !== unstatedEffect && value != null)}{@render cutRows(
-							rows,
-							'effect',
-						)}{:else}<p>{effectNotPublished}</p>{/if}
-				{:else}{@render resultState(result, effectShape)}{/if}
-			{/await}
-		</RecordCard>
+		{#await promise}{@render effectCard(promise)}{:then result}{@render effectCard(
+				promise,
+				result,
+			)}{/await}
 	</div>
 {/snippet}
 
@@ -342,7 +358,7 @@
 			title={alertSections.line[locale]}
 			{stamp}
 			stampRule
-			reserve={lineShape}
+			reserve={!result || result.kind === 'busy' || rows.length ? lineShape : undefined}
 		>
 			{#if reading}
 				{@render cutRows(rows, 'line')}

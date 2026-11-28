@@ -62,9 +62,9 @@ function renderLive(
 }
 
 it.each([
-	['en', 'Notice publications'],
-	['fr', 'Publications d’avis'],
-] as const)('labels the source publication count in %s', (locale, label) => {
+	['en', 'Notices in effect now'],
+	['fr', 'Avis en vigueur en ce moment'],
+] as const)('labels the count of notices in effect now in %s', (locale, label) => {
 	renderLive(locale, { non_responding: null }, ['original', 'reissue', 'future']);
 	const row = within(screen.getByText(label).parentElement!);
 	expect(row.getByText('3')).toBeVisible();

@@ -328,7 +328,7 @@
 					href={source.href}
 					hreflang={source.lang}
 				>
-					{t('Agency notice', 'Avis de la société de transport')}
+					{t('Service alert', 'Avis de service')}
 				</a>
 			{/if}
 		</Card>

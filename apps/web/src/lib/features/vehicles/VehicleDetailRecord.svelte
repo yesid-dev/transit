@@ -125,9 +125,9 @@
 			answer,
 			title:
 				section === 'lines'
-					? t('Lines and trips it ran', 'Lignes et trajets effectués')
+					? t('Lines and trips run', 'Lignes et trajets effectués')
 					: section === 'completion'
-						? t('Trips it did not finish', 'Trajets non terminés')
+						? t('Unfinished trips', 'Trajets non terminés')
 						: sectionTitles[section][locale === 'fr' ? 1 : 0],
 			citeTitle: sectionTitles[section][locale === 'fr' ? 1 : 0],
 			links: recordSectionLinks(url, section),
@@ -635,8 +635,8 @@
 												>{recordPercent(reading.value.vehicle_on_time, locale)}</strong
 											>
 											{t(
-												'of observed stop events were on time.',
-												'des passages observés étaient à l’heure.',
+												'of recorded stop arrivals were on time.',
+												'des passages enregistrés étaient à l’heure.',
 											)}
 										</p>
 										{@const chart = punctualityBands(reading)}

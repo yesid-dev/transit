@@ -161,8 +161,8 @@
 	const hourly = $derived(t('By hour and weekday', 'Par heure et jour de la semaine'));
 	const sentence = $derived(
 		t(
-			'of observed stop events here were on time.',
-			'des passages observés à cet arrêt étaient à l’heure.',
+			'of recorded stop arrivals here were on time.',
+			'des passages enregistrés à cet arrêt étaient à l’heure.',
 		),
 	);
 	let bandsTable = $state(false);
@@ -321,7 +321,7 @@
 				<p>
 					<StateMark state="not_measured" {locale} />
 					{t(
-						'Too few stop events were observed here to split them into early, on time and late.',
+						'Too few stop arrivals were observed here to split them into early, on time and late.',
 						'Trop peu de passages ont été observés ici pour les répartir entre en avance, à l’heure et en retard.',
 					)}
 				</p>

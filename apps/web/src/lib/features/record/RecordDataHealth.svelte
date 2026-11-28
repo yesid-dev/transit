@@ -91,6 +91,7 @@
 			coverage: Result<MeasureAnswer>;
 			accessibility: Result<RecordMeasure>;
 			alertEffects: Result<RecordSeries> | null;
+			alertCount?: Result<RecordMeasure> | null;
 			deliveryDays: Result<RecordSeries>;
 			scorecard: Record<AgencyScorecardMeasure, Result<ScorecardAnswer>>;
 			health: Result<DataHealthAnswer>;
@@ -491,6 +492,7 @@
 					[
 						record.accessibility,
 						record.alertEffects ?? null,
+						record.alertCount ?? null,
 						record.scorecard.vehicle_field_completeness,
 					],
 					(readings) => readings,
@@ -505,9 +507,9 @@
 					>
 						{#await publishing}
 							<RecordPending {locale} shape={publishingShape} />
-						{:then [accessibility, alertEffects, completeness]}
+						{:then [accessibility, alertEffects, alertCount, completeness]}
 							{@const rows = publishingRows(
-								{ accessibility, alertEffects, completeness },
+								{ accessibility, alertEffects, alertCount, completeness },
 								agency,
 								locale,
 								alerts,
@@ -738,7 +740,7 @@
 							key: 'counted',
 							label: term.counted,
 							text: t(
-								`Every stop event in ${agencyLabel}’s timetable for these dates, and its live feeds.`,
+								`Every stop arrival in ${agencyLabel}’s timetable for these dates, and its live feeds.`,
 								`Chaque passage prévu à l’horaire ${french.of} à ces dates, et ses flux en direct.`,
 							),
 						},

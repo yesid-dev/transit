@@ -68,7 +68,7 @@ describe('Departure and Daily report text', () => {
 		expect(rows[4]).toMatchObject({ hours: '19:00 to 05:00', value: '20.0%', count: '50' });
 		expect(rows[0]).toMatchObject({
 			state: 'too_few_to_judge',
-			detail: '20 stop events (minimum 30)',
+			detail: '20 stop arrivals (minimum 30)',
 			value: null,
 		});
 	});
@@ -131,16 +131,16 @@ describe('Departure and Daily report text', () => {
 });
 
 describe('Departure answer', () => {
-	it('leads with the late share of observed stop events, not with days', () => {
+	it('leads with the late share of recorded stop arrivals, not with days', () => {
 		// One late stop of 40 on one day and none on the other: one of two days had a late
 		// stop, but only 1 of 80 stop events (1.3%) was late.
 		const answer = series([cell({ day: '2026-11-18' }, 40, 1), cell({ day: '2026-11-20' }, 40, 0)]);
 		expect(departureLateShare(answer)).toMatchObject({ classified: 80, late: 1, share: 1 / 80 });
 		expect(departureLateStatement(answer, 'en')).toBe(
-			'1.3% of the observed stop events of this departure were late. 80 observed stop events over 2 days. 1 of the 2 days had a late stop.',
+			'1.3% of the recorded stop arrivals of this departure were late. 80 recorded stop arrivals over 2 days. 1 of the 2 days had a late stop.',
 		);
 		expect(departureLateStatement(answer, 'fr').replace(/\s/g, ' ')).toBe(
-			'1,3 % des passages observés de ce départ étaient en retard. 80 passages observés sur 2 jours. Au moins un retard à un arrêt pendant 1 des 2 jours.',
+			'1,3 % des passages enregistrés de ce départ étaient en retard. 80 passages enregistrés sur 2 jours. Au moins un retard à un arrêt pendant 1 des 2 jours.',
 		);
 	});
 

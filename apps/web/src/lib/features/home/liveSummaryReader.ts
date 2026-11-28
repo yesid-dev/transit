@@ -1,4 +1,5 @@
 import { liveReader } from '#lib/v1/adapter/index.ts';
+import { captureAlertOf, liveNoticeCount } from '../alerts/alertCards.ts';
 import { providerOf } from '#lib/v1/adapter/r2.core.ts';
 import { DEFAULT_LIVE_TTL_S } from '#lib/v1/freshness.ts';
 import { livePollDelayMs } from '#lib/v1/live/polling.ts';
@@ -70,7 +71,10 @@ export const liveSummaryReader: LiveReader = {
 			summary = await summaryOf(context);
 		} catch {
 			const alerts = await liveReader.alerts(context);
-			return { ...alerts, alert_count: alerts.alerts.length };
+			return {
+				...alerts,
+				alert_count: liveNoticeCount(alerts.alerts.map(captureAlertOf), Date.now()),
+			};
 		}
 		// The capture holds no alerts feed: the same outcome as reading it in full.
 		if (!summary.alerts) throw new Error('Alerts unavailable');

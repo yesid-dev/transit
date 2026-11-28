@@ -381,7 +381,7 @@
 	const stopCodes = $derived(new Map(stops.map((stop) => [stop.id, stop.code ?? stop.id])));
 	const stopNames = $derived(new Map(stops.map(({ id, name }) => [id, name])));
 	const shownCount = (value: number) => searchCount(value, locale);
-	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop events', 'passages');
+	const sampleLabel = (value: number) => shownCount(value) + ' ' + tr('stop arrivals', 'passages');
 	const listLabel = $derived(
 		waitLayer
 			? tr('Waits by stop and line', 'Attentes par arrêt et par ligne')
@@ -486,8 +486,8 @@
 			value={headline ?? ''}
 			sentence={stopLayer
 				? tr(
-						`is the highest late share of observed stop events in view, at stop ${leaderStop}, ${leader.name}.`,
-						`est la part de passages observés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
+						`is the highest late share of recorded stop arrivals in view, at stop ${leaderStop}, ${leader.name}.`,
+						`est la part de passages enregistrés en retard la plus élevée en vue, à l’arrêt ${leaderStop}, ${leader.name}.`,
 					)
 				: tr(
 						`is the most time lost between two stops in view: ${corridorReading(leader)}.`,

@@ -432,8 +432,21 @@
 		<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
 			<LineScheduleCard {record} {locale} {url} {headsigns} />
 			{#if !timetableOnly}
-				<div id="alerts">
-					<RecordCard interactive title={title('alerts')} {stamp} reserve={shapes.alerts}>
+				<!-- The reserve holds the notices while they load; a one-sentence answer keeps no empty space. -->
+				{#snippet alertsCard(result?: Awaited<ReturnType<typeof answerFor>>)}
+					{@const notices =
+						result?.kind === 'answer' &&
+						'value' in result.answer &&
+						!!result.answer.evidence.alert_messages?.length}
+					<RecordCard
+						interactive
+						title={title('alerts')}
+						{stamp}
+						reserve={providerHasAlerts(page.data.provider) &&
+						(!result || result.kind === 'busy' || notices)
+							? shapes.alerts
+							: undefined}
+					>
 						{#if !providerHasAlerts(page.data.provider)}
 							{@const official = page.data.provider?.alert_links[locale]}
 							<p>
@@ -452,6 +465,13 @@
 									'alerts',
 								)}{/if}{/snippet}
 					</RecordCard>
+				{/snippet}
+				<div id="alerts">
+					{#if providerHasAlerts(page.data.provider)}
+						{#await answerFor('alerts')}{@render alertsCard()}{:then result}{@render alertsCard(
+								result,
+							)}{/await}
+					{:else}{@render alertsCard()}{/if}
 				</div>
 			{/if}
 		</RecordGroup>

@@ -86,8 +86,17 @@
 		min-inline-size: 0;
 	}
 	.panel-row[data-report-row] {
-		grid-template-columns: 3.25rem minmax(0, 1fr) 7rem;
+		/* The status sizes its column up to 9rem, room for its mark and word ("○ Retard inconnu")
+		   on one line; a detail such as "(4 min après l’horaire)" wraps below, and the vehicle name
+		   keeps the rest of the row. */
+		grid-template-columns: 3.25rem minmax(0, 1fr) fit-content(9rem);
 		overflow-wrap: anywhere;
+	}
+	.panel-row[data-report-row] .value {
+		overflow-wrap: normal;
+	}
+	.panel-row[data-report-row] .value :global(.status-word) {
+		white-space: nowrap;
 	}
 	.code {
 		grid-area: code;

@@ -138,6 +138,58 @@ describe('what the agency publishes', () => {
 		]);
 	});
 
+	it('counts each notice once when its versions fall under several effects', () => {
+		// 1,023 distinct notices; the effect parts add to 1,296 because 273 notices changed effect
+		// between versions. 1,023 - 300 unstated = 723 at least state an effect, at most 996.
+		const distinct = (alerts: number) =>
+			answer({
+				state: 'measured',
+				state_text: { en: '', fr: '' },
+				value: { alerts },
+				coverage_note: null,
+				evidence,
+			} as unknown as RecordMeasure);
+		const parts = effects([
+			['DETOUR', 700],
+			['REDUCED_SERVICE', 296],
+			[null, 300],
+		]);
+		const rows = (count: ReturnType<typeof distinct>, locale: 'en' | 'fr') =>
+			readable(
+				publishingRows(
+					{
+						accessibility: accessibility({}),
+						alertEffects: parts,
+						alertCount: count,
+						completeness: completeness(1),
+					},
+					{ name: 'STM', frenchOf: 'de la STM' },
+					locale,
+				).slice(0, 2),
+				locale,
+			);
+		expect(rows(distinct(1_023), 'en')).toEqual([
+			['Service alerts', 'Published', '1,023 notices'],
+			['Effect of each notice', 'Published', 'At least 723 of 1,023 notices'],
+		]);
+		expect(
+			rows(distinct(1_023), 'fr').map((row) => row.map((cell) => cell?.replace(/\s/gu, ' '))),
+		).toEqual([
+			['Avis de service', 'Publié', '1 023 avis'],
+			['Effet de chaque avis', 'Publié', 'Au moins 723 sur 1 023 avis'],
+		]);
+		// With no overlap the parts add up to the notices and the share is exact.
+		expect(rows(distinct(1_296), 'en')[1]).toEqual([
+			'Effect of each notice',
+			'Published',
+			'996 of 1,296 notices',
+		]);
+		expect(rows({ kind: 'unreachable' } as never, 'en')).toEqual([
+			['Service alerts', 'Unavailable', null],
+			['Effect of each notice', 'Unavailable', null],
+		]);
+	});
+
 	it('names unpublished alerts and fields the agency leaves empty in French', () => {
 		const rows = publishingRows(
 			{
@@ -251,7 +303,7 @@ describe('the alerts sentence', () => {
 	});
 });
 
-describe('stop events with a reading', () => {
+describe('stop arrivals with a reading', () => {
 	const punctuality = {
 		measure: 'punctuality',
 		state: 'measured',
@@ -270,8 +322,8 @@ describe('stop events with a reading', () => {
 		[
 			'en',
 			'65.1%',
-			'of scheduled stop events have a reading.',
-			'2,619,857 of 4,025,675 scheduled stop events, 7 days',
+			'of scheduled stop arrivals have a reading.',
+			'2,619,857 of 4,025,675 scheduled stop arrivals, 7 days',
 		],
 		[
 			'fr',

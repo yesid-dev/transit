@@ -31,6 +31,10 @@ export function readHealthRecord(
 			alertsTracked && include('alertEffects')
 				? getRecordSeries(questions.alertEffects, scope)
 				: null,
+		alertCount:
+			alertsTracked && include('alertEffects')
+				? getRecordMeasure(questions.alertCount, scope)
+				: null,
 		deliveryDays: include('deliveryDays')
 			? getRecordSeries(networkRecordQuestions.deliveryDays, scope)
 			: undefined,

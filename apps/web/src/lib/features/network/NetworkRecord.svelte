@@ -328,8 +328,8 @@
 								sentence={share == null
 									? recordState(chartState(answer.state))[locale]
 									: t(
-											'of observed stop events were on time across the network.',
-											'des passages observés aux arrêts étaient à l’heure sur le réseau.',
+											'of recorded stop arrivals were on time across the network.',
+											'des passages enregistrés aux arrêts étaient à l’heure sur le réseau.',
 										)}
 								time={stamp}
 							>
@@ -464,8 +464,8 @@
 												label={t('Median', 'Médiane')}
 												emphasis
 												detail={t(
-													'Half of the observed stop events were later than this.',
-													'La moitié des passages observés ont eu lieu plus tard.',
+													'Half of the recorded stop arrivals were later than this.',
+													'La moitié des passages enregistrés ont eu lieu plus tard.',
 												)}
 											>
 												{delayReading(reading.value.median_delay, locale)}
@@ -474,8 +474,8 @@
 												label={t('Latest 1 in 10', 'Le dixième le plus en retard')}
 												emphasis
 												detail={t(
-													'1 observed stop event in 10 was later than this.',
-													'Un passage observé sur dix a eu lieu plus tard.',
+													'1 recorded stop arrival in 10 was later than this.',
+													'Un passage enregistré sur dix a eu lieu plus tard.',
 												)}
 											>
 												{delayReading(reading.value.p90_delay, locale)}

@@ -10,7 +10,7 @@ export const alertSections = {
 	stop: { en: 'By stop', fr: 'Par arrêt' },
 	effect: { en: 'By effect', fr: 'Par effet' },
 	cause: { en: 'By cause', fr: 'Par cause' },
-	messages: { en: 'Agency notices', fr: 'Avis de la société de transport' },
+	messages: { en: 'Service alerts', fr: 'Avis de service' },
 };
 
 export const alertMetrics = {

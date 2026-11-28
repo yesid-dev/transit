@@ -104,7 +104,7 @@
 	interactive={tracked || !!officialAlertsUrl}
 	title={scope.kind === 'stop'
 		? t('Notices for this stop', 'Avis pour cet arrêt')
-		: t('Agency notices', 'Avis de la société de transport')}
+		: t('Service alerts', 'Avis de service')}
 	{stamp}
 >
 	{#if pending}

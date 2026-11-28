@@ -89,7 +89,7 @@ it.each(['en', 'fr'] as const)('uses the shared state marks in %s', async (local
 		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: catalog }),
 	});
 	const card = await screen.findByRole('article', {
-		name: locale === 'fr' ? 'Six états, chacun nommé' : 'Six states, each said in words',
+		name: locale === 'fr' ? 'Signification des états' : 'What the status labels mean',
 	});
 	const states = [
 		'no_live_data',
@@ -427,7 +427,7 @@ it.each([
 	[
 		'en',
 		'65.1%',
-		'of scheduled stop events have a reading.',
+		'of scheduled stop arrivals have a reading.',
 		'What OC Transpo publishes',
 		'OC Transpo does not publish its service alerts as open data. It posts them on its website.',
 		'Check the official notices',

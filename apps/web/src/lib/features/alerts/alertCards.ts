@@ -7,6 +7,7 @@ import {
 } from '#lib/site/agencyMessages.ts';
 import { effectLabel } from '#lib/v1/gtfsAlertLabels.ts';
 import type { CaptureSnapshot } from '#lib/live/captureSnapshot.ts';
+import type { Alert } from '#lib/v1/schemas/generated/live_alerts.ts';
 import { isGenericAlertHeading } from '#lib/v1/alertDisplay.ts';
 
 export type AlertCard = AgencyMessage & {
@@ -107,6 +108,42 @@ export function recordNoticeCards(answer: RecordMeasure) {
 	const messages = answer.evidence.alert_messages;
 	if (messages?.length) return groupAlertCards(recordAlertCards(messages));
 	return answer.value.alerts === 0 ? [] : null;
+}
+
+type LiveAlert = NonNullable<CaptureSnapshot['alerts']>[number];
+
+/**
+ * The notices in effect at `now`, each counted once: a bilingual reissue or a later version is
+ * the same notice. Service alerts shows this number live, and the Overview's Live now card too.
+ */
+export function liveNoticeCount(alerts: readonly LiveAlert[], now: number) {
+	return groupAlertCards(liveAlertCards(alerts, now)).length;
+}
+
+/** A published alert file's entry in the shape of a live capture's alert. */
+export function captureAlertOf(alert: Alert): LiveAlert {
+	const texts = (fr: string | null | undefined, en: string | null | undefined) =>
+		Object.fromEntries(
+			Object.entries({ fr, en }).filter((entry): entry is [string, string] => !!entry[1]),
+		);
+	return {
+		id: alert.id,
+		header: texts(alert.header_text, alert.header_text_en),
+		description: texts(alert.description, alert.description_en),
+		url: texts(alert.url, alert.url_en),
+		cause: alert.cause ?? null,
+		effect: alert.effect ?? null,
+		severity: alert.severity_level ?? null,
+		routes: alert.routes ?? [],
+		stops: alert.stops ?? [],
+		periods: (alert.active_periods?.length
+			? alert.active_periods
+			: [{ start_utc: alert.start_utc, end_utc: alert.end_utc }]
+		).map(
+			({ start_utc, end_utc }) =>
+				[start_utc ?? null, end_utc ?? null] as [string | null, string | null],
+		),
+	};
 }
 
 export function liveAlertCards(
