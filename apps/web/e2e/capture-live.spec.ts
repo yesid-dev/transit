@@ -140,8 +140,8 @@ test('Live alerts display capture evidence and distinguish unsupported coverage'
 			page.getByRole('article', { name: fr ? 'Par effet' : 'By effect', exact: true }),
 		).toContainText(
 			fr
-				? 'La société de transport ne publie pas l’effet de ses avis.'
-				: 'The agency does not publish the effect of its notices.',
+				? 'La STM ne publie pas l’effet de ses avis.'
+				: 'STM does not publish the effect of its notices.',
 		);
 		const controls = await openFrameControls(page, locale);
 		const filter = controls.getByRole('group', { name: fr ? 'Filtrer' : 'Filter', exact: true });

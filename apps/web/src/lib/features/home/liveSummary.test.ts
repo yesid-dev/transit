@@ -180,6 +180,37 @@ it.each([
 	);
 });
 
+it('counts the notices in effect now once each, as Service alerts does live', async () => {
+	const body = capture('stm');
+	const later = new Date(now + 3_600_000).toISOString();
+	const [detour] = body.alerts!;
+	body.alerts!.push(
+		// A reissue of the detour under another ID is the same notice.
+		{ ...detour, id: 'detour-reissue' },
+		// A notice that starts in an hour is not in effect now.
+		{
+			...detour,
+			id: 'tomorrow',
+			header: { fr: 'Plus tard', en: 'Later' },
+			periods: [[later, null]],
+		},
+	);
+	const summary = liveSummary(captureSnapshotSchema.parse(body), now);
+	expect(summary.alerts?.alert_count).toBe(3);
+
+	// The fallback reads the published alerts file and agrees.
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (url: RequestInfo | URL) =>
+			String(url).startsWith('/api/live-summary?')
+				? Response.json({ state: 'unavailable' }, { status: 503 })
+				: Response.json(body),
+		),
+	);
+	const alerts = await liveSummaryReader.alerts({ manifest, signal: new AbortController().signal });
+	expect(summaryAlertCount(alerts)).toBe(3);
+});
+
 it('reads the alerts as unavailable when the summary has none', async () => {
 	const summary = liveSummary(captureSnapshotSchema.parse(capture('stm', false)), now);
 	vi.stubGlobal(

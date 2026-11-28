@@ -44,11 +44,11 @@ export const methodCopy = {
 				ordering:
 					'Worst-first share rankings sort by the cautious end of the 95% Wilson interval (the upper end for on-time and delivered shares, the lower end for early, late, cancelled, missing, bunched and full shares), while displaying the exact observed share on the row. Ties break by larger sample size, then entity ID. Excess wait, reporting-gap rates and total vehicle-minutes lost show no uncertainty range.',
 				caveat:
-					'Stop events on the same trip, intervals from the same vehicle and trips on the same vehicle can be correlated; treat the 95% Wilson interval as a guide rather than an exact probability guarantee.',
+					'Stop arrivals on the same trip, intervals from the same vehicle and trips on the same vehicle can be correlated; treat the 95% Wilson interval as a guide rather than an exact probability guarantee.',
 			},
 		},
-		statesTitle: 'Six states, each said in words',
-		statesNote: 'A gap is shown as a gap. An absent value is never a reassuring zero.',
+		statesTitle: 'What the status labels mean',
+		statesNote: 'A missing value is shown as missing, never as zero.',
 		states: {
 			no_live_data:
 				'The agency publishes no real-time feed for this line, such as the métro. It is shown with its schedule and left out of every rate.',
@@ -132,9 +132,8 @@ export const methodCopy = {
 					'Les passages aux arrêts d’un même trajet, les intervalles d’un même véhicule et les trajets d’un même véhicule peuvent être dépendants; cet intervalle à 95\u00a0% sert de guide plutôt que de garantie exacte.',
 			},
 		},
-		statesTitle: 'Six états, chacun nommé',
-		statesNote:
-			'Une lacune reste visible. Une valeur absente n’est jamais remplacée par un zéro rassurant.',
+		statesTitle: 'Signification des états',
+		statesNote: 'Une valeur manquante est indiquée comme manquante, jamais comme zéro.',
 		states: {
 			no_live_data:
 				'La société de transport ne publie aucun flux en temps réel pour cette ligne, comme le métro. Son horaire est affiché et elle est exclue de tous les taux.',

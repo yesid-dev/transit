@@ -5,7 +5,7 @@ const parts = {
 	subject: 'Daily report, Montréal',
 	section: 'Early, on time and late',
 	period: { from: '2026-11-17', to: '2026-11-17' },
-	statement: '71.0% of observed stop events were on time.',
+	statement: '71.0% of recorded stop arrivals were on time.',
 	method: 'Method v3.',
 	source: { agency: { name: 'STM', frenchOf: 'de la STM' }, licence: 'CC BY 4.0' },
 	href: 'https://transit.test/receipt#punctuality',
@@ -15,7 +15,7 @@ const parts = {
 describe('dailySectionCitation', () => {
 	it('carries the source, licence and access day like every page citation', () => {
 		expect(dailySectionCitation(parts, 'en')).toBe(
-			'Transit · Daily report, Montréal. Early, on time and late. 17 Nov 2026. 71.0% of observed stop events were on time. Method v3. Source: STM open data, CC BY 4.0, computed by Transit. Accessed 27 Nov 2026. https://transit.test/receipt#punctuality',
+			'Transit · Daily report, Montréal. Early, on time and late. 17 Nov 2026. 71.0% of recorded stop arrivals were on time. Method v3. Source: STM open data, CC BY 4.0, computed by Transit. Accessed 27 Nov 2026. https://transit.test/receipt#punctuality',
 		);
 	});
 

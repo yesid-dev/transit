@@ -483,7 +483,10 @@
 	{#if recordHref}<a
 			class="inline-flex min-h-11 items-center text-primary underline"
 			href={recordHref}
-			>{t('Its record over the chosen dates', 'Son bilan pour les dates choisies')}</a
+			>{t(
+				'This vehicle’s record for the chosen dates',
+				'Bilan de ce véhicule pour les dates choisies',
+			)}</a
 		>{/if}
 {/snippet}
 

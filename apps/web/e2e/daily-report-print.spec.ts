@@ -88,7 +88,7 @@ test.describe('Daily report print', () => {
 				.evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().top));
 			expect(Math.max(...actionTops) - Math.min(...actionTops)).toBeLessThan(1);
 			const rankingsCard = main.getByRole('article', {
-				name: fr ? 'Lignes et arrêts à examiner' : 'Lines and stops to investigate',
+				name: fr ? 'Lignes et arrêts les moins ponctuels' : 'Lowest on-time lines and stops',
 			});
 			const rankingsFooter = rankingsCard.locator('footer');
 			await expect(rankingsFooter).toHaveCount(1);
@@ -96,10 +96,10 @@ test.describe('Daily report print', () => {
 			await expect(rankings).toHaveCount(2);
 			for (const table of await rankings.all()) {
 				await expect(table.locator('tbody tr').first()).toContainText(
-					fr ? /\d passages aux arrêts/u : /\d stop events/u,
+					fr ? /\d passages aux arrêts/u : /\d stop arrivals/u,
 				);
 			}
-			await expect(rankingsFooter).not.toContainText(fr ? 'passages aux arrêts' : 'stop events');
+			await expect(rankingsFooter).not.toContainText(fr ? 'passages aux arrêts' : 'stop arrivals');
 			await expect(rankingsFooter).not.toContainText(fr ? 'méthode v' : 'method v');
 			const about = main.getByRole('article', {
 				name: fr ? 'À propos de ces chiffres' : 'About these figures',

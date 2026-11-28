@@ -121,7 +121,7 @@ export function rankingHeadline(lead: string, leader: string, way: string | null
 
 const sampleUnits = {
 	headways: { en: 'observed intervals', fr: 'intervalles observés' },
-	events: { en: 'observed stop events', fr: 'passages observés aux arrêts' },
+	events: { en: 'recorded stop arrivals', fr: 'passages enregistrés aux arrêts' },
 	trips: { en: 'eligible trips', fr: 'trajets admissibles' },
 };
 
@@ -262,8 +262,8 @@ export function lineRankingFloor(
 		const trips = number(floors.observed_trips, locale);
 		return choose(
 			locale,
-			`Each line needs at least ${events} observed stop events and ${trips} observed trips to rank.`,
-			`Chaque ligne doit compter au moins ${events} passages observés aux arrêts et ${trips} trajets observés pour être classée.`,
+			`Each line needs at least ${events} recorded stop arrivals and ${trips} observed trips to rank.`,
+			`Chaque ligne doit compter au moins ${events} passages enregistrés aux arrêts et ${trips} trajets observés pour être classée.`,
 		);
 	}
 	if (

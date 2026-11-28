@@ -211,8 +211,8 @@
 		sentence={share === null
 			? rateStateText(answer, locale)
 			: t(
-					'of observed stop events on this line were on time.',
-					'des passages observés aux arrêts de cette ligne étaient à l’heure.',
+					'of recorded stop arrivals on this line were on time.',
+					'des passages enregistrés aux arrêts de cette ligne étaient à l’heure.',
 				)}
 		state={chartState(answer.state)}
 		time={stamp}

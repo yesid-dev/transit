@@ -17,9 +17,9 @@ export const dailyTitles = {
 		'Service effectué par rapport au service prévu',
 	],
 	periods: ['The day in five periods', 'La journée en cinq périodes'],
-	lines: ['Lines to investigate', 'Lignes à examiner'],
-	stops: ['Stops to investigate', 'Arrêts à examiner'],
-	messages: ['Agency notices', 'Avis de la société de transport'],
+	lines: ['Lowest on-time lines', 'Lignes les moins ponctuelles'],
+	stops: ['Lowest on-time stops', 'Arrêts les moins ponctuels'],
+	messages: ['Service alerts', 'Avis de service'],
 } as const;
 
 export const departureTitles = {
@@ -42,8 +42,8 @@ export function onTimeStatement(cell: RecordCell, locale: Locale) {
 	const total = tally(classified, locale);
 	const reading = choose(
 		locale,
-		`${share} of observed stop events were on time (${top} of ${total})`,
-		`${share} des passages observés étaient à l’heure (${top} sur ${total})`,
+		`${share} of recorded stop arrivals were on time (${top} of ${total})`,
+		`${share} des passages enregistrés étaient à l’heure (${top} sur ${total})`,
 	);
 	return `${withCoverage(reading, cell.evidence, locale)}.`;
 }
@@ -166,8 +166,8 @@ export function departureLateShare(answer: RecordSeries) {
 export function departureLateSentence(locale: Locale) {
 	return choose(
 		locale,
-		'of the observed stop events of this departure were late.',
-		'des passages observés de ce départ étaient en retard.',
+		'of the recorded stop arrivals of this departure were late.',
+		'des passages enregistrés de ce départ étaient en retard.',
 	);
 }
 
@@ -180,8 +180,8 @@ export function departureLateDetail(answer: RecordSeries, locale: Locale) {
 	const days = tally(observed, locale);
 	return choose(
 		locale,
-		`${events} observed stop events over ${countedUnit(observed, 'day', locale)}. ${tally(late, locale)} of the ${days} days had a late stop.`,
-		`${events} passages observés sur ${countedUnit(observed, 'day', locale)}. Au moins un retard à un arrêt pendant ${tally(late, locale)} des ${days} jours.`,
+		`${events} recorded stop arrivals over ${countedUnit(observed, 'day', locale)}. ${tally(late, locale)} of the ${days} days had a late stop.`,
+		`${events} passages enregistrés sur ${countedUnit(observed, 'day', locale)}. Au moins un retard à un arrêt pendant ${tally(late, locale)} des ${days} jours.`,
 	);
 }
 

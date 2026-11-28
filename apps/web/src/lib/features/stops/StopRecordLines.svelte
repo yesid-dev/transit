@@ -101,7 +101,7 @@
 					},
 					{
 						key: 'count',
-						header: t('Stop events here', 'Passages à cet arrêt'),
+						header: t('Stop arrivals here', 'Passages à cet arrêt'),
 						numeric: true,
 						cell: count,
 					},

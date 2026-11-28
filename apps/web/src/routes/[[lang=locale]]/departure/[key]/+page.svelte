@@ -572,8 +572,8 @@
 							key: 'counted',
 							label: t('Counted', 'Ce qui est compté'),
 							text: t(
-								'The answer is the late share of the observed stop events of this departure on these dates. An observed day has at least one classified stop event.',
-								'La réponse est la part des passages observés de ce départ qui étaient en retard à ces dates. Jour observé : au moins un passage classé.',
+								'The answer is the late share of the recorded stop arrivals of this departure on these dates. An observed day has at least one classified stop arrival.',
+								'La réponse est la part des passages enregistrés de ce départ qui étaient en retard à ces dates. Jour observé : au moins un passage classé.',
 							),
 						},
 						{

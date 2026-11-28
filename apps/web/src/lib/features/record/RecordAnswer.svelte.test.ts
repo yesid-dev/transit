@@ -10,18 +10,18 @@ const time = { kind: 'record', label: 'Record · 19 to 25 Nov 2026' } as const;
 
 describe('RecordAnswer', () => {
 	for (const [locale, counted] of [
-		['en', 'Counted: 59,016 stop events, 7 days'],
-		['fr', 'Ce qui est compté\u00a0: 59,016 stop events, 7 days'],
+		['en', 'Counted: 59,016 stop arrivals, 7 days'],
+		['fr', 'Ce qui est compté\u00a0: 59,016 stop arrivals, 7 days'],
 	] as const)
 		it(`reads the figure, the stamp, the comparison, what was counted, then the actions (${locale})`, () => {
 			const view = render(RecordAnswer, {
 				props: {
 					locale,
 					value: '72.6%',
-					sentence: 'of observed stop events on this line were on time.',
+					sentence: 'of recorded stop arrivals on this line were on time.',
 					time,
 					comparison: '5.4 points below the network.',
-					evidence: { sample: '59,016 stop events, 7 days' },
+					evidence: { sample: '59,016 stop arrivals, 7 days' },
 					actions,
 				},
 			});
@@ -65,12 +65,12 @@ describe('RecordAnswer', () => {
 			props: {
 				locale: 'en',
 				value: '65.0%',
-				sentence: 'of scheduled stop events have a reading.',
+				sentence: 'of scheduled stop arrivals have a reading.',
 				time,
-				evidence: { sample: '2 of 4 scheduled stop events, 7 days' },
+				evidence: { sample: '2 of 4 scheduled stop arrivals, 7 days' },
 			},
 		});
 		expect(view.container.querySelector('.answer-grid')!.classList).not.toContain('aside');
-		expect(view.getByText('Counted: 2 of 4 scheduled stop events, 7 days')).toBeTruthy();
+		expect(view.getByText('Counted: 2 of 4 scheduled stop arrivals, 7 days')).toBeTruthy();
 	});
 });

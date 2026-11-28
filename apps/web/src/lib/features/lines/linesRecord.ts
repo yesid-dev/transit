@@ -8,7 +8,7 @@ import type { RouteIndexEntry } from '#lib/v1/schemas/routes_index.ts';
 import { finderCells, finderShare, finderTrips, type FinderResult } from '../record/finderText.ts';
 import { countedUnit, recordPercent } from '#lib/site/presenter.ts';
 import { recordStateFor, type RecordState } from '../record/recordStates.ts';
-import { lowCoverageLabel } from '../record/recordText.ts';
+import { lowCoverageLabel, tally } from '../record/recordText.ts';
 import { foldSearchText, tokenMatchScore } from '#lib/search/normalize.ts';
 
 export const lineSortKeys = ['line', 'onTime', 'late', 'trips'] as const;
@@ -211,9 +211,50 @@ export function lineExclusion(
 		return {
 			state,
 			text: {
-				en: 'No stop event of this line had a reading on these dates.',
+				en: 'No stop arrival of this line had a reading on these dates.',
 				fr: 'Aucun passage de cette ligne n’a de relevé à ces dates.',
 			},
 		};
 	return { state, text: null };
+}
+
+/**
+ * Every line count on the Lines screen in one sentence that adds up. The subtitle and the
+ * Overview count the current timetable; the list also keeps lines that ran on these dates but are
+ * no longer in it. Measured lines below the ranking floor are not judged in the headline.
+ */
+export function linesListedText(
+	counts: {
+		listed: number;
+		timetable: number;
+		measured: number;
+		ranked: number;
+		noLive: number;
+		excluded: number;
+	},
+	locale: Locale,
+) {
+	const { listed, timetable, measured, ranked, noLive, excluded } = counts;
+	const n = (value: number) => tally(value, locale);
+	const extra = listed - timetable;
+	const fr = locale === 'fr';
+	const head = fr
+		? `${countedUnit(listed, 'line', locale)} ${listed === 1 ? 'figure' : 'figurent'} ici`
+		: `${countedUnit(listed, 'line', locale)} ${listed === 1 ? 'is' : 'are'} listed here`;
+	const origin =
+		extra > 0 && timetable > 0
+			? fr
+				? `\u00a0: les ${n(timetable)} de l’horaire actuel et ${n(extra)} ${extra === 1 ? 'autre présente' : 'autres présentes'} dans le bilan de ces dates.`
+				: `: the ${n(timetable)} in the current timetable and ${n(extra)} more in the record for these dates.`
+			: '.';
+	const judged =
+		ranked < measured
+			? fr
+				? `, dont ${n(ranked)} avec assez de données pour conclure`
+				: ` (${n(ranked)} with enough to judge)`
+			: '';
+	const parts = fr
+		? `${n(measured)} avec des mesures${judged}, ${n(noLive)} sans données en direct et ${n(excluded)} qu’on ne peut pas juger à ces dates.`
+		: `${n(measured)} measured${judged}, ${n(noLive)} without live data and ${n(excluded)} that cannot be judged on these dates.`;
+	return `${head}${origin} ${parts.charAt(0).toUpperCase()}${parts.slice(1)}`;
 }

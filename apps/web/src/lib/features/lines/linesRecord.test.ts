@@ -10,6 +10,7 @@ import {
 	lineSortKeys,
 	orderedLines,
 	lineSpread,
+	linesListedText,
 	observedLineReadings,
 } from './linesRecord.ts';
 
@@ -118,7 +119,7 @@ describe('Lines Record', () => {
 		expect(lineSort(new URLSearchParams({ sort: key }))).toEqual({ key, direction });
 	});
 
-	it('pools observed shares by scheduled stop events and ignores missing readings', () => {
+	it('pools observed shares by scheduled stop arrivals and ignores missing readings', () => {
 		expect(
 			observedLineReadings([
 				{ share_observed: 0.4, counts: { scheduled: 250 } },
@@ -157,9 +158,42 @@ describe('lines that cannot be judged', () => {
 	it('never leaves a bare Unknown without its reason', () => {
 		const unknown = lineExclusion({ state: 'unknown', evidence: { counts: { classified: 0 } } });
 		expect(unknown.state).toBe('unknown');
-		expect(unknown.text?.en).toBe('No stop event of this line had a reading on these dates.');
+		expect(unknown.text?.en).toBe('No stop arrival of this line had a reading on these dates.');
 		expect(
 			lineExclusion({ state: 'too_few_to_judge', evidence: { counts: { classified: 40 } } }),
 		).toEqual({ state: 'too_few_to_judge', text: null });
+	});
+});
+
+describe('the line counts on the Lines screen', () => {
+	it('adds every count up and names the timetable the subtitle counts', () => {
+		// 210 + 9 = 219 listed; 203 + 4 + 12 = 219; 196 of the 203 measured meet the ranking floor.
+		const counts = {
+			listed: 219,
+			timetable: 210,
+			measured: 203,
+			ranked: 196,
+			noLive: 4,
+			excluded: 12,
+		};
+		expect(counts.timetable + 9).toBe(counts.listed);
+		expect(counts.measured + counts.noLive + counts.excluded).toBe(counts.listed);
+		expect(linesListedText(counts, 'en')).toBe(
+			'219 lines are listed here: the 210 in the current timetable and 9 more in the record for these dates. 203 measured (196 with enough to judge), 4 without live data and 12 that cannot be judged on these dates.',
+		);
+		expect(linesListedText(counts, 'fr').replace(/\s/gu, ' ')).toBe(
+			'219 lignes figurent ici : les 210 de l’horaire actuel et 9 autres présentes dans le bilan de ces dates. 203 avec des mesures, dont 196 avec assez de données pour conclure, 4 sans données en direct et 12 qu’on ne peut pas juger à ces dates.',
+		);
+	});
+
+	it('keeps to the list when it matches the timetable and every measured line is judged', () => {
+		expect(
+			linesListedText(
+				{ listed: 3, timetable: 3, measured: 2, ranked: 2, noLive: 1, excluded: 0 },
+				'en',
+			),
+		).toBe(
+			'3 lines are listed here. 2 measured, 1 without live data and 0 that cannot be judged on these dates.',
+		);
 	});
 });

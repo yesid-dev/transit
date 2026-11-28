@@ -142,7 +142,10 @@
 									class="inline-flex min-h-11 items-center justify-self-start text-primary underline"
 									href={recordHref}
 								>
-									{t('Its record over the chosen dates', 'Son bilan pour les dates choisies')}
+									{t(
+										'This vehicle’s record for the chosen dates',
+										'Bilan de ce véhicule pour les dates choisies',
+									)}
 								</a>
 							</RecordGroup>
 							<RecordGroup>

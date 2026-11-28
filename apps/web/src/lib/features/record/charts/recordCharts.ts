@@ -91,7 +91,7 @@ export function bandChart(
 			columns: {
 				label: choose(locale, 'Status', 'État'),
 				value: choose(locale, 'Share', 'Part'),
-				detail: choose(locale, 'Stop events', 'Passages aux arrêts'),
+				detail: choose(locale, 'Stop arrivals', 'Passages aux arrêts'),
 			},
 			rows: bands.map(({ id, label, valueLabel, detail }) => ({
 				id,
@@ -128,7 +128,7 @@ export function histogramChart(
 	const table: ChartTable = {
 		columns: {
 			label: choose(locale, 'Minute range', 'Tranche de minutes'),
-			value: choose(locale, 'Stop events', 'Passages aux arrêts'),
+			value: choose(locale, 'Stop arrivals', 'Passages aux arrêts'),
 			detail: choose(locale, 'Share', 'Part'),
 		},
 		rows: bins.map(({ key, value }) => ({
@@ -142,8 +142,8 @@ export function histogramChart(
 		props: {
 			label: `${title}. ${choose(
 				locale,
-				'Share of observed stop events by minutes against the timetable.',
-				'Part des passages observés aux arrêts selon l’écart à l’horaire en minutes.',
+				'Share of recorded stop arrivals by minutes against the timetable.',
+				'Part des passages enregistrés aux arrêts selon l’écart à l’horaire en minutes.',
 			)}`,
 			axis,
 			xDomain,
@@ -342,7 +342,7 @@ export function hourChart(
 			columns: {
 				label: choose(locale, 'Weekday and hour', 'Jour et heure'),
 				value: choose(locale, 'Late share', 'Part en retard'),
-				detail: choose(locale, 'Stop events', 'Passages aux arrêts'),
+				detail: choose(locale, 'Stop arrivals', 'Passages aux arrêts'),
 			},
 			rows: tableRows,
 			pageSize: 12,

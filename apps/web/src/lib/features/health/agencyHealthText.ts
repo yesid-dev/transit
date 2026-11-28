@@ -50,14 +50,14 @@ export function stopEventCoverage(answer: MeasureAnswer, locale: Locale) {
 		value: recordPercent(share, locale),
 		sentence: choose(
 			locale,
-			'of scheduled stop events have a reading.',
+			'of scheduled stop arrivals have a reading.',
 			'des passages prévus aux arrêts ont un relevé.',
 		),
 		counted:
 			scheduled != null && observed != null
 				? choose(
 						locale,
-						`${tally(observed, locale)} of ${tally(scheduled, locale)} scheduled stop events, ${days}`,
+						`${tally(observed, locale)} of ${tally(scheduled, locale)} scheduled stop arrivals, ${days}`,
 						`${tally(observed, locale)} passages prévus aux arrêts sur ${tally(scheduled, locale)}, ${days}`,
 					)
 				: days,
@@ -120,6 +120,7 @@ function accessibilityRow(
 
 function alertRows(
 	effects: EngineResult<RecordSeries> | null,
+	distinct: EngineResult<RecordMeasure> | null | undefined,
 	agency: AgencyName,
 	locale: Locale,
 	declaration: { tracked: boolean; officialUrl?: string },
@@ -149,15 +150,35 @@ function alertRows(
 			{ ...alerts, state: 'not_measured', note: null },
 			{ ...effect, state: 'not_measured', note: null },
 		];
-	let total = 0;
+	// Each effect counts a notice once, but a notice whose versions changed effect falls under
+	// several, so the parts can add up to more than the notices. The total is the distinct count
+	// Service alerts shows; the parts only bound how many notices state an effect.
+	let parts = 0;
 	let stated = 0;
+	let unstated = 0;
 	for (const cell of answer.cells) {
 		const count = cell.value.alerts ?? 0;
-		total += count;
+		parts += count;
 		const key = typeof cell.key.effect === 'string' ? cell.key.effect : null;
 		const published = publishedAlertEffect(key);
 		if (published && published !== unstatedEffect) stated += count;
+		else unstated += count;
 	}
+	const counted = answerOf(distinct ?? null);
+	const distinctTotal =
+		counted?.state === 'measured'
+			? number(counted.value.alerts)
+			: distinct === undefined
+				? parts
+				: null;
+	if (distinctTotal === null)
+		return [
+			{ ...alerts, state: 'unavailable', note: null },
+			{ ...effect, state: 'unavailable', note: null },
+		];
+	const total = distinctTotal;
+	const fewest = Math.max(0, total - unstated);
+	const most = Math.min(total, stated);
 	const alertCount = (value: number) =>
 		t(
 			`${tally(value, locale)} ${value === 1 ? 'notice' : 'notices'}`,
@@ -179,7 +200,17 @@ function alertRows(
 	return [
 		{ ...alerts, state: 'published', note: alertCount(total) },
 		stated
-			? { ...effect, state: 'published', note: recordRatio(stated, alertCount(total), locale) }
+			? {
+					...effect,
+					state: 'published',
+					note:
+						fewest === most
+							? recordRatio(most, alertCount(total), locale)
+							: t(
+									`At least ${recordRatio(fewest, alertCount(total), locale)}`,
+									`Au moins ${recordRatio(fewest, alertCount(total), locale)}`,
+								),
+				}
 			: {
 					...effect,
 					state: 'not_published',
@@ -227,10 +258,13 @@ export function publishingRows(
 	{
 		accessibility,
 		alertEffects,
+		alertCount,
 		completeness,
 	}: {
 		accessibility: EngineResult<RecordMeasure>;
 		alertEffects: EngineResult<RecordSeries> | null;
+		/** The distinct notices on these dates, the total Service alerts shows. */
+		alertCount?: EngineResult<RecordMeasure> | null;
 		completeness: EngineResult<ScorecardAnswer>;
 	},
 	agency: AgencyName,
@@ -238,7 +272,7 @@ export function publishingRows(
 	declaration: { tracked: boolean; officialUrl?: string } = { tracked: true },
 ): HealthRow[] {
 	return [
-		...alertRows(alertEffects, agency, locale, declaration),
+		...alertRows(alertEffects, alertCount, agency, locale, declaration),
 		accessibilityRow('stops', accessibility, locale),
 		accessibilityRow('trips', accessibility, locale),
 		occupancyRow(completeness, locale),

@@ -90,7 +90,7 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 	await page.keyboard.press('Escape');
 	await answer.getByRole('button', { name: 'Télécharger' }).click();
 	for (const [name, section] of [
-		['Avis de la société de transport', 'messages'],
+		['Avis de service', 'messages'],
 		['Par heure', 'hour'],
 		['Jour par jour', 'day'],
 	]) {

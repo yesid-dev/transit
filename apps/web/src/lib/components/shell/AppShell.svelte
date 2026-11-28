@@ -276,6 +276,16 @@
 			--space-page-x: var(--space-card-gap);
 		}
 	}
+	/* The page heading starts level with the paired controls rail, which sits 1rem below the
+	   header. The compact layout keeps the surface's own fluid padding. */
+	.app-shell-root[data-full-viewport='false']
+		:global(
+			.with-controls-rail > .app-frame-main .surface-shell:not(.surface-shell .surface-shell)
+		) {
+		padding-block-start: calc(
+			var(--app-frame-paired) * 1rem + var(--app-frame-compact) * clamp(1.5rem, 4vw, 2.5rem)
+		);
+	}
 	.app-shell-root[data-full-viewport='true'] {
 		--map-touch-controls-clearance: max(
 			calc(1.625rem + env(safe-area-inset-bottom, 0px) + var(--size-tap-min)),

@@ -118,7 +118,7 @@ for (const locale of ['en', 'fr'] as const) {
 			page.getByText(
 				fr
 					? /40,0\s% des 500 passages prévus/
-					: /40\.0% of 500 scheduled stop events have a reading/,
+					: /40\.0% of 500 scheduled stop arrivals have a reading/,
 			),
 		).toBeVisible();
 		await expect(measured.getByRole('link', { name: /Confederation|99/ })).toHaveCount(0);
@@ -244,7 +244,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(answer).toContainText(
 			fr
 				? /Ce qui est compté\s*:\s*250\s000 passages aux arrêts sur 25 lignes, 7 jours/
-				: 'Counted: 250,000 stop events on 25 lines, 7 days',
+				: 'Counted: 250,000 stop arrivals on 25 lines, 7 days',
 		);
 		await expect(answer).not.toContainText(fr ? 'nettoyage' : 'cleaning');
 		const more = page.getByRole('button', {
@@ -617,7 +617,7 @@ for (const locale of ['en', 'fr'] as const) {
 				'too_few_to_judge',
 			);
 			await expect(row).toContainText(
-				fr ? '29 passages aux arrêts (minimum de 500)' : '29 stop events (minimum 500)',
+				fr ? '29 passages aux arrêts (minimum de 500)' : '29 stop arrivals (minimum 500)',
 			);
 		}
 	});
@@ -630,7 +630,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await expect(answer).toContainText(
 			fr
 				? /24 des 100 passages prévus ont été observés ici à ces dates\. Il faut observer au moins 40,0\s% des passages prévus\./
-				: '24 of 100 scheduled stop events were observed here on these dates. At least 40.0% of scheduled stop events must be observed.',
+				: '24 of 100 scheduled stop arrivals were observed here on these dates. At least 40.0% of scheduled stop arrivals must be observed.',
 		);
 		const waiting = page.locator('#waiting');
 		const gap = fr
