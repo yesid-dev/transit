@@ -415,10 +415,10 @@ def test_a_slow_stretch_question_says_busy_then_answers_the_retry(
 
     async def run() -> tuple[Any, ...]:
         first = await http(app, "/measure", params)
-        # The query keeps going after the busy answer, holding its record slot.
-        assert app.record.slots.locked()
+        # The query keeps going after the busy answer, holding its heavy-lane slot.
+        assert app.heavy.slots.locked()
         await asyncio.gather(*app.stretch_pending.values())
-        assert not app.record.slots.locked()
+        assert not app.heavy.slots.locked()
         second = await http(app, "/measure", params)
         return first, second
 
