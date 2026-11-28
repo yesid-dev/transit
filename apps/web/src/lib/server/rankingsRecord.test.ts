@@ -268,3 +268,14 @@ it('reads an excess-wait ranking that leaves out lines with no frequent periods'
 		},
 	});
 });
+
+it('names a direction by the compass word its destinations share, and nothing when none is shared', () => {
+	expect(
+		rankingHeadsigns([
+			{ dir: 0, headsign: 'Est' },
+			{ dir: 0, headsign: 'Est destination Station Snowdon' },
+			{ dir: 1, headsign: 'Ouest' },
+			{ dir: 1, headsign: 'Nord destination Laval' },
+		]),
+	).toEqual({ 0: 'Est' });
+});

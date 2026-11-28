@@ -358,3 +358,50 @@ it.each([
 		expect(rankingHeadline(lead, leader, null)).toBe(`${lead} ${leader}.`);
 	},
 );
+
+it('reads vehicle reporting per hour everywhere and never shows a non-zero fleet as 0.0', async () => {
+	const { exclusionLabel, rankingReference } = await import('./rankingText.ts');
+	// 2 gaps per 100 hours is 0.02 an hour: under 0.1, not none.
+	expect(rankingValue(2, reporting, 'en')).toBe('< 0.1');
+	expect(rankingValue(2, reporting, 'fr')).toBe('< 0,1');
+	expect(rankingValue(0, reporting, 'en')).toBe('0.0');
+	expect(rankingValue(100, reporting, 'en')).toBe('1.0');
+	const engine =
+		'Rate of reporting gaps per 100 observed vehicle-hours in service. A gap counts when it exceeds 5 minutes and three times the feed’s median reporting interval that day, between successive reports on the same trip.';
+	expect(measureMeaning(reporting, engine, 'en')).toBe(
+		'Average number of reporting interruptions per observed vehicle-hour in service. A gap counts when it exceeds 5 minutes and three times the feed’s median reporting interval that day, between successive reports on the same trip.',
+	);
+	expect(measureMeaning(reporting, engine, 'en')).not.toMatch(/100/u);
+	const fleet = rankingReference(
+		{
+			kind: 'answer',
+			answer: {
+				measure: reporting,
+				state: 'measured',
+				state_text: { en: 'Measured', fr: 'Mesuré' },
+				value: { [reporting]: 2 },
+				coverage_note: null,
+				evidence: { ...answer.evidence, method_version: answer.evidence.method_version },
+			},
+		} as never,
+		{ ...answer, kind: 'vehicle' },
+		reporting,
+		'en',
+	);
+	expect(fleet?.label).toBe('Fleet (< 0.1 times an hour)');
+	// The two coverage reasons read apart.
+	const left = {
+		...entry,
+		reason_text: { en: 'Insufficient coverage', fr: 'Couverture insuffisante' },
+	};
+	expect(exclusionLabel({ ...left, reason: 'low_coverage' }, 'en')).toBe(
+		'Measured, but too little observed to rank',
+	);
+	expect(
+		exclusionLabel(
+			{ ...left, reason: 'not_measured', coverage_reason: 'insufficient_coverage' },
+			'fr',
+		),
+	).toBe('Trop peu observé pour être mesuré');
+	expect(exclusionLabel({ ...left, reason: 'no_live_data' }, 'en')).toBe('Insufficient coverage');
+});

@@ -268,6 +268,12 @@ export const cautiousRanking = {
 	fr: 'Le classement des parts utilise la borne prudente de l’intervalle à 95\u00a0%. La part affichée est le taux exact observé.',
 };
 
+/** One line above a table ranked on the cautious end of each row's range. */
+export const cautiousOrder = {
+	en: 'Ordered by the cautious end of each row’s 95% range, so a smaller sample with a lower rate can sit below a larger one.',
+	fr: 'Classé selon la borne prudente de l’intervalle à 95\u00a0%\u00a0: un petit échantillon au taux plus bas peut donc suivre un plus grand.',
+};
+
 export function emptyRecord(evidence: RecordEvidence, locale: Locale) {
 	return evidence.days_included.length
 		? choose(locale, 'Unknown', 'Inconnu')

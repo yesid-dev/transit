@@ -308,9 +308,12 @@ const registeredScheduleLines = new Set();
 
 // A Record question carries the hold its test named (x-transit-fixture-hold); only that test's
 // questions wait, whatever other tests ask for the same dates.
-function activeTestHold(request) {
+function activeTestHold(request, question) {
 	const key = request.headers['x-transit-fixture-hold'];
-	return typeof key === 'string' && fixtureHolds.has(key) ? key : undefined;
+	if (typeof key !== 'string' || !fixtureHolds.has(key)) return undefined;
+	// A hold named "...:measure" keeps only measure questions waiting, such as a ranking's network
+	// reference, while the ranking itself answers.
+	return !key.endsWith(':measure') || question === 'measure' ? key : undefined;
 }
 
 function sendFixtureResponse(response, fixture, send) {
@@ -1036,7 +1039,7 @@ const server = createServer((request, response) => {
 		const heldBy = holdStopSearch
 			? scope
 			: (richMessageHold ??
-				(departureIdentity ? undefined : activeTestHold(request)) ??
+				(departureIdentity ? undefined : activeTestHold(request, question[2])) ??
 				(hold === true ? 'overview' : hold));
 		response.writeHead(status, { 'content-type': 'application/json', ...headers });
 		sendFixtureResponse(response, heldBy, () => response.end(JSON.stringify(body)));

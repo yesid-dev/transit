@@ -265,7 +265,7 @@ test('uses the desktop rail to select a line class and explains it', async ({ pa
 	await page.goto(`/rankings?provider=stm&${dates}`);
 	await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 	const main = page.getByRole('main');
-	const choices = page.getByRole('group', { name: 'Ranking choices' });
+	const choices = page.getByRole('group', { name: 'Rank', exact: true });
 	await expect(main.getByRole('combobox')).toHaveCount(0);
 	const classes = choices.getByRole('combobox', { name: 'Compare lines' });
 	await expect(classes).toContainText('All lines');

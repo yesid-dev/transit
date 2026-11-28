@@ -19,6 +19,7 @@
 	} from './lineRecordText.ts';
 	import { intl, type Locale } from '#lib/i18n/index.ts';
 	import {
+		cautiousOrder,
 		choose,
 		coverageText,
 		departureRankingFloor,
@@ -227,6 +228,9 @@
 {:else if 'rows' in answer && answer.kind === 'departure'}
 	{@const floors = answer.info[0]?.ranking_floors?.departure}
 	{@render opening(departureFinding(answer, destination(answer.rows[0]?.direction), locale))}
+	{#if answer.rows.some((row) => row.ranking_bound != null)}<p class="mb-3 text-small">
+			{cautiousOrder[locale]}
+		</p>{/if}
 	<LineReadingTable
 		{title}
 		{locale}
