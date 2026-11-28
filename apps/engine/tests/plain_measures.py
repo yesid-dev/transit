@@ -133,14 +133,15 @@ def access(trips: list[Row], schedule: list[Row]) -> Sample:
 def alerts(rows: list[Row] | None, line: str) -> Sample:
     if rows is None:
         return Sample(
-            dict(alerts=None, alert_versions=None, alert_hours=None),
-            dict(alerts=None, alert_versions=None, alert_seconds=None),
+            dict(notices=None, alerts=None, alert_versions=None, alert_hours=None),
+            dict(notices=None, alerts=None, alert_versions=None, alert_seconds=None),
             "not_tracked",
         )
     start = datetime.combine(DAY, time.min, ZONE)
     end = start + timedelta(days=1)
     intervals: dict[tuple[str, str], list[tuple[datetime, datetime]]] = defaultdict(list)
     versions = set()
+    said: dict[tuple[str, str, str], tuple[object, set[tuple[datetime, datetime]]]] = {}
     for row in rows:
         if line not in (row["route_ids"] or []):
             continue
@@ -153,6 +154,8 @@ def alerts(rows: list[Row] | None, line: str) -> Sample:
             if lo < hi or sighting:
                 intervals[key].append((lo, hi))
                 versions.add((*key, row["version"]))
+                words = said.setdefault((*key, row["version"]), (plain_wording(row), set()))
+                words[1].add((lo, hi))
     total = 0.0
     for spans in intervals.values():
         active_until = start
@@ -162,9 +165,44 @@ def alerts(rows: list[Row] | None, line: str) -> Sample:
                 active_until = hi
     assert len(intervals) <= len(versions)
     assert 0 <= total <= len(intervals) * seconds(start, end)
-    counts = dict(alerts=len(intervals), alert_versions=len(versions), alert_seconds=total)
+    # One notice per alert ID, joined with every other ID that says the same thing over
+    # the same periods (an agency's per-line copies of one notice).
+    notices = {key: {key} for key in intervals}
+    for publication, (words, spans) in said.items():
+        if words is None:
+            continue
+        twins = [other for other, (w, s) in said.items() if w == words and s == spans]
+        merged = set().union(*(notices[other[:2]] for other in [publication, *twins]))
+        for member in merged:
+            notices[member] = merged
+    distinct = len({frozenset(group) for group in notices.values()})
+    assert distinct <= len(intervals)
+    counts = dict(
+        notices=distinct, alerts=len(intervals), alert_versions=len(versions), alert_seconds=total
+    )
     return Sample(
-        dict(alerts=len(intervals), alert_versions=len(versions), alert_hours=total / 3600), counts
+        dict(
+            notices=distinct,
+            alerts=len(intervals),
+            alert_versions=len(versions),
+            alert_hours=total / 3600,
+        ),
+        counts,
+    )
+
+
+def plain_wording(row: Row) -> tuple[str | None, ...] | None:
+    """The four published texts, normalized; None when nothing readable was published."""
+    generic = {"your stop", "your line", "votre arrêt", "votre arret", "votre ligne"}
+    texts = [row["header_en"], row["description_en"], row["header_fr"], row["description_fr"]]
+    if not any(
+        text and text.strip() and text.strip().lower().rstrip(" .!:…\t\n") not in generic
+        for text in texts
+    ):
+        return None
+    return tuple(
+        " ".join(text.replace("'", "’").split()).removesuffix(".") if text else None
+        for text in texts
     )
 
 

@@ -266,7 +266,10 @@ def test_alert_count_merges_a_real_bilingual_reissue_and_keeps_its_publications(
 
     window = {"from": day, "to": day}
     detailed = _get(store, "/measure", "alert_counts", alert_details=1, **window)
-    assert detailed["value"] == {"alerts": 2, "alert_versions": 3, "alert_hours": 18}
+    # The other line's copy has French only, so its wording differs: two notices.
+    assert detailed["value"] == {
+        "notices": 2, "alerts": 2, "alert_versions": 3, "alert_hours": 18
+    }  # fmt: skip
     messages = detailed["evidence"]["alert_messages"]
     assert len(messages) == 2
     bilingual = next(message for message in messages if message["routes"] == ["204"])
@@ -274,7 +277,51 @@ def test_alert_count_merges_a_real_bilingual_reissue_and_keeps_its_publications(
     assert bilingual["reissue_ids"] == [f"anonymous:{original}"]
     assert len(bilingual["periods"]) == 1
     cut = _get(store, "/measure", "alert_counts", line="204", **window)
-    assert cut["value"] == {"alerts": 1, "alert_versions": 2, "alert_hours": 9}
+    assert cut["value"] == {"notices": 1, "alerts": 1, "alert_versions": 2, "alert_hours": 9}
+
+
+def test_a_notice_published_once_per_line_counts_once(tmp_path: Path) -> None:
+    day = date(2026, 11, 20)
+    store = _build_store(tmp_path, 6, {day: ()})
+    fr, en = "Détour sur la rue Saint-Denis.", "Detour on Saint-Denis Street."
+    periods = [{"start_utc": utc(day, 13), "end_utc": utc(day, 15)}]
+    later = [{"start_utc": utc(day, 16), "end_utc": utc(day, 17)}]
+
+    def row(alert_id: str, line: str, published: list[dict[str, datetime]], **text: str | None):
+        words = {"en": en, "fr": fr} | text
+        return (
+            alert_id, "1", utc(day, 12), utc(day, 18), published, [line], ["s1"], None, None,
+            "api_i3_json", "Your line", "Votre ligne", words["en"], words["fr"],
+        )  # fmt: skip
+
+    rows = [
+        # The agency's copies of one notice, one per line, under their own IDs.
+        row("copy-10", "10", periods),
+        row("copy-11", "11", periods),
+        row("copy-12", "12", periods, en="Detour on Saint-Denis Street"),  # same, no full stop
+        # The same words over other hours, and other words: separate notices.
+        row("later", "10", later),
+        row("other", "10", periods, en="Stop moved.", fr="Arrêt déplacé."),
+        # Only a generic heading: no evidence it repeats anything, so it counts alone.
+        row("blank-a", "10", periods, en=None, fr=None),
+        row("blank-b", "11", periods, en=None, fr=None),
+    ]
+    with store.connect() as conn:
+        conn.execute("SET TimeZone = 'UTC'")
+        _write_table(conn, store, day, ALERTS, _ALERT_SCHEMA, rows)
+
+    window = {"from": day, "to": day}
+    answer = _get(store, "/measure", "alert_counts", alert_details=1, **window)
+    assert answer["value"]["alerts"] == 7
+    assert answer["value"]["notices"] == 5  # copies, later, other, blank-a, blank-b
+    assert answer["evidence"]["counts"]["notices"] == 5
+    assert len(answer["evidence"]["alert_messages"]) == 7
+    # A line's view counts the notices tagged with that line.
+    assert _get(store, "/measure", "alert_counts", line="10", **window)["value"]["notices"] == 4
+    assert _get(store, "/measure", "alert_counts", line="12", **window)["value"]["notices"] == 1
+    # Per effect, the copies stay one notice too.
+    effects = _get(store, "/measure", "alert_counts", group="effect", **window)["cells"]
+    assert [cell["value"]["notices"] for cell in effects] == [5]
 
 
 def test_alert_details_follow_the_same_window_and_clipping(
@@ -454,6 +501,8 @@ def test_alert_counts_and_hours_match_independent_hour_sets(
     assert len(occupied_hours) == 9
     answer = _get(store, "/measure", "alert_counts")
     assert answer["value"] == {
+        # These notices carry no wording, so each alert ID is its own notice.
+        "notices": len({id_ for id_, _ in versions}),
         "alerts": len({id_ for id_, _ in versions}),
         "alert_versions": len(versions),
         "alert_hours": len(occupied_hours),
@@ -469,7 +518,9 @@ def test_alert_counts_and_hours_match_independent_hour_sets(
         cause="CONSTRUCTION",
         to=THURSDAY,
     )
-    assert cut["value"] == {"alerts": 1, "alert_versions": 2, "alert_hours": 3.0}
+    assert cut["value"] == {
+        "notices": 1, "alerts": 1, "alert_versions": 2, "alert_hours": 3.0
+    }  # fmt: skip
     assert _get(store, "/measure", "alert_counts", line="C")["value"]["alerts"] == 0
     assert _get(store, "/measure", "alert_counts", stop="other")["value"]["alert_hours"] == 0
     line_rows = _get(store, "/ranking", "alert_hours", kind="line")["rows"]
@@ -584,7 +635,9 @@ def test_empty_alert_file_gives_zero_and_missing_tracked_file_does_not(
     dates = {"from": THURSDAY, "to": THURSDAY}
     empty = _get(store, "/measure", "alert_counts", alert_details=1, **dates)
     assert empty["state"] == "measured"
-    assert empty["value"] == {"alerts": 0, "alert_versions": 0, "alert_hours": 0}
+    assert empty["value"] == {
+        "notices": 0, "alerts": 0, "alert_versions": 0, "alert_hours": 0
+    }  # fmt: skip
     assert empty["evidence"]["alert_messages"] == []
     path.unlink()
     missing = _get(store, "/measure", "alert_counts", alert_details=1, **dates)
