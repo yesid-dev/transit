@@ -42,8 +42,9 @@ const engineState = z.enum([
 	'not_tracked',
 	'unknown',
 ]);
-// A ranking leaves out an entity under its low-coverage limit; older engines never send it.
-const exclusionReason = engineState.or(z.literal('low_coverage'));
+// A ranking leaves out an entity under its low-coverage limit (older engines never send it), and
+// an excess-wait ranking leaves out lines with no frequent periods in the selection.
+const exclusionReason = engineState.or(z.enum(['low_coverage', 'no_frequent_periods']));
 const share = z.number().min(0).max(1);
 const count = z.int().nonnegative();
 const counts = z.record(z.string(), count.nullable());
