@@ -289,6 +289,27 @@ def _health(raw: bytes) -> tuple[str, date, date]:
     return params["city"], _date(params["from"]), _date(params["to"])
 
 
+# Questions that scan every reading of the period: seconds of engine time for each week asked.
+_HEAVY_MEASURES = frozenset((
+    "crowding",
+    "vehicle_days_in_service",
+    "vehicle_field_completeness",
+    "vehicle_reporting_gaps_per_100_hours",
+    "vehicle_unfinished_trips",
+    "waiting_and_gaps",
+    *STRETCH_MEASURES,
+))
+
+
+def is_heavy(question: Question | Ranking) -> bool:
+    """A period scan, which takes the heavy lane instead of the record lane."""
+    if isinstance(question, Ranking):
+        return question.kind == "vehicle" or is_heavy(question.question)
+    return question.measure in _HEAVY_MEASURES or (
+        question.measure == "vehicles" and question.vehicle is not None
+    )
+
+
 class QueryLane:
     def __init__(self, concurrency: int, queue_size: int, queue_timeout: float):
         self.slots = asyncio.BoundedSemaphore(concurrency)
@@ -342,6 +363,8 @@ class Engine:
     ):
         self.store = store
         self.record = QueryLane(concurrency, queue_size, queue_wait_ms / 1000)
+        # Period scans take their own lane, so a cheap question never waits behind one.
+        self.heavy = QueryLane(concurrency, queue_size, queue_wait_ms / 1000)
         self.catalogue = QueryLane(1, min(queue_size, 4), queue_wait_ms / 1000)
         self.quick = QueryLane(1, min(queue_size, 4), queue_wait_ms / 1000)
         self.small_store = replace(store, threads=1, memory_mib=min(store.memory_mib, 256))
@@ -483,6 +506,8 @@ class Engine:
         lane = self.record
         if isinstance(question, str):
             lane = self.catalogue
+        elif is_heavy(question):
+            lane = self.heavy
         elif (
             isinstance(question, Question)
             and output == "json"
@@ -575,7 +600,7 @@ class Engine:
         if answer is None:
             task = self.stretch_pending.get(key)
             if task is None:
-                admitted = await self.record.admit(send)
+                admitted = await self.heavy.admit(send)
                 if admitted is None:
                     return
                 timing = admitted
@@ -583,7 +608,7 @@ class Engine:
                 task = asyncio.create_task(
                     asyncio.to_thread(contextvars.Context().run, ask, self.store, question)
                 )
-                task.add_done_callback(self.record.release_when_done)
+                task.add_done_callback(self.heavy.release_when_done)
                 self.stretch_pending[key] = task
 
                 def settle(done: asyncio.Task[dict[str, Any]], key: tuple[str, ...] = key) -> None:

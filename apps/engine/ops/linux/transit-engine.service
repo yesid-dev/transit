@@ -16,8 +16,9 @@ Environment=ENGINE_CONCURRENCY=1 ENGINE_QUERY_THREADS=2 ENGINE_QUERY_MEMORY_MIB=
 ExecStart=/opt/transit-engine/current/apps/engine/.venv/bin/transit-engine
 Restart=on-failure
 RestartSec=3s
-MemoryHigh=1792M
-MemoryMax=2048M
+# Record and heavy lanes at ENGINE_QUERY_MEMORY_MIB each, catalogue and alert lanes at 256, plus Python.
+MemoryHigh=2816M
+MemoryMax=3072M
 CPUWeight=25
 CPUQuota=200%
 Nice=10
