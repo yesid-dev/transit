@@ -69,7 +69,11 @@ test('Overview reserves the second card column before its HTML is parsed @layout
 	const parsed = new Promise<void>((resolve) => (release = resolve));
 	await page.route('**/__overview-parser-gate', async (route) => {
 		await parsed;
-		await route.fulfill({ contentType: 'text/javascript', body: '' });
+		// Restore the original server markup before Svelte's hydration script runs.
+		await route.fulfill({
+			contentType: 'text/javascript',
+			body: 'document.currentScript.remove()',
+		});
 	});
 	const routePath = '/?provider=stm&recordFrom=2026-11-08&recordTo=2026-11-14';
 	await page.route(
@@ -95,11 +99,15 @@ test('Overview reserves the second card column before its HTML is parsed @layout
 		await expect(grid.getByRole('article')).toHaveCount(1);
 		await page.evaluate(() => document.fonts.ready);
 		await paint();
+		const initialBody = await body.elementHandle();
 		const before = await body.boundingBox();
 		release();
+		await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 		const live = grid.getByRole('article', { name: 'Live now', exact: true });
 		await expect(live).toBeVisible();
+		await expect(body).toBeVisible();
 		await paint();
+		expect(await body.evaluate((element, initial) => element === initial, initialBody)).toBe(true);
 		const after = await body.boundingBox();
 		const shifts = await page.evaluate(() => (window as ShiftWindow).steadyShifts);
 		await info.attach('overview-streamed-columns', {
