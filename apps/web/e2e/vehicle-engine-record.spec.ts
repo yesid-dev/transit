@@ -18,6 +18,48 @@ test.beforeEach(({ browserName }, info) => {
 
 const dates = 'recordFrom=2026-11-08&recordTo=2026-11-14';
 
+for (const mode of ['record', 'live'] as const) {
+	for (const cpuRate of [1, 4]) {
+		test(`opens a ${mode} vehicle from the hydrated fleet at ${cpuRate}× CPU slowdown`, async ({
+			page,
+		}) => {
+			const cdp = await page.context().newCDPSession(page);
+			await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuRate });
+			const errors: string[] = [];
+			page.on('pageerror', (error) => errors.push(error.message));
+			if (mode === 'live') {
+				await page.route(captureUrl, (route) => {
+					const now = Date.now();
+					return route.fulfill({
+						json: captureFixture(now, { vehicle_positions: [captureVehicle(now)] }),
+					});
+				});
+			}
+			await page.goto(`/vehicles?provider=stm&frameMode=${mode}&${dates}`, { waitUntil: 'commit' });
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' });
+			const rowLink = page.getByRole('main').getByRole('link', { name: '40061', exact: true });
+			await rowLink.evaluate((link: HTMLAnchorElement) => {
+				document.documentElement.dataset.fleetNavigation = 'client';
+				const watchFrame = () => {
+					if (!document.querySelector('main h1')) {
+						document.documentElement.dataset.fleetNavigation = 'blank';
+						return;
+					}
+					if (!document.querySelector('main h1')?.textContent?.includes('40061')) {
+						requestAnimationFrame(watchFrame);
+					}
+				};
+				requestAnimationFrame(watchFrame);
+				link.click();
+			});
+			await expect(page).toHaveURL(new RegExp(`/vehicle/40061\\?.*frameMode=${mode}`));
+			await expect(page.getByRole('heading', { level: 1, name: 'Vehicle 40061' })).toBeVisible();
+			await expect(page.locator('html')).toHaveAttribute('data-fleet-navigation', 'client');
+			expect(errors).toEqual([]);
+		});
+	}
+}
+
 test('fleet and vehicle keep a published capture past one minute and retain late reports', async ({
 	page,
 }) => {
