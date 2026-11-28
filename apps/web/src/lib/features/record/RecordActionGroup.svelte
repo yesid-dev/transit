@@ -112,7 +112,7 @@
 
 {#key href}
 	<div
-		class="flex min-w-0 flex-wrap items-start gap-2"
+		class="flex min-w-0 flex-wrap items-start gap-2 lg:w-max lg:max-w-full"
 		role="group"
 		aria-label={groupLabel ?? (fr ? 'Actions du bilan' : 'Record actions')}
 	>

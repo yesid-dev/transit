@@ -37,6 +37,7 @@
 	} from '#lib/site/presenter.ts';
 	import {
 		choose,
+		countedRecordDays,
 		measuredShare,
 		pooledDays,
 		punctualityWeighting,
@@ -177,8 +178,16 @@
 	]);
 	function sample(cell: Pick<RecordCell, 'evidence'>) {
 		const count = cell.evidence.counts.classified;
-		const days = countedUnit(cell.evidence.days_included.length, 'day', locale);
-		return count == null ? days : `${countedUnit(count, 'event', locale)}, ${days}`;
+		const included = cell.evidence.days_included;
+		const days = record
+			? countedRecordDays(
+					{ start_date: record.period.from, end_date: record.period.to, days_included: included },
+					locale,
+				)
+			: countedUnit(included.length, 'day', locale);
+		return [count == null ? '' : countedUnit(count, 'event', locale), days]
+			.filter(Boolean)
+			.join(', ');
 	}
 
 	function dayTypeReading(series: RecordSeries, weekday: boolean) {

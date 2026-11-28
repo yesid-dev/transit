@@ -1,5 +1,19 @@
 import { expect, it } from 'vitest';
-import { coverageText, rateStateText, timingBasis } from './recordText.ts';
+import { countedRecordDays, coverageText, rateStateText, timingBasis } from './recordText.ts';
+
+it('distinguishes measured days from the full selected period in both languages', () => {
+	const evidence = {
+		start_date: '2026-10-01',
+		end_date: '2026-11-14',
+		days_included: Array.from({ length: 42 }, (_, index) =>
+			new Date(Date.UTC(2026, 9, index + 1)).toISOString().slice(0, 10),
+		),
+	};
+	expect(countedRecordDays(evidence, 'en')).toBe('42 of the 45 days');
+	expect(countedRecordDays(evidence, 'fr')).toBe('42 des 45 jours');
+	expect(countedRecordDays({ ...evidence, end_date: '2026-11-11' }, 'en')).toBe('42 days');
+	expect(countedRecordDays({ ...evidence, days_included: [] }, 'en')).toBe('');
+});
 
 it('shows the share and scheduled stop count alongside the low-coverage warning', () => {
 	const evidence = { counts: { scheduled: 434854 }, share_observed: 0.567 };

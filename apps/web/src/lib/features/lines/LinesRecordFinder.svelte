@@ -56,6 +56,7 @@
 	} from './linesRecord.ts';
 	import {
 		choose,
+		countedRecordDays,
 		lastGoodNote,
 		recordConnection,
 		tally,
@@ -442,11 +443,7 @@
 			{ events: 0, trips: null as number | null },
 		),
 	);
-	const days = $derived(
-		timingEvidence?.days_included.length
-			? countedUnit(timingEvidence.days_included.length, 'day', locale)
-			: '',
-	);
+	const days = $derived(timingEvidence ? countedRecordDays(timingEvidence, locale) : '');
 	const counts = $derived(
 		measured.length ? recordCounts(totals.events, totals.trips, days, locale) : null,
 	);
