@@ -136,6 +136,8 @@ feeds:
     is_enabled: true
 
 realtime:
+  # OC Transpo's vehicle positions carry no occupancy, so room on board is not published.
+  unpublished_vehicle_fields: [occupancy]
   lines_without_live_data:
     # O-Train lines 1, 2 and 4 are the only light-rail (route_type 0) routes in
     # routes.txt. Selecting by type survives the edition suffixes in route_ids.

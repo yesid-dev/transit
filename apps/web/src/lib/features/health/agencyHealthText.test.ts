@@ -25,6 +25,7 @@ import {
 	tripsLeftOutByDay,
 	vehicleReportRows,
 } from './agencyHealthText.ts';
+import { noticeTotal } from '../alerts/alertCards.ts';
 
 const days = ['2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23'];
 const evidence = {
@@ -188,6 +189,41 @@ describe('what the agency publishes', () => {
 			['Service alerts', 'Unavailable', null],
 			['Effect of each notice', 'Unavailable', null],
 		]);
+	});
+
+	it('shows the same notice total as Service alerts, from the engine', () => {
+		// STM 20 to 26 November 2026: 1,296 alert IDs, but STM repeats one notice once per line
+		// or stop, so the engine counts 1,023 notices. Both screens read noticeTotal.
+		const measured = (value: Record<string, number>) =>
+			answer({
+				state: 'measured',
+				state_text: { en: '', fr: '' },
+				value,
+				coverage_note: null,
+				evidence,
+			} as unknown as RecordMeasure);
+		const total = (count: EngineResult<RecordMeasure>, locale: 'en' | 'fr') =>
+			readable(
+				publishingRows(
+					{
+						accessibility: accessibility({}),
+						alertEffects: effects([[null, 1_296]]),
+						alertCount: count,
+						completeness: completeness(1),
+					},
+					{ name: 'STM', frenchOf: 'de la STM' },
+					locale,
+				),
+				locale,
+			)[0][2]?.replace(/\s/gu, ' ');
+		const current = { notices: 1_023, alerts: 1_296, alert_versions: 1_470 };
+		expect(noticeTotal(current)).toBe(1_023);
+		expect(total(measured(current), 'en')).toBe('1,023 notices');
+		expect(total(measured(current), 'fr')).toBe('1 023 avis');
+		// An engine from before the notice count gives its alert IDs to both screens.
+		const older = { alerts: 1_296, alert_versions: 1_470 };
+		expect(noticeTotal(older)).toBe(1_296);
+		expect(total(measured(older), 'en')).toBe('1,296 notices');
 	});
 
 	it('names unpublished alerts and fields the agency leaves empty in French', () => {

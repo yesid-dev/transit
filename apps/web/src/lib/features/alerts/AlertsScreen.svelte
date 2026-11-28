@@ -67,6 +67,7 @@
 		type AlertCard,
 		liveAlertCards,
 		liveAlertCut,
+		noticeTotal,
 		recordAlertCards,
 		recordNoticeCards,
 		recordAlertCut,
@@ -401,7 +402,7 @@
 			? result.answer
 			: null}
 	{#if reading}
-		{#if reading.value.alerts === 0}
+		{#if noticeTotal(reading.value) === 0}
 			<p>
 				{noPublishedNotices(
 					operator,
@@ -712,24 +713,29 @@
 								<RecordPending shape="answer" {locale} {answer} fullWidthContext />
 							</div>
 						{:then result}
-							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts != null}
-								{@const count = result.answer.value.alerts}
+							{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && noticeTotal(result.answer.value) != null}
+								{@const count = noticeTotal(result.answer.value) ?? 0}
 								{@const published = result.answer.value.alert_versions ?? count}
-								{#await messages}
+								{#if result.answer.value.notices != null}
 									{@render recordLead(result, count, published)}
-								{:then detail}
-									{@const reading =
-										detail?.kind === 'answer' &&
-										'value' in detail.answer &&
-										detail.answer.state === 'measured'
-											? detail.answer
-											: null}
-									{@render recordLead(
-										result,
-										(reading && recordNoticeCards(reading)?.length) ?? count,
-										reading?.value.alert_versions ?? published,
-									)}
-								{/await}
+								{:else}
+									<!-- An engine from before the notice count: group the listed notices. -->
+									{#await messages}
+										{@render recordLead(result, count, published)}
+									{:then detail}
+										{@const reading =
+											detail?.kind === 'answer' &&
+											'value' in detail.answer &&
+											detail.answer.state === 'measured'
+												? detail.answer
+												: null}
+										{@render recordLead(
+											result,
+											(reading && recordNoticeCards(reading)?.length) ?? count,
+											reading?.value.alert_versions ?? published,
+										)}
+									{/await}
+								{/if}
 							{:else}
 								<div data-slot="screen-state">{@render resultState(result)}</div>
 							{/if}

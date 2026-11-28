@@ -4,7 +4,7 @@
 	import { Skeleton } from '@yesid/ui/skeleton';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { EngineResult, RecordAnswer } from '#lib/server/engine.ts';
-	import { recordAlertCards } from './alertCards.ts';
+	import { noticeTotal, recordAlertCards } from './alertCards.ts';
 
 	let { messages, locale }: { messages?: Awaitable<EngineResult<RecordAnswer>>; locale: Locale } =
 		$props();
@@ -31,7 +31,7 @@
 {#await messages}
 	{@render filters()}
 {:then result}
-	{#if !result || (result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && result.answer.value.alerts !== 0 && recordAlertCards(result.answer.evidence.alert_messages ?? []).some(({ routes, stops, effect }) => routes.length || stops.length || effect))}
+	{#if !result || (result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured' && noticeTotal(result.answer.value) !== 0 && recordAlertCards(result.answer.evidence.alert_messages ?? []).some(({ routes, stops, effect }) => routes.length || stops.length || effect))}
 		<!-- Keep the slot until the notice list has registered its live controls. -->
 		{@render filters()}
 	{/if}

@@ -31,6 +31,7 @@
 		compactWhenSettled = false,
 		more,
 		after,
+		foot = true,
 	}: {
 		answer: Awaitable<EngineResult<RecordAnswer>>;
 		title: string;
@@ -48,6 +49,8 @@
 		more?: RecordWaiting;
 		/** Parts of the card that need no answer from this reading, drawn from the first frame. */
 		after?: Snippet;
+		/** False when the agency publishes nothing to count: no counted-readings foot then. */
+		foot?: boolean;
 	} = $props();
 	const reserved = $derived(skeletonBlockSize(waiting));
 
@@ -95,7 +98,7 @@
 		{@render after?.()}
 		{#snippet evidence()}
 			{#await answer}<WaitingFoot />{:then result}
-				{#if result.kind === 'answer' && !('rows' in result.answer)}
+				{#if foot && result.kind === 'answer' && !('rows' in result.answer)}
 					<RecordEvidenceLine
 						evidence={result.answer.evidence}
 						sample={sample(result.answer)}

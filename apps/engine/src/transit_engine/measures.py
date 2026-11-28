@@ -52,6 +52,8 @@ from transit_engine.histogram import percentile as _percentile
 from transit_engine.notice_reissues import (
     NoticeKey,
     NoticeVariant,
+    NoticeWording,
+    distinct_notices,
     notice_text,
     translation_reissues,
 )
@@ -217,6 +219,7 @@ class Batch:
     trip_ids: set[str] = field(default_factory=set)
     alert_variants: dict[NoticeKey, NoticeVariant] = field(default_factory=dict)
     alert_messages: dict[NoticeKey, dict[str, Any]] = field(default_factory=dict)
+    alert_wording: dict[NoticeKey, NoticeWording] = field(default_factory=dict)
     waiting_weighted_excess: float = 0.0
 
     def update(self, other: Batch) -> None:
@@ -235,6 +238,7 @@ class Batch:
         self.trip_ids.update(other.trip_ids)
         self.alert_variants.update(other.alert_variants)
         self.alert_messages.update(other.alert_messages)
+        self.alert_wording.update(other.alert_wording)
 
 
 @dataclass(frozen=True)
@@ -2197,6 +2201,9 @@ def _alert_rows(
             routes, stops, effect, cause, periods, header_en, header_fr,
             description_en, description_fr,
         ) = notice
+        batch.alert_wording.setdefault(
+            span.publication, (header_en, description_en, header_fr, description_fr)
+        )
         if periods and span.publication not in batch.alert_variants:
             batch.alert_variants[span.publication] = NoticeVariant(
                 (tuple(routes), tuple(stops), periods, effect, cause),
@@ -2225,7 +2232,8 @@ _ALERT_COUNTS = Family(
     minimum_sample=0,
     query=_alert_rows,
     columns={
-        "alerts": Text("Distinct alerts", "Avis distincts"),
+        "notices": Text("Distinct notices", "Avis distincts"),
+        "alerts": Text("Distinct alert IDs", "Identifiants d’avis distincts"),
         "alert_versions": Text("Distinct alert versions", "Versions d’avis distinctes"),
         "active_spans": Text("Distinct active spans", "Périodes actives distinctes"),
         "alert_seconds": Text("Alert-seconds", "Secondes d’avis"),
@@ -2235,15 +2243,22 @@ _ALERT_COUNTS = Family(
         "days_alerts_tracked": Text("Days with alert tracking", "Jours avec suivi des avis"),
     },
     counts=Text(
-        "A notice and its bilingual reissue count as one when they share the message in one "
-        "language, the same published periods with a known start, and the same lines, stops, "
-        "cause and effect. If the source supplies an ID, it must match. Each published version "
-        "is counted separately. For each notice, "
+        "A notice is one wording, in both languages, in effect over the same periods. When "
+        "the agency publishes the same notice several times, once for each line or stop it "
+        "affects, it counts as one notice that names all of them. A notice without readable "
+        "wording counts on its own. A notice and its bilingual reissue count as one when they "
+        "share the message in one language, the same published periods with a known start, "
+        "and the same lines, stops, cause and effect. If the source supplies an ID, it must "
+        "match. Each published version counts in the versions total. For each notice, "
         "overlapping periods are merged, clipped to the requested local dates, then added up.",
-        "Un avis et sa réémission bilingue comptent pour un seul avis s’ils ont le même texte "
-        "dans une langue, les mêmes périodes publiées avec un début connu, ainsi que les mêmes "
-        "lignes, arrêts, cause et effet. Si la source fournit un identifiant, il doit être "
-        "le même. Chaque version publiée est comptée séparément. Pour "
+        "Un avis, c’est un même texte, dans les deux langues, en vigueur aux mêmes périodes. "
+        "Quand la société de transport publie le même avis plusieurs fois, une fois par ligne "
+        "ou par arrêt touché, il compte pour un seul avis qui les nomme tous. Un avis sans "
+        "texte lisible compte à part. Un avis et sa réémission bilingue comptent pour un seul "
+        "avis s’ils ont le même texte dans une langue, les mêmes périodes publiées avec un "
+        "début connu, ainsi que les mêmes lignes, arrêts, cause et effet. Si la source "
+        "fournit un identifiant, il doit être le même. Chaque version publiée compte dans le "
+        "total des versions. Pour "
         "chaque avis, les périodes qui se chevauchent sont fusionnées, limitées aux dates "
         "locales demandées, puis additionnées.",
     ),
@@ -2272,11 +2287,22 @@ _ALERT_COUNTS = Family(
     ),
     measures=(
         Measure(
+            "notices",
+            "count",
+            Text(
+                "Number of distinct notices in effect during the selected dates. A notice "
+                "the agency repeats for several lines or stops counts once.",
+                "Nombre d’avis distincts en vigueur aux dates choisies. Un avis que la "
+                "société de transport répète pour plusieurs lignes ou arrêts compte une fois.",
+            ),
+            ranking_kinds=(),
+        ),
+        Measure(
             "alerts",
             "count",
             Text(
-                "Number of distinct service alerts in effect during the selected dates.",
-                "Nombre d’avis de service distincts en vigueur aux dates choisies.",
+                "Number of distinct alert IDs in effect during the selected dates.",
+                "Nombre d’identifiants d’avis distincts en vigueur aux dates choisies.",
             ),
             ranking_kinds=(),
         ),
@@ -4824,6 +4850,9 @@ def _alert_answer(
     version_count = len({span.publication for span in totals.alert_spans})
     duration = _alert_duration(spans)
     counts = {
+        "notices": distinct_notices(
+            ((span.publication, span.start, span.end) for span in spans), totals.alert_wording
+        ),
         "alerts": alert_count,
         "alert_versions": version_count,
         "active_spans": len(spans),

@@ -3,7 +3,11 @@
 	import { page } from '$app/state';
 	import { Button } from '@yesid/ui/button';
 	import { alertDetailsAllowed, alertDetailsLimit } from '#lib/features/alerts/alertRecord.ts';
-	import { groupAlertCards, recordAlertCards } from '#lib/features/alerts/alertCards.ts';
+	import {
+		groupAlertCards,
+		noticeTotal,
+		recordAlertCards,
+	} from '#lib/features/alerts/alertCards.ts';
 	import NoticeRows from '#lib/features/alerts/NoticeRows.svelte';
 	import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 	import { chartState } from '#lib/features/record/charts/recordCharts.ts';
@@ -158,10 +162,11 @@
 		</p>
 	{:else if section === 'alerts'}
 		{@const messages = groupAlertCards(recordAlertCards(answer.evidence.alert_messages))}
-		{#if answer.value.alerts != null && answer.value.alerts > 0}
-			<p class="mb-3">{countedUnit(answer.value.alerts, 'distinct-alert', locale)}</p>
+		{@const notices = noticeTotal(answer.value)}
+		{#if notices != null && notices > 0}
+			<p class="mb-3">{countedUnit(notices, 'distinct-alert', locale)}</p>
 		{/if}
-		{#if answer.value.alerts === 0}
+		{#if notices === 0}
 			<p>
 				{noPublishedNotices(
 					agencyName(operator, provider),

@@ -25,7 +25,8 @@
 				"trip_updates": true,
 				"vehicle_positions": true,
 				"i3_alerts": false,
-				"service_alerts": false
+				"service_alerts": false,
+				"occupancy": false
 			}
 		},
 		{

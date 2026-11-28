@@ -152,6 +152,14 @@ export function networkServiceFixture(url) {
 		};
 	} else if (measure === 'service_delivered') {
 		result = trips(days);
+	} else if (measure === 'crowding' && query.get('city') === 'octranspo') {
+		// OC Transpo publishes no occupancy: the engine answers not tracked, with no readings.
+		result = {
+			state: 'not_tracked',
+			state_text: enFr('Not tracked', 'Non suivi'),
+			value: {},
+			evidence: { counts: { occupancy_readings: 0 }, days_included: days },
+		};
 	} else if (measure === 'crowding') {
 		result = measured(
 			{

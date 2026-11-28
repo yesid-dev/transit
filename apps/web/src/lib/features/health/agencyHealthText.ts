@@ -17,7 +17,7 @@ import {
 	recordPercent,
 	recordRatio,
 } from '#lib/site/presenter.ts';
-import { publishedAlertEffect, unstatedEffect } from '../alerts/alertCards.ts';
+import { noticeTotal, publishedAlertEffect, unstatedEffect } from '../alerts/alertCards.ts';
 import { feedLabels, networkRows } from '../network/networkRecordText.ts';
 import { healthReason } from '../record/dataHealthText.ts';
 import { recordState, recordStateFor, type RecordState } from '../record/recordStates.ts';
@@ -151,13 +151,13 @@ function alertRows(
 			{ ...effect, state: 'not_measured', note: null },
 		];
 	// Each effect counts a notice once, but a notice whose versions changed effect falls under
-	// several, so the parts can add up to more than the notices. The total is the distinct count
-	// Service alerts shows; the parts only bound how many notices state an effect.
+	// several, so the parts can add up to more than the notices. The total is the engine's
+	// notice count that Service alerts shows too; the parts only bound how many state an effect.
 	let parts = 0;
 	let stated = 0;
 	let unstated = 0;
 	for (const cell of answer.cells) {
-		const count = cell.value.alerts ?? 0;
+		const count = noticeTotal(cell.value) ?? 0;
 		parts += count;
 		const key = typeof cell.key.effect === 'string' ? cell.key.effect : null;
 		const published = publishedAlertEffect(key);
@@ -167,7 +167,7 @@ function alertRows(
 	const counted = answerOf(distinct ?? null);
 	const distinctTotal =
 		counted?.state === 'measured'
-			? number(counted.value.alerts)
+			? number(noticeTotal(counted.value))
 			: distinct === undefined
 				? parts
 				: null;
