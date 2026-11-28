@@ -6,7 +6,6 @@
 	import RecordSkeleton from '../record/RecordSkeleton.svelte';
 	import type { Locale } from '#lib/i18n/index.ts';
 	import type { Manifest } from '#lib/v1/schemas/index.ts';
-	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { createLiveStore, type LiveFamilyState } from '#lib/v1/live/store.svelte.ts';
 	import {
 		alertsNotPublished,
@@ -26,8 +25,9 @@
 	import StateMark from '../record/StateMark.svelte';
 	import { recordState } from '../record/recordStates';
 	import { overviewCopy } from './overviewRecord.copy';
-	import { lateLines, OVERVIEW_LATE_LINE_LIMIT, tally } from './overviewRecord';
+	import { OVERVIEW_LATE_LINE_LIMIT, tally } from './overviewRecord';
 	import { selectLivePulse } from './homePulse';
+	import { liveSummaryReader, summaryAlertCount, summaryLateLines } from './liveSummaryReader';
 
 	let {
 		locale,
@@ -53,11 +53,12 @@
 	const t = $derived(overviewCopy[locale]);
 	const networkAvailable = $derived(manifest?.capabilities?.live_map === 'enabled');
 	const display = transitDisplay();
+	// The light live summary: the card's figures without the vehicle positions and alert texts.
 	const live = untrack(() =>
 		manifest
-			? createLiveStore(manifest, liveReader, {
+			? createLiveStore(manifest, liveSummaryReader, {
 					families: [
-						...(networkAvailable ? (['network', 'vehicles'] as const) : []),
+						...(networkAvailable ? (['network'] as const) : []),
 						...(alertsAvailable ? (['alerts'] as const) : []),
 					],
 				})
@@ -76,7 +77,7 @@
 		!!health?.retained && (health.isStale || health.notice != null);
 	const networkStale = $derived(health?.retained === true && health.isStale);
 	const distribution = $derived(live?.network?.status_dist);
-	const lines = $derived(lateLines(live?.vehicles?.vehicles ?? []));
+	const lines = $derived(summaryLateLines(live?.network));
 	const generated = $derived(live?.network?.generated_utc);
 	const stamp: StampProps = $derived(
 		tickingLiveStamp(generated ? new Date(generated) : new Date(Number.NaN), locale, {
@@ -108,7 +109,7 @@
 	);
 	const alerts = $derived(
 		alertsAvailable
-			? reading(live?.alerts?.alerts.length, live?.familyStates.alerts, true)
+			? reading(summaryAlertCount(live?.alerts), live?.familyStates.alerts, true)
 			: ({ kind: 'absent', state: 'not_published' } as const),
 	);
 	const statuses = ['early', 'on_time', 'late', 'unknown'] as const;

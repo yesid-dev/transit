@@ -2,7 +2,14 @@ import { csvText } from '../src/tests/csv';
 import { closeCompactFrameControls, openFrameControls } from './frame-controls';
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import { captureFixture, captureFleet, captureUrl, captureVehicle } from './capture-fixture';
+import {
+	captureFixture,
+	captureFleet,
+	captureUrl,
+	captureVehicle,
+	liveSummaryUrl,
+	overviewReadsCapture,
+} from './capture-fixture';
 
 test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
@@ -74,6 +81,7 @@ test('the desktop French total stays on one line and plate codes keep names alig
 	const now = Date.now();
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await page.clock.setFixedTime(now);
+	await overviewReadsCapture(page);
 	await page.route(captureUrl, (route) =>
 		route.fulfill({
 			json: captureFixture(now, { vehicle_positions: [captureVehicle(now, { delay: 420 })] }),
@@ -120,6 +128,7 @@ test('Live now keeps placeholders until its first fetch fails', async ({ page })
 	const held = new Promise<void>((resolve) => {
 		release = resolve;
 	});
+	await overviewReadsCapture(page);
 	await page.route(captureUrl, async (route) => {
 		await held;
 		await route.fulfill({ status: 503, body: '{}' });
@@ -167,6 +176,7 @@ test('a retained Live reading says it is stale and agrees with the French singul
 }) => {
 	const now = Date.now();
 	await page.clock.setFixedTime(now);
+	await overviewReadsCapture(page);
 	await page.route(captureUrl, (route) => route.fulfill({ json: captureFixture(now - 180_000) }));
 	await page.goto('/fr' + recordHref);
 	const live = page.getByRole('article', { name: 'En direct' });
@@ -361,6 +371,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 			}) => {
 				await page.addInitScript((theme) => localStorage.setItem('theme', theme), colorScheme);
 				await page.emulateMedia({ colorScheme });
+				await overviewReadsCapture(page);
 				await page.route(captureUrl, (route) =>
 					route.fulfill({ json: captureFleet(Date.now(), provider, [-120, 0, 360, null]) }),
 				);
@@ -421,6 +432,7 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 		if (captureUrl.test(request.url())) captures.push(url);
 		if (/\/(?:v1|v2)\/|hotspots\.json/.test(url.pathname)) snapshots.push(url);
 	});
+	await overviewReadsCapture(page);
 	await page.route(captureUrl, (route) =>
 		route.fulfill({ json: captureFleet(Date.now(), 'stm', [-120, 0, 360, null]) }),
 	);
@@ -460,6 +472,35 @@ test('Live and Record show the same punctuality for the same week (OV1)', async 
 	expect(snapshots).toEqual([]);
 });
 
+test('Live now reads the light summary and shows what the full capture shows', async ({ page }) => {
+	const liveReads: string[] = [];
+	page.on('request', (request) => {
+		const url = new URL(request.url());
+		if (captureUrl.test(request.url()) || liveSummaryUrl.test(request.url()))
+			liveReads.push(url.pathname + url.search);
+	});
+	const main = page.getByRole('main');
+	const live = main.getByRole('article', { name: 'Live now', exact: true });
+	const body = live.locator('[data-slot="record-card-body"]');
+	const figures = async () => {
+		await expect(live.locator('[data-slot="band-bar"]')).toBeVisible();
+		await expect(live.locator('[data-record-pending]')).toHaveCount(0);
+		return body.innerText();
+	};
+
+	const summary = page.waitForResponse((reply) => liveSummaryUrl.test(reply.url()));
+	await page.goto(recordHref);
+	expect((await summary).ok()).toBe(true);
+	const fromSummary = await figures();
+	expect(liveReads).toEqual(['/api/live-summary?city=stm']);
+
+	liveReads.length = 0;
+	await overviewReadsCapture(page);
+	await page.reload();
+	expect(await figures()).toBe(fromSummary);
+	expect(liveReads).toEqual(['/api/live-summary?city=stm', '/api/live?city=stm']);
+});
+
 test('changing the custom period updates the Record card and Back restores the view', async ({
 	page,
 }) => {
@@ -491,6 +532,7 @@ test('changing the custom period updates the Record card and Back restores the v
 test('the header carries the Live view and dates through city and language changes', async ({
 	page,
 }) => {
+	await overviewReadsCapture(page);
 	await page.route(captureUrl, (route) => {
 		const city = new URL(route.request().url()).searchParams.get('city')!;
 		return route.fulfill({ json: captureFleet(Date.now(), city, [0, 360]) });

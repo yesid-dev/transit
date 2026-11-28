@@ -2,7 +2,13 @@ import { expect, type Page } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { streamingLayoutTest as test } from './layout-test';
-import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
+import {
+	captureFixture,
+	captureUrl,
+	captureVehicle,
+	liveSummaryUrl,
+	overviewReadsCapture,
+} from './capture-fixture';
 import { designPassCases, type Screen } from './design-pass-cases';
 import { settled } from './design-pass-measure';
 import { localizeHref } from '../src/lib/i18n/routing';
@@ -222,6 +228,7 @@ for (const city of ['stm', 'octranspo'] as const)
 				await page.setExtraHTTPHeaders({ 'x-transit-fixture-hold': fixture });
 				await observeShifts(page);
 				const routes = city === 'stm' ? ['24', '67', '165'] : ['6', '7', '14'];
+				await overviewReadsCapture(page);
 				await page.route(captureUrl, async (route) => {
 					await capture;
 					await route.fulfill({
@@ -460,7 +467,9 @@ for (const { screen, href } of designPassCases.filter(
 					};
 					await scores('first-screen');
 					if (captureRefresh.has(screen) && !(screen === 'alerts-live' && city === 'octranspo')) {
-						const refreshed = page.waitForResponse((reply) => captureUrl.test(reply.url()));
+						// The Overview's Live now card refreshes from the summary, the other screens from the capture.
+						const liveRead = screen === 'overview' ? liveSummaryUrl : captureUrl;
+						const refreshed = page.waitForResponse((reply) => liveRead.test(reply.url()));
 						await page.clock.fastForward(30_000);
 						expect((await refreshed).ok()).toBe(true);
 						await settled(page);
