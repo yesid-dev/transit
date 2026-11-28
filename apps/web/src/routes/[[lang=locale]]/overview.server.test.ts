@@ -81,7 +81,7 @@ describe('Overview exports', () => {
 				request.signal,
 			);
 			expect(csvText(new Uint8Array(await response.arrayBuffer()))).toBe(
-				'a,Source des données et licence\r\n',
+				'a,Source des données et licence,Adresse de la licence\r\n',
 			);
 		},
 	);

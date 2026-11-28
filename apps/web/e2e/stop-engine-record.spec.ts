@@ -237,16 +237,20 @@ for (const width of [390, 1440]) {
 				})
 				.getAttribute('href');
 			const download = await request.get(accessCsv!);
-			expect(download.headers()['content-disposition']).toContain('stop-accessibility.csv');
-			expect(csvText(await download.body())).toContain(`accessible_stops,${fr ? 0 : 1}`);
+			expect(download.headers()['content-disposition']).toMatch(/-stop-[^"]+-accessibility-/u);
+			expect(csvText(await download.body())).toContain(
+				fr ? 'accessible_stops,Arrêts accessibles,0' : 'accessible_stops,Accessible stops,1',
+			);
 			const hourlyCsv = await sheet
 				.getByRole('link', { name: fr ? 'Par heure' : 'By hour' })
 				.getAttribute('href');
 			// French runs on OC Transpo, English on STM; each row names its source.
 			expect(csvText(await (await request.get(hourlyCsv!)).body())).toBe(
 				fr
-					? 'Mesure,Valeur,Source des données et licence\non_time,0.8,"Données ouvertes d’OC Transpo, calculs de Transit"\n'
-					: 'Measure,Value,Data source and licence\non_time,0.8,"STM open data, computed by Transit"\n',
+					? 'Identifiant de la mesure,Mesure,Valeur,Source des données et licence,Adresse de la licence\r\n' +
+							'on_time,Part à l’heure,0.8,"Données ouvertes d’OC Transpo, calculs de Transit",\r\n'
+					: 'Measure ID,Measure,Value,Data source and licence,Licence URL\r\n' +
+							'on_time,On-time share,0.8,"STM open data, computed by Transit",\r\n',
 			);
 			await expect(page.locator('html')).toHaveJSProperty('scrollWidth', width);
 		});

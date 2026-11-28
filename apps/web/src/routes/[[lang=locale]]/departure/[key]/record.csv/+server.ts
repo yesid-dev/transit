@@ -20,7 +20,7 @@ export const GET: RequestHandler = ({ params, url, request }) => {
 	const section = url.searchParams.get('section') ?? '';
 	const query = departureQuery(section, identity);
 	if (!query) return invalidRecordCsv(lang);
-	return recordCsvResponse(query, url, request, lang, `departure-${section}.csv`, {
+	return recordCsvResponse(query, url, request, lang, `departure-${params.key}-${section}.csv`, {
 		identity: {
 			code: 'DEPARTURE_NOT_FOUND',
 			check: (provider, scope) => identifyDeparture(identity, frameClock(provider), scope),

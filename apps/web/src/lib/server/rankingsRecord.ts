@@ -127,6 +127,6 @@ export function rankingsCsv(path: RankingPath, url: URL, request: Request, local
 		url,
 		request,
 		locale,
-		`rankings-${selection.kind}.csv`,
+		`rankings-${selection.kind}-${selection.measure}${selection.serviceClass ? `-${selection.serviceClass}` : ''}.csv`,
 	);
 }

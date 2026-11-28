@@ -93,7 +93,7 @@ export function vehicleCsv(
 		url,
 		request,
 		lang,
-		`vehicles-${section}.csv`,
+		id ? `vehicle-${id}-${section}.csv` : `vehicles-${section}.csv`,
 		id
 			? {
 					identity: {

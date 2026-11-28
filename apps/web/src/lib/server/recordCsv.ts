@@ -5,9 +5,7 @@ import { getCityCatalog, getRecordCsv, type RecordQuery } from './engine.ts';
 import type { EntityIdentity, IdentityScope } from './entityIdentity.ts';
 import type { PublicCity } from '#lib/v1/schemas/providers.ts';
 import { detailNotFoundCopy } from '#lib/site/errorPage.ts';
-
-// Distinct from a "source" column the engine may already export, such as a notice's source.
-const sourceHeader = { en: 'Data source and licence', fr: 'Source des données et licence' };
+import { spreadsheetCsv } from './spreadsheetCsv.ts';
 
 const unavailableText = {
 	en: 'The record is temporarily unavailable. Try the download again in a few minutes.',
@@ -71,68 +69,21 @@ function downloadError(lang: 'en' | 'fr', status: number, retryAfter?: string | 
 	return csvFailure(status, status === 503 ? unavailableText[lang] : invalidText[lang], retryAfter);
 }
 
-function csvField(text: string) {
-	return /[",\r\n]/u.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
 /**
- * Adds one last column to a CSV stream: `header` on the first record, `value` on every other.
- * Records end at a line break outside quotes, so quoted line breaks inside a field are kept.
+ * A file name that two downloads never share: the network, what the page shows (`line-51-punctuality`),
+ * the dates and the language, as `stm-line-51-punctuality-2026-11-19-to-2026-11-25-en.csv`.
  */
-export function appendCsvColumn(header: string, value: string) {
-	// Decode any source BOM and write one for spreadsheet applications.
-	const decoder = new TextDecoder();
-	const encoder = new TextEncoder();
-	const head = `,${csvField(header)}`;
-	const cell = `,${csvField(value)}`;
-	let quoted = false;
-	let first = true;
-	let atRecordStart = true;
-	let pendingReturn = false;
-	const recordEnd = () => {
-		const text = first ? head : cell;
-		first = false;
-		return text;
-	};
-	return new TransformStream<Uint8Array, Uint8Array>({
-		start(controller) {
-			controller.enqueue(Uint8Array.of(0xef, 0xbb, 0xbf));
-		},
-		transform(chunk, controller) {
-			const text = decoder.decode(chunk, { stream: true });
-			let out = '';
-			for (const char of text) {
-				if (pendingReturn) {
-					pendingReturn = false;
-					if (char === '\n') {
-						out += '\r\n';
-						continue;
-					}
-					out += '\r';
-				}
-				if (char === '"') quoted = !quoted;
-				if (!quoted && (char === '\n' || char === '\r')) {
-					if (!atRecordStart) out += recordEnd();
-					atRecordStart = true;
-					if (char === '\r') {
-						pendingReturn = true;
-						continue;
-					}
-					out += char;
-					continue;
-				}
-				atRecordStart = false;
-				out += char;
-			}
-			if (out) controller.enqueue(encoder.encode(out));
-		},
-		flush(controller) {
-			let out = decoder.decode();
-			if (pendingReturn) out += '\r';
-			if (!atRecordStart) out += recordEnd();
-			if (out) controller.enqueue(encoder.encode(out));
-		},
-	});
+export function csvFilename(city: string, name: string, period: DateWindow, lang: 'en' | 'fr') {
+	const slug = (text: string) =>
+		text
+			.normalize('NFKD')
+			.replace(/\p{M}+/gu, '')
+			.replace(/[^A-Za-z0-9._-]+/gu, '-')
+			.replace(/-+/gu, '-')
+			.replace(/^-|-$/gu, '');
+	const base = slug(name.replace(/.csv$/u, ''));
+	const dates = period.from === period.to ? period.from : `${period.from}-to-${period.to}`;
+	return `${slug(city)}-${base}-${dates}-${lang}.csv`;
 }
 
 export async function recordCsvResponse(
@@ -182,16 +133,17 @@ export async function recordCsvResponse(
 	}
 	const headers = new Headers({
 		'content-type': 'text/csv; charset=utf-8',
-		'content-disposition': `attachment; filename="${filename}"`,
+		'content-disposition': `attachment; filename="${csvFilename(provider.id, filename, selected, lang)}"`,
 		'cache-control': 'no-store',
 		'x-content-type-options': 'nosniff',
 	});
 	if (upstream.headers.get('x-transit-answer') === 'last-good')
 		headers.set('x-transit-answer', 'last-good');
 	const operator = provider.labels[lang].operator;
-	// Every row says whose data it is and under which licence, as the licence asks.
+	// Every row says whose data it is, under which licence and where to read it, as the licence asks.
 	const source = citationSourceText(citationSource(operator, provider, lang), lang);
-	return new Response(upstream.body.pipeThrough(appendCsvColumn(sourceHeader[lang], source)), {
+	const licenceUrl = provider.download_licence?.url?.[lang] ?? '';
+	return new Response(upstream.body.pipeThrough(spreadsheetCsv(lang, source, licenceUrl)), {
 		headers,
 	});
 }

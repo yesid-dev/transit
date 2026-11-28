@@ -96,10 +96,14 @@ test('Alerts Record streams a count, breakdowns and the first page of agency mes
 			.getAttribute('href');
 		const download = await request.get(csv!);
 		expect(download.ok()).toBe(true);
-		expect(download.headers()['content-disposition']).toBe(
-			`attachment; filename="alerts-${section}.csv"`,
+		// The name says whose, what, when and in which language, so two downloads never clash.
+		expect(download.headers()['content-disposition']).toMatch(
+			new RegExp(
+				`^attachment; filename="stm-alerts-${section}-[0-9-]+(?:-to-[0-9-]+)?-fr\\.csv"$`,
+				'u',
+			),
 		);
-		expect(csvText(await download.body())).toMatch(/^Mesure,Du,Au/u);
+		expect(csvText(await download.body())).toMatch(/^Identifiant de la mesure,Mesure,Du,Au/u);
 	}
 
 	const duplicate = stmAlertId(14);
