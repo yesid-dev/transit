@@ -287,7 +287,9 @@ def test_a_notice_published_once_per_line_counts_once(tmp_path: Path) -> None:
     periods = [{"start_utc": utc(day, 13), "end_utc": utc(day, 15)}]
     later = [{"start_utc": utc(day, 16), "end_utc": utc(day, 17)}]
 
-    def row(alert_id: str, line: str, published: list[dict[str, datetime]], **text: str | None):
+    def row(
+        alert_id: str, line: str, published: list[dict[str, datetime]], **text: str | None
+    ) -> tuple[object, ...]:
         words = {"en": en, "fr": fr} | text
         return (
             alert_id, "1", utc(day, 12), utc(day, 18), published, [line], ["s1"], None, None,

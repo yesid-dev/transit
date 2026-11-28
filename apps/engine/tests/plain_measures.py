@@ -154,8 +154,9 @@ def alerts(rows: list[Row] | None, line: str) -> Sample:
             if lo < hi or sighting:
                 intervals[key].append((lo, hi))
                 versions.add((*key, row["version"]))
-                words = said.setdefault((*key, row["version"]), (plain_wording(row), set()))
-                words[1].add((lo, hi))
+                said.setdefault((*key, row["version"]), (plain_wording(row), set()))[1].add(
+                    (lo, hi)
+                )
     total = 0.0
     for spans in intervals.values():
         active_until = start
@@ -167,12 +168,14 @@ def alerts(rows: list[Row] | None, line: str) -> Sample:
     assert 0 <= total <= len(intervals) * seconds(start, end)
     # One notice per alert ID, joined with every other ID that says the same thing over
     # the same periods (an agency's per-line copies of one notice).
-    notices = {key: {key} for key in intervals}
-    for publication, (words, spans) in said.items():
-        if words is None:
+    notices: dict[tuple[str, str], set[tuple[str, str]]] = {key: {key} for key in intervals}
+    for publication, (wording, periods) in said.items():
+        if wording is None:
             continue
-        twins = [other for other, (w, s) in said.items() if w == words and s == spans]
-        merged = set().union(*(notices[other[:2]] for other in [publication, *twins]))
+        twins = [other for other, (w, p) in said.items() if w == wording and p == periods]
+        merged: set[tuple[str, str]] = set().union(
+            *(notices[(other[0], other[1])] for other in [publication, *twins])
+        )
         for member in merged:
             notices[member] = merged
     distinct = len({frozenset(group) for group in notices.values()})
