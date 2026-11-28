@@ -441,3 +441,18 @@ def test_the_vm_release_installs_the_r2_reader_its_unit_turns_on() -> None:
     script = (ops / "update-engine.sh").read_text(encoding="utf-8")
     sync = script[script.index('"$root/bin/uv" sync') :].split("\n", 2)
     assert "--extra r2" in " ".join(sync[:2])
+
+
+def test_engine_connections_need_no_writable_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A network stretch window can make DuckDB reach for its spill folder. Its default
+    # is ".tmp" in the working directory, which is "/" for the sandboxed VM service.
+    store = _store(tmp_path, _passes())
+    with store.connect() as conn:
+        assert conn.execute("SELECT current_setting('temp_directory')").fetchone() == ("",)
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    _row(query(store, **LAYER), ("a", "b", 2, 1))
+    assert not (work / ".tmp").exists()
