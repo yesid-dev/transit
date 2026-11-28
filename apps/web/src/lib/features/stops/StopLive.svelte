@@ -18,7 +18,7 @@
 		noHeadingNote,
 		singularCount,
 		clockTime,
-		expectedReading,
+		minuteReading,
 		liveStampAge,
 		tickingLiveStamp,
 		relativeReportAge,
@@ -146,7 +146,10 @@
 				<!-- At zero the answer is the next vehicle, never a big 0. -->
 				<RecordAnswer
 					{locale}
-					value={expectedReading(readings.rows[0].predictedAt, now, locale, timeZone)}
+					value={minuteReading(
+						Math.max(0, Math.ceil((readings.rows[0].predictedAt - now) / 60_000)),
+						locale,
+					)}
 					sentence={nextSentence(readings.rows[0])}
 					time={stamp}
 				/>

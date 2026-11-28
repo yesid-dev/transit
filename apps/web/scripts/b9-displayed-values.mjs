@@ -116,6 +116,18 @@ const parseNumber = (value) => {
 	return match ? Number(match[0]) : null;
 };
 
+function expectedDelayLabel(seconds, locale) {
+	invariant(Number.isFinite(seconds), `invalid median delay in the fixture: ${seconds}`);
+	const fr = locale === 'fr';
+	const magnitude = Math.abs(seconds);
+	if (magnitude < 15) return fr ? 'À l’heure prévue' : 'On schedule';
+	const minutes = new Intl.NumberFormat(fr ? 'fr-CA' : 'en-CA', {
+		maximumFractionDigits: 1,
+	}).format(Math.round(magnitude / 30) / 2);
+	if (fr) return `${minutes} min ${seconds < 0 ? 'd’avance' : 'de retard'}`;
+	return `${minutes} min ${seconds < 0 ? 'early' : 'late'}`;
+}
+
 /** The readings behind the line record's answer, from its evidence sentence. */
 function lineVerdictObservationCount(text) {
 	const count = text.match(
@@ -651,7 +663,7 @@ async function displayedRecordNumbers(locator, expected, label) {
 	return readings;
 }
 
-async function verifyLineReadings(page, cell, onTime, label) {
+async function verifyLineReadings(page, cell, onTime, label, ledger) {
 	const fr = cell.locale === 'fr';
 	const network = 81.2;
 	const late = 90 - onTime;
@@ -747,7 +759,27 @@ async function verifyLineReadings(page, cell, onTime, label) {
 
 	const stops = page.locator('#stops footer button');
 	await stops.click();
-	await check('#stops tbody td', [[0.6], [5.6]]);
+	const delaySelector = '#stops tbody td';
+	const delayCells = page.locator(delaySelector);
+	await delayCells.first().waitFor();
+	const stopQuery = ledger
+		.map(({ path }) => new URL(path, 'http://b9.local'))
+		.find(
+			({ pathname, searchParams }) =>
+				pathname === '/v2/stm/measure' &&
+				searchParams.get('measure') === 'punctuality' &&
+				searchParams.get('group') === 'stop',
+		);
+	invariant(stopQuery, `${label} missing the stop ladder fixture request`);
+	const { body } = recordFixture(stopQuery, cell.fixture);
+	const delaySeconds = body.cells.map(({ value }) => value.median_delay);
+	const expectedDelays = delaySeconds.map((value) => expectedDelayLabel(value, cell.locale));
+	const actualDelays = (await delayCells.allInnerTexts()).map((text) => text.trim());
+	invariant(
+		JSON.stringify(actualDelays) === JSON.stringify(expectedDelays),
+		`${label} ${delaySelector}: ${JSON.stringify(delaySeconds)} seconds expected ${JSON.stringify(expectedDelays)}, read ${JSON.stringify(actualDelays)}`,
+	);
+	readings.push({ selector: delaySelector, delaySeconds, actual: actualDelays });
 	await stops.click();
 	await check('#delivery tbody td', [[2], [6], [32], [40]]);
 	await check('#late tbody td', [[late, 100]]);
@@ -867,7 +899,7 @@ async function verifyEngineRecord(page, cell, replay, errors, html) {
 			`${label} punctuality shares or denominators drifted: ${JSON.stringify(readings)}`,
 		);
 		if (isLine) {
-			lineReadings = await verifyLineReadings(page, cell, onTime, label);
+			lineReadings = await verifyLineReadings(page, cell, onTime, label, replay.state.ledger);
 		} else {
 			await page.locator('#daily footer button').click();
 			await page.locator('#daily table tbody tr').first().waitFor();
@@ -1151,6 +1183,20 @@ function runRunnerSelfCheck() {
 		invariant(
 			stopVerdictObservationCount(text) === expected,
 			`stop verdict observation count: ${text}`,
+		);
+	}
+	for (const [seconds, locale, expected] of [
+		[14.999, 'en', 'On schedule'],
+		[-14.999, 'fr', 'À l’heure prévue'],
+		[15, 'en', '0.5 min late'],
+		[-15, 'fr', '0,5 min d’avance'],
+		[37.5, 'en', '0.5 min late'],
+		[45, 'en', '1 min late'],
+		[337.5, 'fr', '5,5 min de retard'],
+	]) {
+		invariant(
+			expectedDelayLabel(seconds, locale) === expected,
+			`${locale} delay label for ${seconds} s`,
 		);
 	}
 	// Preserve the existing fixture-mode report shape after retiring live readiness.

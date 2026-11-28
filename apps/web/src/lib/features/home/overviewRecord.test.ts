@@ -91,8 +91,8 @@ describe('Overview record text', () => {
 
 	it('distinguishes the missing origin from an engine-reported gap', () => {
 		const missing = { kind: 'unconfigured' } as const;
-		expect(measureText(missing, period, 'en')).toMatch(/Numbers will appear here/);
-		expect(measureText(missing, period, 'fr')).toMatch(/Les chiffres s’afficheront ici/);
+		expect(measureText(missing, period, 'en')).toBe('The record is not available.');
+		expect(measureText(missing, period, 'fr')).toBe('Le bilan n’est pas disponible.');
 	});
 
 	it('keeps a measured zero with its denominator', () => {
@@ -101,7 +101,7 @@ describe('Overview record text', () => {
 		value.evidence.counts.on_time = 0;
 		expect(overviewValue(answer(value), 'on_time')).toBe(0);
 		expect(measureText(answer(value), period, 'en')).toContain(
-			'0.0% of observed stop events were on time (0 of 507,800) · 60.0% of 846,333 scheduled stops observed.',
+			'0% of observed stop events were on time (0 of 507,800) · 60.0% of 846,333 scheduled stops observed.',
 		);
 	});
 });

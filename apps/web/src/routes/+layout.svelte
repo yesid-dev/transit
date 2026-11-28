@@ -461,6 +461,10 @@
 </script>
 
 <svelte:head>
+	<link
+		rel="manifest"
+		href={locale === 'fr' ? '/fr/manifest.webmanifest' : '/manifest.webmanifest'}
+	/>
 	{#if !head.noIndex}
 		<meta name="robots" content="max-image-preview:large" />
 	{/if}

@@ -1,4 +1,4 @@
-import { shareCopy, shareKey, withShareCta } from './share-copy';
+import { shareCopy, shareKey } from './share-copy';
 import { delocalizePath, localizeHref } from '../i18n/routing';
 import type { Locale } from '../i18n/config';
 import { roadmapTitle } from '../features/roadmap/roadmap.copy';
@@ -64,6 +64,10 @@ const HOME: BilingualSeo & {
 	readonly keywordTitle: (id: ResolvedIdentity) => BilingualText;
 } = {
 	title: { en: 'Transit network overview', fr: 'Vue d’ensemble du réseau' },
+	description: {
+		en: 'An independent public record of transit service delivered.',
+		fr: 'Un bilan public et indépendant du service de transport effectué.',
+	},
 	keywordTitle: (id) => ({
 		en: `${id.shortName} network overview`,
 		fr: `Vue du réseau ${id.shortName}`,
@@ -73,12 +77,23 @@ const HOME: BilingualSeo & {
 const SURFACES: Record<string, BilingualSeo> = {
 	'/map': {
 		title: { en: 'Live map', fr: 'Carte en direct' },
+		description: {
+			en: 'Where vehicles last reported, with transit stops and lines.',
+			fr: 'Les dernières positions signalées des véhicules, les arrêts et les lignes.',
+		},
 	},
 	'/lines': {
 		title: { en: 'Lines', fr: 'Lignes' },
 	},
 	'/stops': {
 		title: { en: 'Stops', fr: 'Arrêts' },
+	},
+	'/vehicles': {
+		title: { en: 'Vehicles', fr: 'Véhicules' },
+		description: {
+			en: 'Every vehicle seen in service, with its days, hours and lines.',
+			fr: 'Chaque véhicule vu en service, avec ses jours, ses heures et ses lignes.',
+		},
 	},
 	'/network': {
 		title: { en: 'Network health', fr: 'Santé du réseau' },
@@ -100,12 +115,16 @@ const SURFACES: Record<string, BilingualSeo> = {
 		},
 	},
 	'/status': {
+		description: {
+			en: 'When the agency last sent data, what it sends and where the record has gaps.',
+			fr: 'Quand la société de transport a transmis ses données, ce qu’elle publie et les lacunes du bilan.',
+		},
 		title: { en: 'Data health', fr: 'Santé des données' },
 	},
 	'/download': {
 		description: {
-			en: 'Download daily transit data in Parquet format and read the source licence.',
-			fr: 'Téléchargez les données quotidiennes de transport en format Parquet et consultez la licence des sources.',
+			en: 'The cleaned daily files behind every figure, under the agency’s licence.',
+			fr: 'Les fichiers quotidiens nettoyés derrière chaque chiffre, sous la licence de la société de transport.',
 		},
 		title: { en: 'Download the data', fr: 'Télécharger les données' },
 	},
@@ -117,6 +136,10 @@ const SURFACES: Record<string, BilingualSeo> = {
 	},
 	'/alerts': {
 		title: { en: 'Service alerts', fr: 'Avis de service' },
+		description: {
+			en: 'Notices from the transit agency and the service they affect.',
+			fr: 'Avis de la société de transport et services touchés.',
+		},
 	},
 	'/privacy': {
 		title: { en: 'Privacy', fr: 'Confidentialité' },
@@ -145,12 +168,30 @@ const STOP_DETAIL: BilingualSeo = {
 	title: { en: 'Stop record', fr: 'Bilan de l’arrêt' },
 };
 
+const VEHICLE_DETAIL: BilingualSeo = {
+	title: { en: 'Vehicle record', fr: 'Bilan du véhicule' },
+	description: {
+		en: 'Where this vehicle ran, its hours in service and how on time it was.',
+		fr: 'Où ce véhicule a roulé, ses heures en service et sa ponctualité.',
+	},
+};
+
+const DEPARTURE_DETAIL: BilingualSeo = {
+	title: { en: 'Departure record', fr: 'Bilan du départ' },
+	description: {
+		en: 'How late this departure ran, stop by stop, over the chosen dates.',
+		fr: 'Le retard de ce départ, arrêt par arrêt, aux dates choisies.',
+	},
+};
+
 function entryFor(path: string, params: URLSearchParams): BilingualSeo {
 	if (path === '/') return HOME;
 	if (path === '/map' && mapLayerFor(params) !== 'live') return MAP_RECORD;
 	if (SURFACES[path]) return SURFACES[path];
 	if (path.startsWith('/lines/')) return LINE_DETAIL;
 	if (path.startsWith('/stop/')) return STOP_DETAIL;
+	if (path.startsWith('/vehicle/')) return VEHICLE_DETAIL;
+	if (path.startsWith('/departure/')) return DEPARTURE_DETAIL;
 	const upcoming = upcomingPage(path);
 	if (upcoming) return { title: upcoming.label };
 	return HOME;
@@ -200,6 +241,7 @@ export function resolveRouteSeo(
 				)
 			: undefined;
 	const copy = shareCopy(path, locale);
+	const description = entry.description?.[locale] ?? `${copy.support}.`;
 	const key = shareKey(path);
 	const defaultImage =
 		key === '/'
@@ -216,10 +258,7 @@ export function resolveRouteSeo(
 		const title = HOME.keywordTitle(resolved);
 		return {
 			title: title[locale],
-			description: withShareCta(
-				`${resolved.shortName} · ${resolved.city}. ${copy.support}`,
-				copy.cta,
-			),
+			description: `${resolved.shortName} · ${resolved.city}. ${description}`,
 			siteName: 'Transit',
 			providerId,
 			imagePath,
@@ -228,7 +267,7 @@ export function resolveRouteSeo(
 	}
 	return {
 		title: entry.title[locale],
-		description: entry.description?.[locale] ?? withShareCta(copy.support, copy.cta),
+		description,
 		siteName: 'Transit',
 		providerId,
 		imagePath,

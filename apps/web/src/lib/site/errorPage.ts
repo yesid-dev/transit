@@ -92,9 +92,9 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 		suggestionsLabel: 'Destinations suggérées',
 		generic: {
 			label: 'HORS SERVICE',
-			heading: 'Une erreur est survenue',
-			body: 'Quelque chose s’est mal passé en chargeant cette vue. Réessayez ou revenez à l’accueil.',
-			home: 'Retour à l’accueil',
+			heading: 'Cette page n’a pas pu se charger',
+			body: 'Réessayez ou revenez à l’aperçu.',
+			home: 'Retour à l’aperçu',
 		},
 		notFound: {
 			heading: 'Cette page n’existe pas',
@@ -130,9 +130,9 @@ export const errorPageCopy: Record<Locale, ErrorPageLocaleCopy> = {
 		suggestionsLabel: 'Suggested destinations',
 		generic: {
 			label: 'OUT OF SERVICE',
-			heading: 'Something went wrong',
-			body: 'Something failed while loading this view. Try again or head back home.',
-			home: 'Back to home',
+			heading: 'This page could not load',
+			body: 'Try again, or go back to the overview.',
+			home: 'Back to the overview',
 		},
 		notFound: {
 			heading: 'This page does not exist',

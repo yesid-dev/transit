@@ -5,20 +5,20 @@
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
 	import type { Locale } from '#lib/i18n/index.ts';
-	import { AbsentValue, MaybeValue } from '#lib/components/edge/index.ts';
+	import { AbsentValue } from '#lib/components/edge/index.ts';
 	import {
 		stopNameFallback,
 		liveAbsenceReason,
 		readLiveAbsenceContext,
 	} from '#lib/site/absence.ts';
 	import { routeHasNoLiveData } from '#lib/v1/providers.ts';
-	import { STATUS_LABELS } from '#lib/v1/enumLabels.ts';
 	import type { MapHoverPeek } from './mapHoverPeek';
 	import { STATUS_GLYPH, statusVar } from '#lib/components/dataviz/tokens.ts';
-	import { minuteReading } from '#lib/site/presenter.ts';
+	import { liveStatusWords, minuteReading } from '#lib/site/presenter.ts';
 	import MapDetailAlerts from './MapDetailAlerts.svelte';
 	import { MAP_SELECTION_DETAIL_COPY } from './mapSelectionDetail.copy';
 	import { formatAge } from './mapSelectionDetail.logic';
+	import { mapStatusLabel } from './mapStatusLabels.ts';
 
 	interface Props {
 		peek: MapHoverPeek;
@@ -85,6 +85,12 @@
 				<dt>{t.status}</dt>
 				<dd class="map-peek-status">
 					{#if !isInService({ trip: peek.tripId })}{vehicleServiceCopy[locale].status}{:else}
+						{@const statusWords = liveStatusWords(
+							peek.status,
+							mapStatusLabel(locale, peek.status),
+							peek.delayMin == null ? null : peek.delayMin * 60,
+							locale,
+						)}
 						{#if peek.delayMin != null || peek.status !== 'unknown'}
 							<!-- The panel's status mark: a coloured glyph before the plain label. -->
 							<span class="peek-status" data-status={peek.status}
@@ -93,17 +99,16 @@
 									aria-hidden="true"
 									style={`--glyph: ${statusVar(peek.status)}`}>{STATUS_GLYPH[peek.status]}</span
 								>
-								{STATUS_LABELS[locale][peek.status]}</span
+								{statusWords.label}</span
 							>
-							<span aria-hidden="true">·</span>
 						{/if}
-						<span class="map-peek-delay">
-							<MaybeValue
-								value={minuteReading(peek.delayMin, locale, true)}
-								reason={vehicleAbsence}
-								{locale}
-							/>
-						</span>
+						{#if peek.delayMin == null}
+							<AbsentValue reason={vehicleAbsence} {locale} />
+						{:else if statusWords.detail}
+							<span class="map-peek-delay">{statusWords.detail}</span>
+						{:else if peek.status === 'unknown'}
+							<span class="map-peek-delay">{minuteReading(peek.delayMin, locale, true)}</span>
+						{/if}
 					{/if}
 				</dd>
 			</div>

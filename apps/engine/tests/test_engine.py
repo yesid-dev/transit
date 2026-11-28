@@ -1000,6 +1000,7 @@ def test_http_and_bilingual_csv_come_from_same_registry(
         assert [
             {key: value for key, value in entry.items() if key != "family_text"} for entry in info
         ] == json.loads(answer)["info"]
+        assert all("query_ms" not in entry["evidence_fields"] for entry in info)
         if family == "service_delivered":
             status, _, stop_answer = await http(app, "/measure", params + "&stop=first")
             assert status == 200
@@ -1017,7 +1018,10 @@ def test_http_and_bilingual_csv_come_from_same_registry(
             assert headers[b"content-type"] == b"text/csv; charset=utf-8"
             assert headers[b"x-transit-cleaning-version"] == str(store.cleaning_version).encode()
             reader = csv.reader(io.StringIO(payload.decode()))
-            assert next(reader) == info[0]["csv_columns"][lang]
+            columns = next(reader)
+            assert columns == info[0]["csv_columns"][lang]
+            assert "Query time (ms)" not in columns
+            assert "Durée de la requête (ms)" not in columns
             assert [row[0] for row in reader] == [measure["id"] for measure in info]
 
     asyncio.run(run())
@@ -1240,18 +1244,18 @@ def _long_range_answers(
 
 
 def test_long_range_matches_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Canonical JSON digests with the revised statistics and plain-language method text.
+    # These digests reflect query_ms removed from evidence_fields and both CSV header lists.
     # The fixture spans two query batches, a DST transition, and one missing day.
     # Stop "first" (46.7% observed) is excluded for low coverage, not ranked.
     expected = {
-        "network": "6567ffee09dac1d8860d17fe505f456ae7c1e8926996a99dbc0dad355de1731f",
-        "line": "996500e1e9a05eb60a89cc79c40ad1c8ff66218e534e4fecd3400bdf1e94c98b",
+        "network": "4b5c8c0a1bf0cd5960cf82ea224a5d1e411798510a118e85372b38709ef38209",
+        "line": "38892bdd8ae0fe24082a4e66dfbb4c910ec07a940c10593c7a1709afffce7fb8",
         # The grid includes the service weekday CSV header and the revised method text.
-        "grid": "7afa60b30d9bc02913b857d22a4ccfa6d0b7c83b765a7e69aa101c56126a09df",
-        "delivery": "588ca59f1841ed4aec345434dff6759665b514e8958dd2926eb8cbcf8eb99491",
-        "line_rank": "91644d0d1eeb384aee40081d0e67f2b9ce574b9c81dbed31c71e14eca83cb899",
-        "stop_rank": "17daebba061ebe0a821542e90cce9634adb6b623d0cb50684c32d733bd7e0443",
-        "departure_rank": "acc728c21bfcfd01f6ef116988a8d8d7e51658647143c5150255f218b730a86f",
+        "grid": "d6489f87ebae50b950ce0587248f77293a9d53837704b1c3411aa49e51b2487e",
+        "delivery": "9f1d3a3bb5a6f2cdad4043b15e26dccf8784ac624c200a079b3cac04ca328f1d",
+        "line_rank": "b7e95497aca016dcc3b0372f3a4886f46ae9fa56cc2346e97d72b18631d7ea50",
+        "stop_rank": "841383aecc27d7efed407814f23d47c731055bd2e1f9a2aa734efdd1d3de50e2",
+        "departure_rank": "b7743de0e723fa55973f847870cab24a7cb7a5dcd32416415df436ef3ac4c950",
     }
     answers = _long_range_answers(tmp_path, monkeypatch)
     assert {

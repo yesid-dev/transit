@@ -23,7 +23,7 @@ const measured: RecordCell = {
 
 it('reads a pooled wait with its matched basis and a disruption share with its observed sample', () => {
 	expect(waitingReading(measured, 'excess_wait_time', 'en')).toBe('0.7 min');
-	expect(waitingReading(measured, 'long_gaps', 'en')).toBe('0.0% (0 of 20)');
+	expect(waitingReading(measured, 'long_gaps', 'en')).toBe('0% (0 of 20)');
 	expect(waitingReading(measured, 'bunching', 'fr')).toMatch(/20,0\s% \(4 sur 20\)/);
 	expect(coverageText(measured.evidence, 'en')).toBe(
 		'Measured on 14 of the 50 gaps planned when vehicles are due every 10 minutes or less (28.0%) · Low coverage',

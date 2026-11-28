@@ -7,12 +7,13 @@
 	import { type CaptureSnapshot, captureDisplayState } from '#lib/live/captureSnapshot.ts';
 	import LiveCapture from '#lib/live/LiveCapture.svelte';
 	import {
+		alertsNotPublished,
+		officialAlertsLabel,
 		singularCount,
 		healthFeedName,
 		captureAge,
 		captureCadence,
 		captureFacts,
-		captureSize,
 		tickingLiveStamp,
 		recordRatio,
 	} from '#lib/site/presenter.ts';
@@ -31,12 +32,16 @@
 		capture,
 		subject,
 		operator,
+		operatorOf,
+		alerts = { tracked: true },
 		locale,
 	}: {
 		city: string | null;
 		capture: Awaitable<CaptureSnapshot | null>;
 		subject: string;
 		operator: string;
+		operatorOf?: string | null;
+		alerts?: { tracked: boolean; officialUrl?: string };
 		locale: Locale;
 	} = $props();
 
@@ -53,7 +58,7 @@
 		stale: t('Late', 'En retard'),
 		no_live_data: t('No live data', 'Aucune donnée en direct'),
 		refresh_unavailable: t('Refresh unavailable', 'Actualisation indisponible'),
-		not_tracked: t('Not tracked', 'Non suivi'),
+		not_tracked: t('Transit did not track this feed', 'Transit n’a pas suivi ce flux'),
 		unknown: t('Unknown', 'Inconnu'),
 		not_measured: t('Not measured', 'Non mesuré'),
 	});
@@ -66,7 +71,6 @@
 		name: string;
 		age: string | null;
 		cadence: string | null;
-		size: string | null;
 		state: ReturnType<typeof captureDisplayState>;
 	}[] {
 		return Object.entries(snapshot?.feeds ?? {}).map(([id, feed]) => ({
@@ -74,7 +78,6 @@
 			name: healthFeedName(feed.family, locale),
 			age: captureAge(feed.captured_at, now, locale),
 			cadence: captureCadence(feed.expected_every_seconds, locale),
-			size: captureSize(feed.bytes, locale),
 			state: captureDisplayState(feed, now, snapshot?.published_at),
 		}));
 	}
@@ -83,14 +86,12 @@
 		label: string;
 		age: string;
 		cadence: string;
-		size: string;
 		state: string;
 		facts: string | null;
 	};
 	const feedColumns = $derived<DataTableColumn<FeedRow>[]>([
 		{ key: 'age', header: t('Last capture', 'Dernière collecte'), cell: ageCell },
 		{ key: 'cadence', header: t('Expected', 'Fréquence prévue'), cell: cadenceCell },
-		{ key: 'size', header: t('Size', 'Taille'), numeric: true, cell: sizeCell },
 		{ key: 'state', header: t('State', 'État'), cell: stateCell },
 	]);
 	const feedShape = { shape: 'table', rows: 4 } as const;
@@ -98,10 +99,23 @@
 
 {#snippet ageCell(row: FeedRow)}{row.age}{/snippet}
 {#snippet cadenceCell(row: FeedRow)}{row.cadence}{/snippet}
-{#snippet sizeCell(row: FeedRow)}{row.size}{/snippet}
 {#snippet stateCell(row: FeedRow)}{row.state}{/snippet}
 
 {#snippet about(text: string | null)}
+	{#if !alerts.tracked}
+		<p class="mb-3">
+			<StateMark state="not_published" {locale} />
+			{alertsNotPublished(
+				{ name: operator, frenchOf: operatorOf },
+				locale,
+				Boolean(alerts.officialUrl),
+			)}
+		</p>
+		{#if alerts.officialUrl}<a
+				class="mb-3 inline-flex min-h-11 items-center text-primary underline"
+				href={alerts.officialUrl}>{officialAlertsLabel(locale)}</a
+			>{/if}
+	{/if}
 	<AboutLiveFigures
 		{locale}
 		{operator}
@@ -179,17 +193,16 @@
 									rowHeader={t('Feed', 'Flux')}
 									columns={feedColumns}
 									rows={[
-										...feeds.map(({ id, name, age, cadence, size, state }) => ({
+										...feeds.map(({ id, name, age, cadence, state }) => ({
 											id: 'feed:' + id,
 											label: name,
 											age: age ?? labels.unknown,
 											cadence: cadence ?? labels.not_measured,
-											size: size ?? labels.not_measured,
 											state:
 												state === 'stale' && age
 													? t(`Late: last received ${age}`, `En retard : dernière réception ${age}`)
 													: labels[state],
-											facts: captureFacts(state === 'stale' ? null : age, cadence, size, locale),
+											facts: captureFacts(state === 'stale' ? null : age, cadence, null, locale),
 										})),
 										...(schedule
 											? [
@@ -201,7 +214,6 @@
 															'when the agency publishes',
 															'à la publication par la société de transport',
 														),
-														size: captureSize(schedule.bytes, locale) ?? labels.not_measured,
 														state: schedule.effective_date
 															? t('In use', 'En vigueur')
 															: labels.not_measured,
@@ -211,7 +223,7 @@
 																'when the agency publishes',
 																'à la publication par la société de transport',
 															),
-															captureSize(schedule.bytes, locale),
+															null,
 															locale,
 														),
 													},

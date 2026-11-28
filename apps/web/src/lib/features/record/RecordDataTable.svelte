@@ -153,9 +153,10 @@
 				].join(' '),
 	);
 
+	const reverseOrder = $derived(locale === 'fr' ? 'Inverser l’ordre' : 'Reverse the order');
 	function sortHeaderLabel(header: string) {
 		if (header !== sortedHeader) return `${sortBy} ${header}`;
-		return locale === 'fr' ? `Inverser le tri par ${header}` : `Reverse sort by ${header}`;
+		return `${header}${locale === 'fr' ? '\u00a0:' : ':'} ${reverseOrder}`;
 	}
 
 	const pageLabels = $derived({
@@ -312,7 +313,7 @@
 						variant="outline"
 						size="sm"
 						wrap
-						onclick={() => sort.onSort(sort.key)}>{sortHeaderLabel(sortedHeader)}</Button
+						onclick={() => sort.onSort(sort.key)}>{reverseOrder}</Button
 					>
 				</span>
 			{/if}

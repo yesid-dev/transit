@@ -12,7 +12,7 @@ for (const locale of ['en', 'fr'] as const)
 				await page.goto(localizeHref('/stop/S1', locale, 'stm') + period);
 				const hourly = page.locator('#hourly');
 				await expect(
-					hourly.getByRole('columnheader', { name: locale === 'fr' ? '7 h' : '07h', exact: true }),
+					hourly.getByRole('columnheader', { name: locale === 'fr' ? '7 h' : '07', exact: true }),
 				).toBeVisible();
 				await expect(
 					hourly

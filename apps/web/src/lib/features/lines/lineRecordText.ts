@@ -29,7 +29,7 @@ import type { LineDirection, LineSection } from '#lib/server/lineRecord.ts';
 export const lineSectionTitles = {
 	waiting: ['Waiting and gaps', 'Attente et intervalles'],
 	offered: ['Service offered', 'Service offert'],
-	punctuality: ['On-time performance', 'Ponctualité'],
+	punctuality: ['On-time share', 'Ponctualité'],
 	daily: ['Day by day', 'Jour par jour'],
 	hourly: ['By hour and weekday', 'Par heure et jour de la semaine'],
 	directions: ['Each direction', 'Par direction'],
@@ -125,14 +125,14 @@ export function waitingFinding(answer: RecordMeasure, locale: Locale) {
 
 const crowdingPhrases: Record<string, [en: string, fr: string]> = {
 	crowding_empty: ['were empty', 'étaient vides'],
-	crowding_many_seats: ['had many seats free', 'avaient plusieurs places assises libres'],
-	crowding_few_seats: ['had few seats free', 'avaient peu de places assises libres'],
+	crowding_many_seats: ['had many seats available', 'avaient plusieurs places assises libres'],
+	crowding_few_seats: ['had few seats available', 'avaient peu de places assises libres'],
 	crowding_standing: ['had standing room only', 'n’avaient que des places debout'],
 	crowding_crushed: ['had little standing room', 'avaient peu de places debout'],
 	crowding_full: ['were full', 'étaient pleins'],
 };
 
-/** The most frequent occupancy in a rider's words: "Vehicles most often had few seats free: 33.9% of the time." */
+/** The most frequent occupancy in a rider's words: "Vehicles most often had few seats available: 33.9% of the time." */
 export function crowdingFinding(
 	level: { key: string; share: number; percentage?: number },
 	locale: Locale,

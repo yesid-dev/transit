@@ -17,7 +17,7 @@
 	import type { RankingsRecord } from '#lib/server/engine.ts';
 	import type { loadRankingsRecord, RankingIdentities } from '#lib/server/rankingsRecord.ts';
 	import { stopNameFallback } from '#lib/site/absence.ts';
-	import { frameHref } from '#lib/site/frameState.ts';
+	import { carryFrameState, frameHref } from '#lib/site/frameState.ts';
 	import {
 		citationSource,
 		countedUnit,
@@ -274,7 +274,7 @@
 	}
 	function exclusions(data: RankingsRecord) {
 		const groups = new SvelteMap<string, { count: number; label: string }>();
-		for (const row of data.excluded)
+		for (const row of data.excluded.filter(showExclusion))
 			groups.set(row.reason, {
 				count: (groups.get(row.reason)?.count ?? 0) + 1,
 				label: row.reason_text[locale],
@@ -284,11 +284,15 @@
 			.map(({ count, label }) => `${label}${t(': ', '\u00a0: ')}${tally(count, locale)}.`)
 			.join(' ');
 	}
+	function showExclusion(row: RankingsRecord['excluded'][number]) {
+		return kind !== 'departure' || row.reason !== 'no_live_data';
+	}
 	/** Excluded rows in the order riders read numbers: 1, 2, 4, 139, not 1, 139, 2. */
 	function excludedRows(data: RankingsRecord, identities: RankingIdentities) {
 		const compare = intl.collator(locale, { numeric: true, sensitivity: 'base' }).compare;
 		const key = (row: RecordTableRow) => row.plate?.code ?? row.leadingCode?.text ?? row.label;
 		return data.excluded
+			.filter(showExclusion)
 			.map((entry): Excluded => ({ ...name(entry, identities), entry }))
 			.sort((a, b) => compare(key(a), key(b)) || compare(a.id, b.id));
 	}
@@ -479,6 +483,13 @@
 	{@const ref = bounded.length
 		? rankingReference(settledReference ?? null, data, measure, locale)
 		: null}
+	{@const worse = t('Worse than the network', 'Moins bien que le réseau')}
+	{@const allWorse =
+		rows.length > 1 &&
+		rows.every(
+			({ entry }) =>
+				rankingVerdict(entry, ref, data.evidence.method_version, measure, locale) === worse,
+		)}
 	{@const wilson = bounded.some(({ entry }) => entry.range.method.endsWith('wilson_95'))}
 	{@const scale = domain(data)}
 	{#snippet value(row: Ranked)}<strong class="font-sans"
@@ -550,8 +561,8 @@
 						{caption}
 					/>
 				</ChartDetails>
-				{#if verdict}<span class={showVerdict ? 'text-small text-muted-foreground' : 'sr-only'}
-						>{verdict}</span
+				{#if verdict && !allWorse}<span
+						class={showVerdict ? 'text-small text-muted-foreground' : 'sr-only'}>{verdict}</span
 					>{/if}
 			</div>
 		{:else}<span class="sr-only">{t('Range unavailable', 'Plage indisponible')}</span>{/if}
@@ -599,6 +610,21 @@
 		data-sparse-ranking={rows.length > 0 && rows.length < 20 ? '' : undefined}
 	>
 		{#if rows.length}
+			{@const first = rows.slice(0, 20)}
+			{#if allWorse}<p class="text-small">
+					{t(
+						'Every entry in this list did worse than the network as a whole.',
+						'Chaque entrée de cette liste a fait moins bien que le réseau dans son ensemble.',
+					)}
+				</p>{/if}
+			{#if kind === 'stop' && measure === 'on_time' && first.filter(({ entry }) => (entry.counts?.early ?? 0) > (entry.counts?.late ?? 0)).length * 2 > first.length}
+				<p class="text-small">
+					{t(
+						'Most of these stops miss by being early. Vehicles left more than a minute before the timetable. To see late stops, rank by Late share.',
+						'La plupart de ces arrêts sont en avance. Les véhicules sont partis plus d’une minute avant l’heure prévue. Pour voir les arrêts en retard, classez par Part en retard.',
+					)}
+				</p>
+			{/if}
 			{#if bounded.length}<p class="text-small">
 					{t(
 						'Nearby positions may not really differ. When the ranges of two rows overlap, the gap between them can be chance.',
@@ -655,20 +681,38 @@
 
 {#snippet excludedCard(data: RankingsRecord, identities: RankingIdentities)}
 	{@const title = excludedTitle}
+	{@const shown = excludedRows(data, identities)}
 	{#if data.excluded.length}
 		{#snippet reason(row: Excluded)}{exclusionText(row.entry, measure, locale)}{/snippet}
 		<RecordCard {title} disclosure={{ id: 'excluded', description: exclusions(data) }}>
-			<RecordDataTable
-				{locale}
-				{title}
-				{rowHeader}
-				rows={excludedRows(data, identities)}
-				columns={[{ key: 'reason', header: t('Reason', 'Motif'), cell: reason }]}
-				phone={{
-					line: (row) =>
-						rowSentence([row.detail, exclusionText(row.entry, measure, locale)], locale),
-				}}
-			/>
+			{#if shown.length !== data.excluded.length}
+				<p class="mb-3">
+					{t(
+						'Departures on lines without live data are excluded.',
+						'Les départs des lignes sans données en direct sont exclus.',
+					)}
+					<a
+						class="text-primary underline"
+						href={carryFrameState(
+							localizeHref('/lines#lines-without-live-data', locale, record.city),
+							pinned,
+						)}>{t('See those lines', 'Voir ces lignes')}</a
+					>
+				</p>
+			{/if}
+			{#if shown.length}
+				<RecordDataTable
+					{locale}
+					{title}
+					{rowHeader}
+					rows={shown}
+					columns={[{ key: 'reason', header: t('Reason', 'Motif'), cell: reason }]}
+					phone={{
+						line: (row) =>
+							rowSentence([row.detail, exclusionText(row.entry, measure, locale)], locale),
+					}}
+				/>
+			{/if}
 		</RecordCard>
 	{:else}<RecordCard {title}
 			><p>{t('No exclusions for this list.', 'Aucune exclusion pour cette liste.')}</p></RecordCard

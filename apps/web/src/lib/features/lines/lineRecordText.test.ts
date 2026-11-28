@@ -51,7 +51,7 @@ describe('Line Record text', () => {
 		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('du 8 au 14 nov. 2026');
 		expect(lineAnswer(answer, answer.evidence, 'fr')).toContain('(80 sur 100)');
 		expect(punctualityBands(answer, 'en').map(({ reading }) => reading)).toEqual([
-			'0.0% (0/100) · 50.0% of 200 scheduled stops observed',
+			'0% (0/100) · 50.0% of 200 scheduled stops observed',
 			'80.0% (80/100) · 50.0% of 200 scheduled stops observed',
 			'20.0% (20/100) · 50.0% of 200 scheduled stops observed',
 		]);
@@ -78,7 +78,7 @@ describe('Line Record text', () => {
 	});
 
 	it.each(['en', 'fr'] as const)('says the dates once in a %s citation', (locale) => {
-		const title = locale === 'en' ? 'On-time performance' : 'Ponctualité';
+		const title = locale === 'en' ? 'On-time share' : 'Ponctualité';
 		const citation = lineCitation('24 · Sherbrooke', title, answer, locale, 'x');
 		const dates = locale === 'en' ? '8 to 14 Nov 2026' : 'Du 8 au 14 nov. 2026';
 		expect(citation).toContain(`${title}. ${dates}.`);
@@ -88,7 +88,7 @@ describe('Line Record text', () => {
 });
 
 it.each([
-	['en', 'Vehicles most often had few seats free: 33.9% of the time.'],
+	['en', 'Vehicles most often had few seats available: 33.9% of the time.'],
 	[
 		'fr',
 		'Les véhicules avaient le plus souvent peu de places assises libres\u00a0: 33,9\u00a0% du temps.',

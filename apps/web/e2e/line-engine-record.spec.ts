@@ -1,14 +1,43 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 
 test.use({ bypassCSP: true });
 test.beforeEach(({ browserName }, info) => {
 	test.skip(browserName !== 'chromium' || info.project.name !== 'desktop');
 });
 
+const lineRecordPath = (locale: 'en' | 'fr', provider: 'stm' | 'octranspo') =>
+	`${locale === 'fr' ? '/fr' : ''}/lines/24?provider=${provider}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`;
+
+async function expectLineNotices(
+	alerts: Locator,
+	provider: 'stm' | 'octranspo',
+	locale: 'en' | 'fr',
+) {
+	const fr = locale === 'fr';
+	if (provider === 'stm') {
+		await expect(alerts).toContainText(fr ? /\b3 avis\b/u : /\b3 (?:distinct )?notices\b/u);
+		return;
+	}
+	await expect(alerts).toContainText(
+		fr
+			? 'Non publié : OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.'
+			: 'Not published: OC Transpo does not publish its service alerts as open data. It posts them on its website.',
+	);
+	await expect(
+		alerts.getByRole('link', {
+			name: fr ? 'Consulter les avis officiels' : 'Check the official notices',
+		}),
+	).toHaveAttribute(
+		'href',
+		fr ? 'https://www.octranspo.com/fr/alertes/' : 'https://www.octranspo.com/en/alerts/',
+	);
+}
+
 for (const width of [390, 1440]) {
 	for (const locale of ['en', 'fr'] as const) {
 		const fr = locale === 'fr';
-		const path = `${fr ? '/fr' : ''}/lines/24?provider=${fr ? 'octranspo' : 'stm'}&frameMode=record&recordFrom=2026-11-08&recordTo=2026-11-14`;
+		const provider = fr ? 'octranspo' : 'stm';
+		const path = lineRecordPath(locale, provider);
 		test(`${locale} at ${width}px shows the Line record with evidence`, async ({ page }) => {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto(path);
@@ -76,10 +105,10 @@ for (const width of [390, 1440]) {
 				main.locator('#late').getByRole('link', { name: fr ? /7\sh/u : /07:00/ }),
 			).toBeVisible();
 			await expect(main.locator('#late')).toContainText(fr ? 'se classe premier' : 'ranked first');
-			await expect(main.locator('#crowding')).toContainText(fr ? 'Non suivi' : '25.0%');
-			await expect(main.locator('#alerts')).toContainText(
-				fr ? /3 avis/ : /3 (?:distinct )?notices/,
+			await expect(main.locator('#crowding')).toContainText(
+				fr ? 'Les données sur la place à bord sont indisponibles à ces dates.' : '25.0%',
 			);
+			await expectLineNotices(main.locator('#alerts'), provider, locale);
 
 			await main
 				.getByRole('button', { name: fr ? 'Tout replier' : 'Collapse all', exact: true })
@@ -132,6 +161,16 @@ for (const width of [390, 1440]) {
 			);
 		});
 	}
+}
+
+for (const [provider, locale] of [
+	['stm', 'fr'],
+	['octranspo', 'en'],
+] as const) {
+	test(`${provider} shows Line notice availability in ${locale}`, async ({ page }) => {
+		await page.goto(lineRecordPath(locale, provider));
+		await expectLineNotices(page.getByRole('main').locator('#alerts'), provider, locale);
+	});
 }
 
 test('Line shows patience for a slow stop query while punctuality is already readable', async ({

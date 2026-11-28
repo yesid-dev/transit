@@ -177,9 +177,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 		event.route.id === '/[[lang=locale]]/receipt' ||
 		event.route.id === '/[[lang=locale]]/departure/[key]';
 	const automaticSelection =
+		event.locals.approximateLocation != null &&
 		event.route.id?.startsWith('/[[lang=locale]]') === true &&
-		!event.url.searchParams.has('provider') &&
-		event.locals.approximateLocation != null;
+		!event.url.searchParams.has('provider');
 
 	const lang = pathLocale(event.url.pathname);
 	event.locals.locale = lang;

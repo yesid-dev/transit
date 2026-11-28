@@ -15,7 +15,6 @@ import type { DelayDistribution, RecordCell, RecordSeries } from '#lib/server/en
 import {
 	countedLabel,
 	countedUnit,
-	dateRange,
 	delayRange,
 	delayReading,
 	sampleWithMinimum,
@@ -252,7 +251,7 @@ export function hourChart(
 	const cells = new Map(series.cells.map((cell) => [`${cell.key.weekday}/${cell.key.hour}`, cell]));
 	const columns = serviceHours(series).map((hour) => ({
 		id: String(hour),
-		label: choose(locale, `${String(hour).padStart(2, '0')}h`, `${hour} h`),
+		label: choose(locale, String(hour).padStart(2, '0'), `${hour} h`),
 	}));
 	const tableRows: ChartTable['rows'] = [];
 	const rows = Array.from({ length: 7 }, (_, index) => {
@@ -447,7 +446,7 @@ export function trendChart(
 					? [
 							{
 								value: index,
-								label: dateRange({ from: day, to: day }, locale).replace(/ \d{4}$/u, ''),
+								label: recordDate(day, locale).replace(/ \d{4}$/u, ''),
 							},
 						]
 					: [],

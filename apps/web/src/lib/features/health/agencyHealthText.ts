@@ -8,11 +8,12 @@ import type {
 } from '#lib/server/engine.ts';
 import {
 	alertsNotCollected,
+	alertsNotPublished,
 	type AgencyName,
 	compactServiceDay,
 	countedUnit,
 	frenchAgency,
-	hoursReading,
+	vehicleHours,
 	recordPercent,
 	recordRatio,
 } from '#lib/site/presenter.ts';
@@ -121,19 +122,28 @@ function alertRows(
 	effects: EngineResult<RecordSeries> | null,
 	agency: AgencyName,
 	locale: Locale,
+	declaration: { tracked: boolean; officialUrl?: string },
 ): HealthRow[] {
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const alerts = { id: 'alerts', label: t('Service alerts', 'Avis de service') };
 	const effect = { id: 'alert_effects', label: t('Effect of each notice', 'Effet de chaque avis') };
-	// One row says it once: the effects of alerts Transit does not collect are not tracked either.
-	if (!effects)
-		return [{ ...alerts, state: 'alerts_not_tracked', note: alertsNotCollected(agency, locale) }];
+	if (!declaration.tracked)
+		return [
+			{
+				...alerts,
+				state: 'not_published',
+				note: alertsNotPublished(agency, locale, Boolean(declaration.officialUrl)),
+			},
+		];
+	if (!effects) return [{ ...alerts, state: 'unavailable', note: null }];
 	const answer = answerOf(effects);
 	if (!answer)
 		return [
 			{ ...alerts, state: 'unavailable', note: null },
 			{ ...effect, state: 'unavailable', note: null },
 		];
+	if (answer.state === 'not_tracked')
+		return [{ ...alerts, state: 'alerts_not_tracked', note: alertsNotCollected(agency, locale) }];
 	if (answer.state === 'not_measured')
 		return [
 			{ ...alerts, state: 'not_measured', note: null },
@@ -225,9 +235,10 @@ export function publishingRows(
 	},
 	agency: AgencyName,
 	locale: Locale,
+	declaration: { tracked: boolean; officialUrl?: string } = { tracked: true },
 ): HealthRow[] {
 	return [
-		...alertRows(alertEffects, agency, locale),
+		...alertRows(alertEffects, agency, locale, declaration),
 		accessibilityRow('stops', accessibility, locale),
 		accessibilityRow('trips', accessibility, locale),
 		occupancyRow(completeness, locale),
@@ -390,7 +401,7 @@ export function vehicleReportRows(answer: ScorecardAnswer, locale: Locale) {
 		};
 	});
 	const reporting = number(object(counts.position).reporting_us);
-	const hours = reporting == null ? null : hoursReading(reporting / 3_600_000_000, locale);
+	const hours = reporting == null ? null : vehicleHours(reporting / 1_000_000, locale);
 	return {
 		rows,
 		sample: hours
@@ -522,31 +533,38 @@ export function minimumNote(answer: ScorecardAnswer, measure: string, locale: Lo
 }
 
 /** Each feed's row shows its check outcomes and how often its file was stale. */
-export function feedCheckRows(answer: ScorecardAnswer, locale: Locale, age?: ScorecardAnswer) {
+export function feedCheckRows(
+	answer: ScorecardAnswer,
+	locale: Locale,
+	age?: ScorecardAnswer,
+	alertsPublished = true,
+) {
 	const ages = age?.evidence.counts.feed_age_at_capture ?? {};
 	const countsByLabel = new Map(
 		Object.entries(feedLabels).map(([feed, labels]) => [choose(locale, ...labels), ages[feed]]),
 	);
-	return networkRows('poll_success', answer, locale).rows.map(([label, answered, ratio]) => {
-		const { overflow, attempts } = object(countsByLabel.get(label));
-		const checked = ratio ? choose(locale, `${ratio} checks`, `${ratio} contrôles`) : null;
-		const stale =
-			typeof overflow === 'number' && overflow > 0 && typeof attempts === 'number'
-				? recordRatio(overflow, tally(attempts, locale), locale)
-				: null;
-		const detail = [
-			checked,
-			stale &&
-				choose(
-					locale,
-					`${stale} with a feed over 10 min old`,
-					`${stale} avec un flux datant de plus de 10 min`,
-				),
-		]
-			.filter(Boolean)
-			.join(' · ');
-		return { id: label, label, answered, detail: detail || undefined };
-	});
+	return networkRows('poll_success', answer, locale, alertsPublished).rows.map(
+		([label, answered, ratio]) => {
+			const { overflow, attempts } = object(countsByLabel.get(label));
+			const checked = ratio ? choose(locale, `${ratio} checks`, `${ratio} contrôles`) : null;
+			const stale =
+				typeof overflow === 'number' && overflow > 0 && typeof attempts === 'number'
+					? recordRatio(overflow, tally(attempts, locale), locale)
+					: null;
+			const detail = [
+				checked,
+				stale &&
+					choose(
+						locale,
+						`${stale} with a feed over 10 min old`,
+						`${stale} avec un flux datant de plus de 10 min`,
+					),
+			]
+				.filter(Boolean)
+				.join(' · ');
+			return { id: label, label, answered, detail: detail || undefined };
+		},
+	);
 }
 
 /** The days Transit could not check the feeds, each with its reason, in one sentence. */
@@ -558,7 +576,7 @@ export function collectionGaps(answer: ScorecardAnswer, locale: Locale) {
 	const days = affected.map((day) => {
 		const reason = interrupted.has(day)
 			? choose(locale, 'collection interrupted', 'collecte interrompue')
-			: healthReason(days_not_measured_reasons[day], locale).toLocaleLowerCase(locale);
+			: healthReason(days_not_measured_reasons[day], locale);
 		return `${compactServiceDay(day, locale)} (${reason})`;
 	});
 	return choose(

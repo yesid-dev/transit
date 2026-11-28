@@ -2,22 +2,25 @@ import type { RequestHandler } from './$types';
 import { DEPLOYMENT_IDENTITY } from '#lib/site/deployment.ts';
 
 export const prerender = true;
+export const entries = () => [{}, { lang: 'fr' }];
 
-export const GET: RequestHandler = () => {
+export const GET: RequestHandler = ({ params }) => {
+	const fr = params.lang === 'fr';
 	const manifest = {
 		name: DEPLOYMENT_IDENTITY.name,
 		short_name: DEPLOYMENT_IDENTITY.shortName,
-		description:
-			'Independent real-time transit network reliability, on-time performance and accountability dashboard.',
+		description: fr
+			? 'Un bilan public et indépendant du service de transport effectué. Pas un planificateur de trajets.'
+			: 'An independent public record of the transit service delivered. Not a trip planner.',
 		start_url: '/',
 		scope: '/',
 		display: 'standalone',
 		orientation: 'any',
 		background_color: '#141414',
 		theme_color: '#141414',
-		lang: 'en',
+		lang: fr ? 'fr' : 'en',
 		dir: 'ltr',
-		categories: ['travel', 'navigation', 'utilities'],
+		categories: ['travel', 'utilities'],
 		icons: [
 			{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
 			{ src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },

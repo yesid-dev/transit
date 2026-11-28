@@ -18,7 +18,8 @@
 	import {
 		alertAnswerSentence,
 		alertPaging,
-		alertsNotCollected,
+		alertsNotPublished,
+		alertsNotTrackedOnDates,
 		officialAlertsLabel,
 		captureAge,
 		citeDates,
@@ -314,6 +315,8 @@
 )}
 	{#if result.kind === 'busy'}
 		<RecordPending {locale} {shape} busy />
+	{:else if result.kind === 'answer' && 'state' in result.answer && result.answer.state === 'not_tracked'}
+		<p>{alertsNotTrackedOnDates(operator, locale)}</p>
 	{:else if result.kind === 'answer'}
 		<StateMark
 			state={recordStateFor('state' in result.answer ? result.answer.state : undefined)}
@@ -455,7 +458,10 @@
 				},
 				{
 					key: 'untracked',
-					label: t('Days not tracked', 'Jours sans suivi'),
+					label: t(
+						'Days Transit did not collect notices',
+						'Jours où Transit n’a pas collecté les avis',
+					),
 					text: untracked.join(' · '),
 				},
 				{
@@ -535,12 +541,13 @@
 				<RecordGroup>
 					<div data-slot="screen-state">
 						<StateNotice
-							title={t('Not tracked', 'Non suivi')}
-							glyph="⊠"
+							title={t('Not published', 'Non publié')}
+							glyph="□"
 							role="status"
-							body={alertsNotCollected(
+							body={alertsNotPublished(
 								{ name: data.operator ?? data.cityName, frenchOf: data.operatorOf },
 								locale,
+								Boolean(data.officialAlertsUrl),
 							)}
 						>
 							{#snippet action()}
@@ -666,7 +673,15 @@
 						{:else}
 							<RecordGroup>
 								<ScreenTitle {title} {subtitle} />
-								<div data-slot="screen-state"><StateMark state="no_live_data" {locale} /></div>
+								<div data-slot="screen-state">
+									<p>
+										<StateMark state="no_live_data" {locale} hiddenLabel />
+										{t(
+											'Transit could not get current service alerts.',
+											'Transit n’a pas pu obtenir les avis de service en vigueur.',
+										)}
+									</p>
+								</div>
 							</RecordGroup>
 						{/if}
 						<RecordGroup density="compact">

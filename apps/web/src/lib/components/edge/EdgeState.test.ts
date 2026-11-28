@@ -179,13 +179,17 @@ describe('EdgeState — HONEST ABSENCE reason copy (empty variant)', () => {
 		const en = render(EdgeState, {
 			props: { variant: 'empty', lang: 'en', emptyReason: { key: 'metro-no-realtime' } },
 		});
-		expect(en.getByText('live positions are not published here')).toBeInTheDocument();
+		expect(
+			en.getByText('the agency does not publish the required live data here'),
+		).toBeInTheDocument();
 		expect(en.queryByText('No data has been published for this view yet.')).toBeNull();
 
 		const fr = render(EdgeState, {
 			props: { variant: 'empty', lang: 'fr', emptyReason: { key: 'metro-no-realtime' } },
 		});
-		expect(fr.getByText('les positions en direct ne sont pas publiées ici')).toBeInTheDocument();
+		expect(
+			fr.getByText('la société de transport ne publie pas les données en direct nécessaires ici'),
+		).toBeInTheDocument();
 	});
 
 	it('closed-opens-at names the FIRST departure (EN + FR)', () => {

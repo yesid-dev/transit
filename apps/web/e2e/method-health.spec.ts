@@ -89,9 +89,7 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 }
 
-test('Data health reads late feed details, expected cadence, sizes and the schedule', async ({
-	page,
-}) => {
+test('Data health reads late feed details, expected cadence and the schedule', async ({ page }) => {
 	const refresh = await installHealthCapture(page);
 	await page.goto('/status?provider=stm&frameMode=live');
 	await refresh();
@@ -101,11 +99,15 @@ test('Data health reads late feed details, expected cadence, sizes and the sched
 	);
 	await expect(main.getByRole('cell', { name: 'Late: last received 2 min ago' })).toBeVisible();
 	const capture = main.getByRole('table', { name: 'Each feed, at its last capture' });
+	await expect(capture.getByRole('columnheader')).toHaveText([
+		'Feed',
+		'Last capture',
+		'Expected',
+		'State',
+	]);
 	const positions = capture.getByRole('row').filter({ hasText: 'Vehicle positions' });
 	await expect(positions.getByRole('cell', { name: 'every 30 s' })).toBeVisible();
-	await expect(positions.getByRole('cell', { name: '412 kB' })).toBeVisible();
 	const schedule = capture.getByRole('row').filter({ hasText: 'Schedule' });
-	await expect(schedule.getByRole('cell', { name: '64 MB' })).toBeVisible();
 	await expect(schedule.getByRole('cell', { name: 'when the agency publishes' })).toBeVisible();
 	await expect(schedule.getByRole('cell', { name: 'In use' })).toBeVisible();
 	// The agency's figures for the selected dates live in Record.
@@ -241,7 +243,7 @@ for (const width of [390, 1440]) {
 			await expect(stops.getByText(fr ? 'État' : 'State', { exact: true })).toBeHidden();
 			if (fr) {
 				await expect(publishes).toContainText(
-					'Transit ne collecte pas encore les avis d’OC Transpo.',
+					'OC Transpo ne publie pas ses avis de service en données ouvertes. Elle les affiche sur son site Web.',
 				);
 				await expect(
 					publishes.getByRole('link', { name: 'Consulter les avis officiels' }),
@@ -298,13 +300,13 @@ for (const width of [390, 1440]) {
 				? [
 						'Présent',
 						'Manquant (Fichier manquant)',
-						'Non mesuré (Aucune capture brute)',
+						'Non mesuré (Transit n’a collecté aucune donnée source)',
 						'Non mesuré (Aucune édition de l’horaire)',
 					]
 				: [
 						'Present',
 						'Missing (File missing)',
-						'Not measured (No raw captures)',
+						'Not measured (Transit collected no source data)',
 						'Not measured (No schedule edition)',
 					]) {
 				await expect(table.getByRole('cell', { name: state, exact: true }).first()).toBeAttached();

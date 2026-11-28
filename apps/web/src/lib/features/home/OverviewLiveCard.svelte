@@ -9,7 +9,7 @@
 	import { liveReader } from '#lib/v1/adapter/index.ts';
 	import { createLiveStore, type LiveFamilyState } from '#lib/v1/live/store.svelte.ts';
 	import {
-		alertsNotCollected,
+		alertsNotPublished,
 		countedUnit,
 		liveStampAge,
 		officialAlertsLabel,
@@ -109,7 +109,7 @@
 	const alerts = $derived(
 		alertsAvailable
 			? reading(live?.alerts?.alerts.length, live?.familyStates.alerts, true)
-			: ({ kind: 'absent', state: 'alerts_not_tracked' } as const),
+			: ({ kind: 'absent', state: 'not_published' } as const),
 	);
 	const statuses = ['early', 'on_time', 'late', 'unknown'] as const;
 	const bands = $derived(
@@ -131,7 +131,7 @@
 </script>
 
 {#snippet readingValue(
-	entry: ReturnType<typeof reading> | { kind: 'absent'; state: 'alerts_not_tracked' },
+	entry: ReturnType<typeof reading> | { kind: 'absent'; state: 'not_published' },
 )}
 	{#if entry.kind === 'value'}{tally(entry.value, locale)}
 	{:else if entry.kind === 'pending'}<Skeleton class="h-lh w-16 max-w-full" />
@@ -193,7 +193,11 @@
 					label={t.alerts}
 					busy={alerts.kind === 'pending'}
 					detail={!alertsAvailable
-						? alertsNotCollected({ name: operator, frenchOf: operatorOf }, locale)
+						? alertsNotPublished(
+								{ name: operator, frenchOf: operatorOf },
+								locale,
+								Boolean(officialAlertsUrl),
+							)
 						: stale(alertHealth)
 							? liveStampAge(alertHealth?.ageSeconds ?? null, locale, 'behind')
 							: undefined}
@@ -258,13 +262,13 @@
 		.late-lines-waiting {
 			display: grid;
 		}
-		/* Ottawa's notice fact explains where to find the agency's notices. */
+		/* Allow one more line for the explanation of Ottawa's published notice sources. */
 		.no-agency-alerts {
-			min-block-size: 41rem;
+			min-block-size: 42rem;
 		}
 		@container (inline-size >= 32rem) {
 			.no-agency-alerts {
-				min-block-size: 40rem;
+				min-block-size: 41rem;
 			}
 		}
 	}

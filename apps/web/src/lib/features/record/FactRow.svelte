@@ -9,6 +9,7 @@
 		detail,
 		labelDetail,
 		emphasis = false,
+		note,
 		children,
 	}: {
 		id?: string;
@@ -18,6 +19,8 @@
 		/** A muted line under the label, so a long label keeps the row's width. */
 		labelDetail?: string;
 		emphasis?: boolean;
+		/** Explanation that needs the width of the whole row. */
+		note?: Snippet;
 		children: Snippet;
 	} = $props();
 </script>
@@ -38,6 +41,9 @@
 		{/if}
 		{#if detail}<span class="block font-sans text-small text-muted-foreground">{detail}</span>{/if}
 	</dd>
+	{#if note}<dd class="note col-span-full pb-2 font-sans text-muted-foreground print:pb-0">
+			{@render note()}
+		</dd>{/if}
 </div>
 
 <style>
@@ -64,6 +70,17 @@
 	dd {
 		min-inline-size: 0;
 		text-align: end;
+	}
+	.note {
+		text-align: start;
+	}
+	dd :global(p) {
+		font-family: var(--font-sans);
+	}
+	@container fact-list (inline-size < 24rem) {
+		dd :global(p) {
+			text-align: start;
+		}
 	}
 	@container fact-list (inline-size < 16rem) {
 		.fact {

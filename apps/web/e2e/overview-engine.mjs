@@ -148,7 +148,7 @@ export function overviewEngine(url, scope) {
 			evidence: {
 				...evidence,
 				counts,
-				excluded: {},
+				excluded: trips ? { unconfirmed: counts.scheduled - counts.eligible } : {},
 				...(trips
 					? { share_eligible: 100 / 111 }
 					: { share_observed: 507800 / 1100000, low_coverage: true }),

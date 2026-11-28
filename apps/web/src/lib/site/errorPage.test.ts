@@ -39,6 +39,6 @@ describe('error page shared copy', () => {
 	});
 
 	it('uses the generic error heading for non-404 statuses', () => {
-		expect(errorDocumentHead(500, 'en').title).toBe('500 · Something went wrong');
+		expect(errorDocumentHead(500, 'en').title).toBe('500 · This page could not load');
 	});
 });

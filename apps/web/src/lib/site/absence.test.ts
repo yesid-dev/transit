@@ -143,7 +143,7 @@ describe('describeAbsence — pure resolver', () => {
 		const d = describeAbsence('not-reported', 'en');
 		expect(d).toEqual({
 			label: 'Unknown',
-			why: 'not reported in the live feed',
+			why: 'this detail is missing from the live data Transit has',
 			tone: 'unknown',
 		});
 	});
@@ -180,6 +180,6 @@ describe('describeAbsence — pure resolver', () => {
 	it('falls back to the generic not-reported copy for an unknown key (never renders a raw key)', () => {
 		const d = describeAbsence('totally-made-up' as AbsenceReasonKey, 'en');
 		expect(d.label).toBe('Unknown');
-		expect(d.why).toBe('not reported in the live feed');
+		expect(d.why).toBe('this detail is missing from the live data Transit has');
 	});
 });

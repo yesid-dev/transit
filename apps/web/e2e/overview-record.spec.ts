@@ -254,6 +254,18 @@ for (const width of [390, 1440]) {
 						.first(),
 				).toBeVisible();
 				await expect(record).toContainText(fr ? /90 sur 100/ : /90 of 100/);
+				const deliveryRange = record.getByText(
+					fr ? /entre 81,1\s% et 91,0\s%/u : /between 81\.1% and 91\.0% ran/u,
+				);
+				await expect(deliveryRange).toBeVisible();
+				const rangeUsesRowWidth = await deliveryRange.evaluate((note) => {
+					const row = note.closest('[data-slot="fact-row"]');
+					return (
+						row != null &&
+						note.getBoundingClientRect().width >= row.getBoundingClientRect().width - 1
+					);
+				});
+				expect(rangeUsesRowWidth).toBe(true);
 				await expect(record).toContainText(
 					fr ? 'Par rapport aux 7 jours précédents' : 'Against the 7 days before',
 				);
@@ -498,10 +510,12 @@ test('the header carries the Live view and dates through city and language chang
 	await expect(
 		live.getByText('Scheduled trips with no vehicle reporting', { exact: true }).locator('..'),
 	).toContainText('Not measured');
-	// A city whose alerts Transit does not collect says so, and blames no one else.
+	// A provider with no open feed keeps its agency’s notices link.
 	const alerts = live.getByText('Notice publications', { exact: true }).locator('..');
-	await expect(alerts).toContainText('Not tracked');
-	await expect(alerts).toContainText('Transit does not collect OC Transpo’s notices yet.');
+	await expect(alerts).toContainText('Not published');
+	await expect(alerts).toContainText(
+		'OC Transpo does not publish its service alerts as open data. It posts them on its website.',
+	);
 	await expect(live.getByRole('link', { name: 'Read the notices' })).toHaveCount(0);
 	await expect(live.getByRole('link', { name: 'Check the official notices' })).toHaveAttribute(
 		'href',

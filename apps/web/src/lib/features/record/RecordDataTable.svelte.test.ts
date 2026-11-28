@@ -9,7 +9,7 @@ it.each([
 		'Showing 20 of 25',
 		'Show 5 more',
 		'Unknown',
-		'Reverse sort by Readings',
+		'Readings: Reverse the order',
 	],
 	[
 		'fr',
@@ -17,7 +17,7 @@ it.each([
 		'20 sur 25',
 		'Afficher 5 de plus',
 		'Inconnu',
-		'Inverser le tri par Passages',
+		'Passages\u00a0: Inverser l’ordre',
 	],
 ] as const)(
 	'pages, links, sorts and shows reading states in %s',

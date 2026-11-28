@@ -27,7 +27,7 @@ for (const provider of ['stm', 'octranspo'])
 					await section.getByRole('button', { name: fr ? 'Télécharger' : 'Download' }).click();
 					const csv = page
 						.getByRole('dialog')
-						.getByRole('link', { name: fr ? 'Ponctualité' : 'On-time performance', exact: true });
+						.getByRole('link', { name: fr ? 'Ponctualité' : 'On-time share', exact: true });
 					const href = new URL((await csv.getAttribute('href'))!, page.url());
 					expect(href.pathname).toBe((fr ? '/fr' : '') + '/lines/24/record.csv');
 					expect(Object.fromEntries(href.searchParams)).toMatchObject({

@@ -68,7 +68,7 @@ export const frameCopy = {
 			'7-days': '7 jours',
 			'28-days': '28 jours',
 			'this-month': 'Ce mois-ci',
-			'last-month': 'Le mois dernier',
+			'last-month': 'Mois dernier',
 			'12-months': '12 mois',
 		},
 		title7: '7 derniers jours complets',

@@ -53,7 +53,7 @@ for (const width of [390, 1440]) {
 					.getByRole('rowheader'),
 			).toHaveCount(2);
 			const stops = main.getByRole('article', { name: fr ? 'Arrêt par arrêt' : 'Stop by stop' });
-			await expect(stops).toContainText(fr ? '5,3 min de retard' : '5.3 min late');
+			await expect(stops).toContainText(fr ? '5,5 min de retard' : '5.5 min late');
 			const relatedStop = stops.getByRole('link', { name: fr ? /^Voir l’arrêt /u : /^See stop /u });
 			await expect(relatedStop).toHaveAttribute('href', /\/stop\/[^?]+\?.*provider=stm/u);
 			const tripsOnDay = stops.getByRole('link', {

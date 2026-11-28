@@ -43,6 +43,7 @@ export function stopEngine(url) {
 		state_text: { en: 'Measured', fr: 'Mesuré' },
 		evidence: { counts: sample, days_included: days },
 	});
+	const thinGrid = from === '2026-11-13' && to === from;
 	const grid = Array.from({ length: 7 }, (_, day) =>
 		Array.from({ length: 24 }, (_, hour) => {
 			const key = { weekday: day + 1, hour };
@@ -53,6 +54,12 @@ export function stopEngine(url) {
 				{ late: late / total },
 				{ late, classified: total, scheduled: total + 3 },
 			);
+			if (thinGrid)
+				return {
+					...cell(key, { late: null }, { scheduled: 28, classified: 23 }),
+					state: 'too_few_to_judge',
+					state_text: { en: 'Too few to judge', fr: 'Trop peu pour juger' },
+				};
 			if ((hour > 0 && hour < 5) || (hour === 5 && day === 6) || (hour === 23 && day > 4))
 				return {
 					...cell(key, { late: null }, { scheduled: 0 }),

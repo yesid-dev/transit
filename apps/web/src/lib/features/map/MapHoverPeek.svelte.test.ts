@@ -104,8 +104,7 @@ describe('MapHoverPeek', () => {
 		expect(lede).toHaveTextContent('Sherbrooke');
 		expect(container).toHaveTextContent('No recent position');
 		expect(container).toHaveTextContent('3 min');
-		expect(definitionValue(container, 'Status')).toHaveTextContent('Late');
-		expect(definitionValue(container, 'Status')).toHaveTextContent('+4 min');
+		expect(definitionValue(container, 'Status')).toHaveTextContent('4 min late');
 		expect(definitionValue(container, 'Next stop')).toHaveTextContent('Sherbrooke / Saint-Denis');
 		expect([...container.querySelectorAll('dt')].map((term) => term.textContent)).toEqual([
 			'Status',
@@ -136,12 +135,12 @@ describe('MapHoverPeek', () => {
 	});
 
 	it.each([
-		{ delayMin: 0, status: 'on_time', want: 'On-time', absence: false },
-		{ delayMin: 4, status: 'late', want: '▲ Late · +4 min', absence: false },
+		{ delayMin: 0, status: 'on_time', want: 'On time', absence: false },
+		{ delayMin: 4, status: 'late', want: '▲ 4 min late', absence: false },
 		{
 			delayMin: null,
 			status: 'unknown',
-			want: 'not reported in the live feed',
+			want: 'this detail is missing from the live data Transit has',
 			absence: true,
 		},
 	] as const)(
@@ -220,7 +219,9 @@ describe('MapHoverPeek', () => {
 			props: { peek: freshBusNulls, locale: 'en' },
 		});
 
-		expect(definitionValue(container, 'Status')).toHaveTextContent(/not reported/i);
+		expect(definitionValue(container, 'Status')).toHaveTextContent(
+			'this detail is missing from the live data Transit has',
+		);
 	});
 
 	it('renders route long name, direction, and visible-vehicle count', () => {
@@ -304,28 +305,22 @@ describe('MapHoverPeek', () => {
 	});
 });
 
-describe.each(['en', 'fr'] as const)('MapHoverPeek published status in %s', (locale) => {
-	it.each([
-		['on_time', 1, '+1 min'],
-		['late', 0, '0 min'],
-		['early', -2, '−2 min'],
-		['unknown', 0, '0 min'],
-		['on_time', null, null],
-		['unknown', null, null],
-	] as const)('%s with delay %s', (status, delayMin, measurement) => {
-		const { container } = render(MapHoverPeek, {
+it.each([
+	['on_time', 1, 'On time (1 min behind)', 'À l’heure (1 min après l’horaire)'],
+	['late', 4, '4 min late', '4 min de retard'],
+	['early', -2, '2 min early', '2 min d’avance'],
+	['unknown', 0, 'Delay unknown 0 min', 'Retard inconnu 0 min'],
+] as const)('uses the live panel’s words for %s with delay %s', (status, delayMin, en, fr) => {
+	for (const locale of ['en', 'fr'] as const) {
+		const { container, unmount } = render(MapHoverPeek, {
 			props: { peek: { ...vehicleFresh, status, delayMin }, locale },
 		});
 		const fact = definitionValue(container, locale === 'fr' ? 'État' : 'Status');
-		expect(fact).toHaveTextContent(STATUS_LABELS[locale][status]);
-		const mark = fact.querySelector('.peek-status');
-		if (measurement || status !== 'unknown') expect(mark).toHaveAttribute('data-status', status);
-		const reading = fact.querySelector('.map-peek-delay')!;
-		if (measurement) expect(reading).toHaveTextContent(measurement);
-		else expect(reading.querySelector('[data-slot="absent-value"]')).toBeInTheDocument();
-		expect(reading.textContent).not.toMatch(/late|early|On time|retard|avance|heure/);
+		expect(fact).toHaveTextContent(locale === 'fr' ? fr : en);
+		expect(fact.querySelector('.peek-status')).toHaveAttribute('data-status', status);
 		expectInert(container);
-	});
+		unmount();
+	}
 });
 
 it.each([

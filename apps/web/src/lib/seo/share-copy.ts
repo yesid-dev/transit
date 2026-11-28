@@ -201,9 +201,3 @@ export function shareKey(path: string): keyof typeof SHARE_COPY {
 export function shareCopy(path: string, locale: Locale) {
 	return SHARE_COPY[shareKey(path)][locale];
 }
-export function withShareCta(text: string, label: string): string {
-	const trimmed = text.trim();
-	const invitation = label + '.';
-	if (trimmed.endsWith(invitation)) return trimmed;
-	return trimmed.replace(/[.]+$/u, '') + '. ' + invitation;
-}

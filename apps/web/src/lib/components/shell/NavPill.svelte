@@ -9,9 +9,8 @@
 	import WaypointsIcon from '@lucide/svelte/icons/waypoints';
 	import RulerIcon from '@lucide/svelte/icons/ruler';
 	import ActivityIcon from '@lucide/svelte/icons/activity';
-	import FlameIcon from '@lucide/svelte/icons/flame';
-	import ReceiptIcon from '@lucide/svelte/icons/receipt';
-	import RepeatIcon from '@lucide/svelte/icons/repeat';
+	import ListOrderedIcon from '@lucide/svelte/icons/list-ordered';
+	import CalendarDaysIcon from '@lucide/svelte/icons/calendar-days';
 	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import TramFrontIcon from '@lucide/svelte/icons/tram-front';
 	import DownloadIcon from '@lucide/svelte/icons/download';
@@ -110,9 +109,9 @@
 		network: WaypointsIcon,
 		metrics: RulerIcon,
 		status: ActivityIcon,
-		hotspots: FlameIcon,
-		receipt: ReceiptIcon,
-		repeatOffenders: RepeatIcon,
+		hotspots: ListOrderedIcon,
+		receipt: CalendarDaysIcon,
+		repeatOffenders: ListOrderedIcon,
 		alerts: TriangleAlertIcon,
 	};
 	const links = $derived(
@@ -377,6 +376,7 @@
 		{network}
 		{actions}
 	/>
+	<span class="frame-nav-end" hidden></span>
 </div>
 
 <style>
@@ -387,6 +387,10 @@
 	.frame-nav {
 		padding-block-end: var(--chrome-gap);
 		pointer-events: none;
+	}
+	/* The parser can yield in the middle of the pill. Paint it once all its controls are in the DOM. */
+	.frame-nav:not(:has(> .frame-nav-end)) {
+		visibility: hidden;
 	}
 	/* Below 1024px AppFrame measures SiteHeader directly for the transparent vacated network band. */
 	@media (width < 1024px) {

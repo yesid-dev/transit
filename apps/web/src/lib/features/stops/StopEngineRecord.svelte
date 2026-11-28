@@ -19,6 +19,12 @@
 	import RecordChart from '#lib/features/record/charts/RecordChart.svelte';
 	import RecordChartToggle from '#lib/features/record/charts/RecordChartToggle.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
+	import { providerHasAlerts } from '#lib/site/providerCapabilities.ts';
+	import {
+		alertsNotPublishedLine,
+		alertsNotTrackedOnDates,
+		officialAlertsLabel,
+	} from '#lib/site/presenter.ts';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import { chartState, hourGridTooFew } from '#lib/features/record/charts/recordCharts.ts';
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
@@ -88,6 +94,8 @@
 	const t = (en: string, fr: string) => choose(locale, en, fr);
 	const term = $derived(overviewCopy[locale]);
 	const provider = $derived(page.data.provider as PublicCity | undefined);
+	const hasAlertFeed = $derived(providerHasAlerts(provider));
+	const officialAlertsUrl = $derived(hasAlertFeed ? undefined : provider?.alert_links[locale]);
 	const stopCode = $derived(code || stop.id);
 	const stopLabel = $derived(t(`Stop ${stopCode}`, `Arrêt ${stopCode}`));
 	const name = $derived(stop.name === stop.id ? null : stopDisplayName(stop.name));
@@ -521,36 +529,42 @@
 			<span id="stop-rel-weekday" class="absolute" aria-hidden="true"></span>
 			<span id="stop-rel-time" class="absolute" aria-hidden="true"></span>
 			{#snippet hourlyCard(result?: EngineResult<EngineAnswer>)}
-				<RecordCard
-					interactive={result?.kind === 'answer' &&
-						'cells' in result.answer &&
-						result.answer.cells.length > 0}
-					title={hourly}
-					{stamp}
-					reserve="grid"
-				>
-					{#if result === undefined}
-						{@render pending(record.grid, 'grid')}
-					{:else}
-						{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
-							<RecordChart
-								title={hourly}
-								input={{ kind: 'hours', answer: result.answer }}
-								{locale}
-								id="stop-hours-chart"
-								table={hoursTable}
-							/>
-						{:else}{@render gap(result, 'grid')}{/if}
-					{/if}
-					{#snippet evidence()}
-						{@render evidenceFooter('hourly')}
-					{/snippet}
-					{#snippet toggle()}
-						{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length && !hourGridTooFew(result.answer)}
-							<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
+				{@const chart =
+					result?.kind === 'answer' &&
+					'cells' in result.answer &&
+					result.answer.cells.length > 0 &&
+					!hourGridTooFew(result.answer)}
+				{@const reserveGrid = result === undefined || result.kind === 'busy' || chart}
+				<div data-grid-space={reserveGrid ? '' : undefined}>
+					<RecordCard
+						interactive={chart}
+						title={hourly}
+						{stamp}
+						reserve={reserveGrid ? 'grid' : undefined}
+					>
+						{#if result === undefined}
+							{@render pending(record.grid, 'grid')}
+						{:else}
+							{#if result.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length}
+								<RecordChart
+									title={hourly}
+									input={{ kind: 'hours', answer: result.answer }}
+									{locale}
+									id="stop-hours-chart"
+									table={hoursTable}
+								/>
+							{:else}{@render gap(result, 'grid')}{/if}
 						{/if}
-					{/snippet}
-				</RecordCard>
+						{#snippet evidence()}
+							{@render evidenceFooter('hourly')}
+						{/snippet}
+						{#snippet toggle()}
+							{#if result?.kind === 'answer' && 'cells' in result.answer && result.answer.cells.length && !hourGridTooFew(result.answer)}
+								<RecordChartToggle bind:table={hoursTable} controls="stop-hours-chart" {locale} />
+							{/if}
+						{/snippet}
+					</RecordCard>
+				</div>
 			{/snippet}
 			{#await record.grid}
 				{@render hourlyCard()}
@@ -661,48 +675,68 @@
 		</div>
 
 		<div id="alerts">
-			<RecordCard title={titleFor('alerts')} {stamp} reserve={noticeShape}>
+			<RecordCard title={titleFor('alerts')} {stamp} interactive={!!officialAlertsUrl}>
 				{#snippet evidence()}
 					{@render evidenceFooter('alerts')}
 				{/snippet}
-				{#await answers.alerts}
-					{@render pending(answers.alerts, noticeShape)}
-				{:then result}
-					{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
-						{@const count = result.answer.value.alerts}
-						{@const notices = groupAlertCards(
-							recordAlertCards(result.answer.evidence.alert_messages).filter((notice) =>
-								notice.stops.includes(stop.id),
-							),
+				{#if !hasAlertFeed}
+					<p>
+						{alertsNotPublishedLine(
+							agencyName(operator, provider),
+							locale,
+							Boolean(officialAlertsUrl),
 						)}
-						{#if count === 0}
-							<p>
-								{noPublishedNotices(
-									agencyName(operator, provider),
-									'stop',
-									locale,
-									!result.answer.evidence.days_not_measured.length &&
-										!result.answer.evidence.days_not_tracked?.length,
-								)}
-							</p>
-						{:else if notices.length}
-							<NoticeRows
-								cards={notices}
-								{locale}
-								timeZone={provider?.timezone}
-								stopName={(id) => (id === stop.id ? (name ?? stopCode) : id)}
-							/>
-						{:else if count != null}
-							<FactList leading={false}>
-								<FactRow label={t('Distinct notices', 'Avis distincts')}
-									>{tally(count, locale)}</FactRow
-								>
-							</FactList>
-						{:else}
-							<StateMark state="unknown" {locale} />
-						{/if}
-					{:else}{@render gap(result, noticeShape)}{/if}
-				{/await}
+					</p>
+				{:else}
+					{#await answers.alerts}
+						{@render pending(answers.alerts, noticeShape)}
+					{:then result}
+						{#if result.kind === 'answer' && 'value' in result.answer && result.answer.state === 'measured'}
+							{@const count = result.answer.value.alerts}
+							{@const notices = groupAlertCards(
+								recordAlertCards(result.answer.evidence.alert_messages).filter((notice) =>
+									notice.stops.includes(stop.id),
+								),
+							)}
+							{#if count === 0}
+								<p>
+									{noPublishedNotices(
+										agencyName(operator, provider),
+										'stop',
+										locale,
+										!result.answer.evidence.days_not_measured.length &&
+											!result.answer.evidence.days_not_tracked?.length,
+									)}
+								</p>
+							{:else if notices.length}
+								<NoticeRows
+									cards={notices}
+									{locale}
+									timeZone={provider?.timezone}
+									stopName={(id) => (id === stop.id ? (name ?? stopCode) : id)}
+								/>
+							{:else if count != null}
+								<FactList leading={false}>
+									<FactRow label={t('Distinct notices', 'Avis distincts')}
+										>{tally(count, locale)}</FactRow
+									>
+								</FactList>
+							{:else}
+								<StateMark state="unknown" {locale} />
+							{/if}
+						{:else if result.kind === 'answer' && 'state' in result.answer && result.answer.state === 'not_tracked'}
+							<p>{alertsNotTrackedOnDates(agencyName(operator, provider), locale)}</p>
+						{:else}{@render gap(result, noticeShape)}{/if}
+					{/await}
+				{/if}
+				{#snippet links()}
+					{#if officialAlertsUrl}
+						<a
+							class="inline-flex min-h-11 items-center text-primary underline"
+							href={officialAlertsUrl}>{officialAlertsLabel(locale)}</a
+						>
+					{/if}
+				{/snippet}
 			</RecordCard>
 		</div>
 	</RecordGroup>

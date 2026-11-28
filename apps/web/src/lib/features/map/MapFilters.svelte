@@ -4,6 +4,7 @@
 	import FilterChip from '#lib/components/shared/FilterChip.svelte';
 	import { Separator } from '@yesid/ui/separator';
 	import { Button } from '@yesid/ui/button';
+	import { officialAlertsLabel } from '#lib/site/presenter.ts';
 	import { transitDisplay } from '#lib/site/transitDisplayContext.ts';
 	const { line, readName } = transitDisplay();
 	import { stopDisplayName } from '#lib/site/transitDisplay.ts';
@@ -34,6 +35,8 @@
 		store: FilterStore;
 		locale: Locale;
 		alertsAvailable?: boolean;
+		alertsUnavailableReason?: string;
+		officialAlertsUrl?: string;
 		occupancyAvailable?: boolean;
 		routes?: readonly RouteIndexEntry[];
 		focusedLine?: string;
@@ -49,6 +52,8 @@
 		store,
 		locale,
 		alertsAvailable = true,
+		alertsUnavailableReason,
+		officialAlertsUrl,
 		occupancyAvailable = true,
 		routes = [],
 		focusedLine,
@@ -322,7 +327,11 @@
 							</div>
 						</MapFilterGroup>
 					{:else}
-						<p>{t.alertFilterUnavailable}</p>
+						<p>{alertsUnavailableReason ?? t.alertFilterUnavailable}</p>
+						{#if officialAlertsUrl}<a
+								class="inline-flex min-h-11 items-center text-primary underline"
+								href={officialAlertsUrl}>{officialAlertsLabel(locale)}</a
+							>{/if}
 					{/if}
 				{/if}
 
@@ -514,12 +523,10 @@
 	:global(.mf-title) {
 		min-width: 0;
 		overflow: hidden;
-		font-family: var(--font-mono);
+		font-family: var(--font-sans);
 		font-size: var(--text-mono);
 		font-weight: 600;
-		letter-spacing: var(--tracking-eyebrow);
 		text-overflow: ellipsis;
-		text-transform: uppercase;
 		white-space: nowrap;
 	}
 
@@ -547,7 +554,7 @@
 		min-height: 44px;
 		gap: 0.25rem;
 		padding: 0.375rem 0;
-		font-family: var(--font-mono);
+		font-family: var(--font-sans);
 		font-size: var(--text-micro);
 		font-weight: 700;
 		color: var(--primary);
@@ -612,7 +619,7 @@
 		gap: 0.5rem;
 		padding: 0.375rem 0.75rem 0.375rem 0.5rem;
 		overflow: hidden;
-		font-family: var(--font-mono);
+		font-family: var(--font-sans);
 		font-size: var(--text-caption);
 		color: var(--muted-foreground);
 		text-align: left;
@@ -696,7 +703,7 @@
 		align-items: center;
 		gap: 0.375rem;
 		padding-left: 0;
-		font-family: var(--font-mono);
+		font-family: var(--font-sans);
 		font-size: var(--text-caption);
 		color: var(--muted-foreground);
 	}

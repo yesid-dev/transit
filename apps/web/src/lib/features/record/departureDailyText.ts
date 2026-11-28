@@ -17,8 +17,8 @@ export const dailyTitles = {
 		'Service effectué par rapport au service prévu',
 	],
 	periods: ['The day in five periods', 'La journée en cinq périodes'],
-	lines: ['Lines to inspect', 'Lignes à examiner'],
-	stops: ['Stops to inspect', 'Arrêts à examiner'],
+	lines: ['Lines to investigate', 'Lignes à examiner'],
+	stops: ['Stops to investigate', 'Arrêts à examiner'],
 	messages: ['Agency notices', 'Avis de la société de transport'],
 } as const;
 

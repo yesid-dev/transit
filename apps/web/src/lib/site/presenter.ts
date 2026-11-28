@@ -44,9 +44,8 @@ export function delayReading(
 	if (seconds == null || !Number.isFinite(seconds)) return fallback;
 	const copy = presenterCopy[locale];
 	const minutes = Math.abs(seconds) / 60;
-	// The display rounds to a tenth of a minute.
-	if (minutes < 0.05) return copy.onSchedule;
-	const magnitude = minuteReading(minutes, locale)!;
+	if (minutes < 0.25) return copy.onSchedule;
+	const magnitude = minuteReading(Math.round(minutes * 2) / 2, locale)!;
 	return seconds < 0 ? copy.early(magnitude) : copy.late(magnitude);
 }
 
@@ -80,10 +79,7 @@ export function distanceReading(distanceM: number, locale: Locale): string {
 }
 
 export function mapRecordReading(value: number, stops: boolean, locale: Locale): string | null {
-	if (stops)
-		return intl
-			.number(locale, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 })
-			.format(value / 1000);
+	if (stops) return recordPercent(value / 1000, locale);
 	return `${intl.number(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 60)} min`;
 }
 
@@ -178,9 +174,10 @@ export function noticeCountEvidence(
 ) {
 	if (grouped === published) return `${noticeCount(grouped, locale)}.`;
 	const total = intl.number(locale).format(published);
+	const one = singularCount(grouped, locale);
 	return locale === 'fr'
-		? `${noticeCount(grouped, locale)}, en ${total} publications par ${frenchAgency(agency).subject}.`
-		: `${noticeCount(grouped, locale)} across ${total} publications by ${agency.name}.`;
+		? `${noticeCount(grouped, locale)}. ${frenchAgency(agency).start} ${one ? 'l’a publié' : 'les a publiés'} ${total} fois.`
+		: `${noticeCount(grouped, locale)}. ${agency.name} published ${one ? 'it' : 'them'} ${total} times.`;
 }
 
 /** A few notices out of all of them: "5 of 1,230 notices." */
@@ -669,15 +666,17 @@ export function recordStamp(period: { from: string; to: string }, locale: Locale
 }
 
 export function recordPercent(value: number, locale: Locale) {
-	// Reserve the displayed 100.0% for a complete share.
-	const displayed = value < 1 && value >= 0.9995 ? 0.999 : value;
-	return intl
-		.number(locale, {
-			style: 'percent',
-			minimumFractionDigits: 1,
-			maximumFractionDigits: 1,
-		})
-		.format(displayed);
+	const between = value > 0 && value < 1;
+	const digits =
+		value === 0 || value === 1 ? 0 : between && (value < 0.0005 || value >= 0.9995) ? 2 : 1;
+	const format = intl.number(locale, {
+		style: 'percent',
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits,
+	});
+	if (between && value < 0.00005) return `<${format.format(0.0001)}`;
+	if (between && value >= 0.99995) return `>${format.format(0.9999)}`;
+	return format.format(value);
 }
 
 export function rankingComparison(
@@ -908,7 +907,10 @@ export function recordHours(hours: number, locale: Locale) {
 }
 
 export function relativeReportAge(seconds: number, locale: Locale) {
-	return formatRelativeSeconds(Math.max(0, Math.floor(seconds)), locale);
+	return formatRelativeSeconds(Math.max(0, Math.floor(seconds)), locale).replace(
+		/\bminutes?\b/u,
+		'min',
+	);
 }
 
 export function serviceWeekday(day: string, locale: Locale) {
@@ -1006,7 +1008,7 @@ export function lineVehicleSentence(
 
 /**
  * A stop with no vehicle in the next 15 minutes answers with the next one instead of a zero:
- * "No vehicle in the next 15 minutes. Next: line 361 toward Nord, scheduled 04:34."
+ * "35 min until the next vehicle: line 361 toward Nord, scheduled 04:34."
  */
 export function stopNextVehicleSentence(
 	next: { line: string | null; toward: string | null; scheduled: string | null },
@@ -1024,11 +1026,8 @@ export function stopNextVehicleSentence(
 			: `scheduled ${next.scheduled}`
 		: null;
 	const detail = [where || null, when].filter(Boolean).join(', ');
-	const lead = fr
-		? 'Aucun véhicule dans les 15 prochaines minutes.'
-		: 'No vehicle in the next 15 minutes.';
-	if (!detail) return lead;
-	return fr ? `${lead} Prochain\u00a0: ${detail}.` : `${lead} Next: ${detail}.`;
+	const lead = fr ? 'avant le prochain véhicule' : 'until the next vehicle';
+	return detail ? `${lead}${fr ? '\u00a0:' : ':'} ${detail}.` : `${lead}.`;
 }
 
 /**
@@ -1212,29 +1211,50 @@ export function frenchAgency({ name, frenchOf }: AgencyName) {
 	};
 }
 
-/** The one sentence for a city whose alerts Transit does not collect. */
-export function alertsNotCollected(agency: AgencyName, locale: Locale) {
-	return locale === 'fr'
-		? `Transit ne collecte pas encore les avis ${frenchAgency(agency).of}.`
-		: `Transit does not collect ${agency.name}’s notices yet.`;
+/** The agency has no open service-alert feed in the provider declaration. */
+export function alertsNotPublished(agency: AgencyName, locale: Locale, website = false) {
+	if (locale === 'fr') {
+		const sentence = `${frenchAgency(agency).start} ne publie pas ses avis de service en données ouvertes.`;
+		return website ? `${sentence} Elle les affiche sur son site Web.` : sentence;
+	}
+	const sentence = `${agency.name} does not publish its service alerts as open data.`;
+	return website ? `${sentence} It posts them on its website.` : sentence;
 }
 
-/** The state and its sentence on one line: "Not tracked: Transit does not collect …". */
-export function alertsNotTrackedLine(agency: AgencyName, locale: Locale) {
+/** Transit has no archived notices for these dates despite a declared source. */
+export function alertsNotCollected(agency: AgencyName, locale: Locale) {
 	return locale === 'fr'
-		? `Non suivi\u00a0: ${alertsNotCollected(agency, locale)}`
-		: `Not tracked: ${alertsNotCollected(agency, locale)}`;
+		? `Transit n’a pas collecté les avis ${frenchAgency(agency).of} à ces dates.`
+		: `Transit did not collect ${agency.name}’s notices on these dates.`;
+}
+
+export function alertsNotPublishedLine(agency: AgencyName, locale: Locale, website = false) {
+	const sentence = alertsNotPublished(agency, locale, website);
+	return locale === 'fr' ? `Non publié\u00a0: ${sentence}` : `Not published: ${sentence}`;
 }
 
 /** A city whose alerts Transit collects, on dates the record holds none of them. */
 export function alertsNotTrackedOnDates(agency: AgencyName, locale: Locale) {
-	return locale === 'fr'
-		? `Non suivi\u00a0: Transit n’a pas collecté les avis ${frenchAgency(agency).of} à ces dates.`
-		: `Not tracked: Transit did not collect ${agency.name}’s notices on these dates.`;
+	const sentence = alertsNotCollected(agency, locale);
+	return locale === 'fr' ? `Non suivi\u00a0: ${sentence}` : `Not tracked: ${sentence}`;
 }
 
 export function officialAlertsLabel(locale: Locale) {
 	return locale === 'fr' ? 'Consulter les avis officiels' : 'Check the official notices';
+}
+
+export function roomOnBoardUnavailable(agency: AgencyName, locale: Locale, published?: boolean) {
+	if (published === false)
+		return locale === 'fr'
+			? `${frenchAgency(agency).start} ne publie pas la place à bord.`
+			: `${agency.name} does not publish room on board.`;
+	if (published === true)
+		return locale === 'fr'
+			? `Transit n’a pas relevé la place à bord des véhicules ${frenchAgency(agency).of} à ces dates.`
+			: `Transit did not record room on board for ${agency.name} on these dates.`;
+	return locale === 'fr'
+		? 'Les données sur la place à bord sont indisponibles à ces dates.'
+		: 'Room-on-board data is unavailable for these dates.';
 }
 
 /** Whose data a citation rests on: the agency and the licence it publishes under. */

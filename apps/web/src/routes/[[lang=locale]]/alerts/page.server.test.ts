@@ -47,3 +47,32 @@ it.each(['record', 'live'] as const)('uses only the expected Alerts reader in %s
 		);
 	}
 });
+
+it.each(['record', 'live'] as const)(
+	'keeps the official link when a provider declares no alert feed in %s',
+	async (mode) => {
+		const official = 'https://agency.example/alerts';
+		const unpublished = {
+			...provider,
+			id: 'fixture-agency',
+			inputs: { i3_alerts: false, service_alerts: false },
+			alert_links: { en: official },
+		};
+		const url = new URL(`https://transit.example/alerts?frameMode=${mode}`);
+		const fetcher = vi.fn();
+		vi.mocked(loadAlertRecord).mockClear();
+		const result = await load({
+			url,
+			request: new Request(url),
+			fetch: fetcher,
+			parent: async () => ({ providerId: unpublished.id, provider: unpublished, lang: 'en' }),
+		} as unknown as Parameters<typeof load>[0]);
+		expect(result?.alertRecord).toMatchObject({
+			tracked: false,
+			officialAlertsUrl: official,
+			capture: null,
+		});
+		expect(fetcher).not.toHaveBeenCalled();
+		expect(loadAlertRecord).not.toHaveBeenCalled();
+	},
+);

@@ -6,6 +6,7 @@
 		citationSource,
 		pageCitation,
 		recordPercent,
+		roomOnBoardUnavailable,
 		tripOutcomeHeaders,
 		tripOutcomeLabels,
 		tripOutcomeNote,
@@ -655,6 +656,7 @@
 					{stamp}
 					answer={record.crowding}
 					waiting={{ shape: 'table', rows: 6 }}
+					compactWhenSettled
 				>
 					{#snippet reading(result)}
 						{#if !('cells' in result) && result.state === 'measured'}
@@ -670,9 +672,10 @@
 							/>
 						{:else if result.state === 'not_tracked'}
 							<p>
-								{t(
-									'Crowding is not tracked in this city.',
-									'L’occupation des véhicules n’est pas suivie dans cette ville.',
+								{roomOnBoardUnavailable(
+									agencyName(operator, page.data.provider),
+									locale,
+									page.data.provider?.inputs.occupancy,
 								)}
 							</p>
 						{:else}<StateMark state={chartState(result.state)} {locale} />{/if}

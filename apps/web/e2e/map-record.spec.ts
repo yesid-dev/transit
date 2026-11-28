@@ -61,6 +61,11 @@ for (const locale of ['en', 'fr'] as const) {
 		const title = fr ? 'Carte du bilan' : 'Record map';
 		await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
 		await expect(page).toHaveTitle(new RegExp(`^${title}\\b`, 'u'));
+		if (phone)
+			await expect(page.getByTestId('map-list-button')).toHaveAttribute(
+				'aria-label',
+				fr ? /Jusqu’à .+ en retard/u : /Up to .+ late/u,
+			);
 		const legend = page.locator(
 			phone ? '[data-map-legend="phone"]' : '[data-map-legend="desktop"]',
 		);
@@ -79,7 +84,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await stop.press('Enter');
 		const selected = page.locator('[data-slot="record-map-selection"]');
 		await expect(selected).toContainText(fr ? 'Mesuré' : 'Measured');
-		await expect(selected).toContainText(/0[.,]0\s*%/);
+		await expect(selected).toContainText(/\b0\s*%/u);
 		await expect(selected).toContainText('45');
 		await expect(
 			page.getByRole('link', { name: fr ? 'Bilan de l’arrêt' : 'Stop Record' }),

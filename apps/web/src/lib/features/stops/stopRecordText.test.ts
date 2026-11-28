@@ -80,7 +80,7 @@ it('uses the engine dates, count and denominator in both locales', () => {
 	expect(stopAnswer(answer, 'en')).toMatch(/8 to 14 Nov 2026, 80\.0%.*\(80 of 100\)/);
 	expect(stopAnswer(answer, 'fr')).toMatch(/du 8 au 14 nov. 2026, 80,0\s%.*\(80 sur 100\)/);
 	expect(punctualityBands(answer, 'en').map(({ reading }) => reading)).toEqual([
-		'0.0% (0/100) · 50.0% of 200 scheduled stops observed',
+		'0% (0/100) · 50.0% of 200 scheduled stops observed',
 		'80.0% (80/100) · 50.0% of 200 scheduled stops observed',
 		'20.0% (20/100) · 50.0% of 200 scheduled stops observed',
 	]);

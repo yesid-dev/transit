@@ -52,6 +52,7 @@ import {
 	rankingComparison,
 	recordStamp,
 	rowSentence,
+	roomOnBoardUnavailable,
 	scheduledClock,
 	serviceTime,
 	tooFewDepartures,
@@ -67,6 +68,24 @@ import {
 	versionNumber,
 } from './presenter.ts';
 import { livePause } from '#lib/live/livePause.ts';
+
+it.each([
+	['en', false, 'Example Transit does not publish room on board.'],
+	['fr', false, 'Example Transit ne publie pas la place à bord.'],
+	['en', true, 'Transit did not record room on board for Example Transit on these dates.'],
+	[
+		'fr',
+		true,
+		'Transit n’a pas relevé la place à bord des véhicules d’Example Transit à ces dates.',
+	],
+	['en', undefined, 'Room-on-board data is unavailable for these dates.'],
+	['fr', undefined, 'Les données sur la place à bord sont indisponibles à ces dates.'],
+] as const)(
+	'attributes room-on-board gaps only when publication is declared in %s (%s)',
+	(locale, published, message) => {
+		expect(roomOnBoardUnavailable({ name: 'Example Transit' }, locale, published)).toBe(message);
+	},
+);
 
 it.each([
 	[
@@ -101,18 +120,18 @@ const normalize = (text: string | null) => text?.replaceAll('\u00a0', ' ');
 it('explains the grouped and published units only when their counts differ', () => {
 	const agency = { name: 'STM', frenchOf: 'de la STM' };
 	expect(noticeCountEvidence(213, 1707, agency, 'en')).toBe(
-		'213 notices across 1,707 publications by STM.',
+		'213 notices. STM published them 1,707 times.',
 	);
 	expect(normalize(noticeCountEvidence(213, 1707, agency, 'fr'))).toBe(
-		'213 avis, en 1 707 publications par la STM.',
+		'213 avis. La STM les a publiés 1 707 fois.',
 	);
 	expect(publishedAlertCount(1707, 'en')).toBe('1,707 notices as published');
 	expect(normalize(publishedAlertCount(1707, 'fr'))).toBe('1 707 avis tels que publiés');
 });
 
 it.each([
-	['en', '99.9%', '100.0%'],
-	['fr', '99,9 %', '100,0 %'],
+	['en', '99.98%', '100%'],
+	['fr', '99,98 %', '100 %'],
 ] as const)('keeps missing trips visible in a nearly complete share in %s', (locale, near, all) => {
 	expect(normalize(recordPercent(111_953 / 111_974, locale))).toBe(near);
 	expect(normalize(recordPercent(1, locale))).toBe(all);
@@ -160,8 +179,8 @@ it('uses the published interval and a matching reference method for the ranking 
 });
 
 it.each([
-	['en', '0.0%', '14.0%', '80.7%'],
-	['fr', '0,0 %', '14,0 %', '80,7 %'],
+	['en', '0%', '14.0%', '80.7%'],
+	['fr', '0 %', '14,0 %', '80,7 %'],
 ] as const)('formats measured shares with one decimal in %s', (locale, zero, whole, fraction) => {
 	expect(normalize(recordPercent(0, locale))).toBe(zero);
 	expect(normalize(recordPercent(0.14, locale))).toBe(whole);
@@ -226,8 +245,8 @@ it.each([
 });
 
 it.each([
-	['en', '5.9 min late', '1 min early', 'On schedule', 'Delay unknown', '+5.9 min'],
-	['fr', '5,9 min de retard', '1 min d’avance', 'À l’heure prévue', 'Retard inconnu', '+5,9 min'],
+	['en', '6 min late', '1 min early', 'On schedule', 'Delay unknown', '+5.9 min'],
+	['fr', '6 min de retard', '1 min d’avance', 'À l’heure prévue', 'Retard inconnu', '+5,9 min'],
 ] as const)(
 	'reads delays and absence in %s',
 	(locale, late, early, onSchedule, unknown, signed) => {
@@ -236,11 +255,12 @@ it.each([
 		expect(delayReading(0, locale)).toBe(onSchedule);
 		expect(delayReading(2, locale)).toBe(onSchedule);
 		expect(delayReading(-2, locale)).toBe(onSchedule);
-		expect(normalize(delayReading(3, locale))).toBe(
-			locale === 'en' ? '0.1 min late' : '0,1 min de retard',
+		expect(delayReading(14, locale)).toBe(onSchedule);
+		expect(normalize(delayReading(15, locale))).toBe(
+			locale === 'en' ? '0.5 min late' : '0,5 min de retard',
 		);
-		expect(normalize(delayReading(-3, locale))).toBe(
-			locale === 'en' ? '0.1 min early' : '0,1 min d’avance',
+		expect(normalize(delayReading(-15, locale))).toBe(
+			locale === 'en' ? '0.5 min early' : '0,5 min d’avance',
 		);
 		expect(delayReading(null, locale)).toBe(unknown);
 		expect(delayReading(NaN, locale, 'Unavailable')).toBe('Unavailable');
@@ -459,15 +479,15 @@ const plain = (text: string | null) => text?.replace(/[\u00a0\u202f]/gu, ' ') ??
 it.each([
 	[
 		'en',
-		'No vehicle in the next 15 minutes. Next: line 361 toward Nord, scheduled 04:34.',
-		'No vehicle in the next 15 minutes.',
+		'until the next vehicle: line 361 toward Nord, scheduled 04:34.',
+		'until the next vehicle.',
 		'No trip is running now. First trip at 04:48.',
 		'No vehicle is reporting on this line now.',
 	],
 	[
 		'fr',
-		'Aucun véhicule dans les 15 prochaines minutes. Prochain : ligne 361 vers Nord, prévu à 04:34.',
-		'Aucun véhicule dans les 15 prochaines minutes.',
+		'avant le prochain véhicule : ligne 361 vers Nord, prévu à 04:34.',
+		'avant le prochain véhicule.',
 		'Aucun trajet en cours. Premier trajet à 04:48.',
 		'Aucun véhicule ne transmet sa position sur cette ligne en ce moment.',
 	],

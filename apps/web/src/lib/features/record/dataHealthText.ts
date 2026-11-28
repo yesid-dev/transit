@@ -18,7 +18,7 @@ const states: Record<TableHealth['status'], [string, string]> = {
 	missing: ['Missing', 'Manquant'],
 	incomplete: ['Incomplete', 'Incomplet'],
 	not_measured: ['Not measured', 'Non mesuré'],
-	not_tracked: ['Not tracked', 'Non suivi'],
+	not_tracked: ['Transit did not track this', 'Transit n’a pas suivi cette donnée'],
 };
 
 const reasons: Record<string, [string, string]> = {
@@ -29,15 +29,21 @@ const reasons: Record<string, [string, string]> = {
 		'File size differs from the file list',
 		'La taille du fichier diffère de la liste de fichiers',
 	],
-	no_raw_captures: ['No raw captures', 'Aucune capture brute'],
+	no_raw_captures: [
+		'Transit collected no source data',
+		'Transit n’a collecté aucune donnée source',
+	],
 	no_schedule_edition: ['No schedule edition', 'Aucune édition de l’horaire'],
-	schedule_archive_unreadable: ['Schedule archive unreadable', 'Archive de l’horaire illisible'],
+	schedule_archive_unreadable: [
+		'Transit could not read the archived timetable',
+		'Transit n’a pas pu lire l’horaire archivé',
+	],
 };
 
 export function healthReason(reason: string | undefined, locale: Locale) {
 	return reason && Object.hasOwn(reasons, reason)
 		? choose(locale, ...reasons[reason])
-		: choose(locale, 'Reason unknown', 'Raison inconnue');
+		: choose(locale, 'Transit cannot tell why', 'Transit ne peut pas en déterminer la raison');
 }
 
 export function tableName(table: string, locale: Locale) {

@@ -68,7 +68,12 @@ it('shows per-feed results, counts and too-few and untracked states', () => {
 	expect(networkRows('poll_success', data, 'en').rows).toEqual([
 		['Trip updates', '80.0%', '20 / 25'],
 		['Vehicle positions', 'Too few to judge', '3 / 5'],
-		['Service alerts', 'Not tracked', ''],
+		['Service alerts', 'Transit did not track this', ''],
+	]);
+	expect(networkRows('poll_success', data, 'en', false).rows[2]).toEqual([
+		'Service alerts',
+		'Not published',
+		'',
 	]);
 });
 
@@ -96,8 +101,8 @@ it('keeps histogram overflow and a missing timestamp distinct', () => {
 	expect(rows[0]).toEqual(['Mises à jour des trajets', '0,1 min', 'Plus de 10 min', '30']);
 	expect(rows[2]).toEqual([
 		'Avis de service',
-		'Non suivi (aucun horodatage de publication)',
-		'Non suivi (aucun horodatage de publication)',
+		'La société de transport ne publie aucun horodatage',
+		'La société de transport ne publie aucun horodatage',
 		'',
 	]);
 });
@@ -115,8 +120,8 @@ it('keeps a declared unpublished vehicle field separate from measured zero', () 
 		},
 	};
 	const { rows } = networkRows('vehicle_field_completeness', data, 'en');
-	expect(rows).toContainEqual(['Occupancy', 'Not tracked (field not published)', '']);
-	expect(rows).toContainEqual(['Stop', '0.0%', '0 / 2']);
+	expect(rows).toContainEqual(['Occupancy', 'Field not published by the agency', '']);
+	expect(rows).toContainEqual(['Stop', '0%', '0 / 2']);
 });
 
 it('shows dates and separate reasons when live coverage could not be measured', () => {
@@ -134,7 +139,7 @@ it('shows dates and separate reasons when live coverage could not be measured', 
 		},
 	};
 	expect(networkUnmeasuredDays('live_trip_coverage', data, 'en')).toEqual([
-		['Nov 13, 2026', 'Not measured (No raw captures)'],
+		['Nov 13, 2026', 'Not measured (Transit collected no source data)'],
 		['Nov 14, 2026', 'Capture interrupted'],
 	]);
 	expect(networkRows('live_trip_coverage', data, 'en').rows.map((row) => row.slice(1))).toEqual([

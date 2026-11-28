@@ -48,7 +48,6 @@
 	import { recordSectionLinks } from '#lib/features/record/recordLinks.ts';
 	import { recordState, recordStateFor } from '#lib/features/record/recordStates.ts';
 	import {
-		coverageText,
 		lastGoodNote,
 		recordConnection,
 		tally,
@@ -739,7 +738,12 @@
 				label: t('Observed', 'Observations'),
 				text: evidence
 					? [
-							coverageText(evidence, locale).replace(/([^.!?])$/, '$1.'),
+							evidence.counts.classified == null
+								? null
+								: t(
+										`${countedUnit(evidence.counts.classified, 'event', locale)} on the trips it reported.`,
+										`${countedUnit(evidence.counts.classified, 'event', locale)} sur les trajets qu’il a signalés.`,
+									),
 							timingBasis(evidence.counts, locale),
 						]
 							.filter(Boolean)

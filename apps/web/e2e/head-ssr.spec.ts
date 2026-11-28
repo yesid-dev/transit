@@ -9,6 +9,32 @@ import { startStopSearchFixture } from './stop-search-fixture';
 import { createHash } from 'node:crypto';
 
 // Request HTML directly: crawler metadata must be correct before any browser JavaScript runs.
+test('links to the app description in the reader’s language', async ({ request }) => {
+	for (const [prefix, lang, description] of [
+		[
+			'',
+			'en',
+			'An independent public record of the transit service delivered. Not a trip planner.',
+		],
+		[
+			'/fr',
+			'fr',
+			'Un bilan public et indépendant du service de transport effectué. Pas un planificateur de trajets.',
+		],
+	] as const) {
+		const href = `${prefix}/manifest.webmanifest`;
+		const response = await request.get(href);
+		expect(response.ok()).toBe(true);
+		expect(await response.json()).toMatchObject({
+			lang,
+			description,
+			categories: ['travel', 'utilities'],
+		});
+		const page = await request.get(`${prefix}/lines?provider=stm`);
+		expect(await page.text()).toContain(`rel="manifest" href="${href}"`);
+	}
+});
+
 test('the canonical rankings route serves the selected bilingual title', async ({ request }) => {
 	for (const [path, title] of [
 		['/rankings?provider=stm', 'Worst lines'],

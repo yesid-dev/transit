@@ -96,13 +96,14 @@
 		return captureNetwork(snapshot, now);
 	}
 
-	function liveAnswer(reporting: number, scheduled: number | null) {
-		const one = singularCount(reporting, locale);
-		if (scheduled == null) return one ? term.reportingOne : term.reporting;
-		const count = countedUnit(scheduled, 'trip', locale);
+	function liveAnswer(reporting: number, scheduled: number | null, confirmed: number | null) {
+		if (confirmed == null || scheduled == null)
+			return singularCount(reporting, locale) ? term.reportingOne : term.reporting;
+		const reportCount = tally(reporting, locale);
+		const oneScheduled = singularCount(scheduled, locale);
 		return t(
-			`${one ? 'vehicle is' : 'vehicles are'} reporting now, for ${count} scheduled at this moment.`,
-			`${one ? 'véhicule transmet sa position' : 'véhicules transmettent leur position'} pour ${count} ${singularCount(scheduled, locale) ? 'prévu' : 'prévus'} en ce moment.`,
+			`${oneScheduled ? 'trip scheduled now has' : 'trips scheduled now have'} a vehicle reporting. ${reportCount} ${reporting === 1 ? 'vehicle is' : 'vehicles are'} reporting in all.`,
+			`${oneScheduled ? 'trajet prévu en ce moment est' : 'trajets prévus en ce moment sont'} signalé${oneScheduled ? '' : 's'} par un véhicule. ${reportCount} ${singularCount(reporting, locale) ? 'véhicule transmet' : 'véhicules transmettent'} en tout.`,
 		);
 	}
 	// The first page of silent trips, one line each behind the line's plate (D4).
@@ -188,6 +189,17 @@
 	{@const live = view?.live ?? null}
 	{@const scheduled = live?.scheduled_now ?? null}
 	{@const silentCount = live?.non_responding ?? null}
+	{@const confirmed =
+		scheduled != null && silentCount != null && silentCount <= scheduled
+			? scheduled - silentCount
+			: null}
+	{@const trips =
+		confirmed != null && scheduled != null
+			? t(
+					`${tally(confirmed, locale)} of ${tally(scheduled, locale)}`,
+					`${tally(confirmed, locale)} des ${tally(scheduled, locale)}`,
+				)
+			: null}
 	<!-- The title, the answer and both cards share one section, drawn whole while the first capture
 	     is on its way: each card waits as its final shape under its real title (D4). -->
 	<RecordGroup>
@@ -197,10 +209,10 @@
 				{#if view}
 					<RecordAnswer
 						{locale}
-						value={live ? tally(live.vehicles_in_service, locale) : null}
+						value={live ? (trips ?? tally(live.vehicles_in_service, locale)) : null}
 						state={live ? undefined : 'no_live_data'}
 						sentence={live
-							? liveAnswer(live.vehicles_in_service, scheduled)
+							? liveAnswer(live.vehicles_in_service, scheduled, confirmed)
 							: t('No live data', 'Aucune donnée en direct')}
 						time={stamp}
 					/>

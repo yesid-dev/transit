@@ -132,8 +132,8 @@ it.each(cases)(
 		expect(
 			screen.getByText(
 				locale === 'en'
-					? 'Notices are not tracked for this city.'
-					: 'Les avis ne sont pas suivis pour cette ville.',
+					? 'Transit did not collect notices on some or all of these dates.'
+					: 'Transit n’a pas collecté les avis à certaines de ces dates ou à toutes ces dates.',
 			),
 		).toBeInTheDocument();
 		// Data health's words for the same things; the file names stay in the files.
