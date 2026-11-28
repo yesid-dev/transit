@@ -17,7 +17,8 @@ globalThis.fetch = (input, init) => {
 	const url = new URL(input.url);
 	if (url.origin !== fixture.origin || !url.pathname.startsWith('/v2/'))
 		return workerFetch(input, init);
-	const holding = Boolean(fixture.hold) && /\/(?:measure|ranking|data-health)$/.test(url.pathname);
+	const holding =
+		Boolean(fixture.hold) && /\/(?:measure|ranking|data-health|how-we-measure)$/.test(url.pathname);
 	const scoped = !(
 		url.searchParams.get('measure') !== 'alert_counts' &&
 		!url.pathname.endsWith('/schedule-index') &&

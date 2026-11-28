@@ -2,7 +2,7 @@
 	import { isSettled, whenAll, type Awaitable } from '#lib/site/ready.ts';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
-	import { ChevronToggle, useSectionJump, type TocEntry } from '@yesid/ui/brand';
+	import { ChevronToggle, HeadingPermalink, useSectionJump, type TocEntry } from '@yesid/ui/brand';
 	import { Button } from '@yesid/ui/button';
 	import * as Collapsible from '@yesid/ui/collapsible';
 	import { sections } from '@yesid/ui/state';
@@ -90,7 +90,7 @@
 	function revealMethod(id: string) {
 		let disclosure = document.getElementById(id)?.closest<HTMLElement>('.method-disclosure');
 		while (disclosure && reading?.contains(disclosure)) {
-			openCards[disclosure.id] = true;
+			openCards[disclosure.dataset.methodDisclosure!] = true;
 			disclosure = disclosure.parentElement?.closest<HTMLElement>('.method-disclosure');
 		}
 	}
@@ -118,15 +118,19 @@
 			.replace(/[.!?]+$/u, '')
 			.toLocaleLowerCase(locale);
 	const contentsLabel = $derived(choose(locale, 'On this page', 'Sur cette page'));
+	const permalinkLabel = $derived(
+		choose(locale, 'Link to this section', 'Lien vers cette section'),
+	);
 	const hasMore = $derived(isSettled(catalogue) ? catalogue.extra.length > 0 : !!extraHeading);
-	const entries: TocEntry[] = $derived([
+	const railEntries: TocEntry[] = $derived([
 		{ id: 'method-heading', title: copy.heading, level: 2, children: [] },
-		...(hasMore ? [{ id: 'more-methods', title: copy.more, level: 2, children: [] }] : []),
+		{ id: 'more-methods', title: copy.more, level: 2, children: [] },
 		{ id: 'ranking-range', title: copy.range.title, level: 2, children: [] },
 		{ id: 'reading-states', title: copy.statesTitle, level: 2, children: [] },
 		{ id: 'record-limits-heading', title: copy.limitsTitle, level: 2, children: [] },
 		{ id: 'about-transit', title: copy.about.title, level: 2, children: [] },
 	]);
+	const entries = $derived(railEntries.filter(({ id }) => id !== 'more-methods' || hasMore));
 </script>
 
 {#snippet methodSection(
@@ -141,18 +145,24 @@
 	{@const summary =
 		description && summaryKey(description) !== summaryKey(name) ? description : null}
 	<Collapsible.Root
-		{id}
-		class="method-anchor method-disclosure"
+		class="method-disclosure"
+		data-method-disclosure={id}
 		data-method-bulk={independent ? undefined : ''}
 		open={expanded}
 		onOpenChange={(value) => (openCards[id] = value)}
 	>
-		<svelte:element this={`h${level}`} class="method-disclosure-heading">
+		<svelte:element
+			this={`h${level}`}
+			{id}
+			aria-labelledby={id + '-title'}
+			class="method-anchor method-disclosure-heading section-title"
+		>
+			<HeadingPermalink target={id} label={permalinkLabel} />
 			<Collapsible.Trigger
 				aria-describedby={summary ? id + '-summary' : undefined}
 				class="method-disclosure-trigger inline-flex min-h-11 max-w-full items-start gap-2 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 			>
-				<span class="min-w-0">{name}</span>
+				<span id={id + '-title'} class="min-w-0">{name}</span>
 				<ChevronToggle open={expanded} direction="right" class="shrink-0 print:hidden" />
 			</Collapsible.Trigger>
 		</svelte:element>
@@ -169,7 +179,10 @@
 	{@const expanded = ids.some((id) => isOpen(id))}
 	{@const toggleCopy = sectionsToggleCopy[locale]}
 	<div class="method-heading-row flex min-w-0 flex-wrap items-center justify-between gap-3">
-		<h2 id="method-heading">{copy.heading}</h2>
+		<h2 id="method-heading" aria-labelledby="method-heading-title" class="section-title">
+			<HeadingPermalink target="method-heading" label={permalinkLabel} />
+			<span id="method-heading-title">{copy.heading}</span>
+		</h2>
 		<div class="min-h-11 print:hidden">
 			<Button
 				variant="outline"
@@ -285,8 +298,15 @@
 			<div class="grid min-w-0 gap-5">
 				<div class="grid min-w-0 gap-4">
 					{#each view.measures as item (item.entry.id)}
-						<section id={item.entry.id} class="measure-item grid min-w-0 gap-2">
-							<h4>{methodName(item.entry, locale)}</h4>
+						<section class="grid min-w-0 gap-2">
+							<h4
+								id={item.entry.id}
+								aria-labelledby={item.entry.id + '-title'}
+								class="method-anchor"
+							>
+								<HeadingPermalink target={item.entry.id} label={permalinkLabel} />
+								<span id={item.entry.id + '-title'}>{methodName(item.entry, locale)}</span>
+							</h4>
 							<p>{item.summary}</p>
 							{@render fieldList(
 								item.parts,
@@ -393,7 +413,7 @@
 
 <RecordScreen>
 	<DetailFrame
-		class="method-detail"
+		class="method-detail reading-detail"
 		measure="var(--transit-measure-listing)"
 		rule="none"
 		railScroll
@@ -423,13 +443,18 @@
 				<nav aria-label={contentsLabel}>
 					<p class="method-contents-title">{contentsLabel}</p>
 					<ul class="mt-2 grid gap-1">
-						{#each entries as entry (entry.id)}
-							<li>
-								<a
-									class="method-link inline-flex min-h-11 items-center aria-[current=location]:font-bold"
-									href={'#' + entry.id}
-									aria-current={activeId === entry.id ? 'location' : undefined}>{entry.title}</a
-								>
+						{#each railEntries as entry (entry.id)}
+							<li aria-hidden={entry.id === 'more-methods' && !hasMore ? true : undefined}>
+								{#if entry.id === 'more-methods' && !hasMore}
+									<!-- Keep the row at its text-scaled height while the catalogue streams. -->
+									<span class="invisible inline-flex min-h-11 items-center">{entry.title}</span>
+								{:else}
+									<a
+										class="method-link inline-flex min-h-11 items-center aria-[current=location]:font-bold"
+										href={'#' + entry.id}
+										aria-current={activeId === entry.id ? 'location' : undefined}>{entry.title}</a
+									>
+								{/if}
 							</li>
 						{/each}
 					</ul>
@@ -442,7 +467,7 @@
 		{#snippet right()}{/snippet}
 
 		<div
-			class="method-content reading-column min-w-0"
+			class="method-content article-body reading-column"
 			bind:this={reading}
 			data-method-ready={ready ? '' : undefined}
 		>
@@ -508,7 +533,15 @@
 					</RecordGroup>
 					{#if extraViews.length}
 						<RecordGroup aria-labelledby="more-methods">
-							<h2 id="more-methods" bind:this={extraHeading}>{copy.more}</h2>
+							<h2
+								id="more-methods"
+								aria-labelledby="more-methods-title"
+								class="section-title"
+								bind:this={extraHeading}
+							>
+								<HeadingPermalink target="more-methods" label={permalinkLabel} />
+								<span id="more-methods-title">{copy.more}</span>
+							</h2>
 							{#each extraViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 						</RecordGroup>
 					{/if}
@@ -525,12 +558,15 @@
 				)}
 			</RecordGroup>
 			<RecordGroup>
-				<article
-					id="reading-states"
-					class="method-anchor grid gap-4"
-					aria-labelledby="reading-states-heading"
-				>
-					<h2 id="reading-states-heading">{copy.statesTitle}</h2>
+				<article class="grid gap-4" aria-labelledby="reading-states-title">
+					<h2
+						id="reading-states"
+						aria-labelledby="reading-states-title"
+						class="method-anchor section-title"
+					>
+						<HeadingPermalink target="reading-states" label={permalinkLabel} />
+						<span id="reading-states-title">{copy.statesTitle}</span>
+					</h2>
 					<dl class="method-parts">
 						{#each methodReferenceStates as state (state)}
 							<div>
@@ -539,12 +575,20 @@
 							</div>
 						{/each}
 					</dl>
+					<p>{copy.unknown}</p>
 					<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
 				</article>
 			</RecordGroup>
 			<RecordGroup>
-				<article class="grid gap-4" aria-labelledby="record-limits-heading">
-					<h2 id="record-limits-heading">{copy.limitsTitle}</h2>
+				<article class="grid gap-4" aria-labelledby="record-limits-title">
+					<h2
+						id="record-limits-heading"
+						aria-labelledby="record-limits-title"
+						class="section-title"
+					>
+						<HeadingPermalink target="record-limits-heading" label={permalinkLabel} />
+						<span id="record-limits-title">{copy.limitsTitle}</span>
+					</h2>
 					<div class="@container">
 						<ul class="method-limits list-outside list-disc ps-5 @max-[10rem]:ps-3">
 							{#each copy.recordLimits as line (line)}<li>{line}</li>{/each}
@@ -570,8 +614,6 @@
 <style>
 	.method-content {
 		container-type: inline-size;
-		overflow-wrap: normal;
-		word-break: normal;
 	}
 	.method-parts,
 	.method-notes,
@@ -579,7 +621,6 @@
 		display: grid;
 		gap: var(--space-card-gap);
 	}
-	.measure-item,
 	.method-anchor {
 		scroll-margin-block-start: var(--space-page-x);
 	}
@@ -593,17 +634,9 @@
 		font-weight: 600;
 		color: var(--muted-foreground);
 	}
-	h2,
-	.method-contents-title,
-	.method-disclosure-heading {
+	.method-contents-title {
 		font-size: var(--text-heading);
 		font-weight: 700;
-	}
-	h3,
-	h4 {
-		margin: 0;
-		font-size: inherit;
-		font-weight: 600;
 	}
 	/* The kit's pre-paint choice also applies to the editorial disclosures before hydration. */
 	:global(html[data-sections-saved][data-sections-choice='expanded'])

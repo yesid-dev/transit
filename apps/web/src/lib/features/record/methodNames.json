@@ -74,7 +74,7 @@
 		"Completeness of vehicle reports",
 		"Données présentes dans les relevés de véhicules"
 	],
-	"live_trip_coverage": ["Realtime trip coverage", "Couverture des trajets en temps réel"],
+	"live_trip_coverage": ["Live trip coverage", "Trajets couverts par les données en direct"],
 	"vehicles_without_trip": ["Vehicles without a trip", "Véhicules sans trajet associé"],
 	"prediction_error": ["Prediction error", "Erreur de prévision"],
 	"accessible_trips": ["Accessible trips", "Trajets accessibles"],

@@ -394,7 +394,8 @@ const server = createServer((request, response) => {
 		);
 	}
 	if (url.pathname === '/v2/how-we-measure' && !url.search) {
-		response.writeHead(200, { 'content-type': 'application/json' }).end(methodCatalog);
+		response.writeHead(200, { 'content-type': 'application/json' });
+		sendFixtureResponse(response, activeTestHold(request), () => response.end(methodCatalog));
 		return;
 	}
 	if (url.pathname === '/v2/health') {
