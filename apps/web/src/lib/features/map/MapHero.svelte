@@ -2,6 +2,7 @@
 	import { datedProviderAttribution, providerAttribution } from '#lib/i18n/providerAttribution.ts';
 	import { liveTimingFor } from '#lib/components/map/liveTiming.ts';
 	import { liveReader } from '#lib/v1/adapter/index.ts';
+	import { observedSize } from '#lib/utils/observedSize.ts';
 	import { provideLiveAbsenceContext } from '#lib/site/absence.ts';
 	import { measureMapFocusInset } from './mapFocusInset';
 	import { providerHasAlerts } from '#lib/v1/providers.ts';
@@ -1856,7 +1857,11 @@
 		</div>
 	</MapFrame>
 	{#if !wide}
-		<div class="map-mobile-peek" data-slot="map-mobile-peek" bind:clientHeight={peekHeight}>
+		<div
+			class="map-mobile-peek"
+			data-slot="map-mobile-peek"
+			{@attach observedSize('clientHeight', (value) => (peekHeight = value))}
+		>
 			<Button
 				class="map-in-view-button min-h-11 min-w-0 flex-1 justify-start px-2 text-left"
 				variant="ghost"
@@ -1987,12 +1992,16 @@
 	data-motion-tick-key={runtime.processedMotion?.tickKey}
 	data-motion-vehicle-count={runtime.processedMotion?.vehicleCount}
 	bind:this={heroEl}
-	bind:clientWidth={mapWidthPx}
+	{@attach observedSize('clientWidth', (value) => (mapWidthPx = value))}
 	data-record-layer={recordLayer}
 	data-map-wide={wide}
 	style:--map-peek-height={`${peekHeight}px`}
 >
-	<span class="map-layout-marker" aria-hidden="true" bind:clientWidth={remWidth}></span>
+	<span
+		class="map-layout-marker"
+		aria-hidden="true"
+		{@attach observedSize('clientWidth', (value) => (remWidth = value))}
+	></span>
 	<MapRecordPanel
 		{scheduleCache}
 		threeD={recordThreeD}
