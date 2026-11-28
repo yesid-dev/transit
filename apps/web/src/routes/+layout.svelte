@@ -86,7 +86,7 @@
 	import { EdgeState } from '#lib/components/edge/index.ts';
 	import { Separator } from '@yesid/ui/separator';
 	import { SiteFooter, SiteRoot } from '@yesid/ui/layout';
-	import HomeConstructionGround from '#lib/components/layout/HomeConstructionGround.svelte';
+	import { ConstructionGround } from '@yesid/ui/brand';
 	import { desktop } from '@yesid/ui/state';
 	import {
 		NAV_GROUPS,
@@ -527,7 +527,10 @@
 			{:else}
 				{#if seoPath === '/'}
 					{#key page.url.pathname}
-						<HomeConstructionGround />
+						<!-- The ground opens with the props, and nothing in view moves (yesid.design). -->
+						<div class="home-construction">
+							<ConstructionGround layout="spread" floodlight />
+						</div>
 					{/key}
 				{/if}
 				{#snippet legalStatus()}
@@ -614,6 +617,16 @@
 			--space-page-x: var(--space-card-gap);
 			--detail-column-gap: var(--space-card-gap);
 			--layout-control-rail-width: min(16rem, 25%);
+		}
+	}
+	/* The props' live ground: 240 px, 100 px on phones and tablets. */
+	.home-construction {
+		--construction-ground-height: 240px;
+		flex-shrink: 0;
+	}
+	@media (--tablet-max) {
+		.home-construction {
+			--construction-ground-height: 100px;
 		}
 	}
 	.footer-disclaimer {
