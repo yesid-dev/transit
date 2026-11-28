@@ -19,6 +19,10 @@ from transit_engine.stretches import STRETCH_VERSION, receipt_tables
 REMOTE = "clean:transit-clean"
 DATE = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
 MIB = 1024**2
+SCHEDULE_FILE_PREFIXES = ("search/v1", "maps/v1", "corridors/v1")
+SCHEDULE_FILE_PATTERN = re.compile(
+    rf"(?:{'|'.join(map(re.escape, SCHEDULE_FILE_PREFIXES))})/{CITY.pattern}/{DATE}/v[0-9]+\.json"
+)
 # Stretch timing is kept whole in R2. The engine host keeps the latest 30 days.
 STRETCH_LOCAL_DAYS = 30
 STRETCH_PREFIX = f"stretch/v{STRETCH_VERSION}"
@@ -54,6 +58,9 @@ class R2:
         return result.stdout or b""
 
     def inventory(self, version: int) -> dict[str, int]:
+        includes = ["--include", f"/*/*/v{version}/**"]
+        for prefix in SCHEDULE_FILE_PREFIXES:
+            includes.extend(("--include", f"/{prefix}/**"))
         result = self.run(
             "lsjson",
             REMOTE,
@@ -61,14 +68,7 @@ class R2:
             "--files-only",
             "--no-modtime",
             "--no-mimetype",
-            "--include",
-            f"/*/*/v{version}/**",
-            "--include",
-            "/search/v1/**",
-            "--include",
-            "/maps/v1/**",
-            "--include",
-            "/corridors/v1/**",
+            *includes,
         )
         return {entry["Path"]: entry["Size"] for entry in json.loads(result)}
 
@@ -141,28 +141,29 @@ def copy_object(
 def sync(remote: R2, root: Path, version: int, reserve: int, *, check: bool = False) -> None:
     inventory = remote.inventory(version)
     manifest_pattern = re.compile(rf"({CITY.pattern})/({DATE})/v{version}/manifest\.json")
-    search_pattern = re.compile(rf"(?:search|maps)/v1/{CITY.pattern}/{DATE}/v[0-9]+\.json")
     days = {}
     for key in sorted(inventory):
         if match := manifest_pattern.fullmatch(key):
             days[key] = match.groups()
     if not days:
         raise RuntimeError(f"No clean manifests in R2 for v{version}")
-    search = [key for key in sorted(inventory) if search_pattern.fullmatch(key)]
-    # The cleaner publishes days and search schedules create-only. A local manifest
+    schedule_files = [key for key in sorted(inventory) if SCHEDULE_FILE_PATTERN.fullmatch(key)]
+    # The cleaner publishes days and schedule files create-only. A local manifest
     # means this mirror verified the complete day before committing it.
     pending = {key: identity for key, identity in days.items() if not (root / key).is_file()}
-    missing_search = [key for key in search if not file_matches(root / key, inventory[key])]
+    missing_schedules = [
+        key for key in schedule_files if not file_matches(root / key, inventory[key])
+    ]
     pending_dirs = {key.rsplit("/", 1)[0] for key in pending}
-    needed = sum(inventory[key] for key in missing_search) + sum(
+    needed = sum(inventory[key] for key in missing_schedules) + sum(
         size for key, size in inventory.items() if key.rsplit("/", 1)[0] in pending_dirs
     )
-    total = sum(inventory[key] for key in search) + sum(
+    total = sum(inventory[key] for key in schedule_files) + sum(
         size for key, size in inventory.items() if key.rsplit("/", 1)[0] + "/manifest.json" in days
     )
     print(
         f"v{version}: {len(days)} published days, {len(pending)} to copy, "
-        f"{len(search)} search files, {total} bytes total, up to {needed} bytes to copy, "
+        f"{len(schedule_files)} schedule files, {total} bytes total, up to {needed} bytes to copy, "
         f"{shutil.disk_usage(root).free} bytes free, {reserve} bytes reserved",
         flush=True,
     )
@@ -170,7 +171,7 @@ def sync(remote: R2, root: Path, version: int, reserve: int, *, check: bool = Fa
     if check:
         return
 
-    for key in missing_search:
+    for key in missing_schedules:
         copy_object(remote, key, root, inventory[key], reserve)
     stamp = Store(str(root), version).mirror_stamp()
     for key, (city, day) in pending.items():
@@ -195,7 +196,10 @@ def sync(remote: R2, root: Path, version: int, reserve: int, *, check: bool = Fa
             os.fsync(stream.fileno())
         publish_manifest(partial, marker)
         stamp.touch()
-    print(f"Published {len(pending)} clean days and {len(missing_search)} search files", flush=True)
+    print(
+        f"Published {len(pending)} clean days and {len(missing_schedules)} schedule files",
+        flush=True,
+    )
 
 
 def _write_receipt(root: Path, key: str, payload: bytes, reserve: int) -> None:
