@@ -4,7 +4,8 @@ import { documentServerTiming, readProxyTiming, timeQuestion } from './questionT
 
 function servePage() {
 	const page = { request: new Request('https://transit.test/lines/51') };
-	vi.mocked(getRequestEvent).mockReturnValue(page as ReturnType<typeof getRequestEvent>);
+	// SvelteKit hands each load function its own copy of the event, with the same request.
+	vi.mocked(getRequestEvent).mockReturnValue({ ...page } as ReturnType<typeof getRequestEvent>);
 	return page;
 }
 
@@ -40,7 +41,7 @@ it('sums the questions a page answered before its headers and counts the waiting
 	// A question settles once; a second call changes nothing.
 	engine(new Headers({ 'server-timing': 'engine;dur=1' }));
 
-	const timing = documentServerTiming(page)!;
+	const timing = documentServerTiming(page.request)!;
 	expect(timing).toMatch(/^questions;desc="answered 2 \(cache 1, engine 1\), waiting 1", /);
 	expect(timing).toContain('engine;dur=4800.0');
 	expect(timing).toContain('queue;dur=12.5');
@@ -49,11 +50,11 @@ it('sums the questions a page answered before its headers and counts the waiting
 
 it('times nothing outside a page request', () => {
 	timeQuestion('punctuality')(new Headers({ 'server-timing': 'engine;dur=5' }));
-	expect(documentServerTiming({})).toBeNull();
+	expect(documentServerTiming(new Request('https://transit.test/'))).toBeNull();
 });
 
 it('names an unusual question plainly', () => {
 	const page = servePage();
 	timeQuestion('Measure <script>')(null);
-	expect(documentServerTiming(page)).toContain('slowest;desc="question"');
+	expect(documentServerTiming(page.request)).toContain('slowest;desc="question"');
 });

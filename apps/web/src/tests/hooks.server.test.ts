@@ -339,7 +339,10 @@ describe('server HTML edge cache', () => {
 	it('says how the page asked its questions, but not in the copy kept for later requests', async () => {
 		const cache = cacheHarness();
 		const request = event('https://transit.yesid.dev/lines/24?tab=detail', { cache });
-		vi.mocked(getRequestEvent).mockReturnValue(request as ReturnType<typeof getRequestEvent>);
+		// Load functions see their own copy of the event, with the same request.
+		vi.mocked(getRequestEvent).mockReturnValue({ ...request } as ReturnType<
+			typeof getRequestEvent
+		>);
 		try {
 			const resolve = vi.fn(async () => {
 				timeQuestion('punctuality')(

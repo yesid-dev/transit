@@ -232,7 +232,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	applyDocumentHeaders(response, event.url);
 	// The questions this response asked: those answered before its headers, and those still waiting.
-	const timing = documentServerTiming(event);
+	const timing = documentServerTiming(event.request);
 	if (timing) response.headers.append('server-timing', timing);
 
 	if (cache != null) {

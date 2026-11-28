@@ -10,11 +10,13 @@ type QuestionTiming = {
 	queueMs?: number;
 };
 
-const byPage = new WeakMap<object, QuestionTiming[]>();
+// Keyed by the request: SvelteKit gives the handle hook and each load function its own copy of
+// the event, and every copy carries the same request.
+const byRequest = new WeakMap<Request, QuestionTiming[]>();
 
-function servedPage() {
+function servedRequest() {
 	try {
-		return getRequestEvent();
+		return getRequestEvent().request;
 	} catch {
 		return null;
 	}
@@ -52,10 +54,10 @@ export function readProxyTiming(header: string | null) {
  * with the answer's headers, once; outside a page request it does nothing.
  */
 export function timeQuestion(name: string) {
-	const page = servedPage();
-	if (!page) return () => {};
-	let timings = byPage.get(page);
-	if (!timings) byPage.set(page, (timings = []));
+	const request = servedRequest();
+	if (!request) return () => {};
+	let timings = byRequest.get(request);
+	if (!timings) byRequest.set(request, (timings = []));
 	const timing: QuestionTiming = {
 		name: /^[a-z0-9_/-]{1,40}$/.test(name) ? name : 'question',
 		settled: false,
@@ -77,8 +79,8 @@ const ms = (value: number) => value.toFixed(1);
  * source, their engine and queue time and the slowest one, and how many were still waiting (they
  * stream in after the first byte).
  */
-export function documentServerTiming(page: object): string | null {
-	const timings = byPage.get(page);
+export function documentServerTiming(request: Request): string | null {
+	const timings = byRequest.get(request);
 	if (!timings?.length) return null;
 	const answered = timings.filter(({ settled }) => settled);
 	const sources = new Map<string, number>();
