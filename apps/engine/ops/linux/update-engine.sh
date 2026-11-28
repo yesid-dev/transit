@@ -107,8 +107,9 @@ elif git cat-file -e "$commit:$warm_runner" 2>/dev/null; then
   git archive "$commit" .bun-version apps/web/package.json "$warm_runner" apps/web/src/lib |
     tar --extract --directory "$release" --no-same-owner --no-same-permissions
 fi
+# The r2 extra carries the locked httpfs wheel: stretch questions read older days from R2.
 UV_PYTHON_INSTALL_DIR="$root/python" UV_LINK_MODE=copy "$root/bin/uv" sync \
-  --directory "$release/apps/engine" --managed-python --locked --no-dev --no-editable
+  --directory "$release/apps/engine" --managed-python --locked --no-dev --no-editable --extra r2
 printf '%s\n' "$commit" >"$release/.revision"
 chmod 0755 "$release"
 
