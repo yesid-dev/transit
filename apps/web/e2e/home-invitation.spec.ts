@@ -100,29 +100,80 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 }
 
-test('the props rise with the scroll at their live sizes, and sink back', async ({ page }) => {
+/** The footer's top in the viewport: the reveal may only run while it is below the screen. */
+const footerInView = (page: Page) =>
+	page.getByTestId('footer').evaluate((footer) => footer.getBoundingClientRect().top);
+
+/** Wheel from the top of the page to its end, collecting the layout shifts on the way. */
+async function scrollToEnd(page: Page) {
+	await page.evaluate(() => {
+		const shifts: { value: number; sources: string[] }[] = [];
+		Object.assign(window, { homeShifts: shifts });
+		new PerformanceObserver((list) => {
+			for (const entry of list.getEntries() as (PerformanceEntry & {
+				value: number;
+				hadRecentInput: boolean;
+				sources?: { node?: Node | null }[];
+			})[]) {
+				if (entry.hadRecentInput) continue;
+				shifts.push({
+					value: entry.value,
+					sources: (entry.sources ?? []).map(({ node }) =>
+						node instanceof Element ? node.outerHTML.slice(0, 80) : String(node),
+					),
+				});
+			}
+		}).observe({ type: 'layout-shift' });
+	});
+	// One wheel notch (120 px) per frame, as a fast mouse wheel scrolls: mouse.wheel does not wait
+	// for its scroll, so wait for each notch to land before the next one.
+	for (let end = false; !end; ) {
+		const before = await page.evaluate(() => window.scrollY);
+		await page.mouse.wheel(0, 120);
+		await page.waitForFunction((y) => window.scrollY !== y, before);
+		await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(null))));
+		end = await page.evaluate(
+			() => window.scrollY + innerHeight >= document.documentElement.scrollHeight - 1,
+		);
+	}
+	await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(null))));
+	return page.evaluate(() => (window as unknown as { homeShifts: unknown[] }).homeShifts);
+}
+
+test('the ground opens with the props while the footer is still below the screen', async ({
+	page,
+}) => {
 	await page.emulateMedia({ reducedMotion: 'no-preference' });
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await open(page, 'en');
-	// Far above the ground: nothing shows, yet the ground already holds its full height.
+	// Far above the ground: no props and no empty space under the last card.
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
-	expect(await floorHeight(page)).toBe(240);
-	const footer = await footerTop(page);
+	expect(await floorHeight(page)).toBe(0);
 
-	// Halfway through the reveal (marker at 95% minus half of 25% of the viewport): the props are
-	// half risen inside the ground, and nothing outside it has moved.
+	// Through the whole reveal (marker from 95% to 70% of the viewport), the footer stays at least
+	// one fast scroll step (120 px) below the screen.
+	for (const share of [0.95, 0.9, 0.85, 0.8, 0.75, 0.7]) {
+		await placeMarker(page, share);
+		await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => done(null))));
+		expect(await footerInView(page), `footer with the marker at ${share}`).toBeGreaterThanOrEqual(
+			900 + 120,
+		);
+	}
+
+	// Halfway: the props are half risen and the ground half open.
 	await placeMarker(page, 0.95 - 0.125);
 	await expect(props(page)).toHaveAttribute('data-state', 'revealing');
 	await expect.poll(() => progress(page)).toBeGreaterThan(0.3);
 	expect(await progress(page)).toBeLessThan(0.7);
-	const half = await lifts(page);
-	expect(Math.min(...half)).toBeGreaterThan(0);
-	expect([await floorHeight(page), await footerTop(page)]).toEqual([240, footer]);
+	expect(Math.min(...(await lifts(page)))).toBeGreaterThan(0);
+	const half = await floorHeight(page);
+	expect(half).toBeGreaterThan(60);
+	expect(half).toBeLessThan(180);
 
 	await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 	await expect(props(page)).toHaveAttribute('data-state', 'visible');
-	expect(await lifts(page)).toEqual(half.map(() => 0));
-	expect([await floorHeight(page), await footerTop(page)]).toEqual([240, footer]);
+	expect(await floorHeight(page)).toBe(240);
+	expect(new Set(await lifts(page))).toEqual(new Set([0]));
 	const widths = await page
 		.locator('[data-construction-prop]')
 		.evaluateAll((all) =>
@@ -137,8 +188,24 @@ test('the props rise with the scroll at their live sizes, and sink back', async 
 
 	await page.evaluate(() => window.scrollTo(0, 0));
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
-	expect(await footerTop(page)).toBe(footer);
+	expect(await floorHeight(page)).toBe(0);
 });
+
+for (const [width, height, locale] of [
+	[1440, 900, 'en'],
+	[390, 844, 'fr'],
+] as const) {
+	test(`wheeling to the footer moves nothing in view (${width} px, ${locale})`, async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion: 'no-preference' });
+		await page.setViewportSize({ width, height });
+		await open(page, locale);
+		await expect(page.getByRole('main').locator('[data-record-pending]')).toHaveCount(0);
+		expect(await scrollToEnd(page)).toEqual([]);
+		await expect(props(page)).toHaveAttribute('data-state', 'visible');
+	});
+}
 
 for (const width of [320, 390] as const) {
 	test(`the props fit a ${width} px phone without sideways scroll`, async ({ page }) => {
@@ -159,11 +226,14 @@ for (const width of [320, 390] as const) {
 	});
 }
 
-test('with reduced motion the props appear at once and never slide', async ({ page }) => {
+test('with reduced motion the ground holds its height and the props appear in place', async ({
+	page,
+}) => {
 	await page.emulateMedia({ reducedMotion: 'reduce' });
 	await page.setViewportSize({ width: 1440, height: 900 });
 	await open(page, 'en');
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
+	expect(await floorHeight(page)).toBe(240);
 	const footer = await footerTop(page);
 	// Where the moving scene would be half revealed, the reduced scene is already whole, in place.
 	await placeMarker(page, 0.95 - 0.125);
@@ -176,7 +246,7 @@ test('with reduced motion the props appear at once and never slide', async ({ pa
 	expect(new Set(transforms)).toEqual(new Set(['none']));
 	await placeMarker(page, 1.2);
 	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
-	expect(await progress(page)).toBe(0);
+	expect([await floorHeight(page), await footerTop(page)]).toEqual([240, footer]);
 });
 
 for (const reducedMotion of ['no-preference', 'reduce'] as const) {
@@ -196,7 +266,9 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
 		await page.keyboard.press('Home');
 		await house.focus();
 		await expect(house).toBeFocused();
-		await expect(props(page)).toHaveAttribute('data-state', 'visible');
+		// Focus below the ground opens it at once, before the link is scrolled into view.
+		await expect(props(page)).toHaveAttribute('data-state', /^(?:visible|static)$/u);
+		expect(await floorHeight(page)).toBe(240);
 		await expect(house).toBeInViewport({ ratio: 1 });
 		expect(
 			await house.evaluate((link) => {
@@ -207,3 +279,34 @@ for (const reducedMotion of ['no-preference', 'reduce'] as const) {
 		).toBe(true);
 	});
 }
+
+test('Shift+Tab from the top reaches the footer with the ground already open', async ({ page }) => {
+	await page.emulateMedia({ reducedMotion: 'no-preference' });
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await open(page, 'en');
+	await expect(page.getByRole('main').locator('[data-record-pending]')).toHaveCount(0);
+	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
+	await page.keyboard.press('Shift+Tab');
+	const focused = page.locator(':focus');
+	await expect(focused).toHaveCount(1);
+	expect(await focused.evaluate((el) => !!el.closest('[data-testid="footer"]'))).toBe(true);
+	await expect(focused).toBeInViewport({ ratio: 1 });
+	expect(await floorHeight(page)).toBe(240);
+});
+
+test('the End key opens the ground before it jumps, so the page ends where it landed', async ({
+	page,
+}) => {
+	await page.emulateMedia({ reducedMotion: 'no-preference' });
+	await page.setViewportSize({ width: 1440, height: 900 });
+	await open(page, 'en');
+	await expect(props(page)).toHaveAttribute('data-state', 'hidden');
+	await page.keyboard.press('End');
+	await expect(page.locator('.home-construction-floor')).toHaveAttribute('data-opened', 'true');
+	await expect
+		.poll(() =>
+			page.evaluate(() => document.documentElement.scrollHeight - window.scrollY - innerHeight),
+		)
+		.toBeLessThanOrEqual(1);
+	expect(await floorHeight(page)).toBe(240);
+});
