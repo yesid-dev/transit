@@ -307,6 +307,7 @@ it('renders an honest empty catalog', async () => {
 		catalog: Promise.resolve<EngineResult<MethodEntry[]>>({ kind: 'answer', answer: [] }),
 	});
 	expect(await screen.findByText('No measures are listed yet.')).toBeVisible();
+	expect(screen.queryByRole('link', { name: 'More measures' })).toBeNull();
 });
 
 it.each([

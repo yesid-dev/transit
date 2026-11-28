@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { Awaitable } from '#lib/site/ready.ts';
+	import { isSettled, whenAll, type Awaitable } from '#lib/site/ready.ts';
 	import { onMount, untrack, type Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { ChevronToggle, useSectionJump, type TocEntry } from '@yesid/ui/brand';
@@ -49,6 +49,15 @@
 	} = $props();
 
 	const copy = $derived(methodCopy[locale]);
+	const catalogue = $derived.by(() => {
+		const language = locale;
+		return whenAll([catalog], ([result]) => ({
+			result,
+			...(result.kind === 'answer'
+				? methodGroups(result.answer, language)
+				: { groups: [], extra: [] }),
+		}));
+	});
 	const rangeFields = ['counts', 'exclusions', 'limits'] as const;
 	const title = $derived(choose(locale, 'How we measure', 'Comment on mesure'));
 	const canonical = $derived(new URL(url.pathname, url));
@@ -63,6 +72,7 @@
 	const navigation = useSectionJump(afterNavigate);
 	let activeId = $state('method-heading');
 	let methodList = $state<HTMLElement>();
+	let extraHeading = $state<HTMLHeadingElement>();
 	let reading = $state<HTMLElement>();
 	let openCards = $state<Record<string, boolean>>({});
 	let bulkOpen = $state<boolean>();
@@ -108,9 +118,13 @@
 			.replace(/[.!?]+$/u, '')
 			.toLocaleLowerCase(locale);
 	const contentsLabel = $derived(choose(locale, 'On this page', 'Sur cette page'));
+	const hasMore = $derived(isSettled(catalogue) ? catalogue.extra.length > 0 : !!extraHeading);
 	const entries: TocEntry[] = $derived([
 		{ id: 'method-heading', title: copy.heading, level: 2, children: [] },
+		...(hasMore ? [{ id: 'more-methods', title: copy.more, level: 2, children: [] }] : []),
+		{ id: 'ranking-range', title: copy.range.title, level: 2, children: [] },
 		{ id: 'reading-states', title: copy.statesTitle, level: 2, children: [] },
+		{ id: 'record-limits-heading', title: copy.limitsTitle, level: 2, children: [] },
 		{ id: 'about-transit', title: copy.about.title, level: 2, children: [] },
 	]);
 </script>
@@ -394,7 +408,7 @@
 			landFragments: true,
 		}}
 	>
-		{#snippet header()}
+		{#snippet summary()}
 			<ArticleHeader
 				{title}
 				subtitle={copy.intro}
@@ -407,7 +421,7 @@
 		{#snippet left()}
 			<div class="grid gap-(--space-card-gap) print:hidden">
 				<nav aria-label={contentsLabel}>
-					<h2>{contentsLabel}</h2>
+					<p class="method-contents-title">{contentsLabel}</p>
 					<ul class="mt-2 grid gap-1">
 						{#each entries as entry (entry.id)}
 							<li>
@@ -432,7 +446,7 @@
 			bind:this={reading}
 			data-method-ready={ready ? '' : undefined}
 		>
-			{#await catalog}
+			{#await catalogue}
 				<RecordGroup aria-labelledby="method-heading"
 					>{@render measuresHeading()}
 					{#key catalog}<RecordPending
@@ -441,7 +455,7 @@
 							answer={catalog}
 						/>{/key}</RecordGroup
 				>
-			{:then result}
+			{:then { result, groups, extra }}
 				{#if result.kind !== 'answer'}
 					<RecordGroup>
 						{@render measuresHeading()}
@@ -455,7 +469,6 @@
 						</div>
 					</RecordGroup>
 				{:else}
-					{@const { groups, extra } = methodGroups(result.answer, locale)}
 					{@const allViews = buildMethodViews([...groups, ...extra], locale)}
 					{@const primaryViews = allViews.slice(0, groups.length)}
 					{@const extraViews = allViews.slice(groups.length)}
@@ -495,7 +508,7 @@
 					</RecordGroup>
 					{#if extraViews.length}
 						<RecordGroup aria-labelledby="more-methods">
-							<h2 id="more-methods">{copy.more}</h2>
+							<h2 id="more-methods" bind:this={extraHeading}>{copy.more}</h2>
 							{#each extraViews as view (view.group.id)}{@render groupCard(view, byId)}{/each}
 						</RecordGroup>
 					{/if}
@@ -510,6 +523,8 @@
 					false,
 					2,
 				)}
+			</RecordGroup>
+			<RecordGroup>
 				<article
 					id="reading-states"
 					class="method-anchor grid gap-4"
@@ -526,6 +541,8 @@
 					</dl>
 					<p class="mt-4 text-muted-foreground">{copy.statesNote}</p>
 				</article>
+			</RecordGroup>
+			<RecordGroup>
 				<article class="grid gap-4" aria-labelledby="record-limits-heading">
 					<h2 id="record-limits-heading">{copy.limitsTitle}</h2>
 					<div class="@container">
@@ -534,6 +551,8 @@
 						</ul>
 					</div>
 				</article>
+			</RecordGroup>
+			<RecordGroup>
 				{@render methodSection(
 					'about-transit',
 					copy.about.title,
@@ -574,7 +593,9 @@
 		font-weight: 600;
 		color: var(--muted-foreground);
 	}
-	h2 {
+	h2,
+	.method-contents-title,
+	.method-disclosure-heading {
 		font-size: var(--text-heading);
 		font-weight: 700;
 	}
@@ -606,12 +627,29 @@
 	:global(.method-detail [data-slot='detail-shell-right']:empty) {
 		display: none;
 	}
-	:global(.method-detail [data-slot='article-header-boundary']) {
-		inline-size: min(
-			var(--detail-center-width, var(--transit-measure-listing)),
-			calc(100% - 2 * var(--space-page-x))
-		);
-		margin-inline: auto;
+	:global(.method-detail) {
+		--method-return-row: max(44px, calc(1.5 * var(--text-back-link)));
+	}
+	:global(.method-detail .detail-shell-grid) {
+		padding-block-start: 0;
+	}
+	:global(.method-detail [data-slot='detail-shell-summary']) {
+		--chrome-offset: 0px;
+		margin-block-end: var(--space-card-gap);
+	}
+	:global(.method-detail [data-slot='article-header'] .header__content) {
+		max-inline-size: none;
+		padding-inline: 0;
+	}
+	:global(.method-detail [data-slot='article-header'] .header__back) {
+		min-block-size: var(--method-return-row);
+		line-height: 1.5;
+		margin-block-end: 0;
+	}
+	@media screen and (min-width: 64rem) {
+		:global(.method-detail [data-slot='detail-shell-left']) {
+			margin-block-start: var(--method-return-row);
+		}
 	}
 	@media screen and (min-width: 80rem) {
 		:global(.method-detail.detail-shell[data-slot='detail-shell']) {

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { methodCopy } from '../src/lib/features/record/methodCatalog.copy.ts';
 import { csvText } from '../src/tests/csv';
 import { doubleText, textDefects } from './layout-helpers';
 import { installHealthCapture } from './capture-fixture';
@@ -78,7 +79,7 @@ for (const locale of ['en', 'fr'] as const) {
 	});
 
 	test(`How we measure contents and print remain usable in ${locale}`, async ({ page }) => {
-		const states = fr ? 'Six états, chacun nommé' : 'Six states, each said in words';
+		const states = methodCopy[locale].statesTitle;
 		const contents = fr ? 'Sur cette page' : 'On this page';
 		const path = fr ? '/fr/metrics' : '/metrics';
 		const main = page.getByRole('main');
@@ -89,28 +90,41 @@ for (const locale of ['en', 'fr'] as const) {
 			await page.goto(`${path}?provider=stm&frameMode=record`);
 			await expect(page.locator('html')).toHaveAttribute('data-hydrated', '');
 			await expect(main.locator('#on_time')).toBeVisible();
+			const headings = (await main.locator('.method-content h2').allTextContents()).map((text) =>
+				text.trim(),
+			);
 			if (width === 390) {
 				await expect(desktopToc).toBeHidden();
 				const trigger = phoneToc.getByRole('button', { name: contents });
 				await trigger.press('Enter');
 				const sheet = phoneToc.getByRole('navigation');
 				await expect(sheet).toBeVisible();
-				await expect(sheet.getByRole('button').first()).toBeFocused();
+				const entries = sheet.getByRole('button');
+				await expect(entries).toHaveText(headings);
+				await expect(entries.first()).toBeFocused();
 				await page.keyboard.press('Tab');
-				await expect(sheet.getByRole('button', { name: states, exact: true })).toBeFocused();
+				await expect(entries.nth(1)).toBeFocused();
+				await sheet.getByRole('button', { name: states, exact: true }).focus();
 				await page.keyboard.press('Enter');
 				await expect(sheet).toBeHidden();
 				await expect(trigger).toBeFocused();
 			} else {
 				await expect(phoneToc).toBeHidden();
+				await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+				const title = await main.getByRole('heading', { level: 1 }).boundingBox();
+				const rail = await desktopToc.locator('.method-contents-title').boundingBox();
+				expect(rail!.y).toBeCloseTo(title!.y, 0);
 				await expect(
 					desktopToc.getByRole('link', { name: /jusqu’en novembre 2026|until November 2026/u }),
 				).toBeVisible();
 				const contentsNav = desktopToc.getByRole('navigation', { name: contents });
-				await contentsNav.getByRole('link').first().focus();
+				const entries = contentsNav.getByRole('link');
+				await expect(entries).toHaveText(headings);
+				await entries.first().focus();
 				await page.keyboard.press('Tab');
+				await expect(entries.nth(1)).toBeFocused();
 				const entry = contentsNav.getByRole('link', { name: states, exact: true });
-				await expect(entry).toBeFocused();
+				await entry.focus();
 				await page.keyboard.press('Enter');
 				await expect(entry).toHaveAttribute('aria-current', 'location');
 			}
@@ -198,7 +212,7 @@ test('Data health opens the agency figures from a previously copied Network link
 	);
 });
 
-for (const width of [390, 1440]) {
+for (const width of [390, 1024, 1440]) {
 	for (const locale of ['en', 'fr']) {
 		const fr = locale === 'fr';
 		const path = fr ? '/fr' : '';
@@ -221,6 +235,20 @@ for (const width of [390, 1440]) {
 			const column = await main.locator('.method-content').boundingBox();
 			expect(boundary!.x).toBeCloseTo(column!.x, 0);
 			expect(boundary!.width).toBeCloseTo(column!.width, 0);
+			const statesGroup = main.locator('[data-slot="page-section"]:has(> #reading-states)');
+			await expect(statesGroup.locator('xpath=preceding-sibling::*[1]')).toHaveAttribute(
+				'data-slot',
+				'page-section-boundary',
+			);
+			const disclosureStyles = await main
+				.locator('.method-disclosure-heading')
+				.evaluateAll((headings) =>
+					headings.map((item) => {
+						const { fontSize, fontWeight } = getComputedStyle(item);
+						return [fontSize, fontWeight];
+					}),
+				);
+			expect(new Set(disclosureStyles.map((style) => style.join(' '))).size).toBe(1);
 			const measure = main.locator('#fixture_delay');
 			await expect(measure.getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
 			await expect(measure).toContainText(fr ? 'tranches de 15 s' : '15-s steps');
