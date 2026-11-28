@@ -47,10 +47,14 @@ function favicon(): Buffer {
 	return Buffer.concat([header, ...pngs]);
 }
 
+const touch = await touchIcon();
 const outputs: [string, Buffer][] = [
 	['favicon.svg', Buffer.from(`${brandMarkSvg(OG_PALETTE.accent)}\n`)],
 	['favicon.ico', favicon()],
-	['apple-touch-icon-180.png', await touchIcon()],
+	['apple-touch-icon-180.png', touch],
+	// The paths iOS and other browsers ask for without reading the page's link.
+	['apple-touch-icon.png', touch],
+	['apple-touch-icon-precomposed.png', touch],
 ];
 
 const checkOnly = process.argv.includes('--check');

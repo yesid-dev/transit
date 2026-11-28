@@ -298,7 +298,7 @@ describe('MetricsExplainer', () => {
 		return block?.querySelector('[data-slot="collapsible-trigger"]') ?? null;
 	}
 
-	it('starts content cards collapsed on a boot-prepared fresh visit and keeps the TOC open', () => {
+	it('starts content cards collapsed on a boot-prepared fresh visit, with the jump list folded', () => {
 		document.documentElement.dataset.sectionsChoice = 'collapsed';
 		const { container } = render(MetricsExplainer);
 
@@ -312,7 +312,8 @@ describe('MetricsExplainer', () => {
 		);
 		expect(firstBody).toHaveAttribute('data-state', 'closed');
 
-		expect(tocTrigger(container)).toHaveAttribute('open');
+		// Folded on a phone; a wide screen shows the links with CSS, without the open attribute.
+		expect(tocTrigger(container)).not.toHaveAttribute('open');
 	});
 
 	it('opens the hash-named card from a closed state during mount', async () => {
@@ -448,7 +449,7 @@ describe('MetricsExplainer', () => {
 		const target = METRICS[3];
 		expect(cardTrigger(container, target.anchor)).toHaveAttribute('aria-expanded', 'false');
 		const toc = tocTrigger(container);
-		expect(toc).toHaveAttribute('open');
+		expect(toc).not.toHaveAttribute('open');
 		await fireEvent.click(within(rail).getByRole('link', { name: target.name.en }));
 
 		expect(cardTrigger(container, target.anchor)).toHaveAttribute('aria-expanded', 'true');

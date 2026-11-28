@@ -29,7 +29,12 @@ export const load: PageServerLoad = async (event) => {
 		const period = preset
 			? presetPeriod(preset, clock)
 			: latest
-				? { from: latest, to: latest, preset: null }
+				? // The latest day is usually yesterday: say so, so the Period control shows it chosen.
+					{
+						from: latest,
+						to: latest,
+						preset: latest === yesterday?.to ? ('yesterday' as const) : null,
+					}
 				: yesterday && { ...yesterday, preset: null };
 		// Pin implicit dates so the report and the shared controls agree.
 		if (period) redirect(307, frameHref(event.url, { mode: 'record', period }));

@@ -474,11 +474,15 @@ test('Download offers every listed Parquet address in one file', async ({ page }
 	);
 	const [download] = await Promise.all([
 		page.waitForEvent('download'),
-		main.getByRole('link', { name: 'Download the list of file addresses' }).click(),
+		// The label counts the addresses it holds, as the page lists them.
+		main.getByRole('link', { name: `Download ${expected.length} file addresses (.txt)` }).click(),
 	]);
 	expect(download.suggestedFilename()).toBe('transit-file-addresses.txt');
 	const addresses = (await readFile((await download.path())!, 'utf8')).trim().split('\n');
 	expect(addresses).toEqual(expected);
+	await expect(
+		main.getByText(new RegExp(`^${expected.length} data files, [\\d.,]+ MB total\\.$`)),
+	).toBeVisible();
 });
 
 test('Download lays out the eight daily file cards in complete rows', async ({ page }) => {

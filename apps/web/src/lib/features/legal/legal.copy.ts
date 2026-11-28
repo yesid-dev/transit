@@ -6,7 +6,7 @@ export type LegalPageKind = 'privacy' | 'terms' | 'accessibility';
 export const LEGAL_EFFECTIVE_DATES: Readonly<Record<LegalPageKind, string>> = {
 	privacy: '2026-11-27',
 	terms: '2026-11-27',
-	accessibility: '2026-11-26',
+	accessibility: '2026-11-28',
 };
 
 export interface LegalLinkCopy {
@@ -276,7 +276,7 @@ const documents = {
 						'A skip link, then the same landmarks on every page.',
 						'A visible focus ring for the keyboard, also in Windows High Contrast.',
 						'Charts come with a data table that screen readers can read.',
-						'Search and the lists give the keyboard what the map shows.',
+						'Use Search and the line, stop and vehicle lists to find a service without using the map.',
 						'The Pause live updates switch holds the live figures still while you read.',
 						'The city picker changes nothing until you press Enter.',
 						'Reduced motion is respected.',
@@ -288,7 +288,7 @@ const documents = {
 					title: 'Known limitations',
 					paragraphs: [],
 					bullets: [
-						'The map is pointer-first: its markers cannot be reached by keyboard. Search, the lists and the stop pages carry the same information.',
+						'The map is pointer-first: its markers cannot be reached by keyboard. Exact vehicle positions and some map readings are available on the map.',
 						'Data comes from the transit agencies’ public feeds. When a feed is late or missing, the page says so instead of showing zeros.',
 						'Transit has not been formally audited by a third party. This statement is based on automated checks and my own keyboard testing.',
 					],
@@ -542,7 +542,7 @@ const documents = {
 						'Un lien d’évitement, puis les mêmes repères sur chaque page.',
 						'Un focus visible au clavier, aussi en Contraste élevé de Windows.',
 						'Chaque graphique a un tableau lisible par les lecteurs d’écran.',
-						'Au clavier, la recherche et les listes donnent ce que montre la carte.',
+						'Utilisez la recherche et les listes de lignes, d’arrêts et de véhicules pour trouver un service sans utiliser la carte.',
 						'L’interrupteur Suspendre les mises à jour fige les chiffres en direct.',
 						'Le choix de la ville ne change rien avant la touche Entrée.',
 						'Le réglage de réduction des animations est respecté.',
@@ -554,7 +554,7 @@ const documents = {
 					title: 'Limites connues',
 					paragraphs: [],
 					bullets: [
-						'La carte est d’abord pensée pour le pointeur : ses marqueurs ne sont pas accessibles au clavier. La recherche, les listes et les pages d’arrêt donnent la même information.',
+						'La carte est d’abord pensée pour le pointeur : ses marqueurs ne sont pas accessibles au clavier. Les positions exactes des véhicules et certaines mesures sont offertes sur la carte.',
 						'Les données proviennent des flux publics des sociétés de transport. Quand un flux est en retard ou absent, la page l’indique au lieu d’afficher des zéros.',
 						'Transit n’a pas fait l’objet d’un audit externe. Cette déclaration repose sur des vérifications automatisées et sur mes propres essais au clavier.',
 					],

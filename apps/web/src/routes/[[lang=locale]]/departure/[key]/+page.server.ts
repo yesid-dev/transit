@@ -18,6 +18,7 @@ import { frameClock, parseAnswerFrameState } from '#lib/site/frameState.ts';
 import { detailNotFoundCopy } from '#lib/site/errorPage.ts';
 import { localizeHref } from '#lib/i18n/index.ts';
 import { validEntityId } from '#lib/server/entityIdentity.ts';
+import { READY_WAIT_MS, readyAnswers, streamed } from '#lib/server/readyAnswers.ts';
 import { captureDisplayState, fetchCaptureTripScope } from '#lib/live/captureSnapshot.ts';
 
 export const load: PageServerLoad = async (event) => {
@@ -89,52 +90,66 @@ export const load: PageServerLoad = async (event) => {
 		const canonical = canonicalDepartureHref(event.url, identity);
 		if (canonical) redirect(308, canonical);
 	}
-	return {
-		identity,
-		seoTitle: identity
-			? lang === 'fr'
-				? `Ligne ${line}, départ de ${time}`
-				: `Line ${line}, ${time} departure`
-			: lang === 'fr'
-				? 'Départ'
-				: 'Departure',
-		lineMissing:
-			identity !== null &&
-			schedule != null &&
-			!schedule.routes.some(({ id }) => id === identity.line),
-		lang,
-		city: providerId,
-		period,
-		day,
-		mode,
-		headsigns: directionHeadsigns(
-			identity ? schedule?.route_directions?.[identity.line] : undefined,
-		),
-		stopNames: Object.fromEntries(
-			(schedule?.stops ?? [])
-				.filter((stop) => identity && stop.routes?.includes(identity.line))
-				.map((stop) => [stop.id, stop.name]),
-		),
-		stopCodes: Object.fromEntries(
-			(schedule?.stops ?? []).flatMap((stop) => (stop.code ? [[stop.id, stop.code]] : [])),
-		),
-		sections:
-			identity && mode === 'record' && period
-				? loadDepartureRecord({ ...scope, ...period }, identity, day)
-				: [],
-		liveTrips:
-			mode === 'live' && v1 && onlyTrip
-				? Promise.resolve({ trips: [], selected: onlyTrip })
-				: identity && mode === 'live' && v1
-					? loadDepartureLive({ ...scope, from: today, to: today }, identity).then(
-							async (trips) => {
-								const selected =
-									!requestedTrip || trips.includes(requestedTrip)
-										? requestedTrip
-										: await publishedDepartureTrip(providerId, requestedTrip, identity, visitorIp);
-								return { trips, selected };
-							},
-						)
-					: null,
-	};
+	// Record answers ready by the first byte are drawn on the server, so the head and cards are in
+	// the first paint instead of growing under the reader.
+	return readyAnswers(
+		{
+			identity,
+			seoTitle: identity
+				? lang === 'fr'
+					? `Ligne ${line}, départ de ${time}`
+					: `Line ${line}, ${time} departure`
+				: lang === 'fr'
+					? 'Départ'
+					: 'Departure',
+			lineMissing:
+				identity !== null &&
+				schedule != null &&
+				!schedule.routes.some(({ id }) => id === identity.line),
+			lang,
+			city: providerId,
+			period,
+			day,
+			mode,
+			headsigns: directionHeadsigns(
+				identity ? schedule?.route_directions?.[identity.line] : undefined,
+			),
+			stopNames: Object.fromEntries(
+				(schedule?.stops ?? [])
+					.filter((stop) => identity && stop.routes?.includes(identity.line))
+					.map((stop) => [stop.id, stop.name]),
+			),
+			stopCodes: Object.fromEntries(
+				(schedule?.stops ?? []).flatMap((stop) => (stop.code ? [[stop.id, stop.code]] : [])),
+			),
+			sections:
+				identity && mode === 'record' && period
+					? loadDepartureRecord({ ...scope, ...period }, identity, day)
+					: [],
+			liveTrips:
+				mode === 'live' && v1 && onlyTrip
+					? streamed(Promise.resolve({ trips: [], selected: onlyTrip }))
+					: identity && mode === 'live' && v1
+						? streamed(
+								loadDepartureLive({ ...scope, from: today, to: today }, identity).then(
+									async (trips) => {
+										const selected =
+											!requestedTrip || trips.includes(requestedTrip)
+												? requestedTrip
+												: await publishedDepartureTrip(
+														providerId,
+														requestedTrip,
+														identity,
+														visitorIp,
+													);
+										return { trips, selected };
+									},
+								),
+							)
+						: null,
+		},
+		READY_WAIT_MS,
+		// The departure asks an unreachable answer again from the browser: it stays a promise.
+		(value) => (value as { kind?: unknown } | null)?.kind === 'unreachable',
+	);
 };

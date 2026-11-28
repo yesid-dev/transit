@@ -18,7 +18,9 @@
 		officialAlertsLabel,
 		compactServiceDay,
 		countedUnit,
+		dataFilesSummary,
 		dateRange,
+		fileAddressesLabel,
 		fileSize,
 		longDate,
 		recordStamp,
@@ -244,13 +246,10 @@
 									download="transit-file-addresses.txt"
 									href={'data:text/plain;charset=utf-8,' +
 										encodeURIComponent(files.map(({ url }) => url).join('\n') + '\n')}
-									>{t(
-										'Download the list of file addresses',
-										'Télécharger la liste des adresses des fichiers',
-									)}</a
+									>{fileAddressesLabel(files.length, locale)}</a
 								>
-								· {fileSize(totalBytes, locale)}
-							</p>{/if}
+							</p>
+							<p>{dataFilesSummary(files.length, totalBytes, locale)}</p>{/if}
 						{@render contents()}
 					</div>
 					{#if count && result?.unavailable}

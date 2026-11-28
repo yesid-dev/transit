@@ -7,7 +7,8 @@ declare global {
 				| 'LINE_NOT_FOUND'
 				| 'VEHICLE_NOT_FOUND'
 				| 'DEPARTURE_NOT_FOUND'
-				| 'TRIP_ENDED';
+				| 'TRIP_ENDED'
+				| 'TRIP_UNAVAILABLE';
 			/** The ended trip's line page, when the live feed still names its line. */
 			line?: string;
 		}

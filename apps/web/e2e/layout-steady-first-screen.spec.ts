@@ -597,3 +597,50 @@ test('steady footer is keyboard reachable after ten seconds while the engine is 
 		expect((await request.post(`${host}/release?fixture=${fixture}`)).ok()).toBe(true);
 	}
 });
+
+// A departure's answers can arrive after the first paint. The waiting head and cards take the
+// answer's size at every width, so the cards under them stay put (closing audit G2 S21).
+for (const locale of ['en', 'fr'] as const)
+	for (const width of widths) {
+		test(`steady departure head and cards ${locale} ${width}px @layout`, async ({
+			page,
+			request,
+		}) => {
+			const port = process.env.TRANSIT_E2E_DATA_PORT ?? '4318';
+			const fixture = `steady:departure:${locale}:${width}:${randomUUID()}`;
+			const fixtureUrl = (action: 'hold' | 'release') =>
+				`http://127.0.0.1:${port}/__overview/${action}?fixture=${encodeURIComponent(fixture)}`;
+			await page.setViewportSize({ width, height: 900 });
+			await page.setExtraHTTPHeaders({ 'x-transit-fixture-hold': fixture });
+			await observeShifts(page);
+			expect((await request.post(fixtureUrl('hold'))).ok()).toBe(true);
+			try {
+				await page.goto(
+					localizeHref(
+						'/departure/24-0-0700?recordFrom=2026-11-16&recordTo=2026-11-20',
+						locale,
+						'stm',
+					),
+					{ waitUntil: 'commit' },
+				);
+				await expect(page.getByRole('main').getByRole('heading', { level: 1 })).toBeVisible();
+				await expect
+					.poll(async () => (await (await request.get(fixtureUrl('hold'))).json()).waiting)
+					.toBeGreaterThan(0);
+				await page.evaluate(() => document.fonts.ready);
+				await settled(page);
+				const before = await page.evaluate(() => (window as ShiftWindow).steadyShifts.length);
+				expect((await request.post(fixtureUrl('release'))).ok()).toBe(true);
+				await expect(page.locator('#delay [data-record-pending]')).toHaveCount(0);
+				await expect(page.locator('#stops [data-record-pending]')).toHaveCount(0);
+				await settled(page);
+				const shifts = (await page.evaluate(() => (window as ShiftWindow).steadyShifts)).slice(
+					before,
+				);
+				const score = shifts.reduce((sum, { value }) => sum + value, 0);
+				expect(score, `departure shifts: ${JSON.stringify(shifts)}`).toBeLessThanOrEqual(0.01);
+			} finally {
+				await request.post(fixtureUrl('release'));
+			}
+		});
+	}

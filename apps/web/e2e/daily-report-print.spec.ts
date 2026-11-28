@@ -31,7 +31,7 @@ test.describe('Daily report print', () => {
 	});
 
 	for (const locale of ['en', 'fr'] as const) {
-		test('prints ' + locale + ' on one sheet', async ({ page }, info) => {
+		test('prints ' + locale + ' at paper text sizes', async ({ page }, info) => {
 			const fr = locale === 'fr';
 			await page.setViewportSize({ width: 1440, height: 900 });
 			await page.addInitScript(
@@ -79,9 +79,7 @@ test.describe('Daily report print', () => {
 			await expect(actions.getByRole('button')).toHaveCount(4);
 			const print = actions.getByRole('button', { name: fr ? 'Imprimer' : 'Print', exact: true });
 			await expect(print).toHaveAccessibleDescription(
-				fr
-					? 'Le rapport d’une journée tient sur une feuille.'
-					: 'A one-day report prints on one sheet.',
+				fr ? 'Imprime le rapport et ses sources.' : 'Prints the report and its sources.',
 			);
 			const actionTops = await actions
 				.getByRole('button')
@@ -116,13 +114,28 @@ test.describe('Daily report print', () => {
 			const aboutBox = (await about.locator('xpath=..').boundingBox())!;
 			expect(aboutBox.x).toBeGreaterThan(rankingsBox.x + rankingsBox.width);
 			expect(Math.abs(aboutBox.y - rankingsBox.y)).toBeLessThan(1);
+			// Paper sizes, not a shrunk screen: body 10 pt and up, every note and figure 9 pt and up.
+			const sizes = await main.locator('.daily-report').evaluate((report) => {
+				const points: number[] = [];
+				const walker = document.createTreeWalker(report, NodeFilter.SHOW_TEXT);
+				while (walker.nextNode()) {
+					const parent = walker.currentNode.parentElement;
+					if (!parent || !walker.currentNode.textContent?.trim()) continue;
+					if (!parent.getClientRects().length) continue;
+					points.push((parseFloat(getComputedStyle(parent).fontSize) * 72) / 96);
+				}
+				return { body: (parseFloat(getComputedStyle(report).fontSize) * 72) / 96, points };
+			});
+			expect(sizes.body).toBeGreaterThanOrEqual(10);
+			expect(Math.min(...sizes.points)).toBeGreaterThanOrEqual(9);
 			for (const format of ['Letter', 'A4'] as const) {
 				const pdf = await page.pdf({
 					format,
 					path: info.outputPath(locale + '-' + format + '.pdf'),
 				});
-				const pages = pdf.toString('latin1').match(/\/Type\s*\/Page\b/gu);
-				expect(pages, format).toHaveLength(1);
+				// The report may run onto a second sheet rather than shrink.
+				const pages = pdf.toString('latin1').match(/\/Type\s*\/Page\b/gu) ?? [];
+				expect(pages.length, format).toBeGreaterThanOrEqual(1);
 			}
 		});
 	}

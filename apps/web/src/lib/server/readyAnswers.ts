@@ -52,7 +52,12 @@ function replace(value: unknown, settled: Map<Promise<unknown>, unknown>): unkno
  * busy one stays a promise and streams. `{#await}` draws a plain value's `then` branch on the
  * server and on hydration alike.
  */
-export async function readyAnswers<T>(data: T, wait = READY_WAIT_MS): Promise<Ready<T>> {
+export async function readyAnswers<T>(
+	data: T,
+	wait = READY_WAIT_MS,
+	/** A settled result the page asks again itself, so it stays a promise as a busy one does. */
+	asksAgain: (value: unknown) => boolean = () => false,
+): Promise<Ready<T>> {
 	const found: Promise<unknown>[] = [];
 	collect(data, found);
 	if (!found.length) return data as Ready<T>;
@@ -60,7 +65,7 @@ export async function readyAnswers<T>(data: T, wait = READY_WAIT_MS): Promise<Re
 	const watched = found.map((promise) =>
 		promise.then(
 			// A busy or cut reading stays a promise, so the page asks it again as before.
-			(value) => void (isWaitingResult(value) || settled.set(promise, value)),
+			(value) => void (isWaitingResult(value) || asksAgain(value) || settled.set(promise, value)),
 			() => {},
 		),
 	);

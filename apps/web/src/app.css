@@ -318,4 +318,10 @@ body {
 	[data-slot="route-plate"], [data-slot="punctuality-bar"] {
 		print-color-adjust: exact;
 	}
+	/* Paper takes the light route plates whatever the screen theme, as the stop codes beside them. */
+	[data-slot="route-plate"] {
+		--signage-bg: #ede4d4;
+		--signage-text: #694517;
+		--border-strong: #887960;
+	}
 }

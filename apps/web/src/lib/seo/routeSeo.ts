@@ -3,7 +3,6 @@ import { delocalizePath, localizeHref } from '../i18n/routing';
 import type { Locale } from '../i18n/config';
 import { roadmapTitle } from '../features/roadmap/roadmap.copy';
 import cards from '../../../static/og/manifest.json';
-import { upcomingPage } from '#lib/content/nav.ts';
 import { mapLayerFor } from '#lib/site/mapFrame.ts';
 import {
 	rankingPath,
@@ -192,14 +191,12 @@ function entryFor(path: string, params: URLSearchParams): BilingualSeo {
 	if (path.startsWith('/stop/')) return STOP_DETAIL;
 	if (path.startsWith('/vehicle/')) return VEHICLE_DETAIL;
 	if (path.startsWith('/departure/')) return DEPARTURE_DETAIL;
-	const upcoming = upcomingPage(path);
-	if (upcoming) return { title: upcoming.label };
 	return HOME;
 }
 
 export function isEphemeralPath(pathname: string): boolean {
 	const path = delocalizePath(pathname);
-	return path === '/metrics/archive' || path.startsWith('/trip/') || Boolean(upcomingPage(path));
+	return path === '/metrics/archive' || path.startsWith('/trip/');
 }
 
 export function canonicalRoutePath(url: URL): string {

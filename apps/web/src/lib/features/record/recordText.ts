@@ -314,3 +314,24 @@ export function shareReading(
 	const basis = includeBasis ? timingBasis(cell.evidence.counts, locale) : '';
 	return basis ? `${reading}. ${basis}` : reading;
 }
+
+/**
+ * The delay readings count recorded stop arrivals, not vehicles: one wording on screen and paper
+ * wherever a median and the latest 1 in 10 are shown.
+ */
+export const delayReadingNotes = {
+	median: {
+		label: ['Median delay', 'Retard médian'],
+		note: [
+			'About half of the recorded stop arrivals were later than this.',
+			'Environ la moitié des passages enregistrés aux arrêts ont eu lieu plus tard.',
+		],
+	},
+	latest: {
+		label: ['Latest 1 in 10', 'Le dixième le plus en retard'],
+		note: [
+			'About 1 in 10 recorded stop arrivals was later than this.',
+			'Environ 1 passage enregistré sur 10 a eu lieu plus tard.',
+		],
+	},
+} as const;

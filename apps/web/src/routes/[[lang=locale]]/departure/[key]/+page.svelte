@@ -42,6 +42,7 @@
 	} from '#lib/features/record/departureDailyText.ts';
 	import {
 		coverageText,
+		delayReadingNotes,
 		lastGoodNote,
 		recordConnection,
 		timingBasis,
@@ -57,6 +58,7 @@
 	import RecordCard from '#lib/features/record/RecordCard.svelte';
 	import RecordPending from '#lib/features/record/RecordPending.svelte';
 	import ScreenTitle from '#lib/features/record/ScreenTitle.svelte';
+	import { Skeleton } from '@yesid/ui/skeleton';
 	import StateMark from '#lib/features/record/StateMark.svelte';
 	import DeparturePredictions from '#lib/features/trips/DeparturePredictions.svelte';
 	import { isBeforeTodaysDeparture } from '#lib/features/trips/departureLive.ts';
@@ -147,7 +149,7 @@
 	type DepartureAnswer = (typeof answers)[number];
 	const missingLine = $derived(
 		data.lineMissing && observed
-			? observed.answer.then(
+			? Promise.resolve(observed.answer).then(
 					(result) =>
 						result.kind === 'answer' &&
 						!result.lastGood &&
@@ -243,7 +245,7 @@
 
 {#snippet recordBody(observed: DepartureAnswer)}
 	<RecordGroup class="gap-(--space-card-gap) py-(--space-card-gap)">
-		<div data-slot="screen-answer" class="min-[1280px]:-mb-4 min-[1280px]:min-h-36">
+		<div data-slot="screen-answer" class="departure-answer min-[1280px]:-mb-4">
 			{#await observed.answer}
 				<RecordPending {heading} locale={data.lang} shape="answer" answer={observed.answer} />
 			{:then result}
@@ -351,7 +353,11 @@
 			<div id={section} class="min-w-0" class:typical-delay={section === 'delay'}>
 				{#snippet dayChoices()}
 					{#if section === 'stops'}
-						<nav class="flex flex-wrap gap-2" aria-label={t('Service date', 'Date de service')}>
+						<!-- On paper the card stamp names the chosen date; the date links stay on screen. -->
+						<nav
+							class="flex flex-wrap gap-2 print:hidden"
+							aria-label={t('Service date', 'Date de service')}
+						>
 							{#if start > 0}
 								<Button href={dateHref(dates[start - 1])} variant="outline" class="min-h-11"
 									>{t('Earlier dates', 'Dates précédentes')}</Button
@@ -375,11 +381,22 @@
 					{/if}
 				{/snippet}
 				{#await answer}
-					<RecordCard title={heading} stamp={section === 'stops' ? dayTime : recordTime}>
+					<!-- The waiting card holds the answer's size, so nothing moves when it arrives. -->
+					<RecordCard
+						title={heading}
+						stamp={section === 'stops' ? dayTime : recordTime}
+						reserve={shapes[section]}
+					>
 						<div class="grid min-w-0 gap-3">
 							{@render dayChoices()}
 							<RecordPending locale={data.lang} {answer} shape={shapes[section]} />
 						</div>
+						{#snippet evidence()}
+							<!-- The evidence line's place, filled when the answer comes. -->
+							<div class="pending-evidence" aria-hidden="true">
+								<Skeleton class="h-4 w-56 max-w-full" />
+							</div>
+						{/snippet}
 					</RecordCard>
 				{:then result}
 					<RecordCard
@@ -439,7 +456,7 @@
 								{:else if section === 'delay' && 'value' in reading && reading.state === 'measured'}
 									<dl class="delay-readings">
 										<div>
-											<dt>{t('Median delay', 'Retard médian')}</dt>
+											<dt>{t(...delayReadingNotes.median.label)}</dt>
 											<dd class="font-heading text-heading font-extrabold">
 												{delayReading(
 													reading.value.median_delay,
@@ -448,14 +465,11 @@
 												)}
 											</dd>
 											<dd>
-												{t(
-													'Half of the vehicles were later than this.',
-													'La moitié des véhicules sont passés plus tard.',
-												)}
+												{t(...delayReadingNotes.median.note)}
 											</dd>
 										</div>
 										<div>
-											<dt>{t('90th percentile', '90e centile')}</dt>
+											<dt>{t(...delayReadingNotes.latest.label)}</dt>
 											<dd class="font-heading text-heading font-extrabold">
 												{delayReading(
 													reading.value.p90_delay,
@@ -464,10 +478,7 @@
 												)}
 											</dd>
 											<dd>
-												{t(
-													'1 vehicle in 10 was later than this.',
-													'1 véhicule sur 10 est passé plus tard.',
-												)}
+												{t(...delayReadingNotes.latest.note)}
 											</dd>
 										</div>
 									</dl>
@@ -755,6 +766,37 @@
 </Surface>
 
 <style>
+	/* The head keeps the answer's rows while it waits: figure and sentence, stamp, counted line and
+	   the actions, which wrap under the sentence below 80rem. */
+	.departure-answer {
+		min-block-size: 26.75rem;
+	}
+	@media (width >= 40rem) {
+		.departure-answer {
+			min-block-size: 14.25rem;
+		}
+	}
+	@media (width >= 64rem) {
+		.departure-answer {
+			min-block-size: 17rem;
+		}
+	}
+	@media (width >= 80rem) {
+		.departure-answer {
+			min-block-size: 11rem;
+		}
+	}
+	/* Paper holds the answer itself; nothing waits there. */
+	@media print {
+		.departure-answer {
+			min-block-size: 0;
+		}
+	}
+	.pending-evidence {
+		display: flex;
+		align-items: center;
+		min-block-size: 1.375rem;
+	}
 	.delay-readings {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));

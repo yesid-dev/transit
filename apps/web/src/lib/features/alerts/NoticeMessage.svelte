@@ -64,10 +64,11 @@
 
 {#if excerpt}
 	{@render routes()}
+	<!-- One order on every notice: title, dates, then stops. -->
 	<div class="min-w-0">
 		{@render heading()}
-		{@render stops()}
 		{@render details()}
+		{@render stops()}
 		{@render description()}
 	</div>
 {:else}

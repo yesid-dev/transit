@@ -557,7 +557,8 @@ export function stopLadderChart(
 			{
 				...stop(cell.key.stop),
 				id: `${cell.key.stop}/${index}`,
-				value,
+				// A stop that reads "On schedule" (under a quarter minute either way) draws no bar.
+				value: value !== null && Math.abs(value) < 15 ? 0 : value,
 				valueLabel: state ?? delayReading(value, locale),
 				sample: count == null || sample ? undefined : countedUnit(count, 'event', locale),
 				state,
@@ -577,7 +578,7 @@ export function stopLadderChart(
 			stops,
 			max: Math.max(observed ? 360 : 1, ...stops.map(({ value }) => value ?? 0)),
 			threshold: observed
-				? { value: 300, label: choose(locale, 'Late beyond 5 min', 'En retard au-delà de 5 min') }
+				? { value: 300, label: choose(locale, '5 min late', '5 min de retard') }
 				: undefined,
 		},
 		table: {

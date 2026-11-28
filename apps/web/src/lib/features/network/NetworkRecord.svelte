@@ -39,6 +39,7 @@
 	import {
 		choose,
 		countedRecordDays,
+		delayReadingNotes,
 		measuredShare,
 		pooledDays,
 		punctualityWeighting,
@@ -463,20 +464,14 @@
 											<FactRow
 												label={t('Median', 'Médiane')}
 												emphasis
-												detail={t(
-													'Half of the recorded stop arrivals were later than this.',
-													'La moitié des passages enregistrés ont eu lieu plus tard.',
-												)}
+												detail={t(...delayReadingNotes.median.note)}
 											>
 												{delayReading(reading.value.median_delay, locale)}
 											</FactRow>
 											<FactRow
-												label={t('Latest 1 in 10', 'Le dixième le plus en retard')}
+												label={t(...delayReadingNotes.latest.label)}
 												emphasis
-												detail={t(
-													'1 recorded stop arrival in 10 was later than this.',
-													'Un passage enregistré sur dix a eu lieu plus tard.',
-												)}
+												detail={t(...delayReadingNotes.latest.note)}
 											>
 												{delayReading(reading.value.p90_delay, locale)}
 											</FactRow>

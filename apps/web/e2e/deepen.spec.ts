@@ -131,6 +131,10 @@ test('mobile archive keeps its jump when the contents reopen during settlement',
 	const toc = page.getByTestId('archive-contents');
 	const contents = toc.locator('details');
 	const summary = toc.locator('summary');
+	// On a phone the contents start folded: the reader opens them, then jumps.
+	await expect(contents).not.toHaveAttribute('open');
+	await summary.click();
+	await expect(contents).toHaveAttribute('open');
 	await toc.getByRole('link', { name: 'On-time %', exact: true }).click({ force: true });
 	await summary.click({ force: true });
 	await expect(contents).not.toHaveAttribute('open');

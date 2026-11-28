@@ -554,6 +554,23 @@ export function fileSize(bytes: number | null | undefined, locale: Locale): stri
 		.format(bytes / 1_000_000);
 }
 
+/** The bulk link names what it downloads: a text list of addresses, not the data itself. */
+export function fileAddressesLabel(count: number, locale: Locale) {
+	const n = intl.number(locale).format(count);
+	if (locale === 'fr')
+		return count === 1 ? 'Télécharger l’adresse (.txt)' : `Télécharger les ${n} adresses (.txt)`;
+	return count === 1 ? 'Download 1 file address (.txt)' : `Download ${n} file addresses (.txt)`;
+}
+
+/** What those addresses reach: "56 data files, 351 MB total." */
+export function dataFilesSummary(count: number, bytes: number, locale: Locale) {
+	const n = intl.number(locale).format(count);
+	const size = fileSize(bytes, locale);
+	if (locale === 'fr')
+		return `${n} ${count === 1 ? 'fichier' : 'fichiers'} de données, ${size} au total.`;
+	return `${n} data ${count === 1 ? 'file' : 'files'}, ${size} total.`;
+}
+
 export function versionNumber(value: string | number | null | undefined): string | null {
 	if (value == null) return null;
 	const raw = String(value).trim();

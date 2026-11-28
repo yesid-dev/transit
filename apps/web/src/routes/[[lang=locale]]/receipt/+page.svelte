@@ -361,15 +361,7 @@
 						'Printing is available when all sections have loaded.',
 						'L’impression sera possible lorsque toutes les sections seront chargées.',
 					)
-				: period && period.from !== period.to
-					? t(
-							'This report covers several days and prints on several sheets.',
-							'Ce rapport couvre plusieurs jours et s’imprime sur plusieurs feuilles.',
-						)
-					: t(
-							'A one-day report prints on one sheet.',
-							'Le rapport d’une journée tient sur une feuille.',
-						)}
+				: t('Prints the report and its sources.', 'Imprime le rapport et ses sources.')}
 		/>
 	</div>
 {/snippet}
@@ -454,6 +446,7 @@
 			{sentence}
 			state={value == null && punctuality ? readingState(punctuality) : undefined}
 			time={stamp}
+			{actions}
 		>
 			{#snippet meta()}
 				{@const currentSample = punctuality?.evidence.counts.classified}
@@ -488,11 +481,10 @@
 				{/if}
 			{/snippet}
 		</RecordAnswer>
-		{@render actions()}
 	</div>
 {/snippet}
 
-{#snippet about(current: RecordMeasure | undefined, waiting = false)}
+{#snippet about(current: RecordMeasure | undefined, waiting = false, ran?: number | null)}
 	{@const counts = current?.evidence.counts}
 	{@const observed = current?.evidence.share_observed}
 	{@const fields = [
@@ -503,7 +495,7 @@
 			waiting,
 			text: recordCounts(
 				counts?.classified,
-				null,
+				ran ?? null,
 				current ? countedRecordDays(current.evidence, lang) : '',
 				lang,
 			),
@@ -829,9 +821,20 @@
 															{/snippet}
 															{#snippet stops()}
 																{#if message.stops.length > 1}
-																	<p class="text-muted-foreground">
-																		{t('Stops:', 'Arrêts\u00a0:')}
-																		{message.stops.join(' · ')}
+																	<p
+																		class="flex min-w-0 flex-wrap items-center gap-x-1 text-muted-foreground"
+																	>
+																		<span>{t('Stops', 'Arrêts')}</span>
+																		{#each [...new Set(message.stops)] as stop (stop)}
+																			<a
+																				class="inline-flex min-h-11 min-w-11 items-center justify-center text-primary underline"
+																				href={link('/stop/' + encodeURIComponent(stop))}
+																				><span
+																					class="rounded-sm border border-current px-1 font-mono"
+																					>{stop}</span
+																				></a
+																			>
+																		{/each}
 																	</p>
 																{/if}
 															{/snippet}
@@ -928,7 +931,12 @@
 						{#await answers.get('punctuality')}
 							{@render about(undefined, true)}
 						{:then result}
-							{@render about(measure(result))}
+							<!-- Counted names the trips that ran, as the report's head does. -->
+							{#await answers.get('delivery')}
+								{@render about(measure(result))}
+							{:then delivery}
+								{@render about(measure(result), false, measure(delivery)?.evidence.counts.ran)}
+							{/await}
 						{/await}
 						<div class="hidden print:block report-citation">
 							{#await answers.get('punctuality') then result}
@@ -956,8 +964,9 @@
 		gap: var(--space-card-gap);
 		min-inline-size: 0;
 	}
+	/* The plate column has one width, so every notice title starts on the same edge. */
 	.message-row {
-		grid-template-columns: fit-content(30%) minmax(0, 1fr);
+		grid-template-columns: 6.5rem minmax(0, 1fr);
 	}
 	.message-rows {
 		container-type: inline-size;
@@ -971,10 +980,30 @@
 		margin: 8mm;
 	}
 	@media print {
+		/* Paper sizes, not a shrunk screen: body 10 pt and up, notes and figures 9 pt and up. The
+		   report may run onto a second sheet. */
 		.daily-report {
-			zoom: 0.52;
+			--text-body: 10.5pt;
+			--text-reading: 10.5pt;
+			--text-small: 9.5pt;
+			--text-mono: 9pt;
+			--text-caption: 9pt;
+			--text-card-title: 12pt;
+			--text-heading: 12pt;
+			--text-title: 16pt;
+			font-size: 10.5pt;
 			gap: 0.5rem;
 			padding: 0;
+		}
+		/* A card title stays with its first rows, and a row never splits across sheets. */
+		.daily-report :global(:is(h1, h2, h3, header)) {
+			break-after: avoid;
+		}
+		.daily-report :global(:is(tr, li, [data-slot='fact-row'])) {
+			break-inside: avoid;
+		}
+		.daily-report :global(thead) {
+			display: table-header-group;
 		}
 		/* The sections join the report's two print columns. */
 		.report-sections {

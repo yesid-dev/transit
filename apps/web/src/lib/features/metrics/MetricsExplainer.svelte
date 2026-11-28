@@ -97,10 +97,13 @@
 		style="margin-inline: auto"
 		data-testid="metrics-sections"
 	>
+		<!-- The jump list starts folded so the first measure is in reach on a phone. A wide screen
+		     shows its links open in two columns with CSS alone, so nothing moves after load. -->
 		<nav aria-label={t.tocLabel} data-testid="archive-contents">
-			<details open>
+			<p class="archive-toc-title" aria-hidden="true">{t.tocLabel}</p>
+			<details class="archive-toc">
 				<summary class="min-h-11 content-center">{t.tocLabel}</summary>
-				<ul class="grid gap-1">
+				<ul class="archive-toc-list grid gap-1">
 					{#each tocEntries as entry (entry.id)}<li>
 							<a
 								class="inline-flex min-h-11 items-center text-primary underline"
@@ -260,6 +263,29 @@
 </DetailFrame>
 
 <style>
+	.archive-toc-title {
+		display: none;
+	}
+	@supports selector(::details-content) {
+		@media (width >= 48rem) {
+			.archive-toc-title {
+				display: block;
+				margin: 0;
+				font-weight: 600;
+			}
+			.archive-toc > summary {
+				display: none;
+			}
+			.archive-toc::details-content {
+				content-visibility: visible;
+				display: block;
+			}
+			.archive-toc-list {
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				column-gap: 1.5rem;
+			}
+		}
+	}
 	.metrics-lede {
 		margin: 0;
 		color: var(--secondary-foreground);

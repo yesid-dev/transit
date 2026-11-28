@@ -1,7 +1,9 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { routeNameFallback } from './absence.ts';
 import { createLineDirectory } from './lineDirectory.ts';
 import {
+	dataFilesSummary,
+	fileAddressesLabel,
 	agencyName,
 	alertAnswerSentence,
 	alertPaging,
@@ -849,4 +851,24 @@ it('names the covered cities once each, alphabetically, in each language', async
 	expect(cityList(['Ottawa', 'Gatineau', 'Montréal'], 'en')).toBe('Gatineau, Montréal, and Ottawa');
 	expect(cityList(['Montréal'], 'fr')).toBe('Montréal');
 	expect(cityList([' ', ''], 'en')).toBeNull();
+});
+
+describe('Download bulk link', () => {
+	it.each([
+		['en', 56, 351_000_000, 'Download 56 file addresses (.txt)', '56 data files, 351 MB total.'],
+		[
+			'fr',
+			49,
+			1_250_000,
+			'Télécharger les 49 adresses (.txt)',
+			'49 fichiers de données, 1,25 Mo au total.',
+		],
+		['en', 1, 2_000_000, 'Download 1 file address (.txt)', '1 data file, 2 MB total.'],
+	] as const)(
+		'names the %s address list apart from the data it reaches',
+		(locale, count, bytes, link, summary) => {
+			expect(fileAddressesLabel(count, locale)).toBe(link);
+			expect(dataFilesSummary(count, bytes, locale).replace(/\s/gu, ' ')).toBe(summary);
+		},
+	);
 });

@@ -77,3 +77,21 @@ it('leaves data without promises, and objects that are not plain, untouched', as
 	expect(mixed.when).toBe(when);
 	expect(mixed.answer).toBe(3);
 });
+
+it('keeps a settled result the page asks again itself as a promise', async () => {
+	const unreachable = Promise.resolve({ kind: 'unreachable' });
+	const answer = Promise.resolve({ kind: 'answer', answer: { state: 'not_measured' } });
+	const ready = await readyAnswers(
+		{
+			sections: [
+				{ section: 'observed', answer: unreachable },
+				{ section: 'delay', answer },
+			],
+		},
+		READY_WAIT_MS,
+		(value) => (value as { kind?: unknown }).kind === 'unreachable',
+	);
+	// Recovery finds a reading by its promise: the unreachable one keeps it; a settled state draws.
+	expect(ready.sections[0].answer).toBe(unreachable);
+	expect(ready.sections[1].answer).toEqual({ kind: 'answer', answer: { state: 'not_measured' } });
+});
