@@ -5,7 +5,18 @@ import FrameControls from './FrameControls.svelte';
 import { frameControlsState, frameCopy } from './frameControlsState';
 import { frameClock } from '#lib/site/frameState.ts';
 
-afterEach(() => vi.restoreAllMocks());
+const navigation = vi.hoisted(() => ({
+	goto: vi.fn(async (_href: string | URL, _options?: unknown) => {}),
+}));
+vi.mock('$app/navigation', async (importOriginal) => ({
+	...(await importOriginal<typeof import('$app/navigation')>()),
+	goto: navigation.goto,
+}));
+
+afterEach(() => {
+	vi.restoreAllMocks();
+	navigation.goto.mockClear();
+});
 
 it('keeps the shared view and period cards when no screen controls are registered', async () => {
 	const url = new URL('https://transit.example/');
@@ -84,4 +95,28 @@ it.each([
 	await fireEvent.click(screen.getByRole('button', { name: frameCopy[locale].custom }));
 	const dialog = await screen.findByRole('dialog', { name: title });
 	expect(within(dialog).getAllByRole('button', { name: close })).toHaveLength(wide ? 2 : 1);
+});
+
+it.each([
+	['/lines/51?provider=stm&recordFrom=2026-11-20&recordTo=2026-11-26', 'live'],
+	['/stop/S1?provider=stm&tab=detail&frameMode=live', 'record'],
+] as const)('switches %s with one navigation to the view address', async (path, mode) => {
+	const url = new URL(`https://transit.example${path}`);
+	const clock = frameClock(null, new Date('2026-11-25T12:00:00Z'));
+	render(FrameControls, {
+		props: {
+			locale: 'en',
+			url,
+			clock,
+			frame: frameControlsState(url, clock),
+			context: { presentation: 'desktop', closeSheet: vi.fn() },
+		},
+	});
+	const choice = mode === 'live' ? frameCopy.en.live : frameCopy.en.record;
+	await fireEvent.click(screen.getByRole('radio', { name: new RegExp(`^${choice}`) }));
+	await vi.waitFor(() => expect(navigation.goto).toHaveBeenCalledOnce());
+	const target = new URL(String(navigation.goto.mock.calls[0]![0]), url);
+	// The pages redirect `tab=detail`; carrying it would load the page a second time.
+	expect(target.searchParams.has('tab')).toBe(false);
+	expect(target.searchParams.get('frameMode')).toBe(mode);
 });

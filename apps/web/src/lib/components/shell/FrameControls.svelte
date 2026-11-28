@@ -108,10 +108,9 @@
 		// A view switch carries the requested dates so returning to Record can use a newly built day.
 		const { period } = parseFrameState(url.searchParams, clock);
 		const target = new URL(frameHref(url, { mode, period }), url);
-		if (frame.detail) {
-			if (mode === 'live') target.searchParams.set('tab', 'detail');
-			else target.searchParams.delete('tab');
-		}
+		// frameMode says which view; Line and Stop redirect the older `tab=detail` to it, which would
+		// make one switch load the page twice.
+		if (frame.detail) target.searchParams.delete('tab');
 		if (frame.map) {
 			if (mode === 'live') target.searchParams.delete('mapLayer');
 			else target.searchParams.set('mapLayer', 'stops');
