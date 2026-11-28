@@ -23,7 +23,7 @@ export function vehicleDepartureTiming(
 	const firstUpdate =
 		updates.find(({ sequence }) => sequence === 0) ??
 		updates.find((stop) => origin && stop.stop === origin.id && stop.sequence === origin.seq);
-	// The timetable's first departure by trip ID, for feeds that send no start time (STM).
+	// The timetable's first departure by trip ID, for feeds that send no trip start time.
 	const timetable = trip?.first_departure;
 	const departure = timetable?.departure ?? firstUpdate?.departure;
 	const scheduled = departure == null ? null : new Date(departure * 1000);
