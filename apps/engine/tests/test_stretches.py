@@ -322,11 +322,11 @@ def _roll_up(
     summaries, stretches, receipts = [], [], {}
     for day in days:
         day_folder = root / "stretch" / "v13" / "stm" / day.isoformat()
-        receipt = (day_folder / "manifest.json").read_bytes()
-        tables = json.loads(receipt)["tables"]
+        day_receipt = (day_folder / "manifest.json").read_bytes()
+        tables = json.loads(day_receipt)["tables"]
         summaries.append((day_folder / tables["stretch_summary"]).as_posix())
         stretches.append((day_folder / tables["stretches"]).as_posix())
-        receipts[day.isoformat()] = sha256(receipt).hexdigest()
+        receipts[day.isoformat()] = sha256(day_receipt).hexdigest()
     files, names = {}, {}
     with duckdb.connect() as conn:
         for table, sql, sources in (
