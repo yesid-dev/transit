@@ -71,7 +71,7 @@ function downloadError(lang: 'en' | 'fr', status: number, retryAfter?: string | 
 
 /**
  * A file name that two downloads never share: the network, what the page shows (`line-51-punctuality`),
- * the dates and the language, as `stm-line-51-punctuality-2026-11-19-to-2026-11-25-en.csv`.
+ * the dates and the language, as `<city>-line-51-punctuality-2026-11-19-to-2026-11-25-en.csv`.
  */
 export function csvFilename(city: string, name: string, period: DateWindow, lang: 'en' | 'fr') {
 	const slug = (text: string) =>
