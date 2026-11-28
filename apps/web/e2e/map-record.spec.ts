@@ -118,9 +118,10 @@ for (const locale of ['en', 'fr'] as const) {
 			name: fr ? 'Ajouter une ligne au filtre' : 'Add a line filter',
 		});
 		await pickLine(page, line, '24');
-		const direction = page.getByRole('combobox', { name: fr ? 'Sens' : 'Direction', exact: true });
-		await expect(direction.locator('option[value="0"]')).toContainText('Jean-Talon');
-		await direction.selectOption('0');
+		const direction = page.locator('[data-map-direction-filter] [data-slot="combobox-trigger"]');
+		await expect(direction).toBeEnabled();
+		await direction.click();
+		await page.getByRole('option', { name: /Jean-Talon/u }).click();
 		await openMapInView(page);
 		await expect.poll(() => received.at(-1)?.get('direction')).toBe('0');
 		await expect(
@@ -149,10 +150,7 @@ for (const locale of ['en', 'fr'] as const) {
 		await openMapControls(page);
 		if ((await filterTrigger.getAttribute('aria-expanded')) === 'false')
 			await filterTrigger.click();
-		await page
-			.locator('[data-filter-group="active"] .mf-active-set button')
-			.filter({ hasText: '24' })
-			.click();
+		await page.locator('[data-map-selected-lines] button').filter({ hasText: '24' }).click();
 		await openMapInView(page);
 		await expect(segment).toBeVisible();
 		await expect.poll(() => received.at(-1)?.get('layer')).toBe('corridors');

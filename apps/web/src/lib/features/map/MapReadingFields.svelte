@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { FilterStore } from '#lib/filters/index.ts';
+	import { Combobox } from '@yesid/ui/combobox';
 	import {
 		MAP_TIME_BANDS,
 		mapReadingHours,
@@ -18,6 +19,7 @@
 		locale,
 		direction,
 		directions,
+		hasOneLine,
 		onDirection,
 	}: {
 		store: FilterStore;
@@ -26,6 +28,7 @@
 		locale: Locale;
 		direction?: 0 | 1;
 		directions: readonly { value: 0 | 1; label: string }[];
+		hasOneLine: boolean;
 		onDirection: (direction: 0 | 1 | undefined) => void;
 	} = $props();
 
@@ -33,14 +36,17 @@
 	const readings = $derived(store.state.mapReadings);
 	const vehicleType = $derived(readings?.vehicleType ?? '');
 	const directionValue = $derived(readings?.direction ?? direction);
-	const directionChoices = $derived(
-		([0, 1] as const).flatMap((value) => {
-			const name = directions.find((choice) => choice.value === value)?.label;
-			if (name) return [{ value, label: name }];
-			return directionValue === value
-				? [{ value, label: tr('Direction from link', 'Sens du lien') }]
-				: [];
-		}),
+	const directionChoices = $derived([
+		{ value: 'both', label: tr('Both directions', 'Les deux sens') },
+		...directions.map(({ value, label }) => ({ value: String(value), label })),
+	]);
+	const directionPrompt = $derived(
+		hasOneLine
+			? tr('Direction unavailable', 'Sens indisponible')
+			: tr(
+					'Choose one line to pick a direction.',
+					'Choisissez une seule ligne pour choisir un sens.',
+				),
 	);
 	const typeChoices = $derived(
 		[...new Set(routes.map((route) => route.type))]
@@ -105,7 +111,7 @@
 					vehicleType: readMapVehicleType(event.currentTarget.value),
 				})}
 		>
-			<option value="">{tr('All vehicle types', 'Tous les types de véhicules')}</option>
+			<option value="">{tr('All types', 'Tous les types')}</option>
 			{#each typeChoices as type (type)}
 				<option value={type}>{typeLabel(type)}</option>
 			{/each}
@@ -155,23 +161,20 @@
 			</label>
 		</div>
 	{/if}
-	{#if directionChoices.length}
-		<label class="grid min-w-0 grid-cols-1 gap-1 text-sm">
-			<span>{tr('Direction', 'Sens')}</span>
-			<select
-				class={selectClass}
-				value={directionValue === undefined ? '' : String(directionValue)}
-				title={directionChoices.find((choice) => choice.value === directionValue)?.label}
-				onchange={(event) => {
-					const value = event.currentTarget.value;
-					onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined);
-				}}
-			>
-				<option value="">{tr('Both directions', 'Les deux sens')}</option>
-				{#each directionChoices as { value, label } (value)}
-					<option value={String(value)}>{label}</option>
-				{/each}
-			</select>
-		</label>
-	{/if}
+	<div class="grid min-w-0 grid-cols-1 gap-1 text-sm" data-map-direction-filter>
+		<span>{tr('Direction', 'Sens')}</span>
+		<Combobox
+			searchable={false}
+			disabled={!directions.length}
+			label={tr('Direction', 'Sens')}
+			placeholder={directionPrompt}
+			options={directionChoices}
+			value={directions.length
+				? directionValue === undefined
+					? 'both'
+					: String(directionValue)
+				: null}
+			onValueChange={(value) => onDirection(value === '0' ? 0 : value === '1' ? 1 : undefined)}
+		/>
+	</div>
 </div>

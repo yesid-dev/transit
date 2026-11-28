@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { join } from 'node:path';
 import { captureFixture, captureUrl, captureVehicle } from './capture-fixture';
 import { closeMapInView, openMapControls, openMapInView } from './map-frame-controls';
@@ -14,7 +14,7 @@ const providers = [
 			{ id: '51', short: '51', long: 'Édouard-Montpetit', type: 3 },
 			{ id: '1', short: '1', long: 'Verte', type: 1 },
 		],
-		destinations: ['Station Sherbrooke', 'Station Laurier'],
+		destinations: ['Station Fairview-Pointe-Claire (Ouest)', 'Station Laurier'],
 		excluded: '80',
 	},
 	{
@@ -26,10 +26,27 @@ const providers = [
 			{ id: '7', short: '7', long: 'Carleton', type: 3 },
 			{ id: '1-373', short: '1', long: 'O-Train', type: 0 },
 		],
-		destinations: ['Greenboro', 'Carleton'],
+		destinations: ['Greenboro Station via Bank Street', 'Carleton'],
 		excluded: '75',
 	},
 ] as const;
+
+async function expectLabelToFit(field: Locator) {
+	const clipped = await field.evaluate(async (element) => {
+		await document.fonts.ready;
+		const fieldBox = element.getBoundingClientRect();
+		const text = document.createRange();
+		text.selectNodeContents(element);
+		return [...text.getClientRects()].some(
+			(box) =>
+				box.left < fieldBox.left - 0.5 ||
+				box.right > fieldBox.right + 0.5 ||
+				box.top < fieldBox.top - 0.5 ||
+				box.bottom > fieldBox.bottom + 0.5,
+		);
+	});
+	expect(clipped).toBe(false);
+}
 
 for (const provider of providers) {
 	for (const locale of ['en', 'fr'] as const) {
@@ -118,10 +135,9 @@ for (const provider of providers) {
 					name: fr ? 'Moment de la journée' : 'Time of day',
 					exact: true,
 				});
-				const direction = panel.getByRole('combobox', {
-					name: fr ? 'Sens' : 'Direction',
-					exact: true,
-				});
+				const direction = panel.locator(
+					'[data-map-direction-filter] [data-slot="combobox-trigger"]',
+				);
 				await expect(type).toHaveValue('3');
 				await expect(
 					type.locator('option', {
@@ -135,19 +151,32 @@ for (const provider of providers) {
 				await expect(
 					panel.getByRole('combobox', { name: fr ? 'Jusqu’à' : 'Until', exact: true }),
 				).toHaveValue(String(hour + 1));
-				await expect(direction).toHaveValue('0');
-				const chosenDirection = direction.locator('option[value="0"]');
-				await expect(chosenDirection).toContainText(provider.destinations[0]);
-				await expect(chosenDirection).toContainText(provider.destinations[1]);
+				await expect(direction).toBeDisabled();
+				await expect(direction).toContainText(
+					fr
+						? 'Choisissez une seule ligne pour choisir un sens.'
+						: 'Choose one line to pick a direction.',
+				);
+				await expectLabelToFit(direction);
 				const fromHour = panel.getByRole('combobox', { name: fr ? 'De' : 'From', exact: true });
 				await expect(fromHour.locator('option[value="17"]')).toHaveText(fr ? '17 h' : '17:00');
 				await expect(page.locator('[data-map-reading-line-picker]:visible')).toHaveCount(1);
 				const overflow = await panel.evaluate(async (root) => {
 					await document.fonts.ready;
 					const right = root.getBoundingClientRect().right;
-					const controls = root.querySelectorAll('select, [data-map-reading-line-picker]');
+					const text = document.createElement('canvas').getContext('2d')!;
+					const controls = root.querySelectorAll(
+						'select, [data-map-reading-line-picker], [data-map-direction-filter]',
+					);
 					return {
 						panel: root.scrollWidth - root.clientWidth,
+						clippedSelects: [...root.querySelectorAll('select')].filter((select) => {
+							const style = getComputedStyle(select);
+							text.font = style.font;
+							const label = select.selectedOptions[0]?.textContent ?? '';
+							const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+							return text.measureText(label).width > select.clientWidth - padding;
+						}).length,
 						fields: [...controls].filter(
 							(control) => control.getBoundingClientRect().right > right + 0.5,
 						).length,
@@ -155,41 +184,67 @@ for (const provider of providers) {
 				});
 				expect(overflow.panel).toBe(0);
 				expect(overflow.fields).toBe(0);
-				const active = panel.locator(
-					'[data-filter-group="active"] .mf-active-set button[aria-label]',
-				);
-				await expect(active).toHaveCount(3);
+				expect(overflow.clippedSelects).toBe(0);
+				const tags = panel.locator('[data-map-selected-lines] button[aria-label]');
+				await expect(tags).toHaveCount(3);
+				const tag = (number: string) =>
+					tags.filter({ has: page.getByText(number, { exact: true }) });
+				const picker = panel.getByRole('button', {
+					name: fr ? 'Ajouter une ligne au filtre' : 'Add a line filter',
+					exact: true,
+				});
+				await expect(tag(first.short)).toBeVisible();
+				await expect(tag(second.short)).toBeVisible();
+				expect((await tags.last().boundingBox())!.y).toBeLessThan((await picker.boundingBox())!.y);
 
 				const evidence = process.env.TRANSIT_K2_PICTURES;
 				if (evidence) {
-					if (width < 1024)
-						await type.evaluate((select) => {
-							const label = select.closest('label');
-							const tab = select.closest<HTMLElement>('[role="tabpanel"]');
-							if (!label || !tab) throw new Error('Map filters are outside the controls tab');
-							tab.scrollTop += label.getBoundingClientRect().top - tab.getBoundingClientRect().top;
-						});
+					await tags.first().scrollIntoViewIfNeeded();
 					await page.screenshot({
 						path: join(evidence, `${provider.id}-${locale}-${width}-${info.project.name}.png`),
 						animations: 'disabled',
 					});
 				}
 
+				await tag(second.short).click();
+				await tag(rail.short).click();
+				await expect(tags).toHaveCount(1);
+				await expect(direction).toBeEnabled();
+				await direction.click();
+				await page.getByRole('option', { name: provider.destinations[0] }).click();
+				await expect(direction).toContainText(provider.destinations[0], { ignoreCase: true });
+				await expectLabelToFit(direction);
+				await expect(page).toHaveURL(/[?&]mapDirection=0(?:&|$)/);
+				if (evidence) {
+					await direction.scrollIntoViewIfNeeded();
+					await page.screenshot({
+						path: join(
+							evidence,
+							'single-line',
+							`${provider.id}-${locale}-${width}-${info.project.name}.png`,
+						),
+						animations: 'disabled',
+					});
+				}
+
 				if (width === 1440) {
-					if (provider.id === 'stm' && !fr) {
-						await active.filter({ hasText: '51' }).click();
-						await expect(active).toHaveCount(2);
-						await panel.getByRole('button', { name: 'Add a line filter', exact: true }).click();
-						await page.getByRole('option', { name: /^51\b/u }).click();
-						await expect(active).toHaveCount(3);
-					}
+					await picker.click();
+					await page
+						.getByRole('listbox', {
+							name: fr ? 'Ajouter une ligne au filtre' : 'Add a line filter',
+						})
+						.getByRole('option', { name: new RegExp(`^${second.short}\\b`, 'u') })
+						.click();
+					await expect(tags).toHaveCount(2);
+					await expect(direction).toBeDisabled();
+					await expect(page).not.toHaveURL(/[?&]mapDirection=/);
 					const outsideBand = hour < 19 ? 'evening' : 'morning';
 					await time.selectOption(outsideBand);
 					await expect
 						.poll(() => new URL(page.url()).searchParams.get('timeOfDay'))
 						.toBe(outsideBand);
 					await expect(type).toHaveValue('3');
-					await expect(direction).toHaveValue('0');
+					await expect(direction).toBeDisabled();
 					await expect(rows).toHaveCount(0);
 				}
 			}
@@ -219,9 +274,12 @@ test('Record sends the chosen period and reading filters for Stops and Corridors
 	await expect(panel.getByRole('combobox', { name: 'Time of day', exact: true })).toHaveValue(
 		'custom',
 	);
-	const direction = panel.getByRole('combobox', { name: 'Direction', exact: true });
-	await expect(direction).toHaveValue('1');
-	await direction.selectOption('0');
+	const direction = panel.locator('[data-map-direction-filter] [data-slot="combobox-trigger"]');
+	await expect(direction).toBeDisabled();
+	await panel.locator('[data-map-selected-lines] button').filter({ hasText: '51' }).click();
+	await expect(direction).toBeEnabled();
+	await direction.click();
+	await page.getByRole('option', { name: /Jean-Talon/u }).click();
 	await expect(page).toHaveURL(/[?&]mapDirection=0(?:&|$)/);
 	await expect(page).not.toHaveURL(/[?&]recordDirection=/);
 	await expect.poll(() => received.at(-1)?.get('direction')).toBe('0');

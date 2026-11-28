@@ -517,6 +517,12 @@
 					recordUrl.searchParams.get('recordLine') ??
 					(session.selected?.kind === 'route' ? session.selected.id : '')),
 	);
+	const focusedReadingLine = $derived(
+		isRecordLayer ? (!filters.routes.size ? recordLine || undefined : undefined) : chosenLine?.id,
+	);
+	const readingLineIds = $derived([
+		...new Set([...mapFilterRoutes, ...(focusedReadingLine ? [focusedReadingLine] : [])]),
+	]);
 	const recordDirection = $derived(
 		filters.state.mapReadings?.direction !== undefined
 			? String(filters.state.mapReadings.direction)
@@ -552,6 +558,10 @@
 		if (choice?.kind === 'line') session.close();
 		urlCoordinator.writeFilters(toSearchString({ ...state, routes }), (params) => {
 			if (isRecordLayer) params.delete('recordLine');
+			if (routes.size !== 1) {
+				params.delete('mapDirection');
+				params.delete('recordDirection');
+			}
 			if (choice?.kind === 'line') {
 				setLiveMapChoice(params, null);
 				params.delete(MAP_FOCUS_PARAM);
@@ -559,11 +569,39 @@
 		});
 	}
 
-	function clearCarriedRecordLine(): void {
+	function removeReadingLine(id: string): void {
 		const url = urlCoordinator.currentUrl();
-		url.searchParams.delete('recordLine');
-		url.searchParams.delete('recordDirection');
-		void urlCoordinator.goto(url.pathname + url.search, MAP_URL_REWRITE);
+		const state = readMapFilters(url.searchParams);
+		const choice = isRecordLayer ? null : readLiveMapChoice(url.searchParams);
+		const removesFocus = choice?.kind === 'line' && choice.id === id;
+		const routes = new Set([...state.routes].filter((route) => route !== id));
+		if (removesFocus) session.close();
+		urlCoordinator.writeFilters(toSearchString({ ...state, routes }), (params) => {
+			if (isRecordLayer && params.get('recordLine') === id) {
+				params.delete('recordLine');
+				params.delete('recordDirection');
+			}
+			if (readingLineIds.filter((route) => route !== id).length !== 1) {
+				params.delete('mapDirection');
+				params.delete('recordDirection');
+			}
+			if (removesFocus) {
+				setLiveMapChoice(params, null);
+				params.delete(MAP_FOCUS_PARAM);
+			}
+		});
+	}
+
+	function clearReadingFilters(): void {
+		if (chosenLine) session.close();
+		urlCoordinator.writeFilters('', (params) => {
+			params.delete('recordLine');
+			params.delete('recordDirection');
+			if (readLiveMapChoice(params)?.kind === 'line') {
+				setLiveMapChoice(params, null);
+				params.delete(MAP_FOCUS_PARAM);
+			}
+		});
 	}
 
 	function showLineFilters(): void {
@@ -661,17 +699,12 @@
 	});
 	const terminals = $derived(scheduleTerminals(mapDirections));
 	const readingDirections = $derived.by(() => {
-		const selected = isRecordLayer ? recordLine : chosenLine?.id;
-		const lines = selected ? [selected] : mapFilterRoutes;
-		const vehicleType = filters.state.mapReadings?.vehicleType;
-		return ([0, 1] as const).flatMap((value) => {
-			const labels = lines.flatMap((id) => {
-				if (vehicleType !== undefined && mapRouteTypes.get(id) !== vehicleType) return [];
-				const signs = directionHeadsigns(mapDirections?.[id]);
-				return signs[value] ? [display.directionLabel(value, signs, locale, id)] : [];
-			});
-			return labels.length ? [{ value, label: [...new Set(labels)].join(' / ') }] : [];
-		});
+		if (readingLineIds.length !== 1) return [];
+		const id = readingLineIds[0]!;
+		const signs = directionHeadsigns(mapDirections?.[id]);
+		return ([0, 1] as const).flatMap((value) =>
+			signs[value] ? [{ value, label: display.directionLabel(value, signs, locale, id) }] : [],
+		);
 	});
 	$effect(() => {
 		if (!referenceReady) return;
@@ -1375,29 +1408,6 @@
 
 {#snippet readingFilterHeader()}
 	<div class="grid min-w-0 grid-cols-1 gap-2">
-		<MapReadingFields
-			store={filters}
-			routes={session.routesIndex}
-			provider={page.data.provider}
-			direction={isRecordLayer && recordDirection === '0'
-				? 0
-				: isRecordLayer && recordDirection === '1'
-					? 1
-					: undefined}
-			directions={readingDirections}
-			onDirection={changeReadingDirection}
-			{locale}
-		/>
-		{#if isRecordLayer && recordLine && !filters.routes.size}
-			<Button
-				size="sm"
-				variant="outline"
-				class="min-h-11 justify-between"
-				onclick={clearCarriedRecordLine}
-				aria-label={tr('Clear line', 'Effacer la ligne')}
-				>{display.lineName(recordLine).label} ×</Button
-			>
-		{/if}
 		<div data-map-reading-line-picker>
 			<MapLinePicker
 				routes={session.routesIndex.filter(
@@ -1414,6 +1424,20 @@
 				}}
 			/>
 		</div>
+		<MapReadingFields
+			store={filters}
+			routes={session.routesIndex}
+			provider={page.data.provider}
+			direction={isRecordLayer && recordDirection === '0'
+				? 0
+				: isRecordLayer && recordDirection === '1'
+					? 1
+					: undefined}
+			directions={readingDirections}
+			hasOneLine={readingLineIds.length === 1}
+			onDirection={changeReadingDirection}
+			{locale}
+		/>
 		{#if !isRecordLayer}<MapMotionControl {locale} copy={t} />{/if}
 	</div>
 {/snippet}
@@ -1464,6 +1488,9 @@
 						routes={session.routesIndex}
 						stops={stopList}
 						record={isRecordLayer}
+						focusedLine={focusedReadingLine}
+						onremoveline={removeReadingLine}
+						onclear={clearReadingFilters}
 						header={readingFilterHeader}
 					/>
 					{#if !isRecordLayer}

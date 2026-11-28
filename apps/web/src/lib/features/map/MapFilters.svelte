@@ -36,6 +36,9 @@
 		alertsAvailable?: boolean;
 		occupancyAvailable?: boolean;
 		routes?: readonly RouteIndexEntry[];
+		focusedLine?: string;
+		onremoveline?: (id: string) => void;
+		onclear?: () => void;
 		stops?: readonly StopIndexEntry[];
 		header?: Snippet;
 		record?: boolean;
@@ -48,6 +51,9 @@
 		alertsAvailable = true,
 		occupancyAvailable = true,
 		routes = [],
+		focusedLine,
+		onremoveline,
+		onclear,
 		stops = [],
 		header,
 		record = false,
@@ -69,7 +75,9 @@
 	const routeById = $derived(new Map(routes.map((route) => [route.id, route])));
 	const stopById = $derived(new Map(stops.map((stop) => [stop.id, stop])));
 	const selectedRouteIds = $derived(
-		Array.from(store.routes).sort((a, b) => collator.compare(a, b)),
+		[...new Set([...store.routes, ...(focusedLine ? [focusedLine] : [])])].sort((a, b) =>
+			collator.compare(a, b),
+		),
 	);
 	const selectedRoutes = $derived(
 		selectedRouteIds.map((id) => routeById.get(id) ?? fallbackRoute(id)),
@@ -85,10 +93,7 @@
 		record ? [] : Array.from(store.trips).sort((a, b) => collator.compare(a, b)),
 	);
 	const selectedCount = $derived(
-		selectedRoutes.length +
-			selectedStops.length +
-			selectedVehicleIds.length +
-			selectedTripIds.length,
+		selectedStops.length + selectedVehicleIds.length + selectedTripIds.length,
 	);
 	const visibleMarkers = $derived(visibleEntityKinds(store.state));
 	const readingCount = $derived(
@@ -98,7 +103,9 @@
 		readingCount +
 			(record
 				? selectedRoutes.length
-				: store.chips.length +
+				: selectedRoutes.length +
+					store.chips.length -
+					store.routes.size +
 					Number(Boolean(store.state.showOutOfService)) +
 					Number(visibleMarkers.length === 0)),
 	);
@@ -148,7 +155,8 @@
 	}
 
 	async function clearFilters(): Promise<void> {
-		store.clear();
+		if (onclear) onclear();
+		else store.clear();
 		await tick();
 		rootEl
 			?.closest('[data-map-filter-disclosure]')
@@ -157,8 +165,10 @@
 	}
 
 	async function removeRoute(route: RouteIndexEntry): Promise<void> {
-		store.removeRoute(route.id);
-		await focusAfterRemoval();
+		if (onremoveline) onremoveline(route.id);
+		else store.removeRoute(route.id);
+		await tick();
+		rootEl?.querySelector<HTMLElement>('[data-map-reading-line-picker] button')?.focus();
 	}
 
 	async function removeStop(stop: StopIndexEntry): Promise<void> {
@@ -203,7 +213,7 @@
 				{#if filterCount > 0}
 					<span class="mf-head-count">{filterCount}</span>
 				{/if}
-				{#if record ? filterCount > 0 : !store.isEmpty}
+				{#if selectedRoutes.length > 0 || (record ? filterCount > 0 : !store.isEmpty)}
 					<Button
 						variant="ghost"
 						size="sm"
@@ -216,10 +226,34 @@
 					</Button>
 				{/if}
 			</div>
-			{#if header}
+			{#if selectedRoutes.length || header}
 				<Separator decorative />
 				<div class="mf-header" data-testid="map-filter-header">
-					{@render header()}
+					{#if selectedRoutes.length}
+						<div
+							class="mf-active-set"
+							data-map-selected-lines
+							role="group"
+							aria-label={t.modeRoutes}
+						>
+							<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
+							<div class="mf-chips">
+								{#each selectedRoutes as route (route.id)}
+									<FilterChip
+										type="button"
+										class="mf-chip"
+										data-on="true"
+										aria-label="{t.filterRemove} {routeDisplay(route)}"
+										style="--chip:var(--accent-text)"
+										onclick={() => void removeRoute(route)}
+									>
+										<span class="mf-chip-text">{route.short}</span><span aria-hidden="true">×</span>
+									</FilterChip>
+								{/each}
+							</div>
+						</div>
+					{/if}
+					{@render header?.()}
 				</div>
 			{/if}
 		</div>
@@ -298,27 +332,6 @@
 						ontoggle={() => toggleGroup('active')}
 					>
 						<div class="mf-active-groups">
-							{#if selectedRoutes.length > 0}
-								<div class="mf-active-set">
-									<span class="mf-active-label"><RouteIcon size={13} />{t.modeRoutes}</span>
-									<div class="mf-chips">
-										{#each selectedRoutes as route (route.id)}
-											<FilterChip
-												type="button"
-												class="mf-chip"
-												data-on="true"
-												aria-label="{t.filterRemove} {routeDisplay(route)}"
-												style="--chip:var(--accent-text)"
-												onclick={() => void removeRoute(route)}
-											>
-												<span class="mf-chip-text">{routeDisplay(route)}</span><span
-													aria-hidden="true">×</span
-												>
-											</FilterChip>
-										{/each}
-									</div>
-								</div>
-							{/if}
 							{#if selectedStops.length > 0}
 								<div class="mf-active-set">
 									<span class="mf-active-label">{t.modeStops}</span>
@@ -545,6 +558,7 @@
 		display: flex;
 		min-width: 0;
 		flex-direction: column;
+		gap: 0.5rem;
 		padding-top: 0.125rem;
 	}
 
